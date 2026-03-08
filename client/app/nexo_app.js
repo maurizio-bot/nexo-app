@@ -3,15 +3,16 @@
  * Orquestador principal - FIXES APLICADOS (2 bugs mínimos)
  */
 
-import CryptoVault from '../core/crypto_vault.js';
-import FenixBackup from '../fenix/fenix_backup.js';
-import BleMesh from '../mesh/ble_mesh.js';
-import WebSocketClient from '../net/web_socket_client.js';
-import MeshRelayBridge from '../net/mesh_relay_bridge.js';
+import { CryptoVault } from '../core/crypto_vault.js';
+import { FenixBackup } from '../fenix/fenix_backup.js';
+import { BleMesh } from '../mesh/ble_mesh.js';
+import { WebSocketClient } from '../net/web_socket_client.js';
+import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
 import { VirtualEngine } from '../perf/virtual_engine.js';
-import TheStream from '../stream/the_stream.js';
-import GestureEngine from '../ui/gesture_engine.js';
-import PulseAlgorithm from '../stream/pulse_algorithm.js';
+import { TheStream } from '../stream/the_stream.js';
+import { GestureEngine } from '../ui/gesture_engine.js';
+import { PulseAlgorithm } from '../stream/pulse_algorithm.js';
+
 
 class NexoApp {
   constructor(config = {}) {
