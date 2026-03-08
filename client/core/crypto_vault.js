@@ -191,7 +191,7 @@ export class CryptoVault {
           }
 
           // Crear nuevo salt
-          const newSalt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
+          const newSalt = crypto.getRandomValues(new Uint8Array(SALt_LENGTH_BYTES));
           
           const tx2 = this.db.transaction(['keys'], 'readwrite');
           const store2 = tx2.objectStore('keys');
@@ -619,5 +619,3 @@ export class CryptoVault {
 if (typeof window !== 'undefined' && window.isSecureContext && location.hostname === 'localhost') {
   CryptoVault.selfTest().catch(console.error);
 }
-
-export default CryptoVault;
