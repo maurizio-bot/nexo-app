@@ -33,7 +33,15 @@ const DEFAULT_CONFIG = {
 
 export class WebSocketClient {
   constructor(config = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    // FIX: Defaults para callbacks obligatorios
+    this.config = { 
+      ...DEFAULT_CONFIG, 
+      onConnect: () => {},
+      onDisconnect: () => {},
+      onMessage: () => {},
+      onError: () => {},
+      ...config 
+    };
     
     if (!Array.isArray(this.config.urls) || this.config.urls.length === 0) {
       throw new Error('WebSocketClient requires at least one URL');
@@ -343,5 +351,3 @@ export class WebSocketClient {
     return { ...this.stats, queueSize: this.messageQueue.length };
   }
 }
-
-export default WebSocketClient;
