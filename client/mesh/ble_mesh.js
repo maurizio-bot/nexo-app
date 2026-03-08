@@ -6,7 +6,7 @@
  * @fixes Syntax error, race conditions, memory leaks, cleanup, maxPeers, broadcast validation
  */
 
-class BleMesh {
+export class BleMesh {
   constructor(options = {}) {
     if (typeof navigator === 'undefined' || !navigator.bluetooth) {
       console.warn('[BleMesh] Web Bluetooth API no disponible');
@@ -403,5 +403,3 @@ class BleMesh {
     return `ble-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 }
-
-export default BleMesh;
