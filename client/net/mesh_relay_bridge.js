@@ -30,7 +30,12 @@ const DEFAULT_CONFIG = {
 
 export class MeshRelayBridge {
   constructor(config = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = { 
+      ...DEFAULT_CONFIG, 
+      onModeChange: () => {},
+      onError: () => {},
+      ...config 
+    };
     
     if (!this.config.mesh && !this.config.relay) {
       throw new Error('MeshRelayBridge requires at least one transport (mesh or relay)');
@@ -114,7 +119,9 @@ export class MeshRelayBridge {
   }
 
   _hasRelayConnection() {
-    return this.config.relay && this.config.relay.isConnected && this.config.relay.isConnected();
+    return this.config.relay && 
+           typeof this.config.relay.isConnected === 'function' && 
+           this.config.relay.isConnected();
   }
 
   async send(data, options = {}) {
@@ -295,5 +302,3 @@ export class MeshRelayBridge {
     this.mode = BRIDGE_MODES.OFFLINE;
   }
 }
-
-export default MeshRelayBridge;
