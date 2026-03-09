@@ -248,8 +248,58 @@ export class NexoApp {
     return sent;
   }
   
-  _navigate(direction) { console.log('Navigate:', direction); }
-  _showMenu() { console.log('Show menu'); }
+  _navigate(direction) { 
+    window.NEXO_DIAG?.log(`🧭 Navegación: ${direction}`, 'info');
+    console.log('Navigate:', direction); 
+  }
+  
+  _showMenu() { 
+    window.NEXO_DIAG?.log('📋 Menú solicitado', 'info');
+    console.log('Show menu'); 
+  }
+  
   _refresh() { 
     window.NEXO_DIAG?.log('🔄 Refresh solicitado', 'info');
-    if (this.stream)
+    if (this.stream) this.stream.refresh();
+  }
+  
+  _handleQuickAction(action) {
+    window.NEXO_DIAG?.log(`⚡ Quick action: ${action}`, 'info');
+    console.log('Quick action:', action);
+  }
+  
+  async destroy() {
+    if (this.destroyed) {
+      window.NEXO_DIAG?.log('   ℹ️  destroy() ya fue llamado anteriormente', 'warn');
+      return;
+    }
+    
+    window.NEXO_DIAG?.log('🧹 [destroy] Limpiando recursos...', 'step');
+    this.destroyed = true;
+    
+    const safeDestroy = async (name, obj) => {
+      if (!obj) return;
+      try {
+        if (typeof obj.destroy === 'function') {
+          await obj.destroy();
+          window.NEXO_DIAG?.log(`   ✓ ${name} destruido`, 'step');
+        } else if (typeof obj.disconnect === 'function') {
+          await obj.disconnect();
+          window.NEXO_DIAG?.log(`   ✓ ${name} desconectado`, 'step');
+        }
+      } catch (e) {
+        window.NEXO_DIAG?.log(`   ⚠️  Error destruyendo ${name}: ${e.message}`, 'warn');
+      }
+    };
+    
+    await safeDestroy('gestures', this.gestures);
+    await safeDestroy('stream', this.stream);
+    await safeDestroy('bridge', this.bridge);
+    await safeDestroy('mesh', this.mesh);
+    await safeDestroy('wsClient', this.wsClient);
+    await safeDestroy('vault', this.vault);
+    
+    this.initialized = false;
+    window.NEXO_DIAG?.log('✅ [destroy] Recursos liberados', 'step');
+  }
+}
