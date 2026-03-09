@@ -1,140 +1,156 @@
 /**
- * NEXO App v2.2-NAP
- * Orquestador principal - FIXES APLICADOS (2 bugs mínimos)
+ * NEXO App v2.2-DEBUG - Con logs de diagnóstico
  */
 
 import { CryptoVault } from '../core/crypto_vault.js';
-import { FenixBackup } from '../fenix/fenix_backup.js';
 import { BleMesh } from '../mesh/ble_mesh.js';
 import { WebSocketClient } from '../net/web_socket_client.js';
 import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
+import { GestureEngine } from '../ui/gesture_engine.js';
 import { VirtualEngine } from '../perf/virtual_engine.js';
 import { TheStream } from '../stream/the_stream.js';
-import { GestureEngine } from '../ui/gesture_engine.js';
-import { PulseAlgorithm } from '../stream/pulse_algorithm.js';
 
 export class NexoApp {
   constructor(config = {}) {
+    window.NEXO_DIAG?.log('   [NexoApp.constructor] Iniciando...', 'info');
+    
     this.config = {
-      relayUrls: config.relayUrls || ['wss://relay.nexo.app/ws'],
+      relayUrls: config.relayUrls || [],
+      bleTimeout: config.bleTimeout || 5000,
       enableGestures: config.enableGestures !== false,
       enableMesh: config.enableMesh !== false,
-      enableFenix: config.enableFenix !== false,
-      onStatusChange: config.onStatusChange || (() => {}),
       onMessage: config.onMessage || (() => {}),
-      onError: config.onError || (() => {}),
-      container: config.container || document.body
+      onStatusChange: config.onStatusChange || (() => {}),
+      onError: config.onError || (() => {})
     };
-
-    this.state = {
-      initialized: false,
-      destroyed: false,
-      connectionMode: 'OFFLINE',
-      identity: null,
-      stats: {
-        messagesReceived: 0,
-        messagesSent: 0,
-        peersConnected: 0,
-        lastSync: null
-      }
-    };
-
+    
     this.vault = null;
     this.mesh = null;
     this.wsClient = null;
     this.bridge = null;
     this.gestures = null;
     this.stream = null;
-    this.fenix = null;
-    this.pulse = null;
+    this.initialized = false;
+    this.destroyed = false;
+    
+    window.NEXO_DIAG?.log('   [NexoApp.constructor] Config aplicada', 'step');
   }
-
+  
   async init() {
-    console.log('[NEXO] 🚀 Iniciando subsistemas...');
-    const startTime = Date.now();
-
-    if (this.state.initialized || this.state.destroyed) {
-      throw new Error('App ya inicializada o destruida');
+    if (this.initialized || this.destroyed) {
+      throw new Error('App already initialized or destroyed');
     }
-
+    
+    window.NEXO_DIAG?.log('🚀 [init] ===== INICIANDO NEXO APP =====', 'step');
+    
     try {
-      // 1. Inicializar crypto (identidad)
-      console.log('[NEXO] [1/8] Inicializando CryptoVault...');
+      // FASE 1: CRYPTO (Bloqueante)
+      window.NEXO_DIAG?.log('🔐 [init] Fase 1/6: CryptoVault...', 'step');
       try {
         this.vault = new CryptoVault();
+        window.NEXO_DIAG?.log('   ✓ CryptoVault instanciado', 'step');
+        
         await this.vault.init();
-        console.log('[NEXO] [1/8] ✓ CryptoVault OK (identidad: ' + (this.vault.getIdentity()?.substring(0,8) || 'N/A') + ')');
-      } catch (err) {
-        console.error('[NEXO] [1/8] ✗ FALLO CRÍTICO CryptoVault:', err.message);
-        throw new Error(`CryptoVault falló: ${err.message}`);
+        window.NEXO_DIAG?.log('   ✓ CryptoVault.init() completado', 'step');
+        window.NEXO_DIAG?.log(`   ℹ️  Identity: ${this.vault.getIdentity()?.substring(0, 8)}...`, 'info');
+      } catch (cryptoErr) {
+        window.NEXO_DIAG?.log(`   ❌ ERROR en CryptoVault: ${cryptoErr.message}`, 'error');
+        throw new Error(`CryptoVault failed: ${cryptoErr.message}`);
       }
 
-      // 2. Inicializar WebSocket (fallback)
-      console.log('[NEXO] [2/8] Conectando WebSocket...');
-      if (this.config.relayUrls.length > 0) {
-        try {
+      // FASE 2: WEBSOCKET (Fallback siempre disponible)
+      window.NEXO_DIAG?.log('🌐 [init] Fase 2/6: WebSocketClient...', 'step');
+      try {
+        if (this.config.relayUrls.length > 0) {
           this.wsClient = new WebSocketClient({
             urls: this.config.relayUrls,
             onMessage: (msg) => this._handleMessage(msg, 'relay'),
-            onConnect: () => this._updateStatus(),
-            onDisconnect: () => this._updateStatus(),
-            onError: (err) => this.config.onError(err)
+            onConnect: () => {
+              window.NEXO_DIAG?.log('   ✓ WebSocket conectado', 'step');
+              this._updateStatus();
+            },
+            onDisconnect: () => {
+              window.NEXO_DIAG?.log('   ⚠️  WebSocket desconectado', 'warn');
+              this._updateStatus();
+            },
+            onError: (err) => {
+              window.NEXO_DIAG?.log(`   ❌ WebSocket error: ${err.message || err}`, 'error');
+              this.config.onError(err);
+            }
           });
+          
           await this.wsClient.connect();
-          console.log('[NEXO] [2/8] ✓ WebSocket conectado');
-        } catch (err) {
-          console.error('[NEXO] [2/8] ✗ WebSocket falló:', err.message);
-          // No es crítico, continuar sin relay
-          this.wsClient = null;
+          window.NEXO_DIAG?.log(`   ✓ WebSocketClient.connect() llamado (estado: ${this.wsClient.isConnected() ? 'conectado' : 'pendiente'})`, 'step');
+        } else {
+          window.NEXO_DIAG?.log('   ⚠️  Sin URLs de relay configuradas', 'warn');
         }
-      } else {
-        console.log('[NEXO] [2/8] ⚠ Sin URLs de relay configuradas');
+      } catch (wsErr) {
+        window.NEXO_DIAG?.log(`   ❌ ERROR en WebSocket: ${wsErr.message}`, 'error');
+        // No lanzamos error, BLE puede funcionar sin relay
       }
 
-      // 3. Inicializar BLE Mesh
-      console.log('[NEXO] [3/8] Inicializando BLE Mesh...');
-      if (this.config.enableMesh && navigator.bluetooth) {
+      // FASE 3: BLE MESH (Con timeout controlado)
+      window.NEXO_DIAG?.log('📡 [init] Fase 3/6: BleMesh...', 'step');
+      if (this.config.enableMesh && 'bluetooth' in navigator) {
+        window.NEXO_DIAG?.log('   ℹ️  Web Bluetooth API disponible', 'info');
         try {
           this.mesh = new BleMesh({
-            onPeer: () => this._updateStatus(),
+            onPeer: (peer) => {
+              window.NEXO_DIAG?.log(`   ✓ Nuevo peer BLE: ${peer?.id?.substring(0, 8) || 'unknown'}`, 'step');
+              this._updateStatus();
+            },
             onMessage: (msg, peer) => this._handleMessage(msg, 'ble'),
-            onDisconnect: () => this._updateStatus(),
-            onError: (err) => this.config.onError(err)
+            onDisconnect: () => {
+              window.NEXO_DIAG?.log('   ⚠️  BLE desconectado', 'warn');
+              this._updateStatus();
+            },
+            onError: (err) => {
+              window.NEXO_DIAG?.log(`   ❌ BLE error: ${err.message || err}`, 'error');
+              this.config.onError(err);
+            }
           });
           
-          const timeout = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Mesh timeout (>5000ms) - ¿Permisos denegados?')), 5000)
+          const meshTimeout = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Mesh timeout (5s)')), this.config.bleTimeout)
           );
           
-          await Promise.race([this.mesh.init(), timeout]);
-          console.log('[NEXO] [3/8] ✓ BLE Mesh iniciado');
-        } catch (err) {
-          console.error('[NEXO] [3/8] ✗ BLE Mesh no disponible:', err.message);
+          window.NEXO_DIAG?.log(`   ⏳ Intentando BLE (timeout: ${this.config.bleTimeout}ms)...`, 'warn');
+          await Promise.race([this.mesh.init(), meshTimeout]);
+          window.NEXO_DIAG?.log('   ✓ BleMesh.init() completado', 'step');
+          
+        } catch (meshErr) {
+          window.NEXO_DIAG?.log(`   ⚠️  BLE falló (normal si no hay permisos): ${meshErr.message}`, 'warn');
           this.mesh = null;
         }
       } else {
-        console.log('[NEXO] [3/8] ⚠ BLE deshabilitado o no soportado');
+        window.NEXO_DIAG?.log('   ⚠️  BLE deshabilitado o no soportado', 'warn');
+        if (!('bluetooth' in navigator)) {
+          window.NEXO_DIAG?.log('   ❌ Web Bluetooth API no disponible en este dispositivo', 'error');
+        }
       }
 
-      // 4. Inicializar Bridge
-      console.log('[NEXO] [4/8] Inicializando Bridge...');
+      // FASE 4: BRIDGE (Gestiona P2P vs Relay)
+      window.NEXO_DIAG?.log('🌉 [init] Fase 4/6: MeshRelayBridge...', 'step');
       try {
         this.bridge = new MeshRelayBridge({
           mesh: this.mesh,
           relay: this.wsClient,
-          onModeChange: (mode) => this.config.onStatusChange(mode),
+          onModeChange: (mode) => {
+            window.NEXO_DIAG?.log(`   🔄 Modo cambiado: ${mode}`, 'info');
+            this.config.onStatusChange(mode);
+          },
           onMessage: (msg) => this._handleMessage(msg, 'bridge')
         });
         
         await this.bridge.init();
-        console.log('[NEXO] [4/8] ✓ Bridge OK (modo:', this.bridge.getMode?.() || 'UNKNOWN', ')');
-      } catch (err) {
-        console.error('[NEXO] [4/8] ✗ Bridge init failed (aislado):', err.message);
-        // No crítico, continuar sin bridge
+        window.NEXO_DIAG?.log(`   ✓ Bridge iniciado (modo actual: ${this.bridge.getMode()})`, 'step');
+      } catch (bridgeErr) {
+        window.NEXO_DIAG?.log(`   ⚠️  Bridge falló (aislado): ${bridgeErr.message}`, 'warn');
+        // No bloquear init() general si bridge falla
       }
 
-      // 5. Inicializar Gestures
-      console.log('[NEXO] [5/8] Inicializando Gestures...');
+      // FASE 5: GESTURES
+      window.NEXO_DIAG?.log('👆 [init] Fase 5/6: GestureEngine...', 'step');
       if (this.config.enableGestures) {
         try {
           this.gestures = new GestureEngine({
@@ -145,171 +161,95 @@ export class NexoApp {
             onQuickAction: (action) => this._handleQuickAction(action)
           });
           this.gestures.init();
-          console.log('[NEXO] [5/8] ✓ Gestures OK');
-        } catch (err) {
-          console.error('[NEXO] [5/8] ✗ Gestures error:', err.message);
+          window.NEXO_DIAG?.log('   ✓ Gestures activados', 'step');
+        } catch (gestureErr) {
+          window.NEXO_DIAG?.log(`   ⚠️  Gestures falló: ${gestureErr.message}`, 'warn');
         }
-      } else {
-        console.log('[NEXO] [5/8] ⚠ Gestures deshabilitado');
       }
 
-      // 6. Inicializar Stream
-      console.log('[NEXO] [6/8] Inicializando Stream...');
+      // FASE 6: STREAM (Feed unificado)
+      window.NEXO_DIAG?.log('📰 [init] Fase 6/6: TheStream...', 'step');
       try {
+        const container = document.getElementById('messages-container');
+        if (!container) throw new Error('messages-container no encontrado');
+        
         this.stream = new TheStream({
-          container: this.config.container,
+          container: container,
           virtualEngine: new VirtualEngine({
-            container: this.config.container,
+            container: container,
             itemHeight: 80,
             bufferSize: 5
           })
         });
-        console.log('[NEXO] [6/8] ✓ Stream OK');
-      } catch (err) {
-        console.error('[NEXO] [6/8] ✗ Stream error:', err.message);
+        window.NEXO_DIAG?.log('   ✓ Stream inicializado', 'step');
+      } catch (streamErr) {
+        window.NEXO_DIAG?.log(`   ⚠️  Stream falló: ${streamErr.message}`, 'warn');
       }
 
-      // 7. Inicializar Fénix (backup)
-      console.log('[NEXO] [7/8] Inicializando Fénix...');
-      if (this.config.enableFenix) {
-        try {
-          this.fenix = new FenixBackup({
-            vault: this.vault
-          });
-          console.log('[NEXO] [7/8] ✓ Fénix OK');
-        } catch (err) {
-          console.error('[NEXO] [7/8] ✗ Fénix error:', err.message);
-        }
-      } else {
-        console.log('[NEXO] [7/8] ⚠ Fénix deshabilitado');
-      }
-
-      // 8. Inicializar Pulse (algoritmo viral)
-      console.log('[NEXO] [8/8] Inicializando Pulse...');
-      try {
-        this.pulse = new PulseAlgorithm();
-        console.log('[NEXO] [8/8] ✓ Pulse OK');
-      } catch (err) {
-        console.error('[NEXO] [8/8] ✗ Pulse error:', err.message);
-      }
-
-      this.state.initialized = true;
-      this.state.identity = this.vault.getIdentity();
+      this.initialized = true;
       this._updateStatus();
       
-      const duration = Date.now() - startTime;
-      console.log(`[NEXO] ✅ Inicialización completa en ${duration}ms`);
-
-      return true;
+      window.NEXO_DIAG?.log('🎉 [init] ===== INICIALIZACIÓN COMPLETADA =====', 'step');
+      
     } catch (err) {
-      console.error('[NEXO] 💥 Error fatal durante init():', err);
+      window.NEXO_DIAG?.log(`💥 [init] ERROR CRÍTICO: ${err.message}`, 'error');
       await this.destroy();
       throw err;
     }
   }
-
+  
   _handleMessage(msg, source) {
-    if (this.state.destroyed) return;
-
+    if (this.destroyed) {
+      window.NEXO_DIAG?.log(`   ⚠️  Mensaje ignorado (app destruida) de ${source}`, 'warn');
+      return;
+    }
+    
     const enriched = {
       ...msg,
       _source: source,
       _receivedAt: Date.now(),
       _id: crypto.randomUUID?.() || Math.random().toString(36).substr(2, 9)
     };
-
-    this.state.stats.messagesReceived++;
+    
     this.config.onMessage(enriched);
   }
-
+  
   _updateStatus() {
-    if (this.state.destroyed || !this.bridge) return;
-
+    if (this.destroyed || !this.bridge) {
+      window.NEXO_DIAG?.log(`   ℹ️  Status: OFFLINE (bridge no disponible)`, 'info');
+      return;
+    }
+    
     const mode = this.bridge.getMode?.() || 'OFFLINE';
-    this.state.connectionMode = mode;
+    window.NEXO_DIAG?.log(`   📊 Status update: ${mode}`, 'info');
     this.config.onStatusChange(mode);
   }
-
+  
   sendMessage(msg) {
-    if (!this.state.initialized || this.state.destroyed) {
-      throw new Error('App no inicializada');
+    if (!this.initialized || this.destroyed) {
+      throw new Error('App not initialized');
     }
-
+    
+    window.NEXO_DIAG?.log(`📤 [sendMessage] Tipo: ${msg.type || 'unknown'}`, 'info');
+    
     const enriched = {
       ...msg,
       _own: true,
-      _sender: this.state.identity,
-      _timestamp: Date.now()
+      _sender: this.vault?.getIdentity?.() || 'unknown'
     };
-
-    // Enviar por bridge
+    
+    let sent = false;
     if (this.bridge) {
-      this.bridge.send(enriched);
+      sent = this.bridge.send(enriched);
+      window.NEXO_DIAG?.log(`   → Enviado por bridge: ${sent}`, sent ? 'step' : 'warn');
     }
-
-    // Mostrar localmente
+    
     this._handleMessage(enriched, 'self');
-    this.state.stats.messagesSent++;
+    return sent;
   }
-
-  _navigate(direction) {
-    console.log('[NexoApp] Navigate:', direction);
-  }
-
-  _showMenu() {
-    console.log('[NexoApp] Show menu');
-  }
-
-  _refresh() {
-    console.log('[NexoApp] Refresh');
-    if (this.stream) this.stream.refresh();
-  }
-
-  _handleQuickAction(action) {
-    console.log('[NexoApp] Quick action:', action);
-  }
-
-  getStats() {
-    return {
-      ...this.state.stats,
-      mode: this.state.connectionMode,
-      identity: this.state.identity
-    };
-  }
-
-  async destroy() {
-    if (this.state.destroyed) return;
-    this.state.destroyed = true;
-
-    if (this.gestures) {
-      try { this.gestures.destroy(); } catch (e) {}
-    }
-
-    if (this.stream) {
-      try { this.stream.destroy(); } catch (e) {}
-    }
-
-    if (this.bridge) {
-      try { await this.bridge.destroy(); } catch (e) {}
-    }
-
-    if (this.mesh) {
-      try { await this.mesh.destroy(); } catch (e) {}
-    }
-
-    if (this.wsClient) {
-      try { await this.wsClient.disconnect(); } catch (e) {}
-    }
-
-    if (this.vault) {
-      // FIX: Limpiar identity ANTES del await
-      const identity = this.vault.identity;
-      if (identity && identity.privateKey) {
-        identity.privateKey = null;
-      }
-      try { await this.vault.destroy(); } catch (e) {}
-    }
-
-    this.state.initialized = false;
-  }
-}
+  
+  _navigate(direction) { console.log('Navigate:', direction); }
+  _showMenu() { console.log('Show menu'); }
+  _refresh() { 
+    window.NEXO_DIAG?.log('🔄 Refresh solicitado', 'info');
+    if (this.stream)
