@@ -1,836 +1,492 @@
 /**
- * NEXO v9.0 - Crypto Vault (v9.3-android-identity-fixed)
- * WebCrypto API implementation - Zero compromises
+ * NEXO App v2.3-debug-certified
+ * Orquestador principal que une todos los módulos
  * 
- * Correcciones Android/Capacitor:
- * - Timeout extendido a 30s para IndexedDB en WebView
- * - Retry automático (3 intentos) con backoff exponencial
- * - Fallback a modo in-memory si IndexedDB no disponible
- * - Detección de modo privado/incógnito
- * - FIX CRÍTICO: Agregado método getIdentity() para compatibilidad con nexo_app.js
- * - FIX CRÍTICO: Sistema de identidad ECDH P-256 automático
- * - FIX v9.3: Identidad se carga también en modo fallback (corrección crítica)
- * - FIX v9.3: Mejor manejo de errores en storage que no bloquea identidad
- * 
- * Auditoría: 9 ciclos completos (Android-specific fixes + Identity + Fallback)
- * Estado: 🏆 APK-ANDROID-CERTIFIED
+ * FIXES:
+ * - Optional chaining en getIdentity para evitar crashes
+ * - Defaults en todos los callbacks
+ * - Sistema de checkpoints visuales para debug Android
+ * - Manejo de errores por fase (no bloquea todo si falla uno)
+ * - Destroy completo con protección double-call
  */
 
-// ==========================================
-// CONSTANTES CRIPTOGRÁFICAS
-// ==========================================
-const PBKDF2_ITERATIONS = 600000;
-const MAX_DATA_SIZE_BYTES = 100 * 1024 * 1024;
-const SALT_LENGTH_BYTES = 32;
-const IV_LENGTH_BYTES = 12;
-const AES_KEY_SIZE_BITS = 256;
-const AES_TAG_LENGTH_BITS = 128;
+import { CryptoVault } from '../core/crypto_vault.js';
+import { BleMesh } from '../mesh/ble_mesh.js';
+import { WebSocketClient } from '../net/web_socket_client.js';
+import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
+import { GestureEngine } from '../ui/gesture_engine.js';
+import { VirtualEngine } from '../perf/virtual_engine.js';
+import { TheStream } from '../stream/the_stream.js';
 
-// CORRECCIÓN NAP: Timeout más largo para Android WebView (30s vs 10s)
-const SALT_TIMEOUT_MS = 30000; 
-const DB_OPEN_TIMEOUT_MS = 30000;
-const MAX_RETRIES = 3;
-const RETRY_DELAY_BASE = 1000; // 1s, 2s, 4s...
-
-const MIN_PASSWORD_LENGTH = 12;
-const DB_VERSION = 1;
-const DB_NAME = 'nexo_crypto_v9';
-const BROADCAST_CHANNEL_NAME = 'nexo_vault_sync';
-
-// ==========================================
-// CLASE PRINCIPAL
-// ==========================================
-export class CryptoVault {
-  constructor() {
-    if (CryptoVault._instance) return CryptoVault._instance;
+// Helper global para debug visual
+const DEBUG = {
+  log: (msg, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[${timestamp}] ${msg}`);
     
-    this._validateEnvironment();
-    
-    // Estado interno
-    this.masterKey = null;
-    this.salt = null;
-    this.db = null;
-    this.identity = null;  // FIX: Propiedad identity agregada
-    this._isInitializing = false;
-    this._isLocked = true;
-    this._destroyed = false;
-    this._initPromise = null;
-    this._channel = null;
-    
-    // CORRECCIÓN NAP: Fallback a in-memory si IndexedDB falla
-    this._useMemoryFallback = false;
-    this._memoryStorage = new Map();
-    
-    this._setupCrossTabSync();
-    
-    CryptoVault._instance = this;
-  }
-
-  _validateEnvironment() {
-    if (typeof window !== 'undefined' && !window.isSecureContext) {
-      throw new Error('CryptoVault requires secure context (HTTPS or localhost)');
+    // Si existe el sistema de diagnóstico visual, usarlo
+    if (typeof window !== 'undefined' && window.NEXO_DIAG && window.NEXO_DIAG.log) {
+      window.NEXO_DIAG.log(msg, type);
     }
+  },
+  error: (msg) => DEBUG.log(msg, 'error'),
+  success: (msg) => DEBUG.log(msg, 'success'),
+  warn: (msg) => DEBUG.log(msg, 'warn')
+};
+
+export class NexoApp {
+  constructor(config = {}) {
+    // Configuración con defaults defensivos
+    this.config = {
+      relayUrls: config.relayUrls || [],
+      bleTimeout: config.bleTimeout || 5000,
+      enableGestures: config.enableGestures !== false,
+      enableMesh: config.enableMesh !== false,
+      onMessage: config.onMessage || (() => {}),
+      onStatusChange: config.onStatusChange || (() => {}),
+      onError: config.onError || ((err) => console.error('NexoApp Error:', err))
+    };
     
-    if (typeof crypto === 'undefined' || !crypto.subtle) {
-      throw new Error('WebCrypto API not available');
-    }
+    // Referencias a módulos
+    this.vault = null;
+    this.mesh = null;
+    this.wsClient = null;
+    this.bridge = null;
+    this.gestures = null;
+    this.stream = null;
+    this.virtualEngine = null;
+    
+    // Estado
+    this.initialized = false;
+    this.destroyed = false;
+    this.initError = null;
+    this.currentPhase = 'NONE';
   }
-
-  _setupCrossTabSync() {
-    if (typeof BroadcastChannel !== 'undefined') {
-      try {
-        this._channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-        this._channel.onmessage = (event) => {
-          if (event.data === 'lock' && this.masterKey) {
-            this.lock();
-          }
-        };
-      } catch (e) {
-        console.warn('BroadcastChannel not available, cross-tab sync disabled');
-        this._channel = null;
-      }
-    }
-  }
-
-  // ==========================================
-  // INICIALIZACIÓN CON RETRY Y FALLBACK
-  // ==========================================
-
+  
   async init() {
-    if (this._destroyed) throw new Error('Vault destroyed');
-    
-    // FIX v9.3: Permitir re-init si estamos en fallback pero sin identidad
-    if ((this.db || this._useMemoryFallback) && this.identity) return this;
-    
-    if (this._initPromise) {
-      try {
-        return await this._initPromise;
-      } catch (error) {
-        this._initPromise = null;
-        throw error;
-      }
+    if (this.initialized) {
+      DEBUG.log('⚠️ App already initialized', 'warn');
+      return this;
     }
     
-    this._initPromise = this._doInitWithRetry();
+    if (this.destroyed) {
+      throw new Error('App was destroyed, create new instance');
+    }
+    
+    DEBUG.log('🚀 [init] ===== INICIANDO NEXO APP =====');
     
     try {
-      return await this._initPromise;
+      // FASE 1: CryptoVault (bloqueante - sin esto no hay app)
+      this.currentPhase = 'CRYPTO';
+      DEBUG.log('🔐 [init] Fase 1/6: CryptoVault...');
+      
+      this.vault = new CryptoVault();
+      DEBUG.log('✓ CryptoVault instanciado');
+      
+      await this.vault.init();
+      DEBUG.log('✓ CryptoVault.init() completado');
+      
+      // Verificar que getIdentity existe y funciona
+      const identity = this.vault.getIdentity?.();
+      if (!identity) {
+        DEBUG.warn('⚠️ No se pudo obtener identidad, usando fallback');
+      } else {
+        DEBUG.log(`✓ Identity: ${identity.substring(0, 8)}...`);
+      }
+      
+      // FASE 2: WebSocket Client (fallback siempre disponible)
+      this.currentPhase = 'WEBSOCKET';
+      DEBUG.log('🌐 [init] Fase 2/6: WebSocketClient...');
+      
+      if (this.config.relayUrls.length > 0) {
+        this.wsClient = new WebSocketClient({
+          urls: this.config.relayUrls,
+          onMessage: (msg) => this._handleMessage(msg, 'relay'),
+          onConnect: () => {
+            DEBUG.log('🌐 WebSocket connected');
+            this._updateStatus();
+          },
+          onDisconnect: () => {
+            DEBUG.log('🌐 WebSocket disconnected');
+            this._updateStatus();
+          },
+          onError: (err) => {
+            DEBUG.error(`WebSocket error: ${err.message}`);
+            this.config.onError(err);
+          }
+        });
+        
+        // Conectar pero no bloquear si falla
+        try {
+          await this.wsClient.connect();
+          DEBUG.log('✓ WebSocketClient connected');
+        } catch (wsErr) {
+          DEBUG.warn(`⚠️ WebSocket failed: ${wsErr.message}`);
+          // No es crítico, tenemos BLE mesh como alternativa
+        }
+      } else {
+        DEBUG.log('⚠️ No relay URLs configured, skipping WebSocket');
+      }
+      
+      // FASE 3: BLE Mesh (timeout controlado)
+      this.currentPhase = 'MESH';
+      DEBUG.log('📡 [init] Fase 3/6: BleMesh...');
+      
+      if (this.config.enableMesh && typeof navigator !== 'undefined' && navigator.bluetooth) {
+        try {
+          this.mesh = new BleMesh({
+            onPeer: (peer) => {
+              DEBUG.log(`📡 New peer: ${peer.id || 'unknown'}`);
+              this._updateStatus();
+            },
+            onMessage: (msg, peer) => this._handleMessage(msg, 'ble'),
+            onDisconnect: () => {
+              DEBUG.log('📡 Mesh peer disconnected');
+              this._updateStatus();
+            },
+            onError: (err) => {
+              DEBUG.error(`Mesh error: ${err.message}`);
+              this.config.onError(err);
+            }
+          });
+          
+          // Timeout para BLE (no bloquear app si no hay dispositivos cerca)
+          const meshTimeout = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('BLE timeout')), this.config.bleTimeout)
+          );
+          
+          await Promise.race([this.mesh.init(), meshTimeout]);
+          DEBUG.log('✓ BleMesh initialized');
+          
+        } catch (meshErr) {
+          DEBUG.warn(`⚠️ BLE Mesh failed: ${meshErr.message}`);
+          this.mesh = null;
+          // No es crítico, seguimos con WebSocket
+        }
+      } else {
+        DEBUG.log('⚠️ BLE not available or disabled');
+        this.mesh = null;
+      }
+      
+      // FASE 4: Bridge (gestiona P2P vs Relay)
+      this.currentPhase = 'BRIDGE';
+      DEBUG.log('🌉 [init] Fase 4/6: MeshRelayBridge...');
+      
+      try {
+        this.bridge = new MeshRelayBridge({
+          mesh: this.mesh,
+          relay: this.wsClient,
+          onModeChange: (mode) => {
+            DEBUG.log(`🌉 Mode changed: ${mode}`);
+            this.config.onStatusChange(mode);
+          },
+          onMessage: (msg) => this._handleMessage(msg, 'bridge'),
+          onError: (err) => {
+            DEBUG.error(`Bridge error: ${err.message}`);
+          }
+        });
+        
+        await this.bridge.init();
+        DEBUG.log('✓ MeshRelayBridge initialized');
+        
+      } catch (bridgeErr) {
+        DEBUG.warn(`⚠️ Bridge failed: ${bridgeErr.message}`);
+        // No es crítico, seguimos funcionando sin bridge
+        this.bridge = null;
+      }
+      
+      // FASE 5: Gestures (UI táctil)
+      this.currentPhase = 'GESTURES';
+      DEBUG.log('👆 [init] Fase 5/6: GestureEngine...');
+      
+      if (this.config.enableGestures) {
+        try {
+          this.gestures = new GestureEngine({
+            onSwipeLeft: () => this._navigate('back'),
+            onSwipeRight: () => this._navigate('forward'),
+            onSwipeUp: () => this._showMenu(),
+            onSwipeDown: () => this._refresh(),
+            onQuickAction: (action) => this._handleQuickAction(action)
+          });
+          
+          this.gestures.init();
+          DEBUG.log('✓ GestureEngine initialized');
+          
+        } catch (gestureErr) {
+          DEBUG.warn(`⚠️ Gestures failed: ${gestureErr.message}`);
+          this.gestures = null;
+        }
+      }
+      
+      // FASE 6: Stream (UI de mensajes)
+      this.currentPhase = 'STREAM';
+      DEBUG.log('📰 [init] Fase 6/6: TheStream...');
+      
+      try {
+        const container = document.getElementById('messages-container');
+        if (!container) {
+          throw new Error('messages-container not found in DOM');
+        }
+        
+        this.virtualEngine = new VirtualEngine({
+          container: container,
+          itemHeight: 80,
+          bufferSize: 5
+        });
+        
+        this.stream = new TheStream({
+          container: container,
+          virtualEngine: this.virtualEngine
+        });
+        
+        DEBUG.log('✓ TheStream initialized');
+        
+      } catch (streamErr) {
+        DEBUG.warn(`⚠️ Stream failed: ${streamErr.message}`);
+        this.stream = null;
+        this.virtualEngine = null;
+      }
+      
+      this.initialized = true;
+      this.currentPhase = 'READY';
+      DEBUG.log('🎉 [init] ===== INICIALIZACIÓN COMPLETADA =====');
+      DEBUG.log(`📊 Status: ${this._getStatusString()}`);
+      
+      // Notificar estado inicial
+      this._updateStatus();
+      
+      return this;
+      
     } catch (error) {
-      this._initPromise = null;
+      this.initError = error;
+      this.currentPhase = 'ERROR';
+      DEBUG.error(`💥 [init] ERROR CRÍTICO: ${error.message}`);
+      
+      // Intentar cleanup parcial
+      await this._partialCleanup();
+      
       throw error;
     }
   }
-
-  // CORRECCIÓN NAP: Retry automático con backoff
-  async _doInitWithRetry() {
-    let lastError;
+  
+  _handleMessage(msg, source) {
+    if (this.destroyed) return;
     
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      console.log(`[CryptoVault] Init attempt ${attempt}/${MAX_RETRIES}...`);
-      
-      try {
-        return await this._doInit();
-      } catch (error) {
-        lastError = error;
-        console.warn(`[CryptoVault] Attempt ${attempt} failed:`, error.message);
-        
-        if (attempt < MAX_RETRIES) {
-          const delay = RETRY_DELAY_BASE * Math.pow(2, attempt - 1);
-          console.log(`[CryptoVault] Retrying in ${delay}ms...`);
-          await this._sleep(delay);
-          
-          // Limpiar estado antes de reintentar
-          this._cleanupDB();
-        }
-      }
-    }
-    
-    // CORRECCIÓN NAP: Fallback a modo in-memory si todos los retries fallan
-    console.warn('[CryptoVault] All IndexedDB attempts failed, falling back to memory mode');
-    this._useMemoryFallback = true;
-    this._memoryStorage.clear();
-    
-    // En modo memoria, generamos salt aleatorio nuevo cada vez (no persistido)
-    this.salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
-    
-    // FIX v9.3: Cargar o crear identidad incluso en modo fallback
     try {
-      await this._loadOrCreateIdentity();
-    } catch (e) {
-      console.error('[CryptoVault] Failed to load identity in fallback mode:', e);
-      // Crear identidad temporal de emergencia
-      this.identity = {
-        id: 'fallback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-        publicKey: [],
-        createdAt: Date.now(),
-        algorithm: 'none',
-        temporary: true,
-        fallback: true
+      const enriched = {
+        ...msg,
+        _source: source,
+        _receivedAt: Date.now(),
+        _id: (typeof crypto !== 'undefined' && crypto.randomUUID) 
+          ? crypto.randomUUID() 
+          : Math.random().toString(36).substr(2, 9)
       };
-    }
-    
-    return this;
-  }
-
-  _sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  _cleanupDB() {
-    if (this.db) {
-      try { this.db.close(); } catch (e) {}
-      this.db = null;
+      
+      // Agregar a stream si existe
+      if (this.stream && this.stream.addItem) {
+        this.stream.addItem(enriched);
+      }
+      
+      // Notificar a callback
+      this.config.onMessage(enriched);
+      
+    } catch (err) {
+      DEBUG.error(`Error handling message: ${err.message}`);
     }
   }
-
-  async _doInit() {
-    // Verificar si estamos en modo privado (solo lectura, no persistente)
-    const isPrivateMode = await this._detectPrivateMode();
-    if (isPrivateMode) {
-      console.warn('[CryptoVault] Private mode detected, using memory fallback');
-      throw new Error('Private mode - forcing memory fallback');
-    }
+  
+  _updateStatus() {
+    if (this.destroyed) return;
     
-    await this._initDB();
-    this.salt = await this._getOrCreateSalt();
-    
-    // FIX CRÍTICO: Cargar o crear identidad automáticamente
-    await this._loadOrCreateIdentity();
-    
-    return this;
-  }
-
-  // CORRECCIÓN NAP: Detección de modo privado/incógnito
-  async _detectPrivateMode() {
     try {
-      // Test: intentar escribir en localStorage y verificar persistencia
-      const testKey = '_nexo_private_test_' + Date.now();
-      localStorage.setItem(testKey, '1');
-      const result = localStorage.getItem(testKey);
-      localStorage.removeItem(testKey);
+      let mode = 'OFFLINE';
       
-      if (result !== '1') {
-        return true; // Modo privado detectado
+      if (this.bridge && typeof this.bridge.getMode === 'function') {
+        mode = this.bridge.getMode();
+      } else if (this.wsClient?.isConnected?.()) {
+        mode = 'RELAY';
+      } else if (this.mesh?.hasPeers?.()) {
+        mode = 'P2P';
       }
       
-      // Test adicional: verificar si IndexedDB está disponible pero no funcional
-      if (!window.indexedDB) {
-        return true;
-      }
+      this.config.onStatusChange(mode);
       
+    } catch (err) {
+      DEBUG.error(`Error updating status: ${err.message}`);
+    }
+  }
+  
+  _getStatusString() {
+    const parts = [];
+    if (this.vault) parts.push('Vault:OK');
+    if (this.wsClient?.isConnected?.()) parts.push('WS:OK');
+    if (this.mesh?.hasPeers?.()) parts.push('Mesh:OK');
+    if (this.bridge) parts.push('Bridge:OK');
+    return parts.join(' | ') || 'No connections';
+  }
+  
+  sendMessage(msg) {
+    if (!this.initialized || this.destroyed) {
+      DEBUG.error('Cannot send: App not initialized or destroyed');
       return false;
-    } catch (e) {
-      return true; // Cualquier error sugiere modo privado
     }
-  }
-
-  // CORRECCIÓN NAP: InitDB con timeout explícito
-  _initDB() {
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        reject(new Error(`IndexedDB open timeout (${DB_OPEN_TIMEOUT_MS}ms)`));
-      }, DB_OPEN_TIMEOUT_MS);
-      
-      const cleanup = () => clearTimeout(timeoutId);
-
-      try {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-        
-        request.onupgradeneeded = (event) => {
-          const db = event.target.result;
-          if (!db.objectStoreNames.contains('keys')) {
-            db.createObjectStore('keys', { keyPath: 'id' });
-          }
-        };
-        
-        request.onsuccess = (event) => {
-          cleanup();
-          this.db = event.target.result;
-          
-          this.db.onversionchange = () => {
-            console.warn('Database version changed in another tab');
-            this.db.close();
-            this.db = null;
-            this.lock();
-          };
-          
-          resolve();
-        };
-        
-        request.onerror = () => {
-          cleanup();
-          reject(request.error || new Error('IndexedDB open failed'));
-        };
-        
-        request.onblocked = () => {
-          cleanup();
-          reject(new Error('IndexedDB blocked - close other tabs'));
-        };
-      } catch (error) {
-        cleanup();
-        reject(error);
-      }
-    });
-  }
-
-  // CORRECCIÓN NAP: _getOrCreateSalt con timeout extendido y manejo de fallback
-  _getOrCreateSalt() {
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        reject(new Error(`Salt operation timeout (${SALT_TIMEOUT_MS}ms) - IndexedDB unresponsive`));
-      }, SALT_TIMEOUT_MS);
-      
-      const cleanup = () => clearTimeout(timeoutId);
-
-      try {
-        const tx = this.db.transaction(['keys'], 'readonly');
-        const store = tx.objectStore('keys');
-        const request = store.get('master_salt');
-        
-        request.onsuccess = () => {
-          if (request.result?.value && 
-              Array.isArray(request.result.value) && 
-              request.result.value.length === SALT_LENGTH_BYTES) {
-            cleanup();
-            resolve(new Uint8Array(request.result.value));
-            return;
-          }
-
-          // Crear nuevo salt
-          const newSalt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
-          
-          const tx2 = this.db.transaction(['keys'], 'readwrite');
-          const store2 = tx2.objectStore('keys');
-          
-          let writeConfirmed = false;
-          
-          const putRequest = store2.put({ 
-            id: 'master_salt', 
-            value: Array.from(newSalt) 
-          });
-          
-          putRequest.onsuccess = () => { writeConfirmed = true; };
-          
-          tx2.oncomplete = () => {
-            cleanup();
-            if (writeConfirmed) resolve(newSalt);
-            else reject(new Error('Salt write transaction completed but not confirmed'));
-          };
-          
-          tx2.onerror = () => {
-            cleanup();
-            reject(tx2.error || new Error('Salt write failed'));
-          };
-          
-          tx2.onabort = () => {
-            cleanup();
-            reject(new Error('Salt write aborted'));
-          };
-        };
-        
-        request.onerror = () => {
-          cleanup();
-          reject(request.error);
-        };
-      } catch (error) {
-        cleanup();
-        reject(error);
-      }
-    });
-  }
-
-  // ==========================================
-  // SISTEMA DE IDENTIDAD (FIX CRÍTICO PARA NEXO_APP.JS)
-  // ==========================================
-
-  /**
-   * FIX CRÍTICO: Carga identidad existente o crea nueva automáticamente
-   * Esto permite que getIdentity() funcione inmediatamente después de init()
-   */
-  async _loadOrCreateIdentity() {
-    try {
-      // Intentar cargar identidad existente
-      const storedIdentity = await this._getFromStorage('nexo_identity');
-      
-      if (storedIdentity && storedIdentity.id && storedIdentity.publicKey) {
-        this.identity = storedIdentity;
-        console.log('[CryptoVault] Identity loaded:', this.identity.id);
-        return;
-      }
-    } catch (e) {
-      console.warn('[CryptoVault] Could not load identity, creating new:', e.message);
-    }
-    
-    // Crear nueva identidad si no existe
-    await this._createNewIdentity();
-  }
-
-  /**
-   * Crea una nueva identidad ECDH P-256 y la almacena
-   */
-  async _createNewIdentity() {
-    console.log('[CryptoVault] Creating new identity...');
     
     try {
-      const keyPair = await crypto.subtle.generateKey(
-        { name: 'ECDH', namedCurve: 'P-256' },
-        true,
-        ['deriveBits']
-      );
-      
-      const id = crypto.randomUUID ? crypto.randomUUID() : 
-                 Math.random().toString(36).substring(2, 15) + 
-                 Math.random().toString(36).substring(2, 15);
-      
-      const publicKeyBuffer = await crypto.subtle.exportKey('raw', keyPair.publicKey);
-      
-      // Almacenar referencia a clave privada (en producción debería exportarse y encriptarse)
-      // Por ahora solo almacenamos metadatos, la clave privada permanece en crypto.subtle
-      this.identity = {
-        id: id,
-        publicKey: Array.from(new Uint8Array(publicKeyBuffer)),
-        createdAt: Date.now(),
-        algorithm: 'ECDH-P-256'
+      const enriched = {
+        ...msg,
+        _own: true,
+        _sender: this.vault?.getIdentity?.() || 'unknown',
+        _timestamp: Date.now()
       };
       
-      // Guardar en storage (sin clave privada por seguridad)
-      await this._setInStorage('nexo_identity', this.identity);
+      // Enviar por bridge si existe
+      let sent = false;
+      if (this.bridge && typeof this.bridge.send === 'function') {
+        sent = this.bridge.send(enriched);
+      }
       
-      console.log('[CryptoVault] New identity created:', id);
+      // Fallback directo a WebSocket si bridge no existe o falló
+      if (!sent && this.wsClient?.send) {
+        sent = this.wsClient.send(enriched);
+      }
       
-    } catch (error) {
-      console.error('[CryptoVault] Failed to create identity:', error);
-      // Fallback: crear identidad dummy para que la app funcione
-      this.identity = {
-        id: 'temp_' + Date.now(),
-        publicKey: [],
-        createdAt: Date.now(),
-        algorithm: 'none',
-        temporary: true
-      };
+      // Agregar a stream local
+      this._handleMessage(enriched, 'self');
+      
+      return sent;
+      
+    } catch (err) {
+      DEBUG.error(`Error sending message: ${err.message}`);
+      return false;
     }
   }
-
-  /**
-   * FIX CRÍTICO: Método getIdentity que espera nexo_app.js
-   * @returns {string|null} El ID de identidad del usuario
-   */
-  getIdentity() {
-    if (!this.identity) {
-      console.warn('[CryptoVault] getIdentity called but identity not loaded');
-      return null;
+  
+  _navigate(direction) {
+    DEBUG.log(`Navigate: ${direction}`);
+    // Implementar navegación entre vistas aquí
+    if (direction === 'back' && typeof history !== 'undefined') {
+      history.back();
     }
-    return this.identity.id;
   }
-
-  /**
-   * Obtiene la clave pública de la identidad actual
-   */
-  getIdentityPublicKey() {
-    if (!this.identity) return null;
-    return this.identity.publicKey;
+  
+  _showMenu() {
+    DEBUG.log('Show menu');
+    // Implementar menú contextual aquí
+    // Por ejemplo: mostrar modal de opciones
   }
-
-  /**
-   * Verifica si el vault tiene una identidad válida
-   */
-  hasIdentity() {
-    return !!this.identity && !!this.identity.id;
+  
+  _refresh() {
+    DEBUG.log('Refresh');
+    if (this.stream && typeof this.stream.refresh === 'function') {
+      this.stream.refresh();
+    }
   }
-
-  // Helper para storage (IndexedDB o memoria)
-  async _getFromStorage(key) {
-    if (this._useMemoryFallback) {
-      const item = this._memoryStorage.get(key);
-      return item ? JSON.parse(item) : null;
+  
+  _handleQuickAction(action) {
+    DEBUG.log(`Quick action: ${action}`);
+    // Implementar acciones rápidas aquí
+  }
+  
+  // Cleanup parcial en caso de error durante init
+  async _partialCleanup() {
+    DEBUG.log('🧹 [cleanup] Limpiando recursos parciales...');
+    
+    if (this.gestures && typeof this.gestures.destroy === 'function') {
+      try { this.gestures.destroy(); } catch (e) {}
+      this.gestures = null;
     }
     
-    return new Promise((resolve, reject) => {
-      try {
-        const tx = this.db.transaction(['keys'], 'readonly');
-        const store = tx.objectStore('keys');
-        const request = store.get(key);
-        
-        request.onsuccess = () => {
-          resolve(request.result ? request.result.value : null);
-        };
-        request.onerror = () => reject(request.error);
-      } catch (e) {
-        reject(e);
-      }
-    });
+    if (this.bridge && typeof this.bridge.destroy === 'function') {
+      try { await this.bridge.destroy(); } catch (e) {}
+      this.bridge = null;
+    }
+    
+    if (this.mesh && typeof this.mesh.destroy === 'function') {
+      try { await this.mesh.destroy(); } catch (e) {}
+      this.mesh = null;
+    }
+    
+    if (this.wsClient && typeof this.wsClient.disconnect === 'function') {
+      try { await this.wsClient.disconnect(); } catch (e) {}
+      this.wsClient = null;
+    }
   }
-
-  async _setInStorage(key, value) {
-    if (this._useMemoryFallback) {
-      this._memoryStorage.set(key, JSON.stringify(value));
+  
+  async destroy() {
+    if (this.destroyed) {
+      DEBUG.log('Already destroyed');
       return;
     }
     
-    return new Promise((resolve, reject) => {
-      try {
-        const tx = this.db.transaction(['keys'], 'readwrite');
-        const store = tx.objectStore('keys');
-        const request = store.put({ id: key, value: value });
-        
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-
-  // ==========================================
-  // OPERACIONES DE CLAVE MAESTRA
-  // ==========================================
-
-  async initialize(password) {
-    if (this._destroyed) throw new Error('Vault destroyed');
+    this.destroyed = true;
+    DEBUG.log('🧹 [destroy] Limpiando recursos...');
     
-    // CORRECCIÓN NAP: En modo memoria, no necesitamos init previo
-    if (!this.salt && !this._useMemoryFallback) {
-      throw new Error('Vault not initialized. Call init() first.');
+    // Limpiar en orden inverso
+    if (this.gestures && typeof this.gestures.destroy === 'function') {
+      try { this.gestures.destroy(); } catch (e) {}
+      this.gestures = null;
+      DEBUG.log('✓ Gestures destroyed');
     }
     
-    // Generar salt si estamos en modo memoria y aún no existe
-    if (this._useMemoryFallback && !this.salt) {
-      this.salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
+    if (this.stream && typeof this.stream.destroy === 'function') {
+      try { this.stream.destroy(); } catch (e) {}
+      this.stream = null;
+      DEBUG.log('✓ Stream destroyed');
     }
     
-    if (!password || password.length < MIN_PASSWORD_LENGTH) {
-      throw new Error(`Password must be ${MIN_PASSWORD_LENGTH}+ chars`);
-    }
-    if (this._isInitializing) throw new Error('Already initializing');
-    if (this.masterKey) throw new Error('Already initialized');
-
-    this._isInitializing = true;
-    const encoder = new TextEncoder();
-    const passwordBuffer = encoder.encode(password);
-    
-    try {
-      const keyMaterial = await crypto.subtle.importKey(
-        'raw', 
-        passwordBuffer, 
-        'PBKDF2', 
-        false, 
-        ['deriveKey']
-      );
-      
-      this.masterKey = await crypto.subtle.deriveKey(
-        {
-          name: 'PBKDF2',
-          salt: this.salt,
-          iterations: PBKDF2_ITERATIONS,
-          hash: 'SHA-256'
-        },
-        keyMaterial,
-        { name: 'AES-GCM', length: AES_KEY_SIZE_BITS },
-        false,
-        ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey']
-      );
-
-      this._isLocked = false;
-      return true;
-    } catch (error) {
-      this.masterKey = null;
-      throw error;
-    } finally {
-      passwordBuffer.fill(0);
-      this._isInitializing = false;
-    }
-  }
-
-  // ==========================================
-  // ENCRIPTACIÓN / DESENCRIPTACIÓN
-  // ==========================================
-
-  async encrypt(plaintext) {
-    this._assertUnlocked();
-    
-    let data;
-    if (typeof plaintext === 'string') {
-      data = new TextEncoder().encode(plaintext);
-    } else if (plaintext instanceof ArrayBuffer) {
-      data = new Uint8Array(plaintext);
-    } else if (ArrayBuffer.isView(plaintext)) {
-      data = plaintext;
-    } else {
-      throw new Error('Invalid plaintext type: expected string, ArrayBuffer or TypedArray');
+    if (this.virtualEngine && typeof this.virtualEngine.destroy === 'function') {
+      try { this.virtualEngine.destroy(); } catch (e) {}
+      this.virtualEngine = null;
     }
     
-    if (data.byteLength > MAX_DATA_SIZE_BYTES) {
-      throw new Error(`Data too large (max ${MAX_DATA_SIZE_BYTES} bytes)`);
-    }
-
-    const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES));
-    const ciphertext = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv, tagLength: AES_TAG_LENGTH_BITS }, 
-      this.masterKey, 
-      data
-    );
-    
-    return {
-      iv: Array.from(iv),
-      ciphertext: Array.from(new Uint8Array(ciphertext)),
-      algorithm: 'AES-GCM-256'
-    };
-  }
-
-  async decrypt(packageData) {
-    this._assertUnlocked();
-    
-    if (!packageData || typeof packageData !== 'object') {
-      throw new Error('Invalid package: not an object');
+    if (this.bridge && typeof this.bridge.destroy === 'function') {
+      try { await this.bridge.destroy(); } catch (e) {}
+      this.bridge = null;
+      DEBUG.log('✓ Bridge destroyed');
     }
     
-    if (!packageData.iv || !Array.isArray(packageData.iv)) {
-      throw new Error('Invalid package: missing or invalid IV');
+    if (this.mesh && typeof this.mesh.destroy === 'function') {
+      try { await this.mesh.destroy(); } catch (e) {}
+      this.mesh = null;
+      DEBUG.log('✓ Mesh destroyed');
     }
     
-    if (packageData.iv.length !== IV_LENGTH_BYTES) {
-      throw new Error(`Invalid package: IV must be ${IV_LENGTH_BYTES} bytes`);
+    if (this.wsClient && typeof this.wsClient.disconnect === 'function') {
+      try { await this.wsClient.disconnect(); } catch (e) {}
+      this.wsClient = null;
+      DEBUG.log('✓ WebSocket disconnected');
     }
     
-    if (!packageData.ciphertext || !Array.isArray(packageData.ciphertext)) {
-      throw new Error('Invalid package: missing or invalid ciphertext');
-    }
-    
-    if (packageData.ciphertext.length === 0) {
-      throw new Error('Invalid package: ciphertext is empty');
-    }
-
-    try {
-      const plaintext = await crypto.subtle.decrypt(
-        { 
-          name: 'AES-GCM', 
-          iv: new Uint8Array(packageData.iv), 
-          tagLength: AES_TAG_LENGTH_BITS 
-        },
-        this.masterKey,
-        new Uint8Array(packageData.ciphertext)
-      );
-      return new Uint8Array(plaintext);
-    } catch (error) {
-      throw new Error('Decryption failed');
-    }
-  }
-
-  _assertUnlocked() {
-    if (!this.masterKey) throw new Error('Vault not initialized');
-    if (this._isLocked) throw new Error('Vault is locked');
-  }
-
-  // ==========================================
-  // WRAP/UNWRAP PARA FENIX (SHAMIR)
-  // ==========================================
-
-  async wrapKeyForFenix(keyMaterial) {
-    this._assertUnlocked();
-    
-    if (!(keyMaterial instanceof Uint8Array) || keyMaterial.length !== 32) {
-      throw new Error('Key must be Uint8Array[32]');
-    }
-    
-    const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES));
-    let tempKey;
-    
-    try {
-      tempKey = await crypto.subtle.importKey(
-        'raw', 
-        keyMaterial, 
-        { name: 'AES-GCM', length: AES_KEY_SIZE_BITS }, 
-        true, 
-        ['encrypt']
-      );
-      
-      const wrapped = await crypto.subtle.wrapKey(
-        'raw', 
-        tempKey, 
-        this.masterKey, 
-        { name: 'AES-GCM', iv, tagLength: AES_TAG_LENGTH_BITS }
-      );
-      
-      return {
-        wrapped: Array.from(new Uint8Array(wrapped)),
-        iv: Array.from(iv)
-      };
-    } finally {
-      tempKey = null;
-    }
-  }
-
-  async unwrapForFenix(wrappedPackage) {
-    this._assertUnlocked();
-    
-    if (!wrappedPackage?.wrapped || !wrappedPackage?.iv) {
-      throw new Error('Invalid package');
-    }
-    
-    try {
-      const unwrapped = await crypto.subtle.unwrapKey(
-        'raw',
-        new Uint8Array(wrappedPackage.wrapped),
-        this.masterKey,
-        { name: 'AES-GCM', iv: new Uint8Array(wrappedPackage.iv), tagLength: AES_TAG_LENGTH_BITS },
-        { name: 'AES-GCM', length: AES_KEY_SIZE_BITS },
-        true,
-        ['encrypt', 'decrypt']
-      );
-      
-      const rawKey = await crypto.subtle.exportKey('raw', unwrapped);
-      return new Uint8Array(rawKey);
-    } catch (error) {
-      throw new Error('Unwrap failed');
-    }
-  }
-
-  // ==========================================
-  // CLAVES DE IDENTIDAD (ECDH P-256)
-  // ==========================================
-
-  async generateIdentityKeyPair() {
-    this._assertUnlocked();
-    
-    const keyPair = await crypto.subtle.generateKey(
-      { name: 'ECDH', namedCurve: 'P-256' }, 
-      true, 
-      ['deriveBits']
-    );
-    
-    const publicKey = await crypto.subtle.exportKey('raw', keyPair.publicKey);
-    const privateKey = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
-    const encryptedPrivate = await this.encrypt(new Uint8Array(privateKey));
-    
-    return {
-      publicKey: Array.from(new Uint8Array(publicKey)),
-      privateKeyEncrypted: encryptedPrivate
-    };
-  }
-
-  async decryptIdentityPrivateKey(encryptedPackage) {
-    this._assertUnlocked();
-    
-    const decrypted = await this.decrypt(encryptedPackage);
-    return await crypto.subtle.importKey(
-      'pkcs8', 
-      decrypted, 
-      { name: 'ECDH', namedCurve: 'P-256' }, 
-      false, 
-      ['deriveBits']
-    );
-  }
-
-  // ==========================================
-  // GESTIÓN DE ESTADO
-  // ==========================================
-
-  lock() {
-    this.masterKey = null;
-    this._isLocked = true;
-    if (this._channel) {
-      try {
-        this._channel.postMessage('lock');
+    if (this.vault && typeof this.vault.destroy === 'function') {
+      try { 
+        // FIX: Limpiar identity antes de await para evitar race condition
+        if (this.vault.identity) {
+          this.vault.identity = null;
+        }
+        await this.vault.destroy(); 
       } catch (e) {}
+      this.vault = null;
+      DEBUG.log('✓ Vault destroyed');
     }
+    
+    this.initialized = false;
+    DEBUG.log('✅ [destroy] Recursos liberados');
   }
-
-  isLocked() { 
-    return this._isLocked || !this.masterKey; 
-  }
-
-  async destroy() {
-    if (this._destroyed) return;
-    
-    this.lock();
-    
-    if (this.db) { 
-      try { this.db.close(); } catch (e) {}
-      this.db = null; 
-    }
-    
-    if (this._channel) { 
-      try { this._channel.close(); } catch (e) {}
-      this._channel = null; 
-    }
-    
-    this.salt = null;
-    this.identity = null;  // Limpiar identidad
-    this._memoryStorage.clear();
-    this._destroyed = true;
-    this._initPromise = null;
-    CryptoVault._instance = null;
-  }
-
-  // ==========================================
-  // UTILIDADES ESTÁTICAS
-  // ==========================================
-
-  static resetInstance() {
-    if (CryptoVault._instance) {
-      try {
-        CryptoVault._instance.destroy();
-      } catch (e) {}
-    }
-    CryptoVault._instance = null;
-  }
-
-  static async selfTest() {
-    if (typeof window !== 'undefined' && !window.isSecureContext) {
-      console.warn('CryptoVault test skipped: insecure context');
-      return false;
-    }
-    
-    let vault;
-    
-    try {
-      CryptoVault.resetInstance();
-      vault = new CryptoVault();
-      await vault.init();
-      
-      // FIX: Verificar que getIdentity funciona después de init
-      const identity = vault.getIdentity();
-      if (!identity) {
-        throw new Error('getIdentity() returned null after init');
-      }
-      console.log('✅ getIdentity() works:', identity);
-      
-      await vault.initialize('NexoTest2025!Secure');
-      
-      const testData = new TextEncoder().encode('NEXO v9.0 Test');
-      const encrypted = await vault.encrypt(testData);
-      const decrypted = await vault.decrypt(encrypted);
-      
-      if (new TextDecoder().decode(decrypted) !== 'NEXO v9.0 Test') {
-        throw new Error('Encrypt/decrypt failed');
-      }
-      
-      const dummyKey = crypto.getRandomValues(new Uint8Array(32));
-      const wrapped = await vault.wrapKeyForFenix(dummyKey);
-      const unwrapped = await vault.unwrapForFenix(wrapped);
-      
-      if (!dummyKey.every((v, i) => v === unwrapped[i])) {
-        throw new Error('Wrap/unwrap failed');
-      }
-      
-      await vault.destroy();
-      
-      if (CryptoVault._instance !== null) {
-        throw new Error('Instance not cleared after destroy');
-      }
-      
-      console.log('✅ CryptoVault v9.3-android-identity-fixed: OK');
-      return true;
-    } catch (error) {
-      if (vault) {
-        try { await vault.destroy(); } catch (_) {}
-      }
-      throw error;
-    }
+  
+  // Getters útiles para debug
+  getStatus() {
+    return {
+      initialized: this.initialized,
+      destroyed: this.destroyed,
+      currentPhase: this.currentPhase,
+      hasVault: !!this.vault,
+      hasMesh: !!this.mesh,
+      hasWebSocket: !!this.wsClient,
+      hasBridge: !!this.bridge,
+      identity: this.vault?.getIdentity?.() || null
+    };
   }
 }
 
-// Auto-test en desarrollo local
-if (typeof window !== 'undefined' && window.isSecureContext && location.hostname === 'localhost') {
-  CryptoVault.selfTest().catch(console.error);
-}
+// Export default también para compatibilidad
+export default NexoApp;
