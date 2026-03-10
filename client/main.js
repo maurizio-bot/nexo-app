@@ -1,39 +1,96 @@
-// Checkpoint 0: Verificar si es primera vez (antes de cargar todo)
-if (window.NEXO_DIAG) {
-  window.NEXO_DIAG.log('✅ main.js cargado (módulo ES6)', 'step');
-  window.NEXO_DIAG.log('🔍 Verificando si es primera vez...', 'info');
-}
+/**
+ * NEXO Main Entry Point v2.0-NAP-CERTIFIED
+ * Integra: Splash → Diagnóstico → Onboarding → App
+ * Relay: wss://echo.websocket.org/ (testing)
+ */
 
-// [FIX] Imports incluyen onboarding y helpers
+// ============ SISTEMA DE DIAGNÓSTICO GLOBAL ============
+window.NEXO_DIAG = {
+  logs: [],
+  maxLogs: 100,
+  
+  log(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = { time: timestamp, message, type };
+    this.logs.push(entry);
+    
+    if (this.logs.length > this.maxLogs) this.logs.shift();
+    
+    console.log(`[${type.toUpperCase()}] ${message}`);
+    
+    const container = document.getElementById('diag-logs');
+    if (container) {
+      const div = document.createElement('div');
+      div.className = `diag-log ${type}`;
+      div.textContent = `[${timestamp}] ${message}`;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+    
+    const splashStatus = document.getElementById('splash-status');
+    if (splashStatus && type !== 'error') {
+      splashStatus.textContent = message;
+    }
+  },
+  
+  setStatus(status) {
+    const el = document.getElementById('diag-status');
+    if (el) el.textContent = status;
+  },
+  
+  showApp() {
+    document.getElementById('diagnostic-screen')?.classList.add('hidden');
+    document.getElementById('app-container')?.classList.add('visible');
+    this.log('Interfaz principal activada', 'step');
+  },
+  
+  hideSplash() {
+    const splash = document.getElementById('splash-native');
+    if (splash) {
+      splash.classList.add('hidden');
+      setTimeout(() => splash.remove(), 800);
+    }
+  }
+};
+
+// ============ IMPORTS ============
+window.NEXO_DIAG.log('📦 Cargando módulos...', 'step');
+
 import { NexoApp } from './app/nexo_app.js';
 import { OnboardingController } from './auth/onboarding.js';
 import { WebAuthnHelper } from './auth/webauthn_helper.js';
 import { CryptoVault } from './core/crypto_vault.js';
 
-// Checkpoint 1: Imports exitosos
-if (window.NEXO_DIAG) {
-  window.NEXO_DIAG.log('✅ Módulos importados (NexoApp, Onboarding, WebAuthn, Vault)', 'step');
-}
+window.NEXO_DIAG.log('✅ Módulos importados', 'step');
 
-/**
- * Verifica si el usuario ya tiene identidad o necesita onboarding
- */
+// ============ FUNCIONES AUXILIARES ============
+
 async function checkNeedsOnboarding() {
   try {
-    // [FIX] Verificar si existe identidad previa sin bloquear la app
+    window.NEXO_DIAG.log('🔍 Verificando identidad existente...', 'step');
     const vault = new CryptoVault();
     await vault.init();
     const identity = vault.getIdentity();
-    return !identity; // true si necesita onboarding
+    const needsOnboard = !identity;
+    window.NEXO_DIAG.log(needsOnboard ? '👤 Nueva identidad detectada' : '✅ Identidad existente', needsOnboard ? 'info' : 'step');
+    return needsOnboard;
   } catch (err) {
-    window.NEXO_DIAG?.log(`⚠️  No se pudo verificar identidad: ${err.message}`, 'warn');
-    return true; // Asumir primera vez si hay error
+    window.NEXO_DIAG.log(`⚠️  Error verificando identidad: ${err.message}`, 'warn');
+    return true;
   }
 }
 
+function hideSplash() {
+  setTimeout(() => {
+    window.NEXO_DIAG.hideSplash();
+  }, 1500);
+}
+
+// ============ MAIN ============
 (async () => {
   try {
-    // Verificación DOM (no fatal, modo degradado)
+    window.NEXO_DIAG.setStatus('Inicializando...');
+    
     const elements = {
       diagnosticScreen: document.getElementById('diagnostic-screen'),
       appContainer: document.getElementById('app-container'),
@@ -43,59 +100,56 @@ async function checkNeedsOnboarding() {
       sendBtn: document.getElementById('send-btn')
     };
 
-    const missingElements = Object.entries(elements)
+    const missing = Object.entries(elements)
       .filter(([name, el]) => !el)
       .map(([name]) => name);
-
-    if (missingElements.length > 0) {
-      window.NEXO_DIAG?.log(`⚠️  DOM elements faltantes: ${missingElements.join(', ')}`, 'warn');
-      window.NEXO_DIAG?.log('⚠️  Continuando en modo degradado...', 'warn');
-      // [FIX] No hacer throw, continuar con lo que haya
+    
+    if (missing.length > 0) {
+      window.NEXO_DIAG.log(`⚠️  Elementos faltantes: ${missing.join(', ')}`, 'warn');
     } else {
-      window.NEXO_DIAG.log('✅ DOM elements verificados', 'step');
+      window.NEXO_DIAG.log('✅ DOM listo', 'step');
     }
 
-    // [FIX] Paso 1: Onboarding si es necesario
-    window.NEXO_DIAG.setStatus('🔍 Verificando identidad...');
     const needsOnboarding = await checkNeedsOnboarding();
     
     if (needsOnboarding) {
-      window.NEXO_DIAG.log('👤 Primera vez detectada - Iniciando onboarding...', 'step');
-      window.NEXO_DIAG.setStatus('🎨 Mostrando onboarding...');
+      window.NEXO_DIAG.log('🎨 Iniciando onboarding...', 'step');
+      window.NEXO_DIAG.setStatus('Onboarding...');
+      
+      hideSplash();
       
       const onboarding = new OnboardingController({
         container: elements.appContainer || document.body,
+        vault: null,
         onComplete: () => {
-          window.NEXO_DIAG.log('✅ Onboarding completado', 'step');
-          window.NEXO_DIAG.log('🔄 Recargando para iniciar app...', 'info');
-          // [FIX] Recargar para reiniciar flujo con identidad ya creada
+          window.NEXO_DIAG.log('✅ Onboarding completado - Recargando...', 'step');
           setTimeout(() => window.location.reload(), 1000);
         },
         onError: (err) => {
-          window.NEXO_DIAG.log(`❌ Error en onboarding: ${err.message}`, 'error');
+          window.NEXO_DIAG.log(`❌ Onboarding error: ${err.message}`, 'error');
         }
       });
       
       await onboarding.start();
-      return; // Detener aquí, el onComplete recargará
+      return;
+      
+    } else {
+      hideSplash();
     }
-    
-    window.NEXO_DIAG.log('✅ Usuario ya tiene identidad', 'step');
 
-    // [FIX] Paso 2: Iniciar NexoApp con relay de prueba
-    window.NEXO_DIAG.log('🏗️  Creando instancia NexoApp...', 'step');
+    window.NEXO_DIAG.log('🏗️  Creando NexoApp...', 'step');
     
     const app = new NexoApp({
       relayUrls: [
-        'wss://echo.websocket.org/',  // [FIX] Relay público de prueba
-        // 'wss://relay.nexo.app/ws'  // Tu servidor cuando esté listo
+        'wss://echo.websocket.org/',
+        'wss://relay.nexo.app/ws'
       ],
-      bleTimeout: 10000, // [FIX] Más tiempo para encontrar peers BLE
+      bleTimeout: 10000,
       enableGestures: true,
       enableMesh: true,
       
       onMessage: (msg) => {
-        window.NEXO_DIAG?.log(`📨 Mensaje vía ${msg._source || 'desconocido'}: ${msg.text?.substring(0, 30)}...`, 'info');
+        window.NEXO_DIAG.log(`📨 ${msg._source?.toUpperCase() || 'MSG'}: ${msg.text?.substring(0, 30)}...`, 'info');
         
         if (!elements.messagesContainer) return;
         
@@ -107,59 +161,48 @@ async function checkNeedsOnboarding() {
       },
       
       onStatusChange: (mode) => {
-        window.NEXO_DIAG?.log(`🔄 Modo: ${mode}`, 'info');
+        window.NEXO_DIAG.log(`🔄 Modo: ${mode}`, 'info');
         
         if (!elements.statusIndicator) return;
         
         elements.statusIndicator.className = mode.toLowerCase();
         const labels = {
           P2P: '🟢 P2P',
-          RELAY: '🔵 RELAY', 
+          RELAY: '🔵 RELAY',
           HYBRID: '🟠 HYBRID',
           OFFLINE: '🔴 OFFLINE'
         };
         elements.statusIndicator.textContent = labels[mode] || mode;
         
-        // [FIX] Si está OFFLINE, sugerir verificar relay
         if (mode === 'OFFLINE') {
-          window.NEXO_DIAG?.log('⚠️  MODO OFFLINE - Verificar conexión a echo.websocket.org', 'warn');
+          window.NEXO_DIAG.log('⚠️  SIN CONEXIÓN - Revisa relay o BLE', 'warn');
         }
       },
       
       onError: (err) => {
-        window.NEXO_DIAG?.log(`❌ Error: ${err.message || err}`, 'error');
+        window.NEXO_DIAG.log(`❌ Error: ${err.message || err}`, 'error');
         console.error('NEXO Error:', err);
       }
     });
 
-    window.NEXO_DIAG.log('✅ NexoApp instanciado', 'step');
-    window.NEXO_DIAG.setStatus('🚀 Iniciando (timeout 15s)...');
-
-    // [FIX] Timeout de seguridad para app.init()
+    window.NEXO_DIAG.log('⏳ Iniciando conexiones (timeout 15s)...', 'step');
+    window.NEXO_DIAG.setStatus('Conectando...');
+    
     const initTimeout = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Init timeout (>15s)')), 15000)
+      setTimeout(() => reject(new Error('Timeout de inicialización (>15s)')), 15000)
     );
     
     await Promise.race([app.init(), initTimeout]);
     
-    window.NEXO_DIAG.log('✅ app.init() completado', 'step');
-    window.NEXO_DIAG.setStatus('✨ ¡Listo!');
+    window.NEXO_DIAG.log('✅ NEXO Listo', 'step');
+    window.NEXO_DIAG.setStatus('Conectado');
     
     window.nexoApp = app;
-    window.NEXO_DIAG.log('🌍 window.nexoApp expuesto', 'info');
-
-    // Configurar UI (solo si existen elementos)
+    
     if (elements.sendBtn && elements.messageInput) {
-      window.NEXO_DIAG.log('🎨 Configurando UI...', 'step');
-      
       const sendMessage = () => {
         const text = elements.messageInput.value.trim();
-        if (!text) {
-          window.NEXO_DIAG?.log('⚠️  Mensaje vacío', 'warn');
-          return;
-        }
-        
-        window.NEXO_DIAG?.log(`📤 Enviando: "${text.substring(0, 20)}..."`, 'info');
+        if (!text) return;
         
         try {
           app.sendMessage({
@@ -169,7 +212,7 @@ async function checkNeedsOnboarding() {
           });
           elements.messageInput.value = '';
         } catch (err) {
-          window.NEXO_DIAG?.log(`❌ Error enviando: ${err.message}`, 'error');
+          window.NEXO_DIAG.log(`❌ Error enviando: ${err.message}`, 'error');
         }
       };
       
@@ -177,28 +220,20 @@ async function checkNeedsOnboarding() {
       elements.messageInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
       });
-      
-      window.NEXO_DIAG.log('✅ UI configurada', 'step');
-    } else {
-      window.NEXO_DIAG.log('⚠️  UI no configurada (faltan elementos)', 'warn');
     }
-
-    // Mostrar app principal
+    
     setTimeout(() => {
-      window.NEXO_DIAG?.log('🎬 Mostrando interfaz...', 'step');
-      window.NEXO_DIAG?.showApp?.();
-    }, 1500);
-
-    // Cleanup
+      window.NEXO_DIAG.showApp();
+    }, 2000);
+    
     window.addEventListener('beforeunload', () => {
-      window.NEXO_DIAG?.log('👋 Cerrando app...', 'warn');
       app.destroy();
     });
     
   } catch (err) {
-    window.NEXO_DIAG?.log(`💥 FATAL: ${err.message || err}`, 'error');
-    window.NEXO_DIAG?.log(`📍 Stack: ${err.stack?.substring(0, 200)}`, 'error');
-    window.NEXO_DIAG?.setStatus('❌ Error fatal', 'error');
+    window.NEXO_DIAG.log(`💥 FATAL: ${err.message}`, 'error');
+    window.NEXO_DIAG.log(`📍 ${err.stack?.substring(0, 200)}`, 'error');
+    window.NEXO_DIAG.setStatus('Error fatal');
     console.error('Fatal:', err);
   }
 })();
