@@ -1,20 +1,39 @@
-// Checkpoint 1: Módulo cargado
+// Checkpoint 0: Verificar si es primera vez (antes de cargar todo)
 if (window.NEXO_DIAG) {
   window.NEXO_DIAG.log('✅ main.js cargado (módulo ES6)', 'step');
-  window.NEXO_DIAG.log('📦 Importando NexoApp...', 'info');
+  window.NEXO_DIAG.log('🔍 Verificando si es primera vez...', 'info');
 }
 
+// [FIX] Imports incluyen onboarding y helpers
 import { NexoApp } from './app/nexo_app.js';
+import { OnboardingController } from './auth/onboarding.js';
+import { WebAuthnHelper } from './auth/webauthn_helper.js';
+import { CryptoVault } from './core/crypto_vault.js';
 
-// Checkpoint 2: Import exitoso
+// Checkpoint 1: Imports exitosos
 if (window.NEXO_DIAG) {
-  window.NEXO_DIAG.log('✅ NexoApp importado correctamente', 'step');
-  window.NEXO_DIAG.log('🔍 Verificando elementos DOM...', 'info');
+  window.NEXO_DIAG.log('✅ Módulos importados (NexoApp, Onboarding, WebAuthn, Vault)', 'step');
+}
+
+/**
+ * Verifica si el usuario ya tiene identidad o necesita onboarding
+ */
+async function checkNeedsOnboarding() {
+  try {
+    // [FIX] Verificar si existe identidad previa sin bloquear la app
+    const vault = new CryptoVault();
+    await vault.init();
+    const identity = vault.getIdentity();
+    return !identity; // true si necesita onboarding
+  } catch (err) {
+    window.NEXO_DIAG?.log(`⚠️  No se pudo verificar identidad: ${err.message}`, 'warn');
+    return true; // Asumir primera vez si hay error
+  }
 }
 
 (async () => {
   try {
-    // Verificación DOM
+    // Verificación DOM (no fatal, modo degradado)
     const elements = {
       diagnosticScreen: document.getElementById('diagnostic-screen'),
       appContainer: document.getElementById('app-container'),
@@ -24,29 +43,59 @@ if (window.NEXO_DIAG) {
       sendBtn: document.getElementById('send-btn')
     };
 
-    // Validar elementos críticos
     const missingElements = Object.entries(elements)
       .filter(([name, el]) => !el)
       .map(([name]) => name);
 
     if (missingElements.length > 0) {
-      throw new Error(`Elementos DOM faltantes: ${missingElements.join(', ')}`);
+      window.NEXO_DIAG?.log(`⚠️  DOM elements faltantes: ${missingElements.join(', ')}`, 'warn');
+      window.NEXO_DIAG?.log('⚠️  Continuando en modo degradado...', 'warn');
+      // [FIX] No hacer throw, continuar con lo que haya
+    } else {
+      window.NEXO_DIAG.log('✅ DOM elements verificados', 'step');
     }
 
-    window.NEXO_DIAG.log('✅ DOM elements verificados', 'step');
-    window.NEXO_DIAG.setStatus('⚙️ Instanciando NexoApp...');
+    // [FIX] Paso 1: Onboarding si es necesario
+    window.NEXO_DIAG.setStatus('🔍 Verificando identidad...');
+    const needsOnboarding = await checkNeedsOnboarding();
+    
+    if (needsOnboarding) {
+      window.NEXO_DIAG.log('👤 Primera vez detectada - Iniciando onboarding...', 'step');
+      window.NEXO_DIAG.setStatus('🎨 Mostrando onboarding...');
+      
+      const onboarding = new OnboardingController({
+        container: elements.appContainer || document.body,
+        onComplete: () => {
+          window.NEXO_DIAG.log('✅ Onboarding completado', 'step');
+          window.NEXO_DIAG.log('🔄 Recargando para iniciar app...', 'info');
+          // [FIX] Recargar para reiniciar flujo con identidad ya creada
+          setTimeout(() => window.location.reload(), 1000);
+        },
+        onError: (err) => {
+          window.NEXO_DIAG.log(`❌ Error en onboarding: ${err.message}`, 'error');
+        }
+      });
+      
+      await onboarding.start();
+      return; // Detener aquí, el onComplete recargará
+    }
+    
+    window.NEXO_DIAG.log('✅ Usuario ya tiene identidad', 'step');
 
-    // Checkpoint 3: Instanciación
+    // [FIX] Paso 2: Iniciar NexoApp con relay de prueba
     window.NEXO_DIAG.log('🏗️  Creando instancia NexoApp...', 'step');
     
     const app = new NexoApp({
-      relayUrls: ['wss://relay.nexo.app/ws'],
-      bleTimeout: 5000,
+      relayUrls: [
+        'wss://echo.websocket.org/',  // [FIX] Relay público de prueba
+        // 'wss://relay.nexo.app/ws'  // Tu servidor cuando esté listo
+      ],
+      bleTimeout: 10000, // [FIX] Más tiempo para encontrar peers BLE
       enableGestures: true,
       enableMesh: true,
       
       onMessage: (msg) => {
-        window.NEXO_DIAG?.log(`📨 Mensaje recibido vía ${msg._source || 'desconocido'}`, 'info');
+        window.NEXO_DIAG?.log(`📨 Mensaje vía ${msg._source || 'desconocido'}: ${msg.text?.substring(0, 30)}...`, 'info');
         
         if (!elements.messagesContainer) return;
         
@@ -58,92 +107,98 @@ if (window.NEXO_DIAG) {
       },
       
       onStatusChange: (mode) => {
-        window.NEXO_DIAG?.log(`🔄 Modo de conexión cambiado a: ${mode}`, 'info');
+        window.NEXO_DIAG?.log(`🔄 Modo: ${mode}`, 'info');
         
         if (!elements.statusIndicator) return;
         
         elements.statusIndicator.className = mode.toLowerCase();
         const labels = {
           P2P: '🟢 P2P',
-          RELAY: '🔵 RELAY',
+          RELAY: '🔵 RELAY', 
           HYBRID: '🟠 HYBRID',
           OFFLINE: '🔴 OFFLINE'
         };
         elements.statusIndicator.textContent = labels[mode] || mode;
+        
+        // [FIX] Si está OFFLINE, sugerir verificar relay
+        if (mode === 'OFFLINE') {
+          window.NEXO_DIAG?.log('⚠️  MODO OFFLINE - Verificar conexión a echo.websocket.org', 'warn');
+        }
       },
       
       onError: (err) => {
-        window.NEXO_DIAG?.log(`❌ Error en NexoApp: ${err.message || err}`, 'error');
+        window.NEXO_DIAG?.log(`❌ Error: ${err.message || err}`, 'error');
         console.error('NEXO Error:', err);
       }
     });
 
     window.NEXO_DIAG.log('✅ NexoApp instanciado', 'step');
-    window.NEXO_DIAG.setStatus('🚀 Llamando app.init()...');
+    window.NEXO_DIAG.setStatus('🚀 Iniciando (timeout 15s)...');
 
-    // Checkpoint 4: Inicialización (ESTO ES DONDE MÁS FALLA)
-    window.NEXO_DIAG.log('⏳ Iniciando inicialización (app.init)...', 'step');
-    window.NEXO_DIAG.log('   → Esto puede tardar 5-10 segundos...', 'warn');
+    // [FIX] Timeout de seguridad para app.init()
+    const initTimeout = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Init timeout (>15s)')), 15000)
+    );
     
-    await app.init();
+    await Promise.race([app.init(), initTimeout]);
     
-    window.NEXO_DIAG.log('✅ app.init() completado exitosamente', 'step');
-    window.NEXO_DIAG.setStatus('✨ ¡Inicialización exitosa!');
+    window.NEXO_DIAG.log('✅ app.init() completado', 'step');
+    window.NEXO_DIAG.setStatus('✨ ¡Listo!');
     
-    // Exponer global para debugging
     window.nexoApp = app;
-    window.NEXO_DIAG.log('🌍 window.nexoApp expuesto para debugging', 'info');
+    window.NEXO_DIAG.log('🌍 window.nexoApp expuesto', 'info');
 
-    // Configurar UI
-    window.NEXO_DIAG.log('🎨 Configurando event listeners de UI...', 'step');
-    
-    const sendMessage = () => {
-      const text = elements.messageInput.value.trim();
-      if (!text) {
-        window.NEXO_DIAG?.log('⚠️  Mensaje vacío ignorado', 'warn');
-        return;
-      }
+    // Configurar UI (solo si existen elementos)
+    if (elements.sendBtn && elements.messageInput) {
+      window.NEXO_DIAG.log('🎨 Configurando UI...', 'step');
       
-      window.NEXO_DIAG?.log(`📤 Enviando mensaje: "${text.substring(0, 20)}..."`, 'info');
+      const sendMessage = () => {
+        const text = elements.messageInput.value.trim();
+        if (!text) {
+          window.NEXO_DIAG?.log('⚠️  Mensaje vacío', 'warn');
+          return;
+        }
+        
+        window.NEXO_DIAG?.log(`📤 Enviando: "${text.substring(0, 20)}..."`, 'info');
+        
+        try {
+          app.sendMessage({
+            type: 'chat',
+            text: text,
+            timestamp: Date.now()
+          });
+          elements.messageInput.value = '';
+        } catch (err) {
+          window.NEXO_DIAG?.log(`❌ Error enviando: ${err.message}`, 'error');
+        }
+      };
       
-      try {
-        app.sendMessage({
-          type: 'chat',
-          text: text,
-          timestamp: Date.now()
-        });
-        elements.messageInput.value = '';
-        window.NEXO_DIAG?.log('✅ Mensaje enviado a app.sendMessage()', 'step');
-      } catch (err) {
-        window.NEXO_DIAG?.log(`❌ Error enviando: ${err.message}`, 'error');
-      }
-    };
-    
-    elements.sendBtn.addEventListener('click', sendMessage);
-    elements.messageInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage();
-    });
-    
-    window.NEXO_DIAG.log('✅ Event listeners configurados', 'step');
+      elements.sendBtn.addEventListener('click', sendMessage);
+      elements.messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+      });
+      
+      window.NEXO_DIAG.log('✅ UI configurada', 'step');
+    } else {
+      window.NEXO_DIAG.log('⚠️  UI no configurada (faltan elementos)', 'warn');
+    }
 
-    // Mostrar app real después de 2 segundos (para leer logs)
+    // Mostrar app principal
     setTimeout(() => {
-      window.NEXO_DIAG?.log('🎬 Transicionando a interfaz principal...', 'step');
-      window.NEXO_DIAG?.showApp();
-    }, 2000);
+      window.NEXO_DIAG?.log('🎬 Mostrando interfaz...', 'step');
+      window.NEXO_DIAG?.showApp?.();
+    }, 1500);
 
     // Cleanup
     window.addEventListener('beforeunload', () => {
-      window.NEXO_DIAG?.log('👋 App cerrándose, ejecutando destroy...', 'warn');
+      window.NEXO_DIAG?.log('👋 Cerrando app...', 'warn');
       app.destroy();
     });
     
   } catch (err) {
-    window.NEXO_DIAG?.log(`💥 ERROR FATAL en main.js: ${err.message || err}`, 'error');
-    window.NEXO_DIAG?.log(`📍 Stack: ${err.stack?.substring(0, 200) || 'No disponible'}`, 'error');
-    window.NEXO_DIAG?.setStatus('❌ Error de arranque', 'error');
-    
-    // Mantener visible la pantalla de diagnóstico
-    console.error('Fatal error:', err);
+    window.NEXO_DIAG?.log(`💥 FATAL: ${err.message || err}`, 'error');
+    window.NEXO_DIAG?.log(`📍 Stack: ${err.stack?.substring(0, 200)}`, 'error');
+    window.NEXO_DIAG?.setStatus('❌ Error fatal', 'error');
+    console.error('Fatal:', err);
   }
 })();
