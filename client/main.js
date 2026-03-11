@@ -1,6 +1,6 @@
 /**
- * NEXO Entry Point v2.1-NAP-CORRECTED
- * FIX: Imports estáticos para evitar top-level await error en ES2020
+ * NEXO Entry Point v2.2-NAP-CERTIFIED
+ * FIX: Integración completa con sistema de diagnóstico visual WS-XXX
  */
 
 import { NexoApp } from './app/nexo_app.js';
@@ -9,63 +9,82 @@ import { WebAuthnHelper } from './auth/webauthn_helper.js';
 import { CryptoVault } from './core/crypto_vault.js';
 
 (function() {
-  // Debug logger seguro
-  const DIAG = {
-    log: (msg, type = 'info') => {
-      console.log(`[NEXO] ${msg}`);
-      const diagDiv = document.getElementById('nexo-diagnostics');
-      if (diagDiv) {
-        const line = document.createElement('div');
-        line.textContent = `${new Date().toLocaleTimeString()}: ${msg}`;
-        line.style.cssText = type === 'error' ? 'color: #ff4444;' : 'color: #00ff88;';
-        diagDiv.appendChild(line);
-      }
+  // Usar el sistema de diagnóstico nativo del HTML (NO redefinir)
+  const DIAG = window.NEXO_DIAG || {
+    log: (msg) => console.log(`[NEXO-FALLBACK] ${msg}`),
+    error: (code, msg) => console.error(`[NEXO-FALLBACK] ${code}: ${msg}`),
+    hideSplash: () => {
+      const splash = document.getElementById('splash-native');
+      if (splash) splash.classList.add('hidden');
     },
-    error: (msg) => DIAG.log(msg, 'error')
+    showFatal: (code, msg) => {
+      const fatal = document.getElementById('fatal-error');
+      const fatalCode = document.getElementById('fatal-code');
+      if (fatal && fatalCode) {
+        fatalCode.textContent = `${code}: ${msg}`;
+        fatal.classList.add('visible');
+      }
+    }
   };
 
-  window.NEXO_DIAG = DIAG;
-
   async function initNexo() {
-    const loadingScreen = document.getElementById('loading-screen');
+    const loadingScreen = document.getElementById('splash-native');
     const statusIndicator = document.getElementById('status-indicator');
     const messagesContainer = document.getElementById('messages-container');
     const messageInput = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-btn');
 
-    DIAG.log('🚀 Iniciando NEXO v9.0...', 'step');
+    // CHECKPOINT 0: Inicio
+    DIAG.log('🚀 MAIN.JS v2.2 - Inicio de inicialización', 'info');
 
     try {
-      // 🔐 FASE 1: CryptoVault (identidad)
-      DIAG.log('🔐 Inicializando CryptoVault...', 'step');
+      // CHECKPOINT 1: DOM validado
+      if (!messagesContainer || !messageInput || !sendBtn) {
+        throw new Error('DOM Elements faltantes (HTML-001)');
+      }
+      DIAG.log('✅ CHECKPOINT 1: DOM Elements cargados', 'info');
+
+      // CHECKPOINT 2: CryptoVault (FASE 🔐)
+      DIAG.log('🔐 CHECKPOINT 2: Inicializando CryptoVault...', 'info');
       const vault = new CryptoVault();
       let needsOnboarding = false;
       
       try {
         await vault.init();
-        DIAG.log('✅ CryptoVault OK', 'ok');
+        DIAG.log('✅ Vault inicializado - Identidad lista', 'info');
       } catch (e) {
-        DIAG.log(`⚠️ Vault vacío: ${e.message}`, 'warn');
-        needsOnboarding = true;
+        // Si es "Vault not initialized" o similar, es primera vez
+        if (e.message.includes('initialized') || e.message.includes('identity')) {
+          DIAG.log('👤 Vault vacío - Primera vez detectada', 'info');
+          needsOnboarding = true;
+        } else {
+          throw e; // Error real de crypto
+        }
       }
 
-      // Si es primera vez, mostrar onboarding
+      // CHECKPOINT 3: Onboarding (si aplica)
       if (needsOnboarding || !vault.getIdentity()) {
-        DIAG.log('👤 Primera vez - Mostrando onboarding...', 'step');
+        DIAG.log('📱 CHECKPOINT 3: Iniciando OnboardingController...', 'info');
+        
         const onboarding = new OnboardingController({
           container: document.body,
           vault: vault,
           onComplete: () => {
-            DIAG.log('🎉 Onboarding completado - Recargando...', 'ok');
+            DIAG.log('🎉 Onboarding completado - Recargando...', 'info');
             window.location.reload();
+          },
+          onError: (err, phase) => {
+            DIAG.error(`ONBOARD-${phase || 'UNKNOWN'}`, err.message);
           }
         });
+        
         await onboarding.start();
-        return; // No continuar hasta que complete
+        return; // Stop aquí hasta recarga
       }
 
-      // 🌐 FASE 2-6: App normal
-      DIAG.log('🌐 Inicializando NexoApp...', 'step');
+      // CHECKPOINT 4: NexoApp (FASES 🌐📡🌉👆📰)
+      DIAG.log('⚡ CHECKPOINT 4: Instanciando NexoApp...', 'info');
+      
       const app = new NexoApp({
         relayUrls: ['wss://echo.websocket.org/'],
         bleTimeout: 10000,
@@ -73,29 +92,38 @@ import { CryptoVault } from './core/crypto_vault.js';
         enableMesh: true,
         
         onMessage: (msg) => {
-          DIAG.log(`📨 Mensaje de ${msg._source}: ${msg.text?.substring(0, 20)}...`, 'msg');
+          const preview = msg.text?.substring(0, 30) || 'datos binarios';
+          DIAG.log(`📨 [${msg._source}] ${preview}...`, 'info');
+          
           const div = document.createElement('div');
           div.className = `message ${msg._own ? 'own' : 'other'}`;
-          div.textContent = msg.text || msg.data;
+          div.textContent = msg.text || msg.data || '[Mensaje vacío]';
           messagesContainer.appendChild(div);
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
         },
         
         onStatusChange: (mode) => {
-          DIAG.log(`🌐 Modo cambiado a: ${mode}`, 'net');
+          DIAG.log(`🌐 Modo de red cambiado a: ${mode}`, 'info');
+          
           statusIndicator.className = mode.toLowerCase();
           const labels = {
             P2P: '🟢 P2P',
-            RELAY: '🔵 RELAY',
+            RELAY: '🔵 RELAY', 
             HYBRID: '🟠 HYBRID',
             OFFLINE: '🔴 OFFLINE'
           };
-          statusIndicator.textContent = labels[mode] || mode;
+          statusIndicator.textContent = labels[mode] || `● ${mode}`;
         },
         
-        onError: (err) => {
-          DIAG.error(`❌ Error: ${err.message}`);
-          // Toast notification
+        // INTEGRACIÓN CLAVE: Recibir códigos WS-XXX, BLE-XXX, etc.
+        onError: (err, code, details) => {
+          const errorCode = code || 'APP-UNKNOWN';
+          const errorMsg = err?.message || String(err);
+          
+          // Log al sistema visual con código
+          DIAG.error(errorCode, `${errorMsg}${details ? ` (${details})` : ''}`);
+          
+          // Toast flotante con el código prominente
           const toast = document.createElement('div');
           toast.style.cssText = `
             position: fixed;
@@ -104,26 +132,34 @@ import { CryptoVault } from './core/crypto_vault.js';
             transform: translateX(-50%);
             background: #ff4444;
             color: white;
-            padding: 12px 24px;
-            border-radius: 24px;
-            font-size: 14px;
-            z-index: 9999;
-            animation: slideIn 0.3s ease;
+            padding: 12px 20px;
+            border-radius: 20px;
+            font-family: monospace;
+            font-size: 13px;
+            z-index: 99999;
+            box-shadow: 0 4px 20px rgba(255,68,68,0.4);
+            text-align: center;
+            max-width: 90%;
           `;
-          toast.textContent = err.message || 'Error de conexión';
+          toast.innerHTML = `
+            <div style="font-size: 10px; opacity: 0.8; margin-bottom: 4px;">ERROR ${errorCode}</div>
+            <div>${errorMsg.substring(0, 40)}${errorMsg.length > 40 ? '...' : ''}</div>
+          `;
           document.body.appendChild(toast);
-          setTimeout(() => toast.remove(), 3000);
+          setTimeout(() => toast.remove(), 4000);
         }
       });
 
+      DIAG.log('⚡ CHECKPOINT 5: Llamando app.init()...', 'info');
       await app.init();
       window.nexoApp = app;
       
-      if (loadingScreen) {
-        loadingScreen.classList.add('hidden');
-      }
+      // CHECKPOINT 6: Éxito total
+      DIAG.log('🎉 CHECKPOINT 6: INICIALIZACIÓN COMPLETADA', 'info');
+      DIAG.log(`📊 Modo final: ${app.bridge?.getMode?.() || 'UNKNOWN'}`, 'info');
       
-      DIAG.log('🎉 INICIALIZACIÓN COMPLETADA', 'ok');
+      // Ocultar splash nativo
+      DIAG.hideSplash();
 
       // UI Events
       const sendMessage = () => {
@@ -149,15 +185,19 @@ import { CryptoVault } from './core/crypto_vault.js';
       });
 
     } catch (err) {
-      DIAG.error(`💥 FATAL: ${err.message}`);
+      // Error fatal capturado
+      const errorCode = err.message?.includes('DOM') ? 'HTML-001' : 
+                        err.message?.includes('Vault') ? 'CRYPTO-001' : 
+                        'INIT-FATAL';
+      
+      DIAG.error(errorCode, err.message);
+      DIAG.showFatal(errorCode, err.message);
+      
       console.error('Fatal error:', err);
-      if (loadingScreen) {
-        loadingScreen.innerHTML = `<p style="color: #ff4444; padding: 20px;">Error al iniciar: ${err.message}</p>`;
-      }
     }
   }
 
-  // Iniciar cuando DOM esté listo
+  // Iniciar
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initNexo);
   } else {
