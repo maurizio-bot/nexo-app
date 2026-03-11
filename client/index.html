@@ -1,3 +1,4 @@
+<!-- client/index.html - COMPLETO Y CORREGIDO -->
 <!DOCTYPE html>
 <html lang="es" dir="ltr">
 <head>
@@ -11,13 +12,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   
-  <!-- CSP estricto para Capacitor/Android -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: wss: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; connect-src 'self' https: wss:; img-src 'self' blob: data:; font-src 'self'; frame-src 'none'; object-src 'none';">
   
   <title>NEXO</title>
   
   <style>
-    /* === CSS CRÍTICO ANTI-FLASH === */
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { 
       width: 100%; height: 100%; overflow: hidden; 
@@ -26,7 +25,6 @@
       touch-action: pan-y pan-x; overscroll-behavior: none;
     }
     
-    /* === SPLASH SCREEN NATIVO === */
     #splash-native {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
       background: #0a0a0a; z-index: 99999;
@@ -36,9 +34,11 @@
     }
     #splash-native.hidden { opacity: 0; pointer-events: none; }
     
+    /* CORRECCIÓN: Logo con nombre correcto */
     #splash-logo {
-      width: 120px; height: 120px;
-      background: url('assets/compressed_1773103889616.png') center/contain no-repeat;
+      width: 120px; 
+      height: 120px;
+      background: url('assets/logo.png') center/contain no-repeat;
       filter: drop-shadow(0 0 20px rgba(0, 255, 136, 0.4));
       animation: pulse 2s ease-in-out infinite;
     }
@@ -51,17 +51,16 @@
       font-weight: 500; letter-spacing: 2px;
     }
     
-    /* === SISTEMA DE DIAGNÓSTICO VISUAL === */
+    /* Sistema de diagnóstico - SIEMPRE VISIBLE durante pruebas */
     #nexo-diagnostic {
       position: fixed; top: 10px; left: 10px; right: 10px;
       max-height: 200px; overflow-y: auto;
-      background: rgba(0, 0, 0, 0.9);
+      background: rgba(0, 0, 0, 0.95);
       border: 1px solid #333; border-radius: 8px;
       padding: 10px; font-family: 'Courier New', monospace;
       font-size: 11px; line-height: 1.4; z-index: 99998;
-      display: none; /* Visible solo en debug o error */
+      display: block; /* SIEMPRE VISIBLE - cambiar a 'none' cuando termines pruebas */
     }
-    #nexo-diagnostic.visible { display: block; }
     #nexo-diagnostic .log-info { color: #00ff88; }
     #nexo-diagnostic .log-error { color: #ff4444; font-weight: bold; }
     #nexo-diagnostic .log-warn { color: #ffaa00; }
@@ -71,7 +70,6 @@
       margin-right: 5px; font-weight: bold;
     }
     
-    /* === UI PRINCIPAL === */
     #app { width: 100%; height: 100%; display: flex; flex-direction: column; position: relative; }
     #messages-container {
       flex: 1; overflow-y: auto; overflow-x: hidden;
@@ -118,7 +116,6 @@
     #status-indicator.hybrid { background: #ffaa00; color: #0a0a0a; }
     #status-indicator.offline { background: #ff4444; color: white; }
     
-    /* === ERROR FATAL SCREEN === */
     #fatal-error {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
       background: #0a0a0a; z-index: 100000; display: none;
@@ -136,16 +133,16 @@
   </style>
 </head>
 <body>
-  <!-- === SPLASH SCREEN === -->
+  <!-- SPLASH SCREEN -->
   <div id="splash-native">
     <div id="splash-logo"></div>
     <div id="splash-text">NEXO v9.0</div>
   </div>
   
-  <!-- === DIAGNÓSTICO VISUAL === -->
+  <!-- DIAGNÓSTICO - SIEMPRE VISIBLE -->
   <div id="nexo-diagnostic"></div>
   
-  <!-- === ERROR FATAL === -->
+  <!-- ERROR FATAL -->
   <div id="fatal-error">
     <h2>❌ ERROR DE INICIO</h2>
     <p style="color:#666;margin-bottom:20px;">La aplicación no pudo iniciar</p>
@@ -157,7 +154,7 @@
     ">Reintentar</button>
   </div>
   
-  <!-- === UI PRINCIPAL === -->
+  <!-- UI PRINCIPAL -->
   <div id="status-indicator" class="offline">● OFFLINE</div>
   
   <div id="app">
@@ -168,32 +165,25 @@
     </div>
   </div>
   
-  <!-- === SISTEMA DE DIAGNÓSTICO INLINE === -->
+  <!-- SISTEMA DE DIAGNÓSTICO -->
   <script>
-    // Sistema de logs visuales con códigos de error
     window.NEXO_DIAG = {
       container: document.getElementById('nexo-diagnostic'),
       logs: [],
-      maxLogs: 50,
+      maxLogs: 100,
       
       init: function() {
         this.container.classList.add('visible');
-        this.log('HTML-INIT: Sistema de diagnóstico activado', 'info');
-        
-        // Mostrar info del entorno
-        const isCapacitor = window.Capacitor !== undefined;
-        const isSecure = window.isSecureContext;
-        this.log(`HTML-ENV: Capacitor=${isCapacitor}, Secure=${isSecure}`, 'info');
+        this.log('HTML-INIT: Diagnóstico activado', 'info');
+        this.log(`HTML-ENV: Capacitor=${!!window.Capacitor}, Secure=${window.isSecureContext}`, 'info');
       },
       
       log: function(msg, type = 'info') {
         const time = new Date().toLocaleTimeString('es-ES', {hour12:false});
-        const entry = { time, msg, type, id: Math.random().toString(36).substr(2, 5) };
+        const entry = { time, msg, type };
         this.logs.push(entry);
-        
         if (this.logs.length > this.maxLogs) this.logs.shift();
         
-        // Render visual
         if (this.container) {
           const div = document.createElement('div');
           div.className = `log-${type}`;
@@ -205,14 +195,11 @@
           this.container.appendChild(div);
           this.container.scrollTop = this.container.scrollHeight;
         }
-        
-        // También console
-        console.log(`[NEXO-DIAG] ${msg}`);
+        console.log(`[NEXO] ${msg}`);
       },
       
       error: function(code, details) {
         this.log(`${code}: ${details}`, 'error');
-        // Si es error crítico, mostrar pantalla fatal
         if (code.startsWith('FATAL') || code.startsWith('INIT-FATAL')) {
           this.showFatal(code, details);
         }
@@ -230,23 +217,23 @@
       hideSplash: function() {
         const splash = document.getElementById('splash-native');
         if (splash) {
-          splash.classList.add('hidden');
-          setTimeout(() => splash.remove(), 500);
+          // CORRECCIÓN: Mínimo 2 segundos visible
+          setTimeout(() => {
+            splash.classList.add('hidden');
+            setTimeout(() => splash.remove(), 500);
+          }, 2000);
         }
       }
     };
     
-    // Iniciar diagnóstico inmediatamente
     window.NEXO_DIAG.init();
     
-    // Capturar errores de carga de recursos
     window.addEventListener('error', function(e) {
       const code = e.target.tagName === 'IMG' ? 'HTML-IMG-404' : 
                    e.target.tagName === 'SCRIPT' ? 'HTML-JS-404' : 'HTML-RES-404';
-      window.NEXO_DIAG.error(code, `Failed to load: ${e.target.src || e.target.href}`);
+      window.NEXO_DIAG.error(code, `Failed: ${e.target.src || e.target.href}`);
     }, true);
     
-    // Capturar errores JS globales
     window.addEventListener('error', function(e) {
       window.NEXO_DIAG.error('HTML-JS-ERROR', `${e.message} at ${e.lineno}:${e.colno}`);
     });
@@ -256,7 +243,6 @@
     });
   </script>
   
-  <!-- === ENTRY POINT === -->
   <script type="module" src="main.js"></script>
 </body>
 </html>
