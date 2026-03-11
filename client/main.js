@@ -1,206 +1,175 @@
-/**
- * NEXO Entry Point v2.2-NAP-CERTIFIED
- * FIX: Integración completa con sistema de diagnóstico visual WS-XXX
- */
+// client/main.js - COMPLETO Y CORREGIDO v2.3-NAP-CERTIFIED
+// FIXES: Onboarding forzado en primer inicio, filtro mensajes vacíos, delay splash
 
 import { NexoApp } from './app/nexo_app.js';
 import { OnboardingController } from './auth/onboarding.js';
-import { WebAuthnHelper } from './auth/webauthn_helper.js';
 import { CryptoVault } from './core/crypto_vault.js';
 
-(function() {
-  // Usar el sistema de diagnóstico nativo del HTML (NO redefinir)
-  const DIAG = window.NEXO_DIAG || {
-    log: (msg) => console.log(`[NEXO-FALLBACK] ${msg}`),
-    error: (code, msg) => console.error(`[NEXO-FALLBACK] ${code}: ${msg}`),
-    hideSplash: () => {
-      const splash = document.getElementById('splash-native');
-      if (splash) splash.classList.add('hidden');
-    },
-    showFatal: (code, msg) => {
-      const fatal = document.getElementById('fatal-error');
-      const fatalCode = document.getElementById('fatal-code');
-      if (fatal && fatalCode) {
-        fatalCode.textContent = `${code}: ${msg}`;
-        fatal.classList.add('visible');
-      }
-    }
-  };
-
-  async function initNexo() {
-    const loadingScreen = document.getElementById('splash-native');
-    const statusIndicator = document.getElementById('status-indicator');
-    const messagesContainer = document.getElementById('messages-container');
-    const messageInput = document.getElementById('message-input');
-    const sendBtn = document.getElementById('send-btn');
-
-    // CHECKPOINT 0: Inicio
-    DIAG.log('🚀 MAIN.JS v2.2 - Inicio de inicialización', 'info');
-
-    try {
-      // CHECKPOINT 1: DOM validado
-      if (!messagesContainer || !messageInput || !sendBtn) {
-        throw new Error('DOM Elements faltantes (HTML-001)');
-      }
-      DIAG.log('✅ CHECKPOINT 1: DOM Elements cargados', 'info');
-
-      // CHECKPOINT 2: CryptoVault (FASE 🔐)
-      DIAG.log('🔐 CHECKPOINT 2: Inicializando CryptoVault...', 'info');
-      const vault = new CryptoVault();
-      let needsOnboarding = false;
-      
-      try {
-        await vault.init();
-        DIAG.log('✅ Vault inicializado - Identidad lista', 'info');
-      } catch (e) {
-        // Si es "Vault not initialized" o similar, es primera vez
-        if (e.message.includes('initialized') || e.message.includes('identity')) {
-          DIAG.log('👤 Vault vacío - Primera vez detectada', 'info');
-          needsOnboarding = true;
-        } else {
-          throw e; // Error real de crypto
-        }
-      }
-
-      // CHECKPOINT 3: Onboarding (si aplica)
-      if (needsOnboarding || !vault.getIdentity()) {
-        DIAG.log('📱 CHECKPOINT 3: Iniciando OnboardingController...', 'info');
-        
-        const onboarding = new OnboardingController({
-          container: document.body,
-          vault: vault,
-          onComplete: () => {
-            DIAG.log('🎉 Onboarding completado - Recargando...', 'info');
-            window.location.reload();
-          },
-          onError: (err, phase) => {
-            DIAG.error(`ONBOARD-${phase || 'UNKNOWN'}`, err.message);
-          }
-        });
-        
-        await onboarding.start();
-        return; // Stop aquí hasta recarga
-      }
-
-      // CHECKPOINT 4: NexoApp (FASES 🌐📡🌉👆📰)
-      DIAG.log('⚡ CHECKPOINT 4: Instanciando NexoApp...', 'info');
-      
-      const app = new NexoApp({
-        relayUrls: ['wss://echo.websocket.org/'],
-        bleTimeout: 10000,
-        enableGestures: true,
-        enableMesh: true,
-        
-        onMessage: (msg) => {
-          const preview = msg.text?.substring(0, 30) || 'datos binarios';
-          DIAG.log(`📨 [${msg._source}] ${preview}...`, 'info');
-          
-          const div = document.createElement('div');
-          div.className = `message ${msg._own ? 'own' : 'other'}`;
-          div.textContent = msg.text || msg.data || '[Mensaje vacío]';
-          messagesContainer.appendChild(div);
-          messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        },
-        
-        onStatusChange: (mode) => {
-          DIAG.log(`🌐 Modo de red cambiado a: ${mode}`, 'info');
-          
-          statusIndicator.className = mode.toLowerCase();
-          const labels = {
-            P2P: '🟢 P2P',
-            RELAY: '🔵 RELAY', 
-            HYBRID: '🟠 HYBRID',
-            OFFLINE: '🔴 OFFLINE'
-          };
-          statusIndicator.textContent = labels[mode] || `● ${mode}`;
-        },
-        
-        // INTEGRACIÓN CLAVE: Recibir códigos WS-XXX, BLE-XXX, etc.
-        onError: (err, code, details) => {
-          const errorCode = code || 'APP-UNKNOWN';
-          const errorMsg = err?.message || String(err);
-          
-          // Log al sistema visual con código
-          DIAG.error(errorCode, `${errorMsg}${details ? ` (${details})` : ''}`);
-          
-          // Toast flotante con el código prominente
-          const toast = document.createElement('div');
-          toast.style.cssText = `
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #ff4444;
-            color: white;
-            padding: 12px 20px;
-            border-radius: 20px;
-            font-family: monospace;
-            font-size: 13px;
-            z-index: 99999;
-            box-shadow: 0 4px 20px rgba(255,68,68,0.4);
-            text-align: center;
-            max-width: 90%;
-          `;
-          toast.innerHTML = `
-            <div style="font-size: 10px; opacity: 0.8; margin-bottom: 4px;">ERROR ${errorCode}</div>
-            <div>${errorMsg.substring(0, 40)}${errorMsg.length > 40 ? '...' : ''}</div>
-          `;
-          document.body.appendChild(toast);
-          setTimeout(() => toast.remove(), 4000);
-        }
-      });
-
-      DIAG.log('⚡ CHECKPOINT 5: Llamando app.init()...', 'info');
-      await app.init();
-      window.nexoApp = app;
-      
-      // CHECKPOINT 6: Éxito total
-      DIAG.log('🎉 CHECKPOINT 6: INICIALIZACIÓN COMPLETADA', 'info');
-      DIAG.log(`📊 Modo final: ${app.bridge?.getMode?.() || 'UNKNOWN'}`, 'info');
-      
-      // Ocultar splash nativo
-      DIAG.hideSplash();
-
-      // UI Events
-      const sendMessage = () => {
-        const text = messageInput.value.trim();
-        if (!text) return;
-        
-        app.sendMessage({
-          type: 'chat',
-          text: text,
-          timestamp: Date.now()
-        });
-        
-        messageInput.value = '';
-      };
-
-      sendBtn.addEventListener('click', sendMessage);
-      messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendMessage();
-      });
-
-      window.addEventListener('beforeunload', () => {
-        app.destroy();
-      });
-
-    } catch (err) {
-      // Error fatal capturado
-      const errorCode = err.message?.includes('DOM') ? 'HTML-001' : 
-                        err.message?.includes('Vault') ? 'CRYPTO-001' : 
-                        'INIT-FATAL';
-      
-      DIAG.error(errorCode, err.message);
-      DIAG.showFatal(errorCode, err.message);
-      
-      console.error('Fatal error:', err);
+const DIAG = window.NEXO_DIAG || {
+  log: (msg) => console.log(`[NEXO] ${msg}`),
+  error: (code, msg) => console.error(`[NEXO] ${code}: ${msg}`),
+  hideSplash: () => {
+    const splash = document.getElementById('splash-native');
+    if (splash) {
+      setTimeout(() => {
+        splash.classList.add('hidden');
+        setTimeout(() => splash.remove(), 500);
+      }, 2000);
     }
   }
+};
 
-  // Iniciar
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initNexo);
-  } else {
-    initNexo();
+async function initNexo() {
+  const splash = document.getElementById('splash-native');
+  const statusIndicator = document.getElementById('status-indicator');
+  const messagesContainer = document.getElementById('messages-container');
+  const messageInput = document.getElementById('message-input');
+  const sendBtn = document.getElementById('send-btn');
+
+  DIAG.log('🚀 MAIN.JS v2.3 - Iniciando', 'info');
+
+  try {
+    // CORRECCIÓN: Ocultar UI principal hasta determinar flujo
+    const appContainer = document.getElementById('app');
+    if (appContainer) appContainer.style.display = 'none';
+    if (statusIndicator) statusIndicator.style.display = 'none';
+
+    // CORRECCIÓN: Detección robusta de primer inicio
+    const hasCompletedOnboarding = localStorage.getItem('nexo_onboarding_done') === 'true';
+    const hasExistingIdentity = localStorage.getItem('nexo_identity_exists') === 'true';
+    
+    // Si NO ha completado onboarding O NO hay identidad guardada
+    if (!hasCompletedOnboarding || !hasExistingIdentity) {
+      DIAG.log('👤 PRIMER INICIO DETECTADO - Iniciando Onboarding', 'info');
+      
+      const onboarding = new OnboardingController({
+        container: document.body,
+        onComplete: () => {
+          localStorage.setItem('nexo_onboarding_done', 'true');
+          localStorage.setItem('nexo_identity_exists', 'true');
+          DIAG.log('✅ Onboarding completado - Recargando', 'info');
+          window.location.reload();
+        },
+        onError: (err, phase) => {
+          DIAG.error(`ONBOARD-${phase || 'UNKNOWN'}`, err.message);
+        }
+      });
+      
+      await onboarding.start();
+      return; // Detener aquí, esperar recarga
+    }
+
+    // Usuario existente - mostrar UI normal
+    DIAG.log('👤 Usuario existente - Cargando app normal', 'info');
+    if (appContainer) appContainer.style.display = 'flex';
+    if (statusIndicator) statusIndicator.style.display = 'block';
+    
+    // Inicializar Vault
+    DIAG.log('🔐 Inicializando CryptoVault...', 'info');
+    const vault = new CryptoVault();
+    await vault.init();
+    DIAG.log(`✅ Vault OK - ID: ${vault.getIdentity()?.substring(0, 8)}...`, 'info');
+    
+    // Inicializar NexoApp
+    DIAG.log('🌐 Inicializando NexoApp...', 'info');
+    const app = new NexoApp({
+      relayUrls: ['wss://echo.websocket.org/'],
+      bleTimeout: 10000,
+      enableGestures: true,
+      enableMesh: true,
+      
+      onMessage: (msg) => {
+        // CORRECCIÓN: Filtrar mensajes vacíos y ecos del servidor
+        if (!msg || (!msg.text && !msg.data)) {
+          DIAG.log('⚠️ Mensaje vacío ignorado', 'warn');
+          return;
+        }
+        
+        // Evitar mostrar ecos del relay como mensajes entrantes
+        if (msg._own && msg._source === 'relay') return;
+        
+        const div = document.createElement('div');
+        div.className = `message ${msg._own ? 'own' : 'other'}`;
+        div.textContent = msg.text || msg.data;
+        messagesContainer.appendChild(div);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      },
+      
+      onStatusChange: (mode) => {
+        DIAG.log(`🌐 Modo red: ${mode}`, 'info');
+        statusIndicator.className = mode.toLowerCase();
+        const labels = {
+          P2P: '🟢 P2P',
+          RELAY: '🔵 RELAY',
+          HYBRID: '🟠 HYBRID',
+          OFFLINE: '🔴 OFFLINE'
+        };
+        statusIndicator.textContent = labels[mode] || `● ${mode}`;
+      },
+      
+      onError: (err, code, details) => {
+        DIAG.error(code || 'APP-ERR', err?.message || 'Error desconocido');
+      }
+    });
+
+    await app.init();
+    window.nexoApp = app;
+    
+    DIAG.log('🎉 INICIALIZACIÓN COMPLETADA', 'info');
+    DIAG.log(`📊 Estado: Vault=OK | Bridge=${app.bridge?.getMode?.() || 'UNKNOWN'}`, 'info');
+    
+    // Ocultar splash con delay
+    DIAG.hideSplash();
+
+    // UI Events
+    const sendMessage = () => {
+      const text = messageInput?.value?.trim();
+      if (!text || !window.nexoApp) return;
+      
+      window.nexoApp.sendMessage({
+        type: 'chat',
+        text: text,
+        timestamp: Date.now()
+      });
+      
+      if (messageInput) messageInput.value = '';
+    };
+
+    sendBtn?.addEventListener('click', sendMessage);
+    messageInput?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      app?.destroy();
+    });
+
+  } catch (err) {
+    DIAG.error('INIT-FATAL', err.message);
+    console.error(err);
+    
+    if (splash) {
+      splash.innerHTML = `
+        <div style="color:#ff4444;padding:40px;text-align:center;">
+          <h3>❌ Error al iniciar</h3>
+          <p style="font-family:monospace;font-size:14px;margin:20px 0;">${err.message}</p>
+          <button onclick="localStorage.clear(); location.reload()" style="
+            margin:10px;padding:12px 24px;background:#ff4444;border:none;border-radius:20px;
+            color:white;font-weight:bold;cursor:pointer;display:block;width:100%;max-width:300px;
+          ">Borrar datos y reintentar</button>
+          <button onclick="location.reload()" style="
+            margin:10px;padding:12px 24px;background:#00ff88;border:none;border-radius:20px;
+            color:#0a0a0a;font-weight:bold;cursor:pointer;display:block;width:100%;max-width:300px;
+          ">Solo reintentar</button>
+        </div>
+      `;
+    }
   }
-})();
+}
+
+// Iniciar
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initNexo);
+} else {
+  initNexo();
+}
