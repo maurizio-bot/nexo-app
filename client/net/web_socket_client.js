@@ -1,18 +1,6 @@
 /**
- * NEXO v9.0 - WebSocket Client (v2.0-perfect-audited)
- * Cliente WebSocket robusto con reconexión automática, múltiples fallbacks
- * y gestión completa del ciclo de vida
- * 
- * Características:
- * - Reconexión exponencial con jitter
- * - Cola de mensajes persistente con confirmación
- * - Heartbeat con timeout de pong
- * - Limpieza completa de recursos (memoria leak proof)
- * - API Promise-based consistente
- * 
- * Auditoría: 4 ciclos
- * Bugs corregidos: 8 críticos, 5 menores
- * Testing: 5/5 crash tests pasados
+ * NEXO v9.0 - WebSocket Client (v2.1-NAP-CORRECTED)
+ * FIX: Validación defensiva de JSON para evitar "Unexpected token" errors
  */
 
 const WS_STATES = {
@@ -33,7 +21,6 @@ const DEFAULT_CONFIG = {
 
 export class WebSocketClient {
   constructor(config = {}) {
-    // FIX: Defaults para callbacks obligatorios
     this.config = { 
       ...DEFAULT_CONFIG, 
       onConnect: () => {},
@@ -128,19 +115,56 @@ export class WebSocketClient {
     this._startHeartbeat();
   }
 
+  // [CORRECCIÓN CRÍTICA] Manejo defensivo de mensajes no-JSON
   _onMessage(event) {
     try {
-      if (event.data === 'pong' || (typeof event.data === 'string' && event.data.includes('pong'))) {
+      // Validar que sea string
+      if (typeof event.data !== 'string') {
+        console.warn('[WS] Binary message received, ignoring');
+        return;
+      }
+      
+      // Manejar heartbeat pong
+      if (event.data === 'pong' || event.data.includes('"type":"pong"')) {
         this._handlePong();
         return;
       }
       
-      const msg = JSON.parse(event.data);
+      // [FIX] Validar antes de parsear - algunos servidores devuelven HTML o errores
+      const trimmed = event.data.trim();
+      
+      // Ignorar mensajes vacíos o que claramente no son JSON
+      if (!trimmed || trimmed === '' || 
+          trimmed.startsWith('<') || // HTML error
+          trimmed.startsWith('Request') || // "Request sent..." etc
+          trimmed.startsWith('HTTP') || // HTTP headers
+          (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
+        console.warn('[WS] Non-JSON message ignored:', trimmed.substring(0, 50));
+        return;
+      }
+      
+      // Intentar parsear con try-catch específico
+      let msg;
+      try {
+        msg = JSON.parse(trimmed);
+      } catch (parseError) {
+        // Si falla, podría ser un mensaje de texto plano del servidor
+        console.warn('[WS] JSON parse failed, treating as plain text:', trimmed.substring(0, 100));
+        // Crear objeto wrapper para mantener compatibilidad
+        msg = {
+          type: 'text',
+          data: trimmed,
+          _raw: true,
+          timestamp: Date.now()
+        };
+      }
+      
       this.stats.messagesReceived++;
       this.config.onMessage(msg);
+      
     } catch (error) {
-      console.warn('[WS] Invalid message received:', event.data);
-      this.config.onError(new Error(`Message parse error: ${error.message}`));
+      console.error('[WS] Unexpected error in _onMessage:', error);
+      this.config.onError(new Error(`Message processing error: ${error.message}`));
     }
   }
 
