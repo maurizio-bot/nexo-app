@@ -1,6 +1,6 @@
 /**
- * NEXO v9.0 - WebSocket Client (v2.1-NAP-CORRECTED)
- * FIX: Validación defensiva de JSON para evitar "Unexpected token" errors
+ * NEXO v9.0 - WebSocket Client (v2.3-NAP-CORRECTED)
+ * FIXES: Race condition heartbeat + detección pong estricta + Identificación de fallas (WS-XXX)
  */
 
 const WS_STATES = {
@@ -19,6 +19,24 @@ const DEFAULT_CONFIG = {
   maxQueueSize: 1000
 };
 
+// [NAP 2.0] Códigos de error únicos para identificación rápida en debugging físico
+const ERROR_CODES = {
+  CONFIG_INVALID: 'WS-001',        // Configuración inválida (no URLs)
+  CONN_CREATION_FAILED: 'WS-002',  // Fallo al crear WebSocket nativo
+  CONN_CLOSED_UNCLEAN: 'WS-003',   // Conexión cerrada sin limpieza
+  JSON_PARSE_FAILED: 'WS-004',     // JSON inválido recibido (envuelto como texto)
+  MSG_PROCESSING_ERROR: 'WS-005',  // Error inesperado en _onMessage
+  BINARY_IGNORED: 'WS-006',        // Mensaje binario ignorado
+  SEND_FAILED_QUEUED: 'WS-007',    // Envío falló, encolado
+  QUEUE_FULL: 'WS-008',            // Cola de mensajes llena
+  PONG_TIMEOUT: 'WS-009',          // Timeout de heartbeat (reconectando)
+  RECONNECT_MAX_REACHED: 'WS-010', // Máximo reintentos alcanzado
+  HEARTBEAT_RACE_BLOCKED: 'WS-011', // Race condition heartbeat prevenida
+  NON_JSON_IGNORED: 'WS-012',      // Mensaje no-JSON ignorado (HTML/error)
+  TIMEOUT_5MIN: 'WS-013',          // Mensaje expirado en cola (5min)
+  DESTROYED_REJECTION: 'WS-014'    // Promesas rechazadas por destrucción
+};
+
 export class WebSocketClient {
   constructor(config = {}) {
     this.config = { 
@@ -31,7 +49,7 @@ export class WebSocketClient {
     };
     
     if (!Array.isArray(this.config.urls) || this.config.urls.length === 0) {
-      throw new Error('WebSocketClient requires at least one URL');
+      throw new Error(`[${ERROR_CODES.CONFIG_INVALID}] WebSocketClient requires at least one URL`);
     }
     
     this.ws = null;
@@ -41,6 +59,7 @@ export class WebSocketClient {
     this.messageQueue = [];
     this._connectionPromise = null;
     this._connectionResolve = null;
+    this._connectionReject = null;
     
     this._reconnectTimer = null;
     this._heartbeatTimer = null;
@@ -51,12 +70,47 @@ export class WebSocketClient {
     this._onCloseBound = this._onClose.bind(this);
     this._onErrorBound = this._onError.bind(this);
     
+    // [NAP 2.0] Buffer de errores recientes para diagnóstico en UI
+    this._errorLog = [];
+    this._maxErrorLog = 10;
+    
     this.stats = {
       messagesSent: 0,
       messagesReceived: 0,
       reconnections: 0,
-      lastConnectedAt: null
+      lastConnectedAt: null,
+      lastErrorCode: null,
+      lastErrorAt: null
     };
+  }
+
+  // [NAP 2.0] Helper para logging estructurado de errores
+  _logError(code, message, details = {}) {
+    const errorEntry = {
+      code,
+      message: `[${code}] ${message}`,
+      timestamp: Date.now(),
+      details,
+      url: this.config.urls[this.currentUrlIndex]
+    };
+    
+    // Guardar en buffer circular
+    this._errorLog.unshift(errorEntry);
+    if (this._errorLog.length > this._maxErrorLog) {
+      this._errorLog.pop();
+    }
+    
+    // Actualizar stats
+    this.stats.lastErrorCode = code;
+    this.stats.lastErrorAt = errorEntry.timestamp;
+    
+    // Console con formato identificable
+    console.error(`[WS] ❌ ${errorEntry.message}`, details);
+    
+    // Notificar a callback con código incluido
+    this.config.onError(new Error(errorEntry.message), code, details);
+    
+    return errorEntry;
   }
 
   connect() {
@@ -91,7 +145,10 @@ export class WebSocketClient {
       this.ws.addEventListener('error', this._onErrorBound);
       
     } catch (error) {
-      console.error('[WS] Connection creation failed:', error);
+      this._logError(ERROR_CODES.CONN_CREATION_FAILED, 'Connection creation failed', {
+        error: error.message,
+        url
+      });
       this._scheduleReconnect();
     }
   }
@@ -115,31 +172,32 @@ export class WebSocketClient {
     this._startHeartbeat();
   }
 
-  // [CORRECCIÓN CRÍTICA] Manejo defensivo de mensajes no-JSON
+  // [NAP 2.0 FIX] Validación defensiva de JSON + códigos de error identificables
   _onMessage(event) {
     try {
       // Validar que sea string
       if (typeof event.data !== 'string') {
-        console.warn('[WS] Binary message received, ignoring');
+        console.warn(`[WS] ⚠️ [${ERROR_CODES.BINARY_IGNORED}] Binary message received, ignoring`);
         return;
       }
       
-      // Manejar heartbeat pong
-      if (event.data === 'pong' || event.data.includes('"type":"pong"')) {
+      // Detección pong estricta
+      if (event.data === 'pong') {
         this._handlePong();
         return;
       }
       
-      // [FIX] Validar antes de parsear - algunos servidores devuelven HTML o errores
+      // Validar antes de parsear
       const trimmed = event.data.trim();
       
       // Ignorar mensajes vacíos o que claramente no son JSON
-      if (!trimmed || trimmed === '' || 
+      if (!trimmed || 
+          trimmed === '' || 
           trimmed.startsWith('<') || // HTML error
           trimmed.startsWith('Request') || // "Request sent..." etc
           trimmed.startsWith('HTTP') || // HTTP headers
           (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
-        console.warn('[WS] Non-JSON message ignored:', trimmed.substring(0, 50));
+        console.warn(`[WS] ⚠️ [${ERROR_CODES.NON_JSON_IGNORED}] Non-JSON message ignored:`, trimmed.substring(0, 50));
         return;
       }
       
@@ -147,14 +205,24 @@ export class WebSocketClient {
       let msg;
       try {
         msg = JSON.parse(trimmed);
+        
+        // Verificación estricta de pong tras parsear
+        if (msg && msg.type === 'pong') {
+          this._handlePong();
+          return;
+        }
       } catch (parseError) {
-        // Si falla, podría ser un mensaje de texto plano del servidor
-        console.warn('[WS] JSON parse failed, treating as plain text:', trimmed.substring(0, 100));
-        // Crear objeto wrapper para mantener compatibilidad
+        // [WS-004] JSON inválido - envolver como texto plano
+        this._logError(ERROR_CODES.JSON_PARSE_FAILED, 'JSON parse failed, wrapping as plain text', {
+          preview: trimmed.substring(0, 100),
+          parseError: parseError.message
+        });
+        
         msg = {
           type: 'text',
           data: trimmed,
           _raw: true,
+          _errorCode: ERROR_CODES.JSON_PARSE_FAILED,
           timestamp: Date.now()
         };
       }
@@ -163,13 +231,18 @@ export class WebSocketClient {
       this.config.onMessage(msg);
       
     } catch (error) {
-      console.error('[WS] Unexpected error in _onMessage:', error);
-      this.config.onError(new Error(`Message processing error: ${error.message}`));
+      this._logError(ERROR_CODES.MSG_PROCESSING_ERROR, 'Unexpected error in message processing', {
+        error: error.message,
+        stack: error.stack
+      });
     }
   }
 
   _onClose(event) {
-    console.log(`[WS] 🔌 Disconnected (code: ${event.code}, clean: ${event.wasClean})`);
+    const wasClean = event.wasClean;
+    const code = event.code;
+    
+    console.log(`[WS] 🔌 Disconnected (code: ${code}, clean: ${wasClean})`);
     
     const wasConnected = this.readyState === WS_STATES.OPEN;
     this.readyState = WS_STATES.CLOSED;
@@ -179,28 +252,38 @@ export class WebSocketClient {
       this.config.onDisconnect();
     }
     
+    // [WS-003] Detectar cierre no limpio
+    if (!wasClean && wasConnected) {
+      this._logError(ERROR_CODES.CONN_CLOSED_UNCLEAN, 'Connection closed unexpectedly', {
+        closeCode: code,
+        reason: event.reason
+      });
+    }
+    
     if (this._connectionReject) {
-      this._connectionReject(new Error('Connection closed'));
+      this._connectionReject(new Error(`[${ERROR_CODES.CONN_CLOSED_UNCLEAN}] Connection closed`));
       this._connectionResolve = null;
       this._connectionReject = null;
       this._connectionPromise = null;
     }
     
-    if (!event.wasClean || wasConnected) {
+    if (!wasClean || wasConnected) {
       this._scheduleReconnect();
     }
   }
 
   _onError(error) {
-    console.error('[WS] ❌ Error:', error);
-    this.config.onError(error);
+    // Error nativo de WebSocket (usualmente fallo de red)
+    this._logError(ERROR_CODES.CONN_CREATION_FAILED, 'WebSocket native error', {
+      error: error?.message || 'Unknown network error'
+    });
   }
 
   _scheduleReconnect() {
     if (this._reconnectTimer) return;
     
     if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
-      console.log('[WS] Max retries reached for current URL, trying next...');
+      console.log(`[WS] ⚠️ [${ERROR_CODES.RECONNECT_MAX_REACHED}] Max retries reached for current URL, trying next...`);
       this.currentUrlIndex = (this.currentUrlIndex + 1) % this.config.urls.length;
       this.reconnectAttempts = 0;
     }
@@ -222,7 +305,7 @@ export class WebSocketClient {
 
   async send(data) {
     if (!data || typeof data !== 'object') {
-      throw new Error('Invalid data: expected object');
+      throw new Error(`[${ERROR_CODES.CONFIG_INVALID}] Invalid data: expected object`);
     }
     
     if (this.readyState === WS_STATES.OPEN && this.ws.readyState === WebSocket.OPEN) {
@@ -231,12 +314,16 @@ export class WebSocketClient {
         this.stats.messagesSent++;
         return;
       } catch (error) {
-        console.warn('[WS] Send failed, queuing:', error.message);
+        // [WS-007] Fallo de envío, encolando
+        this._logError(ERROR_CODES.SEND_FAILED_QUEUED, 'Send failed, queuing message', {
+          error: error.message,
+          dataPreview: JSON.stringify(data).substring(0, 100)
+        });
       }
     }
     
     if (this.messageQueue.length >= this.config.maxQueueSize) {
-      throw new Error(`Message queue full (max ${this.config.maxQueueSize})`);
+      throw new Error(`[${ERROR_CODES.QUEUE_FULL}] Message queue full (max ${this.config.maxQueueSize})`);
     }
     
     this.messageQueue.push(data);
@@ -266,7 +353,7 @@ export class WebSocketClient {
         this.stats.messagesSent++;
         if (resolve) resolve();
       } catch (error) {
-        console.error('[WS] Failed to send queued message:', error);
+        this._logError(ERROR_CODES.SEND_FAILED_QUEUED, 'Failed to send queued message', { error: error.message });
         if (reject) reject(error);
       }
     }
@@ -275,16 +362,25 @@ export class WebSocketClient {
     const maxAge = 5 * 60 * 1000;
     this.messageQueue = this.messageQueue.filter(data => {
       if (data._queuedAt && (now - data._queuedAt > maxAge)) {
-        if (data._reject) data._reject(new Error('Message timeout (5min)'));
+        // [WS-013] Mensaje expirado
+        if (data._reject) {
+          data._reject(new Error(`[${ERROR_CODES.TIMEOUT_5MIN}] Message timeout (5min)`));
+        }
         return false;
       }
       return true;
     });
   }
 
+  // [NAP 2.0 FIX] Race condition con identificación de prevención
   _startHeartbeat() {
     this._heartbeatTimer = setInterval(() => {
-      if (this.readyState !== WS_STATES.OPEN) return;
+      // FIX: Verificación doble con código de prevención
+      if (this.readyState !== WS_STATES.OPEN || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        // [WS-011] Race condition prevenida - no es un error real, es defensa
+        console.debug(`[WS] 🛡️ [${ERROR_CODES.HEARTBEAT_RACE_BLOCKED}] Heartbeat blocked (socket not ready)`);
+        return;
+      }
       
       try {
         this.ws.send(JSON.stringify({ type: 'ping', t: Date.now() }));
@@ -293,8 +389,11 @@ export class WebSocketClient {
       }
       
       this._pongTimeout = setTimeout(() => {
-        console.warn('[WS] Pong timeout, forcing reconnect');
-        this.ws.close(4000, 'Pong timeout');
+        // [WS-009] Timeout de pong forzando reconexión
+        console.warn(`[WS] ⚠️ [${ERROR_CODES.PONG_TIMEOUT}] Pong timeout, forcing reconnect`);
+        if (this.ws) {
+          this.ws.close(4000, 'Pong timeout');
+        }
       }, this.config.heartbeatTimeout);
       
     }, this.config.heartbeatInterval);
@@ -356,22 +455,45 @@ export class WebSocketClient {
   destroy() {
     this.disconnect();
     
+    // [WS-014] Rechazar promesas pendientes por destrucción
     this.messageQueue.forEach(data => {
       if (data._reject) {
-        data._reject(new Error('Client destroyed'));
+        data._reject(new Error(`[${ERROR_CODES.DESTROYED_REJECTION}] Client destroyed`));
       }
     });
     this.messageQueue = [];
     
     this.config = null;
     this.stats = null;
+    this._errorLog = [];
   }
 
+  // [NAP 2.0] Nuevos métodos para debugging en UI
   isConnected() {
-    return this.readyState === WS_STATES.OPEN;
+    return this.readyState === WS_STATES.OPEN && this.ws?.readyState === WebSocket.OPEN;
   }
 
   getStats() {
-    return { ...this.stats, queueSize: this.messageQueue.length };
+    return { 
+      ...this.stats, 
+      queueSize: this.messageQueue.length,
+      currentUrl: this.config.urls[this.currentUrlIndex],
+      errorCount: this._errorLog.length
+    };
+  }
+
+  // [NAP 2.0] Obtener log de errores recientes para mostrar en UI de diagnóstico
+  getErrorLog() {
+    return this._errorLog.map(e => ({
+      code: e.code,
+      message: e.message,
+      time: new Date(e.timestamp).toLocaleTimeString(),
+      url: e.url
+    }));
+  }
+
+  // [NAP 2.0] Último error rápido para display en status bar
+  getLastError() {
+    return this._errorLog[0] || null;
   }
 }
