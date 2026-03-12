@@ -14,9 +14,10 @@
     "preview": "vite preview",
     "clean": "rimraf dist",
     "prebuild": "npm run clean",
+    "generate-assets": "node scripts/generate-android-assets.js",
     "sync": "cap sync",
     "android": "cap run android",
-    "android:build": "cap build android",
+    "android:build": "npm run build && npm run generate-assets && cap sync android && cd android && ./gradlew assembleRelease",
     "open:android": "cap open android"
   },
   "dependencies": {
@@ -30,7 +31,7 @@
   "devDependencies": {
     "@capacitor/cli": "^6.1.0",
     "rimraf": "^5.0.5",
-    "terser": "^5.30.0",
+    "sharp": "^0.33.0",
     "vite": "^5.2.0"
   },
   "browserslist": [
