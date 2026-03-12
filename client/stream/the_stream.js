@@ -1,99 +1,128 @@
 /**
- * TheStream v2.3-NAP-AVATARFIX
- * Sistema de renderizado de mensajes con avatar inline
+ * TheStream v2.4-NAP-REM
+ * Sistema de renderizado de mensajes - Release Milestone
+ * FIX: Manejo defensivo de containerId, recuperación ante fallos, avatares inline
  */
 class TheStream {
   constructor(containerId) {
-    this.container = document.getElementById(containerId);
-    this.messageCache = new Map(); // Previene duplicados de renderizado
-    this.avatarColors = new Map(); // Cache de colores por usuario
-    this.init();
-  }
-
-  init() {
-    if (!this.container) {
-      console.error('[TheStream] Container no encontrado:', containerId);
-      return;
+    // FIX CRÍTICO: Validación defensiva del contenedor
+    if (!containerId || typeof containerId !== 'string') {
+      console.warn('[TheStream] containerId no proporcionado, usando default "message-container"');
+      containerId = 'message-container';
     }
-    console.log('✅ TheStream initialized');
+    
+    this.container = document.getElementById(containerId);
+    
+    // FIX CRÍTICO: Si no existe el contenedor, crearlo dinámicamente
+    if (!this.container) {
+      console.warn(`[TheStream] Contenedor #${containerId} no encontrado en DOM, creando...`);
+      this.container = document.createElement('div');
+      this.container.id = containerId;
+      this.container.style.cssText = 'overflow-y: auto; height: calc(100vh - 200px); padding: 16px;';
+      
+      // Insertar antes del input de mensaje si existe
+      const inputContainer = document.querySelector('.input-container') || document.getElementById('input-area');
+      if (inputContainer && inputContainer.parentNode) {
+        inputContainer.parentNode.insertBefore(this.container, inputContainer);
+      } else {
+        document.body.appendChild(this.container);
+      }
+    }
+    
+    this.messageCache = new Map(); // Deduplicación por ID
+    this.avatarColors = new Map(); // Cache de colores por usuario
+    this.maxCacheSize = 500;
+    this.initialized = true;
+    
+    console.log('✅ TheStream v2.4-NAP-REM initialized correctly');
   }
 
   /**
-   * Genera avatar SVG inline - Reemplaza las URLs rotas de localhost
+   * Genera avatar SVG inline - Reemplaza URLs rotas de localhost
    */
   generateAvatarSVG(sender, isMe) {
+    const key = `${sender}-${isMe}`;
+    if (this.avatarColors.has(key)) {
+      return this.avatarColors.get(key);
+    }
+    
     const initial = (sender || 'U').charAt(0).toUpperCase();
     let color;
     
     if (isMe) {
-      color = '#00FF88'; // Verde NEXO para el usuario
+      color = '#00FF88'; // Verde NEXO
     } else {
-      // Color determinista por nombre de usuario
-      if (!this.avatarColors.has(sender)) {
-        const hue = sender.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-        color = `hsl(${hue}, 70%, 50%)`;
-        this.avatarColors.set(sender, color);
-      } else {
-        color = this.avatarColors.get(sender);
-      }
+      // Color determinista por hash del nombre
+      const hue = sender.split('').reduce((acc, char) => {
+        return acc + char.charCodeAt(0);
+      }, 0) % 360;
+      color = `hsl(${hue}, 70%, 50%)`;
     }
     
-    // SVG inline base64 - No requiere localhost ni archivos externos
-    const svg = `
-      <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-        <rect width="40" height="40" rx="12" fill="${color}" fill-opacity="0.2" stroke="${color}" stroke-width="2"/>
-        <text x="20" y="27" text-anchor="middle" font-family="system-ui" font-size="18" font-weight="600" fill="${color}">
-          ${initial}
-        </text>
-      </svg>
-    `;
+    const svg = `<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <rect width="40" height="40" rx="12" fill="${color}" fill-opacity="0.2" stroke="${color}" stroke-width="2"/>
+      <text x="20" y="27" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="${color}">${initial}</text>
+    </svg>`;
     
-    return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+    const dataUri = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+    this.avatarColors.set(key, dataUri);
+    return dataUri;
   }
 
   /**
-   * Renderiza mensaje - CORREGIDO: Valida contenido vacío y evita duplicados
+   * Renderiza mensaje con validación completa
    */
   renderMessage(message) {
-    // DEDUPLICACIÓN: No renderizar el mismo ID dos veces
-    if (this.messageCache.has(message.id)) {
-      console.warn(`[TheStream] Mensaje duplicado ignorado: ${message.id}`);
+    if (!this.initialized || !this.container) {
+      console.error('[TheStream] No inicializado correctamente, no se puede renderizar');
       return;
     }
-    this.messageCache.set(message.id, Date.now());
+
+    // Deduplicación estricta
+    if (message.id && this.messageCache.has(message.id)) {
+      return; // Silencioso para no llenar logs
+    }
     
-    // Limpieza de cache antigua (evitar memory leak)
-    if (this.messageCache.size > 100) {
-      const oldest = Array.from(this.messageCache.entries())[0];
-      this.messageCache.delete(oldest[0]);
+    if (message.id) {
+      this.messageCache.set(message.id, Date.now());
+      this._cleanupCache();
     }
 
-    // VALIDACIÓN: No renderizar mensajes vacíos
-    if (!message.content || message.content.trim() === '') {
-      console.warn('[TheStream] Mensaje vacío ignorado de:', message.sender);
+    // Validación de contenido
+    if (!message.content || String(message.content).trim() === '') {
+      console.warn('[TheStream] Mensaje vacío ignorado');
       return;
     }
 
-    const isMe = message.sender === 'Tú' || message.sender === 'me';
+    const isMe = message.sender === 'Tú' || message.sender === 'me' || message.isMe;
     const avatarSrc = this.generateAvatarSVG(message.sender, isMe);
+    const content = this.escapeHtml(String(message.content));
     
     const bubble = document.createElement('div');
     bubble.className = `message-bubble ${isMe ? 'message-me' : 'message-other'}`;
-    bubble.dataset.messageId = message.id;
+    bubble.dataset.messageId = message.id || Date.now();
+    bubble.style.cssText = `
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding: 12px;
+      border-radius: 16px;
+      background: ${isMe ? 'rgba(0, 255, 136, 0.1)' : 'rgba(255,255,255,0.05)'};
+      animation: fadeIn 0.3s ease;
+    `;
     
-    // HTML corregido - Sin referencias a localhost
     bubble.innerHTML = `
-      <div class="message-avatar">
-        <img src="${avatarSrc}" alt="${message.sender}" width="40" height="40" style="border-radius: 12px;">
+      <div class="message-avatar" style="flex-shrink: 0;">
+        <img src="${avatarSrc}" alt="${message.sender}" width="40" height="40" style="border-radius: 12px; display: block;">
       </div>
-      <div class="message-content">
-        <div class="message-sender">${message.sender || 'Unknown'}</div>
-        <div class="message-text">${this.escapeHtml(message.content)}</div>
-        <div class="message-meta">ahora</div>
-        <div class="message-actions">
-          <button class="action-btn" data-action="react">⚡</button>
-          <button class="action-btn" data-action="reply">↩️</button>
-          <button class="action-btn" data-action="forward">↗️</button>
+      <div class="message-content" style="flex: 1; min-width: 0;">
+        <div class="message-sender" style="font-weight: 600; color: #fff; margin-bottom: 4px; font-size: 14px;">${message.sender || 'Unknown'}</div>
+        <div class="message-text" style="color: #ddd; line-height: 1.4; word-wrap: break-word;">${content}</div>
+        <div class="message-meta" style="font-size: 11px; color: #888; margin-top: 4px;">ahora</div>
+        <div class="message-actions" style="display: flex; gap: 8px; margin-top: 8px;">
+          <button class="action-btn" data-action="react" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer;">⚡</button>
+          <button class="action-btn" data-action="reply" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer;">↩️</button>
+          <button class="action-btn" data-action="forward" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer;">↗️</button>
         </div>
       </div>
     `;
@@ -101,13 +130,21 @@ class TheStream {
     this.container.appendChild(bubble);
     this.scrollToBottom();
     
-    // Confirmación de eco solo si no es duplicado
-    this.confirmEco(message.id);
+    // Confirmar eco si aplica
+    if (message.id && window.nexoApp?.wsClient) {
+      this.confirmEco(message.id);
+    }
+  }
+
+  _cleanupCache() {
+    if (this.messageCache.size > this.maxCacheSize) {
+      const oldest = Array.from(this.messageCache.entries())[0];
+      this.messageCache.delete(oldest[0]);
+    }
   }
 
   confirmEco(messageId) {
-    // Envía confirmación al WebSocket sin duplicar
-    if (window.nexoApp && window.nexoApp.wsClient) {
+    if (window.nexoApp?.wsClient?.isConnected?.()) {
       window.nexoApp.wsClient.send({
         type: 'eco',
         id: messageId,
@@ -123,11 +160,15 @@ class TheStream {
   }
 
   scrollToBottom() {
-    this.container.scrollTop = this.container.scrollHeight;
+    if (this.container) {
+      this.container.scrollTop = this.container.scrollHeight;
+    }
   }
 
   clear() {
-    this.container.innerHTML = '';
+    if (this.container) {
+      this.container.innerHTML = '';
+    }
     this.messageCache.clear();
   }
 }
