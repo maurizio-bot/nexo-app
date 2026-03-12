@@ -10,53 +10,47 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-    
-    - name: Install dependencies
-      run: |
-        cd client
-        npm install
-    
-    - name: Build web assets
-      run: |
-        cd client
-        npm run build
-    
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-    
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v2
-    
-    - name: Install Capacitor
-      run: npm install -g @capacitor/cli
-    
-    - name: Add Android platform
-      run: |
-        cd client
-        npx cap add android || true
-    
-    - name: Sync Capacitor
-      run: |
-        cd client
-        npx cap sync
-    
-    - name: Build Debug APK
-      run: |
-        cd client/android
-        chmod +x gradlew
-        ./gradlew assembleDebug
-    
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: nexo-apk
-        path: client/android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install dependencies
+        run: |
+          cd client
+          npm install
+          
+      - name: Build web assets
+        run: |
+          cd client
+          npm run build
+          
+      - name: Generate Android Assets (Icons & Splash)
+        run: |
+          cd client
+          npm run generate-assets
+          
+      - name: Sync Capacitor Android
+        run: |
+          cd client
+          npx cap sync android
+          
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          
+      - name: Build APK
+        run: |
+          cd client/android
+          ./gradlew assembleRelease
+          
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexo-apk
+          path: client/android/app/build/outputs/apk/release/app-release-unsigned.apk
