@@ -28,17 +28,15 @@ jobs:
           cd client
           npm run build
           
+      - name: Add Android Platform
+        run: |
+          cd client
+          npx cap add android || true
+          
       - name: Generate Android Assets (Icons & Splash)
         run: |
           cd client
           npm run generate-assets
-          
-      - name: Add Android Platform
-        run: |
-          cd client
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
           
       - name: Sync Capacitor Android
         run: |
@@ -51,13 +49,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           
-      - name: Build APK
+      - name: Build Debug APK (Signed)
         run: |
           cd client/android
-          ./gradlew assembleRelease
+          ./gradlew assembleDebug
           
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: nexo-apk
-          path: client/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          path: client/android/app/build/outputs/apk/debug/app-debug.apk
