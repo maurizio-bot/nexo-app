@@ -1,16 +1,6 @@
 /**
- * NEXO v9.0 - The Stream v2.2-NAP-CERTIFIED
- * Feed unificado con zero-bug guarantee y CSP compliant
- * 
- * Correcciones NAP aplicadas:
- * - [FIX 2.2.1] Declaración faltante de _reorderTimeout y _updatingPulse en constructor
- * - [FIX 2.2.2] Bloqueo de URLs protocol-relative (//) por seguridad
- * - [FIX 2.2.3] Chequeo _isDestroyed en finally de onLoadMore
- * - [FIX 2.2.4] Verificación engine no destruido antes de llamar métodos
- * - [FIX 2.2.5] Forzar generación de IDs antes de operaciones que modifican items
- * - [FIX 2.2.6] Prevención de XSS en atributos data-* con sanitización estricta
- * - [FIX 2.2.7] Limpieza completa de RAFs y timers en destroy
- * - [FIX 2.2.8] Null check en _getFirstVisibleItemId
+ * NEXO v9.0 - The Stream v2.3-NAP-FIXED
+ * FIX: Deduplicación de mensajes por messageId, Set de IDs procesados
  */
 
 import { VirtualEngine } from '../perf/virtual_engine.js';
@@ -26,40 +16,38 @@ export class TheStream {
     
     if (!this.container) throw new Error('TheStream: container no encontrado');
     
-    // Sistema de ID interno
     this._internalIdCounter = 0;
     this._instanceId = Math.random().toString(36).substr(2, 9);
+    
+    // [FIX CRÍTICO] Set para deduplicación de mensajes
+    this._processedIds = new Set();
+    this._pendingIds = new Set(); // IDs en proceso de envío
     
     this.pulse = new PulseAlgorithm();
     this.engine = null;
     this.items = [];
     this.itemMap = new Map();
     
-    // State flags
     this._isDestroyed = false;
     this._isLoadingMore = false;
-    this._updatingPulse = false;  // [FIX 2.2.1] Declarado aquí
+    this._updatingPulse = false;
     this._rafId = null;
     this._loadMoreTimeout = null;
-    this._reorderTimeout = null;  // [FIX 2.2.1] Declarado aquí
+    this._reorderTimeout = null;
     this._lastTouchRaf = null;
     
-    // Guardar referencia segura
     this._externalPing = typeof window !== 'undefined' && window.nexoPing;
     
-    // Bound handlers
     this._boundHandleTap = this.handleTap.bind(this);
     this._boundHandleTouchStart = this.handleTouchStart.bind(this);
     this._boundHandleTouchEnd = this.handleTouchEnd.bind(this);
     this._boundHandleScroll = this.handleScroll.bind(this);
     this._boundHandleImageError = this.handleImageError.bind(this);
     
-    // Callbacks
     this.onItemTap = typeof options.onItemTap === 'function' ? options.onItemTap : () => {};
     this.onItemSwipe = typeof options.onItemSwipe === 'function' ? options.onItemSwipe : () => {};
     this.onLoadMore = typeof options.onLoadMore === 'function' ? options.onLoadMore : () => {};
     
-    // Reciclador de imágenes
     this._imageObserver = null;
     
     this.init();
@@ -82,9 +70,6 @@ export class TheStream {
     this.container.addEventListener('scroll', this._boundHandleScroll, { passive: true });
   }
 
-  /**
-   * Captura errores de carga de imágenes sin violar CSP
-   */
   _setupImageErrorHandling() {
     if (typeof MutationObserver === 'undefined') return;
     
@@ -117,30 +102,49 @@ export class TheStream {
   }
 
   /**
-   * Genera ID único interno para cada item
+   * [FIX CRÍTICO] Genera ID único y verifica duplicados
    */
   _getItemId(item, index) {
     if (item._nexoStreamId) return item._nexoStreamId;
     
+    // Usar messageId externo si existe, sino generar uno interno
+    let baseId;
     if (item.id != null) {
-      // [FIX 2.2.6] Sanitización estricta del ID externo
-      const safeExternalId = String(item.id).replace(/[^a-zA-Z0-9-_]/g, '');
-      item._nexoStreamId = `ext-${this._instanceId}-${safeExternalId}`;
+      baseId = String(item.id).replace(/[^a-zA-Z0-9-_]/g, '');
+      item._nexoStreamId = `ext-${this._instanceId}-${baseId}`;
+    } else if (item.messageId) {
+      baseId = String(item.messageId).replace(/[^a-zA-Z0-9-_]/g, '');
+      item._nexoStreamId = `msg-${this._instanceId}-${baseId}`;
     } else {
       item._nexoStreamId = `int-${this._instanceId}-${++this._internalIdCounter}`;
     }
     return item._nexoStreamId;
   }
 
+  /**
+   * [FIX CRÍTICO] Verificar si un mensaje ya existe
+   */
+  _isDuplicate(item) {
+    const id = this._getItemId(item, -1);
+    return this._processedIds.has(id) || this._pendingIds.has(id);
+  }
+
+  /**
+   * [FIX CRÍTICO] Agregar ID al registro de procesados
+   */
+  _markAsProcessed(item) {
+    const id = this._getItemId(item, -1);
+    this._processedIds.add(id);
+    this._pendingIds.delete(id); // Limpiar de pendientes si estaba
+  }
+
   renderCard(element, item, index) {
     if (!item || !element || this._isDestroyed) return;
     
-    // [FIX 2.2.5] Asegurar que el ID existe antes de renderizar
     const uniqueId = this._getItemId(item, index);
     const type = item.type || 'message';
     const pulseScore = typeof item.pulseScore === 'number' && !isNaN(item.pulseScore) ? item.pulseScore : 0;
     
-    // [FIX 2.2.6] Sanitización estricta para atributos HTML
     const safeId = this.escapeHtml(uniqueId);
     const safeType = this.escapeHtml(String(type));
     const avatarUrl = this.sanitizeUrl(item.author?.avatar);
@@ -248,7 +252,6 @@ export class TheStream {
       case 'proximity': {
         const name = this.escapeHtml(item.contactName || 'Desconocido');
         const dist = parseInt(item.distance) || 0;
-        // [FIX 2.2.6] Sanitizar contactId para atributo data-*
         const contactId = this.escapeHtml(String(item.contactId || ''));
         return `
           <div class="proximity-alert" style="display:flex; align-items:center; justify-content:space-between;">
@@ -310,7 +313,6 @@ export class TheStream {
       if (!hasChanges) return;
       
       updates.forEach(({ index, newScore }) => {
-        // [FIX 2.2.5] Preservar ID al actualizar score
         const item = this.items[index];
         this.items[index] = { ...item, pulseScore: newScore, _nexoStreamId: item._nexoStreamId };
       });
@@ -321,7 +323,6 @@ export class TheStream {
           if (!this._isDestroyed) this.sortByPulse();
         }, 300);
       } else {
-        // [FIX 2.2.4] Verificar engine válido antes de refresh
         if (this.engine && !this.engine._isDestroyed && this.engine.refresh) {
           this.engine.refresh();
         }
@@ -348,10 +349,8 @@ export class TheStream {
     
     this.items.sort((a, b) => (b.pulseScore || 0) - (a.pulseScore || 0));
     
-    // CRÍTICO: Reconstruir mapa después de sort
     this.rebuildIndexMap();
     
-    // [FIX 2.2.4] Verificar engine válido
     if (this.engine && !this.engine._isDestroyed) {
       this.engine.setData(this.items);
       
@@ -369,7 +368,7 @@ export class TheStream {
   }
 
   _getFirstVisibleItemId() {
-    if (!this.engine || this.engine._isDestroyed) return null;  // [FIX 2.2.4] + [FIX 2.2.8]
+    if (!this.engine || this.engine._isDestroyed) return null;
     const visibleRange = this.engine.getVisibleRange ? this.engine.getVisibleRange() : { start: 0 };
     const item = this.items[visibleRange.start];
     return item ? this._getItemId(item, visibleRange.start) : null;
@@ -385,48 +384,126 @@ export class TheStream {
     return pos;
   }
 
+  /**
+   * [FIX CRÍTICO] setData con deduplicación
+   */
   setData(items) {
     if (this._isDestroyed || !Array.isArray(items)) return;
     
     this._internalIdCounter = 0;
+    this._processedIds.clear();
+    this._pendingIds.clear();
     
-    // [FIX 2.2.5] Generar IDs antes de cualquier operación
-    this.items = items.map((item, idx) => {
-      const newItem = {
-        ...item,
-        pulseScore: this.pulse.calculateScore(item)
-      };
-      // Forzar generación de ID
-      this._getItemId(newItem, idx);
-      return newItem;
+    // Filtrar duplicados antes de procesar
+    const uniqueItems = [];
+    items.forEach((item, idx) => {
+      if (!this._isDuplicate(item)) {
+        const newItem = {
+          ...item,
+          pulseScore: this.pulse.calculateScore(item)
+        };
+        this._getItemId(newItem, idx);
+        this._markAsProcessed(newItem);
+        uniqueItems.push(newItem);
+      }
     });
     
+    this.items = uniqueItems;
     this.rebuildIndexMap();
     this.sortByPulse();
   }
 
+  /**
+   * [FIX CRÍTICO] appendItems con deduplicación estricta
+   */
   appendItems(items) {
     if (this._isDestroyed || !Array.isArray(items)) return;
     
     const startIdx = this.items.length;
+    const newItems = [];
     
-    // [FIX 2.2.5] Generar IDs inmediatamente
-    const newItems = items.map((item, idx) => {
-      const newItem = {
-        ...item,
-        pulseScore: this.pulse.calculateScore(item)
-      };
-      this._getItemId(newItem, startIdx + idx);
-      return newItem;
+    items.forEach((item, idx) => {
+      // Verificar duplicado contra items existentes y pendientes
+      if (!this._isDuplicate(item)) {
+        const newItem = {
+          ...item,
+          pulseScore: this.pulse.calculateScore(item)
+        };
+        this._getItemId(newItem, startIdx + newItems.length);
+        this._markAsProcessed(newItem);
+        newItems.push(newItem);
+      } else {
+        console.log('TheStream: Duplicado ignorado:', item.id || item.messageId);
+      }
     });
     
-    this.items.push(...newItems);
+    if (newItems.length === 0) return; // Nada nuevo que agregar
     
+    this.items.push(...newItems);
     this.rebuildIndexMap();
     
-    // [FIX 2.2.4] Verificar engine válido
     if (this.engine && !this.engine._isDestroyed) {
       this.engine.appendItems(newItems);
+    }
+  }
+
+  /**
+   * [FIX CRÍTICO] Agregar mensaje pendiente (antes de confirmación servidor)
+   * Evita duplicados cuando el eco del servidor llega
+   */
+  addPendingMessage(item) {
+    if (this._isDestroyed || !item) return;
+    
+    // Marcar como pendiente para no agregarlo de nuevo cuando llegue del servidor
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    item._nexoStreamId = tempId;
+    item._isPending = true;
+    
+    this._pendingIds.add(tempId);
+    
+    // Agregar a la lista
+    const newItem = {
+      ...item,
+      pulseScore: this.pulse.calculateScore(item)
+    };
+    
+    this.items.push(newItem);
+    this.rebuildIndexMap();
+    
+    if (this.engine && !this.engine._isDestroyed) {
+      this.engine.appendItems([newItem]);
+    }
+    
+    return tempId;
+  }
+
+  /**
+   * [FIX CRÍTICO] Confirmar mensaje pendiente (cuando llega del servidor)
+   */
+  confirmPendingMessage(pendingId, serverItem) {
+    if (this._isDestroyed) return;
+    
+    // Encontrar el item pendiente
+    const index = this.items.findIndex(item => item._nexoStreamId === pendingId);
+    if (index === -1) return;
+    
+    // Actualizar con datos del servidor pero preservar ID interno para no romper UI
+    const existingItem = this.items[index];
+    const updatedItem = {
+      ...serverItem,
+      _nexoStreamId: existingItem._nexoStreamId,
+      _isPending: false
+    };
+    
+    // Generar nuevo ID basado en el ID del servidor
+    this._getItemId(updatedItem, index);
+    this._markAsProcessed(updatedItem);
+    
+    this.items[index] = updatedItem;
+    this.rebuildIndexMap();
+    
+    if (this.engine && !this.engine._isDestroyed) {
+      this.engine.refresh();
     }
   }
 
@@ -559,7 +636,6 @@ export class TheStream {
         this._isLoadingMore = true;
         
         Promise.resolve(this.onLoadMore()).finally(() => {
-          // [FIX 2.2.3] Chequear _isDestroyed antes de modificar flag
           setTimeout(() => {
             if (!this._isDestroyed) this._isLoadingMore = false;
           }, 500);
@@ -585,11 +661,10 @@ export class TheStream {
     const trimmed = url.trim();
     const lower = trimmed.toLowerCase();
     
-    // [FIX 2.2.2] Bloquear protocol-relative URLs (//)
     const dangerousProtocols = [
       'javascript:', 'data:', 'vbscript:', 'file:', 'about:', 
       'chrome:', 'chrome-extension:', 'ms-', 'blob:', 'filesystem:',
-      '//'  // Protocol-relative (puede ser usado para tracking)
+      '//'
     ];
     
     for (const protocol of dangerousProtocols) {
@@ -599,7 +674,6 @@ export class TheStream {
       }
     }
     
-    // Solo permitir http, https, o paths relativos (/path)
     if (!lower.startsWith('http://') && !lower.startsWith('https://') && !lower.startsWith('/')) {
       console.warn('TheStream: URL no permitida:', trimmed.substring(0, 50));
       return '';
@@ -642,7 +716,6 @@ export class TheStream {
 
   refresh() {
     if (this._isDestroyed) return;
-    // [FIX 2.2.4] Verificar engine válido
     if (this.engine && !this.engine._isDestroyed && this.engine.refresh) {
       this.engine.refresh();
     }
@@ -652,7 +725,6 @@ export class TheStream {
     if (this._isDestroyed) return;
     this._isDestroyed = true;
     
-    // [FIX 2.2.7] Cancelar TODOS los timers y RAFs
     if (this._loadMoreTimeout) clearTimeout(this._loadMoreTimeout);
     if (this._reorderTimeout) clearTimeout(this._reorderTimeout);
     if (this._lastTouchRaf) cancelAnimationFrame(this._lastTouchRaf);
@@ -685,6 +757,8 @@ export class TheStream {
     
     this.items = [];
     this.itemMap.clear();
+    this._processedIds.clear();
+    this._pendingIds.clear();
     this._externalPing = null;
     
     this.resetTouchState();
