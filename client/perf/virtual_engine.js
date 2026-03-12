@@ -1,15 +1,6 @@
 /**
- * NEXO v9.0 - VirtualEngine v3.0-NAP-CERTIFIED
- * Virtual scrolling con alturas variables y reciclaje DOM
- * Performance: 60fps con 100k+ items, máximo 20 nodos DOM
- * 
- * Correcciones NAP aplicadas:
- * - [FIX 3.0] Array sparse en appendItems -> Array.from({length: n}, () => 0)
- * - [FIX 3.1] _calculatePositionsIncremental usa this.totalHeight como base
- * - [FIX 3.2] Debounce en resize (150ms) para evitar thrashing
- * - [FIX 3.3] Eliminada recreación destructiva de IntersectionObserver
- * - [FIX 3.4] RAFs de medición trackeados y cancelables en destroy()
- * - [FIX 3.5] Verificación de array bounds antes de asignar heights
+ * NEXO v9.0 - VirtualEngine v3.1-NAP-FIXED
+ * FIX: Null checks en getComputedStyle, validación de elementos DOM, isConnected check
  */
 
 export class VirtualEngine {
@@ -22,7 +13,11 @@ export class VirtualEngine {
     
     if (!this.container) throw new Error('VirtualEngine: container no encontrado');
     
-    // Configuración
+    // Verificar que container es un elemento válido
+    if (!(this.container instanceof Element)) {
+      throw new Error('VirtualEngine: container debe ser un Elemento DOM válido');
+    }
+    
     this.options = {
       itemHeight: options.itemHeight || 120,
       overscan: options.overscan || 3,
@@ -32,7 +27,6 @@ export class VirtualEngine {
       onHidden: options.onHidden || (() => {})
     };
     
-    // Estado
     this.items = [];
     this.heights = [];
     this.positions = [];
@@ -41,7 +35,6 @@ export class VirtualEngine {
     this.pool = [];
     this.activeElements = new Map();
     
-    // Flags
     this._isDestroyed = false;
     this._isUpdating = false;
     this._scrollRaf = null;
@@ -50,13 +43,11 @@ export class VirtualEngine {
     this._resizeDebounceTimer = null;
     this._pendingMeasurements = new Set();
     
-    // Elementos DOM
     this._spacer = null;
     this._viewport = null;
     this._viewportHeight = 0;
     this._avgHeight = this.options.itemHeight;
     
-    // Bindings
     this._handleScroll = this._handleScroll.bind(this);
     this._handleWindowResize = this._handleWindowResize.bind(this);
     this._intersectionCallback = this._intersectionCallback.bind(this);
@@ -78,8 +69,29 @@ export class VirtualEngine {
     this._measureViewport();
   }
 
+  /**
+   * [FIX] Validar que container existe antes de modificar
+   */
   _setupContainer() {
-    const style = window.getComputedStyle(this.container);
+    if (!this.container || this._isDestroyed) return;
+    
+    // Verificar que container está en el DOM
+    if (!this.container.isConnected) {
+      console.warn('VirtualEngine: Container no está conectado al DOM');
+    }
+    
+    // [FIX] Validar antes de getComputedStyle
+    let style;
+    try {
+      if (!this.container || !this.container.nodeType) {
+        throw new Error('Container inválido');
+      }
+      style = window.getComputedStyle(this.container);
+    } catch (e) {
+      console.warn('VirtualEngine: No se pudo obtener estilos, usando defaults');
+      style = { position: 'static', overflow: 'visible' };
+    }
+    
     if (style.position === 'static') {
       this.container.style.position = 'relative';
     }
@@ -113,6 +125,8 @@ export class VirtualEngine {
   }
 
   _createPool() {
+    if (!this._viewport || this._isDestroyed) return;
+    
     for (let i = 0; i < this.options.poolSize; i++) {
       const el = document.createElement('div');
       el.style.cssText = `
@@ -154,15 +168,18 @@ export class VirtualEngine {
       
       entries.forEach(entry => {
         const el = entry.target;
+        // [FIX] Verificar que el elemento sigue siendo válido
+        if (!el || !el._isActive || el._virtualIndex === -1) return;
+        
         const index = el._virtualIndex;
-        if (index >= 0 && index < this.items.length) {
-          const newHeight = entry.contentRect.height;
-          const oldHeight = this.heights[index] || this.options.itemHeight;
-          
-          if (Math.abs(newHeight - oldHeight) > 1) {
-            this.heights[index] = newHeight;
-            needsRecalculate = true;
-          }
+        if (index < 0 || index >= this.items.length) return;
+        
+        const newHeight = entry.contentRect.height;
+        const oldHeight = this.heights[index] || this.options.itemHeight;
+        
+        if (Math.abs(newHeight - oldHeight) > 1) {
+          this.heights[index] = newHeight;
+          needsRecalculate = true;
         }
       });
       
@@ -185,6 +202,8 @@ export class VirtualEngine {
     
     entries.forEach(entry => {
       const el = entry.target;
+      if (!el || typeof el._virtualIndex === 'undefined') return;
+      
       const index = el._virtualIndex;
       
       if (index < 0 || index >= this.items.length) return;
@@ -197,8 +216,25 @@ export class VirtualEngine {
     });
   }
 
+  /**
+   * [FIX CRÍTICO] Validar container antes de medir
+   */
   _measureViewport() {
-    this._viewportHeight = this.container.clientHeight;
+    if (!this.container || this._isDestroyed) return;
+    
+    // [FIX] Verificar que container sigue en el DOM y es válido
+    if (!this.container.isConnected || !this.container.nodeType) {
+      console.warn('VirtualEngine: Container no disponible para medir');
+      this._viewportHeight = 0;
+      return;
+    }
+    
+    try {
+      this._viewportHeight = this.container.clientHeight || 0;
+    } catch (e) {
+      console.warn('VirtualEngine: Error al medir viewport:', e);
+      this._viewportHeight = 0;
+    }
   }
 
   _handleScroll() {
@@ -239,7 +275,9 @@ export class VirtualEngine {
     }
     
     this.totalHeight = currentPos;
-    this._spacer.style.height = `${this.totalHeight}px`;
+    if (this._spacer) {
+      this._spacer.style.height = `${this.totalHeight}px`;
+    }
   }
 
   _calculatePositionsIncremental(startIndex) {
@@ -256,16 +294,18 @@ export class VirtualEngine {
     }
     
     this.totalHeight = currentPos;
-    this._spacer.style.height = `${this.totalHeight}px`;
+    if (this._spacer) {
+      this._spacer.style.height = `${this.totalHeight}px`;
+    }
   }
 
   _updateVisibleRange() {
-    if (this._isUpdating || this.items.length === 0) return;
+    if (this._isUpdating || this.items.length === 0 || !this.container) return;
     this._isUpdating = true;
     
     try {
-      const scrollTop = this.container.scrollTop;
-      const scrollBottom = scrollTop + this._viewportHeight;
+      const scrollTop = this.container.scrollTop || 0;
+      const scrollBottom = scrollTop + (this._viewportHeight || 0);
       
       const startIndex = this._findIndexAtPosition(scrollTop) - this.options.overscan;
       const endIndex = this._findIndexAtPosition(scrollBottom) + this.options.overscan;
@@ -372,6 +412,7 @@ export class VirtualEngine {
   }
 
   _positionElement(el, index) {
+    if (!el || !el.style) return;
     const y = this.positions[index] || (index * this.options.itemHeight);
     el.style.transform = `translate3d(0, ${y}px, 0)`;
   }
@@ -382,22 +423,33 @@ export class VirtualEngine {
     });
   }
 
+  /**
+   * [FIX CRÍTICO] Validar elemento antes de medir
+   */
   _scheduleHeightMeasurement(el, index) {
     const rafId = requestAnimationFrame(() => {
       this._pendingMeasurements.delete(rafId);
       
-      if (this._isDestroyed || el._virtualIndex !== index) return;
+      // [FIX] Verificaciones estrictas antes de medir
+      if (this._isDestroyed || !el || el._virtualIndex !== index) return;
+      
+      // [FIX] Verificar que el elemento está en el DOM y es válido
+      if (!el.isConnected || !el.nodeType || el.nodeType !== 1) return;
       
       if (index < 0 || index >= this.heights.length) return;
       
-      const rect = el.getBoundingClientRect();
-      const newHeight = rect.height;
-      
-      if (newHeight > 0 && this.heights[index] !== newHeight) {
-        this.heights[index] = newHeight;
-        this._updateAverageHeight();
-        this._calculatePositions();
-        this._updatePositions();
+      try {
+        const rect = el.getBoundingClientRect();
+        const newHeight = rect.height;
+        
+        if (newHeight > 0 && this.heights[index] !== newHeight) {
+          this.heights[index] = newHeight;
+          this._updateAverageHeight();
+          this._calculatePositions();
+          this._updatePositions();
+        }
+      } catch (e) {
+        console.warn(`VirtualEngine: Error midiendo elemento ${index}:`, e);
       }
     });
     
@@ -446,7 +498,7 @@ export class VirtualEngine {
     
     this._calculatePositionsIncremental(startIndex);
     
-    const scrollBottom = this.container.scrollTop + this._viewportHeight;
+    const scrollBottom = (this.container?.scrollTop || 0) + this._viewportHeight;
     if (scrollBottom >= this.totalHeight - (this._avgHeight * 3)) {
       this._updateVisibleRange();
     }
@@ -459,7 +511,7 @@ export class VirtualEngine {
   scrollToIndex(index, behavior = 'smooth') {
     if (this._isDestroyed || index < 0 || index >= this.items.length) return;
     const y = this.positions[index] ?? (index * this.options.itemHeight);
-    this.container.scrollTo({ top: y, behavior });
+    this.container?.scrollTo({ top: y, behavior });
   }
 
   refresh() {
@@ -494,7 +546,7 @@ export class VirtualEngine {
       this._resizeObserver = null;
     }
     
-    this.container.removeEventListener('scroll', this._handleScroll);
+    this.container?.removeEventListener('scroll', this._handleScroll);
     window.removeEventListener('resize', this._handleWindowResize);
     
     if (this._spacer?.parentNode) {
