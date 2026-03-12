@@ -1,5 +1,5 @@
-// client/main.js - FIX DEDUPLICACIÓN v2.4-NAP-CORRECTED
-// FIX CRÍTICO: Evita mensajes duplicados usando tracking por ID único
+// client/main.js - v2.5-NAP-FINAL
+// FIX: Integración con TheStream + deduplicación robusta
 
 import { NexoApp } from './app/nexo_app.js';
 import { OnboardingController } from './auth/onboarding.js';
@@ -20,29 +20,15 @@ const DIAG = window.NEXO_DIAG || {
 };
 
 async function initNexo() {
-  const splash = document.getElementById('splash-native');
-  const statusIndicator = document.getElementById('status-indicator');
-  const messagesContainer = document.getElementById('messages-container');
-  const messageInput = document.getElementById('message-input');
-  const sendBtn = document.getElementById('send-btn');
-
-  DIAG.log('🚀 MAIN.JS v2.4 - Iniciando con deduplicación', 'info');
-
-  // [FIX CRÍTICO 2.4] Tracking de mensajes mostrados para evitar duplicados
-  const shownMessageIds = new Set();
-  const MESSAGE_ID_MAX_SIZE = 1000;
+  DIAG.log('🚀 MAIN.JS v2.5 - Integración TheStream', 'info');
 
   try {
-    const appContainer = document.getElementById('app');
-    if (appContainer) appContainer.style.display = 'none';
-    if (statusIndicator) statusIndicator.style.display = 'none';
-
+    // Verificar onboarding
     const hasCompletedOnboarding = localStorage.getItem('nexo_onboarding_done') === 'true';
     const hasExistingIdentity = localStorage.getItem('nexo_identity_exists') === 'true';
     
     if (!hasCompletedOnboarding || !hasExistingIdentity) {
-      DIAG.log('👤 PRIMER INICIO - Iniciando Onboarding', 'info');
-      
+      DIAG.log('👤 PRIMER INICIO - Onboarding', 'info');
       const onboarding = new OnboardingController({
         container: document.body,
         onComplete: () => {
@@ -52,32 +38,40 @@ async function initNexo() {
         },
         onError: (err, phase) => DIAG.error(`ONBOARD-${phase}`, err.message)
       });
-      
       await onboarding.start();
       return;
     }
 
+    // Mostrar app
+    const appContainer = document.getElementById('app');
     if (appContainer) appContainer.style.display = 'flex';
-    if (statusIndicator) statusIndicator.style.display = 'block';
     
-    DIAG.log('🔐 Inicializando CryptoVault...', 'info');
+    const statusIndicator = document.getElementById('status-indicator');
+    if (statusIndicator) statusIndicator.style.display = 'block';
+
+    // Inicializar Vault
+    DIAG.log('🔐 Inicializando CryptoVault...');
     const vault = new CryptoVault();
     await vault.init();
     const myIdentity = vault.getIdentity() || 'unknown';
-    DIAG.log(`✅ Vault OK - ID: ${myIdentity.substring(0, 8)}...`, 'info');
+    DIAG.log(`✅ Vault OK - ID: ${myIdentity.substring(0, 8)}...`);
+
+    // [FIX DEDUPLICACIÓN] Sets para tracking
+    const localMessageIds = new Set();  // IDs de mensajes enviados por mí
+    const renderedIds = new Set();      // IDs ya renderizados en UI
+    const MESSAGE_MAX_CACHE = 500;
+
+    const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // [FIX 2.4] Helpers para deduplicación
-    const generateMessageId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    const trimMessageIds = () => {
-      if (shownMessageIds.size > MESSAGE_ID_MAX_SIZE) {
-        const iterator = shownMessageIds.values();
-        for (let i = 0; i < MESSAGE_ID_MAX_SIZE / 2; i++) {
-          shownMessageIds.delete(iterator.next().value);
+    const trimCache = (set) => {
+      if (set.size > MESSAGE_MAX_CACHE) {
+        const iter = set.values();
+        for (let i = 0; i < MESSAGE_MAX_CACHE / 2; i++) {
+          set.delete(iter.next().value);
         }
       }
     };
-    
+
     const app = new NexoApp({
       relayUrls: ['wss://echo.websocket.org/'],
       bleTimeout: 10000,
@@ -87,34 +81,60 @@ async function initNexo() {
       onMessage: (msg) => {
         if (!msg || (!msg.text && !msg.data)) return;
         
-        // [FIX CRÍTICO 2.4] DEDUPLICACIÓN POR ID
-        const msgId = msg._id || msg.id || `${msg.text}-${msg.timestamp}`;
+        const msgId = msg._id || msg.id;
+        const isOwn = msg._own === true || msg._sender === myIdentity;
         
-        if (shownMessageIds.has(msgId)) {
-          DIAG.log(`🔄 Duplicado ignorado: ${msgId.substr(0, 20)}...`, 'info');
+        // [FIX] Si es eco de mensaje propio, verificar si ya lo mostramos
+        if (isOwn && msgId && localMessageIds.has(msgId)) {
+          DIAG.log(`🔄 Eco confirmado: ${msgId.substr(0, 20)}...`);
+          // Actualizar UI para marcar como "enviado" (check verde)
+          updateMessageStatus(msgId, 'sent');
           return;
         }
         
-        shownMessageIds.add(msgId);
-        trimMessageIds();
+        // [FIX] Verificar duplicado general
+        if (msgId && renderedIds.has(msgId)) {
+          DIAG.log(`🔄 Duplicado ignorado: ${msgId.substr(0, 20)}...`);
+          return;
+        }
         
-        // Detectar si es mensaje propio
-        const isOwn = msg._own === true || msg._sender === myIdentity;
+        if (msgId) {
+          renderedIds.add(msgId);
+          trimCache(renderedIds);
+        }
         
-        const div = document.createElement('div');
-        div.className = `message ${isOwn ? 'own' : 'other'}`;
-        div.textContent = msg.text || msg.data;
-        messagesContainer.appendChild(div);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        // [FIX] Formato para TheStream
+        const streamItem = {
+          id: msgId || generateId(),
+          type: 'message',
+          content: msg.text || msg.data,
+          author: {
+            name: isOwn ? 'Tú' : (msg._sender?.substring(0, 8) || 'Desconocido'),
+            avatar: isOwn ? '/avatar-me.png' : '/avatar-other.png'
+          },
+          timestamp: msg.timestamp || Date.now(),
+          _isOwn: isOwn,
+          pulseScore: isOwn ? 1.0 : 0.5
+        };
+        
+        // [FIX] Usar TheStream si está disponible, sino fallback manual
+        if (window.nexoApp?.stream) {
+          window.nexoApp.stream.appendItems([streamItem]);
+        } else {
+          addManualMessage(streamItem, isOwn);
+        }
       },
       
       onStatusChange: (mode) => {
-        statusIndicator.className = mode.toLowerCase();
-        const labels = {
-          P2P: '🟢 P2P', RELAY: '🔵 RELAY', 
-          HYBRID: '🟠 HYBRID', OFFLINE: '🔴 OFFLINE'
-        };
-        statusIndicator.textContent = labels[mode] || mode;
+        const indicator = document.getElementById('status-indicator');
+        if (indicator) {
+          indicator.className = mode.toLowerCase();
+          const labels = {
+            P2P: '🟢 P2P', RELAY: '🔵 RELAY', 
+            HYBRID: '🟠 HYBRID', OFFLINE: '🔴 OFFLINE'
+          };
+          indicator.textContent = labels[mode] || mode;
+        }
       },
       
       onError: (err, code) => DIAG.error(code || 'APP-ERR', err?.message)
@@ -122,23 +142,51 @@ async function initNexo() {
 
     await app.init();
     window.nexoApp = app;
+    window.nexoVault = vault;
     
     DIAG.hideSplash();
 
-    // [FIX 2.4] Enviar con ID único
+    // Setup input
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    
     const sendMessage = () => {
       const text = messageInput?.value?.trim();
       if (!text || !window.nexoApp) return;
       
-      const messageId = generateMessageId();
-      shownMessageIds.add(messageId); // Pre-registrar para evitar eco
+      const msgId = generateId();
+      const timestamp = Date.now();
       
+      // Registrar ID local para detectar eco
+      localMessageIds.add(msgId);
+      trimCache(localMessageIds);
+      
+      // [FIX] Agregar a UI inmediatamente (optimistic) vía TheStream
+      const optimisticItem = {
+        id: msgId,
+        type: 'message',
+        content: text,
+        author: { name: 'Tú', avatar: '/avatar-me.png' },
+        timestamp: timestamp,
+        _isOwn: true,
+        _status: 'sending', // Pendiente de confirmación
+        pulseScore: 1.0
+      };
+      
+      if (window.nexoApp?.stream) {
+        window.nexoApp.stream.appendItems([optimisticItem]);
+      } else {
+        addManualMessage(optimisticItem, true, 'sending');
+      }
+      
+      // Enviar por red
       window.nexoApp.sendMessage({
         type: 'chat',
         text: text,
-        timestamp: Date.now(),
-        _id: messageId, // ID que volverá con el eco
-        _sender: myIdentity
+        timestamp: timestamp,
+        _id: msgId,
+        _sender: myIdentity,
+        _own: true
       });
       
       messageInput.value = '';
@@ -149,11 +197,41 @@ async function initNexo() {
       if (e.key === 'Enter') sendMessage();
     });
 
+    // Helper para fallback manual
+    function addManualMessage(item, isOwn, status = 'sent') {
+      const container = document.getElementById('messages-container');
+      if (!container) return;
+      
+      // Check duplicado
+      if (container.querySelector(`[data-id="${item.id}"]`)) return;
+      
+      const div = document.createElement('div');
+      div.className = `message ${isOwn ? 'own' : 'other'}`;
+      div.dataset.id = item.id;
+      div.textContent = item.content;
+      
+      if (status === 'sending') {
+        div.style.opacity = '0.7';
+      }
+      
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+    
+    function updateMessageStatus(id, status) {
+      // Implementar lógica de check verde aquí si se desea
+    }
+
     window.addEventListener('beforeunload', () => app?.destroy());
 
   } catch (err) {
     DIAG.error('INIT-FATAL', err.message);
-    if (splash) splash.innerHTML = `...error UI...`;
+    const fatal = document.getElementById('fatal-error');
+    const fatalCode = document.getElementById('fatal-code');
+    if (fatal && fatalCode) {
+      fatalCode.textContent = `INIT-FATAL: ${err.message}`;
+      fatal.classList.add('visible');
+    }
   }
 }
 
