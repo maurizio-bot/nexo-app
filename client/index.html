@@ -1,5 +1,5 @@
-<!-- client/index.html - v2.1-NAP-CERTIFIED -->
-<!-- FIX: Splash idempotente, Diagnóstico environment-aware, Resource filtering -->
+<!-- client/index.html - v2.2-NAP-CERTIFIED -->
+<!-- FIX: Agregado método audit() a NEXO_DIAG para compatibilidad con nexo_app.js -->
 <!DOCTYPE html>
 <html lang="es" dir="ltr">
 <head>
@@ -189,6 +189,20 @@
         
         this.log(`HTML-ENV: Host=${location.hostname}, Protocol=${location.protocol}`, 'info');
         this.log(`HTML-ENV: Capacitor=${!!window.Capacitor}, SecureContext=${window.isSecureContext}`, 'info');
+      },
+      
+      // NAP: Método audit para SOC2 compliance (llamado desde nexo_app.js y main.js)
+      audit: function(action, entity, success) {
+        const timestamp = new Date().toLocaleTimeString('es-ES', {hour12:false});
+        const msg = `[AUDIT] ${action} | Entity: ${entity} | Success: ${success}`;
+        
+        // Loguear siempre a consola
+        console.log(`[NEXO-AUDIT] ${action}`, { entity, success, timestamp });
+        
+        // Loguear a UI solo si está visible (modo dev)
+        if (this.container && this.container.classList.contains('visible')) {
+          this.log(msg, 'info');
+        }
       },
       
       log: function(msg, type = 'info') {
