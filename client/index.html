@@ -1,4 +1,5 @@
-<!-- client/index.html - COMPLETO Y CORREGIDO -->
+<!-- client/index.html - v2.1-NAP-CERTIFIED -->
+<!-- FIX: Splash idempotente, Diagnóstico environment-aware, Resource filtering -->
 <!DOCTYPE html>
 <html lang="es" dir="ltr">
 <head>
@@ -34,7 +35,6 @@
     }
     #splash-native.hidden { opacity: 0; pointer-events: none; }
     
-    /* CORRECCIÓN: Logo con nombre correcto */
     #splash-logo {
       width: 120px; 
       height: 120px;
@@ -51,7 +51,7 @@
       font-weight: 500; letter-spacing: 2px;
     }
     
-    /* Sistema de diagnóstico - SIEMPRE VISIBLE durante pruebas */
+    /* NAP: Diagnóstico - Auto-hide en producción, visible en dev */
     #nexo-diagnostic {
       position: fixed; top: 10px; left: 10px; right: 10px;
       max-height: 200px; overflow-y: auto;
@@ -59,8 +59,9 @@
       border: 1px solid #333; border-radius: 8px;
       padding: 10px; font-family: 'Courier New', monospace;
       font-size: 11px; line-height: 1.4; z-index: 99998;
-      display: block; /* SIEMPRE VISIBLE - cambiar a 'none' cuando termines pruebas */
+      display: none; /* Hidden by default, shown by JS if dev */
     }
+    #nexo-diagnostic.visible { display: block; }
     #nexo-diagnostic .log-info { color: #00ff88; }
     #nexo-diagnostic .log-error { color: #ff4444; font-weight: bold; }
     #nexo-diagnostic .log-warn { color: #ffaa00; }
@@ -139,7 +140,7 @@
     <div id="splash-text">NEXO v9.0</div>
   </div>
   
-  <!-- DIAGNÓSTICO - SIEMPRE VISIBLE -->
+  <!-- DIAGNÓSTICO - NAP: Auto-hide en producción -->
   <div id="nexo-diagnostic"></div>
   
   <!-- ERROR FATAL -->
@@ -165,17 +166,29 @@
     </div>
   </div>
   
-  <!-- SISTEMA DE DIAGNÓSTICO -->
+  <!-- SISTEMA DE DIAGNÓSTICO NAP -->
   <script>
     window.NEXO_DIAG = {
       container: document.getElementById('nexo-diagnostic'),
       logs: [],
       maxLogs: 100,
+      _splashHidden: false,
       
       init: function() {
-        this.container.classList.add('visible');
-        this.log('HTML-INIT: Diagnóstico activado', 'info');
-        this.log(`HTML-ENV: Capacitor=${!!window.Capacitor}, Secure=${window.isSecureContext}`, 'info');
+        // NAP: Environment detection - mostrar solo en dev/local
+        const isDev = location.hostname === 'localhost' || 
+                      location.hostname === '127.0.0.1' || 
+                      location.protocol === 'file:';
+        
+        if (isDev) {
+          this.container.classList.add('visible');
+          this.log('HTML-INIT: Modo desarrollo detectado', 'info');
+        } else {
+          this.log('HTML-INIT: Modo producción - diagnóstico oculto', 'info');
+        }
+        
+        this.log(`HTML-ENV: Host=${location.hostname}, Protocol=${location.protocol}`, 'info');
+        this.log(`HTML-ENV: Capacitor=${!!window.Capacitor}, SecureContext=${window.isSecureContext}`, 'info');
       },
       
       log: function(msg, type = 'info') {
@@ -184,7 +197,7 @@
         this.logs.push(entry);
         if (this.logs.length > this.maxLogs) this.logs.shift();
         
-        if (this.container) {
+        if (this.container && this.container.classList.contains('visible')) {
           const div = document.createElement('div');
           div.className = `log-${type}`;
           if (type === 'error') {
@@ -214,32 +227,58 @@
         }
       },
       
+      // NAP: Splash idempotente - previene múltiples llamadas
       hideSplash: function() {
+        if (this._splashHidden) return;
+        
         const splash = document.getElementById('splash-native');
-        if (splash) {
-          // CORRECCIÓN: Mínimo 2 segundos visible
-          setTimeout(() => {
-            splash.classList.add('hidden');
-            setTimeout(() => splash.remove(), 500);
-          }, 2000);
+        if (!splash) {
+          this._splashHidden = true;
+          return;
         }
+        
+        // NAP: Lock para evitar race conditions
+        splash.dataset.hiding = 'true';
+        this._splashHidden = true;
+        this.log('HTML-SPLASH: Ocultando...', 'info');
+        
+        // Mínimo 2 segundos visibles
+        setTimeout(() => {
+          splash.classList.add('hidden');
+          setTimeout(() => {
+            if (splash.parentNode) splash.remove();
+          }, 500);
+        }, 2000);
       }
     };
     
     window.NEXO_DIAG.init();
     
+    // NAP: Resource Error Handler con filtro de scope
     window.addEventListener('error', function(e) {
-      const code = e.target.tagName === 'IMG' ? 'HTML-IMG-404' : 
-                   e.target.tagName === 'SCRIPT' ? 'HTML-JS-404' : 'HTML-RES-404';
-      window.NEXO_DIAG.error(code, `Failed: ${e.target.src || e.target.href}`);
+      const src = e.target?.src || e.target?.href;
+      
+      // NAP: Ignorar recursos externos (CDNs, trackers) - reduce ruido
+      if (src && !src.includes(window.location.host) && !src.startsWith('blob:')) {
+        console.warn('[NEXO] Ignorando error de recurso externo:', src);
+        return;
+      }
+      
+      const code = e.target?.tagName === 'IMG' ? 'HTML-IMG-404' : 
+                   e.target?.tagName === 'SCRIPT' ? 'HTML-JS-404' : 'HTML-RES-404';
+      window.NEXO_DIAG.error(code, `Failed: ${src || 'unknown'}`);
     }, true);
     
+    // NAP: Global JS Error Handler
     window.addEventListener('error', function(e) {
       window.NEXO_DIAG.error('HTML-JS-ERROR', `${e.message} at ${e.lineno}:${e.colno}`);
     });
     
+    // NAP: Unhandled Promise Rejection Handler
     window.addEventListener('unhandledrejection', function(e) {
       window.NEXO_DIAG.error('HTML-PROMISE-REJECT', e.reason?.message || String(e.reason));
+      // NAP: Prevenir propagación silenciosa
+      e.preventDefault();
     });
   </script>
   
