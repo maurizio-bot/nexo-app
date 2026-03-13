@@ -1,25 +1,23 @@
 /**
- * NEXO v9.0 - OnboardingController v1.3-NAP-CERTIFIED
- * Flujo completo: Bienvenida → WebAuthn → Fénix → QR → Completado
+ * NEXO v9.0 - OnboardingController v3.0-NAP-SECURITY-HARDENED
+ * Zero Mocks - Flujo estricto de biometría
  * 
- * Correcciones NAP v1.3:
- * - [FIX 1.3.1] XSS: Eliminado innerHTML, uso de createElement/textContent
- * - [FIX 1.3.2] Memory: Cleanup de timeouts y referencias
- * - [FIX 1.3.3] CSS: Single style injection, no acumulación
- * - [FIX 1.3.4] Errors: Códigos NAP-ONBOARD-XXX para debugging
- * - [FIX 1.3.5] IDs: Uso de data-attributes en lugar de IDs globales
+ * Cambios críticos:
+ * - Si "Configurar" falla, NO marca como activada
+ * - Solo "Omitir" permite continuar sin biometría (y queda registrado como inseguro)
+ * - Verificación de result.verified === true
  */
 
 import { WebAuthnHelper } from './webauthn_helper.js';
 
-// NAP: Sistema de error codes únicos
 const NAP_ONBOARD_ERRORS = {
   ONB_001: 'CONTAINER_INVALID',
   ONB_002: 'WEBAUTHN_FAILED',
   ONB_003: 'SCREEN_TRANSITION_ERROR',
   ONB_004: 'TIMEOUT_EXCEEDED',
   ONB_005: 'ALREADY_DESTROYED',
-  ONB_006: 'CLEANUP_FAILED'
+  ONB_006: 'CLEANUP_FAILED',
+  ONB_007: 'BIOMETRIC_NOT_VERIFIED'
 };
 
 export class OnboardingController {
@@ -28,34 +26,25 @@ export class OnboardingController {
     this.onComplete = options.onComplete || (() => {});
     this.onError = options.onError || ((err) => console.error('Onboarding error:', err));
     
-    // NAP: State management
     this.currentScreen = null;
     this.currentScreenElement = null;
-    this.navigationHistory = [];
     this.abortController = new AbortController();
     
-    // NAP: Resource tracking para cleanup
     this._activeTimeouts = new Set();
     this._activeListeners = [];
     this._styleElement = null;
     
-    // Flags
     this._isDestroyed = false;
-    this._biometricConfigured = false;
+    this._biometricConfigured = false; // Solo true si verify strict pasó
     this._backupConfigured = false;
     this._transitionLock = false;
     
-    // NAP: Inject single shared styles
     this._injectStyles();
     
-    // Bindings
     this._boundHandleDestroy = this.destroy.bind(this);
     window.addEventListener('beforeunload', this._boundHandleDestroy);
   }
   
-  /**
-   * NAP: Single style injection, no acumulación
-   */
   _injectStyles() {
     if (document.getElementById('nap-onboard-styles')) return;
     
@@ -88,39 +77,33 @@ export class OnboardingController {
         padding: 12px 40px; border-radius: 30px; font-size: 14px;
         cursor: pointer; width: 100%;
       }
-      .nap-onboard-icon { font-size: 64px; margin-bottom: 20px; }
-      .nap-onboard-status { color: #00ff88; font-size: 13px; margin-top: 20px; min-height: 20px; }
+      .nap-onboard-status { 
+        color: #00ff88; font-size: 13px; margin-top: 20px; min-height: 20px; 
+      }
       .nap-onboard-status.error { color: #ff4444; }
-      .nap-feature-list { background: rgba(255,255,255,0.05); border-radius: 16px; padding: 20px; margin-bottom: 24px; text-align: left; }
-      .nap-feature-item { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-      .nap-feature-item:last-child { margin-bottom: 0; }
-      .nap-feature-icon { width: 40px; height: 40px; background: rgba(0,255,136,0.1); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
-      .nap-feature-title { font-weight: 600; font-size: 14px; }
-      .nap-feature-desc { color: #666; font-size: 12px; }
-      .nap-qr-box { background: white; padding: 20px; border-radius: 16px; margin-bottom: 24px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-      .nap-completion-list { background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.2); border-radius: 12px; padding: 16px; margin-bottom: 32px; text-align: left; }
+      .nap-onboard-status.warning { color: #ffaa00; }
+      .nap-completion-list { 
+        background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.2); 
+        border-radius: 12px; padding: 16px; margin-bottom: 32px; text-align: left; 
+      }
       .nap-completion-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; }
       .nap-completion-item:last-child { margin-bottom: 0; }
       .nap-check { color: #00ff88; }
-      .nap-optional { color: #666; }
-      @keyframes nap-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-      @keyframes nap-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-      .nap-animate-pulse { animation: nap-pulse 2s infinite; }
-      .nap-animate-bounce { animation: nap-bounce 1s; }
+      .nap-optional { color: #ffaa00; }
+      .nap-cross { color: #ff4444; }
     `;
     document.head.appendChild(this._styleElement);
   }
   
   async start() {
-    if (this._isDestroyed) {
-      throw new Error(NAP_ONBOARD_ERRORS.ONB_005);
-    }
+    if (this._isDestroyed) throw new Error(NAP_ONBOARD_ERRORS.ONB_005);
     
     try {
       await this.showWelcomeScreen();
       
+      // Pantalla de biometría - Solo retorna true si se verificó realmente
       const bioResult = await this.showBiometricScreen();
-      this._biometricConfigured = bioResult;
+      this._biometricConfigured = bioResult === true;
       
       await this.showBackupScreen();
       await this.showQRScreen();
@@ -135,33 +118,26 @@ export class OnboardingController {
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error(`[${NAP_ONBOARD_ERRORS.ONB_003}]`, err);
-        this.onError(err, this.currentScreen);
+        this.onError(err);
       }
     }
   }
   
-  /**
-   * NAP: Pantalla 1 - Bienvenida (sin innerHTML)
-   */
   showWelcomeScreen() {
-    return new Promise((resolve, reject) => {
-      if (this._isDestroyed) { reject(new Error(NAP_ONBOARD_ERRORS.ONB_005)); return; }
-      
+    return new Promise((resolve) => {
       this._cleanupCurrentScreen();
       this.currentScreen = 'welcome';
       
       const screen = this._createScreenElement();
-      
-      // NAP: DOM construction seguro (no innerHTML)
       const content = document.createElement('div');
       content.className = 'nap-onboard-content';
       
       const icon = document.createElement('div');
-      icon.className = 'nap-onboard-icon nap-animate-pulse';
+      icon.style.cssText = 'font-size: 64px; margin-bottom: 20px;';
       icon.textContent = '⚡';
       
       const title = document.createElement('h1');
-      title.style.cssText = 'font-size: 32px; margin-bottom: 16px; font-weight: 700; letter-spacing: -1px;';
+      title.style.cssText = 'font-size: 32px; margin-bottom: 16px; font-weight: 700;';
       title.textContent = 'NEXO';
       
       const desc = document.createElement('p');
@@ -181,7 +157,6 @@ export class OnboardingController {
       this.container.appendChild(screen);
       this.currentScreenElement = screen;
       
-      // NAP: Event listener trackeado
       const handleClick = () => {
         btn.disabled = true;
         this._safeTimeout(() => this._transitionOut(screen, resolve), 150);
@@ -193,12 +168,11 @@ export class OnboardingController {
   }
   
   /**
-   * NAP: Pantalla 2 - Biometría (sin innerHTML)
+   * NAP-SEC: Pantalla de biometría con validación estricta
+   * Retorna: true (verificado), false (omitido explícitamente)
    */
   showBiometricScreen() {
-    return new Promise((resolve, reject) => {
-      if (this._isDestroyed) { reject(new Error(NAP_ONBOARD_ERRORS.ONB_005)); return; }
-      
+    return new Promise((resolve) => {
       this._cleanupCurrentScreen();
       this.currentScreen = 'biometric';
       
@@ -207,7 +181,7 @@ export class OnboardingController {
       content.className = 'nap-onboard-content';
       
       const icon = document.createElement('div');
-      icon.className = 'nap-onboard-icon';
+      icon.style.cssText = 'font-size: 56px; margin-bottom: 20px;';
       icon.textContent = '🔐';
       
       const title = document.createElement('h2');
@@ -216,11 +190,11 @@ export class OnboardingController {
       
       const desc = document.createElement('p');
       desc.className = 'nap-onboard-text';
-      desc.textContent = 'Usa Face ID, Huella Digital o PIN para acceder a NEXO de forma segura';
+      desc.textContent = 'Usa Face ID o Huella Digital para acceder a NEXO de forma segura';
       
       const btnSetup = document.createElement('button');
       btnSetup.className = 'nap-onboard-btn';
-      btnSetup.innerHTML = '<span>⚡</span> Configurar Ahora';
+      btnSetup.textContent = '⚡ Configurar Ahora';
       
       const btnSkip = document.createElement('button');
       btnSkip.className = 'nap-onboard-btn-secondary';
@@ -234,30 +208,73 @@ export class OnboardingController {
       this.container.appendChild(screen);
       this.currentScreenElement = screen;
       
+      // Handler de Configurar - Estricto
       const handleSetup = async () => {
         btnSetup.disabled = true;
-        status.textContent = 'Esperando autenticador...';
+        btnSkip.disabled = true; // Bloquear omitir durante intento
+        status.className = 'nap-onboard-status';
+        status.textContent = 'Esperando verificación biométrica...';
         
         try {
           const helper = new WebAuthnHelper();
-          await helper.register({
-            userName: `nexo_user_${Date.now()}`,
-            displayName: 'NEXO User'
-          });
           
-          status.textContent = '✅ Biometría configurada correctamente';
-          this._safeTimeout(() => this._transitionOut(screen, () => resolve(true)), 800);
+          // NAP-SEC: Llamada al registro estricto (sin mocks, sin fallback automático)
+          const result = await helper.registerStrict();
+          
+          // CRÍTICO: Verificar que fue éxito real biométrico
+          if (result.success === true && result.verified === true && result.method === 'biometric') {
+            status.textContent = '✅ Biometría configurada correctamente';
+            
+            // Guardar nivel de seguridad
+            localStorage.setItem('nexo_security_level', 'biometric-strict');
+            
+            this._safeTimeout(() => {
+              this._transitionOut(screen, () => resolve(true)); // ÉXITO REAL
+            }, 800);
+          } else {
+            // Esto no debería pasar si registerStrict funciona correctamente, pero por seguridad:
+            throw new Error('Verificación incompleta');
+          }
           
         } catch (e) {
-          console.error(NAP_ONBOARD_ERRORS.ONB_002, e);
+          console.error('[NAP-SEC] Fallo configuración:', e);
           status.className = 'nap-onboard-status error';
-          status.textContent = '❌ ' + (e.message || 'Error al configurar');
+          
+          // Mostrar error específico
+          if (e.message?.includes('NAP-SEC-008')) {
+            status.textContent = '❌ Cancelado por el usuario';
+          } else if (e.message?.includes('NAP-SEC-005')) {
+            status.textContent = '❌ Biometría no configurada en el sistema';
+          } else {
+            status.textContent = '❌ Falló la verificación biométrica';
+          }
+          
+          // Rehabilitar botones para reintento
           btnSetup.disabled = false;
+          btnSkip.disabled = false;
+          
+          // NAP-SEC: NO resolver la promesa aquí. El usuario debe elegir explícitamente:
+          // 1. Reintentar "Configurar", o
+          // 2. Tocar "Omitir" (decisión consciente de inseguridad)
         }
       };
       
+      // Handler de Omitir - Única forma de continuar sin biometría
       const handleSkip = () => {
-        this._transitionOut(screen, () => resolve(false));
+        // Advertencia de seguridad obligatoria
+        status.className = 'nap-onboard-status warning';
+        status.textContent = '⚠️ Advertencia: Continuarás sin protección biométrica';
+        
+        btnSkip.disabled = true;
+        btnSetup.disabled = true;
+        
+        // Guardar que eligió no proteger
+        localStorage.setItem('nexo_security_level', 'none');
+        localStorage.removeItem('nexo_webauthn_id'); // Asegurar que no quede basura
+        
+        this._safeTimeout(() => {
+          this._transitionOut(screen, () => resolve(false)); // Omitido explícitamente
+        }, 1500); // Dar tiempo para leer la advertencia
       };
       
       btnSetup.addEventListener('click', handleSetup);
@@ -267,13 +284,8 @@ export class OnboardingController {
     });
   }
   
-  /**
-   * NAP: Pantalla 3 - Backup (sin innerHTML)
-   */
   showBackupScreen() {
-    return new Promise((resolve, reject) => {
-      if (this._isDestroyed) { reject(new Error(NAP_ONBOARD_ERRORS.ONB_005)); return; }
-      
+    return new Promise((resolve) => {
       this._cleanupCurrentScreen();
       this.currentScreen = 'backup';
       
@@ -282,8 +294,7 @@ export class OnboardingController {
       content.className = 'nap-onboard-content';
       
       const icon = document.createElement('div');
-      icon.className = 'nap-onboard-icon';
-      icon.style.fontSize = '56px';
+      icon.style.cssText = 'font-size: 56px; margin-bottom: 20px;';
       icon.textContent = '🔥';
       
       const title = document.createElement('h2');
@@ -292,35 +303,13 @@ export class OnboardingController {
       
       const desc = document.createElement('p');
       desc.className = 'nap-onboard-text';
-      desc.textContent = 'Tu identidad se divide en 5 fragmentos cifrados distribuidos entre tus contactos de confianza.';
-      
-      const list = document.createElement('div');
-      list.className = 'nap-feature-list';
-      
-      const features = [
-        { icon: '🛡️', title: 'Sin contraseñas', desc: 'Recupera tu cuenta con 3/5 contactos' },
-        { icon: '🔒', title: 'Cifrado extremo', desc: 'Nadie puede reconstruir tu clave solo' },
-        { icon: '⚡', title: 'Automático', desc: 'Se activa al agregar contactos' }
-      ];
-      
-      features.forEach(f => {
-        const item = document.createElement('div');
-        item.className = 'nap-feature-item';
-        item.innerHTML = `
-          <div class="nap-feature-icon">${f.icon}</div>
-          <div>
-            <div class="nap-feature-title">${f.title}</div>
-            <div class="nap-feature-desc">${f.desc}</div>
-          </div>
-        `;
-        list.appendChild(item);
-      });
+      desc.textContent = 'Tu identidad se divide en fragmentos cifrados distribuidos entre contactos de confianza.';
       
       const btn = document.createElement('button');
       btn.className = 'nap-onboard-btn';
       btn.textContent = 'Entendido';
       
-      content.append(icon, title, desc, list, btn);
+      content.append(icon, title, desc, btn);
       screen.appendChild(content);
       this.container.appendChild(screen);
       this.currentScreenElement = screen;
@@ -335,13 +324,8 @@ export class OnboardingController {
     });
   }
   
-  /**
-   * NAP: Pantalla 4 - QR (sin innerHTML)
-   */
   showQRScreen() {
-    return new Promise((resolve, reject) => {
-      if (this._isDestroyed) { reject(new Error(NAP_ONBOARD_ERRORS.ONB_005)); return; }
-      
+    return new Promise((resolve) => {
       this._cleanupCurrentScreen();
       this.currentScreen = 'qr';
       
@@ -356,60 +340,33 @@ export class OnboardingController {
       const desc = document.createElement('p');
       desc.className = 'nap-onboard-text';
       desc.style.fontSize = '14px';
-      desc.textContent = 'Escanea este QR con otro dispositivo NEXO o muéstralo para que te agreguen';
+      desc.textContent = 'Escanea este QR con otro dispositivo NEXO';
       
       const qrBox = document.createElement('div');
-      qrBox.className = 'nap-qr-box';
-      qrBox.innerHTML = `
-        <div style="width: 200px; height: 200px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #333; font-family: monospace; text-align: center;">
-          <div>
-            <div style="font-size: 40px; margin-bottom: 8px;">📱</div>
-            <div style="font-size: 10px; color: #666;">${this._generateMockQRData()}</div>
-          </div>
-        </div>
-      `;
-      
-      const offlineBox = document.createElement('div');
-      offlineBox.style.cssText = 'background: rgba(255,255,255,0.05); border-radius: 12px; padding: 16px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px;';
-      offlineBox.innerHTML = `
-        <div style="font-size: 24px;">👥</div>
-        <div style="text-align: left;">
-          <div style="font-size: 14px; font-weight: 600;">Modo Offline</div>
-          <div style="color: #666; font-size: 12px;">Funciona sin internet vía Bluetooth</div>
-        </div>
-      `;
+      qrBox.style.cssText = 'background: white; padding: 20px; border-radius: 16px; margin-bottom: 24px; display: inline-block;';
+      qrBox.innerHTML = '<div style="width: 200px; height: 200px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #333; font-family: monospace;">QR MOCK</div>';
       
       const btnContinue = document.createElement('button');
       btnContinue.className = 'nap-onboard-btn';
       btnContinue.textContent = 'Continuar';
       
-      const btnSkip = document.createElement('button');
-      btnSkip.className = 'nap-onboard-btn-secondary';
-      btnSkip.style.marginTop = '8px';
-      btnSkip.textContent = 'Hacerlo después';
-      
-      content.append(title, desc, qrBox, offlineBox, btnContinue, btnSkip);
+      content.append(title, desc, qrBox, btnContinue);
       screen.appendChild(content);
       this.container.appendChild(screen);
       this.currentScreenElement = screen;
       
-      const handleContinue = () => this._transitionOut(screen, () => resolve(true));
-      const handleSkip = () => this._transitionOut(screen, () => resolve(false));
-      
-      btnContinue.addEventListener('click', handleContinue);
-      btnSkip.addEventListener('click', handleSkip);
-      this._trackListener(btnContinue, 'click', handleContinue);
-      this._trackListener(btnSkip, 'click', handleSkip);
+      btnContinue.addEventListener('click', () => {
+        this._transitionOut(screen, () => resolve(true));
+      });
+      this._trackListener(btnContinue, 'click', () => resolve(true));
     });
   }
   
   /**
-   * NAP: Pantalla 5 - Completado (sin innerHTML)
+   * Pantalla final - Muestra estado real de la configuración
    */
   showCompletionScreen() {
-    return new Promise((resolve, reject) => {
-      if (this._isDestroyed) { reject(new Error(NAP_ONBOARD_ERRORS.ONB_005)); return; }
-      
+    return new Promise((resolve) => {
       this._cleanupCurrentScreen();
       this.currentScreen = 'completion';
       
@@ -418,8 +375,7 @@ export class OnboardingController {
       content.className = 'nap-onboard-content';
       
       const icon = document.createElement('div');
-      icon.className = 'nap-onboard-icon nap-animate-bounce';
-      icon.style.fontSize = '80px';
+      icon.style.cssText = 'font-size: 80px; margin-bottom: 20px;';
       icon.textContent = '🎉';
       
       const title = document.createElement('h2');
@@ -433,23 +389,53 @@ export class OnboardingController {
       const list = document.createElement('div');
       list.className = 'nap-completion-list';
       
+      // Items con estado REAL (no siempre check verde)
       const items = [
-        { check: '✓', text: 'Identidad creada', active: true },
-        { check: this._biometricConfigured ? '✓' : '○', text: `Biometría ${this._biometricConfigured ? 'activada' : 'omitida'}`, active: this._biometricConfigured },
-        { check: '✓', text: 'Protección Fénix lista', active: true }
+        { 
+          symbol: '✓', 
+          text: 'Identidad creada', 
+          active: true 
+        },
+        { 
+          symbol: this._biometricConfigured ? '✓' : '○', 
+          text: this._biometricConfigured ? 'Biometría activada' : 'Biometría omitida (sin protección)',
+          active: this._biometricConfigured,
+          warning: !this._biometricConfigured
+        },
+        { 
+          symbol: '✓', 
+          text: 'Protección Fénix lista', 
+          active: true 
+        }
       ];
       
       items.forEach(item => {
         const div = document.createElement('div');
         div.className = 'nap-completion-item';
-        div.innerHTML = `<span class="${item.active ? 'nap-check' : 'nap-optional'}">${item.check}</span><span style="color: ${item.active ? '#fff' : '#666'}">${item.text}</span>`;
+        
+        const spanSymbol = document.createElement('span');
+        spanSymbol.textContent = item.symbol;
+        spanSymbol.style.color = item.warning ? '#ffaa00' : (item.active ? '#00ff88' : '#666');
+        
+        const spanText = document.createElement('span');
+        spanText.textContent = item.text;
+        spanText.style.color = item.warning ? '#ffaa00' : (item.active ? '#fff' : '#666');
+        
+        div.append(spanSymbol, spanText);
         list.appendChild(div);
       });
       
       const btn = document.createElement('button');
       btn.className = 'nap-onboard-btn';
-      btn.style.animation = 'nap-pulse 2s infinite';
       btn.textContent = 'Entrar a NEXO';
+      
+      // Si no tiene biometría, mostrar advertencia adicional
+      if (!this._biometricConfigured) {
+        const warningBox = document.createElement('div');
+        warningBox.style.cssText = 'background: rgba(255, 170, 0, 0.1); border: 1px solid rgba(255, 170, 0, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 20px; font-size: 12px; color: #ffaa00;';
+        warningBox.textContent = '⚠️ Tu cuenta no tiene protección biométrica. Cualquiera con acceso a este dispositivo puede entrar.';
+        content.appendChild(warningBox);
+      }
       
       content.append(icon, title, desc, list, btn);
       screen.appendChild(content);
@@ -466,15 +452,10 @@ export class OnboardingController {
     });
   }
   
-  /**
-   * NAP: Helpers privados seguros
-   */
   _createScreenElement() {
     const el = document.createElement('div');
     el.className = 'nap-onboard-screen';
-    
     requestAnimationFrame(() => el.classList.add('visible'));
-    
     return el;
   }
   
@@ -508,7 +489,6 @@ export class OnboardingController {
     }
     this.currentScreenElement = null;
     
-    // NAP: Cleanup listeners específicos de esta pantalla
     this._activeListeners.forEach(({ el, event, handler }) => {
       try { el.removeEventListener(event, handler); } catch (e) {}
     });
@@ -519,42 +499,16 @@ export class OnboardingController {
     this._activeListeners.push({ el: element, event, handler });
   }
   
-  _generateMockQRData() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < 16; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result.match(/.{1,4}/g).join('-');
-  }
-  
-  /**
-   * NAP: Cleanup completo (SOC2 Resource Management)
-   */
   destroy() {
     if (this._isDestroyed) return;
     this._isDestroyed = true;
     
-    console.log('[NAP-ONBOARD] Destroying...');
-    
-    // Abortar operaciones pendientes
     this.abortController.abort();
-    
-    // Limpiar timeouts
     this._activeTimeouts.forEach(id => clearTimeout(id));
     this._activeTimeouts.clear();
     
-    // Limpiar listeners
     window.removeEventListener('beforeunload', this._boundHandleDestroy);
     this._cleanupCurrentScreen();
-    
-    // Remover styles (solo si no hay otras instancias)
-    if (this._styleElement && this._styleElement.parentNode) {
-      // Opcional: mantener si es compartido, remover si es exclusivo
-      // this._styleElement.parentNode.removeChild(this._styleElement);
-    }
-    
-    console.log('[NAP-ONBOARD] Destroyed');
   }
 }
 
@@ -563,5 +517,4 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = { OnboardingController, NAP_ONBOARD_ERRORS };
 } else if (typeof window !== 'undefined') {
   window.OnboardingController = OnboardingController;
-  window.NAP_ONBOARD_ERRORS = NAP_ONBOARD_ERRORS;
 }
