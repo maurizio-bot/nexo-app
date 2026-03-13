@@ -2,60 +2,66 @@ name: Build NEXO APK
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [ main, develop ]
+  workflow_dispatch:  # Para ejecutar manualmente desde GitHub
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
         
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          
-      - name: Install dependencies
-        run: |
-          cd client
-          npm install
-          
-      - name: Build web assets
-        run: |
-          cd client
-          npm run build
-          
-      - name: Add Android Platform
-        run: |
-          cd client
-          npx cap add android || true
-          
-      - name: Generate Android Assets (Icons & Splash)
-        run: |
-          cd client
-          npm run generate-assets
-          
-      - name: Sync Capacitor Android
-        run: |
-          cd client
-          npx cap sync android
-          
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          
-      - name: Build Debug APK (Signed)
-        run: |
-          cd client/android
-          ./gradlew assembleDebug
-          
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: nexo-apk
-          path: client/android/app/build/outputs/apk/debug/app-debug.apk
+    - name: Setup Java (Android necesita JDK)
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    - name: Install dependencies
+      run: |
+        npm ci
+        # CRÍTICO: Instalar plugin BLE para S24 Ultra
+        npm install @capacitor-community/bluetooth-le
+        
+    - name: Build web assets
+      run: npm run build
+      
+    - name: Sync Capacitor (con plugin BLE)
+      run: npx cap sync android
+      
+    - name: Build Android Debug APK
+      run: |
+        cd android
+        ./gradlew assembleDebug
+        
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: nexo-ble-debug
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+        
+    - name: Build Android Release APK (si tienes keystore)
+      if: github.ref == 'refs/heads/main'
+      run: |
+        cd android
+        ./gradlew assembleRelease
+      env:
+        # Configura estos secrets en GitHub si quieres firmar el release
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        
+    - name: Upload Release APK
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-artifact@v4
+      with:
+        name: nexo-ble-release
+        path: android/app/build/outputs/apk/release/app-release-unsigned.apk
