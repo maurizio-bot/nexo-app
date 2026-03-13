@@ -1,67 +1,73 @@
-name: Build NEXO APK
-
-on:
-  push:
-    branches: [ main, develop ]
-  workflow_dispatch:  # Para ejecutar manualmente desde GitHub
-
-jobs:
-  build-android:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-        
-    - name: Setup Java (Android necesita JDK)
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        
-    - name: Install dependencies
-      run: |
-        npm ci
-        # CRÍTICO: Instalar plugin BLE para S24 Ultra
-        npm install @capacitor-community/bluetooth-le
-        
-    - name: Build web assets
-      run: npm run build
-      
-    - name: Sync Capacitor (con plugin BLE)
-      run: npx cap sync android
-      
-    - name: Build Android Debug APK
-      run: |
-        cd android
-        ./gradlew assembleDebug
-        
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: nexo-ble-debug
-        path: android/app/build/outputs/apk/debug/app-debug.apk
-        
-    - name: Build Android Release APK (si tienes keystore)
-      if: github.ref == 'refs/heads/main'
-      run: |
-        cd android
-        ./gradlew assembleRelease
-      env:
-        # Configura estos secrets en GitHub si quieres firmar el release
-        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        
-    - name: Upload Release APK
-      if: github.ref == 'refs/heads/main'
-      uses: actions/upload-artifact@v4
-      with:
-        name: nexo-ble-release
-        path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+{
+  "name": "nexo-v9",
+  "version": "9.0.0",
+  "description": "NEXO v9.0 - Mensajería P2P ultra-rápida con BLE Mesh",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "cap:sync": "cap sync",
+    "cap:android": "cap open android",
+    "cap:ios": "cap open ios",
+    "build:android": "npm run build && cap sync android && cd android && ./gradlew assembleDebug",
+    "build:android:release": "npm run build && cap sync android && cd android && ./gradlew assembleRelease",
+    "test": "vitest",
+    "lint": "eslint . --ext .js"
+  },
+  "dependencies": {
+    "@capacitor-community/bluetooth-le": "^3.1.1",
+    "@capacitor/android": "^5.7.0",
+    "@capacitor/app": "^5.0.0",
+    "@capacitor/core": "^5.7.0",
+    "@capacitor/device": "^5.0.0",
+    "@capacitor/keyboard": "^5.0.0",
+    "@capacitor/preferences": "^5.0.0",
+    "@capacitor/splash-screen": "^5.0.0",
+    "@capacitor/status-bar": "^5.0.0",
+    "buffer": "^6.0.3",
+    "crypto-js": "^4.2.0",
+    "qrcode": "^1.5.3",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "vite-plugin-pwa": "^0.17.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^5.7.0",
+    "@types/crypto-js": "^4.2.2",
+    "@types/node": "^20.0.0",
+    "@types/qrcode": "^1.5.5",
+    "eslint": "^8.57.0",
+    "terser": "^5.29.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.1.0",
+    "vitest": "^1.3.0"
+  },
+  "browserslist": [
+    "last 2 Android versions",
+    "last 2 Chrome versions",
+    "last 2 Safari versions",
+    "iOS >= 14"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "p2p",
+    "messaging",
+    "ble",
+    "mesh",
+    "capacitor",
+    "webrtc",
+    "encrypted"
+  ],
+  "author": "NEXO Team",
+  "license": "MIT",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  }
+}
