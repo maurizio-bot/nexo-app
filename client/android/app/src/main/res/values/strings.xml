@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NEXO</string>
+    <string name="title_activity_main">NEXO</string>
+    <string name="package_name">com.nexo.app</string>
+    <string name="custom_url_scheme">com.nexo.app</string>
+</resources>
