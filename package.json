@@ -1,0 +1,7 @@
+s
+Run actions/setup-node@v4
+Found in cache @ /opt/hostedtoolcache/node/20.20.0/x64
+Environment details
+/opt/hostedtoolcache/node/20.20.0/x64/bin/npm config get cache
+/home/runner/.npm
+Error: Dependencies lock file is not found in /home/runner/work/nexo-app/nexo-app. Supported file patterns: package-lock.json,npm-shrinkwrap.json,yarn.lock
