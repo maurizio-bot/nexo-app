@@ -27,7 +27,6 @@ jobs:
         
     - name: Install dependencies
       run: npm ci
-        # CRÍTICO: Instalar plugin BLE para S24 Ultra
         
     - name: Build web assets
       run: npm run build
