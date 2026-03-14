@@ -1,7 +1,44 @@
-s
-Run actions/setup-node@v4
-Found in cache @ /opt/hostedtoolcache/node/20.20.0/x64
-Environment details
-/opt/hostedtoolcache/node/20.20.0/x64/bin/npm config get cache
-/home/runner/.npm
-Error: Dependencies lock file is not found in /home/runner/work/nexo-app/nexo-app. Supported file patterns: package-lock.json,npm-shrinkwrap.json,yarn.lock
+{
+  "name": "nexo-v9",
+  "version": "9.0.0",
+  "description": "Arquitectura Lateral — Stream + Vault",
+  "main": "index.js",
+  "scripts": {
+    "build": "npm run build:web && npm run build:android",
+    "build:web": "webpack --mode=production",
+    "build:android": "capacitor sync android && cd android && ./gradlew assembleRelease",
+    "dev": "webpack serve --mode=development",
+    "sync": "capacitor sync",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@capacitor/android": "^5.7.0",
+    "@capacitor/core": "^5.7.0",
+    "@capacitor/geolocation": "^5.0.0",
+    "@capacitor/app": "^5.0.0",
+    "@capacitor/haptics": "^5.0.0",
+    "socket.io-client": "^4.7.0",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "idb": "^8.0.0",
+    "comlink": "^4.4.1"
+  },
+  "devDependencies": {
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.0",
+    "webpack-dev-server": "^5.0.0",
+    "html-webpack-plugin": "^5.6.0",
+    "copy-webpack-plugin": "^12.0.0",
+    "eslint": "^8.57.0",
+    "@capacitor/cli": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "private": true,
+  "browserslist": [
+    "last 2 Android versions",
+    "last 2 Chrome versions"
+  ]
+}
