@@ -1,41 +1,126 @@
-// src/core/nap.js - NEXO Auto-Diagnostic Protocol
+// src/core/nap.js - NEXO Auto-Diagnostic Protocol + REM (Retroalimentación Error Message)
 
 export const NEXO_DIAG = {
   container: null,
   logs: [],
   maxLogs: 100,
   _splashHidden: false,
-
+  
+  // Sistema REM - Notificaciones visuales
+  _toastContainer: null,
+  _activeToasts: [],
+  
   init: function() {
-    // Environment detection - mostrar solo en dev/local
     const isDev = location.hostname === 'localhost' || 
                   location.hostname === '127.0.0.1' || 
                   location.protocol === 'file:';
     
+    // Crear contenedor de toast si no existe
+    this._createToastContainer();
+    
     if (isDev) {
       this.container = document.getElementById('nexo-diagnostic');
       if (this.container) this.container.classList.add('visible');
-      this.log('HTML-INIT: Modo desarrollo detectado', 'info');
-    } else {
-      this.log('HTML-INIT: Modo producción - diagnóstico oculto', 'info');
+      this.log('HTML-INIT: Modo desarrollo', 'info');
     }
-
-    this.log(`HTML-ENV: Host=${location.hostname}, Protocol=${location.protocol}`);
-    this.log(`HTML-ENV: Capacitor=${!!window.Capacitor}, SecureContext=${window.isSecureContext}`);
+    
+    this.log(`HTML-ENV: Host=${location.hostname}, SecureContext=${window.isSecureContext}`);
   },
-
-  // Método audit para SOC2 compliance (llamado desde nexo_app.js y módulos)
-  audit: function(action, entity, success) {
-    const timestamp = new Date().toLocaleTimeString('es-ES', {hour12: false});
-    const msg = `[AUDIT] ${action} | Entity: ${entity} | Success: ${success}`;
+  
+  // REM: Crear contenedor de notificaciones
+  _createToastContainer: function() {
+    if (this._toastContainer) return;
     
-    // Loggear siempre a consola
-    console.log(`[NEXO-AUDIT] ${action}`, { entity, success, timestamp });
+    this._toastContainer = document.createElement('div');
+    this._toastContainer.id = 'nexo-rem-toasts';
+    this._toastContainer.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+      max-width: 400px;
+    `;
+    document.body.appendChild(this._toastContainer);
+  },
+  
+  // REM: Mostrar notificación visual (toast)
+  showToast: function(message, type = 'error', duration = 5000) {
+    if (!this._toastContainer) this._createToastContainer();
     
-    // Loggear a UI solo si está visible (modo dev)
-    if (this.container && this.container.classList.contains('visible')) {
-      this.log(msg, 'info');
+    const toast = document.createElement('div');
+    const colors = {
+      error: '#ff4444',
+      warning: '#ffaa00',
+      info: '#00aaff',
+      success: '#00ff88'
+    };
+    
+    toast.style.cssText = `
+      background: ${colors[type] || colors.error};
+      color: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      animation: slideIn 0.3s ease;
+      pointer-events: auto;
+      max-width: 100%;
+      word-wrap: break-word;
+    `;
+    
+    toast.innerHTML = `
+      <strong style="font-weight: 600; display: block; margin-bottom: 4px;">
+        ${type === 'error' ? '⚠️ ERROR' : type === 'warning' ? '⚡ AVISO' : type === 'success' ? '✅ ÉXITO' : 'ℹ️ INFO'}
+      </strong>
+      ${message}
+    `;
+    
+    this._toastContainer.appendChild(toast);
+    this._activeToasts.push(toast);
+    
+    // Auto-remover
+    setTimeout(() => {
+      toast.style.animation = 'slideOut 0.3s ease forwards';
+      setTimeout(() => {
+        toast.remove();
+        this._activeToasts = this._activeToasts.filter(t => t !== toast);
+      }, 300);
+    }, duration);
+  },
+  
+  // REM: Código principal - muestra error al usuario
+  error: function(code, details) {
+    const fullMessage = `[${code}] ${details}`;
+    this.log(fullMessage, 'error');
+    
+    // SIEMPRE mostrar toast al usuario (no solo en consola)
+    this.showToast(`${code}: ${details}`, 'error', 6000);
+    
+    // Si es fatal, mostrar pantalla de error
+    if (code.startsWith('FATAL') || code.startsWith('INIT-FATAL') || code.startsWith('APP_')) {
+      this.showFatal(code, details);
     }
+  },
+  
+  // REM: Éxito/Info también visible
+  success: function(message) {
+    this.log(message, 'success');
+    this.showToast(message, 'success', 3000);
+  },
+  
+  warning: function(message) {
+    this.log(message, 'warning');
+    this.showToast(message, 'warning', 4000);
+  },
+  
+  info: function(message) {
+    this.log(message, 'info');
+    this.showToast(message, 'info', 3000);
   },
 
   log: function(msg, type = 'info') {
@@ -48,92 +133,32 @@ export const NEXO_DIAG = {
     if (this.container && this.container.classList.contains('visible')) {
       const div = document.createElement('div');
       div.className = `log-${type}`;
-      
-      if (type === 'error') {
-        div.innerHTML = `<span class="log-code">ERR</span>${time} ${msg}`;
-      } else {
-        div.textContent = `${time} ${msg}`;
-      }
-      
+      div.textContent = `${time} ${msg}`;
       this.container.appendChild(div);
       this.container.scrollTop = this.container.scrollHeight;
     }
     
-    console.log(`[NEXO] ${msg}`);
-  },
-
-  error: function(code, details) {
-    this.log(`${code}: ${details}`, 'error');
-    
-    if (code.startsWith('FATAL') || code.startsWith('INIT-FATAL')) {
-      this.showFatal(code, details);
-    }
+    console.log(`[NEXO-${type.toUpperCase()}] ${msg}`);
   },
 
   showFatal: function(code, details) {
-    const fatalScreen = document.getElementById('fatal-error');
-    const fatalCode = document.getElementById('fatal-code');
-    
-    if (fatalScreen && fatalCode) {
-      fatalCode.textContent = `${code}: ${details}`;
-      fatalScreen.classList.add('visible');
-    }
-  },
-
-  // NAP: Splash idempotente - previene múltiples llamadas
-  hideSplash: function() {
-    if (this._splashHidden) return;
-    
-    const splash = document.getElementById('splash-native');
-    
-    if (!splash) {
-      this._splashHidden = true;
-      return;
-    }
-
-    // NAP: Lock para evitar race conditions
-    splash.dataset.hiding = 'true';
-    this._splashHidden = true;
-    this.log('HTML-SPLASH: Ocultando...', 'info');
-    
-    // Mínimo 2 segundos visibles
-    setTimeout(() => {
-      splash.classList.add('hidden');
-      setTimeout(() => {
-        if (splash.parentNode) splash.remove();
-      }, 500);
-    }, 2000);
-  }
-};
-
-// Auto-inicializar si estamos en el navegador
-if (typeof window !== 'undefined') {
-  window.NEXO_DIAG = NEXO_DIAG;
-  
-  // Resource Error Handler con filtro de scope
-  window.addEventListener('error', function(e) {
-    const src = e.target.src || e.target?.href;
-    
-    // NAP: Ignorar recursos externos (CDN, trackers) - reduce ruido
-    if (src && !src.includes(window.location.host) && !src.startsWith('blob:')) {
-      console.warn('[NEXO] Ignorando error de recurso externo:', src);
-      return;
-    }
-    
-    const code = e.target?.tagName === 'IMG' ? 'HTML-IMG-404' : 
-                 e.target?.tagName === 'SCRIPT' ? 'HTML-JS-404' : 'HTML-RES-404';
-    window.NEXO_DIAG.error(code, `Failed: ${src || 'unknown'}`);
-  }, true);
-
-  // Global JS Error Handler
-  window.addEventListener('error', function(e) {
-    window.NEXO_DIAG.error('HTML-JS-ERROR', `${e.message} at ${e.lineno}:${e.colno}`);
-  });
-
-  // Unhandled Promise Rejection Handler
-  window.addEventListener('unhandledrejection', function(e) {
-    window.NEXO_DIAG.error('HTML-PROMISE-REJECT', e.reason?.message || String(e.reason));
-    // Prevenir propagación silenciosa
-    e.preventDefault();
-  });
-}
+    // Crear pantalla de error fatal si no existe
+    let fatalScreen = document.getElementById('fatal-error');
+    if (!fatalScreen) {
+      fatalScreen = document.createElement('div');
+      fatalScreen.id = 'fatal-error';
+      fatalScreen.style.cssText = `
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: #000;
+        color: #ff4444;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 100000;
+        font-family: monospace;
+        padding: 20px;
+        text-align: center;
+      `;
+      document.body.appendChild(fatalScreen);
