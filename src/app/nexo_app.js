@@ -3,6 +3,71 @@
  * Orquestador principal con sistema NAP-APP-XXX Error Codes
  * Pattern: NAP 2.0 + Interface Contract + SOC2 Resource Management
  */
+// AGREGAR AL INICIO (imports):
+import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
+
+// AGREGAR EN EL CONSTRUCTOR (después de DEBUG):
+this.isVaultOpen = false;
+this.vaultSlider = null;
+
+// AGREGAR EN EL MÉTODO init() (después de inicializar UI GestureEngine):
+// Fase 5.5: VAULT SLIDER (CoreGestureEngine para slide Stream↔Vault)
+try {
+  const streamEl = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
+  const vaultEl = document.getElementById('nexo-vault') || document.querySelector('.vault-panel') || document.getElementById('vault-panel');
+  
+  if (streamEl && vaultEl) {
+    this.DEBUG.log('INIT: Inicializando Vault Slider (CoreGestureEngine)...', 'info');
+    
+    this.vaultSlider = new CoreGestureEngine(streamEl, vaultEl);
+    
+    // Escuchar eventos del Vault para integración con REM
+    window.addEventListener('nexo:vault:opened', () => {
+      this.isVaultOpen = true;
+      this.DEBUG.log('[VAULT] Abierto via slide gesture', 'success');
+      
+      // Pausar UI GestureEngine mientras Vault está abierto (evita conflictos)
+      if (this.gestures && this.gestures.isEnabled) {
+        this.gestures.disable();
+        this.DEBUG.log('[GESTURES] UI GestureEngine pausado (Vault abierto)', 'info');
+      }
+      
+      // Callback opcional
+      if (this.config.onVaultStateChange) {
+        this.config.onVaultStateChange(true);
+      }
+    });
+    
+    window.addEventListener('nexo:vault:closed', () => {
+      this.isVaultOpen = false;
+      this.DEBUG.log('[VAULT] Cerrado via slide gesture', 'info');
+      
+      // Reanudar UI GestureEngine
+      if (this.gestures && !this.gestures.isEnabled) {
+        this.gestures.enable();
+        this.DEBUG.log('[GESTURES] UI GestureEngine reanudado', 'info');
+      }
+      
+      if (this.config.onVaultStateChange) {
+        this.config.onVaultStateChange(false);
+      }
+    });
+    
+    this.DEBUG.log('INIT: Vault Slider activo (zona derecha 60px)', 'success');
+  } else {
+    throw new Error('Elementos Stream o Vault no encontrados en DOM');
+  }
+} catch (err) {
+  this.DEBUG.error('APP_009', `Vault Slider init failed: ${err.message}`);
+  // No es fatal, la app sigue funcionando sin slide
+}
+
+// AGREGAR EN MÉTODO destroy():
+if (this.vaultSlider) {
+  this.vaultSlider.destroy();
+  this.vaultSlider = null;
+}
+
 
 import { CryptoVault } from '../vault/crypto_vault.js';
 import { BleMesh } from '../mesh/ble_mesh.js';
