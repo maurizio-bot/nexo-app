@@ -30,7 +30,7 @@ html, body {
 #splash-logo {
   width: 120px; 
   height: 120px;
-  background: url('assets/logo.png') center/contain no-repeat;
+  background: url('..assets/logo.png') center/contain no-repeat;
   filter: drop-shadow(0 0 20px rgba(0, 255, 136, 0.4));
   animation: pulse 2s ease-in-out infinite;
 }
