@@ -162,3 +162,101 @@ export const NEXO_DIAG = {
         text-align: center;
       `;
       document.body.appendChild(fatalScreen);
+    }
+    
+    // Verificar si es error de conexión
+    const isConnectionError = details.includes('WEBSOCKET') || 
+                              details.includes('MESH') || 
+                              details.includes('NETWORK') ||
+                              details.includes('TIMEOUT');
+    
+    const isCryptoError = details.includes('CRYPTO') || 
+                          details.includes('VAULT') ||
+                          details.includes('KEY');
+    
+    let icon = '⚠️';
+    let title = 'ERROR CRÍTICO';
+    let description = details;
+    let action = 'Reinicia la aplicación';
+    
+    if (isConnectionError) {
+      icon = '📡';
+      title = 'ERROR DE CONEXIÓN';
+      action = 'Verifica tu conexión a internet y reinicia';
+    } else if (isCryptoError) {
+      icon = '🔐';
+      title = 'ERROR DE SEGURIDAD';
+      action = 'No se pudo inicializar el sistema de seguridad';
+    }
+    
+    fatalScreen.innerHTML = `
+      <div style="font-size: 72px; margin-bottom: 20px;">${icon}</div>
+      <h1 style="font-size: 24px; margin-bottom: 10px; color: #ff4444;">${title}</h1>
+      <div style="font-size: 14px; opacity: 0.8; margin-bottom: 20px; max-width: 600px; line-height: 1.5;">
+        <strong>Código:</strong> ${code}<br>
+        <strong>Detalle:</strong> ${description}
+      </div>
+      <div style="background: rgba(255,68,68,0.1); border: 1px solid #ff4444; padding: 15px; border-radius: 8px; margin-bottom: 20px; max-width: 500px;">
+        <strong style="color: #ff6666;">${action}</strong>
+      </div>
+      <button onclick="location.reload()" style="
+        background: #ff4444; 
+        color: white; 
+        border: none; 
+        padding: 12px 30px; 
+        font-size: 16px; 
+        border-radius: 6px; 
+        cursor: pointer;
+        font-family: inherit;
+      ">Reiniciar NEXO</button>
+      <div style="margin-top: 30px; font-size: 12px; opacity: 0.5;">
+        NEXO v9.0 Auto-Diagnostic Protocol
+      </div>
+    `;
+    
+    // Log del error fatal
+    console.error(`[NEXO-FATAL] ${code}: ${details}`);
+  },
+
+  // Helper para obtener logs recientes (útil para debugging)
+  getRecentLogs: function(count = 10) {
+    return this.logs.slice(-count);
+  },
+
+  // Limpiar logs antiguos
+  clear: function() {
+    this.logs = [];
+    if (this.container) {
+      this.container.innerHTML = '';
+    }
+  },
+
+  // Verificar estado de salud del sistema
+  healthCheck: function() {
+    const checks = {
+      websocket: window.NEXO_APP && window.NEXO_APP.wsClient && window.NEXO_APP.wsClient.connected,
+      vault: window.NEXO_APP && window.NEXO_APP.vault && window.NEXO_APP.vault.initialized,
+      mesh: window.NEXO_APP && window.NEXO_APP.mesh && window.NEXO_APP.mesh.initialized,
+      gestures: window.NEXO_APP && window.NEXO_APP.gestureEngine,
+      secureContext: window.isSecureContext,
+      online: navigator.onLine
+    };
+    
+    const failed = Object.entries(checks).filter(([k, v]) => !v).map(([k]) => k);
+    
+    if (failed.length > 0) {
+      this.warning(`HealthCheck fallido: ${failed.join(', ')}`);
+    } else {
+      this.success('HealthCheck: Todos los sistemas operativos');
+    }
+    
+    return { checks, failed, healthy: failed.length === 0 };
+  }
+};
+
+// Exponer globalmente para debugging
+if (typeof window !== 'undefined') {
+  window.NEXO_DIAG = NEXO_DIAG;
+}
+
+export default NEXO_DIAG;
