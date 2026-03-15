@@ -1,0 +1,6 @@
+{
+  "appId": "com.nexo.app",
+  "appName": "NEXO",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
