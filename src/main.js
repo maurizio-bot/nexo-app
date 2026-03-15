@@ -1,40 +1,65 @@
-import { GestureEngine } from './core/gesture_engine.js';
-import { TheStream } from './stream/the_stream.js';
-import { VaultPanel } from './vault/vault_panel.js';
-import { ChispasSystem } from './vault/chispas/chispas_system.js';
-import './styles/main.css';
+// src/main.js - Punto de entrada NEXO v9.0
 
-// Inicialización ordenada
-const initNexo = () => {
-  // 1. Estado global
-  window.NEXO = {
-    vaultOpen: false,
-    currentContext: null
-  };
+// 1. Estilos críticos (NAP + UI base)
+import './styles/critical.css';
 
-  // 2. Componentes core
-  const stream = new TheStream('video-player', 'stream-container');
-  const vault = new VaultPanel('vault-panel', 'contacts-list');
-  const chispas = new ChispasSystem('chispas-overlay');
+// 2. Sistema de diagnóstico NAP
+import { NEXO_DIAG } from './core/nap.js';
+
+// 3. Módulos core de la Arquitectura Lateral
+// (Descomenta según vayas migrando)
+// import './core/gesture_engine.js';
+// import './stream/the_stream.js';
+// import './vault/chispas_system.js';
+
+// 4. App principal (si existe nexo_app.js en src/)
+// import './nexo_app.js';
+
+// Inicialización
+document.addEventListener('DOMContentLoaded', () => {
+  // Iniciar sistema de diagnóstico
+  NEXO_DIAG.init();
   
-  // 3. Engine de gestos (conecta Stream + Vault)
-  const gesture = new GestureEngine(
-    document.getElementById('stream-container'),
-    document.getElementById('vault-panel')
-  );
-
-  // 4. Eventos globales
-  window.addEventListener('nexo:vault:opened', () => {
-    window.NEXO.vaultOpen = true;
-    stream.onVaultOpen();
+  // Ocultar splash cuando todo esté listo
+  window.addEventListener('load', () => {
+    NEXO_DIAG.hideSplash();
+    NEXO_DIAG.log('NEXO v9.0 Iniciado - Arquitectura Lateral', 'info');
   });
   
-  window.addEventListener('nexo:vault:closed', () => {
-    window.NEXO.vaultOpen = false;
-    stream.onVaultClose();
-  });
+  // Setup básico de UI (temporal hasta migrar nexo_app.js completo)
+  setupBasicUI();
+});
 
-  console.log('[NEXO] v9.0 iniciado - Arquitectura Lateral activa');
-};
-
-document.addEventListener('DOMContentLoaded', initNexo);
+function setupBasicUI() {
+  const input = document.getElementById('message-input');
+  const sendBtn = document.getElementById('send-btn');
+  const container = document.getElementById('messages-container');
+  
+  if (sendBtn && input && container) {
+    sendBtn.addEventListener('click', () => sendMessage());
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+  }
+  
+  function sendMessage() {
+    const text = input.value.trim();
+    if (!text) return;
+    
+    addMessage(text, 'own');
+    input.value = '';
+    
+    // Simular respuesta (temporal)
+    setTimeout(() => {
+      addMessage('Mensaje recibido (demo)', 'other');
+    }, 1000);
+  }
+  
+  function addMessage(text, type) {
+    const div = document.createElement('div');
+    div.className = `message ${type}`;
+    div.textContent = text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+}
