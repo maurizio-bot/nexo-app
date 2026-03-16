@@ -1,119 +1,191 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.0-NAP-REM
+ * NAP - Nexo Architecture Protocol
+ * Sistema de revisión, testing y gestión de enlaces
+ * v2.0 - NAP-CERTIFIED
  */
 
-import './styles/critical.css';
-import { NEXO_DIAG } from './core/nap.js';
-import { NexoApp, DEBUG } from './app/nexo_app.js';
-import { rem } from './ui/rem.js';
-
-window.NEXO = {
-  app: null,
-  rem: null,
-  diag: null,
-  version: '9.0-REM',
-  initialized: false
-};
-
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    NEXO_DIAG.init();
-    window.NEXO.diag = NEXO_DIAG;
-    
-    _ensureDOMStructure();
-    
-    window.NEXO.rem = rem;
-    rem.info('Sistema REM activo - Inicializando NEXO...', 'REM_INIT');
-    
-    const nexoConfig = {
-      relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
-      bleTimeout: 5000,
-      enableGestures: true,
-      enableMesh: true,
-      onMessage: (msg) => {
-        console.log('📨 Mensaje:', msg);
-        _renderMessage(msg);
-      },
-      onStatusChange: (mode) => console.log('🌐 Modo:', mode),
-      onError: (err) => NEXO_DIAG.error('APP_ERR', err.message),
-      onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
-      actionCallbacks: {
-        onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
-        onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
-        onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
-      }
-    };
-    
-    window.NEXO.app = new NexoApp(nexoConfig);
-    await window.NEXO.app.init();
-    window.NEXO.initialized = true;
-    
-    _setupMessageInput();
-    _setupVaultToggle();
-    
-    NEXO_DIAG.hideSplash();
-    console.log('✅ NEXO Inicializado');
-    
-  } catch (error) {
-    console.error('💥 Error:', error);
-    NEXO_DIAG.error('INIT_FATAL', error.message);
-    NEXO_DIAG.showFatal('INIT_FATAL', error.message);
+class NAPSystem {
+  constructor() {
+    this.version = '2.0';
+    this.certified = new Set();
+    this.links = new Map();
+    this.logs = [];
+    this.maxLogs = 100;
+    this.splashVisible = true;
+    this.initialized = false;
+    this.currentPhase = 'NONE';
   }
-});
 
-function _ensureDOMStructure() {
-  const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
-  const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
-  
-  if (stream && !stream.id) stream.id = 'nexo-stream';
-  if (vault && !vault.id) vault.id = 'nexo-vault';
-}
-
-function _setupMessageInput() {
-  const input = document.getElementById('message-input');
-  const btn = document.getElementById('send-btn');
-  if (!input || !btn || !window.NEXO.app) return;
-  
-  const send = async () => {
-    const text = input.value.trim();
-    if (!text) return;
-    const sent = await window.NEXO.app.sendMessage({ text });
-    if (sent) {
-      input.value = '';
-      rem.success('Mensaje enviado', 'MSG_SENT');
+  init() {
+    if (this.initialized) return this;
+    this.log('NAP System v2.0 initialized', 'info', 'NAP_INIT');
+    this.initialized = true;
+    if (typeof window !== 'undefined') {
+      window.NAP = this;
+      window.NEXO_DIAG = this;
     }
+    return this;
+  }
+
+  certify(moduleId, implementation) {
+    if (!moduleId || typeof moduleId !== 'string') {
+      throw new Error('NAP: moduleId inválido para certificación');
+    }
+    this.certified.add(moduleId);
+    this.log(`Module certified: ${moduleId}`, 'success', 'NAP_CERT');
+    if (implementation && typeof implementation === 'object') {
+      implementation._napCertified = true;
+      implementation._napVersion = this.version;
+      implementation._napTimestamp = Date.now();
+    }
+    return implementation;
+  }
+
+  isCertified(moduleId) {
+    return this.certified.has(moduleId);
+  }
+
+  link(source, target, metadata = {}) {
+    if (!source || !target) {
+      throw new Error('NAP: source y target requeridos para link');
+    }
+    const linkId = `${source}::${target}`;
+    this.links.set(linkId, {
+      id: linkId,
+      source,
+      target,
+      timestamp: Date.now(),
+      active: true,
+      ...metadata
+    });
+    this.log(`Link established: ${source} -> ${target}`, 'info', 'NAP_LINK');
+    return linkId;
+  }
+
+  unlink(linkId) {
+    if (this.links.has(linkId)) {
+      const link = this.links.get(linkId);
+      link.active = false;
+      link.destroyedAt = Date.now();
+      this.log(`Link destroyed: ${linkId}`, 'warn', 'NAP_UNLINK');
+      return true;
+    }
+    return false;
+  }
+
+  getActiveLinks() {
+    return Array.from(this.links.values()).filter(link => link.active);
+  }
+
+  log(message, type = 'info', code = null) {
+    const entry = {
+      id: Math.random().toString(36).substr(2, 9),
+      timestamp: new Date().toISOString(),
+      type,
+      message,
+      code,
+      phase: this.currentPhase
+    };
+    this.logs.push(entry);
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift();
+    }
+    const prefix = code ? `[NAP-${code}]` : '[NAP]';
+    if (type === 'success') {
+      console.log(`%c${prefix} ${message}`, 'color: #00ff88', entry);
+    } else if (type === 'error') {
+      console.error(`${prefix} ${message}`, entry);
+    } else if (type === 'warn') {
+      console.warn(`${prefix} ${message}`, entry);
+    } else {
+      console.log(`${prefix} ${message}`, entry);
+    }
+    return entry;
+  }
+
+  static ERROR_CODES = {
+    HTML_001: 'SPLASH_NOT_FOUND',
+    HTML_002: 'VAULT_RENDER_FAILED',
+    HTML_003: 'DOM_ELEMENT_MISSING',
+    APP_001: 'STREAM_APPEND_FAILED',
+    APP_002: 'STREAM_INIT_FAILED',
+    APP_003: 'BRIDGE_INTERFACE_MISMATCH',
+    APP_004: 'VAULT_NOT_INITIALIZED',
+    APP_005: 'MESSAGE_HANDLER_ERROR',
+    APP_006: 'VIRTUAL_ENGINE_INIT_FAILED',
+    APP_007: 'STATUS_UPDATE_FAILED',
+    APP_008: 'SEND_MESSAGE_FAILED',
+    APP_009: 'GESTURE_INIT_FAILED',
+    APP_010: 'CLEANUP_ERROR',
+    APP_011: 'MESH_CONNECTION_TIMEOUT',
+    APP_012: 'WEBSOCKET_DISCONNECTED'
   };
-  
-  btn.addEventListener('click', send);
-  input.addEventListener('keypress', (e) => e.key === 'Enter' && send());
-}
 
-function _setupVaultToggle() {
-  const vault = document.getElementById('vault-panel');
-  if (vault) vault.classList.add('vault-hidden');
-}
+  getErrorDescription(code) {
+    return NAPSystem.ERROR_CODES[code] || 'UNKNOWN_ERROR';
+  }
 
-function _renderMessage(msg) {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-  const div = document.createElement('div');
-  div.className = `message ${msg._own ? 'own' : 'other'}`;
-  div.innerHTML = `<div class="message-content">${msg.content || msg.text}</div><div class="message-meta"><span>${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>${msg._source ? `<span>[${msg._source}]</span>` : ''}</div>`;
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
+  hideSplash() {
+    this.splashVisible = false;
+    if (typeof document === 'undefined') return;
+    const splash = document.getElementById('splash');
+    if (splash) {
+      splash.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+      splash.style.opacity = '0';
+      splash.style.transform = 'scale(0.95)';
+      setTimeout(() => {
+        splash.style.display = 'none';
+        this.log('Splash screen hidden', 'info', 'UI_SPLASH');
+      }, 500);
+    } else {
+      this.log('Splash element not found', 'warn', 'HTML_001');
+    }
+  }
 
-function _toggleVaultUI(isOpen) {
-  const vault = document.getElementById('vault-panel');
-  if (vault) {
-    vault.classList.toggle('vault-hidden', !isOpen);
-    vault.classList.toggle('vault-visible', isOpen);
+  showSplash() {
+    this.splashVisible = true;
+    if (typeof document === 'undefined') return;
+    const splash = document.getElementById('splash');
+    if (splash) {
+      splash.style.display = 'flex';
+      void splash.offsetWidth;
+      splash.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+      splash.style.opacity = '1';
+      splash.style.transform = 'scale(1)';
+    }
+  }
+
+  isSplashVisible() {
+    return this.splashVisible;
+  }
+
+  setPhase(phase) {
+    this.currentPhase = phase;
+    this.log(`Phase transition: ${phase}`, 'info', 'NAP_PHASE');
+  }
+
+  getRecentLogs(limit = 10) {
+    return this.logs.slice(-limit);
+  }
+
+  clearLogs() {
+    this.logs = [];
+    this.log('Logs cleared', 'info');
+  }
+
+  getStatus() {
+    return {
+      version: this.version,
+      initialized: this.initialized,
+      phase: this.currentPhase,
+      splashVisible: this.splashVisible,
+      certifiedModules: Array.from(this.certified),
+      activeLinks: this.getActiveLinks().length,
+      totalLogs: this.logs.length
+    };
   }
 }
 
-function _focusInput(text = '') {
-  const input = document.getElementById('message-input');
-  if (input) { input.focus(); input.value = text; }
-}
-
-if (module.hot) module.hot.accept();
+export const NAP = new NAPSystem();
+export const NEXO_DIAG = NAP;
+export default NAP;
