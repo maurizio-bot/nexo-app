@@ -1,5 +1,6 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.0-NAP-REM
+ * BLE ACTIVADO v4.4
  */
 
 import './styles/critical.css';
@@ -15,14 +16,14 @@ window.NEXO = {
   initialized: false
 };
 
-// Safety timeout: si todo falla, ocultar splash a los 10 segundos
+// Safety timeout: 15 segundos (más tiempo para BLE)
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible()) {
     rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
     NEXO_DIAG.hideSplash();
     document.body.classList.add('nexo-force-ready');
   }
-}, 10000);
+}, 15000);
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
@@ -37,9 +38,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     const nexoConfig = {
       relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
-      bleTimeout: 3000,
+      bleTimeout: 10000, // Aumentado para permisos BLE
       enableGestures: true,
-      enableMesh: false, // Deshabilitado temporalmente
+      enableMesh: true, // ✅ BLE ACTIVADO
       onMessage: (msg) => {
         console.log('📨 Mensaje:', msg);
         _renderMessage(msg);
@@ -67,10 +68,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     rem.info('[init] ===== INICIANDO NEXO APP v2.5-NAP (src/) =====', 'INIT_START');
     
-    // Init con timeout de 8 segundos
+    // Init con timeout de 12 segundos (más tiempo para BLE)
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('INIT_TIMEOUT')), 8000)
+      setTimeout(() => reject(new Error('INIT_TIMEOUT')), 12000)
     );
     
     try {
@@ -106,10 +107,6 @@ function _ensureDOMStructure() {
   if (vault && !vault.id) vault.id = 'nexo-vault';
 }
 
-/**
- * FIX: Input se limpia inmediatamente (optimistic UI)
- * No espera confirmación de envío para borrar el texto
- */
 function _setupMessageInput() {
   const input = document.getElementById('message-input');
   const btn = document.getElementById('send-btn');
@@ -119,35 +116,29 @@ function _setupMessageInput() {
     const text = input.value.trim();
     if (!text) return;
     
-    // FIX CRÍTICO: Limpiar input inmediatamente (optimistic UI)
-    // El usuario ve feedback instantáneo, no espera a la red
     input.value = '';
-    input.focus(); // Mantener foco para seguir escribiendo
+    input.focus();
     
     try {
       const sent = await window.NEXO.app.sendMessage({ text });
       if (sent) {
         rem.success('Enviado', 'MSG_SENT');
       } else {
-        // En modo offline, el mensaje se encola automáticamente
         rem.info('En cola (offline)', 'MSG_QUEUED');
       }
     } catch (e) {
       rem.error('Error al enviar', 'MSG_ERR');
-      // Opcional: restaurar texto si es crítico
-      // input.value = text; 
     }
   };
   
   btn.addEventListener('click', send);
   input.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
-      e.preventDefault(); // Prevenir submit de form
+      e.preventDefault();
       send();
     }
   });
   
-  // Focus inicial en el input
   input.focus();
 }
 
