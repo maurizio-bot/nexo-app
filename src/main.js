@@ -15,7 +15,7 @@ window.NEXO = {
   initialized: false
 };
 
-// Timeout de seguridad: si todo falla, ocultar splash a los 10 segundos
+// Safety timeout: si todo falla, ocultar splash a los 10 segundos
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible()) {
     rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
@@ -37,9 +37,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     const nexoConfig = {
       relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
-      bleTimeout: 3000, // Reducido para evitar bloqueo largo
+      bleTimeout: 3000,
       enableGestures: true,
-      enableMesh: false, // Deshabilitar temporalmente si causa bloqueos
+      enableMesh: false, // Deshabilitado temporalmente
       onMessage: (msg) => {
         console.log('📨 Mensaje:', msg);
         _renderMessage(msg);
@@ -65,10 +65,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     window.NEXO.app = new NexoApp(nexoConfig);
     
-    // Inicialización con timeout por fase
     rem.info('[init] ===== INICIANDO NEXO APP v2.5-NAP (src/) =====', 'INIT_START');
     
-    // Si init() tarda más de 8 segundos, forzar continuar
+    // Init con timeout de 8 segundos
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('INIT_TIMEOUT')), 8000)
@@ -81,7 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     window.NEXO.initialized = true;
-    clearTimeout(SAFETY_TIMEOUT); // Cancelar timeout de seguridad
+    clearTimeout(SAFETY_TIMEOUT);
     
     _setupMessageInput();
     _setupVaultToggle();
@@ -95,7 +94,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('INIT_FATAL', error.message);
     rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
-    NEXO_DIAG.hideSplash(); // Mostrar error al menos
+    NEXO_DIAG.hideSplash();
   }
 });
 
@@ -134,7 +133,6 @@ function _setupVaultToggle() {
   const vault = document.getElementById('vault-panel');
   if (vault) vault.classList.add('vault-hidden');
   
-  // Keyboard shortcut Ctrl+Shift+V para toggle vault
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'V') {
       e.preventDefault();
