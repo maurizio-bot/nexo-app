@@ -1,262 +1,70 @@
-// src/core/nap.js - NEXO Auto-Diagnostic Protocol + REM (Retroalimentación Error Message)
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="NEXO v9.0 - Mensajería P2P ultra-rápida">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
+  
+  <title>NEXO v9.0</title>
+  
+  <!-- Webpack inyectará los estilos aquí -->
+</head>
+<body>
+  <!-- SPLASH SCREEN -->
+  <div id="splash-native">
+    <div id="splash-logo"></div>
+    <div id="splash-text">NEXO v9.0</div>
+  </div>
 
-export const NEXO_DIAG = {
-  container: null,
-  logs: [],
-  maxLogs: 100,
-  _splashHidden: false,
-  
-  // Sistema REM - Notificaciones visuales
-  _toastContainer: null,
-  _activeToasts: [],
-  
-  init: function() {
-    const isDev = location.hostname === 'localhost' || 
-                  location.hostname === '127.0.0.1' || 
-                  location.protocol === 'file:';
-    
-    // Crear contenedor de toast si no existe
-    this._createToastContainer();
-    
-    if (isDev) {
-      this.container = document.getElementById('nexo-diagnostic');
-      if (this.container) this.container.classList.add('visible');
-      this.log('HTML-INIT: Modo desarrollo', 'info');
-    }
-    
-    this.log(`HTML-ENV: Host=${location.hostname}, SecureContext=${window.isSecureContext}`);
-  },
-  
-  // REM: Crear contenedor de notificaciones
-  _createToastContainer: function() {
-    if (this._toastContainer) return;
-    
-    this._toastContainer = document.createElement('div');
-    this._toastContainer.id = 'nexo-rem-toasts';
-    this._toastContainer.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 99999;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      pointer-events: none;
-      max-width: 400px;
-    `;
-    document.body.appendChild(this._toastContainer);
-  },
-  
-  // REM: Mostrar notificación visual (toast)
-  showToast: function(message, type = 'error', duration = 5000) {
-    if (!this._toastContainer) this._createToastContainer();
-    
-    const toast = document.createElement('div');
-    const colors = {
-      error: '#ff4444',
-      warning: '#ffaa00',
-      info: '#00aaff',
-      success: '#00ff88'
-    };
-    
-    toast.style.cssText = `
-      background: ${colors[type] || colors.error};
-      color: white;
-      padding: 15px 20px;
-      border-radius: 8px;
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: 14px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      animation: slideIn 0.3s ease;
-      pointer-events: auto;
-      max-width: 100%;
-      word-wrap: break-word;
-    `;
-    
-    toast.innerHTML = `
-      <strong style="font-weight: 600; display: block; margin-bottom: 4px;">
-        ${type === 'error' ? '⚠️ ERROR' : type === 'warning' ? '⚡ AVISO' : type === 'success' ? '✅ ÉXITO' : 'ℹ️ INFO'}
-      </strong>
-      ${message}
-    `;
-    
-    this._toastContainer.appendChild(toast);
-    this._activeToasts.push(toast);
-    
-    // Auto-remover
-    setTimeout(() => {
-      toast.style.animation = 'slideOut 0.3s ease forwards';
-      setTimeout(() => {
-        toast.remove();
-        this._activeToasts = this._activeToasts.filter(t => t !== toast);
-      }, 300);
-    }, duration);
-  },
-  
-  // REM: Código principal - muestra error al usuario
-  error: function(code, details) {
-    const fullMessage = `[${code}] ${details}`;
-    this.log(fullMessage, 'error');
-    
-    // SIEMPRE mostrar toast al usuario (no solo en consola)
-    this.showToast(`${code}: ${details}`, 'error', 6000);
-    
-    // Si es fatal, mostrar pantalla de error
-    if (code.startsWith('FATAL') || code.startsWith('INIT-FATAL') || code.startsWith('APP_')) {
-      this.showFatal(code, details);
-    }
-  },
-  
-  // REM: Éxito/Info también visible
-  success: function(message) {
-    this.log(message, 'success');
-    this.showToast(message, 'success', 3000);
-  },
-  
-  warning: function(message) {
-    this.log(message, 'warning');
-    this.showToast(message, 'warning', 4000);
-  },
-  
-  info: function(message) {
-    this.log(message, 'info');
-    this.showToast(message, 'info', 3000);
-  },
+  <!-- DIAGNÓSTICO - NAP: Auto-hide en producción -->
+  <div id="nexo-diagnostic"></div>
 
-  log: function(msg, type = 'info') {
-    const time = new Date().toLocaleTimeString('es-ES', {hour12: false});
-    const entry = { time, msg, type };
-    
-    this.logs.push(entry);
-    if (this.logs.length > this.maxLogs) this.logs.shift();
+  <!-- ERROR FATAL -->
+  <div id="fatal-error">
+    <h2>✕ ERROR DE INICIO</h2>
+    <p style="color:#666;margin-bottom:20px;">La aplicación no pudo iniciar</p>
+    <code id="fatal-code">HTML-001: Unknown Error</code>
+    <button onclick="location.reload()" style="margin-top:30px;padding:12px 24px;background:#00ff88;border:none;border-radius:24px;color:#0a0a0a;font-weight:bold;cursor:pointer;font-size:16px;">
+      Reintentar
+    </button>
+  </div>
 
-    if (this.container && this.container.classList.contains('visible')) {
-      const div = document.createElement('div');
-      div.className = `log-${type}`;
-      div.textContent = `${time} ${msg}`;
-      this.container.appendChild(div);
-      this.container.scrollTop = this.container.scrollHeight;
-    }
-    
-    console.log(`[NEXO-${type.toUpperCase()}] ${msg}`);
-  },
+  <!-- UI PRINCIPAL -->
+  <div id="status-indicator" class="offline">● OFFLINE</div>
 
-  showFatal: function(code, details) {
-    // Crear pantalla de error fatal si no existe
-    let fatalScreen = document.getElementById('fatal-error');
-    if (!fatalScreen) {
-      fatalScreen = document.createElement('div');
-      fatalScreen.id = 'fatal-error';
-      fatalScreen.style.cssText = `
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: #000;
-        color: #ff4444;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        z-index: 100000;
-        font-family: monospace;
-        padding: 20px;
-        text-align: center;
-      `;
-      document.body.appendChild(fatalScreen);
-    }
+  <div id="app">
+    <div id="messages-container"></div>
     
-    // Verificar si es error de conexión
-    const isConnectionError = details.includes('WEBSOCKET') || 
-                              details.includes('MESH') || 
-                              details.includes('NETWORK') ||
-                              details.includes('TIMEOUT');
-    
-    const isCryptoError = details.includes('CRYPTO') || 
-                          details.includes('VAULT') ||
-                          details.includes('KEY');
-    
-    let icon = '⚠️';
-    let title = 'ERROR CRÍTICO';
-    let description = details;
-    let action = 'Reinicia la aplicación';
-    
-    if (isConnectionError) {
-      icon = '📡';
-      title = 'ERROR DE CONEXIÓN';
-      action = 'Verifica tu conexión a internet y reinicia';
-    } else if (isCryptoError) {
-      icon = '🔐';
-      title = 'ERROR DE SEGURIDAD';
-      action = 'No se pudo inicializar el sistema de seguridad';
-    }
-    
-    fatalScreen.innerHTML = `
-      <div style="font-size: 72px; margin-bottom: 20px;">${icon}</div>
-      <h1 style="font-size: 24px; margin-bottom: 10px; color: #ff4444;">${title}</h1>
-      <div style="font-size: 14px; opacity: 0.8; margin-bottom: 20px; max-width: 600px; line-height: 1.5;">
-        <strong>Código:</strong> ${code}<br>
-        <strong>Detalle:</strong> ${description}
+    <div id="input-area">
+      <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
+      <button id="send-btn">➤</button>
+    </div>
+  </div>
+
+  <!-- Vault Panel (Panel lateral) -->
+  <div id="vault-panel" class="vault-hidden">
+    <div class="vault-header">
+      <h3>Compartir</h3>
+      <div id="current-context">
+        <span id="ctx-video">Video</span>
+        <span id="ctx-time">0:00</span>
       </div>
-      <div style="background: rgba(255,68,68,0.1); border: 1px solid #ff4444; padding: 15px; border-radius: 8px; margin-bottom: 20px; max-width: 500px;">
-        <strong style="color: #ff6666;">${action}</strong>
-      </div>
-      <button onclick="location.reload()" style="
-        background: #ff4444; 
-        color: white; 
-        border: none; 
-        padding: 12px 30px; 
-        font-size: 16px; 
-        border-radius: 6px; 
-        cursor: pointer;
-        font-family: inherit;
-      ">Reiniciar NEXO</button>
-      <div style="margin-top: 30px; font-size: 12px; opacity: 0.5;">
-        NEXO v9.0 Auto-Diagnostic Protocol
-      </div>
-    `;
-    
-    // Log del error fatal
-    console.error(`[NEXO-FATAL] ${code}: ${details}`);
-  },
+    </div>
+    <div id="contacts-list"></div>
+    <div id="chispa-creator">
+      <button id="btn-emoji" data-type="emoji">🔥</button>
+      <button id="btn-laugh" data-type="laugh">😂</button>
+      <button id="btn-sync" data-type="sync">👥 Ver juntos</button>
+    </div>
+  </div>
 
-  // Helper para obtener logs recientes (útil para debugging)
-  getRecentLogs: function(count = 10) {
-    return this.logs.slice(-count);
-  },
-
-  // Limpiar logs antiguos
-  clear: function() {
-    this.logs = [];
-    if (this.container) {
-      this.container.innerHTML = '';
-    }
-  },
-
-  // Verificar estado de salud del sistema
-  healthCheck: function() {
-    const checks = {
-      websocket: window.NEXO_APP && window.NEXO_APP.wsClient && window.NEXO_APP.wsClient.connected,
-      vault: window.NEXO_APP && window.NEXO_APP.vault && window.NEXO_APP.vault.initialized,
-      mesh: window.NEXO_APP && window.NEXO_APP.mesh && window.NEXO_APP.mesh.initialized,
-      gestures: window.NEXO_APP && window.NEXO_APP.gestureEngine,
-      secureContext: window.isSecureContext,
-      online: navigator.onLine
-    };
-    
-    const failed = Object.entries(checks).filter(([k, v]) => !v).map(([k]) => k);
-    
-    if (failed.length > 0) {
-      this.warning(`HealthCheck fallido: ${failed.join(', ')}`);
-    } else {
-      this.success('HealthCheck: Todos los sistemas operativos');
-    }
-    
-    return { checks, failed, healthy: failed.length === 0 };
-  }
-};
-
-// Exponer globalmente para debugging
-if (typeof window !== 'undefined') {
-  window.NEXO_DIAG = NEXO_DIAG;
-}
-
-export default NEXO_DIAG;
+  <!-- Webpack inyectará los scripts aquí -->
+</body>
+</html>
