@@ -1,6 +1,7 @@
 /**
- * NEXO v9.0 - Crypto Vault (v9.3-CRITICAL-FIX)
- * Fix: Timeout global en init + fallback inmediato a memoria
+ * NEXO v9.0 - Crypto Vault (v9.4-REM-INTEGRATED)
+ * Fix: Timeout global + fallback memoria + REM feedback system
+ * Códigos NAP: VAULT_INIT_TIMEOUT, VAULT_IDENTITY_FAIL, VAULT_MEMORY_FALLBACK
  */
 
 const PBKDF2_ITERATIONS = 600000;
@@ -8,10 +9,18 @@ const SALT_LENGTH_BYTES = 32;
 const IV_LENGTH_BYTES = 12;
 const AES_KEY_SIZE_BITS = 256;
 const AES_TAG_LENGTH_BITS = 128;
-
-// FIX CRÍTICO: Timeouts más agresivos
-const INIT_TIMEOUT_MS = 5000; // Máximo 5 segundos para todo init
+const INIT_TIMEOUT_MS = 5000;
 const DB_TIMEOUT_MS = 3000;
+
+// NAP Error Codes para REM
+const NAP_CODES = {
+  VAULT_INIT_TIMEOUT: 'VAULT_INIT_TIMEOUT',
+  VAULT_IDENTITY_FAIL: 'VAULT_IDENTITY_FAIL',
+  VAULT_MEMORY_FALLBACK: 'VAULT_MEMORY_FALLBACK',
+  VAULT_DB_ERROR: 'VAULT_DB_ERROR',
+  VAULT_LOCKED: 'VAULT_LOCKED',
+  VAULT_DESTROYED: 'VAULT_DESTROYED'
+};
 
 export class CryptoVault {
   constructor() {
@@ -27,60 +36,89 @@ export class CryptoVault {
     this._destroyed = false;
     this._useMemoryFallback = false;
     this._memoryStorage = new Map();
+    this._initStartTime = 0;
+    
+    // Hook a REM si existe
+    this._rem = typeof window !== 'undefined' ? (window.NEXO_REM || window.NEXO_DIAG) : null;
     
     CryptoVault._instance = this;
   }
 
   _validateEnvironment() {
     if (typeof crypto === 'undefined' || !crypto.subtle) {
-      throw new Error('WebCrypto API not available');
+      const err = new Error('WebCrypto API not available');
+      this._notifyREM('error', 'WebCrypto no disponible en este entorno', NAP_CODES.VAULT_DB_ERROR);
+      throw err;
     }
   }
 
-  // FIX CRÍTICO: Init con timeout global absoluto
+  /**
+   * Notifica al sistema REM si está disponible
+   */
+  _notifyREM(type, message, code = '') {
+    if (this._rem) {
+      const method = type === 'error' ? 'error' : 
+                    type === 'warn' ? 'warn' : 
+                    type === 'success' ? 'success' : 'info';
+      this._rem[method](`[Vault] ${message}`, code);
+    }
+    // Siempre log a consola también
+    console.log(`[CryptoVault] ${type.toUpperCase()}: ${message}${code ? ` (${code})` : ''}`);
+  }
+
+  /**
+   * Inicialización con timeout global y fallback garantizado
+   */
   async init() {
-    if (this._destroyed) throw new Error('Vault destroyed');
-    if (this.db || this._useMemoryFallback) return this;
+    if (this._destroyed) {
+      this._notifyREM('error', 'Intento de init en vault destruido', NAP_CODES.VAULT_DESTROYED);
+      throw new Error('Vault destroyed');
+    }
     
-    // Promise con timeout global
+    if (this.db || this._useMemoryFallback) {
+      return this;
+    }
+    
+    this._initStartTime = performance.now();
+    this._notifyREM('info', 'Iniciando vault...', 'VAULT_INIT_START');
+    
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        console.warn('[CryptoVault] Global init timeout - forcing memory mode');
-        this._useMemoryFallback = true;
-        this._setupMinimalIdentity();
+        const elapsed = Math.round(performance.now() - this._initStartTime);
+        this._notifyREM('warn', `Timeout global (${elapsed}ms) - forzando modo memoria`, NAP_CODES.VAULT_INIT_TIMEOUT);
+        this._activateMemoryFallback();
         resolve(this);
       }, INIT_TIMEOUT_MS);
       
       this._doInit()
         .then(() => {
           clearTimeout(timeoutId);
+          const elapsed = Math.round(performance.now() - this._initStartTime);
+          const mode = this._useMemoryFallback ? 'memoria' : 'persistente';
+          this._notifyREM('success', `Vault listo en ${elapsed}ms (modo ${mode})`, 'VAULT_INIT_SUCCESS');
           resolve(this);
         })
         .catch((err) => {
           clearTimeout(timeoutId);
-          console.warn(`[CryptoVault] Init failed: ${err.message} - using memory mode`);
-          this._useMemoryFallback = true;
-          this._cleanupDB();
-          this._setupMinimalIdentity();
-          resolve(this); // Nunca rechazamos, siempre resolvemos con fallback
+          this._notifyREM('warn', `Init falló: ${err.message} - usando memoria`, NAP_CODES.VAULT_MEMORY_FALLBACK);
+          this._activateMemoryFallback();
+          resolve(this);
         });
     });
   }
 
   async _doInit() {
-    // Intento rápido de IndexedDB
     try {
       await this._initDBQuick();
       this.salt = await this._getSaltQuick();
     } catch (e) {
-      throw new Error('IndexedDB failed');
+      throw new Error(`IndexedDB failed: ${e.message}`);
     }
     
-    // Intentar cargar/crear identidad pero con timeout
     try {
       await this._loadIdentityQuick();
     } catch (e) {
-      console.warn('[CryptoVault] Identity load failed, creating minimal');
+      this._notifyREM('warn', 'No se pudo cargar identidad previa, creando nueva', NAP_CODES.VAULT_IDENTITY_FAIL);
       this._setupMinimalIdentity();
     }
     
@@ -89,7 +127,9 @@ export class CryptoVault {
 
   _initDBQuick() {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('DB timeout')), DB_TIMEOUT_MS);
+      const timeout = setTimeout(() => {
+        reject(new Error('DB timeout'));
+      }, DB_TIMEOUT_MS);
       
       try {
         const request = indexedDB.open('nexo_crypto_v9', 1);
@@ -104,6 +144,14 @@ export class CryptoVault {
         request.onsuccess = (e) => {
           clearTimeout(timeout);
           this.db = e.target.result;
+          
+          // FIX v9.4: Manejar cierre inesperado de DB
+          this.db.onclose = () => {
+            this._notifyREM('warn', 'Base de datos cerrada inesperadamente', 'VAULT_DB_CLOSED');
+            this._cleanupDB();
+            this._activateMemoryFallback();
+          };
+          
           resolve();
         };
         
@@ -111,6 +159,12 @@ export class CryptoVault {
           clearTimeout(timeout);
           reject(request.error);
         };
+        
+        request.onblocked = () => {
+          clearTimeout(timeout);
+          reject(new Error('DB blocked by another version'));
+        };
+        
       } catch (e) {
         clearTimeout(timeout);
         reject(e);
@@ -123,6 +177,13 @@ export class CryptoVault {
       const timeout = setTimeout(() => reject(new Error('Salt timeout')), DB_TIMEOUT_MS);
       
       try {
+        // FIX v9.4: Verificar que DB sigue abierta antes de transacción
+        if (!this.db) {
+          clearTimeout(timeout);
+          reject(new Error('DB not available'));
+          return;
+        }
+        
         const tx = this.db.transaction(['keys'], 'readonly');
         const store = tx.objectStore('keys');
         const request = store.get('master_salt');
@@ -132,8 +193,15 @@ export class CryptoVault {
           if (request.result?.value?.length === SALT_LENGTH_BYTES) {
             resolve(new Uint8Array(request.result.value));
           } else {
-            // Crear nuevo salt
+            // Crear nuevo salt y guardarlo
             const newSalt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
+            
+            // Verificar DB nuevamente antes de escritura
+            if (!this.db) {
+              resolve(newSalt); // Devolver salt sin guardar (fallback temporal)
+              return;
+            }
+            
             const tx2 = this.db.transaction(['keys'], 'readwrite');
             const store2 = tx2.objectStore('keys');
             store2.put({ id: 'master_salt', value: Array.from(newSalt) });
@@ -145,6 +213,12 @@ export class CryptoVault {
           clearTimeout(timeout);
           reject(request.error);
         };
+        
+        tx.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('Transaction failed'));
+        };
+        
       } catch (e) {
         clearTimeout(timeout);
         reject(e);
@@ -152,8 +226,7 @@ export class CryptoVault {
     });
   }
 
-  async _loadIdentityQuick() {
-    // Timeout para carga de identidad
+  _loadIdentityQuick() {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Identity timeout')), 2000);
       
@@ -162,7 +235,7 @@ export class CryptoVault {
           clearTimeout(timeout);
           if (stored?.id) {
             this.identity = stored;
-            console.log('[CryptoVault] Identity loaded:', this.identity.id.substring(0, 8));
+            this._notifyREM('info', `Identidad cargada: ${this.identity.id.substring(0, 8)}...`, 'VAULT_ID_LOADED');
             resolve();
           } else {
             reject(new Error('No identity found'));
@@ -175,8 +248,19 @@ export class CryptoVault {
     });
   }
 
+  _activateMemoryFallback() {
+    this._useMemoryFallback = true;
+    this._cleanupDB();
+    this._setupMinimalIdentity();
+    // Notificar a nexo_app.js que estamos en modo memoria
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nexo:vault:fallback', { 
+        detail: { mode: 'memory', identity: this.identity?.id } 
+      }));
+    }
+  }
+
   _setupMinimalIdentity() {
-    // Crear identidad mínima inmediatamente sin operaciones criptográficas pesadas
     const id = crypto.randomUUID ? crypto.randomUUID() : 
                'nexo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     
@@ -192,20 +276,32 @@ export class CryptoVault {
       this._memoryStorage.set('nexo_identity', JSON.stringify(this.identity));
     }
     
-    console.log('[CryptoVault] Minimal identity ready:', id.substring(0, 8));
+    this._notifyREM('info', `ID temporal asignado: ${id.substring(0, 8)}...`, 'VAULT_TEMP_ID');
   }
 
   getIdentity() {
     return this.identity?.id || null;
   }
 
-  // Resto de métodos (encrypt, decrypt, etc.) permanecen iguales...
-  // [Mantén el resto del código original aquí: initialize, encrypt, decrypt, etc.]
+  isMemoryFallback() {
+    return this._useMemoryFallback;
+  }
 
   async initialize(password) {
-    if (this._destroyed) throw new Error('Vault destroyed');
-    if (!this.salt && !this._useMemoryFallback) throw new Error('Call init() first');
-    if (!password || password.length < 12) throw new Error('Password too short');
+    if (this._destroyed) {
+      this._notifyREM('error', 'Vault destruido', NAP_CODES.VAULT_DESTROYED);
+      throw new Error('Vault destroyed');
+    }
+    
+    if (!this.salt && !this._useMemoryFallback) {
+      this._notifyREM('error', 'Llamar init() primero', NAP_CODES.VAULT_LOCKED);
+      throw new Error('Call init() first');
+    }
+    
+    if (!password || password.length < 12) {
+      this._notifyREM('error', 'Password muy corto (<12 chars)', 'VAULT_WEAK_PASSWORD');
+      throw new Error('Password too short');
+    }
     
     if (!this.salt) {
       this.salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
@@ -233,6 +329,7 @@ export class CryptoVault {
       );
       
       this._isLocked = false;
+      this._notifyREM('success', 'Vault desbloqueado', 'VAULT_UNLOCKED');
       return true;
     } finally {
       passwordBuffer.fill(0);
@@ -277,12 +374,16 @@ export class CryptoVault {
   }
 
   _assertUnlocked() {
-    if (!this.masterKey) throw new Error('Vault locked');
+    if (!this.masterKey) {
+      this._notifyREM('error', 'Operación requiere desbloqueo', NAP_CODES.VAULT_LOCKED);
+      throw new Error('Vault locked');
+    }
   }
 
   lock() {
     this.masterKey = null;
     this._isLocked = true;
+    this._notifyREM('info', 'Vault bloqueado', 'VAULT_LOCKED');
   }
 
   isLocked() {
@@ -290,12 +391,18 @@ export class CryptoVault {
   }
 
   async destroy() {
+    this._notifyREM('warn', 'Destruyendo vault...', NAP_CODES.VAULT_DESTROYED);
     this.lock();
     this._cleanupDB();
     this.identity = null;
     this._memoryStorage.clear();
     this._destroyed = true;
     CryptoVault._instance = null;
+    
+    // Notificar destrucción
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nexo:vault:destroyed'));
+    }
   }
 
   _cleanupDB() {
@@ -313,6 +420,10 @@ export class CryptoVault {
     
     return new Promise((resolve, reject) => {
       try {
+        if (!this.db) {
+          resolve(null);
+          return;
+        }
         const tx = this.db.transaction(['keys'], 'readonly');
         const store = tx.objectStore('keys');
         const req = store.get(key);
@@ -325,5 +436,4 @@ export class CryptoVault {
   }
 }
 
-// Exportar también como default
 export default CryptoVault;
