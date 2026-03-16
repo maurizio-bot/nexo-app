@@ -1,19 +1,21 @@
 /**
- * NEXO App v2.6-NAP-CERTIFIED (BLE Native Capacitor)
- * Integra BleMesh v5.0 Native (@capacitor-community/bluetooth-le)
+ * NEXO App v2.6-NAP-CERTIFIED (Nearby Mesh P2P)
+ * Integra NearbyMesh v1.0 (Google Nearby Connections)
+ * Fallback: BleMesh nativo comentado
  */
 
 // IMPORTS CORE
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
-import { BleMesh } from '../mesh/ble_mesh.js';
+// import { BleMesh } from '../mesh/ble_mesh.js'; // Fallback BLE
+import { NearbyMesh } from '../mesh/nearby_mesh.js'; // NUEVO: Google Nearby
 import { WebSocketClient } from '../net/web_socket_client.js';
 import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
 import { GestureEngine } from '../ui/gesture_engine.js';
 import { VirtualEngine } from '../perf/virtual_engine.js';
 import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
-import { initBLEInterface } from '../ui/ble_interface.js'; // <-- AGREGADO: UI BLE
+import { initBLEInterface } from '../ui/ble_interface.js';
 
 const NAP_APP_ERRORS = {
   APP_001: 'STREAM_APPEND_FAILED',
@@ -67,7 +69,7 @@ export class NexoApp {
   constructor(config = {}) {
     this.config = {
       relayUrls: config.relayUrls || [],
-      bleTimeout: config.bleTimeout || 15000, // 15s para permisos nativos
+      bleTimeout: config.bleTimeout || 15000,
       enableGestures: config.enableGestures !== false,
       enableMesh: config.enableMesh !== false,
       onMessage: config.onMessage || (() => {}),
@@ -85,14 +87,14 @@ export class NexoApp {
     this.stream = null;
     this.virtualEngine = null;
     this.vaultSlider = null;
-    this.bleInterface = null; // <-- AGREGADO: Referencia a UI BLE
+    this.bleInterface = null;
     this.isVaultOpen = false;
     this.initialized = false;
     this.destroyed = false;
     this.initError = null;
     this.currentPhase = 'NONE';
     
-    DEBUG.log('🚀 [NEXO] App instance created v2.6-NAP (BLE Native)');
+    DEBUG.log('🚀 [NEXO] App instance created v2.6-NAP (Nearby Mesh)');
   }
   
   async init() {
@@ -144,85 +146,88 @@ export class NexoApp {
       this.wsClient = null;
     }
     
-    // FASE 3: MESH BLE NATIVE (Timeout 15s)
+    // FASE 3: NEARBY MESH (Timeout 15s)
     try {
       this.currentPhase = 'MESH';
       DEBUG.setPhase('MESH');
-      DEBUG.log('📡 [3/6] BleMesh Native...');
+      DEBUG.log('📡 [3/6] Nearby Mesh (Google)...');
       
       if (this.config.enableMesh) {
-        this.mesh = new BleMesh({
-          maxPeers: 8,
-          autoConnectRssi: -70,
-          scanTimeout: 15000,
-          onDeviceFound: (device) => {
-            DEBUG.log(`📡 BLE Device: ${device.name} (${device.rssi}dBm)`, 'info');
-            this._updateStatus();
-          },
-          onMessage: (msg, deviceId) => {
-            this._handleMessage(msg, 'ble');
-          },
-          onStatusChange: (status) => {
-            if (status === 'connected') {
-              DEBUG.setMode('P2P');
-              this._updateStatus();
-            }
-          },
-          onError: (code, msg) => {
-            DEBUG.warn(`BLE: ${msg}`, code);
+        this.mesh = new NearbyMesh({
+          serviceId: 'com.nexo.app.mesh-v1'
+        });
+
+        // Eventos NearbyMesh
+        this.mesh.on('device', (device) => {
+          DEBUG.log(`📡 NEXO Encontrado: ${device.name}`, 'info');
+          this._updateStatus();
+          // Notificar a la UI si existe
+          if (this.bleInterface) {
+            this.bleInterface.handleDeviceFound(device);
           }
+        });
+        
+        this.mesh.on('message', (msg, deviceId) => {
+          this._handleMessage(msg, 'ble');
+        });
+        
+        this.mesh.on('connect', (device) => {
+          DEBUG.setMode('P2P');
+          this._updateStatus();
+          if (this.bleInterface) {
+            this.bleInterface.onDeviceConnected(device);
+          }
+        });
+        
+        this.mesh.on('disconnect', (deviceId) => {
+          this._updateStatus();
+          if (this.bleInterface) {
+            this.bleInterface.onDeviceDisconnected({ id: deviceId });
+          }
+        });
+        
+        this.mesh.on('error', (err) => {
+          DEBUG.warn(`Nearby: ${err.message}`);
         });
 
         await withTimeout(
           this.mesh.init(), 
           this.config.bleTimeout, 
-          'BLE init timeout (check permissions)'
+          'Nearby init timeout (check Google Play Services)'
         );
         
-        if (this.mesh.state?.isNative) {
-          DEBUG.log('✅ BLE Native activo, iniciando scan...', 'success');
-          this.mesh.startScan(30000);
-        } else {
-          DEBUG.warn('BLE no es nativo, modo offline');
-        }
+        DEBUG.log('✅ Nearby Mesh activo, iniciando scan...', 'success');
+        await this.mesh.startScan();
         
       } else {
-        DEBUG.log('ℹ️ BLE Mesh disabled');
+        DEBUG.log('ℹ️ Mesh disabled');
       }
     } catch (err) {
-      DEBUG.error('APP_016', `BLE Mesh failed: ${err.message}`);
+      DEBUG.error('APP_016', `Nearby Mesh failed: ${err.message}`);
       this.mesh = null;
     }
     
-    // FASE 3.5: BLE INTERFACE UI <-- AGREGADO
+    // FASE 3.5: BLE INTERFACE UI (adaptada para Nearby)
     try {
       if (this.mesh && this.config.enableMesh) {
-        DEBUG.log('📱 [3.5/6] BLE Interface UI...');
+        DEBUG.log('📱 [3.5/6] Mesh Interface UI...');
         this.bleInterface = initBLEInterface(this.mesh);
         
-        // Callbacks para actualizar estado cuando cambian conexiones
+        // Callbacks para UI
         this.bleInterface.onDeviceConnected = (device) => {
-          DEBUG.log(`🔗 BLE Connected: ${device.name || device.id}`, 'success');
+          DEBUG.log(`🔗 Conectado: ${device.name || device.id}`, 'success');
           this._updateStatus();
-          // Notificar al stream si es necesario
-          if (this.stream) {
-            this._handleMessage({
-              type: 'system',
-              content: `Dispositivo BLE conectado: ${device.name || 'Unknown'}`,
-              _timestamp: Date.now()
-            }, 'system');
-          }
         };
         
         this.bleInterface.onDeviceDisconnected = (device) => {
-          DEBUG.log(`❌ BLE Disconnected: ${device.name || device.id}`, 'warn');
+          DEBUG.log(`❌ Desconectado: ${device.name || device.id}`, 'warn');
           this._updateStatus();
         };
         
-        DEBUG.log('✅ BLE Interface UI activa', 'success');
+        DEBUG.log('✅ Mesh Interface UI activa', 'success');
       }
     } catch (err) {
-      DEBUG.warn(`⚠️ BLE Interface UI failed: ${err.message}`);
+      DEBUG.warn(`⚠️ Interface UI failed: ${err.message}`);
       this.bleInterface = null;
     }
     
@@ -287,7 +292,6 @@ export class NexoApp {
           this.isVaultOpen = true;
           DEBUG.log('[VAULT] Abierto', 'success');
           if (this.gestures?.disable) this.gestures.disable();
-          // Pausar BLE gestures si existen
           if (this.bleInterface?.hide) this.bleInterface.hide();
           this.config.onVaultStateChange(true);
         });
@@ -350,9 +354,8 @@ export class NexoApp {
     const parts = [];
     if (this.vault) parts.push('Vault');
     if (this.wsClient) parts.push('WS');
-    if (this.mesh?.state?.isNative) parts.push('BLE-Native');
-    else if (this.mesh) parts.push('BLE');
-    if (this.bleInterface) parts.push('BLE-UI'); // <-- AGREGADO
+    if (this.mesh) parts.push('Nearby');
+    if (this.bleInterface) parts.push('UI');
     if (this.bridge) parts.push('Bridge');
     if (this.stream) parts.push('Stream');
     return parts.join('+') || 'Basic';
@@ -374,13 +377,12 @@ export class NexoApp {
       let mode = 'OFFLINE';
       if (this.bridge?.getMode) mode = this.bridge.getMode();
       else if (this.wsClient?.isConnected?.()) mode = 'RELAY';
-      else if (this.mesh?.state?.peers?.size > 0) mode = 'P2P';
+      else if (this.mesh?.getPeerCount?.() > 0) mode = 'P2P';
       
       DEBUG.setMode(mode);
       
-      // Actualizar contador de peers en REM si existe BLEInterface <-- AGREGADO
       if (this.bleInterface && this.mesh) {
-        const peerCount = this.mesh.state?.peers?.size || 0;
+        const peerCount = this.mesh.getPeerCount?.() || 0;
         if (window.NEXO_REM) {
           window.NEXO_REM.updateStatus(this.currentPhase, mode, 
             this.vault?.getIdentity?.() || null
@@ -400,7 +402,7 @@ export class NexoApp {
       const enriched = { ...msg, _own: true, _timestamp: Date.now() };
       this._handleMessage(enriched, 'self');
       
-      if (this.mesh?.state?.peers?.size > 0) {
+      if (this.mesh?.getPeerCount?.() > 0) {
         try {
           await this.mesh.broadcast(enriched);
           return true;
@@ -421,7 +423,6 @@ export class NexoApp {
     if (this.destroyed) return;
     this.destroyed = true;
     
-    // AGREGADO: Limpiar BLE Interface primero
     if (this.bleInterface) {
       try {
         this.bleInterface.destroy();
@@ -450,9 +451,9 @@ export class NexoApp {
       hasVault: !!this.vault,
       hasStream: !!this.stream,
       isVaultOpen: this.isVaultOpen,
-      bleNative: this.mesh?.state?.isNative || false,
-      blePeers: this.mesh?.state?.peers?.size || 0,
-      bleUI: !!this.bleInterface // <-- AGREGADO
+      meshReady: !!this.mesh,
+      meshPeers: this.mesh?.getPeerCount?.() || 0,
+      meshUI: !!this.bleInterface
     };
   }
 }
