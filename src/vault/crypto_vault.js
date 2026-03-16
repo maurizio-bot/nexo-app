@@ -1,7 +1,6 @@
 /**
- * NEXO v9.0 - Crypto Vault (v9.4-REM-INTEGRATED)
- * Fix: Timeout global + fallback memoria + REM feedback system
- * Códigos NAP: VAULT_INIT_TIMEOUT, VAULT_IDENTITY_FAIL, VAULT_MEMORY_FALLBACK
+ * NEXO v9.0 - Crypto Vault (v9.5-DEFENSIVE)
+ * Fix: Obtiene REM dinámicamente + verificación estricta de métodos
  */
 
 const PBKDF2_ITERATIONS = 600000;
@@ -12,7 +11,6 @@ const AES_TAG_LENGTH_BITS = 128;
 const INIT_TIMEOUT_MS = 5000;
 const DB_TIMEOUT_MS = 3000;
 
-// NAP Error Codes para REM
 const NAP_CODES = {
   VAULT_INIT_TIMEOUT: 'VAULT_INIT_TIMEOUT',
   VAULT_IDENTITY_FAIL: 'VAULT_IDENTITY_FAIL',
@@ -38,37 +36,78 @@ export class CryptoVault {
     this._memoryStorage = new Map();
     this._initStartTime = 0;
     
-    // Hook a REM si existe
-    this._rem = typeof window !== 'undefined' ? (window.NEXO_REM || window.NEXO_DIAG) : null;
+    // NO cachear REM aquí - obtener dinámicamente en _notifyREM
     
     CryptoVault._instance = this;
   }
 
-  _validateEnvironment() {
-    if (typeof crypto === 'undefined' || !crypto.subtle) {
-      const err = new Error('WebCrypto API not available');
-      this._notifyREM('error', 'WebCrypto no disponible en este entorno', NAP_CODES.VAULT_DB_ERROR);
-      throw err;
+  /**
+   * Obtiene REM de forma defensiva de múltiples fuentes posibles
+   */
+  _getREM() {
+    if (typeof window === 'undefined') return null;
+    
+    // Orden de prioridad: NEXO_REM > NEXO.rem > NEXO_DIAG > null
+    const candidates = [
+      window.NEXO_REM,
+      window.NEXO?.rem,
+      window.NEXO_DIAG
+    ];
+    
+    for (const rem of candidates) {
+      if (rem && typeof rem === 'object' && (
+        typeof rem.info === 'function' || 
+        typeof rem.log === 'function'
+      )) {
+        return rem;
+      }
     }
+    
+    return null;
   }
 
   /**
-   * Notifica al sistema REM si está disponible
+   * Notificación defensiva que nunca rompe el vault
    */
   _notifyREM(type, message, code = '') {
-    if (this._rem) {
+    try {
+      const rem = this._getREM();
+      
+      if (!rem) {
+        console.log(`[Vault][${type}] ${message}`);
+        return;
+      }
+      
       const method = type === 'error' ? 'error' : 
                     type === 'warn' ? 'warn' : 
                     type === 'success' ? 'success' : 'info';
-      this._rem[method](`[Vault] ${message}`, code);
+      
+      // Verificación estricta: el método debe ser función
+      if (typeof rem[method] === 'function') {
+        rem[method](`[Vault] ${message}`, code);
+      } 
+      // Fallback a NEXO_DIAG (solo tiene log/error)
+      else if (method === 'error' && typeof rem.error === 'function') {
+        rem.error(`[Vault] ${message}`, code);
+      }
+      else if (typeof rem.log === 'function') {
+        rem.log(`[${type.toUpperCase()}] [Vault] ${message}`, type);
+      }
+      else {
+        console.log(`[Vault][${type}] ${message}`);
+      }
+    } catch (e) {
+      // Último recurso: nunca romper la operación del vault
+      console.log(`[Vault][${type}] ${message}`);
     }
-    // Siempre log a consola también
-    console.log(`[CryptoVault] ${type.toUpperCase()}: ${message}${code ? ` (${code})` : ''}`);
   }
 
-  /**
-   * Inicialización con timeout global y fallback garantizado
-   */
+  _validateEnvironment() {
+    if (typeof crypto === 'undefined' || !crypto.subtle) {
+      throw new Error('WebCrypto API not available');
+    }
+  }
+
   async init() {
     if (this._destroyed) {
       this._notifyREM('error', 'Intento de init en vault destruido', NAP_CODES.VAULT_DESTROYED);
@@ -81,8 +120,8 @@ export class CryptoVault {
     
     this._initStartTime = performance.now();
     this._notifyREM('info', 'Iniciando vault...', 'VAULT_INIT_START');
-    
-    return new Promise((resolve, reject) => {
+
+    return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
         const elapsed = Math.round(performance.now() - this._initStartTime);
         this._notifyREM('warn', `Timeout global (${elapsed}ms) - forzando modo memoria`, NAP_CODES.VAULT_INIT_TIMEOUT);
@@ -118,7 +157,7 @@ export class CryptoVault {
     try {
       await this._loadIdentityQuick();
     } catch (e) {
-      this._notifyREM('warn', 'No se pudo cargar identidad previa, creando nueva', NAP_CODES.VAULT_IDENTITY_FAIL);
+      this._notifyREM('warn', 'No se pudo cargar identidad previa', NAP_CODES.VAULT_IDENTITY_FAIL);
       this._setupMinimalIdentity();
     }
     
@@ -127,9 +166,7 @@ export class CryptoVault {
 
   _initDBQuick() {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('DB timeout'));
-      }, DB_TIMEOUT_MS);
+      const timeout = setTimeout(() => reject(new Error('DB timeout')), DB_TIMEOUT_MS);
       
       try {
         const request = indexedDB.open('nexo_crypto_v9', 1);
@@ -145,7 +182,6 @@ export class CryptoVault {
           clearTimeout(timeout);
           this.db = e.target.result;
           
-          // FIX v9.4: Manejar cierre inesperado de DB
           this.db.onclose = () => {
             this._notifyREM('warn', 'Base de datos cerrada inesperadamente', 'VAULT_DB_CLOSED');
             this._cleanupDB();
@@ -162,7 +198,7 @@ export class CryptoVault {
         
         request.onblocked = () => {
           clearTimeout(timeout);
-          reject(new Error('DB blocked by another version'));
+          reject(new Error('DB blocked'));
         };
         
       } catch (e) {
@@ -177,7 +213,6 @@ export class CryptoVault {
       const timeout = setTimeout(() => reject(new Error('Salt timeout')), DB_TIMEOUT_MS);
       
       try {
-        // FIX v9.4: Verificar que DB sigue abierta antes de transacción
         if (!this.db) {
           clearTimeout(timeout);
           reject(new Error('DB not available'));
@@ -193,12 +228,10 @@ export class CryptoVault {
           if (request.result?.value?.length === SALT_LENGTH_BYTES) {
             resolve(new Uint8Array(request.result.value));
           } else {
-            // Crear nuevo salt y guardarlo
             const newSalt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
             
-            // Verificar DB nuevamente antes de escritura
             if (!this.db) {
-              resolve(newSalt); // Devolver salt sin guardar (fallback temporal)
+              resolve(newSalt);
               return;
             }
             
@@ -212,11 +245,6 @@ export class CryptoVault {
         request.onerror = () => {
           clearTimeout(timeout);
           reject(request.error);
-        };
-        
-        tx.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error('Transaction failed'));
         };
         
       } catch (e) {
@@ -252,7 +280,7 @@ export class CryptoVault {
     this._useMemoryFallback = true;
     this._cleanupDB();
     this._setupMinimalIdentity();
-    // Notificar a nexo_app.js que estamos en modo memoria
+    
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('nexo:vault:fallback', { 
         detail: { mode: 'memory', identity: this.identity?.id } 
@@ -276,7 +304,7 @@ export class CryptoVault {
       this._memoryStorage.set('nexo_identity', JSON.stringify(this.identity));
     }
     
-    this._notifyREM('info', `ID temporal asignado: ${id.substring(0, 8)}...`, 'VAULT_TEMP_ID');
+    this._notifyREM('info', `ID temporal: ${id.substring(0, 8)}...`, 'VAULT_TEMP_ID');
   }
 
   getIdentity() {
@@ -299,7 +327,7 @@ export class CryptoVault {
     }
     
     if (!password || password.length < 12) {
-      this._notifyREM('error', 'Password muy corto (<12 chars)', 'VAULT_WEAK_PASSWORD');
+      this._notifyREM('error', 'Password muy corto', 'VAULT_WEAK_PASSWORD');
       throw new Error('Password too short');
     }
     
@@ -399,7 +427,6 @@ export class CryptoVault {
     this._destroyed = true;
     CryptoVault._instance = null;
     
-    // Notificar destrucción
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('nexo:vault:destroyed'));
     }
