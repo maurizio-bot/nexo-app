@@ -13,6 +13,7 @@ import { GestureEngine } from '../ui/gesture_engine.js';
 import { VirtualEngine } from '../perf/virtual_engine.js';
 import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
+import { initBLEInterface } from '../ui/ble_interface.js'; // <-- AGREGADO: UI BLE
 
 const NAP_APP_ERRORS = {
   APP_001: 'STREAM_APPEND_FAILED',
@@ -84,6 +85,7 @@ export class NexoApp {
     this.stream = null;
     this.virtualEngine = null;
     this.vaultSlider = null;
+    this.bleInterface = null; // <-- AGREGADO: Referencia a UI BLE
     this.isVaultOpen = false;
     this.initialized = false;
     this.destroyed = false;
@@ -192,6 +194,38 @@ export class NexoApp {
       this.mesh = null;
     }
     
+    // FASE 3.5: BLE INTERFACE UI <-- AGREGADO
+    try {
+      if (this.mesh && this.config.enableMesh) {
+        DEBUG.log('📱 [3.5/6] BLE Interface UI...');
+        this.bleInterface = initBLEInterface(this.mesh);
+        
+        // Callbacks para actualizar estado cuando cambian conexiones
+        this.bleInterface.onDeviceConnected = (device) => {
+          DEBUG.log(`🔗 BLE Connected: ${device.name || device.id}`, 'success');
+          this._updateStatus();
+          // Notificar al stream si es necesario
+          if (this.stream) {
+            this._handleMessage({
+              type: 'system',
+              content: `Dispositivo BLE conectado: ${device.name || 'Unknown'}`,
+              _timestamp: Date.now()
+            }, 'system');
+          }
+        };
+        
+        this.bleInterface.onDeviceDisconnected = (device) => {
+          DEBUG.log(`❌ BLE Disconnected: ${device.name || device.id}`, 'warn');
+          this._updateStatus();
+        };
+        
+        DEBUG.log('✅ BLE Interface UI activa', 'success');
+      }
+    } catch (err) {
+      DEBUG.warn(`⚠️ BLE Interface UI failed: ${err.message}`);
+      this.bleInterface = null;
+    }
+    
     // FASE 4: BRIDGE (Timeout 3s)
     try {
       this.currentPhase = 'BRIDGE';
@@ -253,6 +287,8 @@ export class NexoApp {
           this.isVaultOpen = true;
           DEBUG.log('[VAULT] Abierto', 'success');
           if (this.gestures?.disable) this.gestures.disable();
+          // Pausar BLE gestures si existen
+          if (this.bleInterface?.hide) this.bleInterface.hide();
           this.config.onVaultStateChange(true);
         });
         
@@ -316,6 +352,7 @@ export class NexoApp {
     if (this.wsClient) parts.push('WS');
     if (this.mesh?.state?.isNative) parts.push('BLE-Native');
     else if (this.mesh) parts.push('BLE');
+    if (this.bleInterface) parts.push('BLE-UI'); // <-- AGREGADO
     if (this.bridge) parts.push('Bridge');
     if (this.stream) parts.push('Stream');
     return parts.join('+') || 'Basic';
@@ -340,6 +377,17 @@ export class NexoApp {
       else if (this.mesh?.state?.peers?.size > 0) mode = 'P2P';
       
       DEBUG.setMode(mode);
+      
+      // Actualizar contador de peers en REM si existe BLEInterface <-- AGREGADO
+      if (this.bleInterface && this.mesh) {
+        const peerCount = this.mesh.state?.peers?.size || 0;
+        if (window.NEXO_REM) {
+          window.NEXO_REM.updateStatus(this.currentPhase, mode, 
+            this.vault?.getIdentity?.() || null
+          );
+        }
+      }
+      
       this.config.onStatusChange(mode);
     } catch (err) {
       DEBUG.error('APP_007', `Status update: ${err.message}`);
@@ -373,6 +421,14 @@ export class NexoApp {
     if (this.destroyed) return;
     this.destroyed = true;
     
+    // AGREGADO: Limpiar BLE Interface primero
+    if (this.bleInterface) {
+      try {
+        this.bleInterface.destroy();
+      } catch (e) {}
+      this.bleInterface = null;
+    }
+    
     const resources = ['vaultSlider', 'gestures', 'stream', 'virtualEngine', 'bridge', 'mesh', 'wsClient', 'vault'];
     for (const name of resources) {
       try {
@@ -395,7 +451,8 @@ export class NexoApp {
       hasStream: !!this.stream,
       isVaultOpen: this.isVaultOpen,
       bleNative: this.mesh?.state?.isNative || false,
-      blePeers: this.mesh?.state?.peers?.size || 0
+      blePeers: this.mesh?.state?.peers?.size || 0,
+      bleUI: !!this.bleInterface // <-- AGREGADO
     };
   }
 }
