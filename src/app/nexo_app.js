@@ -1,74 +1,11 @@
 /**
  * NEXO App v2.5-NAP-CERTIFIED (Migrado a src/)
- * Orquestador principal con sistema NAP-APP-XXX Error Codes
+ * Orquestador principal con sistema NAP-APP-XXX Error Codes + REM v2.0
  * Pattern: NAP 2.0 + Interface Contract + SOC2 Resource Management
  */
-// AGREGAR AL INICIO (imports):
+
+// IMPORTS CORE
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
-
-// AGREGAR EN EL CONSTRUCTOR (después de DEBUG):
-this.isVaultOpen = false;
-this.vaultSlider = null;
-
-// AGREGAR EN EL MÉTODO init() (después de inicializar UI GestureEngine):
-// Fase 5.5: VAULT SLIDER (CoreGestureEngine para slide Stream↔Vault)
-try {
-  const streamEl = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
-  const vaultEl = document.getElementById('nexo-vault') || document.querySelector('.vault-panel') || document.getElementById('vault-panel');
-  
-  if (streamEl && vaultEl) {
-    this.DEBUG.log('INIT: Inicializando Vault Slider (CoreGestureEngine)...', 'info');
-    
-    this.vaultSlider = new CoreGestureEngine(streamEl, vaultEl);
-    
-    // Escuchar eventos del Vault para integración con REM
-    window.addEventListener('nexo:vault:opened', () => {
-      this.isVaultOpen = true;
-      this.DEBUG.log('[VAULT] Abierto via slide gesture', 'success');
-      
-      // Pausar UI GestureEngine mientras Vault está abierto (evita conflictos)
-      if (this.gestures && this.gestures.isEnabled) {
-        this.gestures.disable();
-        this.DEBUG.log('[GESTURES] UI GestureEngine pausado (Vault abierto)', 'info');
-      }
-      
-      // Callback opcional
-      if (this.config.onVaultStateChange) {
-        this.config.onVaultStateChange(true);
-      }
-    });
-    
-    window.addEventListener('nexo:vault:closed', () => {
-      this.isVaultOpen = false;
-      this.DEBUG.log('[VAULT] Cerrado via slide gesture', 'info');
-      
-      // Reanudar UI GestureEngine
-      if (this.gestures && !this.gestures.isEnabled) {
-        this.gestures.enable();
-        this.DEBUG.log('[GESTURES] UI GestureEngine reanudado', 'info');
-      }
-      
-      if (this.config.onVaultStateChange) {
-        this.config.onVaultStateChange(false);
-      }
-    });
-    
-    this.DEBUG.log('INIT: Vault Slider activo (zona derecha 60px)', 'success');
-  } else {
-    throw new Error('Elementos Stream o Vault no encontrados en DOM');
-  }
-} catch (err) {
-  this.DEBUG.error('APP_009', `Vault Slider init failed: ${err.message}`);
-  // No es fatal, la app sigue funcionando sin slide
-}
-
-// AGREGAR EN MÉTODO destroy():
-if (this.vaultSlider) {
-  this.vaultSlider.destroy();
-  this.vaultSlider = null;
-}
-
-
 import { CryptoVault } from '../vault/crypto_vault.js';
 import { BleMesh } from '../mesh/ble_mesh.js';
 import { WebSocketClient } from '../net/web_socket_client.js';
@@ -76,6 +13,9 @@ import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
 import { GestureEngine } from '../ui/gesture_engine.js';
 import { VirtualEngine } from '../perf/virtual_engine.js';
 import { TheStream } from '../stream/the_stream.js';
+
+// IMPORT REM
+import { rem } from '../ui/rem.js';
 
 // NAP: Sistema de error codes únicos para debugging físico
 const NAP_APP_ERRORS = {
@@ -88,20 +28,57 @@ const NAP_APP_ERRORS = {
   APP_007: 'STATUS_UPDATE_FAILED',
   APP_008: 'SEND_MESSAGE_FAILED',
   APP_009: 'GESTURE_INIT_FAILED',
-  APP_010: 'CLEANUP_ERROR'
+  APP_010: 'CLEANUP_ERROR',
+  APP_011: 'CORE_GESTURE_INIT_FAILED',
+  APP_012: 'VAULT_SLIDER_INIT_FAILED'
 };
 
+// REM + DEBUG System: Logging visual y consola
 const DEBUG = {
+  rem: rem,
+  
   log: (msg, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     console.log(`[${timestamp}] ${msg}`);
+    
+    // REM: Mostrar visualmente según tipo
+    if (type === 'error') {
+      const codeMatch = msg.match(/\[(APP_\d{3}|HTML_\d{3})\]/);
+      const code = codeMatch ? codeMatch[1] : null;
+      const cleanMsg = msg.replace(/\[APP_\d{3}\]\s*/, '');
+      rem.error(cleanMsg, code);
+    } else if (type === 'warn') {
+      rem.warn(msg);
+    } else if (type === 'success') {
+      rem.success(msg);
+    } else {
+      rem.info(msg);
+    }
+    
+    // Mantener compatibilidad con NEXO_DIAG
     if (typeof window !== 'undefined' && window.NEXO_DIAG?.log) {
       window.NEXO_DIAG.log(msg, type);
     }
   },
+  
   error: (code, msg) => DEBUG.log(`[${code}] ${msg}`, 'error'),
   success: (msg) => DEBUG.log(msg, 'success'),
-  warn: (msg) => DEBUG.log(msg, 'warn')
+  warn: (msg) => DEBUG.log(msg, 'warn'),
+  
+  // REM: Actualizar fase visual
+  setPhase: (phase) => {
+    rem.updatePhase(phase);
+  },
+  
+  // REM: Actualizar modo de conexión visual  
+  setMode: (mode) => {
+    rem.updateMode(mode);
+  },
+  
+  // REM: Actualizar identidad del usuario
+  setIdentity: (id) => {
+    if (id) rem.updateIdentity(id);
+  }
 };
 
 export class NexoApp {
@@ -115,7 +92,7 @@ export class NexoApp {
       onMessage: config.onMessage || (() => {}),
       onStatusChange: config.onStatusChange || (() => {}),
       onError: config.onError || ((err) => console.error('NexoApp Error:', err)),
-      // NAP: Action callbacks para TheStream (react, reply, forward)
+      onVaultStateChange: config.onVaultStateChange || (() => {}),
       actionCallbacks: config.actionCallbacks || {}
     };
     
@@ -126,6 +103,10 @@ export class NexoApp {
     this.gestures = null;
     this.stream = null;
     this.virtualEngine = null;
+    
+    // Vault Slider (CoreGestureEngine)
+    this.isVaultOpen = false;
+    this.vaultSlider = null;
     
     this.initialized = false;
     this.destroyed = false;
@@ -150,23 +131,29 @@ export class NexoApp {
     try {
       // FASE 1: CRYPTO
       this.currentPhase = 'CRYPTO';
+      DEBUG.setPhase('CRYPTO');
       DEBUG.log('🔐 [init] Fase 1/6: CryptoVault...');
       this.vault = new CryptoVault();
       await this.vault.init();
       const identity = this.vault.getIdentity?.();
-      if (identity) DEBUG.log(`✓ Identity: ${identity.substring(0, 8)}...`);
+      if (identity) {
+        DEBUG.log(`✓ Identity: ${identity.substring(0, 8)}...`);
+        DEBUG.setIdentity(identity);
+      }
       
       // FASE 2: WEBSOCKET
       this.currentPhase = 'WEBSOCKET';
+      DEBUG.setPhase('WEBSOCKET');
       DEBUG.log('🌐 [init] Fase 2/6: WebSocketClient...');
       if (this.config.relayUrls.length > 0) {
         this.wsClient = new WebSocketClient(this.config.relayUrls[0]);
         this.wsClient.onOpen = () => {
-          DEBUG.log('🌐 WebSocket connected');
+          DEBUG.log('🌐 WebSocket connected', 'success');
+          DEBUG.setMode('RELAY');
           this._updateStatus();
         };
         this.wsClient.onClose = () => {
-          DEBUG.log('🌐 WebSocket disconnected');
+          DEBUG.log('🌐 WebSocket disconnected', 'warn');
           this._updateStatus();
         };
         this.wsClient.onError = (err, code, details) => {
@@ -182,6 +169,7 @@ export class NexoApp {
       
       // FASE 3: MESH
       this.currentPhase = 'MESH';
+      DEBUG.setPhase('MESH');
       DEBUG.log('📡 [init] Fase 3/6: BleMesh...');
       if (this.config.enableMesh && typeof navigator !== 'undefined' && navigator.bluetooth) {
         try {
@@ -200,18 +188,19 @@ export class NexoApp {
             setTimeout(() => reject(new Error('BLE timeout')), this.config.bleTimeout)
           );
           await Promise.race([this.mesh.init(), meshTimeout]);
-          DEBUG.log('✓ BleMesh initialized');
+          DEBUG.log('✓ BleMesh initialized', 'success');
         } catch (meshErr) {
           DEBUG.warn(`⚠️ BLE Mesh failed: ${meshErr.message}`);
           this.mesh = null;
         }
       } else {
-        DEBUG.log('⚠️ BLE not available or disabled');
+        DEBUG.log('⚠️ BLE not available or disabled', 'info');
         this.mesh = null;
       }
       
       // FASE 4: BRIDGE
       this.currentPhase = 'BRIDGE';
+      DEBUG.setPhase('BRIDGE');
       DEBUG.log('🌉 [init] Fase 4/6: MeshRelayBridge...');
       try {
         this.bridge = new MeshRelayBridge({
@@ -219,20 +208,22 @@ export class NexoApp {
           relay: this.wsClient,
           onModeChange: (mode) => {
             DEBUG.log(`🌉 Mode changed: ${mode}`);
+            DEBUG.setMode(mode);
             this.config.onStatusChange(mode);
           },
           onMessage: (msg) => this._handleMessage(msg, 'bridge')
         });
         await this.bridge.init();
-        DEBUG.log('✓ MeshRelayBridge initialized');
+        DEBUG.log('✓ MeshRelayBridge initialized', 'success');
       } catch (bridgeErr) {
         DEBUG.warn(`⚠️ Bridge failed: ${bridgeErr.message}`);
         this.bridge = null;
       }
       
-      // FASE 5: GESTURES
+      // FASE 5: GESTURES (UI)
       this.currentPhase = 'GESTURES';
-      DEBUG.log('👆 [init] Fase 5/6: GestureEngine...');
+      DEBUG.setPhase('GESTURES');
+      DEBUG.log('👆 [init] Fase 5/6: GestureEngine (UI)...');
       if (this.config.enableGestures) {
         try {
           this.gestures = new GestureEngine({
@@ -242,21 +233,67 @@ export class NexoApp {
             onSwipeDown: () => this._refresh()
           });
           this.gestures.init();
-          DEBUG.log('✓ GestureEngine initialized');
+          DEBUG.log('✓ UI GestureEngine initialized', 'success');
         } catch (gestureErr) {
-          DEBUG.error(NAP_APP_ERRORS.APP_009, `Gestures failed: ${gestureErr.message}`);
+          DEBUG.error(NAP_APP_ERRORS.APP_009, `UI Gestures failed: ${gestureErr.message}`);
           this.gestures = null;
         }
       }
       
-      // FASE 6: STREAM (NAP-CERTIFIED INTERFACE)
+      // FASE 5.5: VAULT SLIDER (CoreGestureEngine)
+      this.currentPhase = 'VAULT_SLIDER';
+      DEBUG.setPhase('VAULT_SLIDER');
+      DEBUG.log('👆 [init] Fase 5.5/6: Vault Slider (Core)...');
+      try {
+        const streamEl = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
+        const vaultEl = document.getElementById('nexo-vault') || document.querySelector('.vault-panel') || document.getElementById('vault-panel');
+        
+        if (streamEl && vaultEl) {
+          this.vaultSlider = new CoreGestureEngine(streamEl, vaultEl);
+          
+          // Eventos de Vault para REM
+          window.addEventListener('nexo:vault:opened', () => {
+            this.isVaultOpen = true;
+            DEBUG.log('[VAULT] Abierto via slide gesture', 'success');
+            
+            if (this.gestures && this.gestures.disable) {
+              this.gestures.disable();
+              DEBUG.log('[GESTURES] UI GestureEngine pausado (Vault abierto)', 'info');
+            }
+            
+            this.config.onVaultStateChange(true);
+          });
+          
+          window.addEventListener('nexo:vault:closed', () => {
+            this.isVaultOpen = false;
+            DEBUG.log('[VAULT] Cerrado via slide gesture', 'info');
+            
+            if (this.gestures && this.gestures.enable) {
+              this.gestures.enable();
+              DEBUG.log('[GESTURES] UI GestureEngine reanudado', 'info');
+            }
+            
+            this.config.onVaultStateChange(false);
+          });
+          
+          DEBUG.log('✓ Vault Slider activo (zona derecha 60px)', 'success');
+        } else {
+          throw new Error('Elementos Stream o Vault no encontrados en DOM');
+        }
+      } catch (err) {
+        DEBUG.error(NAP_APP_ERRORS.APP_012, `Vault Slider init failed: ${err.message}`);
+        this.vaultSlider = null;
+      }
+      
+      // FASE 6: STREAM
       this.currentPhase = 'STREAM';
+      DEBUG.setPhase('STREAM');
       DEBUG.log('📰 [init] Fase 6/6: TheStream...');
       try {
         const container = document.getElementById('messages-container');
         if (!container) throw new Error('Elemento #messages-container no encontrado');
         
-        // NAP: VirtualEngine con error handling
+        // VirtualEngine con error handling
         try {
           this.virtualEngine = new VirtualEngine(container, {
             itemHeight: 80,
@@ -268,7 +305,7 @@ export class NexoApp {
           this.virtualEngine = null;
         }
         
-        // NAP: TheStream con Interface Contract correcto (actionCallbacks)
+        // TheStream con Interface Contract
         this.stream = new TheStream(container, {
           actionCallbacks: {
             onReact: (id) => {
@@ -286,12 +323,10 @@ export class NexoApp {
           }
         });
         
-        // NAP: Inicialización segura
         this.stream.appendItems([]);
-        DEBUG.log('✅ TheStream initialized correctamente');
+        DEBUG.log('✅ TheStream initialized correctamente', 'success');
       } catch (streamErr) {
         DEBUG.error(NAP_APP_ERRORS.APP_002, `Stream init failed: ${streamErr.message}`);
-        // NAP: Cleanup parcial completo para evitar memory leaks
         if (this.virtualEngine?.destroy) {
           try { this.virtualEngine.destroy(); } catch (e) {}
         }
@@ -301,7 +336,8 @@ export class NexoApp {
       
       this.initialized = true;
       this.currentPhase = 'READY';
-      DEBUG.log('🎉 [init] ===== INICIALIZACIÓN COMPLETADA (src/) =====');
+      DEBUG.setPhase('READY');
+      DEBUG.log('🎉 [init] ===== INICIALIZACIÓN COMPLETADA =====', 'success');
       DEBUG.log(`📊 Status: ${this._getStatusString()}`);
       this._updateStatus();
       return this;
@@ -309,6 +345,7 @@ export class NexoApp {
     } catch (error) {
       this.initError = error;
       this.currentPhase = 'ERROR';
+      DEBUG.setPhase('ERROR');
       DEBUG.error(NAP_APP_ERRORS.APP_002, `CRÍTICO: ${error.message}`);
       await this._partialCleanup();
       throw error;
@@ -328,7 +365,7 @@ export class NexoApp {
         _id: msg._id || Math.random().toString(36).substr(2, 9)
       };
       
-      // NAP: Safe Stream Operation con try-catch aislado
+      // Safe Stream Operation
       if (this.stream?.appendItems) {
         try {
           const streamItem = {
@@ -342,7 +379,6 @@ export class NexoApp {
           this.stream.appendItems([streamItem]);
         } catch (streamErr) {
           DEBUG.error(NAP_APP_ERRORS.APP_001, `Stream append failed: ${streamErr.message}`);
-          // Continuar sin crash - mensaje va al callback aunque no al stream
         }
       }
       
@@ -360,7 +396,6 @@ export class NexoApp {
     try {
       let mode = 'OFFLINE';
       
-      // NAP: Defensive check de bridge interface
       if (this.bridge?.getMode) {
         try {
           mode = this.bridge.getMode();
@@ -374,6 +409,7 @@ export class NexoApp {
         mode = 'P2P';
       }
       
+      DEBUG.setMode(mode);
       this.config.onStatusChange(mode);
     } catch (err) {
       DEBUG.error(NAP_APP_ERRORS.APP_007, `Error updating status: ${err.message}`);
@@ -441,7 +477,7 @@ export class NexoApp {
     }
   }
   
-  // UI Navigation (placeholders)
+  // UI Navigation
   _navigate(direction) { DEBUG.log(`Navigate: ${direction}`); }
   _showMenu() { DEBUG.log('Show menu'); }
   _refresh() { 
@@ -454,11 +490,20 @@ export class NexoApp {
   }
   
   /**
-   * NAP: Partial Cleanup (uso en errores de init)
-   * Incluye TODOS los recursos, incluso stream y virtualEngine
+   * NAP: Partial Cleanup
    */
   async _partialCleanup() {
     DEBUG.log('🧹 [NAP-CLEANUP] Limpiando recursos parciales...');
+    
+    // Vault Slider primero
+    if (this.vaultSlider) {
+      try {
+        this.vaultSlider.destroy();
+      } catch (e) {
+        DEBUG.warn(`Vault Slider cleanup failed: ${e.message}`);
+      }
+      this.vaultSlider = null;
+    }
     
     const cleanupOrder = [
       { name: 'gestures', ref: 'gestures', method: 'destroy' },
@@ -485,11 +530,11 @@ export class NexoApp {
       }
     }
     
-    DEBUG.log('✅ [NAP-CLEANUP] Recursos parciales liberados');
+    DEBUG.log('✅ [NAP-CLEANUP] Recursos parciales liberados', 'success');
   }
   
   /**
-   * NAP: Destroy completo (uso explícito o garbage collection)
+   * NAP: Destroy completo
    */
   async destroy() {
     if (this.destroyed) return;
@@ -500,21 +545,25 @@ export class NexoApp {
     try {
       await this._partialCleanup();
       
-      // Vault al final (encripta datos sensibles antes de morir)
       if (this.vault?.destroy) {
         try { await this.vault.destroy(); } catch (e) {}
         this.vault = null;
       }
       
+      // Limpiar REM al destruir app
+      if (DEBUG.rem?.destroy) {
+        DEBUG.rem.destroy();
+      }
+      
       this.initialized = false;
-      DEBUG.log('✅ [NAP-DESTROY] Recursos liberados completamente');
+      DEBUG.log('✅ [NAP-DESTROY] Recursos liberados completamente', 'success');
     } catch (err) {
       DEBUG.error(NAP_APP_ERRORS.APP_010, `Error en destroy: ${err.message}`);
     }
   }
   
   /**
-   * NAP: Status report para debugging
+   * NAP: Status report
    */
   getStatus() {
     return {
@@ -527,6 +576,8 @@ export class NexoApp {
       hasBridge: !!this.bridge,
       hasStream: !!this.stream,
       hasVirtualEngine: !!this.virtualEngine,
+      hasVaultSlider: !!this.vaultSlider,
+      isVaultOpen: this.isVaultOpen,
       identity: this.vault?.getIdentity?.() || null,
       lastError: this.initError?.message || null
     };
@@ -534,4 +585,4 @@ export class NexoApp {
 }
 
 export default NexoApp;
-export { NAP_APP_ERRORS };
+export { NAP_APP_ERRORS, DEBUG };
