@@ -1,6 +1,7 @@
 /**
- * NEXO App v2.5-NAP-CERTIFIED (FIX: Timeouts por fase)
+ * NEXO App v2.6-NAP-CERTIFIED (BLE Native Capacitor)
  * Cada fase tiene timeout individual para evitar bloqueos totales
+ * FIX: Integración BleMesh v5.0 Native (@capacitor-community/bluetooth-le)
  */
 
 // IMPORTS CORE
@@ -17,10 +18,21 @@ import { rem } from '../ui/rem.js';
 const NAP_APP_ERRORS = {
   APP_001: 'STREAM_APPEND_FAILED',
   APP_002: 'STREAM_INIT_FAILED',
-  // ... (mantén todos los demás errores que ya tenías)
+  APP_003: 'BRIDGE_INTERFACE_MISMATCH',
+  APP_004: 'VAULT_NOT_INITIALIZED',
+  APP_005: 'MESSAGE_HANDLER_ERROR',
+  APP_006: 'VIRTUAL_ENGINE_INIT_FAILED',
+  APP_007: 'STATUS_UPDATE_FAILED',
+  APP_008: 'SEND_MESSAGE_FAILED',
+  APP_009: 'GESTURE_INIT_FAILED',
+  APP_010: 'CLEANUP_ERROR',
+  APP_011: 'VAULT_SLIDER_INIT_FAILED',
+  APP_012: 'INPUT_CLEANUP_ERROR',
   APP_013: 'CRYPTO_INIT_TIMEOUT',
   APP_014: 'WEBSOCKET_INIT_TIMEOUT',
-  APP_015: 'PHASE_TIMEOUT'
+  APP_015: 'PHASE_TIMEOUT',
+  APP_016: 'BLE_INIT_FAILED',
+  APP_017: 'BLE_SCAN_FAILED'
 };
 
 const DEBUG = {
@@ -56,7 +68,7 @@ export class NexoApp {
   constructor(config = {}) {
     this.config = {
       relayUrls: config.relayUrls || [],
-      bleTimeout: config.bleTimeout || 3000,
+      bleTimeout: config.bleTimeout || 15000, // Aumentado para permisos nativos
       enableGestures: config.enableGestures !== false,
       enableMesh: config.enableMesh !== false,
       onMessage: config.onMessage || (() => {}),
@@ -80,7 +92,7 @@ export class NexoApp {
     this.initError = null;
     this.currentPhase = 'NONE';
     
-    DEBUG.log('🚀 [NEXO] App instance created v2.5-NAP');
+    DEBUG.log('🚀 [NEXO] App instance created v2.6-NAP (BLE Native)');
   }
   
   async init() {
@@ -132,29 +144,59 @@ export class NexoApp {
       this.wsClient = null;
     }
     
-    // FASE 3: MESH (Timeout 3s)
+    // FASE 3: MESH BLE NATIVE (Timeout 15s para permisos Android)
     try {
       this.currentPhase = 'MESH';
       DEBUG.setPhase('MESH');
-      DEBUG.log('📡 [3/6] BleMesh...');
+      DEBUG.log('📡 [3/6] BleMesh Native...');
       
-      if (this.config.enableMesh && navigator?.bluetooth) {
+      if (this.config.enableMesh) {
+        // Instanciar nuevo BleMesh v5.0 Native
         this.mesh = new BleMesh({
-          onPeer: (peer) => {
-            DEBUG.log(`📡 Peer: ${peer.id || 'unknown'}`);
+          maxPeers: 8,
+          autoConnectRssi: -70,
+          scanTimeout: 15000,
+          onDeviceFound: (device) => {
+            DEBUG.log(`📡 BLE Device: ${device.name} (${device.rssi}dBm)`, 'info');
             this._updateStatus();
           },
-          onMessage: (msg, peer) => this._handleMessage(msg, 'ble'),
-          onDisconnect: () => this._updateStatus()
+          onMessage: (msg, deviceId) => {
+            this._handleMessage(msg, 'ble');
+          },
+          onStatusChange: (status) => {
+            // status puede ser: 'scanning', 'connected', 'disconnected', 'idle'
+            if (status === 'connected') {
+              DEBUG.setMode('P2P');
+              this._updateStatus();
+            }
+          },
+          onError: (code, msg) => {
+            DEBUG.warn(`BLE: ${msg}`, code);
+          }
         });
-        await withTimeout(this.mesh.init(), 3000, 'BLE init timeout');
-        DEBUG.log('✓ BleMesh ready', 'success');
+
+        // Inicializar con timeout extendido (15s) para diálogos de permisos nativos
+        await withTimeout(
+          this.mesh.init(), 
+          this.config.bleTimeout, 
+          'BLE init timeout (check permissions)'
+        );
+        
+        // Si es nativo y se inicializó correctamente, iniciar scan automático
+        if (this.mesh.state?.isNative) {
+          DEBUG.log('✅ BLE Native activo, iniciando scan...', 'success');
+          this.mesh.startScan(30000); // Scan 30 segundos
+        } else {
+          DEBUG.warn('BLE no es nativo, modo offline');
+        }
+        
       } else {
-        DEBUG.log('ℹ️ BLE disabled or unavailable');
+        DEBUG.log('ℹ️ BLE Mesh disabled');
       }
     } catch (err) {
-      DEBUG.warn(`⚠️ BLE Mesh failed: ${err.message}`);
+      DEBUG.error('APP_016', `BLE Mesh failed: ${err.message}`);
       this.mesh = null;
+      // No fallar init completo, seguimos sin BLE
     }
     
     // FASE 4: BRIDGE (Timeout 3s)
@@ -279,7 +321,8 @@ export class NexoApp {
     const parts = [];
     if (this.vault) parts.push('Vault');
     if (this.wsClient) parts.push('WS');
-    if (this.mesh) parts.push('Mesh');
+    if (this.mesh?.state?.isNative) parts.push('BLE-Native'); // Cambiado para detectar BLE nativo
+    else if (this.mesh) parts.push('BLE');
     if (this.bridge) parts.push('Bridge');
     if (this.stream) parts.push('Stream');
     return parts.join('+') || 'Basic';
@@ -301,7 +344,7 @@ export class NexoApp {
       let mode = 'OFFLINE';
       if (this.bridge?.getMode) mode = this.bridge.getMode();
       else if (this.wsClient?.isConnected?.()) mode = 'RELAY';
-      else if (this.mesh?.hasPeers?.()) mode = 'P2P';
+      else if (this.mesh?.state?.peers?.size > 0) mode = 'P2P'; // Actualizado para nuevo BleMesh
       
       DEBUG.setMode(mode);
       this.config.onStatusChange(mode);
@@ -315,6 +358,16 @@ export class NexoApp {
     try {
       const enriched = { ...msg, _own: true, _timestamp: Date.now() };
       this._handleMessage(enriched, 'self');
+      
+      // Intentar enviar por mesh BLE primero si hay peers
+      if (this.mesh?.state?.peers?.size > 0) {
+        try {
+          await this.mesh.broadcast(enriched);
+          return true;
+        } catch (e) {
+          // Falló broadcast BLE, continuar con bridge/WS
+        }
+      }
       
       if (this.bridge?.send) return await this.bridge.send(enriched);
       if (this.wsClient?.send) return this.wsClient.send(enriched);
@@ -350,7 +403,9 @@ export class NexoApp {
       currentPhase: this.currentPhase,
       hasVault: !!this.vault,
       hasStream: !!this.stream,
-      isVaultOpen: this.isVaultOpen
+      isVaultOpen: this.isVaultOpen,
+      bleNative: this.mesh?.state?.isNative || false,
+      blePeers: this.mesh?.state?.peers?.size || 0
     };
   }
 }
