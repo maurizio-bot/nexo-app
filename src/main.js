@@ -106,6 +106,10 @@ function _ensureDOMStructure() {
   if (vault && !vault.id) vault.id = 'nexo-vault';
 }
 
+/**
+ * FIX: Input se limpia inmediatamente (optimistic UI)
+ * No espera confirmación de envío para borrar el texto
+ */
 function _setupMessageInput() {
   const input = document.getElementById('message-input');
   const btn = document.getElementById('send-btn');
@@ -114,19 +118,37 @@ function _setupMessageInput() {
   const send = async () => {
     const text = input.value.trim();
     if (!text) return;
+    
+    // FIX CRÍTICO: Limpiar input inmediatamente (optimistic UI)
+    // El usuario ve feedback instantáneo, no espera a la red
+    input.value = '';
+    input.focus(); // Mantener foco para seguir escribiendo
+    
     try {
       const sent = await window.NEXO.app.sendMessage({ text });
       if (sent) {
-        input.value = '';
-        rem.success('Mensaje enviado', 'MSG_SENT');
+        rem.success('Enviado', 'MSG_SENT');
+      } else {
+        // En modo offline, el mensaje se encola automáticamente
+        rem.info('En cola (offline)', 'MSG_QUEUED');
       }
     } catch (e) {
-      rem.error('Error al enviar mensaje', 'MSG_ERR');
+      rem.error('Error al enviar', 'MSG_ERR');
+      // Opcional: restaurar texto si es crítico
+      // input.value = text; 
     }
   };
   
   btn.addEventListener('click', send);
-  input.addEventListener('keypress', (e) => e.key === 'Enter' && send());
+  input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault(); // Prevenir submit de form
+      send();
+    }
+  });
+  
+  // Focus inicial en el input
+  input.focus();
 }
 
 function _setupVaultToggle() {
@@ -166,7 +188,10 @@ function _toggleVaultUI(isOpen) {
 
 function _focusInput(text = '') {
   const input = document.getElementById('message-input');
-  if (input) { input.focus(); input.value = text; }
+  if (input) { 
+    input.focus(); 
+    if (text) input.value = text;
+  }
 }
 
 if (module.hot) module.hot.accept();
