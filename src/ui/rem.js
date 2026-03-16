@@ -1,305 +1,409 @@
 /**
- * CoreGestureEngine - Sistema de slide Stream↔Vault
- * Ubicación: src/core/gesture_engine.js
- * Pattern: NAP 2.0 + Touch/Mouse Hybrid + 60px Edge Zone
+ * REM - Retroalimentación Error Message System
+ * v2.0 - Sistema de feedback visual para NEXO
  * 
- * Diferencia con UI/GestureEngine:
- * - Este controla el LAYOUT/ANIMACIÓN específica Stream↔Vault
- * - UI/GestureEngine controla gestos táctiles generales (swipes, etc.)
+ * Responsabilidades:
+ * - Mostrar toasts/notificaciones visuales
+ * - Barra de estado fija (Phase/Mode/ID)
+ * - Historial de errores y eventos
+ * - Atajos de teclado para debug
  */
 
-export class GestureEngine {
-  constructor(streamEl, vaultEl, options = {}) {
-    this.streamEl = streamEl;
-    this.vaultEl = vaultEl;
-    this.options = {
-      edgeZone: options.edgeZone || 60,        // Zona derecha activa (px)
-      threshold: options.threshold || 0.3,     // Umbral para abrir (0-1)
-      animationDuration: options.animationDuration || 300,
-      debug: options.debug || false
-    };
-    
-    this.isDragging = false;
-    this.startX = 0;
-    this.currentX = 0;
-    this.offset = 0;        // 0 = cerrado, 1 = abierto
-    this.isOpen = false;
-    this.isEnabled = true;
-    
-    // Elementos DOM internos
-    this.overlay = null;
-    
-    this._boundStart = this._handleStart.bind(this);
-    this._boundMove = this._handleMove.bind(this);
-    this._boundEnd = this._handleEnd.bind(this);
-    
-    // Eventos personalizados
-    this._events = {
-      'vault:opened': [],
-      'vault:closed': []
-    };
+class REMSystem {
+  constructor() {
+    this.version = '2.0';
+    this.visible = true;
+    this.history = [];
+    this.maxHistory = 100;
+    this.toastDuration = 5000;
+    this.initialized = false;
+    this.elements = {};
   }
-  
-  async init() {
-    if (!this.streamEl || !this.vaultEl) {
-      throw new Error('CoreGestureEngine: Se requieren elementos Stream y Vault');
-    }
+
+  /**
+   * Inicializa el sistema REM y crea elementos DOM
+   */
+  init() {
+    if (this.initialized) return this;
+    if (typeof document === 'undefined') return this;
+
+    this.createToastContainer();
+    this.createStatusBar();
+    this.injectStyles();
+    this.setupKeyboardShortcuts();
     
-    // Crear overlay oscuro para cuando vault está abierto
-    this._createOverlay();
-    
-    // Configurar estilos iniciales
-    this._setupStyles();
-    
-    // Event listeners
-    this._attachListeners();
-    
-    if (this.options.debug) {
-      console.log('[CoreGestureEngine] Inicializado - Zona derecha:', this.options.edgeZone + 'px');
-    }
+    this.initialized = true;
+    this.info('REM v2.0 initialized', 'REM_INIT');
     
     return this;
   }
-  
-  _createOverlay() {
-    this.overlay = document.createElement('div');
-    this.overlay.style.cssText = `
+
+  /**
+   * Crea el contenedor de toasts
+   */
+  createToastContainer() {
+    if (document.getElementById('rem-toasts')) return;
+
+    const container = document.createElement('div');
+    container.id = 'rem-toasts';
+    container.style.cssText = `
       position: fixed;
-      top: 0;
+      top: 20px;
+      right: 20px;
+      z-index: 2147483647;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      pointer-events: none;
+      max-width: 450px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    `;
+    
+    document.body.appendChild(container);
+    this.elements.toasts = container;
+  }
+
+  /**
+   * Crea la barra de estado inferior
+   */
+  createStatusBar() {
+    if (document.getElementById('rem-status')) return;
+
+    const statusBar = document.createElement('div');
+    statusBar.id = 'rem-status';
+    statusBar.style.cssText = `
+      position: fixed;
+      bottom: 0;
       left: 0;
       right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.5);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity ${this.options.animationDuration}ms ease;
-      z-index: 998;
-    `;
-    document.body.appendChild(this.overlay);
-    
-    // Click en overlay cierra el vault
-    this.overlay.addEventListener('click', () => this.close());
-  }
-  
-  _setupStyles() {
-    // Estilos iniciales del Stream
-    this.streamEl.style.cssText += `
-      transition: transform ${this.options.animationDuration}ms ease;
-      will-change: transform;
+      height: 32px;
+      background: rgba(0, 0, 0, 0.95);
+      color: #00ff00;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 24px;
+      z-index: 2147483646;
+      border-top: 1px solid #333;
+      backdrop-filter: blur(10px);
+      user-select: none;
     `;
     
-    // Estilos iniciales del Vault (fuera de pantalla a la derecha)
-    this.vaultEl.style.cssText += `
-      position: fixed;
-      top: 0;
-      right: 0;
-      width: 85%;
-      height: 100%;
-      transform: translateX(100%);
-      transition: transform ${this.options.animationDuration}ms ease;
-      z-index: 999;
-      will-change: transform;
-      box-shadow: -5px 0 25px rgba(0,0,0,0.3);
+    statusBar.innerHTML = `
+      <span style="font-weight: bold; color: #666;">NEXO</span>
+      <span id="rem-phase" style="color: #888;">Phase: INIT</span>
+      <span id="rem-mode" style="color: #ff4444; font-weight: bold;">Mode: OFFLINE</span>
+      <span id="rem-id" style="color: #666; margin-left: auto;">ID: --</span>
+      <span style="color: #333; margin-left: 8px;">REM v2.0</span>
     `;
+    
+    document.body.appendChild(statusBar);
+    this.elements.status = statusBar;
   }
-  
-  _attachListeners() {
-    // Touch events
-    document.addEventListener('touchstart', this._boundStart, { passive: false });
-    document.addEventListener('touchmove', this._boundMove, { passive: false });
-    document.addEventListener('touchend', this._boundEnd);
+
+  /**
+   * Inyecta estilos CSS necesarios
+   */
+  injectStyles() {
+    if (document.getElementById('rem-styles')) return;
+
+    const style = document.createElement('style');
+    style.id = 'rem-styles';
+    style.textContent = `
+      @keyframes rem-slideIn {
+        from { transform: translateX(100%) scale(0.9); opacity: 0; }
+        to { transform: translateX(0) scale(1); opacity: 1; }
+      }
+      @keyframes rem-slideOut {
+        from { transform: translateX(0) scale(1); opacity: 1; }
+        to { transform: translateX(100%) scale(0.9); opacity: 0; }
+      }
+      @keyframes rem-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+      .rem-toast {
+        animation: rem-slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        pointer-events: auto !important;
+        cursor: pointer;
+      }
+      .rem-toast:hover {
+        transform: translateX(-4px);
+      }
+      .rem-toast.rem-hiding {
+        animation: rem-slideOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+    `;
     
-    // Mouse events
-    document.addEventListener('mousedown', this._boundStart);
-    document.addEventListener('mousemove', this._boundMove);
-    document.addEventListener('mouseup', this._boundEnd);
+    document.head.appendChild(style);
   }
-  
-  _handleStart(e) {
-    if (!this.isEnabled) return;
-    
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const screenWidth = window.innerWidth;
-    
-    // Solo iniciar si está en la zona derecha (60px desde el borde)
-    // O si el vault ya está abierto (para poder cerrarlo arrastrando)
-    if (!this.isOpen && clientX < screenWidth - this.options.edgeZone) {
-      return;
+
+  /**
+   * Configura atajos de teclado
+   */
+  setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+Shift+L: Toggle REM visibility
+      if (e.ctrlKey && e.shiftKey && e.key === 'L') {
+        e.preventDefault();
+        this.toggle();
+      }
+      
+      // Ctrl+Shift+H: Show history
+      if (e.ctrlKey && e.shiftKey && e.key === 'H') {
+        e.preventDefault();
+        this.showHistory();
+      }
+      
+      // Ctrl+Shift+V: Toggle Vault (simulado)
+      if (e.ctrlKey && e.shiftKey && e.key === 'V') {
+        e.preventDefault();
+        this.info('Vault toggle requested', 'REM_VAULT');
+        // Disparar evento para que lo maneje CoreGestureEngine
+        window.dispatchEvent(new CustomEvent('nexo:vault:toggle'));
+      }
+    });
+  }
+
+  // ============================================================
+  // MÉTODOS PÚBLICOS DE NOTIFICACIÓN
+  // ============================================================
+
+  /**
+   * Muestra un error (toast rojo)
+   */
+  error(message, code = '') {
+    return this.show(message, 'error', code);
+  }
+
+  /**
+   * Muestra una advertencia (toast amarillo/naranja)
+   */
+  warn(message, code = '') {
+    return this.show(message, 'warning', code);
+  }
+
+  /**
+   * Muestra éxito (toast verde)
+   */
+  success(message, code = '') {
+    return this.show(message, 'success', code);
+  }
+
+  /**
+   * Muestra información (toast azul)
+   */
+  info(message, code = '') {
+    return this.show(message, 'info', code);
+  }
+
+  /**
+   * Muestra un toast genérico
+   */
+  show(message, type = 'info', code = '') {
+    if (!this.initialized) this.init();
+    if (!this.elements.toasts) return null;
+
+    const colors = {
+      error: { bg: '#ff4444', border: '#ff2222', icon: '✕' },
+      warning: { bg: '#ffaa00', border: '#ff8800', icon: '⚠' },
+      success: { bg: '#00ff88', border: '#00cc66', icon: '✓' },
+      info: { bg: '#4488ff', border: '#2266dd', icon: 'ℹ' }
+    };
+
+    const theme = colors[type] || colors.info;
+    const codeStr = code ? `<span style="opacity: 0.7; font-size: 11px;">[${code}]</span> ` : '';
+
+    const toast = document.createElement('div');
+    toast.className = 'rem-toast';
+    toast.style.cssText = `
+      background: rgba(20, 20, 20, 0.95);
+      border-left: 4px solid ${theme.bg};
+      color: #fff;
+      padding: 14px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      line-height: 1.5;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
+      max-width: 400px;
+      word-wrap: break-word;
+      position: relative;
+      overflow: hidden;
+    `;
+
+    toast.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+        <span style="color: ${theme.bg}; font-weight: bold; font-size: 14px;">${theme.icon}</span>
+        <span style="color: ${theme.bg}; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">
+          ${type}
+        </span>
+        ${code ? `<span style="background: ${theme.bg}22; color: ${theme.bg}; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-family: monospace;">${code}</span>` : ''}
+      </div>
+      <div style="color: #e0e0e0; padding-left: 22px;">${message}</div>
+      <div style="position: absolute; bottom: 0; left: 0; height: 2px; background: ${theme.bg}; width: 100%; transform-origin: left; animation: rem-progress ${this.toastDuration}ms linear;"></div>
+    `;
+
+    // Agregar estilo de animación de progreso si no existe
+    if (!document.getElementById('rem-progress-style')) {
+      const progressStyle = document.createElement('style');
+      progressStyle.id = 'rem-progress-style';
+      progressStyle.textContent = `
+        @keyframes rem-progress {
+          from { transform: scaleX(1); }
+          to { transform: scaleX(0); }
+        }
+      `;
+      document.head.appendChild(progressStyle);
     }
-    
-    // Ignorar si el target es un input o botón dentro del vault
-    if (this.vaultEl.contains(e.target) && this.isOpen) {
-      return;
+
+    this.elements.toasts.appendChild(toast);
+
+    // Registrar en historial
+    this.history.push({
+      id: Math.random().toString(36).substr(2, 9),
+      type,
+      message,
+      code,
+      timestamp: Date.now()
+    });
+
+    if (this.history.length > this.maxHistory) {
+      this.history.shift();
     }
+
+    // Click para cerrar
+    toast.addEventListener('click', () => {
+      this.hideToast(toast);
+    });
+
+    // Auto-cerrar
+    const timeout = setTimeout(() => {
+      this.hideToast(toast);
+    }, this.toastDuration);
+
+    // Pausar al hover
+    toast.addEventListener('mouseenter', () => {
+      clearTimeout(timeout);
+      const progress = toast.querySelector('[style*="rem-progress"]');
+      if (progress) progress.style.animationPlayState = 'paused';
+    });
+
+    return toast;
+  }
+
+  /**
+   * Oculta un toast específico
+   */
+  hideToast(toast) {
+    if (!toast || toast.classList.contains('rem-hiding')) return;
     
-    this.isDragging = true;
-    this.startX = clientX;
-    this.currentX = clientX;
-    
-    // Deshabilitar transiciones durante el drag
-    this.streamEl.style.transition = 'none';
-    this.vaultEl.style.transition = 'none';
-    this.overlay.style.transition = 'none';
-    
-    if (this.options.debug) {
-      console.log('[CoreGestureEngine] Drag iniciado en x:', clientX);
+    toast.classList.add('rem-hiding');
+    setTimeout(() => {
+      if (toast.parentNode) toast.remove();
+    }, 300);
+  }
+
+  // ============================================================
+  // ACTUALIZACIÓN DE ESTADO
+  // ============================================================
+
+  /**
+   * Actualiza la barra de estado inferior
+   */
+  updateStatus(phase, mode, id) {
+    if (!this.elements.status) return;
+
+    const phaseEl = document.getElementById('rem-phase');
+    const modeEl = document.getElementById('rem-mode');
+    const idEl = document.getElementById('rem-id');
+
+    if (phaseEl) {
+      phaseEl.textContent = `Phase: ${phase || 'NONE'}`;
+      // Color según fase
+      const phaseColors = {
+        'INIT': '#888', 'CRYPTO': '#ffaa00', 'WEBSOCKET': '#4488ff',
+        'MESH': '#aa66ff', 'BRIDGE': '#66aaff', 'GESTURES': '#ff66aa',
+        'STREAM': '#00ff88', 'READY': '#00ff88', 'ERROR': '#ff4444'
+      };
+      phaseEl.style.color = phaseColors[phase] || '#888';
     }
-  }
-  
-  _handleMove(e) {
-    if (!this.isDragging) return;
-    
-    // Prevenir scroll mientras se arrastra el vault
-    if (e.preventDefault) e.preventDefault();
-    
-    this.currentX = e.touches ? e.touches[0].clientX : e.clientX;
-    const deltaX = this.currentX - this.startX;
-    const screenWidth = window.innerWidth;
-    
-    // Calcular offset (0 a 1)
-    if (!this.isOpen) {
-      // Abriendo: arrastrando desde derecha hacia izquierda (delta negativo)
-      this.offset = Math.max(0, Math.min(1, -deltaX / (screenWidth * 0.5)));
-    } else {
-      // Cerrando: arrastrando desde izquierda hacia derecha (delta positivo)
-      this.offset = Math.max(0, Math.min(1, 1 - (deltaX / (screenWidth * 0.5))));
+
+    if (modeEl) {
+      modeEl.textContent = `Mode: ${mode || 'OFFLINE'}`;
+      const modeColors = {
+        'OFFLINE': '#ff4444',
+        'RELAY': '#4488ff',
+        'P2P': '#00ff88',
+        'HYBRID': '#ffaa00',
+        'CONNECTING': '#ffaa00'
+      };
+      modeEl.style.color = modeColors[mode] || '#888';
     }
-    
-    this._render();
-  }
-  
-  _handleEnd(e) {
-    if (!this.isDragging) return;
-    
-    this.isDragging = false;
-    
-    // Restaurar transiciones
-    this.streamEl.style.transition = `transform ${this.options.animationDuration}ms ease`;
-    this.vaultEl.style.transition = `transform ${this.options.animationDuration}ms ease`;
-    this.overlay.style.transition = `opacity ${this.options.animationDuration}ms ease`;
-    
-    // Decidir si abrir o cerrar basado en el threshold
-    if (this.offset > this.options.threshold) {
-      this.open();
-    } else {
-      this.close();
-    }
-  }
-  
-  _render() {
-    // Efecto visual durante el drag
-    const streamOffset = this.offset * -20; // Mover Stream -20% a la izquierda
-    const vaultOffset = 100 - (this.offset * 100); // Vault entra desde 100% a 0%
-    
-    this.streamEl.style.transform = `translateX(${streamOffset}%)`;
-    this.vaultEl.style.transform = `translateX(${vaultOffset}%)`;
-    this.overlay.style.opacity = this.offset * 0.5;
-    
-    // Efectos adicionales de brillo/escala en el Stream
-    const scale = 1 - (this.offset * 0.02); // Ligero zoom out
-    const brightness = 1 - (this.offset * 0.3); // Oscurecer ligeramente
-    this.streamEl.style.filter = `brightness(${brightness})`;
-    this.streamEl.style.transform = `translateX(${streamOffset}%) scale(${scale})`;
-  }
-  
-  open() {
-    this.isOpen = true;
-    this.offset = 1;
-    
-    this.streamEl.style.transition = `transform ${this.options.animationDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-    this.vaultEl.style.transition = `transform ${this.options.animationDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-    this.overlay.style.transition = `opacity ${this.options.animationDuration}ms ease`;
-    
-    this._renderFinalState();
-    
-    // Disparar evento global para REM y otros componentes
-    window.dispatchEvent(new CustomEvent('nexo:vault:opened', {
-      detail: { source: 'CoreGestureEngine', timestamp: Date.now() }
-    }));
-    
-    if (this.options.debug) {
-      console.log('[CoreGestureEngine] Vault abierto');
+
+    if (idEl) {
+      idEl.textContent = `ID: ${id ? id.substr(0, 8) : '--'}`;
     }
   }
-  
-  close() {
-    this.isOpen = false;
-    this.offset = 0;
-    
-    this.streamEl.style.transition = `transform ${this.options.animationDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-    this.vaultEl.style.transition = `transform ${this.options.animationDuration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
-    this.overlay.style.transition = `opacity ${this.options.animationDuration}ms ease`;
-    
-    this._renderFinalState();
-    
-    // Disparar evento global
-    window.dispatchEvent(new CustomEvent('nexo:vault:closed', {
-      detail: { source: 'CoreGestureEngine', timestamp: Date.now() }
-    }));
-    
-    if (this.options.debug) {
-      console.log('[CoreGestureEngine] Vault cerrado');
-    }
-  }
-  
-  _renderFinalState() {
-    if (this.isOpen) {
-      // Estado abierto
-      this.streamEl.style.transform = 'translateX(-20%) scale(0.98)';
-      this.streamEl.style.filter = 'brightness(0.7)';
-      this.vaultEl.style.transform = 'translateX(0)';
-      this.overlay.style.opacity = '1';
-      this.overlay.style.pointerEvents = 'auto';
-    } else {
-      // Estado cerrado
-      this.streamEl.style.transform = 'translateX(0) scale(1)';
-      this.streamEl.style.filter = 'brightness(1)';
-      this.vaultEl.style.transform = 'translateX(100%)';
-      this.overlay.style.opacity = '0';
-      this.overlay.style.pointerEvents = 'none';
-    }
-  }
-  
+
+  /**
+   * Muestra/oculta toda la interfaz REM
+   */
   toggle() {
-    if (this.isOpen) {
-      this.close();
-    } else {
-      this.open();
-    }
+    this.visible = !this.visible;
+    
+    const containers = [
+      document.getElementById('rem-toasts'),
+      document.getElementById('rem-status')
+    ];
+    
+    containers.forEach(el => {
+      if (el) el.style.display = this.visible ? 'flex' : 'none';
+    });
+    
+    console.log(`[REM] Visibility: ${this.visible ? 'ON' : 'OFF'}`);
   }
-  
-  disable() {
-    this.isEnabled = false;
+
+  /**
+   * Muestra el historial completo en consola
+   */
+  showHistory() {
+    console.group('📋 REM History');
+    console.table(this.history.slice(-20));
+    console.groupEnd();
+    
+    this.info(`Showing ${this.history.length} history entries (see console)`, 'REM_HIST');
   }
-  
-  enable() {
-    this.isEnabled = true;
+
+  /**
+   * Obtiene el historial
+   */
+  getHistory() {
+    return [...this.history];
   }
-  
+
+  /**
+   * Limpia el historial
+   */
+  clearHistory() {
+    this.history = [];
+    this.info('History cleared', 'REM_CLEAR');
+  }
+
+  /**
+   * Destruye el sistema REM (cleanup)
+   */
   destroy() {
-    this.close();
-    
-    // Remover event listeners
-    document.removeEventListener('touchstart', this._boundStart);
-    document.removeEventListener('touchmove', this._boundMove);
-    document.removeEventListener('touchend', this._boundEnd);
-    document.removeEventListener('mousedown', this._boundStart);
-    document.removeEventListener('mousemove', this._boundMove);
-    document.removeEventListener('mouseup', this._boundEnd);
-    
-    // Remover overlay
-    if (this.overlay && this.overlay.parentNode) {
-      this.overlay.parentNode.removeChild(this.overlay);
-    }
-    
-    // Resetear estilos
-    this.streamEl.style.transform = '';
-    this.streamEl.style.filter = '';
-    this.streamEl.style.transition = '';
-    this.vaultEl.style.transform = '';
-    this.vaultEl.style.transition = '';
+    ['rem-toasts', 'rem-status', 'rem-styles', 'rem-progress-style'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    });
+    this.initialized = false;
+    this.elements = {};
   }
 }
 
-export default GestureEngine;
+// Singleton export
+export const rem = new REMSystem();
+export default rem;
