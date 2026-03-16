@@ -16,6 +16,10 @@ window.NEXO = {
   initialized: false
 };
 
+// ✅ FIX CRÍTICO: Exponer REM globalmente para CryptoVault y WebSocket
+window.NEXO_REM = rem;
+window.NEXO_DIAG = NEXO_DIAG;
+
 // Safety timeout: 15 segundos (más tiempo para BLE)
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible()) {
@@ -33,25 +37,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     _ensureDOMStructure();
     
     window.NEXO.rem = rem;
-    rem.info('REM v2.0 initialized', 'REM_INIT');
+    rem.info('REM v2.1 initialized', 'REM_INIT');
     rem.info('Sistema REM activo - Inicializando NEXO...', 'REM_INIT');
     
     const nexoConfig = {
       relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
-      bleTimeout: 10000, // Aumentado para permisos BLE
+      bleTimeout: 10000,
       enableGestures: true,
-      enableMesh: true, // ✅ BLE ACTIVADO
+      enableMesh: true,
       onMessage: (msg) => {
         console.log('📨 Mensaje:', msg);
         _renderMessage(msg);
       },
       onStatusChange: (mode) => {
         console.log('🌐 Modo:', mode);
-        rem.info(`Modo: ${mode}`, 'NET_MODE');
+        rem.updateMode(mode); // Actualizar status bar
       },
       onError: (err) => {
         console.error('App error:', err);
-        NEXO_DIAG.error('APP_ERR', err.message);
         rem.error(err.message, 'APP_ERR');
       },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
@@ -68,7 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     rem.info('[init] ===== INICIANDO NEXO APP v2.5-NAP (src/) =====', 'INIT_START');
     
-    // Init con timeout de 12 segundos (más tiempo para BLE)
+    // Init con timeout de 12 segundos
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('INIT_TIMEOUT')), 12000)
@@ -76,6 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     try {
       await Promise.race([initPromise, timeoutPromise]);
+      rem.success('==== INICIALIZACIÓN COMPLETADA ====', 'INIT_OK');
     } catch (timeoutErr) {
       rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
     }
@@ -163,17 +167,29 @@ function _renderMessage(msg) {
   if (!container) return;
   const div = document.createElement('div');
   div.className = `message ${msg._own ? 'own' : 'other'}`;
-  div.innerHTML = `<div class="message-content">${msg.content || msg.text}</div><div class="message-meta"><span>${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>${msg._source ? `<span>[${msg._source}]</span>` : ''}</div>`;
+  div.innerHTML = `
+    <div class="message-content">${msg.content || msg.text}</div>
+    <div class="message-meta">
+      <span>${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
+      ${msg._source ? `<span>[${msg._source}]</span>` : ''}
+    </div>
+  `;
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
 
 function _toggleVaultUI(isOpen) {
   const vault = document.getElementById('vault-panel');
+  const stream = document.getElementById('nexo-stream');
+  
   if (vault) {
     vault.classList.toggle('vault-hidden', !isOpen);
     vault.classList.toggle('vault-visible', isOpen);
-    rem.info(isOpen ? 'Vault abierto' : 'Vault cerrado', 'VAULT_TOGGLE');
+    rem.info(isOpen ? '[VAULT] Abierto' : '[VAULT] Cerrado', 'VAULT_TOGGLE');
+  }
+  
+  if (stream) {
+    stream.style.transform = isOpen ? 'translateX(-20%)' : 'translateX(0)';
   }
 }
 
