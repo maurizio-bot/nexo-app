@@ -15,6 +15,15 @@ window.NEXO = {
   initialized: false
 };
 
+// Timeout de seguridad: si todo falla, ocultar splash a los 10 segundos
+const SAFETY_TIMEOUT = setTimeout(() => {
+  if (NEXO_DIAG.isSplashVisible()) {
+    rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
+    NEXO_DIAG.hideSplash();
+    document.body.classList.add('nexo-force-ready');
+  }
+}, 10000);
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     NEXO_DIAG.init();
@@ -23,19 +32,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     _ensureDOMStructure();
     
     window.NEXO.rem = rem;
+    rem.info('REM v2.0 initialized', 'REM_INIT');
     rem.info('Sistema REM activo - Inicializando NEXO...', 'REM_INIT');
     
     const nexoConfig = {
       relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
-      bleTimeout: 5000,
+      bleTimeout: 3000, // Reducido para evitar bloqueo largo
       enableGestures: true,
-      enableMesh: true,
+      enableMesh: false, // Deshabilitar temporalmente si causa bloqueos
       onMessage: (msg) => {
         console.log('📨 Mensaje:', msg);
         _renderMessage(msg);
       },
-      onStatusChange: (mode) => console.log('🌐 Modo:', mode),
-      onError: (err) => NEXO_DIAG.error('APP_ERR', err.message),
+      onStatusChange: (mode) => {
+        console.log('🌐 Modo:', mode);
+        rem.info(`Modo: ${mode}`, 'NET_MODE');
+      },
+      onError: (err) => {
+        console.error('App error:', err);
+        NEXO_DIAG.error('APP_ERR', err.message);
+        rem.error(err.message, 'APP_ERR');
+      },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
         onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
@@ -44,20 +61,41 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     };
     
+    rem.info('🚀 [NEXO] App instance created v2.5-NAP', 'NEXO_INIT');
+    
     window.NEXO.app = new NexoApp(nexoConfig);
-    await window.NEXO.app.init();
+    
+    // Inicialización con timeout por fase
+    rem.info('[init] ===== INICIANDO NEXO APP v2.5-NAP (src/) =====', 'INIT_START');
+    
+    // Si init() tarda más de 8 segundos, forzar continuar
+    const initPromise = window.NEXO.app.init();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('INIT_TIMEOUT')), 8000)
+    );
+    
+    try {
+      await Promise.race([initPromise, timeoutPromise]);
+    } catch (timeoutErr) {
+      rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
+    }
+    
     window.NEXO.initialized = true;
+    clearTimeout(SAFETY_TIMEOUT); // Cancelar timeout de seguridad
     
     _setupMessageInput();
     _setupVaultToggle();
     
     NEXO_DIAG.hideSplash();
+    rem.success('NEXO Inicializado correctamente', 'INIT_OK');
     console.log('✅ NEXO Inicializado');
     
   } catch (error) {
     console.error('💥 Error:', error);
+    clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('INIT_FATAL', error.message);
-    NEXO_DIAG.showFatal('INIT_FATAL', error.message);
+    rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
+    NEXO_DIAG.hideSplash(); // Mostrar error al menos
   }
 });
 
@@ -77,10 +115,14 @@ function _setupMessageInput() {
   const send = async () => {
     const text = input.value.trim();
     if (!text) return;
-    const sent = await window.NEXO.app.sendMessage({ text });
-    if (sent) {
-      input.value = '';
-      rem.success('Mensaje enviado', 'MSG_SENT');
+    try {
+      const sent = await window.NEXO.app.sendMessage({ text });
+      if (sent) {
+        input.value = '';
+        rem.success('Mensaje enviado', 'MSG_SENT');
+      }
+    } catch (e) {
+      rem.error('Error al enviar mensaje', 'MSG_ERR');
     }
   };
   
@@ -91,6 +133,18 @@ function _setupMessageInput() {
 function _setupVaultToggle() {
   const vault = document.getElementById('vault-panel');
   if (vault) vault.classList.add('vault-hidden');
+  
+  // Keyboard shortcut Ctrl+Shift+V para toggle vault
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'V') {
+      e.preventDefault();
+      const vault = document.getElementById('vault-panel');
+      if (vault) {
+        const isHidden = vault.classList.contains('vault-hidden');
+        _toggleVaultUI(!isHidden);
+      }
+    }
+  });
 }
 
 function _renderMessage(msg) {
@@ -108,6 +162,7 @@ function _toggleVaultUI(isOpen) {
   if (vault) {
     vault.classList.toggle('vault-hidden', !isOpen);
     vault.classList.toggle('vault-visible', isOpen);
+    rem.info(isOpen ? 'Vault abierto' : 'Vault cerrado', 'VAULT_TOGGLE');
   }
 }
 
