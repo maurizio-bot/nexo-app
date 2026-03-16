@@ -1,347 +1,329 @@
 /**
- * WebSocketClient v2.7-FIX (Timeout en conexión)
- * FIX CRÍTICO: Timeout explícito en connect() para evitar bloqueos indefinidos
+ * NEXO v9.0 - Crypto Vault (v9.3-CRITICAL-FIX)
+ * Fix: Timeout global en init + fallback inmediato a memoria
  */
 
-const ERROR_CODES = {
-  WS_001: 'CONNECTION_REFUSED',
-  WS_002: 'TIMEOUT_CONNECT', // Este código ya existía pero no se usaba
-  WS_003: 'HANDSHAKE_FAILED',
-  WS_004: 'AUTH_FAILED',
-  WS_005: 'MESSAGE_PARSE_ERROR',
-  WS_006: 'SEND_WHILE_CONNECTING',
-  WS_007: 'SEND_FAILED_OFFLINE',
-  WS_008: 'HEARTBEAT_TIMEOUT',
-  WS_009: 'RECONNECT_EXHAUSTED',
-  WS_010: 'INVALID_URL',
-  WS_011: 'MESSAGE_TOO_LARGE',
-  WS_012: 'PROTOCOL_ERROR',
-  WS_013: 'QUEUE_EXPIRED',
-  WS_014: 'DUPLICATE_PREVENTED'
-};
+const PBKDF2_ITERATIONS = 600000;
+const SALT_LENGTH_BYTES = 32;
+const IV_LENGTH_BYTES = 12;
+const AES_KEY_SIZE_BITS = 256;
+const AES_TAG_LENGTH_BITS = 128;
 
-class WebSocketClient {
-  constructor(url, options = {}) {
-    if (!url || !url.startsWith('ws')) {
-      throw new Error('WS-010: Invalid WebSocket URL');
-    }
+// FIX CRÍTICO: Timeouts más agresivos
+const INIT_TIMEOUT_MS = 5000; // Máximo 5 segundos para todo init
+const DB_TIMEOUT_MS = 3000;
+
+export class CryptoVault {
+  constructor() {
+    if (CryptoVault._instance) return CryptoVault._instance;
     
-    this.url = url;
-    this.ws = null;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = options.maxReconnectAttempts || 5; // Reducido a 5
-    this.reconnectDelay = 1000;
-    this.heartbeatInterval = null;
-    this.heartbeatTimeout = null;
-    this.heartbeatMs = options.heartbeatMs || 30000;
-    this.pongTimeoutMs = options.pongTimeoutMs || 10000;
+    this._validateEnvironment();
     
-    // FIX: Timeout de conexión explícito (default 5s)
-    this.connectTimeoutMs = options.connectTimeoutMs || 5000;
+    this.masterKey = null;
+    this.salt = null;
+    this.db = null;
+    this.identity = null;
+    this._isLocked = true;
+    this._destroyed = false;
+    this._useMemoryFallback = false;
+    this._memoryStorage = new Map();
     
-    this.messageQueue = [];
-    this.queueTTL = options.queueTTL || 5 * 60 * 1000;
-    this.processedMessageIds = new Map();
-    this._errorLog = [];
-    this._maxErrorLog = 10;
-    this._lastError = null;
-    
-    this.isConnecting = false;
-    this.intentionalClose = false;
-    this.lastPingTime = null;
-    this._connectTimer = null; // FIX: Referencia al timer de timeout
-    
-    this.onOpen = null;
-    this.onMessage = null;
-    this.onClose = null;
-    this.onError = null;
+    CryptoVault._instance = this;
   }
 
-  /**
-   * FIX CRÍTICO: Conexión con timeout absoluto
-   */
-  connect() {
-    if (this.isConnecting || this.ws?.readyState === WebSocket.OPEN) {
-      return Promise.resolve();
+  _validateEnvironment() {
+    if (typeof crypto === 'undefined' || !crypto.subtle) {
+      throw new Error('WebCrypto API not available');
     }
+  }
 
-    this.isConnecting = true;
-    this.intentionalClose = false;
-
+  // FIX CRÍTICO: Init con timeout global absoluto
+  async init() {
+    if (this._destroyed) throw new Error('Vault destroyed');
+    if (this.db || this._useMemoryFallback) return this;
+    
+    // Promise con timeout global
     return new Promise((resolve, reject) => {
-      let resolved = false;
+      const timeoutId = setTimeout(() => {
+        console.warn('[CryptoVault] Global init timeout - forcing memory mode');
+        this._useMemoryFallback = true;
+        this._setupMinimalIdentity();
+        resolve(this);
+      }, INIT_TIMEOUT_MS);
       
-      // FIX: Timeout de conexión - si no conecta en X segundos, forzar error
-      this._connectTimer = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          this.isConnecting = false;
-          this._logError(ERROR_CODES.WS_002, `Connection timeout after ${this.connectTimeoutMs}ms`);
-          
-          // Cerrar websocket si sigue intentando
-          if (this.ws) {
-            this.ws.onopen = null;
-            this.ws.onclose = null;
-            this.ws.onerror = null;
-            this.ws.close();
-            this.ws = null;
-          }
-          
-          reject(new Error(`WS-002: Connection timeout (${this.connectTimeoutMs}ms)`));
-        }
-      }, this.connectTimeoutMs);
+      this._doInit()
+        .then(() => {
+          clearTimeout(timeoutId);
+          resolve(this);
+        })
+        .catch((err) => {
+          clearTimeout(timeoutId);
+          console.warn(`[CryptoVault] Init failed: ${err.message} - using memory mode`);
+          this._useMemoryFallback = true;
+          this._cleanupDB();
+          this._setupMinimalIdentity();
+          resolve(this); // Nunca rechazamos, siempre resolvemos con fallback
+        });
+    });
+  }
 
+  async _doInit() {
+    // Intento rápido de IndexedDB
+    try {
+      await this._initDBQuick();
+      this.salt = await this._getSaltQuick();
+    } catch (e) {
+      throw new Error('IndexedDB failed');
+    }
+    
+    // Intentar cargar/crear identidad pero con timeout
+    try {
+      await this._loadIdentityQuick();
+    } catch (e) {
+      console.warn('[CryptoVault] Identity load failed, creating minimal');
+      this._setupMinimalIdentity();
+    }
+    
+    return this;
+  }
+
+  _initDBQuick() {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('DB timeout')), DB_TIMEOUT_MS);
+      
       try {
-        this.ws = new WebSocket(this.url);
+        const request = indexedDB.open('nexo_crypto_v9', 1);
         
-        this.ws.onopen = () => {
-          if (resolved) return; // Evitar doble resolve
-          resolved = true;
-          clearTimeout(this._connectTimer);
-          
-          this.isConnecting = false;
-          this.reconnectAttempts = 0;
-          this._startHeartbeat();
-          this._flushQueue();
-          this.onOpen?.();
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('keys')) {
+            db.createObjectStore('keys', { keyPath: 'id' });
+          }
+        };
+        
+        request.onsuccess = (e) => {
+          clearTimeout(timeout);
+          this.db = e.target.result;
           resolve();
         };
-
-        this.ws.onmessage = (event) => this._onMessage(event);
         
-        this.ws.onclose = (event) => {
-          if (resolved && !this.isConnecting) {
-            // Cierre post-conexión normal
-            this._stopHeartbeat();
-            this.onClose?.(event);
-            
-            if (!this.intentionalClose && !event.wasClean) {
-              this._scheduleReconnect();
-            }
-          } else if (!resolved) {
-            // Cierre durante intento de conexión (antes de onopen)
-            resolved = true;
-            clearTimeout(this._connectTimer);
-            this.isConnecting = false;
-            this._logError(ERROR_CODES.WS_001, 'Connection closed during handshake', { code: event.code });
-            reject(new Error(`WS-001: Connection closed (code ${event.code})`));
-          }
+        request.onerror = () => {
+          clearTimeout(timeout);
+          reject(request.error);
         };
-
-        this.ws.onerror = (error) => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(this._connectTimer);
-            this.isConnecting = false;
-            this._logError(ERROR_CODES.WS_001, 'Connection error', { error: error?.message });
-            this.onError?.(error, ERROR_CODES.WS_001, { url: this.url });
-            reject(new Error(`WS-001: ${error?.message || 'Connection failed'}`));
-          }
-        };
-
-      } catch (err) {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(this._connectTimer);
-          this.isConnecting = false;
-          this._logError(ERROR_CODES.WS_010, 'Connection setup failed', { error: err.message });
-          reject(new Error(`WS-010: ${err.message}`));
-        }
+      } catch (e) {
+        clearTimeout(timeout);
+        reject(e);
       }
     });
   }
 
-  // ... resto de métodos permanecen iguales ...
-  // (copia aquí los demás métodos de tu archivo original: _onMessage, _startHeartbeat, etc.)
-
-  _onMessage(event) {
-    let data;
-    try {
-      data = JSON.parse(event.data);
-    } catch (e) {
-      if (typeof event.data === 'string') {
-        if (event.data === 'pong') {
-          this._handlePong();
-          return;
-        }
-        data = { type: 'text', data: event.data, _raw: true, timestamp: Date.now() };
-      } else {
-        this._logError(ERROR_CODES.WS_005, 'Message parse error');
-        return;
-      }
-    }
-
-    if (data === 'pong' || data.type === 'pong') {
-      this._handlePong();
-      return;
-    }
-
-    const msgId = data.id || data.messageId || data._id;
-    if (msgId) {
-      if (this._isDuplicate(msgId)) {
-        this._logError(ERROR_CODES.WS_014, 'Duplicate message prevented');
-        return;
-      }
-      this.processedMessageIds.set(msgId, Date.now());
-      this._cleanupProcessedIds();
-    }
-
-    this.onMessage?.(data);
-  }
-
-  _startHeartbeat() {
-    this.heartbeatInterval = setInterval(() => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+  _getSaltQuick() {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Salt timeout')), DB_TIMEOUT_MS);
       
       try {
-        this.lastPingTime = Date.now();
-        this.ws.send(JSON.stringify({ type: 'ping', timestamp: this.lastPingTime }));
+        const tx = this.db.transaction(['keys'], 'readonly');
+        const store = tx.objectStore('keys');
+        const request = store.get('master_salt');
         
-        this.heartbeatTimeout = setTimeout(() => {
-          this._logError(ERROR_CODES.WS_008, 'Heartbeat timeout');
-          this.ws?.close();
-        }, this.pongTimeoutMs);
+        request.onsuccess = () => {
+          clearTimeout(timeout);
+          if (request.result?.value?.length === SALT_LENGTH_BYTES) {
+            resolve(new Uint8Array(request.result.value));
+          } else {
+            // Crear nuevo salt
+            const newSalt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
+            const tx2 = this.db.transaction(['keys'], 'readwrite');
+            const store2 = tx2.objectStore('keys');
+            store2.put({ id: 'master_salt', value: Array.from(newSalt) });
+            resolve(newSalt);
+          }
+        };
         
-      } catch (err) {
-        this._logError(ERROR_CODES.WS_008, 'Heartbeat send failed');
+        request.onerror = () => {
+          clearTimeout(timeout);
+          reject(request.error);
+        };
+      } catch (e) {
+        clearTimeout(timeout);
+        reject(e);
       }
-    }, this.heartbeatMs);
+    });
   }
 
-  _handlePong() {
-    if (this.heartbeatTimeout) {
-      clearTimeout(this.heartbeatTimeout);
-      this.heartbeatTimeout = null;
-    }
+  async _loadIdentityQuick() {
+    // Timeout para carga de identidad
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Identity timeout')), 2000);
+      
+      this._getFromStorage('nexo_identity')
+        .then((stored) => {
+          clearTimeout(timeout);
+          if (stored?.id) {
+            this.identity = stored;
+            console.log('[CryptoVault] Identity loaded:', this.identity.id.substring(0, 8));
+            resolve();
+          } else {
+            reject(new Error('No identity found'));
+          }
+        })
+        .catch((e) => {
+          clearTimeout(timeout);
+          reject(e);
+        });
+    });
   }
 
-  _stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
-    if (this.heartbeatTimeout) {
-      clearTimeout(this.heartbeatTimeout);
-      this.heartbeatTimeout = null;
-    }
-  }
-
-  send(data) {
-    const payload = typeof data === 'string' ? data : JSON.stringify(data);
+  _setupMinimalIdentity() {
+    // Crear identidad mínima inmediatamente sin operaciones criptográficas pesadas
+    const id = crypto.randomUUID ? crypto.randomUUID() : 
+               'nexo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this._queueMessage(payload);
-      return false;
+    this.identity = {
+      id: id,
+      publicKey: [],
+      createdAt: Date.now(),
+      algorithm: 'memory-fallback',
+      temporary: true
+    };
+    
+    if (this._useMemoryFallback) {
+      this._memoryStorage.set('nexo_identity', JSON.stringify(this.identity));
     }
+    
+    console.log('[CryptoVault] Minimal identity ready:', id.substring(0, 8));
+  }
+
+  getIdentity() {
+    return this.identity?.id || null;
+  }
+
+  // Resto de métodos (encrypt, decrypt, etc.) permanecen iguales...
+  // [Mantén el resto del código original aquí: initialize, encrypt, decrypt, etc.]
+
+  async initialize(password) {
+    if (this._destroyed) throw new Error('Vault destroyed');
+    if (!this.salt && !this._useMemoryFallback) throw new Error('Call init() first');
+    if (!password || password.length < 12) throw new Error('Password too short');
+    
+    if (!this.salt) {
+      this.salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
+    }
+    
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
     
     try {
-      if (this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(payload);
-        return true;
-      } else {
-        throw new Error('Socket closed');
-      }
-    } catch (err) {
-      this._queueMessage(payload);
-      return false;
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw', passwordBuffer, 'PBKDF2', false, ['deriveKey']
+      );
+      
+      this.masterKey = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: this.salt,
+          iterations: PBKDF2_ITERATIONS,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: AES_KEY_SIZE_BITS },
+        false,
+        ['encrypt', 'decrypt']
+      );
+      
+      this._isLocked = false;
+      return true;
+    } finally {
+      passwordBuffer.fill(0);
     }
   }
 
-  isConnected() {
-    return this.ws && this.ws.readyState === WebSocket.OPEN;
-  }
-
-  _queueMessage(payload) {
-    this.messageQueue.push({
-      payload,
-      timestamp: Date.now(),
-      expiresAt: Date.now() + this.queueTTL,
-      attempts: 0
-    });
-  }
-
-  _flushQueue() {
-    const now = Date.now();
-    const validMessages = this.messageQueue.filter(item => now <= item.expiresAt);
-    this.messageQueue = [];
+  async encrypt(plaintext) {
+    this._assertUnlocked();
     
-    validMessages.forEach(item => {
-      try {
-        if (this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.send(item.payload);
-        } else {
-          this._queueMessage(item.payload);
-        }
-      } catch (err) {
-        this._queueMessage(item.payload);
-      }
-    });
-  }
-
-  _isDuplicate(msgId) {
-    if (!msgId) return false;
-    const timestamp = this.processedMessageIds.get(msgId);
-    if (!timestamp) return false;
+    const data = typeof plaintext === 'string' ? 
+      new TextEncoder().encode(plaintext) : 
+      new Uint8Array(plaintext);
     
-    if (Date.now() - timestamp > 5 * 60 * 1000) {
-      this.processedMessageIds.delete(msgId);
-      return false;
-    }
-    return true;
-  }
-
-  _cleanupProcessedIds() {
-    const fiveMinutes = 5 * 60 * 1000;
-    for (const [id, timestamp] of this.processedMessageIds.entries()) {
-      if (Date.now() - timestamp > fiveMinutes) {
-        this.processedMessageIds.delete(id);
-      }
-    }
-  }
-
-  _logError(code, message, details = {}) {
-    const error = { code, message, timestamp: Date.now(), url: this.url, ...details };
-    this._lastError = error;
-    this._errorLog.push(error);
-    if (this._errorLog.length > this._maxErrorLog) this._errorLog.shift();
-    console.error(`[${code}] ${message}`, details);
-  }
-
-  _scheduleReconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this._logError(ERROR_CODES.WS_009, 'Max reconnect attempts reached');
-      return;
-    }
+    const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES));
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv, tagLength: AES_TAG_LENGTH_BITS },
+      this.masterKey,
+      data
+    );
     
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-    console.log(`[WS] Reconnecting in ${delay}ms...`);
-    
-    setTimeout(() => {
-      this.reconnectAttempts++;
-      this.connect().catch(() => {}); 
-    }, delay);
-  }
-
-  disconnect() {
-    this.intentionalClose = true;
-    clearTimeout(this._connectTimer); // Limpiar timer pendiente
-    this._stopHeartbeat();
-    if (this.ws) {
-      this.ws.close(1000, 'Client disconnect');
-    }
-  }
-
-  getErrorLog() { return [...this._errorLog]; }
-  getLastError() { return this._lastError; }
-  getStats() {
     return {
-      connected: this.isConnected(),
-      readyState: this.ws?.readyState || -1,
-      queueSize: this.messageQueue.length,
-      reconnectAttempts: this.reconnectAttempts,
-      lastError: this._lastError?.code || null
+      iv: Array.from(iv),
+      ciphertext: Array.from(new Uint8Array(ciphertext)),
+      algorithm: 'AES-GCM-256'
     };
+  }
+
+  async decrypt(packageData) {
+    this._assertUnlocked();
+    
+    const plaintext = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: new Uint8Array(packageData.iv),
+        tagLength: AES_TAG_LENGTH_BITS
+      },
+      this.masterKey,
+      new Uint8Array(packageData.ciphertext)
+    );
+    
+    return new Uint8Array(plaintext);
+  }
+
+  _assertUnlocked() {
+    if (!this.masterKey) throw new Error('Vault locked');
+  }
+
+  lock() {
+    this.masterKey = null;
+    this._isLocked = true;
+  }
+
+  isLocked() {
+    return this._isLocked || !this.masterKey;
+  }
+
+  async destroy() {
+    this.lock();
+    this._cleanupDB();
+    this.identity = null;
+    this._memoryStorage.clear();
+    this._destroyed = true;
+    CryptoVault._instance = null;
+  }
+
+  _cleanupDB() {
+    if (this.db) {
+      try { this.db.close(); } catch (e) {}
+      this.db = null;
+    }
+  }
+
+  async _getFromStorage(key) {
+    if (this._useMemoryFallback) {
+      const item = this._memoryStorage.get(key);
+      return item ? JSON.parse(item) : null;
+    }
+    
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = this.db.transaction(['keys'], 'readonly');
+        const store = tx.objectStore('keys');
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result?.value || null);
+        req.onerror = () => reject(req.error);
+      } catch (e) {
+        reject(e);
+      }
+    });
   }
 }
 
-export { WebSocketClient, ERROR_CODES };
+// Exportar también como default
+export default CryptoVault;
