@@ -1,70 +1,119 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0a0a0a">
-  <meta name="color-scheme" content="dark">
-  <meta name="description" content="NEXO v9.0 - Mensajería P2P ultra-rápida">
-  <meta name="format-detection" content="telephone=no">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
-  
-  <title>NEXO v9.0</title>
-  
-  <!-- Webpack inyectará los estilos aquí -->
-</head>
-<body>
-  <!-- SPLASH SCREEN -->
-  <div id="splash-native">
-    <div id="splash-logo"></div>
-    <div id="splash-text">NEXO v9.0</div>
-  </div>
+/**
+ * src/main.js - Punto de entrada NEXO v9.0-NAP-REM
+ */
 
-  <!-- DIAGNÓSTICO - NAP: Auto-hide en producción -->
-  <div id="nexo-diagnostic"></div>
+import './styles/critical.css';
+import { NEXO_DIAG } from './core/nap.js';
+import { NexoApp, DEBUG } from './app/nexo_app.js';
+import { rem } from './ui/rem.js';
 
-  <!-- ERROR FATAL -->
-  <div id="fatal-error">
-    <h2>✕ ERROR DE INICIO</h2>
-    <p style="color:#666;margin-bottom:20px;">La aplicación no pudo iniciar</p>
-    <code id="fatal-code">HTML-001: Unknown Error</code>
-    <button onclick="location.reload()" style="margin-top:30px;padding:12px 24px;background:#00ff88;border:none;border-radius:24px;color:#0a0a0a;font-weight:bold;cursor:pointer;font-size:16px;">
-      Reintentar
-    </button>
-  </div>
+window.NEXO = {
+  app: null,
+  rem: null,
+  diag: null,
+  version: '9.0-REM',
+  initialized: false
+};
 
-  <!-- UI PRINCIPAL -->
-  <div id="status-indicator" class="offline">● OFFLINE</div>
-
-  <div id="app">
-    <div id="messages-container"></div>
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    NEXO_DIAG.init();
+    window.NEXO.diag = NEXO_DIAG;
     
-    <div id="input-area">
-      <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
-      <button id="send-btn">➤</button>
-    </div>
-  </div>
+    _ensureDOMStructure();
+    
+    window.NEXO.rem = rem;
+    rem.info('Sistema REM activo - Inicializando NEXO...', 'REM_INIT');
+    
+    const nexoConfig = {
+      relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
+      bleTimeout: 5000,
+      enableGestures: true,
+      enableMesh: true,
+      onMessage: (msg) => {
+        console.log('📨 Mensaje:', msg);
+        _renderMessage(msg);
+      },
+      onStatusChange: (mode) => console.log('🌐 Modo:', mode),
+      onError: (err) => NEXO_DIAG.error('APP_ERR', err.message),
+      onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
+      actionCallbacks: {
+        onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
+        onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
+        onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
+      }
+    };
+    
+    window.NEXO.app = new NexoApp(nexoConfig);
+    await window.NEXO.app.init();
+    window.NEXO.initialized = true;
+    
+    _setupMessageInput();
+    _setupVaultToggle();
+    
+    NEXO_DIAG.hideSplash();
+    console.log('✅ NEXO Inicializado');
+    
+  } catch (error) {
+    console.error('💥 Error:', error);
+    NEXO_DIAG.error('INIT_FATAL', error.message);
+    NEXO_DIAG.showFatal('INIT_FATAL', error.message);
+  }
+});
 
-  <!-- Vault Panel (Panel lateral) -->
-  <div id="vault-panel" class="vault-hidden">
-    <div class="vault-header">
-      <h3>Compartir</h3>
-      <div id="current-context">
-        <span id="ctx-video">Video</span>
-        <span id="ctx-time">0:00</span>
-      </div>
-    </div>
-    <div id="contacts-list"></div>
-    <div id="chispa-creator">
-      <button id="btn-emoji" data-type="emoji">🔥</button>
-      <button id="btn-laugh" data-type="laugh">😂</button>
-      <button id="btn-sync" data-type="sync">👥 Ver juntos</button>
-    </div>
-  </div>
+function _ensureDOMStructure() {
+  const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
+  const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
+  
+  if (stream && !stream.id) stream.id = 'nexo-stream';
+  if (vault && !vault.id) vault.id = 'nexo-vault';
+}
 
-  <!-- Webpack inyectará los scripts aquí -->
-</body>
-</html>
+function _setupMessageInput() {
+  const input = document.getElementById('message-input');
+  const btn = document.getElementById('send-btn');
+  if (!input || !btn || !window.NEXO.app) return;
+  
+  const send = async () => {
+    const text = input.value.trim();
+    if (!text) return;
+    const sent = await window.NEXO.app.sendMessage({ text });
+    if (sent) {
+      input.value = '';
+      rem.success('Mensaje enviado', 'MSG_SENT');
+    }
+  };
+  
+  btn.addEventListener('click', send);
+  input.addEventListener('keypress', (e) => e.key === 'Enter' && send());
+}
+
+function _setupVaultToggle() {
+  const vault = document.getElementById('vault-panel');
+  if (vault) vault.classList.add('vault-hidden');
+}
+
+function _renderMessage(msg) {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = `message ${msg._own ? 'own' : 'other'}`;
+  div.innerHTML = `<div class="message-content">${msg.content || msg.text}</div><div class="message-meta"><span>${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>${msg._source ? `<span>[${msg._source}]</span>` : ''}</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function _toggleVaultUI(isOpen) {
+  const vault = document.getElementById('vault-panel');
+  if (vault) {
+    vault.classList.toggle('vault-hidden', !isOpen);
+    vault.classList.toggle('vault-visible', isOpen);
+  }
+}
+
+function _focusInput(text = '') {
+  const input = document.getElementById('message-input');
+  if (input) { input.focus(); input.value = text; }
+}
+
+if (module.hot) module.hot.accept();
