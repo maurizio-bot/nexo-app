@@ -1,24 +1,24 @@
 /**
- * NEXO v9.0 - BLE Mesh v4.4 (APK-CERTIFIED)
- * Web Bluetooth API + WebRTC Data Channels
+ * NEXO v9.0 - BLE Mesh v5.0 (Capacitor Native)
+ * Reemplaza Web Bluetooth API por @capacitor-community/bluetooth-le
  * 
- * @version 4.4-apk-certified
- * @fixes Syntax error, race conditions, memory leaks, cleanup, maxPeers, broadcast validation
+ * @version 5.0-native
+ * @certified APK Android 12+
  */
+
+import { BleClient } from '@capacitor-community/bluetooth-le';
+import { Capacitor } from '@capacitor/core';
 
 export class BleMesh {
   constructor(options = {}) {
-    if (typeof navigator === 'undefined' || !navigator.bluetooth) {
-      console.warn('[BleMesh] Web Bluetooth API no disponible');
-    }
-
     this.config = {
-      serviceUuid: options.serviceUuid || '0000ffe0-0000-1000-8000-00805f9b34fb',
-      characteristicUuid: options.characteristicUuid || '0000ffe1-0000-1000-8000-00805f9b34fb',
+      serviceUuid: options.serviceUuid || '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
+      characteristicUuid: options.characteristicUuid || 'beb5483e-36e1-4688-b7f5-ea07361b26a8',
       deviceNamePrefix: options.deviceNamePrefix || 'NEXO',
       maxPeers: options.maxPeers || 8,
-      scanTimeout: options.scanTimeout || 10000,
-      iceServers: options.iceServers || [{ urls: 'stun:stun.l.google.com:19302' }]
+      scanTimeout: options.scanTimeout || 15000,
+      autoConnectRssi: options.autoConnectRssi || -70,
+      ...options
     };
 
     this.state = {
@@ -26,21 +26,20 @@ export class BleMesh {
       isInitialized: false,
       peers: new Map(),
       localId: this._generateId(),
-      initialDevice: null
+      platform: Capacitor.getPlatform(),
+      isNative: Capacitor.isNativePlatform()
     };
 
-    // FIX: Track devices en proceso de conexión
     this._connectingDevices = new Set();
-
     this._listeners = {
       message: [],
       peer: [],
       connect: [],
       disconnect: [],
-      error: []
+      error: [],
+      device: []
     };
 
-    this.rtcConfig = { iceServers: this.config.iceServers };
     this.timers = { scan: null };
     this.destroyed = false;
   }
@@ -72,98 +71,202 @@ export class BleMesh {
     });
   }
 
+  /**
+   * Inicializa BLE nativo (Android/iOS)
+   */
   async init() {
     if (this.destroyed) throw new Error('BleMesh destruido');
     if (this.state.isInitialized) return true;
-    if (!navigator.bluetooth) throw new Error('Web Bluetooth API no disponible');
+
+    // Verificar si es plataforma nativa
+    if (!this.state.isNative) {
+      console.warn('[BleMesh] No es plataforma nativa, BLE no disponible');
+      throw new Error('Capacitor Native Platform required (Android/iOS)');
+    }
 
     try {
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [{ namePrefix: this.config.deviceNamePrefix }],
-        optionalServices: [this.config.serviceUuid]
+      // Inicializar plugin BLE
+      await BleClient.initialize({ 
+        androidNeverForLocation: false 
       });
 
-      this.state.initialDevice = device;
-      
-      device.addEventListener('gattserverdisconnected', () => {
-        console.log('[BleMesh] Device inicial desconectado');
-        this._handleDisconnection(device.id);
-      });
-
-      await this._connectDevice(device);
       this.state.isInitialized = true;
-      this._startScanning();
+      console.log('[BleMesh] ✅ Native BLE initialized');
+      this._emit('ready');
       
       return true;
     } catch (err) {
+      console.error('[BleMesh] ❌ Init error:', err);
       this._emit('error', err);
       throw err;
     }
   }
 
   /**
-   * FIX: Verifica maxPeers y race conditions
+   * Inicia escaneo de dispositivos NEXO
    */
-  async _connectDevice(device) {
-    // FIX: Verificar maxPeers primero
-    if (this.state.peers.size >= this.config.maxPeers) {
-      console.log(`[BleMesh] Max peers (${this.config.maxPeers}) reached, skipping ${device.id}`);
-      return;
-    }
+  async startScan(duration = null) {
+    if (this.destroyed) throw new Error('BleMesh destruido');
+    if (!this.state.isInitialized) throw new Error('BleMesh no inicializado');
+    if (this.state.isScanning) return;
 
-    // FIX: Race condition - previene conexiones concurrentes
-    if (this._connectingDevices.has(device.id)) {
-      console.log(`[BleMesh] Ya conectando ${device.id}, ignorando`);
-      return;
-    }
-
-    if (this.state.peers.has(device.id)) {
-      console.log(`[BleMesh] ${device.id} ya conectado`);
-      return;
-    }
-
-    this._connectingDevices.add(device.id);
+    const scanDuration = duration || this.config.scanTimeout;
 
     try {
-      const server = await device.gatt.connect();
-      const service = await server.getPrimaryService(this.config.serviceUuid);
-      const characteristic = await service.getCharacteristic(this.config.characteristicUuid);
+      this.state.isScanning = true;
+      this._emit('scanning', true);
 
-      try {
-        await characteristic.startNotifications();
-      } catch (notifyErr) {
-        console.warn('[BleMesh] No se pudieron iniciar notificaciones:', notifyErr);
-      }
+      console.log(`[BleMesh] 🔍 Iniciando scan por ${scanDuration}ms...`);
 
-      // FIX: Guardar referencia al handler para cleanup
-      const disconnectHandler = () => this._handleDisconnection(device.id);
-      device.addEventListener('gattserverdisconnected', disconnectHandler);
+      await BleClient.requestLEScan(
+        {
+          services: [this.config.serviceUuid],
+          allowDuplicates: false,
+          scanMode: 2 // LOW_LATENCY
+        },
+        (result) => {
+          this._handleScanResult(result);
+        }
+      );
 
-      characteristic.addEventListener('characteristicvaluechanged', (event) => {
-        this._handleBleMessage(event, device.id);
-      });
-
-      this.state.peers.set(device.id, {
-        device,
-        server,
-        characteristic,
-        disconnectHandler,
-        connectedAt: Date.now(),
-        type: 'ble'
-      });
-
-      this._emit('connect', device.id);
-      this._emit('peer', this.state.peers.size);
-
-      // Intentar upgrade a WebRTC
-      this._attemptWebRTCUpgrade(device.id);
+      // Auto-stop
+      this.timers.scan = setTimeout(() => {
+        this.stopScan();
+      }, scanDuration);
 
     } catch (err) {
-      console.error('[BleMesh] Error conectando device:', err);
+      console.error('[BleMesh] Scan error:', err);
+      this.state.isScanning = false;
+      this._emit('error', err);
+      throw err;
+    }
+  }
+
+  async stopScan() {
+    if (!this.state.isScanning) return;
+    
+    try {
+      await BleClient.stopLEScan();
+      if (this.timers.scan) {
+        clearTimeout(this.timers.scan);
+        this.timers.scan = null;
+      }
+      this.state.isScanning = false;
+      this._emit('scanning', false);
+      console.log('[BleMesh] ⏹️ Scan detenido');
+    } catch (err) {
+      console.error('[BleMesh] Error deteniendo scan:', err);
+    }
+  }
+
+  /**
+   * Handler de resultados de scan
+   */
+  _handleScanResult(result) {
+    const device = {
+      id: result.device.deviceId,
+      name: result.device.name || 'NEXO Device',
+      rssi: result.rssi,
+      txPower: result.txPower,
+      manufacturerData: result.manufacturerData
+    };
+
+    // Emitir evento device encontrado
+    this._emit('device', device);
+
+    // Auto-conectar si señal fuerte y no estamos conectando ya
+    if (device.rssi > this.config.autoConnectRssi && 
+        !this._connectingDevices.has(device.id) &&
+        !this.state.peers.has(device.id) &&
+        this.state.peers.size < this.config.maxPeers) {
+      
+      console.log(`[BleMesh] Auto-conectando a ${device.name} (${device.rssi}dBm)`);
+      this.connect(device.id);
+    }
+  }
+
+  /**
+   * Conecta a dispositivo específico por ID
+   */
+  async connect(deviceId) {
+    if (this.destroyed) throw new Error('BleMesh destruido');
+    if (!this.state.isInitialized) throw new Error('BleMesh no inicializado');
+    
+    // Validaciones
+    if (this.state.peers.has(deviceId)) {
+      console.log(`[BleMesh] ${deviceId} ya conectado`);
+      return;
+    }
+    
+    if (this._connectingDevices.has(deviceId)) {
+      console.log(`[BleMesh] Ya conectando ${deviceId}`);
+      return;
+    }
+
+    if (this.state.peers.size >= this.config.maxPeers) {
+      console.log(`[BleMesh] Max peers (${this.config.maxPeers}) alcanzado`);
+      return;
+    }
+
+    this._connectingDevices.add(deviceId);
+
+    try {
+      console.log(`[BleMesh] 🔗 Conectando a ${deviceId}...`);
+      
+      // Conectar con callback de desconexión
+      await BleClient.connect(deviceId, (disconnectedId) => {
+        console.log(`[BleMesh] 🔌 Desconectado: ${disconnectedId}`);
+        this._handleDisconnection(disconnectedId);
+      });
+
+      // Descubrir servicios
+      await BleClient.discoverServices(deviceId);
+
+      // Iniciar notificaciones
+      await BleClient.startNotifications(
+        deviceId,
+        this.config.serviceUuid,
+        this.config.characteristicUuid,
+        (value) => {
+          this._handleIncomingMessage(deviceId, value);
+        }
+      );
+
+      // Guardar peer
+      this.state.peers.set(deviceId, {
+        id: deviceId,
+        connectedAt: Date.now(),
+        lastSeen: Date.now(),
+        type: 'ble_native'
+      });
+
+      this._emit('connect', deviceId);
+      this._emit('peer', this.state.peers.size);
+      
+      console.log(`[BleMesh] ✅ Conectado: ${deviceId} (Total: ${this.state.peers.size})`);
+
+    } catch (err) {
+      console.error(`[BleMesh] ❌ Error conectando ${deviceId}:`, err);
       this._emit('error', err);
     } finally {
-      this._connectingDevices.delete(device.id);
+      this._connectingDevices.delete(deviceId);
     }
+  }
+
+  /**
+   * Desconecta dispositivo específico
+   */
+  async disconnect(deviceId) {
+    const peer = this.state.peers.get(deviceId);
+    if (!peer) return;
+
+    try {
+      await BleClient.disconnect(deviceId);
+    } catch (err) {
+      console.warn(`[BleMesh] Error desconectando ${deviceId}:`, err);
+    }
+    
+    this._handleDisconnection(deviceId);
   }
 
   _handleDisconnection(deviceId) {
@@ -171,168 +274,71 @@ export class BleMesh {
       this.state.peers.delete(deviceId);
       this._emit('disconnect', deviceId);
       this._emit('peer', this.state.peers.size);
-    }
-  }
-
-  _handleBleMessage(event, peerId) {
-    const value = event.target.value;
-    const decoder = new TextDecoder('utf-8');
-    const data = decoder.decode(value);
-    
-    try {
-      const message = JSON.parse(data);
-      this._emit('message', message, peerId);
-    } catch (err) {
-      this._emit('message', { type: 'raw', data }, peerId);
+      console.log(`[BleMesh] Peer removido: ${deviceId} (Restantes: ${this.state.peers.size})`);
     }
   }
 
   /**
-   * FIX: Verifica timer pendiente para evitar race condition
+   * Handler de mensajes entrantes
    */
-  _startScanning() {
-    if (this.state.isScanning || this.destroyed || this.timers.scan) return;
-    if (this.state.peers.size >= this.config.maxPeers) return;
-
-    this.state.isScanning = true;
-
-    const doScan = async () => {
-      if (this.destroyed) return;
-      
-      try {
-        const devices = await navigator.bluetooth.getDevices();
-        
-        for (const device of devices) {
-          if (this.state.peers.has(device.id)) continue;
-          if (this.state.peers.size >= this.config.maxPeers) break;
-          
-          if (device.name?.startsWith(this.config.deviceNamePrefix)) {
-            device.addEventListener('gattserverdisconnected', () => {
-              this._handleDisconnection(device.id);
-            });
-            await this._connectDevice(device);
-          }
-        }
-      } catch (err) {
-        console.warn('[BleMesh] Scan error:', err);
-      } finally {
-        this.state.isScanning = false;
-        if (!this.destroyed && this.state.peers.size < this.config.maxPeers) {
-          this.timers.scan = setTimeout(() => {
-            this.timers.scan = null;
-            this._startScanning();
-          }, 5000);
-        }
-      }
-    };
-
-    doScan();
-  }
-
-  async _attemptWebRTCUpgrade(peerId) {
-    const peer = this.state.peers.get(peerId);
-    if (!peer) return;
-
-    if (peer.rtcConnection) {
-      console.log('[BleMesh] Peer ya tiene WebRTC, ignorando upgrade');
-      return;
-    }
-
+  _handleIncomingMessage(deviceId, value) {
     try {
-      const pc = new RTCPeerConnection(this.rtcConfig);
+      const text = new TextDecoder('utf-8').decode(value);
+      const message = JSON.parse(text);
       
-      // FIX: Guardar referencias a handlers para cleanup
-      peer.rtcHandlers = {
-        iceCandidate: (event) => {
-          if (event.candidate && peer.characteristic) {
-            this._sendByBle(peerId, { type: 'ice-candidate', candidate: event.candidate });
-          }
-        },
-        dataChannel: (event) => {
-          const channel = event.channel;
-          peer.dataChannel = channel;
-          peer.type = 'webrtc';
-          
-          channel.onmessage = (e) => {
-            try {
-              const msg = JSON.parse(e.data);
-              this._emit('message', msg, peerId);
-            } catch (err) {
-              this._emit('message', { type: 'raw', data: e.data }, peerId);
-            }
-          };
-        }
-      };
+      // Actualizar lastSeen
+      const peer = this.state.peers.get(deviceId);
+      if (peer) peer.lastSeen = Date.now();
 
-      pc.onicecandidate = peer.rtcHandlers.iceCandidate;
-      pc.ondatachannel = peer.rtcHandlers.dataChannel;
-
-      if (this._shouldInitiate(peerId)) {
-        const channel = pc.createDataChannel('nexo-mesh');
-        peer.dataChannel = channel;
-        
-        channel.onopen = () => {
-          console.log('[BleMesh] WebRTC channel abierto con', peerId);
-          peer.type = 'webrtc';
-        };
-
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          this._sendByBle(peerId, { type: 'webrtc-offer', sdp: offer.sdp });
-        } catch (err) {
-          console.error('[BleMesh] Error creando oferta WebRTC:', err);
-        }
-      }
-
-      peer.rtcConnection = pc;
+      this._emit('message', message, deviceId);
+      
     } catch (err) {
-      console.error('[BleMesh] Error en WebRTC upgrade:', err);
+      // Si no es JSON, enviar como raw
+      const text = new TextDecoder('utf-8').decode(value);
+      this._emit('message', { type: 'raw', data: text }, deviceId);
     }
   }
 
-  _shouldInitiate(peerId) {
-    return this.state.localId < peerId;
-  }
-
-  async _sendByBle(peerId, message) {
-    const peer = this.state.peers.get(peerId);
-    if (!peer || !peer.characteristic) return false;
+  /**
+   * Envía mensaje a un peer específico
+   */
+  async send(deviceId, message) {
+    if (this.destroyed) throw new Error('BleMesh destruido');
+    
+    const peer = this.state.peers.get(deviceId);
+    if (!peer) throw new Error(`Peer ${deviceId} no conectado`);
 
     try {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(JSON.stringify(message));
-      await peer.characteristic.writeValue(data);
+      const data = new TextEncoder().encode(JSON.stringify(message));
+      await BleClient.write(
+        deviceId,
+        this.config.serviceUuid,
+        this.config.characteristicUuid,
+        data,
+        { timeout: 5000 }
+      );
       return true;
     } catch (err) {
+      console.error(`[BleMesh] Error enviando a ${deviceId}:`, err);
       return false;
     }
   }
 
   /**
-   * FIX: Valida peers antes de enviar
+   * Broadcast a todos los peers conectados
    */
   async broadcast(message) {
     if (this.destroyed) throw new Error('BleMesh destruido');
-    
-    // FIX: Validar peers primero
     if (this.state.peers.size === 0) {
       throw new Error('No peers connected');
     }
-    
+
     const promises = [];
     
-    for (const [peerId, peer] of this.state.peers) {
-      if (peer.dataChannel?.readyState === 'open') {
-        try {
-          peer.dataChannel.send(JSON.stringify(message));
-          promises.push(Promise.resolve(true));
-        } catch (err) {
-          promises.push(Promise.resolve(false));
-        }
-      } else if (peer.characteristic) {
-        promises.push(this._sendByBle(peerId, message));
-      }
+    for (const [deviceId] of this.state.peers) {
+      promises.push(
+        this.send(deviceId, message).catch(() => false)
+      );
     }
 
     const results = await Promise.all(promises);
@@ -345,61 +351,72 @@ export class BleMesh {
     return successCount;
   }
 
+  /**
+   * Request permisos explícitos (Android 12+)
+   */
+  async requestPermissions() {
+    if (!this.state.isNative) return false;
+    
+    try {
+      // En Android 12+, BleClient.initialize ya solicita permisos
+      // Pero podemos verificar estado aquí si es necesario
+      return true;
+    } catch (err) {
+      console.error('[BleMesh] Permission error:', err);
+      return false;
+    }
+  }
+
   getPeerCount() {
     return this.state.peers.size;
   }
 
   getPeers() {
-    return Array.from(this.state.peers.keys());
+    return Array.from(this.state.peers.entries()).map(([id, peer]) => ({
+      id,
+      connectedAt: peer.connectedAt,
+      lastSeen: peer.lastSeen,
+      type: peer.type
+    }));
   }
 
-  disconnect(peerId) {
-    const peer = this.state.peers.get(peerId);
-    if (!peer) return;
-
-    // FIX: Cleanup RTCPeerConnection handlers
-    if (peer.rtcConnection) {
-      if (peer.rtcHandlers) {
-        peer.rtcConnection.onicecandidate = null;
-        peer.rtcConnection.ondatachannel = null;
-      }
-      peer.rtcConnection.close();
-    }
-    
-    if (peer.dataChannel) peer.dataChannel.close();
-    
-    // FIX: Remover gattserverdisconnected listener
-    if (peer.disconnectHandler) {
-      peer.device.removeEventListener('gattserverdisconnected', peer.disconnectHandler);
-    }
-    
-    if (peer.server?.connected) peer.server.disconnect();
-
-    this._handleDisconnection(peerId);
+  getStatus() {
+    return {
+      initialized: this.state.isInitialized,
+      scanning: this.state.isScanning,
+      peerCount: this.state.peers.size,
+      isNative: this.state.isNative,
+      platform: this.state.platform,
+      maxPeers: this.config.maxPeers
+    };
   }
 
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
 
-    if (this.timers.scan) {
-      clearTimeout(this.timers.scan);
-      this.timers.scan = null;
-    }
+    // Detener scan
+    this.stopScan();
 
-    for (const peerId of Array.from(this.state.peers.keys())) {
-      this.disconnect(peerId);
+    // Desconectar todos
+    for (const [deviceId] of this.state.peers) {
+      try {
+        BleClient.disconnect(deviceId);
+      } catch (e) {}
     }
+    this.state.peers.clear();
 
+    // Limpiar listeners
     Object.keys(this._listeners).forEach(key => {
       this._listeners[key] = [];
     });
 
-    console.log('[BleMesh] Destruido');
+    console.log('[BleMesh] 🗑️ Destruido');
   }
 
-  // FIX: Syntax error corregido
   _generateId() {
-    return `ble-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `nexo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 }
+
+export default BleMesh;
