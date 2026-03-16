@@ -1,7 +1,6 @@
 /**
  * NEXO App v2.6-NAP-CERTIFIED (BLE Native Capacitor)
- * Cada fase tiene timeout individual para evitar bloqueos totales
- * FIX: Integración BleMesh v5.0 Native (@capacitor-community/bluetooth-le)
+ * Integra BleMesh v5.0 Native (@capacitor-community/bluetooth-le)
  */
 
 // IMPORTS CORE
@@ -56,7 +55,6 @@ const DEBUG = {
   setIdentity: (id) => id && rem.updateIdentity(id)
 };
 
-// Helper: Ejecutar con timeout
 async function withTimeout(promise, ms, errorMsg) {
   const timeout = new Promise((_, reject) => 
     setTimeout(() => reject(new Error(errorMsg)), ms)
@@ -68,7 +66,7 @@ export class NexoApp {
   constructor(config = {}) {
     this.config = {
       relayUrls: config.relayUrls || [],
-      bleTimeout: config.bleTimeout || 15000, // Aumentado para permisos nativos
+      bleTimeout: config.bleTimeout || 15000, // 15s para permisos nativos
       enableGestures: config.enableGestures !== false,
       enableMesh: config.enableMesh !== false,
       onMessage: config.onMessage || (() => {}),
@@ -117,7 +115,7 @@ export class NexoApp {
       }
     } catch (err) {
       DEBUG.warn(`⚠️ CryptoVault failed: ${err.message}`);
-      this.vault = null; // Continuar sin vault
+      this.vault = null;
     }
     
     // FASE 2: WEBSOCKET (Timeout 3s)
@@ -144,14 +142,13 @@ export class NexoApp {
       this.wsClient = null;
     }
     
-    // FASE 3: MESH BLE NATIVE (Timeout 15s para permisos Android)
+    // FASE 3: MESH BLE NATIVE (Timeout 15s)
     try {
       this.currentPhase = 'MESH';
       DEBUG.setPhase('MESH');
       DEBUG.log('📡 [3/6] BleMesh Native...');
       
       if (this.config.enableMesh) {
-        // Instanciar nuevo BleMesh v5.0 Native
         this.mesh = new BleMesh({
           maxPeers: 8,
           autoConnectRssi: -70,
@@ -164,7 +161,6 @@ export class NexoApp {
             this._handleMessage(msg, 'ble');
           },
           onStatusChange: (status) => {
-            // status puede ser: 'scanning', 'connected', 'disconnected', 'idle'
             if (status === 'connected') {
               DEBUG.setMode('P2P');
               this._updateStatus();
@@ -175,17 +171,15 @@ export class NexoApp {
           }
         });
 
-        // Inicializar con timeout extendido (15s) para diálogos de permisos nativos
         await withTimeout(
           this.mesh.init(), 
           this.config.bleTimeout, 
           'BLE init timeout (check permissions)'
         );
         
-        // Si es nativo y se inicializó correctamente, iniciar scan automático
         if (this.mesh.state?.isNative) {
           DEBUG.log('✅ BLE Native activo, iniciando scan...', 'success');
-          this.mesh.startScan(30000); // Scan 30 segundos
+          this.mesh.startScan(30000);
         } else {
           DEBUG.warn('BLE no es nativo, modo offline');
         }
@@ -196,7 +190,6 @@ export class NexoApp {
     } catch (err) {
       DEBUG.error('APP_016', `BLE Mesh failed: ${err.message}`);
       this.mesh = null;
-      // No fallar init completo, seguimos sin BLE
     }
     
     // FASE 4: BRIDGE (Timeout 3s)
@@ -224,7 +217,7 @@ export class NexoApp {
       this.bridge = null;
     }
     
-    // FASE 5: UI GESTURES (Timeout 2s)
+    // FASE 5: UI GESTURES
     try {
       this.currentPhase = 'GESTURES';
       DEBUG.setPhase('GESTURES');
@@ -244,7 +237,7 @@ export class NexoApp {
       this.gestures = null;
     }
     
-    // FASE 5.5: VAULT SLIDER (Timeout 2s)
+    // FASE 5.5: VAULT SLIDER
     try {
       this.currentPhase = 'VAULT_SLIDER';
       DEBUG.setPhase('VAULT_SLIDER');
@@ -277,7 +270,7 @@ export class NexoApp {
       this.vaultSlider = null;
     }
     
-    // FASE 6: STREAM (Timeout 3s)
+    // FASE 6: STREAM
     try {
       this.currentPhase = 'STREAM';
       DEBUG.setPhase('STREAM');
@@ -321,7 +314,7 @@ export class NexoApp {
     const parts = [];
     if (this.vault) parts.push('Vault');
     if (this.wsClient) parts.push('WS');
-    if (this.mesh?.state?.isNative) parts.push('BLE-Native'); // Cambiado para detectar BLE nativo
+    if (this.mesh?.state?.isNative) parts.push('BLE-Native');
     else if (this.mesh) parts.push('BLE');
     if (this.bridge) parts.push('Bridge');
     if (this.stream) parts.push('Stream');
@@ -344,7 +337,7 @@ export class NexoApp {
       let mode = 'OFFLINE';
       if (this.bridge?.getMode) mode = this.bridge.getMode();
       else if (this.wsClient?.isConnected?.()) mode = 'RELAY';
-      else if (this.mesh?.state?.peers?.size > 0) mode = 'P2P'; // Actualizado para nuevo BleMesh
+      else if (this.mesh?.state?.peers?.size > 0) mode = 'P2P';
       
       DEBUG.setMode(mode);
       this.config.onStatusChange(mode);
@@ -359,14 +352,11 @@ export class NexoApp {
       const enriched = { ...msg, _own: true, _timestamp: Date.now() };
       this._handleMessage(enriched, 'self');
       
-      // Intentar enviar por mesh BLE primero si hay peers
       if (this.mesh?.state?.peers?.size > 0) {
         try {
           await this.mesh.broadcast(enriched);
           return true;
-        } catch (e) {
-          // Falló broadcast BLE, continuar con bridge/WS
-        }
+        } catch (e) {}
       }
       
       if (this.bridge?.send) return await this.bridge.send(enriched);
