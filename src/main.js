@@ -1,65 +1,70 @@
-// src/main.js - Punto de entrada NEXO v9.0
-
-// 1. Estilos críticos (NAP + UI base)
-import './styles/critical.css';
-
-// 2. Sistema de diagnóstico NAP
-import { NEXO_DIAG } from './core/nap.js';
-
-// 3. Módulos core de la Arquitectura Lateral
-// (Descomenta según vayas migrando)
-// import './core/gesture_engine.js';
-// import './stream/the_stream.js';
-// import './vault/chispas_system.js';
-
-// 4. App principal (si existe nexo_app.js en src/)
-// import './nexo_app.js';
-
-// Inicialización
-document.addEventListener('DOMContentLoaded', () => {
-  // Iniciar sistema de diagnóstico
-  NEXO_DIAG.init();
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="NEXO v9.0 - Mensajería P2P ultra-rápida">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
   
-  // Ocultar splash cuando todo esté listo
-  window.addEventListener('load', () => {
-    NEXO_DIAG.hideSplash();
-    NEXO_DIAG.log('NEXO v9.0 Iniciado - Arquitectura Lateral', 'info');
-  });
+  <title>NEXO v9.0</title>
   
-  // Setup básico de UI (temporal hasta migrar nexo_app.js completo)
-  setupBasicUI();
-});
+  <!-- Webpack inyectará los estilos aquí -->
+</head>
+<body>
+  <!-- SPLASH SCREEN -->
+  <div id="splash-native">
+    <div id="splash-logo"></div>
+    <div id="splash-text">NEXO v9.0</div>
+  </div>
 
-function setupBasicUI() {
-  const input = document.getElementById('message-input');
-  const sendBtn = document.getElementById('send-btn');
-  const container = document.getElementById('messages-container');
-  
-  if (sendBtn && input && container) {
-    sendBtn.addEventListener('click', () => sendMessage());
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage();
-    });
-  }
-  
-  function sendMessage() {
-    const text = input.value.trim();
-    if (!text) return;
+  <!-- DIAGNÓSTICO - NAP: Auto-hide en producción -->
+  <div id="nexo-diagnostic"></div>
+
+  <!-- ERROR FATAL -->
+  <div id="fatal-error">
+    <h2>✕ ERROR DE INICIO</h2>
+    <p style="color:#666;margin-bottom:20px;">La aplicación no pudo iniciar</p>
+    <code id="fatal-code">HTML-001: Unknown Error</code>
+    <button onclick="location.reload()" style="margin-top:30px;padding:12px 24px;background:#00ff88;border:none;border-radius:24px;color:#0a0a0a;font-weight:bold;cursor:pointer;font-size:16px;">
+      Reintentar
+    </button>
+  </div>
+
+  <!-- UI PRINCIPAL -->
+  <div id="status-indicator" class="offline">● OFFLINE</div>
+
+  <div id="app">
+    <div id="messages-container"></div>
     
-    addMessage(text, 'own');
-    input.value = '';
-    
-    // Simular respuesta (temporal)
-    setTimeout(() => {
-      addMessage('Mensaje recibido (demo)', 'other');
-    }, 1000);
-  }
-  
-  function addMessage(text, type) {
-    const div = document.createElement('div');
-    div.className = `message ${type}`;
-    div.textContent = text;
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
-  }
-}
+    <div id="input-area">
+      <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
+      <button id="send-btn">➤</button>
+    </div>
+  </div>
+
+  <!-- Vault Panel (Panel lateral) -->
+  <div id="vault-panel" class="vault-hidden">
+    <div class="vault-header">
+      <h3>Compartir</h3>
+      <div id="current-context">
+        <span id="ctx-video">Video</span>
+        <span id="ctx-time">0:00</span>
+      </div>
+    </div>
+    <div id="contacts-list"></div>
+    <div id="chispa-creator">
+      <button id="btn-emoji" data-type="emoji">🔥</button>
+      <button id="btn-laugh" data-type="laugh">😂</button>
+      <button id="btn-sync" data-type="sync">👥 Ver juntos</button>
+    </div>
+  </div>
+
+  <!-- Webpack inyectará los scripts aquí -->
+</body>
+</html>
