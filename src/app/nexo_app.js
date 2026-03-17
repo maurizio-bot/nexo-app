@@ -1,6 +1,7 @@
 /**
- * NEXO App v2.7-HYBRID (Corregido para HybridMesh v1.0)
+ * NEXO App v2.7-HYBRID (COMPLETO)
  * Integra HybridMesh (Nearby → BLE → Offline) + BLE Interface UI
+ * Ubicación: src/app/nexo_app.js
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -101,17 +102,15 @@ export class NexoApp {
         DEBUG.setPhase('MESH');
         DEBUG.log('📡 [3/6] Hybrid Mesh (Nearby/BLE)...');
         
-        // FIX: Crear instancia SIN callbacks en constructor (usa .on())
         this.mesh = new HybridMesh({
           serviceId: 'com.nexo.mesh.v1',
           deviceName: 'NEXO',
           maxPeers: 8
         });
         
-        // FIX: Registrar eventos usando .on() 
+        // Eventos del mesh
         this.mesh.on('device', (device) => {
           DEBUG.log(`📡 Encontrado: ${device.name} [${device.mode || 'N/A'}]`);
-          // Actualizar UI
           if (this.bleInterface?.handleDeviceFound) {
             this.bleInterface.handleDeviceFound(device);
           }
@@ -138,7 +137,6 @@ export class NexoApp {
         this.mesh.on('message', (msg, id) => this._handleMessage(msg, 'p2p'));
         this.mesh.on('error', (err) => DEBUG.warn(`Mesh error: ${err.message}`));
         this.mesh.on('scanning', (isScanning) => {
-          // Sincronizar estado de scanning con UI
           if (this.bleInterface) {
             this.bleInterface.isScanning = isScanning;
             if (isScanning) this.bleInterface.startScanUI?.();
@@ -151,7 +149,6 @@ export class NexoApp {
         const status = this.mesh.getStatus();
         DEBUG.log(`✅ Mesh listo [Modo: ${status.mode.toUpperCase()}]`, 'success');
         
-        // Auto-scan si está en modo nativo
         if (status.mode !== 'offline') {
           this.mesh.startScan().catch(() => {});
         }
@@ -166,10 +163,8 @@ export class NexoApp {
     try {
       DEBUG.log('📱 [3.5/6] BLE Interface...');
       if (this.mesh) {
-        // FIX: Pasar la instancia de mesh a la UI
         this.bleInterface = initBLEInterface(this.mesh);
         
-        // Conectar callbacks de UI a DEBUG
         this.bleInterface.onDeviceConnected = (device) => {
           DEBUG.log(`UI: Conectado ${device.name}`, 'success');
         };
@@ -233,7 +228,6 @@ export class NexoApp {
         if (this.gestures?.enable) this.gestures.enable();
       });
       
-      // Coordinación con BLE Interface
       document.addEventListener('nexo:ui:pauseGestures', () => {
         if (this.vaultSlider?.disable) this.vaultSlider.disable();
       });
@@ -256,7 +250,6 @@ export class NexoApp {
     DEBUG.setPhase('READY');
     DEBUG.log('🎉 NEXO v2.7-HYBRID Listo', 'success');
     
-    // Status inicial
     const meshStatus = this.mesh?.getStatus();
     DEBUG.log(`Modo: ${meshStatus?.mode || 'N/A'} | Peers: ${meshStatus?.peerCount || 0}`);
     
@@ -292,16 +285,13 @@ export class NexoApp {
   async sendMessage(msg) {
     if (!this.initialized || this.destroyed) return false;
     try {
-      // Optimistic UI
       this._handleMessage({ ...msg, _own: true }, 'self');
       
-      // Intentar P2P primero
       if (this.mesh?.getPeerCount() > 0) {
         await this.mesh.broadcast(msg);
         return true;
       }
       
-      // Fallback a relay
       if (this.bridge) return await this.bridge.send(msg);
       if (this.wsClient) return this.wsClient.send(msg);
       
