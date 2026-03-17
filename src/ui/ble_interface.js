@@ -1,6 +1,6 @@
 /**
  * BLE Interface - UI con Pestaña Lateral (Tab) 
- * v1.3 - FIX: Permisos Android 12+ y null checks
+ * v1.4 - FIX: Compatibilidad con HybridMesh (callbacks/eventos)
  */
 
 export class BLEInterface {
@@ -14,47 +14,116 @@ export class BLEInterface {
     this.newDevicesCount = 0;
     this.permissionsGranted = false;
     
-    this.onDeviceConnected = null;
-    this.onDeviceDisconnected = null;
+    // FIX: Asegurar que existan callbacks por defecto en la instancia
+    this._ensureCallbacks();
+  }
+
+  /**
+   * FIX CRÍTICO: Asegura que bleMesh tenga estructura de callbacks
+   */
+  _ensureCallbacks() {
+    if (!this.bleMesh) return;
+    
+    // Si no existe callbacks, crearlo como objeto vacío
+    if (!this.bleMesh.callbacks) {
+      this.bleMesh.callbacks = {};
+    }
+    
+    // Asegurar que cada callback exista como función vacía
+    const requiredCallbacks = [
+      'onDeviceFound', 
+      'onDeviceConnected', 
+      'onDeviceDisconnected', 
+      'onError',
+      'onConnectionRequest'
+    ];
+    
+    requiredCallbacks.forEach(cb => {
+      if (typeof this.bleMesh.callbacks[cb] !== 'function') {
+        this.bleMesh.callbacks[cb] = () => {};
+      }
+    });
   }
 
   init() {
+    if (!this.bleMesh) {
+      console.error('[BLEInterface] ERROR: bleMesh no proporcionado');
+      return this;
+    }
+
     this.createDOM();
     this.injectStyles();
     this.setupEventListeners();
     
-    // FIX: Verificar que bleMesh existe antes de conectar callbacks
-    if (this.bleMesh && this.bleMesh.callbacks) {
-      const originalOnDeviceFound = this.bleMesh.callbacks.onDeviceFound;
-      this.bleMesh.callbacks.onDeviceFound = (device) => {
-        this.handleDeviceFound(device);
-        if (originalOnDeviceFound) originalOnDeviceFound(device);
-      };
-
-      const originalOnConnected = this.bleMesh.callbacks.onDeviceConnected;
-      this.bleMesh.callbacks.onDeviceConnected = (peer) => {
-        this.handleDeviceConnected(peer);
-        if (originalOnConnected) originalOnConnected(peer);
-      };
-
-      const originalOnDisconnected = this.bleMesh.callbacks.onDeviceDisconnected;
-      this.bleMesh.callbacks.onDeviceDisconnected = (peer) => {
-        this.handleDeviceDisconnected(peer);
-        if (originalOnDisconnected) originalOnDisconnected(peer);
-      };
-
-      const originalOnError = this.bleMesh.callbacks.onError;
-      this.bleMesh.callbacks.onError = (code, msg) => {
-        this.showToast(`Error ${code}: ${msg}`, 'error');
-        if (originalOnError) originalOnError(code, msg);
-      };
-    } else {
-      console.warn('[BLEInterface] bleMesh no disponible en init, reintentando...');
-      setTimeout(() => this.init(), 500);
-      return;
-    }
+    // FIX: Re-asegurar callbacks antes de conectar
+    this._ensureCallbacks();
+    
+    // Conectar callbacks preservando los originales
+    this._connectCallbacks();
     
     return this;
+  }
+
+  /**
+   * Conecta los callbacks de forma segura
+   */
+  _connectCallbacks() {
+    const original = {
+      onDeviceFound: this.bleMesh.callbacks.onDeviceFound,
+      onDeviceConnected: this.bleMesh.callbacks.onDeviceConnected,
+      onDeviceDisconnected: this.bleMesh.callbacks.onDeviceDisconnected,
+      onError: this.bleMesh.callbacks.onError
+    };
+
+    // Wrapper para onDeviceFound
+    this.bleMesh.callbacks.onDeviceFound = (device) => {
+      this.handleDeviceFound(device);
+      if (typeof original.onDeviceFound === 'function') {
+        try {
+          original.onDeviceFound(device);
+        } catch (e) {
+          console.warn('[BLEInterface] Error en callback original onDeviceFound:', e);
+        }
+      }
+    };
+
+    // Wrapper para onDeviceConnected
+    this.bleMesh.callbacks.onDeviceConnected = (peer) => {
+      this.handleDeviceConnected(peer);
+      if (typeof original.onDeviceConnected === 'function') {
+        try {
+          original.onDeviceConnected(peer);
+        } catch (e) {
+          console.warn('[BLEInterface] Error en callback original onDeviceConnected:', e);
+        }
+      }
+    };
+
+    // Wrapper para onDeviceDisconnected
+    this.bleMesh.callbacks.onDeviceDisconnected = (peer) => {
+      this.handleDeviceDisconnected(peer);
+      if (typeof original.onDeviceDisconnected === 'function') {
+        try {
+          original.onDeviceDisconnected(peer);
+        } catch (e) {
+          console.warn('[BLEInterface] Error en callback original onDeviceDisconnected:', e);
+        }
+      }
+    };
+
+    // Wrapper para onError
+    this.bleMesh.callbacks.onError = (code, msg) => {
+      this.showToast(`Error ${code}: ${msg}`, 'error');
+      if (typeof original.onError === 'function') {
+        try {
+          original.onError(code, msg);
+        } catch (e) {
+          console.warn('[BLEInterface] Error en callback original onError:', e);
+        }
+      }
+    };
+
+    console.log('[BLEInterface] Callbacks conectados correctamente');
   }
 
   async checkBLEPermissions() {
@@ -852,7 +921,15 @@ export class BLEInterface {
       this.renderDevicesList();
       this.startScanUI();
       
-      await this.bleMesh.startScan(30000);
+      // FIX: Verificar que exista el método startScan
+      if (typeof this.bleMesh.startScan === 'function') {
+        await this.bleMesh.startScan(30000);
+      } else if (typeof this.bleMesh.startDiscovery === 'function') {
+        await this.bleMesh.startDiscovery();
+      } else {
+        console.warn('[BLEInterface] No se encontró método de scan');
+      }
+      
       console.log('[BLEInterface] Scan started');
     } catch (err) {
       console.error('[BLEInterface] Scan error:', err);
@@ -863,7 +940,11 @@ export class BLEInterface {
 
   async stopScan() {
     try {
-      await this.bleMesh.stopScan();
+      if (typeof this.bleMesh.stopScan === 'function') {
+        await this.bleMesh.stopScan();
+      } else if (typeof this.bleMesh.stopDiscovery === 'function') {
+        await this.bleMesh.stopDiscovery();
+      }
     } catch (e) {
       console.warn('[BLEInterface] Error stopping scan:', e);
     }
@@ -1002,7 +1083,13 @@ export class BLEInterface {
     }
 
     try {
-      await this.bleMesh.connect(deviceId);
+      if (typeof this.bleMesh.connect === 'function') {
+        await this.bleMesh.connect(deviceId);
+      } else if (typeof this.bleMesh.requestConnection === 'function') {
+        await this.bleMesh.requestConnection(deviceId);
+      } else {
+        throw new Error('Método connect no disponible');
+      }
     } catch (err) {
       this.showToast(`Error de conexión: ${err.message}`, 'error');
       this.renderDevicesList();
@@ -1166,6 +1253,12 @@ export function initBLEInterface(bleMesh) {
     console.error('[BLEInterface] bleMesh es requerido');
     return null;
   }
+  
+  // FIX: Asegurar que bleMesh tenga callbacks antes de crear la interfaz
+  if (!bleMesh.callbacks) {
+    bleMesh.callbacks = {};
+  }
+  
   bleInterface = new BLEInterface(bleMesh);
   bleInterface.init();
   window.bleInterface = bleInterface;
