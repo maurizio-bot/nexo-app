@@ -1,6 +1,6 @@
 /**
- * BLE Interface - UI para descubrimiento y conexión BLE
- * v1.0 - Integrado con BleMesh v5.0
+ * BLE Interface - UI con Pestaña Lateral (Tab) 
+ * v1.2 - FIX: Reemplaza slide por tab táctil para evitar conflictos con Vault Slider
  */
 
 export class BLEInterface {
@@ -11,8 +11,9 @@ export class BLEInterface {
     this.pendingRequests = new Map();
     this.isVisible = false;
     this.elements = {};
+    this.newDevicesCount = 0; // Para badge de notificación
     
-    // Callbacks para NexoApp
+    // Callbacks externos
     this.onDeviceConnected = null;
     this.onDeviceDisconnected = null;
   }
@@ -21,11 +22,51 @@ export class BLEInterface {
     this.createDOM();
     this.injectStyles();
     this.setupEventListeners();
+    
+    // Conectar callbacks de BleMesh v6.0
+    if (this.bleMesh) {
+      const originalOnDeviceFound = this.bleMesh.callbacks?.onDeviceFound;
+      this.bleMesh.callbacks.onDeviceFound = (device) => {
+        this.handleDeviceFound(device);
+        if (originalOnDeviceFound) originalOnDeviceFound(device);
+      };
+
+      const originalOnConnected = this.bleMesh.callbacks?.onDeviceConnected;
+      this.bleMesh.callbacks.onDeviceConnected = (peer) => {
+        this.handleDeviceConnected(peer);
+        if (originalOnConnected) originalOnConnected(peer);
+      };
+
+      const originalOnDisconnected = this.bleMesh.callbacks?.onDeviceDisconnected;
+      this.bleMesh.callbacks.onDeviceDisconnected = (peer) => {
+        this.handleDeviceDisconnected(peer);
+        if (originalOnDisconnected) originalOnDisconnected(peer);
+      };
+
+      const originalOnError = this.bleMesh.callbacks?.onError;
+      this.bleMesh.callbacks.onError = (code, msg) => {
+        this.showToast(`Error ${code}: ${msg}`, 'error');
+        if (originalOnError) originalOnError(code, msg);
+      };
+    }
+    
     return this;
   }
 
   createDOM() {
-    // Panel principal desde la izquierda
+    // PESTAÑA LATERAL (Tab) - Reemplaza el FAB y el slide
+    const tab = document.createElement('div');
+    tab.id = 'ble-tab';
+    tab.innerHTML = `
+      <div class="ble-tab-icon">🔷</div>
+      <div class="ble-tab-label">BLE</div>
+      <div class="ble-tab-badge" id="ble-tab-badge" style="display: none;">0</div>
+      <div class="ble-tab-indicator" id="ble-tab-indicator"></div>
+    `;
+    document.body.appendChild(tab);
+    this.elements.tab = tab;
+
+    // Panel principal (ahora solo se abre por tap en la pestaña, no por slide)
     const panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.className = 'ble-panel';
@@ -47,7 +88,7 @@ export class BLEInterface {
       </div>
 
       <div class="ble-section">
-        <h3 class="ble-section-title">Dispositivos Encontrados</h3>
+        <h3 class="ble-section-title">Dispositivos Encontrados (<span id="ble-found-count">0</span>)</h3>
         <div id="ble-devices-list" class="ble-devices-list">
           <div class="ble-empty-state">
             <div class="ble-empty-icon">📡</div>
@@ -75,14 +116,14 @@ export class BLEInterface {
     document.body.appendChild(panel);
     this.elements.panel = panel;
 
-    // Modal de solicitud de conexión
+    // Modal de solicitud
     const modal = document.createElement('div');
     modal.id = 'ble-request-modal';
     modal.className = 'ble-modal';
     modal.innerHTML = `
       <div class="ble-modal-content">
         <div class="ble-modal-header">
-          <h3>📡 Solicitud de Conexión BLE</h3>
+          <h3>📡 Solicitud de Conexión</h3>
         </div>
         <div class="ble-modal-body">
           <div class="ble-device-info">
@@ -111,26 +152,25 @@ export class BLEInterface {
     document.body.appendChild(modal);
     this.elements.modal = modal;
 
-    // Botón flotante para abrir panel (alternativa al gesture)
-    const fab = document.createElement('button');
-    fab.id = 'ble-fab';
-    fab.className = 'ble-fab';
-    fab.innerHTML = '🔷';
-    fab.title = 'BLE Network (Ctrl+Shift+B)';
-    document.body.appendChild(fab);
-    this.elements.fab = fab;
+    // Overlay (fondo oscuro)
+    const overlay = document.createElement('div');
+    overlay.id = 'ble-overlay';
+    overlay.className = 'ble-overlay';
+    document.body.appendChild(overlay);
+    this.elements.overlay = overlay;
 
-    // Guardar referencias
+    // Referencias
     this.elements.scanBtn = document.getElementById('ble-scan-toggle');
     this.elements.scanText = document.getElementById('ble-scan-text');
     this.elements.scanStatus = document.getElementById('ble-scan-status');
     this.elements.devicesList = document.getElementById('ble-devices-list');
     this.elements.connectedList = document.getElementById('ble-connected-list');
     this.elements.connectedCount = document.getElementById('ble-connected-count');
+    this.elements.foundCount = document.getElementById('ble-found-count');
     this.elements.state = document.getElementById('ble-state');
     this.elements.peers = document.getElementById('ble-peers');
-    this.elements.requestName = document.getElementById('ble-request-name');
-    this.elements.requestId = document.getElementById('ble-request-id');
+    this.elements.badge = document.getElementById('ble-tab-badge');
+    this.elements.indicator = document.getElementById('ble-tab-indicator');
   }
 
   injectStyles() {
@@ -139,7 +179,112 @@ export class BLEInterface {
     const styles = document.createElement('style');
     styles.id = 'ble-styles';
     styles.textContent = `
-      /* Panel Principal */
+      /* PESTAÑA LATERAL (Tab) - Nueva implementación */
+      #ble-tab {
+        position: fixed;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 44px;
+        height: 120px;
+        background: linear-gradient(180deg, #00d4ff 0%, #0099cc 100%);
+        border-radius: 0 12px 12px 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        cursor: pointer;
+        z-index: 2147483644;
+        box-shadow: 4px 0 15px rgba(0,212,255,0.4);
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-left: none;
+      }
+
+      #ble-tab:hover {
+        width: 52px;
+        box-shadow: 6px 0 20px rgba(0,212,255,0.6);
+      }
+
+      #ble-tab:active {
+        transform: translateY(-50%) scale(0.95);
+      }
+
+      /* Cuando el panel está abierto, esconder la pestaña */
+      #ble-tab.hidden {
+        transform: translateY(-50%) translateX(-100%);
+        opacity: 0;
+      }
+
+      .ble-tab-icon {
+        font-size: 24px;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+      }
+
+      .ble-tab-label {
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        color: #000;
+        font-weight: 700;
+        font-size: 11px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      /* Badge de notificación (dispositivos nuevos encontrados) */
+      .ble-tab-badge {
+        position: absolute;
+        top: 8px;
+        right: -6px;
+        background: #ff4444;
+        color: white;
+        font-size: 10px;
+        font-weight: bold;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(255,68,68,0.5);
+        animation: ble-badge-pulse 2s infinite;
+      }
+
+      @keyframes ble-badge-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+      }
+
+      /* Indicador de estado (online/offline/scanning) */
+      .ble-tab-indicator {
+        position: absolute;
+        bottom: 8px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #333;
+        box-shadow: 0 0 8px currentColor;
+        transition: all 0.3s;
+      }
+
+      .ble-tab-indicator.scanning {
+        background: #00ff88;
+        animation: ble-tab-blink 1s infinite;
+      }
+
+      .ble-tab-indicator.connected {
+        background: #00ff88;
+        box-shadow: 0 0 10px #00ff88;
+      }
+
+      @keyframes ble-tab-blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+
+      /* Panel Principal - Ajustado para no usar slide desde borde */
       .ble-panel {
         position: fixed;
         top: 0;
@@ -164,6 +309,27 @@ export class BLEInterface {
         transform: translateX(0);
       }
 
+      /* Overlay mejorado */
+      .ble-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.6);
+        backdrop-filter: blur(4px);
+        z-index: 2147483644;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s;
+      }
+
+      .ble-overlay.active {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      /* Resto de estilos se mantienen igual... */
       .ble-panel-header {
         display: flex;
         justify-content: space-between;
@@ -208,7 +374,6 @@ export class BLEInterface {
         transform: rotate(90deg);
       }
 
-      /* Controles */
       .ble-controls {
         padding: 20px;
         display: flex;
@@ -287,7 +452,6 @@ export class BLEInterface {
         50% { opacity: 0.3; }
       }
 
-      /* Secciones */
       .ble-section {
         padding: 15px 20px;
         flex: 1;
@@ -296,7 +460,8 @@ export class BLEInterface {
 
       .ble-connected-section {
         border-top: 1px solid rgba(255,255,255,0.05);
-        max-height: 30%;
+        max-height: 35%;
+        flex: 0 0 auto;
       }
 
       .ble-section-title {
@@ -358,6 +523,11 @@ export class BLEInterface {
       @keyframes ble-connecting {
         0%, 100% { border-color: #ffaa00; }
         50% { border-color: transparent; }
+      }
+
+      .ble-device-card.connected {
+        border-left: 3px solid #00ff88;
+        background: rgba(0,255,136,0.05);
       }
 
       .ble-device-icon {
@@ -442,6 +612,11 @@ export class BLEInterface {
         transform: scale(1.05);
       }
 
+      .ble-btn-connect:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
       .ble-empty-state {
         text-align: center;
         padding: 40px 20px;
@@ -459,7 +634,6 @@ export class BLEInterface {
         line-height: 1.5;
       }
 
-      /* Info Footer */
       .ble-info {
         padding: 15px 20px;
         border-top: 1px solid rgba(255,255,255,0.1);
@@ -488,7 +662,7 @@ export class BLEInterface {
       .ble-state-scanning { color: #ffaa00; }
       .ble-state-connected { color: #00ff88; }
 
-      /* Modal de Solicitud */
+      /* Modal */
       .ble-modal {
         position: fixed;
         top: 0;
@@ -547,7 +721,7 @@ export class BLEInterface {
         padding: 30px 20px;
       }
 
-      .ble-device-info {
+      .ble-modal .ble-device-info {
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -573,7 +747,7 @@ export class BLEInterface {
         width: 100%;
       }
 
-      .ble-device-name {
+      .ble-modal .ble-device-name {
         font-size: 20px;
         color: #fff;
         margin-bottom: 5px;
@@ -669,59 +843,17 @@ export class BLEInterface {
         box-shadow: 0 5px 20px rgba(0,255,136,0.2);
       }
 
-      /* FAB Button */
-      .ble-fab {
-        position: fixed;
-        bottom: 100px;
-        left: 20px;
-        width: 56px;
-        height: 56px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #00ffff 0%, #0088ff 100%);
-        border: none;
-        color: #000;
-        font-size: 24px;
-        cursor: pointer;
-        box-shadow: 0 4px 15px rgba(0,255,255,0.4);
-        z-index: 2147483644;
-        transition: all 0.3s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .ble-fab:hover {
-        transform: scale(1.1) rotate(10deg);
-        box-shadow: 0 6px 25px rgba(0,255,255,0.5);
-      }
-
-      .ble-fab.hidden {
-        transform: scale(0) rotate(-180deg);
-      }
-
-      /* Overlay para cerrar al tocar fuera */
-      .ble-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0,0,0,0.5);
-        z-index: 2147483644;
-        opacity: 0;
-        visibility: hidden;
-        transition: all 0.3s;
-      }
-
-      .ble-overlay.active {
-        opacity: 1;
-        visibility: visible;
-      }
-
       /* Responsive */
       @media (max-width: 480px) {
         .ble-panel {
           width: 90vw;
+        }
+        #ble-tab {
+          width: 40px;
+          height: 100px;
+        }
+        .ble-tab-label {
+          font-size: 10px;
         }
       }
     `;
@@ -729,23 +861,17 @@ export class BLEInterface {
   }
 
   setupEventListeners() {
+    // Tap en la pestaña para abrir
+    this.elements.tab.addEventListener('click', () => this.show());
+    
+    // Cerrar panel
+    document.getElementById('ble-close').addEventListener('click', () => this.hide());
+    this.elements.overlay.addEventListener('click', () => this.hide());
+
     // Toggle scan
     this.elements.scanBtn.addEventListener('click', () => this.toggleScan());
 
-    // Cerrar panel
-    document.getElementById('ble-close').addEventListener('click', () => this.hide());
-    
-    // FAB
-    this.elements.fab.addEventListener('click', () => this.show());
-
-    // Overlay para cerrar al tocar fuera
-    const overlay = document.createElement('div');
-    overlay.className = 'ble-overlay';
-    overlay.addEventListener('click', () => this.hide());
-    document.body.insertBefore(overlay, this.elements.panel);
-    this.elements.overlay = overlay;
-
-    // Atajo de teclado
+    // Atajo de teclado (Ctrl+Shift+B)
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'B') {
         e.preventDefault();
@@ -756,13 +882,6 @@ export class BLEInterface {
       }
     });
 
-    // Callbacks de BleMesh
-    if (this.bleMesh) {
-      this.bleMesh.onDeviceFound = (device) => this.handleDeviceFound(device);
-      this.bleMesh.onConnectionRequest = (device) => this.handleConnectionRequest(device);
-      this.bleMesh.onStatusChange = (status) => this.handleStatusChange(status);
-    }
-
     // Modal buttons
     document.getElementById('ble-accept-btn').addEventListener('click', () => this.acceptRequest());
     document.getElementById('ble-reject-btn').addEventListener('click', () => this.rejectRequest());
@@ -772,20 +891,20 @@ export class BLEInterface {
     this.isVisible = true;
     this.elements.panel.classList.add('active');
     this.elements.overlay.classList.add('active');
-    this.elements.fab.classList.add('hidden');
+    this.elements.tab.classList.add('hidden');
+    this.newDevicesCount = 0;
+    this.updateBadge();
     
-    // Pausar Vault Slider si está activo para evitar conflictos
-    document.dispatchEvent(new CustomEvent('nexo:ui:pauseGestures'));
+    // No conflictos con Vault Slider porque no usamos gestos, solo tap
+    
+    this.updateStatus();
   }
 
   hide() {
     this.isVisible = false;
     this.elements.panel.classList.remove('active');
     this.elements.overlay.classList.remove('active');
-    this.elements.fab.classList.remove('hidden');
-    
-    // Reanudar gestos
-    document.dispatchEvent(new CustomEvent('nexo:ui:resumeGestures'));
+    this.elements.tab.classList.remove('hidden');
   }
 
   toggle() {
@@ -800,23 +919,45 @@ export class BLEInterface {
     }
 
     if (this.isScanning) {
-      await this.bleMesh.stopScan();
-      this.stopScanUI();
+      await this.stopScan();
     } else {
-      this.foundDevices.clear();
-      this.renderDevicesList();
-      await this.bleMesh.startScan();
-      this.startScanUI();
+      await this.startScan();
     }
   }
 
+  async startScan() {
+    try {
+      this.isScanning = true;
+      this.foundDevices.clear();
+      this.newDevicesCount = 0;
+      this.updateBadge();
+      this.renderDevicesList();
+      this.startScanUI();
+      
+      await this.bleMesh.startScan(30000);
+      console.log('[BLEInterface] Scan started');
+    } catch (err) {
+      console.error('[BLEInterface] Scan error:', err);
+      this.stopScanUI();
+      this.showToast('Error al iniciar scan: ' + err.message, 'error');
+    }
+  }
+
+  async stopScan() {
+    try {
+      await this.bleMesh.stopScan();
+    } catch (e) {
+      console.warn('[BLEInterface] Error stopping scan:', e);
+    }
+    this.stopScanUI();
+  }
+
   startScanUI() {
-    this.isScanning = true;
     this.elements.scanBtn.classList.add('scanning');
     this.elements.scanText.textContent = 'Detener Scan';
     this.elements.scanStatus.classList.add('scanning');
-    this.elements.state.textContent = 'SCANNING';
-    this.elements.state.className = 'ble-info-value ble-state-scanning';
+    this.elements.indicator.classList.add('scanning');
+    this.updateStatus();
   }
 
   stopScanUI() {
@@ -824,19 +965,54 @@ export class BLEInterface {
     this.elements.scanBtn.classList.remove('scanning');
     this.elements.scanText.textContent = 'Iniciar Scan';
     this.elements.scanStatus.classList.remove('scanning');
-    this.updateState();
+    this.elements.indicator.classList.remove('scanning');
+    this.updateStatus();
   }
 
   handleDeviceFound(device) {
-    const id = device.id || device.address;
-    if (!this.foundDevices.has(id)) {
-      this.foundDevices.set(id, {
-        ...device,
-        timestamp: Date.now(),
-        rssi: device.rssi || -50
-      });
-      this.renderDevicesList();
+    const id = device.id || device.endpointId;
+    if (!id || this.foundDevices.has(id)) return;
+    
+    const rssi = device.rssi || (device.distance ? -50 - (device.distance * 10) : -50);
+    
+    this.foundDevices.set(id, {
+      ...device,
+      id: id,
+      timestamp: Date.now(),
+      rssi: Math.round(rssi)
+    });
+    
+    // Incrementar badge si el panel está cerrado
+    if (!this.isVisible) {
+      this.newDevicesCount++;
+      this.updateBadge();
     }
+    
+    this.renderDevicesList();
+    this.updateCounters();
+  }
+
+  updateBadge() {
+    if (this.newDevicesCount > 0 && !this.isVisible) {
+      this.elements.badge.textContent = this.newDevicesCount > 9 ? '9+' : this.newDevicesCount;
+      this.elements.badge.style.display = 'flex';
+    } else {
+      this.elements.badge.style.display = 'none';
+    }
+  }
+
+  handleDeviceConnected(peer) {
+    this.renderConnectedDevices();
+    this.updateStatus();
+    this.showToast(`Conectado: ${peer.name || 'dispositivo'}`, 'success');
+    if (this.onDeviceConnected) this.onDeviceConnected(peer);
+  }
+
+  handleDeviceDisconnected(peer) {
+    this.renderConnectedDevices();
+    this.updateStatus();
+    this.showToast(`Desconectado: ${peer.name || 'dispositivo'}`, 'info');
+    if (this.onDeviceDisconnected) this.onDeviceDisconnected(peer);
   }
 
   renderDevicesList() {
@@ -849,19 +1025,28 @@ export class BLEInterface {
           <p>${this.isScanning ? 'Buscando dispositivos...' : 'Presiona scan para buscar dispositivos NEXO cercanos'}</p>
         </div>
       `;
+      this.elements.foundCount.textContent = '0';
       return;
     }
 
     list.innerHTML = '';
-    this.foundDevices.forEach((device, id) => {
+    const sorted = Array.from(this.foundDevices.values()).sort((a, b) => b.timestamp - a.timestamp);
+    
+    sorted.forEach((device) => {
       const card = this.createDeviceCard(device);
       list.appendChild(card);
     });
+    
+    this.elements.foundCount.textContent = this.foundDevices.size;
   }
 
   createDeviceCard(device) {
     const div = document.createElement('div');
     div.className = 'ble-device-card';
+    div.id = `ble-device-${device.id}`;
+    
+    const signalBars = Math.max(1, Math.min(4, Math.floor((device.rssi + 100) / 15)));
+    
     div.innerHTML = `
       <div class="ble-device-icon">📱</div>
       <div class="ble-device-info">
@@ -869,20 +1054,22 @@ export class BLEInterface {
         <div class="ble-device-meta">
           <span class="ble-signal">
             <span class="ble-signal-bar">
-              <span class="${device.rssi > -90 ? 'active' : ''}"></span>
-              <span class="${device.rssi > -70 ? 'active' : ''}"></span>
-              <span class="${device.rssi > -50 ? 'active' : ''}"></span>
-              <span class="${device.rssi > -30 ? 'active' : ''}"></span>
+              ${[1,2,3,4].map(i => `<span class="${i <= signalBars ? 'active' : ''}"></span>`).join('')}
             </span>
             ${device.rssi}dBm
           </span>
-          <span>${device.address?.substr(0, 8)}...</span>
+          <span>${device.id.substr(0, 8)}...</span>
         </div>
       </div>
-      <button class="ble-btn-connect" onclick="bleInterface.requestConnection('${device.id || device.address}')">
+      <button class="ble-btn-connect" data-id="${device.id}">
         Conectar
       </button>
     `;
+    
+    div.querySelector('.ble-btn-connect').addEventListener('click', () => {
+      this.requestConnection(device.id);
+    });
+    
     return div;
   }
 
@@ -890,29 +1077,23 @@ export class BLEInterface {
     const device = this.foundDevices.get(deviceId);
     if (!device) return;
 
-    // Marcar como conectando
-    const cards = document.querySelectorAll('.ble-device-card');
-    cards.forEach(card => {
-      if (card.innerHTML.includes(deviceId.substr(0, 8))) {
-        card.classList.add('connecting');
-        const btn = card.querySelector('.ble-btn-connect');
-        btn.textContent = 'Conectando...';
-        btn.disabled = true;
-      }
-    });
+    const btn = document.querySelector(`button[data-id="${deviceId}"]`);
+    if (btn) {
+      btn.textContent = 'Conectando...';
+      btn.disabled = true;
+      btn.closest('.ble-device-card').classList.add('connecting');
+    }
 
     try {
       await this.bleMesh.connect(deviceId);
-      this.showToast(`Conectado a ${device.name || 'dispositivo'}`, 'success');
-      this.renderConnectedDevices();
     } catch (err) {
       this.showToast(`Error de conexión: ${err.message}`, 'error');
-      this.renderDevicesList(); // Reset UI
+      this.renderDevicesList();
     }
   }
 
   handleConnectionRequest(device) {
-    const requestId = device.id || device.address;
+    const requestId = device.id || device.endpointId;
     this.pendingRequests.set(requestId, device);
     
     this.elements.requestName.textContent = device.name || 'NEXO Device';
@@ -920,7 +1101,6 @@ export class BLEInterface {
     
     this.elements.modal.classList.add('active');
     
-    // Auto-rechazar después de 30s
     setTimeout(() => {
       if (this.pendingRequests.has(requestId)) {
         this.rejectRequest(requestId);
@@ -929,22 +1109,6 @@ export class BLEInterface {
   }
 
   async acceptRequest(requestId) {
-    const device = this.pendingRequests.get(requestId);
-    if (!device) return;
-
-    this.pendingRequests.delete(requestId);
-    this.elements.modal.classList.remove('active');
-    
-    try {
-      await this.bleMesh.acceptConnection(requestId);
-      this.showToast('Conexión aceptada', 'success');
-      this.renderConnectedDevices();
-    } catch (err) {
-      this.showToast('Error al aceptar conexión', 'error');
-    }
-  }
-
-  async rejectRequest(requestId) {
     const id = requestId || Array.from(this.pendingRequests.keys())[0];
     if (!id) {
       this.elements.modal.classList.remove('active');
@@ -956,41 +1120,66 @@ export class BLEInterface {
     this.elements.modal.classList.remove('active');
     
     try {
-      await this.bleMesh.rejectConnection(id);
-      this.showToast('Solicitud rechazada', 'info');
+      if (this.bleMesh.acceptConnection) {
+        await this.bleMesh.acceptConnection(id);
+      } else {
+        await this.bleMesh.connect(id);
+      }
+      this.showToast('Conexión aceptada', 'success');
     } catch (err) {
-      console.error('Error rechazando:', err);
+      this.showToast('Error al aceptar conexión', 'error');
     }
   }
 
-  renderConnectedDevices() {
-    if (!this.bleMesh) return;
+  rejectRequest(requestId) {
+    const id = requestId || Array.from(this.pendingRequests.keys())[0];
+    if (!id) {
+      this.elements.modal.classList.remove('active');
+      return;
+    }
+
+    this.pendingRequests.delete(id);
+    this.elements.modal.classList.remove('active');
     
-    const connected = this.bleMesh.getConnectedDevices?.() || [];
-    this.elements.connectedCount.textContent = connected.length;
+    if (this.bleMesh.rejectConnection) {
+      this.bleMesh.rejectConnection(id).catch(() => {});
+    }
+    
+    this.showToast('Solicitud rechazada', 'info');
+  }
+
+  renderConnectedDevices() {
+    const peers = this.bleMesh.getPeers ? this.bleMesh.getPeers() : [];
+    this.elements.connectedCount.textContent = peers.length;
     
     const list = this.elements.connectedList;
-    if (connected.length === 0) {
+    
+    if (peers.length === 0) {
       list.innerHTML = '<div class="ble-empty-state" style="padding: 20px;"><p style="font-size: 13px;">No hay dispositivos conectados</p></div>';
       return;
     }
 
     list.innerHTML = '';
-    connected.forEach(device => {
+    peers.forEach(peer => {
       const div = document.createElement('div');
-      div.className = 'ble-device-card';
-      div.style.borderLeft = '3px solid #00ff88';
+      div.className = 'ble-device-card connected';
       div.innerHTML = `
         <div class="ble-device-icon" style="background: rgba(0,255,136,0.1);">✓</div>
         <div class="ble-device-info">
-          <div class="ble-device-name">${device.name || 'Connected Device'}</div>
-          <div class="ble-device-meta" style="color: #00ff88;">Conectado • ${device.address?.substr(0, 8)}...</div>
+          <div class="ble-device-name">${peer.name || 'Connected Device'}</div>
+          <div class="ble-device-meta" style="color: #00ff88;">
+            Conectado • ${peer.id.substr(0, 8)}...
+          </div>
         </div>
-        <button class="ble-btn-connect" style="color: #ff4444; border-color: #ff4444;" 
-                onclick="bleInterface.disconnect('${device.id}')">
+        <button class="ble-btn-connect" style="color: #ff4444; border-color: rgba(255,68,68,0.5); background: rgba(255,68,68,0.1);">
           Desconectar
         </button>
       `;
+      
+      div.querySelector('.ble-btn-connect').addEventListener('click', () => {
+        this.disconnect(peer.id);
+      });
+      
       list.appendChild(div);
     });
   }
@@ -998,37 +1187,41 @@ export class BLEInterface {
   async disconnect(deviceId) {
     try {
       await this.bleMesh.disconnect(deviceId);
-      this.showToast('Dispositivo desconectado', 'info');
-      this.renderConnectedDevices();
     } catch (err) {
       this.showToast('Error al desconectar', 'error');
     }
   }
 
-  handleStatusChange(status) {
-    this.updateState();
-    this.renderConnectedDevices();
+  updateStatus() {
+    if (!this.bleMesh) return;
     
-    // Actualizar status bar de REM si existe
-    if (window.NEXO_REM) {
-      window.NEXO_REM.updateStatus(null, status.meshReady ? 'P2P' : 'OFFLINE');
+    const status = this.bleMesh.getStatus ? this.bleMesh.getStatus() : {};
+    const isScanning = status.scanning || this.isScanning;
+    const peerCount = status.peers || 0;
+    
+    this.elements.peers.textContent = peerCount;
+    
+    // Actualizar indicador en la pestaña
+    this.elements.indicator.className = 'ble-tab-indicator';
+    if (peerCount > 0) {
+      this.elements.indicator.classList.add('connected');
+      this.elements.state.textContent = 'CONNECTED';
+      this.elements.state.className = 'ble-info-value ble-state-connected';
+    } else if (isScanning) {
+      this.elements.indicator.classList.add('scanning');
+      this.elements.state.textContent = 'SCANNING';
+      this.elements.state.className = 'ble-info-value ble-state-scanning';
+    } else {
+      this.elements.state.textContent = 'OFFLINE';
+      this.elements.state.className = 'ble-info-value ble-state-offline';
     }
   }
 
-  updateState() {
-    if (!this.bleMesh) return;
-    
-    const state = this.bleMesh.getState?.() || {};
-    const isConnected = state.isConnected || false;
-    const peerCount = state.peerCount || 0;
-    
-    this.elements.state.textContent = isConnected ? 'CONNECTED' : (this.isScanning ? 'SCANNING' : 'OFFLINE');
-    this.elements.state.className = `ble-info-value ble-state-${isConnected ? 'connected' : (this.isScanning ? 'scanning' : 'offline')}`;
-    this.elements.peers.textContent = peerCount;
+  updateCounters() {
+    this.elements.foundCount.textContent = this.foundDevices.size;
   }
 
   showToast(message, type = 'info') {
-    // Usar REM si está disponible
     if (window.NEXO_REM) {
       const method = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
       window.NEXO_REM[method](message, `BLE_${type.toUpperCase()}`);
@@ -1040,22 +1233,21 @@ export class BLEInterface {
   destroy() {
     this.hide();
     if (this.isScanning && this.bleMesh) {
-      this.bleMesh.stopScan();
+      this.bleMesh.stopScan().catch(() => {});
     }
+    this.elements.tab?.remove();
     this.elements.panel?.remove();
     this.elements.modal?.remove();
-    this.elements.fab?.remove();
     this.elements.overlay?.remove();
     document.getElementById('ble-styles')?.remove();
   }
 }
 
-// Singleton para acceso global
 export let bleInterface = null;
 
 export function initBLEInterface(bleMesh) {
   bleInterface = new BLEInterface(bleMesh);
   bleInterface.init();
-  window.bleInterface = bleInterface; // Para acceso desde HTML
+  window.bleInterface = bleInterface;
   return bleInterface;
 }
