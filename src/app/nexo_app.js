@@ -1,7 +1,5 @@
 /**
- * NEXO App v2.9-HYBRID (PERMISOS FIX)
- * Integra HybridMesh + BLE Interface UI + Permisos runtime
- * FIX: Solicitud de permisos Android 12+ antes de inicializar BLE
+ * NEXO App v3.1 - Simplificado basado en docs reales
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -13,7 +11,6 @@ import { GestureEngine } from '../ui/gesture_engine.js';
 import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
 import { initBLEInterface } from '../ui/ble_interface.js';
-import { permissionsService } from '../utils/permissions.js'; // FIX: Importar servicio de permisos
 
 const DEBUG = {
   rem: rem,
@@ -49,7 +46,7 @@ export class NexoApp {
       onError: config.onError || console.error,
       ...config
     };
-    
+
     this.vault = null;
     this.mesh = null;
     this.wsClient = null;
@@ -60,17 +57,17 @@ export class NexoApp {
     this.bleInterface = null;
     this.initialized = false;
     this.destroyed = false;
-    
-    DEBUG.log('🚀 [NEXO] App v2.9-HYBRID iniciando...');
+
+    DEBUG.log('🚀 [NEXO] v3.1 iniciando...');
   }
-  
+
   async init() {
     if (this.initialized) return this;
-    
+
+    // FASE 1: CRYPTO
     try {
-      // FASE 1: CRYPTO
       DEBUG.setPhase('CRYPTO');
-      DEBUG.log('🔐 [1/7] CryptoVault...');
+      DEBUG.log('🔐 [1/6] Vault...');
       this.vault = new CryptoVault();
       await withTimeout(this.vault.init(), 5000, 'Crypto timeout');
       const identity = this.vault.getIdentity?.();
@@ -79,11 +76,11 @@ export class NexoApp {
     } catch (err) {
       DEBUG.warn(`⚠️ Vault: ${err.message}`);
     }
-    
-      // FASE 2: WEBSOCKET  
+
+    // FASE 2: WEBSOCKET  
     try {
       DEBUG.setPhase('WEBSOCKET');
-      DEBUG.log('🌐 [2/7] WebSocket...');
+      DEBUG.log('🌐 [2/6] WebSocket...');
       if (this.config.relayUrls.length > 0) {
         this.wsClient = new WebSocketClient(this.config.relayUrls[0]);
         this.wsClient.onMessage = (m) => this._handleMessage(m, 'relay');
@@ -96,41 +93,13 @@ export class NexoApp {
     } catch (err) {
       DEBUG.warn(`⚠️ WebSocket: ${err.message}`);
     }
-    
-      // FASE 2.5: PERMISOS BLE (NUEVA FASE)
-    let permissionsGranted = false;
-    if (this.config.enableMesh) {
-      try {
-        DEBUG.setPhase('PERMISSIONS');
-        DEBUG.log('🔐 [2.5/7] Solicitando permisos BLE...');
-        
-        permissionsGranted = await permissionsService.requestBLEPermissions();
-        
-        if (!permissionsGranted) {
-          DEBUG.error('APP_PERM', 'Permisos BLE denegados. La app necesita Bluetooth y Ubicación.');
-          DEBUG.log('⚠️ Algunos permisos fueron denegados. El mesh funcionará en modo OFFLINE.', 'warn');
-        } else {
-          DEBUG.log('✅ Permisos concedidos', 'success');
-          
-          // Verificar ubicación activada
-          const locationEnabled = await permissionsService.checkLocationEnabled();
-          if (!locationEnabled) {
-            DEBUG.warn('⚠️ Ubicación/GPS desactivada. Actívala para descubrir dispositivos cercanos.');
-          }
-        }
-      } catch (err) {
-        DEBUG.error('APP_PERM_ERR', `Error permisos: ${err.message}`);
-        permissionsGranted = false;
-      }
-    }
-    
-      // FASE 3: HYBRID MESH
+
+    // FASE 3: HYBRID MESH (con nuevo flujo de permisos)
     if (this.config.enableMesh) {
       try {
         DEBUG.setPhase('MESH');
-        DEBUG.log('📡 [3/7] Hybrid Mesh (Nearby/BLE)...');
-        
-        // FIX: Crear mesh con callbacks inicializados
+        DEBUG.log('📡 [3/6] BLE Mesh...');
+
         this.mesh = new HybridMesh({
           serviceId: 'com.nexo.mesh.v1',
           deviceName: 'NEXO',
@@ -139,119 +108,77 @@ export class NexoApp {
             onDeviceFound: () => {},
             onDeviceConnected: () => {},
             onDeviceDisconnected: () => {},
-            onError: () => {},
-            onConnectionRequest: () => {}
+            onError: (code, msg) => {
+              // Si es error de permisos, mostrar mensaje específico
+              if (code === 'PERMISOS' || msg?.includes('GPS')) {
+                DEBUG.error('BLE_PERM', msg);
+              }
+            }
           }
         });
-        
-        // FIX: Asegurar que callbacks existe después de crear instancia
-        if (!this.mesh.callbacks) {
-          this.mesh.callbacks = {
-            onDeviceFound: () => {},
-            onDeviceConnected: () => {},
-            onDeviceDisconnected: () => {},
-            onError: () => {}
-          };
-        }
-        
-        // Eventos del mesh (HybridMesh usa eventos, no callbacks directos)
+
+        // Eventos
         this.mesh.on('device', (device) => {
-          DEBUG.log(`📡 Encontrado: ${device.name} [${device.mode || 'N/A'}]`);
+          DEBUG.log(`📡 Encontrado: ${device.name}`);
           if (this.bleInterface?.handleDeviceFound) {
             this.bleInterface.handleDeviceFound(device);
           }
           this._updateStatus();
         });
-        
+
         this.mesh.on('connect', (device) => {
-          DEBUG.log(`🔗 Conectado: ${device.name} [${device.mode || 'N/A'}]`, 'success');
+          DEBUG.log(`🔗 Conectado: ${device.name}`, 'success');
           DEBUG.setMode('P2P');
           if (this.bleInterface?.handleDeviceConnected) {
             this.bleInterface.handleDeviceConnected(device);
           }
           this._updateStatus();
         });
-        
+
         this.mesh.on('disconnect', (id) => {
-          DEBUG.log(`❌ Desconectado: ${id?.substr(0,8) || 'unknown'}`);
+          DEBUG.log(`❌ Desconectado: ${id?.substr(0,8)}`);
           if (this.bleInterface?.handleDeviceDisconnected) {
             this.bleInterface.handleDeviceDisconnected({ id });
           }
           this._updateStatus();
         });
-        
-        this.mesh.on('message', (msg, id) => this._handleMessage(msg, 'p2p'));
-        this.mesh.on('error', (err) => DEBUG.warn(`Mesh error: ${err.message}`));
-        this.mesh.on('scanning', (isScanning) => {
-          if (this.bleInterface) {
-            this.bleInterface.isScanning = isScanning;
-            if (isScanning) this.bleInterface.startScanUI?.();
-            else this.bleInterface.stopScanUI?.();
-          }
+
+        this.mesh.on('error', (err) => {
+          DEBUG.error('MESH_ERR', err.message);
         });
-        
-        await withTimeout(this.mesh.init(), 10000, 'Mesh init timeout');
+
+        await withTimeout(this.mesh.init(), 15000, 'Mesh init timeout');
         
         const status = this.mesh.getStatus();
-        DEBUG.log(`✅ Mesh listo [Modo: ${status.mode.toUpperCase()}]`, 'success');
-        
-        // FIX: Solo iniciar scan automáticamente si tenemos permisos
-        if (status.mode !== 'offline' && permissionsGranted) {
-          this.mesh.startScan().catch((err) => {
-            DEBUG.warn(`Auto-scan failed: ${err.message}`);
-          });
-        } else if (!permissionsGranted && status.mode !== 'offline') {
-          DEBUG.log('ℹ️ Permisos no concedidos, scan manual requerido', 'info');
+        DEBUG.log(`✅ Mesh [${status.mode.toUpperCase()}]`, 'success');
+
+        // Mensaje específico si estamos en offline por permisos
+        if (status.mode === 'offline') {
+          DEBUG.warn('⚠️ BLE no disponible. Verifica: 1) GPS activado 2) Permisos en Configuración → Apps → NEXO → Permisos');
         }
-        
+
       } catch (err) {
-        DEBUG.error('APP_016', `Mesh failed: ${err.message}`);
-        this.mesh = null;
+        DEBUG.error('APP_016', `Mesh: ${err.message}`);
       }
     }
-    
-      // FASE 4: BLE INTERFACE UI (renumerada)
+
+    // FASE 4: BLE INTERFACE
     try {
-      DEBUG.log('📱 [4/7] BLE Interface...');
-      
+      DEBUG.log('📱 [4/6] BLE UI...');
       if (this.mesh) {
-        // FIX: Si mesh no tiene callbacks, crearlo
-        if (!this.mesh.callbacks) {
-          this.mesh.callbacks = {
-            onDeviceFound: () => {},
-            onDeviceConnected: () => {},
-            onDeviceDisconnected: () => {},
-            onError: () => {}
-          };
-        }
-        
         this.bleInterface = initBLEInterface(this.mesh);
-        
         if (this.bleInterface) {
-          this.bleInterface.onDeviceConnected = (device) => {
-            DEBUG.log(`UI: Conectado ${device.name}`, 'success');
-          };
-          
-          this.bleInterface.onDeviceDisconnected = (device) => {
-            DEBUG.log(`UI: Desconectado ${device.id?.substr(0,8)}`);
-          };
-          
-          DEBUG.log('✅ Interface UI lista', 'success');
-        } else {
-          DEBUG.warn('⚠️ No se pudo inicializar BLE Interface');
+          DEBUG.log('✅ UI lista', 'success');
         }
-      } else {
-        DEBUG.warn('⚠️ Mesh no disponible, UI BLE no inicializada');
       }
     } catch (err) {
-      DEBUG.warn(`⚠️ Interface: ${err.message}`);
-      console.error('[BLEInterface] Error:', err);
+      DEBUG.warn(`⚠️ UI: ${err.message}`);
     }
-    
-      // FASE 5: BRIDGE (renumerada)
+
+    // FASE 5: BRIDGE
     try {
       DEBUG.setPhase('BRIDGE');
-      DEBUG.log('🌉 [5/7] Bridge...');
+      DEBUG.log('🌉 [5/6] Bridge...');
       if (this.mesh || this.wsClient) {
         this.bridge = new MeshRelayBridge({
           mesh: this.mesh,
@@ -267,62 +194,37 @@ export class NexoApp {
     } catch (err) {
       DEBUG.warn(`⚠️ Bridge: ${err.message}`);
     }
-    
-      // FASE 6: GESTURES (renumerada)
+
+    // FASE 6: GESTURES + VAULT + STREAM
     DEBUG.setPhase('GESTURES');
-    DEBUG.log('👆 [6/7] Gestures...');
     if (this.config.enableGestures) {
       this.gestures = new GestureEngine({});
       this.gestures.init();
     }
-    
-      // FASE 6.5: VAULT SLIDER (renumerada)
+
     DEBUG.setPhase('VAULT_SLIDER');
-    DEBUG.log('👆 [6.5/7] Vault Slider...');
     const streamEl = document.getElementById('nexo-stream');
     const vaultEl = document.getElementById('nexo-vault');
     if (streamEl && vaultEl) {
       this.vaultSlider = new CoreGestureEngine(streamEl, vaultEl);
-      
-      window.addEventListener('nexo:vault:opened', () => {
-        DEBUG.log('[VAULT] Abierto', 'success');
-        if (this.gestures?.disable) this.gestures.disable();
-      });
-      
-      window.addEventListener('nexo:vault:closed', () => {
-        DEBUG.log('[VAULT] Cerrado');
-        if (this.gestures?.enable) this.gestures.enable();
-      });
-      
-      document.addEventListener('nexo:ui:pauseGestures', () => {
-        if (this.vaultSlider?.disable) this.vaultSlider.disable();
-      });
-      
-      document.addEventListener('nexo:ui:resumeGestures', () => {
-        if (this.vaultSlider?.enable) this.vaultSlider.enable();
-      });
     }
-    
-      // FASE 7: STREAM (renumerada)
+
     DEBUG.setPhase('STREAM');
-    DEBUG.log('📰 [7/7] Stream...');
     const container = document.getElementById('messages-container');
     if (container) {
       this.stream = new TheStream(container, {});
-      DEBUG.log('✅ Stream listo', 'success');
     }
-    
+
     this.initialized = true;
     DEBUG.setPhase('READY');
-    DEBUG.log('🎉 NEXO v2.9-HYBRID Listo', 'success');
-    
-    const meshStatus = this.mesh?.getStatus();
-    const permStatus = permissionsGranted ? '✅' : '❌';
-    DEBUG.log(`Modo: ${meshStatus?.mode || 'N/A'} | Peers: ${meshStatus?.peerCount || 0} | Permisos: ${permStatus}`);
-    
+    DEBUG.log('🎉 NEXO v3.1 Listo', 'success');
+
+    const status = this.mesh?.getStatus();
+    DEBUG.log(`Modo: ${status?.mode || 'N/A'} | Peers: ${status?.peerCount || 0}`);
+
     return this;
   }
-  
+
   _handleMessage(msg, source) {
     if (this.destroyed) return;
     try {
@@ -333,14 +235,14 @@ export class NexoApp {
       DEBUG.error('APP_005', err.message);
     }
   }
-  
+
   _updateStatus() {
     if (!this.mesh) return;
     const status = this.mesh.getStatus();
     let mode = 'OFFLINE';
     if (status.peerCount > 0) mode = 'P2P';
     else if (this.wsClient?.isConnected?.()) mode = 'RELAY';
-    
+
     DEBUG.setMode(mode);
     this.config.onStatusChange(mode);
     
@@ -348,7 +250,7 @@ export class NexoApp {
       this.bleInterface.updateStatus();
     }
   }
-  
+
   async sendMessage(msg) {
     if (!this.initialized || this.destroyed) return false;
     try {
@@ -368,20 +270,12 @@ export class NexoApp {
       return false;
     }
   }
-  
+
   async destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
     
-    if (this.bleInterface) {
-      try {
-        this.bleInterface.destroy();
-        DEBUG.log('🧹 BLE Interface destroyed');
-      } catch (e) {
-        console.error('Error destroying BLE Interface:', e);
-      }
-    }
-    
+    if (this.bleInterface) this.bleInterface.destroy();
     if (this.vaultSlider) this.vaultSlider.destroy?.();
     if (this.gestures) this.gestures.destroy?.();
     if (this.stream) this.stream.destroy?.();
@@ -392,16 +286,13 @@ export class NexoApp {
     
     DEBUG.log('🧹 Cleanup complete', 'success');
   }
-  
+
   getStatus() {
     return {
       initialized: this.initialized,
       mode: this.mesh?.getStatus().mode || 'offline',
       peers: this.mesh?.getPeerCount() || 0,
-      hasVault: !!this.vault,
-      hasStream: !!this.stream,
-      hasBLEInterface: !!this.bleInterface,
-      permissionsGranted: this.permissionsGranted
+      hasBLEInterface: !!this.bleInterface
     };
   }
 }
