@@ -1,6 +1,6 @@
 /**
  * BLE Interface - UI con Pestaña Lateral (Tab) 
- * v1.2 - FIX: Reemplaza slide por tab táctil para evitar conflictos con Vault Slider
+ * v1.3 - FIX: Permisos Android 12+ y null checks
  */
 
 export class BLEInterface {
@@ -11,9 +11,9 @@ export class BLEInterface {
     this.pendingRequests = new Map();
     this.isVisible = false;
     this.elements = {};
-    this.newDevicesCount = 0; // Para badge de notificación
+    this.newDevicesCount = 0;
+    this.permissionsGranted = false;
     
-    // Callbacks externos
     this.onDeviceConnected = null;
     this.onDeviceDisconnected = null;
   }
@@ -23,38 +23,72 @@ export class BLEInterface {
     this.injectStyles();
     this.setupEventListeners();
     
-    // Conectar callbacks de BleMesh v6.0
-    if (this.bleMesh) {
-      const originalOnDeviceFound = this.bleMesh.callbacks?.onDeviceFound;
+    // FIX: Verificar que bleMesh existe antes de conectar callbacks
+    if (this.bleMesh && this.bleMesh.callbacks) {
+      const originalOnDeviceFound = this.bleMesh.callbacks.onDeviceFound;
       this.bleMesh.callbacks.onDeviceFound = (device) => {
         this.handleDeviceFound(device);
         if (originalOnDeviceFound) originalOnDeviceFound(device);
       };
 
-      const originalOnConnected = this.bleMesh.callbacks?.onDeviceConnected;
+      const originalOnConnected = this.bleMesh.callbacks.onDeviceConnected;
       this.bleMesh.callbacks.onDeviceConnected = (peer) => {
         this.handleDeviceConnected(peer);
         if (originalOnConnected) originalOnConnected(peer);
       };
 
-      const originalOnDisconnected = this.bleMesh.callbacks?.onDeviceDisconnected;
+      const originalOnDisconnected = this.bleMesh.callbacks.onDeviceDisconnected;
       this.bleMesh.callbacks.onDeviceDisconnected = (peer) => {
         this.handleDeviceDisconnected(peer);
         if (originalOnDisconnected) originalOnDisconnected(peer);
       };
 
-      const originalOnError = this.bleMesh.callbacks?.onError;
+      const originalOnError = this.bleMesh.callbacks.onError;
       this.bleMesh.callbacks.onError = (code, msg) => {
         this.showToast(`Error ${code}: ${msg}`, 'error');
         if (originalOnError) originalOnError(code, msg);
       };
+    } else {
+      console.warn('[BLEInterface] bleMesh no disponible en init, reintentando...');
+      setTimeout(() => this.init(), 500);
+      return;
     }
     
     return this;
   }
 
+  async checkBLEPermissions() {
+    if (this.permissionsGranted) return true;
+    
+    if (!navigator.userAgent.includes('Android')) {
+      this.permissionsGranted = true;
+      return true;
+    }
+    
+    try {
+      const { Permissions } = await import('@capacitor/core');
+      
+      const scan = await Permissions.request({ name: 'BLUETOOTH_SCAN' });
+      const connect = await Permissions.request({ name: 'BLUETOOTH_CONNECT' });
+      const location = await Permissions.request({ name: 'ACCESS_FINE_LOCATION' });
+      
+      this.permissionsGranted = scan.state === 'granted' && 
+                               connect.state === 'granted' && 
+                               location.state === 'granted';
+      
+      if (!this.permissionsGranted) {
+        this.showToast('Permisos denegados. Activa Bluetooth y Ubicación', 'BLE_PERM');
+      }
+      
+      return this.permissionsGranted;
+    } catch (e) {
+      console.warn('[BLE] Permisos no disponibles:', e);
+      this.permissionsGranted = true;
+      return true;
+    }
+  }
+
   createDOM() {
-    // PESTAÑA LATERAL (Tab) - Reemplaza el FAB y el slide
     const tab = document.createElement('div');
     tab.id = 'ble-tab';
     tab.innerHTML = `
@@ -66,7 +100,6 @@ export class BLEInterface {
     document.body.appendChild(tab);
     this.elements.tab = tab;
 
-    // Panel principal (ahora solo se abre por tap en la pestaña, no por slide)
     const panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.className = 'ble-panel';
@@ -116,7 +149,6 @@ export class BLEInterface {
     document.body.appendChild(panel);
     this.elements.panel = panel;
 
-    // Modal de solicitud
     const modal = document.createElement('div');
     modal.id = 'ble-request-modal';
     modal.className = 'ble-modal';
@@ -152,14 +184,12 @@ export class BLEInterface {
     document.body.appendChild(modal);
     this.elements.modal = modal;
 
-    // Overlay (fondo oscuro)
     const overlay = document.createElement('div');
     overlay.id = 'ble-overlay';
     overlay.className = 'ble-overlay';
     document.body.appendChild(overlay);
     this.elements.overlay = overlay;
 
-    // Referencias
     this.elements.scanBtn = document.getElementById('ble-scan-toggle');
     this.elements.scanText = document.getElementById('ble-scan-text');
     this.elements.scanStatus = document.getElementById('ble-scan-status');
@@ -171,6 +201,8 @@ export class BLEInterface {
     this.elements.peers = document.getElementById('ble-peers');
     this.elements.badge = document.getElementById('ble-tab-badge');
     this.elements.indicator = document.getElementById('ble-tab-indicator');
+    this.elements.requestName = document.getElementById('ble-request-name');
+    this.elements.requestId = document.getElementById('ble-request-id');
   }
 
   injectStyles() {
@@ -179,7 +211,6 @@ export class BLEInterface {
     const styles = document.createElement('style');
     styles.id = 'ble-styles';
     styles.textContent = `
-      /* PESTAÑA LATERAL (Tab) - Nueva implementación */
       #ble-tab {
         position: fixed;
         left: 0;
@@ -202,26 +233,11 @@ export class BLEInterface {
         border-left: none;
       }
 
-      #ble-tab:hover {
-        width: 52px;
-        box-shadow: 6px 0 20px rgba(0,212,255,0.6);
-      }
+      #ble-tab:hover { width: 52px; box-shadow: 6px 0 20px rgba(0,212,255,0.6); }
+      #ble-tab:active { transform: translateY(-50%) scale(0.95); }
+      #ble-tab.hidden { transform: translateY(-50%) translateX(-100%); opacity: 0; }
 
-      #ble-tab:active {
-        transform: translateY(-50%) scale(0.95);
-      }
-
-      /* Cuando el panel está abierto, esconder la pestaña */
-      #ble-tab.hidden {
-        transform: translateY(-50%) translateX(-100%);
-        opacity: 0;
-      }
-
-      .ble-tab-icon {
-        font-size: 24px;
-        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-      }
-
+      .ble-tab-icon { font-size: 24px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
       .ble-tab-label {
         writing-mode: vertical-rl;
         text-orientation: mixed;
@@ -233,7 +249,6 @@ export class BLEInterface {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
 
-      /* Badge de notificación (dispositivos nuevos encontrados) */
       .ble-tab-badge {
         position: absolute;
         top: 8px;
@@ -257,7 +272,6 @@ export class BLEInterface {
         50% { transform: scale(1.1); }
       }
 
-      /* Indicador de estado (online/offline/scanning) */
       .ble-tab-indicator {
         position: absolute;
         bottom: 8px;
@@ -269,22 +283,14 @@ export class BLEInterface {
         transition: all 0.3s;
       }
 
-      .ble-tab-indicator.scanning {
-        background: #00ff88;
-        animation: ble-tab-blink 1s infinite;
-      }
-
-      .ble-tab-indicator.connected {
-        background: #00ff88;
-        box-shadow: 0 0 10px #00ff88;
-      }
+      .ble-tab-indicator.scanning { background: #00ff88; animation: ble-tab-blink 1s infinite; }
+      .ble-tab-indicator.connected { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
 
       @keyframes ble-tab-blink {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.3; }
       }
 
-      /* Panel Principal - Ajustado para no usar slide desde borde */
       .ble-panel {
         position: fixed;
         top: 0;
@@ -305,11 +311,8 @@ export class BLEInterface {
         box-shadow: 10px 0 30px rgba(0,0,0,0.5);
       }
 
-      .ble-panel.active {
-        transform: translateX(0);
-      }
+      .ble-panel.active { transform: translateX(0); }
 
-      /* Overlay mejorado */
       .ble-overlay {
         position: fixed;
         top: 0;
@@ -324,12 +327,8 @@ export class BLEInterface {
         transition: all 0.3s;
       }
 
-      .ble-overlay.active {
-        opacity: 1;
-        visibility: visible;
-      }
+      .ble-overlay.active { opacity: 1; visibility: visible; }
 
-      /* Resto de estilos se mantienen igual... */
       .ble-panel-header {
         display: flex;
         justify-content: space-between;
@@ -348,10 +347,7 @@ export class BLEInterface {
         color: #00ffff;
       }
 
-      .ble-icon {
-        font-size: 24px;
-        filter: drop-shadow(0 0 10px rgba(0,255,255,0.5));
-      }
+      .ble-icon { font-size: 24px; filter: drop-shadow(0 0 10px rgba(0,255,255,0.5)); }
 
       .ble-btn-icon {
         background: none;
@@ -369,10 +365,7 @@ export class BLEInterface {
         transition: all 0.2s;
       }
 
-      .ble-btn-icon:hover {
-        background: rgba(255,255,255,0.1);
-        transform: rotate(90deg);
-      }
+      .ble-btn-icon:hover { background: rgba(255,255,255,0.1); transform: rotate(90deg); }
 
       .ble-controls {
         padding: 20px;
@@ -405,10 +398,7 @@ export class BLEInterface {
         box-shadow: 0 6px 20px rgba(0,255,255,0.4);
       }
 
-      .ble-btn-primary:active {
-        transform: translateY(0);
-      }
-
+      .ble-btn-primary:active { transform: translateY(0); }
       .ble-btn-primary.scanning {
         background: linear-gradient(135deg, #ff4444 0%, #ff0088 100%);
         animation: ble-pulse 1.5s infinite;
@@ -419,14 +409,8 @@ export class BLEInterface {
         50% { opacity: 0.8; }
       }
 
-      .ble-scan-icon {
-        font-size: 18px;
-        display: inline-block;
-      }
-
-      .ble-btn-primary.scanning .ble-scan-icon {
-        animation: ble-rotate 2s linear infinite;
-      }
+      .ble-scan-icon { font-size: 18px; display: inline-block; }
+      .ble-btn-primary.scanning .ble-scan-icon { animation: ble-rotate 2s linear infinite; }
 
       @keyframes ble-rotate {
         from { transform: rotate(0deg); }
@@ -442,10 +426,7 @@ export class BLEInterface {
         transition: all 0.3s;
       }
 
-      .ble-status-indicator.scanning {
-        background: #00ff88;
-        animation: ble-blink 1s infinite;
-      }
+      .ble-status-indicator.scanning { background: #00ff88; animation: ble-blink 1s infinite; }
 
       @keyframes ble-blink {
         0%, 100% { opacity: 1; }
@@ -511,10 +492,7 @@ export class BLEInterface {
         transition: opacity 0.2s;
       }
 
-      .ble-device-card:hover::before {
-        opacity: 1;
-      }
-
+      .ble-device-card:hover::before { opacity: 1; }
       .ble-device-card.connecting {
         animation: ble-connecting 1s infinite;
         border-color: #ffaa00;
@@ -542,10 +520,7 @@ export class BLEInterface {
         flex-shrink: 0;
       }
 
-      .ble-device-info {
-        flex: 1;
-        min-width: 0;
-      }
+      .ble-device-info { flex: 1; min-width: 0; }
 
       .ble-device-name {
         font-weight: 600;
@@ -585,10 +560,7 @@ export class BLEInterface {
         transition: opacity 0.2s;
       }
 
-      .ble-signal-bar span.active {
-        opacity: 1;
-      }
-
+      .ble-signal-bar span.active { opacity: 1; }
       .ble-signal-bar span:nth-child(1) { height: 4px; }
       .ble-signal-bar span:nth-child(2) { height: 6px; }
       .ble-signal-bar span:nth-child(3) { height: 8px; }
@@ -623,16 +595,8 @@ export class BLEInterface {
         color: #666;
       }
 
-      .ble-empty-icon {
-        font-size: 48px;
-        margin-bottom: 15px;
-        opacity: 0.5;
-      }
-
-      .ble-empty-state p {
-        font-size: 14px;
-        line-height: 1.5;
-      }
+      .ble-empty-icon { font-size: 48px; margin-bottom: 15px; opacity: 0.5; }
+      .ble-empty-state p { font-size: 14px; line-height: 1.5; }
 
       .ble-info {
         padding: 15px 20px;
@@ -643,26 +607,13 @@ export class BLEInterface {
         font-size: 12px;
       }
 
-      .ble-info-item {
-        display: flex;
-        gap: 8px;
-      }
-
-      .ble-info-label {
-        color: #666;
-      }
-
-      .ble-info-value {
-        color: #00ffff;
-        font-weight: 600;
-        font-family: monospace;
-      }
-
+      .ble-info-item { display: flex; gap: 8px; }
+      .ble-info-label { color: #666; }
+      .ble-info-value { color: #00ffff; font-weight: 600; font-family: monospace; }
       .ble-state-offline { color: #ff4444; }
       .ble-state-scanning { color: #ffaa00; }
       .ble-state-connected { color: #00ff88; }
 
-      /* Modal */
       .ble-modal {
         position: fixed;
         top: 0;
@@ -680,10 +631,7 @@ export class BLEInterface {
         transition: opacity 0.3s;
       }
 
-      .ble-modal.active {
-        display: flex;
-        opacity: 1;
-      }
+      .ble-modal.active { display: flex; opacity: 1; }
 
       .ble-modal-content {
         background: linear-gradient(135deg, rgba(30,30,40,0.95) 0%, rgba(20,20,30,0.95) 100%);
@@ -697,9 +645,7 @@ export class BLEInterface {
         transition: transform 0.3s;
       }
 
-      .ble-modal.active .ble-modal-content {
-        transform: scale(1);
-      }
+      .ble-modal.active .ble-modal-content { transform: scale(1); }
 
       .ble-modal-header {
         padding: 20px;
@@ -717,10 +663,8 @@ export class BLEInterface {
         gap: 10px;
       }
 
-      .ble-modal-body {
-        padding: 30px 20px;
-      }
-
+      .ble-modal-body { padding: 30px 20px; }
+      
       .ble-modal .ble-device-info {
         display: flex;
         flex-direction: column;
@@ -743,22 +687,9 @@ export class BLEInterface {
         50% { transform: translateY(-5px); }
       }
 
-      .ble-device-details {
-        width: 100%;
-      }
-
-      .ble-modal .ble-device-name {
-        font-size: 20px;
-        color: #fff;
-        margin-bottom: 5px;
-      }
-
-      .ble-device-id {
-        font-size: 12px;
-        color: #888;
-        font-family: monospace;
-        margin-bottom: 10px;
-      }
+      .ble-device-details { width: 100%; }
+      .ble-modal .ble-device-name { font-size: 20px; color: #fff; margin-bottom: 5px; }
+      .ble-device-id { font-size: 12px; color: #888; font-family: monospace; margin-bottom: 10px; }
 
       .ble-request-message {
         color: #aaa;
@@ -843,35 +774,21 @@ export class BLEInterface {
         box-shadow: 0 5px 20px rgba(0,255,136,0.2);
       }
 
-      /* Responsive */
       @media (max-width: 480px) {
-        .ble-panel {
-          width: 90vw;
-        }
-        #ble-tab {
-          width: 40px;
-          height: 100px;
-        }
-        .ble-tab-label {
-          font-size: 10px;
-        }
+        .ble-panel { width: 90vw; }
+        #ble-tab { width: 40px; height: 100px; }
+        .ble-tab-label { font-size: 10px; }
       }
     `;
     document.head.appendChild(styles);
   }
 
   setupEventListeners() {
-    // Tap en la pestaña para abrir
     this.elements.tab.addEventListener('click', () => this.show());
-    
-    // Cerrar panel
     document.getElementById('ble-close').addEventListener('click', () => this.hide());
     this.elements.overlay.addEventListener('click', () => this.hide());
-
-    // Toggle scan
     this.elements.scanBtn.addEventListener('click', () => this.toggleScan());
 
-    // Atajo de teclado (Ctrl+Shift+B)
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'B') {
         e.preventDefault();
@@ -882,7 +799,6 @@ export class BLEInterface {
       }
     });
 
-    // Modal buttons
     document.getElementById('ble-accept-btn').addEventListener('click', () => this.acceptRequest());
     document.getElementById('ble-reject-btn').addEventListener('click', () => this.rejectRequest());
   }
@@ -894,9 +810,6 @@ export class BLEInterface {
     this.elements.tab.classList.add('hidden');
     this.newDevicesCount = 0;
     this.updateBadge();
-    
-    // No conflictos con Vault Slider porque no usamos gestos, solo tap
-    
     this.updateStatus();
   }
 
@@ -926,6 +839,11 @@ export class BLEInterface {
   }
 
   async startScan() {
+    // FIX: Verificar permisos primero
+    if (!await this.checkBLEPermissions()) {
+      return;
+    }
+
     try {
       this.isScanning = true;
       this.foundDevices.clear();
@@ -982,7 +900,6 @@ export class BLEInterface {
       rssi: Math.round(rssi)
     });
     
-    // Incrementar badge si el panel está cerrado
     if (!this.isVisible) {
       this.newDevicesCount++;
       this.updateBadge();
@@ -1201,7 +1118,6 @@ export class BLEInterface {
     
     this.elements.peers.textContent = peerCount;
     
-    // Actualizar indicador en la pestaña
     this.elements.indicator.className = 'ble-tab-indicator';
     if (peerCount > 0) {
       this.elements.indicator.classList.add('connected');
@@ -1222,9 +1138,9 @@ export class BLEInterface {
   }
 
   showToast(message, type = 'info') {
-    if (window.NEXO_REM) {
+    if (window.rem) {
       const method = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
-      window.NEXO_REM[method](message, `BLE_${type.toUpperCase()}`);
+      window.rem[method](message, `BLE_${type.toUpperCase()}`);
     } else {
       console.log(`[BLE ${type}] ${message}`);
     }
@@ -1246,6 +1162,10 @@ export class BLEInterface {
 export let bleInterface = null;
 
 export function initBLEInterface(bleMesh) {
+  if (!bleMesh) {
+    console.error('[BLEInterface] bleMesh es requerido');
+    return null;
+  }
   bleInterface = new BLEInterface(bleMesh);
   bleInterface.init();
   window.bleInterface = bleInterface;
