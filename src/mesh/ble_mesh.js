@@ -1,7 +1,6 @@
 /**
- * NEXO v9.0 - BLE Mesh v6.0 (Google Nearby Multipeer)
- * Plugin: @squareetlabs/capacitor-nearby-multipeer
- * FIX: Reemplaza BLE tradicional por Google Nearby Connections (WiFi + BLE hybrid)
+ * NEXO v9.0 - BLE Mesh v6.1 (Google Nearby Multipeer) 
+ * FIX: Permisos, error handling, y debug logging mejorado
  */
 
 import { NearbyMultipeer } from '@squareetlabs/capacitor-nearby-multipeer';
@@ -10,11 +9,11 @@ import { Capacitor } from '@capacitor/core';
 export class BleMesh {
   constructor(options = {}) {
     this.config = {
-      serviceId: options.serviceUuid || 'com.nexo.mesh.v1', // Nearby usa serviceId string, no UUID
+      serviceId: options.serviceUuid || 'com.nexo.mesh.v1',
       deviceNamePrefix: options.deviceNamePrefix || 'NEXO',
       maxPeers: options.maxPeers || 8,
       scanTimeout: options.scanTimeout || 30000,
-      strategy: options.strategy || 'P2P_STAR', // P2P_STAR o P2P_CLUSTER
+      strategy: options.strategy || 'P2P_STAR',
       ...options
     };
 
@@ -22,417 +21,347 @@ export class BleMesh {
       isScanning: false,
       isAdvertising: false,
       isInitialized: false,
-      peers: new Map(), // Nearby endpointId -> peer info
-      localId: null, // Se obtiene del plugin
+      peers: new Map(),
+      discovered: new Map(),
+      localId: null,
       platform: Capacitor.getPlatform(),
       isNative: Capacitor.isNativePlatform()
     };
 
-    this._listeners = {
-      message: [],
-      peer: [],
-      connect: [],
-      disconnect: [],
-      error: [],
-      device: [] // Para compatibilidad: dispositivos descubiertos
+    this.callbacks = {
+      onDeviceFound: options.onDeviceFound || (() => {}),
+      onDeviceConnected: options.onDeviceConnected || (() => {}),
+      onDeviceDisconnected: options.onDeviceDisconnected || (() => {}),
+      onError: options.onError || (() => {}),
+      onConnectionRequest: options.onConnectionRequest || (() => {}),
+      onMessage: options.onMessage || (() => {})
     };
 
-    this._discoveredEndpoints = new Map(); // Endpoints encontrados pero no conectados
-    this.timers = { scan: null };
+    this.timers = {};
     this.destroyed = false;
   }
 
   /**
-   * Inicializa el mesh y solicita permisos
+   * Initialize con verbose logging
    */
   async init() {
-    if (this.destroyed) throw new Error('BleMesh destruido');
-    if (this.state.isInitialized) return true;
+    if (this.destroyed) throw new Error('BleMesh destroyed');
+    if (this.state.isInitialized) {
+      console.log('[BleMesh] Already initialized');
+      return true;
+    }
 
     if (!this.state.isNative) {
-      console.warn('[BleMesh] No es plataforma nativa - Nearby requiere Android/iOS');
-      throw new Error('Capacitor Native Platform required for Nearby');
+      const err = new Error('Nearby requires native platform (Android/iOS)');
+      console.error('[BleMesh]', err);
+      throw err;
     }
 
     try {
-      // Inicializar Nearby con el serviceId
+      console.log('[BleMesh] 🚀 Initializing Nearby Multipeer...');
+      console.log('[BleMesh] Platform:', this.state.platform);
+      console.log('[BleMesh] Service ID:', this.config.serviceId);
+
+      // CRÍTICO: Inicializar el plugin
       await NearbyMultipeer.initialize({ 
         serviceId: this.config.serviceId 
       });
-      
-      // Configurar estrategia (P2P_STAR = mesh, P2P_CLUSTER = star topology)
+      console.log('[BleMesh] ✅ Plugin initialized');
+
+      // Configurar estrategia
       await NearbyMultipeer.setStrategy({ 
         strategy: this.config.strategy 
       });
+      console.log('[BleMesh] ✅ Strategy set:', this.config.strategy);
 
-      // Configurar listeners de eventos
-      this._setupNearbyListeners();
+      // Setup listeners ANTES de empezar
+      this._setupListeners();
 
       this.state.isInitialized = true;
-      this.state.localId = await this._getLocalEndpointId();
+      this.state.localId = `nexo-${Date.now().toString(36)}`;
       
-      console.log('[BleMesh] ✅ Google Nearby initialized', {
-        serviceId: this.config.serviceId,
-        strategy: this.config.strategy,
-        localId: this.state.localId
-      });
+      console.log('[BleMesh] ✅ Initialization complete. Local ID:', this.state.localId);
       
-      // Iniciar advertising automáticamente (ser visible para otros)
+      // Auto-start advertising para ser visible
       await this.startAdvertising();
       
-      this._emit('ready');
       return true;
       
     } catch (err) {
-      console.error('[BleMesh] ❌ Init error:', err);
-      this._emit('error', err);
+      console.error('[BleMesh] ❌ Init failed:', err);
+      console.error('[BleMesh] Error details:', JSON.stringify(err));
+      this.callbacks.onError('INIT_FAILED', err.message || 'Unknown error');
       throw err;
     }
   }
 
   /**
-   * Configura los listeners del plugin Nearby
+   * Setup Nearby listeners con logging detallado
    */
-  _setupNearbyListeners() {
-    // Dispositivo encontrado durante descubrimiento
+  _setupListeners() {
+    console.log('[BleMesh] Setting up event listeners...');
+
+    // Endpoint encontrado durante discovery
     NearbyMultipeer.addListener('onEndpointFound', (event) => {
+      console.log('[BleMesh] 📡 onEndpointFound:', JSON.stringify(event));
       const { endpointId, endpointName, serviceId } = event;
       
-      // Solo dispositivos de nuestro servicio
-      if (serviceId !== this.config.serviceId) return;
-      
+      if (serviceId !== this.config.serviceId) {
+        console.log('[BleMesh] Ignoring foreign service:', serviceId);
+        return;
+      }
+
       const device = {
         id: endpointId,
         name: endpointName || `NEXO-${endpointId.substr(0, 6)}`,
         endpointId: endpointId,
-        serviceId: serviceId
+        serviceId: serviceId,
+        timestamp: Date.now()
       };
 
-      this._discoveredEndpoints.set(endpointId, device);
-      console.log(`[BleMesh] 📡 Encontrado: ${device.name} (${endpointId})`);
+      this.state.discovered.set(endpointId, device);
       
-      // Emitir como 'device' para compatibilidad con UI anterior
-      this._emit('device', {
-        ...device,
-        rssi: -50, // Simulado - Nearby no da RSSI pero da distancia aproximada
-        txPower: 0
-      });
-
-      // Auto-conectar si es NEXO
-      if (device.name.includes(this.config.deviceNamePrefix) && 
-          !this.state.peers.has(endpointId) &&
-          this.state.peers.size < this.config.maxPeers) {
-        console.log(`[BleMesh] Auto-conectando a ${device.name}`);
-        this.connect(endpointId);
-      }
+      // Notificar a UI
+      this.callbacks.onDeviceFound(device);
+      console.log(`[BleMesh] Device found: ${device.name} (${endpointId})`);
     });
 
-    // Dispositivo perdido (se fue del rango)
+    // Endpoint perdido
     NearbyMultipeer.addListener('onEndpointLost', (event) => {
-      const { endpointId } = event;
-      this._discoveredEndpoints.delete(endpointId);
-      console.log(`[BleMesh] 👋 Perdido: ${endpointId}`);
+      console.log('[BleMesh] 👋 onEndpointLost:', event.endpointId);
+      this.state.discovered.delete(event.endpointId);
     });
 
-    // Resultado de conexión (éxito o fallo)
+    // Resultado de conexión
     NearbyMultipeer.addListener('onConnectionResult', (event) => {
+      console.log('[BleMesh] 🔌 onConnectionResult:', JSON.stringify(event));
       const { endpointId, status, statusCode } = event;
       
       if (status === 'connected') {
         this._handleConnectionSuccess(endpointId);
       } else {
-        console.error(`[BleMesh] ❌ Conexión fallida ${endpointId}: ${statusCode}`);
-        this._emit('error', new Error(`Connection failed: ${statusCode}`));
+        console.error(`[BleMesh] Connection failed: ${statusCode}`);
+        this.callbacks.onError('CONNECTION_FAILED', statusCode);
       }
     });
 
     // Desconexión
     NearbyMultipeer.addListener('onDisconnected', (event) => {
-      const { endpointId } = event;
-      this._handleDisconnection(endpointId);
+      console.log('[BleMesh] 🔌 onDisconnected:', event.endpointId);
+      this._handleDisconnection(event.endpointId);
     });
 
     // Datos recibidos
     NearbyMultipeer.addListener('onReceiveData', (event) => {
-      const { endpointId, data } = event; // data es string o bytes
-      this._handleIncomingMessage(endpointId, data);
+      console.log('[BleMesh] 📨 Data received from:', event.endpointId);
+      this.callbacks.onMessage(event.data, event.endpointId);
     });
 
     // Errores
     NearbyMultipeer.addListener('onError', (event) => {
-      console.error('[BleMesh] Nearby error:', event);
-      this._emit('error', new Error(event.errorMessage || 'Nearby error'));
+      console.error('[BleMesh] ❌ Nearby error:', JSON.stringify(event));
+      this.callbacks.onError('NEARBY_ERROR', event.errorMessage || 'Unknown');
     });
   }
 
   /**
-   * Obtiene el ID local del endpoint
-   */
-  async _getLocalEndpointId() {
-    // El plugin no expone directamente el ID local, pero podemos usar el device ID de Capacitor
-    const { Device } = await import('@capacitor/device');
-    const info = await Device.getId();
-    return info.identifier || `nexo-${Date.now()}`;
-  }
-
-  /**
-   * Inicia advertising (hace visible este dispositivo)
+   * Start advertising (hacer visible este dispositivo)
    */
   async startAdvertising() {
-    if (!this.state.isInitialized) return;
+    if (!this.state.isInitialized) {
+      console.warn('[BleMesh] Cannot advertise: not initialized');
+      return;
+    }
     if (this.state.isAdvertising) return;
 
     try {
-      await NearbyMultipeer.startAdvertising({
-        endpointName: `${this.config.deviceNamePrefix}-${this.state.localId.substr(0, 6)}`
-      });
+      const endpointName = `${this.config.deviceNamePrefix}-${this.state.localId.substr(-6)}`;
+      console.log('[BleMesh] 📢 Starting advertising as:', endpointName);
+      
+      await NearbyMultipeer.startAdvertising({ endpointName });
+      
       this.state.isAdvertising = true;
-      console.log('[BleMesh] 📢 Advertising iniciado');
+      console.log('[BleMesh] ✅ Advertising started');
+      
     } catch (err) {
-      console.warn('[BleMesh] Advertising error:', err);
-      // No es crítico, podemos funcionar solo como scanner
+      console.error('[BleMesh] ❌ Advertising error:', err);
+      // No es crítico, podemos funcionar como scanner
+      this.callbacks.onError('ADVERTISE_ERROR', err.message);
     }
   }
 
-  /**
-   * Detiene advertising
-   */
   async stopAdvertising() {
     if (!this.state.isAdvertising) return;
     try {
       await NearbyMultipeer.stopAdvertising();
       this.state.isAdvertising = false;
-      console.log('[BleMesh] 📢 Advertising detenido');
-    } catch (e) {}
+      console.log('[BleMesh] Advertising stopped');
+    } catch (e) {
+      console.error('[BleMesh] Error stopping advertise:', e);
+    }
   }
 
   /**
-   * Inicia descubrimiento de dispositivos (equivalente a startScan)
+   * Start discovery (equivalente a scan)
    */
   async startScan(duration = null) {
-    if (this.destroyed) throw new Error('BleMesh destruido');
-    if (!this.state.isInitialized) throw new Error('BleMesh no inicializado');
+    if (this.destroyed) throw new Error('BleMesh destroyed');
+    if (!this.state.isInitialized) throw new Error('Not initialized. Call init() first');
     if (this.state.isScanning) return;
 
     const scanDuration = duration || this.config.scanTimeout;
 
     try {
+      console.log(`[BleMesh] 🔍 Starting discovery for ${scanDuration}ms...`);
       this.state.isScanning = true;
-      this._emit('scanning', true);
       
-      console.log(`[BleMesh] 🔍 Iniciando discovery por ${scanDuration}ms...`);
-      
-      // Nearby usa startDiscovery en lugar de scan
       await NearbyMultipeer.startDiscovery();
+      console.log('[BleMesh] ✅ Discovery started');
 
-      // Auto-stop después del timeout
+      // Auto-stop
       this.timers.scan = setTimeout(() => {
+        console.log('[BleMesh] Auto-stopping scan...');
         this.stopScan();
       }, scanDuration);
 
     } catch (err) {
-      console.error('[BleMesh] Discovery error:', err);
       this.state.isScanning = false;
-      this._emit('error', err);
+      console.error('[BleMesh] ❌ Discovery error:', err);
+      this.callbacks.onError('SCAN_ERROR', err.message);
       throw err;
     }
   }
 
-  /**
-   * Detiene descubrimiento
-   */
   async stopScan() {
     if (!this.state.isScanning) return;
     
     try {
-      await NearbyMultipeer.stopDiscovery();
       if (this.timers.scan) {
         clearTimeout(this.timers.scan);
         this.timers.scan = null;
       }
+      
+      await NearbyMultipeer.stopDiscovery();
       this.state.isScanning = false;
-      this._emit('scanning', false);
-      console.log('[BleMesh] ⏹️ Discovery detenido');
+      console.log('[BleMesh] ⏹️ Discovery stopped');
+      
     } catch (err) {
-      console.error('[BleMesh] Error deteniendo discovery:', err);
+      console.error('[BleMesh] Error stopping discovery:', err);
     }
   }
 
   /**
-   * Conecta a un endpoint específico (deviceId = endpointId)
+   * Conectar a un endpoint específico
    */
   async connect(deviceId) {
-    if (this.destroyed) throw new Error('BleMesh destruido');
-    if (!this.state.isInitialized) throw new Error('BleMesh no inicializado');
-    
+    if (this.destroyed) throw new Error('BleMesh destroyed');
+    if (!this.state.isInitialized) throw new Error('Not initialized');
+
     if (this.state.peers.has(deviceId)) {
-      console.log(`[BleMesh] ${deviceId} ya conectado`);
+      console.log(`[BleMesh] Already connected to ${deviceId}`);
       return;
     }
 
     if (this.state.peers.size >= this.config.maxPeers) {
-      console.log(`[BleMesh] Max peers (${this.config.maxPeers}) alcanzado`);
-      return;
+      throw new Error(`Max peers (${this.config.maxPeers}) reached`);
     }
 
     try {
-      console.log(`[BleMesh] 🔗 Conectando a ${deviceId}...`);
+      console.log(`[BleMesh] 🔗 Connecting to ${deviceId}...`);
       
-      // Nearby requiere que especifiquemos el endpointId
       await NearbyMultipeer.connect({
         endpointId: deviceId,
-        displayName: `${this.config.deviceNamePrefix}-${this.state.localId.substr(0, 6)}`
+        displayName: `${this.config.deviceNamePrefix}-${this.state.localId.substr(-6)}`
       });
 
-      // La confirmación de conexión vendrá por el evento onConnectionResult
+      console.log(`[BleMesh] Connection request sent to ${deviceId}`);
+      // La confirmación viene por onConnectionResult
       
     } catch (err) {
-      console.error(`[BleMesh] ❌ Error conectando ${deviceId}:`, err);
-      this._emit('error', err);
+      console.error(`[BleMesh] ❌ Connect error:`, err);
+      this.callbacks.onError('CONNECT_ERROR', err.message);
+      throw err;
     }
   }
 
-  /**
-   * Maneja conexión exitosa (llamado por evento)
-   */
   _handleConnectionSuccess(endpointId) {
-    const discovered = this._discoveredEndpoints.get(endpointId);
+    const discovered = this.state.discovered.get(endpointId);
     const peer = {
       id: endpointId,
       endpointId: endpointId,
       name: discovered?.name || `Peer-${endpointId.substr(0, 6)}`,
       connectedAt: Date.now(),
-      lastSeen: Date.now(),
-      type: 'nearby_p2p'
+      lastSeen: Date.now()
     };
 
     this.state.peers.set(endpointId, peer);
-    this._emit('connect', endpointId);
-    this._emit('peer', this.state.peers.size);
-    
-    console.log(`[BleMesh] ✅ Conectado: ${peer.name} (Total: ${this.state.peers.size})`);
+    this.callbacks.onDeviceConnected(peer);
+    console.log(`[BleMesh] ✅ Connected: ${peer.name} (Total: ${this.state.peers.size})`);
   }
 
-  /**
-   * Desconecta un peer
-   */
   async disconnect(deviceId) {
-    const peer = this.state.peers.get(deviceId);
-    if (!peer) return;
-
+    if (!this.state.peers.has(deviceId)) return;
+    
     try {
       await NearbyMultipeer.disconnect({ endpointId: deviceId });
-    } catch (err) {
-      console.warn(`[BleMesh] Error desconectando ${deviceId}:`, err);
+    } catch (e) {
+      console.warn('[BleMesh] Disconnect error:', e);
     }
-    
     this._handleDisconnection(deviceId);
   }
 
-  /**
-   * Maneja desconexión
-   */
   _handleDisconnection(deviceId) {
     if (this.state.peers.has(deviceId)) {
       const peer = this.state.peers.get(deviceId);
       this.state.peers.delete(deviceId);
-      this._emit('disconnect', deviceId);
-      this._emit('peer', this.state.peers.size);
-      console.log(`[BleMesh] 🔌 Desconectado: ${peer.name} (Restantes: ${this.state.peers.size})`);
+      this.callbacks.onDeviceDisconnected(peer);
+      console.log(`[BleMesh] 🔌 Disconnected: ${peer.name}`);
     }
   }
 
   /**
-   * Maneja mensajes entrantes
-   */
-  _handleIncomingMessage(deviceId, data) {
-    try {
-      // Nearby devuelve data como string o array de bytes
-      let text = data;
-      if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
-        text = new TextDecoder('utf-8').decode(data);
-      }
-      
-      const message = JSON.parse(text);
-      const peer = this.state.peers.get(deviceId);
-      if (peer) peer.lastSeen = Date.now();
-
-      this._emit('message', message, deviceId);
-      
-    } catch (err) {
-      // Si no es JSON, enviar como raw
-      let text = data;
-      if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
-        text = new TextDecoder('utf-8').decode(data);
-      }
-      this._emit('message', { type: 'raw', data: text }, deviceId);
-    }
-  }
-
-  /**
-   * Envía mensaje a un peer específico
+   * Enviar mensaje a un peer
    */
   async send(deviceId, message) {
-    if (this.destroyed) throw new Error('BleMesh destruido');
-    
-    const peer = this.state.peers.get(deviceId);
-    if (!peer) throw new Error(`Peer ${deviceId} no conectado`);
+    if (!this.state.peers.has(deviceId)) {
+      throw new Error(`Peer ${deviceId} not connected`);
+    }
 
     try {
-      const data = JSON.stringify(message);
+      const data = typeof message === 'string' ? message : JSON.stringify(message);
       await NearbyMultipeer.sendData({
         endpointId: deviceId,
         data: data
       });
       return true;
     } catch (err) {
-      console.error(`[BleMesh] Error enviando a ${deviceId}:`, err);
+      console.error(`[BleMesh] Send error to ${deviceId}:`, err);
       return false;
     }
   }
 
   /**
-   * Broadcast a todos los peers
+   * Broadcast a todos los peers conectados
    */
   async broadcast(message) {
-    if (this.destroyed) throw new Error('BleMesh destruido');
     if (this.state.peers.size === 0) {
-      throw new Error('No peers connected');
+      console.warn('[BleMesh] No peers to broadcast to');
+      return 0;
     }
 
-    const promises = [];
-    
+    const data = typeof message === 'string' ? message : JSON.stringify(message);
+    let successCount = 0;
+
     for (const [deviceId] of this.state.peers) {
-      promises.push(
-        this.send(deviceId, message).catch(() => false)
-      );
+      try {
+        await NearbyMultipeer.sendData({ endpointId: deviceId, data });
+        successCount++;
+      } catch (e) {
+        console.warn(`[BleMesh] Failed to send to ${deviceId}`);
+      }
     }
 
-    const results = await Promise.all(promises);
-    const successCount = results.filter(r => r).length;
-    
-    if (successCount === 0) {
-      throw new Error('No se pudo enviar a ningún peer');
-    }
-    
     return successCount;
-  }
-
-  // API pública de compatibilidad
-
-  getPeerCount() {
-    return this.state.peers.size;
-  }
-
-  getPeers() {
-    return Array.from(this.state.peers.entries()).map(([id, peer]) => ({
-      id,
-      endpointId: peer.endpointId,
-      name: peer.name,
-      connectedAt: peer.connectedAt,
-      lastSeen: peer.lastSeen,
-      type: peer.type
-    }));
   }
 
   getStatus() {
@@ -441,58 +370,37 @@ export class BleMesh {
       scanning: this.state.isScanning,
       advertising: this.state.isAdvertising,
       peerCount: this.state.peers.size,
-      isNative: this.state.isNative,
+      discoveredCount: this.state.discovered.size,
       platform: this.state.platform,
-      maxPeers: this.config.maxPeers,
       serviceId: this.config.serviceId
     };
   }
 
-  // Event emitter básico
-  on(event, callback) {
-    if (this._listeners[event]) {
-      this._listeners[event].push(callback);
-    }
-    return () => this.off(event, callback);
+  getPeers() {
+    return Array.from(this.state.peers.values());
   }
 
-  off(event, callback) {
-    if (this._listeners[event]) {
-      this._listeners[event] = this._listeners[event].filter(cb => cb !== callback);
-    }
+  getDiscovered() {
+    return Array.from(this.state.discovered.values());
   }
 
-  _emit(event, ...args) {
-    if (this._listeners[event]) {
-      this._listeners[event].forEach(cb => {
-        try { cb(...args); } catch (e) {}
-      });
-    }
-  }
-
-  /**
-   * Cleanup completo
-   */
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
 
+    console.log('[BleMesh] 🧹 Destroying...');
+    
     this.stopScan();
     this.stopAdvertising();
 
-    // Desconectar todos
     for (const [deviceId] of this.state.peers) {
       try {
         NearbyMultipeer.disconnect({ endpointId: deviceId });
       } catch (e) {}
     }
+    
     this.state.peers.clear();
-
-    Object.keys(this._listeners).forEach(key => {
-      this._listeners[key] = [];
-    });
-
-    console.log('[BleMesh] 🗑️ Destruido');
+    this.state.discovered.clear();
   }
 }
 
