@@ -1,11 +1,12 @@
 /**
- * NEXO Hybrid Mesh v1.0 
+ * NEXO Hybrid Mesh v1.1 
  * Fallback automático: Nearby → BLE → Offline
- * Compatible con BLEInterfaceUI
+ * FIX: Solicitud de permisos Android 12+ en runtime
  */
 
 import { Capacitor } from '@capacitor/core';
 import { BleClient } from '@capacitor-community/bluetooth-le';
+import { permissionsService } from '../utils/permissions.js';
 
 // UUIDs servicio NEXO BLE
 const NEXO_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -37,6 +38,15 @@ export class HybridMesh {
     };
     
     this.nearbyModule = null;
+    
+    // FIX: Inicializar callbacks para compatibilidad con BLEInterface
+    this.callbacks = {
+      onDeviceFound: options.callbacks?.onDeviceFound || (() => {}),
+      onDeviceConnected: options.callbacks?.onDeviceConnected || (() => {}),
+      onDeviceDisconnected: options.callbacks?.onDeviceDisconnected || (() => {}),
+      onError: options.callbacks?.onError || (() => {}),
+      onConnectionRequest: options.callbacks?.onConnectionRequest || (() => {})
+    };
   }
 
   on(event, handler) {
@@ -56,15 +66,51 @@ export class HybridMesh {
         try { cb(...args); } catch(e) {}
       });
     }
+    
+    // FIX: También llamar callbacks para compatibilidad con BLEInterface
+    if (event === 'device' && this.callbacks.onDeviceFound) {
+      try { this.callbacks.onDeviceFound(args[0]); } catch(e) {}
+    }
+    if (event === 'connect' && this.callbacks.onDeviceConnected) {
+      try { this.callbacks.onDeviceConnected(args[0]); } catch(e) {}
+    }
+    if (event === 'disconnect' && this.callbacks.onDeviceDisconnected) {
+      try { this.callbacks.onDeviceDisconnected(args[0]); } catch(e) {}
+    }
+    if (event === 'error' && this.callbacks.onError) {
+      try { this.callbacks.onError('MESH_ERROR', args[0]?.message || args[0]); } catch(e) {}
+    }
   }
 
   /**
-   * Inicialización con fallback automático
+   * Inicialización con fallback automático + Permisos
    */
   async init() {
     if (this.state.initialized) return true;
     
     console.log('[HybridMesh] Detectando mejor modo de conexión...');
+    
+    // FIX: Solicitar permisos antes de cualquier operación BLE/Nearby
+    if (Capacitor.isNativePlatform()) {
+      console.log('[HybridMesh] Solicitando permisos...');
+      const hasPermissions = await permissionsService.requestBLEPermissions();
+      
+      if (!hasPermissions) {
+        console.error('[HybridMesh] ❌ Permisos denegados');
+        this.state.mode = 'offline';
+        this.state.initialized = true;
+        this.callbacks.onError('PERMISSIONS_DENIED', 'Permisos BLE denegados');
+        this._emit('ready');
+        return true;
+      }
+      
+      // FIX: Verificar ubicación activada (requerido para BLE)
+      const locationEnabled = await permissionsService.checkLocationEnabled();
+      if (!locationEnabled) {
+        console.warn('[HybridMesh] ⚠️ Ubicación desactivada - BLE puede fallar');
+        this.callbacks.onError('LOCATION_DISABLED', 'Activa la ubicación/GPS para usar BLE');
+      }
+    }
     
     // 1. Intentar Nearby (Google Play Services)
     try {
@@ -184,10 +230,19 @@ export class HybridMesh {
   }
 
   /**
-   * Start Scan (modo-agnóstico)
+   * Start Scan (modo-agnóstico) + Verificación permisos
    */
   async startScan() {
     if (!this.state.initialized) throw new Error('No inicializado');
+    
+    // FIX: Re-verificar permisos antes de scan
+    if (Capacitor.isNativePlatform()) {
+      const permStatus = await permissionsService.checkPermissions();
+      if (permStatus && permStatus.scan !== 'granted') {
+        console.warn('[HybridMesh] Re-solicitando permisos de scan...');
+        await permissionsService.requestBLEPermissions();
+      }
+    }
     
     this.state.scanning = true;
     this._emit('scanning', true);
@@ -207,11 +262,14 @@ export class HybridMesh {
             });
           }
         );
+      } else {
+        console.warn('[HybridMesh] Modo offline - no se puede scanear');
       }
     } catch (err) {
       console.error('[HybridMesh] Scan error:', err);
       this.state.scanning = false;
       this._emit('scanning', false);
+      this.callbacks.onError('SCAN_ERROR', err.message);
       throw err;
     }
     
