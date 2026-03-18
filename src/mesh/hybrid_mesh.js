@@ -1,325 +1,466 @@
 /**
- * NEXO Hybrid Mesh v2.0 
- * Basado en documentación oficial @capacitor-community/bluetooth-le
- * FIX: Flujo correcto de permisos Android 12+
+ * NEXO Hybrid Mesh v2.1-NAP-CERTIFIED
+ * Orquestador de Conectividad: BLE (NordicMesh) → WiFi LAN → WebSocket Relay
+ * Basado en: HybridMesh v2.0 + NAP 2.0 Interface Contracts
+ * Error Codes: APP_017-APP_022 (Hybrid Subsystem)
  */
 
 import { Capacitor } from '@capacitor/core';
 import { BleClient } from '@capacitor-community/bluetooth-le';
+import { nordicMesh } from './nordic_mesh.js';
+import { webSocketClient } from '../net/web_socket_client.js';
+import { rem } from '../ui/rem.js';
 
-const NEXO_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const NEXO_TX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
-const NEXO_RX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+// NAP 2.0 Error Codes (Hybrid Layer)
+const NAP_ERRORS = {
+  HYBRID_INIT_FAILED:      { code: 'APP_017', phase: 'HYBRID_INIT' },
+  HYBRID_PERMISSION_DENIED:{ code: 'APP_018', phase: 'HYBRID_PERMISSION' },
+  HYBRID_BLE_UNAVAILABLE:  { code: 'APP_019', phase: 'HYBRID_TRANSPORT' },
+  HYBRID_WIFI_FAILED:      { code: 'APP_020', phase: 'HYBRID_TRANSPORT' },
+  HYBRID_RELAY_FAILED:     { code: 'APP_021', phase: 'HYBRID_TRANSPORT' },
+  HYBRID_NO_ROUTE:         { code: 'APP_022', phase: 'HYBRID_ROUTING' }
+};
 
-export class HybridMesh {
+// NAP 2.0 States
+const MODES = Object.freeze({
+  OFFLINE: 'OFFLINE',
+  BLE_ONLY: 'BLE_ONLY',      // Solo NordicMesh activo
+  HYBRID: 'HYBRID',          // BLE + WiFi simultáneo  
+  RELAY: 'RELAY',            // Solo WebSocket
+  ONLINE: 'ONLINE'           // Todo disponible
+});
+
+// Interface Contracts (NAP 2.0)
+const CONTRACTS = {
+  DEVICE_ID: (id) => typeof id === 'string' && id.length === 17,
+  PAYLOAD: (p) => p !== null && typeof p === 'object',
+  VAULT: (v) => v && typeof v.getIdentityKey === 'function'
+};
+
+class HybridMesh {
   constructor(options = {}) {
-    this.config = {
-      serviceId: options.serviceId || 'com.nexo.mesh',
-      deviceName: options.deviceName || 'NEXO',
-      maxPeers: options.maxPeers || 8,
-      ...options
+    // SOC2 Resource Management
+    this._resources = {
+      vault: null,
+      intervals: new Set(),
+      timeouts: new Set(),
+      connections: new Map()
     };
 
-    this.state = {
-      mode: null,
-      initialized: false,
-      scanning: false,
-      peers: new Map(),
-      discovered: new Map(),
-      localId: null,
-      permissionsGranted: false
-    };
+    this._mode = MODES.OFFLINE;
+    this._initialized = false;
+    this._scanning = false;
+    this._permissionsGranted = false;
 
-    this.listeners = {
-      device: [], connect: [], disconnect: [],
-      message: [], error: [], scanning: [], ready: []
-    };
+    // Peer Registry (Unified across transports)
+    this._peers = new Map();        // userId -> {bleDeviceId, wsId, bestPath, lastSeen}
+    this._activeTransports = new Set(); // 'ble' | 'wifi' | 'relay'
 
-    // Callbacks para BLEInterface
+    // Legacy compatibility (callbacks externos)
     this.callbacks = {
       onDeviceFound: () => {},
       onDeviceConnected: () => {},
       onDeviceDisconnected: () => {},
       onError: () => {}
     };
+
+    // NAP Event System
+    this._listeners = {
+      peer: [], message: [], mode: [], error: [], ready: []
+    };
   }
 
-  on(event, handler) {
-    if (this.listeners[event]) this.listeners[event].push(handler);
-    return () => this.off(event, handler);
-  }
-
-  off(event, handler) {
-    if (this.listeners[event]) {
-      this.listeners[event] = this.listeners[event].filter(h => h !== handler);
-    }
-  }
-
-  _emit(event, ...args) {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(cb => {
-        try { cb(...args); } catch(e) {}
-      });
-    }
-    if (event === 'device') this.callbacks.onDeviceFound(args[0]);
-    if (event === 'connect') this.callbacks.onDeviceConnected(args[0]);
-    if (event === 'disconnect') this.callbacks.onDeviceDisconnected(args[0]);
-    if (event === 'error') this.callbacks.onError('MESH_ERROR', args[0]?.message || args[0]);
-  }
+  // ===== NAP 2.0 INITIALIZATION =====
 
   /**
-   * Inicialización con flujo correcto de permisos según documentación
+   * NAP-HYBRID-INIT-001: Secuencia estricta permisos → BLE → WiFi → Relay
    */
-  async init() {
-    if (this.state.initialized) return true;
+  async init(vaultInstance) {
+    if (this._initialized) return true;
     
-    console.log('[HybridMesh] Iniciando...');
-
-    if (!Capacitor.isNativePlatform()) {
-      this.state.mode = 'offline';
-      this.state.initialized = true;
-      this._emit('ready');
-      return true;
-    }
-
+    this._transitionMode(MODES.OFFLINE, 'HYBRID_INIT');
+    
     try {
-      // PASO 1: Verificar ubicación GPS activada (CRÍTICO para Android)
-      if (Capacitor.getPlatform() === 'android') {
-        const isLocationEnabled = await BleClient.isLocationEnabled();
-        console.log('[HybridMesh] Ubicación activada:', isLocationEnabled);
+      // Interface Contract: Vault
+      if (!CONTRACTS.VAULT(vaultInstance)) {
+        throw this._createNapError(
+          NAP_ERRORS.HYBRID_INIT_FAILED,
+          'Interface Contract Violation: Vault must implement CryptoVault interface'
+        );
+      }
+      this._resources.vault = vaultInstance;
+
+      // Fase 1: Permisos Android 12+ (Basado en tu implementación anterior)
+      if (Capacitor.isNativePlatform()) {
+        await this._acquirePermissionsNap();
+      }
+
+      // Fase 2: Inicializar NordicMesh (BLE Soberano)
+      try {
+        await nordicMesh.init(vaultInstance);
         
-        if (!isLocationEnabled) {
-          // Abrir settings de ubicación - el usuario debe activarla manualmente
-          console.log('[HybridMesh] Abriendo settings de ubicación...');
-          await BleClient.openLocationSettings();
-          
-          // Verificar de nuevo después de un delay
-          await new Promise(r => setTimeout(r, 2000));
-          const stillDisabled = !(await BleClient.isLocationEnabled());
-          if (stillDisabled) {
-            console.warn('[HybridMesh] ⚠️ Ubicación sigue desactivada - el scan no funcionará');
-            this._emit('error', new Error('GPS_DESACTIVADO: Activa ubicación para escanear BLE'));
-          }
+        // Setup NAP-compliant callbacks
+        nordicMesh.onPeerDiscovered = (peer) => this._handleBlePeerDiscovered(peer);
+        nordicMesh.onPeerConnected = (peer) => this._handleBlePeerConnected(peer);
+        nordicMesh.onPeerDisconnected = (peer) => this._handleBlePeerDisconnected(peer);
+        nordicMesh.onMessageReceived = (msg) => this._handleBleMessage(msg);
+        nordicMesh.onError = (err) => this._handleBleError(err);
+        nordicMesh.onStateChange = (state) => this._monitorBleState(state);
+
+        await nordicMesh.startDiscoveryLoop();
+        this._activeTransports.add('ble');
+        this._transitionMode(MODES.BLE_ONLY, 'HYBRID_BLE_ACTIVE');
+        
+      } catch (bleErr) {
+        rem.warn('NordicMesh no disponible, fallback a relay', 'HYBRID_FALLBACK');
+        this._activeTransports.delete('ble');
+      }
+
+      // Fase 3: WebSocket Relay (Fallback/Complemento)
+      try {
+        await webSocketClient.connect();
+        webSocketClient.onMessage = (msg) => this._handleRelayMessage(msg);
+        this._activeTransports.add('relay');
+        
+        if (this._mode === MODES.BLE_ONLY) {
+          this._transitionMode(MODES.HYBRID, 'HYBRID_FULL');
+        } else {
+          this._transitionMode(MODES.RELAY, 'HYBRID_RELAY_ONLY');
+        }
+      } catch (wsErr) {
+        if (!this._activeTransports.has('ble')) {
+          throw this._createNapError(
+            NAP_ERRORS.HYBRID_NO_ROUTE,
+            'No connectivity available (BLE + Relay failed)'
+          );
         }
       }
 
-      // PASO 2: Inicializar BLE (esto solicita permisos automáticamente en Android 12+)
-      console.log('[HybridMesh] Inicializando BLE...');
-      await BleClient.initialize({ 
-        androidNeverForLocation: false // Requerimos ubicación para scan preciso
-      });
-      
-      this.state.permissionsGranted = true;
-      console.log('[HybridMesh] ✅ BLE inicializado');
+      this._initialized = true;
+      this._emit('ready', { mode: this._mode, transports: Array.from(this._activeTransports) });
+      return true;
 
-      // PASO 3: Verificar Bluetooth activado
+    } catch (error) {
+      this._handleNapError(error, 'INIT');
+      throw error;
+    }
+  }
+
+  /**
+   * NAP-PERMISSION-001: Flujo correcto Android 12+ (de tu v2.0)
+   */
+  async _acquirePermissionsNap() {
+    if (Capacitor.getPlatform() !== 'android') return true;
+
+    try {
+      // Verificar ubicación GPS (CRÍTICO para BLE scan en Android)
+      const isLocationEnabled = await BleClient.isLocationEnabled();
+      if (!isLocationEnabled) {
+        rem.warn('Ubicación GPS desactivada - requiere activación manual', 'HYBRID_GPS');
+        await BleClient.openLocationSettings();
+        
+        // Re-verificar después de delay
+        await this._sleep(2000);
+        const stillDisabled = !(await BleClient.isLocationEnabled());
+        if (stillDisabled) {
+          throw this._createNapError(
+            NAP_ERRORS.HYBRID_PERMISSION_DENIED,
+            'GPS_DESACTIVADO: El usuario no activó ubicación'
+          );
+        }
+      }
+
+      // Inicializar BLE (solicita permisos automáticamente en Android 12+)
+      await BleClient.initialize({ 
+        androidNeverForLocation: false // Requerimos ubicación precisa para scan
+      });
+
+      // Verificar Bluetooth activado
       const isEnabled = await BleClient.isEnabled();
       if (!isEnabled) {
-        console.log('[HybridMesh] Bluetooth apagado, solicitando activación...');
         await BleClient.requestEnable();
       }
 
-      // PASO 4: Modo BLE activo
-      this.state.mode = 'ble';
-      this.state.initialized = true;
-      this.state.localId = `nexo-${Math.random().toString(36).substr(2, 8)}`;
-      
-      console.log('[HybridMesh] ✅ Listo. ID:', this.state.localId);
-      this._emit('ready');
+      this._permissionsGranted = true;
       return true;
 
     } catch (err) {
-      console.error('[HybridMesh] ❌ Error:', err.message);
-      this._emit('error', err);
-      
-      // Si es error de permisos, informar claramente
-      if (err.message?.includes('permission') || err.message?.includes('Permission')) {
-        this.callbacks.onError('PERMISOS', 'Debes aceptar permisos Bluetooth en Configuración → Apps → NEXO');
+      if (err.message?.includes('permission') || err.code === 'APP_018') {
+        throw this._createNapError(
+          NAP_ERRORS.HYBRID_PERMISSION_DENIED,
+          'Permisos Bluetooth rechazados. Ve a Configuración → Apps → NEXO → Permisos',
+          { original: err.message }
+        );
       }
-      
-      // Fallback a offline
-      this.state.mode = 'offline';
-      this.state.initialized = true;
-      this._emit('ready');
-      return true;
+      throw err;
     }
   }
 
-  /**
-   * Scan según documentación oficial
-   */
-  async startScan() {
-    if (!this.state.initialized) throw new Error('No inicializado');
-    if (this.state.mode === 'offline') {
-      console.warn('[HybridMesh] Modo offline - no se puede escanear');
-      return false;
-    }
-    if (this.state.scanning) return true;
+  // ===== NAP 2.0 MESSAGE ROUTING =====
 
-    // Verificar ubicación de nuevo (puede cambiar durante la ejecución)
-    if (Capacitor.getPlatform() === 'android') {
-      const isLocationEnabled = await BleClient.isLocationEnabled();
-      if (!isLocationEnabled) {
-        throw new Error('UBICACION_APAGADA: Activa el GPS para escanear');
+  /**
+   * NAP-ROUTE-001: Selección inteligente de transporte
+   */
+  async sendMessage(userId, payload) {
+    if (!CONTRACTS.PAYLOAD(payload)) {
+      throw this._createNapError(NAP_ERRORS.HYBRID_NO_ROUTE, 'Invalid payload');
+    }
+
+    const peer = this._peers.get(userId);
+    const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+    // Estrategia 1: BLE (Soberano, prioridad máxima)
+    if (peer?.bleDeviceId && nordicMesh.isConnected(peer.bleDeviceId)) {
+      try {
+        await nordicMesh.sendMessage(peer.bleDeviceId, payload);
+        return { success: true, via: 'BLE', latency: 'low', napCode: 'ROUTE_BLE' };
+      } catch (bleErr) {
+        rem.warn('BLE send failed, attempting failover', 'HYBRID_FAILOVER');
       }
     }
 
-    this.state.scanning = true;
-    this._emit('scanning', true);
+    // Estrategia 2: WiFi LAN (Si implementado en futuro)
+    // if (peer?.lanId) { ... }
 
-    try {
-      console.log('[HybridMesh] 🔍 Iniciando scan...');
+    // Estrategia 3: WebSocket Relay
+    if (this._activeTransports.has('relay')) {
+      try {
+        await webSocketClient.send({ to: userId, payload: message });
+        return { success: true, via: 'RELAY', latency: 'high', napCode: 'ROUTE_RELAY' };
+      } catch (wsErr) {
+        throw this._createNapError(
+          NAP_ERRORS.HYBRID_NO_ROUTE,
+          'All transport layers failed',
+          { bleError: bleErr?.message, wsError: wsErr.message }
+        );
+      }
+    }
+
+    throw this._createNapError(NAP_ERRORS.HYBRID_NO_ROUTE, 'No route available to peer');
+  }
+
+  /**
+   * NAP-BROADCAST-001: Enviar a todos los peers disponibles
+   */
+  async broadcast(payload) {
+    const results = { ble: 0, relay: 0, failed: 0 };
+    const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+    // Broadcast BLE (NordicMesh no soporta nativo broadcast, enviar individual)
+    for (const [userId, peer] of this._peers) {
+      if (peer.bleDeviceId && nordicMesh.isConnected(peer.bleDeviceId)) {
+        try {
+          await nordicMesh.sendMessage(peer.bleDeviceId, payload);
+          results.ble++;
+        } catch (e) { results.failed++; }
+      }
+    }
+
+    // Broadcast Relay
+    if (this._activeTransports.has('relay')) {
+      try {
+        await webSocketClient.send({ type: 'broadcast', payload: message });
+        results.relay++;
+      } catch (e) { results.failed++; }
+    }
+
+    return results;
+  }
+
+  // ===== EVENT HANDLERS (NAP-COMPLIANT) =====
+
+  _handleBlePeerDiscovered(peer) {
+    // Registrar en registry unificado
+    let existing = this._peers.get(peer.userId);
+    if (!existing) {
+      existing = { userId: peer.userId, bleDeviceId: peer.deviceId };
+      this._peers.set(peer.userId, existing);
+    }
+    existing.bleDeviceId = peer.deviceId;
+    existing.rssi = peer.rssi;
+    existing.lastSeenBle = Date.now();
+    existing.bestPath = 'ble';
+
+    // Legacy callback
+    this.callbacks.onDeviceFound({
+      id: peer.deviceId,
+      userId: peer.userId,
+      name: `NEXO-${peer.userId.substr(0,8)}`,
+      rssi: peer.rssi,
+      mode: 'ble',
+      napValidated: peer.napValidated
+    });
+
+    this._emit('peer', { ...existing, event: 'discovered' });
+  }
+
+  _handleBlePeerConnected(peer) {
+    const existing = this._peers.get(peer.userId);
+    if (existing) {
+      existing.bleConnected = true;
+      existing.connectedAt = Date.now();
+    }
+
+    this.callbacks.onDeviceConnected({
+      id: peer.deviceId,
+      userId: peer.userId,
+      mode: 'ble'
+    });
+
+    this._emit('peer', { ...existing, event: 'connected' });
+  }
+
+  _handleBlePeerDisconnected(peer) {
+    const existing = this._peers.get(peer.userId);
+    if (existing) {
+      existing.bleConnected = false;
+      existing.disconnectedAt = Date.now();
       
-      // Usar requestLEScan con callback según documentación
-      await BleClient.requestLEScan(
-        { 
-          services: [NEXO_SERVICE], // Filtrar por servicio NEXO
-          allowDuplicates: false 
-        },
-        (result) => {
-          // Callback por cada dispositivo encontrado
-          console.log('[HybridMesh] Dispositivo encontrado:', result.device.name, result.device.deviceId);
-          this._handleDeviceFound({
-            id: result.device.deviceId,
-            name: result.device.name || `NEXO-${result.device.deviceId.substr(0,6)}`,
-            rssi: result.rssi,
-            mode: 'ble'
-          });
-        }
-      );
+      // Si no hay más rutas, eliminar
+      if (!existing.wsId) {
+        this._peers.delete(peer.userId);
+      }
+    }
 
-      // Auto-stop después de 30 segundos
-      setTimeout(() => this.stopScan(), 30000);
-      return true;
+    this.callbacks.onDeviceDisconnected({ id: peer.deviceId, userId: peer.userId });
 
-    } catch (err) {
-      console.error('[HybridMesh] Error scan:', err);
-      this.state.scanning = false;
-      this._emit('scanning', false);
-      throw err;
+    // Verificar degradación de modo
+    const hasAnyBle = Array.from(this._peers.values()).some(p => p.bleConnected);
+    if (!hasAnyBle && this._mode === MODES.HYBRID && this._activeTransports.has('relay')) {
+      this._transitionMode(MODES.RELAY, 'HYBRID_DEGRADE_RELAY');
+    }
+
+    this._emit('peer', { userId: peer.userId, event: 'disconnected' });
+  }
+
+  _handleBleMessage(msg) {
+    // Reinyectar en sistema con metadatos de transporte
+    this._emit('message', {
+      ...msg,
+      transport: 'BLE',
+      priority: 'high',
+      napTimestamp: Date.now()
+    });
+  }
+
+  _handleRelayMessage(msg) {
+    this._emit('message', {
+      ...msg,
+      transport: 'RELAY',
+      priority: 'normal'
+    });
+  }
+
+  _handleBleError(napError) {
+    // Error Boundary: no crítico, solo reportar
+    rem.error(`${napError.code}: ${napError.message}`, napError.code);
+    this._emit('error', napError);
+  }
+
+  _monitorBleState(state) {
+    if (state === 'error' && this._mode !== MODES.RELAY) {
+      rem.warn('BLE subsystem failure, switching to RELAY mode', 'HYBRID_FAILOVER');
+      this._transitionMode(MODES.RELAY, 'HYBRID_BLE_FAILOVER');
+    }
+  }
+
+  // ===== NAP 2.0 UTILITIES =====
+
+  _createNapError(napError, message, details = null) {
+    const err = new Error(`[${napError.code}] ${message}`);
+    err.napCode = napError.code;
+    err.napPhase = napError.phase;
+    err.napDetails = details;
+    return err;
+  }
+
+  _handleNapError(error, operation) {
+    const napError = {
+      code: error.napCode || 'APP_UNKNOWN',
+      phase: error.napPhase || `HYBRID_${operation}`,
+      message: error.message,
+      timestamp: Date.now()
+    };
+
+    rem.error(`${napError.code}: ${error.message}`, napError.code);
+    this.callbacks.onError(napError.code, error.message);
+    this._emit('error', napError);
+  }
+
+  _transitionMode(newMode, phase) {
+    const oldMode = this._mode;
+    this._mode = newMode;
+    rem.updateMode(newMode);
+    
+    if (oldMode !== newMode) {
+      this._emit('mode', { from: oldMode, to: newMode, phase });
+    }
+  }
+
+  _sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  _emit(event, data) {
+    if (this._listeners[event]) {
+      this._listeners[event].forEach(cb => {
+        try { cb(data); } catch(e) {}
+      });
+    }
+  }
+
+  // ===== PUBLIC API (NAP + LEGACY) =====
+
+  on(event, handler) {
+    if (this._listeners[event]) this._listeners[event].push(handler);
+    return () => {
+      this._listeners[event] = this._listeners[event].filter(h => h !== handler);
+    };
+  }
+
+  async connect(deviceId) {
+    // Delegar a NordicMesh (validación de deviceId implícita)
+    return await nordicMesh.connect(deviceId);
+  }
+
+  async disconnect(deviceId) {
+    return await nordicMesh.disconnect(deviceId);
+  }
+
+  async startScan() {
+    // Ya iniciado automáticamente por nordicMesh.init(), pero exponer para UI manual
+    if (nordicMesh.startDiscovery) {
+      await nordicMesh.startDiscovery();
     }
   }
 
   async stopScan() {
-    if (!this.state.scanning) return;
-    
-    try {
-      await BleClient.stopLEScan();
-    } catch(e) {}
-    
-    this.state.scanning = false;
-    this._emit('scanning', false);
-    console.log('[HybridMesh] Scan detenido');
+    await nordicMesh.stopDiscovery();
   }
 
-  /**
-   * Conexión BLE
-   */
-  async connect(deviceId) {
-    try {
-      await BleClient.connect(deviceId);
-      
-      const peer = {
-        id: deviceId,
-        name: this.state.discovered.get(deviceId)?.name || 'Peer',
-        mode: 'ble',
-        connectedAt: Date.now()
-      };
-      
-      this.state.peers.set(deviceId, peer);
-      this.state.discovered.delete(deviceId);
-      this._emit('connect', peer);
-
-      // Setup notificaciones RX
-      await BleClient.startNotifications(deviceId, NEXO_SERVICE, NEXO_RX, (value) => {
-        const text = new TextDecoder().decode(value);
-        this._handleMessage(deviceId, text);
-      });
-
-    } catch (err) {
-      console.error('[HybridMesh] Error conectando:', err);
-      throw err;
-    }
-  }
-
-  async disconnect(deviceId) {
-    try {
-      await BleClient.disconnect(deviceId);
-      this._handleDisconnect(deviceId);
-    } catch(e) {}
-  }
-
-  /**
-   * Enviar mensaje
-   */
-  async broadcast(message) {
-    if (this.state.peers.size === 0) return 0;
-    
-    let count = 0;
-    const data = JSON.stringify(message);
-    
-    for (const [peerId, peer] of this.state.peers) {
-      try {
-        const encoded = new TextEncoder().encode(data);
-        await BleClient.write(peerId, NEXO_SERVICE, NEXO_TX, encoded);
-        count++;
-      } catch(e) {
-        console.warn(`[HybridMesh] Error enviando a ${peerId}:`, e);
-      }
-    }
-    return count;
-  }
-
-  _handleDeviceFound(device) {
-    if (this.state.peers.has(device.id)) return;
-    device.timestamp = Date.now();
-    this.state.discovered.set(device.id, device);
-    this._emit('device', device);
-  }
-
-  _handleConnect(device) {
-    this.state.peers.set(device.id, device);
-    this._emit('connect', device);
-  }
-
-  _handleDisconnect(deviceId) {
-    if (this.state.peers.has(deviceId)) {
-      this.state.peers.delete(deviceId);
-      this._emit('disconnect', deviceId);
-    }
-  }
-
-  _handleMessage(deviceId, payload) {
-    try {
-      let data = payload;
-      if (typeof payload === 'string') {
-        try { data = JSON.parse(payload); } catch(e) {}
-      }
-      this._emit('message', data, deviceId);
-    } catch(e) {}
-  }
-
-  getPeers() { return Array.from(this.state.peers.values()); }
-  getPeerCount() { return this.state.peers.size; }
-  
   getStatus() {
     return {
-      mode: this.state.mode,
-      initialized: this.state.initialized,
-      scanning: this.state.scanning,
-      peerCount: this.state.peers.size,
-      discoveredCount: this.state.discovered.size,
-      localId: this.state.localId,
-      permissionsGranted: this.state.permissionsGranted
+      mode: this._mode,
+      initialized: this._initialized,
+      scanning: nordicMesh.state === 'discovering',
+      peerCount: this._peers.size,
+      transports: Array.from(this._activeTransports),
+      napVersion: '2.0'
     };
   }
 
+  getPeers() {
+    return Array.from(this._peers.values());
+  }
+
   destroy() {
-    this.stopScan();
-    this.state.peers.forEach((peer, id) => {
-      try { BleClient.disconnect(id); } catch(e) {}
-    });
+    clearInterval(this._discoveryInterval);
+    nordicMesh.destroy();
+    webSocketClient.disconnect();
+    this._resources.intervals.forEach(id => clearInterval(id));
+    this._resources.timeouts.forEach(id => clearTimeout(id));
   }
 }
 
-export default HybridMesh;
+export const hybridMesh = new HybridMesh();
+export default hybridMesh;
