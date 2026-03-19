@@ -213,16 +213,14 @@ export class NexoApp {
       }
     }
 
-    // FASE 5: BLE INTERFACE
+    // FASE 5: BLE INTERFACE - FIX: Siempre crear UI, incluso sin mesh
     try {
       DEBUG.setPhase('BLE_UI');
       DEBUG.log('📱 [5/7] BLE UI...');
       const meshInstance = this.nordicMesh || this.mesh;
-      if (meshInstance) {
-        this.bleInterface = initBLEInterface(meshInstance);
-        if (this.bleInterface) {
-          DEBUG.log('✅ UI lista', 'success');
-        }
+      this.bleInterface = initBLEInterface(meshInstance); // Siempre crear, mesh puede ser null
+      if (this.bleInterface) {
+        DEBUG.log('✅ UI lista', 'success');
       }
     } catch (err) {
       DEBUG.warn(`⚠️ UI: ${err.message}`);
