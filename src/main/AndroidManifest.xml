@@ -7,28 +7,47 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
-    <!-- BLUETOOTH -->
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <!-- ========================================== -->
+    <!-- NEXO BLE PROTOCOL v1.0 - Permisos Nordic   -->
+    <!-- ========================================== -->
     
-    <!-- BLUETOOTH Android 12+ (API 31+) -->
+    <!-- BLE Básico (todos los Android) -->
+    <uses-permission android:name="android.permission.BLUETOOTH" 
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" 
+        android:maxSdkVersion="30" />
+    
+    <!-- BLE Android 12+ (API 31+) - NEXO GATT Server/Client -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" 
-        android:usesPermissionFlags="neverForLocation" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" 
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" 
+        tools:targetApi="s" />
     
-    <!-- GOOGLE NEARBY (WiFi LAN) -->
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+    <!-- Background BLE (opcional pero recomendado para mensajería P2P) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" 
+        tools:targetApi="34" />
+    
+    <!-- GOOGLE NEARBY (WiFi LAN) - Legacy HybridMesh -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" 
+        tools:targetApi="33" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     
-    <!-- UBICACIÓN (requerida por BLE en Android < 12 y Nearby) -->
+    <!-- UBICACIÓN (requerida por BLE en Android < 12) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" 
+        tools:targetApi="29" />
     
-    <!-- Hardware -->
-    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
-    <uses-feature android:name="android.hardware.wifi" android:required="true" />
+    <!-- Hardware Requerido -->
+    <uses-feature android:name="android.hardware.bluetooth_le" 
+        android:required="true" />
+    <uses-feature android:name="android.hardware.wifi" 
+        android:required="true" />
 
     <application
         android:name=".MainApplication"
@@ -38,7 +57,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
-        android:hardwareAccelerated="true">
+        android:hardwareAccelerated="true"
+        android:usesCleartextTraffic="false">
 
         <activity
             android:name=".MainActivity"
@@ -54,7 +74,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             
-            <!-- Deep linking -->
+            <!-- Deep linking NEXO -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -63,8 +83,17 @@
             </intent-filter>
         </activity>
 
-        <!-- Capacitor plugins configs -->
-        <meta-data android:name="com.google.android.gms.nearby.messages.API_KEY" 
+        <!-- Servicio Foreground para BLE (opcional, para background) -->
+        <service
+            android:name=".BLEForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            tools:targetApi="34" />
+
+        <!-- Google Nearby API Key (opcional, para HybridMesh) -->
+        <meta-data 
+            android:name="com.google.android.gms.nearby.messages.API_KEY" 
             android:value="YOUR_API_KEY_HERE" />
 
         <provider
