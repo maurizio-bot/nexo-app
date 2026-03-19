@@ -1,115 +1,170 @@
 package com.nexo.ble
 
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGattCharacteristic
-import android.bluetooth.BluetoothGattDescriptor
-import android.bluetooth.BluetoothGattService
-import android.bluetooth.le.AdvertiseCallback
-import android.bluetooth.le.AdvertiseData
-import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.*
+import android.bluetooth.le.*
 import android.content.Context
 import android.os.ParcelUuid
-import no.nordicsemi.android.ble.BleServerManager
-import java.util.UUID
+import android.util.Log
+import com.nexo.ble.model.NexoGattService
+import java.util.*
 
 class NexoBleServer(
-    context: Context,
-    private val serviceUuid: UUID,
-    private val charTxUuid: UUID,
-    private val charRxUuid: UUID,
-    private val onDeviceConnected: (BluetoothDevice) -> Unit,
-    private val onDeviceDisconnected: (BluetoothDevice) -> Unit,
-    private val onMessageReceived: (BluetoothDevice, ByteArray) -> Unit
-) : BleServerManager(context) {
+    private val context: Context,
+    private val notifyListeners: (String, JSObject) -> Unit
+) {
+    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    private val bluetoothAdapter = bluetoothManager.adapter
+    private var gattServer: BluetoothGattServer? = null
+    private var advertiser: BluetoothLeAdvertiser? = null
+    private val connectedDevices = mutableMapOf<String, BluetoothDevice>()
+    private val TAG = "NexoBle-Server"
 
-    private val clients = mutableMapOf<String, BluetoothDevice>()
-    private var advertisingCallback: AdvertiseCallback? = null
-
-    override fun initializeServer(): List<BluetoothGattService> {
-        val service = BluetoothGattService(serviceUuid, BluetoothGattService.SERVICE_TYPE_PRIMARY)
-        
-        val charTx = BluetoothGattCharacteristic(
-            charTxUuid,
-            BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-            0
-        ).apply {
-            addDescriptor(BluetoothGattDescriptor(
-                UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"),
-                BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
-            ))
+    // Callback para el GATT Server
+    private val gattServerCallback = object : BluetoothGattServerCallback() {
+        override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+            super.onConnectionStateChange(device, status, newState)
+            val id = device.address
+            
+            when (newState) {
+                BluetoothProfile.STATE_CONNECTED -> {
+                    connectedDevices[id] = device
+                    notifyEvent("onConnectionStateChanged", JSObject().apply {
+                        put("deviceId", id)
+                        put("state", "connected")
+                        put("rssi", 0)
+                    })
+                }
+                BluetoothProfile.STATE_DISCONNECTED -> {
+                    connectedDevices.remove(id)
+                    notifyEvent("onConnectionStateChanged", JSObject().apply {
+                        put("deviceId", id)
+                        put("state", "disconnected")
+                    })
+                }
+            }
         }
-        
-        val charRx = BluetoothGattCharacteristic(
-            charRxUuid,
-            BluetoothGattCharacteristic.PROPERTY_WRITE,
-            BluetoothGattCharacteristic.PERMISSION_WRITE
-        )
-        
-        service.addCharacteristic(charTx)
-        service.addCharacteristic(charRx)
-        
-        return listOf(service)
-    }
 
-    override fun onDeviceConnectedToServer(device: BluetoothDevice) {
-        super.onDeviceConnectedToServer(device)
-        clients[device.address] = device
-        onDeviceConnected(device)
-    }
-
-    override fun onDeviceDisconnectedFromServer(device: BluetoothDevice) {
-        super.onDeviceDisconnectedFromServer(device)
-        clients.remove(device.address)
-        onDeviceDisconnected(device)
-    }
-
-    override fun onCharacteristicWrite(device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteristic, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?) {
-        super.onCharacteristicWrite(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value)
-        
-        if (characteristic.uuid == charRxUuid && value != null) {
-            onMessageReceived(device, value)
-        }
-        
-        if (responseNeeded) {
-            sendResponse(device, requestId, android.bluetooth.BluetoothGatt.GATT_SUCCESS, 0, null)
+        override fun onCharacteristicWriteRequest(
+            device: BluetoothDevice,
+            requestId: Int,
+            characteristic: BluetoothGattCharacteristic,
+            preparedWrite: Boolean,
+            responseNeeded: Boolean,
+            offset: Int,
+            value: ByteArray?
+        ) {
+            super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value)
+            
+            value?.let {
+                handleIncomingData(device.address, characteristic.uuid, it)
+            }
+            
+            if (responseNeeded) {
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
+            }
         }
     }
 
-    fun startAdvertising(deviceName: String, callback: (Boolean, String?) -> Unit) {
+    fun startAdvertising() {
+        if (advertiser != null) return
+
+        setupGattServer()
+
+        advertiser = bluetoothAdapter.bluetoothLeAdvertiser
         val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
             .setConnectable(true)
             .setTimeout(0)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
             .build()
 
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
-            .addServiceUuid(ParcelUuid(serviceUuid))
+            .setIncludeDeviceName(false)
+            .addServiceUuid(ParcelUuid(NexoGattService.SERVICE_UUID))
             .build()
 
-        advertisingCallback = object : AdvertiseCallback() {
-            override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-                callback(true, null)
-            }
-
-            override fun onStartFailure(errorCode: Int) {
-                val error = when(errorCode) {
-                    ADVERTISE_FAILED_DATA_TOO_LARGE -> "Datos muy grandes"
-                    ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "Demasiados anunciantes"
-                    ADVERTISE_FAILED_ALREADY_STARTED -> "Ya iniciado"
-                    ADVERTISE_FAILED_INTERNAL_ERROR -> "Error interno"
-                    ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "No soportado"
-                    else -> "Error: $errorCode"
-                }
-                callback(false, error)
-            }
-        }
-
-        startAdvertising(settings, data, advertisingCallback!!)
+        advertiser?.startAdvertising(settings, data, advertiseCallback)
+        Log.i(TAG, "Started advertising with UUID: ${NexoGattService.SERVICE_UUID}")
     }
 
     fun stopAdvertising() {
-        advertisingCallback?.let { stopAdvertising(it) }
+        advertiser?.stopAdvertising(advertiseCallback)
+        advertiser = null
+        gattServer?.close()
+        gattServer = null
+    }
+
+    private fun setupGattServer() {
+        gattServer = bluetoothManager.openGattServer(context, gattServerCallback)
+        
+        val service = BluetoothGattService(
+            NexoGattService.SERVICE_UUID,
+            BluetoothGattService.SERVICE_TYPE_PRIMARY
+        )
+
+        // Característica Announce (Read/Notify)
+        val announceChar = BluetoothGattCharacteristic(
+            NexoGattService.ANNOUNCE_CHAR_UUID,
+            BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+            BluetoothGattCharacteristic.PERMISSION_READ
+        )
+        
+        // Característica Handshake (Write/Notify)
+        val handshakeChar = BluetoothGattCharacteristic(
+            NexoGattService.HANDSHAKE_CHAR_UUID,
+            BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+            BluetoothGattCharacteristic.PERMISSION_WRITE
+        )
+        
+        // Característica Payload (Write/Notify)
+        val payloadChar = BluetoothGattCharacteristic(
+            NexoGattService.PAYLOAD_CHAR_UUID,
+            BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+            BluetoothGattCharacteristic.PERMISSION_WRITE
+        )
+        
+        // Característica Control (Write/Notify)
+        val controlChar = BluetoothGattCharacteristic(
+            NexoGattService.CONTROL_CHAR_UUID,
+            BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+            BluetoothGattCharacteristic.PERMISSION_WRITE
+        )
+
+        service.addCharacteristic(announceChar)
+        service.addCharacteristic(handshakeChar)
+        service.addCharacteristic(payloadChar)
+        service.addCharacteristic(controlChar)
+
+        gattServer?.addService(service)
+    }
+
+    private fun handleIncomingData(deviceId: String, charUuid: UUID, data: ByteArray) {
+        val eventData = JSObject().apply {
+            put("deviceId", deviceId)
+            put("characteristic", charUuid.toString())
+            put("data", JSONArray(data.map { it.toInt() }))
+        }
+
+        when (charUuid) {
+            NexoGattService.HANDSHAKE_CHAR_UUID -> notifyEvent("onHandshakeReceived", eventData)
+            NexoGattService.PAYLOAD_CHAR_UUID -> notifyEvent("onMessageReceived", eventData)
+            NexoGattService.CONTROL_CHAR_UUID -> notifyEvent("onControlReceived", eventData)
+        }
+    }
+
+    private fun notifyEvent(eventName: String, data: JSObject) {
+        notifyListeners(eventName, data)
+    }
+
+    private val advertiseCallback = object : AdvertiseCallback() {
+        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+            super.onStartSuccess(settingsInEffect)
+            Log.i(TAG, "Advertising started successfully")
+        }
+
+        override fun onStartFailure(errorCode: Int) {
+            super.onStartFailure(errorCode)
+            Log.e(TAG, "Advertising failed with code: $errorCode")
+        }
     }
 }
