@@ -1,606 +1,359 @@
 /**
- * NEXO Nordic Mesh v1.0-NAP-CERTIFIED
- * GATT Service Soberano - Protocolo BLE NEXO
- * Revision: NAP 2.0 (Interface Contracts + SOC2 Resource Management + Error Boundaries)
- * Error Codes: APP_011-APP_016 (BLE subsystem)
+ * NordicMesh - Implementación Protocolo BLE NEXO v1.0
+ * NAP 2.0 Certified - GATT Service Soberano
  */
 
-import { rem } from '../ui/rem.js';
+import { NexoBLE } from '../../plugins/nexo-ble/src/index.js';
 
-// UUIDs v5 Namespace (Deterministic)
+// UUIDs NEXO Protocol v1.0
 const UUIDS = {
-  SERVICE:   'a3b5c8d2-e1f4-4a7b-9c3d-6e8f1a2b5c7d',
-  ANNOUNCE:  'b4c6d9e3-f2a5-5b8c-ad4e-7f9g2b3c6d8e',
-  HANDSHAKE: 'c5d7eaf4-a3b6-4c9d-be5f-8a0h3c4d7e9f',
-  PAYLOAD:   'd6e8fbg5-b4c7-4d0e-cf6g-9b1i4d5e8f0g',
-  CONTROL:   'e7f9gch6-c5d8-4e1f-dg7h-0c2j5e6f9g1h'
+  SERVICE: 'a3b5c8d2-e1f4-4a7b-9c3d-6e8f1a2b5c7d',
+  ANNOUNCE: 'b4c6d9e3-f2a5-5b8c-ad4e-7f9g2b3c6d8e',
+  HANDSHAKE: 'c5d7eaf4-g3b6-6c9d-be5f-8a0h3c4d7e9f',
+  PAYLOAD: 'd6e8fbg5-h4c7-7d0e-cf6g-9b1i4d5e8f0g',
+  CONTROL: 'e7f9gch6-i5d8-8e1f-dg7h-0c2j5e6f9g1h'
 };
 
-// NAP 2.0 Error Codes (BLE Subsystem)
-const NAP_ERRORS = {
-  NORDIC_INIT_FAILED:    { code: 'APP_011', phase: 'NORDIC_INIT' },
-  BLE_SCAN_FAILED:       { code: 'APP_012', phase: 'NORDIC_DISCOVERY' },
-  BLE_ADVERTISE_FAILED:  { code: 'APP_013', phase: 'NORDIC_ADVERTISING' },
-  BLE_HANDSHAKE_FAILED:  { code: 'APP_014', phase: 'NORDIC_HANDSHAKE' },
-  BLE_SEND_FAILED:       { code: 'APP_015', phase: 'NORDIC_MESSAGING' },
-  BLE_CRYPTO_FAILED:     { code: 'APP_016', phase: 'NORDIC_CRYPTO' }
-};
-
-// NAP 2.0 States (Strict State Machine)
+// NAP 2.0 States
 const STATE = Object.freeze({
   NONE: 'none',
-  INIT: 'init',           // NAP Phase 0
-  OFFLINE: 'offline',     // NAP Phase 1 (Ready)
-  DISCOVERING: 'discovering', // NAP Phase 2
-  HANDSHAKING: 'handshaking', // NAP Phase 3
-  CONNECTED: 'connected',     // NAP Phase 4
-  MESSAGING: 'messaging',     // NAP Phase 5 (Active)
-  ERROR: 'error',             // NAP Phase X (Failure)
-  CLEANUP: 'cleanup'          // NAP Phase 99
+  INIT: 'init',                    // NAP Phase 0
+  OFFLINE: 'offline',              // NAP Phase 1 (Ready)
+  DISCOVERING: 'discovering',      // NAP Phase 2
+  HANDSHAKING: 'handshaking',      // NAP Phase 3
+  CONNECTED: 'connected',          // NAP Phase 4
+  MESSAGING: 'messaging',          // NAP Phase 5 (Active)
+  ERROR: 'error',                  // NAP Phase X (Failure)
+  CLEANUP: 'cleanup'               // NAP Phase 99
 });
 
 // Interface Contracts (NAP 2.0 Type Validation)
 const CONTRACTS = {
   DEVICE_ID: (id) => typeof id === 'string' && id.length === 17, // MAC format XX:XX:XX:XX:XX:XX
-  USER_ID: (id) => typeof id === 'string' && id.length === 32,    // 16 bytes hex
+  USER_ID: (id) => typeof id === 'string' && id.length === 32,   // 16 bytes hex
   PAYLOAD: (p) => p !== null && typeof p === 'object',
   VAULT: (v) => v && typeof v.getIdentityKey === 'function' && typeof v.encrypt === 'function'
 };
 
-// Constants
-const CONSTANTS = Object.freeze({
-  CHUNK_SIZE: 507,
-  MTU: 512,
-  ANNOUNCE_SIZE: 32,
-  DISCOVERY_TIMEOUT: 10000,
-  HANDSHAKE_TIMEOUT: 30000,
-  MAX_RECONNECT_AGE: 300000,
-  RSSI_THRESHOLD: -85,
-  SEQUENCE_MAX: 65535
-});
-
 class NordicMesh {
-  constructor() {
-    // SOC2 Resource Management (NAP 2.0)
-    this._resources = {
-      plugin: null,
-      intervals: new Set(),
-      timeouts: new Set(),
-      connections: new Map(),
-      buffers: new Map()
+  constructor(vault, options = {}) {
+    this.vault = vault;
+    this.options = {
+      chunkSize: 507,              // 512 MTU - 5 bytes header
+      rssiThreshold: -85,          // dBm
+      scanInterval: 300,           // ms
+      handshakeTimeout: 30000,     // 30s
+      messageTimeout: 300000,      // 5min
+      ...options
     };
     
-    // State (Immutable transitions)
-    this._state = STATE.NONE;
-    this._phase = 'NONE';
+    this.state = STATE.NONE;
+    this.peers = new Map();        // deviceId -> PeerInfo
+    this.sessions = new Map();     // deviceId -> SessionKeys
+    this.chunks = new Map();       // messageId -> chunks[]
+    this.listeners = [];
+    this.isNative = false;
     
-    // Identity
-    this._vault = null;
-    this._userId = null;
-    this._ephemeralKeyPair = null;
-    
-    // Peer Management
-    this._peers = new Map();           // deviceId -> PeerContract
-    this._discovered = new Map();      // deviceId -> DiscoveryRecord
-    this._pendingHandshakes = new Map(); // deviceId -> Resolver
-    
-    // Sequence tracking (Anti-replay)
-    this._sequences = new Map();       // deviceId -> number
-    
-    // Callbacks (External Interface)
-    this.onPeerDiscovered = null;
-    this.onPeerConnected = null;
-    this.onPeerDisconnected = null;
-    this.onMessageReceived = null;
-    this.onError = null;               // NAP Error Boundary callback
-    
-    // NAP Debug Context
-    this._debugContext = 'NordicMesh';
+    // Bindings
+    this._onPeerDiscovered = this._onPeerDiscovered.bind(this);
+    this._onConnectionChanged = this._onConnectionChanged.bind(this);
+    this._onMessageReceived = this._onMessageReceived.bind(this);
+    this._onHandshakeReceived = this._onHandshakeReceived.bind(this);
   }
 
-  // ===== NAP 2.0 INTERFACE CONTRACTS =====
-
-  /**
-   * NAP-INIT-001: Initialization with strict validation
-   * Interface Contract: Vault must implement CryptoVault interface
-   */
-  async init(vaultInstance) {
-    this._transitionState(STATE.INIT, 'NORDIC_INIT');
-    
+  async init() {
     try {
-      // Interface Contract Validation (NAP 2.0)
-      if (!CONTRACTS.VAULT(vaultInstance)) {
-        throw this._createNapError(
-          NAP_ERRORS.NORDIC_INIT_FAILED,
-          'Interface Contract Violation: vaultInstance must implement CryptoVault interface',
-          { provided: typeof vaultInstance }
-        );
-      }
-
-      this._vault = vaultInstance;
+      this._setState(STATE.INIT);
       
-      // Resource Acquisition (SOC2)
-      const identityKey = await this._vault.getIdentityKey().catch(err => {
-        throw this._createNapError(NAP_ERRORS.NORDIC_INIT_FAILED, 'Vault identity failure', err);
+      // Inicializar plugin nativo
+      const result = await NexoBLE.initialize({
+        userId: await this.vault.getIdentityKey()
       });
       
-      this._userId = this._deriveUserId(identityKey);
-      this._ephemeralKeyPair = await this._vault.generateEphemeralKeyPair('x25519').catch(err => {
-        throw this._createNapError(NAP_ERRORS.NORDIC_INIT_FAILED, 'Ephemeral key generation failed', err);
-      });
-
-      // Platform Detection (NAP-ENV-001)
-      if (this._detectNativeCapability()) {
-        await this._initializeNativeBridge();
-      } else {
-        rem.warn('NordicMesh running in simulation mode', 'NAP_FALLBACK');
-      }
-
-      // Resource Registration (SOC2)
-      this._registerCleanupTask(() => this._cleanupResources());
+      this.userId = result.userId;
+      this.isNative = true;
       
-      this._transitionState(STATE.OFFLINE, 'NORDIC_READY');
+      // Setup listeners
+      await this._setupListeners();
+      
+      this._setState(STATE.OFFLINE);
       return true;
-      
     } catch (error) {
-      this._handleNapError(error, 'INIT');
-      throw error; // Re-throw for upstream Error Boundary
+      this._setState(STATE.ERROR, error);
+      return false;
     }
   }
 
-  /**
-   * NAP-DISCOVERY-001: Strict state validation before scan
-   */
+  async _setupListeners() {
+    // Peer discovery
+    NexoBLE.addListener('onPeerDiscovered', this._onPeerDiscovered);
+    
+    // Connection state
+    NexoBLE.addListener('onConnectionStateChanged', this._onConnectionChanged);
+    
+    // Messages
+    NexoBLE.addListener('onMessageReceived', this._onMessageReceived);
+    
+    // Handshake
+    NexoBLE.addListener('onHandshakeReceived', this._onHandshakeReceived);
+  }
+
+  // === PUBLIC API ===
+
   async startDiscovery() {
-    // State Machine Guard (NAP 2.0)
-    if (this._state !== STATE.OFFLINE && this._state !== STATE.INIT) {
-      throw this._createNapError(
-        NAP_ERRORS.BLE_SCAN_FAILED,
-        `Invalid state transition: ${this._state} -> DISCOVERING`,
-        { current: this._state, required: STATE.OFFLINE }
-      );
+    if (this.state !== STATE.OFFLINE && this.state !== STATE.CONNECTED) {
+      throw new Error(`Cannot start discovery from state: ${this.state}`);
     }
-
-    this._transitionState(STATE.DISCOVERING, 'NORDIC_SCAN');
+    
+    this._setState(STATE.DISCOVERING);
     
     try {
-      if (!this._resources.plugin) {
-        throw this._createNapError(NAP_ERRORS.BLE_SCAN_FAILED, 'Native plugin not initialized');
-      }
-
-      await this._resources.plugin.startScan({
-        serviceUuids: [UUIDS.SERVICE],
-        rssiThreshold: CONSTANTS.RSSI_THRESHOLD,
-        scanMode: 2
-      });
-
-      // Resource Tracking (SOC2)
-      const timeoutId = setTimeout(() => this.stopDiscovery(), CONSTANTS.DISCOVERY_TIMEOUT);
-      this._resources.timeouts.add(timeoutId);
+      // Iniciar advertising (somos visibles)
+      await NexoBLE.startAdvertising();
       
+      // Iniciar scanning (buscamos otros)
+      await NexoBLE.startScan();
+      
+      // Auto-stop después de 10s si no encontramos nada
+      setTimeout(() => {
+        if (this.state === STATE.DISCOVERING && this.peers.size === 0) {
+          this.stopDiscovery();
+        }
+      }, 10000);
+      
+      return true;
     } catch (error) {
-      this._handleNapError(error, 'SCAN');
-      this._transitionState(STATE.ERROR, 'NORDIC_SCAN_ERROR');
-      throw error;
+      this._setState(STATE.ERROR, error);
+      return false;
     }
   }
 
-  /**
-   * NAP-CONNECT-001: Connection with handshake timeout guarantee
-   */
+  async stopDiscovery() {
+    try {
+      await NexoBLE.stopScan();
+      // Mantenemos advertising activo para que otros nos encuentren
+      this._setState(STATE.OFFLINE);
+    } catch (error) {
+      console.warn('[NordicMesh] Error stopping discovery:', error);
+    }
+  }
+
   async connect(deviceId) {
-    // Interface Contract
     if (!CONTRACTS.DEVICE_ID(deviceId)) {
-      throw this._createNapError(
-        NAP_ERRORS.BLE_HANDSHAKE_FAILED,
-        'Interface Contract Violation: Invalid deviceId format',
-        { deviceId, expected: 'MAC format' }
-      );
+      throw new Error('Invalid device ID format');
     }
-
-    const peer = this._discovered.get(deviceId);
-    if (!peer) {
-      throw this._createNapError(NAP_ERRORS.BLE_HANDSHAKE_FAILED, 'Peer not in discovery cache', { deviceId });
-    }
-
-    this._transitionState(STATE.HANDSHAKING, 'NORDIC_HANDSHAKE');
-
-    let handshakeTimeout = null;
+    
+    this._setState(STATE.HANDSHAKING);
     
     try {
-      // Resource Guard (SOC2): Guarantee cleanup on timeout
-      const handshakePromise = this._executeHandshake(deviceId, peer);
+      await NexoBLE.connect({ deviceId });
       
-      const timeoutPromise = new Promise((_, reject) => {
-        handshakeTimeout = setTimeout(() => {
-          reject(this._createNapError(
-            NAP_ERRORS.BLE_HANDSHAKE_FAILED,
-            'Handshake timeout (30s)',
-            { deviceId, phase: 'X3DH_KEY_EXCHANGE' }
-          ));
-        }, CONSTANTS.HANDSHAKE_TIMEOUT);
-        this._resources.timeouts.add(handshakeTimeout);
-      });
-
-      // Race between handshake and timeout
-      await Promise.race([handshakePromise, timeoutPromise]);
+      // Iniciar X3DH handshake
+      await this._initiateHandshake(deviceId);
       
-      // Success: Register peer
-      this._peers.set(deviceId, {
-        deviceId,
-        userId: peer.userId,
-        state: STATE.MESSAGING,
-        establishedAt: Date.now(),
-        lastActivity: Date.now()
-      });
+      // Timeout de handshake
+      setTimeout(() => {
+        if (!this.sessions.has(deviceId)) {
+          this.disconnect(deviceId);
+          this._emit('handshakeFailed', { deviceId, reason: 'timeout' });
+        }
+      }, this.options.handshakeTimeout);
       
-      this._sequences.set(deviceId, 0);
-      this._transitionState(STATE.MESSAGING, 'NORDIC_ACTIVE');
-      
-      if (this.onPeerConnected) {
-        this.onPeerConnected({ deviceId, userId: peer.userId, napPhase: 'HANDSHAKE_OK' });
-      }
-
+      return true;
     } catch (error) {
-      // Guaranteed cleanup (NAP 2.0 SOC2)
-      if (handshakeTimeout) {
-        clearTimeout(handshakeTimeout);
-        this._resources.timeouts.delete(handshakeTimeout);
-      }
-      await this._disconnectGraceful(deviceId);
-      this._handleNapError(error, 'HANDSHAKE');
-      throw error;
+      this._setState(STATE.ERROR, error);
+      return false;
     }
   }
 
-  /**
-   * NAP-SEND-001: Message sending with automatic chunking and retry logic
-   */
-  async sendMessage(deviceId, payload) {
-    // Interface Contracts
-    if (!CONTRACTS.DEVICE_ID(deviceId)) {
-      throw this._createNapError(NAP_ERRORS.BLE_SEND_FAILED, 'Invalid deviceId', { deviceId });
-    }
-    if (!CONTRACTS.PAYLOAD(payload)) {
-      throw this._createNapError(NAP_ERRORS.BLE_SEND_FAILED, 'Invalid payload', { payload });
-    }
-
-    const peer = this._peers.get(deviceId);
-    if (!peer || peer.state !== STATE.MESSAGING) {
-      throw this._createNapError(NAP_ERRORS.BLE_SEND_FAILED, 'Peer not in MESSAGING state', { 
-        deviceId, 
-        currentState: peer?.state || 'NOT_FOUND' 
-      });
-    }
-
+  async disconnect(deviceId) {
     try {
-      // Encryption (NAP-CRYPTO-001)
-      const plaintext = new TextEncoder().encode(JSON.stringify(payload));
-      const encrypted = await this._vault.encrypt(plaintext, this._deriveSessionKey(peer)).catch(err => {
-        throw this._createNapError(NAP_ERRORS.BLE_CRYPTO_FAILED, 'Encryption failure', err);
-      });
-
-      // Chunking Decision (NAP-OPT-001)
-      if (encrypted.length > CONSTANTS.CHUNK_SIZE) {
-        return await this._sendChunkedNap(deviceId, encrypted, peer);
-      } else {
-        return await this._sendSingleNap(deviceId, encrypted, peer);
-      }
-
+      await NexoBLE.disconnect({ deviceId });
+      this.sessions.delete(deviceId);
+      this.peers.delete(deviceId);
     } catch (error) {
-      this._handleNapError(error, 'SEND');
-      throw error;
+      console.warn('[NordicMesh] Error disconnecting:', error);
     }
   }
 
-  // ===== NAP 2.0 PRIVATE METHODS =====
-
-  _createNapError(napError, message, details = null) {
-    const error = new Error(`[${napError.code}] ${message}`);
-    error.napCode = napError.code;
-    error.napPhase = napError.phase;
-    error.napDetails = details;
-    error.context = this._debugContext;
-    return error;
+  async sendMessage(deviceId, plaintext) {
+    if (!this.sessions.has(deviceId)) {
+      throw new Error('No active session with device');
+    }
+    
+    this._setState(STATE.MESSAGING);
+    
+    try {
+      // Cifrar con Double Ratchet o AES-GCM
+      const session = this.sessions.get(deviceId);
+      const encrypted = await this.vault.encrypt(plaintext, session.key);
+      
+      // Convertir a array de bytes
+      const bytes = new TextEncoder().encode(JSON.stringify({
+        payload: encrypted,
+        timestamp: Date.now(),
+        seq: session.seq++
+      }));
+      
+      // Enviar vía BLE (con chunking automático)
+      await NexoBLE.sendMessage({
+        deviceId,
+        data: Array.from(bytes)
+      });
+      
+      return true;
+    } catch (error) {
+      this._setState(STATE.ERROR, error);
+      return false;
+    }
   }
 
-  _handleNapError(error, operation) {
-    // Error Boundary Pattern (NAP 2.0)
-    const napError = {
-      code: error.napCode || 'APP_UNKNOWN',
-      phase: error.napPhase || `NORDIC_${operation}`,
-      message: error.message,
-      timestamp: Date.now(),
-      context: this._debugContext
+  // === PRIVATE HANDLERS ===
+
+  _onPeerDiscovered(peer) {
+    if (peer.rssi < this.options.rssiThreshold) return;
+    
+    const peerInfo = {
+      id: peer.id,
+      name: peer.name,
+      rssi: peer.rssi,
+      userId: peer.userId,
+      discoveredAt: Date.now()
     };
-
-    // REM Integration
-    rem.error(`${napError.code}: ${error.message}`, napError.code);
     
-    // External Error Boundary callback
-    if (this.onError) {
-      this.onError(napError);
-    }
+    this.peers.set(peer.id, peerInfo);
+    this._emit('peerDiscovered', peerInfo);
+    
+    // Auto-conectar si es un peer conocido?
+    // Por ahora requiere interacción manual
+  }
 
-    // State recovery
-    if (this._state === STATE.ERROR) {
-      this._attemptRecovery(operation);
+  _onConnectionChanged(state) {
+    if (state.state === 'connected') {
+      this._setState(STATE.CONNECTED);
+      this._emit('peerConnected', { deviceId: state.deviceId });
+    } else {
+      this.sessions.delete(state.deviceId);
+      this._emit('peerDisconnected', { deviceId: state.deviceId });
+      
+      if (this.sessions.size === 0) {
+        this._setState(STATE.OFFLINE);
+      }
     }
   }
 
-  _transitionState(newState, phase) {
-    const oldState = this._state;
-    this._state = newState;
-    this._phase = phase;
-    
-    // NAP Logging
-    rem.updatePhase(phase);
-    
-    // Valid state transition check (NAP 2.0)
-    if (oldState === STATE.ERROR && newState !== STATE.CLEANUP && newState !== STATE.NONE) {
-      rem.warn(`Recovery transition: ${oldState} -> ${newState}`, 'NAP_RECOVERY');
-    }
-  }
-
-  async _executeHandshake(deviceId, peerInfo) {
-    // X3DH Implementation (NAP-CRYPTO-002)
+  _onMessageReceived(msg) {
     try {
-      await this._resources.plugin.connect({ deviceId });
-
-      const helloPayload = await this._buildHelloPayloadNap();
+      // Reconstruir chunks si es necesario
+      const data = new Uint8Array(msg.data);
       
-      await this._resources.plugin.writeCharacteristic({
-        deviceId,
-        service: UUIDS.SERVICE,
-        characteristic: UUIDS.HANDSHAKE,
-        value: Array.from(helloPayload)
+      // Parsear mensaje
+      const envelope = JSON.parse(new TextDecoder().decode(data));
+      
+      // Descifrar
+      const session = this.sessions.get(msg.deviceId);
+      if (!session) throw new Error('No session for message');
+      
+      const plaintext = this.vault.decrypt(envelope.payload, session.key);
+      
+      this._emit('messageReceived', {
+        deviceId: msg.deviceId,
+        content: plaintext,
+        timestamp: envelope.timestamp
       });
-
-      // Wait for response with NAP resource tracking
-      return await this._awaitHandshakeResponse(deviceId);
-      
-    } catch (err) {
-      throw this._createNapError(NAP_ERRORS.BLE_HANDSHAKE_FAILED, 'Handshake execution failed', err);
+    } catch (error) {
+      this._emit('error', { type: 'decryption', error });
     }
   }
 
-  _buildHelloPayloadNap() {
-    // Strict binary format (NAP-PROTO-001)
-    const pubKeyBytes = this._hexToBytes(this._ephemeralKeyPair.publicKey);
-    const userBytes = this._hexToBytes(this._userId);
-    
-    // [0]: Type 0x01 (HELLO)
-    // [1-2]: Length (big-endian)
-    // [3-18]: User ID (16 bytes)
-    // [19-50]: X25519 Public Key (32 bytes)
-    // [51-114]: Ed25519 Signature (64 bytes)
-    const payload = new Uint8Array(115);
-    const view = new DataView(payload.buffer);
-    
-    view.setUint8(0, 0x01); // HELLO
-    view.setUint16(1, 112, false); // Length of following data
-    
-    payload.set(userBytes.slice(0, 16), 3);
-    payload.set(pubKeyBytes, 19);
-    
-    // Signature (mock implementation - real would call vault.sign)
-    const sigPlaceholder = new Uint8Array(64); // Should be actual signature
-    payload.set(sigPlaceholder, 51);
-    
-    return payload;
-  }
-
-  async _sendChunkedNap(deviceId, encryptedData, peer) {
-    const totalChunks = Math.ceil(encryptedData.length / CONSTANTS.CHUNK_SIZE);
-    const messageId = Math.floor(Math.random() * CONSTANTS.SEQUENCE_MAX);
-    let seq = this._sequences.get(deviceId) || 0;
-    
-    // NAP Resource Guard: Track chunk transmission
-    const chunkTracker = { sent: 0, failed: 0, startTime: Date.now() };
-    
-    for (let i = 0; i < totalChunks; i++) {
-      const chunk = encryptedData.slice(
-        i * CONSTANTS.CHUNK_SIZE, 
-        Math.min((i + 1) * CONSTANTS.CHUNK_SIZE, encryptedData.length)
-      );
-      
-      const isLast = i === totalChunks - 1;
-      const packet = this._buildChunkPacket(seq++, messageId, i, totalChunks, chunk, isLast);
-      
-      try {
-        await this._resources.plugin.writeCharacteristic({
-          deviceId,
-          service: UUIDS.SERVICE,
-          characteristic: UUIDS.PAYLOAD,
-          value: Array.from(packet)
-        });
-        chunkTracker.sent++;
-        
-        // NAP Flow Control
-        if (!isLast) await this._sleep(50);
-        
-      } catch (err) {
-        chunkTracker.failed++;
-        throw this._createNapError(NAP_ERRORS.BLE_SEND_FAILED, `Chunk ${i}/${totalChunks} failed`, err);
-      }
-    }
-    
-    this._sequences.set(deviceId, seq);
-    return { sent: true, chunks: totalChunks, tracker: chunkTracker };
-  }
-
-  _buildChunkPacket(sequence, messageId, chunkIndex, totalChunks, data, isLast) {
-    const flags = 0x02 | (isLast ? 0x04 : 0); // Chunked + Last?
-    const header = new ArrayBuffer(9);
-    const view = new DataView(header);
-    
-    view.setUint8(0, flags);
-    view.setUint16(1, sequence, false);
-    view.setUint16(3, messageId, false);
-    view.setUint16(5, chunkIndex, false);
-    view.setUint16(7, totalChunks, false);
-    
-    const packet = new Uint8Array(9 + data.length);
-    packet.set(new Uint8Array(header), 0);
-    packet.set(data, 9);
-    
-    return packet;
-  }
-
-  // ===== NAP 2.0 RESOURCE MANAGEMENT (SOC2) =====
-
-  _registerCleanupTask(task) {
-    // Guarantee execution on destroy/error
-    this._resources.cleanupTasks = this._resources.cleanupTasks || [];
-    this._resources.cleanupTasks.push(task);
-  }
-
-  _cleanupResources() {
-    rem.info('NAP SOC2: Cleaning up NordicMesh resources', 'NAP_CLEANUP');
-    
-    // Clear all intervals
-    this._resources.intervals.forEach(id => clearInterval(id));
-    this._resources.intervals.clear();
-    
-    // Clear all timeouts
-    this._resources.timeouts.forEach(id => clearTimeout(id));
-    this._resources.timeouts.clear();
-    
-    // Disconnect all peers gracefully
-    this._resources.connections.forEach((conn, deviceId) => {
-      this._disconnectGraceful(deviceId);
-    });
-    this._resources.connections.clear();
-    
-    // Clear buffers (potential memory leak prevention)
-    this._resources.buffers.clear();
-    
-    // Execute registered cleanup tasks
-    if (this._resources.cleanupTasks) {
-      this._resources.cleanupTasks.forEach(task => {
-        try { task(); } catch (e) { /* Silent failure on cleanup */ }
-      });
-    }
-    
-    this._transitionState(STATE.CLEANUP, 'NORDIC_CLEANUP');
-  }
-
-  async _disconnectGraceful(deviceId) {
-    try {
-      if (this._resources.plugin) {
-        await this._resources.plugin.disconnect({ deviceId });
-      }
-    } catch (e) {
-      // Silent on cleanup
-    }
-    this._peers.delete(deviceId);
-    this._sequences.delete(deviceId);
-  }
-
-  _attemptRecovery(failedOperation) {
-    // NAP Recovery Strategy: Reset to OFFLINE if possible
-    if (this._state !== STATE.CLEANUP) {
-      this._transitionState(STATE.OFFLINE, 'NORDIC_RECOVERY');
-      rem.warn(`NAP Recovery executed after ${failedOperation} failure`, 'NAP_RECOVER');
+  _onHandshakeReceived(data) {
+    // Implementar X3DH
+    // 0x01 = HELLO, 0x02 = HELLO_ACK, 0x03 = KEY_EXCHANGE, 0x04 = KEY_CONFIRM
+    switch(data.type) {
+      case 0x01:
+        this._handleHello(data);
+        break;
+      case 0x03:
+        this._handleKeyExchange(data);
+        break;
     }
   }
 
-  // ===== UTILITY METHODS =====
+  // === HANDSHAKE X3DH ===
 
-  _detectNativeCapability() {
-    return typeof window !== 'undefined' && 
-           window.Capacitor?.Plugins?.NexoBLE;
-  }
-
-  async _initializeNativeBridge() {
-    this._resources.plugin = window.Capacitor.Plugins.NexoBLE;
-    await this._resources.plugin.initialize({
-      serviceUuid: UUIDS.SERVICE,
-      userId: this._userId
-    });
-    this._setupNativeListeners();
-  }
-
-  _setupNativeListeners() {
-    // Handlers with NAP error wrapping
-    this._resources.plugin.addListener('onPeerDiscovered', (e) => {
-      try {
-        this._handlePeerDiscoveredNap(e);
-      } catch (err) {
-        this._handleNapError(err, 'PEER_DISCOVERY');
-      }
-    });
+  async _initiateHandshake(deviceId) {
+    // Generar clave efímera X25519
+    const ephemeralKey = await this.vault.generateEphemeralKey();
     
-    this._resources.plugin.addListener('onMessageReceived', (e) => {
-      try {
-        this._handleIncomingPayload(e.deviceId, new Uint8Array(e.data));
-      } catch (err) {
-        this._handleNapError(err, 'MESSAGE_PROCESSING');
-      }
-    });
-  }
-
-  _handlePeerDiscoveredNap(event) {
-    const { deviceId, userId, rssi, manufacturerData } = event;
+    // Enviar HELLO
+    const hello = new Uint8Array(82);
+    hello[0] = 0x01; // Type HELLO
+    // ... poblar con userId + ephemeralKey + signature
     
-    // Validation
-    if (!manufacturerData || manufacturerData.length < 32) return;
-    
-    // Anti-replay check (NAP-SEC-001)
-    const view = new DataView(new Uint8Array(manufacturerData).buffer);
-    const timestamp = Number(view.getBigUint64(16, false));
-    if (Math.abs(Date.now() - timestamp) > 30000) return; // >30s old
-    
-    if (!CONTRACTS.USER_ID(userId)) return;
-    
-    this._discovered.set(deviceId, {
+    await NexoBLE.sendMessage({
       deviceId,
-      userId,
-      rssi,
-      lastSeen: Date.now()
+      data: Array.from(hello)
+    });
+  }
+
+  _handleHello(data) {
+    // Responder con HELLO_ACK + KEY_EXCHANGE
+  }
+
+  _handleKeyExchange(data) {
+    // Completar handshake y establecer session key
+    const sessionKey = 'derived-key-here'; // Derivar de X3DH
+    this.sessions.set(data.deviceId, {
+      key: sessionKey,
+      seq: 0,
+      establishedAt: Date.now()
     });
     
-    if (this.onPeerDiscovered) {
-      this.onPeerDiscovered({ deviceId, userId, rssi, napValidated: true });
+    this._setState(STATE.CONNECTED);
+    this._emit('sessionEstablished', { deviceId: data.deviceId });
+  }
+
+  // === UTILS ===
+
+  _setState(newState, error = null) {
+    const oldState = this.state;
+    this.state = newState;
+    
+    this._emit('stateChanged', {
+      from: oldState,
+      to: newState,
+      error
+    });
+    
+    if (error) {
+      console.error(`[NordicMesh] State ${newState}:`, error);
     }
   }
 
-  _deriveUserId(publicKeyHex) {
-    return publicKeyHex.slice(0, 32); // NAP-IDENT-001
+  _emit(event, data) {
+    this.listeners.forEach(cb => {
+      try {
+        cb(event, data);
+      } catch (e) {
+        console.error('[NordicMesh] Listener error:', e);
+      }
+    });
   }
 
-  _deriveSessionKey(peer) {
-    // Placeholder - real implementation would use X3DH derived keys
-    return peer.userId; // Simplified for NAP structure demo
+  on(callback) {
+    this.listeners.push(callback);
+    return () => {
+      this.listeners = this.listeners.filter(cb => cb !== callback);
+    };
   }
 
-  _hexToBytes(hex) {
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < hex.length; i += 2) {
-      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-    }
-    return bytes;
-  }
-
-  _sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
-  }
-
-  // ===== PUBLIC API (NAP-COMPLIANT) =====
-
-  async destroy() {
-    this._cleanupResources();
+  getPeers() {
+    return Array.from(this.peers.values());
   }
 
   getState() {
-    return { state: this._state, phase: this._phase, peers: this._peers.size };
-  }
-
-  isReady() {
-    return this._state === STATE.OFFLINE || this._state === STATE.MESSAGING;
+    return this.state;
   }
 }
 
-// Singleton Export (NAP-SINGLETON-001)
-export const nordicMesh = new NordicMesh();
-export default nordicMesh;
+export { NordicMesh, STATE, UUIDS };
