@@ -1,55 +1,75 @@
 /**
- * NexoBLE Plugin - Punto de entrada web
- * v1.0 - Capacitor Plugin Bridge
+ * NexoBLE Plugin - Stub Web
+ * v1.0 - Capacitor Plugin Bridge (Web Fallback)
  */
 
-export const NexoBLE = {
+class NexoBLEStub {
+  constructor() {
+    this.listeners = new Map();
+    console.warn('[NexoBLE] Web stub initialized - BLE not available in browser');
+  }
+
   async initialize(options) {
-    console.warn('[NexoBLE] Web stub - initialize called', options);
-    return { userId: options.userId || 'web-stub' };
-  },
+    console.warn('[NexoBLE] Web stub: initialize called');
+    return { userId: options?.userId || 'web-stub' };
+  }
 
   async startAdvertising() {
-    console.warn('[NexoBLE] Web stub - advertising not supported');
-    throw new Error('BLE advertising not supported in web');
-  },
+    console.warn('[NexoBLE] Web stub: startAdvertising not supported');
+    return Promise.resolve();
+  }
 
   async stopAdvertising() {
-    return;
-  },
+    console.warn('[NexoBLE] Web stub: stopAdvertising');
+    return Promise.resolve();
+  }
 
   async startScan() {
-    console.warn('[NexoBLE] Web stub - scanning not supported');
-    throw new Error('BLE scanning not supported in web');
-  },
+    console.warn('[NexoBLE] Web stub: startScan not supported');
+    return Promise.resolve();
+  }
 
   async stopScan() {
-    return;
-  },
+    console.warn('[NexoBLE] Web stub: stopScan');
+    return Promise.resolve();
+  }
 
   async connect(options) {
-    console.warn('[NexoBLE] Web stub - connect not supported', options);
-    throw new Error('BLE connection not supported in web');
-  },
+    console.warn('[NexoBLE] Web stub: connect not supported', options);
+    return Promise.reject(new Error('BLE connections not supported in web'));
+  }
 
   async disconnect(options) {
-    console.warn('[NexoBLE] Web stub - disconnect not supported', options);
-    return;
-  },
+    console.warn('[NexoBLE] Web stub: disconnect', options);
+    return Promise.resolve();
+  }
 
   async sendMessage(options) {
-    console.warn('[NexoBLE] Web stub - sendMessage not supported', options);
-    throw new Error('BLE messaging not supported in web');
-  },
+    console.warn('[NexoBLE] Web stub: sendMessage not supported', options);
+    return Promise.reject(new Error('BLE messaging not supported in web'));
+  }
 
   addListener(eventName, callback) {
-    console.warn(`[NexoBLE] Web stub - addListener ${eventName}`);
+    console.warn(`[NexoBLE] Web stub: addListener ${eventName}`);
+    if (!this.listeners.has(eventName)) {
+      this.listeners.set(eventName, []);
+    }
+    this.listeners.get(eventName).push(callback);
+    
     return {
       remove: () => {
-        console.warn(`[NexoBLE] Web stub - removeListener ${eventName}`);
+        const callbacks = this.listeners.get(eventName) || [];
+        const idx = callbacks.indexOf(callback);
+        if (idx > -1) callbacks.splice(idx, 1);
       }
     };
   }
-};
 
+  removeAllListeners() {
+    this.listeners.clear();
+  }
+}
+
+const NexoBLE = new NexoBLEStub();
+export { NexoBLE };
 export default NexoBLE;
