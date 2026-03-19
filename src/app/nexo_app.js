@@ -1,11 +1,12 @@
 /**
  * NEXO App v3.2 - Con NordicMesh BLE Protocol
+ * Correcciones: Consistencia de métodos init() vs initialize(), manejo de errores robusto
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
 import { HybridMesh } from '../mesh/hybrid_mesh.js';
-import { NordicMesh } from '../mesh/nordic_mesh.js'; // NUEVO
+import { NordicMesh } from '../mesh/nordic_mesh.js';
 import { WebSocketClient } from '../net/web_socket_client.js';
 import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
 import { GestureEngine } from '../ui/gesture_engine.js';
@@ -50,8 +51,8 @@ export class NexoApp {
 
     this.vault = null;
     this.mesh = null;
-    this.nordicMesh = null; // NUEVO: NordicMesh BLE
-    this.blePeers = new Map(); // NUEVO: peers Nordic descubiertos
+    this.nordicMesh = null;
+    this.blePeers = new Map();
     this.wsClient = null;
     this.bridge = null;
     this.gestures = null;
@@ -97,7 +98,7 @@ export class NexoApp {
       DEBUG.warn(`⚠️ WebSocket: ${err.message}`);
     }
 
-    // FASE 3: NORDIC MESH (NUEVO - BLE Protocol v1.0)
+    // FASE 3: NORDIC MESH (BLE Protocol v1.0)
     if (this.config.enableMesh) {
       try {
         DEBUG.setPhase('NORDIC_MESH');
@@ -131,9 +132,8 @@ export class NexoApp {
           }
         });
         
-        const success = await this.nordicMesh.init();
+        const success = await this.nordicMesh.initialize();
         if (success) {
-          // Auto-discovery si estamos offline
           if (!this.wsClient?.isConnected?.()) {
             await this.nordicMesh.startDiscovery();
           }
@@ -143,11 +143,11 @@ export class NexoApp {
         }
       } catch (err) {
         DEBUG.warn(`⚠️ Nordic Mesh: ${err.message}`);
-        // No fallar - continuar con HybridMesh como fallback
+        this.nordicMesh = null;
       }
     }
 
-    // FASE 4: HYBRID MESH (Legacy - como fallback)
+    // FASE 4: HYBRID MESH (Fallback)
     if (this.config.enableMesh) {
       try {
         DEBUG.setPhase('MESH');
@@ -198,7 +198,7 @@ export class NexoApp {
           DEBUG.error('MESH_ERR', err.message);
         });
 
-        await withTimeout(this.mesh.init(), 15000, 'Mesh init timeout');
+        await withTimeout(this.mesh.initialize(), 15000, 'Mesh init timeout');
         
         const status = this.mesh.getStatus();
         DEBUG.log(`✅ Hybrid Mesh [${status.mode.toUpperCase()}]`, 'success');
@@ -209,14 +209,17 @@ export class NexoApp {
 
       } catch (err) {
         DEBUG.error('APP_016', `Mesh: ${err.message}`);
+        this.mesh = null;
       }
     }
 
     // FASE 5: BLE INTERFACE
     try {
+      DEBUG.setPhase('BLE_UI');
       DEBUG.log('📱 [5/7] BLE UI...');
-      if (this.mesh || this.nordicMesh) {
-        this.bleInterface = initBLEInterface(this.mesh || this.nordicMesh);
+      const meshInstance = this.nordicMesh || this.mesh;
+      if (meshInstance) {
+        this.bleInterface = initBLEInterface(meshInstance);
         if (this.bleInterface) {
           DEBUG.log('✅ UI lista', 'success');
         }
@@ -232,7 +235,7 @@ export class NexoApp {
       if (this.mesh || this.wsClient || this.nordicMesh) {
         this.bridge = new MeshRelayBridge({
           mesh: this.mesh,
-          nordicMesh: this.nordicMesh, // Pasar nordic al bridge
+          nordicMesh: this.nordicMesh,
           relay: this.wsClient,
           onModeChange: (mode) => {
             DEBUG.setMode(mode);
@@ -270,32 +273,26 @@ export class NexoApp {
     DEBUG.setPhase('READY');
     DEBUG.log('🎉 NEXO v3.2 Listo', 'success');
 
-    const status = this.mesh?.getStatus();
+    const status = this.mesh?.getStatus?.();
     const nordicStatus = this.nordicMesh?.getState?.();
     DEBUG.log(`Modo: ${status?.mode || nordicStatus || 'N/A'} | Peers: ${status?.peerCount || 0} | Nordic: ${this.nordicMesh?.getPeers?.().length || 0}`);
 
     return this;
   }
 
-  // NUEVOS HANDLERS NORDIC
   _handleNordicPeer(peer) {
     DEBUG.log(`🔷 Nordic Peer: ${peer.name} (${peer.rssi}dBm)`, 'info');
     this.blePeers.set(peer.id, peer);
     
-    // Actualizar UI si existe
     if (this.bleInterface?.addPeer) {
       this.bleInterface.addPeer(peer);
     }
-    
-    // Auto-conectar si es un peer conocido? (opcional)
-    // this.nordicMesh.connect(peer.id);
   }
 
   _handleNordicSession(data) {
     DEBUG.success(`🔐 Sesión BLE: ${data.deviceId.substr(0,8)}`);
     this._updateMode('P2P_BLE');
     
-    // Notificar a UI
     if (this.bleInterface?.onSessionEstablished) {
       this.bleInterface.onSessionEstablished(data);
     }
@@ -304,7 +301,6 @@ export class NexoApp {
   _handleNordicMessage(msg) {
     DEBUG.log(`📨 BLE msg from ${msg.deviceId.substr(0,8)}`);
     
-    // Enrutar al stream como mensaje normal
     this._handleMessage({
       content: msg.content,
       sender: msg.deviceId,
@@ -316,13 +312,10 @@ export class NexoApp {
   _updateModeFromNordic(state) {
     switch(state) {
       case 'messaging':
-        this._updateMode('P2P_BLE');
-        break;
       case 'connected':
         this._updateMode('P2P_BLE');
         break;
       case 'offline':
-        // Solo volver a offline si no hay otros modos activos
         if (!this.mesh?.getPeerCount?.() && !this.wsClient?.isConnected?.()) {
           this._updateMode('OFFLINE');
         }
@@ -364,7 +357,7 @@ export class NexoApp {
     }
     
     if (nordicPeers.length > 0 && !hybridStatus?.peerCount) {
-      mode = 'P2P_BLE'; // Específico Nordic
+      mode = 'P2P_BLE';
     }
 
     DEBUG.setMode(mode);
@@ -382,7 +375,6 @@ export class NexoApp {
       
       // Prioridad 1: NordicMesh si hay peers
       if (this.nordicMesh?.getPeers?.().length > 0) {
-        // Enviar al último peer conectado o broadcast
         const lastPeer = this.nordicMesh.getPeers()[0];
         await this.nordicMesh.sendMessage(lastPeer.id, msg.content || msg);
         return true;
@@ -414,7 +406,7 @@ export class NexoApp {
     if (this.gestures) this.gestures.destroy?.();
     if (this.stream) this.stream.destroy?.();
     if (this.bridge) this.bridge.destroy?.();
-    if (this.nordicMesh) this.nordicMesh.destroy?.(); // NUEVO
+    if (this.nordicMesh) this.nordicMesh.destroy?.();
     if (this.mesh) this.mesh.destroy();
     if (this.wsClient) this.wsClient.disconnect?.();
     if (this.vault) this.vault.destroy?.();
@@ -425,7 +417,7 @@ export class NexoApp {
   getStatus() {
     return {
       initialized: this.initialized,
-      mode: this.mesh?.getStatus().mode || this.nordicMesh?.getState() || 'offline',
+      mode: this.mesh?.getStatus?.().mode || this.nordicMesh?.getState?.() || 'offline',
       peers: this.mesh?.getPeerCount?.() || 0,
       nordicPeers: this.nordicMesh?.getPeers?.().length || 0,
       hasBLEInterface: !!this.bleInterface,
