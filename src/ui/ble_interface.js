@@ -1,5 +1,6 @@
 /**
- * BLE Interface v2.0 - Simplificado y estable
+ * BLE Interface v2.1 - Simplificado y estable
+ * Fix: Crear UI incluso si bleMesh es null (modo offline/dummy)
  */
 
 export class BLEInterface {
@@ -10,23 +11,27 @@ export class BLEInterface {
     this.isVisible = false;
     this.elements = {};
     this.newDevicesCount = 0;
+    this.isDummyMode = !bleMesh; // Modo dummy si no hay mesh
   }
 
   init() {
-    if (!this.bleMesh) {
-      console.error('[BLEInterface] Sin bleMesh');
-      return this;
-    }
-
+    // Crear UI siempre, aunque no haya bleMesh
     this.createDOM();
     this.injectStyles();
     this.setupEventListeners();
+    
+    if (this.isDummyMode) {
+      console.warn('[BLEInterface] Modo DUMMY - BLE no disponible');
+      this.updateStatus('OFFLINE (Dummy)');
+    } else {
+      this.updateStatus();
+    }
     
     return this;
   }
 
   createDOM() {
-    // Tab
+    // Tab - SIEMPRE visible
     const tab = document.createElement('div');
     tab.id = 'ble-tab';
     tab.innerHTML = `
@@ -46,11 +51,13 @@ export class BLEInterface {
         <button id="ble-close">✕</button>
       </div>
       <div class="ble-controls">
-        <button id="ble-scan-btn" class="ble-btn">📡 Iniciar Scan</button>
+        <button id="ble-scan-btn" class="ble-btn" ${this.isDummyMode ? 'disabled' : ''}>
+          ${this.isDummyMode ? '⚠️ BLE No Disponible' : '📡 Iniciar Scan'}
+        </button>
         <span id="ble-status" class="ble-status-offline">OFFLINE</span>
       </div>
       <div class="ble-list" id="ble-devices-list">
-        <p class="ble-empty">Presiona scan para buscar dispositivos</p>
+        <p class="ble-empty">${this.isDummyMode ? 'BLE Mesh no inicializado. Reinicia la app.' : 'Presiona scan para buscar dispositivos'}</p>
       </div>
     `;
     document.body.appendChild(panel);
@@ -154,6 +161,11 @@ export class BLEInterface {
         cursor: pointer;
         margin-bottom: 10px;
       }
+      .ble-btn:disabled {
+        background: #444;
+        color: #888;
+        cursor: not-allowed;
+      }
       .ble-btn.scanning {
         background: linear-gradient(135deg, #ff4444, #ff0088);
       }
@@ -186,7 +198,10 @@ export class BLEInterface {
     this.elements.tab.addEventListener('click', () => this.show());
     this.elements.closeBtn.addEventListener('click', () => this.hide());
     this.elements.overlay.addEventListener('click', () => this.hide());
-    this.elements.scanBtn.addEventListener('click', () => this.toggleScan());
+    
+    if (!this.isDummyMode) {
+      this.elements.scanBtn.addEventListener('click', () => this.toggleScan());
+    }
 
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'B') {
@@ -217,8 +232,8 @@ export class BLEInterface {
   }
 
   async toggleScan() {
-    if (!this.bleMesh) {
-      this.showToast('BLE no disponible', 'error');
+    if (this.isDummyMode || !this.bleMesh) {
+      this.showToast('BLE no disponible - Reinicia la app', 'error');
       return;
     }
 
@@ -309,7 +324,12 @@ export class BLEInterface {
     }
   }
 
-  updateStatus() {
+  updateStatus(statusText) {
+    if (statusText) {
+      this.elements.status.textContent = statusText;
+      return;
+    }
+    
     if (!this.bleMesh) return;
     
     const status = this.bleMesh.getStatus ? this.bleMesh.getStatus() : {};
@@ -350,6 +370,10 @@ export class BLEInterface {
   }
 
   async connect(deviceId) {
+    if (this.isDummyMode || !this.bleMesh) {
+      this.showToast('BLE no disponible', 'error');
+      return;
+    }
     try {
       await this.bleMesh.connect(deviceId);
     } catch (err) {
@@ -378,7 +402,7 @@ export class BLEInterface {
 export let bleInterface = null;
 
 export function initBLEInterface(bleMesh) {
-  if (!bleMesh) return null;
+  // Crear UI siempre, incluso si bleMesh es null
   bleInterface = new BLEInterface(bleMesh);
   bleInterface.init();
   window.bleInterface = bleInterface;
