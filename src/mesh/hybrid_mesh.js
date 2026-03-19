@@ -1,253 +1,386 @@
 /**
- * Hybrid Mesh - Sistema híbrido BLE + WebSocket
- * v1.2 - Fix: Exporta clase (no instancia), importa NordicMesh correctamente
+ * BLE Interface v2.0 - Simplificado y estable
  */
 
-import { NordicMesh } from './nordic_mesh.js';
-import { WebSocketClient } from '../net/web_socket_client.js';
-
-class HybridMesh {
-  constructor(config = {}) {
-    this.config = {
-      enableBLE: true,
-      enableWebSocket: true,
-      fallbackToWebSocket: true,
-      ...config
-    };
-    
-    this.nordicMesh = null;
-    this.wsClient = null;
-    this.isInitialized = false;
-    this.currentMode = 'OFFLINE';
-    this.peers = new Map();
-    
-    this.onPeerConnected = null;
-    this.onPeerDisconnected = null;
-    this.onMessageReceived = null;
-    this.onModeChanged = null;
+export class BLEInterface {
+  constructor(bleMesh) {
+    this.bleMesh = bleMesh;
+    this.isScanning = false;
+    this.foundDevices = new Map();
+    this.isVisible = false;
+    this.elements = {};
+    this.newDevicesCount = 0;
   }
 
-  /**
-   * Inicializa el sistema híbrido
-   */
-  async initialize() {
+  init() {
+    if (!this.bleMesh) {
+      console.error('[BLEInterface] Sin bleMesh');
+      return this;
+    }
+
+    this.createDOM();
+    this.injectStyles();
+    this.setupEventListeners();
+    
+    return this;
+  }
+
+  createDOM() {
+    // Tab
+    const tab = document.createElement('div');
+    tab.id = 'ble-tab';
+    tab.innerHTML = `
+      <div class="ble-tab-icon">🔷</div>
+      <div class="ble-tab-label">BLE</div>
+      <div class="ble-tab-badge" id="ble-tab-badge" style="display: none;">0</div>
+    `;
+    document.body.appendChild(tab);
+    this.elements.tab = tab;
+
+    // Panel
+    const panel = document.createElement('div');
+    panel.id = 'ble-panel';
+    panel.innerHTML = `
+      <div class="ble-header">
+        <h3>BLE Mesh</h3>
+        <button id="ble-close">✕</button>
+      </div>
+      <div class="ble-controls">
+        <button id="ble-scan-btn" class="ble-btn">📡 Iniciar Scan</button>
+        <span id="ble-status" class="ble-status-offline">OFFLINE</span>
+      </div>
+      <div class="ble-list" id="ble-devices-list">
+        <p class="ble-empty">Presiona scan para buscar dispositivos</p>
+      </div>
+    `;
+    document.body.appendChild(panel);
+    this.elements.panel = panel;
+
+    // Overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'ble-overlay';
+    document.body.appendChild(overlay);
+    this.elements.overlay = overlay;
+
+    // Referencias
+    this.elements.scanBtn = document.getElementById('ble-scan-btn');
+    this.elements.closeBtn = document.getElementById('ble-close');
+    this.elements.devicesList = document.getElementById('ble-devices-list');
+    this.elements.status = document.getElementById('ble-status');
+    this.elements.badge = document.getElementById('ble-tab-badge');
+  }
+
+  injectStyles() {
+    if (document.getElementById('ble-styles')) return;
+    
+    const style = document.createElement('style');
+    style.id = 'ble-styles';
+    style.textContent = `
+      #ble-tab {
+        position: fixed;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 44px;
+        height: 100px;
+        background: linear-gradient(180deg, #00d4ff, #0099cc);
+        border-radius: 0 12px 12px 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 2147483644;
+        color: #000;
+        font-weight: bold;
+      }
+      #ble-tab.hidden { transform: translateY(-50%) translateX(-100%); }
+      .ble-tab-badge {
+        position: absolute;
+        top: 5px;
+        right: -5px;
+        background: #ff4444;
+        color: white;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+      }
+      #ble-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 80vw;
+        max-width: 350px;
+        height: 100vh;
+        background: rgba(15,15,20,0.98);
+        transform: translateX(-100%);
+        transition: transform 0.3s;
+        z-index: 2147483645;
+        color: #fff;
+        padding: 20px;
+      }
+      #ble-panel.active { transform: translateX(0); }
+      #ble-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: none;
+        z-index: 2147483644;
+      }
+      #ble-overlay.active { display: block; }
+      .ble-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #333;
+        padding-bottom: 10px;
+      }
+      .ble-btn {
+        width: 100%;
+        padding: 15px;
+        background: linear-gradient(135deg, #00ffff, #0088ff);
+        border: none;
+        border-radius: 8px;
+        color: #000;
+        font-weight: bold;
+        cursor: pointer;
+        margin-bottom: 10px;
+      }
+      .ble-btn.scanning {
+        background: linear-gradient(135deg, #ff4444, #ff0088);
+      }
+      .ble-status-offline { color: #ff4444; }
+      .ble-status-scanning { color: #ffaa00; }
+      .ble-status-connected { color: #00ff88; }
+      .ble-list {
+        margin-top: 20px;
+        max-height: 60vh;
+        overflow-y: auto;
+      }
+      .ble-device-item {
+        padding: 15px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid #333;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        cursor: pointer;
+      }
+      .ble-device-item:hover {
+        border-color: #00ffff;
+        background: rgba(0,255,255,0.1);
+      }
+      .ble-empty { color: #666; text-align: center; padding: 40px 0; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  setupEventListeners() {
+    this.elements.tab.addEventListener('click', () => this.show());
+    this.elements.closeBtn.addEventListener('click', () => this.hide());
+    this.elements.overlay.addEventListener('click', () => this.hide());
+    this.elements.scanBtn.addEventListener('click', () => this.toggleScan());
+
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'B') {
+        e.preventDefault();
+        this.toggle();
+      }
+    });
+  }
+
+  show() {
+    this.isVisible = true;
+    this.elements.panel.classList.add('active');
+    this.elements.overlay.classList.add('active');
+    this.elements.tab.classList.add('hidden');
+    this.newDevicesCount = 0;
+    this.updateBadge();
+  }
+
+  hide() {
+    this.isVisible = false;
+    this.elements.panel.classList.remove('active');
+    this.elements.overlay.classList.remove('active');
+    this.elements.tab.classList.remove('hidden');
+  }
+
+  toggle() {
+    this.isVisible ? this.hide() : this.show();
+  }
+
+  async toggleScan() {
+    if (!this.bleMesh) {
+      this.showToast('BLE no disponible', 'error');
+      return;
+    }
+
+    if (this.isScanning) {
+      await this.stopScan();
+    } else {
+      await this.startScan();
+    }
+  }
+
+  async startScan() {
     try {
-      console.log('[HybridMesh] Inicializando sistema híbrido...');
-      
-      // Inicializar NordicMesh (BLE)
-      if (this.config.enableBLE) {
-        this.nordicMesh = new NordicMesh({
-          onPeerDiscovered: (peer) => this._handlePeerDiscovered(peer),
-          onPeerConnected: (peer) => this._handlePeerConnected(peer),
-          onPeerDisconnected: (peer) => this._handlePeerDisconnected(peer),
-          onMessageReceived: (msg) => this._handleBLEMessage(msg)
-        });
-        
-        await this.nordicMesh.initialize();
-        this.currentMode = 'BLE';
-      }
-      
-      // Inicializar WebSocket como fallback
-      if (this.config.enableWebSocket && this.config.fallbackToWebSocket) {
-        this.wsClient = new WebSocketClient({
-          url: this.config.wsUrl || 'wss://relay.nexo.local:8086',
-          onConnect: () => this._handleWSConnect(),
-          onDisconnect: () => this._handleWSDisconnect(),
-          onMessage: (msg) => this._handleWSMessage(msg)
-        });
-        
-        // Solo conectar WS si BLE no está disponible
-        if (this.currentMode === 'OFFLINE') {
-          await this.wsClient.connect();
-          this.currentMode = 'RELAY';
-        }
-      }
-      
-      this.isInitialized = true;
-      console.log(`[HybridMesh] Inicializado en modo: ${this.currentMode}`);
-      
-      if (this.onModeChanged) {
-        this.onModeChanged(this.currentMode);
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('[HybridMesh] Error inicialización:', error);
-      
-      // Fallback a WebSocket si BLE falla
-      if (this.config.fallbackToWebSocket && this.wsClient && this.currentMode === 'OFFLINE') {
-        try {
-          await this.wsClient.connect();
-          this.currentMode = 'RELAY';
-          this.isInitialized = true;
-          return true;
-        } catch (wsError) {
-          console.error('[HybridMesh] Fallback WS también falló:', wsError);
-        }
-      }
-      
-      throw error;
-    }
-  }
+      this.isScanning = true;
+      this.foundDevices.clear();
+      this.newDevicesCount = 0;
+      this.updateBadge();
+      this.renderEmpty('Buscando dispositivos...');
+      this.startScanUI();
 
-  /**
-   * Envía mensaje por la mejor ruta disponible
-   */
-  async sendMessage(peerId, data) {
-    if (!this.isInitialized) {
-      throw new Error('[HybridMesh] Sistema no inicializado');
+      await this.bleMesh.startScan();
+      
+    } catch (err) {
+      this.stopScanUI();
+      this.showToast(err.message, 'error');
+      this.renderEmpty('Error: ' + err.message);
     }
-
-    // Prioridad 1: BLE (si peer está conectado vía BLE)
-    if (this.nordicMesh && this.peers.has(peerId) && this.peers.get(peerId).via === 'BLE') {
-      try {
-        await this.nordicMesh.sendMessage(peerId, data);
-        return { success: true, via: 'BLE' };
-      } catch (bleError) {
-        console.warn('[HybridMesh] BLE falló, intentando WS:', bleError);
-      }
-    }
-
-    // Prioridad 2: WebSocket/Relay
-    if (this.wsClient && this.wsClient.isConnected()) {
-      try {
-        await this.wsClient.send({
-          type: 'MESSAGE',
-          peerId: peerId,
-          payload: data
-        });
-        return { success: true, via: 'RELAY' };
-      } catch (wsError) {
-        console.error('[HybridMesh] WS también falló:', wsError);
-        throw wsError;
-      }
-    }
-
-    throw new Error('[HybridMesh] No hay conectividad disponible para enviar mensaje');
-  }
-
-  /**
-   * Busca peers cercanos vía BLE
-   */
-  async startScan(duration = 10000) {
-    if (this.nordicMesh) {
-      return await this.nordicMesh.startScan(duration);
-    }
-    throw new Error('[HybridMesh] BLE no disponible');
   }
 
   async stopScan() {
-    if (this.nordicMesh) {
-      return await this.nordicMesh.stopScan();
+    try {
+      if (this.bleMesh?.stopScan) {
+        await this.bleMesh.stopScan();
+      }
+    } catch(e) {}
+    this.stopScanUI();
+  }
+
+  startScanUI() {
+    this.elements.scanBtn.textContent = '⏹ Detener Scan';
+    this.elements.scanBtn.classList.add('scanning');
+    this.elements.status.textContent = 'SCANNING';
+    this.elements.status.className = 'ble-status-scanning';
+  }
+
+  stopScanUI() {
+    this.isScanning = false;
+    this.elements.scanBtn.textContent = '📡 Iniciar Scan';
+    this.elements.scanBtn.classList.remove('scanning');
+    this.updateStatus();
+  }
+
+  handleDeviceFound(device) {
+    const id = device.id || device.endpointId;
+    if (!id || this.foundDevices.has(id)) return;
+
+    this.foundDevices.set(id, {
+      ...device,
+      id: id,
+      timestamp: Date.now()
+    });
+
+    if (!this.isVisible) {
+      this.newDevicesCount++;
+      this.updateBadge();
+    }
+
+    this.renderDevices();
+  }
+
+  handleDeviceConnected(peer) {
+    this.showToast(`Conectado: ${peer.name || 'dispositivo'}`, 'success');
+    this.renderDevices();
+    this.updateStatus();
+  }
+
+  handleDeviceDisconnected(peer) {
+    this.showToast(`Desconectado`, 'info');
+    this.renderDevices();
+    this.updateStatus();
+  }
+
+  updateBadge() {
+    if (this.newDevicesCount > 0 && !this.isVisible) {
+      this.elements.badge.textContent = this.newDevicesCount > 9 ? '9+' : this.newDevicesCount;
+      this.elements.badge.style.display = 'flex';
+    } else {
+      this.elements.badge.style.display = 'none';
     }
   }
 
-  /**
-   * Conecta a un peer específico
-   */
-  async connectToPeer(peerId) {
-    if (this.nordicMesh) {
-      return await this.nordicMesh.connect(peerId);
+  updateStatus() {
+    if (!this.bleMesh) return;
+    
+    const status = this.bleMesh.getStatus ? this.bleMesh.getStatus() : {};
+    const peers = status.peerCount || 0;
+    
+    if (peers > 0) {
+      this.elements.status.textContent = `CONNECTED (${peers})`;
+      this.elements.status.className = 'ble-status-connected';
+    } else if (this.isScanning) {
+      this.elements.status.textContent = 'SCANNING';
+      this.elements.status.className = 'ble-status-scanning';
+    } else {
+      this.elements.status.textContent = 'OFFLINE';
+      this.elements.status.className = 'ble-status-offline';
     }
-    throw new Error('[HybridMesh] BLE no disponible para conexión directa');
   }
 
-  /**
-   * Desconecta de un peer
-   */
-  async disconnectPeer(peerId) {
-    if (this.nordicMesh && this.peers.get(peerId)?.via === 'BLE') {
-      return await this.nordicMesh.disconnect(peerId);
+  renderEmpty(msg) {
+    this.elements.devicesList.innerHTML = `<p class="ble-empty">${msg}</p>`;
+  }
+
+  renderDevices() {
+    if (this.foundDevices.size === 0) {
+      this.renderEmpty('No hay dispositivos');
+      return;
+    }
+
+    let html = '';
+    this.foundDevices.forEach(device => {
+      html += `
+        <div class="ble-device-item" onclick="window.bleInterface.connect('${device.id}')">
+          <strong>${device.name || 'NEXO Device'}</strong><br>
+          <small>${device.id.substr(0,8)}... • ${device.rssi || '?'} dBm</small>
+        </div>
+      `;
+    });
+    this.elements.devicesList.innerHTML = html;
+  }
+
+  async connect(deviceId) {
+    try {
+      await this.bleMesh.connect(deviceId);
+    } catch (err) {
+      this.showToast(`Error: ${err.message}`, 'error');
     }
   }
 
-  /**
-   * Obtiene lista de peers conectados
-   */
-  getConnectedPeers() {
-    return Array.from(this.peers.entries()).map(([id, info]) => ({
-      id,
-      ...info
-    }));
+  showToast(message, type) {
+    if (window.rem) {
+      const method = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+      window.rem[method](message, 'BLE');
+    } else {
+      alert(message);
+    }
   }
 
-  /**
-   * Retorna modo actual
-   */
-  getCurrentMode() {
-    return this.currentMode;
-  }
-
-  /**
-   * Cleanup
-   */
   destroy() {
-    if (this.nordicMesh) {
-      this.nordicMesh.destroy();
-      this.nordicMesh = null;
-    }
-    if (this.wsClient) {
-      this.wsClient.disconnect();
-      this.wsClient = null;
-    }
-    this.peers.clear();
-    this.isInitialized = false;
-    this.currentMode = 'OFFLINE';
-  }
-
-  // Handlers privados
-  _handlePeerDiscovered(peer) {
-    console.log('[HybridMesh] Peer descubierto:', peer);
-    if (!this.peers.has(peer.id)) {
-      this.peers.set(peer.id, { ...peer, via: 'BLE', status: 'discovered' });
-    }
-  }
-
-  _handlePeerConnected(peer) {
-    console.log('[HybridMesh] Peer conectado vía BLE:', peer);
-    this.peers.set(peer.id, { ...peer, via: 'BLE', status: 'connected' });
-    if (this.onPeerConnected) this.onPeerConnected(peer);
-  }
-
-  _handlePeerDisconnected(peer) {
-    console.log('[HybridMesh] Peer desconectado:', peer);
-    if (this.peers.has(peer.id)) {
-      this.peers.delete(peer.id);
-    }
-    if (this.onPeerDisconnected) this.onPeerDisconnected(peer);
-  }
-
-  _handleBLEMessage(msg) {
-    console.log('[HybridMesh] Mensaje BLE recibido:', msg);
-    if (this.onMessageReceived) {
-      this.onMessageReceived({ ...msg, via: 'BLE' });
-    }
-  }
-
-  _handleWSConnect() {
-    console.log('[HybridMesh] WebSocket conectado');
-    if (this.currentMode === 'OFFLINE') {
-      this.currentMode = 'RELAY';
-      if (this.onModeChanged) this.onModeChanged(this.currentMode);
-    }
-  }
-
-  _handleWSDisconnect() {
-    console.log('[HybridMesh] WebSocket desconectado');
-    if (this.currentMode === 'RELAY') {
-      this.currentMode = 'OFFLINE';
-      if (this.onModeChanged) this.onModeChanged(this.currentMode);
-    }
-  }
-
-  _handleWSMessage(msg) {
-    console.log('[HybridMesh] Mensaje WS recibido:', msg);
-    if (this.onMessageReceived) {
-      this.onMessageReceived({ ...msg, via: 'RELAY' });
-    }
+    this.hide();
+    this.elements.tab?.remove();
+    this.elements.panel?.remove();
+    this.elements.overlay?.remove();
+    document.getElementById('ble-styles')?.remove();
   }
 }
 
-// ✅ EXPORT CORREGIDO: Exportar clase (no instancia)
-export { HybridMesh };
-export default HybridMesh;
+export let bleInterface = null;
+
+export function initBLEInterface(bleMesh) {
+  if (!bleMesh) return null;
+  bleInterface = new BLEInterface(bleMesh);
+  bleInterface.init();
+  window.bleInterface = bleInterface;
+  return bleInterface;
+}
