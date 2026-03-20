@@ -20,6 +20,7 @@
     "@capacitor/haptics": "^5.0.0",
     "comlink": "^4.4.1",
     "idb": "^8.0.0",
+    "nexo-ble-plugin": "file:./plugins/nexo-ble",
     "socket.io-client": "^4.7.0",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1"
