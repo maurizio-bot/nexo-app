@@ -4,6 +4,19 @@
   "webDir": "dist",
   "bundledWebRuntime": false,
   "plugins": {
-    "NexoBLE": {}
+    "NexoBLE": {
+      "displayName": "NexoBLE",
+      "backgroundColor": "#000000"
+    },
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#000000"
+    }
+  },
+  "android": {
+    "buildOptions": {
+      "keystorePath": null,
+      "keystoreAlias": null
+    }
   }
 }
