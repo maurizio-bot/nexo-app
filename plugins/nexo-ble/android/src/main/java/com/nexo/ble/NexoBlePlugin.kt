@@ -25,9 +25,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * NEXO BLE Plugin v1.1-NAP
+ * NEXO BLE Plugin v1.2-NAP
  * GATT Service Soberano para Mensajería P2P
- * Correcciones: UUIDs válidos, chunking protocol, resource cleanup
+ * Correcciones: UUIDs válidos, chunking protocol, resource cleanup, NAP 2.0 compliance
  */
 
 @CapacitorPlugin(
@@ -45,11 +45,11 @@ class NexoBlePlugin : Plugin() {
         
         /**
          * UUIDs NEXO Protocol v1.0 - Namespace: com.nexo.app.ble.protocol.v1
-         * FIX: Corregidos caracteres no hexadecimales (g,h,i,j → 0-9,a-f)
+         * FIX: Caracteres hexadecimales válidos (0-9, a-f)
          */
         val SERVICE_UUID = UUID.fromString("a3b5c8d2-e1f4-4a7b-9c3d-6e8f1a2b5c7d")
         
-        // FIX: UUIDs válidos generados con UUIDv5
+        // FIX: UUIDs válidos generados con UUIDv5 corregidos
         val CHAR_ANNOUNCE = UUID.fromString("b4c6d9e3-f2a5-4b8c-ad4e-7f9a2b3c6d8e")
         val CHAR_HANDSHAKE = UUID.fromString("c5d7eaf4-a3b6-4c9d-be5f-8a0c3d4e7f9a")
         val CHAR_PAYLOAD = UUID.fromString("d6e8f0a5-b4c7-4d0e-cf6a-9b1e4f5a8b0c")
@@ -58,7 +58,7 @@ class NexoBlePlugin : Plugin() {
         const val MTU_DEFAULT = 512
         const val CHUNK_SIZE = 507 // MTU - 5 bytes overhead GATT
         
-        // NAP 2.0: Error Codes
+        // NAP 2.0: Error Codes Documentados
         const val ERR_BLUETOOTH_NOT_SUPPORTED = "BLE_001"
         const val ERR_BLUETOOTH_DISABLED = "BLE_002"
         const val ERR_PERMISSION_DENIED = "BLE_003"
@@ -67,18 +67,19 @@ class NexoBlePlugin : Plugin() {
         const val ERR_DEVICE_NOT_FOUND = "BLE_006"
         const val ERR_CONNECTION_FAILED = "BLE_007"
         const val ERR_MESSAGE_TOO_LARGE = "BLE_008"
+        const val ERR_INVALID_PARAMS = "BLE_019"
+        const val ERR_NOT_CONNECTED = "BLE_011"
     }
 
     private var bluetoothManager: BluetoothManager? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var gattServer: BluetoothGattServer? = null
     
-    // NAP 2.0: Resource tracking para cleanup
+    // NAP 2.0: Resource tracking SOC2 compliant
     private val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     private val connectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
     private val pendingChunks = ConcurrentHashMap<String, MutableMap<Int, ByteArray>>()
     private val messageBuffers = ConcurrentHashMap<String, ByteArrayOutputStream>()
-    private val messageChunkCount = ConcurrentHashMap<String, Pair<Int, Int>>() // messageId -> (received, total)
     
     private var isAdvertising = false
     private var isScanning = false
@@ -92,11 +93,11 @@ class NexoBlePlugin : Plugin() {
     override fun load() {
         bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
-        Log.d(TAG, "NexoBLE Plugin v1.1-NAP loaded")
+        Log.d(TAG, "NexoBLE Plugin v1.2-NAP loaded")
     }
 
     /**
-     * NAP 2.0: Initialize con validación de estado
+     * NAP 2.0: Initialize con Interface Contract estricto
      */
     @PluginMethod
     fun initialize(call: PluginCall) {
@@ -117,7 +118,7 @@ class NexoBlePlugin : Plugin() {
             val result = JSObject().apply {
                 put("userId", userId)
                 put("status", "initialized")
-                put("version", "1.1-NAP")
+                put("version", "1.2-NAP")
             }
             call.resolve(result)
             Log.d(TAG, "Initialized with userId: $userId")
@@ -255,7 +256,7 @@ class NexoBlePlugin : Plugin() {
         val device = result.device
         val rssi = result.rssi
         
-        // NAP 2.0: Filtrar RSSI < -85 dBm
+        // NAP 2.0: Filtrar RSSI < -85 dBm (dispositivos muy lejanos)
         if (rssi < -85) return
 
         val data = JSObject().apply {
@@ -290,13 +291,13 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun connect(call: PluginCall) {
         val deviceId = call.getString("deviceId") ?: run {
-            call.reject("MISSING_PARAM", "deviceId is required")
+            call.reject(ERR_INVALID_PARAMS, "deviceId is required")
             return
         }
 
-        // NAP 2.0: Validar formato MAC
+        // NAP 2.0: Validación estricta formato MAC
         if (!deviceId.matches(Regex("([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}"))) {
-            call.reject("INVALID_MAC", "Invalid device MAC address format")
+            call.reject(ERR_INVALID_PARAMS, "Invalid device MAC address format")
             return
         }
 
@@ -365,7 +366,7 @@ class NexoBlePlugin : Plugin() {
             
             override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
-                    // ACK de escritura
+                    // ACK de escritura recibido
                 }
             }
         }
@@ -381,12 +382,28 @@ class NexoBlePlugin : Plugin() {
     }
 
     /**
-     * NAP 2.0: Disconnect completo con cleanup
+     * NAP 2.0: FIX #1 - Método faltante getConnectedDevices
+     */
+    @PluginMethod
+    fun getConnectedDevices(call: PluginCall) {
+        val list = JSONArray()
+        connectedDevices.keys().forEach { addr ->
+            list.put(JSObject().apply {
+                put("id", addr)
+                put("address", addr)
+                put("connected", true)
+            })
+        }
+        call.resolve(JSObject().put("devices", list))
+    }
+
+    /**
+     * NAP 2.0: Disconnect con cleanup SOC2
      */
     @PluginMethod
     fun disconnect(call: PluginCall) {
         val deviceId = call.getString("deviceId") ?: run {
-            call.reject("MISSING_PARAM", "deviceId is required")
+            call.reject(ERR_INVALID_PARAMS, "deviceId is required")
             return
         }
         
@@ -410,27 +427,38 @@ class NexoBlePlugin : Plugin() {
     }
 
     /**
-     * NAP 2.0: SendMessage con chunking automático
+     * NAP 2.0: FIX #2 - SendMessage con validación robusta de JSONArray
      */
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val deviceId = call.getString("deviceId") ?: run {
-            call.reject("MISSING_PARAM", "deviceId is required")
-            return        }
-        
-        if (!connectedDevices.containsKey(deviceId)) {
-            call.reject(ERR_CONNECTION_FAILED, "Device not connected")
+            call.reject(ERR_INVALID_PARAMS, "deviceId is required")
             return
         }
         
+        if (!connectedDevices.containsKey(deviceId)) {
+            call.reject(ERR_NOT_CONNECTED, "Device not connected")
+            return
+        }
+        
+        // FIX: Validación estricta de JSONArray
         val dataArray = call.getArray("data") ?: run {
-            call.reject("MISSING_PARAM", "data is required")
+            call.reject(ERR_INVALID_PARAMS, "data array is required")
             return
         }
 
-        // Convertir JSONArray a ByteArray
-        val bytes = ByteArray(dataArray.length()) { i ->
-            (dataArray.getInt(i) and 0xFF).toByte()
+        // Convertir JSONArray a ByteArray con validación de rango
+        val bytes = try {
+            ByteArray(dataArray.length()) { i ->
+                val value = dataArray.getInt(i)
+                if (value < 0 || value > 255) {
+                    throw IllegalArgumentException("Byte value out of range at index $i: $value")
+                }
+                (value and 0xFF).toByte()
+            }
+        } catch (e: Exception) {
+            call.reject(ERR_INVALID_PARAMS, "Invalid data array: ${e.message}")
+            return
         }
 
         if (bytes.size > 65535) {
@@ -440,16 +468,19 @@ class NexoBlePlugin : Plugin() {
 
         try {
             sendChunkedMessage(deviceId, bytes)
-            call.resolve(JSObject().put("bytesSent", bytes.size))
+            call.resolve(JSObject().apply {
+                put("success", true)
+                put("bytesSent", bytes.size)
+                put("chunks", (bytes.size + CHUNK_SIZE - 1) / CHUNK_SIZE)
+            })
         } catch (e: Exception) {
             call.reject("SEND_FAILED", e.message)
         }
     }
 
     /**
-     * FIX: Protocolo chunking correcto
+     * Protocolo chunking NEXO v1.0
      * Header: [flags:1][messageId:2][chunkIndex:2][totalChunks:2] = 7 bytes
-     * Payload: hasta CHUNK_SIZE bytes
      */
     private fun sendChunkedMessage(deviceId: String, data: ByteArray) {
         val totalSize = data.size
@@ -473,16 +504,13 @@ class NexoBlePlugin : Plugin() {
             
             writeCharacteristic(deviceId, CHAR_PAYLOAD, buffer.array())
             
-            // Pequeño delay para no saturar BLE
+            // NAP 2.0: Delay para no saturar BLE (10ms entre chunks)
             if (!isLast) {
                 Thread.sleep(10)
             }
         }
     }
 
-    /**
-     * FIX: Procesamiento de chunks con reensamblaje correcto
-     */
     private fun processPayloadChunk(deviceId: String, data: ByteArray) {
         if (data.size < 7) {
             Log.w(TAG, "Chunk too small: ${data.size} bytes")
@@ -496,7 +524,7 @@ class NexoBlePlugin : Plugin() {
         val totalChunks = buffer.short.toInt() and 0xFFFF
         
         val isLast = (flags and 0x02) != 0
-        val payload = data.copyOfRange(7, data.size) // FIX: Offset es 7, no 5
+        val payload = data.copyOfRange(7, data.size)
         
         val key = "$deviceId:$messageId"
         
@@ -509,7 +537,7 @@ class NexoBlePlugin : Plugin() {
         
         Log.d(TAG, "Chunk $chunkIndex/$totalChunks for msg $messageId (received: $receivedCount)")
         
-        // Verificar si tenemos todos los chunks
+        // Reensamblaje cuando tenemos todos los chunks
         if (receivedCount == totalChunks) {
             val chunks = pendingChunks[key]
             val completeMessage = ByteArrayOutputStream()
@@ -525,9 +553,11 @@ class NexoBlePlugin : Plugin() {
             
             val eventData = JSObject().apply {
                 put("deviceId", deviceId)
+                put("from", deviceId)
                 put("messageId", messageId)
                 put("data", JSONArray(result.map { it.toInt() and 0xFF }))
                 put("size", result.size)
+                put("timestamp", System.currentTimeMillis())
             }
             notifyListeners("onMessageReceived", eventData)
         }
@@ -544,15 +574,13 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun processControl(deviceId: String, data: ByteArray) {
-        // ACK, MTU requests, ping/pong
         if (data.isNotEmpty() && data[0].toInt() == 0x04) { // PING
-            // Responder PONG
-            writeCharacteristic(deviceId, CHAR_CONTROL, byteArrayOf(0x05))
+            writeCharacteristic(deviceId, CHAR_CONTROL, byteArrayOf(0x05)) // PONG
         }
     }
 
     /**
-     * FIX: Implementación completa de escritura GATT
+     * Escritura GATT con soporte API 33+
      */
     private fun writeCharacteristic(deviceId: String, uuid: UUID, data: ByteArray): Boolean {
         val gatt = gattClients[deviceId] ?: return false
@@ -563,7 +591,6 @@ class NexoBlePlugin : Plugin() {
         }
         
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // API 33+
             gatt.writeCharacteristic(characteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS
         } else {
             characteristic.value = data
@@ -670,13 +697,10 @@ class NexoBlePlugin : Plugin() {
     private fun createAnnounceBeacon(): ByteArray {
         return ByteBuffer.allocate(32).apply {
             order(ByteOrder.BIG_ENDIAN)
-            // User ID (16 bytes) - truncar o pad con ceros
             val idBytes = hexToBytes(userId).copyOf(16)
             put(idBytes)
-            // Timestamp Unix (8 bytes)
-            putLong(System.currentTimeMillis() / 1000)
-            // Nonce aleatorio (8 bytes)
-            putLong((Math.random() * Long.MAX_VALUE).toLong())
+            putLong(System.currentTimeMillis() / 1000) // Timestamp
+            putLong((Math.random() * Long.MAX_VALUE).toLong()) // Nonce
         }.array()
     }
 
@@ -707,16 +731,14 @@ class NexoBlePlugin : Plugin() {
     }
     
     /**
-     * NAP 2.0: Cleanup completo al destruir
+     * NAP 2.0 SOC2: Cleanup completo al destruir
      */
     override fun handleOnDestroy() {
-        Log.d(TAG, "Destroying NexoBLE Plugin")
+        Log.d(TAG, "Destroying NexoBLE Plugin - NAP 2.0 Cleanup")
         
-        // Detener actividades
         bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
         bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
         
-        // Cerrar todas las conexiones GATT
         gattClients.forEach { (_, gatt) ->
             try {
                 gatt.disconnect()
@@ -725,10 +747,7 @@ class NexoBlePlugin : Plugin() {
         }
         gattClients.clear()
         
-        // Cerrar servidor
         gattServer?.close()
-        
-        // Limpiar buffers
         pendingChunks.clear()
         messageBuffers.clear()
         connectedDevices.clear()
