@@ -1,18 +1,14 @@
 {
-  "name": "nexo-ble-plugin",
-  "version": "1.0.0",
+  "name": "nexo-ble",
+  "version": "1.2.0",
   "description": "NEXO BLE GATT Plugin for Capacitor",
-  "main": "dist/plugin.js",
-  "types": "dist/plugin.d.ts",
-  "scripts": {
-    "build": "npm run clean && tsc && rollup -c rollup.config.js",
-    "clean": "rimraf ./dist"
+  "main": "src/index.js",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
   },
-  "dependencies": {
+  "peerDependencies": {
     "@capacitor/core": "^5.0.0"
-  },
-  "devDependencies": {
-    "@capacitor/android": "^5.0.0",
-    "typescript": "^5.0.0"
   }
 }

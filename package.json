@@ -23,7 +23,8 @@
     "nexo-ble-plugin": "file:./plugins/nexo-ble",
     "socket.io-client": "^4.7.0",
     "tweetnacl": "^1.0.3",
-    "tweetnacl-util": "^0.15.1"
+    "tweetnacl-util": "^0.15.1",
+    "nexo-ble": "file:./plugins/nexo-ble"
   },
   "devDependencies": {
     "@capacitor/cli": "^5.7.0",
