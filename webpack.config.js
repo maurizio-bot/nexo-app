@@ -113,3 +113,4 @@ export default {
     maxAssetSize: 512000
   }
 };
+// ES Module fix
