@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^3.1.4",
-    "@capacitor/android": "^5.7.0",
+    "@capacitor/android": "^5.0.0",
     "@capacitor/app": "^5.0.0",
-    "@capacitor/core": "^5.7.0",
+    "@capacitor/core": "^5.0.0",
     "@capacitor/geolocation": "^5.0.8",
     "@capacitor/haptics": "^5.0.0",
     "comlink": "^4.4.1",
@@ -43,4 +43,11 @@
     "last 2 Android versions",
     "last 2 Chrome versions"
   ]
+}
+{
+  "dependencies": {
+    "@capacitor/android": "^5.0.0",
+    "@capacitor/core": "^5.0.0",
+    "nexo-ble": "file:./plugins/nexo-ble"
+  }
 }
