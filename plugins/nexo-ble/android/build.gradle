@@ -19,11 +19,6 @@ android {
         }
     }
     
-    lintOptions {
-        abortOnError false
-        checkReleaseBuilds false
-    }
-    
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -32,18 +27,6 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
-    
-    // Deshabilitar tareas problemáticas
-    tasks.whenTaskAdded { task ->
-        if (task.name.contains("copy") && task.name.contains("Jni")) {
-            task.enabled = false
-        }
-    }
-}
-
-repositories {
-    google()
-    mavenCentral()
 }
 
 dependencies {
