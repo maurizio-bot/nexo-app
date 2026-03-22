@@ -1,37 +1,20 @@
-apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
-
-android {
-    namespace 'com.nexo.ble'
-    compileSdkVersion 34
-    
-    defaultConfig {
-        minSdkVersion 22
-        targetSdkVersion 34
-        versionCode 1
-        versionName "1.2.0"
+buildscript {
+    ext {
+        kotlin_version = '1.9.0'
     }
-    
-    buildTypes {
-        release {
-            minifyEnabled false
-            consumerProguardFiles 'proguard-rules.pro'
-        }
+    repositories {
+        google()
+        mavenCentral()
     }
-    
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
-    
-    kotlinOptions {
-        jvmTarget = '1.8'
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.0.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
-dependencies {
-    implementation project(':capacitor-android')
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.0"
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.core:core-ktx:1.12.0'
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
 }
