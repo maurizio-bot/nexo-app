@@ -1,22 +1,17 @@
-plugins {
-    id 'com.android.library'
-    id 'kotlin-android'
-}
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
 
 android {
     namespace = "com.nexo.ble"
     compileSdk = 34
-    
     defaultConfig {
         minSdk = 26
         targetSdk = 34
     }
-    
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    
     kotlinOptions {
         jvmTarget = '17'
     }
