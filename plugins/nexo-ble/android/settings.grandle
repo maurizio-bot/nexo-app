@@ -1,0 +1,20 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "kotlin-android") {
+                useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:${requested.version}")
+            }
+        }
+    }
+}
+
+rootProject.name = 'android'
+include ':app'
+include ':capacitor-android'
+include ':nexo-ble'
+project(':nexo-ble').projectDir = new File('../plugins/nexo-ble/android')
