@@ -6,7 +6,7 @@
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
-import { HybridMesh } from '../mesh/hybrid_mesh.js';
+import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
 import { NordicMesh } from '../mesh/nordic_mesh.js';
 import { WebSocketClient } from '../net/web_socket_client.js';
 import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
