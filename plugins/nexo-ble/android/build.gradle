@@ -1,4 +1,5 @@
 apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
 
 android {
     namespace 'com.nexo.ble'
@@ -28,6 +29,10 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+    
     // Deshabilitar tareas problemáticas
     tasks.whenTaskAdded { task ->
         if (task.name.contains("copy") && task.name.contains("Jni")) {
@@ -44,4 +49,6 @@ repositories {
 dependencies {
     implementation project(':capacitor-android')
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.0"
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core-ktx:1.12.0'
 }
