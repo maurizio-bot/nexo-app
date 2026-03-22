@@ -7,7 +7,10 @@ pluginManagement {
     resolutionStrategy {
         eachPlugin {
             if (requested.id.id == "kotlin-android") {
-                useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:${requested.version}")
+                useVersion("1.9.10")
+            }
+            if (requested.id.id == "com.android.library") {
+                useVersion("8.2.0")
             }
         }
     }
