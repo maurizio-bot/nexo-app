@@ -1,0 +1,5 @@
+/workspaces/nexo-app/plugins/nexo-ble/android/src/main/java/com/nexo/ble/NexoBlePlugin.kt
+/workspaces/nexo-app/plugins/nexo-ble/android/src/main/java/com/nexo/ble/NexoBleClient.kt
+/workspaces/nexo-app/plugins/nexo-ble/android/src/main/java/com/nexo/ble/NexoGattService.kt
+/workspaces/nexo-app/plugins/nexo-ble/android/src/main/java/com/nexo/ble/MessageChunker.kt
+/workspaces/nexo-app/plugins/nexo-ble/android/src/main/java/com/nexo/ble/NexoBleServer.kt
