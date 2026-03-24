@@ -1,0 +1,35 @@
+{
+  "name": "nexo-v9",
+  "version": "9.0.0",
+  "description": "Arquitectura Soberana",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "build": "npm run build:web",
+    "build:web": "webpack --mode production",
+    "build:android": "capacitor build android",
+    "dev": "webpack serve --mode development",
+    "sync": "capacitor sync",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@capacitor/android": "^5.0.0",
+    "@capacitor/core": "^5.0.0",
+    "nexo-ble": "file:./plugins/nexo-ble"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^5.7.8",
+    "copy-webpack-plugin": "^14.0.0",
+    "css-loader": "^7.1.4",
+    "html-webpack-plugin": "^5.6.6",
+    "sass-loader": "^16.0.7",
+    "style-loader": "^4.0.0",
+    "webpack": "^5.90.1",
+    "webpack-cli": "^7.0.2"
+  },
+  "private": true,
+  "browserslist": [
+    "last 2 Android versions",
+    "last 2 Chrome versions"
+  ]
+}

@@ -1,0 +1,30 @@
+.message-bubble {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.05);
+}
+
+.message-me {
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.message-avatar img {
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+}
+
+.message-sender {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #fff;
+}
+
+.message-text {
+  color: #ccc;
+  line-height: 1.4;
+}
+

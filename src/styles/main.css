@@ -1,0 +1,163 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  background: #000;
+  touch-action: pan-y; /* Permitir scroll vertical, bloquear horizontal en gestos */
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Stream (Video) */
+#stream-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #000;
+  transition: transform 0.3s ease, filter 0.3s ease;
+  will-change: transform;
+}
+
+#video-player {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Vault Panel */
+#vault-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 70%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  transform: translateX(100%);
+  z-index: 100;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -5px 0 30px rgba(0,0,0,0.2);
+}
+
+.vault-header {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.vault-header h3 {
+  margin-bottom: 5px;
+  color: #333;
+}
+
+#current-context {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+/* Contactos */
+#contacts-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  margin: 8px 0;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.contact-item:hover {
+  transform: translateX(-5px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.contact-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  margin-right: 15px;
+}
+
+.contact-priority {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #ffd700;
+  font-weight: bold;
+}
+
+/* Chispa Creator */
+#chispa-creator {
+  display: flex;
+  gap: 10px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+#chispa-creator button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 20px;
+  background: #f0f0f0;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: transform 0.1s;
+}
+
+#chispa-creator button:active {
+  transform: scale(0.95);
+}
+
+/* Overlay Chispas */
+#chispas-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* Animaciones */
+@keyframes float {
+  0%, 100% { transform: translateY(-50%) translateX(0); }
+  50% { transform: translateY(-50%) translateX(-10px); }
+}
+
+@keyframes popIn {
+  0% { transform: translateX(-50%) scale(0); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+@keyframes fadeOut {
+  to { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.8); }
+}
+
+.chispa-float {
+  animation: float 2s ease-in-out infinite;
+}

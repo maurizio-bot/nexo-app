@@ -1,0 +1,301 @@
+<!-- client/index.html - v2.2-NAP-CERTIFIED -->
+<!-- FIX: Agregado método audit() a NEXO_DIAG para compatibilidad con nexo_app.js -->
+<!DOCTYPE html>
+<html lang="es" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="NEXO v9.0 - Mensajería P2P ultra-rápida">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: wss: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; connect-src 'self' https: wss:; img-src 'self' blob: data:; font-src 'self'; frame-src 'none'; object-src 'none';">
+  
+  <title>NEXO</title>
+  
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { 
+      width: 100%; height: 100%; overflow: hidden; 
+      background: #0a0a0a; color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      touch-action: pan-y pan-x; overscroll-behavior: none;
+    }
+    
+    #splash-native {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: #0a0a0a; z-index: 99999;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      transition: opacity 0.5s ease;
+    }
+    #splash-native.hidden { opacity: 0; pointer-events: none; }
+    
+    #splash-logo {
+      width: 120px; 
+      height: 120px;
+      background: url('assets/logo.png') center/contain no-repeat;
+      filter: drop-shadow(0 0 20px rgba(0, 255, 136, 0.4));
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.8; }
+    }
+    #splash-text {
+      margin-top: 24px; font-size: 14px; color: #666;
+      font-weight: 500; letter-spacing: 2px;
+    }
+    
+    /* NAP: Diagnóstico - Auto-hide en producción, visible en dev */
+    #nexo-diagnostic {
+      position: fixed; top: 10px; left: 10px; right: 10px;
+      max-height: 200px; overflow-y: auto;
+      background: rgba(0, 0, 0, 0.95);
+      border: 1px solid #333; border-radius: 8px;
+      padding: 10px; font-family: 'Courier New', monospace;
+      font-size: 11px; line-height: 1.4; z-index: 99998;
+      display: none; /* Hidden by default, shown by JS if dev */
+    }
+    #nexo-diagnostic.visible { display: block; }
+    #nexo-diagnostic .log-info { color: #00ff88; }
+    #nexo-diagnostic .log-error { color: #ff4444; font-weight: bold; }
+    #nexo-diagnostic .log-warn { color: #ffaa00; }
+    #nexo-diagnostic .log-code { 
+      display: inline-block; background: #ff4444; color: white;
+      padding: 1px 4px; border-radius: 3px; font-size: 10px;
+      margin-right: 5px; font-weight: bold;
+    }
+    
+    #app { width: 100%; height: 100%; display: flex; flex-direction: column; position: relative; }
+    #messages-container {
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      -webkit-overflow-scrolling: touch; padding: 20px;
+      padding-bottom: 100px; padding-top: max(20px, env(safe-area-inset-top));
+    }
+    #input-area {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      padding: 20px; padding-bottom: max(20px, env(safe-area-inset-bottom));
+      background: linear-gradient(transparent, #0a0a0a 20%);
+      display: flex; gap: 10px; align-items: center;
+    }
+    #message-input {
+      flex: 1; background: rgba(255,255,255,0.1); border: none;
+      border-radius: 20px; padding: 12px 16px; color: white;
+      font-size: 16px; outline: none; user-select: text;
+    }
+    #message-input::placeholder { color: rgba(255,255,255,0.5); }
+    #send-btn {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: #00ff88; border: none; color: #0a0a0a;
+      font-weight: bold; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .message {
+      max-width: 80%; padding: 12px 16px; border-radius: 18px;
+      margin-bottom: 8px; word-wrap: break-word; animation: slideIn 0.3s ease;
+    }
+    .message.own { background: #00ff88; color: #0a0a0a; margin-left: auto; border-bottom-right-radius: 4px; }
+    .message.other { background: rgba(255,255,255,0.1); color: white; margin-right: auto; border-bottom-left-radius: 4px; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    #status-indicator {
+      position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px;
+      padding: 6px 12px; border-radius: 12px; font-size: 12px;
+      font-weight: bold; background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(10px); z-index: 1000;
+      transition: all 0.3s ease;
+    }
+    #status-indicator.p2p { background: #00ff88; color: #0a0a0a; }
+    #status-indicator.relay { background: #0099ff; color: white; }
+    #status-indicator.hybrid { background: #ffaa00; color: #0a0a0a; }
+    #status-indicator.offline { background: #ff4444; color: white; }
+    
+    #fatal-error {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: #0a0a0a; z-index: 100000; display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 40px; text-align: center;
+    }
+    #fatal-error.visible { display: flex; }
+    #fatal-error h2 { color: #ff4444; margin-bottom: 20px; }
+    #fatal-error code { 
+      background: #1a1a1a; padding: 20px; border-radius: 8px;
+      font-family: monospace; color: #ff4444; font-size: 12px;
+      max-width: 100%; overflow-x: auto; margin: 10px 0;
+      border-left: 3px solid #ff4444;
+    }
+  </style>
+</head>
+<body>
+  <!-- SPLASH SCREEN -->
+  <div id="splash-native">
+    <div id="splash-logo"></div>
+    <div id="splash-text">NEXO v9.0</div>
+  </div>
+  
+  <!-- DIAGNÓSTICO - NAP: Auto-hide en producción -->
+  <div id="nexo-diagnostic"></div>
+  
+  <!-- ERROR FATAL -->
+  <div id="fatal-error">
+    <h2>❌ ERROR DE INICIO</h2>
+    <p style="color:#666;margin-bottom:20px;">La aplicación no pudo iniciar</p>
+    <code id="fatal-code">HTML-001: Unknown Error</code>
+    <button onclick="location.reload()" style="
+      margin-top: 30px; padding: 12px 30px; background: #00ff88;
+      border: none; border-radius: 24px; color: #0a0a0a;
+      font-weight: bold; cursor: pointer; font-size: 16px;
+    ">Reintentar</button>
+  </div>
+  
+  <!-- UI PRINCIPAL -->
+  <div id="status-indicator" class="offline">● OFFLINE</div>
+  
+  <div id="app">
+    <div id="messages-container"></div>
+    <div id="input-area">
+      <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
+      <button id="send-btn">➤</button>
+    </div>
+  </div>
+  
+  <!-- SISTEMA DE DIAGNÓSTICO NAP -->
+  <script>
+    window.NEXO_DIAG = {
+      container: document.getElementById('nexo-diagnostic'),
+      logs: [],
+      maxLogs: 100,
+      _splashHidden: false,
+      
+      init: function() {
+        // NAP: Environment detection - mostrar solo en dev/local
+        const isDev = location.hostname === 'localhost' || 
+                      location.hostname === '127.0.0.1' || 
+                      location.protocol === 'file:';
+        
+        if (isDev) {
+          this.container.classList.add('visible');
+          this.log('HTML-INIT: Modo desarrollo detectado', 'info');
+        } else {
+          this.log('HTML-INIT: Modo producción - diagnóstico oculto', 'info');
+        }
+        
+        this.log(`HTML-ENV: Host=${location.hostname}, Protocol=${location.protocol}`, 'info');
+        this.log(`HTML-ENV: Capacitor=${!!window.Capacitor}, SecureContext=${window.isSecureContext}`, 'info');
+      },
+      
+      // NAP: Método audit para SOC2 compliance (llamado desde nexo_app.js y main.js)
+      audit: function(action, entity, success) {
+        const timestamp = new Date().toLocaleTimeString('es-ES', {hour12:false});
+        const msg = `[AUDIT] ${action} | Entity: ${entity} | Success: ${success}`;
+        
+        // Loguear siempre a consola
+        console.log(`[NEXO-AUDIT] ${action}`, { entity, success, timestamp });
+        
+        // Loguear a UI solo si está visible (modo dev)
+        if (this.container && this.container.classList.contains('visible')) {
+          this.log(msg, 'info');
+        }
+      },
+      
+      log: function(msg, type = 'info') {
+        const time = new Date().toLocaleTimeString('es-ES', {hour12:false});
+        const entry = { time, msg, type };
+        this.logs.push(entry);
+        if (this.logs.length > this.maxLogs) this.logs.shift();
+        
+        if (this.container && this.container.classList.contains('visible')) {
+          const div = document.createElement('div');
+          div.className = `log-${type}`;
+          if (type === 'error') {
+            div.innerHTML = `<span class="log-code">ERR</span>${time} ${msg}`;
+          } else {
+            div.textContent = `${time} ${msg}`;
+          }
+          this.container.appendChild(div);
+          this.container.scrollTop = this.container.scrollHeight;
+        }
+        console.log(`[NEXO] ${msg}`);
+      },
+      
+      error: function(code, details) {
+        this.log(`${code}: ${details}`, 'error');
+        if (code.startsWith('FATAL') || code.startsWith('INIT-FATAL')) {
+          this.showFatal(code, details);
+        }
+      },
+      
+      showFatal: function(code, details) {
+        const fatalScreen = document.getElementById('fatal-error');
+        const fatalCode = document.getElementById('fatal-code');
+        if (fatalScreen && fatalCode) {
+          fatalCode.textContent = `${code}: ${details}`;
+          fatalScreen.classList.add('visible');
+        }
+      },
+      
+      // NAP: Splash idempotente - previene múltiples llamadas
+      hideSplash: function() {
+        if (this._splashHidden) return;
+        
+        const splash = document.getElementById('splash-native');
+        if (!splash) {
+          this._splashHidden = true;
+          return;
+        }
+        
+        // NAP: Lock para evitar race conditions
+        splash.dataset.hiding = 'true';
+        this._splashHidden = true;
+        this.log('HTML-SPLASH: Ocultando...', 'info');
+        
+        // Mínimo 2 segundos visibles
+        setTimeout(() => {
+          splash.classList.add('hidden');
+          setTimeout(() => {
+            if (splash.parentNode) splash.remove();
+          }, 500);
+        }, 2000);
+      }
+    };
+    
+    window.NEXO_DIAG.init();
+    
+    // NAP: Resource Error Handler con filtro de scope
+    window.addEventListener('error', function(e) {
+      const src = e.target?.src || e.target?.href;
+      
+      // NAP: Ignorar recursos externos (CDNs, trackers) - reduce ruido
+      if (src && !src.includes(window.location.host) && !src.startsWith('blob:')) {
+        console.warn('[NEXO] Ignorando error de recurso externo:', src);
+        return;
+      }
+      
+      const code = e.target?.tagName === 'IMG' ? 'HTML-IMG-404' : 
+                   e.target?.tagName === 'SCRIPT' ? 'HTML-JS-404' : 'HTML-RES-404';
+      window.NEXO_DIAG.error(code, `Failed: ${src || 'unknown'}`);
+    }, true);
+    
+    // NAP: Global JS Error Handler
+    window.addEventListener('error', function(e) {
+      window.NEXO_DIAG.error('HTML-JS-ERROR', `${e.message} at ${e.lineno}:${e.colno}`);
+    });
+    
+    // NAP: Unhandled Promise Rejection Handler
+    window.addEventListener('unhandledrejection', function(e) {
+      window.NEXO_DIAG.error('HTML-PROMISE-REJECT', e.reason?.message || String(e.reason));
+      // NAP: Prevenir propagación silenciosa
+      e.preventDefault();
+    });
+  </script>
+  
+  <script type="module" src="main.js"></script>
+</body>
+</html>
