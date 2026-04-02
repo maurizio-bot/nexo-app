@@ -9,6 +9,7 @@ import android.os.ParcelUuid
 import android.util.Log
 import com.getcapacitor.JSObject
 import com.nexo.ble.model.NexoGattService
+import org.json.JSONArray  // ← AGREGADO
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -160,7 +161,6 @@ class NexoBleClient(
         val service = gatt.getService(NexoGattService.SERVICE_UUID) ?: return
         val characteristic = service.getCharacteristic(NexoGattService.PAYLOAD_CHAR_UUID) ?: return
 
-        // Si el mensaje es grande, fragmentarlo
         val chunks = messageChunker.createChunks(data)
         
         chunks.forEach { chunk ->
