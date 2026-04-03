@@ -13,17 +13,233 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
   
   <title>NEXO v9.0</title>
+  
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0a; 
+      color: #fff; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+    
+    #splash {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #0a0a0a;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      transition: opacity 0.5s;
+    }
+    
+    #splash-logo {
+      width: 80px; height: 80px;
+      background: linear-gradient(135deg, #007bff, #00f0ff);
+      border-radius: 20px;
+      margin-bottom: 20px;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.8; }
+    }
+    
+    #splash-text {
+      font-size: 24px;
+      font-weight: bold;
+      color: #fff;
+    }
+    
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 10px;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    
+    .stream-container {
+      flex: 1;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      background: #111;
+      border-radius: 12px;
+      padding: 10px;
+    }
+    
+    #messages-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    #input-area {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      background: #1a1a1a;
+      border-radius: 12px;
+    }
+    
+    #message-input {
+      flex: 1;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px;
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+    }
+    
+    #send-btn {
+      width: 44px; height: 44px;
+      background: #007bff;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    #send-btn:active { background: #0056b3; }
+    
+    #vault-panel {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #0a0a0a;
+      z-index: 100;
+      transform: translateX(100%);
+      transition: transform 0.3s;
+      padding: 20px;
+      padding-top: env(safe-area-inset-top);
+    }
+    
+    #vault-panel.vault-hidden { transform: translateX(100%); }
+    #vault-panel.vault-visible { transform: translateX(0); }
+    
+    .vault-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #333;
+    }
+    
+    .vault-header h3 { font-size: 20px; }
+    
+    /* VAULT SETUP MODAL - CRÍTICO PARA ONBOARDING */
+    #vault-setup-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.95);
+      z-index: 9999;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    
+    .vault-setup-content {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 16px;
+      padding: 28px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    
+    .vault-setup-content h2 {
+      margin: 0 0 12px 0;
+      color: #fff;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .vault-setup-content p {
+      color: #888;
+      font-size: 14px;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    
+    #vault-password-input {
+      width: 100%;
+      padding: 14px;
+      background: #0a0a0a;
+      border: 1px solid #444;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 16px;
+      margin-bottom: 12px;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+    
+    #vault-password-input:focus { border-color: #007bff; }
+    
+    #password-strength {
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    
+    #strength-bar {
+      width: 0%;
+      height: 100%;
+      background: #ff4444;
+      transition: all 0.3s;
+    }
+    
+    #vault-create-btn {
+      width: 100%;
+      padding: 16px;
+      background: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      opacity: 0.5;
+      transition: opacity 0.3s, background 0.3s;
+    }
+    
+    #vault-create-btn:not(:disabled) {
+      opacity: 1;
+      background: #00c853;
+    }
+    
+    #vault-create-btn:not(:disabled):active { background: #00a344; }
+  </style>
 </head>
 <body>
-  <!-- SPLASH SCREEN - FIX: id="splash" (no splash-native) -->
+  <!-- SPLASH SCREEN -->
   <div id="splash">
     <div id="splash-logo"></div>
     <div id="splash-text">NEXO v9.0</div>
   </div>
 
-  <!-- UI PRINCIPAL - FIX: Agregado nexo-stream -->
+  <!-- UI PRINCIPAL -->
   <div id="app">
-    <!-- Stream container para Vault Slider -->
     <div id="nexo-stream" class="stream-container">
       <div id="messages-container"></div>
     </div>
@@ -34,8 +250,84 @@
     </div>
   </div>
 
-  <!-- Vault Panel -->
+  <!-- Vault Panel (lateral) -->
   <div id="vault-panel" class="vault-hidden">
     <div class="vault-header">
       <h3>Compartir</h3>
-    </div
+      <button onclick="document.getElementById('vault-panel').classList.remove('vault-visible'); document.getElementById('vault-panel').classList.add('vault-hidden');" style="background:none;border:none;color:#fff;font-size:24px;">✕</button>
+    </div>
+    <div id="vault-content">
+      <p style="color:#666;text-align:center;margin-top:40px;">Vault NEXO - Contenido seguro</p>
+    </div>
+  </div>
+
+  <!-- VAULT SETUP MODAL - CRÍTICO: Este elemento debe existir para el onboarding -->
+  <div id="vault-setup-modal">
+    <div class="vault-setup-content">
+      <h2>🔐 Configurar NEXO Vault</h2>
+      <p>Crea una contraseña maestra para proteger tus mensajes BLE. Esta contraseña no se puede recuperar si la olvidas.</p>
+      
+      <input type="password" id="vault-password-input" placeholder="Contraseña (mín. 12 caracteres)">
+      
+      <div id="password-strength">
+        <div id="strength-bar"></div>
+      </div>
+      
+      <button id="vault-create-btn" disabled>Crear Vault Seguro</button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script type="module">
+    // Helper para el modal de Vault
+    window.submitVaultPassword = function() {
+      const pwd = document.getElementById('vault-password-input').value;
+      if (pwd.length >= 12) {
+        window.dispatchEvent(new CustomEvent('nexo:vault:password', { 
+          detail: { password: pwd } 
+        }));
+      }
+    };
+
+    // Validación de fortaleza de contraseña
+    document.addEventListener('DOMContentLoaded', function() {
+      const input = document.getElementById('vault-password-input');
+      const bar = document.getElementById('strength-bar');
+      const btn = document.getElementById('vault-create-btn');
+      
+      if (input) {
+        input.addEventListener('input', function(e) {
+          const val = e.target.value;
+          const strength = Math.min(100, (val.length / 12) * 100);
+          bar.style.width = strength + '%';
+          
+          // Cambiar color según fortaleza
+          if (val.length < 8) {
+            bar.style.background = '#ff4444'; // Rojo: Débil
+          } else if (val.length < 12) {
+            bar.style.background = '#ffaa00'; // Naranja: Media
+          } else {
+            bar.style.background = '#00ff88'; // Verde: Fuerte
+          }
+          
+          btn.disabled = val.length < 12;
+        });
+        
+        // Permitir Enter para submit
+        input.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter' && input.value.length >= 12) {
+            window.submitVaultPassword();
+          }
+        });
+      }
+      
+      if (btn) {
+        btn.addEventListener('click', window.submitVaultPassword);
+      }
+    });
+  </script>
+  
+  <!-- Script principal de la aplicación -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
