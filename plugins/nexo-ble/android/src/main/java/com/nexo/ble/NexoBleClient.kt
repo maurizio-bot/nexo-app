@@ -3,13 +3,16 @@ package com.nexo.ble
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import com.getcapacitor.JSObject
 import com.nexo.ble.model.NexoGattService
-import org.json.JSONArray  // ← AGREGADO
+// Import MessageChunker - ajusta según la ubicación real:
+// import com.nexo.ble.chunking.MessageChunker 
+import org.json.JSONArray
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -90,15 +93,18 @@ class NexoBleClient(
         }
 
         @Deprecated("Deprecated in Java")
+        @Suppress("DEPRECATION")
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
             super.onCharacteristicChanged(gatt, characteristic)
+            // Fix null-safety para API antiguas
+            val value = characteristic.value ?: return
             handleCharacteristicValue(
                 gatt.device.address, 
                 characteristic.uuid, 
-                characteristic.value
+                value
             )
         }
 
@@ -163,9 +169,17 @@ class NexoBleClient(
 
         val chunks = messageChunker.createChunks(data)
         
-        chunks.forEach { chunk ->
-            characteristic.value = chunk
-            gatt.writeCharacteristic(characteristic)
+        chunks.forEachIndexed { index, chunk ->
+            // FIX: Usar setValue() en lugar de asignación directa (val inmutable)
+            characteristic.setValue(chunk)
+            
+            // Opcional: Agregar WRITE_TYPE para asegurar ACK
+            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            
+            val success = gatt.writeCharacteristic(characteristic)
+            if (!success) {
+                Log.e(TAG, "Failed to write chunk $index for device $deviceId")
+            }
         }
     }
 
