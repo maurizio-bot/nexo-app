@@ -1,0 +1,387 @@
+<!-- NEXO Vault Setup - Primera vez / Onboarding -->
+<div id="vault-setup-modal" class="vault-setup-overlay" style="display: none;">
+  <div class="vault-setup-container">
+    <div class="vault-setup-header">
+      <div class="vault-icon">🔐</div>
+      <h2>Configurar NEXO Vault</h2>
+      <p class="subtitle">Protección de grado militar para tus mensajes</p>
+    </div>
+    
+    <div class="vault-setup-content">
+      <div class="info-box">
+        <span class="info-icon">ℹ️</span>
+        <p>Esta contraseña maestra cifra tus claves. No se puede recuperar si la olvidas.</p>
+      </div>
+      
+      <div class="password-section">
+        <label for="master-password">Contraseña Maestra</label>
+        <input 
+          type="password" 
+          id="master-password" 
+          class="vault-input" 
+          placeholder="Mínimo 12 caracteres"
+          minlength="12"
+          autocomplete="new-password"
+        >
+        <div class="password-strength" id="password-strength">
+          <div class="strength-bar"></div>
+          <span class="strength-text">Muy débil</span>
+        </div>
+      </div>
+      
+      <div class="password-section">
+        <label for="confirm-password">Confirmar Contraseña</label>
+        <input 
+          type="password" 
+          id="confirm-password" 
+          class="vault-input" 
+          placeholder="Repite la contraseña"
+          autocomplete="new-password"
+        >
+        <div class="match-indicator" id="match-indicator"></div>
+      </div>
+      
+      <div class="requirements">
+        <div class="req-item" id="req-length">✓ 12+ caracteres</div>
+        <div class="req-item" id="req-number">✓ Al menos un número</div>
+        <div class="req-item" id="req-special">✓ Al menos un símbolo (!@#$...)</div>
+        <div class="req-item" id="req-match">✓ Coinciden</div>
+      </div>
+    </div>
+    
+    <div class="vault-setup-footer">
+      <button id="btn-create-vault" class="vault-btn-primary" disabled>
+        Crear Vault Seguro
+      </button>
+      <p class="disclaimer">
+        🔒 NEXO nunca almacena tu contraseña en servidores. Todo el cifrado es local.
+      </p>
+    </div>
+  </div>
+</div>
+
+<style>
+.vault-setup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(10px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.vault-setup-container {
+  background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-radius: 20px;
+  padding: 32px 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 0 40px rgba(0, 240, 255, 0.2);
+  animation: slideUp 0.4s ease;
+}
+
+.vault-setup-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.vault-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  animation: pulse 2s infinite;
+}
+
+.vault-setup-header h2 {
+  color: #00f0ff;
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.subtitle {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  margin: 0;
+}
+
+.vault-setup-content {
+  margin-bottom: 24px;
+}
+
+.info-box {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.info-box p {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.4;
+}
+
+.password-section {
+  margin-bottom: 16px;
+}
+
+.password-section label {
+  display: block;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.vault-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: white;
+  font-size: 16px;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+
+.vault-input:focus {
+  outline: none;
+  border-color: #00f0ff;
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.1);
+}
+
+.vault-input.error {
+  border-color: #ff4757;
+  animation: shake 0.4s ease;
+}
+
+.password-strength {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.strength-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.strength-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0%;
+  background: #ff4757;
+  transition: all 0.3s ease;
+  border-radius: 2px;
+}
+
+.strength-bar.weak::after { width: 33%; background: #ff4757; }
+.strength-bar.medium::after { width: 66%; background: #ffa502; }
+.strength-bar.strong::after { width: 100%; background: #2ed573; }
+
+.strength-text {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  min-width: 60px;
+}
+
+.requirements {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.req-item {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
+}
+
+.req-item.valid {
+  color: #2ed573;
+}
+
+.req-item::before {
+  content: '○';
+  font-size: 10px;
+}
+
+.req-item.valid::before {
+  content: '✓';
+}
+
+.vault-setup-footer {
+  text-align: center;
+}
+
+.vault-btn-primary {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%);
+  border: none;
+  border-radius: 12px;
+  color: black;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-bottom: 16px;
+}
+
+.vault-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 240, 255, 0.4);
+}
+
+.vault-btn-primary:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.3);
+  cursor: not-allowed;
+}
+
+.disclaimer {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+  line-height: 1.4;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-10px); }
+  75% { transform: translateX(10px); }
+}
+</style>
+
+<script>
+(function() {
+  const passwordInput = document.getElementById('master-password');
+  const confirmInput = document.getElementById('confirm-password');
+  const createBtn = document.getElementById('btn-create-vault');
+  const strengthBar = document.querySelector('.strength-bar');
+  const strengthText = document.querySelector('.strength-text');
+  
+  const requirements = {
+    length: document.getElementById('req-length'),
+    number: document.getElementById('req-number'),
+    special: document.getElementById('req-special'),
+    match: document.getElementById('req-match')
+  };
+  
+  function checkPasswordStrength(password) {
+    let strength = 0;
+    const checks = {
+      length: password.length >= 12,
+      number: /\d/.test(password),
+      special: /[!@#$%^&*(),.?":{}|<>]/.test(password)
+    };
+    
+    if (checks.length) strength++;
+    if (checks.number) strength++;
+    if (checks.special) strength++;
+    
+    // Update UI
+    strengthBar.className = 'strength-bar';
+    if (strength === 1) {
+      strengthBar.classList.add('weak');
+      strengthText.textContent = 'Débil';
+      strengthText.style.color = '#ff4757';
+    } else if (strength === 2) {
+      strengthBar.classList.add('medium');
+      strengthText.textContent = 'Media';
+      strengthText.style.color = '#ffa502';
+    } else if (strength === 3) {
+      strengthBar.classList.add('strong');
+      strengthText.textContent = 'Fuerte';
+      strengthText.style.color = '#2ed573';
+    }
+    
+    // Update requirements
+    requirements.length.classList.toggle('valid', checks.length);
+    requirements.number.classList.toggle('valid', checks.number);
+    requirements.special.classList.toggle('valid', checks.special);
+    
+    return strength;
+  }
+  
+  function checkMatch() {
+    const password = passwordInput.value;
+    const confirm = confirmInput.value;
+    const matches = password === confirm && confirm.length > 0;
+    requirements.match.classList.toggle('valid', matches);
+    return matches;
+  }
+  
+  function validateAll() {
+    const password = passwordInput.value;
+    const strength = checkPasswordStrength(password);
+    const matches = checkMatch();
+    
+    const isValid = strength === 3 && matches;
+    createBtn.disabled = !isValid;
+    
+    return isValid;
+  }
+  
+  passwordInput.addEventListener('input', validateAll);
+  confirmInput.addEventListener('input', validateAll);
+  
+  createBtn.addEventListener('click', async () => {
+    const password = passwordInput.value;
+    createBtn.disabled = true;
+    createBtn.textContent = 'Creando...';
+    
+    try {
+      // Emitir evento para que app.js capture
+      window.dispatchEvent(new CustomEvent('nexo:vault:password', { 
+        detail: { password } 
+      }));
+    } catch (e) {
+      console.error('Error creating vault:', e);
+      createBtn.disabled = false;
+      createBtn.textContent = 'Error - Intentar de nuevo';
+    }
+  });
+})();
+</script>
+
