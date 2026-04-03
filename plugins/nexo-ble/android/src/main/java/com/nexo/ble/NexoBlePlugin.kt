@@ -130,17 +130,18 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
-        if (checkPermission("bluetoothAdvertise")) {
+        // FIX: hasPermission en lugar de checkPermission
+        if (hasPermission("bluetoothAdvertise")) {
             startAdvertisingInternal(call)
         } else {
-            requestPermission("bluetoothAdvertise", "advertisePermissionCallback")
-            call.save()
+            // FIX: requestPermissionForAlias con call guardado
+            requestPermissionForAlias("bluetoothAdvertise", call, "advertisePermissionCallback")
         }
     }
 
     @PermissionCallback
     private fun advertisePermissionCallback(call: PluginCall) {
-        if (checkPermission("bluetoothAdvertise")) {
+        if (hasPermission("bluetoothAdvertise")) {
             startAdvertisingInternal(call)
         } else {
             call.reject(ERR_PERMISSION_DENIED, "Bluetooth advertise permission required")
@@ -193,17 +194,18 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun startScan(call: PluginCall) {
-        if (checkPermission("bluetoothScan")) {
+        // FIX: hasPermission en lugar de checkPermission
+        if (hasPermission("bluetoothScan")) {
             startScanInternal(call)
         } else {
-            requestPermission("bluetoothScan", "scanPermissionCallback")
-            call.save()
+            // FIX: requestPermissionForAlias correcto
+            requestPermissionForAlias("bluetoothScan", call, "scanPermissionCallback")
         }
     }
 
     @PermissionCallback
     private fun scanPermissionCallback(call: PluginCall) {
-        if (checkPermission("bluetoothScan")) {
+        if (hasPermission("bluetoothScan")) {
             startScanInternal(call)
         } else {
             call.reject(ERR_PERMISSION_DENIED, "Bluetooth scan permission required")
@@ -351,9 +353,17 @@ class NexoBlePlugin : Plugin() {
                 }
             }
 
+            @Suppress("DEPRECATION")
             override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
                 characteristic?.let { char ->
-                    val value = char.value ?: return
+                    val value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        // En API 33+, onCharacteristicChanged tiene value como parámetro separado
+                        // pero aquí estamos en el callback legacy, usamos .value
+                        char.value
+                    } else {
+                        char.value
+                    } ?: return
+                    
                     val addr = gatt?.device?.address ?: return
                     
                     when (char.uuid) {
@@ -387,7 +397,8 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun getConnectedDevices(call: PluginCall) {
         val list = JSONArray()
-        connectedDevices.keys().forEach { addr ->
+        // FIX: .keys sin paréntesis (propiedad Kotlin)
+        connectedDevices.keys.forEach { addr ->
             list.put(JSObject().apply {
                 put("id", addr)
                 put("address", addr)
@@ -467,12 +478,7 @@ class NexoBlePlugin : Plugin() {
         }
 
         try {
-            sendChunkedMessage(deviceId, bytes)
-            call.resolve(JSObject().apply {
-                put("success", true)
-                put("bytesSent", bytes.size)
-                put("chunks", (bytes.size + CHUNK_SIZE - 1) / CHUNK_SIZE)
-            })
+            sendChunkedMessage(deviceId, bytes, call)
         } catch (e: Exception) {
             call.reject("SEND_FAILED", e.message)
         }
@@ -481,34 +487,60 @@ class NexoBlePlugin : Plugin() {
     /**
      * Protocolo chunking NEXO v1.0
      * Header: [flags:1][messageId:2][chunkIndex:2][totalChunks:2] = 7 bytes
+     * FIX: Eliminado Thread.sleep() bloqueante, ahora usa Handler asíncrono
      */
-    private fun sendChunkedMessage(deviceId: String, data: ByteArray) {
+    private fun sendChunkedMessage(deviceId: String, data: ByteArray, call: PluginCall) {
         val totalSize = data.size
         val chunks = (totalSize + CHUNK_SIZE - 1) / CHUNK_SIZE
         val messageId = connectionCounter.incrementAndGet() and 0xFFFF
         
         Log.d(TAG, "Sending $totalSize bytes in $chunks chunks (msgId: $messageId)")
         
-        data.toList().chunked(CHUNK_SIZE).forEachIndexed { index, chunk ->
-            val isLast = index == chunks - 1
+        val chunksList = data.toList().chunked(CHUNK_SIZE)
+        var currentChunk = 0
+        
+        fun sendNextChunk() {
+            if (currentChunk >= chunksList.size) {
+                // Todos los chunks enviados
+                call.resolve(JSObject().apply {
+                    put("success", true)
+                    put("bytesSent", totalSize)
+                    put("chunks", chunks)
+                })
+                return
+            }
+            
+            val chunk = chunksList[currentChunk]
+            val isLast = currentChunk == chunksList.size - 1
             val flags = if (isLast) 0x03 else 0x01 // bit 0: chunked, bit 1: isLast
             
             val buffer = ByteBuffer.allocate(7 + chunk.size).apply {
                 order(ByteOrder.BIG_ENDIAN)
                 put(flags.toByte())
                 putShort(messageId.toShort())
-                putShort(index.toShort())
+                putShort(currentChunk.toShort())
                 putShort(chunks.toShort())
                 chunk.forEach { put(it) }
             }
             
-            writeCharacteristic(deviceId, CHAR_PAYLOAD, buffer.array())
+            val success = writeCharacteristic(deviceId, CHAR_PAYLOAD, buffer.array())
+            if (!success) {
+                Log.e(TAG, "Failed to write chunk $currentChunk for device $deviceId")
+                call.reject("SEND_FAILED", "Failed to write chunk $currentChunk")
+                return
+            }
             
-            // NAP 2.0: Delay para no saturar BLE (10ms entre chunks)
+            currentChunk++
+            
+            // FIX: Usar Handler en lugar de Thread.sleep() para no bloquear UI
             if (!isLast) {
-                Thread.sleep(10)
+                handler.postDelayed({ sendNextChunk() }, 10)
+            } else {
+                sendNextChunk() // Finalizar inmediatamente
             }
         }
+        
+        sendNextChunk()
     }
 
     private fun processPayloadChunk(deviceId: String, data: ByteArray) {
@@ -723,7 +755,7 @@ class NexoBlePlugin : Plugin() {
     
     private fun hexToBytes(hex: String): ByteArray {
         val cleanHex = hex.replace("-", "").replace(":", "")
-        return if (cleanHex.length % 2 == 0) {
+        return if (cleanHex.length % 2 == 0 && cleanHex.isNotEmpty()) {
             cleanHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         } else {
             ByteArray(0)
