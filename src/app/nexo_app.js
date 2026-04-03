@@ -1,7 +1,7 @@
 /**
  * NEXO App v3.3.0-NAP
  * Orquestador Principal - NAP 2.0 Certified
- * FIXES: Interface Contract NordicMesh (init vs initialize), return validation
+ * FIXES: Interface Contract NordicMesh, Vault Onboarding flow
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -126,22 +126,41 @@ export class NexoApp {
     return this;
   }
 
+  /**
+   * FIX: Flujo de onboarding - Setup técnico primero, luego desbloqueo con UI
+   */
   async _initPhase1_Crypto() {
     DEBUG.setPhase('CRYPTO');
     DEBUG.log('🔐 [1/7] Initializing Crypto Vault...', 'info', 'CRYPTO_001');
     
     try {
       this.vault = new CryptoVault();
-      await withTimeoutNAP(this.vault.initialize(), 5000, 'CryptoVault.initialize');
+      
+      // Paso 1: Setup técnico (crea identidad temporal, abre DB/indexedDB)
+      await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
+      
+      // Paso 2: Si está bloqueado (sin master key), mostrar UI de onboarding
+      if (this.vault.isLocked()) {
+        DEBUG.log('Vault locked - waiting for user setup', 'info', 'CRYPTO_005');
+        
+        // Esperar a que el usuario ingrese password en la UI
+        const password = await this._waitForVaultSetup();
+        
+        DEBUG.log('Unlocking vault with user password...', 'info', 'CRYPTO_006');
+        await this.vault.initialize(password);
+      }
       
       const identity = this.vault.getIdentity?.();
       if (identity) {
         DEBUG.setIdentity(identity);
-        DEBUG.success('Vault initialized', 'CRYPTO_002');
+        DEBUG.success('Vault initialized and unlocked', 'CRYPTO_002');
+      } else {
+        throw new Error('No identity after unlock');
       }
     } catch (err) {
       DEBUG.error('CRYPTO_004', `Vault init failed: ${err.message}`);
       this.vault = null;
+      throw err; // Propagar para detener inicialización
     }
   }
 
@@ -164,10 +183,6 @@ export class NexoApp {
     }
   }
 
-  /**
-   * FIX #1: Llamada correcta a init() (no initialize())
-   * FIX #2: Validación del objeto retornado { success, isNative, userId }
-   */
   async _initPhase3_NordicMesh() {
     DEBUG.setPhase('NORDIC_MESH');
     DEBUG.log('📡 [3/7] Initializing Nordic Mesh BLE...', 'info', 'NORDIC_001');
@@ -181,7 +196,6 @@ export class NexoApp {
         handshakeTimeout: 30000
       });
       
-      // Setup listeners
       const unsub1 = this.nordicMesh.on('peerDiscovered', (p) => this._handleNordicPeer(p));
       const unsub2 = this.nordicMesh.on('sessionEstablished', (d) => this._handleNordicSession(d));
       const unsub3 = this.nordicMesh.on('messageReceived', (m) => this._handleNordicMessage(m));
@@ -190,21 +204,18 @@ export class NexoApp {
       
       this._resources.handlers.add(unsub1, unsub2, unsub3, unsub4, unsub5);
       
-      // FIX #1 & #2: init() retorna { success, isNative, userId }
       const result = await withTimeoutNAP(
-        this.nordicMesh.init(),  // ✅ FIX: init() no initialize()
+        this.nordicMesh.init(),
         10000,
         'NordicMesh.init'
       );
       
-      // FIX #2: Validar resultado
-      if (!result.success) {
-        throw new Error(result.error?.message || 'Nordic init returned false');
+      if (!result || !result.success) {
+        throw new Error(result?.error?.message || 'Nordic init returned false');
       }
       
       DEBUG.success(`Nordic Mesh active [Native:${result.isNative}]`, 'NORDIC_002');
       
-      // Auto-start discovery si no hay relay
       if (!this.wsClient?.isConnected?.()) {
         await this.nordicMesh.startDiscovery().catch(e => {
           DEBUG.warn(`Discovery delayed: ${e.message}`, 'NORDIC_003');
@@ -255,7 +266,6 @@ export class NexoApp {
     DEBUG.log('📱 [5/7] Initializing BLE Interface...', 'info', 'UI_001');
     
     try {
-      // FIX #3: Siempre crear UI, incluso sin mesh (modo dummy)
       const meshInstance = this.nordicMesh || this.mesh || null;
       this.bleInterface = initBLEInterface(meshInstance);
       
@@ -326,7 +336,95 @@ export class NexoApp {
     }
   }
 
-  // Handlers Nordic
+  // ==================== NUEVOS MÉTODOS: VAULT ONBOARDING ====================
+
+  /**
+   * Muestra UI de onboarding y espera password del usuario
+   * Bloquea la inicialización hasta que el usuario complete el formulario
+   */
+  _waitForVaultSetup() {
+    return new Promise((resolve, reject) => {
+      // Timeout de 60 segundos para que el usuario ingrese datos
+      const timeout = setTimeout(() => {
+        reject(new Error('Vault setup timeout (60s) - Usuario no respondió'));
+      }, 60000);
+      
+      // Mostrar el modal HTML
+      this._showVaultSetupModal();
+      
+      // Escuchar evento del formulario HTML
+      const handler = (e) => {
+        clearTimeout(timeout);
+        window.removeEventListener('nexo:vault:password', handler);
+        this._hideVaultSetupModal();
+        
+        // Validación extra de seguridad
+        const password = e.detail?.password;
+        if (!password || password.length < 12) {
+          reject(new Error('Contraseña inválida desde UI (mínimo 12 caracteres)'));
+          return;
+        }
+        
+        resolve(password);
+      };
+      
+      window.addEventListener('nexo:vault:password', handler, { once: true });
+    });
+  }
+
+  /**
+   * Muestra el modal de configuración de vault
+   */
+  _showVaultSetupModal() {
+    const modal = document.getElementById('vault-setup-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden'; // Prevenir scroll
+      DEBUG.log('Vault setup modal displayed', 'info', 'UI_VAULT_SETUP');
+    } else {
+      // Fallback si no existe el HTML
+      DEBUG.warn('Vault setup HTML not found, using fallback prompt', 'UI_FALLBACK');
+      this._createFallbackPasswordInput();
+    }
+  }
+
+  /**
+   * Oculta el modal de configuración
+   */
+  _hideVaultSetupModal() {
+    const modal = document.getElementById('vault-setup-modal');
+    if (modal) {
+      modal.style.display = 'none';
+      document.body.style.overflow = ''; // Restaurar scroll
+    }
+  }
+
+  /**
+   * Fallback básico si el HTML no está disponible
+   */
+  _createFallbackPasswordInput() {
+    setTimeout(() => {
+      const password = prompt(
+        '🔐 Configurar NEXO Vault\n\n' +
+        'Crea una contraseña maestra:\n' +
+        '- Mínimo 12 caracteres\n' +
+        '- Al menos 1 número\n' + 
+        '- Al menos 1 símbolo (!@#$%^&*)\n\n' +
+        '⚠️  Esta contraseña no se puede recuperar si la olvidas.'
+      );
+      
+      if (password && password.length >= 12) {
+        window.dispatchEvent(new CustomEvent('nexo:vault:password', { 
+          detail: { password } 
+        }));
+      } else if (password) {
+        alert('❌ La contraseña debe tener al menos 12 caracteres.\nRecarga la app para intentar de nuevo.');
+      }
+    }, 500);
+  }
+
+  // ==================== HANDLERS Y UTILIDADES ====================
+
   _handleNordicPeer(peer) {
     if (!peer?.id) {
       DEBUG.error('NORDIC_006', 'Invalid peer data');
@@ -388,12 +486,10 @@ export class NexoApp {
     }
 
     try {
-      // Optimistic UI
       this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true }, 'self');
 
       const content = msg.content || msg;
       
-      // Prioridad 1: NordicMesh
       const nordicPeers = this.nordicMesh?.getPeers?.() || [];
       if (nordicPeers.length > 0) {
         try {
@@ -405,7 +501,6 @@ export class NexoApp {
         }
       }
       
-      // Prioridad 2: HybridMesh
       if (this.mesh?.getPeerCount?.() > 0) {
         try {
           await this.mesh.broadcast({ content });
@@ -416,7 +511,6 @@ export class NexoApp {
         }
       }
       
-      // Prioridad 3: Bridge
       if (this.bridge) {
         const result = await this.bridge.send({ content });
         if (result) {
@@ -425,7 +519,6 @@ export class NexoApp {
         }
       }
       
-      // Prioridad 4: WebSocket
       if (this.wsClient?.isConnected?.()) {
         this.wsClient.send({ content });
         DEBUG.success('Sent via WebSocket', 'MSG_WS');
