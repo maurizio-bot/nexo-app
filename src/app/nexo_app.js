@@ -1,7 +1,7 @@
 /**
  * NEXO App v3.3.0-NAP
  * Orquestador Principal - NAP 2.0 Certified
- * FIXES: Interface Contract NordicMesh, Vault Onboarding flow
+ * FIXES: Interface Contract NordicMesh, Vault Onboarding flow, HybridMesh event handler
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -140,7 +140,8 @@ export class NexoApp {
       await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
       
       // Paso 2: Si está bloqueado (sin master key), mostrar UI de onboarding
-      if (this.vault.isLocked()) {
+      // FIX: Verificar que el método exista antes de llamarlo
+      if (typeof this.vault.isLocked === 'function' && this.vault.isLocked()) {
         DEBUG.log('Vault locked - waiting for user setup', 'info', 'CRYPTO_005');
         
         // Esperar a que el usuario ingrese password en la UI
@@ -249,8 +250,11 @@ export class NexoApp {
         onError: (code, msg) => DEBUG.error('MESH_006', msg)
       });
 
-      const unsub = this.mesh.on('device', () => this._updateStatus());
-      this._resources.handlers.add(unsub);
+      // FIX: Verificar que el método on existe antes de usarlo (HybridMesh no tiene event emitter)
+      if (this.mesh && typeof this.mesh.on === 'function') {
+        const unsub = this.mesh.on('device', () => this._updateStatus());
+        this._resources.handlers.add(unsub);
+      }
       
       await withTimeoutNAP(this.mesh.initialize(), 15000, 'HybridMesh.initialize');
       DEBUG.success('Hybrid Mesh ready', 'MESH_002');
