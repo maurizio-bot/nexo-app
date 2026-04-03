@@ -10,11 +10,11 @@ import android.os.ParcelUuid
 import android.util.Log
 import com.getcapacitor.JSObject
 import com.nexo.ble.model.NexoGattService
-// Import MessageChunker - ajusta según la ubicación real:
-// import com.nexo.ble.chunking.MessageChunker 
+import com.nexo.ble.model.MessageChunker // ✅ Import explícito
 import org.json.JSONArray
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 class NexoBleClient(
     private val context: Context,
@@ -27,18 +27,22 @@ class NexoBleClient(
     private val messageChunker = MessageChunker()
     private val TAG = "NexoBle-Client"
     private val mainHandler = Handler(Looper.getMainLooper())
+    
+    // ✅ Control de escritura secuencial para BLE (no saturar GATT)
+    private val pendingWrites = ConcurrentHashMap<String, Queue<ByteArray>>()
+    private val writeInProgress = ConcurrentHashMap<String, Boolean>()
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             super.onScanResult(callbackType, result)
-            result?.let {
-                if (it.device.name != null) {
-                    val id = it.device.address
-                    val rssi = it.rssi
+            result?.let { scanResult ->
+                if (scanResult.device.name != null) {
+                    val id = scanResult.device.address
+                    val rssi = scanResult.rssi
                     
                     notifyEvent("onPeerDiscovered", JSObject().apply {
                         put("id", id)
-                        put("name", it.device.name)
+                        put("name", scanResult.device.name)
                         put("rssi", rssi)
                     })
                 }
@@ -70,6 +74,8 @@ class NexoBleClient(
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     connections.remove(deviceId)
+                    pendingWrites.remove(deviceId)
+                    writeInProgress.remove(deviceId)
                     notifyEvent("onConnectionStateChanged", JSObject().apply {
                         put("deviceId", deviceId)
                         put("state", "disconnected")
@@ -80,7 +86,7 @@ class NexoBleClient(
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             super.onServicesDiscovered(gatt, status)
-            Log.i(TAG, "Services discovered for $status")
+            Log.i(TAG, "Services discovered for $deviceId: status=$status")
         }
 
         override fun onCharacteristicChanged(
@@ -99,7 +105,6 @@ class NexoBleClient(
             characteristic: BluetoothGattCharacteristic
         ) {
             super.onCharacteristicChanged(gatt, characteristic)
-            // Fix null-safety para API antiguas
             val value = characteristic.value ?: return
             handleCharacteristicValue(
                 gatt.device.address, 
@@ -108,14 +113,36 @@ class NexoBleClient(
             )
         }
 
+        override fun onCharacteristicWrite(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            super.onCharacteristicWrite(gatt, characteristic, status)
+            val deviceId = gatt.device.address
+            
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                processNextWrite(deviceId)
+            } else {
+                Log.e(TAG, "Write failed for $deviceId: status $status")
+                writeInProgress[deviceId] = false
+            }
+        }
+
         private fun handleCharacteristicValue(deviceId: String, uuid: UUID, value: ByteArray) {
             when (uuid) {
                 NexoGattService.PAYLOAD_CHAR_UUID -> {
                     val completeMessage = messageChunker.processChunk(deviceId, value)
-                    completeMessage?.let {
+                    // ✅ FIX LÍNEA 118: Nombre explícito 'message' en vez de 'it' anidado
+                    completeMessage?.let { message ->
                         notifyEvent("onMessageReceived", JSObject().apply {
                             put("deviceId", deviceId)
-                            put("data", JSONArray(it.map { b -> b.toInt() }))
+                            // ✅ FIX: Mapeo explícito sin shadowing
+                            val jsonArray = JSONArray()
+                            message.forEach { byte -> 
+                                jsonArray.put(byte.toInt() and 0xFF) // unsigned
+                            }
+                            put("data", jsonArray)
                         })
                     }
                 }
@@ -123,7 +150,11 @@ class NexoBleClient(
                     notifyEvent("onCharacteristicChanged", JSObject().apply {
                         put("deviceId", deviceId)
                         put("characteristic", uuid.toString())
-                        put("data", JSONArray(value.map { b -> b.toInt() }))
+                        val jsonArray = JSONArray()
+                        value.forEach { byte ->
+                            jsonArray.put(byte.toInt() and 0xFF)
+                        }
+                        put("data", jsonArray)
                     })
                 }
             }
@@ -160,26 +191,61 @@ class NexoBleClient(
     fun disconnect(deviceId: String) {
         connections[deviceId]?.disconnect()
         connections.remove(deviceId)
+        pendingWrites.remove(deviceId)
+        writeInProgress.remove(deviceId)
     }
 
     fun sendMessage(deviceId: String, data: ByteArray) {
-        val gatt = connections[deviceId] ?: return
-        val service = gatt.getService(NexoGattService.SERVICE_UUID) ?: return
-        val characteristic = service.getCharacteristic(NexoGattService.PAYLOAD_CHAR_UUID) ?: return
+        val gatt = connections[deviceId] ?: run {
+            Log.e(TAG, "No connection for $deviceId")
+            return
+        }
+        val service = gatt.getService(NexoGattService.SERVICE_UUID) ?: run {
+            Log.e(TAG, "Service not found for $deviceId")
+            return
+        }
+        val characteristic = service.getCharacteristic(NexoGattService.PAYLOAD_CHAR_UUID) ?: run {
+            Log.e(TAG, "Characteristic not found for $deviceId")
+            return
+        }
 
         val chunks = messageChunker.createChunks(data)
         
-        chunks.forEachIndexed { index, chunk ->
-            // FIX: Usar setValue() en lugar de asignación directa (val inmutable)
-            characteristic.setValue(chunk)
-            
-            // Opcional: Agregar WRITE_TYPE para asegurar ACK
-            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            
-            val success = gatt.writeCharacteristic(characteristic)
-            if (!success) {
-                Log.e(TAG, "Failed to write chunk $index for device $deviceId")
-            }
+        // ✅ FIX CRÍTICO: Encolar chunks y procesar secuencialmente
+        val queue = pendingWrites.getOrPut(deviceId) { LinkedList() }
+        queue.addAll(chunks)
+        
+        // Iniciar escritura si no hay una en progreso
+        if (writeInProgress[deviceId] != true) {
+            processNextWrite(deviceId)
+        }
+    }
+
+    private fun processNextWrite(deviceId: String) {
+        val queue = pendingWrites[deviceId]
+        val gatt = connections[deviceId]
+        
+        if (queue == null || queue.isEmpty() || gatt == null) {
+            writeInProgress[deviceId] = false
+            return
+        }
+
+        val chunk = queue.poll() ?: return
+        val service = gatt.getService(NexoGattService.SERVICE_UUID) ?: return
+        val characteristic = service.getCharacteristic(NexoGattService.PAYLOAD_CHAR_UUID) ?: return
+
+        writeInProgress[deviceId] = true
+        
+        // ✅ FIX LÍNEA 174: Usar property .value en lugar de setValue() ambiguo
+        characteristic.value = chunk
+        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        
+        val success = gatt.writeCharacteristic(characteristic)
+        if (!success) {
+            Log.e(TAG, "Failed to initiate write for $deviceId")
+            writeInProgress[deviceId] = false
+            // Reintentar con delay
+            mainHandler.postDelayed({ processNextWrite(deviceId) }, 100)
         }
     }
 
