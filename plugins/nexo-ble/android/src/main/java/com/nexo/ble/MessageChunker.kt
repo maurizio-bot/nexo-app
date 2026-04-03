@@ -1,48 +1,75 @@
 package com.nexo.ble.model
 
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.concurrent.schedule
+import java.util.Timer
 
 class MessageChunker {
     private val chunkBuffers = ConcurrentHashMap<String, ChunkBuffer>()
-    private val MAX_CHUNK_SIZE = 512 // MTU típico BLE menos overhead
-    private val HEADER_SIZE = 5 // Flags(1) + Seq(2) + MsgId(2)
+    private val cleanupTimer = Timer("ChunkCleanup", true)
+    
+    companion object {
+        const val MAX_CHUNK_SIZE = 507 // MTU BLE 512 - 5 bytes header
+        const val HEADER_SIZE = 5
+        const val MAX_MESSAGE_SIZE = 256 * 1024 // 256KB límite Fénix
+        const val CHUNK_TIMEOUT_MS = 30000L // 30s TTL para reensamblado
+    }
 
     data class ChunkBuffer(
         val messageId: Int,
-        val totalChunks: Int,
-        val chunks: MutableMap<Int, ByteArray> = mutableMapOf()
+        var totalChunks: Int,
+        val chunks: ConcurrentHashMap<Int, ByteArray> = ConcurrentHashMap(), // ✅ Thread-safe
+        val timestamp: Long = System.currentTimeMillis()
     )
 
-    fun createChunks(data: ByteArray, maxChunkSize: Int = MAX_CHUNK_SIZE - HEADER_SIZE): List<ByteArray> {
+    init {
+        // ✅ Cleanup periódico de buffers huérfanos
+        cleanupTimer.schedule(30000L, 30000L) {
+            cleanupExpiredBuffers()
+        }
+    }
+
+    fun createChunks(data: ByteArray, maxChunkSize: Int = MAX_CHUNK_SIZE): List<ByteArray> {
+        // ✅ Validación límite Fénix
+        if (data.size > MAX_MESSAGE_SIZE) {
+            throw IllegalArgumentException("Mensaje excede 256KB límite Fénix: ${data.size}")
+        }
+
         if (data.size <= maxChunkSize) {
-            // Mensaje cabe en un solo chunk
             return listOf(createSingleChunk(data))
         }
 
-        // Fragmentar en múltiples chunks
         val chunks = mutableListOf<ByteArray>()
         val totalChunks = (data.size + maxChunkSize - 1) / maxChunkSize
+        
+        // ✅ Validación explícita
+        if (totalChunks > 65535) throw IllegalStateException("Demasiados chunks: $totalChunks")
+        
         val messageId = (System.currentTimeMillis() % 65536).toInt()
 
         var offset = 0
-        var chunkIndex = 0
+        var seqNum = 0
 
         while (offset < data.size) {
-            val chunkSize = minOf(maxChunkSize, data.size - offset)
-            val chunkData = data.copyOfRange(offset, offset + chunkSize)
+            val remaining = data.size - offset
+            val currentChunkSize = if (remaining < maxChunkSize) remaining else maxChunkSize
             
+            val chunkData = data.copyOfRange(offset, offset + currentChunkSize)
+            
+            val isLast = (seqNum == totalChunks - 1)
             val chunk = createChunkHeader(
                 isChunked = true,
-                isLast = (chunkIndex == totalChunks - 1),
-                seqNum = chunkIndex,
+                isLast = isLast,
+                seqNum = seqNum,
                 msgId = messageId,
                 totalChunks = totalChunks
             ) + chunkData
             
             chunks.add(chunk)
-            offset += chunkSize
-            chunkIndex++
+            offset += currentChunkSize
+            seqNum++
         }
 
         return chunks
@@ -51,47 +78,81 @@ class MessageChunker {
     fun processChunk(deviceId: String, chunk: ByteArray): ByteArray? {
         if (chunk.size < HEADER_SIZE) return null
 
-        val flags = chunk[0].toInt()
+        // ✅ ByteOrder explícito BIG_ENDIAN (estándar BLE)
+        val buffer = ByteBuffer.wrap(chunk).order(ByteOrder.BIG_ENDIAN)
+        val flags = buffer.get().toInt()
         val isChunked = (flags and 0x02) != 0
         val isLast = (flags and 0x04) != 0
-        val seqNum = ByteBuffer.wrap(chunk, 1, 2).short.toInt()
-        val msgId = ByteBuffer.wrap(chunk, 3, 2).short.toInt()
+        val seqNum = buffer.short.toInt() and 0xFFFF
+        val msgId = buffer.short.toInt() and 0xFFFF
 
         if (!isChunked) {
-            // Mensaje simple, no chunked
             return chunk.copyOfRange(HEADER_SIZE, chunk.size)
         }
 
         val key = "$deviceId-$msgId"
         val payload = chunk.copyOfRange(HEADER_SIZE, chunk.size)
 
-        val buffer = chunkBuffers.getOrPut(key) {
-            ChunkBuffer(msgId, if (isLast) seqNum + 1 else -1)
+        // ✅ Atomic operation - thread safe
+        val chunkBuffer = chunkBuffers.computeIfAbsent(key) { _ ->
+            ChunkBuffer(msgId, -1)
         }
 
-        buffer.chunks[seqNum] = payload
+        // Guardar chunk (ConcurrentHashMap es thread-safe)
+        chunkBuffer.chunks[seqNum] = payload
 
-        // Verificar si tenemos todos los chunks
+        // Actualizar total si es el último chunk
         if (isLast) {
-            buffer.totalChunks = seqNum + 1
+            chunkBuffer.totalChunks = seqNum + 1
         }
 
-        if (buffer.totalChunks > 0 && buffer.chunks.size == buffer.totalChunks) {
-            // Reensamblar mensaje completo
-            val completeMessage = ByteArray(buffer.chunks.values.sumOf { it.size })
+        // ✅ Validación de integridad antes de reensamblar
+        if (chunkBuffer.totalChunks > 0 && chunkBuffer.chunks.size == chunkBuffer.totalChunks) {
+            return reassembleMessage(key, chunkBuffer)
+        }
+
+        return null
+    }
+
+    private fun reassembleMessage(key: String, buffer: ChunkBuffer): ByteArray? {
+        return try {
+            val totalSize = buffer.chunks.values.sumOf { it.size }
+            
+            // ✅ Validación de seguridad
+            if (totalSize > MAX_MESSAGE_SIZE) {
+                chunkBuffers.remove(key)
+                return null
+            }
+
+            val completeMessage = ByteArray(totalSize)
             var offset = 0
             
             for (i in 0 until buffer.totalChunks) {
-                val chunkData = buffer.chunks[i] ?: return null
+                val chunkData = buffer.chunks[i] 
+                    ?: run {
+                        // Chunk faltante - inconsistencia
+                        chunkBuffers.remove(key)
+                        return null
+                    }
                 chunkData.copyInto(completeMessage, offset)
                 offset += chunkData.size
             }
 
             chunkBuffers.remove(key)
-            return completeMessage
+            completeMessage
+        } catch (e: Exception) {
+            chunkBuffers.remove(key)
+            null
         }
+    }
 
-        return null
+    private fun cleanupExpiredBuffers() {
+        val now = System.currentTimeMillis()
+        val expiredKeys = chunkBuffers.filter { (_, buffer) ->
+            (now - buffer.timestamp) > CHUNK_TIMEOUT_MS
+        }.keys
+        
+        expiredKeys.forEach { chunkBuffers.remove(it) }
     }
 
     private fun createSingleChunk(data: ByteArray): ByteArray {
@@ -114,8 +175,8 @@ class MessageChunker {
         val flags = buildFlags(isChunked, isLast)
         return byteArrayOf(
             flags.toByte(),
-            (seqNum shr 8).toByte(), seqNum.toByte(),
-            (msgId shr 8).toByte(), msgId.toByte()
+            (seqNum shr 8).toByte(), (seqNum and 0xFF).toByte(),
+            (msgId shr 8).toByte(), (msgId and 0xFF).toByte()
         )
     }
 
@@ -124,5 +185,10 @@ class MessageChunker {
         if (isChunked) flags = flags or 0x02
         if (isLast) flags = flags or 0x04
         return flags
+    }
+
+    fun dispose() {
+        cleanupTimer.cancel()
+        chunkBuffers.clear()
     }
 }
