@@ -1,6 +1,6 @@
 /**
- * NEXO v9.0 - Crypto Vault (v9.5-DEFENSIVE)
- * Fix: Obtiene REM dinámicamente + verificación estricta de métodos
+ * NEXO v9.0 - Crypto Vault (v9.6-FINAL)
+ * Fix: Salt lazy initialization + eliminación de bloqueo "Call init() first"
  */
 
 const PBKDF2_ITERATIONS = 600000;
@@ -36,68 +36,38 @@ export class CryptoVault {
     this._memoryStorage = new Map();
     this._initStartTime = 0;
     
-    // NO cachear REM aquí - obtener dinámicamente en _notifyREM
-    
     CryptoVault._instance = this;
   }
 
-  /**
-   * Obtiene REM de forma defensiva de múltiples fuentes posibles
-   */
   _getREM() {
     if (typeof window === 'undefined') return null;
-    
-    // Orden de prioridad: NEXO_REM > NEXO.rem > NEXO_DIAG > null
-    const candidates = [
-      window.NEXO_REM,
-      window.NEXO?.rem,
-      window.NEXO_DIAG
-    ];
-    
+    const candidates = [window.NEXO_REM, window.NEXO?.rem, window.NEXO_DIAG];
     for (const rem of candidates) {
-      if (rem && typeof rem === 'object' && (
-        typeof rem.info === 'function' || 
-        typeof rem.log === 'function'
-      )) {
+      if (rem && typeof rem === 'object' && (typeof rem.info === 'function' || typeof rem.log === 'function')) {
         return rem;
       }
     }
-    
     return null;
   }
 
-  /**
-   * Notificación defensiva que nunca rompe el vault
-   */
   _notifyREM(type, message, code = '') {
     try {
       const rem = this._getREM();
-      
       if (!rem) {
         console.log(`[Vault][${type}] ${message}`);
         return;
       }
-      
-      const method = type === 'error' ? 'error' : 
-                    type === 'warn' ? 'warn' : 
-                    type === 'success' ? 'success' : 'info';
-      
-      // Verificación estricta: el método debe ser función
+      const method = type === 'error' ? 'error' : type === 'warn' ? 'warn' : type === 'success' ? 'success' : 'info';
       if (typeof rem[method] === 'function') {
         rem[method](`[Vault] ${message}`, code);
-      } 
-      // Fallback a NEXO_DIAG (solo tiene log/error)
-      else if (method === 'error' && typeof rem.error === 'function') {
+      } else if (method === 'error' && typeof rem.error === 'function') {
         rem.error(`[Vault] ${message}`, code);
-      }
-      else if (typeof rem.log === 'function') {
+      } else if (typeof rem.log === 'function') {
         rem.log(`[${type.toUpperCase()}] [Vault] ${message}`, type);
-      }
-      else {
+      } else {
         console.log(`[Vault][${type}] ${message}`);
       }
     } catch (e) {
-      // Último recurso: nunca romper la operación del vault
       console.log(`[Vault][${type}] ${message}`);
     }
   }
@@ -315,24 +285,24 @@ export class CryptoVault {
     return this._useMemoryFallback;
   }
 
+  /**
+   * FIX DEFINITIVO: Si no hay salt, generarlo en lugar de fallar
+   */
   async initialize(password) {
     if (this._destroyed) {
       this._notifyREM('error', 'Vault destruido', NAP_CODES.VAULT_DESTROYED);
       throw new Error('Vault destroyed');
     }
     
-    if (!this.salt && !this._useMemoryFallback) {
-      this._notifyREM('error', 'Llamar init() primero', NAP_CODES.VAULT_LOCKED);
-      throw new Error('Call init() first');
+    // FIX: Si no hay salt, generarlo dinámicamente (no fallar)
+    if (!this.salt) {
+      this.salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
+      this._notifyREM('info', 'Salt generado en initialize()', 'VAULT_SALT_INIT');
     }
     
     if (!password || password.length < 12) {
       this._notifyREM('error', 'Password muy corto', 'VAULT_WEAK_PASSWORD');
       throw new Error('Password too short');
-    }
-    
-    if (!this.salt) {
-      this.salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
     }
     
     const encoder = new TextEncoder();
