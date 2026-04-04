@@ -1,7 +1,7 @@
 /**
  * NEXO App v3.3.0-NAP
  * Orquestador Principal - NAP 2.0 Certified
- * FIXES: Interface Contract NordicMesh, Vault Onboarding flow, HybridMesh event handler
+ * FIX: Secuencia Vault unlock → NordicMesh creation (prevent NORDIC_005)
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -103,8 +103,13 @@ export class NexoApp {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
       
-      if (this.config.enableMesh) await this._initPhase3_NordicMesh();
-      if (this.config.enableMesh) await this._initPhase4_HybridMesh();
+      // FIX: Verificar Vault desbloqueado antes de crear NordicMesh
+      if (this.config.enableMesh && this.vault && !this.vault.isLocked()) {
+        await this._initPhase3_NordicMesh();
+        await this._initPhase4_HybridMesh();
+      } else if (this.config.enableMesh) {
+        DEBUG.warn('Vault locked - skipping Mesh initialization', 'MESH_SKIP_LOCKED');
+      }
       
       await this._initPhase5_BLEUI();
       await this._initPhase6_Bridge();
@@ -127,7 +132,7 @@ export class NexoApp {
   }
 
   /**
-   * FIX: Flujo de onboarding - Setup técnico primero, luego desbloqueo con UI
+   * FIX DEFINITIVO: Flujo Vault con verificación explícita post-unlock
    */
   async _initPhase1_Crypto() {
     DEBUG.setPhase('CRYPTO');
@@ -139,29 +144,35 @@ export class NexoApp {
       // Paso 1: Setup técnico (crea identidad temporal, abre DB/indexedDB)
       await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
       
-      // Paso 2: Si está bloqueado (sin master key), mostrar UI de onboarding
-      // FIX: Verificar que el método exista antes de llamarlo
+      // Paso 2: Si está bloqueado, mostrar UI de onboarding
       if (typeof this.vault.isLocked === 'function' && this.vault.isLocked()) {
         DEBUG.log('Vault locked - waiting for user setup', 'info', 'CRYPTO_005');
         
-        // Esperar a que el usuario ingrese password en la UI
         const password = await this._waitForVaultSetup();
         
         DEBUG.log('Unlocking vault with user password...', 'info', 'CRYPTO_006');
         await this.vault.initialize(password);
+        
+        // FIX CRÍTICO: Verificar explícitamente que quedó desbloqueado
+        if (this.vault.isLocked()) {
+          throw new Error('[CRYPTO_007] Vault remained locked after initialize()');
+        }
+        DEBUG.success('Vault unlocked and provisioned', 'CRYPTO_UNLOCKED');
       }
       
-      const identity = this.vault.getIdentity?.();
-      if (identity) {
+      // Verificación final: getIdentityKey() debe funcionar ahora
+      try {
+        const identity = await this.vault.getIdentityKey();
         DEBUG.setIdentity(identity);
-        DEBUG.success('Vault initialized and unlocked', 'CRYPTO_002');
-      } else {
-        throw new Error('No identity after unlock');
+        DEBUG.success(`Vault ready [ID: ${identity.substring(0, 8)}...]`, 'CRYPTO_002');
+      } catch (e) {
+        throw new Error(`[CRYPTO_008] getIdentityKey() failed post-unlock: ${e.message}`);
       }
+      
     } catch (err) {
       DEBUG.error('CRYPTO_004', `Vault init failed: ${err.message}`);
       this.vault = null;
-      throw err; // Propagar para detener inicialización
+      throw err;
     }
   }
 
@@ -184,12 +195,32 @@ export class NexoApp {
     }
   }
 
+  /**
+   * FIX DEFINITIVO: NordicMesh solo se crea si Vault está garantizado desbloqueado
+   */
   async _initPhase3_NordicMesh() {
     DEBUG.setPhase('NORDIC_MESH');
     DEBUG.log('📡 [3/7] Initializing Nordic Mesh BLE...', 'info', 'NORDIC_001');
     
     try {
-      if (!this.vault) throw new Error('Vault required for Nordic Mesh');
+      if (!this.vault) throw new Error('[NORDIC_012] Vault required for Nordic Mesh');
+      
+      // FIX CRÍTICO: Verificación explícita antes de crear NordicMesh
+      if (this.vault.isLocked()) {
+        DEBUG.error('NORDIC_013', 'Vault is locked - cannot initialize NordicMesh');
+        throw new Error('[NORDIC_013] Vault locked - Mesh creation aborted');
+      }
+      
+      // Verificar que getIdentityKey está disponible y funciona
+      let identityKey;
+      try {
+        identityKey = await this.vault.getIdentityKey();
+      } catch (e) {
+        DEBUG.error('NORDIC_014', `Vault getIdentityKey() failed: ${e.message}`);
+        throw new Error('[NORDIC_014] Vault not provisioned for Mesh');
+      }
+      
+      DEBUG.log(`Creating NordicMesh with identity [${identityKey.substring(0, 8)}...]`, 'info', 'NORDIC_015');
       
       this.nordicMesh = new NordicMesh(this.vault, {
         rssiThreshold: -85,
@@ -250,7 +281,6 @@ export class NexoApp {
         onError: (code, msg) => DEBUG.error('MESH_006', msg)
       });
 
-      // FIX: Verificar que el método on existe antes de usarlo (HybridMesh no tiene event emitter)
       if (this.mesh && typeof this.mesh.on === 'function') {
         const unsub = this.mesh.on('device', () => this._updateStatus());
         this._resources.handlers.add(unsub);
@@ -340,29 +370,21 @@ export class NexoApp {
     }
   }
 
-  // ==================== NUEVOS MÉTODOS: VAULT ONBOARDING ====================
+  // ==================== VAULT ONBOARDING ====================
 
-  /**
-   * Muestra UI de onboarding y espera password del usuario
-   * Bloquea la inicialización hasta que el usuario complete el formulario
-   */
   _waitForVaultSetup() {
     return new Promise((resolve, reject) => {
-      // Timeout de 60 segundos para que el usuario ingrese datos
       const timeout = setTimeout(() => {
         reject(new Error('Vault setup timeout (60s) - Usuario no respondió'));
       }, 60000);
       
-      // Mostrar el modal HTML
       this._showVaultSetupModal();
       
-      // Escuchar evento del formulario HTML
       const handler = (e) => {
         clearTimeout(timeout);
         window.removeEventListener('nexo:vault:password', handler);
         this._hideVaultSetupModal();
         
-        // Validación extra de seguridad
         const password = e.detail?.password;
         if (!password || password.length < 12) {
           reject(new Error('Contraseña inválida desde UI (mínimo 12 caracteres)'));
@@ -376,36 +398,26 @@ export class NexoApp {
     });
   }
 
-  /**
-   * Muestra el modal de configuración de vault
-   */
   _showVaultSetupModal() {
     const modal = document.getElementById('vault-setup-modal');
     if (modal) {
       modal.style.display = 'flex';
-      document.body.style.overflow = 'hidden'; // Prevenir scroll
+      document.body.style.overflow = 'hidden';
       DEBUG.log('Vault setup modal displayed', 'info', 'UI_VAULT_SETUP');
     } else {
-      // Fallback si no existe el HTML
       DEBUG.warn('Vault setup HTML not found, using fallback prompt', 'UI_FALLBACK');
       this._createFallbackPasswordInput();
     }
   }
 
-  /**
-   * Oculta el modal de configuración
-   */
   _hideVaultSetupModal() {
     const modal = document.getElementById('vault-setup-modal');
     if (modal) {
       modal.style.display = 'none';
-      document.body.style.overflow = ''; // Restaurar scroll
+      document.body.style.overflow = '';
     }
   }
 
-  /**
-   * Fallback básico si el HTML no está disponible
-   */
   _createFallbackPasswordInput() {
     setTimeout(() => {
       const password = prompt(
@@ -427,7 +439,7 @@ export class NexoApp {
     }, 500);
   }
 
-  // ==================== HANDLERS Y UTILIDADES ====================
+  // ==================== HANDLERS ====================
 
   _handleNordicPeer(peer) {
     if (!peer?.id) {
