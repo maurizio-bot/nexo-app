@@ -1,12 +1,13 @@
 /**
  * NordicMesh - Protocolo BLE NEXO v1.0
- * v1.2-NAP - GATT Service Soberano P2P
+ * v1.3-NAP - FIX: Modo Pasivo/Autenticado (Build #457)
  * 
- * ESTADO: ✅ COMPATIBLE CON ARQUITECTURA CORREGIDA
- * No requiere modificaciones - ya implementa contrato correcto
+ * CAMBIOS:
+ * - Inicia en modo pasivo (sin Vault unlock)
+ * - Se autentica realmente tras Vault unlock
+ * - Operaciones sensibles protegidas
  */
 
-// FIX: UUIDs válidos (coinciden con NexoBlePlugin.kt v1.2)
 const UUIDS = Object.freeze({
   SERVICE: 'a3b5c8d2-e1f4-4a7b-9c3d-6e8f1a2b5c7d',
   ANNOUNCE: 'b4c6d9e3-f2a5-4b8c-ad4e-7f9a2b3c6d8e',
@@ -15,7 +16,6 @@ const UUIDS = Object.freeze({
   CONTROL: 'e7f9a0b6-c5d8-4e1f-da7b-0c2f5e6a9b1d'
 });
 
-// NAP 2.0 States
 const STATE = Object.freeze({
   NONE: 'none',
   INIT: 'init',
@@ -28,7 +28,6 @@ const STATE = Object.freeze({
   CLEANUP: 'cleanup'
 });
 
-// NAP 2.0 Error Codes
 const ERRORS = Object.freeze({
   NORDIC_001: 'PLUGIN_DETECTION_FAILED',
   NORDIC_002: 'VAULT_NOT_PROVIDED',
@@ -42,22 +41,21 @@ const ERRORS = Object.freeze({
   NORDIC_010: 'MESSAGE_TOO_LARGE',
   NORDIC_011: 'PLUGIN_NOT_INITIALIZED',
   NORDIC_012: 'VAULT_LOCKED_AT_CONSTRUCTION',
-  NORDIC_013: 'IDENTITY_UNAVAILABLE'
+  NORDIC_013: 'IDENTITY_UNAVAILABLE',
+  NORDIC_014: 'VAULT_NOT_AUTHENTICATED' // NUEVO
 });
 
-// Interface Contracts
 const CONTRACTS = {
   DEVICE_ID: (id) => typeof id === 'string' && /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(id),
   USER_ID: (id) => typeof id === 'string' && /^[a-f0-9]{32,64}$/i.test(id),
-  VAULT: (v) => v && typeof v.getIdentityKey === 'function',
+  VAULT: (v) => v && typeof v.getIdentityKey === 'function' && typeof v.getIdentity === 'function',
   CALLBACK: (cb) => typeof cb === 'function'
 };
 
 class NordicMesh {
   constructor(vault, options = {}) {
-    // ✅ VALIDACIÓN DE CONTRATO (línea 48)
     if (!CONTRACTS.VAULT(vault)) {
-      throw new Error(`[NAP ${ERRORS.NORDIC_002}] Vault must provide getIdentityKey()`);
+      throw new Error(`[NAP ${ERRORS.NORDIC_002}] Vault must provide getIdentityKey() and getIdentity()`);
     }
 
     this.vault = vault;
@@ -79,7 +77,9 @@ class NordicMesh {
     this.isNative = false;
     this.NexoBLE = null;
     
-    // Bindings
+    // NUEVO: Flag de autenticación
+    this._authenticated = false;
+    
     this._onPeerDiscovered = this._onPeerDiscovered.bind(this);
     this._onConnectionChanged = this._onConnectionChanged.bind(this);
     this._onMessageReceived = this._onMessageReceived.bind(this);
@@ -87,7 +87,6 @@ class NordicMesh {
 
   async _detectPlugin() {
     try {
-      // Intento 1: Capacitor global (runtime nativo)
       if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.NexoBLE) {
         this.NexoBLE = window.Capacitor.Plugins.NexoBLE;
         this.isNative = true;
@@ -95,7 +94,6 @@ class NordicMesh {
         return true;
       }
       
-      // Intento 2: Import dinámico (para builds modernos)
       try {
         const module = await import('../../plugins/nexo-ble/src/index.js');
         if (module.NexoBLE) {
@@ -104,11 +102,8 @@ class NordicMesh {
           console.log('[NordicMesh] ⚠️  Web stub via import');
           return false;
         }
-      } catch (e) {
-        // Falla esperada en nativo
-      }
+      } catch (e) {}
       
-      // Fallback: Stub inline
       this.NexoBLE = {
         initialize: async () => ({ userId: 'web-stub' }),
         startAdvertising: async () => {},
@@ -119,7 +114,8 @@ class NordicMesh {
         disconnect: async () => {},
         getConnectedDevices: async () => ({ devices: [] }),
         sendMessage: async () => { throw new Error('BLE not available in web'); },
-        addListener: () => ({ remove: () => {} })
+        addListener: () => ({ remove: () => {} }),
+        updateIdentity: async () => {} // NUEVO: Para actualización post-unlock
       };
       
       this.isNative = false;
@@ -139,39 +135,51 @@ class NordicMesh {
   }
 
   /**
-   * ✅ ARQUITECTURA CORRECTA: getIdentityKey() llamado en init(), no en constructor
+   * FIX #457: Inicia en modo pasivo (sin requerir Vault unlock)
    */
   async _doInit() {
     try {
       this._setState(STATE.INIT);
-      
-      // Detectar plugin
       await this._detectPlugin();
       
-      // Timeout safety
       const timeout = setTimeout(() => {
         if (this.state === STATE.INIT) {
           this._setState(STATE.ERROR, { code: ERRORS.NORDIC_003 });
         }
       }, 10000);
       
-      // ✅ LLAMADA ASYNC A VAULT (línea 138)
-      // CryptoVault.getIdentityKey() valida: !destroyed, !locked, identity existe
-      const identityKey = await this.vault.getIdentityKey();
-      this.userId = identityKey;
+      // FIX: Usar getIdentity() (no requiere unlock) para modo pasivo inicial
+      let provisionalId = this.vault.getIdentity ? this.vault.getIdentity() : null;
       
-      // Inicializar plugin nativo
-      await this.NexoBLE.initialize({ userId: identityKey });
-      clearTimeout(timeout);
+      if (!provisionalId) {
+        // Fallback a ID temporal si no hay identidad en Vault
+        provisionalId = 'nexo_temp_' + Math.random().toString(36).substring(2, 10);
+        console.warn('[NordicMesh] Usando ID temporal hasta Vault unlock:', provisionalId);
+      }
       
-      // Setup listeners
+      this.userId = provisionalId;
+      this._authenticated = false; // Inicia no autenticado
+      
+      // Inicializar plugin con ID provisional (escaneo pasivo funciona)
+      await this.NexoBLE.initialize({ userId: this.userId });
       await this._setupListeners();
       
+      clearTimeout(timeout);
       this._setState(STATE.OFFLINE);
-      return { success: true, isNative: this.isNative, userId: this.userId };
+      
+      // Si Vault ya está desbloqueado (caso edge), autenticar inmediato
+      if (!this.vault.isLocked()) {
+        await this._activateAuthenticatedMode();
+      }
+      
+      return { 
+        success: true, 
+        isNative: this.isNative, 
+        userId: this.userId, 
+        authenticated: this._authenticated 
+      };
       
     } catch (error) {
-      // ✅ PROPAGACIÓN DE ERRORES CRYPTO: [CRYPTO_001], [CRYPTO_002], [CRYPTO_003]
       const errorCode = error.message?.includes('CRYPTO_') ? 
         ERRORS.NORDIC_013 : (error.code || ERRORS.NORDIC_001);
       
@@ -181,6 +189,48 @@ class NordicMesh {
         source: 'vault'
       });
       return { success: false, error };
+    }
+  }
+
+  /**
+   * NUEVO: Activar modo autenticado (llamar tras [CRYPTO_002])
+   */
+  async activateWithVault() {
+    if (this._authenticated) {
+      return { success: true, alreadyActive: true };
+    }
+    
+    try {
+      console.log('[NordicMesh] Activando con Vault...');
+      
+      // Ahora sí obtenemos identidad criptográfica real (requiere unlock)
+      const realIdentity = await this.vault.getIdentityKey();
+      
+      // Actualizar en plugin nativo si soporta updateIdentity
+      if (this.NexoBLE.updateIdentity) {
+        await this.NexoBLE.updateIdentity({ userId: realIdentity });
+      }
+      
+      this.userId = realIdentity;
+      this._authenticated = true;
+      
+      console.log('[NordicMesh] ✅ Autenticado:', realIdentity.substring(0, 8) + '...');
+      this._emit('authenticated', { userId: realIdentity });
+      
+      return { success: true };
+      
+    } catch (error) {
+      console.error('[NordicMesh] ❌ Fallo autenticación:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * NUEVO: Verificación interna de autenticación
+   */
+  _checkAuth() {
+    if (!this._authenticated) {
+      throw new Error(`[NAP ${ERRORS.NORDIC_014}] Vault not authenticated - call activateWithVault() first`);
     }
   }
 
@@ -201,9 +251,10 @@ class NordicMesh {
     }
   }
 
-  // === API PÚBLICA NAP 2.0 ===
+  // === API PÚBLICA ===
 
   async startDiscovery() {
+    // FIX: Permitir descubrimiento pasivo sin autenticación
     if (![STATE.OFFLINE, STATE.CONNECTED].includes(this.state)) {
       this._emit('error', { code: 'INVALID_STATE', currentState: this.state });
       return false;
@@ -215,7 +266,6 @@ class NordicMesh {
       await this.NexoBLE.startAdvertising();
       await this.NexoBLE.startScan();
       
-      // Auto-timeout
       const timer = setTimeout(() => {
         if (this.state === STATE.DISCOVERING) {
           this.stopDiscovery();
@@ -245,6 +295,9 @@ class NordicMesh {
   }
 
   async connect(deviceId) {
+    // FIX: Requiere autenticación para conectar (operación sensible)
+    this._checkAuth();
+    
     if (!CONTRACTS.DEVICE_ID(deviceId)) {
       const err = { code: ERRORS.NORDIC_004, message: 'Invalid MAC format' };
       this._emit('error', err);
@@ -256,7 +309,6 @@ class NordicMesh {
     try {
       await this.NexoBLE.connect({ deviceId });
       
-      // Timeout handshake
       const timer = setTimeout(() => {
         if (!this.sessions.has(deviceId)) {
           this.disconnect(deviceId);
@@ -295,6 +347,9 @@ class NordicMesh {
   }
 
   async sendMessage(deviceId, plaintext) {
+    // FIX: Requiere autenticación para enviar mensajes
+    this._checkAuth();
+    
     if (!CONTRACTS.DEVICE_ID(deviceId)) {
       throw new Error(`[NAP ${ERRORS.NORDIC_004}]`);
     }
@@ -345,7 +400,8 @@ class NordicMesh {
       name: peer.name || 'NEXO-Peer',
       rssi: peer.rssi,
       userId: peer.userId,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      authenticated: this._authenticated // Indicar si estamos autenticados
     });
     
     this.peers.set(peerInfo.id, peerInfo);
@@ -406,7 +462,15 @@ class NordicMesh {
   }
 
   getState() {
-    return this.state;
+    return {
+      state: this.state,
+      authenticated: this._authenticated,
+      userId: this.userId
+    };
+  }
+
+  isAuthenticated() {
+    return this._authenticated;
   }
 
   destroy() {
@@ -419,6 +483,7 @@ class NordicMesh {
     this.sessions.clear();
     this.listeners.clear();
     this.initPromise = null;
+    this._authenticated = false;
     this._setState(STATE.NONE);
   }
 }
