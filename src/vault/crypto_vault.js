@@ -281,6 +281,27 @@ export class CryptoVault {
     return this.identity?.id || null;
   }
 
+  /**
+   * Método formal para NordicMesh - requiere vault desbloqueado
+   * @throws {Error} Si vault está locked o destruido  
+   * @returns {Promise<string>} Identity key (hex)
+   */
+  async getIdentityKey() {
+    if (this._destroyed) {
+      this._notifyREM('error', 'getIdentityKey() llamado en vault destruido', 'CRYPTO_001');
+      throw new Error('[CRYPTO_001] Vault destroyed');
+    }
+    if (this._isLocked || !this.masterKey) {
+      this._notifyREM('error', 'getIdentityKey() llamado estando locked', 'CRYPTO_002');
+      throw new Error('[CRYPTO_002] Vault locked - unlock first');
+    }
+    if (!this.identity?.id) {
+      this._notifyREM('error', 'getIdentityKey() sin identidad provisionada', 'CRYPTO_003');
+      throw new Error('[CRYPTO_003] No identity provisioned');
+    }
+    return this.identity.id;
+  }
+
   isMemoryFallback() {
     return this._useMemoryFallback;
   }
