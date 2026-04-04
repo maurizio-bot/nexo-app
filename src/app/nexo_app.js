@@ -1,7 +1,7 @@
 /**
  * NEXO App v3.3.0-NAP
  * Orquestador Principal - NAP 2.0 Certified
- * FIX: Secuencia Vault unlock → NordicMesh creation (prevent NORDIC_005)
+ * FIX: Build #457 - NordicMesh modo pasivo/autenticado
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -15,7 +15,6 @@ import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
 import { initBLEInterface } from '../ui/ble_interface.js';
 
-// NAP 2.0 Helper: Timeout con cleanup
 function withTimeoutNAP(promise, ms, context) {
   let timer;
   const timeoutPromise = new Promise((_, reject) => {
@@ -29,7 +28,6 @@ function withTimeoutNAP(promise, ms, context) {
   });
 }
 
-// DEBUG System NAP 2.0
 const DEBUG = {
   rem: rem,
   _logBuffer: [],
@@ -100,15 +98,38 @@ export class NexoApp {
     DEBUG.setPhase('INIT');
 
     try {
+      // Paso 1: Crypto (Vault setup + unlock)
       await this._initPhase1_Crypto();
+      
+      // Paso 2: WebSocket
       await this._initPhase2_WebSocket();
       
-      // FIX: Verificar Vault desbloqueado antes de crear NordicMesh
-      if (this.config.enableMesh && this.vault && !this.vault.isLocked()) {
+      // FIX #457: Siempre inicializar Nordic (modo pasivo si vault locked, activo si unlocked)
+      if (this.config.enableMesh && this.vault) {
         await this._initPhase3_NordicMesh();
-        await this._initPhase4_HybridMesh();
-      } else if (this.config.enableMesh) {
-        DEBUG.warn('Vault locked - skipping Mesh initialization', 'MESH_SKIP_LOCKED');
+        
+        // FIX #457: Si vault quedó desbloqueado, activar NordicMesh real
+        if (this.nordicMesh && !this.vault.isLocked()) {
+          try {
+            DEBUG.log('Activating NordicMesh with Vault identity...', 'info', 'NORDIC_AUTH');
+            await this.nordicMesh.activateWithVault();
+            DEBUG.success('NordicMesh authenticated', 'NORDIC_AUTH_OK');
+            
+            // Iniciar discovery ahora que está autenticado
+            if (!this.wsClient?.isConnected?.()) {
+              await this.nordicMesh.startDiscovery().catch(e => {
+                DEBUG.warn(`Discovery start failed: ${e.message}`, 'NORDIC_DISC_WARN');
+              });
+            }
+          } catch (e) {
+            DEBUG.error('NORDIC_AUTH_FAIL', `Failed to activate: ${e.message}`);
+          }
+        }
+        
+        // HybridMesh solo si vault desbloqueado
+        if (!this.vault.isLocked()) {
+          await this._initPhase4_HybridMesh();
+        }
       }
       
       await this._initPhase5_BLEUI();
@@ -132,7 +153,7 @@ export class NexoApp {
   }
 
   /**
-   * FIX DEFINITIVO: Flujo Vault con verificación explícita post-unlock
+   * Paso 1: Crypto Vault
    */
   async _initPhase1_Crypto() {
     DEBUG.setPhase('CRYPTO');
@@ -140,11 +161,8 @@ export class NexoApp {
     
     try {
       this.vault = new CryptoVault();
-      
-      // Paso 1: Setup técnico (crea identidad temporal, abre DB/indexedDB)
       await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
       
-      // Paso 2: Si está bloqueado, mostrar UI de onboarding
       if (typeof this.vault.isLocked === 'function' && this.vault.isLocked()) {
         DEBUG.log('Vault locked - waiting for user setup', 'info', 'CRYPTO_005');
         
@@ -153,14 +171,12 @@ export class NexoApp {
         DEBUG.log('Unlocking vault with user password...', 'info', 'CRYPTO_006');
         await this.vault.initialize(password);
         
-        // FIX CRÍTICO: Verificar explícitamente que quedó desbloqueado
         if (this.vault.isLocked()) {
           throw new Error('[CRYPTO_007] Vault remained locked after initialize()');
         }
         DEBUG.success('Vault unlocked and provisioned', 'CRYPTO_UNLOCKED');
       }
       
-      // Verificación final: getIdentityKey() debe funcionar ahora
       try {
         const identity = await this.vault.getIdentityKey();
         DEBUG.setIdentity(identity);
@@ -196,7 +212,7 @@ export class NexoApp {
   }
 
   /**
-   * FIX DEFINITIVO: NordicMesh solo se crea si Vault está garantizado desbloqueado
+   * Paso 3: NordicMesh - SIEMPRE inicia (modo pasivo si locked)
    */
   async _initPhase3_NordicMesh() {
     DEBUG.setPhase('NORDIC_MESH');
@@ -205,22 +221,15 @@ export class NexoApp {
     try {
       if (!this.vault) throw new Error('[NORDIC_012] Vault required for Nordic Mesh');
       
-      // FIX CRÍTICO: Verificación explícita antes de crear NordicMesh
-      if (this.vault.isLocked()) {
-        DEBUG.error('NORDIC_013', 'Vault is locked - cannot initialize NordicMesh');
-        throw new Error('[NORDIC_013] Vault locked - Mesh creation aborted');
-      }
-      
-      // Verificar que getIdentityKey está disponible y funciona
-      let identityKey;
+      // FIX #457: Usar getIdentity() (no requiere unlock) para modo pasivo inicial
+      let provisionalId = 'temp';
       try {
-        identityKey = await this.vault.getIdentityKey();
+        provisionalId = this.vault.getIdentity ? this.vault.getIdentity() : 'temp';
       } catch (e) {
-        DEBUG.error('NORDIC_014', `Vault getIdentityKey() failed: ${e.message}`);
-        throw new Error('[NORDIC_014] Vault not provisioned for Mesh');
+        provisionalId = 'nexo_temp_' + Math.random().toString(36).substring(2, 10);
       }
       
-      DEBUG.log(`Creating NordicMesh with identity [${identityKey.substring(0, 8)}...]`, 'info', 'NORDIC_015');
+      DEBUG.log(`Creating NordicMesh [Provisional: ${provisionalId.substring(0, 8)}...]`, 'info', 'NORDIC_015');
       
       this.nordicMesh = new NordicMesh(this.vault, {
         rssiThreshold: -85,
@@ -246,13 +255,8 @@ export class NexoApp {
         throw new Error(result?.error?.message || 'Nordic init returned false');
       }
       
-      DEBUG.success(`Nordic Mesh active [Native:${result.isNative}]`, 'NORDIC_002');
-      
-      if (!this.wsClient?.isConnected?.()) {
-        await this.nordicMesh.startDiscovery().catch(e => {
-          DEBUG.warn(`Discovery delayed: ${e.message}`, 'NORDIC_003');
-        });
-      }
+      const authStatus = result.authenticated ? 'autenticado' : 'pasivo (esperando Vault)';
+      DEBUG.success(`Nordic Mesh active [${authStatus}]`, 'NORDIC_002');
       
     } catch (err) {
       DEBUG.error('NORDIC_005', `Nordic init failed: ${err.message}`);
@@ -304,7 +308,8 @@ export class NexoApp {
       this.bleInterface = initBLEInterface(meshInstance);
       
       if (this.bleInterface) {
-        DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (dummy)'), 'UI_002');
+        const status = this.nordicMesh?.isAuthenticated?.() ? '' : ' (modo pasivo)';
+        DEBUG.success(`BLE UI ready${status}`, 'UI_002');
       }
     } catch (err) {
       DEBUG.error('UI_004', `BLE UI init failed: ${err.message}`);
@@ -369,8 +374,6 @@ export class NexoApp {
       }
     }
   }
-
-  // ==================== VAULT ONBOARDING ====================
 
   _waitForVaultSetup() {
     return new Promise((resolve, reject) => {
@@ -438,8 +441,6 @@ export class NexoApp {
       }
     }, 500);
   }
-
-  // ==================== HANDLERS ====================
 
   _handleNordicPeer(peer) {
     if (!peer?.id) {
@@ -564,11 +565,12 @@ export class NexoApp {
   _logFinalStatus() {
     const hybridStatus = this.mesh?.getStatus?.();
     const nordicPeers = this.nordicMesh?.getPeers?.() || [];
+    const nordicAuth = this.nordicMesh?.isAuthenticated?.() ? 'AUTH' : 'PASSIVE';
     
     DEBUG.log(
       `Status: Mode=${hybridStatus?.mode || 'N/A'} ` +
       `HybridPeers=${hybridStatus?.peerCount || 0} ` +
-      `NordicPeers=${nordicPeers.length} ` +
+      `NordicPeers=${nordicPeers.length}[${nordicAuth}] ` +
       `WS=${this.wsClient?.isConnected ? 'ON' : 'OFF'}`,
       'info',
       'STATUS'
@@ -617,6 +619,7 @@ export class NexoApp {
       mode: this.mesh?.getStatus?.().mode || (this.nordicMesh?.getState?.() === 'messaging' ? 'p2p_ble' : 'offline'),
       peers: this.mesh?.getPeerCount?.() || 0,
       nordicPeers: this.nordicMesh?.getPeers?.().length || 0,
+      nordicAuthenticated: this.nordicMesh?.isAuthenticated?.() || false,
       hasBLEInterface: !!this.bleInterface,
       hasNordic: !!this.nordicMesh,
       hasHybrid: !!this.mesh,
