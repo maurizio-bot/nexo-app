@@ -1,5 +1,13 @@
 package com.nexo.ble
 
+package com.nexo.ble
+
+import com.getcapacitor.JSObject  // Esto falta - objeto JSON de Capacitor
+import org.json.JSONArray         // Esto falta - array JSON estándar
+import org.json.JSONObject        // Alternativa nativa Android
+import android.bluetooth.*        // Asegurar que BLE imports estén presentes
+import android.content.Context
+// ... otros imports existentes
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
