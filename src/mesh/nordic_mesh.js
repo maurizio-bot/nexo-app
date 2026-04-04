@@ -2,20 +2,17 @@
  * NordicMesh - Protocolo BLE NEXO v1.0
  * v1.2-NAP - GATT Service Soberano P2P
  * 
- * FIXES:
- * - UUIDs hexadecimales válidos (coinciden con plugin nativo)
- * - Detección robusta plugin nativo vs stub
- * - Agregado getConnectedDevices()
- * - Mejor manejo de errores NAP
+ * ESTADO: ✅ COMPATIBLE CON ARQUITECTURA CORREGIDA
+ * No requiere modificaciones - ya implementa contrato correcto
  */
 
 // FIX: UUIDs válidos (coinciden con NexoBlePlugin.kt v1.2)
 const UUIDS = Object.freeze({
   SERVICE: 'a3b5c8d2-e1f4-4a7b-9c3d-6e8f1a2b5c7d',
-  ANNOUNCE: 'b4c6d9e3-f2a5-4b8c-ad4e-7f9a2b3c6d8e',     // FIX: g→a
-  HANDSHAKE: 'c5d7eaf4-a3b6-4c9d-be5f-8a0c3d4e7f9a',   // FIX: g→a, h→c
-  PAYLOAD: 'd6e8f0a5-b4c7-4d0e-cf6a-9b1e4f5a8b0c',     // FIX: g→0, h→e, i→e
-  CONTROL: 'e7f9a0b6-c5d8-4e1f-da7b-0c2f5e6a9b1d'      // FIX: g→0, h→b
+  ANNOUNCE: 'b4c6d9e3-f2a5-4b8c-ad4e-7f9a2b3c6d8e',
+  HANDSHAKE: 'c5d7eaf4-a3b6-4c9d-be5f-8a0c3d4e7f9a',
+  PAYLOAD: 'd6e8f0a5-b4c7-4d0e-cf6a-9b1e4f5a8b0c',
+  CONTROL: 'e7f9a0b6-c5d8-4e1f-da7b-0c2f5e6a9b1d'
 });
 
 // NAP 2.0 States
@@ -43,7 +40,9 @@ const ERRORS = Object.freeze({
   NORDIC_008: 'BLE_PERMISSION_DENIED',
   NORDIC_009: 'ADAPTER_NOT_AVAILABLE',
   NORDIC_010: 'MESSAGE_TOO_LARGE',
-  NORDIC_011: 'PLUGIN_NOT_INITIALIZED'
+  NORDIC_011: 'PLUGIN_NOT_INITIALIZED',
+  NORDIC_012: 'VAULT_LOCKED_AT_CONSTRUCTION',
+  NORDIC_013: 'IDENTITY_UNAVAILABLE'
 });
 
 // Interface Contracts
@@ -56,8 +55,9 @@ const CONTRACTS = {
 
 class NordicMesh {
   constructor(vault, options = {}) {
+    // ✅ VALIDACIÓN DE CONTRATO (línea 48)
     if (!CONTRACTS.VAULT(vault)) {
-      throw new Error(`NAP ${ERRORS.NORDIC_002}: Vault must provide getIdentityKey()`);
+      throw new Error(`[NAP ${ERRORS.NORDIC_002}] Vault must provide getIdentityKey()`);
     }
 
     this.vault = vault;
@@ -85,9 +85,6 @@ class NordicMesh {
     this._onMessageReceived = this._onMessageReceived.bind(this);
   }
 
-  /**
-   * FIX: Detección robusta del plugin nativo
-   */
   async _detectPlugin() {
     try {
       // Intento 1: Capacitor global (runtime nativo)
@@ -103,7 +100,7 @@ class NordicMesh {
         const module = await import('../../plugins/nexo-ble/src/index.js');
         if (module.NexoBLE) {
           this.NexoBLE = module.NexoBLE;
-          this.isNative = false; // Stub web
+          this.isNative = false;
           console.log('[NordicMesh] ⚠️  Web stub via import');
           return false;
         }
@@ -141,6 +138,9 @@ class NordicMesh {
     return this.initPromise;
   }
 
+  /**
+   * ✅ ARQUITECTURA CORRECTA: getIdentityKey() llamado en init(), no en constructor
+   */
   async _doInit() {
     try {
       this._setState(STATE.INIT);
@@ -155,11 +155,12 @@ class NordicMesh {
         }
       }, 10000);
       
-      // Obtener identidad
+      // ✅ LLAMADA ASYNC A VAULT (línea 138)
+      // CryptoVault.getIdentityKey() valida: !destroyed, !locked, identity existe
       const identityKey = await this.vault.getIdentityKey();
       this.userId = identityKey;
       
-      // Inicializar plugin
+      // Inicializar plugin nativo
       await this.NexoBLE.initialize({ userId: identityKey });
       clearTimeout(timeout);
       
@@ -170,9 +171,14 @@ class NordicMesh {
       return { success: true, isNative: this.isNative, userId: this.userId };
       
     } catch (error) {
+      // ✅ PROPAGACIÓN DE ERRORES CRYPTO: [CRYPTO_001], [CRYPTO_002], [CRYPTO_003]
+      const errorCode = error.message?.includes('CRYPTO_') ? 
+        ERRORS.NORDIC_013 : (error.code || ERRORS.NORDIC_001);
+      
       this._setState(STATE.ERROR, { 
-        code: error.code || ERRORS.NORDIC_001, 
-        error 
+        code: errorCode, 
+        error: error.message,
+        source: 'vault'
       });
       return { success: false, error };
     }
@@ -242,7 +248,7 @@ class NordicMesh {
     if (!CONTRACTS.DEVICE_ID(deviceId)) {
       const err = { code: ERRORS.NORDIC_004, message: 'Invalid MAC format' };
       this._emit('error', err);
-      throw new Error(`NAP ${err.code}`);
+      throw new Error(`[NAP ${err.code}]`);
     }
     
     this._setState(STATE.HANDSHAKING);
@@ -278,10 +284,6 @@ class NordicMesh {
     }
   }
 
-  /**
-   * FIX #3: Método faltante getConnectedDevices()
-   * Expone la funcionalidad del plugin nativo
-   */
   async getConnectedDevices() {
     try {
       const result = await this.NexoBLE.getConnectedDevices();
@@ -294,11 +296,11 @@ class NordicMesh {
 
   async sendMessage(deviceId, plaintext) {
     if (!CONTRACTS.DEVICE_ID(deviceId)) {
-      throw new Error(`NAP ${ERRORS.NORDIC_004}`);
+      throw new Error(`[NAP ${ERRORS.NORDIC_004}]`);
     }
     
     if (!this.sessions.has(deviceId)) {
-      throw new Error(`NAP ${ERRORS.NORDIC_005}`);
+      throw new Error(`[NAP ${ERRORS.NORDIC_005}]`);
     }
     
     this._setState(STATE.MESSAGING);
@@ -316,7 +318,7 @@ class NordicMesh {
       const bytes = new TextEncoder().encode(JSON.stringify(envelope));
       
       if (bytes.length > 65535) {
-        throw new Error(`NAP ${ERRORS.NORDIC_010}`);
+        throw new Error(`[NAP ${ERRORS.NORDIC_010}]`);
       }
       
       await this.NexoBLE.sendMessage({
