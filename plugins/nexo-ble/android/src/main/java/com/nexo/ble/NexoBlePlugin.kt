@@ -93,11 +93,10 @@ class NexoBlePlugin : Plugin() {
         
         try {
             setupGattServer()
-            val result = JSObject().apply {
-                put("userId", userId)
-                put("status", "initialized")
-                put("version", "1.2-NAP")
-            }
+            val result = JSObject()
+            result.put("userId", userId)
+            result.put("status", "initialized")
+            result.put("version", "1.2-NAP")
             call.resolve(result)
             Log.d(TAG, "Initialized with userId: $userId")
         } catch (e: Exception) {
@@ -147,9 +146,8 @@ class NexoBlePlugin : Plugin() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                 isAdvertising = true
                 Log.d(TAG, "Advertising started")
-                val result = JSObject().apply {
-                    put("active", true)
-                }
+                val result = JSObject()
+                result.put("active", true)
                 call.resolve(result)
             }
 
@@ -217,9 +215,9 @@ class NexoBlePlugin : Plugin() {
 
             override fun onScanFailed(errorCode: Int) {
                 Log.e(TAG, "Scan failed: $errorCode")
-                notifyListeners("onScanFailed", JSObject().apply {
-                    put("error", errorCode)
-                })
+                val eventData = JSObject()
+                eventData.put("error", errorCode)
+                notifyListeners("onScanFailed", eventData)
             }
         }
 
@@ -245,14 +243,13 @@ class NexoBlePlugin : Plugin() {
             null
         }
 
-        val data = JSObject().apply {
-            put("id", device.address)
-            put("address", device.address)
-            put("rssi", rssi)
-            put("name", device.name ?: "NEXO-${device.address.takeLast(4)}")
-            put("userId", userIdFromData ?: JSONObject.NULL)
-            put("timestamp", System.currentTimeMillis())
-        }
+        val data = JSObject()
+        data.put("id", device.address)
+        data.put("address", device.address)
+        data.put("rssi", rssi)
+        data.put("name", device.name ?: "NEXO-${device.address.takeLast(4)}")
+        data.put("userId", userIdFromData ?: JSONObject.NULL)
+        data.put("timestamp", System.currentTimeMillis())
         
         Log.d(TAG, "Peer discovered: ${device.address} ($rssi dBm)")
         notifyListeners("onPeerDiscovered", data)
@@ -324,12 +321,16 @@ class NexoBlePlugin : Plugin() {
                     }
                     
                     val servicesArray = JSONArray()
-                    gatt?.services?.forEach { servicesArray.put(it.uuid.toString()) }
+                    if (gatt != null) {
+                        for (service in gatt.services) {
+                            servicesArray.put(service.uuid.toString())
+                        }
+                    }
                     
-                    notifyListeners("onServicesDiscovered", JSObject().apply {
-                        put("deviceId", deviceId)
-                        put("services", servicesArray)
-                    })
+                    val eventData = JSObject()
+                    eventData.put("deviceId", deviceId)
+                    eventData.put("services", servicesArray)
+                    notifyListeners("onServicesDiscovered", eventData)
                 }
             }
 
@@ -360,25 +361,24 @@ class NexoBlePlugin : Plugin() {
         }
         
         gattClients[deviceId] = gatt
-        val result = JSObject().apply {
-            put("deviceId", deviceId)
-        }
+        val result = JSObject()
+        result.put("deviceId", deviceId)
         call.resolve(result)
     }
 
     @PluginMethod
     fun getConnectedDevices(call: PluginCall) {
         val list = JSONArray()
-        connectedDevices.keys().forEach { addr ->
+        for (addr in connectedDevices.keys) {
             val deviceObj = JSObject()
             deviceObj.put("id", addr)
             deviceObj.put("address", addr)
             deviceObj.put("connected", true)
             list.put(deviceObj)
         }
-        call.resolve(JSObject().apply {
-            put("devices", list)
-        })
+        val result = JSObject()
+        result.put("devices", list)
+        call.resolve(result)
     }
 
     @PluginMethod
@@ -444,11 +444,10 @@ class NexoBlePlugin : Plugin() {
 
         try {
             sendChunkedMessage(deviceId, bytes)
-            val result = JSObject().apply {
-                put("success", true)
-                put("bytesSent", bytes.size)
-                put("chunks", (bytes.size + CHUNK_SIZE - 1) / CHUNK_SIZE)
-            }
+            val result = JSObject()
+            result.put("success", true)
+            result.put("bytesSent", bytes.size)
+            result.put("chunks", (bytes.size + CHUNK_SIZE - 1) / CHUNK_SIZE)
             call.resolve(result)
         } catch (e: Exception) {
             call.reject("SEND_FAILED", e.message)
@@ -462,17 +461,20 @@ class NexoBlePlugin : Plugin() {
         
         Log.d(TAG, "Sending $totalSize bytes in $chunks chunks (msgId: $messageId)")
         
-        data.toList().chunked(CHUNK_SIZE).forEachIndexed { index, chunk ->
+        val chunkedData = data.toList().chunked(CHUNK_SIZE)
+        for (index in 0 until chunkedData.size) {
+            val chunk = chunkedData[index]
             val isLast = index == chunks - 1
             val flags = if (isLast) 0x03 else 0x01
             
-            val buffer = ByteBuffer.allocate(7 + chunk.size).apply {
-                order(ByteOrder.BIG_ENDIAN)
-                put(flags.toByte())
-                putShort(messageId.toShort())
-                putShort(index.toShort())
-                putShort(chunks.toShort())
-                chunk.forEach { put(it) }
+            val buffer = ByteBuffer.allocate(7 + chunk.size)
+            buffer.order(ByteOrder.BIG_ENDIAN)
+            buffer.put(flags.toByte())
+            buffer.putShort(messageId.toShort())
+            buffer.putShort(index.toShort())
+            buffer.putShort(chunks.toShort())
+            for (byte in chunk) {
+                buffer.put(byte)
             }
             
             writeCharacteristic(deviceId, CHAR_PAYLOAD, buffer.array())
@@ -489,7 +491,8 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        val buffer = ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN)
+        val buffer = ByteBuffer.wrap(data)
+        buffer.order(ByteOrder.BIG_ENDIAN)
         val flags = buffer.get().toInt() and 0xFF
         val messageId = buffer.short.toInt() and 0xFFFF
         val chunkIndex = buffer.short.toInt() and 0xFFFF
@@ -522,7 +525,6 @@ class NexoBlePlugin : Plugin() {
             val result = completeMessage.toByteArray()
             Log.d(TAG, "Message complete: ${result.size} bytes")
             
-            // ✅ FIX BUILD #539: Usar for loop tradicional en lugar de forEach con tipo explícito
             val dataArray = JSONArray()
             for (i in 0 until result.size) {
                 dataArray.put(result[i].toInt() and 0xFF)
@@ -532,7 +534,7 @@ class NexoBlePlugin : Plugin() {
             eventData.put("deviceId", deviceId)
             eventData.put("from", deviceId)
             eventData.put("messageId", messageId)
-            eventData.put("data", dataArray as Any)  // ✅ Cast explícito a Any para evitar ambigüedad
+            eventData.put("data", dataArray)
             eventData.put("size", result.size)
             eventData.put("timestamp", System.currentTimeMillis())
             notifyListeners("onMessageReceived", eventData)
@@ -542,7 +544,6 @@ class NexoBlePlugin : Plugin() {
     private fun processHandshake(deviceId: String, data: ByteArray) {
         Log.d(TAG, "Handshake from $deviceId: ${data.size} bytes")
         
-        // ✅ FIX BUILD #539: Usar for loop tradicional
         val payloadArray = JSONArray()
         for (i in 0 until data.size) {
             payloadArray.put(data[i].toInt() and 0xFF)
@@ -551,7 +552,7 @@ class NexoBlePlugin : Plugin() {
         val eventData = JSObject()
         eventData.put("deviceId", deviceId)
         eventData.put("type", data[0].toInt() and 0xFF)
-        eventData.put("payload", payloadArray as Any)  // ✅ Cast explícito a Any
+        eventData.put("payload", payloadArray)
         notifyListeners("onHandshakeReceived", eventData)
     }
 
@@ -673,13 +674,13 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun createAnnounceBeacon(): ByteArray {
-        return ByteBuffer.allocate(32).apply {
-            order(ByteOrder.BIG_ENDIAN)
-            val idBytes = hexToBytes(userId).copyOf(16)
-            put(idBytes)
-            putLong(System.currentTimeMillis() / 1000)
-            putLong((Math.random() * Long.MAX_VALUE).toLong())
-        }.array()
+        val buffer = ByteBuffer.allocate(32)
+        buffer.order(ByteOrder.BIG_ENDIAN)
+        val idBytes = hexToBytes(userId).copyOf(16)
+        buffer.put(idBytes)
+        buffer.putLong(System.currentTimeMillis() / 1000)
+        buffer.putLong((Math.random() * Long.MAX_VALUE).toLong())
+        return buffer.array()
     }
 
     private fun notifyConnectionState(deviceId: String, state: String) {
@@ -713,7 +714,7 @@ class NexoBlePlugin : Plugin() {
         bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
         bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
         
-        gattClients.forEach { (_, gatt) ->
+        for (gatt in gattClients.values) {
             try {
                 gatt.disconnect()
                 gatt.close()
