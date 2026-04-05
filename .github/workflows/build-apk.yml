@@ -28,19 +28,11 @@ jobs:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
         
-    # ✅ FIX: Configurar Java SIN cache de gradle para evitar conflictos de paths
     - name: Setup Java (JDK ${{ env.JAVA_VERSION }})
       uses: actions/setup-java@v4
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
-        # Eliminado cache: 'gradle' que causaba el conflicto de java.home
-        
-    - name: Verificar Java Installation
-      run: |
-        echo "JAVA_HOME=$JAVA_HOME"
-        java -version
-        which java
         
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
@@ -53,50 +45,44 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Build web assets
-      run: npm run build
-      
+    # ✅ FIX: Solo build web, sin tocar Android aún
+    - name: Build web assets (solo webpack)
+      run: |
+        # Si tu package.json tiene "build" que incluye Android, fuerza solo web:
+        if npm run build:web --silent 2>/dev/null; then
+          echo "✅ Usando build:web"
+        else
+          echo "⚠️ Usando build (esperando solo web assets)..."
+          npm run build
+        fi
+        
     - name: Install Capacitor Android
       run: npm install @capacitor/android
       
-    - name: Sync Capacitor (con plugin BLE)
+    - name: Sync Capacitor (copiar web assets a Android)
       run: npx cap sync android
       
-    # ✅ FIX DEFINITIVO: Limpiar gradle.properties completamente
-    - name: Fix Gradle Configuration
+    # ✅ FIX DEFINITIVO: Configurar Gradle DESPUÉS del sync
+    - name: Fix Gradle Java Home
       working-directory: ./android
       run: |
-        # Eliminar gradle.properties si existe (limpieza total)
         rm -f gradle.properties
-        
-        # Crear gradle.properties limpio SIN org.gradle.java.home
         cat > gradle.properties << 'EOF'
-        # Project-wide Gradle settings
         org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
-        org.gradle.parallel=true
         org.gradle.daemon=false
-        org.gradle.configureondemand=false
-        
-        # AndroidX
         android.useAndroidX=true
         android.enableJetifier=true
-        
-        # Kotlin
-        kotlin.code.style=official
         EOF
         
-        echo "✅ gradle.properties configurado:"
-        cat gradle.properties
-        
-        # Asegurar permisos de gradlew
         chmod +x gradlew
+        echo "✅ Gradle properties:"
+        cat gradle.properties
         
     - name: Build Android Debug APK
       working-directory: ./android
       env:
-        # Asegurar que Gradle use el JAVA_HOME correcto del entorno
         JAVA_HOME: ${{ env.JAVA_HOME }}
-      run: ./gradlew assembleDebug --stacktrace --no-daemon
+      run: ./gradlew assembleDebug --no-daemon --stacktrace
         
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
@@ -105,44 +91,6 @@ jobs:
         name: nexo-ble-debug-${{ github.run_number }}
         path: android/app/build/outputs/apk/debug/app-debug.apk
         retention-days: 7
-        
-    - name: Build Android Release APK
-      if: github.ref == 'refs/heads/main' && success()
-      working-directory: ./android
-      env:
-        JAVA_HOME: ${{ env.JAVA_HOME }}
-      run: ./gradlew assembleRelease --stacktrace --no-daemon
-        
-    - name: Upload Release APK
-      if: github.ref == 'refs/heads/main' && success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: nexo-ble-release-${{ github.run_number }}
-        path: android/app/build/outputs/apk/release/app-release-unsigned.apk
-        retention-days: 30
-        
-    - name: Create GitHub Release (Main only)
-      if: github.ref == 'refs/heads/main' && success()
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v9.0-ble-${{ github.run_number }}
-        name: NEXO v9.0 BLE Build ${{ github.run_number }}
-        body: |
-          ## 🚀 NEXO v9.0 BLE Build #${{ github.run_number }}
-          
-          ### ✅ Incluye:
-          - BleMesh v5.0 Native (Capacitor)
-          - BLE Interface UI v1.0
-          - Fix NORDIC_005 vault provision
-          - Gradle fix (Java home validation)
-          
-          **Commit:** ${{ github.sha }}
-        files: |
-          android/app/build/outputs/apk/debug/app-debug.apk
-          android/app/build/outputs/apk/release/app-release-unsigned.apk
-        prerelease: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notify:
     needs: build-android
