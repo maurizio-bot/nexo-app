@@ -2,6 +2,7 @@ package com.nexo.ble
 
 import android.bluetooth.*
 import android.bluetooth.le.*
+import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
