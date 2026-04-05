@@ -105,27 +105,27 @@ class NexoBleServer(
             BluetoothGattService.SERVICE_TYPE_PRIMARY
         )
 
-        // ✅ FIX: Nombres de UUID corregidos para coincidir con NexoGattService/NexoBlePlugin
+        // ✅ Usar nombres correctos según NexoGattService.kt
         val announceChar = BluetoothGattCharacteristic(
-            NexoGattService.CHAR_ANNOUNCE,  // Cambiado de ANNOUNCE_CHAR_UUID
+            NexoGattService.ANNOUNCE_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_READ
         )
         
         val handshakeChar = BluetoothGattCharacteristic(
-            NexoGattService.CHAR_HANDSHAKE,  // Cambiado de HANDSHAKE_CHAR_UUID
+            NexoGattService.HANDSHAKE_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_WRITE
         )
         
         val payloadChar = BluetoothGattCharacteristic(
-            NexoGattService.CHAR_PAYLOAD,  // Cambiado de PAYLOAD_CHAR_UUID
+            NexoGattService.PAYLOAD_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_WRITE
         )
         
         val controlChar = BluetoothGattCharacteristic(
-            NexoGattService.CHAR_CONTROL,  // Cambiado de CONTROL_CHAR_UUID
+            NexoGattService.CONTROL_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_WRITE
         )
@@ -139,10 +139,10 @@ class NexoBleServer(
     }
 
     private fun handleIncomingData(deviceId: String, charUuid: UUID, data: ByteArray) {
-        // ✅ FIX: Construcción correcta de JSONArray
+        // ✅ Construcción correcta de JSONArray
         val jsonArray = JSONArray()
         data.forEach { byte ->
-            jsonArray.put(byte.toInt() and 0xFF)  // Asegurar valor positivo 0-255
+            jsonArray.put(byte.toInt() and 0xFF)
         }
         
         val eventData = JSObject().apply {
@@ -151,11 +151,11 @@ class NexoBleServer(
             put("data", jsonArray)
         }
 
-        // ✅ FIX: Usar los nombres correctos de constantes UUID
+        // ✅ Usar nombres correctos según NexoGattService.kt
         when (charUuid) {
-            NexoGattService.CHAR_HANDSHAKE -> notifyEvent("onHandshakeReceived", eventData)
-            NexoGattService.CHAR_PAYLOAD -> notifyEvent("onMessageReceived", eventData)
-            NexoGattService.CHAR_CONTROL -> notifyEvent("onControlReceived", eventData)
+            NexoGattService.HANDSHAKE_CHAR_UUID -> notifyEvent("onHandshakeReceived", eventData)
+            NexoGattService.PAYLOAD_CHAR_UUID -> notifyEvent("onMessageReceived", eventData)
+            NexoGattService.CONTROL_CHAR_UUID -> notifyEvent("onControlReceived", eventData)
         }
     }
 
