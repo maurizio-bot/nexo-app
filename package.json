@@ -1,81 +1,32 @@
-name: Build NEXO APK
-
-on:
-  push:
-    branches: [ main, develop ]
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-env:
-  JAVA_VERSION: '17'
-  NODE_VERSION: '20'
-
-jobs:
-  build-android:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
-        
-    - name: Setup Java (JDK ${{ env.JAVA_VERSION }})
-      uses: actions/setup-java@v4
-      with:
-        java-version: ${{ env.JAVA_VERSION }}
-        distribution: 'temurin'
-        
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        cmdline-tools-version: 11076708
-        
-    - name: Accept Android licenses
-      run: yes | sdkmanager --licenses || true
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    # ✅ FIX CRÍTICO: Usar build:web en lugar de build (para evitar Gradle prematuro)
-    - name: Build web assets
-      run: npm run build:web
-      
-    - name: Sync Capacitor (solo copia assets, sin build)
-      run: npx cap sync android
-      
-    # ✅ FIX: Configurar Gradle DESPUÉS del sync y ANTES del build nativo
-    - name: Fix Gradle Configuration
-      working-directory: ./android
-      run: |
-        rm -f gradle.properties
-        cat > gradle.properties << 'EOF'
-        org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
-        org.gradle.daemon=false
-        android.useAndroidX=true
-        android.enableJetifier=true
-        EOF
-        chmod +x gradlew
-        echo "✅ gradle.properties:"
-        cat gradle.properties
-        
-    - name: Build Android Debug APK
-      working-directory: ./android
-      env:
-        JAVA_HOME: ${{ env.JAVA_HOME }}
-      run: ./gradlew assembleDebug --no-daemon --stacktrace
-        
-    - name: Upload Debug APK
-      uses: actions/upload-artifact@v4
-      if: success()
-      with:
-        name: nexo-ble-debug-${{ github.run_number }}
-        path: android/app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 7
+{
+  "name": "nexo-v9",
+  "version": "9.0.0",
+  "description": "Arquitectura Soberana",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "build": "npm run build:web && npm run build:android",
+    "build:web": "webpack --mode production",
+    "build:android": "capacitor sync android && cd android && ./gradlew assembleDebug",
+    "dev": "webpack serve --mode development",
+    "sync": "capacitor sync",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@capacitor/android": "^5.0.0",
+    "@capacitor/core": "^5.0.0",
+    "nexo-ble": "file:./plugins/nexo-ble"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^5.7.8",
+    "ajv": "^6.12.6",
+    "copy-webpack-plugin": "^11.0.0",
+    "css-loader": "^6.10.0",
+    "html-webpack-plugin": "^5.6.0",
+    "minimatch": "^10.2.5",
+    "sass-loader": "^13.3.0",
+    "style-loader": "^3.3.4",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.4"
+  }
+}
