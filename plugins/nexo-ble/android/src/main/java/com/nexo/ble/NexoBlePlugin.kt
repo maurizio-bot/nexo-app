@@ -238,7 +238,6 @@ class NexoBlePlugin : Plugin() {
         
         if (rssi < -85) return
 
-        // ✅ FIX: Construir JSONArray explícito para evitar ambigüedad
         val manufacturerData = result.scanRecord?.manufacturerSpecificData
         val userIdFromData = if (manufacturerData != null && manufacturerData.size() > 0) {
             bytesToHex(manufacturerData.valueAt(0))
@@ -251,7 +250,7 @@ class NexoBlePlugin : Plugin() {
             put("address", device.address)
             put("rssi", rssi)
             put("name", device.name ?: "NEXO-${device.address.takeLast(4)}")
-            put("userId", userIdFromData ?: JSONObject.NULL)  // ✅ Explicit null
+            put("userId", userIdFromData ?: JSONObject.NULL)
             put("timestamp", System.currentTimeMillis())
         }
         
@@ -324,7 +323,6 @@ class NexoBlePlugin : Plugin() {
                         gatt.setCharacteristicNotification(char, true)
                     }
                     
-                    // ✅ FIX: Construcción explícita de JSONArray para services
                     val servicesArray = JSONArray()
                     gatt?.services?.forEach { servicesArray.put(it.uuid.toString()) }
                     
@@ -524,9 +522,9 @@ class NexoBlePlugin : Plugin() {
             val result = completeMessage.toByteArray()
             Log.d(TAG, "Message complete: ${result.size} bytes")
             
-            // ✅ FIX: Construcción explícita de JSONArray byte por byte
+            // ✅ FIX BUILD #537: Tipo explícito Byte en forEach
             val dataArray = JSONArray()
-            result.forEach { byte -> 
+            result.forEach { byte: Byte -> 
                 dataArray.put(byte.toInt() and 0xFF)
             }
             
@@ -534,7 +532,7 @@ class NexoBlePlugin : Plugin() {
                 put("deviceId", deviceId)
                 put("from", deviceId)
                 put("messageId", messageId)
-                put("data", dataArray)  // ✅ Ahora es JSONArray explícito
+                put("data", dataArray)
                 put("size", result.size)
                 put("timestamp", System.currentTimeMillis())
             }
@@ -545,9 +543,9 @@ class NexoBlePlugin : Plugin() {
     private fun processHandshake(deviceId: String, data: ByteArray) {
         Log.d(TAG, "Handshake from $deviceId: ${data.size} bytes")
         
-        // ✅ FIX: Construcción explícita de JSONArray
+        // ✅ FIX BUILD #537: Tipo explícito Byte en forEach
         val payloadArray = JSONArray()
-        data.forEach { byte ->
+        data.forEach { byte: Byte ->
             payloadArray.put(byte.toInt() and 0xFF)
         }
         
