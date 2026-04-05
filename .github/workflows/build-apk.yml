@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   JAVA_VERSION: '17'
@@ -44,46 +44,43 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Build web assets
-      run: npm run build
-        
+    # ✅ FIX: Solo build web (webpack), sin capacitor
+    - name: Build web assets (solo webpack)
+      run: npm run build:web
+      
+    # ✅ FIX: Install Capacitor Android manualmente
     - name: Install Capacitor Android
       run: npm install @capacitor/android
       
-    - name: Sync Capacitor
-      run: npx cap sync android
+    # ✅ FIX: Sync Capacitor (copia assets, NO compila)
+    - name: Sync Capacitor Android
+      run: npx cap sync android --no-build
       
+    # ✅ FIX: Limpiar y crear gradle.properties DESPUÉS del sync
     - name: Fix Gradle Configuration
       working-directory: ./android
       run: |
+        # Eliminar cualquier gradle.properties existente
         rm -f gradle.properties
+        
+        # Crear uno limpio sin org.gradle.java.home
         cat > gradle.properties << 'EOF'
         org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
         org.gradle.daemon=false
         android.useAndroidX=true
         android.enableJetifier=true
         EOF
-        chmod +x gradlew
         
-    # ✅ Build con captura de errores detallada
+        chmod +x gradlew
+        echo "✅ Gradle properties configurado:"
+        cat gradle.properties
+        
+    # ✅ FIX: Build nativo separado, aquí sí se usa Gradle
     - name: Build Android Debug APK
       working-directory: ./android
       env:
         JAVA_HOME: ${{ env.JAVA_HOME }}
-      run: |
-        ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log || EXIT_CODE=$?
-        
-        if [ -n "$EXIT_CODE" ]; then
-          echo "❌ BUILD FALLIDO - Errores Kotlin detectados:"
-          # Filtrar solo errores de compilación Kotlin
-          grep -E "(error:|Unresolved|Cannot infer|Overload)" build.log | head -20
-          
-          # Mostrar contenido de archivos problemáticos para debug
-          echo "=== Contenido de NexoBleClient.kt (para debug) ==="
-          cat app/src/main/java/com/nexoapp/plugin/NexoBleClient.kt 2>/dev/null || echo "Archivo no encontrado"
-          
-          exit 1
-        fi
+      run: ./gradlew assembleDebug --no-daemon --stacktrace
         
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
@@ -97,6 +94,6 @@ jobs:
       uses: actions/upload-artifact@v4
       if: failure()
       with:
-        name: build-logs-failed-${{ github.run_number }}
+        name: build-logs-${{ github.run_number }}
         path: android/build.log
         retention-days: 1
