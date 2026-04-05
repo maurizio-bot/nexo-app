@@ -522,20 +522,19 @@ class NexoBlePlugin : Plugin() {
             val result = completeMessage.toByteArray()
             Log.d(TAG, "Message complete: ${result.size} bytes")
             
-            // ✅ FIX BUILD #537: Tipo explícito Byte en forEach
+            // ✅ FIX BUILD #539: Usar for loop tradicional en lugar de forEach con tipo explícito
             val dataArray = JSONArray()
-            result.forEach { byte: Byte -> 
-                dataArray.put(byte.toInt() and 0xFF)
+            for (i in 0 until result.size) {
+                dataArray.put(result[i].toInt() and 0xFF)
             }
             
-            val eventData = JSObject().apply {
-                put("deviceId", deviceId)
-                put("from", deviceId)
-                put("messageId", messageId)
-                put("data", dataArray)
-                put("size", result.size)
-                put("timestamp", System.currentTimeMillis())
-            }
+            val eventData = JSObject()
+            eventData.put("deviceId", deviceId)
+            eventData.put("from", deviceId)
+            eventData.put("messageId", messageId)
+            eventData.put("data", dataArray as Any)  // ✅ Cast explícito a Any para evitar ambigüedad
+            eventData.put("size", result.size)
+            eventData.put("timestamp", System.currentTimeMillis())
             notifyListeners("onMessageReceived", eventData)
         }
     }
@@ -543,17 +542,16 @@ class NexoBlePlugin : Plugin() {
     private fun processHandshake(deviceId: String, data: ByteArray) {
         Log.d(TAG, "Handshake from $deviceId: ${data.size} bytes")
         
-        // ✅ FIX BUILD #537: Tipo explícito Byte en forEach
+        // ✅ FIX BUILD #539: Usar for loop tradicional
         val payloadArray = JSONArray()
-        data.forEach { byte: Byte ->
-            payloadArray.put(byte.toInt() and 0xFF)
+        for (i in 0 until data.size) {
+            payloadArray.put(data[i].toInt() and 0xFF)
         }
         
-        val eventData = JSObject().apply {
-            put("deviceId", deviceId)
-            put("type", data[0].toInt() and 0xFF)
-            put("payload", payloadArray)
-        }
+        val eventData = JSObject()
+        eventData.put("deviceId", deviceId)
+        eventData.put("type", data[0].toInt() and 0xFF)
+        eventData.put("payload", payloadArray as Any)  // ✅ Cast explícito a Any
         notifyListeners("onHandshakeReceived", eventData)
     }
 
@@ -685,11 +683,10 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun notifyConnectionState(deviceId: String, state: String) {
-        val data = JSObject().apply {
-            put("deviceId", deviceId)
-            put("state", state)
-            put("timestamp", System.currentTimeMillis())
-        }
+        val data = JSObject()
+        data.put("deviceId", deviceId)
+        data.put("state", state)
+        data.put("timestamp", System.currentTimeMillis())
         notifyListeners("onConnectionStateChanged", data)
     }
 
