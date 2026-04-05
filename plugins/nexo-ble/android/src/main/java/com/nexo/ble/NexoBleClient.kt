@@ -9,8 +9,10 @@ import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import com.getcapacitor.JSObject
-import com.nexo.ble.model.NexoGattService
-import org.json.JSONArray  // ✅ FALTABA ESTO
+import com.nexo.ble.model.NexoGattService  // ✅ Verificar que exista este import
+import com.nexo.ble.MessageChunker        // ✅ FALTABA: Importar MessageChunker si está en el mismo paquete
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -26,16 +28,41 @@ class NexoBleClient(
     private val TAG = "NexoBle-Client"
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // ... (scanCallback sin cambios) ...
+    // ScanCallback completo (no omitido para evitar errores)
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult?) {
+            result?.let {
+                val device = it.device
+                val uuids = it.scanRecord?.serviceUuids?.map { uuid -> uuid.uuid.toString() } ?: listOf()
+                
+                notifyEvent("onScanResult", JSObject().apply {
+                    put("deviceId", device.address)
+                    put("name", device.name ?: "Unknown")
+                    put("rssi", it.rssi)
+                    put("uuids", JSONArray(uuids))
+                })
+            }
+        }
+
+        override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+            results?.forEach { onScanResult(0, it) }
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            notifyEvent("onScanFailed", JSObject().apply {
+                put("errorCode", errorCode)
+            })
+        }
+    }
 
     private fun handleCharacteristicValue(deviceId: String, uuid: UUID, value: ByteArray) {
         when (uuid) {
-            NexoGattService.PAYLOAD_CHAR_UUID -> {
+            NexoGattService.PAYLOAD_CHAR_UUID -> {  // ✅ Verificar que este nombre exista en NexoGattService
                 val completeMessage = messageChunker.processChunk(deviceId, value)
-                completeMessage?.let {
+                completeMessage?.let { msg ->
                     notifyEvent("onMessageReceived", JSObject().apply {
                         put("deviceId", deviceId)
-                        put("data", JSONArray(it.map { b -> b.toInt() }))  // ✅ Ahora funciona
+                        put("data", JSONArray(msg.map { b -> b.toInt() }))
                     })
                 }
             }
@@ -43,13 +70,78 @@ class NexoBleClient(
                 notifyEvent("onCharacteristicChanged", JSObject().apply {
                     put("deviceId", deviceId)
                     put("characteristic", uuid.toString())
-                    put("data", JSONArray(value.map { b -> b.toInt() }))  // ✅ Ahora funciona
+                    put("data", JSONArray(value.map { b -> b.toInt() }))
                 })
             }
         }
     }
 
-    // ... (startScan, stopScan, connect, disconnect sin cambios) ...
+    fun startScan() {
+        scanner = bluetoothAdapter?.bluetoothLeScanner
+        val scanFilter = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(NexoGattService.SERVICE_UUID))
+            .build()
+        
+        val scanSettings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+
+        scanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
+    }
+
+    fun stopScan() {
+        scanner?.stopScan(scanCallback)
+    }
+
+    fun connect(deviceId: String) {
+        val device = bluetoothAdapter?.getRemoteDevice(deviceId) ?: return
+        val gattCallback = object : BluetoothGattCallback() {
+            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                when (newState) {
+                    BluetoothProfile.STATE_CONNECTED -> {
+                        connections[deviceId] = gatt
+                        gatt.discoverServices()
+                        notifyEvent("onConnected", JSObject().apply {
+                            put("deviceId", deviceId)
+                        })
+                    }
+                    BluetoothProfile.STATE_DISCONNECTED -> {
+                        connections.remove(deviceId)
+                        notifyEvent("onDisconnected", JSObject().apply {
+                            put("deviceId", deviceId)
+                        })
+                    }
+                }
+            }
+
+            override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    notifyEvent("onServicesDiscovered", JSObject().apply {
+                        put("deviceId", deviceId)
+                        put("services", JSONArray(gatt.services.map { it.uuid.toString() }))
+                    })
+                }
+            }
+
+            override fun onCharacteristicChanged(
+                gatt: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic
+            ) {
+                handleCharacteristicValue(
+                    deviceId,
+                    characteristic.uuid,
+                    characteristic.value
+                )
+            }
+        }
+
+        device.connectGatt(context, false, gattCallback)
+    }
+
+    fun disconnect(deviceId: String) {
+        connections[deviceId]?.disconnect()
+        connections.remove(deviceId)
+    }
 
     fun sendMessage(deviceId: String, data: ByteArray) {
         val gatt = connections[deviceId] ?: return
@@ -58,8 +150,8 @@ class NexoBleClient(
 
         val chunks = messageChunker.createChunks(data)
         
-        chunks.forEach { chunk ->
-            // ✅ FIX: Usar setValue() en lugar de asignación directa
+        // ✅ FIX: Tipo explícito para evitar "Cannot infer a type"
+        chunks.forEachIndexed { index: Int, chunk: ByteArray ->
             characteristic.setValue(chunk)
             gatt.writeCharacteristic(characteristic)
         }
