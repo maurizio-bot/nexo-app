@@ -46,18 +46,16 @@ jobs:
     - name: Sync Capacitor (con plugin BLE)
       run: npx cap sync android
       
-    # ✅ FIX DEFINITIVO: Recrear gradle.properties limpio
+    # ✅ FIX DEFINITIVO: Después de sync para que no se sobrescriba
     - name: Fix Gradle Java Home
       run: |
         cd android
-        # Backup y eliminar propiedades inválidas
-        cp gradle.properties gradle.properties.backup 2>/dev/null || true
-        # Crear archivo nuevo sin org.gradle.java.home
+        rm -f gradle.properties
         echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" > gradle.properties
         echo "android.useAndroidX=true" >> gradle.properties
         echo "android.enableJetifier=true" >> gradle.properties
         echo "" >> gradle.properties
-        echo "# Java home se detecta automáticamente por GitHub Actions" >> gradle.properties
+        echo "# Java home configurado por GitHub Actions" >> gradle.properties
         echo "gradle.properties corregido:"
         cat gradle.properties
         
