@@ -1,1 +1,102 @@
-[Pega aquí todo el contenido del archivo que me pasaste]
+name: Build NEXO APK
+
+on:
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '17'
+  NODE_VERSION: '20'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Setup Java (JDK ${{ env.JAVA_VERSION }})
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        cmdline-tools-version: 11076708
+        
+    - name: Accept Android licenses
+      run: yes | sdkmanager --licenses || true
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build web assets
+      run: npm run build
+        
+    - name: Install Capacitor Android
+      run: npm install @capacitor/android
+      
+    - name: Sync Capacitor
+      run: npx cap sync android
+      
+    - name: Fix Gradle Configuration
+      working-directory: ./android
+      run: |
+        rm -f gradle.properties
+        cat > gradle.properties << 'EOF'
+        org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
+        org.gradle.daemon=false
+        android.useAndroidX=true
+        android.enableJetifier=true
+        EOF
+        chmod +x gradlew
+        
+    # ✅ Build con captura de errores detallada
+    - name: Build Android Debug APK
+      working-directory: ./android
+      env:
+        JAVA_HOME: ${{ env.JAVA_HOME }}
+      run: |
+        ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log || EXIT_CODE=$?
+        
+        if [ -n "$EXIT_CODE" ]; then
+          echo "❌ BUILD FALLIDO - Errores Kotlin detectados:"
+          # Filtrar solo errores de compilación Kotlin
+          grep -E "(error:|Unresolved|Cannot infer|Overload)" build.log | head -20
+          
+          # Mostrar contenido de archivos problemáticos para debug
+          echo "=== Contenido de NexoBleClient.kt (para debug) ==="
+          cat app/src/main/java/com/nexoapp/plugin/NexoBleClient.kt 2>/dev/null || echo "Archivo no encontrado"
+          
+          exit 1
+        fi
+        
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: nexo-ble-debug-${{ github.run_number }}
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 7
+
+    - name: Upload Build Logs (on failure)
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: build-logs-failed-${{ github.run_number }}
+        path: android/build.log
+        retention-days: 1
