@@ -2,6 +2,7 @@ package com.nexo.ble
 
 import android.bluetooth.*
 import android.bluetooth.le.*
+import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -130,17 +131,16 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
-        if (checkPermission("bluetoothAdvertise")) {
+        if (hasPermission("bluetoothAdvertise")) {
             startAdvertisingInternal(call)
         } else {
-            requestPermission("bluetoothAdvertise", "advertisePermissionCallback")
-            call.save()
+            requestPermissionForAlias("bluetoothAdvertise", call, "advertisePermissionCallback")
         }
     }
 
     @PermissionCallback
     private fun advertisePermissionCallback(call: PluginCall) {
-        if (checkPermission("bluetoothAdvertise")) {
+        if (hasPermission("bluetoothAdvertise")) {
             startAdvertisingInternal(call)
         } else {
             call.reject(ERR_PERMISSION_DENIED, "Bluetooth advertise permission required")
@@ -170,7 +170,10 @@ class NexoBlePlugin : Plugin() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                 isAdvertising = true
                 Log.d(TAG, "Advertising started")
-                call.resolve(JSObject().put("active", true))
+                val result = JSObject().apply {
+                    put("active", true)
+                }
+                call.resolve(result)
             }
 
             override fun onStartFailure(errorCode: Int) {
@@ -193,17 +196,16 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun startScan(call: PluginCall) {
-        if (checkPermission("bluetoothScan")) {
+        if (hasPermission("bluetoothScan")) {
             startScanInternal(call)
         } else {
-            requestPermission("bluetoothScan", "scanPermissionCallback")
-            call.save()
+            requestPermissionForAlias("bluetoothScan", call, "scanPermissionCallback")
         }
     }
 
     @PermissionCallback
     private fun scanPermissionCallback(call: PluginCall) {
-        if (checkPermission("bluetoothScan")) {
+        if (hasPermission("bluetoothScan")) {
             startScanInternal(call)
         } else {
             call.reject(ERR_PERMISSION_DENIED, "Bluetooth scan permission required")
@@ -239,7 +241,9 @@ class NexoBlePlugin : Plugin() {
 
             override fun onScanFailed(errorCode: Int) {
                 Log.e(TAG, "Scan failed: $errorCode")
-                notifyListeners("onScanFailed", JSObject().put("error", errorCode))
+                notifyListeners("onScanFailed", JSObject().apply {
+                    put("error", errorCode)
+                })
             }
         }
 
@@ -347,7 +351,9 @@ class NexoBlePlugin : Plugin() {
                         gatt.setCharacteristicNotification(char, true)
                     }
                     
-                    notifyListeners("onServicesDiscovered", JSObject().put("deviceId", deviceId))
+                    notifyListeners("onServicesDiscovered", JSObject().apply {
+                        put("deviceId", deviceId)
+                    })
                 }
             }
 
@@ -378,7 +384,10 @@ class NexoBlePlugin : Plugin() {
         }
         
         gattClients[deviceId] = gatt
-        call.resolve(JSObject().put("deviceId", deviceId))
+        val result = JSObject().apply {
+            put("deviceId", deviceId)
+        }
+        call.resolve(result)
     }
 
     /**
@@ -394,7 +403,9 @@ class NexoBlePlugin : Plugin() {
                 put("connected", true)
             })
         }
-        call.resolve(JSObject().put("devices", list))
+        call.resolve(JSObject().apply {
+            put("devices", list)
+        })
     }
 
     /**
@@ -468,11 +479,12 @@ class NexoBlePlugin : Plugin() {
 
         try {
             sendChunkedMessage(deviceId, bytes)
-            call.resolve(JSObject().apply {
+            val result = JSObject().apply {
                 put("success", true)
                 put("bytesSent", bytes.size)
                 put("chunks", (bytes.size + CHUNK_SIZE - 1) / CHUNK_SIZE)
-            })
+            }
+            call.resolve(result)
         } catch (e: Exception) {
             call.reject("SEND_FAILED", e.message)
         }
@@ -755,3 +767,5 @@ class NexoBlePlugin : Plugin() {
         super.handleOnDestroy()
     }
 }
+
+

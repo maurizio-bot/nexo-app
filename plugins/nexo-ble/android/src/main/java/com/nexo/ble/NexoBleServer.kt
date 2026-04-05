@@ -5,7 +5,9 @@ import android.bluetooth.le.*
 import android.content.Context
 import android.os.ParcelUuid
 import android.util.Log
+import com.getcapacitor.JSObject
 import com.nexo.ble.model.NexoGattService
+import org.json.JSONArray
 import java.util.*
 
 class NexoBleServer(
@@ -19,7 +21,6 @@ class NexoBleServer(
     private val connectedDevices = mutableMapOf<String, BluetoothDevice>()
     private val TAG = "NexoBle-Server"
 
-    // Callback para el GATT Server
     private val gattServerCallback = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             super.onConnectionStateChange(device, status, newState)
@@ -28,18 +29,20 @@ class NexoBleServer(
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     connectedDevices[id] = device
-                    notifyEvent("onConnectionStateChanged", JSObject().apply {
+                    val eventData = JSObject().apply {
                         put("deviceId", id)
                         put("state", "connected")
                         put("rssi", 0)
-                    })
+                    }
+                    notifyEvent("onConnectionStateChanged", eventData)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     connectedDevices.remove(id)
-                    notifyEvent("onConnectionStateChanged", JSObject().apply {
+                    val eventData = JSObject().apply {
                         put("deviceId", id)
                         put("state", "disconnected")
-                    })
+                    }
+                    notifyEvent("onConnectionStateChanged", eventData)
                 }
             }
         }
@@ -102,28 +105,25 @@ class NexoBleServer(
             BluetoothGattService.SERVICE_TYPE_PRIMARY
         )
 
-        // Característica Announce (Read/Notify)
+        // ✅ Usar nombres correctos según NexoGattService.kt
         val announceChar = BluetoothGattCharacteristic(
             NexoGattService.ANNOUNCE_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_READ
         )
         
-        // Característica Handshake (Write/Notify)
         val handshakeChar = BluetoothGattCharacteristic(
             NexoGattService.HANDSHAKE_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_WRITE
         )
         
-        // Característica Payload (Write/Notify)
         val payloadChar = BluetoothGattCharacteristic(
             NexoGattService.PAYLOAD_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
             BluetoothGattCharacteristic.PERMISSION_WRITE
         )
         
-        // Característica Control (Write/Notify)
         val controlChar = BluetoothGattCharacteristic(
             NexoGattService.CONTROL_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
@@ -139,12 +139,19 @@ class NexoBleServer(
     }
 
     private fun handleIncomingData(deviceId: String, charUuid: UUID, data: ByteArray) {
+        // ✅ Construcción correcta de JSONArray
+        val jsonArray = JSONArray()
+        data.forEach { byte ->
+            jsonArray.put(byte.toInt() and 0xFF)
+        }
+        
         val eventData = JSObject().apply {
             put("deviceId", deviceId)
             put("characteristic", charUuid.toString())
-            put("data", JSONArray(data.map { it.toInt() }))
+            put("data", jsonArray)
         }
 
+        // ✅ Usar nombres correctos según NexoGattService.kt
         when (charUuid) {
             NexoGattService.HANDSHAKE_CHAR_UUID -> notifyEvent("onHandshakeReceived", eventData)
             NexoGattService.PAYLOAD_CHAR_UUID -> notifyEvent("onMessageReceived", eventData)

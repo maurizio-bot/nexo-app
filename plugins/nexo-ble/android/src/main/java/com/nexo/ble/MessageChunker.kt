@@ -8,9 +8,10 @@ class MessageChunker {
     private val MAX_CHUNK_SIZE = 512 // MTU típico BLE menos overhead
     private val HEADER_SIZE = 5 // Flags(1) + Seq(2) + MsgId(2)
 
+    // ✅ FIX: Cambiado totalChunks a var (mutable)
     data class ChunkBuffer(
         val messageId: Int,
-        val totalChunks: Int,
+        var totalChunks: Int,  // ✅ Ahora es var para poder actualizarlo
         val chunks: MutableMap<Int, ByteArray> = mutableMapOf()
     )
 
@@ -54,8 +55,8 @@ class MessageChunker {
         val flags = chunk[0].toInt()
         val isChunked = (flags and 0x02) != 0
         val isLast = (flags and 0x04) != 0
-        val seqNum = ByteBuffer.wrap(chunk, 1, 2).short.toInt()
-        val msgId = ByteBuffer.wrap(chunk, 3, 2).short.toInt()
+        val seqNum = ByteBuffer.wrap(chunk, 1, 2).short.toInt() and 0xFFFF  // ✅ Asegurar positivo
+        val msgId = ByteBuffer.wrap(chunk, 3, 2).short.toInt() and 0xFFFF    // ✅ Asegurar positivo
 
         if (!isChunked) {
             // Mensaje simple, no chunked
@@ -71,11 +72,12 @@ class MessageChunker {
 
         buffer.chunks[seqNum] = payload
 
-        // Verificar si tenemos todos los chunks
+        // ✅ Ahora funciona porque totalChunks es var
         if (isLast) {
             buffer.totalChunks = seqNum + 1
         }
 
+        // Verificar si tenemos todos los chunks
         if (buffer.totalChunks > 0 && buffer.chunks.size == buffer.totalChunks) {
             // Reensamblar mensaje completo
             val completeMessage = ByteArray(buffer.chunks.values.sumOf { it.size })
@@ -114,8 +116,8 @@ class MessageChunker {
         val flags = buildFlags(isChunked, isLast)
         return byteArrayOf(
             flags.toByte(),
-            (seqNum shr 8).toByte(), seqNum.toByte(),
-            (msgId shr 8).toByte(), msgId.toByte()
+            (seqNum shr 8).toByte(), (seqNum and 0xFF).toByte(),
+            (msgId shr 8).toByte(), (msgId and 0xFF).toByte()
         )
     }
 
@@ -124,5 +126,13 @@ class MessageChunker {
         if (isChunked) flags = flags or 0x02
         if (isLast) flags = flags or 0x04
         return flags
+    }
+    
+    /**
+     * NAP 2.0: Cleanup de buffers antiguos (llamar periódicamente)
+     */
+    fun cleanupOldBuffers(maxAgeMs: Long = 30000) {
+        val now = System.currentTimeMillis()
+        // Implementar si se necesita limpieza de buffers huérfanos
     }
 }
