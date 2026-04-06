@@ -1,7 +1,10 @@
 /**
- * NEXO App v3.3.0-NAP
+ * NEXO App v3.3.1-NAP (FIXED)
  * Orquestador Principal - NAP 2.0 Certified
- * FIXES: Interface Contract NordicMesh (init vs initialize), return validation
+ * FIXES: 
+ * - CryptoVault.init() (no initialize())
+ * - HybridMesh.on() defensive check
+ * - Interface Contract NordicMesh
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -15,7 +18,6 @@ import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
 import { initBLEInterface } from '../ui/ble_interface.js';
 
-// NAP 2.0 Helper: Timeout con cleanup
 function withTimeoutNAP(promise, ms, context) {
   let timer;
   const timeoutPromise = new Promise((_, reject) => {
@@ -29,7 +31,6 @@ function withTimeoutNAP(promise, ms, context) {
   });
 }
 
-// DEBUG System NAP 2.0
 const DEBUG = {
   rem: rem,
   _logBuffer: [],
@@ -84,7 +85,7 @@ export class NexoApp {
     this.bleInterface = null;
     this.initialized = false;
 
-    DEBUG.log('🚀 [NEXO] v3.3.0-NAP iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v3.3.1-NAP iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -112,7 +113,7 @@ export class NexoApp {
       
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v3.3.0-NAP Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v3.3.1-NAP Ready', 'APP_READY');
       this._logFinalStatus();
       
     } catch (err) {
@@ -132,7 +133,8 @@ export class NexoApp {
     
     try {
       this.vault = new CryptoVault();
-      await withTimeoutNAP(this.vault.initialize(), 5000, 'CryptoVault.initialize');
+      // FIX: Usar init() no initialize()
+      await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
       
       const identity = this.vault.getIdentity?.();
       if (identity) {
@@ -164,10 +166,6 @@ export class NexoApp {
     }
   }
 
-  /**
-   * FIX #1: Llamada correcta a init() (no initialize())
-   * FIX #2: Validación del objeto retornado { success, isNative, userId }
-   */
   async _initPhase3_NordicMesh() {
     DEBUG.setPhase('NORDIC_MESH');
     DEBUG.log('📡 [3/7] Initializing Nordic Mesh BLE...', 'info', 'NORDIC_001');
@@ -181,7 +179,6 @@ export class NexoApp {
         handshakeTimeout: 30000
       });
       
-      // Setup listeners
       const unsub1 = this.nordicMesh.on('peerDiscovered', (p) => this._handleNordicPeer(p));
       const unsub2 = this.nordicMesh.on('sessionEstablished', (d) => this._handleNordicSession(d));
       const unsub3 = this.nordicMesh.on('messageReceived', (m) => this._handleNordicMessage(m));
@@ -190,21 +187,18 @@ export class NexoApp {
       
       this._resources.handlers.add(unsub1, unsub2, unsub3, unsub4, unsub5);
       
-      // FIX #1 & #2: init() retorna { success, isNative, userId }
       const result = await withTimeoutNAP(
-        this.nordicMesh.init(),  // ✅ FIX: init() no initialize()
+        this.nordicMesh.init(),
         10000,
         'NordicMesh.init'
       );
       
-      // FIX #2: Validar resultado
       if (!result.success) {
         throw new Error(result.error?.message || 'Nordic init returned false');
       }
       
       DEBUG.success(`Nordic Mesh active [Native:${result.isNative}]`, 'NORDIC_002');
       
-      // Auto-start discovery si no hay relay
       if (!this.wsClient?.isConnected?.()) {
         await this.nordicMesh.startDiscovery().catch(e => {
           DEBUG.warn(`Discovery delayed: ${e.message}`, 'NORDIC_003');
@@ -238,8 +232,13 @@ export class NexoApp {
         onError: (code, msg) => DEBUG.error('MESH_006', msg)
       });
 
-      const unsub = this.mesh.on('device', () => this._updateStatus());
-      this._resources.handlers.add(unsub);
+      // FIX: Defensive check para .on()
+      if (typeof this.mesh.on === 'function') {
+        const unsub = this.mesh.on('device', () => this._updateStatus());
+        this._resources.handlers.add(unsub);
+      } else {
+        DEBUG.warn('HybridMesh no implementa .on(), usando callbacks directos', 'MESH_WARN');
+      }
       
       await withTimeoutNAP(this.mesh.initialize(), 15000, 'HybridMesh.initialize');
       DEBUG.success('Hybrid Mesh ready', 'MESH_002');
@@ -255,7 +254,6 @@ export class NexoApp {
     DEBUG.log('📱 [5/7] Initializing BLE Interface...', 'info', 'UI_001');
     
     try {
-      // FIX #3: Siempre crear UI, incluso sin mesh (modo dummy)
       const meshInstance = this.nordicMesh || this.mesh || null;
       this.bleInterface = initBLEInterface(meshInstance);
       
@@ -326,7 +324,6 @@ export class NexoApp {
     }
   }
 
-  // Handlers Nordic
   _handleNordicPeer(peer) {
     if (!peer?.id) {
       DEBUG.error('NORDIC_006', 'Invalid peer data');
@@ -388,12 +385,10 @@ export class NexoApp {
     }
 
     try {
-      // Optimistic UI
       this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true }, 'self');
 
       const content = msg.content || msg;
       
-      // Prioridad 1: NordicMesh
       const nordicPeers = this.nordicMesh?.getPeers?.() || [];
       if (nordicPeers.length > 0) {
         try {
@@ -405,7 +400,6 @@ export class NexoApp {
         }
       }
       
-      // Prioridad 2: HybridMesh
       if (this.mesh?.getPeerCount?.() > 0) {
         try {
           await this.mesh.broadcast({ content });
@@ -416,7 +410,6 @@ export class NexoApp {
         }
       }
       
-      // Prioridad 3: Bridge
       if (this.bridge) {
         const result = await this.bridge.send({ content });
         if (result) {
@@ -425,7 +418,6 @@ export class NexoApp {
         }
       }
       
-      // Prioridad 4: WebSocket
       if (this.wsClient?.isConnected?.()) {
         this.wsClient.send({ content });
         DEBUG.success('Sent via WebSocket', 'MSG_WS');
