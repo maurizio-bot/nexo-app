@@ -1,5 +1,6 @@
 /**
- * BLE Interface v2.0 - Simplificado y estable
+ * hybrid_mesh.js - BLE Interface v2.1 (FIXED)
+ * FIX: Agregado sistema de eventos .on() para compatibilidad con NexoApp
  */
 
 export class BLEInterface {
@@ -10,6 +11,34 @@ export class BLEInterface {
     this.isVisible = false;
     this.elements = {};
     this.newDevicesCount = 0;
+    
+    // FIX #3: Sistema de eventos requerido por NexoApp
+    this._listeners = new Map();
+  }
+
+  /**
+   * FIX #3: Método .on() requerido por NexoApp v3.3.1
+   * Registra callbacks de eventos
+   */
+  on(event, callback) {
+    if (!this._listeners.has(event)) {
+      this._listeners.set(event, new Set());
+    }
+    this._listeners.get(event).add(callback);
+    
+    // Retornar función de unsubscribe
+    return () => {
+      this._listeners.get(event)?.delete(callback);
+    };
+  }
+
+  /**
+   * Emite eventos a los listeners registrados
+   */
+  _emit(event, data) {
+    this._listeners.get(event)?.forEach(cb => {
+      try { cb(data); } catch(e) {}
+    });
   }
 
   init() {
@@ -239,6 +268,8 @@ export class BLEInterface {
       this.startScanUI();
 
       await this.bleMesh.startScan();
+      // FIX: Emitir evento para NexoApp
+      this._emit('scanning', { active: true });
       
     } catch (err) {
       this.stopScanUI();
@@ -254,6 +285,7 @@ export class BLEInterface {
       }
     } catch(e) {}
     this.stopScanUI();
+    this._emit('scanning', { active: false });
   }
 
   startScanUI() {
@@ -286,18 +318,22 @@ export class BLEInterface {
     }
 
     this.renderDevices();
+    // FIX: Emitir evento para NexoApp
+    this._emit('device', device);
   }
 
   handleDeviceConnected(peer) {
     this.showToast(`Conectado: ${peer.name || 'dispositivo'}`, 'success');
     this.renderDevices();
     this.updateStatus();
+    this._emit('connected', peer);
   }
 
   handleDeviceDisconnected(peer) {
     this.showToast(`Desconectado`, 'info');
     this.renderDevices();
     this.updateStatus();
+    this._emit('disconnected', peer);
   }
 
   updateBadge() {
@@ -372,6 +408,7 @@ export class BLEInterface {
     this.elements.panel?.remove();
     this.elements.overlay?.remove();
     document.getElementById('ble-styles')?.remove();
+    this._listeners.clear();
   }
 }
 
