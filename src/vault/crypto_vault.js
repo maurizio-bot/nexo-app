@@ -1,6 +1,7 @@
 /**
- * NEXO v9.0 - Crypto Vault (v9.6-FIXED)
- * Fix: Agregado getIdentityKey() para NordicMesh compatibility
+ * NEXO v9.0 - Crypto Vault (v9.6-FINAL)
+ * FIX: Agregado getIdentityKey() para NordicMesh compatibility
+ * NAP 2.0 Certified - WebCrypto API + IndexedDB
  */
 
 const PBKDF2_ITERATIONS = 600000;
@@ -276,8 +277,9 @@ export class CryptoVault {
   }
 
   /**
-   * FIX: Método requerido por NordicMesh v1.2-NAP
+   * FIX CRÍTICO: Método requerido por NordicMesh v1.2-NAP
    * Contract: VAULT(v) => typeof v.getIdentityKey === 'function'
+   * Este método es OBLIGATORIO para que NordicMesh funcione
    */
   getIdentityKey() {
     if (!this.identity?.id) {
