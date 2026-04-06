@@ -1,6 +1,6 @@
 /**
- * NEXO v9.0 - Crypto Vault (v9.5-DEFENSIVE)
- * Fix: Obtiene REM dinámicamente + verificación estricta de métodos
+ * NEXO v9.0 - Crypto Vault (v9.6-FIXED)
+ * Fix: Agregado getIdentityKey() para NordicMesh compatibility
  */
 
 const PBKDF2_ITERATIONS = 600000;
@@ -36,68 +36,36 @@ export class CryptoVault {
     this._memoryStorage = new Map();
     this._initStartTime = 0;
     
-    // NO cachear REM aquí - obtener dinámicamente en _notifyREM
-    
     CryptoVault._instance = this;
   }
 
-  /**
-   * Obtiene REM de forma defensiva de múltiples fuentes posibles
-   */
   _getREM() {
     if (typeof window === 'undefined') return null;
-    
-    // Orden de prioridad: NEXO_REM > NEXO.rem > NEXO_DIAG > null
-    const candidates = [
-      window.NEXO_REM,
-      window.NEXO?.rem,
-      window.NEXO_DIAG
-    ];
-    
+    const candidates = [window.NEXO_REM, window.NEXO?.rem, window.NEXO_DIAG];
     for (const rem of candidates) {
-      if (rem && typeof rem === 'object' && (
-        typeof rem.info === 'function' || 
-        typeof rem.log === 'function'
-      )) {
+      if (rem && typeof rem === 'object' && (typeof rem.info === 'function' || typeof rem.log === 'function')) {
         return rem;
       }
     }
-    
     return null;
   }
 
-  /**
-   * Notificación defensiva que nunca rompe el vault
-   */
   _notifyREM(type, message, code = '') {
     try {
       const rem = this._getREM();
-      
       if (!rem) {
         console.log(`[Vault][${type}] ${message}`);
         return;
       }
-      
-      const method = type === 'error' ? 'error' : 
-                    type === 'warn' ? 'warn' : 
-                    type === 'success' ? 'success' : 'info';
-      
-      // Verificación estricta: el método debe ser función
+      const method = type === 'error' ? 'error' : type === 'warn' ? 'warn' : type === 'success' ? 'success' : 'info';
       if (typeof rem[method] === 'function') {
         rem[method](`[Vault] ${message}`, code);
-      } 
-      // Fallback a NEXO_DIAG (solo tiene log/error)
-      else if (method === 'error' && typeof rem.error === 'function') {
-        rem.error(`[Vault] ${message}`, code);
-      }
-      else if (typeof rem.log === 'function') {
+      } else if (typeof rem.log === 'function') {
         rem.log(`[${type.toUpperCase()}] [Vault] ${message}`, type);
-      }
-      else {
+      } else {
         console.log(`[Vault][${type}] ${message}`);
       }
     } catch (e) {
-      // Último recurso: nunca romper la operación del vault
       console.log(`[Vault][${type}] ${message}`);
     }
   }
@@ -305,6 +273,18 @@ export class CryptoVault {
     }
     
     this._notifyREM('info', `ID temporal: ${id.substring(0, 8)}...`, 'VAULT_TEMP_ID');
+  }
+
+  /**
+   * FIX: Método requerido por NordicMesh v1.2-NAP
+   * Contract: VAULT(v) => typeof v.getIdentityKey === 'function'
+   */
+  getIdentityKey() {
+    if (!this.identity?.id) {
+      this._notifyREM('error', 'No identity available', NAP_CODES.VAULT_LOCKED);
+      throw new Error('No identity available');
+    }
+    return this.identity.id;
   }
 
   getIdentity() {
