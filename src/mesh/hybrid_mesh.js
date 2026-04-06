@@ -1,7 +1,7 @@
 /**
- * hybrid_mesh.js - NEXO Hybrid Mesh v2.1 (FIX #6 - Callbacks Constructor)
+ * hybrid_mesh.js - NEXO Hybrid Mesh v2.1 (FIX #7 - Duplicate export)
  * Sistema de mesh híbrido: BLE + WebSocket + LAN
- * FIX: Procesa callbacks onDeviceFound/onDeviceConnected/onDeviceDisconnected/onError en constructor
+ * FIX: Eliminado export duplicado de BLEInterface
  */
 
 export class HybridMesh {
@@ -15,7 +15,7 @@ export class HybridMesh {
     this.wsConnection = null;
     this.status = 'offline';
     
-    // FIX: Guardar callbacks del constructor y registrarlos tras inicialización
+    // FIX #6: Guardar callbacks del constructor
     this._callbacks = {
       onDeviceFound: options.onDeviceFound || (() => {}),
       onDeviceConnected: options.onDeviceConnected || (() => {}),
@@ -103,14 +103,14 @@ export class HybridMesh {
   }
 
   /**
-   * FIX: Método explícito requerido por nexo_app.js línea 312
+   * Método explícito requerido por nexo_app.js
    */
   getPeerCount() {
     return this.peers.size;
   }
 
   /**
-   * FIX: Alias para broadcast (nexo_app.js línea 315 usa broadcast)
+   * Alias para broadcast (nexo_app.js línea 315)
    */
   broadcast(data) {
     return this.send(data, null);
@@ -228,7 +228,7 @@ export class HybridMesh {
       status: this.status,
       peerCount: this.peers.size,
       peers: Array.from(this.peers.keys()),
-      mode: this.status // Compatibilidad con nexo_app.js
+      mode: this.status
     };
   }
 
@@ -296,13 +296,16 @@ export class HybridMesh {
   }
 }
 
-// Exports compatibles
+// Exportar instancia singleton
 export const hybridMesh = new HybridMesh();
-export default HybridMesh;
-export { HybridMesh as BLEInterface };
-export const BLEInterface = HybridMesh;
 
-// Globals
+// Export default
+export default HybridMesh;
+
+// FIX #7: Solo UN export nombrado BLEInterface (eliminado duplicado)
+export { HybridMesh as BLEInterface };
+
+// Global para debugging
 window.HybridMesh = HybridMesh;
 window.hybridMesh = hybridMesh;
 window.BLEInterface = HybridMesh;
