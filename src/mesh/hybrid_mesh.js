@@ -1,11 +1,11 @@
 /**
- * hybrid_mesh.js - NEXO Hybrid Mesh v2.1 (FIX #5 - Export BLEInterface)
+ * hybrid_mesh.js - NEXO Hybrid Mesh v2.1 (FIX #6 - Callbacks Constructor)
  * Sistema de mesh híbrido: BLE + WebSocket + LAN
- * FIX: Agregado BLEInterface export para compatibilidad con nexo_app.js
+ * FIX: Procesa callbacks onDeviceFound/onDeviceConnected/onDeviceDisconnected/onError en constructor
  */
 
 export class HybridMesh {
-  constructor() {
+  constructor(options = {}) {
     this._listeners = new Map();
     this.peers = new Map();
     this.isInitialized = false;
@@ -14,10 +14,17 @@ export class HybridMesh {
     this.nordicMesh = null;
     this.wsConnection = null;
     this.status = 'offline';
+    
+    // FIX: Guardar callbacks del constructor y registrarlos tras inicialización
+    this._callbacks = {
+      onDeviceFound: options.onDeviceFound || (() => {}),
+      onDeviceConnected: options.onDeviceConnected || (() => {}),
+      onDeviceDisconnected: options.onDeviceDisconnected || (() => {}),
+      onError: options.onError || (() => {})
+    };
   }
 
   /**
-   * FIX CRÍTICO: Método initialize requerido por NexoApp v3.3.1
    * Inicializa el sistema de mesh híbrido
    */
   async initialize(config = {}) {
@@ -31,10 +38,15 @@ export class HybridMesh {
     };
 
     try {
+      // Registrar callbacks del constructor como listeners
+      this.on('device', (data) => this._callbacks.onDeviceFound(data));
+      this.on('connected', (data) => this._callbacks.onDeviceConnected(data));
+      this.on('disconnected', (data) => this._callbacks.onDeviceDisconnected(data));
+      this.on('error', (data) => this._callbacks.onError(data.code || 'MESH_ERR', data.message || String(data)));
+
       // Inicializar Nordic Mesh (BLE) si está disponible
       if (this.config.enableBLE && window.NordicMesh) {
         this.nordicMesh = window.NordicMesh;
-        // FIX [NORDIC_005]: Pasar listener obligatorio
         this.nordicMesh.setListener(this._handleNordicEvent.bind(this));
         console.log('[MESH_002] Nordic Mesh registered');
       }
@@ -69,23 +81,16 @@ export class HybridMesh {
     }
     this._listeners.get(event).add(callback);
     
-    // Retornar función de unsubscribe
     return () => {
       this._listeners.get(event)?.delete(callback);
     };
   }
 
-  /**
-   * Sistema de eventos: Elimina callback
-   */
   off(event, callback) {
     if (!this._listeners.has(event)) return;
     this._listeners.get(event).delete(callback);
   }
 
-  /**
-   * Emite eventos a los listeners registrados
-   */
   _emit(event, data) {
     if (!this._listeners.has(event)) return;
     this._listeners.get(event).forEach(callback => {
@@ -95,6 +100,20 @@ export class HybridMesh {
         console.error(`[MESH_EVENT_ERROR] ${event}:`, e);
       }
     });
+  }
+
+  /**
+   * FIX: Método explícito requerido por nexo_app.js línea 312
+   */
+  getPeerCount() {
+    return this.peers.size;
+  }
+
+  /**
+   * FIX: Alias para broadcast (nexo_app.js línea 315 usa broadcast)
+   */
+  broadcast(data) {
+    return this.send(data, null);
   }
 
   /**
@@ -111,17 +130,14 @@ export class HybridMesh {
     this._emit('scanning', { active: true });
 
     try {
-      // Escanear Nordic/BLE
       if (this.nordicMesh && this.nordicMesh.startScan) {
         await this.nordicMesh.startScan();
       }
 
-      // Anunciar en WebSocket/LAN si está disponible
       if (this.wsConnection && this.wsConnection.connect) {
         this.wsConnection.connect();
       }
 
-      // Timeout automático
       setTimeout(() => {
         if (this.isScanning) this.stopScan();
       }, this.config.scanTimeout);
@@ -133,9 +149,6 @@ export class HybridMesh {
     }
   }
 
-  /**
-   * Detiene el escaneo
-   */
   async stopScan() {
     console.log('[MESH_SCAN] Stopping scan...');
     this.isScanning = false;
@@ -148,21 +161,16 @@ export class HybridMesh {
     this._emit('scanning', { active: false });
   }
 
-  /**
-   * Conecta a un dispositivo peer por ID
-   */
   async connect(peerId) {
     console.log(`[MESH_CONNECT] Connecting to ${peerId}...`);
     
     try {
-      // Intentar Nordic primero (BLE directo)
       if (this.nordicMesh && this.nordicMesh.connect) {
         await this.nordicMesh.connect(peerId);
         this._registerPeer(peerId, { type: 'ble', status: 'connecting' });
         return;
       }
 
-      // Fallback a WebSocket
       if (this.wsConnection) {
         this._registerPeer(peerId, { type: 'ws', status: 'connecting' });
         this.wsConnection.send({ type: 'connect', target: peerId });
@@ -175,9 +183,6 @@ export class HybridMesh {
     }
   }
 
-  /**
-   * Desconecta un peer
-   */
   async disconnect(peerId) {
     console.log(`[MESH_DISCONNECT] ${peerId}`);
     
@@ -190,7 +195,7 @@ export class HybridMesh {
   }
 
   /**
-   * Envía mensaje a un peer específico o broadcast
+   * Envía mensaje a un peer específico o broadcast (peerId = null)
    */
   send(data, peerId = null) {
     const payload = {
@@ -200,7 +205,6 @@ export class HybridMesh {
     };
 
     if (peerId) {
-      // Mensaje directo
       const peer = this.peers.get(peerId);
       if (!peer) throw new Error(`Peer ${peerId} not found`);
 
@@ -217,22 +221,17 @@ export class HybridMesh {
     }
   }
 
-  /**
-   * Obtiene estado actual del mesh
-   */
   getStatus() {
     return {
       initialized: this.isInitialized,
       scanning: this.isScanning,
       status: this.status,
       peerCount: this.peers.size,
-      peers: Array.from(this.peers.keys())
+      peers: Array.from(this.peers.keys()),
+      mode: this.status // Compatibilidad con nexo_app.js
     };
   }
 
-  /**
-   * Registra un nuevo peer
-   */
   _registerPeer(peerId, info) {
     this.peers.set(peerId, {
       id: peerId,
@@ -240,12 +239,9 @@ export class HybridMesh {
       ...info
     });
     this._emit('peer_connected', { peerId, ...info });
-    this._emit('connected', { peerId, ...info }); // Alias para compatibilidad
+    this._emit('connected', { peerId, ...info });
   }
 
-  /**
-   * Maneja eventos de Nordic Mesh (BLE nativo)
-   */
   _handleNordicEvent(event) {
     console.log('[NORDIC_EVENT]', event);
     
@@ -272,9 +268,6 @@ export class HybridMesh {
     }
   }
 
-  /**
-   * Maneja mensajes WebSocket
-   */
   _handleWSMessage(message) {
     if (message.type === 'peer_discovery') {
       this._emit('device', {
@@ -288,17 +281,11 @@ export class HybridMesh {
     }
   }
 
-  /**
-   * Genera ID único para mensajes
-   */
   _generateId() {
     return Math.random().toString(36).substring(2, 15) + 
            Math.random().toString(36).substring(2, 15);
   }
 
-  /**
-   * Limpieza y destrucción
-   */
   destroy() {
     this.stopScan();
     this._listeners.clear();
@@ -309,17 +296,13 @@ export class HybridMesh {
   }
 }
 
-// Exportar instancia singleton para NexoApp
+// Exports compatibles
 export const hybridMesh = new HybridMesh();
 export default HybridMesh;
-
-// FIX CRÍTICO: Exportar BLEInterface para compatibilidad con nexo_app.js
-// Esto resuelve el error: "export 'BLEInterface' was not found in '../mesh/hybrid_mesh.js'"
 export { HybridMesh as BLEInterface };
 export const BLEInterface = HybridMesh;
 
-// Global para debugging
+// Globals
 window.HybridMesh = HybridMesh;
 window.hybridMesh = hybridMesh;
 window.BLEInterface = HybridMesh;
-
