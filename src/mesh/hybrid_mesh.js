@@ -1,7 +1,7 @@
 /**
- * hybrid_mesh.js - NEXO Hybrid Mesh v2.1 (FIX #4)
+ * hybrid_mesh.js - NEXO Hybrid Mesh v2.1 (FIX #5 - Export BLEInterface)
  * Sistema de mesh híbrido: BLE + WebSocket + LAN
- * FIX: Agregado initialize(), métodos de control, y sistema de eventos completo
+ * FIX: Agregado BLEInterface export para compatibilidad con nexo_app.js
  */
 
 export class HybridMesh {
@@ -313,6 +313,12 @@ export class HybridMesh {
 export const hybridMesh = new HybridMesh();
 export default HybridMesh;
 
+// FIX CRÍTICO: Exportar BLEInterface para compatibilidad con nexo_app.js
+// Esto resuelve el error: "export 'BLEInterface' was not found in '../mesh/hybrid_mesh.js'"
+export { HybridMesh as BLEInterface };
+export const BLEInterface = HybridMesh;
+
 // Global para debugging
 window.HybridMesh = HybridMesh;
 window.hybridMesh = hybridMesh;
+window.BLEInterface = HybridMesh;
