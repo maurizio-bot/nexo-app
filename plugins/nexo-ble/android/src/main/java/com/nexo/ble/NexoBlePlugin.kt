@@ -74,9 +74,37 @@ class NexoBlePlugin : Plugin() {
     override fun load() {
         bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
-        Log.d(TAG, "NexoBLE Plugin v1.2-NAP loaded")
+        Log.d(TAG, "NexoBLE Plugin v1.3-NAP loaded")
     }
 
+    /**
+     * FIX CRÍTICO [NORDIC_010]: Método requerido por nordic_mesh.js
+     * Retorna estado real del Bluetooth incluyendo STATE_TURNING_ON (11)
+     */
+    @PluginMethod
+    fun isBluetoothEnabled(call: PluginCall) {
+        val result = JSObject()
+        val adapter = bluetoothAdapter
+        val state = adapter?.state ?: -1
+        
+        result.put("enabled", adapter?.isEnabled == true)
+        result.put("state", state)
+        result.put("stateName", when(state) {
+            BluetoothAdapter.STATE_OFF -> "OFF"
+            BluetoothAdapter.STATE_ON -> "ON"
+            BluetoothAdapter.STATE_TURNING_ON -> "TURNING_ON"
+            BluetoothAdapter.STATE_TURNING_OFF -> "TURNING_OFF"
+            else -> "UNKNOWN"
+        })
+        
+        Log.d(TAG, "isBluetoothEnabled: enabled=${adapter?.isEnabled}, state=$state")
+        call.resolve(result)
+    }
+
+    /**
+     * FIX: Manejo robusto de STATE_TURNING_ON (Android 14)
+     * Espera hasta 3 segundos si BT está en transición
+     */
     @PluginMethod
     fun initialize(call: PluginCall) {
         userId = call.getString("userId") ?: generateUserId()
@@ -86,9 +114,35 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        if (!bluetoothAdapter!!.isEnabled) {
+        val initialState = bluetoothAdapter?.state
+        Log.d(TAG, "Initialize: BT state=$initialState (10=OFF, 11=TURNING_ON, 12=ON)")
+        
+        // Si está apagado completamente, rechazar
+        if (initialState == BluetoothAdapter.STATE_OFF) {
             call.reject(ERR_BLUETOOTH_DISABLED, "Bluetooth is disabled")
             return
+        }
+        
+        // Si está en transición, esperar (non-blocking para UI)
+        if (initialState == BluetoothAdapter.STATE_TURNING_ON) {
+            Log.d(TAG, "Waiting for BT to turn on...")
+            var attempts = 0
+            val maxAttempts = 30 // 3 segundos máximo
+            
+            while (bluetoothAdapter?.state != BluetoothAdapter.STATE_ON && attempts < maxAttempts) {
+                try {
+                    Thread.sleep(100)
+                    attempts++
+                } catch (e: InterruptedException) {
+                    break
+                }
+            }
+            
+            if (bluetoothAdapter?.state != BluetoothAdapter.STATE_ON) {
+                call.reject(ERR_BLUETOOTH_DISABLED, "Bluetooth timeout turning on")
+                return
+            }
+            Log.d(TAG, "BT turned on after ${attempts * 100}ms")
         }
         
         try {
@@ -96,7 +150,8 @@ class NexoBlePlugin : Plugin() {
             val result = JSObject()
             result.put("userId", userId)
             result.put("status", "initialized")
-            result.put("version", "1.2-NAP")
+            result.put("version", "1.3-NAP")
+            result.put("bluetoothState", bluetoothAdapter?.state)
             call.resolve(result)
             Log.d(TAG, "Initialized with userId: $userId")
         } catch (e: Exception) {
@@ -349,7 +404,7 @@ class NexoBlePlugin : Plugin() {
             
             override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
-                    // ACK de escritura recibido
+                    // ACK recibido
                 }
             }
         }
