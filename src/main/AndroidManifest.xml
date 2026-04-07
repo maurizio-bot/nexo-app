@@ -26,6 +26,13 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" 
         tools:targetApi="s" />
     
+    <!-- ========================================== -->
+    <!-- NEXO AUTH PLUGIN v1.0 - Biometría Nativa   -->
+    <!-- ========================================== -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Fallback para dispositivos Android 9 (API 28) y anteriores -->
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+    
     <!-- Background BLE (opcional pero recomendado para mensajería P2P) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" 
@@ -48,6 +55,12 @@
         android:required="true" />
     <uses-feature android:name="android.hardware.wifi" 
         android:required="true" />
+    
+    <!-- Biometría opcional (fallback a PIN si no hay sensor) -->
+    <uses-feature android:name="android.hardware.fingerprint" 
+        android:required="false" />
+    <uses-feature android:name="android.hardware.biometrics.face" 
+        android:required="false" />
 
     <application
         android:name=".MainApplication"
