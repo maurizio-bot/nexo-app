@@ -72,10 +72,27 @@ jobs:
         JAVA_HOME: ${{ env.JAVA_HOME }}
       run: ./gradlew assembleDebug --no-daemon --stacktrace
         
-    - name: Upload Debug APK
-      uses: actions/upload-artifact@v4
+    # ✅ NUEVO: Crear Release y subir APK (evita límite de Artifacts)
+    - name: Create Release with APK
+      uses: softprops/action-gh-release@v1
       if: success()
       with:
-        name: nexo-ble-debug-${{ github.run_number }}
-        path: android/app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 7
+        tag_name: v9.3.1-BLE.${{ github.run_number }}
+        name: "NEXO BLE Build #${{ github.run_number }}"
+        body: |
+          ## 🚀 NEXO v9.3.1 - BLE Functional Build
+          
+          **Fixes incluidos:**
+          - ✅ Fix [NORDIC_010]: Agregado `isBluetoothEnabled()` 
+          - ✅ Fix: Manejo de `STATE_TURNING_ON` (Android 14)
+          - ✅ BLE Plugin v1.3-NAP
+          
+          **Instrucciones:**
+          1. Descarga el APK adjunto
+          2. Instala en ambos dispositivos Android
+          3. Activa Modo Avión + Bluetooth
+          4. Abre la app y desbloquea el Vault
+        files: android/app/build/outputs/apk/debug/app-debug.apk
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
