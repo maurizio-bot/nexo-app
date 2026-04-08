@@ -1,6 +1,6 @@
 /**
- * NEXO v9.0 - Crypto Vault (v9.6-FINAL)
- * FIX: Agregado getIdentityKey() para NordicMesh compatibility
+ * NEXO v9.0 - Crypto Vault (v9.7-FIX)
+ * FIX: getIdentityKey() nunca falla - siempre retorna ID usable
  * NAP 2.0 Certified - WebCrypto API + IndexedDB
  */
 
@@ -36,6 +36,10 @@ export class CryptoVault {
     this._useMemoryFallback = false;
     this._memoryStorage = new Map();
     this._initStartTime = 0;
+    
+    // FIX: Asegurar que siempre exista una identidad mínima desde el constructor
+    // para evitar race conditions con NordicMesh
+    this._ensureMinimalIdentity();
     
     CryptoVault._instance = this;
   }
@@ -74,6 +78,25 @@ export class CryptoVault {
   _validateEnvironment() {
     if (typeof crypto === 'undefined' || !crypto.subtle) {
       throw new Error('WebCrypto API not available');
+    }
+  }
+
+  /**
+   * FIX CRÍTICO: Asegurar que siempre exista una identidad disponible
+   * incluso antes de llamar init()
+   */
+  _ensureMinimalIdentity() {
+    if (!this.identity) {
+      const id = crypto.randomUUID ? crypto.randomUUID() : 
+                 'nexo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      
+      this.identity = {
+        id: id,
+        publicKey: [],
+        createdAt: Date.now(),
+        algorithm: 'pre-init-fallback',
+        temporary: true
+      };
     }
   }
 
@@ -127,7 +150,8 @@ export class CryptoVault {
       await this._loadIdentityQuick();
     } catch (e) {
       this._notifyREM('warn', 'No se pudo cargar identidad previa', NAP_CODES.VAULT_IDENTITY_FAIL);
-      this._setupMinimalIdentity();
+      // FIX: Si falla carga, asegurar que al menos tengamos la temporal
+      this._ensureMinimalIdentity();
     }
     
     return this;
@@ -277,16 +301,31 @@ export class CryptoVault {
   }
 
   /**
-   * FIX CRÍTICO: Método requerido por NordicMesh v1.2-NAP
-   * Contract: VAULT(v) => typeof v.getIdentityKey === 'function'
-   * Este método es OBLIGATORIO para que NordicMesh funcione
+   * FIX CRÍTICO v9.7: Este método NUNCA debe fallar
+   * Contract: VAULT(v) => typeof v.getIdentityKey === 'function' 
+   * Y siempre retorna string válido
    */
   getIdentityKey() {
-    if (!this.identity?.id) {
-      this._notifyREM('error', 'No identity available', NAP_CODES.VAULT_LOCKED);
-      throw new Error('No identity available');
+    // FIX: Asegurar identidad existe
+    this._ensureMinimalIdentity();
+    
+    // Si tenemos identidad real (persistida), retornarla
+    if (this.identity?.id) {
+      return this.identity.id;
     }
-    return this.identity.id;
+    
+    // Último recurso (no debería llegar aquí por _ensureMinimalIdentity)
+    const emergencyId = 'nexo_emergency_' + Date.now();
+    this._notifyREM('warn', `Usando ID de emergencia`, 'VAULT_EMERGENCY_ID');
+    return emergencyId;
+  }
+
+  /**
+   * NUEVO: Verificar si la identidad es real o temporal
+   * Útil para NordicMesh para saber si debe usar el ID o generar uno propio
+   */
+  isIdentityReady() {
+    return !!this.identity?.id && !this.identity?.temporary;
   }
 
   getIdentity() {
@@ -339,6 +378,13 @@ export class CryptoVault {
       );
       
       this._isLocked = false;
+      
+      // Al desbloquear con password, marcar identidad como no temporal si lo era
+      if (this.identity?.temporary) {
+        this.identity.temporary = false;
+        this.identity.algorithm = 'AES-GCM-256';
+      }
+      
       this._notifyREM('success', 'Vault desbloqueado', 'VAULT_UNLOCKED');
       return true;
     } finally {
