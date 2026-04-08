@@ -2,7 +2,6 @@ package com.nexo.ble
 
 import android.bluetooth.*
 import android.bluetooth.le.*
-import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -16,8 +15,8 @@ import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import com.nexo.ble.model.NexoGattService // ✅ FIX: Importar para usar UUIDs consistentes
 import org.json.JSONArray
-import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -37,11 +36,13 @@ import java.util.concurrent.atomic.AtomicInteger
 class NexoBlePlugin : Plugin() {
     companion object {
         const val TAG = "NexoBLE"
-        val SERVICE_UUID = UUID.fromString("a3b5c8d2-e1f4-4a7b-9c3d-6e8f1a2b5c7d")
-        val CHAR_ANNOUNCE = UUID.fromString("b4c6d9e3-f2a5-4b8c-ad4e-7f9a2b3c6d8e")
-        val CHAR_HANDSHAKE = UUID.fromString("c5d7eaf4-a3b6-4c9d-be5f-8a0c3d4e7f9a")
-        val CHAR_PAYLOAD = UUID.fromString("d6e8f0a5-b4c7-4d0e-cf6a-9b1e4f5a8b0c")
-        val CHAR_CONTROL = UUID.fromString("e7f9a0b6-c5d8-4e1f-da7b-0c2f5e6a9b1d")
+        // ✅ FIX: Usar NexoGattService para UUIDs, no duplicar
+        val SERVICE_UUID = NexoGattService.SERVICE_UUID
+        val CHAR_ANNOUNCE = NexoGattService.ANNOUNCE_CHAR_UUID
+        val CHAR_HANDSHAKE = NexoGattService.HANDSHAKE_CHAR_UUID
+        val CHAR_PAYLOAD = NexoGattService.PAYLOAD_CHAR_UUID
+        val CHAR_CONTROL = NexoGattService.CONTROL_CHAR_UUID
+        
         const val MTU_DEFAULT = 512
         const val CHUNK_SIZE = 507
         const val ERR_BLUETOOTH_NOT_SUPPORTED = "BLE_001"
@@ -79,7 +80,6 @@ class NexoBlePlugin : Plugin() {
 
     /**
      * FIX CRÍTICO [NORDIC_010]: Método requerido por nordic_mesh.js
-     * Retorna estado real del Bluetooth incluyendo STATE_TURNING_ON (11)
      */
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
@@ -95,15 +95,14 @@ class NexoBlePlugin : Plugin() {
             BluetoothAdapter.STATE_TURNING_ON -> "TURNING_ON"
             BluetoothAdapter.STATE_TURNING_OFF -> "TURNING_OFF"
             else -> "UNKNOWN"
-        })
+        } as Any) // ✅ FIX: Cast explícito para evitar overload ambiguity
         
         Log.d(TAG, "isBluetoothEnabled: enabled=${adapter?.isEnabled}, state=$state")
         call.resolve(result)
     }
 
     /**
-     * FIX: Manejo robusto de STATE_TURNING_ON (Android 14)
-     * Espera hasta 3 segundos si BT está en transición
+     * FIX: Manejo robusto de STATE_TURNING_ON
      */
     @PluginMethod
     fun initialize(call: PluginCall) {
@@ -117,17 +116,15 @@ class NexoBlePlugin : Plugin() {
         val initialState = bluetoothAdapter?.state
         Log.d(TAG, "Initialize: BT state=$initialState (10=OFF, 11=TURNING_ON, 12=ON)")
         
-        // Si está apagado completamente, rechazar
         if (initialState == BluetoothAdapter.STATE_OFF) {
             call.reject(ERR_BLUETOOTH_DISABLED, "Bluetooth is disabled")
             return
         }
         
-        // Si está en transición, esperar (non-blocking para UI)
         if (initialState == BluetoothAdapter.STATE_TURNING_ON) {
             Log.d(TAG, "Waiting for BT to turn on...")
             var attempts = 0
-            val maxAttempts = 30 // 3 segundos máximo
+            val maxAttempts = 30
             
             while (bluetoothAdapter?.state != BluetoothAdapter.STATE_ON && attempts < maxAttempts) {
                 try {
@@ -148,10 +145,10 @@ class NexoBlePlugin : Plugin() {
         try {
             setupGattServer()
             val result = JSObject()
-            result.put("userId", userId)
-            result.put("status", "initialized")
-            result.put("version", "1.3-NAP")
-            result.put("bluetoothState", bluetoothAdapter?.state)
+            result.put("userId", userId as Any)
+            result.put("status", "initialized" as Any)
+            result.put("version", "1.3-NAP" as Any)
+            result.put("bluetoothState", bluetoothAdapter?.state as Any)
             call.resolve(result)
             Log.d(TAG, "Initialized with userId: $userId")
         } catch (e: Exception) {
@@ -202,7 +199,7 @@ class NexoBlePlugin : Plugin() {
                 isAdvertising = true
                 Log.d(TAG, "Advertising started")
                 val result = JSObject()
-                result.put("active", true)
+                result.put("active", true as Any)
                 call.resolve(result)
             }
 
@@ -271,7 +268,7 @@ class NexoBlePlugin : Plugin() {
             override fun onScanFailed(errorCode: Int) {
                 Log.e(TAG, "Scan failed: $errorCode")
                 val eventData = JSObject()
-                eventData.put("error", errorCode)
+                eventData.put("error", errorCode as Any)
                 notifyListeners("onScanFailed", eventData)
             }
         }
@@ -299,12 +296,13 @@ class NexoBlePlugin : Plugin() {
         }
 
         val data = JSObject()
-        data.put("id", device.address)
-        data.put("address", device.address)
-        data.put("rssi", rssi)
-        data.put("name", device.name ?: "NEXO-${device.address.takeLast(4)}")
-        data.put("userId", userIdFromData ?: JSONObject.NULL)
-        data.put("timestamp", System.currentTimeMillis())
+        data.put("id", device.address as Any)
+        data.put("address", device.address as Any)
+        data.put("rssi", rssi as Any)
+        data.put("name", (device.name ?: "NEXO-${device.address.takeLast(4)}") as Any)
+        // ✅ FIX: Manejo seguro de null sin JSONObject.NULL
+        data.put("userId", (userIdFromData ?: "") as Any)
+        data.put("timestamp", System.currentTimeMillis() as Any)
         
         Log.d(TAG, "Peer discovered: ${device.address} ($rssi dBm)")
         notifyListeners("onPeerDiscovered", data)
@@ -383,8 +381,8 @@ class NexoBlePlugin : Plugin() {
                     }
                     
                     val eventData = JSObject()
-                    eventData.put("deviceId", deviceId)
-                    eventData.put("services", servicesArray)
+                    eventData.put("deviceId", deviceId as Any)
+                    eventData.put("services", servicesArray as Any)
                     notifyListeners("onServicesDiscovered", eventData)
                 }
             }
@@ -417,7 +415,7 @@ class NexoBlePlugin : Plugin() {
         
         gattClients[deviceId] = gatt
         val result = JSObject()
-        result.put("deviceId", deviceId)
+        result.put("deviceId", deviceId as Any)
         call.resolve(result)
     }
 
@@ -426,13 +424,13 @@ class NexoBlePlugin : Plugin() {
         val list = JSONArray()
         for (addr in connectedDevices.keys) {
             val deviceObj = JSObject()
-            deviceObj.put("id", addr)
-            deviceObj.put("address", addr)
-            deviceObj.put("connected", true)
+            deviceObj.put("id", addr as Any)
+            deviceObj.put("address", addr as Any)
+            deviceObj.put("connected", true as Any)
             list.put(deviceObj)
         }
         val result = JSObject()
-        result.put("devices", list)
+        result.put("devices", list as Any)
         call.resolve(result)
     }
 
@@ -500,9 +498,9 @@ class NexoBlePlugin : Plugin() {
         try {
             sendChunkedMessage(deviceId, bytes)
             val result = JSObject()
-            result.put("success", true)
-            result.put("bytesSent", bytes.size)
-            result.put("chunks", (bytes.size + CHUNK_SIZE - 1) / CHUNK_SIZE)
+            result.put("success", true as Any)
+            result.put("bytesSent", bytes.size as Any)
+            result.put("chunks", ((bytes.size + CHUNK_SIZE - 1) / CHUNK_SIZE) as Any)
             call.resolve(result)
         } catch (e: Exception) {
             call.reject("SEND_FAILED", e.message)
@@ -586,12 +584,12 @@ class NexoBlePlugin : Plugin() {
             }
             
             val eventData = JSObject()
-            eventData.put("deviceId", deviceId)
-            eventData.put("from", deviceId)
-            eventData.put("messageId", messageId)
-            eventData.put("data", dataArray)
-            eventData.put("size", result.size)
-            eventData.put("timestamp", System.currentTimeMillis())
+            eventData.put("deviceId", deviceId as Any)
+            eventData.put("from", deviceId as Any)
+            eventData.put("messageId", messageId as Any)
+            eventData.put("data", dataArray as Any)
+            eventData.put("size", result.size as Any)
+            eventData.put("timestamp", System.currentTimeMillis() as Any)
             notifyListeners("onMessageReceived", eventData)
         }
     }
@@ -605,9 +603,9 @@ class NexoBlePlugin : Plugin() {
         }
         
         val eventData = JSObject()
-        eventData.put("deviceId", deviceId)
-        eventData.put("type", data[0].toInt() and 0xFF)
-        eventData.put("payload", payloadArray)
+        eventData.put("deviceId", deviceId as Any)
+        eventData.put("type", (data[0].toInt() and 0xFF) as Any)
+        eventData.put("payload", payloadArray as Any)
         notifyListeners("onHandshakeReceived", eventData)
     }
 
@@ -625,8 +623,14 @@ class NexoBlePlugin : Plugin() {
             return false
         }
         
+        // ✅ FIX: Eliminar import problemático de BluetoothStatusCodes, usar constantes int directamente
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            gatt.writeCharacteristic(characteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS
+            try {
+                val result = gatt.writeCharacteristic(characteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                result == 0 // SUCCESS = 0 en API 33+
+            } catch (e: Exception) {
+                false
+            }
         } else {
             characteristic.value = data
             characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
@@ -740,9 +744,9 @@ class NexoBlePlugin : Plugin() {
 
     private fun notifyConnectionState(deviceId: String, state: String) {
         val data = JSObject()
-        data.put("deviceId", deviceId)
-        data.put("state", state)
-        data.put("timestamp", System.currentTimeMillis())
+        data.put("deviceId", deviceId as Any)
+        data.put("state", state as Any)
+        data.put("timestamp", System.currentTimeMillis() as Any)
         notifyListeners("onConnectionStateChanged", data)
     }
 
