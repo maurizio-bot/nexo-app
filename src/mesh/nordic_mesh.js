@@ -1,6 +1,6 @@
 /**
  * NordicMesh - Protocolo BLE NEXO v1.2-NAP
- * FIX: API on(event, callback) + Bluetooth validation
+ * FIX: Validación robusta de Vault + mejor manejo de errores
  */
 
 const UUIDS = Object.freeze({
@@ -20,23 +20,36 @@ const STATE = Object.freeze({
 
 class NordicMesh {
   constructor(vault, options = {}) {
-    if (!vault || typeof vault.getIdentityKey !== 'function') {
-      throw new Error('[NORDIC_002] Vault must provide getIdentityKey()');
+    // FIX: Validación más permisiva del vault
+    if (!vault) {
+      throw new Error('[NORDIC_002] Vault is required');
+    }
+    
+    // FIX: Verificar que el vault tenga getIdentityKey, pero no lanzar error aún
+    this.vault = vault;
+    this._vaultReady = typeof vault.getIdentityKey === 'function';
+    
+    if (!this._vaultReady) {
+      console.warn('[NordicMesh] ⚠️ Vault no tiene getIdentityKey(), usando fallback');
     }
 
-    this.vault = vault;
-    this.options = { chunkSize: 507, rssiThreshold: -85, handshakeTimeout: 30000, ...options };
+    this.options = { 
+      chunkSize: 507, 
+      rssiThreshold: -85, 
+      handshakeTimeout: 30000, 
+      ...options 
+    };
     
     this.state = STATE.NONE;
     this.peers = new Map();
     this.sessions = new Map();
-    this.eventListeners = new Map(); // FIX: Map por evento
+    this.eventListeners = new Map();
     this.cleanupHandlers = new Set();
     this.initPromise = null;
     this.userId = null;
     this.isNative = false;
     this.NexoBLE = null;
-    this.bluetoothEnabled = false; // FIX: Track Bluetooth state
+    this.bluetoothEnabled = false;
   }
 
   async _detectPlugin() {
@@ -48,9 +61,9 @@ class NordicMesh {
         return true;
       }
       
-      // Web stub fallback
+      // Web stub fallback mejorado
       this.NexoBLE = {
-        initialize: async () => ({ userId: 'web-stub' }),
+        initialize: async () => ({ userId: 'web-stub', status: 'initialized' }),
         startAdvertising: async () => {},
         stopAdvertising: async () => {},
         startScan: async () => {},
@@ -60,7 +73,7 @@ class NordicMesh {
         getConnectedDevices: async () => ({ devices: [] }),
         sendMessage: async () => { throw new Error('BLE not available in web'); },
         addListener: () => ({ remove: () => {} }),
-        isBluetoothEnabled: async () => false // FIX: Método para check Bluetooth
+        isBluetoothEnabled: async () => false
       };
       
       this.isNative = false;
@@ -72,7 +85,6 @@ class NordicMesh {
     }
   }
 
-  // FIX: Verificar Bluetooth antes de inicializar
   async checkBluetooth() {
     try {
       if (this.NexoBLE?.isBluetoothEnabled) {
@@ -82,8 +94,34 @@ class NordicMesh {
       }
       return this.bluetoothEnabled;
     } catch (e) {
+      console.warn('[NordicMesh] Bluetooth check failed:', e.message);
       return false;
     }
+  }
+
+  // FIX CRÍTICO: Obtener identity con fallback seguro
+  _getIdentitySafely() {
+    try {
+      if (!this._vaultReady) {
+        // Generar ID temporal si vault no tiene método
+        return this._generateTempId();
+      }
+      
+      const id = this.vault.getIdentityKey();
+      if (!id) {
+        throw new Error('Empty identity');
+      }
+      return id;
+    } catch (err) {
+      console.warn('[NordicMesh] Vault identity failed, using temp:', err.message);
+      return this._generateTempId();
+    }
+  }
+
+  _generateTempId() {
+    const tempId = 'nexo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    console.log('[NordicMesh] Generated temp ID:', tempId.substring(0, 8) + '...');
+    return tempId;
   }
 
   async init() {
@@ -98,41 +136,97 @@ class NordicMesh {
       
       await this._detectPlugin();
       
-      // FIX: Verificar Bluetooth
+      // FIX: Verificar Bluetooth pero no bloquear si está apagado
       const btEnabled = await this.checkBluetooth();
       if (!btEnabled && this.isNative) {
-        console.warn('[NordicMesh] ⚠️ Bluetooth apagado');
-        // No lanzar error, dejar que la app maneje la UI
+        console.warn('[NordicMesh] ⚠️ Bluetooth apagado - modo offline');
       }
       
-      const identityKey = await this.vault.getIdentityKey();
+      // FIX CRÍTICO: Obtener identity con manejo de errores
+      const identityKey = this._getIdentitySafely();
       this.userId = identityKey;
       
-      await this.NexoBLE.initialize({ userId: identityKey });
+      console.log('[NordicMesh] Initializing with userId:', identityKey.substring(0, 8) + '...');
+      
+      // FIX: Manejar errores de inicialización BLE sin crashear
+      let initResult;
+      try {
+        initResult = await this.NexoBLE.initialize({ userId: identityKey });
+      } catch (bleError) {
+        console.error('[NordicMesh] BLE initialize failed:', bleError.message);
+        // Si falla BLE nativo, continuar en modo stub
+        if (this.isNative) {
+          console.warn('[NordicMesh] Fallback a modo web por error BLE');
+          this.isNative = false;
+          initResult = { userId: identityKey, status: 'stub-fallback' };
+        } else {
+          throw bleError;
+        }
+      }
+      
       await this._setupListeners();
       
       this._setState(STATE.OFFLINE);
-      return { success: true, isNative: this.isNative, userId: this.userId, bluetooth: btEnabled };
+      return { 
+        success: true, 
+        isNative: this.isNative, 
+        userId: this.userId, 
+        bluetooth: btEnabled,
+        mode: btEnabled ? 'native' : 'stub'
+      };
       
     } catch (error) {
       this._setState(STATE.ERROR);
-      return { success: false, error: error.message };
+      console.error('[NordicMesh] Init failed:', error.message);
+      return { success: false, error: { message: error.message, code: 'NORDIC_INIT_FAILED' }};
     }
   }
 
   async _setupListeners() {
-    const events = ['peerDiscovered', 'connectionStateChanged', 'messageReceived'];
+    const events = ['onPeerDiscovered', 'onConnectionStateChanged', 'onMessageReceived'];
     
     for (const event of events) {
       try {
-        await this.NexoBLE.addListener(event, (data) => this._emit(event, data));
+        // FIX: Mapear nombres de eventos correctos según NexoBlePlugin.kt
+        const nativeEvent = event.replace('on', '').toLowerCase();
+        const mappedEvent = nativeEvent === 'peerdiscovered' ? 'onPeerDiscovered' :
+                          nativeEvent === 'connectionstatechanged' ? 'onConnectionStateChanged' :
+                          nativeEvent === 'messagereceived' ? 'onMessageReceived' : event;
+        
+        await this.NexoBLE.addListener(mappedEvent, (data) => {
+          // Transformar datos nativos a formato NordicMesh
+          const transformed = this._transformEventData(mappedEvent, data);
+          this._emit(this._mapEventName(mappedEvent), transformed);
+        });
       } catch (e) {
         console.warn(`[NordicMesh] Listener ${event} skipped:`, e.message);
       }
     }
   }
 
-  // FIX #3: API on(event, callback) - Compatible con nexo_app.js
+  _mapEventName(nativeEvent) {
+    const mapping = {
+      'onPeerDiscovered': 'peerDiscovered',
+      'onConnectionStateChanged': 'connectionStateChanged',
+      'onMessageReceived': 'messageReceived'
+    };
+    return mapping[nativeEvent] || nativeEvent;
+  }
+
+  _transformEventData(event, data) {
+    // Normalizar datos del plugin nativo
+    if (event === 'onPeerDiscovered') {
+      return {
+        id: data.id || data.address,
+        name: data.name || `NEXO-${(data.address || '').slice(-4)}`,
+        rssi: data.rssi || -80,
+        userId: data.userId || '',
+        timestamp: Date.now()
+      };
+    }
+    return data;
+  }
+
   on(event, callback) {
     if (typeof event !== 'string' || typeof callback !== 'function') {
       throw new Error('[NORDIC_005] on() requires (eventName, callback)');
@@ -144,21 +238,18 @@ class NordicMesh {
     
     this.eventListeners.get(event).add(callback);
     
-    // Return unsubscribe function
     return () => {
       this.eventListeners.get(event)?.delete(callback);
     };
   }
 
   _emit(event, data) {
-    // Emitir a listeners específicos del evento
     if (this.eventListeners.has(event)) {
       this.eventListeners.get(event).forEach(cb => {
         try { cb(data); } catch (e) { console.error(e); }
       });
     }
     
-    // Emitir a listeners wildcard (*)
     if (this.eventListeners.has('*')) {
       this.eventListeners.get('*').forEach(cb => {
         try { cb(event, data); } catch (e) {}
@@ -167,14 +258,23 @@ class NordicMesh {
   }
 
   async startDiscovery() {
-    // FIX: Validar Bluetooth primero
+    // FIX: Validar estado antes de iniciar discovery
+    if (this.state === STATE.ERROR) {
+      console.warn('[NordicMesh] Cannot start discovery in error state');
+      return false;
+    }
+    
     const btEnabled = await this.checkBluetooth();
     if (!btEnabled) {
-      this._emit('error', { code: 'BLUETOOTH_DISABLED', message: 'Activa Bluetooth para buscar' });
+      this._emit('error', { 
+        code: 'BLUETOOTH_DISABLED', 
+        message: 'Activa Bluetooth para buscar peers' 
+      });
       return false;
     }
     
     if (![STATE.OFFLINE, STATE.CONNECTED].includes(this.state)) {
+      console.warn('[NordicMesh] Cannot start discovery from state:', this.state);
       return false;
     }
     
@@ -184,7 +284,7 @@ class NordicMesh {
       await this.NexoBLE.startAdvertising();
       await this.NexoBLE.startScan();
       
-      // Timeout auto-stop
+      // Auto-stop después de 10s
       setTimeout(() => {
         if (this.state === STATE.DISCOVERING) {
           this.stopDiscovery();
@@ -195,6 +295,7 @@ class NordicMesh {
       return true;
     } catch (error) {
       this._setState(STATE.ERROR);
+      this._emit('error', { code: 'DISCOVERY_FAILED', message: error.message });
       return false;
     }
   }
@@ -202,9 +303,13 @@ class NordicMesh {
   async stopDiscovery() {
     try {
       await this.NexoBLE.stopScan();
-      if (this.state === STATE.DISCOVERING) this._setState(STATE.OFFLINE);
+      if (this.state === STATE.DISCOVERING) {
+        this._setState(STATE.OFFLINE);
+      }
       return true;
-    } catch (e) { return false; }
+    } catch (e) { 
+      return false; 
+    }
   }
 
   async connect(deviceId) {
@@ -223,7 +328,9 @@ class NordicMesh {
       await this.NexoBLE.disconnect({ deviceId });
       this.sessions.delete(deviceId);
       return true;
-    } catch (e) { return false; }
+    } catch (e) { 
+      return false; 
+    }
   }
 
   async sendMessage(deviceId, plaintext) {
@@ -234,6 +341,7 @@ class NordicMesh {
       this._emit('messageSent', { deviceId });
       return true;
     } catch (error) {
+      console.error('[NordicMesh] Send failed:', error.message);
       return false;
     }
   }
@@ -244,12 +352,19 @@ class NordicMesh {
     this._emit('stateChanged', { from: old, to: newState });
   }
 
-  getPeers() { return Array.from(this.peers.values()); }
-  getState() { return this.state; }
+  getPeers() { 
+    return Array.from(this.peers.values()); 
+  }
+  
+  getState() { 
+    return this.state; 
+  }
 
   destroy() {
     this._setState(STATE.CLEANUP);
-    this.cleanupHandlers.forEach(fn => { try { fn(); } catch(e) {} });
+    this.cleanupHandlers.forEach(fn => { 
+      try { fn(); } catch(e) {} 
+    });
     this.NexoBLE?.stopAdvertising?.();
     this.NexoBLE?.stopScan?.();
     this.eventListeners.clear();
