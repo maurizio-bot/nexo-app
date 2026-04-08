@@ -33,9 +33,17 @@ android {
     namespace 'com.nexo.auth'
 }
 
+// AGREGAR ESTO - Faltaba
+repositories {
+    google()
+    mavenCentral()
+}
+
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.0"
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation "androidx.biometric:biometric:1.1.0"
-    compileOnly project(':capacitor-android')
+    
+    // CAMBIO: Volver a Maven (más estable para CI/CD)
+    compileOnly 'com.getcapacitor:core:6.0.0'
 }
