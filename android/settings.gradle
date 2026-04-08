@@ -1,8 +1,10 @@
+// PRIMERO: Cargar capacitor-android desde node_modules
+apply from: 'capacitor.settings.gradle'
+
+// DESPUÉS: Incluir módulos que dependen de capacitor-android
 include ':app'
 include ':capacitor-cordova-android-plugins'
 include ':capacitor-nexo-auth'
 
 project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
 project(':capacitor-nexo-auth').projectDir = new File('../plugins/nexo-auth/android')
-
-apply from: 'capacitor.settings.gradle'
