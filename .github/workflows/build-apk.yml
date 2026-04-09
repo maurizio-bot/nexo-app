@@ -1,71 +1,20 @@
-name: Build NEXO APK
-
-on:
-  push:
-    branches: [ main, develop ]
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-env:
-  JAVA_VERSION: '17'
-  NODE_VERSION: '20'
-
-jobs:
-  build-android:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
-        
-    - name: Setup Java (JDK ${{ env.JAVA_VERSION }})
-      uses: actions/setup-java@v4
-      with:
-        java-version: ${{ env.JAVA_VERSION }}
-        distribution: 'temurin'
-        cache: 'gradle'
-        
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        cmdline-tools-version: 11076708
-        
-    - name: Accept Android licenses
-      run: yes | sdkmanager --licenses || true
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Build web assets
-      run: npm run build
-      
     - name: Sync Capacitor
       run: npx cap sync android
       
-    # FIX: Crear gradle.properties en ~/.gradle (global, no es tocado por cap sync)
-    - name: Configure Gradle Global
-      run: |
-        mkdir -p ~/.gradle
-        echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" > ~/.gradle/gradle.properties
-        echo "org.gradle.daemon=false" >> ~/.gradle/gradle.properties
-        echo "android.useAndroidX=true" >> ~/.gradle/gradle.properties
-        echo "android.enableJetifier=true" >> ~/.gradle/gradle.properties
-        echo "org.gradle.java.home=$JAVA_HOME" >> ~/.gradle/gradle.properties
-        echo "✅ ~/.gradle/gradle.properties creado:"
-        cat ~/.gradle/gradle.properties
-        
-    - name: Prepare Gradle Wrapper
+    # FIX: Crear gradle.properties en el proyecto DESPUÉS del sync
+    - name: Configure Gradle Project
       working-directory: ./android
-      run: chmod +x gradlew
+      run: |
+        rm -f gradle.properties
+        echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" > gradle.properties
+        echo "org.gradle.daemon=false" >> gradle.properties
+        echo "android.useAndroidX=true" >> gradle.properties
+        echo "android.enableJetifier=true" >> gradle.properties
+        echo "org.gradle.java.home=$JAVA_HOME" >> gradle.properties
+        chmod +x gradlew
+        echo "✅ Verificando android/gradle.properties:"
+        cat gradle.properties
+        ls -la gradle.properties
         
     - name: Verify Environment
       run: |
@@ -76,26 +25,3 @@ jobs:
       working-directory: ./android
       run: |
         ./gradlew assembleDebug --no-daemon --stacktrace
-        
-    - name: Verify APK
-      if: success()
-      run: |
-        ls -lh android/app/build/outputs/apk/debug/
-        
-    - name: Create Release with APK
-      uses: softprops/action-gh-release@v1
-      if: success()
-      with:
-        tag_name: v9.4.1-BLE.${{ github.run_number }}
-        name: "NEXO BLE Android 14 Build #${{ github.run_number }}"
-        body: |
-          ## 🚀 NEXO v9.4.1 - BLE Android 14 Ready
-          
-          **Fixes:**
-          - ✅ Gradle global config (~/.gradle/gradle.properties)
-          - ✅ AndroidX enabled
-          - ✅ Java Home configured
-        files: android/app/build/outputs/apk/debug/app-debug.apk
-        prerelease: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
