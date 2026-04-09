@@ -2,11 +2,21 @@ ext {
     minSdkVersion = 26
     compileSdkVersion = 34
     targetSdkVersion = 34
-    androidxActivityVersion = '1.7.0'
+    
+    // CRÍTICO: AndroidX Activity 1.8.0+ para permisos runtime Android 14
+    androidxActivityVersion = '1.8.0'
+    
+    // AppCompat actualizado para Android 14
     androidxAppCompatVersion = '1.6.1'
+    
     androidxCoordinatorLayoutVersion = '1.2.0'
-    androidxCoreVersion = '1.10.0'
-    androidxFragmentVersion = '1.5.6'
+    
+    // CRÍTICO: Core 1.12.0+ para BLE permissions APIs
+    androidxCoreVersion = '1.12.0'
+    
+    // Fragment compatible con Android 14
+    androidxFragmentVersion = '1.6.2'
+    
     coreSplashScreenVersion = '1.0.0'
     androidxWebkitVersion = '1.6.1'
     junitVersion = '4.13.2'
