@@ -2,20 +2,35 @@ apply plugin: 'com.android.application'
 
 android {
     namespace "com.nexo.app"
-    compileSdkVersion rootProject.ext.compileSdkVersion
+    compileSdkVersion 34 // CRÍTICO: Android 14 para BLE robusto
+    
     defaultConfig {
         applicationId "com.nexo.app"
-        minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
+        minSdkVersion 26 // BLE estable desde Android 8.0
+        targetSdkVersion 34 // CRÍTICO: Target Android 14
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        // CRÍTICO: Evitar conflictos de archivos nativos BLE
+        packagingOptions {
+            pickFirst 'lib/x86/libc++_shared.so'
+            pickFirst 'lib/x86_64/libc++_shared.so'
+            pickFirst 'lib/armeabi-v7a/libc++_shared.so'
+            pickFirst 'lib/arm64-v8a/libc++_shared.so'
+        }
+        
         aaptOptions {
-             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
-             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    
+    // CRÍTICO: Java 17 requerido por Android 14
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
     buildTypes {
         release {
             minifyEnabled false
@@ -28,6 +43,9 @@ repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
+    // CRÍTICO: Repositorio Nordic para Mesh (futuro)
+    mavenCentral()
+    google()
 }
 
 dependencies {
@@ -35,6 +53,12 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    
+    // CRÍTICO: AndroidX Activity para permisos runtime Android 14
+    implementation "androidx.activity:activity-ktx:1.8.0"
+    
+    // CRÍTICO: Core KTX para permisos
+    implementation "androidx.core:core-ktx:1.12.0"
     
     // NEXO Auth Plugin (Biometría Nativa)
     implementation project(':capacitor-nexo-auth')
