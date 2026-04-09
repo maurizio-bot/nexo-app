@@ -1,21 +1,22 @@
 package com.nexo.ble
 
+import android.app.Activity
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
-import com.nexo.ble.model.NexoGattService // ✅ FIX: Importar para usar UUIDs consistentes
+import com.nexo.ble.model.NexoGattService
 import org.json.JSONArray
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -36,7 +37,6 @@ import java.util.concurrent.atomic.AtomicInteger
 class NexoBlePlugin : Plugin() {
     companion object {
         const val TAG = "NexoBLE"
-        // ✅ FIX: Usar NexoGattService para UUIDs, no duplicar
         val SERVICE_UUID = NexoGattService.SERVICE_UUID
         val CHAR_ANNOUNCE = NexoGattService.ANNOUNCE_CHAR_UUID
         val CHAR_HANDSHAKE = NexoGattService.HANDSHAKE_CHAR_UUID
@@ -55,6 +55,8 @@ class NexoBlePlugin : Plugin() {
         const val ERR_MESSAGE_TOO_LARGE = "BLE_008"
         const val ERR_INVALID_PARAMS = "BLE_019"
         const val ERR_NOT_CONNECTED = "BLE_011"
+        
+        const val REQUEST_ENABLE_BT = 1001
     }
 
     private var bluetoothManager: BluetoothManager? = null
@@ -71,21 +73,47 @@ class NexoBlePlugin : Plugin() {
     private val handler = Handler(Looper.getMainLooper())
     private var userId: String = ""
     private val connectionCounter = AtomicInteger(0)
+    private var pendingInitializeCall: PluginCall? = null
 
+    // ✅ FIX CRÍTICO: No obtener adapter en load(), esperar a initialize()
     override fun load() {
-        bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        Log.d(TAG, "NexoBLE Plugin v2.0-NAP loaded (waiting for permissions)")
+    }
+
+    /**
+     * ✅ FIX: Obtener adapter solo cuando tenemos permisos verificados
+     */
+    private fun initializeAdapter(): Boolean {
+        if (bluetoothManager == null) {
+            bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        }
+        
+        // En Android 12+, necesitamos BLUETOOTH_CONNECT para acceder al adapter
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) 
+                != PackageManager.PERMISSION_GRANTED) {
+                Log.e(TAG, "BLUETOOTH_CONNECT permission not granted")
+                return false
+            }
+        }
+        
         bluetoothAdapter = bluetoothManager?.adapter
-        Log.d(TAG, "NexoBLE Plugin v1.3-NAP loaded")
+        return bluetoothAdapter != null
     }
 
     /**
      * FIX CRÍTICO [NORDIC_010]: Método requerido por nordic_mesh.js
+     * ✅ FIX: Ahora verifica permisos antes de acceder al adapter
      */
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
+        if (!checkAndRequestPermissions(call, "isBtEnabledCallback")) {
+            return
+        }
+        
         val result = JSObject()
         val adapter = bluetoothAdapter
-        val state = adapter?.state ?: -1
+        val state = adapter?.state ?: BluetoothAdapter.STATE_OFF
         
         result.put("enabled", adapter?.isEnabled == true)
         result.put("state", state)
@@ -95,51 +123,81 @@ class NexoBlePlugin : Plugin() {
             BluetoothAdapter.STATE_TURNING_ON -> "TURNING_ON"
             BluetoothAdapter.STATE_TURNING_OFF -> "TURNING_OFF"
             else -> "UNKNOWN"
-        } as Any) // ✅ FIX: Cast explícito para evitar overload ambiguity
+        } as Any)
         
         Log.d(TAG, "isBluetoothEnabled: enabled=${adapter?.isEnabled}, state=$state")
         call.resolve(result)
     }
 
+    @PermissionCallback
+    private fun isBtEnabledCallback(call: PluginCall) {
+        if (hasRequiredPermissions()) {
+            initializeAdapter()
+            isBluetoothEnabled(call)
+        } else {
+            call.reject(ERR_PERMISSION_DENIED, "Bluetooth permissions required")
+        }
+    }
+
     /**
-     * FIX: Manejo robusto de STATE_TURNING_ON
+     * ✅ FIX: Manejo robusto de permisos y estado
      */
     @PluginMethod
     fun initialize(call: PluginCall) {
         userId = call.getString("userId") ?: generateUserId()
         
-        if (bluetoothAdapter == null) {
+        // Primero verificar permisos
+        if (!checkAndRequestPermissions(call, "initializePermissionCallback")) {
+            pendingInitializeCall = call
+            return
+        }
+        
+        performInitialization(call)
+    }
+
+    @PermissionCallback
+    private fun initializePermissionCallback(call: PluginCall) {
+        if (hasRequiredPermissions()) {
+            performInitialization(call)
+        } else {
+            call.reject(ERR_PERMISSION_DENIED, "Bluetooth permissions required for initialization")
+        }
+    }
+
+    private fun performInitialization(call: PluginCall) {
+        // Ahora sí inicializamos el adapter con permisos concedidos
+        if (!initializeAdapter()) {
+            call.reject(ERR_BLUETOOTH_NOT_SUPPORTED, "Cannot access Bluetooth adapter (permissions denied or not supported)")
+            return
+        }
+        
+        val adapter = bluetoothAdapter
+        if (adapter == null) {
             call.reject(ERR_BLUETOOTH_NOT_SUPPORTED, "Device does not support Bluetooth")
             return
         }
         
-        val initialState = bluetoothAdapter?.state
+        val initialState = adapter.state
         Log.d(TAG, "Initialize: BT state=$initialState (10=OFF, 11=TURNING_ON, 12=ON)")
         
         if (initialState == BluetoothAdapter.STATE_OFF) {
-            call.reject(ERR_BLUETOOTH_DISABLED, "Bluetooth is disabled")
+            // ✅ FIX: En lugar de rechazar, solicitar activación
+            pendingInitializeCall = call
+            requestBluetoothActivation()
             return
         }
         
         if (initialState == BluetoothAdapter.STATE_TURNING_ON) {
             Log.d(TAG, "Waiting for BT to turn on...")
-            var attempts = 0
-            val maxAttempts = 30
-            
-            while (bluetoothAdapter?.state != BluetoothAdapter.STATE_ON && attempts < maxAttempts) {
-                try {
-                    Thread.sleep(100)
-                    attempts++
-                } catch (e: InterruptedException) {
-                    break
-                }
-            }
-            
-            if (bluetoothAdapter?.state != BluetoothAdapter.STATE_ON) {
-                call.reject(ERR_BLUETOOTH_DISABLED, "Bluetooth timeout turning on")
-                return
-            }
-            Log.d(TAG, "BT turned on after ${attempts * 100}ms")
+            handler.postDelayed({
+                performInitialization(call)
+            }, 500)
+            return
+        }
+        
+        if (initialState != BluetoothAdapter.STATE_ON) {
+            call.reject(ERR_BLUETOOTH_DISABLED, "Bluetooth is not available (state: $initialState)")
+            return
         }
         
         try {
@@ -147,18 +205,90 @@ class NexoBlePlugin : Plugin() {
             val result = JSObject()
             result.put("userId", userId as Any)
             result.put("status", "initialized" as Any)
-            result.put("version", "1.3-NAP" as Any)
-            result.put("bluetoothState", bluetoothAdapter?.state as Any)
+            result.put("version", "2.0-NAP" as Any)
+            result.put("bluetoothState", adapter.state as Any)
+            result.put("native", true as Any) // ✅ FIX: Indicar que es nativo real
             call.resolve(result)
-            Log.d(TAG, "Initialized with userId: $userId")
+            Log.d(TAG, "Initialized successfully with userId: $userId")
         } catch (e: Exception) {
             Log.e(TAG, "Initialize failed", e)
             call.reject("INIT_FAILED", e.message)
         }
     }
 
+    /**
+     * ✅ FIX: Solicitar activación de Bluetooth al sistema
+     */
+    private fun requestBluetoothActivation() {
+        val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+        try {
+            startActivityForResult(null, enableBtIntent, REQUEST_ENABLE_BT)
+        } catch (e: Exception) {
+            Log.e(TAG, "Cannot request BT activation", e)
+            pendingInitializeCall?.reject(ERR_BLUETOOTH_DISABLED, "Cannot activate Bluetooth: ${e.message}")
+            pendingInitializeCall = null
+        }
+    }
+
+    override fun handleOnActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.handleOnActivityResult(requestCode, resultCode, data)
+        
+        if (requestCode == REQUEST_ENABLE_BT) {
+            if (resultCode == Activity.RESULT_OK) {
+                Log.d(TAG, "Bluetooth enabled by user")
+                handler.postDelayed({
+                    pendingInitializeCall?.let { call ->
+                        performInitialization(call)
+                        pendingInitializeCall = null
+                    }
+                }, 500) // Esperar a que se estabilice
+            } else {
+                Log.w(TAG, "User denied Bluetooth activation")
+                pendingInitializeCall?.reject(ERR_BLUETOOTH_DISABLED, "Bluetooth activation denied by user")
+                pendingInitializeCall = null
+            }
+        }
+    }
+
+    /**
+     * ✅ FIX: Verificación centralizada de permisos
+     */
+    private fun checkAndRequestPermissions(call: PluginCall, callback: String): Boolean {
+        if (hasRequiredPermissions()) {
+            return true
+        }
+        
+        // Solicitar todos los permisos necesarios
+        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                android.Manifest.permission.BLUETOOTH_SCAN,
+                android.Manifest.permission.BLUETOOTH_CONNECT,
+                android.Manifest.permission.BLUETOOTH_ADVERTISE
+            )
+        } else {
+            arrayOf(
+                android.Manifest.permission.BLUETOOTH,
+                android.Manifest.permission.BLUETOOTH_ADMIN,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        }
+        
+        requestPermissionForAliases(permissions, call, callback)
+        return false
+    }
+
+    private fun hasRequiredPermissions(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            hasPermission("bluetoothScan") && hasPermission("bluetoothConnect") && hasPermission("bluetoothAdvertise")
+        } else {
+            hasPermission("location")
+        }
+    }
+
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
+        if (!ensureInitialized(call)) return
+        
         if (hasPermission("bluetoothAdvertise")) {
             startAdvertisingInternal(call)
         } else {
@@ -215,6 +345,7 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun stopAdvertising(call: PluginCall) {
+        if (!ensureInitialized(call)) return
         bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
         isAdvertising = false
         advertiseCallback = null
@@ -223,6 +354,8 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun startScan(call: PluginCall) {
+        if (!ensureInitialized(call)) return
+        
         if (hasPermission("bluetoothScan")) {
             startScanInternal(call)
         } else {
@@ -300,7 +433,6 @@ class NexoBlePlugin : Plugin() {
         data.put("address", device.address as Any)
         data.put("rssi", rssi as Any)
         data.put("name", (device.name ?: "NEXO-${device.address.takeLast(4)}") as Any)
-        // ✅ FIX: Manejo seguro de null sin JSONObject.NULL
         data.put("userId", (userIdFromData ?: "") as Any)
         data.put("timestamp", System.currentTimeMillis() as Any)
         
@@ -310,6 +442,7 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun stopScan(call: PluginCall) {
+        if (!ensureInitialized(call)) return
         bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
         isScanning = false
         scanCallback = null
@@ -318,6 +451,8 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun connect(call: PluginCall) {
+        if (!ensureInitialized(call)) return
+        
         val deviceId = call.getString("deviceId") ?: run {
             call.reject(ERR_INVALID_PARAMS, "deviceId is required")
             return
@@ -374,10 +509,8 @@ class NexoBlePlugin : Plugin() {
                     }
                     
                     val servicesArray = JSONArray()
-                    if (gatt != null) {
-                        for (service in gatt.services) {
-                            servicesArray.put(service.uuid.toString())
-                        }
+                    gatt?.services?.forEach { service ->
+                        servicesArray.put(service.uuid.toString())
                     }
                     
                     val eventData = JSObject()
@@ -399,12 +532,6 @@ class NexoBlePlugin : Plugin() {
                     }
                 }
             }
-            
-            override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
-                if (status == BluetoothGatt.GATT_SUCCESS) {
-                    // ACK recibido
-                }
-            }
         }
 
         val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -422,7 +549,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun getConnectedDevices(call: PluginCall) {
         val list = JSONArray()
-        for (addr in connectedDevices.keys) {
+        connectedDevices.keys.forEach { addr ->
             val deviceObj = JSObject()
             deviceObj.put("id", addr as Any)
             deviceObj.put("address", addr as Any)
@@ -462,6 +589,8 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun sendMessage(call: PluginCall) {
+        if (!ensureInitialized(call)) return
+        
         val deviceId = call.getString("deviceId") ?: run {
             call.reject(ERR_INVALID_PARAMS, "deviceId is required")
             return
@@ -515,7 +644,7 @@ class NexoBlePlugin : Plugin() {
         Log.d(TAG, "Sending $totalSize bytes in $chunks chunks (msgId: $messageId)")
         
         val chunkedData = data.toList().chunked(CHUNK_SIZE)
-        for (index in 0 until chunkedData.size) {
+        for (index in chunkedData.indices) {
             val chunk = chunkedData[index]
             val isLast = index == chunks - 1
             val flags = if (isLast) 0x03 else 0x01
@@ -526,9 +655,7 @@ class NexoBlePlugin : Plugin() {
             buffer.putShort(messageId.toShort())
             buffer.putShort(index.toShort())
             buffer.putShort(chunks.toShort())
-            for (byte in chunk) {
-                buffer.put(byte)
-            }
+            chunk.forEach { byte -> buffer.put(byte) }
             
             writeCharacteristic(deviceId, CHAR_PAYLOAD, buffer.array())
             
@@ -579,7 +706,7 @@ class NexoBlePlugin : Plugin() {
             Log.d(TAG, "Message complete: ${result.size} bytes")
             
             val dataArray = JSONArray()
-            for (i in 0 until result.size) {
+            for (i in result.indices) {
                 dataArray.put(result[i].toInt() and 0xFF)
             }
             
@@ -598,7 +725,7 @@ class NexoBlePlugin : Plugin() {
         Log.d(TAG, "Handshake from $deviceId: ${data.size} bytes")
         
         val payloadArray = JSONArray()
-        for (i in 0 until data.size) {
+        for (i in data.indices) {
             payloadArray.put(data[i].toInt() and 0xFF)
         }
         
@@ -623,11 +750,10 @@ class NexoBlePlugin : Plugin() {
             return false
         }
         
-        // ✅ FIX: Eliminar import problemático de BluetoothStatusCodes, usar constantes int directamente
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             try {
                 val result = gatt.writeCharacteristic(characteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                result == 0 // SUCCESS = 0 en API 33+
+                result == BluetoothGatt.GATT_SUCCESS
             } catch (e: Exception) {
                 false
             }
@@ -767,13 +893,28 @@ class NexoBlePlugin : Plugin() {
         }
     }
     
+    /**
+     * ✅ FIX: Verificar que el plugin esté inicializado antes de operaciones
+     */
+    private fun ensureInitialized(call: PluginCall): Boolean {
+        if (bluetoothAdapter == null) {
+            call.reject(ERR_BLUETOOTH_NOT_SUPPORTED, "Bluetooth not initialized. Call initialize() first.")
+            return false
+        }
+        if (!bluetoothAdapter!!.isEnabled) {
+            call.reject(ERR_BLUETOOTH_DISABLED, "Bluetooth is disabled")
+            return false
+        }
+        return true
+    }
+    
     override fun handleOnDestroy() {
         Log.d(TAG, "Destroying NexoBLE Plugin - NAP 2.0 Cleanup")
         
         bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
         bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
         
-        for (gatt in gattClients.values) {
+        gattClients.values.forEach { gatt ->
             try {
                 gatt.disconnect()
                 gatt.close()
