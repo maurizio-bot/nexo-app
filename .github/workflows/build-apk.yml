@@ -27,7 +27,6 @@ jobs:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
         
-    # CRÍTICO: Setup Java 17 con JAVA_HOME explícito
     - name: Setup Java (JDK ${{ env.JAVA_VERSION }})
       uses: actions/setup-java@v4
       with:
@@ -45,55 +44,46 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    # Build web assets (Capacitor requiere esto primero)
     - name: Build web assets
       run: npm run build
       
-    # CRÍTICO: Sync Capacitor copia assets pero también puede tocar gradle
     - name: Sync Capacitor
       run: npx cap sync android
       
-    # CRÍTICO FIX: Configurar Gradle DESPUÉS de cap sync y ANTES del build
-    # Esto evita el error "Java Home invalid" que tenías en Build #357
+    # CRÍTICO FIX: Usar $JAVA_HOME variable en lugar de ruta hardcodeada
     - name: Fix Gradle Configuration (Post-Sync)
       working-directory: ./android
       run: |
-        echo "⚠️  Sobreescribiendo gradle.properties después de cap sync..."
+        echo "⚠️  Configurando Gradle con JAVA_HOME: $JAVA_HOME"
         rm -f gradle.properties
-        cat > gradle.properties << 'EOF'
+        cat > gradle.properties << EOF
         org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
         org.gradle.daemon=false
         android.useAndroidX=true
         android.enableJetifier=true
-        org.gradle.java.home=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.14/x64
+        org.gradle.java.home=$JAVA_HOME
         EOF
         chmod +x gradlew
-        echo "✅ Gradle configurado:"
+        echo "✅ gradle.properties:"
         cat gradle.properties
         
     - name: Verify Java Installation
       run: |
         echo "JAVA_HOME: $JAVA_HOME"
         java -version
-        echo "Gradle wrapper version:"
-        ./android/gradlew --version
+        ls -la $JAVA_HOME/bin/java || echo "Java binary check"
         
-    # CRÍTICO: Build con JAVA_HOME explícito y sin daemon
     - name: Build Android Debug APK
       working-directory: ./android
       run: |
-        export JAVA_HOME=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.14/x64
         echo "Building with JAVA_HOME: $JAVA_HOME"
-        ./gradlew assembleDebug --no-daemon --stacktrace --info
+        ./gradlew assembleDebug --no-daemon --stacktrace
         
-    # Validar que el APK existe
     - name: Verify APK
+      if: success()
       run: |
         ls -lh android/app/build/outputs/apk/debug/
-        echo "APK size:"
-        du -h android/app/build/outputs/apk/debug/app-debug.apk
         
-    # Crear Release solo si el build fue exitoso
     - name: Create Release with APK
       uses: softprops/action-gh-release@v1
       if: success()
@@ -104,28 +94,20 @@ jobs:
           ## 🚀 NEXO v9.4.0 - BLE Android 14 Ready
           
           **Fixes Críticos:**
-          - ✅ Fix [NORDIC_010]: Permisos BLUETOOTH_CONNECT/SCAN correctamente solicitados
-          - ✅ Fix: `canAccessBluetooth()` verifica permisos antes de adapter
-          - ✅ Fix: Orden de permisos BLUETOOTH_CONNECT primero en Android 14
-          - ✅ Android 14 compatible (targetSdk 34, compileSdk 34)
-          - ✅ Kotlin 1.9.0 + AGP 8.1.0
+          - ✅ Fix [NORDIC_010]: Permisos BLUETOOTH_CONNECT/SCAN
+          - ✅ Fix: Gradle Java Home con variable $JAVA_HOME
+          - ✅ Android 14 compatible (targetSdk 34)
           
           **Testing:**
           1. Instala APK en ambos dispositivos
-          2. Acepta permisos Bluetooth cuando se soliciten
-          3. Activa Modo Avión + Bluetooth
-          4. Desbloquea Vault → BLE debería inicializar
+          2. Acepta permisos Bluetooth
+          3. Modo Avión + Bluetooth activado
         files: android/app/build/outputs/apk/debug/app-debug.apk
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
-    # Notificar si falla
     - name: Notify Failure
       if: failure()
       run: |
         echo "❌ Build failed. Check logs above."
-        echo "Common issues:"
-        echo "1. Gradle Java Home not set correctly"
-        echo "2. Missing Kotlin plugin"
-        echo "3. Capacitor sync overwriting gradle.properties"
