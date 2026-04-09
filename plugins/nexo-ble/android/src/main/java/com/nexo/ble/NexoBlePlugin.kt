@@ -75,20 +75,15 @@ class NexoBlePlugin : Plugin() {
     private val connectionCounter = AtomicInteger(0)
     private var pendingInitializeCall: PluginCall? = null
 
-    // ✅ FIX CRÍTICO: No obtener adapter en load(), esperar a initialize()
     override fun load() {
         Log.d(TAG, "NexoBLE Plugin v2.0-NAP loaded (waiting for permissions)")
     }
 
-    /**
-     * ✅ FIX: Obtener adapter solo cuando tenemos permisos verificados
-     */
     private fun initializeAdapter(): Boolean {
         if (bluetoothManager == null) {
             bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         }
         
-        // En Android 12+, necesitamos BLUETOOTH_CONNECT para acceder al adapter
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) 
                 != PackageManager.PERMISSION_GRANTED) {
@@ -101,10 +96,6 @@ class NexoBlePlugin : Plugin() {
         return bluetoothAdapter != null
     }
 
-    /**
-     * FIX CRÍTICO [NORDIC_010]: Método requerido por nordic_mesh.js
-     * ✅ FIX: Ahora verifica permisos antes de acceder al adapter
-     */
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
         if (!checkAndRequestPermissions(call, "isBtEnabledCallback")) {
@@ -139,14 +130,10 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    /**
-     * ✅ FIX: Manejo robusto de permisos y estado
-     */
     @PluginMethod
     fun initialize(call: PluginCall) {
         userId = call.getString("userId") ?: generateUserId()
         
-        // Primero verificar permisos
         if (!checkAndRequestPermissions(call, "initializePermissionCallback")) {
             pendingInitializeCall = call
             return
@@ -165,7 +152,6 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun performInitialization(call: PluginCall) {
-        // Ahora sí inicializamos el adapter con permisos concedidos
         if (!initializeAdapter()) {
             call.reject(ERR_BLUETOOTH_NOT_SUPPORTED, "Cannot access Bluetooth adapter (permissions denied or not supported)")
             return
@@ -181,7 +167,6 @@ class NexoBlePlugin : Plugin() {
         Log.d(TAG, "Initialize: BT state=$initialState (10=OFF, 11=TURNING_ON, 12=ON)")
         
         if (initialState == BluetoothAdapter.STATE_OFF) {
-            // ✅ FIX: En lugar de rechazar, solicitar activación
             pendingInitializeCall = call
             requestBluetoothActivation()
             return
@@ -207,7 +192,7 @@ class NexoBlePlugin : Plugin() {
             result.put("status", "initialized" as Any)
             result.put("version", "2.0-NAP" as Any)
             result.put("bluetoothState", adapter.state as Any)
-            result.put("native", true as Any) // ✅ FIX: Indicar que es nativo real
+            result.put("native", true as Any)
             call.resolve(result)
             Log.d(TAG, "Initialized successfully with userId: $userId")
         } catch (e: Exception) {
@@ -216,9 +201,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    /**
-     * ✅ FIX: Solicitar activación de Bluetooth al sistema
-     */
     private fun requestBluetoothActivation() {
         val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
         try {
@@ -241,7 +223,7 @@ class NexoBlePlugin : Plugin() {
                         performInitialization(call)
                         pendingInitializeCall = null
                     }
-                }, 500) // Esperar a que se estabilice
+                }, 500)
             } else {
                 Log.w(TAG, "User denied Bluetooth activation")
                 pendingInitializeCall?.reject(ERR_BLUETOOTH_DISABLED, "Bluetooth activation denied by user")
@@ -250,15 +232,11 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    /**
-     * ✅ FIX: Verificación centralizada de permisos
-     */
     private fun checkAndRequestPermissions(call: PluginCall, callback: String): Boolean {
         if (hasRequiredPermissions()) {
             return true
         }
         
-        // Solicitar todos los permisos necesarios
         val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(
                 android.Manifest.permission.BLUETOOTH_SCAN,
@@ -893,9 +871,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
     
-    /**
-     * ✅ FIX: Verificar que el plugin esté inicializado antes de operaciones
-     */
     private fun ensureInitialized(call: PluginCall): Boolean {
         if (bluetoothAdapter == null) {
             call.reject(ERR_BLUETOOTH_NOT_SUPPORTED, "Bluetooth not initialized. Call initialize() first.")
@@ -930,4 +905,3 @@ class NexoBlePlugin : Plugin() {
         super.handleOnDestroy()
     }
 }
-
