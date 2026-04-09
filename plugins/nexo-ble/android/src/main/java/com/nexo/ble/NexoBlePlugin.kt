@@ -930,4 +930,3 @@ class NexoBlePlugin : Plugin() {
         super.handleOnDestroy()
     }
 }
-
