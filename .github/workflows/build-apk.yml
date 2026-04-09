@@ -28,10 +28,12 @@ jobs:
         cache: 'npm'
         
     - name: Setup Java (JDK ${{ env.JAVA_VERSION }})
+      id: setup-java  # <-- Agregado para referencia
       uses: actions/setup-java@v4
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
+        cache: 'gradle'  # <-- Agregado para performance
         
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
@@ -50,34 +52,30 @@ jobs:
     - name: Sync Capacitor
       run: npx cap sync android
       
-    # FIX: Sin org.gradle.java.home - usa env JAVA_HOME automáticamente
-    - name: Fix Gradle Configuration (Post-Sync)
+    # FIX: Configurar Gradle SIN hardcodear java.home (Gradle detecta JAVA_HOME automáticamente)
+    - name: Configure Gradle
       working-directory: ./android
       run: |
-        echo "⚠️  Configurando Gradle..."
         rm -f gradle.properties
         cat > gradle.properties << EOF
         org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
         org.gradle.daemon=false
         android.useAndroidX=true
         android.enableJetifier=true
+        # No incluir org.gradle.java.home - dejar que Gradle detecte JAVA_HOME del sistema
         EOF
         chmod +x gradlew
-        echo "✅ gradle.properties:"
-        cat gradle.properties
         
-    - name: Verify Java Installation
+    - name: Verify Environment
       run: |
         echo "JAVA_HOME: $JAVA_HOME"
         java -version
         
-    # FIX: Export JAVA_HOME explícitamente antes de gradlew
+    # FIX: Eliminado el env: JAVA_HOME que causaba el error
     - name: Build Android Debug APK
       working-directory: ./android
-      env:
-        JAVA_HOME: ${{ env.JAVA_HOME }}
       run: |
-        echo "Building with JAVA_HOME: $JAVA_HOME"
+        echo "Building with system JAVA_HOME: $JAVA_HOME"
         ./gradlew assembleDebug --no-daemon --stacktrace
         
     - name: Verify APK
@@ -95,7 +93,7 @@ jobs:
           ## 🚀 NEXO v9.4.1 - BLE Android 14 Ready
           
           **Fixes:**
-          - ✅ Fix Gradle Java Home (usa env variable)
+          - ✅ Fix Gradle Java Home detection
           - ✅ Permisos BLE Android 14
         files: android/app/build/outputs/apk/debug/app-debug.apk
         prerelease: true
