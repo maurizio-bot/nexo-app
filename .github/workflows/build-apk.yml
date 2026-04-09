@@ -28,12 +28,12 @@ jobs:
         cache: 'npm'
         
     - name: Setup Java (JDK ${{ env.JAVA_VERSION }})
-      id: setup-java  # <-- Agregado para referencia
+      id: setup-java
       uses: actions/setup-java@v4
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
-        cache: 'gradle'  # <-- Agregado para performance
+        cache: 'gradle'
         
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
@@ -52,30 +52,28 @@ jobs:
     - name: Sync Capacitor
       run: npx cap sync android
       
-    # FIX: Configurar Gradle SIN hardcodear java.home (Gradle detecta JAVA_HOME automáticamente)
+    # FIX: Usar echo individual (más compatible con runners que heredoc)
     - name: Configure Gradle
       working-directory: ./android
       run: |
         rm -f gradle.properties
-        cat > gradle.properties << EOF
-        org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
-        org.gradle.daemon=false
-        android.useAndroidX=true
-        android.enableJetifier=true
-        # No incluir org.gradle.java.home - dejar que Gradle detecte JAVA_HOME del sistema
-        EOF
+        echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" > gradle.properties
+        echo "org.gradle.daemon=false" >> gradle.properties
+        echo "android.useAndroidX=true" >> gradle.properties
+        echo "android.enableJetifier=true" >> gradle.properties
         chmod +x gradlew
+        echo "✅ Verificando gradle.properties:"
+        cat gradle.properties
         
     - name: Verify Environment
       run: |
         echo "JAVA_HOME: $JAVA_HOME"
         java -version
         
-    # FIX: Eliminado el env: JAVA_HOME que causaba el error
     - name: Build Android Debug APK
       working-directory: ./android
       run: |
-        echo "Building with system JAVA_HOME: $JAVA_HOME"
+        echo "Building with JAVA_HOME: $JAVA_HOME"
         ./gradlew assembleDebug --no-daemon --stacktrace
         
     - name: Verify APK
@@ -94,6 +92,7 @@ jobs:
           
           **Fixes:**
           - ✅ Fix Gradle Java Home detection
+          - ✅ AndroidX enabled with echo method
           - ✅ Permisos BLE Android 14
         files: android/app/build/outputs/apk/debug/app-debug.apk
         prerelease: true
