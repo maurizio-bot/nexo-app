@@ -51,8 +51,19 @@ jobs:
     - name: Sync Capacitor
       run: npx cap sync android
       
-    # FIX: Solo permisos, sin crear gradle.properties
-    - name: Prepare Gradle
+    # FIX: Crear gradle.properties en ~/.gradle (global, no es tocado por cap sync)
+    - name: Configure Gradle Global
+      run: |
+        mkdir -p ~/.gradle
+        echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" > ~/.gradle/gradle.properties
+        echo "org.gradle.daemon=false" >> ~/.gradle/gradle.properties
+        echo "android.useAndroidX=true" >> ~/.gradle/gradle.properties
+        echo "android.enableJetifier=true" >> ~/.gradle/gradle.properties
+        echo "org.gradle.java.home=$JAVA_HOME" >> ~/.gradle/gradle.properties
+        echo "✅ ~/.gradle/gradle.properties creado:"
+        cat ~/.gradle/gradle.properties
+        
+    - name: Prepare Gradle Wrapper
       working-directory: ./android
       run: chmod +x gradlew
         
@@ -61,15 +72,10 @@ jobs:
         echo "JAVA_HOME: $JAVA_HOME"
         java -version
         
-    # FIX: Propiedades pasadas directamente como argumentos -P
     - name: Build Android Debug APK
       working-directory: ./android
       run: |
-        ./gradlew assembleDebug --no-daemon --stacktrace \
-          -Pandroid.useAndroidX=true \
-          -Pandroid.enableJetifier=true \
-          -Porg.gradle.jvmargs="-Xmx4096m -Dfile.encoding=UTF-8" \
-          -Porg.gradle.java.home="$JAVA_HOME"
+        ./gradlew assembleDebug --no-daemon --stacktrace
         
     - name: Verify APK
       if: success()
@@ -86,7 +92,7 @@ jobs:
           ## 🚀 NEXO v9.4.1 - BLE Android 14 Ready
           
           **Fixes:**
-          - ✅ Gradle properties via command line
+          - ✅ Gradle global config (~/.gradle/gradle.properties)
           - ✅ AndroidX enabled
           - ✅ Java Home configured
         files: android/app/build/outputs/apk/debug/app-debug.apk
