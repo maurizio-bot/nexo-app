@@ -76,29 +76,54 @@ class NexoBlePlugin : Plugin() {
     private var pendingInitializeCall: PluginCall? = null
 
     override fun load() {
-        Log.d(TAG, "NexoBLE Plugin v2.0-NAP loaded (waiting for permissions)")
+        Log.d(TAG, "NexoBLE Plugin v2.1-NAP loaded (Android 14 Ready)")
+    }
+
+    // CRÍTICO: Verificar permiso BLUETOOTH_CONNECT explícitamente antes de acceder al adapter
+    private fun canAccessBluetooth(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) == 
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
     }
 
     private fun initializeAdapter(): Boolean {
+        if (!canAccessBluetooth()) {
+            Log.e(TAG, "BLUETOOTH_CONNECT permission not granted - cannot initialize adapter")
+            return false
+        }
+
         if (bluetoothManager == null) {
             bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         }
         
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) 
-                != PackageManager.PERMISSION_GRANTED) {
-                Log.e(TAG, "BLUETOOTH_CONNECT permission not granted")
-                return false
-            }
+        bluetoothAdapter = bluetoothManager?.adapter
+        
+        if (bluetoothAdapter == null) {
+            Log.e(TAG, "Device does not support Bluetooth")
+            return false
         }
         
-        bluetoothAdapter = bluetoothManager?.adapter
-        return bluetoothAdapter != null
+        return true
     }
 
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
-        if (!checkAndRequestPermissions(call, "isBtEnabledCallback")) {
+        // FIX: Primero verificar permisos, luego adapter
+        if (!hasRequiredPermissions()) {
+            checkAndRequestPermissions(call, "isBtEnabledCallback")
+            return
+        }
+        
+        if (!initializeAdapter()) {
+            val result = JSObject()
+            result.put("enabled", false)
+            result.put("state", BluetoothAdapter.STATE_OFF)
+            result.put("stateName", "NO_PERMISSION")
+            result.put("error", "BLUETOOTH_CONNECT permission required")
+            call.resolve(result)
             return
         }
         
@@ -123,7 +148,6 @@ class NexoBlePlugin : Plugin() {
     @PermissionCallback
     private fun isBtEnabledCallback(call: PluginCall) {
         if (hasRequiredPermissions()) {
-            initializeAdapter()
             isBluetoothEnabled(call)
         } else {
             call.reject(ERR_PERMISSION_DENIED, "Bluetooth permissions required")
@@ -190,7 +214,7 @@ class NexoBlePlugin : Plugin() {
             val result = JSObject()
             result.put("userId", userId as Any)
             result.put("status", "initialized" as Any)
-            result.put("version", "2.0-NAP" as Any)
+            result.put("version", "2.1-NAP-Android14" as Any)
             result.put("bluetoothState", adapter.state as Any)
             result.put("native", true as Any)
             call.resolve(result)
@@ -232,26 +256,33 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // FIX CRÍTICO: Usar aliases correctos, no los strings de permisos de Android
     private fun checkAndRequestPermissions(call: PluginCall, callback: String): Boolean {
         if (hasRequiredPermissions()) {
             return true
         }
         
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(
-                android.Manifest.permission.BLUETOOTH_SCAN,
-                android.Manifest.permission.BLUETOOTH_CONNECT,
-                android.Manifest.permission.BLUETOOTH_ADVERTISE
-            )
+        // CRÍTICO: Para Android 14+ debemos solicitar BLUETOOTH_CONNECT primero explícitamente
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!hasPermission("bluetoothConnect")) {
+                requestPermissionForAlias("bluetoothConnect", call, callback)
+                return false
+            }
+            if (!hasPermission("bluetoothScan")) {
+                requestPermissionForAlias("bluetoothScan", call, callback)
+                return false
+            }
+            if (!hasPermission("bluetoothAdvertise")) {
+                requestPermissionForAlias("bluetoothAdvertise", call, callback)
+                return false
+            }
         } else {
-            arrayOf(
-                android.Manifest.permission.BLUETOOTH,
-                android.Manifest.permission.BLUETOOTH_ADMIN,
-                android.Manifest.permission.ACCESS_FINE_LOCATION
-            )
+            if (!hasPermission("location")) {
+                requestPermissionForAlias("location", call, callback)
+                return false
+            }
         }
         
-        requestPermissionForAliases(permissions, call, callback)
         return false
     }
 
@@ -284,6 +315,11 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun startAdvertisingInternal(call: PluginCall) {
+        if (!canAccessBluetooth()) {
+            call.reject(ERR_PERMISSION_DENIED, "BLUETOOTH_CONNECT permission required")
+            return
+        }
+        
         val advertiser = bluetoothAdapter?.bluetoothLeAdvertiser ?: run {
             call.reject("ADVERTISER_UNAVAILABLE", "Bluetooth LE Advertising not supported")
             return
@@ -324,6 +360,10 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun stopAdvertising(call: PluginCall) {
         if (!ensureInitialized(call)) return
+        if (!canAccessBluetooth()) {
+            call.reject(ERR_PERMISSION_DENIED, "BLUETOOTH_CONNECT permission required")
+            return
+        }
         bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
         isAdvertising = false
         advertiseCallback = null
@@ -351,6 +391,11 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun startScanInternal(call: PluginCall) {
+        if (!canAccessBluetooth()) {
+            call.reject(ERR_PERMISSION_DENIED, "BLUETOOTH_CONNECT permission required")
+            return
+        }
+        
         val scanner = bluetoothAdapter?.bluetoothLeScanner ?: run {
             call.reject("SCANNER_UNAVAILABLE", "Bluetooth LE Scanner not available")
             return
@@ -421,6 +466,10 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun stopScan(call: PluginCall) {
         if (!ensureInitialized(call)) return
+        if (!canAccessBluetooth()) {
+            call.reject(ERR_PERMISSION_DENIED, "BLUETOOTH_CONNECT permission required")
+            return
+        }
         bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
         isScanning = false
         scanCallback = null
@@ -443,6 +492,11 @@ class NexoBlePlugin : Plugin() {
 
         if (connectedDevices.containsKey(deviceId)) {
             call.reject("ALREADY_CONNECTED", "Device already connected")
+            return
+        }
+
+        if (!canAccessBluetooth()) {
+            call.reject(ERR_PERMISSION_DENIED, "BLUETOOTH_CONNECT permission required")
             return
         }
 
@@ -884,10 +938,12 @@ class NexoBlePlugin : Plugin() {
     }
     
     override fun handleOnDestroy() {
-        Log.d(TAG, "Destroying NexoBLE Plugin - NAP 2.0 Cleanup")
+        Log.d(TAG, "Destroying NexoBLE Plugin - NAP 2.1 Cleanup")
         
-        bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-        bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+        if (canAccessBluetooth()) {
+            bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+            bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
+        }
         
         gattClients.values.forEach { gatt ->
             try {
