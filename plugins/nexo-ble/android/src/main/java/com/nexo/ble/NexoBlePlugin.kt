@@ -286,7 +286,7 @@ class NexoBlePlugin : Plugin() {
         return false
     }
 
-    private fun hasRequiredPermissions(): Boolean {
+    override fun hasRequiredPermissions(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             hasPermission("bluetoothScan") && hasPermission("bluetoothConnect") && hasPermission("bluetoothAdvertise")
         } else {
