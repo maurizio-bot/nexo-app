@@ -72,7 +72,6 @@ jobs:
           fi
           ./gradlew clean assembleDebug --stacktrace
       
-      # REEMPLAZAR ESTE STEP - ELIMINA upload-artifact Y USA RELEASES:
       - name: Create Release with APK
         if: success()
         uses: softprops/action-gh-release@v1
@@ -84,12 +83,3 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      # OPCIONAL: Backup temporal con retención mínima (borrar en 1 día si quieres conservar el híbrido)
-      # - name: Upload Artifact (Backup 1 día)
-      #   if: failure()  # Solo si release falla
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: nexo-debug-apk-fallback
-      #     path: android/app/build/outputs/apk/debug/app-debug.apk
-      #     retention-days: 1
