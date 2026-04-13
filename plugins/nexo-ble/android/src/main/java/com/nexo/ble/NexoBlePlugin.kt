@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.getcapacitor.*
@@ -180,7 +181,7 @@ class NexoBlePlugin : Plugin() {
     
     private fun getRecoverySuggestion(code: String): String {
         return when (code) {
-            NAP_BLE_ERR_PERMISSION_REVOKED -> "Reinicie la app y conceda permisos desde Configuración > Apps > NEXO > Permisos"
+            NAP_BLE_PERMISSION_REVOKED -> "Reinicie la app y conceda permisos desde Configuración > Apps > NEXO > Permisos"
             NAP_BLE_THERMAL_THROTTLE -> "Espere 30 segundos para enfriamiento o mueva el dispositivo a zona ventilada"
             NAP_BLE_ERR_AIRPLANE_MODE -> "Desactive Modo Avión desde el panel de notificaciones"
             NAP_BLE_ERR_DISABLED -> "Active Bluetooth desde Configuración o el panel rápido"
@@ -230,7 +231,7 @@ class NexoBlePlugin : Plugin() {
     
     private fun isAirplaneMode(): Boolean {
         return try {
-            Settings.System.getInt(context.contentResolver, Settings.System.AIRPLANE_MODE_ON) != 0
+            Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON) != 0
         } catch (e: Exception) { false }
     }
 
