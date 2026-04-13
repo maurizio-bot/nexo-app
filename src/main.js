@@ -2,12 +2,15 @@
  * src/main.js - Punto de entrada NEXO v9.0-NAP
  * NAP 2.0 Certified - BLE Soberano P2P
  * v3.3.0 - Protocolo GATT NEXO + NordicMesh
+ * Build #630: SetupWizard Integration for Android 14 BLE onboarding
  */
 
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
+import { SetupManager } from './core/SetupManager.js';
+import { SetupWizard } from './ui/SetupWizard.js';
 
 window.NEXO = {
   app: null,
@@ -43,6 +46,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
     
+    // ============================================
+    // Build #630: Setup Wizard Integration
+    // Verificar onboarding BLE antes de iniciar app
+    // ============================================
+    rem.info('[Setup] Verificando estado de configuración...', 'SETUP_CHECK');
+    
+    const setupStatus = await SetupManager.checkInitialStatus();
+    
+    if (!setupStatus.ready) {
+      rem.info(`[Setup] Requerido: ${setupStatus.reason}`, 'SETUP_REQUIRED');
+      
+      // Ocultar splash para mostrar wizard
+      NEXO_DIAG.hideSplash();
+      
+      // Crear e iniciar wizard
+      const wizard = new SetupWizard('app', async () => {
+        // Callback cuando wizard termina exitosamente
+        rem.success('[Setup] Wizard completado', 'SETUP_OK');
+        await SetupManager.markCompleted();
+        
+        // Continuar con inicialización normal
+        await initializeNexoApp();
+      });
+      
+      await wizard.start();
+      return; // El wizard se encarga de llamar initializeNexoApp cuando termine
+      
+    } else {
+      rem.info('[Setup] Configuración ya completada', 'SETUP_SKIP');
+      // Setup ya hecho, iniciar directamente
+      await initializeNexoApp();
+    }
+    
+  } catch (error) {
+    console.error('💥 Error fatal en inicialización:', error);
+    clearTimeout(SAFETY_TIMEOUT);
+    NEXO_DIAG.error('INIT_FATAL', error.message);
+    rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
+    NEXO_DIAG.hideSplash();
+    
+    // NAP 2.0: Intentar modo degradado
+    _enableFallbackMode();
+  }
+});
+
+/**
+ * Inicialización de la aplicación principal NexoApp
+ * Extraída a función separada para poder llamarla desde el wizard o directamente
+ */
+async function initializeNexoApp() {
+  try {
     // Configuración NEXO App
     const nexoConfig = {
       relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
@@ -110,16 +164,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
   } catch (error) {
-    console.error('💥 Error fatal:', error);
+    console.error('💥 Error en NexoApp:', error);
     clearTimeout(SAFETY_TIMEOUT);
-    NEXO_DIAG.error('INIT_FATAL', error.message);
-    rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
+    NEXO_DIAG.error('APP_INIT_ERROR', error.message);
+    rem.error(`Error al iniciar app: ${error.message}`, 'APP_ERR');
     NEXO_DIAG.hideSplash();
-    
-    // NAP 2.0: Intentar modo degradado
     _enableFallbackMode();
   }
-});
+}
 
 // NAP 2.0: Estructura DOM mínima garantizada
 function _ensureDOMStructure() {
