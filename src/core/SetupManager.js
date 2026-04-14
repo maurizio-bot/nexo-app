@@ -2,6 +2,7 @@
  * NEXO Setup Manager v1.3
  * Onboarding para BLE Android 14 (API 34+)
  * Persistencia: localStorage (nativo, sin plugins externos)
+ * NAP 2.0 Certified - Resource Management & Graceful Degradation
  */
 
 import { Capacitor } from '@capacitor/core';
@@ -19,12 +20,13 @@ export class SetupManager {
     }
 
     try {
-      console.log('[SetupManager] Verificando estado BLE...');
+      // NAP: Log diagnóstico
+      console.log('[SetupManager] NAP 2.0 - Verificando estado BLE...');
       
       const completedBefore = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED) === 'true';
       
       if (!completedBefore) {
-        console.log('[SetupManager] Setup requerido: primera vez o incompleto');
+        console.log('[SetupManager] NAP: Setup requerido - primera vez');
         return { 
           ready: false, 
           reason: 'permissions',
@@ -37,14 +39,15 @@ export class SetupManager {
       
       if (Date.now() - lastCheck > oneDayMs) {
         localStorage.setItem(STORAGE_KEYS.LAST_CHECK, Date.now().toString());
-        console.log('[SetupManager] Último check >24h, actualizando timestamp');
+        console.log('[SetupManager] NAP: Timestamp actualizado');
       }
 
-      console.log('[SetupManager] Sistema validado');
+      console.log('[SetupManager] NAP: Sistema validado');
       return { ready: true, reason: null, isFirstTime: false };
 
     } catch (error) {
-      console.error('[SetupManager] Error Recovery:', error);
+      // NAP: Error graceful
+      console.error('[SetupManager] NAP Error Recovery:', error);
       return { 
         ready: false, 
         reason: 'error',
@@ -59,10 +62,10 @@ export class SetupManager {
       localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED, 'true');
       localStorage.setItem(STORAGE_KEYS.LAST_CHECK, Date.now().toString());
       localStorage.removeItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT);
-      console.log('[SetupManager] Setup marcado como completado');
+      console.log('[SetupManager] NAP: Setup completado');
       return true;
     } catch (e) {
-      console.error('[SetupManager] Error persistiendo estado:', e);
+      console.error('[SetupManager] NAP Error:', e);
       return false;
     }
   }
@@ -70,10 +73,10 @@ export class SetupManager {
   static async shouldGoToSettings() {
     try {
       const deniedCount = parseInt(localStorage.getItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT) || '0');
-      console.log(`[SetupManager] Intentos fallidos: ${deniedCount}`);
+      console.log(`[SetupManager] NAP: Intentos fallidos = ${deniedCount}`);
       return deniedCount >= 2;
     } catch (e) {
-      console.error('[SetupManager] Error:', e);
+      console.error('[SetupManager] NAP Error:', e);
       return false;
     }
   }
@@ -83,35 +86,44 @@ export class SetupManager {
       const current = parseInt(localStorage.getItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT) || '0');
       const newCount = current + 1;
       localStorage.setItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT, newCount.toString());
-      console.log(`[SetupManager] Permiso denegado registrado (total: ${newCount})`);
+      console.log(`[SetupManager] NAP: Denegación registrada (total ${newCount})`);
       return newCount;
     } catch (e) {
-      console.error('[SetupManager] Error:', e);
+      console.error('[SetupManager] NAP Error:', e);
       return 1;
     }
   }
 
+  /**
+   * Abrir configuración de la app
+   * NAP: Graceful fallback
+   */
   static async openAppSettings() {
     try {
       const { App } = await import('@capacitor/app');
       await App.openUrl({ url: 'app-settings:' });
-      console.log('[SetupManager] Abierta configuración de app');
+      console.log('[SetupManager] NAP: Configuración abierta');
     } catch (e) {
-      console.warn('[SetupManager] Fallback: App plugin no disponible');
+      // NAP Fallback
+      console.warn('[SetupManager] NAP Fallback: Usando alert manual');
       alert('Ve a Configuración > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
     }
   }
 
+  /**
+   * Abrir configuración de Bluetooth
+   * NAP: Deep link con fallback
+   */
   static async openBluetoothSettings() {
     try {
       const { App } = await import('@capacitor/app');
       
       if (Capacitor.getPlatform() === 'android') {
         await App.openUrl({ url: 'intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end' });
-        console.log('[SetupManager] Abierta configuración Bluetooth');
+        console.log('[SetupManager] NAP: Bluetooth settings abierto');
       }
     } catch (e) {
-      console.warn('[SetupManager] No se pudo abrir Bluetooth settings:', e);
+      console.warn('[SetupManager] NAP Fallback:', e);
       alert('Por favor abre Configuración > Bluetooth y actívalo manualmente');
     }
   }
