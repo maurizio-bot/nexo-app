@@ -377,3 +377,5 @@ export class SetupWizard {
 
 // Export para NAP debug
 window.SetupWizard = SetupWizard;
+
+
