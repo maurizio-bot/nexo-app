@@ -1,8 +1,7 @@
 /**
- * NEXO Setup Wizard v1.1
+ * NEXO Setup Wizard v1.2
  * UI de onboarding para Android 14 BLE
- * No requiere React - usa DOM manipulation vanilla
- * NAP 2.0 Certified - Error Boundaries & Graceful Degradation
+ * Corregido: Separación BLE (conectividad) vs NAP (auditoría archivos)
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -15,21 +14,17 @@ export class SetupWizard {
     this.currentStep = 'checking';
     this.errorCount = 0;
     
-    // NAP: Exponer para debugging
+    // Debug global
     window.NEXO_WIZARD = this;
   }
 
-  /**
-   * Iniciar wizard
-   * NAP: Con timeout de seguridad
-   */
   async start() {
     this.renderChecking();
     
-    // NAP: Timeout de seguridad 15s (anti-bloqueo)
+    // Timeout de seguridad 15s
     setTimeout(() => {
       if (this.currentStep === 'checking') {
-        console.warn('[SetupWizard] NAP: Timeout de verificación, forzando error');
+        console.warn('[SetupWizard] Timeout de verificación, forzando error');
         this.currentStep = 'error';
         this.renderError();
       }
@@ -38,25 +33,19 @@ export class SetupWizard {
     await this.performCheck();
   }
 
-  /**
-   * Check principal
-   * NAP: Try-catch completo, nunca bloquea
-   */
   async performCheck() {
     try {
-      console.log('[SetupWizard] NAP: Iniciando verificación...');
+      console.log('[SetupWizard] Iniciando verificación BLE...');
       const status = await SetupManager.checkInitialStatus();
       
-      console.log('[SetupWizard] NAP: Status recibido:', status);
+      console.log('[SetupWizard] Status recibido:', status);
       
       if (status.ready) {
-        // NAP: Setup completo, continuar a app
-        console.log('[SetupWizard] NAP: Sistema listo, completando...');
+        console.log('[SetupWizard] Sistema listo, completando...');
         this.onComplete();
         return;
       }
 
-      // Determinar paso siguiente
       if (status.reason === 'permissions') {
         const shouldManual = await SetupManager.shouldGoToSettings();
         this.currentStep = shouldManual ? 'permissions_manual' : 'permissions';
@@ -70,17 +59,12 @@ export class SetupWizard {
       }
       
     } catch (error) {
-      // NAP: Error boundary - mostrar pantalla de error, no quedarse en spinner
-      console.error('[SetupWizard] NAP Error Boundary:', error);
+      console.error('[SetupWizard] Error Boundary:', error);
       this.currentStep = 'error';
       this.renderError();
     }
   }
 
-  /**
-   * Render: Pantalla de carga
-   * NAP: Z-index máximo, no bloqueable
-   */
   renderChecking() {
     this.container.innerHTML = `
       <div id="nexo-setup" style="
@@ -99,7 +83,7 @@ export class SetupWizard {
           animation: spin 1s linear infinite;
           margin-bottom: 24px;
         "></div>
-        <h3 style="margin:0; font-size: 20px; font-weight: 600;">Verificando sistema NAP...</h3>
+        <h3 style="margin:0; font-size: 20px; font-weight: 600;">Verificando sistema...</h3>
         <p style="color: #666; margin-top: 8px; font-size: 14px;">BLE Mesh v2.3 | Android 14+</p>
         <style>
           @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -108,9 +92,6 @@ export class SetupWizard {
     `;
   }
 
-  /**
-   * Render: Paso de Permisos
-   */
   renderPermissions() {
     const isManual = this.currentStep === 'permissions_manual';
     
@@ -126,29 +107,31 @@ export class SetupWizard {
         text-align: center;
       ">
         <div style="font-size: 56px; margin-bottom: 16px;">🔐</div>
-        <h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Permisos NAP necesarios</h2>
+        <h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Permisos BLE necesarios</h2>
         <p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">
-          NEXO requiere acceso a Bluetooth para comunicación P2P offline-first (Protocolo NAP 2.0).
+          NEXO requiere acceso a Bluetooth para comunicación P2P offline-first (BLE Mesh v2.3).
         </p>
         
         <div style="
           display: flex; flex-direction: column; gap: 12px;
           width: 100%; max-width: 340px; margin-bottom: 32px;
         ">
-          <div style="
+          <div id="btn-scan" style="
             background: #0f0f0f; border: 1px solid #222;
             border-radius: 12px; padding: 16px 20px;
             display: flex; align-items: center; gap: 14px;
             font-size: 15px; text-align: left;
+            opacity: 0.5; pointer-events: none;
           ">
             <span style="font-size: 22px;">📡</span>
-            <span>Escanear dispositivos NAP cercanos</span>
+            <span>Escanear dispositivos BLE cercanos</span>
           </div>
-          <div style="
+          <div id="btn-connect" style="
             background: #0f0f0f; border: 1px solid #222;
             border-radius: 12px; padding: 16px 20px;
             display: flex; align-items: center; gap: 14px;
             font-size: 15px; text-align: left;
+            opacity: 0.5; pointer-events: none;
           ">
             <span style="font-size: 22px;">🔗</span>
             <span>Conectar con peers NEXO</span>
@@ -162,7 +145,7 @@ export class SetupWizard {
             border-radius: 8px; border: 1px solid rgba(255,170,0,0.2);
             margin-bottom: 20px; line-height: 1.5;
           ">
-            ⚠️ NAP: Has denegado los permisos múltiples veces. Android requiere activación manual.
+            ⚠️ Has denegado los permisos múltiples veces. Android requiere activación manual.
           </p>
           <button id="btn-settings" style="
             background: linear-gradient(135deg, #ff6b35 0%, #ff4500 100%);
@@ -170,9 +153,9 @@ export class SetupWizard {
             border-radius: 12px; font-size: 16px; font-weight: 700;
             cursor: pointer; width: 100%; max-width: 320px;
             margin-bottom: 12px;
-          ">Ir a Configuración del sistema (NAP)</button>
+          ">Abrir Configuración de la App</button>
           <p style="color: #555; font-size: 13px; max-width: 280px;">
-            Busca "Permisos" → Activa "Dispositivos cercanos"
+            Busca "Permisos" → Activa "Dispositivos cercanos" y "Ubicación"
           </p>
         ` : `
           <button id="btn-perms" style="
@@ -181,7 +164,7 @@ export class SetupWizard {
             border-radius: 12px; font-size: 16px; font-weight: 700;
             cursor: pointer; width: 100%; max-width: 320px;
             margin-bottom: 12px; box-shadow: 0 4px 15px rgba(0,240,255,0.3);
-          ">Conceder permisos NAP</button>
+          ">Conceder permisos BLE</button>
           <button id="btn-settings" style="
             background: none; border: none; color: #00f0ff;
             font-size: 14px; cursor: pointer; text-decoration: underline;
@@ -191,16 +174,12 @@ export class SetupWizard {
       </div>
     `;
 
-    // Bind events NAP
     if (!isManual) {
       document.getElementById('btn-perms').addEventListener('click', () => this.handleRequestPermissions());
     }
     document.getElementById('btn-settings').addEventListener('click', () => this.handleOpenSettings());
   }
 
-  /**
-   * Render: Paso Bluetooth
-   */
   renderBluetooth() {
     this.container.innerHTML = `
       <div id="nexo-setup" style="
@@ -214,7 +193,7 @@ export class SetupWizard {
         text-align: center;
       ">
         <div style="font-size: 56px; margin-bottom: 16px;">📡</div>
-        <h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Bluetooth NAP desactivado</h2>
+        <h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Bluetooth desactivado</h2>
         <p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">
           Activa el Bluetooth para descubrir peers NEXO cercanos en modo offline P2P.
         </p>
@@ -229,7 +208,7 @@ export class SetupWizard {
             width: 8px; height: 8px; border-radius: 50%;
             background: #ff4444; box-shadow: 0 0 8px #ff4444;
           "></span>
-          <span>NAP Status: Desconectado</span>
+          <span>BLE Status: Desconectado</span>
         </div>
 
         <button id="btn-bt-settings" style="
@@ -248,7 +227,7 @@ export class SetupWizard {
           background: transparent; color: #666; border: 1px solid #444;
           padding: 12px 24px; border-radius: 10px; font-size: 14px;
           cursor: pointer;
-        ">🔄 NAP: Verificar de nuevo</button>
+        ">🔄 Verificar de nuevo</button>
       </div>
     `;
 
@@ -256,9 +235,6 @@ export class SetupWizard {
     document.getElementById('btn-retry').addEventListener('click', () => this.performCheck());
   }
 
-  /**
-   * Render: Error genérico NAP
-   */
   renderError() {
     this.container.innerHTML = `
       <div id="nexo-setup" style="
@@ -272,7 +248,7 @@ export class SetupWizard {
         text-align: center;
       ">
         <div style="font-size: 56px; margin-bottom: 16px;">⚠️</div>
-        <h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Error NAP de verificación</h2>
+        <h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Error de verificación</h2>
         <p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">
           No se pudo verificar el estado del sistema BLE. Puedes continuar con funcionalidad limitada.
         </p>
@@ -282,7 +258,7 @@ export class SetupWizard {
           border-radius: 12px; font-size: 16px; font-weight: 700;
           cursor: pointer; width: 100%; max-width: 320px;
           margin-bottom: 12px;
-        ">🔄 Reintentar verificación NAP</button>
+        ">🔄 Reintentar verificación</button>
         <button id="btn-continue" style="
           background: transparent; color: #666; border: 1px solid #444;
           padding: 12px 24px; border-radius: 10px; font-size: 14px;
@@ -293,22 +269,17 @@ export class SetupWizard {
 
     document.getElementById('btn-retry').addEventListener('click', () => this.performCheck());
     document.getElementById('btn-continue').addEventListener('click', () => {
-      // NAP: Permitir bypass si el usuario quiere (modo degradado)
-      console.warn('[SetupWizard] NAP: Usuario forzando continuación con error');
+      console.warn('[SetupWizard] Usuario forzando continuación con error');
       this.onComplete();
     });
   }
 
-  /**
-   * Handlers NAP
-   */
   async handleRequestPermissions() {
     try {
       await requestBLEPermissions();
-      // NAP: Delay para que Android procese
       setTimeout(() => this.performCheck(), 1000);
     } catch (error) {
-      console.error('[SetupWizard] NAP: Permission error:', error);
+      console.error('[SetupWizard] Permission error:', error);
       const count = await SetupManager.recordPermissionDenied();
       this.errorCount = count;
       
