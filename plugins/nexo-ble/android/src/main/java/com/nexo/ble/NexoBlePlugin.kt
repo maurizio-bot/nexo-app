@@ -60,7 +60,7 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_ADVERTISE_STARTED = "BLE_053"
         const val NAP_BLE_MESSAGE_SENT = "BLE_054"
         const val NAP_BLE_RECOVERY_SUCCESS = "BLE_055"
-        const val NAP_BLE_PERMISSIONS_GRANTED = "BLE_056" // [NUEVO] Permisos concedidos vía requestPermissions
+        const val NAP_BLE_PERMISSIONS_GRANTED = "BLE_056"
         
         // NAP - Warnings/Waiting (100-199)
         const val NAP_BLE_WAITING_PERMISSIONS = "BLE_100"
@@ -72,7 +72,7 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_PERMISSION_REVOKED = "BLE_106"
         const val NAP_BLE_CONCURRENT_INIT = "BLE_107"
         const val NAP_BLE_DOZE_MODE = "BLE_108"
-        const val NAP_BLE_PARTIAL_PERMISSIONS = "BLE_109" // [NUEVO] Algunos permisos concedidos, otros no
+        const val NAP_BLE_PARTIAL_PERMISSIONS = "BLE_109"
         
         // NAP - Errores Críticos (200-299)
         const val NAP_BLE_ERR_NOT_SUPPORTED = "BLE_200"
@@ -298,7 +298,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v2.4-RC2 loaded (EdgeCaseResilient + PermissionBridge)")
+        napLog("BLE_LOAD", "NAP-BLE v2.4-RC3 loaded (EdgeCaseResilient + PermissionBridge)")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -426,12 +426,12 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [FIX RC2] MÉTODO CRÍTICO: Solicitud explícita de permisos
-    // Cambio: Usar 'name' en @PluginMethod para exponer como "requestPermissions"
-    // al JS mientras evitamos conflicto con método de clase base Plugin
+    // [FIX RC3] MÉTODO CRÍTICO CORREGIDO
+    // Cambio: Eliminado parámetro 'name' de @PluginMethod
+    // Renombrado método a requestBLEPermissions() para evitar conflicto
     // ============================================================
-    @PluginMethod(name = "requestPermissions")
-    fun requestBluetoothPermissions(call: PluginCall) {
+    @PluginMethod
+    fun requestBLEPermissions(call: PluginCall) {
         napLog(NAP_BLE_INIT_001, "[1/3] Solicitud explícita de permisos BLE iniciada desde UI")
         
         pendingPermissionAliases.clear()
@@ -626,7 +626,7 @@ class NexoBlePlugin : Plugin() {
                 val result = JSObject()
                 result.put("userId", userId)
                 result.put("status", "already_initialized")
-                result.put("version", "2.4-NAP-RC2")
+                result.put("version", "2.4-NAP-RC3")
                 result.put("native", true)
                 result.put("health", getSystemHealthReport())
                 call.resolve(result)
@@ -742,12 +742,12 @@ class NexoBlePlugin : Plugin() {
             setupGattServer()
             
             napLog(NAP_BLE_INIT_007, "[7/7] BLE Native Layer inicializado completamente")
-            napLog(NAP_BLE_READY, "🚀 NAP-BLE RC2 Ready [Native:true]")
+            napLog(NAP_BLE_READY, "🚀 NAP-BLE RC3 Ready [Native:true]")
             
             val result = JSObject()
             result.put("userId", userId)
             result.put("status", "initialized")
-            result.put("version", "2.4-NAP-RC2")
+            result.put("version", "2.4-NAP-RC3")
             result.put("bluetoothState", BluetoothAdapter.STATE_ON)
             result.put("native", true)
             result.put("napProtocol", "v2.4")
