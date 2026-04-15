@@ -7,6 +7,7 @@
  * - v1.5: FIX Bug salto automático a manual - Distingue perm_denied vs user_cancelled
  * - v1.5: FIX Manejo granular de errores: TEMP_ERROR vs PERM_DENIED vs PERMANENT_DENIED
  * - v1.5: FIX Evitar needsManualSettings en primer fallo o cancelación
+ * - v1.5.1: FIX Agregado requestBLEPermissionsNative() para diálogo explícito Android 14
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -37,6 +38,12 @@ export async function requestBLEPermissions() {
   }
   
   if (platform === 'android') {
+    // FIX v1.5.1: Primero intentar solicitud explícita nativa (diálogo Android 14)
+    const nativeResult = await requestNativeAndroidPermissionsExplicit();
+    if (nativeResult.granted || nativeResult.isPermissionDenied) {
+      return nativeResult;
+    }
+    // Fallback a verificación de estado si la solicitud explícita falló técnicamente
     return requestNativeAndroidPermissions();
   }
   
@@ -49,11 +56,51 @@ export async function requestBLEPermissions() {
 }
 
 /**
- * Android Nativo: Solicitud con granularidad de errores
+ * FIX v1.5.1: Solicitud explícita de permisos vía plugin nativo
+ * Muestra diálogo nativo Android 14 (BLUETOOTH_SCAN, BLUETOOTH_CONNECT)
+ */
+async function requestNativeAndroidPermissionsExplicit() {
+  console.log(`${NAP_CODES.PERM_REQUEST} Solicitando permisos explícitos vía NexoBLE.requestBLEPermissions()...`);
+  
+  try {
+    // LLAMADA CRÍTICA AL MÉTODO NATIVO
+    const result = await NexoBLE.requestBLEPermissions();
+    
+    console.log(`${NAP_CODES.ANDROID_NATIVE} Respuesta nativa explícita:`, JSON.stringify(result));
+    
+    if (result.allGranted) {
+      return { 
+        granted: true, 
+        platform: 'android-native',
+        nap_verified: true,
+        permissions: result.permissions,
+        nap_code: 'PERM_GRANTED'
+      };
+    }
+    
+    // Permisos denegados pero podemos reintentar
+    return { 
+      granted: false, 
+      platform: 'android-native',
+      isPermissionDenied: true,
+      permissions: result.permissions,
+      canRetry: true,
+      nap_code: 'PERM_DENIED'
+    };
+    
+  } catch (e) {
+    // Si el método no existe (plugin antiguo) o error técnico, devolver null para fallback
+    console.log(`${NAP_CODES.ERROR_RECOVERY} requestBLEPermissions no disponible, fallback a isBluetoothEnabled`);
+    return { granted: false, fallback: true };
+  }
+}
+
+/**
+ * Android Nativo: Verificación de estado (sin diálogo explícito)
  * FIX v1.5: Separar casos: user_cancelled vs denied vs error técnico
  */
 async function requestNativeAndroidPermissions() {
-  console.log(`${NAP_CODES.PERM_REQUEST} Solicitando permisos vía NexoBLE...`);
+  console.log(`${NAP_CODES.PERM_REQUEST} Verificando estado vía NexoBLE.isBluetoothEnabled()...`);
   
   try {
     const result = await NexoBLE.isBluetoothEnabled();
@@ -82,20 +129,19 @@ async function requestNativeAndroidPermissions() {
         platform: 'android-native',
         bluetoothState: result.stateName,
         isBluetoothOff: true,
-        canRetry: true,  // ← Puede reintentar después de encender BT
+        canRetry: true,
         nap_code: 'BT_DISABLED'
       };
     }
     
     // No tiene permiso - fue denegado en el diálogo nativo
-    // FIX v1.5: NO marcar como needsManualSettings inmediatamente
     return { 
       granted: false, 
       platform: 'android-native',
       bluetoothState: result.stateName,
       hasPermission: false,
       isPermissionDenied: true,
-      canRetry: true,  // ← Permitir reintento, no forzar manual aún
+      canRetry: true,
       nap_code: 'PERM_DENIED'
     };
     
@@ -104,7 +150,6 @@ async function requestNativeAndroidPermissions() {
     const errorMsg = e.message || '';
     console.error(`${NAP_CODES.PERM_ERROR} Error nativo:`, errorMsg);
     
-    // Determinar si es cancelación por usuario vs error técnico vs denegación permanente
     const isUserCancelled = errorMsg.includes('cancelled') || 
                           errorMsg.includes('canceled') ||
                           errorMsg.includes('User rejected');
@@ -112,10 +157,6 @@ async function requestNativeAndroidPermissions() {
     const isPermanentDenied = errorMsg.includes('PERMANENTLY_DENIED') ||
                               errorMsg.includes('never_ask_again');
     
-    const isSecurityException = errorMsg.includes('SecurityException') ||
-                                errorMsg.includes('Permission denial');
-    
-    // FIX v1.5: Solo ir a manual si es denegación permanente o error de seguridad confirmado
     if (isPermanentDenied) {
       return { 
         granted: false, 
@@ -128,25 +169,23 @@ async function requestNativeAndroidPermissions() {
       };
     }
     
-    // FIX v1.5: Cancelación por usuario o error temporal = permitir reintento
     if (isUserCancelled) {
       return { 
         granted: false, 
         isUserCancelled: true,
         error: 'User cancelled permission dialog',
         platform: 'android-native',
-        canRetry: true,  // ← Puede tocar de nuevo el botón azul
+        canRetry: true,
         nap_code: 'USER_CANCELLED'
       };
     }
     
-    // Error técnico (timeout, etc) - permitir reintento
     return { 
       granted: false, 
       isTechnicalError: true,
       error: errorMsg,
       platform: 'android-native',
-      canRetry: true,  // ← No saltar a manual por error técnico
+      canRetry: true,
       nap_code: 'TECH_ERROR'
     };
   }
@@ -184,7 +223,7 @@ async function requestWebBluetoothPermissions() {
       isUserCancelled: isCancelled,
       error: e.message,
       platform: 'web-bluetooth',
-      canRetry: isCancelled,  // ← Si canceló, puede reintentar
+      canRetry: isCancelled,
       nap_code: isCancelled ? 'WEB_USER_CANCELLED' : 'WEB_PERM_DENIED'
     };
   }
