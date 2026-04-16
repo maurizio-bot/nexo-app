@@ -1,6 +1,6 @@
 /**
- * NordicMesh - Protocolo BLE NEXO v1.2-NAP
- * FIX: Validación robusta de Vault + mejor manejo de errores
+ * NordicMesh - Protocolo BLE NEXO v1.3-NAP
+ * FIX: Permitir re-intento de inicialización si falló previamente
  */
 
 const UUIDS = Object.freeze({
@@ -20,12 +20,10 @@ const STATE = Object.freeze({
 
 class NordicMesh {
   constructor(vault, options = {}) {
-    // FIX: Validación más permisiva del vault
     if (!vault) {
       throw new Error('[NORDIC_002] Vault is required');
     }
     
-    // FIX: Verificar que el vault tenga getIdentityKey, pero no lanzar error aún
     this.vault = vault;
     this._vaultReady = typeof vault.getIdentityKey === 'function';
     
@@ -99,11 +97,9 @@ class NordicMesh {
     }
   }
 
-  // FIX CRÍTICO: Obtener identity con fallback seguro
   _getIdentitySafely() {
     try {
       if (!this._vaultReady) {
-        // Generar ID temporal si vault no tiene método
         return this._generateTempId();
       }
       
@@ -124,8 +120,28 @@ class NordicMesh {
     return tempId;
   }
 
+  // ============================================
+  // FIX v1.3-NAP: Permitir re-intento si falló
+  // ============================================
   async init() {
-    if (this.initPromise) return this.initPromise;
+    // Si hay una promesa previa, verificar si fue exitosa o fallida
+    if (this.initPromise) {
+      try {
+        const result = await this.initPromise;
+        if (result.success) {
+          console.log('[NordicMesh] Init cache hit (success)');
+          return result; // Fue exitosa, retornar cache
+        }
+        // Falló anteriormente, limpiar para re-intento
+        console.log('[NordicMesh] Previous init failed, retrying...');
+        this.initPromise = null;
+      } catch (e) {
+        // Hubo excepción, limpiar para re-intento
+        console.log('[NordicMesh] Previous init threw exception, retrying...');
+        this.initPromise = null;
+      }
+    }
+    
     this.initPromise = this._doInit();
     return this.initPromise;
   }
@@ -136,25 +152,21 @@ class NordicMesh {
       
       await this._detectPlugin();
       
-      // FIX: Verificar Bluetooth pero no bloquear si está apagado
       const btEnabled = await this.checkBluetooth();
       if (!btEnabled && this.isNative) {
         console.warn('[NordicMesh] ⚠️ Bluetooth apagado - modo offline');
       }
       
-      // FIX CRÍTICO: Obtener identity con manejo de errores
       const identityKey = this._getIdentitySafely();
       this.userId = identityKey;
       
       console.log('[NordicMesh] Initializing with userId:', identityKey.substring(0, 8) + '...');
       
-      // FIX: Manejar errores de inicialización BLE sin crashear
       let initResult;
       try {
         initResult = await this.NexoBLE.initialize({ userId: identityKey });
       } catch (bleError) {
         console.error('[NordicMesh] BLE initialize failed:', bleError.message);
-        // Si falla BLE nativo, continuar en modo stub
         if (this.isNative) {
           console.warn('[NordicMesh] Fallback a modo web por error BLE');
           this.isNative = false;
@@ -187,14 +199,12 @@ class NordicMesh {
     
     for (const event of events) {
       try {
-        // FIX: Mapear nombres de eventos correctos según NexoBlePlugin.kt
         const nativeEvent = event.replace('on', '').toLowerCase();
         const mappedEvent = nativeEvent === 'peerdiscovered' ? 'onPeerDiscovered' :
                           nativeEvent === 'connectionstatechanged' ? 'onConnectionStateChanged' :
                           nativeEvent === 'messagereceived' ? 'onMessageReceived' : event;
         
         await this.NexoBLE.addListener(mappedEvent, (data) => {
-          // Transformar datos nativos a formato NordicMesh
           const transformed = this._transformEventData(mappedEvent, data);
           this._emit(this._mapEventName(mappedEvent), transformed);
         });
@@ -214,7 +224,6 @@ class NordicMesh {
   }
 
   _transformEventData(event, data) {
-    // Normalizar datos del plugin nativo
     if (event === 'onPeerDiscovered') {
       return {
         id: data.id || data.address,
@@ -258,7 +267,6 @@ class NordicMesh {
   }
 
   async startDiscovery() {
-    // FIX: Validar estado antes de iniciar discovery
     if (this.state === STATE.ERROR) {
       console.warn('[NordicMesh] Cannot start discovery in error state');
       return false;
@@ -284,7 +292,6 @@ class NordicMesh {
       await this.NexoBLE.startAdvertising();
       await this.NexoBLE.startScan();
       
-      // Auto-stop después de 10s
       setTimeout(() => {
         if (this.state === STATE.DISCOVERING) {
           this.stopDiscovery();
