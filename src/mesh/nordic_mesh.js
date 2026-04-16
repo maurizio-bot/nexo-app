@@ -20,7 +20,14 @@ const STATE = Object.freeze({
 
 class NordicMesh {
   constructor(vault, options = {}) {
+<<<<<<< HEAD
     if (!vault) throw new Error('[NORDIC_002] Vault is required');
+=======
+    if (!vault) {
+      throw new Error('[NORDIC_002] Vault is required');
+    }
+    
+>>>>>>> a44e1379fb9ce2ad3285ab1b364b7976a1d47129
     this.vault = vault;
     this._vaultReady = typeof vault.getIdentityKey === 'function';
     this.options = { chunkSize: 507, rssiThreshold: -85, handshakeTimeout: 30000, ...options };
@@ -73,7 +80,14 @@ class NordicMesh {
 
   _getIdentitySafely() {
     try {
+<<<<<<< HEAD
       if (!this._vaultReady) return this._generateTempId();
+=======
+      if (!this._vaultReady) {
+        return this._generateTempId();
+      }
+      
+>>>>>>> a44e1379fb9ce2ad3285ab1b364b7976a1d47129
       const id = this.vault.getIdentityKey();
       if (!id) throw new Error('Empty identity');
       return id;
@@ -86,6 +100,7 @@ class NordicMesh {
     return 'nexo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
   }
 
+<<<<<<< HEAD
   // FIX v1.3-NAP: Permitir re-intento si falló
   async init() {
     if (this.initPromise) {
@@ -97,6 +112,30 @@ class NordicMesh {
         this.initPromise = null; // Excepción, reintentar
       }
     }
+=======
+  // ============================================
+  // FIX v1.3-NAP: Permitir re-intento si falló
+  // ============================================
+  async init() {
+    // Si hay una promesa previa, verificar si fue exitosa o fallida
+    if (this.initPromise) {
+      try {
+        const result = await this.initPromise;
+        if (result.success) {
+          console.log('[NordicMesh] Init cache hit (success)');
+          return result; // Fue exitosa, retornar cache
+        }
+        // Falló anteriormente, limpiar para re-intento
+        console.log('[NordicMesh] Previous init failed, retrying...');
+        this.initPromise = null;
+      } catch (e) {
+        // Hubo excepción, limpiar para re-intento
+        console.log('[NordicMesh] Previous init threw exception, retrying...');
+        this.initPromise = null;
+      }
+    }
+    
+>>>>>>> a44e1379fb9ce2ad3285ab1b364b7976a1d47129
     this.initPromise = this._doInit();
     return this.initPromise;
   }
@@ -105,14 +144,32 @@ class NordicMesh {
     try {
       this._setState(STATE.INIT);
       await this._detectPlugin();
+<<<<<<< HEAD
       const btEnabled = await this.checkBluetooth();
       const identityKey = this._getIdentitySafely();
       this.userId = identityKey;
       
+=======
+      
+      const btEnabled = await this.checkBluetooth();
+      if (!btEnabled && this.isNative) {
+        console.warn('[NordicMesh] ⚠️ Bluetooth apagado - modo offline');
+      }
+      
+      const identityKey = this._getIdentitySafely();
+      this.userId = identityKey;
+      
+      console.log('[NordicMesh] Initializing with userId:', identityKey.substring(0, 8) + '...');
+      
+>>>>>>> a44e1379fb9ce2ad3285ab1b364b7976a1d47129
       let initResult;
       try {
         initResult = await this.NexoBLE.initialize({ userId: identityKey });
       } catch (bleError) {
+<<<<<<< HEAD
+=======
+        console.error('[NordicMesh] BLE initialize failed:', bleError.message);
+>>>>>>> a44e1379fb9ce2ad3285ab1b364b7976a1d47129
         if (this.isNative) {
           this.isNative = false;
           initResult = { userId: identityKey, status: 'stub-fallback' };
@@ -132,17 +189,51 @@ class NordicMesh {
     const events = ['onPeerDiscovered', 'onConnectionStateChanged', 'onMessageReceived'];
     for (const event of events) {
       try {
+<<<<<<< HEAD
         const mapped = event.replace('on', '').toLowerCase();
         await this.NexoBLE.addListener(mapped, (data) => {
           this._emit(this._mapEventName(mapped), data);
+=======
+        const nativeEvent = event.replace('on', '').toLowerCase();
+        const mappedEvent = nativeEvent === 'peerdiscovered' ? 'onPeerDiscovered' :
+                          nativeEvent === 'connectionstatechanged' ? 'onConnectionStateChanged' :
+                          nativeEvent === 'messagereceived' ? 'onMessageReceived' : event;
+        
+        await this.NexoBLE.addListener(mappedEvent, (data) => {
+          const transformed = this._transformEventData(mappedEvent, data);
+          this._emit(this._mapEventName(mappedEvent), transformed);
+>>>>>>> a44e1379fb9ce2ad3285ab1b364b7976a1d47129
         });
       } catch (e) {}
     }
   }
 
+<<<<<<< HEAD
   _mapEventName(n) {
     const map = { 'peerdiscovered': 'peerDiscovered', 'connectionstatechanged': 'connectionStateChanged', 'messagereceived': 'messageReceived' };
     return map[n] || n;
+=======
+  _mapEventName(nativeEvent) {
+    const mapping = {
+      'onPeerDiscovered': 'peerDiscovered',
+      'onConnectionStateChanged': 'connectionStateChanged',
+      'onMessageReceived': 'messageReceived'
+    };
+    return mapping[nativeEvent] || nativeEvent;
+  }
+
+  _transformEventData(event, data) {
+    if (event === 'onPeerDiscovered') {
+      return {
+        id: data.id || data.address,
+        name: data.name || `NEXO-${(data.address || '').slice(-4)}`,
+        rssi: data.rssi || -80,
+        userId: data.userId || '',
+        timestamp: Date.now()
+      };
+    }
+    return data;
+>>>>>>> a44e1379fb9ce2ad3285ab1b364b7976a1d47129
   }
 
   on(event, callback) {
@@ -157,7 +248,15 @@ class NordicMesh {
   }
 
   async startDiscovery() {
+<<<<<<< HEAD
     if (this.state === STATE.ERROR) return false;
+=======
+    if (this.state === STATE.ERROR) {
+      console.warn('[NordicMesh] Cannot start discovery in error state');
+      return false;
+    }
+    
+>>>>>>> a44e1379fb9ce2ad3285ab1b364b7976a1d47129
     const btEnabled = await this.checkBluetooth();
     if (!btEnabled) {
       this._emit('error', { code: 'BLUETOOTH_DISABLED', message: 'Activa Bluetooth' });
@@ -167,7 +266,18 @@ class NordicMesh {
     try {
       await this.NexoBLE.startAdvertising();
       await this.NexoBLE.startScan();
+<<<<<<< HEAD
       setTimeout(() => { if (this.state === STATE.DISCOVERING) this.stopDiscovery(); }, 10000);
+=======
+      
+      setTimeout(() => {
+        if (this.state === STATE.DISCOVERING) {
+          this.stopDiscovery();
+          this._emit('scanTimeout', { duration: 10000 });
+        }
+      }, 10000);
+      
+>>>>>>> a44e1379fb9ce2ad3285ab1b364b7976a1d47129
       return true;
     } catch (error) {
       this._setState(STATE.ERROR);
