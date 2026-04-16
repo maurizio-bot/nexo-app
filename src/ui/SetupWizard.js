@@ -1,7 +1,6 @@
 /**
- * NEXO Setup Wizard v1.4-NAP
- * UI de onboarding para Android 14 BLE
- * FIX v1.4: Evitar salto automático a manual, permitir reintentos en botón azul
+ * NEXO Setup Wizard v1.5-NAP
+ * FIX: Verificación real del plugin BLE antes de completar
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -75,7 +74,6 @@ export class SetupWizard {
   renderPermissions() {
     const isManual = this.currentStep === 'permissions_manual';
     
-    // FIX v1.4: IDs únicos para evitar conflictos de listeners
     const btnId = isManual ? 'btn-settings-manual' : 'btn-perms-auto';
     const fallbackBtnId = 'btn-settings-fallback';
     
@@ -108,21 +106,18 @@ export class SetupWizard {
     if (isManual) {
       document.getElementById(btnId).addEventListener('click', () => this.handleOpenSettings());
     } else {
-      // FIX v1.4: Handler del botón azul con lógica de reintento mejorada
       document.getElementById(btnId).addEventListener('click', (e) => this.handleRequestPermissions(e.target));
       document.getElementById(fallbackBtnId).addEventListener('click', () => this.handleOpenSettings());
     }
   }
 
-  /**
-   * FIX v1.4.1: Manejo de permisos con reintentos, sin salto automático a manual
-   * Verifica estado Bluetooth explícitamente tras permisos concedidos
-   */
+  // ============================================
+  // FIX v1.5-NAP: Verificación real del plugin
+  // ============================================
   async handleRequestPermissions(btnElement) {
     const btn = btnElement;
     
     try {
-      // Feedback visual
       btn.style.opacity = '0.6';
       btn.style.pointerEvents = 'none';
       btn.textContent = 'Abriendo diálogo Android...';
@@ -130,35 +125,42 @@ export class SetupWizard {
       const result = await requestBLEPermissions();
       
       if (result.granted) {
-        // FIX v1.4.1: Verificar estado Bluetooth explícitamente tras permisos
         const btStatus = await checkBLEStatus();
         console.log(`${NAP_WIZARD} Permisos OK, verificando BT:`, btStatus.bluetoothEnabled);
         
         if (!btStatus.bluetoothEnabled) {
-          // Permisos concedidos pero BT apagado - mostrar pantalla BT
           console.log(`${NAP_WIZARD} BT apagado, cambiando a pantalla Bluetooth`);
           this.currentStep = 'bluetooth';
           this.renderBluetooth();
           return;
         }
         
-        // ÉXITO TOTAL: Permisos + BT activado
+        // FIX v1.5: Verificar que plugin responde ANTES de completar
+        btn.textContent = 'Verificando BLE...';
+        const pluginReady = await this.verifyPluginReady();
+        
+        if (!pluginReady) {
+          console.error(`${NAP_WIZARD} Plugin BLE no responde`);
+          btn.style.background = 'linear-gradient(135deg, #ff6b35 0%, #ff4500 100%)';
+          btn.textContent = 'Error BLE - Toca para reintentar';
+          btn.style.opacity = '1';
+          btn.style.pointerEvents = 'auto';
+          return;
+        }
+        
+        // ÉXITO TOTAL: Permisos + BT + Plugin responde
         btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00cc6a 100%)';
         btn.textContent = '✓ Listo';
         setTimeout(() => this.onComplete(), 800);
         
       } else {
-        // FALLIDO - Análisis granular FIX v1.4
         console.log(`${NAP_WIZARD} Permisos no concedidos:`, result.nap_code, result);
         
-        // Restaurar botón para reintento
         btn.style.opacity = '1';
         btn.style.pointerEvents = 'auto';
         
-        // FIX v1.4: Solo ir a manual si es denegación permanente o 2+ fallos reales
         const isPermanent = result.isPermanentDenial === true;
-        const isTechnical = result.isTechnicalError === true;
-        const canRetry = result.canRetry !== false;  // Default true
+        const isUserCancelled = result.isUserCancelled === true;
         
         if (isPermanent) {
           console.log(`${NAP_WIZARD} Denegación permanente detectada, modo manual`);
@@ -167,13 +169,10 @@ export class SetupWizard {
           return;
         }
         
-        // Incrementar contador solo si no fue cancelación voluntaria
-        if (!result.isUserCancelled) {
+        if (!isUserCancelled) {
           const count = await SetupManager.recordPermissionDenied();
           this.errorCount = count;
-          console.log(`${NAP_WIZARD} Contador denegaciones: ${count}`);
           
-          // Solo modo manual después de 2 fallos consecutivos NO de cancelación
           if (count >= 2) {
             console.log(`${NAP_WIZARD} Cambiando a modo MANUAL tras ${count} fallos`);
             this.currentStep = 'permissions_manual';
@@ -181,16 +180,10 @@ export class SetupWizard {
             return;
           }
         } else {
-          console.log(`${NAP_WIZARD} Usuario canceló diálogo - permitiendo reintento sin penalización`);
+          console.log(`${NAP_WIZARD} Usuario canceló - permitiendo reintento`);
         }
         
-        // FIX v1.4: Permitir reintento manteniendo botón funcional
-        if (canRetry || result.isUserCancelled) {
-          btn.textContent = result.isUserCancelled ? 'Reintentar (diálogo cerrado)' : 'Reintentar';
-          console.log(`${NAP_WIZARD} Listo para reintento`);
-        } else {
-          btn.textContent = 'Error - toca para reintentar';
-        }
+        btn.textContent = isUserCancelled ? 'Reintentar (diálogo cerrado)' : 'Reintentar';
       }
       
     } catch (error) {
@@ -199,9 +192,32 @@ export class SetupWizard {
       btn.style.opacity = '1';
       btn.style.pointerEvents = 'auto';
       btn.textContent = 'Error - Toca para reintentar';
+    }
+  }
+
+  // ============================================
+  // FIX v1.5-NAP: Nuevo método de verificación
+  // ============================================
+  async verifyPluginReady() {
+    try {
+      const { NexoBLE } = window.Capacitor.Plugins;
+      if (!NexoBLE) {
+        console.error(`${NAP_WIZARD} NexoBLE plugin no encontrado`);
+        return false;
+      }
       
-      // FIX v1.4: No saltar a manual por error inesperado, permitir reintento
-      console.log(`${NAP_WIZARD} Error inesperado, manteniendo modo automático para reintento`);
+      // Intentar llamar isBluetoothEnabled para verificar que el bridge funciona
+      const response = await Promise.race([
+        NexoBLE.isBluetoothEnabled(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 3000))
+      ]);
+      
+      console.log(`${NAP_WIZARD} Plugin responde:`, response);
+      return response && response.enabled === true;
+      
+    } catch (e) {
+      console.error(`${NAP_WIZARD} Plugin no responde:`, e.message);
+      return false;
     }
   }
 
