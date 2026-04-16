@@ -143,6 +143,8 @@ class NexoBlePlugin : Plugin() {
     // Tracking para requestPermissions()
     private var pendingPermissionAliases = mutableListOf<String>()
     private var currentPermissionIndex = 0
+    // FIX: Timeout de seguridad para evitar calls colgados
+    private var permissionTimeoutRunnable: Runnable? = null
 
     // NAP Logger unificado
     private fun napLog(code: String, message: String, level: String = "INFO") {
@@ -426,16 +428,21 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [FIX RC3] MÉTODO CRÍTICO CORREGIDO
-    // Cambio: Eliminado parámetro 'name' de @PluginMethod
-    // Renombrado método a requestBLEPermissions() para evitar conflicto
+    // [FIX RC4] PERMISSION BRIDGE CORREGIDO
+    // Cambios: 
+    // 1. Manejo robusto de callback con try-catch
+    // 2. Reject inmediato si permiso denegado (no solo log)
+    // 3. Timeout de seguridad para evitar calls colgados
+    // 4. Limpieza de timeout en completion
     // ============================================================
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
         napLog(NAP_BLE_INIT_001, "[1/3] Solicitud explícita de permisos BLE iniciada desde UI")
         
+        // FIX: Limpiar estado previo y timeout
         pendingPermissionAliases.clear()
         currentPermissionIndex = 0
+        permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!hasPermission("bluetoothConnect")) pendingPermissionAliases.add("bluetoothConnect")
@@ -455,25 +462,59 @@ class NexoBlePlugin : Plugin() {
         
         napLog(NAP_BLE_WAITING_PERMISSIONS, "[2/3] Solicitando ${pendingPermissionAliases.size} permiso(s): $pendingPermissionAliases")
         
+        // FIX: Timeout de seguridad - 30 segundos máximo para evitar call colgado
+        permissionTimeoutRunnable = Runnable {
+            if (!call.isReleased && !call.isSaved) {
+                napLog(NAP_BLE_PARTIAL_PERMISSIONS, "TIMEOUT: El usuario no respondió a los diálogos de permisos", "WARN")
+                val errorData = JSObject()
+                errorData.put("timeout", true)
+                errorData.put("message", "Tiempo de espera agotado para permisos")
+                call.reject(NAP_BLE_PARTIAL_PERMISSIONS, "Permisos timeout", errorData)
+                pendingPermissionAliases.clear()
+            }
+        }
+        handler.postDelayed(permissionTimeoutRunnable!!, 30000)
+        
         saveCall(call)
         requestNextPermission(call)
     }
     
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
-        val currentAlias = pendingPermissionAliases.getOrNull(currentPermissionIndex)
-        
-        if (currentAlias != null) {
-            val granted = hasPermission(currentAlias)
-            napLog("BLE_PERM_RESULT", "Permiso $currentAlias: ${if (granted) "CONCEDIDO" else "DENEGADO"}")
-        }
-        
-        currentPermissionIndex++
-        
-        if (currentPermissionIndex < pendingPermissionAliases.size) {
-            requestNextPermission(call)
-        } else {
-            reportFinalPermissionsResult(call)
+        // FIX: Manejo robusto con try-catch para evitar silenciar excepciones
+        try {
+            val currentAlias = pendingPermissionAliases.getOrNull(currentPermissionIndex)
+            
+            if (currentAlias != null) {
+                val granted = hasPermission(currentAlias)
+                napLog("BLE_PERM_RESULT", "Callback ejecutado - Permiso $currentAlias: ${if (granted) "CONCEDIDO" else "DENEGADO"}")
+                
+                // FIX: Si un permiso fue denegado firmemente, abortar secuencia inmediatamente
+                if (!granted) {
+                    napLog(NAP_BLE_PARTIAL_PERMISSIONS, "Permiso $currentAlias denegado, abortando secuencia")
+                    permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
+                    reportFinalPermissionsResult(call, forcedDenial = true)
+                    return
+                }
+            } else {
+                napLog("BLE_PERM_WARN", "Callback llamado pero currentAlias es null (índice: $currentPermissionIndex)", "WARN")
+            }
+            
+            currentPermissionIndex++
+            
+            if (currentPermissionIndex < pendingPermissionAliases.size) {
+                requestNextPermission(call)
+            } else {
+                permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
+                reportFinalPermissionsResult(call, forcedDenial = false)
+            }
+        } catch (e: Exception) {
+            napLog("BLE_PERM_ERR", "Excepción en callback: ${e.message}", "ERROR")
+            permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
+            
+            val errorData = JSObject()
+            errorData.put("exception", e.message)
+            call.reject(NAP_BLE_ERR_INIT_FAILED, "Error en callback de permisos", errorData)
         }
     }
     
@@ -482,11 +523,16 @@ class NexoBlePlugin : Plugin() {
         if (alias != null) {
             napLog(NAP_BLE_INIT_001, "Solicitando permiso [${currentPermissionIndex + 1}/${pendingPermissionAliases.size}]: $alias")
             requestPermissionForAlias(alias, call, "requestPermissionsCallback")
+        } else {
+            napLog("BLE_PERM_ERR", "Alias null en índice $currentPermissionIndex", "ERROR")
+            permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
+            reportFinalPermissionsResult(call, forcedDenial = true)
         }
     }
     
-    private fun reportFinalPermissionsResult(call: PluginCall) {
-        val allGranted = hasRequiredPermissions()
+    // FIX: Parámetro forcedDenial para manejar rechazos explícitos
+    private fun reportFinalPermissionsResult(call: PluginCall, forcedDenial: Boolean = false) {
+        val allGranted = !forcedDenial && hasRequiredPermissions()
         val result = buildPermissionsResult()
         
         if (allGranted) {
@@ -497,9 +543,14 @@ class NexoBlePlugin : Plugin() {
             })
             call.resolve(result)
         } else {
-            napLog(NAP_BLE_PARTIAL_PERMISSIONS, "[3/3] Algunos permisos fueron denegados")
-            result.put("message", "Se requieren todos los permisos para funcionalidad BLE completa")
-            call.resolve(result)
+            napLog(NAP_BLE_PARTIAL_PERMISSIONS, "[3/3] Algunos permisos fueron denegados o timeout")
+            // FIX: Usar reject en lugar de resolve para que JS detecte el error claramente
+            val errorData = JSObject()
+            errorData.put("permissions", result.getJSObject("permissions"))
+            errorData.put("allGranted", false)
+            errorData.put("message", "Se requieren todos los permisos para funcionalidad BLE completa")
+            errorData.put("napCode", NAP_BLE_PARTIAL_PERMISSIONS)
+            call.reject(NAP_BLE_PARTIAL_PERMISSIONS, "Permisos incompletos", errorData)
         }
     }
     
@@ -1566,7 +1617,6 @@ class NexoBlePlugin : Plugin() {
             try {
                 bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
                 bluetoothAdapter?.bluetoothLeScanner?.stopScan(scanCallback)
-                isAdvertising = false
             } catch (e: Exception) {}
         }
     }
@@ -1647,6 +1697,7 @@ class NexoBlePlugin : Plugin() {
         connectedDevices.clear()
         pendingCalls.clear()
         pendingPermissionAliases.clear()
+        permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
         releaseInitLock()
         
         super.handleOnDestroy()
