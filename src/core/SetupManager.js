@@ -1,11 +1,12 @@
 /**
- * NEXO Setup Manager v1.3
+ * NEXO Setup Manager v1.4-NAP
  * Onboarding para BLE Android 14 (API 34+)
  * Persistencia: localStorage (nativo, sin plugins externos)
  * NAP 2.0 Certified - Resource Management & Graceful Degradation
  */
 
 import { Capacitor } from '@capacitor/core';
+import { checkBLEStatus } from './ble_permissions.js';
 
 const STORAGE_KEYS = {
   SETUP_COMPLETED: 'nexo_setup_v1_completed',
@@ -21,7 +22,7 @@ export class SetupManager {
 
     try {
       // NAP: Log diagnóstico
-      console.log('[SetupManager] NAP 2.0 - Verificando estado BLE...');
+      console.log('[SetupManager] NAP 2.0 - Verificando estado de configu...');
       
       const completedBefore = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED) === 'true';
       
@@ -34,16 +35,53 @@ export class SetupManager {
         };
       }
 
-      const lastCheck = parseInt(localStorage.getItem(STORAGE_KEYS.LAST_CHECK) || '0');
-      const oneDayMs = 24 * 60 * 60 * 1000;
+      // NAP FIX v1.4: Verificación REAL del sistema aunque el flag exista
+      // Esto detecta permisos revocados manualmente o BT apagado
+      console.log('[SetupManager] NAP: Configuración ya completada - Verificando estado REAL...');
+      const bleStatus = await checkBLEStatus();
+      console.log('[SetupManager] NAP: Estado BLE real:', bleStatus.nap_code, bleStatus);
       
-      if (Date.now() - lastCheck > oneDayMs) {
-        localStorage.setItem(STORAGE_KEYS.LAST_CHECK, Date.now().toString());
-        console.log('[SetupManager] NAP: Timestamp actualizado');
+      // Si todo está realmente OK (permisos + BT encendido), proceder
+      if (bleStatus.granted === true) {
+        const lastCheck = parseInt(localStorage.getItem(STORAGE_KEYS.LAST_CHECK) || '0');
+        const oneDayMs = 24 * 60 * 60 * 1000;
+        
+        if (Date.now() - lastCheck > oneDayMs) {
+          localStorage.setItem(STORAGE_KEYS.LAST_CHECK, Date.now().toString());
+          console.log('[SetupManager] NAP: Timestamp actualizado');
+        }
+
+        console.log('[SetupManager] NAP: Sistema validado');
+        return { ready: true, reason: null, isFirstTime: false };
+      }
+      
+      // Si BT está apagado pero permisos existen
+      if (bleStatus.bluetoothEnabled === false || bleStatus.stateName === 'OFF') {
+        console.log('[SetupManager] NAP: BT apagado detectado - requiere activación');
+        return { 
+          ready: false, 
+          reason: 'bluetooth',
+          isFirstTime: false 
+        };
+      }
+      
+      // Si faltan permisos (revocados o denegados)
+      if (bleStatus.stateName === 'NO_PERMISSION' || !bleStatus.granted) {
+        console.log('[SetupManager] NAP: Permisos faltantes - requiere re-setup');
+        return { 
+          ready: false, 
+          reason: 'permissions',
+          isFirstTime: false 
+        };
       }
 
-      console.log('[SetupManager] NAP: Sistema validado');
-      return { ready: true, reason: null, isFirstTime: false };
+      // Fallback seguro
+      console.warn('[SetupManager] NAP: Estado indeterminado, requiere verificación');
+      return { 
+        ready: false, 
+        reason: 'bluetooth',
+        isFirstTime: false 
+      };
 
     } catch (error) {
       // NAP: Error graceful
