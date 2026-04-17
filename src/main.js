@@ -9,7 +9,7 @@ import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
-import { SetupManager } from './core/SetupManager.js';
+import { setupManager } from './core/SetupManager.js';  // FIX: minúscula
 import { SetupWizard } from './ui/SetupWizard.js';
 
 window.NEXO = {
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ============================================
     rem.info('[Setup] Verificando estado de configuración...', 'SETUP_CHECK');
     
-    const setupStatus = await SetupManager.checkInitialStatus();
+    const setupStatus = await setupManager.checkInitialStatus();  // FIX: minúscula
     
     if (!setupStatus.ready) {
       rem.info(`[Setup] Requerido: ${setupStatus.reason}`, 'SETUP_REQUIRED');
@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const wizard = new SetupWizard('app', async () => {
         // Callback cuando wizard termina exitosamente
         rem.success('[Setup] Wizard completado', 'SETUP_OK');
-        await SetupManager.markCompleted();
+        await setupManager.markCompleted();  // FIX: minúscula
         
         // Continuar con inicialización normal
         await initializeNexoApp();
