@@ -1,6 +1,8 @@
 /**
- * NEXO Setup Wizard v1.5-NAP
+ * NEXO Setup Wizard v1.6-NAP
  * FIX: Verificación real del plugin BLE antes de completar
+ * NAP 2.0 FIX: Retry loop post-permisos para evitar race condition Android
+ * CHANGELOG v1.6: Eliminado timeout fijo, agregado verifyBLEOperational() con 3 intentos
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -88,21 +90,28 @@ export class SetupWizard {
       const result = await requestBLEPermissions();
       
       if (result.granted) {
-        const btStatus = await checkBLEStatus();
-        console.log(NAP_WIZARD + ' Permisos OK, verificando BT:', btStatus.bluetoothEnabled);
-        
-        if (!btStatus.bluetoothEnabled) {
-          console.log(NAP_WIZARD + ' BT apagado, cambiando a pantalla Bluetooth');
-          this.currentStep = 'bluetooth';
-          this.renderBluetooth();
-          return;
-        }
-        
         btn.textContent = 'Verificando BLE...';
-        const pluginReady = await this.verifyPluginReady();
         
-        if (!pluginReady) {
-          console.error(NAP_WIZARD + ' Plugin BLE no responde');
+        // NAP FIX v1.6: Verificación REAL con retry loop para evitar race condition Android
+        const operationalCheck = await this.verifyBLEOperational();
+        
+        if (!operationalCheck.ready) {
+          if (operationalCheck.reason === 'bluetooth') {
+            console.log(NAP_WIZARD + ' BT apagado detectado en verificación real, cambiando a pantalla Bluetooth');
+            this.currentStep = 'bluetooth';
+            this.renderBluetooth();
+            return;
+          }
+          
+          if (operationalCheck.reason === 'permissions') {
+            console.log(NAP_WIZARD + ' Permisos no operativos aún, reintentando...');
+            btn.style.opacity = '1';
+            btn.style.pointerEvents = 'auto';
+            btn.textContent = 'Reintentar';
+            return;
+          }
+          
+          console.error(NAP_WIZARD + ' BLE no operativo:', operationalCheck);
           btn.style.background = 'linear-gradient(135deg, #ff6b35 0%, #ff4500 100%)';
           btn.textContent = 'Error BLE - Toca para reintentar';
           btn.style.opacity = '1';
@@ -110,9 +119,13 @@ export class SetupWizard {
           return;
         }
         
+        // NAP v1.6: Confirmación real de operatividad antes de completar
+        console.log(NAP_WIZARD + ' BLE operativo confirmado, completando wizard');
         btn.style.background = 'linear-gradient(135deg, #00ff88 0%, #00cc6a 100%)';
         btn.textContent = '✓ Listo';
-        setTimeout(() => this.onComplete(), 800);
+        
+        // Pequeño delay visual pero no de espera ciega
+        setTimeout(() => this.onComplete(), 400);
         
       } else {
         console.log(NAP_WIZARD + ' Permisos no concedidos:', result.nap_code, result);
@@ -120,7 +133,7 @@ export class SetupWizard {
         btn.style.opacity = '1';
         btn.style.pointerEvents = 'auto';
         
-        const isPermanent = result.isPermanentDenial === true;
+        const isPermanent = result.isPermanentDenial === true || result.isPermanentlyDenied === true;
         const isUserCancelled = result.isUserCancelled === true;
         
         if (isPermanent) {
@@ -154,26 +167,59 @@ export class SetupWizard {
     }
   }
 
-  async verifyPluginReady() {
-    try {
-      const { NexoBLE } = window.Capacitor.Plugins;
-      if (!NexoBLE) {
-        console.error(NAP_WIZARD + ' NexoBLE plugin no encontrado');
-        return false;
+  /**
+   * NAP v1.6 FIX: Verificación operativa con retry loop
+   * Intenta verificar el estado BLE hasta 3 veces con 500ms delay
+   * para evitar race condition donde Android no ha propagado permisos aún
+   */
+  async verifyBLEOperational(maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(NAP_WIZARD + ` Verificación operativa intento ${attempt}/${maxRetries}...`);
+        
+        const status = await checkBLEStatus();
+        console.log(NAP_WIZARD + ` Estado verificado:`, status);
+        
+        // Verificación de denegación permanente primero (fail fast)
+        if (status.isPermanentlyDenied === true) {
+          console.log(NAP_WIZARD + ' Denegación permanente detectada en checkBLEStatus');
+          return { ready: false, reason: 'permanent_denial' };
+        }
+        
+        // Si está completamente listo, retornar éxito inmediatamente
+        if (status.granted === true && status.bluetoothEnabled === true) {
+          console.log(NAP_WIZARD + ' BLE completamente operativo');
+          return { ready: true, status };
+        }
+        
+        // Si BT está apagado, no seguir reintentando permisos
+        if (status.bluetoothEnabled === false || status.stateName === 'OFF') {
+          console.log(NAP_WIZARD + ' Bluetooth desactivado detectado');
+          return { ready: false, reason: 'bluetooth', status };
+        }
+        
+        // Si permisos no concedidos pero no es permanente, reintentar si quedan intentos
+        if (!status.granted && attempt < maxRetries) {
+          console.log(NAP_WIZARD + ` Permisos pendientes, esperando 500ms antes de reintento...`);
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+        
+        // Si es último intento y sigue sin permisos
+        if (!status.granted && attempt === maxRetries) {
+          return { ready: false, reason: 'permissions', status };
+        }
+        
+      } catch (e) {
+        console.error(NAP_WIZARD + ` Error en verificación intento ${attempt}:`, e.message);
+        if (attempt === maxRetries) {
+          return { ready: false, reason: 'error', error: e.message };
+        }
+        await new Promise(r => setTimeout(r, 500));
       }
-      
-      const response = await Promise.race([
-        NexoBLE.isBluetoothEnabled(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 3000))
-      ]);
-      
-      console.log(NAP_WIZARD + ' Plugin responde:', response);
-      return response && response.enabled === true;
-      
-    } catch (e) {
-      console.error(NAP_WIZARD + ' Plugin no responde:', e.message);
-      return false;
     }
+    
+    return { ready: false, reason: 'max_retries_exceeded' };
   }
 
   renderBluetooth() {
