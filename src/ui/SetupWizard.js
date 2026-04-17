@@ -244,3 +244,4 @@ export class SetupWizard {
 }
 
 window.SetupWizard = SetupWizard;
+// NAP v1.6 - Fri Apr 17 17:53:40 UTC 2026
