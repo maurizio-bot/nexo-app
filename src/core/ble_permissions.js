@@ -1,5 +1,5 @@
 /**
- * BLE Permissions Manager v1.5.2-NAP
+ * BLE Permissions Manager v1.6-NAP
  * Android 14+ nativo | Web Bluetooth API fallback
  * NAP 2.0 Certified - Error Granularity & Recovery Flow
  * 
@@ -9,6 +9,7 @@
  * - v1.5: FIX Evitar needsManualSettings en primer fallo o cancelación
  * - v1.5.1: FIX Agregado requestBLEPermissionsNative() para diálogo explícito Android 14
  * - v1.5.2: FIX Verificación post-permisos de estado Bluetooth
+ * - v1.6-NAP: FIX Agregado isPermanentlyDenied en checkBLEStatus() para detección inmediata vía plugin nativo
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -244,6 +245,7 @@ export async function checkBLEStatus() {
       granted: isFullyReady,
       bluetoothEnabled: status.enabled,
       stateName: status.stateName,
+      isPermanentlyDenied: status.isPermanentlyDenied,  // NUEVO v1.6-NAP: Exponer flag del plugin
       platform: 'android-native',
       nap_code: isFullyReady ? 'NATIVE_READY' : `NATIVE_${status.stateName}`
     };
