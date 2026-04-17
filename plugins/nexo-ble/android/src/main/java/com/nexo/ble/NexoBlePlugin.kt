@@ -300,7 +300,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v2.4-RC3 loaded (EdgeCaseResilient + PermissionBridge)")
+        napLog("BLE_LOAD", "NAP-BLE v2.4-RC4 loaded (EdgeCaseResilient + PermissionBridge + PermanentDenialDetection)")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -577,6 +577,12 @@ class NexoBlePlugin : Plugin() {
         return result
     }
 
+    // ============================================================
+    // [FIX NAP v1.4] DETECCIÓN DE DENEGACIÓN PERMANENTE
+    // Cambios:
+    // 1. Detectar denegación permanente usando shouldShowRequestPermissionRationale()
+    // 2. Reportar isPermanentlyDenied al JS para decisión inmediata
+    // ============================================================
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
         if (!validateSystemHealth(call, "status_check")) return
@@ -600,11 +606,23 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // NAP v1.4 FIX: Agregado detección de denegación permanente
     private fun reportBluetoothState(call: PluginCall) {
         if (!initializeAdapter()) {
             val result = JSObject()
             result.put("enabled", false)
             result.put("state", BluetoothAdapter.STATE_OFF)
+            
+            // NAP FIX v1.4: Detectar denegación permanente
+            val isPermanentlyDenied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                !hasPermission("bluetoothConnect") && 
+                !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_CONNECT)
+            } else {
+                !hasPermission("location") && 
+                !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            
+            result.put("isPermanentlyDenied", isPermanentlyDenied)  // NUEVO para JS v1.4
             result.put("stateName", if (!canAccessBluetooth()) "NO_PERMISSION" else "NOT_SUPPORTED")
             result.put("error", "Permission or support issue")
             result.put("health", getSystemHealthReport())
@@ -620,6 +638,15 @@ class NexoBlePlugin : Plugin() {
             BluetoothAdapter.STATE_OFF
         }
         
+        // NAP FIX v1.4: También verificar denegación permanente cuando adapter existe
+        val isPermanentlyDenied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasPermission("bluetoothConnect")) {
+            !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_CONNECT)
+        } else if (!hasPermission("location")) {
+            !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            false
+        }
+        
         val result = JSObject()
         result.put("enabled", adapter?.isEnabled == true)
         result.put("state", state)
@@ -630,9 +657,10 @@ class NexoBlePlugin : Plugin() {
             BluetoothAdapter.STATE_TURNING_OFF -> "TURNING_OFF"
             else -> "UNKNOWN"
         })
+        result.put("isPermanentlyDenied", isPermanentlyDenied)  // NUEVO v1.4
         result.put("health", getSystemHealthReport())
         
-        napLog("BLE_STATE_REPORT", "BT State reported: ${adapter?.isEnabled}")
+        napLog("BLE_STATE_REPORT", "BT State reported: ${adapter?.isEnabled}, isPermanentlyDenied: $isPermanentlyDenied")
         call.resolve(result)
     }
     
@@ -677,7 +705,7 @@ class NexoBlePlugin : Plugin() {
                 val result = JSObject()
                 result.put("userId", userId)
                 result.put("status", "already_initialized")
-                result.put("version", "2.4-NAP-RC3")
+                result.put("version", "2.4-NAP-RC4")
                 result.put("native", true)
                 result.put("health", getSystemHealthReport())
                 call.resolve(result)
@@ -793,12 +821,12 @@ class NexoBlePlugin : Plugin() {
             setupGattServer()
             
             napLog(NAP_BLE_INIT_007, "[7/7] BLE Native Layer inicializado completamente")
-            napLog(NAP_BLE_READY, "🚀 NAP-BLE RC3 Ready [Native:true]")
+            napLog(NAP_BLE_READY, "🚀 NAP-BLE RC4 Ready [Native:true]")
             
             val result = JSObject()
             result.put("userId", userId)
             result.put("status", "initialized")
-            result.put("version", "2.4-NAP-RC3")
+            result.put("version", "2.4-NAP-RC4")
             result.put("bluetoothState", BluetoothAdapter.STATE_ON)
             result.put("native", true)
             result.put("napProtocol", "v2.4")
