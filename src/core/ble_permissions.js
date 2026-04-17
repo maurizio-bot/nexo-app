@@ -2,6 +2,7 @@
  * BLE Permissions Manager v1.6-NAP
  * Android 14+ nativo | Web Bluetooth API fallback
  * NAP 2.0 Certified - Error Granularity & Recovery Flow
+ 
  * 
  * CHANGELOG:
  * - v1.5: FIX Bug salto automático a manual - Distingue perm_denied vs user_cancelled
