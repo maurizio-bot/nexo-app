@@ -1731,3 +1731,4 @@ class NexoBlePlugin : Plugin() {
         super.handleOnDestroy()
     }
 }
+// NAP v2.4-RC4 Commit Final - Fri Apr 17 17:58:03 UTC 2026

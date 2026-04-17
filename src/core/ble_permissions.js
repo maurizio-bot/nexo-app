@@ -266,3 +266,4 @@ window.NEXO_BLE_PERMISSIONS = {
   checkBLEStatus,
   NAP_CODES
 };
+// NAP v1.6 Commit Final - Fri Apr 17 17:58:03 UTC 2026
