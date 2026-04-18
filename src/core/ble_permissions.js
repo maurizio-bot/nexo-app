@@ -1,9 +1,6 @@
 /**
- * BLE Permissions Manager v2.0-NAP-PROD
- * Android 14+ nativo | Web Bluetooth API fallback
- * NAP 2.0 Certified - Error Granularity & Recovery Flow
- * 
- * PRODUCCIÓN: Sistema de logging silencioso, sin alerts bloqueantes
+ * BLE Permissions Manager v2.1-HOTFIX
+ * Sin alerts bloqueantes - Solo console logging
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -22,28 +19,12 @@ const NAP_CODES = {
   ERROR_RECOVERY: '[NAP-BLE-900]'
 };
 
-/**
- * Sistema de logging NAP estructurado - Niveles:
- * DEBUG: Solo consola, verbose
- * INFO: Consola + listeners internos
- * WARN: Consola + notificación UI sutil si es crítico
- * ERROR: Consola + reject de promesa con datos estructurados
- */
 function napLog(code, message, level = 'INFO', data = null) {
-  const timestamp = new Date().toISOString();
-  const logEntry = {
-    code,
-    message,
-    level,
-    timestamp,
-    platform: Capacitor.getPlatform(),
-    data
-  };
-
+  const logEntry = { code, message, level, timestamp: new Date().toISOString(), platform: Capacitor.getPlatform(), data };
+  
   switch (level) {
     case 'DEBUG':
-      // Solo en desarrollo o si explícitamente se habilita verbose
-      if (window.NEXO_DEBUG || localStorage.getItem('nexo_verbose_logs') === 'true') {
+      if (localStorage.getItem('nexo_verbose_logs') === 'true') {
         console.debug(`${code} ${message}`, data || '');
       }
       break;
@@ -56,30 +37,21 @@ function napLog(code, message, level = 'INFO', data = null) {
     default:
       console.log(`${code} ${message}`, data || '');
   }
-
-  // Emitir evento para diagnostico global si existe
-  if (window.NEXO_DIAG && typeof window.NEXO_DIAG.log === 'function') {
-    window.NEXO_DIAG.log(logEntry);
-  }
-
-  return logEntry;
 }
 
 export async function requestBLEPermissions() {
   const platform = Capacitor.getPlatform();
-  napLog(NAP_CODES.INIT, `NAP Platform Detection: ${platform}`, 'DEBUG');
+  napLog(NAP_CODES.INIT, `Platform: ${platform}`, 'DEBUG');
   
   if (platform === 'web' || platform === 'ios') {
     return requestWebBluetoothPermissions();
   }
   
   if (platform === 'android') {
-    // Primero intentar método explícito nativo v2.5 (con detección de denegación permanente)
     const nativeResult = await requestNativeAndroidPermissionsExplicit();
     if (nativeResult.granted || nativeResult.isPermissionDenied || nativeResult.isPermanentDenial) {
       return nativeResult;
     }
-    // Fallback al método implícito
     return requestNativeAndroidPermissions();
   }
   
@@ -92,22 +64,15 @@ export async function requestBLEPermissions() {
 }
 
 async function requestNativeAndroidPermissionsExplicit() {
-  napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos explícitos vía NexoBLE.requestBLEPermissions()...', 'INFO');
+  napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos...', 'INFO');
   
   try {
     const result = await NexoBLE.requestBLEPermissions();
     
-    // Logging silencioso de diagnóstico (solo DEBUG level)
-    napLog(NAP_CODES.ANDROID_NATIVE, 'Respuesta nativa recibida', 'DEBUG', result);
-    
-    // Si es modo DEBUG verbose, podemos verlo en consola pero nunca bloquear UI
-    if (localStorage.getItem('nexo_verbose_logs') === 'true') {
-      console.log('NEXO BLE DEBUG:', JSON.stringify(result, null, 2));
-    }
+    napLog(NAP_CODES.ANDROID_NATIVE, 'Respuesta nativa', 'DEBUG', result);
     
     if (result.allGranted) {
       const btCheck = await NexoBLE.isBluetoothEnabled();
-      napLog(NAP_CODES.ANDROID_NATIVE, `Post-perm check - BT State: ${btCheck.stateName}`, 'DEBUG');
       
       if (!btCheck.enabled) {
         return { 
@@ -130,9 +95,8 @@ async function requestNativeAndroidPermissionsExplicit() {
       };
     }
     
-    // NUEVO v2.0: Detectar denegación permanente desde respuesta nativa
     if (result.isPermanentDenial === true) {
-      napLog(NAP_CODES.PERM_PERMANENT, 'Denegación permanente detectada por nativo', 'WARN');
+      napLog(NAP_CODES.PERM_PERMANENT, 'Denegación permanente detectada', 'WARN');
       return { 
         granted: false, 
         platform: 'android-native',
@@ -155,43 +119,36 @@ async function requestNativeAndroidPermissionsExplicit() {
     };
     
   } catch (e) {
-    const errorMsg = e.message || '';
-    napLog(NAP_CODES.ERROR_RECOVERY, `requestBLEPermissions error: ${errorMsg}`, 'ERROR', { error: e });
+    napLog(NAP_CODES.ERROR_RECOVERY, `Error: ${e.message}`, 'ERROR', { error: e });
     
-    // Si el error contiene información de denegación permanente
-    const isPermanentDenied = errorMsg.includes('PERMANENTLY_DENIED') ||
-                              errorMsg.includes('never_ask_again') ||
-                              (e.data && e.data.isPermanentDenial === true);
+    const isPermanentDenied = e.message?.includes('PERMANENTLY_DENIED') || e.data?.isPermanentDenial;
     
     if (isPermanentDenied) {
       return { 
         granted: false, 
         needsManualSettings: true,
         isPermanentDenial: true,
-        error: errorMsg,
+        error: e.message,
         platform: 'android-native',
         canRetry: false,
         nap_code: 'PERM_PERMANENT_DENIED'
       };
     }
     
-    // Fallback a método implícito
     return { granted: false, fallback: true };
   }
 }
 
 async function requestNativeAndroidPermissions() {
-  napLog(NAP_CODES.PERM_REQUEST, 'Verificando estado vía NexoBLE.isBluetoothEnabled()...', 'INFO');
+  napLog(NAP_CODES.PERM_REQUEST, 'Verificando estado...', 'INFO');
   
   try {
     const result = await NexoBLE.isBluetoothEnabled();
-    napLog(NAP_CODES.ANDROID_NATIVE, 'Respuesta nativa (implícita)', 'DEBUG', result);
     
     const hasPermission = result.stateName !== 'NO_PERMISSION';
     const isEnabled = result.enabled === true;
-    const isReady = hasPermission && isEnabled;
     
-    if (isReady) {
+    if (hasPermission && isEnabled) {
       return { 
         granted: true, 
         platform: 'android-native',
@@ -224,14 +181,10 @@ async function requestNativeAndroidPermissions() {
     
   } catch (e) {
     const errorMsg = e.message || '';
-    napLog(NAP_CODES.PERM_ERROR, `Error nativo: ${errorMsg}`, 'ERROR', { error: e });
+    napLog(NAP_CODES.PERM_ERROR, `Error: ${errorMsg}`, 'ERROR');
     
-    const isUserCancelled = errorMsg.includes('cancelled') || 
-                          errorMsg.includes('canceled') ||
-                          errorMsg.includes('User rejected');
-    
-    const isPermanentDenied = errorMsg.includes('PERMANENTLY_DENIED') ||
-                              errorMsg.includes('never_ask_again');
+    const isUserCancelled = errorMsg.includes('cancelled') || errorMsg.includes('canceled');
+    const isPermanentDenied = errorMsg.includes('PERMANENTLY_DENIED') || errorMsg.includes('never_ask_again');
     
     if (isPermanentDenied) {
       return { 
@@ -249,7 +202,7 @@ async function requestNativeAndroidPermissions() {
       return { 
         granted: false, 
         isUserCancelled: true,
-        error: 'User cancelled permission dialog',
+        error: 'User cancelled',
         platform: 'android-native',
         canRetry: true,
         nap_code: 'USER_CANCELLED'
@@ -273,8 +226,7 @@ async function requestWebBluetoothPermissions() {
       granted: false, 
       error: 'Web Bluetooth API no soportada',
       platform: 'web',
-      canRetry: false,
-      nap_code: 'WEB_API_UNAVAILABLE'
+      canRetry: false
     };
   }
   
@@ -341,9 +293,6 @@ export async function checkBLEStatus() {
   }
 }
 
-/**
- * Activar/desactivar modo DEBUG verbose (solo para desarrollo)
- */
 export function setVerboseLogging(enabled) {
   if (enabled) {
     localStorage.setItem('nexo_verbose_logs', 'true');
