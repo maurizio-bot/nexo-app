@@ -1,7 +1,7 @@
 /**
- * BLE Interface v2.3-NAP
+ * BLE Interface v2.3.1-NAP
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh
- * + FEATURE: Botón Visibilidad (Advertising toggle) - Build #694
+ * + FIX: Export initBLEInterface para compatibilidad con NexoApp v3.3.1
  * 
  * FIXES NAP 2.0:
  * - Soporte API NordicMesh (startDiscovery) y HybridMesh (startScan)
@@ -9,6 +9,11 @@
  * - Integración getConnectedDevices() para lista real
  * - NAP Error Codes UI_001-006
  */
+
+// NUEVO: Función inicializadora exportada para NexoApp v3.3.1
+export function initBLEInterface(bleMesh) {
+  return new BLEInterface(bleMesh).init();
+}
 
 // NAP 2.0 Error Codes UI
 const UI_ERRORS = {
@@ -113,7 +118,7 @@ export class BLEInterface {
       if (icon) icon.textContent = '⚠️';
       if (text) text.textContent = 'Visibilidad desactivada';
       btn.title = 'Conceda permiso "Dispositivos cercanos" para activar visibilidad';
-      btn.disabled = false; // Permitir click para intentar solicitar permiso
+      btn.disabled = false;
     } else if (!this.isAdvertising) {
       // ESTADO APAGADO: Con permiso pero desactivado
       btn.className = 'ble-btn-visibility btn-visibility-off';
@@ -143,7 +148,6 @@ export class BLEInterface {
           if (granted) {
             this.canAdvertise = true;
           } else {
-            // Mostrar advertencia al usuario
             this.showToast('⚠️ Permiso de visibilidad denegado. La app funciona como cliente solo.', 'warning');
             return;
           }
