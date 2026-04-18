@@ -277,7 +277,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v2.5.2-FIX loaded (CallbackDelayFix)")
+        napLog("BLE_LOAD", "NAP-BLE v2.5.3-FIX loaded (PluginBaseFix)")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -401,7 +401,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [FIX CRÍTICO v2.5.2] PERMISSION BRIDGE CON DELAY
+    // [FIX CRÍTICO v2.5.3] PERMISSION BRIDGE CON DELAY
     // Delay de 300ms para Android 14 - espera actualización estado interno
     // ============================================================
     
@@ -537,7 +537,7 @@ class NexoBlePlugin : Plugin() {
     }
     
     private fun reportFinalPermissionsResult(call: PluginCall) {
-        val allGranted = hasRequiredPermissions()
+        val allGranted = hasAllBlePermissions()
         val result = buildPermissionsResult()
         
         val hasPermanentDenial = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -566,7 +566,10 @@ class NexoBlePlugin : Plugin() {
         } else {
             napLog(NAP_BLE_PARTIAL_PERMISSIONS, "Algunos permisos denegados")
             val errorData = JSObject()
-            errorData.put("permissions", result.getJSObject("permissions"))
+            val permsObj = result.getJSObject("permissions")
+            if (permsObj != null) {
+                errorData.put("permissions", permsObj)
+            }
             errorData.put("allGranted", false)
             errorData.put("isPermanentDenial", hasPermanentDenial)
             call.reject(NAP_BLE_PARTIAL_PERMISSIONS, "Permisos incompletos", errorData)
@@ -670,13 +673,15 @@ class NexoBlePlugin : Plugin() {
         health.put("isDozeMode", isDozeMode())
         health.put("isAirplaneMode", isAirplaneMode())
         health.put("canAccessBluetooth", canAccessBluetooth())
-        health.put("permissionsGranted", hasRequiredPermissions())
+        health.put("permissionsGranted", hasAllBlePermissions())
         health.put("androidVersion", Build.VERSION.SDK_INT)
         health.put("isAndroid12OrHigher", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
         return health
     }
 
-    private fun hasRequiredPermissions(): Boolean {
+    // FIX: Renombrado de hasRequiredPermissions -> hasAllBlePermissions
+    // para evitar conflicto con método public de la clase base Plugin
+    private fun hasAllBlePermissions(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             hasPermission("bluetoothConnect") && hasPermission("bluetoothScan") && hasPermission("bluetoothAdvertise")
         } else {
@@ -941,9 +946,16 @@ class NexoBlePlugin : Plugin() {
                 messageBuffers.remove(address)
                 
                 napLog(NAP_BLE_MESSAGE_SENT, "Mensaje completo recibido de $address: ${completeMessage.size} bytes")
+                
+                // FIX: Usar JSArray en lugar de JSONArray para compatibilidad con JSObject.put()
+                val jsArray = JSArray()
+                for (byte in completeMessage) {
+                    jsArray.put(byte.toInt() and 0xFF)
+                }
+                
                 notifyListeners("onMessageReceived", JSObject().apply {
                     put("from", address)
-                    put("data", JSONArray(completeMessage.map { it.toInt() }))
+                    put("data", jsArray)
                     put("size", completeMessage.size)
                 })
             }
@@ -1125,15 +1137,23 @@ class NexoBlePlugin : Plugin() {
     fun sendMessage(call: PluginCall) {
         val address = call.getString("address")
         val message = call.getString("message")
-        val dataArray = call.getArray("data", JSONArray())
+        
+        // FIX: JSArray en lugar de JSONArray + null safety
+        val dataArray = call.getArray("data", JSArray())
         
         if (address == null) {
             napError(call, ERR_INVALID_PARAMS, "address requerido")
             return
         }
         
-        val payload = message?.toByteArray(Charsets.UTF_8) 
-            ?: ByteArray(dataArray.length()) { i -> dataArray.getInt(i).toByte() }
+        val payload = if (message != null) {
+            message.toByteArray(Charsets.UTF_8)
+        } else {
+            val len = dataArray?.length() ?: 0
+            ByteArray(len) { i -> 
+                (dataArray?.getInt(i) ?: 0).toByte() 
+            }
+        }
         
         if (payload.isEmpty()) {
             napError(call, ERR_INVALID_PARAMS, "Payload vacío")
