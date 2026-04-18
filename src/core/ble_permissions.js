@@ -1,14 +1,9 @@
 /**
- * BLE Permissions Manager v1.5.2-NAP
+ * BLE Permissions Manager v1.5.3-NAP-DEBUG
  * Android 14+ nativo | Web Bluetooth API fallback
  * NAP 2.0 Certified - Error Granularity & Recovery Flow
  * 
- * CHANGELOG:
- * - v1.5: FIX Bug salto automático a manual - Distingue perm_denied vs user_cancelled
- * - v1.5: FIX Manejo granular de errores: TEMP_ERROR vs PERM_DENIED vs PERMANENT_DENIED
- * - v1.5: FIX Evitar needsManualSettings en primer fallo o cancelación
- * - v1.5.1: FIX Agregado requestBLEPermissionsNative() para diálogo explícito Android 14
- * - v1.5.2: FIX Verificación post-permisos de estado Bluetooth
+ * DEBUG VERSION: Agregado alert para diagnóstico nativo
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -56,7 +51,9 @@ async function requestNativeAndroidPermissionsExplicit() {
   try {
     const result = await NexoBLE.requestBLEPermissions();
     
+    // DEBUG CRÍTICO: Mostrar exactamente qué retorna el plugin
     console.log(`${NAP_CODES.ANDROID_NATIVE} Respuesta nativa explícita:`, JSON.stringify(result));
+    alert('DEBUG PLUGIN RESPONSE:\n' + JSON.stringify(result, null, 2));
     
     if (result.allGranted) {
       const btCheck = await NexoBLE.isBluetoothEnabled();
