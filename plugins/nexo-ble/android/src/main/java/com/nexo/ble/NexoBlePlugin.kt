@@ -23,6 +23,7 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import com.nexo.ble.model.NexoGattService
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -277,7 +278,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v2.5.3-FIX loaded (PluginBaseFix)")
+        napLog("BLE_LOAD", "NAP-BLE v2.5.4-FIX loaded (TypeFixes)")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -401,8 +402,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [FIX CRÍTICO v2.5.3] PERMISSION BRIDGE CON DELAY
-    // Delay de 300ms para Android 14 - espera actualización estado interno
+    // [FIX CRÍTICO v2.5.4] PERMISSION BRIDGE CON DELAY
     // ============================================================
     
     @PluginMethod
@@ -433,7 +433,7 @@ class NexoBlePlugin : Plugin() {
         napLog(NAP_BLE_WAITING_PERMISSIONS, "Solicitando ${pendingPermissionAliases.size} permiso(s). PermanentDenial: $hasPermanentDenial")
         
         permissionTimeoutRunnable = Runnable {
-            if (!call.isReleased && !call.isSaved) {
+            if (!call.isSaved) {
                 napLog(NAP_BLE_PARTIAL_PERMISSIONS, "TIMEOUT: Usuario no respondió", "WARN")
                 val errorData = JSObject()
                 errorData.put("timeout", true)
@@ -466,17 +466,12 @@ class NexoBlePlugin : Plugin() {
         }
     }
     
-    // ============================================================
-    // [FIX CRÍTICO] Delay de 300ms antes de verificar permiso
-    // Android 14 necesita tiempo para actualizar estado interno post-diálogo
-    // ============================================================
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
         try {
             val currentAlias = pendingPermissionAliases.getOrNull(currentPermissionIndex)
             
             if (currentAlias != null) {
-                // FIX CRÍTICO: Delay 300ms para Android 14 actualice estado interno
                 handler.postDelayed({
                     val granted = hasPermission(currentAlias)
                     napLog("BLE_PERM_RESULT", "Callback - Permiso $currentAlias: ${if (granted) "CONCEDIDO" else "DENEGADO"}")
@@ -508,7 +503,7 @@ class NexoBlePlugin : Plugin() {
                         permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
                         reportFinalPermissionsResult(call)
                     }
-                }, 300) // 300ms delay crítico para S24 Ultra Android 14
+                }, 300)
             } else {
                 napLog("BLE_PERM_WARN", "Callback llamado pero currentAlias es null", "WARN")
                 permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
@@ -661,10 +656,6 @@ class NexoBlePlugin : Plugin() {
         call.resolve(result)
     }
 
-    // ============================================================
-    // MÉTODOS DE SISTEMA Y HEALTH REPORT
-    // ============================================================
-
     private fun getSystemHealthReport(): JSObject {
         val health = JSObject()
         health.put("thermalState", getThermalState())
@@ -679,8 +670,6 @@ class NexoBlePlugin : Plugin() {
         return health
     }
 
-    // FIX: Renombrado de hasRequiredPermissions -> hasAllBlePermissions
-    // para evitar conflicto con método public de la clase base Plugin
     private fun hasAllBlePermissions(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             hasPermission("bluetoothConnect") && hasPermission("bluetoothScan") && hasPermission("bluetoothAdvertise")
@@ -688,10 +677,6 @@ class NexoBlePlugin : Plugin() {
             hasPermission("location")
         }
     }
-
-    // ============================================================
-    // MÉTODOS DE GESTIÓN DE CONEXIONES Y OPERACIONES
-    // ============================================================
 
     private fun cleanupAllConnections() {
         napLog(NAP_BLE_INIT_002, "Limpiando todas las conexiones BLE")
@@ -754,10 +739,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ============================================================
-    // INICIALIZACIÓN BLE
-    // ============================================================
-
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
         if (!canAccessBluetooth()) {
@@ -805,7 +786,7 @@ class NexoBlePlugin : Plugin() {
                 napLog(NAP_BLE_WAITING_BT_ON, "Bluetooth desactivado, solicitando activación")
                 pendingCalls["init"] = call
                 val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                activity?.startActivityForResult(this, enableBtIntent, REQUEST_ENABLE_BT)
+                startActivityForResult(call, enableBtIntent, "enableBluetoothResult")
                 releaseInitLock()
                 return
             }
@@ -832,6 +813,18 @@ class NexoBlePlugin : Plugin() {
             napError(call, NAP_BLE_ERR_INIT_FAILED, "Excepción: ${e.message}")
         } finally {
             releaseInitLock()
+        }
+    }
+
+    // FIX: ActivityResult callback para enable Bluetooth
+    @ActivityCallback
+    private fun enableBluetoothResult(call: PluginCall, result: ActivityResult) {
+        if (result.resultCode == Activity.RESULT_OK) {
+            napLog(NAP_BLE_RECOVERY_SUCCESS, "Usuario activó Bluetooth")
+            performInitialization(call)
+        } else {
+            napError(call, NAP_BLE_ERR_DISABLED, "Usuario rechazó activar Bluetooth", recoverable = true)
+            pendingCalls.remove("init")
         }
     }
 
@@ -947,17 +940,17 @@ class NexoBlePlugin : Plugin() {
                 
                 napLog(NAP_BLE_MESSAGE_SENT, "Mensaje completo recibido de $address: ${completeMessage.size} bytes")
                 
-                // FIX: Usar JSArray en lugar de JSONArray para compatibilidad con JSObject.put()
-                val jsArray = JSArray()
+                // FIX: Usar JSONArray de org.json y convertir a lista manualmente para JSObject
+                val jsonArray = JSONArray()
                 for (byte in completeMessage) {
-                    jsArray.put(byte.toInt() and 0xFF)
+                    jsonArray.put(byte.toInt() and 0xFF)
                 }
                 
-                notifyListeners("onMessageReceived", JSObject().apply {
-                    put("from", address)
-                    put("data", jsArray)
-                    put("size", completeMessage.size)
-                })
+                val eventData = JSObject()
+                eventData.put("from", address)
+                eventData.put("data", jsonArray)
+                eventData.put("size", completeMessage.size)
+                notifyListeners("onMessageReceived", eventData)
             }
         } catch (e: Exception) {
             napLog(NAP_BLE_ERR_MEMORY_PRESSURE, "Error procesando payload: ${e.message}", "ERROR")
@@ -967,15 +960,11 @@ class NexoBlePlugin : Plugin() {
     private fun handleControlMessage(address: String, data: ByteArray) {
         val command = String(data, Charsets.UTF_8)
         napLog(NAP_BLE_INIT_004, "Control message de $address: $command")
-        notifyListeners("onControlMessage", JSObject().apply {
-            put("from", address)
-            put("command", command)
-        })
+        val eventData = JSObject()
+        eventData.put("from", address)
+        eventData.put("command", command)
+        notifyListeners("onControlMessage", eventData)
     }
-
-    // ============================================================
-    // SCAN & ADVERTISE
-    // ============================================================
 
     @PluginMethod
     fun startScan(call: PluginCall) {
@@ -1023,9 +1012,9 @@ class NexoBlePlugin : Plugin() {
                 
                 override fun onScanFailed(errorCode: Int) {
                     napLog(NAP_BLE_ERR_SCAN_FAILED, "Scan failed: $errorCode", "ERROR")
-                    notifyListeners("onScanFailed", JSObject().apply {
-                        put("errorCode", errorCode)
-                    })
+                    val errorData = JSObject()
+                    errorData.put("errorCode", errorCode)
+                    notifyListeners("onScanFailed", errorData)
                 }
             }
             
@@ -1095,16 +1084,16 @@ class NexoBlePlugin : Plugin() {
                 override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                     isAdvertising = true
                     napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado")
-                    notifyListeners("onAdvertiseStarted", JSObject().apply {
-                        put("started", true)
-                    })
+                    val eventData = JSObject()
+                    eventData.put("started", true)
+                    notifyListeners("onAdvertiseStarted", eventData)
                 }
                 
                 override fun onStartFailure(errorCode: Int) {
                     napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertise failed: $errorCode", "ERROR")
-                    notifyListeners("onAdvertiseFailed", JSObject().apply {
-                        put("errorCode", errorCode)
-                    })
+                    val eventData = JSObject()
+                    eventData.put("errorCode", errorCode)
+                    notifyListeners("onAdvertiseFailed", eventData)
                 }
             }
             
@@ -1129,29 +1118,24 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().apply { put("stopped", true) })
     }
 
-    // ============================================================
-    // COMUNICACIÓN
-    // ============================================================
-
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val address = call.getString("address")
         val message = call.getString("message")
-        
-        // FIX: JSArray en lugar de JSONArray + null safety
-        val dataArray = call.getArray("data", JSArray())
+        val dataArray = call.getArray("data", JSONArray())
         
         if (address == null) {
             napError(call, ERR_INVALID_PARAMS, "address requerido")
             return
         }
         
+        // FIX: Manejo correcto de JSONArray de org.json
         val payload = if (message != null) {
             message.toByteArray(Charsets.UTF_8)
         } else {
             val len = dataArray?.length() ?: 0
             ByteArray(len) { i -> 
-                (dataArray?.getInt(i) ?: 0).toByte() 
+                (dataArray?.optInt(i, 0) ?: 0).toByte() 
             }
         }
         
@@ -1181,11 +1165,11 @@ class NexoBlePlugin : Plugin() {
             }
             
             napLog(NAP_BLE_MESSAGE_SENT, "Mensaje enviado a $address: ${payload.size} bytes en ${chunks.size} chunks")
-            call.resolve(JSObject().apply {
-                put("sent", true)
-                put("chunks", chunks.size)
-                put("bytes", payload.size)
-            })
+            val result = JSObject()
+            result.put("sent", true)
+            result.put("chunks", chunks.size)
+            result.put("bytes", payload.size)
+            call.resolve(result)
             
         } catch (e: SecurityException) {
             napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "Error enviando: ${e.message}")
@@ -1223,21 +1207,23 @@ class NexoBlePlugin : Plugin() {
                 override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
                     when (newState) {
                         BluetoothProfile.STATE_CONNECTED -> {
-                            gattClients[address] = gatt!!
-                            gatt.requestMtu(MTU_DEFAULT)
-                            napLog(NAP_BLE_CONNECTED, "Conectado a $address")
-                            notifyListeners("onDeviceConnected", JSObject().apply {
-                                put("address", address)
-                                put("status", "connected")
-                            })
+                            if (gatt != null) {
+                                gattClients[address] = gatt
+                                gatt.requestMtu(MTU_DEFAULT)
+                                napLog(NAP_BLE_CONNECTED, "Conectado a $address")
+                                val eventData = JSObject()
+                                eventData.put("address", address)
+                                eventData.put("status", "connected")
+                                notifyListeners("onDeviceConnected", eventData)
+                            }
                         }
                         BluetoothProfile.STATE_DISCONNECTED -> {
                             gattClients.remove(address)
                             napLog(NAP_BLE_INIT_007, "Desconectado de $address")
-                            notifyListeners("onDeviceDisconnected", JSObject().apply {
-                                put("address", address)
-                                put("status", "disconnected")
-                            })
+                            val eventData = JSObject()
+                            eventData.put("address", address)
+                            eventData.put("status", "disconnected")
+                            notifyListeners("onDeviceDisconnected", eventData)
                         }
                     }
                 }
@@ -1249,10 +1235,10 @@ class NexoBlePlugin : Plugin() {
             
             val gatt = device.connectGatt(context, false, gattCallback)
             if (gatt != null) {
-                call.resolve(JSObject().apply {
-                    put("connecting", true)
-                    put("address", address)
-                })
+                val result = JSObject()
+                result.put("connecting", true)
+                result.put("address", address)
+                call.resolve(result)
             } else {
                 napError(call, NAP_BLE_ERR_CONNECTION_FAILED, "No se pudo iniciar conexión")
             }
@@ -1288,10 +1274,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ============================================================
-    // CAPABILITIES & STATE
-    // ============================================================
-
     @PluginMethod
     fun getCapabilities(call: PluginCall) {
         val result = JSObject()
@@ -1319,10 +1301,6 @@ class NexoBlePlugin : Plugin() {
         result.put("isPermanentDenial", checkPermanentDenial())
         call.resolve(result)
     }
-
-    // ============================================================
-    // LIFECYCLE
-    // ============================================================
 
     override fun handleOnDestroy() {
         super.handleOnDestroy()
