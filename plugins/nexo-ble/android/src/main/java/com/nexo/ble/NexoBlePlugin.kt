@@ -143,7 +143,8 @@ class NexoBlePlugin : Plugin() {
     // Tracking para requestPermissions()
     private var pendingPermissionAliases = mutableListOf<String>()
     private var currentPermissionIndex = 0
-    // FIX: Timeout de seguridad para evitar calls colgados
+    // FIX v2.4-RC5: Tracking de éxito para evitar race condition
+    private var permissionCallbacksSuccess = mutableMapOf<String, Boolean>()
     private var permissionTimeoutRunnable: Runnable? = null
 
     // NAP Logger unificado
@@ -214,7 +215,6 @@ class NexoBlePlugin : Plugin() {
     
     private fun getBatteryTemp(): Float {
         return try {
-            val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
             val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             val temp = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
             temp / 10.0f
@@ -300,7 +300,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v2.4-RC4 loaded (EdgeCaseResilient + PermissionBridge + PermanentDenialDetection)")
+        napLog("BLE_LOAD", "NAP-BLE v2.4-RC5 PRODUCTION loaded")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -428,20 +428,20 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [FIX RC4] PERMISSION BRIDGE CORREGIDO
-    // Cambios: 
-    // 1. Manejo robusto de callback con try-catch
-    // 2. Reject inmediato si permiso denegado (no solo log)
-    // 3. Timeout de seguridad para evitar calls colgados
-    // 4. Limpieza de timeout en completion
+    // [FIX v2.4-RC5] PERMISSION BRIDGE PRODUCTION
+    // Cambios críticos: 
+    // 1. Tracking de éxito por callback para evitar race condition
+    // 2. Verificación final basada en tracking, no en hasRequiredPermissions()
+    // 3. Limpieza correcta de timeout
     // ============================================================
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
         napLog(NAP_BLE_INIT_001, "[1/3] Solicitud explícita de permisos BLE iniciada desde UI")
         
-        // FIX: Limpiar estado previo y timeout
+        // Reset estado
         pendingPermissionAliases.clear()
         currentPermissionIndex = 0
+        permissionCallbacksSuccess.clear()
         permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -462,7 +462,7 @@ class NexoBlePlugin : Plugin() {
         
         napLog(NAP_BLE_WAITING_PERMISSIONS, "[2/3] Solicitando ${pendingPermissionAliases.size} permiso(s): $pendingPermissionAliases")
         
-        // FIX: Timeout de seguridad - 30 segundos máximo para evitar call colgado
+        // Timeout de seguridad - 30 segundos
         permissionTimeoutRunnable = Runnable {
             if (!call.isReleased && !call.isSaved) {
                 napLog(NAP_BLE_PARTIAL_PERMISSIONS, "TIMEOUT: El usuario no respondió a los diálogos de permisos", "WARN")
@@ -481,7 +481,6 @@ class NexoBlePlugin : Plugin() {
     
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
-        // FIX: Manejo robusto con try-catch para evitar silenciar excepciones
         try {
             val currentAlias = pendingPermissionAliases.getOrNull(currentPermissionIndex)
             
@@ -489,7 +488,9 @@ class NexoBlePlugin : Plugin() {
                 val granted = hasPermission(currentAlias)
                 napLog("BLE_PERM_RESULT", "Callback ejecutado - Permiso $currentAlias: ${if (granted) "CONCEDIDO" else "DENEGADO"}")
                 
-                // FIX: Si un permiso fue denegado firmemente, abortar secuencia inmediatamente
+                // FIX RC5: Trackear éxito/fracaso de cada callback
+                permissionCallbacksSuccess[currentAlias] = granted
+                
                 if (!granted) {
                     napLog(NAP_BLE_PARTIAL_PERMISSIONS, "Permiso $currentAlias denegado, abortando secuencia")
                     permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
@@ -530,9 +531,27 @@ class NexoBlePlugin : Plugin() {
         }
     }
     
-    // FIX: Parámetro forcedDenial para manejar rechazos explícitos
+    // FIX v2.4-RC5: Usar tracking de callbacks en lugar de hasRequiredPermissions()
+    // para evitar race condition donde Android no actualiza estado inmediatamente
     private fun reportFinalPermissionsResult(call: PluginCall, forcedDenial: Boolean = false) {
-        val allGranted = !forcedDenial && hasRequiredPermissions()
+        // Si no hay denegación forzada y procesamos todos los aliases,
+        // verificar si todos los callbacks reportaron éxito
+        val allGranted = if (forcedDenial) {
+            false
+        } else {
+            // Verificar tracking de callbacks
+            val allCallbacksSuccessful = pendingPermissionAliases.all { alias ->
+                permissionCallbacksSuccess[alias] == true
+            }
+            
+            // Fallback: si el tracking está vacío (caso edge), usar verificación OS
+            if (permissionCallbacksSuccess.isEmpty()) {
+                hasRequiredPermissions()
+            } else {
+                allCallbacksSuccessful
+            }
+        }
+        
         val result = buildPermissionsResult()
         
         if (allGranted) {
@@ -544,7 +563,6 @@ class NexoBlePlugin : Plugin() {
             call.resolve(result)
         } else {
             napLog(NAP_BLE_PARTIAL_PERMISSIONS, "[3/3] Algunos permisos fueron denegados o timeout")
-            // FIX: Usar reject en lugar de resolve para que JS detecte el error claramente
             val errorData = JSObject()
             errorData.put("permissions", result.getJSObject("permissions"))
             errorData.put("allGranted", false)
@@ -578,52 +596,46 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [FIX NAP v1.4] DETECCIÓN DE DENEGACIÓN PERMANENTE
-    // Cambios:
-    // 1. Detectar denegación permanente usando shouldShowRequestPermissionRationale()
-    // 2. Reportar isPermanentlyDenied al JS para decisión inmediata
+    // [FIX v2.4-RC5] isBluetoothEnabled - Detección robusta de estado
+    // Incluye detección de denegación permanente
     // ============================================================
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
-        if (!validateSystemHealth(call, "status_check")) return
-        
+        // FIX: Si no podemos acceder al Bluetooth, reportar estado adecuado
         if (!canAccessBluetooth()) {
-            napLog(NAP_BLE_WAITING_PERMISSIONS, "Permisos no concedidos, solicitando...")
-            pendingCalls["btStateCheck"] = call
-            requestPermissionForAlias("bluetoothConnect", call, "btStatePermissionCallback")
+            val result = JSObject()
+            result.put("enabled", false)
+            result.put("state", BluetoothAdapter.STATE_OFF)
+            result.put("stateName", "NO_PERMISSION")
+            result.put("isPermanentlyDenied", isPermanentlyDenied())
+            result.put("error", "Permission not granted")
+            call.resolve(result)
             return
         }
+        
+        if (!validateSystemHealth(call, "status_check")) return
+        
         reportBluetoothState(call)
     }
 
-    @PermissionCallback
-    private fun btStatePermissionCallback(call: PluginCall) {
-        if (canAccessBluetooth()) {
-            reportBluetoothState(call)
+    // FIX v2.4-RC5: Detección de denegación permanente usando shouldShowRequestPermissionRationale
+    private fun isPermanentlyDenied(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            !hasPermission("bluetoothConnect") && 
+            !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_CONNECT)
         } else {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Usuario rechazó permisos BLUETOOTH_CONNECT")
-            pendingCalls.remove("btStateCheck")
+            !hasPermission("location") && 
+            !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)
         }
     }
 
-    // NAP v1.4 FIX: Agregado detección de denegación permanente
     private fun reportBluetoothState(call: PluginCall) {
         if (!initializeAdapter()) {
             val result = JSObject()
             result.put("enabled", false)
             result.put("state", BluetoothAdapter.STATE_OFF)
-            
-            // NAP FIX v1.4: Detectar denegación permanente
-            val isPermanentlyDenied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                !hasPermission("bluetoothConnect") && 
-                !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_CONNECT)
-            } else {
-                !hasPermission("location") && 
-                !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)
-            }
-            
-            result.put("isPermanentlyDenied", isPermanentlyDenied)  // NUEVO para JS v1.4
             result.put("stateName", if (!canAccessBluetooth()) "NO_PERMISSION" else "NOT_SUPPORTED")
+            result.put("isPermanentlyDenied", isPermanentlyDenied())
             result.put("error", "Permission or support issue")
             result.put("health", getSystemHealthReport())
             call.resolve(result)
@@ -638,15 +650,6 @@ class NexoBlePlugin : Plugin() {
             BluetoothAdapter.STATE_OFF
         }
         
-        // NAP FIX v1.4: También verificar denegación permanente cuando adapter existe
-        val isPermanentlyDenied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasPermission("bluetoothConnect")) {
-            !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_CONNECT)
-        } else if (!hasPermission("location")) {
-            !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)
-        } else {
-            false
-        }
-        
         val result = JSObject()
         result.put("enabled", adapter?.isEnabled == true)
         result.put("state", state)
@@ -657,10 +660,10 @@ class NexoBlePlugin : Plugin() {
             BluetoothAdapter.STATE_TURNING_OFF -> "TURNING_OFF"
             else -> "UNKNOWN"
         })
-        result.put("isPermanentlyDenied", isPermanentlyDenied)  // NUEVO v1.4
+        result.put("isPermanentlyDenied", isPermanentlyDenied())
         result.put("health", getSystemHealthReport())
         
-        napLog("BLE_STATE_REPORT", "BT State reported: ${adapter?.isEnabled}, isPermanentlyDenied: $isPermanentlyDenied")
+        napLog("BLE_STATE_REPORT", "BT State reported: ${adapter?.isEnabled}, isPermanentlyDenied: ${isPermanentlyDenied()}")
         call.resolve(result)
     }
     
@@ -705,7 +708,7 @@ class NexoBlePlugin : Plugin() {
                 val result = JSObject()
                 result.put("userId", userId)
                 result.put("status", "already_initialized")
-                result.put("version", "2.4-NAP-RC4")
+                result.put("version", "2.4-NAP-RC5")
                 result.put("native", true)
                 result.put("health", getSystemHealthReport())
                 call.resolve(result)
@@ -821,12 +824,12 @@ class NexoBlePlugin : Plugin() {
             setupGattServer()
             
             napLog(NAP_BLE_INIT_007, "[7/7] BLE Native Layer inicializado completamente")
-            napLog(NAP_BLE_READY, "🚀 NAP-BLE RC4 Ready [Native:true]")
+            napLog(NAP_BLE_READY, "🚀 NAP-BLE RC5 Ready [Native:true]")
             
             val result = JSObject()
             result.put("userId", userId)
             result.put("status", "initialized")
-            result.put("version", "2.4-NAP-RC4")
+            result.put("version", "2.4-NAP-RC5")
             result.put("bluetoothState", BluetoothAdapter.STATE_ON)
             result.put("native", true)
             result.put("napProtocol", "v2.4")
@@ -1731,5 +1734,3 @@ class NexoBlePlugin : Plugin() {
         super.handleOnDestroy()
     }
 }
-// NAP v2.4-RC4 Commit Final - Fri Apr 17 17:58:03 UTC 2026
-// KT-FORCE-1776453587
