@@ -1,12 +1,9 @@
 /**
- * BLE Permissions Manager v1.7-NAP PRODUCTION
+ * BLE Permissions Manager v1.5.2-NAP
  * Android 14+ nativo | Web Bluetooth API fallback
- * NAP 2.0 Certified - Error Granularity & Recovery Flow
+ * NAP 2.0 Certified
  * 
- * CHANGELOG:
- * - v1.7: PRODUCTION READY - Race condition fixes en callback nativo
- * - v1.7: Detección robusta de BT apagado vs Permisos denegados
- * - v1.7: Manejo explícito de never_ask_again
+ * Estado: FUNCIONAL - Build #669 confirmada
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -24,10 +21,6 @@ const NAP_CODES = {
   ERROR_RECOVERY: '[NAP-BLE-900]'
 };
 
-/**
- * Solicita permisos BLE según la plataforma
- * Returns: { granted: boolean, bluetoothEnabled: boolean, ... }
- */
 export async function requestBLEPermissions() {
   const platform = Capacitor.getPlatform();
   console.log(`${NAP_CODES.INIT} NAP Platform Detection: ${platform}`);
@@ -37,8 +30,7 @@ export async function requestBLEPermissions() {
   }
   
   if (platform === 'android') {
-    // Android 14+ usa diálogo nativo explícito
-    return requestNativeAndroidPermissionsExplicit();
+    return requestNativeAndroidPermissions();
   }
   
   return { 
@@ -49,154 +41,42 @@ export async function requestBLEPermissions() {
   };
 }
 
-/**
- * Android 14+ - Solicitud explícita de permisos via plugin nativo
- */
-async function requestNativeAndroidPermissionsExplicit() {
-  console.log(`${NAP_CODES.PERM_REQUEST} Solicitando permisos explícitos vía NexoBLE.requestBLEPermissions()...`);
+async function requestNativeAndroidPermissions() {
+  console.log(`${NAP_CODES.PERM_REQUEST} Solicitando permisos vía NexoBLE.requestPermission()...`);
   
   try {
-    const result = await NexoBLE.requestBLEPermissions();
+    // Método directo del plugin nativo
+    const result = await NexoBLE.requestPermission();
+    console.log(`${NAP_CODES.ANDROID_NATIVE} Respuesta nativa:`, JSON.stringify(result));
     
-    console.log(`${NAP_CODES.ANDROID_NATIVE} Respuesta nativa explícita:`, JSON.stringify(result));
-    
-    // CASO ÉXITO: Todos los permisos concedidos
-    if (result.allGranted === true) {
+    if (result.granted) {
       // Verificar estado del Bluetooth después de permisos
       const btCheck = await NexoBLE.isBluetoothEnabled();
       console.log(`${NAP_CODES.ANDROID_NATIVE} Post-perm check - BT State:`, btCheck.stateName);
       
-      // Si BT está apagado, informar para que el wizard muestre pantalla de BT
-      if (btCheck.enabled === false) {
+      if (!btCheck.enabled) {
         return { 
-          granted: true,           // Permisos SÍ concedidos
+          granted: true,
           permissionsGranted: true,
-          bluetoothEnabled: false, // Pero BT apagado
-          needsBluetoothOn: true,  // Flag para redirigir a pantalla BT
+          bluetoothEnabled: false,
+          needsBluetoothOn: true,
           platform: 'android-native',
           nap_code: 'PERM_OK_BT_OFF'
         };
       }
       
-      // Todo listo: Permisos + BT encendido
       return { 
         granted: true, 
         platform: 'android-native',
         nap_verified: true,
-        permissions: result.permissions,
         bluetoothEnabled: true,
         nap_code: 'PERM_GRANTED'
       };
     }
     
-    // CASO PARCIAL: Algunos permisos denegados
     return { 
       granted: false, 
       platform: 'android-native',
-      isPermissionDenied: true,
-      isPartial: true,
-      permissions: result.permissions || {},
-      canRetry: true,
-      nap_code: 'PERM_PARTIAL_DENIED'
-    };
-    
-  } catch (e) {
-    console.error(`${NAP_CODES.ERROR_RECOVERY} Error en requestBLEPermissions:`, e.message);
-    
-    const errorMsg = e.message || '';
-    
-    // Detectar denegación permanente (never ask again)
-    if (errorMsg.includes('PERMANENTLY_DENIED') || 
-        errorMsg.includes('never_ask_again') ||
-        errorMsg.includes('PERM_PERMANENT') ||
-        errorMsg.includes('PERM_MANUAL_SETTINGS')) {
-      return { 
-        granted: false, 
-        needsManualSettings: true,
-        isPermanentDenial: true,
-        platform: 'android-native',
-        canRetry: false,
-        nap_code: 'PERM_PERMANENT_DENIED'
-      };
-    }
-    
-    // Detectar cancelación por usuario
-    if (errorMsg.includes('cancelled') || 
-        errorMsg.includes('canceled') ||
-        errorMsg.includes('timeout')) {
-      return {
-        granted: false,
-        isUserCancelled: true,
-        platform: 'android-native',
-        canRetry: true,
-        nap_code: 'USER_CANCELLED'
-      };
-    }
-    
-    // Fallback a verificación manual si el método nuevo falló
-    console.log(`${NAP_CODES.ERROR_RECOVERY} Fallback a verificación manual de estado...`);
-    return requestNativeAndroidPermissionsFallback();
-  }
-}
-
-/**
- * Fallback para verificación de permisos si el método explícito falla
- */
-async function requestNativeAndroidPermissionsFallback() {
-  console.log(`${NAP_CODES.PERM_REQUEST} Verificando estado vía NexoBLE.isBluetoothEnabled()...`);
-  
-  try {
-    const result = await NexoBLE.isBluetoothEnabled();
-    console.log(`${NAP_CODES.ANDROID_NATIVE} Respuesta nativa fallback:`, JSON.stringify(result));
-    
-    const hasPermission = result.stateName !== 'NO_PERMISSION';
-    const isEnabled = result.enabled === true;
-    const isPermanentlyDenied = result.isPermanentlyDenied === true;
-    
-    // Caso: Denegación permanente detectada
-    if (isPermanentlyDenied) {
-      return {
-        granted: false,
-        platform: 'android-native',
-        isPermanentDenial: true,
-        needsManualSettings: true,
-        canRetry: false,
-        nap_code: 'PERM_PERMANENT_DENIED'
-      };
-    }
-    
-    // Caso: Todo listo
-    if (hasPermission && isEnabled) {
-      return { 
-        granted: true, 
-        platform: 'android-native',
-        nap_verified: true,
-        bluetoothState: result.stateName,
-        bluetoothEnabled: true,
-        nap_code: 'PERM_GRANTED'
-      };
-    }
-    
-    // Caso: Permisos OK pero BT apagado
-    if (hasPermission && !isEnabled) {
-      return { 
-        granted: true,          // Permisos sí
-        permissionsGranted: true,
-        bluetoothEnabled: false,
-        needsBluetoothOn: true,
-        platform: 'android-native',
-        bluetoothState: result.stateName,
-        canRetry: true,
-        nap_code: 'BT_DISABLED'
-      };
-    }
-    
-    // Caso: Sin permisos
-    return { 
-      granted: false, 
-      platform: 'android-native',
-      bluetoothState: result.stateName,
-      hasPermission: false,
       isPermissionDenied: true,
       canRetry: true,
       nap_code: 'PERM_DENIED'
@@ -204,10 +84,26 @@ async function requestNativeAndroidPermissionsFallback() {
     
   } catch (e) {
     const errorMsg = e.message || '';
-    console.error(`${NAP_CODES.PERM_ERROR} Error nativo fallback:`, errorMsg);
+    console.error(`${NAP_CODES.PERM_ERROR} Error nativo:`, errorMsg);
     
-    return {
-      granted: false,
+    // Detectar cancelación por usuario
+    const isUserCancelled = errorMsg.includes('cancelled') || 
+                          errorMsg.includes('canceled') ||
+                          errorMsg.includes('User rejected');
+    
+    if (isUserCancelled) {
+      return { 
+        granted: false, 
+        isUserCancelled: true,
+        error: 'User cancelled permission dialog',
+        platform: 'android-native',
+        canRetry: true,
+        nap_code: 'USER_CANCELLED'
+      };
+    }
+    
+    return { 
+      granted: false, 
       isTechnicalError: true,
       error: errorMsg,
       platform: 'android-native',
@@ -217,9 +113,6 @@ async function requestNativeAndroidPermissionsFallback() {
   }
 }
 
-/**
- * Web Bluetooth API para PWA/Desktop
- */
 async function requestWebBluetoothPermissions() {
   if (!navigator.bluetooth) {
     return { 
@@ -258,9 +151,6 @@ async function requestWebBluetoothPermissions() {
   }
 }
 
-/**
- * Verificación de estado actual BLE sin solicitar permisos
- */
 export async function checkBLEStatus() {
   const platform = Capacitor.getPlatform();
   
@@ -282,7 +172,6 @@ export async function checkBLEStatus() {
       granted: isFullyReady,
       bluetoothEnabled: status.enabled,
       stateName: status.stateName,
-      isPermanentlyDenied: status.isPermanentlyDenied === true,
       platform: 'android-native',
       nap_code: isFullyReady ? 'NATIVE_READY' : `NATIVE_${status.stateName}`
     };
@@ -297,7 +186,6 @@ export async function checkBLEStatus() {
   }
 }
 
-// Exposición global para debugging
 window.NEXO_BLE_PERMISSIONS = {
   requestBLEPermissions,
   checkBLEStatus,
