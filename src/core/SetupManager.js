@@ -1,24 +1,11 @@
 /**
- * NEXO Setup Manager v2.0-NAP-PROD
- * Onboarding para BLE Android 14 (API 34+)
- * Persistencia: localStorage (nativo, sin plugins externos)
- * NAP 2.0 Certified - Resource Management & Graceful Degradation
- * 
- * v2.0: Agregado auto-verificación en resume + detección permisos en caliente
+ * NEXO Setup Manager v2.1-HOTFIX
+ * Funciona CON o SIN @capacitor/app instalado
+ * Fallback: Usa visibilitychange + polling si no hay App plugin
  */
 
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { checkBLEStatus } from './ble_permissions.js';
-
-// Import dinámico de App para listeners de ciclo de vida
-let App = null;
-if (Capacitor.getPlatform() === 'android') {
-  try {
-    App = (await import('@capacitor/app')).App;
-  } catch (e) {
-    console.warn('[SetupManager] NAP: @capacitor/app no disponible, modo degradado');
-  }
-}
 
 const STORAGE_KEYS = {
   SETUP_COMPLETED: 'nexo_setup_v1_completed',
@@ -27,9 +14,15 @@ const STORAGE_KEYS = {
   AWAITING_SETTINGS_RETURN: 'nexo_awaiting_settings_return'
 };
 
+// Variable para cachear el App plugin si está disponible
+let AppPlugin = null;
+let isAppPluginLoaded = false;
+
 export class SetupManager {
   static resumeListener = null;
   static isAwaitingSettingsReturn = false;
+  static visibilityHandler = null;
+  static checkInterval = null;
 
   static async checkInitialStatus() {
     if (Capacitor.getPlatform() !== 'android') {
@@ -37,13 +30,26 @@ export class SetupManager {
     }
 
     try {
-      console.log('[SetupManager] NAP 2.0 - Verificando estado de configuración...');
+      console.log('[SetupManager] v2.1-HOTFIX - Verificando estado...');
+      
+      // Cargar App plugin dinámicamente si existe
+      if (!isAppPluginLoaded) {
+        try {
+          const appModule = await import('@capacitor/app');
+          AppPlugin = appModule.App;
+          console.log('[SetupManager] App plugin cargado correctamente');
+        } catch (e) {
+          console.log('[SetupManager] App plugin no disponible, usando fallback');
+          AppPlugin = null;
+        }
+        isAppPluginLoaded = true;
+      }
       
       const completedBefore = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED) === 'true';
       
       if (!completedBefore) {
-        console.log('[SetupManager] NAP: Setup requerido - primera vez');
-        SetupManager.setupResumeListener();
+        console.log('[SetupManager] Setup requerido - primera vez');
+        SetupManager.setupResumeDetection();
         return { 
           ready: false, 
           reason: 'permissions',
@@ -51,29 +57,18 @@ export class SetupManager {
         };
       }
 
-      // NAP FIX v2.0: Verificación REAL del sistema aunque el flag exista
-      console.log('[SetupManager] NAP: Configuración ya completada - Verificando estado REAL...');
+      console.log('[SetupManager] Verificando estado REAL...');
       const bleStatus = await checkBLEStatus();
-      console.log('[SetupManager] NAP: Estado BLE real:', bleStatus.nap_code, bleStatus);
+      console.log('[SetupManager] Estado BLE:', bleStatus.nap_code);
       
-      // Si todo está realmente OK (permisos + BT encendido), proceder
       if (bleStatus.granted === true) {
-        const lastCheck = parseInt(localStorage.getItem(STORAGE_KEYS.LAST_CHECK) || '0');
-        const oneDayMs = 24 * 60 * 60 * 1000;
-        
-        if (Date.now() - lastCheck > oneDayMs) {
-          localStorage.setItem(STORAGE_KEYS.LAST_CHECK, Date.now().toString());
-          console.log('[SetupManager] NAP: Timestamp actualizado');
-        }
-
-        console.log('[SetupManager] NAP: Sistema validado');
+        console.log('[SetupManager] Sistema validado');
         return { ready: true, reason: null, isFirstTime: false };
       }
       
-      // Si BT está apagado pero permisos existen
       if (bleStatus.bluetoothEnabled === false || bleStatus.stateName === 'OFF') {
-        console.log('[SetupManager] NAP: BT apagado detectado - requiere activación');
-        SetupManager.setupResumeListener();
+        console.log('[SetupManager] BT apagado detectado');
+        SetupManager.setupResumeDetection();
         return { 
           ready: false, 
           reason: 'bluetooth',
@@ -81,10 +76,9 @@ export class SetupManager {
         };
       }
       
-      // Si faltan permisos (revocados o denegados)
       if (bleStatus.stateName === 'NO_PERMISSION' || !bleStatus.granted) {
-        console.log('[SetupManager] NAP: Permisos faltantes - requiere re-setup');
-        SetupManager.setupResumeListener();
+        console.log('[SetupManager] Permisos faltantes');
+        SetupManager.setupResumeDetection();
         return { 
           ready: false, 
           reason: 'permissions',
@@ -92,9 +86,8 @@ export class SetupManager {
         };
       }
 
-      // Fallback seguro
-      console.warn('[SetupManager] NAP: Estado indeterminado, requiere verificación');
-      SetupManager.setupResumeListener();
+      console.warn('[SetupManager] Estado indeterminado');
+      SetupManager.setupResumeDetection();
       return { 
         ready: false, 
         reason: 'bluetooth',
@@ -102,8 +95,8 @@ export class SetupManager {
       };
 
     } catch (error) {
-      console.error('[SetupManager] NAP Error Recovery:', error);
-      SetupManager.setupResumeListener();
+      console.error('[SetupManager] Error:', error);
+      SetupManager.setupResumeDetection();
       return { 
         ready: false, 
         reason: 'error',
@@ -114,49 +107,71 @@ export class SetupManager {
   }
 
   /**
-   * NUEVO v2.0: Configurar listener de resume para auto-verificación
-   * Se activa cuando el usuario regresa de Settings manuales
+   * Configurar detección de retorno - usa App plugin si existe, o fallback visibilitychange
    */
-  static setupResumeListener() {
-    if (!App || SetupManager.resumeListener) return;
-    
-    SetupManager.resumeListener = App.addListener('resume', async () => {
-      console.log('[SetupManager] NAP: App resumida - verificando si venimos de Settings...');
-      
+  static setupResumeDetection() {
+    // Limpiar listeners previos
+    SetupManager.cleanup();
+
+    if (AppPlugin) {
+      // Método robusto con App plugin
+      SetupManager.resumeListener = AppPlugin.addListener('resume', async () => {
+        console.log('[SetupManager] App resumida (App plugin)');
+        await SetupManager.handleAppResume();
+      });
+      console.log('[SetupManager] Resume listener (App plugin) activado');
+    } else {
+      // Fallback: visibilitychange API
+      SetupManager.visibilityHandler = async () => {
+        if (document.visibilityState === 'visible') {
+          console.log('[SetupManager] App visible (visibilitychange fallback)');
+          // Pequeño delay para asegurar que la app está completamente activa
+          setTimeout(() => SetupManager.handleAppResume(), 500);
+        }
+      };
+      document.addEventListener('visibilitychange', SetupManager.visibilityHandler);
+      console.log('[SetupManager] Visibility listener (fallback) activado');
+    }
+
+    // Polling de seguridad: verificar cada 2 segundos si estamos awaiting
+    SetupManager.checkInterval = setInterval(async () => {
       const wasAwaiting = localStorage.getItem(STORAGE_KEYS.AWAITING_SETTINGS_RETURN) === 'true';
-      const deniedCount = parseInt(localStorage.getItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT) || '0');
-      
-      if (wasAwaiting || deniedCount > 0) {
-        // Limpiar flag de espera
-        localStorage.removeItem(STORAGE_KEYS.AWAITING_SETTINGS_RETURN);
-        SetupManager.isAwaitingSettingsReturn = false;
-        
-        // Verificar estado actual REAL
-        console.log('[SetupManager] NAP: Re-verificando permisos post-Settings...');
-        const currentStatus = await SetupManager.checkPermissionsRealtime();
-        
-        if (currentStatus.granted) {
-          console.log('[SetupManager] NAP: Permisos concedidos desde Settings!');
-          // Notificar a la UI mediante evento global
-          window.dispatchEvent(new CustomEvent('nexo-permissions-granted', {
-            detail: { source: 'settings_return', timestamp: Date.now() }
-          }));
-        } else {
-          console.log('[SetupManager] NAP: Permisos aún faltantes post-Settings');
-          window.dispatchEvent(new CustomEvent('nexo-permissions-denied', {
-            detail: { source: 'settings_return', timestamp: Date.now() }
-          }));
+      if (wasAwaiting && SetupManager.isAwaitingSettingsReturn) {
+        // Verificar si ya tenemos permisos (usuario pudo haberlos concedido sin salir de app)
+        const status = await SetupManager.checkPermissionsRealtime();
+        if (status.granted) {
+          console.log('[SetupManager] Permisos detectados vía polling');
+          SetupManager.handleAppResume();
         }
       }
-    });
-    
-    console.log('[SetupManager] NAP: Resume listener activado');
+    }, 2000);
   }
 
-  /**
-   * NUEVO v2.0: Verificación REAL de permisos sin cache
-   * Usa el plugin nativo directamente para evitar falsos positivos
-   */
+  static async handleAppResume() {
+    const wasAwaiting = localStorage.getItem(STORAGE_KEYS.AWAITING_SETTINGS_RETURN) === 'true';
+    const deniedCount = parseInt(localStorage.getItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT) || '0');
+    
+    if (wasAwaiting || deniedCount > 0) {
+      localStorage.removeItem(STORAGE_KEYS.AWAITING_SETTINGS_RETURN);
+      SetupManager.isAwaitingSettingsReturn = false;
+      
+      console.log('[SetupManager] Re-verificando post-Settings...');
+      const currentStatus = await SetupManager.checkPermissionsRealtime();
+      
+      if (currentStatus.granted) {
+        console.log('[SetupManager] Permisos concedidos!');
+        window.dispatchEvent(new CustomEvent('nexo-permissions-granted', {
+          detail: { source: 'resume', timestamp: Date.now() }
+        }));
+      } else {
+        console.log('[SetupManager] Permisos aún faltantes');
+        window.dispatchEvent(new CustomEvent('nexo-permissions-denied', {
+          detail: { source: 'resume', timestamp: Date.now(), status: currentStatus }
+        }));
+      }
+    }
+  }
+
   static async checkPermissionsRealtime() {
     try {
       const { NexoBLE } = window.Capacitor.Plugins;
@@ -165,8 +180,6 @@ export class SetupManager {
       }
       
       const result = await NexoBLE.isBluetoothEnabled();
-      
-      // Verificación estricta: necesitamos ENABLED + Permisos
       const hasPermission = result.stateName !== 'NO_PERMISSION';
       const isEnabled = result.enabled === true;
       
@@ -179,19 +192,15 @@ export class SetupManager {
       };
       
     } catch (e) {
-      console.error('[SetupManager] NAP Error en checkPermissionsRealtime:', e);
+      console.error('[SetupManager] Error checkPermissionsRealtime:', e);
       return { granted: false, error: e.message };
     }
   }
 
-  /**
-   * NUEVO v2.0: Marcar que estamos esperando retorno de Settings
-   */
   static async markAwaitingSettingsReturn() {
     localStorage.setItem(STORAGE_KEYS.AWAITING_SETTINGS_RETURN, 'true');
     SetupManager.isAwaitingSettingsReturn = true;
-    SetupManager.setupResumeListener(); // Asegurar que el listener está activo
-    console.log('[SetupManager] NAP: Marcado AWAITING_SETTINGS_RETURN');
+    console.log('[SetupManager] Marcado AWAITING_SETTINGS_RETURN');
   }
 
   static async markCompleted() {
@@ -200,10 +209,11 @@ export class SetupManager {
       localStorage.setItem(STORAGE_KEYS.LAST_CHECK, Date.now().toString());
       localStorage.removeItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT);
       localStorage.removeItem(STORAGE_KEYS.AWAITING_SETTINGS_RETURN);
-      console.log('[SetupManager] NAP: Setup completado y limpiado');
+      SetupManager.cleanup(); // Limpiar listeners cuando termina
+      console.log('[SetupManager] Setup completado');
       return true;
     } catch (e) {
-      console.error('[SetupManager] NAP Error:', e);
+      console.error('[SetupManager] Error:', e);
       return false;
     }
   }
@@ -211,10 +221,9 @@ export class SetupManager {
   static async shouldGoToSettings() {
     try {
       const deniedCount = parseInt(localStorage.getItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT) || '0');
-      console.log(`[SetupManager] NAP: Intentos fallidos = ${deniedCount}`);
+      console.log(`[SetupManager] Intentos fallidos: ${deniedCount}`);
       return deniedCount >= 2;
     } catch (e) {
-      console.error('[SetupManager] NAP Error:', e);
       return false;
     }
   }
@@ -224,59 +233,68 @@ export class SetupManager {
       const current = parseInt(localStorage.getItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT) || '0');
       const newCount = current + 1;
       localStorage.setItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT, newCount.toString());
-      console.log(`[SetupManager] NAP: Denegación registrada (total ${newCount})`);
+      console.log(`[SetupManager] Denegación registrada (total ${newCount})`);
       return newCount;
     } catch (e) {
-      console.error('[SetupManager] NAP Error:', e);
       return 1;
     }
   }
 
-  /**
-   * Abrir configuración de la app
-   * NAP: Ahora marca el estado de espera para detección automática al volver
-   */
   static async openAppSettings() {
     try {
       await SetupManager.markAwaitingSettingsReturn();
       
-      const { App } = await import('@capacitor/app');
-      await App.openUrl({ url: 'app-settings:' });
-      console.log('[SetupManager] NAP: Configuración abierta, modo awaiting activo');
+      // Intentar con App plugin primero, luego fallback
+      if (AppPlugin) {
+        await AppPlugin.openUrl({ url: 'app-settings:' });
+      } else {
+        // Fallback: intentar abrir con window.location (puede no funcionar en Android WebView)
+        window.location.href = 'app-settings:';
+        // O mostrar instrucciones
+        setTimeout(() => {
+          alert('Ve a Configuración > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
+        }, 500);
+      }
+      console.log('[SetupManager] Configuración abierta');
     } catch (e) {
-      console.warn('[SetupManager] NAP Fallback: Usando alert manual');
+      console.warn('[SetupManager] Error abriendo settings:', e);
       alert('Ve a Configuración > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
     }
   }
 
-  /**
-   * Abrir configuración de Bluetooth
-   * NAP: Deep link con fallback y marca de espera
-   */
   static async openBluetoothSettings() {
     try {
       await SetupManager.markAwaitingSettingsReturn();
       
-      const { App } = await import('@capacitor/app');
-      
-      if (Capacitor.getPlatform() === 'android') {
-        await App.openUrl({ url: 'intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end' });
-        console.log('[SetupManager] NAP: Bluetooth settings abierto, modo awaiting activo');
+      if (AppPlugin && Capacitor.getPlatform() === 'android') {
+        await AppPlugin.openUrl({ url: 'intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end' });
+      } else {
+        window.location.href = 'intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end';
       }
+      console.log('[SetupManager] Bluetooth settings abierto');
     } catch (e) {
-      console.warn('[SetupManager] NAP Fallback:', e);
-      alert('Por favor abre Configuración > Bluetooth y actívalo manualmente');
+      console.warn('[SetupManager] Fallback:', e);
+      alert('Abre Configuración > Bluetooth y actívalo manualmente');
     }
   }
 
-  /**
-   * Cleanup: Remover listeners cuando ya no se necesiten
-   */
   static cleanup() {
     if (SetupManager.resumeListener) {
       SetupManager.resumeListener.remove();
       SetupManager.resumeListener = null;
-      console.log('[SetupManager] NAP: Resume listener removido');
+      console.log('[SetupManager] Resume listener removido');
+    }
+    
+    if (SetupManager.visibilityHandler) {
+      document.removeEventListener('visibilitychange', SetupManager.visibilityHandler);
+      SetupManager.visibilityHandler = null;
+      console.log('[SetupManager] Visibility listener removido');
+    }
+    
+    if (SetupManager.checkInterval) {
+      clearInterval(SetupManager.checkInterval);
+      SetupManager.checkInterval = null;
+      console.log('[SetupManager] Polling interval removido');
     }
   }
 }
