@@ -1,6 +1,8 @@
 /**
- * NordicMesh - Protocolo BLE NEXO v1.3-NAP
+ * NordicMesh - Protocolo BLE NEXO v1.4-NAP
  * FIX: Permitir re-intento de inicialización si falló previamente
+ * FIX: Soporte permisos parciales (SCAN+CONNECT obligatorios, ADVERTISE opcional)
+ * FEATURE: Visibilidad toggle (advertising control)
  */
 
 const UUIDS = Object.freeze({
@@ -48,6 +50,11 @@ class NordicMesh {
     this.isNative = false;
     this.NexoBLE = null;
     this.bluetoothEnabled = false;
+    
+    // NUEVO: Estado de visibilidad (advertising)
+    this.isAdvertising = false;
+    this.canAdvertise = false;
+    this.capabilities = null;
   }
 
   async _detectPlugin() {
@@ -70,7 +77,10 @@ class NordicMesh {
         getConnectedDevices: async () => ({ devices: [] }),
         sendMessage: async () => { throw new Error('BLE not available in web'); },
         addListener: () => ({ remove: () => {} }),
-        isBluetoothEnabled: async () => false
+        isBluetoothEnabled: async () => false,
+        // NUEVO: Stub methods para consistencia
+        getCapabilities: async () => ({ canScan: false, canConnect: false, canAdvertise: false }),
+        toggleVisibility: async () => ({ success: false, error: 'Web mode' })
       };
       
       this.isNative = false;
@@ -169,12 +179,42 @@ class NordicMesh {
         }
       }
       
+      // NUEVO: Obtener capacidades del plugin nativo
+      if (this.isNative && this.NexoBLE.getCapabilities) {
+        try {
+          this.capabilities = await this.NexoBLE.getCapabilities();
+          this.canAdvertise = this.capabilities.canAdvertise || false;
+          this.isAdvertising = this.capabilities.isAdvertising || false;
+          
+          // Detectar si hay advertencia de permisos parciales
+          if (this.NexoBLE.addListener) {
+            this.NexoBLE.addListener('onPermissionWarning', (data) => {
+              console.warn('[NordicMesh] Permission warning:', data.message);
+              this._emit('advertiseWarning', { 
+                message: data.message,
+                canFix: true,
+                code: data.code
+              });
+            });
+          }
+          
+          console.log('[NordicMesh] Capabilities:', { 
+            canScan: this.capabilities.canScan, 
+            canAdvertise: this.canAdvertise 
+          });
+        } catch (capError) {
+          console.warn('[NordicMesh] Could not get capabilities:', capError.message);
+          this.canAdvertise = false;
+        }
+      }
+      
       await this._setupListeners();
       
       this._setState(STATE.OFFLINE);
       return { 
         success: true, 
-        isNative: this.isNative, 
+        isNative: this.isNative,
+        canAdvertise: this.canAdvertise,  // NUEVO
         userId: this.userId, 
         bluetooth: btEnabled,
         mode: btEnabled ? 'native' : 'stub'
@@ -204,6 +244,19 @@ class NordicMesh {
       } catch (e) {
         console.warn('[NordicMesh] Listener ' + event + ' skipped:', e.message);
       }
+    }
+    
+    // NUEVO: Listener para cambios de visibilidad (advertising)
+    try {
+      await this.NexoBLE.addListener('onAdvertisingStateChanged', (data) => {
+        this.isAdvertising = data.active || false;
+        this._emit('visibilityChanged', { 
+          visible: this.isAdvertising,
+          userId: this.userId 
+        });
+      });
+    } catch (e) {
+      // Listener opcional, no crítico
     }
   }
 
@@ -257,6 +310,67 @@ class NordicMesh {
         try { cb(event, data); } catch (e) {}
       });
     }
+  }
+
+  // ============================================================
+  // NUEVO: Toggle Visibilidad (Advertising)
+  // Activa/desactiva la visibilidad del usuario para otros peers
+  // ============================================================
+  async toggleVisibility(enabled) {
+    try {
+      // Verificar si tenemos permiso
+      if (!this.canAdvertise) {
+        return { 
+          success: false, 
+          error: 'Permiso BLUETOOTH_ADVERTISE no concedido', 
+          code: 'NAP_BLE_ADV_NO_PERMISSION',
+          needsSettings: true,
+          message: '⚠️ Visibilidad desactivada - Conceda permiso "Dispositivos cercanos"'
+        };
+      }
+      
+      if (enabled) {
+        const result = await this.NexoBLE.startAdvertising();
+        this.isAdvertising = true;
+        this._emit('visibilityChanged', { visible: true, userId: this.userId });
+        return { 
+          success: true, 
+          visible: true,
+          message: 'Visibilidad activada'
+        };
+      } else {
+        await this.NexoBLE.stopAdvertising();
+        this.isAdvertising = false;
+        this._emit('visibilityChanged', { visible: false });
+        return { 
+          success: true, 
+          visible: false,
+          message: 'Visibilidad desactivada'
+        };
+      }
+    } catch (error) {
+      this.isAdvertising = false;
+      return { 
+        success: false, 
+        error: error.message,
+        code: error.code || 'NORDIC_ADV_ERROR',
+        visible: false
+      };
+    }
+  }
+
+  // NUEVO: Obtener estado actual de visibilidad
+  getVisibilityState() {
+    return {
+      canAdvertise: this.canAdvertise,
+      isAdvertising: this.isAdvertising,
+      userId: this.userId,
+      // Estados para UI:
+      // - 'disabled': Sin permiso (amarillo advertencia)
+      // - 'off': Con permiso pero apagado (gris)
+      // - 'on': Con permiso y encendido (azul)
+      status: !this.canAdvertise ? 'disabled' : (this.isAdvertising ? 'on' : 'off')
+    };
   }
 
   async startDiscovery() {

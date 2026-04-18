@@ -88,6 +88,9 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_ERR_THERMAL_SHUTDOWN = "BLE_210"
         const val NAP_BLE_ERR_AIRPLANE_MODE = "BLE_211"
         
+        // NUEVO: Código específico para advertising sin permiso (no es error crítico, es advertencia)
+        const val NAP_BLE_ADV_NO_PERMISSION = "BLE_205_ADV_NO_PERMISSION"
+        
         // Legacy
         const val ERR_INVALID_PARAMS = "BLE_019"
         const val ERR_NOT_CONNECTED = "BLE_011"
@@ -196,6 +199,7 @@ class NexoBlePlugin : Plugin() {
             NAP_BLE_LOW_BATTERY -> "Conecte el cargador o cierre otras apps para ahorrar energía"
             NAP_BLE_DOZE_MODE -> "Desbloquee el dispositivo para salir de Doze Mode"
             NAP_BLE_CONCURRENT_INIT -> "Espere a que termine la inicialización en curso"
+            NAP_BLE_ADV_NO_PERMISSION -> "Conceda permiso 'Dispositivos cercanos' en Configuración > Apps > NEXO > Permisos para activar visibilidad"
             else -> "Contacte soporte si el problema persiste"
         }
     }
@@ -300,7 +304,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v2.4-RC3 loaded (EdgeCaseResilient + PermissionBridge)")
+        napLog("BLE_LOAD", "NAP-BLE v2.4-RC4 loaded (EdgeCaseResilient + PermissionBridge + PartialPerms)")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -648,6 +652,43 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // ============================================================
+    // NUEVO: Método para obtener capacidades (permisos disponibles)
+    // Usado por la UI para saber si mostrar botón de visibilidad
+    // ============================================================
+    @PluginMethod
+    fun getCapabilities(call: PluginCall) {
+        val result = JSObject()
+        result.put("canScan", hasCorePermissions() && bluetoothAdapter?.isEnabled == true)
+        result.put("canConnect", hasCorePermissions() && bluetoothAdapter?.isEnabled == true)
+        result.put("canAdvertise", hasAdvertisePermission() && bluetoothAdapter?.isEnabled == true)
+        result.put("isAdvertising", isAdvertising)
+        result.put("bluetoothEnabled", bluetoothAdapter?.isEnabled == true)
+        result.put("version", "2.4-RC4-NAP")
+        call.resolve(result)
+    }
+
+    // ============================================================
+    // NUEVO: Separación de permisos CORE vs ADVERTISE
+    // CORE: SCAN + CONNECT (obligatorios para funcionar)
+    // ADVERTISE: Opcional (solo para visibilidad/publicitar)
+    // ============================================================
+    private fun hasCorePermissions(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            hasPermission("bluetoothScan") && hasPermission("bluetoothConnect")
+        } else {
+            hasPermission("location")
+        }
+    }
+    
+    private fun hasAdvertisePermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            hasPermission("bluetoothAdvertise")
+        } else {
+            hasPermission("location") // Legacy: location cubre todo
+        }
+    }
+
     @PluginMethod
     fun initialize(call: PluginCall) {
         userId = call.getString("userId") ?: generateUserId()
@@ -677,23 +718,25 @@ class NexoBlePlugin : Plugin() {
                 val result = JSObject()
                 result.put("userId", userId)
                 result.put("status", "already_initialized")
-                result.put("version", "2.4-NAP-RC3")
+                result.put("version", "2.4-NAP-RC4")
                 result.put("native", true)
                 result.put("health", getSystemHealthReport())
                 call.resolve(result)
                 return
             }
             
-            napLog(NAP_BLE_INIT_001, "[1/7] Verificando permisos Bluetooth (Android 14)...")
+            napLog(NAP_BLE_INIT_001, "[1/7] Verificando permisos CORE (Android 14)...")
             
-            if (!hasRequiredPermissions()) {
-                napLog(NAP_BLE_WAITING_PERMISSIONS, "Permisos pendientes, iniciando secuencia de solicitud...")
+            // FIX: Usar hasCorePermissions() en lugar de hasRequiredPermissions()
+            // Esto permite inicializar sin permiso de ADVERTISE
+            if (!hasCorePermissions()) {
+                napLog(NAP_BLE_WAITING_PERMISSIONS, "Permisos CORE pendientes (SCAN+CONNECT)...")
                 pendingCalls["init"] = call
-                checkAndRequestPermissions(call, "initializePermissionCallback")
+                checkAndRequestCorePermissions(call, "initializePermissionCallback")
                 return
             }
             
-            napLog(NAP_BLE_INIT_002, "[2/7] Permisos BLE concedidos")
+            napLog(NAP_BLE_INIT_002, "[2/7] Permisos CORE concedidos (SCAN+CONNECT)")
             performInitialization(call)
             
         } catch (e: Exception) {
@@ -704,14 +747,44 @@ class NexoBlePlugin : Plugin() {
 
     @PermissionCallback
     private fun initializePermissionCallback(call: PluginCall) {
-        if (hasRequiredPermissions()) {
-            napLog(NAP_BLE_INIT_002, "[2/7] Permisos concedidos vía callback")
+        // FIX: Verificar solo CORE permissions
+        if (hasCorePermissions()) {
+            napLog(NAP_BLE_INIT_002, "[2/7] Permisos CORE concedidos vía callback")
             performInitialization(call)
         } else {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Permisos Bluetooth requeridos rechazados")
+            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Permisos Bluetooth CORE requeridos rechazados")
             pendingCalls.remove("init")
             releaseInitLock()
         }
+    }
+
+    // ============================================================
+    // NUEVO: Verificar solo permisos CORE (sin ADVERTISE)
+    // ============================================================
+    private fun checkAndRequestCorePermissions(call: PluginCall, callback: String): Boolean {
+        if (hasCorePermissions()) return true
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            when {
+                !hasPermission("bluetoothConnect") -> {
+                    napLog(NAP_BLE_INIT_001, "Solicitando BLUETOOTH_CONNECT...")
+                    requestPermissionForAlias("bluetoothConnect", call, callback)
+                    return false
+                }
+                !hasPermission("bluetoothScan") -> {
+                    napLog(NAP_BLE_INIT_001, "Solicitando BLUETOOTH_SCAN...")
+                    requestPermissionForAlias("bluetoothScan", call, callback)
+                    return false
+                }
+            }
+        } else {
+            if (!hasPermission("location")) {
+                napLog(NAP_BLE_INIT_001, "Solicitando LOCATION (Legacy)")
+                requestPermissionForAlias("location", call, callback)
+                return false
+            }
+        }
+        return false
     }
 
     private fun performInitialization(call: PluginCall) {
@@ -792,16 +865,34 @@ class NexoBlePlugin : Plugin() {
             napLog(NAP_BLE_INIT_006, "[6/7] Configurando GATT Server...")
             setupGattServer()
             
+            // NUEVO: Verificar si tenemos permiso de ADVERTISE opcionalmente
+            val canAdv = hasAdvertisePermission()
+            
             napLog(NAP_BLE_INIT_007, "[7/7] BLE Native Layer inicializado completamente")
-            napLog(NAP_BLE_READY, "🚀 NAP-BLE RC3 Ready [Native:true]")
+            napLog(NAP_BLE_READY, "🚀 NAP-BLE RC4 Ready [Native:true]")
+            
+            // NUEVO: Advertencia informativa si falta permiso de advertising (no es error)
+            if (!canAdv) {
+                napLog(NAP_BLE_PARTIAL_PERMISSIONS, "⚠️ Visibilidad desactivada: Permiso ADVERTISE no concedido. Modo 'escucha' activo.", "WARN")
+                
+                // Notificar a UI que puede mostrar advertencia amigable
+                val warningData = JSObject()
+                warningData.put("type", "warning")
+                warningData.put("message", "⚠️ Visibilidad desactivada - Conceda permiso 'Dispositivos cercanos' en Configuración para activar")
+                warningData.put("code", "BLE_ADVERTISE_WARNING")
+                warningData.put("canScan", true)
+                warningData.put("canAdvertise", false)
+                notifyListeners("onPermissionWarning", warningData)
+            }
             
             val result = JSObject()
             result.put("userId", userId)
             result.put("status", "initialized")
-            result.put("version", "2.4-NAP-RC3")
+            result.put("version", "2.4-NAP-RC4")
             result.put("bluetoothState", BluetoothAdapter.STATE_ON)
             result.put("native", true)
             result.put("napProtocol", "v2.4")
+            result.put("canAdvertise", canAdv)  // NUEVO
             result.put("health", getSystemHealthReport())
             call.resolve(result)
             
@@ -865,37 +956,7 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    private fun checkAndRequestPermissions(call: PluginCall, callback: String): Boolean {
-        if (hasRequiredPermissions()) return true
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            when {
-                !hasPermission("bluetoothConnect") -> {
-                    napLog(NAP_BLE_INIT_001, "Solicitando BLUETOOTH_CONNECT...")
-                    requestPermissionForAlias("bluetoothConnect", call, callback)
-                    return false
-                }
-                !hasPermission("bluetoothScan") -> {
-                    napLog(NAP_BLE_INIT_001, "Solicitando BLUETOOTH_SCAN...")
-                    requestPermissionForAlias("bluetoothScan", call, callback)
-                    return false
-                }
-                !hasPermission("bluetoothAdvertise") -> {
-                    napLog(NAP_BLE_INIT_001, "Solicitando BLUETOOTH_ADVERTISE...")
-                    requestPermissionForAlias("bluetoothAdvertise", call, callback)
-                    return false
-                }
-            }
-        } else {
-            if (!hasPermission("location")) {
-                napLog(NAP_BLE_INIT_001, "Solicitando LOCATION (Legacy)")
-                requestPermissionForAlias("location", call, callback)
-                return false
-            }
-        }
-        return false
-    }
-
+    // Mantener hasRequiredPermissions() para otros usos (requestBLEPermissions)
     override fun hasRequiredPermissions(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             hasPermission("bluetoothScan") && hasPermission("bluetoothConnect") && hasPermission("bluetoothAdvertise")
@@ -904,24 +965,31 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // ============================================================
+    // FIX: startAdvertising() verifica específicamente permiso ADVERTISE
+    // ============================================================
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
         if (!validateSystemHealth(call, "advertise")) return
         if (!ensureInitialized(call)) return
         
-        if (hasPermission("bluetoothAdvertise")) {
-            startAdvertisingInternal(call)
-        } else {
-            requestPermissionForAlias("bluetoothAdvertise", call, "advertisePermissionCallback")
+        // FIX: Verificar específicamente permiso de advertising
+        if (!hasAdvertisePermission()) {
+            napError(call, NAP_BLE_ADV_NO_PERMISSION, 
+                "⚠️ Visibilidad desactivada: Permiso BLUETOOTH_ADVERTISE requerido. Vaya a Configuración > Apps > NEXO > Permisos > Dispositivos cercanos.", 
+                "WARN", recoverable = true)
+            return
         }
+        
+        startAdvertisingInternal(call)
     }
 
     @PermissionCallback
     private fun advertisePermissionCallback(call: PluginCall) {
-        if (hasPermission("bluetoothAdvertise")) {
+        if (hasAdvertisePermission()) {
             startAdvertisingInternal(call)
         } else {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Permiso BLUETOOTH_ADVERTISE requerido")
+            napError(call, NAP_BLE_ADV_NO_PERMISSION, "⚠️ Visibilidad desactivada: Permiso BLUETOOTH_ADVERTISE requerido", "WARN", recoverable = true)
         }
     }
 
