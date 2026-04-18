@@ -10,7 +10,6 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
@@ -45,7 +44,6 @@ class NexoBlePlugin : Plugin() {
     companion object {
         const val TAG = "NAP-BLE"
         
-        // NAP v2.5 - Códigos de Inicialización (1-7)
         const val NAP_BLE_INIT_001 = "BLE_INIT_001"
         const val NAP_BLE_INIT_002 = "BLE_INIT_002"
         const val NAP_BLE_INIT_003 = "BLE_INIT_003"
@@ -54,7 +52,6 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_INIT_006 = "BLE_INIT_006"
         const val NAP_BLE_INIT_007 = "BLE_INIT_007"
         
-        // NAP - Éxito (050-099)
         const val NAP_BLE_READY = "BLE_050"
         const val NAP_BLE_CONNECTED = "BLE_051"
         const val NAP_BLE_SCAN_STARTED = "BLE_052"
@@ -63,7 +60,6 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_RECOVERY_SUCCESS = "BLE_055"
         const val NAP_BLE_PERMISSIONS_GRANTED = "BLE_056"
         
-        // NAP - Warnings/Waiting (100-199)
         const val NAP_BLE_WAITING_PERMISSIONS = "BLE_100"
         const val NAP_BLE_WAITING_BT_ON = "BLE_101"
         const val NAP_BLE_RETRY_ATTEMPT = "BLE_102"
@@ -75,7 +71,6 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_DOZE_MODE = "BLE_108"
         const val NAP_BLE_PARTIAL_PERMISSIONS = "BLE_109"
         
-        // NAP - Errores Críticos (200-299)
         const val NAP_BLE_ERR_NOT_SUPPORTED = "BLE_200"
         const val NAP_BLE_ERR_DISABLED = "BLE_201"
         const val NAP_BLE_ERR_PERMISSION_DENIED = "BLE_202"
@@ -89,10 +84,8 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_ERR_THERMAL_SHUTDOWN = "BLE_210"
         const val NAP_BLE_ERR_AIRPLANE_MODE = "BLE_211"
         
-        // Código específico para advertising sin permiso
         const val NAP_BLE_ADV_NO_PERMISSION = "BLE_205_ADV_NO_PERMISSION"
         
-        // Legacy
         const val ERR_INVALID_PARAMS = "BLE_019"
         const val ERR_NOT_CONNECTED = "BLE_011"
         const val ERR_MESSAGE_TOO_LARGE = "BLE_008"
@@ -102,14 +95,6 @@ class NexoBlePlugin : Plugin() {
         const val CHUNK_SIZE = 507
         const val REQUEST_ENABLE_BT = 1001
         
-        // Keys para persistencia estado
-        const val KEY_PENDING_PERM_ALIASES = "nap_pending_permission_aliases"
-        const val KEY_CURRENT_PERM_INDEX = "nap_current_permission_index"
-        const val KEY_RETRY_COUNT = "nap_retry_count"
-        const val KEY_USER_ID = "nap_user_id"
-        const val KEY_LAST_INIT_STATE = "nap_last_init_state"
-        
-        // Edge Case Thresholds
         const val THERMAL_THRESHOLD_C = 42.0f
         const val BATTERY_LOW_THRESHOLD = 20
         const val MAX_RETRY_ATTEMPTS = 3
@@ -123,7 +108,6 @@ class NexoBlePlugin : Plugin() {
         val CHAR_CONTROL = NexoGattService.CONTROL_CHAR_UUID
     }
 
-    // State Management
     private var bluetoothManager: BluetoothManager? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var gattServer: BluetoothGattServer? = null
@@ -140,7 +124,6 @@ class NexoBlePlugin : Plugin() {
     private val connectionCounter = AtomicInteger(0)
     private val pendingCalls = ConcurrentHashMap<String, PluginCall>()
     
-    // Edge Case State Trackers
     private val isInitializing = AtomicBoolean(false)
     private val initLock = Object()
     private var lastInitAttempt = 0L
@@ -148,19 +131,12 @@ class NexoBlePlugin : Plugin() {
     private var retryCount = 0
     private var lastKnownPermissionState = true
     
-    // Cache de estado para recovery rápido
     private var cachedDeviceState: JSObject? = null
     
-    // Tracking para requestPermissions()
     private var pendingPermissionAliases = mutableListOf<String>()
     private var currentPermissionIndex = 0
     private var permissionTimeoutRunnable: Runnable? = null
-    
-    // Estado persistente ante recreación de Activity
-    private var isRestoredFromState = false
-    private var savedPermissionCall: PluginCall? = null
 
-    // NAP Logger unificado
     private fun napLog(code: String, message: String, level: String = "INFO") {
         val formatted = "[$code] $message [Native:true]"
         when (level) {
@@ -204,18 +180,17 @@ class NexoBlePlugin : Plugin() {
         return when (code) {
             NAP_BLE_PERMISSION_REVOKED -> "Reinicie la app y conceda permisos desde Configuración > Apps > NEXO > Permisos"
             NAP_BLE_PARTIAL_PERMISSIONS -> "Conceda todos los permisos solicitados para funcionalidad completa BLE"
-            NAP_BLE_THERMAL_THROTTLE -> "Espere 30 segundos para enfriamiento o mueva el dispositivo a zona ventilada"
-            NAP_BLE_ERR_AIRPLANE_MODE -> "Desactive Modo Avión desde el panel de notificaciones"
-            NAP_BLE_ERR_DISABLED -> "Active Bluetooth desde Configuración o el panel rápido"
-            NAP_BLE_LOW_BATTERY -> "Conecte el cargador o cierre otras apps para ahorrar energía"
-            NAP_BLE_DOZE_MODE -> "Desbloquee el dispositivo para salir de Doze Mode"
-            NAP_BLE_CONCURRENT_INIT -> "Espere a que termine la inicialización en curso"
-            NAP_BLE_ADV_NO_PERMISSION -> "Conceda permiso 'Dispositivos cercanos' en Configuración > Apps > NEXO > Permisos para activar visibilidad"
+            NAP_BLE_THERMAL_THROTTLE -> "Espere 30 segundos para enfriamiento"
+            NAP_BLE_ERR_AIRPLANE_MODE -> "Desactive Modo Avión"
+            NAP_BLE_ERR_DISABLED -> "Active Bluetooth desde Configuración"
+            NAP_BLE_LOW_BATTERY -> "Conecte el cargador"
+            NAP_BLE_DOZE_MODE -> "Desbloquee el dispositivo"
+            NAP_BLE_CONCURRENT_INIT -> "Espere a que termine la inicialización"
+            NAP_BLE_ADV_NO_PERMISSION -> "Conceda permiso 'Dispositivos cercanos' en Configuración"
             else -> "Contacte soporte si el problema persiste"
         }
     }
 
-    // Monitoreo de estado del sistema
     private fun getThermalState(): String {
         return try {
             when {
@@ -258,51 +233,38 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { false }
     }
 
-    // Validación de salud del sistema antes de operaciones críticas
     private fun validateSystemHealth(call: PluginCall?, operation: String): Boolean {
-        // 1. Check Thermal
         if (getBatteryTemp() > THERMAL_THRESHOLD_C) {
             thermalCooldownActive = true
             napError(call, NAP_BLE_ERR_THERMAL_SHUTDOWN, 
-                "Temperatura crítica: ${getBatteryTemp()}°C. Operación $operation bloqueada por seguridad.", 
-                "ERROR", recoverable = true)
+                "Temperatura crítica: ${getBatteryTemp()}°C", "ERROR", recoverable = true)
             
             handler.postDelayed({
                 thermalCooldownActive = false
-                napLog(NAP_BLE_RECOVERY_SUCCESS, "Cooldown completado, operaciones BLE reanudadas")
+                napLog(NAP_BLE_RECOVERY_SUCCESS, "Cooldown completado")
             }, THERMAL_COOLDOWN_MS)
             
             return false
         }
         
-        // 2. Check Battery
         if (getBatteryLevel() < BATTERY_LOW_THRESHOLD && operation != "initialize") {
-            napLog(NAP_BLE_LOW_BATTERY, "Batería baja (${getBatteryLevel()}%), rendimiento BLE puede degradarse", "WARN")
+            napLog(NAP_BLE_LOW_BATTERY, "Batería baja (${getBatteryLevel()}%)", "WARN")
         }
         
-        // 3. Check Doze Mode
         if (isDozeMode() && operation in listOf("scan", "advertise")) {
-            napError(call, NAP_BLE_DOZE_MODE, 
-                "Dispositivo en Doze Mode. $operation requiere desbloqueo o whitelist de batería.", 
-                "WARN", recoverable = true)
+            napError(call, NAP_BLE_DOZE_MODE, "Dispositivo en Doze Mode", "WARN", recoverable = true)
             return false
         }
         
-        // 4. Check Airplane Mode
         if (isAirplaneMode()) {
-            napError(call, NAP_BLE_ERR_AIRPLANE_MODE, 
-                "Modo Avión activado. Desactívelo para usar $operation.", 
-                "ERROR", recoverable = true)
+            napError(call, NAP_BLE_ERR_AIRPLANE_MODE, "Modo Avión activado", "ERROR", recoverable = true)
             return false
         }
         
-        // 5. Check Permission Revocation (Hot)
         if (!canAccessBluetooth()) {
             if (lastKnownPermissionState) {
                 lastKnownPermissionState = false
-                napError(call, NAP_BLE_PERMISSION_REVOKED, 
-                    "Permisos Bluetooth revocados en tiempo de ejecución. Reinicio requerido.", 
-                    "ERROR", recoverable = true)
+                napError(call, NAP_BLE_PERMISSION_REVOKED, "Permisos revocados", "ERROR", recoverable = true)
             } else {
                 napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Permisos no disponibles", "ERROR")
             }
@@ -315,7 +277,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v2.5-PROD loaded (StatePersistent + PermanentDenialDetection)")
+        napLog("BLE_LOAD", "NAP-BLE v2.5.1-HOTFIX loaded (NativeOnly)")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -337,7 +299,7 @@ class NexoBlePlugin : Plugin() {
                             pendingCalls["init"]?.let { call ->
                                 handler.postDelayed({
                                     if (!isInitializing.get()) {
-                                        napLog(NAP_BLE_RECOVERY_SUCCESS, "BT reactivado automáticamente, continuando init")
+                                        napLog(NAP_BLE_RECOVERY_SUCCESS, "BT reactivado, continuando init")
                                         performInitialization(call)
                                         pendingCalls.remove("init")
                                     }
@@ -354,7 +316,6 @@ class NexoBlePlugin : Plugin() {
                         else -> "UNKNOWN"
                     }
                     
-                    napLog("BLE_STATE_CHANGE", "BT State: $stateName ($state)")
                     notifyListeners("onBluetoothStateChanged", JSObject().apply {
                         put("state", stateName)
                         put("stateCode", state)
@@ -363,18 +324,16 @@ class NexoBlePlugin : Plugin() {
                 }
                 
                 Intent.ACTION_BATTERY_CHANGED -> {
-                    val level = getBatteryLevel()
                     val temp = getBatteryTemp()
-                    
                     if (temp > THERMAL_THRESHOLD_C && !thermalCooldownActive) {
-                        napLog(NAP_BLE_THERMAL_THROTTLE, "Throttling activado por temperatura: ${temp}°C", "WARN")
+                        napLog(NAP_BLE_THERMAL_THROTTLE, "Throttling por temperatura: ${temp}°C", "WARN")
                         thermalCooldownActive = true
                     }
                 }
                 
                 Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
                     if (isAirplaneMode()) {
-                        napLog(NAP_BLE_ERR_AIRPLANE_MODE, "Modo Avión detectado - todas las operaciones BLE pausadas", "ERROR")
+                        napLog(NAP_BLE_ERR_AIRPLANE_MODE, "Modo Avión detectado", "ERROR")
                         stopAllOperations()
                     }
                 }
@@ -382,13 +341,12 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // Manejo de concurrencia estricto
     private fun acquireInitLock(): Boolean {
         synchronized(initLock) {
             val now = System.currentTimeMillis()
             
             if (isInitializing.get() && (now - lastInitAttempt) > CONCURRENT_INIT_LOCK_TIMEOUT) {
-                napLog(NAP_BLE_CONCURRENT_INIT, "Deadlock detectado, liberando lock forzado", "WARN")
+                napLog(NAP_BLE_CONCURRENT_INIT, "Deadlock detectado, liberando lock", "WARN")
                 isInitializing.set(false)
             }
             
@@ -421,7 +379,7 @@ class NexoBlePlugin : Plugin() {
 
     private fun initializeAdapter(): Boolean {
         if (!canAccessBluetooth()) {
-            napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "BLUETOOTH_CONNECT permission not granted", "ERROR")
+            napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "BLUETOOTH_CONNECT no concedido", "ERROR")
             return false
         }
 
@@ -432,7 +390,7 @@ class NexoBlePlugin : Plugin() {
             bluetoothAdapter = bluetoothManager?.adapter
             
             if (bluetoothAdapter == null) {
-                napLog(NAP_BLE_ERR_NOT_SUPPORTED, "Device does not support Bluetooth", "ERROR")
+                napLog(NAP_BLE_ERR_NOT_SUPPORTED, "Dispositivo sin soporte Bluetooth", "ERROR")
                 return false
             }
             return true
@@ -442,19 +400,10 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ============================================================
-    // [v2.5-PROD] PERMISSION BRIDGE ROBUSTO
-    // Cambios: 
-    // 1. Persistencia de estado ante recreación de Activity
-    // 2. Detección real de denegación permanente
-    // 3. Callbacks con protección ante nulls
-    // ============================================================
-    
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
-        napLog(NAP_BLE_INIT_001, "[1/3] Solicitud explícita de permisos BLE iniciada desde UI")
+        napLog(NAP_BLE_INIT_001, "[1/3] Solicitud de permisos BLE iniciada")
         
-        // Limpiar estado previo y timeout
         pendingPermissionAliases.clear()
         currentPermissionIndex = 0
         permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
@@ -468,25 +417,21 @@ class NexoBlePlugin : Plugin() {
         }
         
         if (pendingPermissionAliases.isEmpty()) {
-            napLog(NAP_BLE_PERMISSIONS_GRANTED, "[2/3] Todos los permisos ya concedidos previamente")
+            napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos ya concedidos")
             val result = buildPermissionsResult()
             result.put("alreadyGranted", true)
             call.resolve(result)
             return
         }
         
-        // Verificar si algún permiso fue denegado permanentemente (no mostrar rationale)
         val hasPermanentDenial = checkPermanentDenial()
+        napLog(NAP_BLE_WAITING_PERMISSIONS, "Solicitando ${pendingPermissionAliases.size} permiso(s). PermanentDenial: $hasPermanentDenial")
         
-        napLog(NAP_BLE_WAITING_PERMISSIONS, "[2/3] Solicitando ${pendingPermissionAliases.size} permiso(s): $pendingPermissionAliases. PermanentDenial: $hasPermanentDenial")
-        
-        // Timeout de seguridad - 30 segundos máximo para evitar call colgado
         permissionTimeoutRunnable = Runnable {
             if (!call.isReleased && !call.isSaved) {
-                napLog(NAP_BLE_PARTIAL_PERMISSIONS, "TIMEOUT: El usuario no respondió a los diálogos de permisos", "WARN")
+                napLog(NAP_BLE_PARTIAL_PERMISSIONS, "TIMEOUT: Usuario no respondió", "WARN")
                 val errorData = JSObject()
                 errorData.put("timeout", true)
-                errorData.put("message", "Tiempo de espera agotado para permisos")
                 errorData.put("isPermanentDenial", hasPermanentDenial)
                 call.reject(NAP_BLE_PARTIAL_PERMISSIONS, "Permisos timeout", errorData)
                 pendingPermissionAliases.clear()
@@ -498,10 +443,6 @@ class NexoBlePlugin : Plugin() {
         requestNextPermission(call)
     }
     
-    /**
-     * Verifica si algún permiso pendiente fue denegado permanentemente
-     * (usuario marcó "No preguntar de nuevo")
-     */
     private fun checkPermanentDenial(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         
@@ -515,7 +456,6 @@ class NexoBlePlugin : Plugin() {
                 else -> return@any false
             }
             
-            // Si NO deberíamos mostrar rationale y NO tenemos el permiso = denegación permanente
             !activity.shouldShowRequestPermissionRationale(permission) && 
             ContextCompat.checkSelfPermission(activity, permission) != PackageManager.PERMISSION_GRANTED
         }
@@ -528,9 +468,8 @@ class NexoBlePlugin : Plugin() {
             
             if (currentAlias != null) {
                 val granted = hasPermission(currentAlias)
-                napLog("BLE_PERM_RESULT", "Callback ejecutado - Permiso $currentAlias: ${if (granted) "CONCEDIDO" else "DENEGADO"}")
+                napLog("BLE_PERM_RESULT", "$currentAlias: ${if (granted) "CONCEDIDO" else "DENEGADO"}")
                 
-                // Si un permiso fue denegado, verificar si es permanente
                 if (!granted) {
                     val isPermanent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         val permission = when(currentAlias) {
@@ -549,8 +488,6 @@ class NexoBlePlugin : Plugin() {
                         napLog(NAP_BLE_PARTIAL_PERMISSIONS, "Permiso $currentAlias denegado PERMANENTEMENTE")
                     }
                 }
-            } else {
-                napLog("BLE_PERM_WARN", "Callback llamado pero currentAlias es null (índice: $currentPermissionIndex)", "WARN")
             }
             
             currentPermissionIndex++
@@ -562,22 +499,22 @@ class NexoBlePlugin : Plugin() {
                 reportFinalPermissionsResult(call)
             }
         } catch (e: Exception) {
-            napLog("BLE_PERM_ERR", "Excepción en callback: ${e.message}", "ERROR")
+            napLog("BLE_PERM_ERR", "Excepción: ${e.message}", "ERROR")
             permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
             
             val errorData = JSObject()
             errorData.put("exception", e.message)
-            call.reject(NAP_BLE_ERR_INIT_FAILED, "Error en callback de permisos", errorData)
+            call.reject(NAP_BLE_ERR_INIT_FAILED, "Error en callback", errorData)
         }
     }
     
     private fun requestNextPermission(call: PluginCall) {
         val alias = pendingPermissionAliases.getOrNull(currentPermissionIndex)
         if (alias != null) {
-            napLog(NAP_BLE_INIT_001, "Solicitando permiso [${currentPermissionIndex + 1}/${pendingPermissionAliases.size}]: $alias")
+            napLog(NAP_BLE_INIT_001, "Solicitando [$currentPermissionIndex/${pendingPermissionAliases.size}]: $alias")
             requestPermissionForAlias(alias, call, "requestPermissionsCallback")
         } else {
-            napLog("BLE_PERM_ERR", "Alias null en índice $currentPermissionIndex", "ERROR")
+            napLog("BLE_PERM_ERR", "Alias null", "ERROR")
             permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
             reportFinalPermissionsResult(call)
         }
@@ -587,7 +524,6 @@ class NexoBlePlugin : Plugin() {
         val allGranted = hasRequiredPermissions()
         val result = buildPermissionsResult()
         
-        // Calcular si hay denegación permanente real
         val hasPermanentDenial = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val activity = activity
             activity != null && pendingPermissionAliases.any { alias ->
@@ -605,20 +541,18 @@ class NexoBlePlugin : Plugin() {
         result.put("isPermanentDenial", hasPermanentDenial)
         
         if (allGranted) {
-            napLog(NAP_BLE_PERMISSIONS_GRANTED, "[3/3] Todos los permisos BLE concedidos correctamente")
+            napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos concedidos")
             notifyListeners("onPermissionsGranted", JSObject().apply {
                 put("allGranted", true)
                 put("platform", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) "android12+" else "legacy")
             })
             call.resolve(result)
         } else {
-            napLog(NAP_BLE_PARTIAL_PERMISSIONS, "[3/3] Algunos permisos fueron denegados")
+            napLog(NAP_BLE_PARTIAL_PERMISSIONS, "Algunos permisos denegados")
             val errorData = JSObject()
             errorData.put("permissions", result.getJSObject("permissions"))
             errorData.put("allGranted", false)
             errorData.put("isPermanentDenial", hasPermanentDenial)
-            errorData.put("message", "Se requieren todos los permisos para funcionalidad BLE completa")
-            errorData.put("napCode", NAP_BLE_PARTIAL_PERMISSIONS)
             call.reject(NAP_BLE_PARTIAL_PERMISSIONS, "Permisos incompletos", errorData)
         }
     }
@@ -646,65 +580,12 @@ class NexoBlePlugin : Plugin() {
         return result
     }
 
-    // ============================================================
-    // [v2.5-PROD] PERSISTENCIA DE ESTADO
-    // Sobrevive recreación de Activity por rotación o permisos
-    // ============================================================
-    
-    override fun handleOnSaveInstanceState(outState: Bundle) {
-        super.handleOnSaveInstanceState(outState)
-        
-        // Guardar estado de permisos en progreso
-        if (pendingPermissionAliases.isNotEmpty()) {
-            outState.putStringArrayList(KEY_PENDING_PERM_ALIASES, ArrayList(pendingPermissionAliases))
-            outState.putInt(KEY_CURRENT_PERM_INDEX, currentPermissionIndex)
-            napLog("BLE_STATE_SAVE", "Estado de permisos guardado: ${pendingPermissionAliases.size} pendientes")
-        }
-        
-        outState.putInt(KEY_RETRY_COUNT, retryCount)
-        outState.putString(KEY_USER_ID, userId)
-        
-        // Guardar si estábamos en medio de inicialización
-        outState.putBoolean(KEY_LAST_INIT_STATE, isInitializing.get())
-    }
-    
-    override fun handleOnRestoreInstanceState(savedInstanceState: Bundle?) {
-        super.handleOnRestoreInstanceState(savedInstanceState)
-        
-        savedInstanceState?.let { bundle ->
-            // Restaurar estado de permisos
-            val savedAliases = bundle.getStringArrayList(KEY_PENDING_PERM_ALIASES)
-            if (savedAliases != null && savedAliases.isNotEmpty()) {
-                pendingPermissionAliases.clear()
-                pendingPermissionAliases.addAll(savedAliases)
-                currentPermissionIndex = bundle.getInt(KEY_CURRENT_PERM_INDEX, 0)
-                retryCount = bundle.getInt(KEY_RETRY_COUNT, 0)
-                userId = bundle.getString(KEY_USER_ID, "")
-                isRestoredFromState = true
-                
-                napLog("BLE_STATE_RESTORE", "Estado restaurado: ${pendingPermissionAliases.size} permisos pendientes, índice $currentPermissionIndex")
-                
-                // Si hay un call guardado (savedCall), restaurarlo
-                savedCall?.let { call ->
-                    napLog("BLE_STATE_RESTORE", "Restaurando call de permisos pendiente")
-                    handler.postDelayed({
-                        if (currentPermissionIndex < pendingPermissionAliases.size) {
-                            requestNextPermission(call)
-                        } else {
-                            reportFinalPermissionsResult(call)
-                        }
-                    }, 500)
-                }
-            }
-        }
-    }
-
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
         if (!validateSystemHealth(call, "status_check")) return
         
         if (!canAccessBluetooth()) {
-            napLog(NAP_BLE_WAITING_PERMISSIONS, "Permisos no concedidos, solicitando...")
+            napLog(NAP_BLE_WAITING_PERMISSIONS, "Permisos no concedidos")
             pendingCalls["btStateCheck"] = call
             requestPermissionForAlias("bluetoothConnect", call, "btStatePermissionCallback")
             return
@@ -717,7 +598,7 @@ class NexoBlePlugin : Plugin() {
         if (canAccessBluetooth()) {
             reportBluetoothState(call)
         } else {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Usuario rechazó permisos BLUETOOTH_CONNECT")
+            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Usuario rechazó permisos")
             pendingCalls.remove("btStateCheck")
         }
     }
@@ -753,8 +634,6 @@ class NexoBlePlugin : Plugin() {
             else -> "UNKNOWN"
         })
         result.put("health", getSystemHealthReport())
-        
-        napLog("BLE_STATE_REPORT", "BT State reported: ${adapter?.isEnabled}")
         call.resolve(result)
     }
     
@@ -765,7 +644,6 @@ class NexoBlePlugin : Plugin() {
             put("batteryTemp", getBatteryTemp())
             put("isDozeMode", isDozeMode())
             put("isAirplaneMode", isAirplaneMode())
-            put("thermalCooldownActive", thermalCooldownActive)
             put("canAccessBluetooth", canAccessBluetooth())
         }
     }
@@ -778,8 +656,7 @@ class NexoBlePlugin : Plugin() {
         result.put("canAdvertise", hasAdvertisePermission() && bluetoothAdapter?.isEnabled == true)
         result.put("isAdvertising", isAdvertising)
         result.put("bluetoothEnabled", bluetoothAdapter?.isEnabled == true)
-        result.put("version", "2.5-PROD-NAP")
-        result.put("isRestoredFromState", isRestoredFromState)
+        result.put("version", "2.5.1-HOTFIX-NAP")
         call.resolve(result)
     }
 
@@ -806,8 +683,7 @@ class NexoBlePlugin : Plugin() {
         if (!acquireInitLock()) {
             val timeWaiting = System.currentTimeMillis() - lastInitAttempt
             napError(call, NAP_BLE_CONCURRENT_INIT, 
-                "Inicialización ya en progreso (esperando ${timeWaiting}ms). Use reintentar después.", 
-                "WARN", recoverable = true)
+                "Inicialización en progreso (${timeWaiting}ms)", "WARN", recoverable = true)
             return
         }
         
@@ -824,31 +700,31 @@ class NexoBlePlugin : Plugin() {
             }
             
             if (bluetoothAdapter?.isEnabled == true && gattServer != null) {
-                napLog(NAP_BLE_ALREADY_INITIALIZED, "BLE ya inicializado, retornando estado actual", "WARN")
+                napLog(NAP_BLE_ALREADY_INITIALIZED, "BLE ya inicializado", "WARN")
                 val result = JSObject()
                 result.put("userId", userId)
                 result.put("status", "already_initialized")
-                result.put("version", "2.5-PROD-NAP")
+                result.put("version", "2.5.1-HOTFIX-NAP")
                 result.put("native", true)
                 result.put("health", getSystemHealthReport())
                 call.resolve(result)
                 return
             }
             
-            napLog(NAP_BLE_INIT_001, "[1/7] Verificando permisos CORE (Android 14)...")
+            napLog(NAP_BLE_INIT_001, "[1/7] Verificando permisos CORE...")
             
             if (!hasCorePermissions()) {
-                napLog(NAP_BLE_WAITING_PERMISSIONS, "Permisos CORE pendientes (SCAN+CONNECT)...")
+                napLog(NAP_BLE_WAITING_PERMISSIONS, "Permisos CORE pendientes")
                 pendingCalls["init"] = call
                 checkAndRequestCorePermissions(call, "initializePermissionCallback")
                 return
             }
             
-            napLog(NAP_BLE_INIT_002, "[2/7] Permisos CORE concedidos (SCAN+CONNECT)")
+            napLog(NAP_BLE_INIT_002, "[2/7] Permisos CORE concedidos")
             performInitialization(call)
             
         } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_INIT_FAILED, "Excepción inesperada: ${e.message}", "ERROR")
+            napError(call, NAP_BLE_ERR_INIT_FAILED, "Excepción: ${e.message}", "ERROR")
             releaseInitLock()
         }
     }
@@ -859,7 +735,7 @@ class NexoBlePlugin : Plugin() {
             napLog(NAP_BLE_INIT_002, "[2/7] Permisos CORE concedidos vía callback")
             performInitialization(call)
         } else {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Permisos Bluetooth CORE requeridos rechazados")
+            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Permisos CORE rechazados")
             pendingCalls.remove("init")
             releaseInitLock()
         }
@@ -925,24 +801,24 @@ class NexoBlePlugin : Plugin() {
                 }
                 
                 BluetoothAdapter.STATE_OFF -> {
-                    napLog(NAP_BLE_INIT_005, "[5/7] BT apagado, solicitando activación al usuario...")
+                    napLog(NAP_BLE_INIT_005, "[5/7] BT apagado, solicitando activación...")
                     pendingCalls["init"] = call
                     requestBluetoothActivation(call)
                 }
                 
                 BluetoothAdapter.STATE_TURNING_ON -> {
-                    napLog(NAP_BLE_WAITING_BT_ON, "Esperando a que BT termine de encenderse...")
+                    napLog(NAP_BLE_WAITING_BT_ON, "Esperando BT encendido...")
                     pendingCalls["init"] = call
                     handler.postDelayed({
                         if (!isInitializing.get() && pendingCalls.containsKey("init")) {
-                            napLog(NAP_BLE_RETRY_ATTEMPT, "Reintentando después de espera TURNING_ON")
+                            napLog(NAP_BLE_RETRY_ATTEMPT, "Reintentando tras TURNING_ON")
                             performInitialization(call)
                         }
                     }, 1000)
                 }
                 
                 BluetoothAdapter.STATE_TURNING_OFF -> {
-                    napError(call, NAP_BLE_ERR_DISABLED, "Bluetooth está apagándose, no se puede inicializar ahora", recoverable = true)
+                    napError(call, NAP_BLE_ERR_DISABLED, "Bluetooth apagándose", recoverable = true)
                     pendingCalls.remove("init")
                     releaseInitLock()
                 }
@@ -954,11 +830,11 @@ class NexoBlePlugin : Plugin() {
                 }
             }
         } catch (e: OutOfMemoryError) {
-            napError(call, NAP_BLE_ERR_MEMORY_PRESSURE, "Memoria insuficiente para inicializar BLE", "ERROR")
+            napError(call, NAP_BLE_ERR_MEMORY_PRESSURE, "Memoria insuficiente", "ERROR")
             pendingCalls.remove("init")
             releaseInitLock()
         } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_INIT_FAILED, "Error crítico: ${e.message}", "ERROR")
+            napError(call, NAP_BLE_ERR_INIT_FAILED, "Error: ${e.message}", "ERROR")
             pendingCalls.remove("init")
             releaseInitLock()
         }
@@ -971,15 +847,15 @@ class NexoBlePlugin : Plugin() {
             
             val canAdv = hasAdvertisePermission()
             
-            napLog(NAP_BLE_INIT_007, "[7/7] BLE Native Layer inicializado completamente")
-            napLog(NAP_BLE_READY, "🚀 NAP-BLE v2.5-PROD Ready [Native:true]")
+            napLog(NAP_BLE_INIT_007, "[7/7] BLE Native Layer inicializado")
+            napLog(NAP_BLE_READY, "🚀 NAP-BLE v2.5.1-HOTFIX Ready")
             
             if (!canAdv) {
-                napLog(NAP_BLE_PARTIAL_PERMISSIONS, "⚠️ Visibilidad desactivada: Permiso ADVERTISE no concedido. Modo 'escucha' activo.", "WARN")
+                napLog(NAP_BLE_PARTIAL_PERMISSIONS, "⚠️ Visibilidad desactivada (sin permiso ADVERTISE)", "WARN")
                 
                 val warningData = JSObject()
                 warningData.put("type", "warning")
-                warningData.put("message", "⚠️ Visibilidad desactivada - Conceda permiso 'Dispositivos cercanos' en Configuración para activar")
+                warningData.put("message", "⚠️ Visibilidad desactivada - Conceda permiso en Configuración")
                 warningData.put("code", "BLE_ADVERTISE_WARNING")
                 warningData.put("canScan", true)
                 warningData.put("canAdvertise", false)
@@ -989,13 +865,12 @@ class NexoBlePlugin : Plugin() {
             val result = JSObject()
             result.put("userId", userId)
             result.put("status", "initialized")
-            result.put("version", "2.5-PROD-NAP")
+            result.put("version", "2.5.1-HOTFIX-NAP")
             result.put("bluetoothState", BluetoothAdapter.STATE_ON)
             result.put("native", true)
             result.put("napProtocol", "v2.5")
             result.put("canAdvertise", canAdv)
             result.put("health", getSystemHealthReport())
-            result.put("isRestoredFromState", isRestoredFromState)
             call.resolve(result)
             
             retryCount = 0
@@ -1005,14 +880,12 @@ class NexoBlePlugin : Plugin() {
         } catch (e: IllegalStateException) {
             if (retryCount < MAX_RETRY_ATTEMPTS) {
                 retryCount++
-                napLog(NAP_BLE_ERR_GATT_CONFLICT, "Conflicto GATT detectado, reintento $retryCount/$MAX_RETRY_ATTEMPTS en 2s...", "WARN")
+                napLog(NAP_BLE_ERR_GATT_CONFLICT, "Conflicto GATT, reintento $retryCount/$MAX_RETRY_ATTEMPTS", "WARN")
                 handler.postDelayed({
                     setupGattServerAndComplete(call)
                 }, 2000)
             } else {
-                napError(call, NAP_BLE_ERR_GATT_CONFLICT, 
-                    "Conflicto persistente con otro servicio BLE. Cierre otras apps y reintente.", 
-                    "ERROR", recoverable = true)
+                napError(call, NAP_BLE_ERR_GATT_CONFLICT, "Conflicto persistente con otro servicio BLE", "ERROR", recoverable = true)
                 pendingCalls.remove("init")
                 releaseInitLock()
             }
@@ -1032,7 +905,7 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) {
             bridge?.releaseCall(call)
             pendingCalls.remove("init")
-            napError(call, NAP_BLE_ERR_DISABLED, "No se pudo solicitar activación BT: ${e.message}")
+            napError(call, NAP_BLE_ERR_DISABLED, "No se pudo solicitar activación: ${e.message}")
             releaseInitLock()
         }
     }
@@ -1044,12 +917,12 @@ class NexoBlePlugin : Plugin() {
             val call = savedLastCall ?: pendingCalls["init"]
             
             if (resultCode == Activity.RESULT_OK) {
-                napLog(NAP_BLE_INIT_005, "Usuario activó BT vía diálogo sistema")
+                napLog(NAP_BLE_INIT_005, "Usuario activó BT vía diálogo")
                 handler.postDelayed({
                     call?.let { setupGattServerAndComplete(it) }
                 }, 600)
             } else {
-                napLog(NAP_BLE_ERR_DISABLED, "Usuario rechazó activar Bluetooth (code: $resultCode)", "WARN")
+                napLog(NAP_BLE_ERR_DISABLED, "Usuario rechazó activar BT (code: $resultCode)", "WARN")
                 call?.reject(NAP_BLE_ERR_DISABLED, "Bluetooth activation denied")
                 bridge?.releaseCall(call)
                 pendingCalls.remove("init")
@@ -1073,7 +946,7 @@ class NexoBlePlugin : Plugin() {
         
         if (!hasAdvertisePermission()) {
             napError(call, NAP_BLE_ADV_NO_PERMISSION, 
-                "⚠️ Visibilidad desactivada: Permiso BLUETOOTH_ADVERTISE requerido. Vaya a Configuración > Apps > NEXO > Permisos > Dispositivos cercanos.", 
+                "⚠️ Visibilidad desactivada: Permiso BLUETOOTH_ADVERTISE requerido", 
                 "WARN", recoverable = true)
             return
         }
@@ -1086,7 +959,7 @@ class NexoBlePlugin : Plugin() {
         if (hasAdvertisePermission()) {
             startAdvertisingInternal(call)
         } else {
-            napError(call, NAP_BLE_ADV_NO_PERMISSION, "⚠️ Visibilidad desactivada: Permiso BLUETOOTH_ADVERTISE requerido", "WARN", recoverable = true)
+            napError(call, NAP_BLE_ADV_NO_PERMISSION, "⚠️ Visibilidad desactivada: Permiso requerido", "WARN", recoverable = true)
         }
     }
 
@@ -1117,7 +990,7 @@ class NexoBlePlugin : Plugin() {
         advertiseCallback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                 isAdvertising = true
-                napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado [Native:true]")
+                napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado")
                 val result = JSObject()
                 result.put("active", true)
                 call.resolve(result)
@@ -1137,18 +1010,18 @@ class NexoBlePlugin : Plugin() {
         } catch (e: SecurityException) {
             napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException al iniciar advertising")
         } catch (e: IllegalStateException) {
-            napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, "Adapter no listo para advertising", recoverable = true)
+            napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, "Adapter no listo", recoverable = true)
         }
     }
     
     private fun getAdvertiseErrorMessage(code: Int): String {
         return when(code) {
             AdvertiseCallback.ADVERTISE_FAILED_DATA_TOO_LARGE -> "Datos demasiado grandes"
-            AdvertiseCallback.ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "Demasiados anunciantes en el sistema"
+            AdvertiseCallback.ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "Demasiados anunciantes"
             AdvertiseCallback.ADVERTISE_FAILED_ALREADY_STARTED -> "Ya iniciado"
             AdvertiseCallback.ADVERTISE_FAILED_INTERNAL_ERROR -> "Error interno BT"
             AdvertiseCallback.ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "Feature no soportado"
-            else -> "Código desconocido: $code"
+            else -> "Código: $code"
         }
     }
 
@@ -1201,7 +1074,7 @@ class NexoBlePlugin : Plugin() {
 
     private fun startScanInternal(call: PluginCall) {
         if (isScanning) {
-            napLog("BLE_SCAN_ALREADY", "Scan ya activo, deteniendo y reiniciando...", "WARN")
+            napLog("BLE_SCAN_ALREADY", "Scan ya activo, reiniciando...", "WARN")
             stopScanInternal()
         }
         
@@ -1211,7 +1084,7 @@ class NexoBlePlugin : Plugin() {
         }
         
         val scanner = bluetoothAdapter?.bluetoothLeScanner ?: run {
-            napError(call, NAP_BLE_ERR_SCAN_FAILED, "Scanner no disponible - BT podría estar apagándose", recoverable = true)
+            napError(call, NAP_BLE_ERR_SCAN_FAILED, "Scanner no disponible", recoverable = true)
             return
         }
 
@@ -1238,15 +1111,15 @@ class NexoBlePlugin : Plugin() {
             override fun onScanFailed(errorCode: Int) {
                 val errorMsg = when(errorCode) {
                     SCAN_FAILED_ALREADY_STARTED -> "Scan ya iniciado"
-                    SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "Registro de app falló (demasiadas apps escaneando)"
+                    SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "Registro falló (demasiadas apps)"
                     SCAN_FAILED_INTERNAL_ERROR -> "Error interno"
                     SCAN_FAILED_FEATURE_UNSUPPORTED -> "Feature no soportado"
-                    SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "Recursos hardware agotados (thermal?)"
-                    SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "Escaneando demasiado frecuente"
-                    else -> "Error desconocido: $errorCode"
+                    SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "Recursos agotados"
+                    SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "Escaneando muy frecuente"
+                    else -> "Error: $errorCode"
                 }
                 
-                napLog(NAP_BLE_ERR_SCAN_FAILED, "Scan falló: $errorMsg (code: $errorCode)", "ERROR")
+                napLog(NAP_BLE_ERR_SCAN_FAILED, "Scan falló: $errorMsg", "ERROR")
                 
                 val isRecoverable = errorCode in listOf(
                     SCAN_FAILED_ALREADY_STARTED,
@@ -1257,9 +1130,7 @@ class NexoBlePlugin : Plugin() {
                 val eventData = JSObject()
                 eventData.put("error", errorCode)
                 eventData.put("errorMessage", errorMsg)
-                eventData.put("napCode", NAP_BLE_ERR_SCAN_FAILED)
                 eventData.put("recoverable", isRecoverable)
-                eventData.put("suggestion", if (isRecoverable) "Espere 5 segundos y reintente" else "Reinicie Bluetooth")
                 notifyListeners("onScanFailed", eventData)
             }
         }
@@ -1267,14 +1138,14 @@ class NexoBlePlugin : Plugin() {
         try {
             scanner.startScan(listOf(filter), settings, scanCallback)
             isScanning = true
-            napLog(NAP_BLE_SCAN_STARTED, "Scan iniciado [Native:true]")
+            napLog(NAP_BLE_SCAN_STARTED, "Scan iniciado")
             call.resolve()
         } catch (e: SecurityException) {
             napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException al iniciar scan")
         } catch (e: IllegalStateException) {
-            napError(call, NAP_BLE_ERR_SCAN_FAILED, "BT no está listo para scan", recoverable = true)
+            napError(call, NAP_BLE_ERR_SCAN_FAILED, "BT no listo", recoverable = true)
         } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_SCAN_FAILED, "Error inesperado: ${e.message}")
+            napError(call, NAP_BLE_ERR_SCAN_FAILED, "Error: ${e.message}")
         }
     }
 
@@ -1356,20 +1227,16 @@ class NexoBlePlugin : Plugin() {
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
                         if (status == BluetoothGatt.GATT_SUCCESS) {
-                            napLog(NAP_BLE_CONNECTED, "Conectado a $deviceId [Native:true]")
+                            napLog(NAP_BLE_CONNECTED, "Conectado a $deviceId")
                             gatt?.requestMtu(MTU_DEFAULT)
                             connectedDevices[deviceId] = device
                             notifyConnectionState(deviceId, "connected")
                         } else {
                             val isAuthFail = status == 133 || status == 101
-                            napLog(NAP_BLE_ERR_CONNECTION_FAILED, 
-                                "Conexión falló post-connect (status: $status)", 
-                                if (isAuthFail) "WARN" else "ERROR")
+                            napLog(NAP_BLE_ERR_CONNECTION_FAILED, "Conexión falló (status: $status)", if (isAuthFail) "WARN" else "ERROR")
                             
                             if (isAuthFail) {
-                                handler.postDelayed({
-                                    device.createBond()
-                                }, 500)
+                                handler.postDelayed({ device.createBond() }, 500)
                             }
                             
                             cleanupConnection(deviceId)
@@ -1377,7 +1244,7 @@ class NexoBlePlugin : Plugin() {
                         }
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
-                        napLog("BLE_DISCONNECTED", "Desconectado de $deviceId (status: $status)")
+                        napLog("BLE_DISCONNECTED", "Desconectado de $deviceId")
                         cleanupConnection(deviceId)
                         notifyConnectionState(deviceId, "disconnected")
                     }
@@ -1386,10 +1253,10 @@ class NexoBlePlugin : Plugin() {
 
             override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
-                    napLog("BLE_MTU", "MTU negociado: $mtu")
+                    napLog("BLE_MTU", "MTU: $mtu")
                     gatt?.discoverServices()
                 } else {
-                    napLog("BLE_MTU_ERR", "MTU negotiation failed, usando default", "WARN")
+                    napLog("BLE_MTU_ERR", "MTU failed, usando default", "WARN")
                     gatt?.discoverServices()
                 }
             }
@@ -1416,7 +1283,7 @@ class NexoBlePlugin : Plugin() {
                         eventData.put("services", servicesArray)
                         notifyListeners("onServicesDiscovered", eventData)
                     } catch (e: SecurityException) {
-                        napLog("BLE_SVC_ERR", "SecurityException accessing services", "ERROR")
+                        napLog("BLE_SVC_ERR", "SecurityException", "ERROR")
                     }
                 } else {
                     napLog("BLE_SVC_FAIL", "Service discovery failed: $status", "ERROR")
@@ -1447,12 +1314,12 @@ class NexoBlePlugin : Plugin() {
             napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "No se pudo crear conexión GATT")
             return
         } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_CONNECTION_FAILED, "Error creando GATT: ${e.message}")
+            napError(call, NAP_BLE_ERR_CONNECTION_FAILED, "Error: ${e.message}")
             return
         }
         
         if (gatt == null) {
-            napError(call, NAP_BLE_ERR_CONNECTION_FAILED, "GATT es null - recursos agotados?", recoverable = true)
+            napError(call, NAP_BLE_ERR_CONNECTION_FAILED, "GATT es null", recoverable = true)
             return
         }
         
@@ -1498,7 +1365,7 @@ class NexoBlePlugin : Plugin() {
                 gatt.disconnect()
                 gatt.close()
             } catch (e: Exception) {
-                napLog("BLE_CLEANUP_ERR", "Error cerrando GATT: ${e.message}", "WARN")
+                napLog("BLE_CLEANUP_ERR", "Error: ${e.message}", "WARN")
             }
         }
         gattClients.remove(deviceId)
@@ -1531,12 +1398,12 @@ class NexoBlePlugin : Plugin() {
             ByteArray(dataArray.length()) { i ->
                 val value = dataArray.getInt(i)
                 if (value < 0 || value > 255) {
-                    throw IllegalArgumentException("Byte value out of range at index $i: $value")
+                    throw IllegalArgumentException("Byte out of range at $i: $value")
                 }
                 (value and 0xFF).toByte()
             }
         } catch (e: Exception) {
-            napError(call, ERR_INVALID_PARAMS, "Array de datos inválido: ${e.message}")
+            napError(call, ERR_INVALID_PARAMS, "Array inválido: ${e.message}")
             return
         }
 
@@ -1547,14 +1414,14 @@ class NexoBlePlugin : Plugin() {
 
         try {
             sendChunkedMessage(deviceId, bytes)
-            napLog(NAP_BLE_MESSAGE_SENT, "Mensaje enviado: ${bytes.size} bytes a $deviceId")
+            napLog(NAP_BLE_MESSAGE_SENT, "Mensaje: ${bytes.size} bytes a $deviceId")
             val result = JSObject()
             result.put("success", true)
             result.put("bytesSent", bytes.size)
             result.put("chunks", (bytes.size + CHUNK_SIZE - 1) / CHUNK_SIZE)
             call.resolve(result)
         } catch (e: Exception) {
-            napError(call, "SEND_FAILED", "Error enviando: ${e.message}", recoverable = true)
+            napError(call, "SEND_FAILED", "Error: ${e.message}", recoverable = true)
         }
     }
 
@@ -1815,24 +1682,24 @@ class NexoBlePlugin : Plugin() {
     
     private fun ensureInitialized(call: PluginCall): Boolean {
         if (!canAccessBluetooth()) {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Permisos Bluetooth no concedidos")
+            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Permisos no concedidos")
             return false
         }
         
         if (bluetoothAdapter == null) {
-            napError(call, NAP_BLE_ERR_NOT_SUPPORTED, "Bluetooth no inicializado. Llame a initialize() primero.")
+            napError(call, NAP_BLE_ERR_NOT_SUPPORTED, "Bluetooth no inicializado")
             return false
         }
         
         val isEnabled = try {
             bluetoothAdapter!!.isEnabled
         } catch (e: SecurityException) {
-            napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException checking BT enabled", "ERROR")
+            napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException", "ERROR")
             false
         }
         
         if (!isEnabled) {
-            napError(call, NAP_BLE_ERR_DISABLED, "Bluetooth está desactivado", recoverable = true)
+            napError(call, NAP_BLE_ERR_DISABLED, "Bluetooth desactivado", recoverable = true)
             return false
         }
         
@@ -1840,7 +1707,7 @@ class NexoBlePlugin : Plugin() {
     }
     
     override fun handleOnDestroy() {
-        napLog("BLE_DESTROY", "Destruyendo NAP-BLE Plugin...")
+        napLog("BLE_DESTROY", "Destruyendo NAP-BLE Plugin")
         
         try {
             context.unregisterReceiver(systemStateReceiver)
