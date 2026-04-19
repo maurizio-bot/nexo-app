@@ -1,11 +1,10 @@
 /**
- * BLE Permissions Manager v2.1-HOTFIX
- 
+ * BLE Permissions Manager v2.1-HOTFIX-2
  * Sin alerts bloqueantes - Solo console logging
+ * FIX: Removida dependencia @capacitor/app, usando API nativa
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { App } from '@capacitor/app';
 
 const NexoBLE = registerPlugin('NexoBLE');
 
@@ -308,7 +307,7 @@ export function setVerboseLogging(enabled) {
 
 /**
  * NUEVO: Espera a que el usuario regrese de la configuración del sistema
- * con timeout y verificación periódica del estado BLE
+ * FIX: Usa API nativa del navegador (visibilitychange/focus) en lugar de @capacitor/app
  * @param {Object} options - Configuración del watcher
  * @param {number} options.timeoutMs - Timeout en ms (default: 30000)
  * @param {number} options.pollingIntervalMs - Intervalo de polling en ms (default: 2000)
@@ -319,16 +318,13 @@ export function waitForSettingsReturn(options = {}) {
   const pollingIntervalMs = options.pollingIntervalMs || 2000;
   
   return new Promise((resolve, reject) => {
-    let resumeListener = null;
     let pollingInterval = null;
     let timeoutId = null;
     let isResolved = false;
+    let visibilityHandler = null;
+    let focusHandler = null;
     
     const cleanup = () => {
-      if (resumeListener) {
-        resumeListener.remove();
-        resumeListener = null;
-      }
       if (pollingInterval) {
         clearInterval(pollingInterval);
         pollingInterval = null;
@@ -336,6 +332,14 @@ export function waitForSettingsReturn(options = {}) {
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
+      }
+      if (visibilityHandler) {
+        document.removeEventListener('visibilitychange', visibilityHandler);
+        visibilityHandler = null;
+      }
+      if (focusHandler) {
+        window.removeEventListener('focus', focusHandler);
+        focusHandler = null;
       }
     };
     
@@ -363,13 +367,24 @@ export function waitForSettingsReturn(options = {}) {
       }
     };
     
-    // Listener nativo de resume (cuando vuelve de la configuración del sistema)
-    resumeListener = App.addListener('resume', () => {
-      napLog(NAP_CODES.SETTINGS_RETURN, 'App resumida desde configuración sistema', 'INFO');
-      checkAndResolve('resume');
-    });
+    // Listener nativo: cuando el usuario vuelve a la app (más confiable que 'resume' de Capacitor)
+    visibilityHandler = () => {
+      if (!document.hidden) {
+        napLog(NAP_CODES.SETTINGS_RETURN, 'App visible nuevamente (visibilitychange)', 'INFO');
+        // Delay pequeño para permitir que el sistema actualice el estado BLE
+        setTimeout(() => checkAndResolve('visibility'), 500);
+      }
+    };
+    document.addEventListener('visibilitychange', visibilityHandler);
     
-    // Polling cada 2 segundos por si el resume no dispara (edge cases)
+    // Backup: window focus (por si visibilitychange no dispara en algunos dispositivos)
+    focusHandler = () => {
+      napLog(NAP_CODES.SETTINGS_RETURN, 'Ventana enfocada (focus)', 'DEBUG');
+      checkAndResolve('focus');
+    };
+    window.addEventListener('focus', focusHandler);
+    
+    // Polling cada 2 segundos como fallback adicional
     pollingInterval = setInterval(() => {
       checkAndResolve('polling');
     }, pollingIntervalMs);
@@ -395,12 +410,10 @@ export function waitForSettingsReturn(options = {}) {
 
 /**
  * NUEVO: Cancela un watcher activo de settings return
- * (Útil si el usuario cancela manualmente antes del timeout)
  */
-export function cancelSettingsWatcher(watcherPromise) {
-  // Nota: Como no retornamos el cleanup directamente, 
-  // el usuario debe manejar el reject del promise para limpiar
-  napLog(NAP_CODES.INIT, 'Cancelando settings watcher (si implementado)', 'DEBUG');
+export function cancelSettingsWatcher() {
+  // La cancelación se maneja automáticamente mediante el reject del promise
+  napLog(NAP_CODES.INIT, 'Settings watcher cancelado (si había uno activo)', 'DEBUG');
 }
 
 /**
@@ -442,7 +455,6 @@ window.NEXO_BLE_PERMISSIONS = {
   checkBLEStatus,
   setVerboseLogging,
   NAP_CODES,
-  // NUEVAS FUNCIONES EXPORTADAS:
   waitForSettingsReturn,
   cancelSettingsWatcher,
   requestAndWaitForSettings
