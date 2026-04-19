@@ -16,13 +16,15 @@ import android.os.ParcelUuid
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultCallback
 import androidx.core.content.ContextCompat
 import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import com.getcapacitor.annotation.ActivityCallback
 import com.nexo.ble.model.NexoGattService
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -32,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Force commit - Build #710
+// Build #718 FIX - Type corrections NAP
 
 
 @CapacitorPlugin(
@@ -943,15 +945,15 @@ class NexoBlePlugin : Plugin() {
                 
                 napLog(NAP_BLE_MESSAGE_SENT, "Mensaje completo recibido de $address: ${completeMessage.size} bytes")
                 
-                // FIX: Usar JSONArray de org.json y convertir a lista manualmente para JSObject
-                val jsonArray = JSONArray()
+                // FIX: Usar JSArray de Capacitor en lugar de org.json.JSONArray
+                val jsArray = JSArray()
                 for (byte in completeMessage) {
-                    jsonArray.put(byte.toInt() and 0xFF)
+                    jsArray.put(byte.toInt() and 0xFF)
                 }
                 
                 val eventData = JSObject()
                 eventData.put("from", address)
-                eventData.put("data", jsonArray)
+                eventData.put("data", jsArray)
                 eventData.put("size", completeMessage.size)
                 notifyListeners("onMessageReceived", eventData)
             }
@@ -1125,20 +1127,25 @@ class NexoBlePlugin : Plugin() {
     fun sendMessage(call: PluginCall) {
         val address = call.getString("address")
         val message = call.getString("message")
-        val dataArray = call.getArray("data", JSONArray())
+        // FIX: Usar JSArray en lugar de org.json.JSONArray
+        val dataArray = call.getArray("data", JSArray())
         
         if (address == null) {
             napError(call, ERR_INVALID_PARAMS, "address requerido")
             return
         }
         
-        // FIX: Manejo correcto de JSONArray de org.json
+        // FIX: Manejo correcto de JSArray de Capacitor
         val payload = if (message != null) {
             message.toByteArray(Charsets.UTF_8)
         } else {
             val len = dataArray?.length() ?: 0
             ByteArray(len) { i -> 
-                (dataArray?.optInt(i, 0) ?: 0).toByte() 
+                try {
+                    (dataArray?.get(i) as? Number)?.toInt()?.toByte() ?: 0
+                } catch (e: Exception) {
+                    0.toByte()
+                }
             }
         }
         
