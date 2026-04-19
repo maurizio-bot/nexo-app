@@ -1,6 +1,6 @@
 /**
- * NEXO Setup Wizard v2.1-HOTFIX
- * Compatible con SetupManager v2.1 (con o sin @capacitor/app)
+ * NEXO Setup Wizard v2.2-NAP
+ * Fixes: Resume listener + BT state polling + isAwaitingSettingsReturn fix
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -16,10 +16,13 @@ export class SetupWizard {
     this.errorCount = 0;
     this.isAwaitingSettingsReturn = false;
     this.settingsCheckInterval = null;
+    this.btCheckInterval = null;
     window.NEXO_WIZARD = this;
     
     this.handlePermissionsGranted = this.handlePermissionsGranted.bind(this);
     this.handlePermissionsDenied = this.handlePermissionsDenied.bind(this);
+    this.handleAppResume = this.handleAppResume.bind(this);
+    this.handleBluetoothStateChange = this.handleBluetoothStateChange.bind(this);
   }
 
   async start() {
@@ -39,6 +42,67 @@ export class SetupWizard {
   setupGlobalListeners() {
     window.addEventListener('nexo-permissions-granted', this.handlePermissionsGranted);
     window.addEventListener('nexo-permissions-denied', this.handlePermissionsDenied);
+    
+    // [REM FIX] Listener nativo de estado Bluetooth
+    if (window.Capacitor?.Plugins?.NexoBLE) {
+      window.Capacitor.Plugins.NexoBLE.addListener('onBluetoothStateChanged', this.handleBluetoothStateChange);
+    }
+    
+    // [REM FIX] Fallback cuando vuelve de configuración del sistema
+    document.addEventListener('visibilitychange', this.handleAppResume);
+  }
+  
+  handleBluetoothStateChange(state) {
+    console.log(NAP_WIZARD, 'BT State Change:', state);
+    
+    if (state.stateName === 'ON' && this.isAwaitingSettingsReturn) {
+      this.isAwaitingSettingsReturn = false;
+      this.clearBtCheckInterval();
+      this.renderSuccessTransition();
+      setTimeout(() => this.onComplete(), 800);
+    }
+  }
+  
+  async handleAppResume() {
+    if (document.visibilityState !== 'visible') return;
+    
+    if (this.isAwaitingSettingsReturn) {
+      console.log(NAP_WIZARD, 'App resumed - verifying Bluetooth state');
+      // Dar 500ms para que el sistema estabilice el adapter
+      setTimeout(() => this.verifyBluetoothAfterReturn(), 500);
+    }
+  }
+  
+  async verifyBluetoothAfterReturn() {
+    try {
+      const status = await checkBLEStatus();
+      
+      if (status.bluetoothEnabled) {
+        this.isAwaitingSettingsReturn = false;
+        this.clearBtCheckInterval();
+        this.renderSuccessTransition();
+        setTimeout(() => this.onComplete(), 800);
+      } else {
+        // Bluetooth sigue apagado, restaurar botón para reintentar
+        const btn = document.getElementById('btn-bt-settings');
+        if (btn) {
+          btn.textContent = 'Ir a Configuración Bluetooth';
+          btn.style.opacity = '1';
+          btn.style.pointerEvents = 'auto';
+        }
+        this.isAwaitingSettingsReturn = false;
+        this.clearBtCheckInterval();
+      }
+    } catch (e) {
+      console.error(NAP_WIZARD, 'Error verifying BT after return:', e);
+    }
+  }
+  
+  clearBtCheckInterval() {
+    if (this.btCheckInterval) {
+      clearInterval(this.btCheckInterval);
+      this.btCheckInterval = null;
+    }
   }
   
   async handlePermissionsGranted(event) {
@@ -64,7 +128,7 @@ export class SetupWizard {
     
     if (this.isAwaitingSettingsReturn) {
       this.isAwaitingSettingsReturn = false;
-      this.renderPermissions(true); // Mostrar mensaje de "aún faltan"
+      this.renderPermissions(true);
     }
   }
 
@@ -230,6 +294,7 @@ export class SetupWizard {
   async handleOpenSettings() {
     this.isAwaitingSettingsReturn = true;
     await SetupManager.markAwaitingSettingsReturn();
+    await SetupManager.openSettings();
     
     const btn = document.getElementById('btn-settings-manual');
     if (btn) {
@@ -238,10 +303,29 @@ export class SetupWizard {
       btn.style.pointerEvents = 'none';
     }
     
-    await SetupManager.openAppSettings();
+    this.settingsCheckInterval = setInterval(async () => {
+      if (!this.isAwaitingSettingsReturn) {
+        clearInterval(this.settingsCheckInterval);
+        return;
+      }
+      
+      try {
+        const status = await SetupManager.checkPermissionsRealtime();
+        
+        if (status.granted) {
+          this.isAwaitingSettingsReturn = false;
+          clearInterval(this.settingsCheckInterval);
+          this.renderSuccessTransition();
+          setTimeout(() => this.onComplete(), 800);
+        }
+      } catch (e) {}
+    }, 1500);
   }
 
+  // [REM FIX] Corregido: Ahora establece isAwaitingSettingsReturn = true
+  // y agrega polling + timeout de seguridad
   async handleOpenBluetoothSettings() {
+    this.isAwaitingSettingsReturn = true;  // [REM FIX] Faltaba esta línea
     await SetupManager.markAwaitingSettingsReturn();
     await SetupManager.openBluetoothSettings();
     
@@ -251,13 +335,57 @@ export class SetupWizard {
       btn.style.opacity = '0.6';
       btn.style.pointerEvents = 'none';
     }
+    
+    // [REM FIX] Verificación periódica cada 2 segundos
+    this.btCheckInterval = setInterval(async () => {
+      if (!this.isAwaitingSettingsReturn) {
+        this.clearBtCheckInterval();
+        return;
+      }
+      
+      try {
+        const status = await checkBLEStatus();
+        if (status.bluetoothEnabled) {
+          this.isAwaitingSettingsReturn = false;
+          this.clearBtCheckInterval();
+          this.renderSuccessTransition();
+          setTimeout(() => this.onComplete(), 800);
+        }
+      } catch (e) {
+        // Silenciar errores de polling
+      }
+    }, 2000);
+    
+    // [REM FIX] Timeout máximo de seguridad: 30 segundos
+    setTimeout(() => {
+      if (this.isAwaitingSettingsReturn) {
+        this.isAwaitingSettingsReturn = false;
+        this.clearBtCheckInterval();
+        const btnRetry = document.getElementById('btn-bt-settings');
+        if (btnRetry) {
+          btnRetry.textContent = 'Ir a Configuración Bluetooth';
+          btnRetry.style.opacity = '1';
+          btnRetry.style.pointerEvents = 'auto';
+        }
+      }
+    }, 30000);
   }
-  
+
   destroy() {
     window.removeEventListener('nexo-permissions-granted', this.handlePermissionsGranted);
     window.removeEventListener('nexo-permissions-denied', this.handlePermissionsDenied);
-    SetupManager.cleanup();
+    document.removeEventListener('visibilitychange', this.handleAppResume);
+    
+    if (window.Capacitor?.Plugins?.NexoBLE) {
+      window.Capacitor.Plugins.NexoBLE.removeAllListeners();
+    }
+    
+    if (this.settingsCheckInterval) {
+      clearInterval(this.settingsCheckInterval);
+    }
+    this.clearBtCheckInterval();
+    
+    const el = document.getElementById('nexo-setup');
+    if (el) el.remove();
   }
 }
-
-window.SetupWizard = SetupWizard;
