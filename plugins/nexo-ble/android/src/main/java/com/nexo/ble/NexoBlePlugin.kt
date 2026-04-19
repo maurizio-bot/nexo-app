@@ -18,14 +18,12 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.ActivityResult
-import androidx.activity.result.ActivityResultCallback
 import androidx.core.content.ContextCompat
 import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import com.getcapacitor.JSArray
-import com.getcapacitor.annotation.ActivityCallback
 import com.nexo.ble.model.NexoGattService
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -36,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #722 - REM DEBUG INSTRUMENTATION CORRECTED
+// Build #724 - REM v3.0 PRODUCTION READY - Race Condition Fixed
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -51,14 +49,31 @@ class NexoBlePlugin : Plugin() {
     companion object {
         const val TAG = "NAP-BLE"
         
-        const val NAP_BLE_INIT_001 = "BLE_INIT_001"
-        const val NAP_BLE_INIT_002 = "BLE_INIT_002"
-        const val NAP_BLE_INIT_003 = "BLE_INIT_003"
-        const val NAP_BLE_INIT_004 = "BLE_INIT_004"
-        const val NAP_BLE_INIT_005 = "BLE_INIT_005"
-        const val NAP_BLE_INIT_006 = "BLE_INIT_006"
-        const val NAP_BLE_INIT_007 = "BLE_INIT_007"
+        // REM Códigos de Inicialización
+        const val REM_BLE_INIT_001 = "BLE_INIT_001"
+        const val REM_BLE_INIT_002 = "BLE_INIT_002"
+        const val REM_BLE_INIT_003 = "BLE_INIT_003"
+        const val REM_BLE_INIT_004 = "BLE_INIT_004"
+        const val REM_BLE_INIT_005 = "BLE_INIT_005"
+        const val REM_BLE_INIT_006 = "BLE_INIT_006"
+        const val REM_BLE_INIT_007 = "BLE_INIT_007"
         
+        // REM Códigos de Permisos (Nuevos - Detallados)
+        const val REM_PERM_REQUEST_START = "REM_PERM_001"
+        const val REM_PERM_CHECK_ALIASES = "REM_PERM_002"
+        const val REM_PERM_CHECK_EXISTING = "REM_PERM_003"
+        const val REM_PERM_CHECK_PERMANENT = "REM_PERM_004"
+        const val REM_PERM_DIALOG_SHOW = "REM_PERM_010"
+        const val REM_PERM_DIALOG_RESPONSE = "REM_PERM_011"
+        const val REM_PERM_VERIFY_RESULT = "REM_PERM_012"
+        const val REM_PERM_GRANTED = "REM_PERM_020"
+        const val REM_PERM_DENIED_TEMP = "REM_PERM_021"
+        const val REM_PERM_DENIED_PERM = "REM_PERM_022"
+        const val REM_PERM_SEQUENCE_COMPLETE = "REM_PERM_030"
+        const val REM_PERM_TIMEOUT = "REM_PERM_040"
+        const val REM_PERM_ERROR = "REM_PERM_050"
+        
+        // NAP Códigos estándar
         const val NAP_BLE_READY = "BLE_050"
         const val NAP_BLE_CONNECTED = "BLE_051"
         const val NAP_BLE_SCAN_STARTED = "BLE_052"
@@ -140,23 +155,29 @@ class NexoBlePlugin : Plugin() {
     
     private var cachedDeviceState: JSObject? = null
     
+    // ============================================================
+    // [REM v3.0] Sistema de Permisos Secuencial Robusto
+    // ============================================================
     private var pendingPermissionAliases = mutableListOf<String>()
     private var currentPermissionIndex = 0
+    private var permissionResults = mutableMapOf<String, Boolean>()
     private var permissionTimeoutRunnable: Runnable? = null
+    private var isRequestingPermissions = false
 
     // ============================================================
-    // [REM DEBUG] Helper para Toast visible
+    // [REM DEBUG] Helper para Toast visible con códigos
     // ============================================================
-    private fun remToast(msg: String) {
+    private fun remToast(code: String, msg: String) {
         try {
             val activity = activity
             activity?.runOnUiThread {
-                Toast.makeText(activity, "[REM] $msg", Toast.LENGTH_LONG).show()
+                Toast.makeText(activity, "[$code] $msg", Toast.LENGTH_LONG).show()
             }
             val remData = JSObject()
-            remData.put("code", "REM_NATIVE")
+            remData.put("code", code)
             remData.put("message", msg)
             remData.put("timestamp", System.currentTimeMillis())
+            remData.put("type", "TOAST")
             notifyListeners("remNativeLog", remData)
         } catch (e: Exception) {
             Log.e(TAG, "REM Toast error: ${e.message}")
@@ -303,8 +324,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("NAP-BLE v2.5.5-REM cargado")
-        napLog("BLE_LOAD", "NAP-BLE v2.5.5-REM loaded (Debug Instrumentation)")
+        remToast("INIT", "NAP-BLE v3.0 PRODUCTION cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.0 loaded (Race Condition Fixed)")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -428,54 +449,85 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [REM DEBUG v2.5.5] PERMISSION BRIDGE CON TRAZAS
+    // [REM v3.0] SISTEMA DE PERMISOS CORREGIDO - SIN RACE CONDITION
     // ============================================================
     
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
-        remToast("REM_BLE_001: Nativo recibió solicitud de permisos")
-        napLog(NAP_BLE_INIT_001, "[REM] Solicitud de permisos BLE iniciada")
+        remToast(REM_PERM_REQUEST_START, "Iniciando solicitud de permisos BLE")
+        napLog(REM_PERM_REQUEST_START, "Solicitud de permisos BLE iniciada")
         
+        // Reset estado
         pendingPermissionAliases.clear()
+        permissionResults.clear()
         currentPermissionIndex = 0
+        isRequestingPermissions = true
+        
+        // Cancelar timeout anterior si existe
         permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
         
+        // [REM] Verificar qué permisos necesitamos
+        remToast(REM_PERM_CHECK_ALIASES, "Verificando aliases de permisos requeridos")
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!hasPermission("bluetoothConnect")) pendingPermissionAliases.add("bluetoothConnect")
-            if (!hasPermission("bluetoothScan")) pendingPermissionAliases.add("bluetoothScan")
-            if (!hasPermission("bluetoothAdvertise")) pendingPermissionAliases.add("bluetoothAdvertise")
+            if (!checkPermissionDirectly("bluetoothConnect")) pendingPermissionAliases.add("bluetoothConnect")
+            if (!checkPermissionDirectly("bluetoothScan")) pendingPermissionAliases.add("bluetoothScan")
+            if (!checkPermissionDirectly("bluetoothAdvertise")) pendingPermissionAliases.add("bluetoothAdvertise")
         } else {
-            if (!hasPermission("location")) pendingPermissionAliases.add("location")
+            if (!checkPermissionDirectly("location")) pendingPermissionAliases.add("location")
         }
         
+        // [REM] Si todos ya están concedidos, resolver inmediatamente
         if (pendingPermissionAliases.isEmpty()) {
-            remToast("REM_BLE_002: Todos los permisos ya concedidos")
+            remToast(REM_PERM_CHECK_EXISTING, "Todos los permisos ya concedidos - SIN DIÁLOGO")
             napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos ya concedidos")
             val result = buildPermissionsResult()
             result.put("alreadyGranted", true)
+            isRequestingPermissions = false
             call.resolve(result)
             return
         }
         
+        // [REM] Verificar si hay denegación permanente antes de empezar
         val hasPermanentDenial = checkPermanentDenial()
-        remToast("REM_BLE_003: Solicitando ${pendingPermissionAliases.size} permiso(s)")
-        napLog(NAP_BLE_WAITING_PERMISSIONS, "Solicitando ${pendingPermissionAliases.size} permiso(s). PermanentDenial: $hasPermanentDenial")
+        remToast(REM_PERM_CHECK_PERMANENT, "PermanentDenial detectado: $hasPermanentDenial")
         
+        // [REM] Configurar timeout de seguridad (30 segundos)
         permissionTimeoutRunnable = Runnable {
-            if (!call.isSaved) {
-                remToast("REM_BLE_004: TIMEOUT - Usuario no respondió")
+            if (isRequestingPermissions) {
+                isRequestingPermissions = false
+                remToast(REM_PERM_TIMEOUT, "TIMEOUT - Usuario no respondió en 30s")
                 napLog(NAP_BLE_PARTIAL_PERMISSIONS, "TIMEOUT: Usuario no respondió", "WARN")
                 val errorData = JSObject()
                 errorData.put("timeout", true)
                 errorData.put("isPermanentDenial", hasPermanentDenial)
+                errorData.put("pendingAliases", JSArray(pendingPermissionAliases))
                 call.reject(NAP_BLE_PARTIAL_PERMISSIONS, "Permisos timeout", errorData)
                 pendingPermissionAliases.clear()
             }
         }
         handler.postDelayed(permissionTimeoutRunnable!!, 30000)
         
+        // [REM] Guardar call y comenzar secuencia
         saveCall(call)
+        remToast(REM_PERM_DIALOG_SHOW, "Iniciando secuencia de ${pendingPermissionAliases.size} diálogos")
         requestNextPermission(call)
+    }
+    
+    /**
+     * [REM v3.0] Verificación DIRECTA de permisos - EVITA RACE CONDITION
+     * Usa ContextCompat en lugar de hasPermission() de Capacitor
+     */
+    private fun checkPermissionDirectly(alias: String): Boolean {
+        val permission = when(alias) {
+            "bluetoothConnect" -> android.Manifest.permission.BLUETOOTH_CONNECT
+            "bluetoothScan" -> android.Manifest.permission.BLUETOOTH_SCAN
+            "bluetoothAdvertise" -> android.Manifest.permission.BLUETOOTH_ADVERTISE
+            "location" -> android.Manifest.permission.ACCESS_FINE_LOCATION
+            else -> return false
+        }
+        
+        return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
     }
     
     private fun checkPermanentDenial(): Boolean {
@@ -496,82 +548,96 @@ class NexoBlePlugin : Plugin() {
         }
     }
     
+    /**
+     * [REM v3.0] CALLBACK CORREGIDO - Verificación síncrona inmediata
+     */
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
-        remToast("REM_BLE_005: Callback nativo ejecutado (usuario respondió diálogo)")
+        remToast(REM_PERM_DIALOG_RESPONSE, "Callback nativo ejecutado - Procesando respuesta")
+        
         try {
             val currentAlias = pendingPermissionAliases.getOrNull(currentPermissionIndex)
             
-            if (currentAlias != null) {
-                handler.postDelayed({
-                    val granted = hasPermission(currentAlias)
-                    remToast("REM_BLE_006: Permiso $currentAlias = ${if (granted) "OK" else "DENEGADO"}")
-                    napLog("BLE_PERM_RESULT", "Callback - Permiso $currentAlias: ${if (granted) "CONCEDIDO" else "DENEGADO"}")
-                    
-                    if (!granted) {
-                        val isPermanent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            val permission = when(currentAlias) {
-                                "bluetoothConnect" -> android.Manifest.permission.BLUETOOTH_CONNECT
-                                "bluetoothScan" -> android.Manifest.permission.BLUETOOTH_SCAN
-                                "bluetoothAdvertise" -> android.Manifest.permission.BLUETOOTH_ADVERTISE
-                                else -> null
-                            }
-                            permission?.let {
-                                val activity = activity
-                                activity != null && !activity.shouldShowRequestPermissionRationale(it)
-                            } ?: false
-                        } else false
-                        
-                        if (isPermanent) {
-                            remToast("REM_BLE_007: DENEGACIÓN PERMANENTE")
-                            napLog(NAP_BLE_PARTIAL_PERMISSIONS, "Permiso $currentAlias denegado PERMANENTEMENTE")
-                        }
-                    }
-                    
-                    currentPermissionIndex++
-                    
-                    if (currentPermissionIndex < pendingPermissionAliases.size) {
-                        requestNextPermission(call)
-                    } else {
-                        permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
-                        remToast("REM_BLE_008: Todos los diálogos respondidos, reportando...")
-                        reportFinalPermissionsResult(call)
-                    }
-                }, 300)
-            } else {
-                remToast("REM_BLE_009: WARNING - currentAlias es null")
-                napLog("BLE_PERM_WARN", "Callback llamado pero currentAlias es null", "WARN")
-                permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
-                reportFinalPermissionsResult(call)
+            if (currentAlias == null) {
+                remToast(REM_PERM_ERROR, "ERROR: Alias null en callback")
+                finishPermissionSequence(call)
+                return
             }
-        } catch (e: Exception) {
-            remToast("REM_BLE_010: ERROR - ${e.message}")
-            napLog("BLE_PERM_ERR", "Excepción: ${e.message}", "ERROR")
-            permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
             
-            val errorData = JSObject()
-            errorData.put("exception", e.message)
-            call.reject(NAP_BLE_ERR_INIT_FAILED, "Error en callback", errorData)
+            // [REM] Verificación INMEDIATA y DIRECTA (sin delay)
+            val granted = checkPermissionDirectly(currentAlias)
+            
+            // [REM] Guardar resultado
+            permissionResults[currentAlias] = granted
+            
+            if (granted) {
+                remToast(REM_PERM_GRANTED, "$currentAlias CONCEDIDO")
+                napLog(REM_PERM_GRANTED, "Permiso $currentAlias concedido")
+            } else {
+                // [REM] Determinar si es denegación permanente
+                val isPermanent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val permission = when(currentAlias) {
+                        "bluetoothConnect" -> android.Manifest.permission.BLUETOOTH_CONNECT
+                        "bluetoothScan" -> android.Manifest.permission.BLUETOOTH_SCAN
+                        "bluetoothAdvertise" -> android.Manifest.permission.BLUETOOTH_ADVERTISE
+                        else -> null
+                    }
+                    permission?.let {
+                        val activity = activity
+                        activity != null && !activity.shouldShowRequestPermissionRationale(it)
+                    } ?: false
+                } else false
+                
+                if (isPermanent) {
+                    remToast(REM_PERM_DENIED_PERM, "$currentAlias DENEGADO PERMANENTEMENTE")
+                    napLog(REM_PERM_DENIED_PERM, "Permiso $currentAlias denegado permanentemente")
+                } else {
+                    remToast(REM_PERM_DENIED_TEMP, "$currentAlias DENEGADO (puede reintentar)")
+                    napLog(REM_PERM_DENIED_TEMP, "Permiso $currentAlias denegado temporalmente")
+                }
+            }
+            
+            // [REM] Avanzar al siguiente permiso
+            currentPermissionIndex++
+            
+            if (currentPermissionIndex < pendingPermissionAliases.size) {
+                // Hay más permisos por solicitar
+                remToast(REM_PERM_DIALOG_SHOW, "Solicitando siguiente permiso [${currentPermissionIndex + 1}/${pendingPermissionAliases.size}]")
+                requestNextPermission(call)
+            } else {
+                // Todos los diálogos completados
+                remToast(REM_PERM_SEQUENCE_COMPLETE, "Secuencia de permisos completada - Reportando resultados")
+                finishPermissionSequence(call)
+            }
+            
+        } catch (e: Exception) {
+            remToast(REM_PERM_ERROR, "ERROR en callback: ${e.message}")
+            napLog(REM_PERM_ERROR, "Excepción en callback: ${e.message}", "ERROR")
+            finishPermissionSequence(call)
         }
     }
     
     private fun requestNextPermission(call: PluginCall) {
         val alias = pendingPermissionAliases.getOrNull(currentPermissionIndex)
         if (alias != null) {
-            remToast("REM_BLE_011: Mostrando diálogo [$currentPermissionIndex/${pendingPermissionAliases.size}]: $alias")
-            napLog(NAP_BLE_INIT_001, "Solicitando [$currentPermissionIndex/${pendingPermissionAliases.size}]: $alias")
+            remToast(REM_PERM_DIALOG_SHOW, "Mostrando diálogo [$currentPermissionIndex/${pendingPermissionAliases.size}]: $alias")
+            napLog(REM_PERM_DIALOG_SHOW, "Solicitando [$currentPermissionIndex/${pendingPermissionAliases.size}]: $alias")
             requestPermissionForAlias(alias, call, "requestPermissionsCallback")
         } else {
-            remToast("REM_BLE_012: ERROR - Alias null")
-            napLog("BLE_PERM_ERR", "Alias null", "ERROR")
-            permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
-            reportFinalPermissionsResult(call)
+            remToast(REM_PERM_ERROR, "ERROR: Alias null al solicitar")
+            finishPermissionSequence(call)
         }
     }
     
+    private fun finishPermissionSequence(call: PluginCall) {
+        permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
+        isRequestingPermissions = false
+        reportFinalPermissionsResult(call)
+    }
+    
     private fun reportFinalPermissionsResult(call: PluginCall) {
-        val allGranted = hasAllBlePermissions()
-        remToast("REM_BLE_013: Estado final - allGranted=$allGranted")
+        val allGranted = hasAllBlePermissionsDirect()
+        remToast(REM_PERM_VERIFY_RESULT, "Estado final - Todos concedidos: $allGranted")
         
         val result = buildPermissionsResult()
         
@@ -590,9 +656,12 @@ class NexoBlePlugin : Plugin() {
         } else false
         
         result.put("isPermanentDenial", hasPermanentDenial)
+        result.put("permissionResults", JSObject().apply {
+            permissionResults.forEach { (k, v) -> put(k, v) }
+        })
         
         if (allGranted) {
-            remToast("REM_BLE_014: RESOLVIENDO ÉXITO - Todos concedidos")
+            remToast(REM_PERM_GRANTED, "RESOLVIENDO ÉXITO - Todos los permisos concedidos")
             napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos concedidos")
             notifyListeners("onPermissionsGranted", JSObject().apply {
                 put("allGranted", true)
@@ -600,7 +669,7 @@ class NexoBlePlugin : Plugin() {
             })
             call.resolve(result)
         } else {
-            remToast("REM_BLE_015: RECHAZANDO - Algunos denegados")
+            remToast(REM_PERM_DENIED_TEMP, "RECHAZANDO - Algunos permisos denegados")
             napLog(NAP_BLE_PARTIAL_PERMISSIONS, "Algunos permisos denegados")
             val errorData = JSObject()
             val permsObj = result.getJSObject("permissions")
@@ -609,7 +678,23 @@ class NexoBlePlugin : Plugin() {
             }
             errorData.put("allGranted", false)
             errorData.put("isPermanentDenial", hasPermanentDenial)
+            errorData.put("detailedResults", JSObject().apply {
+                permissionResults.forEach { (k, v) -> put(k, v) }
+            })
             call.reject(NAP_BLE_PARTIAL_PERMISSIONS, "Permisos incompletos", errorData)
+        }
+    }
+    
+    /**
+     * [REM v3.0] Usa verificación directa para resultado final
+     */
+    private fun hasAllBlePermissionsDirect(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            checkPermissionDirectly("bluetoothConnect") && 
+            checkPermissionDirectly("bluetoothScan") && 
+            checkPermissionDirectly("bluetoothAdvertise")
+        } else {
+            checkPermissionDirectly("location")
         }
     }
     
@@ -619,13 +704,13 @@ class NexoBlePlugin : Plugin() {
         val allGranted: Boolean
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.put("bluetoothConnect", hasPermission("bluetoothConnect"))
-            permissions.put("bluetoothScan", hasPermission("bluetoothScan"))
-            permissions.put("bluetoothAdvertise", hasPermission("bluetoothAdvertise"))
-            allGranted = hasPermission("bluetoothConnect") && hasPermission("bluetoothScan") && hasPermission("bluetoothAdvertise")
+            permissions.put("bluetoothConnect", checkPermissionDirectly("bluetoothConnect"))
+            permissions.put("bluetoothScan", checkPermissionDirectly("bluetoothScan"))
+            permissions.put("bluetoothAdvertise", checkPermissionDirectly("bluetoothAdvertise"))
+            allGranted = hasAllBlePermissionsDirect()
         } else {
-            permissions.put("location", hasPermission("location"))
-            allGranted = hasPermission("location")
+            permissions.put("location", checkPermissionDirectly("location"))
+            allGranted = hasAllBlePermissionsDirect()
         }
         
         result.put("permissions", permissions)
@@ -706,18 +791,10 @@ class NexoBlePlugin : Plugin() {
         health.put("isDozeMode", isDozeMode())
         health.put("isAirplaneMode", isAirplaneMode())
         health.put("canAccessBluetooth", canAccessBluetooth())
-        health.put("permissionsGranted", hasAllBlePermissions())
+        health.put("permissionsGranted", hasAllBlePermissionsDirect())
         health.put("androidVersion", Build.VERSION.SDK_INT)
         health.put("isAndroid12OrHigher", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
         return health
-    }
-
-    private fun hasAllBlePermissions(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            hasPermission("bluetoothConnect") && hasPermission("bluetoothScan") && hasPermission("bluetoothAdvertise")
-        } else {
-            hasPermission("location")
-        }
     }
 
     private fun cleanupAllConnections() {
@@ -950,7 +1027,7 @@ class NexoBlePlugin : Plugin() {
                         val data = JSObject()
                         data.put("userId", userId)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "2.5.5")
+                        data.put("napVersion", "3.0")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
