@@ -16,6 +16,7 @@ import android.os.ParcelUuid
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultCallback
 import androidx.core.content.ContextCompat
@@ -35,7 +36,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #718 FIX - Type corrections NAP
+// Build #722 - REM DEBUG INSTRUMENTATION
 
 
 
@@ -144,6 +145,26 @@ class NexoBlePlugin : Plugin() {
     private var pendingPermissionAliases = mutableListOf<String>()
     private var currentPermissionIndex = 0
     private var permissionTimeoutRunnable: Runnable? = null
+
+    // ============================================================
+    // [REM DEBUG] Helper para Toast visible
+    // ============================================================
+    private fun remToast(msg: String) {
+        try {
+            val activity = activity
+            activity?.runOnUiThread {
+                Toast.makeText(activity, "[REM] $msg", Toast.LENGTH_LONG).show()
+            }
+            // También enviamos evento a JS para que aparezca en consola REM
+            val remData = JSObject()
+            remData.put("code", "REM_NATIVE")
+            remData.put("message", msg)
+            remData.put("timestamp", System.currentTimeMillis())
+            notifyListeners("remNativeLog", remData)
+        } catch (e: Exception) {
+            Log.e(TAG, "REM Toast error: ${e.message}")
+        }
+    }
 
     private fun napLog(code: String, message: String, level: String = "INFO") {
         val formatted = "[$code] $message [Native:true]"
@@ -285,7 +306,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v2.5.4-FIX loaded (TypeFixes)")
+        remToast("NAP-BLE v2.5.5-REM cargado")
+        napLog("BLE_LOAD", "NAP-BLE v2.5.5-REM loaded (Debug Instrumentation)")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -409,12 +431,13 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [FIX CRÍTICO v2.5.4] PERMISSION BRIDGE CON DELAY
+    // [REM DEBUG v2.5.5] PERMISSION BRIDGE CON TRAZAS
     // ============================================================
     
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
-        napLog(NAP_BLE_INIT_001, "[1/3] Solicitud de permisos BLE iniciada")
+        remToast("REM_BLE_001: Nativo recibió solicitud de permisos")
+        napLog(NAP_BLE_INIT_001, "[REM] Solicitud de permisos BLE iniciada")
         
         pendingPermissionAliases.clear()
         currentPermissionIndex = 0
@@ -429,6 +452,7 @@ class NexoBlePlugin : Plugin() {
         }
         
         if (pendingPermissionAliases.isEmpty()) {
+            remToast("REM_BLE_002: Todos los permisos ya concedidos")
             napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos ya concedidos")
             val result = buildPermissionsResult()
             result.put("alreadyGranted", true)
@@ -437,10 +461,12 @@ class NexoBlePlugin : Plugin() {
         }
         
         val hasPermanentDenial = checkPermanentDenial()
+        remToast("REM_BLE_003: Solicitando ${pendingPermissionAliases.size} permiso(s)")
         napLog(NAP_BLE_WAITING_PERMISSIONS, "Solicitando ${pendingPermissionAliases.size} permiso(s). PermanentDenial: $hasPermanentDenial")
         
         permissionTimeoutRunnable = Runnable {
             if (!call.isSaved) {
+                remToast("REM_BLE_004: TIMEOUT - Usuario no respondió")
                 napLog(NAP_BLE_PARTIAL_PERMISSIONS, "TIMEOUT: Usuario no respondió", "WARN")
                 val errorData = JSObject()
                 errorData.put("timeout", true)
@@ -475,12 +501,14 @@ class NexoBlePlugin : Plugin() {
     
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
+        remToast("REM_BLE_005: Callback nativo ejecutado (usuario respondió diálogo)")
         try {
             val currentAlias = pendingPermissionAliases.getOrNull(currentPermissionIndex)
             
             if (currentAlias != null) {
                 handler.postDelayed({
                     val granted = hasPermission(currentAlias)
+                    remToast("REM_BLE_006: Permiso $currentAlias = ${if (granted) "OK" else "DENEGADO"}")
                     napLog("BLE_PERM_RESULT", "Callback - Permiso $currentAlias: ${if (granted) "CONCEDIDO" else "DENEGADO"}")
                     
                     if (!granted) {
@@ -498,6 +526,7 @@ class NexoBlePlugin : Plugin() {
                         } else false
                         
                         if (isPermanent) {
+                            remToast("REM_BLE_007: DENEGACIÓN PERMANENTE")
                             napLog(NAP_BLE_PARTIAL_PERMISSIONS, "Permiso $currentAlias denegado PERMANENTEMENTE")
                         }
                     }
@@ -508,15 +537,18 @@ class NexoBlePlugin : Plugin() {
                         requestNextPermission(call)
                     } else {
                         permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
+                        remToast("REM_BLE_008: Todos los diálogos respondidos, reportando...")
                         reportFinalPermissionsResult(call)
                     }
                 }, 300)
             } else {
+                remToast("REM_BLE_009: WARNING - currentAlias es null")
                 napLog("BLE_PERM_WARN", "Callback llamado pero currentAlias es null", "WARN")
                 permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
                 reportFinalPermissionsResult(call)
             }
         } catch (e: Exception) {
+            remToast("REM_BLE_010: ERROR - ${e.message}")
             napLog("BLE_PERM_ERR", "Excepción: ${e.message}", "ERROR")
             permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
             
@@ -529,9 +561,11 @@ class NexoBlePlugin : Plugin() {
     private fun requestNextPermission(call: PluginCall) {
         val alias = pendingPermissionAliases.getOrNull(currentPermissionIndex)
         if (alias != null) {
+            remToast("REM_BLE_011: Mostrando diálogo [$currentPermissionIndex/${pendingPermissionAliases.size}]: $alias")
             napLog(NAP_BLE_INIT_001, "Solicitando [$currentPermissionIndex/${pendingPermissionAliases.size}]: $alias")
             requestPermissionForAlias(alias, call, "requestPermissionsCallback")
         } else {
+            remToast("REM_BLE_012: ERROR - Alias null")
             napLog("BLE_PERM_ERR", "Alias null", "ERROR")
             permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
             reportFinalPermissionsResult(call)
@@ -540,6 +574,8 @@ class NexoBlePlugin : Plugin() {
     
     private fun reportFinalPermissionsResult(call: PluginCall) {
         val allGranted = hasAllBlePermissions()
+        remToast("REM_BLE_013: Estado final - allGranted=$allGranted")
+        
         val result = buildPermissionsResult()
         
         val hasPermanentDenial = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -559,6 +595,7 @@ class NexoBlePlugin : Plugin() {
         result.put("isPermanentDenial", hasPermanentDenial)
         
         if (allGranted) {
+            remToast("REM_BLE_014: RESOLVIENDO ÉXITO - Todos concedidos")
             napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos concedidos")
             notifyListeners("onPermissionsGranted", JSObject().apply {
                 put("allGranted", true)
@@ -566,6 +603,7 @@ class NexoBlePlugin : Plugin() {
             })
             call.resolve(result)
         } else {
+            remToast("REM_BLE_015: RECHAZANDO - Algunos denegados")
             napLog(NAP_BLE_PARTIAL_PERMISSIONS, "Algunos permisos denegados")
             val errorData = JSObject()
             val permsObj = result.getJSObject("permissions")
@@ -848,480 +886,4 @@ class NexoBlePlugin : Plugin() {
                 BluetoothGattCharacteristic.PERMISSION_READ
             )
             
-            val handshakeChar = BluetoothGattCharacteristic(
-                CHAR_HANDSHAKE,
-                BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
-                BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE
-            )
-            
-            val payloadChar = BluetoothGattCharacteristic(
-                CHAR_PAYLOAD,
-                BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
-                BluetoothGattCharacteristic.PERMISSION_WRITE
-            )
-            
-            val controlChar = BluetoothGattCharacteristic(
-                CHAR_CONTROL,
-                BluetoothGattCharacteristic.PROPERTY_WRITE,
-                BluetoothGattCharacteristic.PERMISSION_WRITE
-            )
-            
-            service.addCharacteristic(announceChar)
-            service.addCharacteristic(handshakeChar)
-            service.addCharacteristic(payloadChar)
-            service.addCharacteristic(controlChar)
-            
-            gattServer = manager.openGattServer(context, object : BluetoothGattServerCallback() {
-                override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
-                    super.onConnectionStateChange(device, status, newState)
-                    val address = device?.address ?: "unknown"
-                    when (newState) {
-                        BluetoothProfile.STATE_CONNECTED -> {
-                            connectedDevices[address] = device!!
-                            connectionCounter.incrementAndGet()
-                            napLog(NAP_BLE_CONNECTED, "Dispositivo conectado: $address")
-                            notifyListeners("onDeviceConnected", JSObject().apply {
-                                put("address", address)
-                                put("name", device.name ?: "Unknown")
-                            })
-                        }
-                        BluetoothProfile.STATE_DISCONNECTED -> {
-                            connectedDevices.remove(address)
-                            gattClients.remove(address)
-                            napLog(NAP_BLE_INIT_007, "Dispositivo desconectado: $address")
-                            notifyListeners("onDeviceDisconnected", JSObject().apply {
-                                put("address", address)
-                            })
-                        }
-                    }
-                }
-
-                override fun onCharacteristicWriteRequest(
-                    device: BluetoothDevice?,
-                    requestId: Int,
-                    characteristic: BluetoothGattCharacteristic?,
-                    preparedWrite: Boolean,
-                    responseNeeded: Boolean,
-                    offset: Int,
-                    value: ByteArray?
-                ) {
-                    super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value)
-                    val address = device?.address ?: return
-                    
-                    when (characteristic?.uuid) {
-                        CHAR_HANDSHAKE -> {
-                            napLog(NAP_BLE_INIT_002, "Handshake recibido de $address")
-                        }
-                        CHAR_PAYLOAD -> {
-                            value?.let { handleIncomingPayload(address, it) }
-                        }
-                        CHAR_CONTROL -> {
-                            value?.let { handleControlMessage(address, it) }
-                        }
-                    }
-                    
-                    if (responseNeeded) {
-                        gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
-                    }
-                }
-            })
-            
-            gattServer?.addService(service)
-            napLog(NAP_BLE_INIT_003, "GATT Server configurado")
-            
-        } catch (e: SecurityException) {
-            napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en GATT Server: ${e.message}", "ERROR")
-        } catch (e: Exception) {
-            napLog(NAP_BLE_ERR_INIT_FAILED, "Error GATT Server: ${e.message}", "ERROR")
-        }
-    }
-
-    private fun handleIncomingPayload(address: String, data: ByteArray) {
-        try {
-            val buffer = messageBuffers.getOrPut(address) { ByteArrayOutputStream() }
-            buffer.write(data)
-            
-            if (data.size < CHUNK_SIZE) {
-                val completeMessage = buffer.toByteArray()
-                messageBuffers.remove(address)
-                
-                napLog(NAP_BLE_MESSAGE_SENT, "Mensaje completo recibido de $address: ${completeMessage.size} bytes")
-                
-                // FIX: Usar JSArray de Capacitor en lugar de org.json.JSONArray
-                val jsArray = JSArray()
-                for (byte in completeMessage) {
-                    jsArray.put(byte.toInt() and 0xFF)
-                }
-                
-                val eventData = JSObject()
-                eventData.put("from", address)
-                eventData.put("data", jsArray)
-                eventData.put("size", completeMessage.size)
-                notifyListeners("onMessageReceived", eventData)
-            }
-        } catch (e: Exception) {
-            napLog(NAP_BLE_ERR_MEMORY_PRESSURE, "Error procesando payload: ${e.message}", "ERROR")
-        }
-    }
-
-    private fun handleControlMessage(address: String, data: ByteArray) {
-        val command = String(data, Charsets.UTF_8)
-        napLog(NAP_BLE_INIT_004, "Control message de $address: $command")
-        val eventData = JSObject()
-        eventData.put("from", address)
-        eventData.put("command", command)
-        notifyListeners("onControlMessage", eventData)
-    }
-
-    @PluginMethod
-    fun startScan(call: PluginCall) {
-        if (!validateSystemHealth(call, "scan")) return
-        
-        if (!canAccessBluetooth()) {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Sin permisos para scan")
-            return
-        }
-        
-        if (!initializeAdapter()) {
-            napError(call, NAP_BLE_ERR_INIT_FAILED, "Adapter no disponible")
-            return
-        }
-        
-        if (isScanning) {
-            napLog(NAP_BLE_ALREADY_INITIALIZED, "Scan ya activo")
-            call.resolve(JSObject().apply { put("started", true) })
-            return
-        }
-        
-        try {
-            val scanFilter = ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(SERVICE_UUID))
-                .build()
-            
-            val settings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .build()
-            
-            scanCallback = object : ScanCallback() {
-                override fun onScanResult(callbackType: Int, result: ScanResult?) {
-                    result?.device?.let { device ->
-                        val address = device.address ?: return@let
-                        val name = device.name ?: "Unknown"
-                        
-                        val deviceData = JSObject()
-                        deviceData.put("address", address)
-                        deviceData.put("name", name)
-                        deviceData.put("rssi", result.rssi)
-                        
-                        notifyListeners("onScanResult", deviceData)
-                    }
-                }
-                
-                override fun onScanFailed(errorCode: Int) {
-                    napLog(NAP_BLE_ERR_SCAN_FAILED, "Scan failed: $errorCode", "ERROR")
-                    val errorData = JSObject()
-                    errorData.put("errorCode", errorCode)
-                    notifyListeners("onScanFailed", errorData)
-                }
-            }
-            
-            bluetoothAdapter?.bluetoothLeScanner?.startScan(
-                listOf(scanFilter),
-                settings,
-                scanCallback!!
-            )
-            
-            isScanning = true
-            napLog(NAP_BLE_SCAN_STARTED, "Scan iniciado")
-            call.resolve(JSObject().apply { put("started", true) })
-            
-        } catch (e: SecurityException) {
-            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en scan: ${e.message}")
-        } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_SCAN_FAILED, "Error iniciando scan: ${e.message}")
-        }
-    }
-
-    @PluginMethod
-    fun stopScan(call: PluginCall) {
-        stopScanInternal()
-        call.resolve(JSObject().apply { put("stopped", true) })
-    }
-
-    @PluginMethod
-    fun startAdvertise(call: PluginCall) {
-        if (!validateSystemHealth(call, "advertise")) return
-        
-        if (!canAccessBluetooth()) {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Sin permisos para advertise")
-            return
-        }
-        
-        if (!initializeAdapter()) {
-            napError(call, NAP_BLE_ERR_INIT_FAILED, "Adapter no disponible")
-            return
-        }
-        
-        if (isAdvertising) {
-            napLog(NAP_BLE_ALREADY_INITIALIZED, "Advertise ya activo")
-            call.resolve(JSObject().apply { put("started", true) })
-            return
-        }
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!hasPermission("bluetoothAdvertise")) {
-                napError(call, NAP_BLE_ADV_NO_PERMISSION, "Permiso BLUETOOTH_ADVERTISE no concedido", recoverable = true)
-                return
-            }
-        }
-        
-        try {
-            val settings = AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-                .setConnectable(true)
-                .build()
-            
-            val data = AdvertiseData.Builder()
-                .setIncludeDeviceName(true)
-                .addServiceUuid(ParcelUuid(SERVICE_UUID))
-                .build()
-            
-            advertiseCallback = object : AdvertiseCallback() {
-                override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-                    isAdvertising = true
-                    napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado")
-                    val eventData = JSObject()
-                    eventData.put("started", true)
-                    notifyListeners("onAdvertiseStarted", eventData)
-                }
-                
-                override fun onStartFailure(errorCode: Int) {
-                    napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertise failed: $errorCode", "ERROR")
-                    val eventData = JSObject()
-                    eventData.put("errorCode", errorCode)
-                    notifyListeners("onAdvertiseFailed", eventData)
-                }
-            }
-            
-            bluetoothAdapter?.bluetoothLeAdvertiser?.startAdvertising(
-                settings,
-                data,
-                advertiseCallback!!
-            )
-            
-            call.resolve(JSObject().apply { put("started", true) })
-            
-        } catch (e: SecurityException) {
-            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en advertise: ${e.message}")
-        } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, "Error iniciando advertise: ${e.message}")
-        }
-    }
-
-    @PluginMethod
-    fun stopAdvertise(call: PluginCall) {
-        stopAdvertiseInternal()
-        call.resolve(JSObject().apply { put("stopped", true) })
-    }
-
-    @PluginMethod
-    fun sendMessage(call: PluginCall) {
-        val address = call.getString("address")
-        val message = call.getString("message")
-        // FIX: Usar JSArray en lugar de org.json.JSONArray
-        val dataArray = call.getArray("data", JSArray())
-        
-        if (address == null) {
-            napError(call, ERR_INVALID_PARAMS, "address requerido")
-            return
-        }
-        
-        // FIX: Manejo correcto de JSArray de Capacitor
-        val payload = if (message != null) {
-            message.toByteArray(Charsets.UTF_8)
-        } else {
-            val len = dataArray?.length() ?: 0
-            ByteArray(len) { i -> 
-                try {
-                    (dataArray?.get(i) as? Number)?.toInt()?.toByte() ?: 0
-                } catch (e: Exception) {
-                    0.toByte()
-                }
-            }
-        }
-        
-        if (payload.isEmpty()) {
-            napError(call, ERR_INVALID_PARAMS, "Payload vacío")
-            return
-        }
-        
-        if (payload.size > CHUNK_SIZE * 10) {
-            napError(call, ERR_MESSAGE_TOO_LARGE, "Mensaje excede límite de ${CHUNK_SIZE * 10} bytes")
-            return
-        }
-        
-        val gatt = gattClients[address]
-        if (gatt == null) {
-            napError(call, ERR_NOT_CONNECTED, "No conectado a $address")
-            return
-        }
-        
-        try {
-            val chunks = payload.toList().chunked(CHUNK_SIZE)
-            chunks.forEachIndexed { index, chunk ->
-                val service = gatt.getService(SERVICE_UUID)
-                val char = service?.getCharacteristic(CHAR_PAYLOAD)
-                char?.value = chunk.toByteArray()
-                gatt.writeCharacteristic(char)
-            }
-            
-            napLog(NAP_BLE_MESSAGE_SENT, "Mensaje enviado a $address: ${payload.size} bytes en ${chunks.size} chunks")
-            val result = JSObject()
-            result.put("sent", true)
-            result.put("chunks", chunks.size)
-            result.put("bytes", payload.size)
-            call.resolve(result)
-            
-        } catch (e: SecurityException) {
-            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "Error enviando: ${e.message}")
-        } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_CONNECTION_FAILED, "Error enviando mensaje: ${e.message}")
-        }
-    }
-
-    @PluginMethod
-    fun connectToDevice(call: PluginCall) {
-        val address = call.getString("address")
-        if (address == null) {
-            napError(call, ERR_INVALID_PARAMS, "address requerido")
-            return
-        }
-        
-        if (!canAccessBluetooth()) {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Sin permisos")
-            return
-        }
-        
-        if (!initializeAdapter()) {
-            napError(call, NAP_BLE_ERR_INIT_FAILED, "Adapter no disponible")
-            return
-        }
-        
-        try {
-            val device = bluetoothAdapter?.getRemoteDevice(address)
-            if (device == null) {
-                napError(call, ERR_DEVICE_NOT_FOUND, "Dispositivo no encontrado: $address")
-                return
-            }
-            
-            val gattCallback = object : BluetoothGattCallback() {
-                override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-                    when (newState) {
-                        BluetoothProfile.STATE_CONNECTED -> {
-                            if (gatt != null) {
-                                gattClients[address] = gatt
-                                gatt.requestMtu(MTU_DEFAULT)
-                                napLog(NAP_BLE_CONNECTED, "Conectado a $address")
-                                val eventData = JSObject()
-                                eventData.put("address", address)
-                                eventData.put("status", "connected")
-                                notifyListeners("onDeviceConnected", eventData)
-                            }
-                        }
-                        BluetoothProfile.STATE_DISCONNECTED -> {
-                            gattClients.remove(address)
-                            napLog(NAP_BLE_INIT_007, "Desconectado de $address")
-                            val eventData = JSObject()
-                            eventData.put("address", address)
-                            eventData.put("status", "disconnected")
-                            notifyListeners("onDeviceDisconnected", eventData)
-                        }
-                    }
-                }
-                
-                override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
-                    napLog(NAP_BLE_INIT_005, "MTU negociado: $mtu")
-                }
-            }
-            
-            val gatt = device.connectGatt(context, false, gattCallback)
-            if (gatt != null) {
-                val result = JSObject()
-                result.put("connecting", true)
-                result.put("address", address)
-                call.resolve(result)
-            } else {
-                napError(call, NAP_BLE_ERR_CONNECTION_FAILED, "No se pudo iniciar conexión")
-            }
-            
-        } catch (e: SecurityException) {
-            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException: ${e.message}")
-        } catch (e: IllegalArgumentException) {
-            napError(call, ERR_DEVICE_NOT_FOUND, "Dirección MAC inválida: $address")
-        } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_CONNECTION_FAILED, "Error: ${e.message}")
-        }
-    }
-
-    @PluginMethod
-    fun disconnectDevice(call: PluginCall) {
-        val address = call.getString("address")
-        if (address == null) {
-            napError(call, ERR_INVALID_PARAMS, "address requerido")
-            return
-        }
-        
-        try {
-            gattClients[address]?.let { gatt ->
-                gatt.disconnect()
-                gatt.close()
-                gattClients.remove(address)
-                connectedDevices.remove(address)
-                napLog(NAP_BLE_INIT_007, "Desconectado manualmente: $address")
-            }
-            call.resolve(JSObject().apply { put("disconnected", true) })
-        } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_CONNECTION_FAILED, "Error desconectando: ${e.message}")
-        }
-    }
-
-    @PluginMethod
-    fun getCapabilities(call: PluginCall) {
-        val result = JSObject()
-        val capabilities = JSObject()
-        
-        capabilities.put("canScan", canAccessBluetooth() && bluetoothAdapter?.isEnabled == true)
-        capabilities.put("canAdvertise", canAccessBluetooth() && bluetoothAdapter?.isEnabled == true)
-        capabilities.put("canConnect", canAccessBluetooth())
-        capabilities.put("mtuSupported", MTU_DEFAULT)
-        capabilities.put("chunkSize", CHUNK_SIZE)
-        capabilities.put("maxMessageSize", CHUNK_SIZE * 10)
-        capabilities.put("multiDevice", true)
-        
-        result.put("capabilities", capabilities)
-        result.put("androidVersion", Build.VERSION.SDK_INT)
-        result.put("isAndroid12OrHigher", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-        result.put("health", getSystemHealthReport())
-        
-        call.resolve(result)
-    }
-
-    @PluginMethod
-    fun isPermanentlyDenied(call: PluginCall) {
-        val result = JSObject()
-        result.put("isPermanentDenial", checkPermanentDenial())
-        call.resolve(result)
-    }
-
-    override fun handleOnDestroy() {
-        super.handleOnDestroy()
-        try {
-            context.unregisterReceiver(systemStateReceiver)
-        } catch (e: Exception) {
-            Log.w(TAG, "Receiver ya no registrado")
-        }
-        cleanupAllConnections()
-        napLog(NAP_BLE_INIT_007, "Plugin destruido")
-    }
-}
+            val handshake
