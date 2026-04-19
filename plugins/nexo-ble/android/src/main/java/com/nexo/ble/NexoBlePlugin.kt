@@ -37,6 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger
 // Build #718 FIX - Type corrections NAP
 
 
+
 @CapacitorPlugin(
     name = "NexoBLE",
     permissions = [
