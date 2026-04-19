@@ -23,6 +23,7 @@ import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import com.getcapacitor.JSArray
 import com.getcapacitor.annotation.ActivityCallback
 import com.nexo.ble.model.NexoGattService
 import org.json.JSONObject
