@@ -4,6 +4,7 @@
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { App } from '@capacitor/app';
 
 const NexoBLE = registerPlugin('NexoBLE');
 
@@ -16,7 +17,10 @@ const NAP_CODES = {
   PERM_PERMANENT: '[NAP-BLE-006]',
   WEB_FALLBACK: '[NAP-BLE-100]',
   ANDROID_NATIVE: '[NAP-BLE-200]',
-  ERROR_RECOVERY: '[NAP-BLE-900]'
+  ERROR_RECOVERY: '[NAP-BLE-900]',
+  SETTINGS_TIMEOUT: '[NAP-BLE-301]',
+  SETTINGS_RETURN: '[NAP-BLE-302]',
+  POLLING_CHECK: '[NAP-BLE-303]'
 };
 
 function napLog(code, message, level = 'INFO', data = null) {
@@ -301,9 +305,144 @@ export function setVerboseLogging(enabled) {
   }
 }
 
+/**
+ * NUEVO: Espera a que el usuario regrese de la configuración del sistema
+ * con timeout y verificación periódica del estado BLE
+ * @param {Object} options - Configuración del watcher
+ * @param {number} options.timeoutMs - Timeout en ms (default: 30000)
+ * @param {number} options.pollingIntervalMs - Intervalo de polling en ms (default: 2000)
+ * @returns {Promise} - Resuelve con el estado BLE cuando regresa o rechaza si timeout
+ */
+export function waitForSettingsReturn(options = {}) {
+  const timeoutMs = options.timeoutMs || 30000;
+  const pollingIntervalMs = options.pollingIntervalMs || 2000;
+  
+  return new Promise((resolve, reject) => {
+    let resumeListener = null;
+    let pollingInterval = null;
+    let timeoutId = null;
+    let isResolved = false;
+    
+    const cleanup = () => {
+      if (resumeListener) {
+        resumeListener.remove();
+        resumeListener = null;
+      }
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+    
+    const checkAndResolve = async (source) => {
+      if (isResolved) return;
+      
+      napLog(NAP_CODES.POLLING_CHECK, `Verificando estado post-configuración (source: ${source})`, 'DEBUG');
+      
+      try {
+        const status = await checkBLEStatus();
+        
+        if (status.granted || status.bluetoothEnabled) {
+          isResolved = true;
+          cleanup();
+          napLog(NAP_CODES.SETTINGS_RETURN, 'Usuario regresó con Bluetooth habilitado', 'INFO', status);
+          resolve({
+            success: true,
+            status: status,
+            source: source,
+            nap_code: 'SETTINGS_RETURN_SUCCESS'
+          });
+        }
+      } catch (e) {
+        napLog(NAP_CODES.ERROR_RECOVERY, `Error en verificación: ${e.message}`, 'ERROR');
+      }
+    };
+    
+    // Listener nativo de resume (cuando vuelve de la configuración del sistema)
+    resumeListener = App.addListener('resume', () => {
+      napLog(NAP_CODES.SETTINGS_RETURN, 'App resumida desde configuración sistema', 'INFO');
+      checkAndResolve('resume');
+    });
+    
+    // Polling cada 2 segundos por si el resume no dispara (edge cases)
+    pollingInterval = setInterval(() => {
+      checkAndResolve('polling');
+    }, pollingIntervalMs);
+    
+    // Timeout de seguridad (30s default)
+    timeoutId = setTimeout(() => {
+      if (!isResolved) {
+        cleanup();
+        napLog(NAP_CODES.SETTINGS_TIMEOUT, `Timeout después de ${timeoutMs}ms esperando retorno`, 'WARN');
+        reject({
+          success: false,
+          error: 'Timeout waiting for user to return from settings',
+          nap_code: 'SETTINGS_TIMEOUT',
+          canRetry: true
+        });
+      }
+    }, timeoutMs);
+    
+    // Verificación inmediata (por si ya volvió antes de que se registrara el listener)
+    checkAndResolve('immediate');
+  });
+}
+
+/**
+ * NUEVO: Cancela un watcher activo de settings return
+ * (Útil si el usuario cancela manualmente antes del timeout)
+ */
+export function cancelSettingsWatcher(watcherPromise) {
+  // Nota: Como no retornamos el cleanup directamente, 
+  // el usuario debe manejar el reject del promise para limpiar
+  napLog(NAP_CODES.INIT, 'Cancelando settings watcher (si implementado)', 'DEBUG');
+}
+
+/**
+ * NUEVO: Wrapper completo que abre configuración y espera el retorno
+ * @param {Function} openSettingsFn - Función que abre la configuración (debe ser llamada externamente)
+ * @param {Object} options - Opciones para waitForSettingsReturn
+ */
+export async function requestAndWaitForSettings(openSettingsFn, options = {}) {
+  const platform = Capacitor.getPlatform();
+  
+  if (platform !== 'android') {
+    return { success: false, error: 'Solo disponible en Android', nap_code: 'NOT_ANDROID' };
+  }
+  
+  try {
+    // Iniciar el watcher ANTES de abrir configuración (race condition prevention)
+    const waitPromise = waitForSettingsReturn(options);
+    
+    // Abrir configuración (llamada externa)
+    if (typeof openSettingsFn === 'function') {
+      await openSettingsFn();
+    }
+    
+    // Esperar resultado
+    return await waitPromise;
+    
+  } catch (error) {
+    return {
+      success: false,
+      error: error.error || error.message || 'Unknown error',
+      nap_code: error.nap_code || 'SETTINGS_WAIT_FAILED',
+      canRetry: true
+    };
+  }
+}
+
 window.NEXO_BLE_PERMISSIONS = {
   requestBLEPermissions,
   checkBLEStatus,
   setVerboseLogging,
-  NAP_CODES
+  NAP_CODES,
+  // NUEVAS FUNCIONES EXPORTADAS:
+  waitForSettingsReturn,
+  cancelSettingsWatcher,
+  requestAndWaitForSettings
 };
