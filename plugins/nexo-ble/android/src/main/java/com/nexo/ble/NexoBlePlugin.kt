@@ -23,6 +23,7 @@ import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import com.getcapacitor.annotation.ActivityCallback // <-- FIX: Import faltante
 import com.getcapacitor.JSArray
 import com.nexo.ble.model.NexoGattService
 import org.json.JSONObject
@@ -34,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #724 - REM v3.0 PRODUCTION READY - Race Condition Fixed
+// Build #725 - REM v3.0.1 FIX - ActivityCallback import added
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -50,13 +51,13 @@ class NexoBlePlugin : Plugin() {
         const val TAG = "NAP-BLE"
         
         // REM Códigos de Inicialización
-        const val REM_BLE_INIT_001 = "BLE_INIT_001"
-        const val REM_BLE_INIT_002 = "BLE_INIT_002"
-        const val REM_BLE_INIT_003 = "BLE_INIT_003"
-        const val REM_BLE_INIT_004 = "BLE_INIT_004"
-        const val REM_BLE_INIT_005 = "BLE_INIT_005"
-        const val REM_BLE_INIT_006 = "BLE_INIT_006"
-        const val REM_BLE_INIT_007 = "BLE_INIT_007"
+        const val NAP_BLE_INIT_001 = "BLE_INIT_001"
+        const val NAP_BLE_INIT_002 = "BLE_INIT_002"
+        const val NAP_BLE_INIT_003 = "BLE_INIT_003"
+        const val NAP_BLE_INIT_004 = "BLE_INIT_004"
+        const val NAP_BLE_INIT_005 = "BLE_INIT_005"
+        const val NAP_BLE_INIT_006 = "BLE_INIT_006"
+        const val NAP_BLE_INIT_007 = "BLE_INIT_007"
         
         // REM Códigos de Permisos (Nuevos - Detallados)
         const val REM_PERM_REQUEST_START = "REM_PERM_001"
@@ -324,8 +325,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.0 PRODUCTION cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.0 loaded (Race Condition Fixed)")
+        remToast("INIT", "NAP-BLE v3.0.1 FIX cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.0.1 loaded (ActivityCallback import fixed)")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -1027,7 +1028,7 @@ class NexoBlePlugin : Plugin() {
                         val data = JSObject()
                         data.put("userId", userId)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.0")
+                        data.put("napVersion", "3.0.1")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -1366,4 +1367,4 @@ class NexoBlePlugin : Plugin() {
             // Receiver may not be registered
         }
     }
-}
+} // <-- FIX: Cierre de clase asegurado
