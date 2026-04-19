@@ -32,6 +32,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
+// Force commit - Build #710
+
+
 @CapacitorPlugin(
     name = "NexoBLE",
     permissions = [
