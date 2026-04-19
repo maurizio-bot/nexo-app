@@ -1,5 +1,6 @@
 /**
  * BLE Permissions Manager v2.1-HOTFIX
+ 
  * Sin alerts bloqueantes - Solo console logging
  */
 
