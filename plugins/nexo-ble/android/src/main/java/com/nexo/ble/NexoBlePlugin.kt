@@ -36,9 +36,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #722 - REM DEBUG INSTRUMENTATION
-
-
+// Build #722 - REM DEBUG INSTRUMENTATION CORRECTED
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -155,7 +153,6 @@ class NexoBlePlugin : Plugin() {
             activity?.runOnUiThread {
                 Toast.makeText(activity, "[REM] $msg", Toast.LENGTH_LONG).show()
             }
-            // También enviamos evento a JS para que aparezca en consola REM
             val remData = JSObject()
             remData.put("code", "REM_NATIVE")
             remData.put("message", msg)
@@ -861,7 +858,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // FIX: ActivityResult callback para enable Bluetooth
     @ActivityCallback
     private fun enableBluetoothResult(call: PluginCall, result: ActivityResult) {
         if (result.resultCode == Activity.RESULT_OK) {
@@ -886,4 +882,411 @@ class NexoBlePlugin : Plugin() {
                 BluetoothGattCharacteristic.PERMISSION_READ
             )
             
-            val handshake
+            val handshakeChar = BluetoothGattCharacteristic(
+                CHAR_HANDSHAKE,
+                BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
+                BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE
+            )
+            
+            val payloadChar = BluetoothGattCharacteristic(
+                CHAR_PAYLOAD,
+                BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+                BluetoothGattCharacteristic.PERMISSION_WRITE
+            )
+            
+            val controlChar = BluetoothGattCharacteristic(
+                CHAR_CONTROL,
+                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PERMISSION_WRITE or BluetoothGattCharacteristic.PERMISSION_READ
+            )
+            
+            service.addCharacteristic(announceChar)
+            service.addCharacteristic(handshakeChar)
+            service.addCharacteristic(payloadChar)
+            service.addCharacteristic(controlChar)
+            
+            gattServer = manager.openGattServer(context, gattServerCallback)
+            gattServer?.addService(service)
+            
+            napLog(NAP_BLE_INIT_007, "GattServer configurado correctamente")
+        } catch (e: SecurityException) {
+            napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en setupGattServer: ${e.message}", "ERROR")
+        } catch (e: Exception) {
+            napLog(NAP_BLE_ERR_INIT_FAILED, "Error setupGattServer: ${e.message}", "ERROR")
+        }
+    }
+    
+    private val gattServerCallback = object : BluetoothGattServerCallback() {
+        override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+            when (newState) {
+                BluetoothProfile.STATE_CONNECTED -> {
+                    connectedDevices[device.address] = device
+                    napLog(NAP_BLE_CONNECTED, "Dispositivo conectado: ${device.address}")
+                    notifyListeners("onDeviceConnected", JSObject().apply {
+                        put("deviceId", device.address)
+                        put("name", device.name ?: "Unknown")
+                    })
+                }
+                BluetoothProfile.STATE_DISCONNECTED -> {
+                    connectedDevices.remove(device.address)
+                    gattClients.remove(device.address)
+                    napLog(NAP_BLE_INIT_003, "Dispositivo desconectado: ${device.address}")
+                    notifyListeners("onDeviceDisconnected", JSObject().apply {
+                        put("deviceId", device.address)
+                    })
+                }
+            }
+        }
+        
+        override fun onCharacteristicReadRequest(
+            device: BluetoothDevice,
+            requestId: Int,
+            offset: Int,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            try {
+                val value = when (characteristic.uuid) {
+                    CHAR_ANNOUNCE -> {
+                        val data = JSObject()
+                        data.put("userId", userId)
+                        data.put("timestamp", System.currentTimeMillis())
+                        data.put("napVersion", "2.5.5")
+                        data.toString().toByteArray()
+                    }
+                    else -> byteArrayOf()
+                }
+                
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, value)
+            } catch (e: SecurityException) {
+                napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "Error enviando respuesta: ${e.message}", "ERROR")
+            }
+        }
+        
+        override fun onCharacteristicWriteRequest(
+            device: BluetoothDevice,
+            requestId: Int,
+            characteristic: BluetoothGattCharacteristic,
+            preparedWrite: Boolean,
+            responseNeeded: Boolean,
+            offset: Int,
+            value: ByteArray?
+        ) {
+            try {
+                if (responseNeeded) {
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                }
+                
+                value?.let { data ->
+                    when (characteristic.uuid) {
+                        CHAR_HANDSHAKE -> {
+                            notifyListeners("onHandshakeReceived", JSObject().apply {
+                                put("deviceId", device.address)
+                                put("data", String(data))
+                            })
+                        }
+                        CHAR_PAYLOAD -> {
+                            notifyListeners("onPayloadReceived", JSObject().apply {
+                                put("deviceId", device.address)
+                                put("data", String(data))
+                            })
+                        }
+                        CHAR_CONTROL -> {
+                            notifyListeners("onControlCommand", JSObject().apply {
+                                put("deviceId", device.address)
+                                put("command", String(data))
+                            })
+                        }
+                    }
+                }
+            } catch (e: SecurityException) {
+                napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "Error procesando write: ${e.message}", "ERROR")
+            }
+        }
+    }
+
+    @PluginMethod
+    fun startScan(call: PluginCall) {
+        if (!validateSystemHealth(call, "scan")) return
+        if (!canAccessBluetooth()) {
+            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Sin permisos para escanear")
+            return
+        }
+        
+        if (isScanning) {
+            call.resolve(JSObject().apply { put("started", true) })
+            return
+        }
+        
+        try {
+            val filter = ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(SERVICE_UUID))
+                .build()
+            
+            val settings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build()
+            
+            scanCallback = object : ScanCallback() {
+                override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                    result?.device?.let { device ->
+                        try {
+                            notifyListeners("onDeviceFound", JSObject().apply {
+                                put("deviceId", device.address)
+                                put("name", device.name ?: "Unknown")
+                                put("rssi", result.rssi)
+                            })
+                        } catch (e: SecurityException) {
+                            // Device may have disappeared
+                        }
+                    }
+                }
+                
+                override fun onScanFailed(errorCode: Int) {
+                    napLog(NAP_BLE_ERR_SCAN_FAILED, "Scan failed: $errorCode", "ERROR")
+                }
+            }
+            
+            bluetoothAdapter?.bluetoothLeScanner?.startScan(listOf(filter), settings, scanCallback!!)
+            isScanning = true
+            napLog(NAP_BLE_SCAN_STARTED, "Scan iniciado")
+            call.resolve(JSObject().apply { put("started", true) })
+        } catch (e: SecurityException) {
+            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en scan: ${e.message}")
+        } catch (e: Exception) {
+            napError(call, NAP_BLE_ERR_SCAN_FAILED, "Error iniciando scan: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun stopScan(call: PluginCall) {
+        stopScanInternal()
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun startAdvertise(call: PluginCall) {
+        if (!validateSystemHealth(call, "advertise")) return
+        if (!canAccessBluetooth()) {
+            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Sin permisos para anunciar")
+            return
+        }
+        
+        if (isAdvertising) {
+            call.resolve(JSObject().apply { put("started", true) })
+            return
+        }
+        
+        try {
+            val settings = AdvertiseSettings.Builder()
+                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+                .setConnectable(true)
+                .build()
+            
+            val data = AdvertiseData.Builder()
+                .setIncludeDeviceName(false)
+                .addServiceUuid(ParcelUuid(SERVICE_UUID))
+                .build()
+            
+            advertiseCallback = object : AdvertiseCallback() {
+                override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+                    isAdvertising = true
+                    napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado correctamente")
+                    notifyListeners("onAdvertiseStarted", JSObject().apply {
+                        put("success", true)
+                    })
+                }
+                
+                override fun onStartFailure(errorCode: Int) {
+                    napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertising failed: $errorCode", "ERROR")
+                    notifyListeners("onAdvertiseFailed", JSObject().apply {
+                        put("errorCode", errorCode)
+                    })
+                }
+            }
+            
+            bluetoothAdapter?.bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback!!)
+            call.resolve(JSObject().apply { put("started", true) })
+        } catch (e: SecurityException) {
+            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en advertise: ${e.message}")
+        } catch (e: Exception) {
+            napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, "Error iniciando advertise: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun stopAdvertise(call: PluginCall) {
+        stopAdvertiseInternal()
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun connectToDevice(call: PluginCall) {
+        val deviceId = call.getString("deviceId")
+        if (deviceId == null) {
+            call.reject(ERR_INVALID_PARAMS, "deviceId requerido")
+            return
+        }
+        
+        if (!canAccessBluetooth()) {
+            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Sin permisos para conectar")
+            return
+        }
+        
+        try {
+            val device = bluetoothAdapter?.getRemoteDevice(deviceId)
+            if (device == null) {
+                call.reject(ERR_DEVICE_NOT_FOUND, "Dispositivo no encontrado")
+                return
+            }
+            
+            val gatt = device.connectGatt(context, false, object : BluetoothGattCallback() {
+                override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                    when (newState) {
+                        BluetoothProfile.STATE_CONNECTED -> {
+                            gattClients[deviceId] = gatt
+                            try {
+                                gatt.requestMtu(MTU_DEFAULT)
+                                gatt.discoverServices()
+                            } catch (e: SecurityException) {
+                                napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "Error configurando MTU", "ERROR")
+                            }
+                        }
+                        BluetoothProfile.STATE_DISCONNECTED -> {
+                            gattClients.remove(deviceId)
+                            gatt.close()
+                        }
+                    }
+                }
+                
+                override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+                    napLog(NAP_BLE_READY, "MTU configurado: $mtu")
+                }
+                
+                override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                    notifyListeners("onServicesDiscovered", JSObject().apply {
+                        put("deviceId", deviceId)
+                        put("status", status)
+                    })
+                }
+            })
+            
+            call.resolve(JSObject().apply {
+                put("connecting", true)
+                put("deviceId", deviceId)
+            })
+        } catch (e: IllegalArgumentException) {
+            call.reject(ERR_DEVICE_NOT_FOUND, "Dirección Bluetooth inválida")
+        } catch (e: SecurityException) {
+            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en connect: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun disconnectDevice(call: PluginCall) {
+        val deviceId = call.getString("deviceId")
+        if (deviceId == null) {
+            call.reject(ERR_INVALID_PARAMS, "deviceId requerido")
+            return
+        }
+        
+        gattClients[deviceId]?.let { gatt ->
+            try {
+                gatt.disconnect()
+                gatt.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error desconectando: ${e.message}")
+            }
+            gattClients.remove(deviceId)
+        }
+        
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun sendMessage(call: PluginCall) {
+        val deviceId = call.getString("deviceId")
+        val message = call.getString("message")
+        val data = call.getString("data")
+        
+        if (deviceId == null || (message == null && data == null)) {
+            call.reject(ERR_INVALID_PARAMS, "deviceId y message/data requeridos")
+            return
+        }
+        
+        val payload = message?.toByteArray() ?: android.util.Base64.decode(data, android.util.Base64.DEFAULT)
+        
+        if (payload.size > CHUNK_SIZE * 10) {
+            call.reject(ERR_MESSAGE_TOO_LARGE, "Mensaje excede tamaño máximo permitido")
+            return
+        }
+        
+        val gatt = gattClients[deviceId]
+        if (gatt == null) {
+            call.reject(ERR_NOT_CONNECTED, "No conectado a dispositivo")
+            return
+        }
+        
+        try {
+            val service = gatt.getService(SERVICE_UUID)
+            val char = service?.getCharacteristic(CHAR_PAYLOAD)
+            
+            if (char == null) {
+                call.reject(ERR_NOT_CONNECTED, "Característica no encontrada")
+                return
+            }
+            
+            // Fragmentar si es necesario
+            if (payload.size <= CHUNK_SIZE) {
+                char.value = payload
+                gatt.writeCharacteristic(char)
+            } else {
+                val chunks = payload.toList().chunked(CHUNK_SIZE)
+                chunks.forEachIndexed { index, chunk ->
+                    val chunkBytes = chunk.toByteArray()
+                    char.value = chunkBytes
+                    gatt.writeCharacteristic(char)
+                }
+            }
+            
+            call.resolve(JSObject().apply {
+                put("sent", true)
+                put("bytes", payload.size)
+                put("chunks", if (payload.size > CHUNK_SIZE) (payload.size / CHUNK_SIZE) + 1 else 1)
+            })
+            
+            napLog(NAP_BLE_MESSAGE_SENT, "Mensaje enviado (${payload.size} bytes)")
+        } catch (e: SecurityException) {
+            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException enviando mensaje: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun getConnectedDevices(call: PluginCall) {
+        val devices = JSArray()
+        connectedDevices.forEach { (address, device) ->
+            try {
+                val obj = JSObject()
+                obj.put("deviceId", address)
+                obj.put("name", device.name ?: "Unknown")
+                devices.put(obj)
+            } catch (e: SecurityException) {
+                // Skip
+            }
+        }
+        
+        val result = JSObject()
+        result.put("devices", devices)
+        call.resolve(result)
+    }
+
+    override fun handleOnDestroy() {
+        super.handleOnDestroy()
+        cleanupAllConnections()
+        try {
+            context.unregisterReceiver(systemStateReceiver)
+        } catch (e: Exception) {
+            // Receiver may not be registered
+        }
+    }
+}
