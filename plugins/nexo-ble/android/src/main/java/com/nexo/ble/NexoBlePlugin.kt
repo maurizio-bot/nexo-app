@@ -35,8 +35,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #726 - [NORDIC_010] FIX - Bluetooth state detection robustness
-// Cambio clave: No cachear BluetoothManager, obtener fresh cada vez
+// Build #736 - [NORDIC_010] FIX v3.0.3-NAP
+// Fix: Advertising permission validation + null advertiser check
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -346,6 +346,7 @@ class NexoBlePlugin : Plugin() {
             return false
         }
         
+        // [NORDIC_010] FIX v3.0.3: Validación específica de permisos según operación
         if (!canAccessBluetooth()) {
             if (lastKnownPermissionState) {
                 lastKnownPermissionState = false
@@ -358,12 +359,20 @@ class NexoBlePlugin : Plugin() {
             lastKnownPermissionState = true
         }
         
+        // [NORDIC_010] FIX v3.0.3: Validación específica para advertising
+        if (operation == "advertise" && !canAccessAdvertising()) {
+            napError(call, NAP_BLE_ADV_NO_PERMISSION, 
+                "BLUETOOTH_ADVERTISE no concedido. Requerido para advertising en Android 12+.", 
+                "ERROR", recoverable = true)
+            return false
+        }
+        
         return true
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.0.2 [NORDIC_010] FIX cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.0.2 loaded - [NORDIC_010] Bluetooth state detection fix")
+        remToast("INIT", "NAP-BLE v3.0.3 [NORDIC_010] FIX cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.0.3 loaded - Advertising permission fix")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -455,13 +464,27 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // ============================================================
+    // [NORDIC_010] FIX v3.0.3: canAccessBluetooth() verifica TODOS los permisos BLE
+    // ============================================================
     private fun canAccessBluetooth(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) == 
-                PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED
         } else {
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH) == 
-                PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+    
+    // [NORDIC_010] FIX v3.0.3: Validación específica para advertising
+    private fun canAccessAdvertising(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED
+        } else {
+            // Android < 12 no requiere permiso específico de advertising
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED
         }
     }
 
@@ -825,7 +848,7 @@ class NexoBlePlugin : Plugin() {
         result.put("stateName", stateName)
         result.put("health", getSystemHealthReport())
         result.put("canScan", isEnabled && canAccessBluetooth())
-        result.put("canAdvertise", isEnabled && canAccessBluetooth())
+        result.put("canAdvertise", isEnabled && canAccessAdvertising())
         
         // [NORDIC_010] FIX: Incluir info de soporte de advertising
         result.put("isMultipleAdvertisementSupported", adapter.isMultipleAdvertisementSupported)
@@ -842,6 +865,7 @@ class NexoBlePlugin : Plugin() {
         health.put("isDozeMode", isDozeMode())
         health.put("isAirplaneMode", isAirplaneMode())
         health.put("canAccessBluetooth", canAccessBluetooth())
+        health.put("canAccessAdvertising", canAccessAdvertising())
         health.put("permissionsGranted", hasAllBlePermissionsDirect())
         health.put("androidVersion", Build.VERSION.SDK_INT)
         health.put("isAndroid12OrHigher", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
@@ -1081,7 +1105,7 @@ class NexoBlePlugin : Plugin() {
                         val data = JSObject()
                         data.put("userId", userId)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.0.2")
+                        data.put("napVersion", "3.0.3")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -1200,6 +1224,9 @@ class NexoBlePlugin : Plugin() {
         call.resolve()
     }
 
+    // ============================================================
+    // [NORDIC_010] FIX v3.0.3: startAdvertise() - Validación robusta de advertiser
+    // ============================================================
     @PluginMethod
     fun startAdvertise(call: PluginCall) {
         if (!validateSystemHealth(call, "advertise")) return
@@ -1209,7 +1236,10 @@ class NexoBlePlugin : Plugin() {
         }
         
         if (isAdvertising) {
-            call.resolve(JSObject().apply { put("started", true) })
+            call.resolve(JSObject().apply { 
+                put("started", true) 
+                put("alreadyActive", true)
+            })
             return
         }
         
@@ -1217,6 +1247,35 @@ class NexoBlePlugin : Plugin() {
             val adapter = getBluetoothAdapter()
             if (adapter == null) {
                 napError(call, NAP_BLE_ERR_NOT_SUPPORTED, "Adapter no disponible")
+                return
+            }
+            
+            // [NORDIC_010] FIX v3.0.3: Verificar que el dispositivo soporta advertising
+            if (!adapter.isMultipleAdvertisementSupported) {
+                napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, 
+                    "Este dispositivo no soporta BLE Advertising", "ERROR")
+                return
+            }
+            
+            // [NORDIC_010] FIX v3.0.3: Obtener advertiser y verificar que no es null
+            val advertiser = adapter.bluetoothLeAdvertiser
+            if (advertiser == null) {
+                // Determinar la causa exacta para reportar error preciso
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) 
+                    != PackageManager.PERMISSION_GRANTED) {
+                    napError(call, NAP_BLE_ADV_NO_PERMISSION, 
+                        "BLUETOOTH_ADVERTISE no concedido. El advertising requiere este permiso en Android 12+.", 
+                        "ERROR", recoverable = true)
+                } else if (!adapter.isEnabled) {
+                    napError(call, NAP_BLE_ERR_DISABLED, 
+                        "Bluetooth está desactivado. Actívalo para poder anunciar.", 
+                        "ERROR", recoverable = true)
+                } else {
+                    napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, 
+                        "BluetoothLeAdvertiser no disponible. Posible causa: permiso ADVERTISE denegado o no soportado.", 
+                        "ERROR", recoverable = true)
+                }
                 return
             }
             
@@ -1237,19 +1296,38 @@ class NexoBlePlugin : Plugin() {
                     napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado correctamente")
                     notifyListeners("onAdvertiseStarted", JSObject().apply {
                         put("success", true)
+                        put("timestamp", System.currentTimeMillis())
                     })
                 }
                 
                 override fun onStartFailure(errorCode: Int) {
+                    isAdvertising = false
                     napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertising failed: $errorCode", "ERROR")
                     notifyListeners("onAdvertiseFailed", JSObject().apply {
                         put("errorCode", errorCode)
+                        put("errorName", when(errorCode) {
+                            ADVERTISE_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"
+                            ADVERTISE_FAILED_DATA_TOO_LARGE -> "DATA_TOO_LARGE"
+                            ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "TOO_MANY_ADVERTISERS"
+                            ADVERTISE_FAILED_INTERNAL_ERROR -> "INTERNAL_ERROR"
+                            ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "FEATURE_UNSUPPORTED"
+                            else -> "UNKNOWN"
+                        })
                     })
                 }
             }
             
-            adapter.bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback!!)
-            call.resolve(JSObject().apply { put("started", true) })
+            // [NORDIC_010] FIX v3.0.3: Iniciar advertising con advertiser verificado
+            advertiser.startAdvertising(settings, data, advertiseCallback!!)
+            
+            // [NORDIC_010] FIX v3.0.3: Resolver indicando que se ENVIÓ el comando nativo
+            // El estado real se confirma vía onAdvertiseStarted / onAdvertiseFailed
+            call.resolve(JSObject().apply { 
+                put("started", true) 
+                put("pendingConfirmation", true)
+                put("note", "Advertising iniciado nativamente. Estado real confirmado por evento onAdvertiseStarted.")
+            })
+            
         } catch (e: SecurityException) {
             napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en advertise: ${e.message}")
         } catch (e: Exception) {
