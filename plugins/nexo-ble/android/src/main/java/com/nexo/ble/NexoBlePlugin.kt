@@ -35,8 +35,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #739 - [NORDIC_010] FIX v3.0.4-NAP
-// Fix: Device name in scan/advertise + connection events to JS + getLocalDeviceInfo
+// Build #746 - FIX v3.0.6-NAP
+// Fix: Advertising packet size - separado en Advertising Data + Scan Response
+// Elimina modificacion invasiva de adapter.name
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -133,7 +134,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [NORDIC_010] FIX: Variables de clase - solo GATT y estado, NO adapter/manager
+    // Variables de clase
     // ============================================================
     private var gattServer: BluetoothGattServer? = null
     private val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
@@ -166,17 +167,12 @@ class NexoBlePlugin : Plugin() {
     private var isRequestingPermissions = false
 
     // ============================================================
-    // [NORDIC_010] FIX: Helper para obtener adapter FRESH cada vez
+    // Helper para obtener adapter FRESH cada vez
     // ============================================================
     
-    /**
-     * [NORDIC_010] CRITICAL FIX: Obtiene BluetoothAdapter fresh desde el sistema
-     * No usa variables cacheadas que pueden invalidarse en Android 14
-     */
     private fun getBluetoothAdapter(): BluetoothAdapter? {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Android 12+ requiere BLUETOOTH_CONNECT para obtener el adapter
                 if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) 
                     != PackageManager.PERMISSION_GRANTED) {
                     napLog("BLE_202", "BLUETOOTH_CONNECT no concedido, no se puede obtener adapter", "WARN")
@@ -184,7 +180,6 @@ class NexoBlePlugin : Plugin() {
                 }
             }
             
-            // Obtener FRESH cada vez - NO cachear
             val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             val adapter = manager?.adapter
             
@@ -346,7 +341,6 @@ class NexoBlePlugin : Plugin() {
             return false
         }
         
-        // [NORDIC_010] FIX v3.0.3: Validación específica de permisos según operación
         if (!canAccessBluetooth()) {
             if (lastKnownPermissionState) {
                 lastKnownPermissionState = false
@@ -359,7 +353,6 @@ class NexoBlePlugin : Plugin() {
             lastKnownPermissionState = true
         }
         
-        // [NORDIC_010] FIX v3.0.3: Validación específica para advertising
         if (operation == "advertise" && !canAccessAdvertising()) {
             napError(call, NAP_BLE_ADV_NO_PERMISSION, 
                 "BLUETOOTH_ADVERTISE no concedido. Requerido para advertising en Android 12+.", 
@@ -371,8 +364,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.0.4 [NORDIC_010] FIX cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.0.4 loaded - Device name + connection events fix")
+        remToast("INIT", "NAP-BLE v3.0.6 [ADVERTISING FIX] cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.0.6 loaded - Advertising Data + Scan Response fix")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -411,7 +404,6 @@ class NexoBlePlugin : Plugin() {
                         else -> "UNKNOWN"
                     }
                     
-                    // [NORDIC_010] Notificar inmediatamente el cambio de estado
                     notifyListeners("onBluetoothStateChanged", JSObject().apply {
                         put("state", stateName)
                         put("stateCode", state)
@@ -464,9 +456,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ============================================================
-    // [NORDIC_010] FIX v3.0.3: canAccessBluetooth() verifica TODOS los permisos BLE
-    // ============================================================
     private fun canAccessBluetooth(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
@@ -478,19 +467,14 @@ class NexoBlePlugin : Plugin() {
         }
     }
     
-    // [NORDIC_010] FIX v3.0.3: Validación específica para advertising
     private fun canAccessAdvertising(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED
         } else {
-            // Android < 12 no requiere permiso específico de advertising
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED
         }
     }
 
-    // ============================================================
-    // [NORDIC_010] FIX: initializeAdapter() usa getBluetoothAdapter()
-    // ============================================================
     private fun initializeAdapter(): Boolean {
         if (!canAccessBluetooth()) {
             napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "BLUETOOTH_CONNECT no concedido", "ERROR")
@@ -498,7 +482,6 @@ class NexoBlePlugin : Plugin() {
         }
 
         try {
-            // [NORDIC_010] Usar método fresh, no variable cacheada
             val adapter = getBluetoothAdapter()
             
             if (adapter == null) {
@@ -513,7 +496,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [REM v3.0] SISTEMA DE PERMISOS CORREGIDO - SIN RACE CONDITION
+    // [REM v3.0] SISTEMA DE PERMISOS CORREGIDO
     // ============================================================
     
     @PluginMethod
@@ -521,16 +504,13 @@ class NexoBlePlugin : Plugin() {
         remToast(REM_PERM_REQUEST_START, "Iniciando solicitud de permisos BLE")
         napLog(REM_PERM_REQUEST_START, "Solicitud de permisos BLE iniciada")
         
-        // Reset estado
         pendingPermissionAliases.clear()
         permissionResults.clear()
         currentPermissionIndex = 0
         isRequestingPermissions = true
         
-        // Cancelar timeout anterior si existe
         permissionTimeoutRunnable?.let { handler.removeCallbacks(it) }
         
-        // [REM] Verificar qué permisos necesitamos
         remToast(REM_PERM_CHECK_ALIASES, "Verificando aliases de permisos requeridos")
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -541,7 +521,6 @@ class NexoBlePlugin : Plugin() {
             if (!checkPermissionDirectly("location")) pendingPermissionAliases.add("location")
         }
         
-        // [REM] Si todos ya están concedidos, resolver inmediatamente
         if (pendingPermissionAliases.isEmpty()) {
             remToast(REM_PERM_CHECK_EXISTING, "Todos los permisos ya concedidos - SIN DIÁLOGO")
             napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos ya concedidos")
@@ -552,11 +531,9 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        // [REM] Verificar si hay denegación permanente antes de empezar
         val hasPermanentDenial = checkPermanentDenial()
         remToast(REM_PERM_CHECK_PERMANENT, "PermanentDenial detectado: $hasPermanentDenial")
         
-        // [REM] Configurar timeout de seguridad (30 segundos)
         permissionTimeoutRunnable = Runnable {
             if (isRequestingPermissions) {
                 isRequestingPermissions = false
@@ -572,16 +549,11 @@ class NexoBlePlugin : Plugin() {
         }
         handler.postDelayed(permissionTimeoutRunnable!!, 30000)
         
-        // [REM] Guardar call y comenzar secuencia
         saveCall(call)
         remToast(REM_PERM_DIALOG_SHOW, "Iniciando secuencia de ${pendingPermissionAliases.size} diálogos")
         requestNextPermission(call)
     }
     
-    /**
-     * [REM v3.0] Verificación DIRECTA de permisos - EVITA RACE CONDITION
-     * Usa ContextCompat en lugar de hasPermission() de Capacitor
-     */
     private fun checkPermissionDirectly(alias: String): Boolean {
         val permission = when(alias) {
             "bluetoothConnect" -> android.Manifest.permission.BLUETOOTH_CONNECT
@@ -612,9 +584,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
     
-    /**
-     * [REM v3.0] CALLBACK CORREGIDO - Verificación síncrona inmediata
-     */
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
         remToast(REM_PERM_DIALOG_RESPONSE, "Callback nativo ejecutado - Procesando respuesta")
@@ -628,17 +597,13 @@ class NexoBlePlugin : Plugin() {
                 return
             }
             
-            // [REM] Verificación INMEDIATA y DIRECTA (sin delay)
             val granted = checkPermissionDirectly(currentAlias)
-            
-            // [REM] Guardar resultado
             permissionResults[currentAlias] = granted
             
             if (granted) {
                 remToast(REM_PERM_GRANTED, "$currentAlias CONCEDIDO")
                 napLog(REM_PERM_GRANTED, "Permiso $currentAlias concedido")
             } else {
-                // [REM] Determinar si es denegación permanente
                 val isPermanent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     val permission = when(currentAlias) {
                         "bluetoothConnect" -> android.Manifest.permission.BLUETOOTH_CONNECT
@@ -661,15 +626,12 @@ class NexoBlePlugin : Plugin() {
                 }
             }
             
-            // [REM] Avanzar al siguiente permiso
             currentPermissionIndex++
             
             if (currentPermissionIndex < pendingPermissionAliases.size) {
-                // Hay más permisos por solicitar
                 remToast(REM_PERM_DIALOG_SHOW, "Solicitando siguiente permiso [${currentPermissionIndex + 1}/${pendingPermissionAliases.size}]")
                 requestNextPermission(call)
             } else {
-                // Todos los diálogos completados
                 remToast(REM_PERM_SEQUENCE_COMPLETE, "Secuencia de permisos completada - Reportando resultados")
                 finishPermissionSequence(call)
             }
@@ -749,9 +711,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
     
-    /**
-     * [REM v3.0] Usa verificación directa para resultado final
-     */
     private fun hasAllBlePermissionsDirect(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             checkPermissionDirectly("bluetoothConnect") && 
@@ -785,21 +744,15 @@ class NexoBlePlugin : Plugin() {
         return result
     }
 
-    // ============================================================
-    // [NORDIC_010] FIX: isBluetoothEnabled() - Lógica completamente revisada
-    // ============================================================
-    
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
-        napLog("BLE_STATE_CHECK", "Verificando estado Bluetooth [NORDIC_010]")
+        napLog("BLE_STATE_CHECK", "Verificando estado Bluetooth")
         
-        // [NORDIC_010] FIX: Primero verificar si tenemos permisos
         if (!canAccessBluetooth()) {
             napLog(NAP_BLE_WAITING_PERMISSIONS, "Permisos no concedidos, reportando estado desconocido")
-            // No rechazamos, reportamos que necesitamos permisos pero no asumimos OFF
             val result = JSObject()
             result.put("enabled", false)
-            result.put("state", BluetoothAdapter.STATE_OFF) // Conservador
+            result.put("state", BluetoothAdapter.STATE_OFF)
             result.put("stateName", "NO_PERMISSION")
             result.put("needsPermission", true)
             result.put("canPrompt", true)
@@ -808,7 +761,6 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        // [NORDIC_010] FIX: Obtener adapter FRESH, no usar variable cacheada
         val adapter = getBluetoothAdapter()
         
         if (adapter == null) {
@@ -823,7 +775,6 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        // [NORDIC_010] Leer estado real del adapter
         val state = try {
             adapter.state
         } catch (e: SecurityException) {
@@ -849,8 +800,6 @@ class NexoBlePlugin : Plugin() {
         result.put("health", getSystemHealthReport())
         result.put("canScan", isEnabled && canAccessBluetooth())
         result.put("canAdvertise", isEnabled && canAccessAdvertising())
-        
-        // [NORDIC_010] FIX: Incluir info de soporte de advertising
         result.put("isMultipleAdvertisementSupported", adapter.isMultipleAdvertisementSupported)
         result.put("isOffloadedFilteringSupported", adapter.isOffloadedFilteringSupported)
         
@@ -969,7 +918,6 @@ class NexoBlePlugin : Plugin() {
                 return
             }
 
-            // [NORDIC_010] Verificar que podemos obtener el adapter
             val adapter = getBluetoothAdapter()
             if (adapter == null) {
                 napError(call, NAP_BLE_ERR_INIT_FAILED, "No se pudo obtener BluetoothAdapter")
@@ -1022,12 +970,10 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // [NORDIC_010] FIX: setupGattServer recibe adapter como parámetro
     private fun setupGattServer(adapter: BluetoothAdapter) {
         try {
             if (gattServer != null) return
             
-            // [NORDIC_010] Usar adapter para obtener el manager si es necesario
             val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             val service = BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
             
@@ -1105,7 +1051,7 @@ class NexoBlePlugin : Plugin() {
                         val data = JSObject()
                         data.put("userId", userId)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.0.4")
+                        data.put("napVersion", "3.0.6")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -1191,7 +1137,6 @@ class NexoBlePlugin : Plugin() {
                 override fun onScanResult(callbackType: Int, result: ScanResult?) {
                     result?.device?.let { device ->
                         try {
-                            // [NORDIC_010] FIX v3.0.4: Leer nombre del scanRecord si device.name es null
                             val displayName = device.name 
                                 ?: result.scanRecord?.deviceName 
                                 ?: "NEXO Device"
@@ -1230,7 +1175,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [NORDIC_010] FIX v3.0.5: startAdvertise() - Truncar nombre a 8 chars + "..."
+    // FIX v3.0.6: startAdvertise() - Advertising Data + Scan Response
     // ============================================================
     @PluginMethod
     fun startAdvertise(call: PluginCall) {
@@ -1255,17 +1200,14 @@ class NexoBlePlugin : Plugin() {
                 return
             }
             
-            // [NORDIC_010] FIX v3.0.3: Verificar que el dispositivo soporta advertising
             if (!adapter.isMultipleAdvertisementSupported) {
                 napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, 
                     "Este dispositivo no soporta BLE Advertising", "ERROR")
                 return
             }
             
-            // [NORDIC_010] FIX v3.0.3: Obtener advertiser y verificar que no es null
             val advertiser = adapter.bluetoothLeAdvertiser
             if (advertiser == null) {
-                // Determinar la causa exacta para reportar error preciso
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                     ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) 
                     != PackageManager.PERMISSION_GRANTED) {
@@ -1284,70 +1226,35 @@ class NexoBlePlugin : Plugin() {
                 return
             }
             
-            // [NORDIC_010] FIX v3.0.5: Truncar nombre a 8 chars + "..." (11 bytes) para caber en advertising packet
-            val originalName = adapter.name ?: "NEXO"
-            val truncatedName = if (originalName.length > 8) {
-                originalName.take(8) + "..."
-            } else {
-                originalName
-            }
-            
-            // Guardar nombre para restaurar después
-            val nameToRestore = adapter.name
-            
-            // Aplicar nombre truncado temporalmente
-            try {
-                adapter.name = truncatedName
-                napLog("BLE_NAME", "Nombre truncado temporal: '$truncatedName' (original: '$originalName')")
-            } catch (e: Exception) {
-                napLog("BLE_NAME_WARN", "No se pudo truncar nombre: ${e.message}", "WARN")
-            }
-            
             val settings = AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
                 .setConnectable(true)
                 .build()
             
-            // [NORDIC_010] FIX v3.0.5: Incluir nombre truncado en advertising
-            val data = AdvertiseData.Builder()
-                .setIncludeDeviceName(true)
+            // Advertising Data: SOLO Service UUID (21 bytes total - cabe perfecto en 31)
+            val advertiseData = AdvertiseData.Builder()
                 .addServiceUuid(ParcelUuid(SERVICE_UUID))
+                .build()
+            
+            // Scan Response: Device Name (hasta 29 bytes disponibles para el nombre)
+            val scanResponse = AdvertiseData.Builder()
+                .setIncludeDeviceName(true)
                 .build()
             
             advertiseCallback = object : AdvertiseCallback() {
                 override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                     advertisingActive = true
-                    napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado con nombre: '$truncatedName'")
-                    
-                    // Restaurar nombre original después de 1s para no dejar el sistema con nombre corto
-                    nameToRestore?.let { oldName ->
-                        handler.postDelayed({
-                            try {
-                                adapter.name = oldName
-                                napLog("BLE_NAME", "Nombre restaurado: '$oldName'")
-                            } catch (e: Exception) {
-                                // Silencioso — no crítico
-                            }
-                        }, 1000)
-                    }
+                    napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado correctamente")
                     
                     notifyListeners("onAdvertiseStarted", JSObject().apply {
                         put("success", true)
                         put("timestamp", System.currentTimeMillis())
-                        put("displayName", truncatedName)
                     })
                 }
                 
                 override fun onStartFailure(errorCode: Int) {
                     advertisingActive = false
-                    
-                    // Restaurar nombre inmediatamente si falló
-                    nameToRestore?.let { oldName ->
-                        try {
-                            adapter.name = oldName
-                        } catch (e: Exception) { /* ignore */ }
-                    }
                     
                     val errorName = when(errorCode) {
                         ADVERTISE_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"
@@ -1355,9 +1262,9 @@ class NexoBlePlugin : Plugin() {
                         ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "TOO_MANY_ADVERTISERS"
                         ADVERTISE_FAILED_INTERNAL_ERROR -> "INTERNAL_ERROR"
                         ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "FEATURE_UNSUPPORTED"
-                        else -> "UNKNOWN"
+                        else -> "UNKNOWN ($errorCode)"
                     }
-                    napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertising failed: $errorCode ($errorName)", "ERROR")
+                    napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertising failed: $errorName", "ERROR")
                     notifyListeners("onAdvertiseFailed", JSObject().apply {
                         put("errorCode", errorCode)
                         put("errorName", errorName)
@@ -1365,15 +1272,12 @@ class NexoBlePlugin : Plugin() {
                 }
             }
             
-            // [NORDIC_010] FIX v3.0.3: Iniciar advertising con advertiser verificado
-            advertiser.startAdvertising(settings, data, advertiseCallback!!)
+            // Iniciar advertising con Advertising Data + Scan Response
+            advertiser.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback!!)
             
-            // [NORDIC_010] FIX v3.0.3: Resolver indicando que se ENVIÓ el comando nativo
-            // El estado real se confirma vía onAdvertiseStarted / onAdvertiseFailed
             call.resolve(JSObject().apply { 
                 put("started", true) 
                 put("pendingConfirmation", true)
-                put("displayName", truncatedName)
                 put("note", "Advertising iniciado nativamente. Estado real confirmado por evento onAdvertiseStarted.")
             })
             
@@ -1390,9 +1294,6 @@ class NexoBlePlugin : Plugin() {
         call.resolve()
     }
 
-    // ============================================================
-    // [NORDIC_010] FIX v3.0.4: connectToDevice - Notifica conexión/desconexión al JS
-    // ============================================================
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1424,7 +1325,6 @@ class NexoBlePlugin : Plugin() {
                     when (newState) {
                         BluetoothProfile.STATE_CONNECTED -> {
                             gattClients[deviceId] = gatt
-                            // [NORDIC_010] FIX v3.0.4: Notificar a JS que el dispositivo se conectó
                             notifyListeners("onDeviceConnected", JSObject().apply {
                                 put("deviceId", deviceId)
                                 put("name", device.name ?: "Unknown")
@@ -1439,7 +1339,6 @@ class NexoBlePlugin : Plugin() {
                         BluetoothProfile.STATE_DISCONNECTED -> {
                             gattClients.remove(deviceId)
                             gatt.close()
-                            // [NORDIC_010] FIX v3.0.4: Notificar a JS que el dispositivo se desconectó
                             notifyListeners("onDeviceDisconnected", JSObject().apply {
                                 put("deviceId", deviceId)
                             })
@@ -1524,7 +1423,6 @@ class NexoBlePlugin : Plugin() {
                 return
             }
             
-            // Fragmentar si es necesario
             if (payload.size <= CHUNK_SIZE) {
                 char.value = payload
                 gatt.writeCharacteristic(char)
@@ -1568,9 +1466,6 @@ class NexoBlePlugin : Plugin() {
         call.resolve(result)
     }
 
-    // ============================================================
-    // [NORDIC_010] FEATURE v3.0.4: getLocalDeviceInfo - Nombre del dispositivo local
-    // ============================================================
     @PluginMethod
     fun getLocalDeviceInfo(call: PluginCall) {
         try {
@@ -1586,34 +1481,18 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ============================================================
-    // [REM v3.0.1] ALIASES PARA COMPATIBILIDAD NORDIC MESH
-    // ============================================================
-    
-    /**
-     * Alias de startAdvertise() para compatibilidad con código que usa
-     * el nombre startAdvertising() (con 'g' al final)
-     */
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
         napLog(NAP_BLE_ADVERTISE_STARTED, "startAdvertising() llamado - delegando a startAdvertise()")
         startAdvertise(call)
     }
     
-    /**
-     * Alias de stopAdvertise() para compatibilidad con código que usa
-     * el nombre stopAdvertising() (con 'g' al final)
-     */
     @PluginMethod
     fun stopAdvertising(call: PluginCall) {
         napLog(NAP_BLE_INIT_006, "stopAdvertising() llamado - delegando a stopAdvertise()")
         stopAdvertise(call)
     }
     
-    /**
-     * NUEVO: Consulta si el advertising está activo actualmente
-     * Resuelve el problema de "Visibilidad desactivada" cuando sí está activo
-     */
     @PluginMethod
     fun isAdvertising(call: PluginCall) {
         val result = JSObject()
@@ -1623,4 +1502,4 @@ class NexoBlePlugin : Plugin() {
         call.resolve(result)
     }
 
-} // Cierre de clase
+}
