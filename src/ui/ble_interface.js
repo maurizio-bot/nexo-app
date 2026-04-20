@@ -1,13 +1,12 @@
 /**
- * BLE Interface v2.3.2-FIX
+ * BLE Interface v2.3.3-NAP
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh
- * + FIX: Export initBLEInterface para compatibilidad con NexoApp v3.3.1
- * + FIX [NORDIC_010]: Verifica estado advertising nativo al inicializar
+ * + FIX: Advertising autónomo - consulta nativo directamente
+ * + FIX [NORDIC_010]: Elimina dependencia de bleMesh para advertising
  * 
  * FIXES NAP 2.0:
- * - Soporte API NordicMesh (startDiscovery) y HybridMesh (startScan)
- * - getState() vs getStatus() unificado
- * - Integración getConnectedDevices() para lista real
+ * - Advertising via plugin nativo directo (no bleMesh abstraction)
+ * - Estado real nativo en UI
  * - NAP Error Codes UI_001-006
  */
 
@@ -38,9 +37,10 @@ export class BLEInterface {
     this.isDummyMode = !bleMesh;
     this.meshType = this._detectMeshType();
     
-    // NUEVO: Estado de visibilidad (advertising)
+    // [NORDIC_010] FIX v2.3.3: Estado nativo real
     this.isAdvertising = false;
     this.canAdvertise = false;
+    this.nativePlugin = null; // Referencia directa a NexoBLE
   }
 
   _detectMeshType() {
@@ -55,6 +55,9 @@ export class BLEInterface {
     this.injectStyles();
     this.setupEventListeners();
     
+    // [NORDIC_010] FIX v2.3.3: Obtener referencia directa al plugin nativo
+    this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
+    
     if (this.isDummyMode) {
       console.warn('[BLEInterface] Modo DUMMY - BLE no disponible');
       this.updateStatus('OFFLINE (Dummy)');
@@ -67,58 +70,103 @@ export class BLEInterface {
     return this;
   }
 
+  // ============================================================
+  // [NORDIC_010] FIX v2.3.3: VISIBILITY AUTÓNOMO - Nativo directo
+  // ============================================================
   async _initVisibility() {
-    if (this.isDummyMode || !this.bleMesh) return;
+    if (this.isDummyMode) return;
+    
+    // Si no hay plugin nativo, fallback a bleMesh (limitado)
+    if (!this.nativePlugin) {
+      console.warn('[BLEInterface] Plugin nativo NexoBLE no disponible, usando fallback bleMesh');
+      await this._initVisibilityFallback();
+      return;
+    }
     
     try {
-      // [NORDIC_010] FIX: Verificar estado real del plugin nativo primero
-      if (window.Capacitor?.Plugins?.NexoBLE) {
-        try {
-          const nativeStatus = await window.Capacitor.Plugins.NexoBLE.isAdvertising();
-          if (nativeStatus.isAdvertising === true) {
-            this.isAdvertising = true;
-            this.canAdvertise = true;
-            this.updateVisibilityButton();
-            
-            // Notificar al mesh si existe
-            if (this.bleMesh.emit) {
-              this.bleMesh.emit('visibilityChanged', { visible: true, source: 'native_check' });
-            }
-            return; // Estado ya activo, no necesitamos verificar más
-          }
-        } catch (e) {
-          console.log('[BLEInterface] Native isAdvertising check failed, falling back to mesh');
-        }
+      // 1. Verificar si Bluetooth está activado y tenemos permisos
+      const btState = await this.nativePlugin.isBluetoothEnabled();
+      
+      // [NORDIC_010] Verificar canAdvertise desde el health report nativo
+      this.canAdvertise = btState.canAdvertise || false;
+      
+      if (!this.canAdvertise) {
+        console.warn('[BLEInterface] Advertising no disponible según nativo. Permisos:', btState.health);
+        this.isAdvertising = false;
+        this.updateVisibilityButton();
+        return;
       }
       
-      // Fallback al comportamiento original si el nativo no responde
-      if (this.bleMesh.getCapabilities) {
+      // 2. Verificar estado actual de advertising nativo
+      const adState = await this.nativePlugin.isAdvertising();
+      this.isAdvertising = adState.isAdvertising === true;
+      
+      console.log('[BLEInterface] Estado nativo - canAdvertise:', this.canAdvertise, 'isAdvertising:', this.isAdvertising);
+      
+      this.updateVisibilityButton();
+      
+      // 3. Escuchar eventos nativos de advertising (CRÍTICO)
+      this._setupNativeAdvertisingListeners();
+      
+    } catch (err) {
+      console.error('[BLEInterface] Error consultando estado nativo:', err);
+      // Fallback al comportamiento anterior
+      await this._initVisibilityFallback();
+    }
+  }
+  
+  // [NORDIC_010] FIX v2.3.3: Listeners nativos para eventos de advertising
+  _setupNativeAdvertisingListeners() {
+    if (!this.nativePlugin) return;
+    
+    // Limpiar listeners anteriores si existen (evitar duplicados)
+    if (this._nativeAdStartedListener) {
+      this._nativeAdStartedListener.remove();
+    }
+    if (this._nativeAdFailedListener) {
+      this._nativeAdFailedListener.remove();
+    }
+    
+    // Listener: Advertising iniciado exitosamente
+    this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', (data) => {
+      console.log('[BLEInterface] Nativo: onAdvertiseStarted', data);
+      this.isAdvertising = true;
+      this.updateVisibilityButton();
+      this.showToast('👁️‍🗨️ Visibilidad activada - Ahora eres visible', 'success');
+    });
+    
+    // Listener: Advertising falló
+    this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', (data) => {
+      console.error('[BLEInterface] Nativo: onAdvertiseFailed', data);
+      this.isAdvertising = false;
+      this.updateVisibilityButton();
+      this.showToast('❌ Error al activar visibilidad: ' + (data.errorCode || 'Unknown'), 'error');
+    });
+  }
+
+  // Fallback al comportamiento anterior (cuando nativo no está disponible)
+  async _initVisibilityFallback() {
+    try {
+      if (this.bleMesh && this.bleMesh.getCapabilities) {
         const caps = await this.bleMesh.getCapabilities();
         this.canAdvertise = caps.canAdvertise || false;
       }
       
-      if (this.bleMesh.getVisibilityState) {
+      if (this.bleMesh && this.bleMesh.getVisibilityState) {
         const state = await this.bleMesh.getVisibilityState();
         this.isAdvertising = state.isAdvertising || false;
       }
       
       this.updateVisibilityButton();
       
-      // Escuchar cambios de visibilidad
-      if (this.bleMesh.on) {
+      if (this.bleMesh && this.bleMesh.on) {
         this.bleMesh.on('visibilityChanged', (data) => {
           this.isAdvertising = data.visible || false;
           this.updateVisibilityButton();
         });
-        
-        this.bleMesh.on('advertiseWarning', (data) => {
-          console.warn('[BLEInterface] Advertise Warning:', data.message);
-          this.canAdvertise = false;
-          this.updateVisibilityButton();
-        });
       }
     } catch (err) {
-      console.warn('[BLEInterface] Error initializing visibility:', err);
+      console.warn('[BLEInterface] Error fallback visibility:', err);
       this.canAdvertise = false;
       this.updateVisibilityButton();
     }
@@ -132,7 +180,7 @@ export class BLEInterface {
     const text = btn.querySelector('span:last-child');
     
     if (!this.canAdvertise) {
-      // ESTADO ADVERTENCIA (Build #694): Sin permiso ADVERTISE
+      // ESTADO ADVERTENCIA: Sin permiso ADVERTISE
       btn.className = 'ble-btn-visibility btn-visibility-warning';
       if (icon) icon.textContent = '⚠️';
       if (text) text.textContent = 'Visibilidad desactivada';
@@ -155,30 +203,55 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================
+  // [NORDIC_010] FIX v2.3.3: TOGGLE VISIBILITY - Nativo directo
+  // ============================================================
   async toggleVisibility() {
-    if (this.isDummyMode || !this.bleMesh) return;
+    if (this.isDummyMode) return;
     
     try {
+      // Si no tenemos permiso, mostrar advertencia
       if (!this.canAdvertise) {
-        // Intentar solicitar permiso primero si no lo tiene
-        console.log('[BLEInterface] Solicitando permiso de visibilidad...');
-        if (this.bleMesh.requestAdvertisePermission) {
-          const granted = await this.bleMesh.requestAdvertisePermission();
-          if (granted) {
-            this.canAdvertise = true;
-          } else {
-            this.showToast('⚠️ Permiso de visibilidad denegado. La app funciona como cliente solo.', 'warning');
-            return;
-          }
-        }
+        this.showToast('⚠️ Sin permiso de advertising. Conceda permisos primero.', 'warning');
+        return;
       }
       
-      // Toggle visibilidad
-      if (this.bleMesh.toggleVisibility) {
+      // [NORDIC_010] FIX v2.3.3: Usar plugin nativo DIRECTAMENTE
+      if (this.nativePlugin) {
+        if (this.isAdvertising) {
+          // Detener advertising nativo
+          await this.nativePlugin.stopAdvertising();
+          this.isAdvertising = false;
+          this.updateVisibilityButton();
+          this.showToast('👁️ Visibilidad desactivada', 'info');
+        } else {
+          // Iniciar advertising nativo
+          const result = await this.nativePlugin.startAdvertising();
+          // No actualizamos isAdvertising aquí - esperamos el evento onAdvertiseStarted
+          // o verificamos después de un delay
+          console.log('[BLEInterface] startAdvertising() llamado nativamente:', result);
+          
+          // Verificación de seguridad después de 500ms
+          setTimeout(async () => {
+            try {
+              const check = await this.nativePlugin.isAdvertising();
+              if (!check.isAdvertising) {
+                console.warn('[BLEInterface] Advertising no se activó después de llamar startAdvertising');
+                this.showToast('⚠️ La visibilidad no pudo activarse. Verifique permisos.', 'warning');
+              }
+            } catch (e) {
+              // Ignorar error de verificación
+            }
+          }, 500);
+        }
+        return;
+      }
+      
+      // Fallback al bleMesh si no hay plugin nativo
+      if (this.bleMesh && this.bleMesh.toggleVisibility) {
         const result = await this.bleMesh.toggleVisibility();
         this.isAdvertising = result.isAdvertising || false;
         this.updateVisibilityButton();
-        
         this.showToast(
           this.isAdvertising ? '✅ Ahora eres visible para otros dispositivos' : '👁️ Visibilidad desactivada',
           this.isAdvertising ? 'success' : 'info'
@@ -186,7 +259,7 @@ export class BLEInterface {
       }
     } catch (err) {
       console.error('[BLEInterface] Error toggling visibility:', err);
-      this.showToast('❌ Error al cambiar visibilidad', 'error');
+      this.showToast('❌ Error al cambiar visibilidad: ' + err.message, 'error');
     }
   }
 
@@ -639,7 +712,7 @@ export class BLEInterface {
     // Overlay click
     this.elements.overlay.addEventListener('click', () => this.togglePanel());
     
-    // NUEVO: Visibilidad button (Build #694)
+    // Visibilidad button
     this.elements.visibilityBtn.addEventListener('click', () => this.toggleVisibility());
     
     // Scan button
@@ -653,9 +726,8 @@ export class BLEInterface {
       btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
     });
     
-    // Eventos del mesh
+    // Eventos del mesh (solo para scan/discovery, no advertising)
     if (!this.isDummyMode && this.bleMesh) {
-      // Escuchar dispositivos encontrados
       if (this.bleMesh.on) {
         this.bleMesh.on('deviceFound', (device) => this.onDeviceFound(device));
         this.bleMesh.on('deviceConnected', (device) => this.onDeviceConnected(device));
@@ -673,7 +745,6 @@ export class BLEInterface {
     if (this.elements.panel.classList.contains('active')) {
       this.newDevicesCount = 0;
       this.updateBadge();
-      // Recargar dispositivos conectados al abrir
       this._loadConnectedDevices();
     }
   }
@@ -691,7 +762,6 @@ export class BLEInterface {
     
     try {
       if (this.isScanning) {
-        // Detener scan
         if (this.meshType === 'nordic' && this.bleMesh.stopDiscovery) {
           await this.bleMesh.stopDiscovery();
         } else if (this.bleMesh.stopScan) {
@@ -700,7 +770,6 @@ export class BLEInterface {
         this.isScanning = false;
         this.onScanStateChanged(false);
       } else {
-        // Iniciar scan
         this.foundDevices.clear();
         this.renderDevicesList();
         
@@ -901,7 +970,6 @@ export class BLEInterface {
   }
 
   showToast(message, type = 'info') {
-    // Remover toast anterior si existe
     const existing = document.querySelector('.ble-toast');
     if (existing) existing.remove();
     
@@ -922,14 +990,20 @@ export class BLEInterface {
   }
 
   destroy() {
-    // Limpiar
     const styles = document.getElementById('ble-styles');
     if (styles) styles.remove();
     
     const toast = document.querySelector('.ble-toast');
     if (toast) toast.remove();
     
-    // Detener scan si está activo
+    // [NORDIC_010] Limpiar listeners nativos
+    if (this._nativeAdStartedListener) {
+      this._nativeAdStartedListener.remove();
+    }
+    if (this._nativeAdFailedListener) {
+      this._nativeAdFailedListener.remove();
+    }
+    
     if (this.isScanning) {
       this.toggleScan();
     }
