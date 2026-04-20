@@ -1,8 +1,9 @@
 /**
- * BLE Interface v2.3.4-NAP
+ * BLE Interface v2.4.0-NAP
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
- * + FIX: Dummy mode solo cuando no hay nativo ni bleMesh
+ * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
+ * + FEATURE v2.4.0: Nombres de dispositivo + Sistema de Contactos Agregados
  * 
  * FIXES NAP 2.0:
  * - Advertising via plugin nativo directo (no bleMesh abstraction)
@@ -11,9 +12,20 @@
  * - NAP Error Codes UI_001-006
  */
 
+// NUEVO: Import del sistema de contactos BLE
+import { 
+  getBLEContacts, 
+  addBLEContact, 
+  removeBLEContact, 
+  isBLEContact 
+} from '../core/ble_contacts.js';
+
 // NUEVO: Función inicializadora exportada para NexoApp v3.3.1
 export function initBLEInterface(bleMesh) {
-  return new BLEInterface(bleMesh).init();
+  const instance = new BLEInterface(bleMesh).init();
+  // [NORDIC_010] FIX v2.3.5: Asignar instancia real a window para onclick handlers
+  window.bleInterface = instance;
+  return instance;
 }
 
 // NAP 2.0 Error Codes UI
@@ -44,6 +56,9 @@ export class BLEInterface {
     // [NORDIC_010] FIX v3.0.3: Estado nativo real
     this.isAdvertising = false;
     this.canAdvertise = false;
+    
+    // [NORDIC_010] FEATURE v2.4.0: Nombre local del dispositivo
+    this.localDeviceName = 'NEXO Device';
   }
 
   _detectMeshType() {
@@ -76,9 +91,27 @@ export class BLEInterface {
       this._initVisibility();
       // [NORDIC_010] FIX v2.3.4: Inicializar listeners de escaneo nativo
       this._setupNativeScanListeners();
+      // [NORDIC_010] FIX v2.3.5: Inicializar listeners de conexión nativo
+      this._setupNativeConnectionListeners();
+      // [NORDIC_010] FEATURE v2.4.0: Cargar nombre local del dispositivo
+      this._loadLocalDeviceName();
     }
     
     return this;
+  }
+
+  // ============================================================
+  // [NORDIC_010] FEATURE v2.4.0: OBTENER NOMBRE LOCAL DEL DISPOSITIVO
+  // ============================================================
+  async _loadLocalDeviceName() {
+    if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) return;
+    try {
+      const info = await this.nativePlugin.getLocalDeviceInfo();
+      this.localDeviceName = info.deviceName || 'NEXO Device';
+      console.log('[BLEInterface] Nombre local:', this.localDeviceName);
+    } catch (e) {
+      console.warn('[BLEInterface] No se pudo obtener nombre local:', e);
+    }
   }
 
   // ============================================================
@@ -102,7 +135,7 @@ export class BLEInterface {
       const device = {
         id: data.deviceId,
         address: data.deviceId,
-        name: data.name,
+        name: data.name || 'NEXO Device',
         rssi: data.rssi
       };
       this.onDeviceFound(device);
@@ -117,6 +150,44 @@ export class BLEInterface {
     });
     
     console.log('[BLEInterface] Listeners nativos de escaneo configurados');
+  }
+
+  // ============================================================
+  // [NORDIC_010] FIX v2.3.5: LISTENERS NATIVOS PARA CONEXIÓN
+  // ============================================================
+  _setupNativeConnectionListeners() {
+    if (!this.nativePlugin) return;
+    
+    // Limpiar listeners previos si existen
+    if (this._nativeDeviceConnectedListener) {
+      this._nativeDeviceConnectedListener.remove();
+    }
+    if (this._nativeDeviceDisconnectedListener) {
+      this._nativeDeviceDisconnectedListener.remove();
+    }
+    
+    // Listener: Dispositivo conectado exitosamente
+    this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', (data) => {
+      console.log('[BLEInterface] Nativo: onDeviceConnected', data);
+      const device = {
+        id: data.deviceId,
+        address: data.deviceId,
+        name: data.name || 'Unknown'
+      };
+      this.onDeviceConnected(device);
+    });
+    
+    // Listener: Dispositivo desconectado
+    this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', (data) => {
+      console.log('[BLEInterface] Nativo: onDeviceDisconnected', data);
+      const device = {
+        id: data.deviceId,
+        address: data.deviceId
+      };
+      this.onDeviceDisconnected(device);
+    });
+    
+    console.log('[BLEInterface] Listeners nativos de conexión configurados');
   }
 
   // ============================================================
@@ -240,14 +311,14 @@ export class BLEInterface {
       btn.className = 'ble-btn-visibility btn-visibility-off';
       if (icon) icon.textContent = '👁️';
       if (text) text.textContent = 'Visibilidad';
-      btn.title = 'Pulse para hacerse visible a otros dispositivos';
+      btn.title = `Pulse para hacerse visible como: ${this.localDeviceName}`;
       btn.disabled = false;
     } else {
       // ESTADO ENCENDIDO: Visible activo
       btn.className = 'ble-btn-visibility btn-visibility-on';
       if (icon) icon.textContent = '👁️‍🗨️';
       if (text) text.textContent = 'Visible';
-      btn.title = 'Pulse para dejar de ser visible';
+      btn.title = `Visible como: ${this.localDeviceName}`;
       btn.disabled = false;
     }
   }
@@ -323,7 +394,7 @@ export class BLEInterface {
     document.body.appendChild(tab);
     this.elements.tab = tab;
 
-    // Panel con tabs para Discovery / Connected
+    // Panel con tabs para Discovery / Added / Connected
     const panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML = `
@@ -335,6 +406,7 @@ export class BLEInterface {
       <!-- Tabs -->
       <div class="ble-tabs">
         <button class="ble-tab-btn active" data-tab="discovery">Descubrir</button>
+        <button class="ble-tab-btn" data-tab="added">Agregados</button>
         <button class="ble-tab-btn" data-tab="connected">Conectados</button>
       </div>
       
@@ -365,6 +437,13 @@ export class BLEInterface {
         </div>
       </div>
       
+      <!-- Added Tab -->
+      <div id="tab-added" class="ble-tab-content">
+        <div class="ble-list" id="ble-added-list">
+          <p class="ble-empty">No hay contactos agregados</p>
+        </div>
+      </div>
+      
       <!-- Connected Tab -->
       <div id="tab-connected" class="ble-tab-content">
         <div class="ble-list" id="ble-connected-list">
@@ -386,6 +465,7 @@ export class BLEInterface {
     this.elements.refreshBtn = document.getElementById('ble-refresh-btn');
     this.elements.closeBtn = document.getElementById('ble-close');
     this.elements.devicesList = document.getElementById('ble-devices-list');
+    this.elements.addedList = document.getElementById('ble-added-list');
     this.elements.connectedList = document.getElementById('ble-connected-list');
     this.elements.status = document.getElementById('ble-status');
     this.elements.badge = document.getElementById('ble-tab-badge');
@@ -476,18 +556,18 @@ export class BLEInterface {
       /* Tabs */
       .ble-tabs {
         display: flex;
-        gap: 10px;
+        gap: 8px;
         margin-bottom: 15px;
       }
       .ble-tab-btn {
         flex: 1;
-        padding: 10px;
+        padding: 10px 4px;
         background: #222;
         border: 1px solid #333;
         border-radius: 6px;
         color: #888;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 11px;
       }
       .ble-tab-btn.active {
         background: linear-gradient(135deg, #00d4ff, #0099cc);
@@ -700,6 +780,7 @@ export class BLEInterface {
       .ble-device-actions {
         display: flex;
         gap: 8px;
+        align-items: center;
       }
       
       .ble-btn-connect {
@@ -721,6 +802,24 @@ export class BLEInterface {
         border-radius: 4px;
         cursor: pointer;
         font-size: 12px;
+      }
+      
+      /* [NORDIC_010] FEATURE v2.4.0: Estilos para contactos */
+      .ble-btn-add {
+        padding: 6px 12px;
+        background: #00ff88;
+        color: #000;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+      }
+      
+      .ble-added-badge {
+        color: #00ff88;
+        font-size: 12px;
+        font-weight: bold;
       }
       
       /* Toast notifications */
@@ -794,6 +893,8 @@ export class BLEInterface {
       this.newDevicesCount = 0;
       this.updateBadge();
       this._loadConnectedDevices();
+      // [NORDIC_010] FEATURE v2.4.0: Renderizar lista de agregados al abrir panel
+      this.renderAddedList();
     }
   }
 
@@ -803,6 +904,11 @@ export class BLEInterface {
     
     document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
     document.getElementById(`tab-${tabName}`).classList.add('active');
+    
+    // [NORDIC_010] FEATURE v2.4.0: Renderizar agregados si se selecciona esa pestaña
+    if (tabName === 'added') {
+      this.renderAddedList();
+    }
   }
 
   // ============================================================
@@ -917,6 +1023,35 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================
+  // [NORDIC_010] FEATURE v2.4.0: CONTACTOS AGREGADOS
+  // ============================================================
+  async addContact(deviceId) {
+    const device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
+    if (!device) {
+      this.showToast('❌ Dispositivo no encontrado', 'error');
+      return;
+    }
+    
+    const success = addBLEContact(device);
+    if (success) {
+      this.showToast('✅ Agregado a contactos', 'success');
+      this.renderDevicesList();
+      if (document.querySelector('.ble-tab-btn[data-tab="added"]')?.classList.contains('active')) {
+        this.renderAddedList();
+      }
+    } else {
+      this.showToast('⚠️ Ya está en contactos', 'warning');
+    }
+  }
+
+  async removeContact(deviceId) {
+    removeBLEContact(deviceId);
+    this.showToast('❌ Eliminado de contactos', 'info');
+    this.renderAddedList();
+    this.renderDevicesList();
+  }
+
   renderDevicesList() {
     const list = this.elements.devicesList;
     if (this.foundDevices.size === 0) {
@@ -926,18 +1061,51 @@ export class BLEInterface {
     
     list.innerHTML = '';
     this.foundDevices.forEach((device, id) => {
+      const isAdded = isBLEContact(id);
       const item = document.createElement('div');
       item.className = 'ble-device-item' + (this.newDevicesCount > 0 ? ' new' : '');
+      
+      const actionsHtml = isAdded
+        ? `<span class="ble-added-badge">✓ Agregado</span><button class="ble-btn-connect" onclick="bleInterface.connect('${id}')">Conectar</button>`
+        : `<button class="ble-btn-add" onclick="bleInterface.addContact('${id}')">Agregar</button><button class="ble-btn-connect" onclick="bleInterface.connect('${id}')">Conectar</button>`;
+      
       item.innerHTML = `
         <div class="ble-device-info">
-          <span class="ble-device-name">${device.name || 'Desconocido'}</span>
+          <span class="ble-device-name">${device.name || 'NEXO Device'}</span>
           <span class="ble-device-id">${this._formatId(id)}</span>
           <span class="ble-device-rssi">📶 ${device.rssi || '?'} dBm</span>
         </div>
         <div class="ble-device-actions">
-          <button class="ble-btn-connect" onclick="bleInterface.connect('${id}')">
-            Conectar
-          </button>
+          ${actionsHtml}
+        </div>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  renderAddedList() {
+    const list = this.elements.addedList;
+    const contacts = getBLEContacts();
+    
+    if (contacts.length === 0) {
+      list.innerHTML = '<p class="ble-empty">No hay contactos agregados. Descubre dispositivos y agrégalos.</p>';
+      return;
+    }
+    
+    list.innerHTML = '';
+    contacts.forEach((contact) => {
+      const id = contact.id || contact.address;
+      const item = document.createElement('div');
+      item.className = 'ble-device-item';
+      item.innerHTML = `
+        <div class="ble-device-info">
+          <span class="ble-device-name">${contact.name || 'NEXO Device'}</span>
+          <span class="ble-device-id">${this._formatId(id)}</span>
+          <span class="ble-device-rssi" style="color: #888; font-size: 11px;">Agregado el ${new Date(contact.addedAt).toLocaleDateString()}</span>
+        </div>
+        <div class="ble-device-actions">
+          <button class="ble-btn-connect" onclick="bleInterface.connect('${id}')">Conectar</button>
+          <button class="ble-btn-disconnect" onclick="bleInterface.removeContact('${id}')">Eliminar</button>
         </div>
       `;
       list.appendChild(item);
@@ -978,8 +1146,16 @@ export class BLEInterface {
     if (this.isDummyMode) return;
     
     try {
-      const device = this.foundDevices.get(deviceId);
-      if (!device) return;
+      const device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
+      if (!device) {
+        // [NORDIC_010] FEATURE v2.4.0: Buscar también en contactos agregados
+        const contacts = getBLEContacts();
+        const contact = contacts.find(c => (c.id || c.address) === deviceId);
+        if (!contact) {
+          this.showToast('❌ Dispositivo no disponible', 'error');
+          return;
+        }
+      }
       
       // [NORDIC_010] FIX: Usar plugin nativo directamente
       if (this.nativePlugin && this.nativePlugin.connectToDevice) {
@@ -1013,7 +1189,8 @@ export class BLEInterface {
 
   refreshDevices() {
     this._loadConnectedDevices();
-    this.showToast('Lista actualizada', 'success');
+    this.renderAddedList();
+    this.showToast('Listas actualizadas', 'success');
   }
 
   updateBadge() {
@@ -1100,6 +1277,13 @@ export class BLEInterface {
     if (this._nativeScanFailedListener) {
       this._nativeScanFailedListener.remove();
     }
+    // [NORDIC_010] FIX v2.3.5: Limpiar listeners nativos de conexión
+    if (this._nativeDeviceConnectedListener) {
+      this._nativeDeviceConnectedListener.remove();
+    }
+    if (this._nativeDeviceDisconnectedListener) {
+      this._nativeDeviceDisconnectedListener.remove();
+    }
     
     if (this.isScanning) {
       this.toggleScan();
@@ -1108,4 +1292,5 @@ export class BLEInterface {
 }
 
 // Variable global para acceso desde los onclick
+// [NORDIC_010] FIX v2.3.5: Se asigna la instancia real en initBLEInterface()
 window.bleInterface = null;
