@@ -1,11 +1,12 @@
 /**
- * BLE Interface v2.3.3-NAP
- * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh
- * + FIX: Advertising autónomo - consulta nativo directamente
- * + FIX [NORDIC_010]: Elimina dependencia de bleMesh para advertising
+ * BLE Interface v2.3.4-NAP
+ * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
+ * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
+ * + FIX: Dummy mode solo cuando no hay nativo ni bleMesh
  * 
  * FIXES NAP 2.0:
  * - Advertising via plugin nativo directo (no bleMesh abstraction)
+ * - Scan via plugin nativo directo (no bleMesh abstraction)
  * - Estado real nativo en UI
  * - NAP Error Codes UI_001-006
  */
@@ -34,13 +35,15 @@ export class BLEInterface {
     this.isVisible = false;
     this.elements = {};
     this.newDevicesCount = 0;
-    this.isDummyMode = !bleMesh;
+    // [NORDIC_010] FIX v2.3.4: Detectar plugin nativo temprano
+    this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
+    // Dummy mode SOLO si no hay bleMesh Y no hay plugin nativo
+    this.isDummyMode = !bleMesh && !this.nativePlugin;
     this.meshType = this._detectMeshType();
     
-    // [NORDIC_010] FIX v2.3.3: Estado nativo real
+    // [NORDIC_010] FIX v3.0.3: Estado nativo real
     this.isAdvertising = false;
     this.canAdvertise = false;
-    this.nativePlugin = null; // Referencia directa a NexoBLE
   }
 
   _detectMeshType() {
@@ -55,8 +58,14 @@ export class BLEInterface {
     this.injectStyles();
     this.setupEventListeners();
     
-    // [NORDIC_010] FIX v2.3.3: Obtener referencia directa al plugin nativo
-    this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
+    // Confirmar plugin nativo (por si Capacitor no estaba listo en constructor)
+    if (!this.nativePlugin) {
+      this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
+      // Re-evaluar dummy mode si descubrimos nativo tarde
+      if (this.nativePlugin) {
+        this.isDummyMode = !this.bleMesh && !this.nativePlugin;
+      }
+    }
     
     if (this.isDummyMode) {
       console.warn('[BLEInterface] Modo DUMMY - BLE no disponible');
@@ -65,9 +74,49 @@ export class BLEInterface {
       this.updateStatus();
       this._loadConnectedDevices();
       this._initVisibility();
+      // [NORDIC_010] FIX v2.3.4: Inicializar listeners de escaneo nativo
+      this._setupNativeScanListeners();
     }
     
     return this;
+  }
+
+  // ============================================================
+  // [NORDIC_010] FIX v2.3.4: LISTENERS NATIVOS PARA ESCANEO
+  // ============================================================
+  _setupNativeScanListeners() {
+    if (!this.nativePlugin) return;
+    
+    // Limpiar listeners previos si existen (evitar duplicados)
+    if (this._nativeDeviceFoundListener) {
+      this._nativeDeviceFoundListener.remove();
+    }
+    if (this._nativeScanFailedListener) {
+      this._nativeScanFailedListener.remove();
+    }
+    
+    // Listener: Dispositivo encontrado durante escaneo nativo
+    this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', (data) => {
+      console.log('[BLEInterface] Nativo: onDeviceFound', data);
+      // Mapear formato nativo (deviceId) -> formato interno (id/address)
+      const device = {
+        id: data.deviceId,
+        address: data.deviceId,
+        name: data.name,
+        rssi: data.rssi
+      };
+      this.onDeviceFound(device);
+    });
+    
+    // Listener: Error de escaneo nativo
+    this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', (data) => {
+      console.error('[BLEInterface] Nativo: onScanFailed', data);
+      this.isScanning = false;
+      this.onScanStateChanged(false);
+      this.showToast('❌ Error al escanear: ' + (data.errorName || data.errorCode || 'Unknown'), 'error');
+    });
+    
+    console.log('[BLEInterface] Listeners nativos de escaneo configurados');
   }
 
   // ============================================================
@@ -207,6 +256,7 @@ export class BLEInterface {
   // [NORDIC_010] FIX v2.3.3: TOGGLE VISIBILITY - Nativo directo
   // ============================================================
   async toggleVisibility() {
+    // [NORDIC_010] FIX v2.3.4: Permitir toggle si hay plugin nativo
     if (this.isDummyMode) return;
     
     try {
@@ -227,8 +277,6 @@ export class BLEInterface {
         } else {
           // Iniciar advertising nativo
           const result = await this.nativePlugin.startAdvertising();
-          // No actualizamos isAdvertising aquí - esperamos el evento onAdvertiseStarted
-          // o verificamos después de un delay
           console.log('[BLEInterface] startAdvertising() llamado nativamente:', result);
           
           // Verificación de seguridad después de 500ms
@@ -726,8 +774,8 @@ export class BLEInterface {
       btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
     });
     
-    // Eventos del mesh (solo para scan/discovery, no advertising)
-    if (!this.isDummyMode && this.bleMesh) {
+    // Eventos del mesh (solo como fallback si NO hay plugin nativo)
+    if (!this.isDummyMode && this.bleMesh && !this.nativePlugin) {
       if (this.bleMesh.on) {
         this.bleMesh.on('deviceFound', (device) => this.onDeviceFound(device));
         this.bleMesh.on('deviceConnected', (device) => this.onDeviceConnected(device));
@@ -757,14 +805,21 @@ export class BLEInterface {
     document.getElementById(`tab-${tabName}`).classList.add('active');
   }
 
+  // ============================================================
+  // [NORDIC_010] FIX v2.3.4: TOGGLE SCAN - Nativo directo
+  // ============================================================
   async toggleScan() {
+    // [NORDIC_010] FIX v2.3.4: Permitir escaneo si hay plugin nativo
     if (this.isDummyMode) return;
     
     try {
       if (this.isScanning) {
-        if (this.meshType === 'nordic' && this.bleMesh.stopDiscovery) {
+        // [NORDIC_010] FIX: Usar plugin nativo directamente
+        if (this.nativePlugin) {
+          await this.nativePlugin.stopScan();
+        } else if (this.meshType === 'nordic' && this.bleMesh.stopDiscovery) {
           await this.bleMesh.stopDiscovery();
-        } else if (this.bleMesh.stopScan) {
+        } else if (this.bleMesh && this.bleMesh.stopScan) {
           await this.bleMesh.stopScan();
         }
         this.isScanning = false;
@@ -773,9 +828,12 @@ export class BLEInterface {
         this.foundDevices.clear();
         this.renderDevicesList();
         
-        if (this.meshType === 'nordic' && this.bleMesh.startDiscovery) {
+        // [NORDIC_010] FIX: Usar plugin nativo directamente
+        if (this.nativePlugin) {
+          await this.nativePlugin.startScan();
+        } else if (this.meshType === 'nordic' && this.bleMesh.startDiscovery) {
           await this.bleMesh.startDiscovery();
-        } else if (this.bleMesh.startScan) {
+        } else if (this.bleMesh && this.bleMesh.startScan) {
           await this.bleMesh.startScan();
         }
         this.isScanning = true;
@@ -783,6 +841,8 @@ export class BLEInterface {
       }
     } catch (err) {
       console.error('[BLEInterface] Error toggling scan:', err);
+      this.isScanning = false;
+      this.onScanStateChanged(false);
       this.showToast('Error al escanear: ' + err.message, 'error');
     }
   }
@@ -830,18 +890,28 @@ export class BLEInterface {
     this.showToast('❌ Desconectado', 'info');
   }
 
+  // ============================================================
+  // [NORDIC_010] FIX v2.3.4: LOAD CONNECTED DEVICES - Nativo directo
+  // ============================================================
   async _loadConnectedDevices() {
-    if (this.isDummyMode || !this.bleMesh) return;
+    if (this.isDummyMode) return;
     
     try {
-      if (this.bleMesh.getConnectedDevices) {
-        const devices = await this.bleMesh.getConnectedDevices();
-        this.connectedDevices.clear();
-        devices.forEach(d => {
-          this.connectedDevices.set(d.id || d.address, d);
-        });
-        this.renderConnectedList();
+      let devices = [];
+      
+      // [NORDIC_010] FIX: Usar plugin nativo directamente
+      if (this.nativePlugin && this.nativePlugin.getConnectedDevices) {
+        const result = await this.nativePlugin.getConnectedDevices();
+        devices = result.devices || [];
+      } else if (this.bleMesh && this.bleMesh.getConnectedDevices) {
+        devices = await this.bleMesh.getConnectedDevices();
       }
+      
+      this.connectedDevices.clear();
+      devices.forEach(d => {
+        this.connectedDevices.set(d.id || d.address || d.deviceId, d);
+      });
+      this.renderConnectedList();
     } catch (err) {
       console.warn('[BLEInterface] Error loading connected devices:', err);
     }
@@ -901,6 +971,9 @@ export class BLEInterface {
     });
   }
 
+  // ============================================================
+  // [NORDIC_010] FIX v2.3.4: CONNECT - Nativo directo
+  // ============================================================
   async connect(deviceId) {
     if (this.isDummyMode) return;
     
@@ -908,7 +981,10 @@ export class BLEInterface {
       const device = this.foundDevices.get(deviceId);
       if (!device) return;
       
-      if (this.bleMesh.connect) {
+      // [NORDIC_010] FIX: Usar plugin nativo directamente
+      if (this.nativePlugin && this.nativePlugin.connectToDevice) {
+        await this.nativePlugin.connectToDevice({ deviceId });
+      } else if (this.bleMesh && this.bleMesh.connect) {
         await this.bleMesh.connect(deviceId);
       }
     } catch (err) {
@@ -917,11 +993,17 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================
+  // [NORDIC_010] FIX v2.3.4: DISCONNECT - Nativo directo
+  // ============================================================
   async disconnect(deviceId) {
     if (this.isDummyMode) return;
     
     try {
-      if (this.bleMesh.disconnect) {
+      // [NORDIC_010] FIX: Usar plugin nativo directamente
+      if (this.nativePlugin && this.nativePlugin.disconnectDevice) {
+        await this.nativePlugin.disconnectDevice({ deviceId });
+      } else if (this.bleMesh && this.bleMesh.disconnect) {
         await this.bleMesh.disconnect(deviceId);
       }
     } catch (err) {
@@ -944,6 +1026,9 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================
+  // [NORDIC_010] FIX v2.3.4: UPDATE STATUS - Nativo directo
+  // ============================================================
   async updateStatus(customStatus) {
     if (customStatus) {
       this.elements.status.textContent = customStatus;
@@ -955,9 +1040,14 @@ export class BLEInterface {
     
     try {
       let state = 'UNKNOWN';
-      if (this.meshType === 'nordic' && this.bleMesh.getState) {
+      
+      // [NORDIC_010] FIX: Usar plugin nativo directamente
+      if (this.nativePlugin && this.nativePlugin.isBluetoothEnabled) {
+        const btState = await this.nativePlugin.isBluetoothEnabled();
+        state = btState.enabled ? 'poweredOn' : 'poweredOff';
+      } else if (this.meshType === 'nordic' && this.bleMesh.getState) {
         state = await this.bleMesh.getState();
-      } else if (this.bleMesh.getStatus) {
+      } else if (this.bleMesh && this.bleMesh.getStatus) {
         state = await this.bleMesh.getStatus();
       }
       
@@ -996,12 +1086,19 @@ export class BLEInterface {
     const toast = document.querySelector('.ble-toast');
     if (toast) toast.remove();
     
-    // [NORDIC_010] Limpiar listeners nativos
+    // [NORDIC_010] Limpiar listeners nativos de advertising
     if (this._nativeAdStartedListener) {
       this._nativeAdStartedListener.remove();
     }
     if (this._nativeAdFailedListener) {
       this._nativeAdFailedListener.remove();
+    }
+    // [NORDIC_010] FIX v2.3.4: Limpiar listeners nativos de escaneo
+    if (this._nativeDeviceFoundListener) {
+      this._nativeDeviceFoundListener.remove();
+    }
+    if (this._nativeScanFailedListener) {
+      this._nativeScanFailedListener.remove();
     }
     
     if (this.isScanning) {
