@@ -1230,7 +1230,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // [NORDIC_010] FIX v3.0.3: startAdvertise() - Validación robusta de advertiser
+    // [NORDIC_010] FIX v3.0.5: startAdvertise() - Truncar nombre a 8 chars + "..."
     // ============================================================
     @PluginMethod
     fun startAdvertise(call: PluginCall) {
@@ -1284,13 +1284,32 @@ class NexoBlePlugin : Plugin() {
                 return
             }
             
+            // [NORDIC_010] FIX v3.0.5: Truncar nombre a 8 chars + "..." (11 bytes) para caber en advertising packet
+            val originalName = adapter.name ?: "NEXO"
+            val truncatedName = if (originalName.length > 8) {
+                originalName.take(8) + "..."
+            } else {
+                originalName
+            }
+            
+            // Guardar nombre para restaurar después
+            val nameToRestore = adapter.name
+            
+            // Aplicar nombre truncado temporalmente
+            try {
+                adapter.name = truncatedName
+                napLog("BLE_NAME", "Nombre truncado temporal: '$truncatedName' (original: '$originalName')")
+            } catch (e: Exception) {
+                napLog("BLE_NAME_WARN", "No se pudo truncar nombre: ${e.message}", "WARN")
+            }
+            
             val settings = AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
                 .setConnectable(true)
                 .build()
             
-            // [NORDIC_010] FIX v3.0.4: Incluir nombre del dispositivo en advertising
+            // [NORDIC_010] FIX v3.0.5: Incluir nombre truncado en advertising
             val data = AdvertiseData.Builder()
                 .setIncludeDeviceName(true)
                 .addServiceUuid(ParcelUuid(SERVICE_UUID))
@@ -1299,26 +1318,49 @@ class NexoBlePlugin : Plugin() {
             advertiseCallback = object : AdvertiseCallback() {
                 override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                     advertisingActive = true
-                    napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado correctamente")
+                    napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado con nombre: '$truncatedName'")
+                    
+                    // Restaurar nombre original después de 1s para no dejar el sistema con nombre corto
+                    nameToRestore?.let { oldName ->
+                        handler.postDelayed({
+                            try {
+                                adapter.name = oldName
+                                napLog("BLE_NAME", "Nombre restaurado: '$oldName'")
+                            } catch (e: Exception) {
+                                // Silencioso — no crítico
+                            }
+                        }, 1000)
+                    }
+                    
                     notifyListeners("onAdvertiseStarted", JSObject().apply {
                         put("success", true)
                         put("timestamp", System.currentTimeMillis())
+                        put("displayName", truncatedName)
                     })
                 }
                 
                 override fun onStartFailure(errorCode: Int) {
                     advertisingActive = false
-                    napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertising failed: $errorCode", "ERROR")
+                    
+                    // Restaurar nombre inmediatamente si falló
+                    nameToRestore?.let { oldName ->
+                        try {
+                            adapter.name = oldName
+                        } catch (e: Exception) { /* ignore */ }
+                    }
+                    
+                    val errorName = when(errorCode) {
+                        ADVERTISE_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"
+                        ADVERTISE_FAILED_DATA_TOO_LARGE -> "DATA_TOO_LARGE"
+                        ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "TOO_MANY_ADVERTISERS"
+                        ADVERTISE_FAILED_INTERNAL_ERROR -> "INTERNAL_ERROR"
+                        ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "FEATURE_UNSUPPORTED"
+                        else -> "UNKNOWN"
+                    }
+                    napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertising failed: $errorCode ($errorName)", "ERROR")
                     notifyListeners("onAdvertiseFailed", JSObject().apply {
                         put("errorCode", errorCode)
-                        put("errorName", when(errorCode) {
-                            ADVERTISE_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"
-                            ADVERTISE_FAILED_DATA_TOO_LARGE -> "DATA_TOO_LARGE"
-                            ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "TOO_MANY_ADVERTISERS"
-                            ADVERTISE_FAILED_INTERNAL_ERROR -> "INTERNAL_ERROR"
-                            ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "FEATURE_UNSUPPORTED"
-                            else -> "UNKNOWN"
-                        })
+                        put("errorName", errorName)
                     })
                 }
             }
@@ -1331,6 +1373,7 @@ class NexoBlePlugin : Plugin() {
             call.resolve(JSObject().apply { 
                 put("started", true) 
                 put("pendingConfirmation", true)
+                put("displayName", truncatedName)
                 put("note", "Advertising iniciado nativamente. Estado real confirmado por evento onAdvertiseStarted.")
             })
             
