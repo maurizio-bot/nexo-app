@@ -1,7 +1,8 @@
 /**
- * BLE Interface v2.3.1-NAP
+ * BLE Interface v2.3.2-FIX
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh
  * + FIX: Export initBLEInterface para compatibilidad con NexoApp v3.3.1
+ * + FIX [NORDIC_010]: Verifica estado advertising nativo al inicializar
  * 
  * FIXES NAP 2.0:
  * - Soporte API NordicMesh (startDiscovery) y HybridMesh (startScan)
@@ -70,13 +71,32 @@ export class BLEInterface {
     if (this.isDummyMode || !this.bleMesh) return;
     
     try {
-      // Obtener capacidades del mesh
+      // [NORDIC_010] FIX: Verificar estado real del plugin nativo primero
+      if (window.Capacitor?.Plugins?.NexoBLE) {
+        try {
+          const nativeStatus = await window.Capacitor.Plugins.NexoBLE.isAdvertising();
+          if (nativeStatus.isAdvertising === true) {
+            this.isAdvertising = true;
+            this.canAdvertise = true;
+            this.updateVisibilityButton();
+            
+            // Notificar al mesh si existe
+            if (this.bleMesh.emit) {
+              this.bleMesh.emit('visibilityChanged', { visible: true, source: 'native_check' });
+            }
+            return; // Estado ya activo, no necesitamos verificar más
+          }
+        } catch (e) {
+          console.log('[BLEInterface] Native isAdvertising check failed, falling back to mesh');
+        }
+      }
+      
+      // Fallback al comportamiento original si el nativo no responde
       if (this.bleMesh.getCapabilities) {
         const caps = await this.bleMesh.getCapabilities();
         this.canAdvertise = caps.canAdvertise || false;
       }
       
-      // Obtener estado actual de visibilidad
       if (this.bleMesh.getVisibilityState) {
         const state = await this.bleMesh.getVisibilityState();
         this.isAdvertising = state.isAdvertising || false;
@@ -91,7 +111,6 @@ export class BLEInterface {
           this.updateVisibilityButton();
         });
         
-        // Escuchar advertencias de permisos (Build #694)
         this.bleMesh.on('advertiseWarning', (data) => {
           console.warn('[BLEInterface] Advertise Warning:', data.message);
           this.canAdvertise = false;
