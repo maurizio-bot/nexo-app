@@ -35,8 +35,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #736 - [NORDIC_010] FIX v3.0.3-NAP
-// Fix: Advertising permission validation + null advertiser check
+// Build #739 - [NORDIC_010] FIX v3.0.4-NAP
+// Fix: Device name in scan/advertise + connection events to JS + getLocalDeviceInfo
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -371,8 +371,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.0.3 [NORDIC_010] FIX cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.0.3 loaded - Advertising permission fix")
+        remToast("INIT", "NAP-BLE v3.0.4 [NORDIC_010] FIX cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.0.4 loaded - Device name + connection events fix")
         
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED).apply {
             addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -1105,7 +1105,7 @@ class NexoBlePlugin : Plugin() {
                         val data = JSObject()
                         data.put("userId", userId)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.0.3")
+                        data.put("napVersion", "3.0.4")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -1191,9 +1191,14 @@ class NexoBlePlugin : Plugin() {
                 override fun onScanResult(callbackType: Int, result: ScanResult?) {
                     result?.device?.let { device ->
                         try {
+                            // [NORDIC_010] FIX v3.0.4: Leer nombre del scanRecord si device.name es null
+                            val displayName = device.name 
+                                ?: result.scanRecord?.deviceName 
+                                ?: "NEXO Device"
+                            
                             notifyListeners("onDeviceFound", JSObject().apply {
                                 put("deviceId", device.address)
-                                put("name", device.name ?: "Unknown")
+                                put("name", displayName)
                                 put("rssi", result.rssi)
                             })
                         } catch (e: SecurityException) {
@@ -1285,8 +1290,9 @@ class NexoBlePlugin : Plugin() {
                 .setConnectable(true)
                 .build()
             
+            // [NORDIC_010] FIX v3.0.4: Incluir nombre del dispositivo en advertising
             val data = AdvertiseData.Builder()
-                .setIncludeDeviceName(false)
+                .setIncludeDeviceName(true)
                 .addServiceUuid(ParcelUuid(SERVICE_UUID))
                 .build()
             
@@ -1341,6 +1347,9 @@ class NexoBlePlugin : Plugin() {
         call.resolve()
     }
 
+    // ============================================================
+    // [NORDIC_010] FIX v3.0.4: connectToDevice - Notifica conexión/desconexión al JS
+    // ============================================================
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1372,6 +1381,11 @@ class NexoBlePlugin : Plugin() {
                     when (newState) {
                         BluetoothProfile.STATE_CONNECTED -> {
                             gattClients[deviceId] = gatt
+                            // [NORDIC_010] FIX v3.0.4: Notificar a JS que el dispositivo se conectó
+                            notifyListeners("onDeviceConnected", JSObject().apply {
+                                put("deviceId", deviceId)
+                                put("name", device.name ?: "Unknown")
+                            })
                             try {
                                 gatt.requestMtu(MTU_DEFAULT)
                                 gatt.discoverServices()
@@ -1382,6 +1396,10 @@ class NexoBlePlugin : Plugin() {
                         BluetoothProfile.STATE_DISCONNECTED -> {
                             gattClients.remove(deviceId)
                             gatt.close()
+                            // [NORDIC_010] FIX v3.0.4: Notificar a JS que el dispositivo se desconectó
+                            notifyListeners("onDeviceDisconnected", JSObject().apply {
+                                put("deviceId", deviceId)
+                            })
                         }
                     }
                 }
@@ -1505,6 +1523,24 @@ class NexoBlePlugin : Plugin() {
         val result = JSObject()
         result.put("devices", devices)
         call.resolve(result)
+    }
+
+    // ============================================================
+    // [NORDIC_010] FEATURE v3.0.4: getLocalDeviceInfo - Nombre del dispositivo local
+    // ============================================================
+    @PluginMethod
+    fun getLocalDeviceInfo(call: PluginCall) {
+        try {
+            val adapter = getBluetoothAdapter()
+            val result = JSObject()
+            result.put("deviceName", adapter?.name ?: "Unknown")
+            result.put("deviceAddress", adapter?.address ?: "Unknown")
+            result.put("userId", userId)
+            result.put("isMultipleAdvertisementSupported", adapter?.isMultipleAdvertisementSupported ?: false)
+            call.resolve(result)
+        } catch (e: SecurityException) {
+            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "Error obteniendo info del dispositivo")
+        }
     }
 
     // ============================================================
