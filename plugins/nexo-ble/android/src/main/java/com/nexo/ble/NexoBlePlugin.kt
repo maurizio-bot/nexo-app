@@ -140,7 +140,7 @@ class NexoBlePlugin : Plugin() {
     private val connectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
     private val pendingChunks = ConcurrentHashMap<String, MutableMap<Int, ByteArray>>()
     private val messageBuffers = ConcurrentHashMap<String, ByteArrayOutputStream>()
-    private var isAdvertising = false
+    private var advertisingActive = false
     private var isScanning = false
     private var advertiseCallback: AdvertiseCallback? = null
     private var scanCallback: ScanCallback? = null
@@ -920,12 +920,12 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun stopAdvertiseInternal() {
-        if (!isAdvertising) return
+        if (!advertisingActive) return
         try {
             advertiseCallback?.let {
                 getBluetoothAdapter()?.bluetoothLeAdvertiser?.stopAdvertising(it)
             }
-            isAdvertising = false
+            advertisingActive = false
             advertiseCallback = null
             napLog(NAP_BLE_INIT_006, "Advertising detenido")
         } catch (e: SecurityException) {
@@ -1240,7 +1240,7 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        if (isAdvertising) {
+        if (advertisingActive) {
             call.resolve(JSObject().apply { 
                 put("started", true) 
                 put("alreadyActive", true)
@@ -1298,7 +1298,7 @@ class NexoBlePlugin : Plugin() {
             
             advertiseCallback = object : AdvertiseCallback() {
                 override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-                    isAdvertising = true
+                    advertisingActive = true
                     napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado correctamente")
                     notifyListeners("onAdvertiseStarted", JSObject().apply {
                         put("success", true)
@@ -1307,7 +1307,7 @@ class NexoBlePlugin : Plugin() {
                 }
                 
                 override fun onStartFailure(errorCode: Int) {
-                    isAdvertising = false
+                    advertisingActive = false
                     napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertising failed: $errorCode", "ERROR")
                     notifyListeners("onAdvertiseFailed", JSObject().apply {
                         put("errorCode", errorCode)
@@ -1574,9 +1574,9 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun isAdvertising(call: PluginCall) {
         val result = JSObject()
-        result.put("isAdvertising", isAdvertising)
+        result.put("isAdvertising", advertisingActive)
         result.put("timestamp", System.currentTimeMillis())
-        result.put("nap_code", if (isAdvertising) "ADVERTISING_ACTIVE" else "ADVERTISING_INACTIVE")
+        result.put("nap_code", if (advertisingActive) "ADVERTISING_ACTIVE" else "ADVERTISING_INACTIVE")
         call.resolve(result)
     }
 
