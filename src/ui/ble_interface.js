@@ -1,24 +1,17 @@
 /**
- * BLE Interface v2.4.0-NAP
+ * BLE Interface v2.4.1-NAP
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
  * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
  * + FEATURE v2.4.0: Nombres de dispositivo + Sistema de Contactos Agregados
+ * + FIX v2.4.1: Contactos integrados en el mismo archivo (sin import externo)
  * 
  * FIXES NAP 2.0:
- * - Advertising via plugin nativo directo (no bleMesh abstraction)
- * - Scan via plugin nativo directo (no bleMesh abstraction)
+ * - Advertising via plugin nativo directo
+ * - Scan via plugin nativo directo
  * - Estado real nativo en UI
  * - NAP Error Codes UI_001-006
  */
-
-// NUEVO: Import del sistema de contactos BLE
-import { 
-  getBLEContacts, 
-  addBLEContact, 
-  removeBLEContact, 
-  isBLEContact 
-} from '../core/ble_contacts.js';
 
 // NUEVO: Función inicializadora exportada para NexoApp v3.3.1
 export function initBLEInterface(bleMesh) {
@@ -37,6 +30,57 @@ const UI_ERRORS = {
   UI_005: 'PERMISSION_DENIED',
   UI_006: 'TIMEOUT'
 };
+
+// ============================================================
+// [NORDIC_010] FEATURE v2.4.1: SISTEMA DE CONTACTOS BLE (INTEGRADO)
+// ============================================================
+const BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v1';
+
+function _getBLEContacts() {
+  try {
+    const raw = localStorage.getItem(BLE_CONTACTS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error('[BLEInterface] Error leyendo contactos:', e);
+    return [];
+  }
+}
+
+function _addBLEContact(device) {
+  const contacts = _getBLEContacts();
+  const id = device.id || device.address;
+  if (!id) {
+    console.warn('[BLEInterface] No se puede agregar: sin ID');
+    return false;
+  }
+  if (contacts.some(c => (c.id || c.address) === id)) {
+    console.log('[BLEInterface] Ya existe:', id);
+    return false;
+  }
+  contacts.push({
+    id: id,
+    address: device.address || device.id,
+    name: device.name || 'NEXO Device',
+    rssi: device.rssi || null,
+    addedAt: Date.now()
+  });
+  try {
+    localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
+    return true;
+  } catch (e) {
+    console.error('[BLEInterface] Error guardando:', e);
+    return false;
+  }
+}
+
+function _removeBLEContact(deviceId) {
+  const contacts = _getBLEContacts().filter(c => (c.id || c.address) !== deviceId);
+  localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
+}
+
+function _isBLEContact(deviceId) {
+  return _getBLEContacts().some(c => (c.id || c.address) === deviceId);
+}
 
 export class BLEInterface {
   constructor(bleMesh) {
@@ -1033,7 +1077,7 @@ export class BLEInterface {
       return;
     }
     
-    const success = addBLEContact(device);
+    const success = _addBLEContact(device);
     if (success) {
       this.showToast('✅ Agregado a contactos', 'success');
       this.renderDevicesList();
@@ -1046,7 +1090,7 @@ export class BLEInterface {
   }
 
   async removeContact(deviceId) {
-    removeBLEContact(deviceId);
+    _removeBLEContact(deviceId);
     this.showToast('❌ Eliminado de contactos', 'info');
     this.renderAddedList();
     this.renderDevicesList();
@@ -1061,7 +1105,7 @@ export class BLEInterface {
     
     list.innerHTML = '';
     this.foundDevices.forEach((device, id) => {
-      const isAdded = isBLEContact(id);
+      const isAdded = _isBLEContact(id);
       const item = document.createElement('div');
       item.className = 'ble-device-item' + (this.newDevicesCount > 0 ? ' new' : '');
       
@@ -1085,7 +1129,7 @@ export class BLEInterface {
 
   renderAddedList() {
     const list = this.elements.addedList;
-    const contacts = getBLEContacts();
+    const contacts = _getBLEContacts();
     
     if (contacts.length === 0) {
       list.innerHTML = '<p class="ble-empty">No hay contactos agregados. Descubre dispositivos y agrégalos.</p>';
@@ -1149,7 +1193,7 @@ export class BLEInterface {
       const device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
       if (!device) {
         // [NORDIC_010] FEATURE v2.4.0: Buscar también en contactos agregados
-        const contacts = getBLEContacts();
+        const contacts = _getBLEContacts();
         const contact = contacts.find(c => (c.id || c.address) === deviceId);
         if (!contact) {
           this.showToast('❌ Dispositivo no disponible', 'error');
