@@ -459,3 +459,64 @@ window.NEXO_BLE_PERMISSIONS = {
   cancelSettingsWatcher,
   requestAndWaitForSettings
 };
+
+/**
+ * NUEVO: Inicia advertising BLE después de permisos concedidos
+ * FIX [NORDIC_010]: Conecta permisos con visibilidad activa
+ */
+export async function startBLEAdvertising() {
+  const platform = Capacitor.getPlatform();
+  if (platform !== 'android') {
+    return { success: false, error: 'Solo Android', nap_code: 'NOT_ANDROID' };
+  }
+  
+  try {
+    const result = await NexoBLE.startAdvertising();
+    napLog(NAP_CODES.ANDROID_NATIVE, 'Advertising iniciado', 'INFO', result);
+    return { 
+      success: true, 
+      isAdvertising: true,
+      platform: 'android-native',
+      nap_code: 'ADVERTISING_STARTED'
+    };
+  } catch (e) {
+    napLog(NAP_CODES.ERROR_RECOVERY, `Error iniciando advertising: ${e.message}`, 'ERROR');
+    return { 
+      success: false, 
+      error: e.message,
+      nap_code: 'ADVERTISING_FAILED'
+    };
+  }
+}
+
+/**
+ * NUEVO: Verifica estado real de advertising
+ * FIX [NORDIC_010]: Consulta plugin nativo para estado real
+ */
+export async function checkAdvertisingStatus() {
+  const platform = Capacitor.getPlatform();
+  if (platform !== 'android') {
+    return { isAdvertising: false, platform: 'web' };
+  }
+  
+  try {
+    const result = await NexoBLE.isAdvertising();
+    return {
+      isAdvertising: result.isAdvertising === true,
+      timestamp: result.timestamp,
+      platform: 'android-native',
+      nap_code: result.isAdvertising ? 'ADVERTISING_ACTIVE' : 'ADVERTISING_INACTIVE'
+    };
+  } catch (e) {
+    return { 
+      isAdvertising: false, 
+      error: e.message,
+      nap_code: 'CHECK_FAILED'
+    };
+  }
+}
+
+// Actualizar exportaciones
+window.NEXO_BLE_PERMISSIONS.startBLEAdvertising = startBLEAdvertising;
+window.NEXO_BLE_PERMISSIONS.checkAdvertisingStatus = checkAdvertisingStatus;
+
