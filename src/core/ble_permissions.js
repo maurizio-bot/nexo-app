@@ -1,7 +1,8 @@
 /**
- * BLE Permissions Manager v2.1-HOTFIX-2
+ * BLE Permissions Manager v2.2-FIX
  * Sin alerts bloqueantes - Solo console logging
  * FIX: Removida dependencia @capacitor/app, usando API nativa
+ * FIX [NORDIC_010]: Agregado startBLEAdvertising y checkAdvertisingStatus
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -450,16 +451,6 @@ export async function requestAndWaitForSettings(openSettingsFn, options = {}) {
   }
 }
 
-window.NEXO_BLE_PERMISSIONS = {
-  requestBLEPermissions,
-  checkBLEStatus,
-  setVerboseLogging,
-  NAP_CODES,
-  waitForSettingsReturn,
-  cancelSettingsWatcher,
-  requestAndWaitForSettings
-};
-
 /**
  * NUEVO: Inicia advertising BLE después de permisos concedidos
  * FIX [NORDIC_010]: Conecta permisos con visibilidad activa
@@ -516,7 +507,14 @@ export async function checkAdvertisingStatus() {
   }
 }
 
-// Actualizar exportaciones
-window.NEXO_BLE_PERMISSIONS.startBLEAdvertising = startBLEAdvertising;
-window.NEXO_BLE_PERMISSIONS.checkAdvertisingStatus = checkAdvertisingStatus;
-
+window.NEXO_BLE_PERMISSIONS = {
+  requestBLEPermissions,
+  checkBLEStatus,
+  setVerboseLogging,
+  NAP_CODES,
+  waitForSettingsReturn,
+  cancelSettingsWatcher,
+  requestAndWaitForSettings,
+  startBLEAdvertising,
+  checkAdvertisingStatus
+};
