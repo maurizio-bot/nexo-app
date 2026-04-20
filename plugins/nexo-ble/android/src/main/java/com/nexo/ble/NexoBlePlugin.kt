@@ -1358,13 +1358,41 @@ class NexoBlePlugin : Plugin() {
         call.resolve(result)
     }
 
-    override fun handleOnDestroy() {
-        super.handleOnDestroy()
-        cleanupAllConnections()
-        try {
-            context.unregisterReceiver(systemStateReceiver)
-        } catch (e: Exception) {
-            // Receiver may not be registered
-        }
+    // ============================================================
+    // [REM v3.0.1] ALIASES PARA COMPATIBILIDAD NORDIC MESH
+    // ============================================================
+    
+    /**
+     * Alias de startAdvertise() para compatibilidad con código que usa
+     * el nombre startAdvertising() (con 'g' al final)
+     */
+    @PluginMethod
+    fun startAdvertising(call: PluginCall) {
+        napLog(NAP_BLE_ADVERTISE_STARTED, "startAdvertising() llamado - delegando a startAdvertise()")
+        startAdvertise(call)
     }
+    
+    /**
+     * Alias de stopAdvertise() para compatibilidad con código que usa
+     * el nombre stopAdvertising() (con 'g' al final)
+     */
+    @PluginMethod
+    fun stopAdvertising(call: PluginCall) {
+        napLog(NAP_BLE_INIT_006, "stopAdvertising() llamado - delegando a stopAdvertise()")
+        stopAdvertise(call)
+    }
+    
+    /**
+     * NUEVO: Consulta si el advertising está activo actualmente
+     * Resuelve el problema de "Visibilidad desactivada" cuando sí está activo
+     */
+    @PluginMethod
+    fun isAdvertising(call: PluginCall) {
+        val result = JSObject()
+        result.put("isAdvertising", isAdvertising)
+        result.put("timestamp", System.currentTimeMillis())
+        result.put("nap_code", if (isAdvertising) "ADVERTISING_ACTIVE" else "ADVERTISING_INACTIVE")
+        call.resolve(result)
+    }
+
 } // <-- FIX: Cierre de clase asegurado
