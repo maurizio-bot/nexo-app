@@ -1,6 +1,7 @@
 /**
- * NEXO Setup Wizard v2.2-NAP
+ * NEXO Setup Wizard v2.2-FIX
  * Fixes: Resume listener + BT state polling + isAwaitingSettingsReturn fix
+ * FIX [NORDIC_010]: Inicia advertising automáticamente después de permisos/BT
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -80,6 +81,16 @@ export class SetupWizard {
       if (status.bluetoothEnabled) {
         this.isAwaitingSettingsReturn = false;
         this.clearBtCheckInterval();
+        
+        // [NORDIC_010] FIX: Iniciar advertising después de BT habilitado
+        try {
+          const { startBLEAdvertising } = await import('../core/ble_permissions.js');
+          await startBLEAdvertising();
+          console.log(NAP_WIZARD, 'Advertising iniciado post-BT');
+        } catch (e) {
+          console.warn(NAP_WIZARD, 'Advertising no iniciado:', e);
+        }
+        
         this.renderSuccessTransition();
         setTimeout(() => this.onComplete(), 800);
       } else {
@@ -114,6 +125,15 @@ export class SetupWizard {
       const status = await SetupManager.checkPermissionsRealtime();
       
       if (status.granted) {
+        // [NORDIC_010] FIX: Iniciar advertising automáticamente después de permisos
+        try {
+          const { startBLEAdvertising } = await import('../core/ble_permissions.js');
+          const advResult = await startBLEAdvertising();
+          console.log(NAP_WIZARD, 'Advertising iniciado:', advResult.nap_code);
+        } catch (e) {
+          console.warn(NAP_WIZARD, 'No se pudo iniciar advertising automáticamente:', e);
+        }
+        
         this.renderSuccessTransition();
         setTimeout(() => this.onComplete(), 800);
       } else if (!status.bluetoothEnabled) {
@@ -322,10 +342,8 @@ export class SetupWizard {
     }, 1500);
   }
 
-  // [REM FIX] Corregido: Ahora establece isAwaitingSettingsReturn = true
-  // y agrega polling + timeout de seguridad
   async handleOpenBluetoothSettings() {
-    this.isAwaitingSettingsReturn = true;  // [REM FIX] Faltaba esta línea
+    this.isAwaitingSettingsReturn = true;
     await SetupManager.markAwaitingSettingsReturn();
     await SetupManager.openBluetoothSettings();
     
@@ -336,7 +354,6 @@ export class SetupWizard {
       btn.style.pointerEvents = 'none';
     }
     
-    // [REM FIX] Verificación periódica cada 2 segundos
     this.btCheckInterval = setInterval(async () => {
       if (!this.isAwaitingSettingsReturn) {
         this.clearBtCheckInterval();
@@ -356,7 +373,6 @@ export class SetupWizard {
       }
     }, 2000);
     
-    // [REM FIX] Timeout máximo de seguridad: 30 segundos
     setTimeout(() => {
       if (this.isAwaitingSettingsReturn) {
         this.isAwaitingSettingsReturn = false;
