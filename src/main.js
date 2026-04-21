@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       const wizard = new SetupWizard('app', async () => {
         rem.success('[Setup] Wizard completado', 'SETUP_OK');
-        wizard.destroy(); // [FIX] Eliminar overlay del wizard inmediatamente
+        wizard.destroy();
         await SetupManager.markCompleted();
         await initializeNexoApp();
       });
@@ -305,9 +305,8 @@ function _focusInput(text = '') {
   }
 }
 
-// [FIX] Fallback defensivo: ocultar splash por cualquier ID posible
 function _forceHideSplash() {
-  const selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]', '#nexo-setup']; // [FIX] Agregado #nexo-setup
+  const selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]', '#nexo-setup'];
   selectors.forEach(sel => {
     const el = document.querySelector(sel);
     if (el) {
