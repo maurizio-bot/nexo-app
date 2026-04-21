@@ -267,9 +267,17 @@ export class NexoApp {
       }
       
       // [INTEGRATION v3.3.2] Listener global para chat BLE desde ble_interface.js
+      // FIX VISTAS: Ahora también muestra el contenedor #app al activar chat
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
         this.activeContact = { id: contactId, name, address, transport };
+        
+        // FIX VISTAS: Mostrar chat cuando se activa una conversación BLE
+        const appContainer = document.getElementById('app');
+        if (appContainer) {
+          appContainer.classList.remove('hidden');
+        }
+        
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this.config.onStatusChange(`CHAT:${name}`);
       };
