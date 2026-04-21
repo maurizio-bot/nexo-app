@@ -1,11 +1,12 @@
 /**
- * NEXO App v3.3.2-NAP
+ * NEXO App v3.3.3-NAP
  * Orquestador Principal - NAP 2.0 Certified
  * FIXES: 
  * - CryptoVault.init() (no initialize())
  * - HybridMesh.on() defensive check
  * - Interface Contract NordicMesh
  * + INTEGRATION v3.3.2: BLE Chat directo (activeContact + _sendViaBLE)
+ * + v3.3.3-NAP: MessageTracker + ACK automático + Read receipts #00e676 + Conexión BLE robusta
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -51,6 +52,39 @@ const DEBUG = {
   setIdentity: (id) => id && rem.updateIdentity(id)
 };
 
+// v3.3.3-NAP: Message Tracker + Read Receipts
+const MESSAGE_STATES = {
+  PENDING: 'pending',
+  SENT: 'sent',
+  DELIVERED: 'delivered',
+  READ: 'read'
+};
+
+class MessageTracker {
+  constructor() {
+    this.messages = new Map();
+  }
+  
+  track(id, state = MESSAGE_STATES.PENDING, meta = {}) {
+    this.messages.set(id, { state, timestamp: Date.now(), ...meta });
+  }
+  
+  update(id, state) {
+    const msg = this.messages.get(id);
+    if (msg) {
+      msg.state = state;
+      msg[`${state}At`] = Date.now();
+      this.messages.set(id, msg);
+      return msg;
+    }
+    return null;
+  }
+  
+  get(id) {
+    return this.messages.get(id);
+  }
+}
+
 export class NexoApp {
   constructor(config = {}) {
     if (config && typeof config !== 'object') {
@@ -81,7 +115,13 @@ export class NexoApp {
     this.initialized = false;
     this.activeContact = null;
     this._bleChatHandler = null;
-    DEBUG.log('🚀 [NEXO] v3.3.2-NAP iniciando...', 'info', 'APP_INIT');
+    
+    // v3.3.3-NAP
+    this.messageTracker = new MessageTracker();
+    this.receivedMessages = new Map(); // contactId -> Array<{msgId, timestamp, read}>
+    this._receiptObserver = null;
+    
+    DEBUG.log('🚀 [NEXO] v3.3.3-NAP iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -103,7 +143,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v3.3.2-NAP Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v3.3.3-NAP Ready', 'APP_READY');
       this._logFinalStatus();
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
@@ -234,6 +274,9 @@ export class NexoApp {
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this.config.onStatusChange(`CHAT:${name}`);
+        
+        // v3.3.3-NAP: Enviar read ACKs para mensajes recibidos de este contacto
+        setTimeout(() => this._sendPendingReadAcks(contactId), 600);
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
     } catch (err) {
@@ -293,6 +336,10 @@ export class NexoApp {
         DEBUG.error('UX_004', `TheStream: ${e.message}`);
       }
     }
+    
+    // v3.3.3-NAP: Inyectar CSS de read receipts y observer
+    this._injectReceiptStyles();
+    this._initReceiptObserver();
   }
 
   _handleNordicPeer(peer) {
@@ -349,20 +396,51 @@ export class NexoApp {
 
   _updateStatus() {}
 
-  async _sendViaBLE(deviceId, content) {
+  // v3.3.3-NAP: Conexión BLE robusta con verificación + tracking
+  async _sendViaBLE(deviceId, content, msgId) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin NexoBLE no disponible');
+    
+    this.messageTracker.track(msgId, MESSAGE_STATES.PENDING, { deviceId, content });
+    
+    // Verificar conexión existente
     let isConnected = false;
     try {
       const result = await plugin.getConnectedDevices?.();
-      isConnected = result?.devices?.some(d => d.deviceId === deviceId || d.id === deviceId);
-    } catch (e) {}
-    if (!isConnected) {
-      await plugin.connectToDevice({ deviceId });
-      DEBUG.log(`🔗 Conectado a ${deviceId.substr(0,8)}...`, 'info', 'BLE_CONN');
+      isConnected = result?.devices?.some(d => 
+        d.deviceId === deviceId || d.id === deviceId || d.address === deviceId
+      );
+    } catch (e) {
+      console.warn('[NexoApp] Error checking connected devices:', e);
     }
-    await plugin.sendMessage({ deviceId, message: content });
-    DEBUG.success(`📨 Enviado vía BLE a ${deviceId.substr(0,8)}`, 'MSG_BLE');
+    
+    // Conectar si es necesario con retry y delay de descubrimiento GATT
+    if (!isConnected) {
+      console.log('[NexoApp] BLE no conectado, iniciando conexión robusta...');
+      try {
+        await withTimeoutNAP(plugin.connectToDevice({ deviceId }), 15000, 'BLE.connect');
+        // CRÍTICO: esperar descubrimiento GATT + MTU negotiation
+        await new Promise(r => setTimeout(r, 1200));
+      } catch (e) {
+        throw new Error(`BLE_011: Connection failed - ${e.message}`);
+      }
+      
+      // Verificar que realmente esté conectado
+      try {
+        const verify = await plugin.getConnectedDevices?.();
+        isConnected = verify?.devices?.some(d => 
+          d.deviceId === deviceId || d.id === deviceId || d.address === deviceId
+        );
+      } catch (e) {}
+      
+      if (!isConnected) {
+        throw new Error('BLE_011: Race condition - device not in connected list after connect');
+      }
+    }
+    
+    // Enviar con timeout
+    await withTimeoutNAP(plugin.sendMessage({ deviceId, message: content }), 10000, 'BLE.send');
+    this.messageTracker.update(msgId, MESSAGE_STATES.SENT);
   }
 
   async sendMessage(msg) {
@@ -371,27 +449,49 @@ export class NexoApp {
       return false;
     }
     try {
-      this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true }, 'self');
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
       const recipient = isObject ? msg.recipient : null;
       const targetId = recipient || this.activeContact?.id;
       const targetTransport = this.activeContact?.transport;
+      
+      // v3.3.3-NAP: Generar ID único y trackear desde pending
+      const msgId = 'msg_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now().toString(36);
+      this.messageTracker.track(msgId, MESSAGE_STATES.PENDING, { 
+        content, recipient: targetId, transport: targetTransport, timestamp: Date.now() 
+      });
+      
+      // Renderizar inmediatamente como pending
+      this._handleMessage({ 
+        content, 
+        _own: true, 
+        timestamp: Date.now(), 
+        pending: true, 
+        msgId, 
+        state: MESSAGE_STATES.PENDING,
+        recipient: targetId,
+        source: 'self'
+      }, 'self');
 
+      // Intentar BLE directo primero si hay contacto activo BLE
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
-          await this._sendViaBLE(targetId, content);
-          this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct' }, 'self');
+          await this._sendViaBLE(targetId, content, msgId);
+          this.messageTracker.update(msgId, MESSAGE_STATES.SENT);
+          this._updateMessageReceiptUI(msgId);
           return true;
         } catch (e) {
           DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
         }
       }
 
+      // Fallback Nordic
       const nordicPeers = this.nordicMesh?.getPeers?.() || [];
       if (nordicPeers.length > 0) {
         try {
           await this.nordicMesh.sendMessage(nordicPeers[0].id, content);
+          this.messageTracker.update(msgId, MESSAGE_STATES.SENT);
+          this._updateMessageReceiptUI(msgId);
           DEBUG.success(`Sent via Nordic to ${nordicPeers[0].id.substr(0,8)}`, 'MSG_NORDIC');
           return true;
         } catch (e) {
@@ -399,9 +499,12 @@ export class NexoApp {
         }
       }
       
+      // Fallback Hybrid
       if (this.mesh?.getPeerCount?.() > 0) {
         try {
           await this.mesh.broadcast({ content });
+          this.messageTracker.update(msgId, MESSAGE_STATES.SENT);
+          this._updateMessageReceiptUI(msgId);
           DEBUG.success('Sent via Hybrid', 'MSG_HYBRID');
           return true;
         } catch (e) {
@@ -409,16 +512,22 @@ export class NexoApp {
         }
       }
       
+      // Fallback Bridge
       if (this.bridge) {
         const result = await this.bridge.send({ content });
         if (result) {
+          this.messageTracker.update(msgId, MESSAGE_STATES.SENT);
+          this._updateMessageReceiptUI(msgId);
           DEBUG.success('Sent via Bridge', 'MSG_BRIDGE');
           return true;
         }
       }
       
+      // Fallback WebSocket
       if (this.wsClient?.isConnected?.()) {
         this.wsClient.send({ content });
+        this.messageTracker.update(msgId, MESSAGE_STATES.SENT);
+        this._updateMessageReceiptUI(msgId);
         DEBUG.success('Sent via WebSocket', 'MSG_WS');
         return true;
       }
@@ -434,11 +543,179 @@ export class NexoApp {
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
+      // v3.3.3-NAP: Detectar ACKs entrantes
+      if (msg.content && typeof msg.content === 'string') {
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed && parsed.type === 'nexo_ack' && parsed.msgId) {
+            const newState = parsed.ackType === 'read' ? MESSAGE_STATES.READ : MESSAGE_STATES.DELIVERED;
+            this.messageTracker.update(parsed.msgId, newState);
+            this._updateMessageReceiptUI(parsed.msgId);
+            DEBUG.log(`ACK ${parsed.ackType} recibido para ${parsed.msgId}`, 'info', 'ACK_RX');
+            return;
+          }
+        } catch (e) {
+          // No es JSON, mensaje normal
+        }
+      }
+      
+      const enriched = { 
+        ...msg, 
+        _source: source, 
+        _ts: Date.now(), 
+        _id: msg.msgId || Math.random().toString(36).substr(2, 9) 
+      };
+      
+      // v3.3.3-NAP: Auto-ACK delivered para mensajes BLE recibidos
+      if (!msg._own && (source === 'ble_nordic' || source === 'ble_direct')) {
+        const senderId = msg.sender || msg.deviceId;
+        const originalMsgId = msg.msgId || msg._id;
+        if (senderId && originalMsgId) {
+          // Guardar en receivedMessages para posible read ACK posterior
+          const list = this.receivedMessages.get(senderId) || [];
+          if (!list.some(m => m.msgId === originalMsgId)) {
+            list.push({ msgId: originalMsgId, timestamp: msg.timestamp || Date.now(), read: false });
+            this.receivedMessages.set(senderId, list);
+          }
+          // Enviar ACK delivered con pequeño delay para no saturar
+          setTimeout(() => this._sendBleAck(originalMsgId, 'delivered', senderId), 400);
+        }
+      }
+      
       this.config.onMessage(enriched);
       if (this.stream?.appendItems) this.stream.appendItems([enriched]);
+      
+      // Actualizar UI para mensajes propios
+      if (msg._own && msg.msgId) {
+        setTimeout(() => this._updateMessageReceiptUI(msg.msgId), 150);
+      }
     } catch (err) {
       DEBUG.error('APP_005', `Message handler: ${err.message}`);
+    }
+  }
+
+  // v3.3.3-NAP: Enviar ACK por BLE (sin tracking, para evitar loops)
+  async _sendBleAck(originalMsgId, ackType, recipientId) {
+    if (!recipientId || !this.bleInterface?.nativePlugin) return;
+    try {
+      const ackPayload = JSON.stringify({ 
+        type: 'nexo_ack', 
+        ackType, 
+        msgId: originalMsgId,
+        timestamp: Date.now() 
+      });
+      await this.bleInterface.nativePlugin.sendMessage({ 
+        deviceId: recipientId, 
+        message: ackPayload 
+      });
+      DEBUG.log(`ACK ${ackType} enviado → ${recipientId.substr(0,8)}`, 'info', 'ACK_TX');
+    } catch (e) {
+      console.warn('[NexoApp] ACK send failed:', e);
+    }
+  }
+
+  // v3.3.3-NAP: Enviar read ACKs pendientes al abrir chat con un contacto
+  _sendPendingReadAcks(contactId) {
+    const list = this.receivedMessages.get(contactId) || [];
+    let sentCount = 0;
+    list.forEach(m => {
+      if (!m.read) {
+        this._sendBleAck(m.msgId, 'read', contactId);
+        m.read = true;
+        sentCount++;
+      }
+    });
+    if (sentCount > 0) {
+      DEBUG.log(`${sentCount} read ACKs sent to ${contactId.substr(0,8)}`, 'info', 'ACK_READ');
+    }
+  }
+
+  // v3.3.3-NAP: CSS inyectado para read receipts #00e676
+  _injectReceiptStyles() {
+    if (document.getElementById('nexo-receipt-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'nexo-receipt-styles';
+    style.textContent = `
+      .msg-receipt { display: inline-block; margin-left: 4px; font-size: 13px; font-weight: bold; transition: all 0.3s ease; line-height: 1; }
+      .msg-receipt.state-pending { color: #888; opacity: 0.5; font-size: 10px; }
+      .msg-receipt.state-sent { color: #bbbbbb; }
+      .msg-receipt.state-delivered { color: #00d4ff; letter-spacing: -1px; }
+      .msg-receipt.state-read { color: #00e676 !important; letter-spacing: -1px; }
+      .message-bubble[data-state="read"] .msg-receipt, .msg-sent[data-state="read"] .msg-receipt { color: #00e676 !important; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // v3.3.3-NAP: Observer para inyectar receipts en burbujas nuevas
+  _initReceiptObserver() {
+    const container = document.getElementById('messages-container');
+    if (!container || this._receiptObserver) return;
+    
+    this._receiptObserver = new MutationObserver((mutations) => {
+      mutations.forEach(mutation => {
+        mutation.addedNodes.forEach(node => {
+          if (node.nodeType === 1) {
+            const bubbles = node.matches?.('.message-bubble, .msg-sent, .message-own, [data-msg-id]') 
+              ? [node] 
+              : node.querySelectorAll?.('.message-bubble, .msg-sent, .message-own, [data-msg-id]');
+            if (bubbles) {
+              bubbles.forEach(bubble => this._injectReceiptToBubble(bubble));
+            }
+          }
+        });
+      });
+    });
+    
+    this._receiptObserver.observe(container, { childList: true, subtree: true });
+  }
+
+  _injectReceiptToBubble(bubble) {
+    if (bubble.querySelector('.msg-receipt')) return;
+    
+    const msgId = bubble.getAttribute('data-msg-id');
+    let state = MESSAGE_STATES.PENDING;
+    if (msgId && this.messageTracker) {
+      const tracked = this.messageTracker.get(msgId);
+      if (tracked) state = tracked.state;
+    }
+    
+    const receipt = document.createElement('span');
+    receipt.className = `msg-receipt state-${state}`;
+    receipt.textContent = this._getReceiptIcon(state);
+    receipt.style.marginLeft = '6px';
+    
+    const timeEl = bubble.querySelector('.message-time, .msg-time, .timestamp, [class*="time"]');
+    if (timeEl) {
+      timeEl.appendChild(receipt);
+    } else {
+      bubble.appendChild(receipt);
+    }
+    
+    bubble.setAttribute('data-state', state);
+  }
+
+  _updateMessageReceiptUI(msgId) {
+    const bubbles = document.querySelectorAll(`[data-msg-id="${msgId}"]`);
+    bubbles.forEach(bubble => {
+      const receipt = bubble.querySelector('.msg-receipt');
+      const state = this.messageTracker.get(msgId)?.state || MESSAGE_STATES.PENDING;
+      bubble.setAttribute('data-state', state);
+      if (receipt) {
+        receipt.className = `msg-receipt state-${state}`;
+        receipt.textContent = this._getReceiptIcon(state);
+      } else {
+        this._injectReceiptToBubble(bubble);
+      }
+    });
+  }
+
+  _getReceiptIcon(state) {
+    switch(state) {
+      case MESSAGE_STATES.PENDING: return '⏳';
+      case MESSAGE_STATES.SENT: return '✓';
+      case MESSAGE_STATES.DELIVERED: return '✓✓';
+      case MESSAGE_STATES.READ: return '✓✓';
+      default: return '';
     }
   }
 
@@ -466,6 +743,10 @@ export class NexoApp {
     if (this._isDestroyed) return;
     this._isDestroyed = true;
     DEBUG.log('🧹 NAP 2.0 Cleanup...', 'info', 'DESTROY');
+    if (this._receiptObserver) {
+      this._receiptObserver.disconnect();
+      this._receiptObserver = null;
+    }
     if (this._bleChatHandler) {
       window.removeEventListener('nexo:ble:openChat', this._bleChatHandler);
       this._bleChatHandler = null;
