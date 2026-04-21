@@ -15,14 +15,20 @@
   <title>NEXO v9.0</title>
 </head>
 <body>
-  <!-- SPLASH SCREEN - FIX: id="splash" (no splash-native) -->
-  <div id="splash">
+  <!-- SPLASH SCREEN -->
+  <div id="splash-native">
     <div id="splash-logo"></div>
     <div id="splash-text">NEXO v9.0</div>
   </div>
 
-  <!-- UI PRINCIPAL - FIX: class="hidden" para iniciar con BLE primero -->
-  <div id="app" class="hidden">
+  <!-- UI PRINCIPAL -->
+  <div id="app">
+    <!-- CHAT HEADER: Nombre del destinatario editable -->
+    <div id="chat-header">
+      <input type="text" id="chat-contact-name" value="NEXO" autocomplete="off" spellcheck="false">
+      <span id="chat-contact-subtitle">OFFLINE</span>
+    </div>
+    
     <!-- Stream container para Vault Slider -->
     <div id="nexo-stream" class="stream-container">
       <div id="messages-container"></div>
