@@ -66,6 +66,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     NEXO_DIAG.error('INIT_FATAL', error.message);
     rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
     NEXO_DIAG.hideSplash();
+    _forceHideSplash();
     _enableFallbackMode();
   }
 });
@@ -123,6 +124,7 @@ async function initializeNexoApp() {
     _setupKeyboardShortcuts();
     
     NEXO_DIAG.hideSplash();
+    _forceHideSplash();
     rem.success('NEXO v9.0-NAP Listo', 'INIT_OK');
     console.log('✅ NEXO v9.0-NAP Inicializado');
     
@@ -135,6 +137,7 @@ async function initializeNexoApp() {
     NEXO_DIAG.error('APP_INIT_ERROR', error.message);
     rem.error(`Error al iniciar app: ${error.message}`, 'APP_ERR');
     NEXO_DIAG.hideSplash();
+    _forceHideSplash();
     _enableFallbackMode();
   }
 }
@@ -299,6 +302,19 @@ function _focusInput(text = '') {
     input.focus(); 
     if (text) input.value = text;
   }
+}
+
+// [FIX] Fallback defensivo: ocultar splash por cualquier ID posible
+function _forceHideSplash() {
+  const selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]'];
+  selectors.forEach(sel => {
+    const el = document.querySelector(sel);
+    if (el) {
+      el.style.opacity = '0';
+      el.style.pointerEvents = 'none';
+      setTimeout(() => el.remove(), 500);
+    }
+  });
 }
 
 function _enableFallbackMode() {
