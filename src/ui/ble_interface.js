@@ -1209,6 +1209,7 @@ export class BLEInterface {
   // [UX v2.4.3] NUEVO: openChat - Emite evento global para el core de NEXO
   // El core escucha 'nexo:ble:openChat' y abre la ventana de chat.
   // FIX VISTAS: Ahora también muestra el contenedor #app explícitamente
+  // y actualiza el header con el nombre del destinatario.
   // ============================================================
   openChat(deviceId) {
     // Buscar en dispositivos encontrados, conectados, o contactos agregados
@@ -1240,6 +1241,12 @@ export class BLEInterface {
       appContainer.classList.remove('hidden');
     }
     
+    // [UX] Actualizar header del chat con nombre del destinatario
+    const nameInput = document.getElementById('chat-contact-name');
+    const subtitle = document.getElementById('chat-contact-subtitle');
+    if (nameInput) nameInput.value = device.name || 'NEXO Device';
+    if (subtitle) subtitle.textContent = 'BLUETOOTH';
+    
     // Emitir evento global para que el core de NEXO capture y abra el chat
     const event = new CustomEvent('nexo:ble:openChat', {
       detail: {
@@ -1248,7 +1255,6 @@ export class BLEInterface {
         address: device.address || device.id,
         transport: 'ble',
         rssi: device.rssi,
-        // [FUTURO] El core de NEXO usará Vault para obtener datos completos
         source: 'ble_interface'
       }
     });
