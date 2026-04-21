@@ -20,11 +20,9 @@ window.NEXO = {
   initialized: false
 };
 
-// NAP 2.0: Exponer REM globalmente para subsistemas
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 
-// NAP 2.0: Safety timeout 15s (tiempo para BLE init + permisos)
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible?.()) {
     rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
@@ -35,74 +33,50 @@ const SAFETY_TIMEOUT = setTimeout(() => {
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    // Inicializar diagnostico NAP
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
-    
     _ensureDOMStructure();
     
-    // Inicializar REM
     window.NEXO.rem = rem;
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
     
-    // ============================================
-    // Build #630: Setup Wizard Integration
-    // Verificar onboarding BLE antes de iniciar app
-    // ============================================
     rem.info('[Setup] Verificando estado de configuración...', 'SETUP_CHECK');
-    
     const setupStatus = await SetupManager.checkInitialStatus();
     
     if (!setupStatus.ready) {
       rem.info(`[Setup] Requerido: ${setupStatus.reason}`, 'SETUP_REQUIRED');
-      
-      // Ocultar splash para mostrar wizard
       NEXO_DIAG.hideSplash();
       
-      // Crear e iniciar wizard
       const wizard = new SetupWizard('app', async () => {
-        // Callback cuando wizard termina exitosamente
         rem.success('[Setup] Wizard completado', 'SETUP_OK');
         await SetupManager.markCompleted();
-        
-        // Continuar con inicialización normal
         await initializeNexoApp();
       });
       
       await wizard.start();
-      return; // El wizard se encarga de llamar initializeNexoApp cuando termine
-      
+      return;
     } else {
       rem.info('[Setup] Configuración ya completada', 'SETUP_SKIP');
-      // Setup ya hecho, iniciar directamente
       await initializeNexoApp();
     }
-    
   } catch (error) {
     console.error('💥 Error fatal en inicialización:', error);
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('INIT_FATAL', error.message);
     rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
     NEXO_DIAG.hideSplash();
-    
-    // NAP 2.0: Intentar modo degradado
     _enableFallbackMode();
   }
 });
 
-/**
- * Inicialización de la aplicación principal NexoApp
- * Extraída a función separada para poder llamarla desde el wizard o directamente
- */
 async function initializeNexoApp() {
   try {
-    // Configuración NEXO App
     const nexoConfig = {
       relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
       bleTimeout: 10000,
       enableGestures: true,
-      enableMesh: true, // NAP 2.0: Activar NordicMesh + HybridMesh
+      enableMesh: true,
       onMessage: (msg) => {
         console.log('📨 Mensaje:', msg);
         _renderMessage(msg);
@@ -124,13 +98,9 @@ async function initializeNexoApp() {
     };
     
     rem.info('🚀 [NEXO] App instance v3.3.0-NAP', 'NEXO_INIT');
-    
-    // Crear instancia
     window.NEXO.app = new NexoApp(nexoConfig);
-    
     rem.info('[init] ===== INICIANDO NEXO v3.3.0-NAP =====', 'INIT_START');
     
-    // Init con timeout de 12 segundos (NAP 2.0 Resource Management)
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('INIT_TIMEOUT')), 12000)
@@ -140,7 +110,6 @@ async function initializeNexoApp() {
       await Promise.race([initPromise, timeoutPromise]);
       rem.success('==== INICIALIZACIÓN NAP 2.0 COMPLETADA ====', 'INIT_OK');
     } catch (timeoutErr) {
-      // NAP 2.0: Graceful degradation
       rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
       rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
     }
@@ -148,32 +117,17 @@ async function initializeNexoApp() {
     window.NEXO.initialized = true;
     clearTimeout(SAFETY_TIMEOUT);
     
-    // Setup UI
     _setupMessageInput();
     _setupVaultToggle();
-    _setupKeyboardShortcuts(); // NAP 2.0: Atajos adicionales
+    _setupChatHeader();
+    _setupKeyboardShortcuts();
     
     NEXO_DIAG.hideSplash();
     rem.success('NEXO v9.0-NAP Listo', 'INIT_OK');
     console.log('✅ NEXO v9.0-NAP Inicializado');
     
-    // ============================================
-    // FIX VISTAS: Abrir panel BLE como vista inicial
-    // El chat permanece oculto hasta que usuario pulse "Escribir"
-    // ============================================
-    if (window.NEXO.app?.bleInterface?.togglePanel) {
-      const blePanel = document.getElementById('ble-panel');
-      if (blePanel && !blePanel.classList.contains('active')) {
-        window.NEXO.app.bleInterface.togglePanel();
-        rem.info('[UI] Panel BLE abierto como vista inicial', 'BLE_PANEL_OPEN');
-      }
-    }
-    
-    // Log estado final
     const status = window.NEXO.app.getStatus?.();
-    if (status) {
-      console.log('[NEXO STATUS]', status);
-    }
+    if (status) console.log('[NEXO STATUS]', status);
     
   } catch (error) {
     console.error('💥 Error en NexoApp:', error);
@@ -185,15 +139,12 @@ async function initializeNexoApp() {
   }
 }
 
-// NAP 2.0: Estructura DOM mínima garantizada
 function _ensureDOMStructure() {
   const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
   const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
-  
   if (stream && !stream.id) stream.id = 'nexo-stream';
   if (vault && !vault.id) vault.id = 'nexo-vault';
   
-  // Crear contenedor de mensajes si no existe
   if (!document.getElementById('messages-container')) {
     const msgContainer = document.createElement('div');
     msgContainer.id = 'messages-container';
@@ -210,17 +161,13 @@ function _setupMessageInput() {
   const send = async () => {
     const text = input.value.trim();
     if (!text) return;
-    
     input.value = '';
     input.focus();
     
     try {
       const sent = await window.NEXO.app.sendMessage({ content: text });
-      if (sent) {
-        rem.success('Enviado', 'MSG_SENT');
-      } else {
-        rem.info('En cola (offline)', 'MSG_QUEUED');
-      }
+      if (sent) rem.success('Enviado', 'MSG_SENT');
+      else rem.info('En cola (offline)', 'MSG_QUEUED');
     } catch (e) {
       rem.error('Error al enviar', 'MSG_ERR');
     }
@@ -233,7 +180,6 @@ function _setupMessageInput() {
       send();
     }
   });
-  
   input.focus();
 }
 
@@ -242,10 +188,46 @@ function _setupVaultToggle() {
   if (vault) vault.classList.add('vault-hidden');
 }
 
-// NAP 2.0: Atajos de teclado
+function _setupChatHeader() {
+  const nameInput = document.getElementById('chat-contact-name');
+  if (!nameInput) return;
+  
+  const saveName = () => {
+    const newName = nameInput.value.trim();
+    if (!newName) {
+      nameInput.value = window.NEXO.app?.activeContact?.name || 'NEXO';
+      return;
+    }
+    if (window.NEXO.app?.activeContact) {
+      window.NEXO.app.activeContact.name = newName;
+    }
+    try {
+      const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
+      const activeId = window.NEXO.app?.activeContact?.id;
+      if (activeId) {
+        const idx = contacts.findIndex(c => (c.id || c.address) === activeId);
+        if (idx >= 0) {
+          contacts[idx].name = newName;
+          localStorage.setItem('nexo_ble_contacts_v1', JSON.stringify(contacts));
+          rem.info(`Contacto renombrado: ${newName}`, 'CONTACT_RENAME');
+        }
+      }
+    } catch (e) {
+      console.warn('[main] Error guardando nombre editado:', e);
+    }
+  };
+  
+  nameInput.addEventListener('blur', saveName);
+  nameInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      nameInput.blur();
+    }
+  });
+}
+
 function _setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
-    // Ctrl+Shift+V: Toggle Vault
     if (e.ctrlKey && e.shiftKey && e.key === 'V') {
       e.preventDefault();
       const vault = document.getElementById('vault-panel');
@@ -254,14 +236,10 @@ function _setupKeyboardShortcuts() {
         _toggleVaultUI(!isHidden);
       }
     }
-    
-    // Ctrl+Shift+L: Toggle REM visibility
     if (e.ctrlKey && e.shiftKey && e.key === 'L') {
       e.preventDefault();
       rem.toggle?.();
     }
-    
-    // Ctrl+Shift+H: REM History
     if (e.ctrlKey && e.shiftKey && e.key === 'H') {
       e.preventDefault();
       rem.showHistory?.();
@@ -276,7 +254,6 @@ function _renderMessage(msg) {
   const div = document.createElement('div');
   div.className = `message ${msg._own ? 'own' : 'other'}`;
   
-  // NAP 2.0: Mostrar fuente del mensaje (BLE, Relay, etc.)
   const sourceBadge = msg._source ? 
     `<span class="msg-source" title="${msg._source}">${_getSourceIcon(msg._source)}</span>` : '';
   
@@ -294,10 +271,10 @@ function _renderMessage(msg) {
 
 function _getSourceIcon(source) {
   const icons = {
-    'ble_nordic': '🔷', // Nordic Mesh BLE
-    'ble_hybrid': '📡', // Hybrid Mesh BLE/WiFi
-    'relay': '🌐',      // WebSocket Relay
-    'self': '✓'         // Mensaje propio
+    'ble_nordic': '🔷',
+    'ble_hybrid': '📡',
+    'relay': '🌐',
+    'self': '✓'
   };
   return icons[source] || '•';
 }
@@ -311,7 +288,6 @@ function _toggleVaultUI(isOpen) {
     vault.classList.toggle('vault-visible', isOpen);
     rem.info(isOpen ? '[VAULT] Abierto' : '[VAULT] Cerrado', 'VAULT_TOGGLE');
   }
-  
   if (stream) {
     stream.style.transform = isOpen ? 'translateX(-20%)' : 'translateX(0)';
   }
@@ -325,13 +301,11 @@ function _focusInput(text = '') {
   }
 }
 
-// NAP 2.0: Modo degradado si init falla completamente
 function _enableFallbackMode() {
   console.warn('[NEXO] Activando modo fallback');
   const body = document.body;
   body.classList.add('nexo-fallback-mode');
   
-  // Mostrar mensaje al usuario
   const msg = document.createElement('div');
   msg.className = 'fallback-notice';
   msg.innerHTML = `
@@ -345,5 +319,4 @@ function _enableFallbackMode() {
   body.appendChild(msg);
 }
 
-// HMR
 if (module.hot) module.hot.accept();
