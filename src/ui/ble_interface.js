@@ -1,5 +1,5 @@
 /**
- * BLE Interface v2.4.3-NAP
+ * BLE Interface v2.4.4-NAP
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
  * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
@@ -7,6 +7,7 @@
  * + FIX v2.4.1: Contactos integrados en el mismo archivo (sin import externo)
  * + FIX v2.4.2: Deduplicación robusta BLE Privacy (MAC rotativa) + fix clase CSS 'new'
  * + UX v2.4.3: Botón único mutante (Agregar → Escribir) + evento global openChat
+ * + FIX v2.4.4-NAP: Connect en background al abrir chat (resuelve race condition BLE_011)
  */
 
 export function initBLEInterface(bleMesh) {
@@ -662,7 +663,7 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
-  openChat(deviceId) {
+  async openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
     if (!device) {
       const contacts = _getBLEContacts();
@@ -681,6 +682,11 @@ export class BLEInterface {
       return;
     }
     console.log('[BLEInterface] Solicitando abrir chat con:', device);
+    
+    // FIX v2.4.4-NAP: Conectar en background antes de abrir chat (resuelve BLE_011 race)
+    this.connect(deviceId).catch(err => {
+      console.warn('[BLEInterface] Background connect failed:', err);
+    });
     
     const appContainer = document.getElementById('app');
     if (appContainer) appContainer.classList.remove('hidden');
