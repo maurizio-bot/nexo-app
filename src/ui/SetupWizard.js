@@ -18,6 +18,7 @@ export class SetupWizard {
     this.isAwaitingSettingsReturn = false;
     this.settingsCheckInterval = null;
     this.btCheckInterval = null;
+    this._successTimeout = null; // [FIX] Timeout defensivo para auto-destrucción
     window.NEXO_WIZARD = this;
     
     this.handlePermissionsGranted = this.handlePermissionsGranted.bind(this);
@@ -188,6 +189,12 @@ export class SetupWizard {
     if (existing) {
       existing.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center;"><div style="font-size: 56px; margin-bottom: 16px;">✓</div><h3 style="margin:0; font-size: 20px; font-weight: 600; color: #00ff88;">Listo</h3></div>';
     }
+    // [FIX] Auto-destrucción defensiva: si onComplete no se ejecuta en 3.5s, forzar cleanup
+    if (this._successTimeout) clearTimeout(this._successTimeout);
+    this._successTimeout = setTimeout(() => {
+      console.log(NAP_WIZARD, 'Auto-destruyendo wizard por seguridad');
+      this.destroy();
+    }, 3500);
   }
 
   renderPermissions(showStillPending = false) {
@@ -388,6 +395,12 @@ export class SetupWizard {
   }
 
   destroy() {
+    // [FIX] Limpiar timeout defensivo
+    if (this._successTimeout) {
+      clearTimeout(this._successTimeout);
+      this._successTimeout = null;
+    }
+    
     window.removeEventListener('nexo-permissions-granted', this.handlePermissionsGranted);
     window.removeEventListener('nexo-permissions-denied', this.handlePermissionsDenied);
     document.removeEventListener('visibilitychange', this.handleAppResume);
