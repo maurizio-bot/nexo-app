@@ -1,10 +1,11 @@
 /**
- * BLE Interface v2.4.1-NAP
+ * BLE Interface v2.4.2-NAP
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
  * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
  * + FEATURE v2.4.0: Nombres de dispositivo + Sistema de Contactos Agregados
  * + FIX v2.4.1: Contactos integrados en el mismo archivo (sin import externo)
+ * + FIX v2.4.2: Deduplicación robusta BLE Privacy (MAC rotativa) + fix clase CSS 'new'
  * 
  * FIXES NAP 2.0:
  * - Advertising via plugin nativo directo
@@ -91,6 +92,8 @@ export class BLEInterface {
     this.isVisible = false;
     this.elements = {};
     this.newDevicesCount = 0;
+    // [NORDIC_010] FIX v2.4.2: Set para trackear IDs ya renderizados (clase CSS 'new')
+    this._renderedDeviceIds = new Set();
     // [NORDIC_010] FIX v2.3.4: Detectar plugin nativo temprano
     this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
     // Dummy mode SOLO si no hay bleMesh Y no hay plugin nativo
@@ -976,6 +979,8 @@ export class BLEInterface {
         this.onScanStateChanged(false);
       } else {
         this.foundDevices.clear();
+        // [NORDIC_010] FIX v2.4.2: Limpiar IDs renderizados al iniciar escaneo nuevo
+        this._renderedDeviceIds.clear();
         this.renderDevicesList();
         
         // [NORDIC_010] FIX: Usar plugin nativo directamente
@@ -1015,17 +1020,80 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================
+  // [NORDIC_010] FIX v2.4.2: DEDUPLICACIÓN ROBUSTA BLE PRIVACY
+  // Android 8+ rota direcciones MAC (Random Private Address). Si el plugin
+  // nativo reporta MACs diferentes para el mismo dispositivo, esta lógica
+  // detecta el duplicado por nombre + RSSI similar y actualiza la MAC.
+  // ============================================================
   onDeviceFound(device) {
-    const id = device.id || device.address;
-    const isNew = !this.foundDevices.has(id);
-    this.foundDevices.set(id, device);
+    // Normalizar ID: lowercase, trim, quitar guiones/espacios
+    let id = (device.id || device.address || '').toString().toLowerCase().trim();
     
-    if (isNew) {
-      this.newDevicesCount++;
-      this.updateBadge();
+    // Fallback si no hay ID válido (no debería pasar)
+    if (!id || id === 'null' || id === 'undefined') {
+      console.warn('[BLEInterface] onDeviceFound: deviceId inválido, ignorando:', device);
+      return;
     }
     
+    // 1. Deduplicación exacta por ID (MAC estable / Public Address)
+    if (this.foundDevices.has(id)) {
+      const existing = this.foundDevices.get(id);
+      existing.rssi = device.rssi;
+      existing.name = device.name || existing.name;
+      existing.lastSeen = Date.now();
+      this.foundDevices.set(id, existing);
+      this.renderDevicesList();
+      return;
+    }
+    
+    // 2. Deduplicación por BLE Privacy (MAC rotativa)
+    // Si la MAC cambió entre advertisement packets pero es el mismo dispositivo,
+    // lo detectamos por nombre idéntico + RSSI similar dentro de una ventana de tiempo.
+    const now = Date.now();
+    const RSSI_THRESHOLD = 15;      // ±15 dBm de margen
+    const TIME_WINDOW = 30000;      // 30 segundos
+    
+    for (const [existingId, existing] of this.foundDevices) {
+      const sameName = existing.name && device.name && existing.name === device.name;
+      const sameNameValid = sameName && device.name !== 'NEXO Device'; // Evitar dedup por nombre genérico
+      const rssiClose = existing.rssi != null && device.rssi != null &&
+                        Math.abs(existing.rssi - device.rssi) <= RSSI_THRESHOLD;
+      const recent = existing.lastSeen && (now - existing.lastSeen) < TIME_WINDOW;
+      
+      if (sameNameValid && rssiClose && recent) {
+        // Mismo dispositivo físico, MAC rotó. Actualizar entrada existente con nueva MAC.
+        console.log(`[BLEInterface] BLE Privacy dedup: ${existingId} -> ${id} (${device.name})`);
+        this.foundDevices.delete(existingId);
+        // Transferir estado interno
+        device.lastSeen = now;
+        device.addedAt = existing.addedAt; // preservar si existe
+        this.foundDevices.set(id, device);
+        // Actualizar referencias en contactos si la MAC cambió
+        this._updateContactAddress(existingId, id);
+        this.renderDevicesList();
+        return;
+      }
+    }
+    
+    // 3. Nuevo dispositivo real
+    device.lastSeen = now;
+    this.foundDevices.set(id, device);
+    this.newDevicesCount++;
+    this.updateBadge();
     this.renderDevicesList();
+  }
+
+  // [NORDIC_010] FIX v2.4.2: Actualizar dirección en contactos si la MAC BLE rotó
+  _updateContactAddress(oldId, newId) {
+    const contacts = _getBLEContacts();
+    const idx = contacts.findIndex(c => (c.id || c.address) === oldId);
+    if (idx >= 0) {
+      contacts[idx].id = newId;
+      contacts[idx].address = newId;
+      localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
+      console.log('[BLEInterface] Contacto actualizado por MAC rotativa:', oldId, '->', newId);
+    }
   }
 
   onDeviceConnected(device) {
@@ -1096,6 +1164,9 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
+  // ============================================================
+  // [NORDIC_010] FIX v2.4.2: RENDER - Clase 'new' solo para dispositivos realmente nuevos
+  // ============================================================
   renderDevicesList() {
     const list = this.elements.devicesList;
     if (this.foundDevices.size === 0) {
@@ -1106,8 +1177,14 @@ export class BLEInterface {
     list.innerHTML = '';
     this.foundDevices.forEach((device, id) => {
       const isAdded = _isBLEContact(id);
+      // FIX v2.4.2: Solo marcar 'new' si este ID nunca ha sido renderizado antes
+      const isNew = !this._renderedDeviceIds.has(id);
+      if (isNew) {
+        this._renderedDeviceIds.add(id);
+      }
+      
       const item = document.createElement('div');
-      item.className = 'ble-device-item' + (this.newDevicesCount > 0 ? ' new' : '');
+      item.className = 'ble-device-item' + (isNew ? ' new' : '');
       
       const actionsHtml = isAdded
         ? `<span class="ble-added-badge">✓ Agregado</span><button class="ble-btn-connect" onclick="bleInterface.connect('${id}')">Conectar</button>`
