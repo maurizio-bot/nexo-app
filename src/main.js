@@ -1,349 +1,326 @@
-/**
- * src/main.js - Punto de entrada NEXO v9.0-NAP
- * NAP 2.0 Certified - BLE Soberano P2P
- * v3.3.0 - Protocolo GATT NEXO + NordicMesh
- * Build #630: SetupWizard Integration for Android 14 BLE onboarding
- */
+/* Reset básico */
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-import './styles/critical.css';
-import { NEXO_DIAG } from './core/nap.js';
-import { NexoApp, DEBUG } from './app/nexo_app.js';
-import { rem } from './ui/rem.js';
-import { SetupManager } from './core/SetupManager.js';
-import { SetupWizard } from './ui/SetupWizard.js';
-
-window.NEXO = {
-  app: null,
-  rem: null,
-  diag: null,
-  version: '9.0-NAP',
-  initialized: false
-};
-
-// NAP 2.0: Exponer REM globalmente para subsistemas
-window.NEXO_REM = rem;
-window.NEXO_DIAG = NEXO_DIAG;
-
-// NAP 2.0: Safety timeout 15s (tiempo para BLE init + permisos)
-const SAFETY_TIMEOUT = setTimeout(() => {
-  if (NEXO_DIAG.isSplashVisible?.()) {
-    rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
-    NEXO_DIAG.hideSplash();
-    document.body.classList.add('nexo-force-ready');
-  }
-}, 15000);
-
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    // Inicializar diagnostico NAP
-    NEXO_DIAG.init();
-    window.NEXO.diag = NEXO_DIAG;
-    
-    _ensureDOMStructure();
-    
-    // Inicializar REM
-    window.NEXO.rem = rem;
-    rem.init();
-    rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
-    
-    // ============================================
-    // Build #630: Setup Wizard Integration
-    // Verificar onboarding BLE antes de iniciar app
-    // ============================================
-    rem.info('[Setup] Verificando estado de configuración...', 'SETUP_CHECK');
-    
-    const setupStatus = await SetupManager.checkInitialStatus();
-    
-    if (!setupStatus.ready) {
-      rem.info(`[Setup] Requerido: ${setupStatus.reason}`, 'SETUP_REQUIRED');
-      
-      // Ocultar splash para mostrar wizard
-      NEXO_DIAG.hideSplash();
-      
-      // Crear e iniciar wizard
-      const wizard = new SetupWizard('app', async () => {
-        // Callback cuando wizard termina exitosamente
-        rem.success('[Setup] Wizard completado', 'SETUP_OK');
-        await SetupManager.markCompleted();
-        
-        // Continuar con inicialización normal
-        await initializeNexoApp();
-      });
-      
-      await wizard.start();
-      return; // El wizard se encarga de llamar initializeNexoApp cuando termine
-      
-    } else {
-      rem.info('[Setup] Configuración ya completada', 'SETUP_SKIP');
-      // Setup ya hecho, iniciar directamente
-      await initializeNexoApp();
-    }
-    
-  } catch (error) {
-    console.error('💥 Error fatal en inicialización:', error);
-    clearTimeout(SAFETY_TIMEOUT);
-    NEXO_DIAG.error('INIT_FATAL', error.message);
-    rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
-    NEXO_DIAG.hideSplash();
-    
-    // NAP 2.0: Intentar modo degradado
-    _enableFallbackMode();
-  }
-});
-
-/**
- * Inicialización de la aplicación principal NexoApp
- * Extraída a función separada para poder llamarla desde el wizard o directamente
- */
-async function initializeNexoApp() {
-  try {
-    // Configuración NEXO App
-    const nexoConfig = {
-      relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
-      bleTimeout: 10000,
-      enableGestures: true,
-      enableMesh: true, // NAP 2.0: Activar NordicMesh + HybridMesh
-      onMessage: (msg) => {
-        console.log('📨 Mensaje:', msg);
-        _renderMessage(msg);
-      },
-      onStatusChange: (mode) => {
-        console.log('🌐 Modo:', mode);
-        rem.updateMode(mode);
-      },
-      onError: (err) => {
-        console.error('App error:', err);
-        rem.error(err.message, 'APP_ERR');
-      },
-      onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
-      actionCallbacks: {
-        onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
-        onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
-        onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
-      }
-    };
-    
-    rem.info('🚀 [NEXO] App instance v3.3.0-NAP', 'NEXO_INIT');
-    
-    // Crear instancia
-    window.NEXO.app = new NexoApp(nexoConfig);
-    
-    rem.info('[init] ===== INICIANDO NEXO v3.3.0-NAP =====', 'INIT_START');
-    
-    // Init con timeout de 12 segundos (NAP 2.0 Resource Management)
-    const initPromise = window.NEXO.app.init();
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('INIT_TIMEOUT')), 12000)
-    );
-    
-    try {
-      await Promise.race([initPromise, timeoutPromise]);
-      rem.success('==== INICIALIZACIÓN NAP 2.0 COMPLETADA ====', 'INIT_OK');
-    } catch (timeoutErr) {
-      // NAP 2.0: Graceful degradation
-      rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
-      rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
-    }
-    
-    window.NEXO.initialized = true;
-    clearTimeout(SAFETY_TIMEOUT);
-    
-    // Setup UI
-    _setupMessageInput();
-    _setupVaultToggle();
-    _setupKeyboardShortcuts(); // NAP 2.0: Atajos adicionales
-    
-    NEXO_DIAG.hideSplash();
-    rem.success('NEXO v9.0-NAP Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.0-NAP Inicializado');
-    
-    // ============================================
-    // FIX VISTAS: Abrir panel BLE como vista inicial
-    // El chat permanece oculto hasta que usuario pulse "Escribir"
-    // ============================================
-    if (window.NEXO.app?.bleInterface?.togglePanel) {
-      const blePanel = document.getElementById('ble-panel');
-      if (blePanel && !blePanel.classList.contains('active')) {
-        window.NEXO.app.bleInterface.togglePanel();
-        rem.info('[UI] Panel BLE abierto como vista inicial', 'BLE_PANEL_OPEN');
-      }
-    }
-    
-    // Log estado final
-    const status = window.NEXO.app.getStatus?.();
-    if (status) {
-      console.log('[NEXO STATUS]', status);
-    }
-    
-  } catch (error) {
-    console.error('💥 Error en NexoApp:', error);
-    clearTimeout(SAFETY_TIMEOUT);
-    NEXO_DIAG.error('APP_INIT_ERROR', error.message);
-    rem.error(`Error al iniciar app: ${error.message}`, 'APP_ERR');
-    NEXO_DIAG.hideSplash();
-    _enableFallbackMode();
-  }
+/* Splash Screen */
+#splash-native {
+  position: fixed;
+  inset: 0;
+  background: #0a0a0a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
-// NAP 2.0: Estructura DOM mínima garantizada
-function _ensureDOMStructure() {
-  const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
-  const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
-  
-  if (stream && !stream.id) stream.id = 'nexo-stream';
-  if (vault && !vault.id) vault.id = 'nexo-vault';
-  
-  // Crear contenedor de mensajes si no existe
-  if (!document.getElementById('messages-container')) {
-    const msgContainer = document.createElement('div');
-    msgContainer.id = 'messages-container';
-    msgContainer.className = 'messages-container';
-    (stream || document.body).appendChild(msgContainer);
-  }
+#splash-logo {
+  width: 120px;
+  height: 120px;
+  background: url('../assets/logo.png') center/contain no-repeat;
+  animation: pulse 2s infinite;
 }
 
-function _setupMessageInput() {
-  const input = document.getElementById('message-input');
-  const btn = document.getElementById('send-btn');
-  if (!input || !btn || !window.NEXO.app) return;
-  
-  const send = async () => {
-    const text = input.value.trim();
-    if (!text) return;
-    
-    input.value = '';
-    input.focus();
-    
-    try {
-      const sent = await window.NEXO.app.sendMessage({ content: text });
-      if (sent) {
-        rem.success('Enviado', 'MSG_SENT');
-      } else {
-        rem.info('En cola (offline)', 'MSG_QUEUED');
-      }
-    } catch (e) {
-      rem.error('Error al enviar', 'MSG_ERR');
-    }
-  };
-  
-  btn.addEventListener('click', send);
-  input.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      send();
-    }
-  });
-  
-  input.focus();
+#splash-text {
+  margin-top: 20px;
+  color: #64748b;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 18px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
 }
 
-function _setupVaultToggle() {
-  const vault = document.getElementById('vault-panel');
-  if (vault) vault.classList.add('vault-hidden');
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.95); opacity: 0.8; }
 }
 
-// NAP 2.0: Atajos de teclado
-function _setupKeyboardShortcuts() {
-  document.addEventListener('keydown', (e) => {
-    // Ctrl+Shift+V: Toggle Vault
-    if (e.ctrlKey && e.shiftKey && e.key === 'V') {
-      e.preventDefault();
-      const vault = document.getElementById('vault-panel');
-      if (vault) {
-        const isHidden = vault.classList.contains('vault-hidden');
-        _toggleVaultUI(!isHidden);
-      }
-    }
-    
-    // Ctrl+Shift+L: Toggle REM visibility
-    if (e.ctrlKey && e.shiftKey && e.key === 'L') {
-      e.preventDefault();
-      rem.toggle?.();
-    }
-    
-    // Ctrl+Shift+H: REM History
-    if (e.ctrlKey && e.shiftKey && e.key === 'H') {
-      e.preventDefault();
-      rem.showHistory?.();
-    }
-  });
+/* Diagnóstico */
+#nexo-diagnostic {
+  display: none;
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  width: 300px;
+  max-height: 200px;
+  background: rgba(0,0,0,0.9);
+  color: #00ff88;
+  font-family: monospace;
+  font-size: 11px;
+  overflow-y: auto;
+  z-index: 99998;
+  padding: 10px;
+  border-radius: 8px;
 }
 
-function _renderMessage(msg) {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-  
-  const div = document.createElement('div');
-  div.className = `message ${msg._own ? 'own' : 'other'}`;
-  
-  // NAP 2.0: Mostrar fuente del mensaje (BLE, Relay, etc.)
-  const sourceBadge = msg._source ? 
-    `<span class="msg-source" title="${msg._source}">${_getSourceIcon(msg._source)}</span>` : '';
-  
-  div.innerHTML = `
-    <div class="message-content">${msg.content || msg.text}</div>
-    <div class="message-meta">
-      <span>${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
-      ${sourceBadge}
-    </div>
-  `;
-  
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
+#nexo-diagnostic.visible { display: block; }
+
+/* Error Fatal */
+#fatal-error {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #0a0a0a;
+  z-index: 100000;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px;
+  color: #ff4444;
 }
 
-function _getSourceIcon(source) {
-  const icons = {
-    'ble_nordic': '🔷', // Nordic Mesh BLE
-    'ble_hybrid': '📡', // Hybrid Mesh BLE/WiFi
-    'relay': '🌐',      // WebSocket Relay
-    'self': '✓'         // Mensaje propio
-  };
-  return icons[source] || '•';
+#fatal-error h2 {
+  font-size: 48px;
+  margin-bottom: 10px;
 }
 
-function _toggleVaultUI(isOpen) {
-  const vault = document.getElementById('vault-panel');
-  const stream = document.getElementById('nexo-stream');
-  
-  if (vault) {
-    vault.classList.toggle('vault-hidden', !isOpen);
-    vault.classList.toggle('vault-visible', isOpen);
-    rem.info(isOpen ? '[VAULT] Abierto' : '[VAULT] Cerrado', 'VAULT_TOGGLE');
-  }
-  
-  if (stream) {
-    stream.style.transform = isOpen ? 'translateX(-20%)' : 'translateX(0)';
-  }
+#fatal-code {
+  background: rgba(255,68,68,0.1);
+  padding: 10px 20px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 14px;
+  color: #ff6666;
 }
 
-function _focusInput(text = '') {
-  const input = document.getElementById('message-input');
-  if (input) { 
-    input.focus(); 
-    if (text) input.value = text;
-  }
+/* App Principal */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0a0a0a;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-// NAP 2.0: Modo degradado si init falla completamente
-function _enableFallbackMode() {
-  console.warn('[NEXO] Activando modo fallback');
-  const body = document.body;
-  body.classList.add('nexo-fallback-mode');
-  
-  // Mostrar mensaje al usuario
-  const msg = document.createElement('div');
-  msg.className = 'fallback-notice';
-  msg.innerHTML = `
-    <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-                background: #ff4444; color: white; padding: 20px; border-radius: 8px; z-index: 99999;">
-      <h3>⚠️ Error de Inicialización</h3>
-      <p>La app no pudo iniciar completamente.</p>
-      <button onclick="location.reload()" style="padding: 10px 20px; margin-top: 10px;">Reintentar</button>
-    </div>
-  `;
-  body.appendChild(msg);
+#status-indicator {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  z-index: 100;
+  transition: all 0.3s;
 }
 
-// HMR
-if (module.hot) module.hot.accept();
+#status-indicator.offline { background: #ef4444; color: white; }
+#status-indicator.online { background: #10b981; color: white; }
+
+/* Messages */
+#messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 76px 20px 100px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message {
+  max-width: 80%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.4;
+  animation: messageIn 0.3s ease;
+}
+
+@keyframes messageIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message.own {
+  align-self: flex-end;
+  background: #0066cc;
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.message.other {
+  align-self: flex-start;
+  background: #1f2937;
+  color: #e5e7eb;
+  border-bottom-left-radius: 4px;
+}
+
+.message-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.6;
+  display: flex;
+  gap: 8px;
+}
+
+/* Input Area */
+#input-area {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) 16px;
+  background: rgba(10,10,10,0.95);
+  backdrop-filter: blur(10px);
+  display: flex;
+  gap: 10px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+#message-input {
+  flex: 1;
+  background: #1f2937;
+  border: none;
+  border-radius: 28px;
+  padding: 12px 20px;
+  color: white;
+  font-size: 16px;
+  outline: none;
+  height: 48px;
+}
+
+#message-input::placeholder { color: #6b7280; }
+
+#send-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: #0066cc;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Vault Panel */
+#vault-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 85%;
+  height: 100%;
+  background: #1a1a1a;
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -5px 0 25px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+#vault-panel.vault-visible {
+  transform: translateX(0);
+}
+
+.vault-header {
+  padding: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.vault-header h3 {
+  margin: 0 0 10px 0;
+  color: #fff;
+}
+
+#current-context {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+#contacts-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+#chispa-creator {
+  padding: 20px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  gap: 10px;
+}
+
+#chispa-creator button {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+#chispa-creator button:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+/* REM Toasts */
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideOut {
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+/* ============================================
+   FIX VISTAS: Clase de control de visibilidad
+   ============================================ */
+.hidden {
+  display: none !important;
+}
+
+/* ============================================
+   CHAT HEADER: Destinatario editable
+   ============================================ */
+#chat-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: rgba(10,10,10,0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+#chat-contact-name {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+  width: 80%;
+  outline: none;
+  padding: 2px 8px;
+  transition: border-color 0.2s;
+}
+
+#chat-contact-name:focus {
+  border-bottom-color: #00d4ff;
+}
+
+#chat-contact-subtitle {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
