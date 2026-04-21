@@ -1,10 +1,11 @@
 /**
- * NEXO App v3.3.1-NAP (FIXED)
+ * NEXO App v3.3.2-NAP
  * Orquestador Principal - NAP 2.0 Certified
  * FIXES: 
  * - CryptoVault.init() (no initialize())
  * - HybridMesh.on() defensive check
  * - Interface Contract NordicMesh
+ * + INTEGRATION v3.3.2: BLE Chat directo (activeContact + _sendViaBLE)
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -84,8 +85,12 @@ export class NexoApp {
     this.vaultSlider = null;
     this.bleInterface = null;
     this.initialized = false;
+    
+    // [INTEGRATION v3.3.2] Destinatario activo para chat BLE
+    this.activeContact = null;
+    this._bleChatHandler = null;
 
-    DEBUG.log('🚀 [NEXO] v3.3.1-NAP iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v3.3.2-NAP iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -113,7 +118,7 @@ export class NexoApp {
       
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v3.3.1-NAP Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v3.3.2-NAP Ready', 'APP_READY');
       this._logFinalStatus();
       
     } catch (err) {
@@ -260,6 +265,16 @@ export class NexoApp {
       if (this.bleInterface) {
         DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (dummy)'), 'UI_002');
       }
+      
+      // [INTEGRATION v3.3.2] Listener global para chat BLE desde ble_interface.js
+      this._bleChatHandler = (e) => {
+        const { contactId, name, address, transport } = e.detail;
+        this.activeContact = { id: contactId, name, address, transport };
+        DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
+        this.config.onStatusChange(`CHAT:${name}`);
+      };
+      window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
+      
     } catch (err) {
       DEBUG.error('UI_004', `BLE UI init failed: ${err.message}`);
       this.bleInterface = null;
@@ -378,6 +393,30 @@ export class NexoApp {
 
   _updateStatus() {}
 
+  // [INTEGRATION v3.3.2] Envío directo vía plugin nativo NexoBLE
+  async _sendViaBLE(deviceId, content) {
+    const plugin = this.bleInterface?.nativePlugin;
+    if (!plugin) throw new Error('Plugin NexoBLE no disponible');
+    
+    // Verificar si ya está conectado
+    let isConnected = false;
+    try {
+      const result = await plugin.getConnectedDevices?.();
+      isConnected = result?.devices?.some(d => d.deviceId === deviceId || d.id === deviceId);
+    } catch (e) {
+      // Si getConnectedDevices no existe, asumir desconectado
+    }
+    
+    if (!isConnected) {
+      await plugin.connectToDevice({ deviceId });
+      DEBUG.log(`🔗 Conectado a ${deviceId.substr(0,8)}...`, 'info', 'BLE_CONN');
+    }
+    
+    // Enviar mensaje (el plugin nativo maneja el GATT write)
+    await plugin.sendMessage({ deviceId, message: content });
+    DEBUG.success(`📨 Enviado vía BLE a ${deviceId.substr(0,8)}`, 'MSG_BLE');
+  }
+
   async sendMessage(msg) {
     if (!this.initialized || this._isDestroyed) {
       DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send message');
@@ -387,8 +426,27 @@ export class NexoApp {
     try {
       this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true }, 'self');
 
-      const content = msg.content || msg;
+      const isObject = msg && typeof msg === 'object';
+      const content = isObject ? (msg.content || msg) : msg;
+      const recipient = isObject ? msg.recipient : null;
       
+      // [INTEGRATION v3.3.2] Determinar destinatario: explícito > activo BLE
+      const targetId = recipient || this.activeContact?.id;
+      const targetTransport = this.activeContact?.transport;
+
+      // 1. BLE Directo (si hay destinatario activo o explícito y transporte BLE)
+      if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
+        try {
+          await this._sendViaBLE(targetId, content);
+          this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct' }, 'self');
+          return true;
+        } catch (e) {
+          DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
+          // Continuar con fallback, no retornar
+        }
+      }
+
+      // 2. Nordic Mesh (primer peer - comportamiento original)
       const nordicPeers = this.nordicMesh?.getPeers?.() || [];
       if (nordicPeers.length > 0) {
         try {
@@ -400,6 +458,7 @@ export class NexoApp {
         }
       }
       
+      // 3. Hybrid Mesh broadcast
       if (this.mesh?.getPeerCount?.() > 0) {
         try {
           await this.mesh.broadcast({ content });
@@ -410,6 +469,7 @@ export class NexoApp {
         }
       }
       
+      // 4. Bridge
       if (this.bridge) {
         const result = await this.bridge.send({ content });
         if (result) {
@@ -418,6 +478,7 @@ export class NexoApp {
         }
       }
       
+      // 5. WebSocket relay
       if (this.wsClient?.isConnected?.()) {
         this.wsClient.send({ content });
         DEBUG.success('Sent via WebSocket', 'MSG_WS');
@@ -470,6 +531,12 @@ export class NexoApp {
     this._isDestroyed = true;
     DEBUG.log('🧹 NAP 2.0 Cleanup...', 'info', 'DESTROY');
 
+    // [INTEGRATION v3.3.2] Limpiar listener de chat BLE
+    if (this._bleChatHandler) {
+      window.removeEventListener('nexo:ble:openChat', this._bleChatHandler);
+      this._bleChatHandler = null;
+    }
+    
     if (this.bleInterface) { try { this.bleInterface.destroy(); } catch(e) {} this.bleInterface = null; }
     if (this.vaultSlider) { try { this.vaultSlider.destroy?.(); } catch(e) {} this.vaultSlider = null; }
     if (this.gestures) { try { this.gestures.destroy?.(); } catch(e) {} this.gestures = null; }
@@ -504,7 +571,8 @@ export class NexoApp {
       hasNordic: !!this.nordicMesh,
       hasHybrid: !!this.mesh,
       hasWebSocket: !!this.wsClient?.isConnected?.(),
-      hasVault: !!this.vault
+      hasVault: !!this.vault,
+      activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
     };
   }
 }
