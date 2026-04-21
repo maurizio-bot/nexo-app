@@ -113,7 +113,7 @@
 #messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 60px 20px 100px 20px;
+  padding: 76px 20px 100px 20px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -161,7 +161,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 12px 20px 30px 20px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) 16px;
   background: rgba(10,10,10,0.95);
   backdrop-filter: blur(10px);
   display: flex;
@@ -173,27 +173,29 @@
   flex: 1;
   background: #1f2937;
   border: none;
-  border-radius: 24px;
+  border-radius: 28px;
   padding: 12px 20px;
   color: white;
   font-size: 16px;
   outline: none;
+  height: 48px;
 }
 
 #message-input::placeholder { color: #6b7280; }
 
 #send-btn {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   border: none;
   background: #0066cc;
   color: white;
-  font-size: 20px;
+  font-size: 22px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 /* Vault Panel */
@@ -270,9 +272,51 @@
   to { transform: translateX(100%); opacity: 0; }
 }
 
-/* ============================================
-   FIX VISTAS: Clase de control de visibilidad
-   ============================================ */
+/* FIX VISTAS: Clase de control de visibilidad */
 .hidden {
   display: none !important;
+}
+
+/* CHAT HEADER: Destinatario editable */
+#chat-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: rgba(10,10,10,0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+#chat-contact-name {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+  width: 80%;
+  outline: none;
+  padding: 2px 8px;
+  transition: border-color 0.2s;
+}
+
+#chat-contact-name:focus {
+  border-bottom-color: #00d4ff;
+}
+
+#chat-contact-subtitle {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
