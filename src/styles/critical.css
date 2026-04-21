@@ -269,3 +269,10 @@
 @keyframes slideOut {
   to { transform: translateX(100%); opacity: 0; }
 }
+
+/* ============================================
+   FIX VISTAS: Clase de control de visibilidad
+   ============================================ */
+.hidden {
+  display: none !important;
+}
