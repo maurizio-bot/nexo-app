@@ -1,11 +1,12 @@
 /**
- * BLE Interface v2.4.2-NAP
+ * BLE Interface v2.4.3-NAP
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
  * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
  * + FEATURE v2.4.0: Nombres de dispositivo + Sistema de Contactos Agregados
  * + FIX v2.4.1: Contactos integrados en el mismo archivo (sin import externo)
  * + FIX v2.4.2: Deduplicación robusta BLE Privacy (MAC rotativa) + fix clase CSS 'new'
+ * + UX v2.4.3: Botón único mutante (Agregar → Escribir) + evento global openChat
  * 
  * FIXES NAP 2.0:
  * - Advertising via plugin nativo directo
@@ -807,6 +808,8 @@ export class BLEInterface {
       .ble-device-info {
         display: flex;
         flex-direction: column;
+        flex: 1;
+        min-width: 0;
       }
       
       .ble-device-name {
@@ -828,6 +831,60 @@ export class BLEInterface {
         display: flex;
         gap: 8px;
         align-items: center;
+        flex-shrink: 0;
+      }
+      
+      /* [UX v2.4.3] BOTÓN AGREGAR - Verde */
+      .ble-btn-add {
+        padding: 8px 16px;
+        background: #00ff88;
+        color: #000;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+      }
+      
+      .ble-btn-add:hover {
+        background: #00e67a;
+        transform: scale(1.05);
+      }
+      
+      .ble-btn-add:active {
+        transform: scale(0.95);
+      }
+      
+      /* [UX v2.4.3] BOTÓN ESCRIBIR - Azul (reemplaza a Conectar) */
+      .ble-btn-write {
+        padding: 8px 16px;
+        background: #00d4ff;
+        color: #000;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+      }
+      
+      .ble-btn-write:hover {
+        background: #00b8e6;
+        transform: scale(1.05);
+      }
+      
+      .ble-btn-write:active {
+        transform: scale(0.95);
+      }
+      
+      /* Badge de agregado (ya no se usa como botón principal, pero se mantiene para info) */
+      .ble-added-badge {
+        color: #00ff88;
+        font-size: 12px;
+        font-weight: bold;
       }
       
       .ble-btn-connect {
@@ -849,24 +906,6 @@ export class BLEInterface {
         border-radius: 4px;
         cursor: pointer;
         font-size: 12px;
-      }
-      
-      /* [NORDIC_010] FEATURE v2.4.0: Estilos para contactos */
-      .ble-btn-add {
-        padding: 6px 12px;
-        background: #00ff88;
-        color: #000;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 12px;
-        font-weight: bold;
-      }
-      
-      .ble-added-badge {
-        color: #00ff88;
-        font-size: 12px;
-        font-weight: bold;
       }
       
       /* Toast notifications */
@@ -1137,6 +1176,7 @@ export class BLEInterface {
 
   // ============================================================
   // [NORDIC_010] FEATURE v2.4.0: CONTACTOS AGREGADOS
+  // [UX v2.4.3] MODIFICADO: addContact ahora re-renderiza para mutar botón
   // ============================================================
   async addContact(deviceId) {
     const device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
@@ -1148,6 +1188,7 @@ export class BLEInterface {
     const success = _addBLEContact(device);
     if (success) {
       this.showToast('✅ Agregado a contactos', 'success');
+      // [UX v2.4.3] Re-renderizar para que el botón cambie de "Agregar" a "Escribir"
       this.renderDevicesList();
       if (document.querySelector('.ble-tab-btn[data-tab="added"]')?.classList.contains('active')) {
         this.renderAddedList();
@@ -1165,7 +1206,54 @@ export class BLEInterface {
   }
 
   // ============================================================
+  // [UX v2.4.3] NUEVO: openChat - Emite evento global para el core de NEXO
+  // El core escucha 'nexo:ble:openChat' y abre la ventana de chat.
+  // ============================================================
+  openChat(deviceId) {
+    // Buscar en dispositivos encontrados, conectados, o contactos agregados
+    let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
+    
+    if (!device) {
+      const contacts = _getBLEContacts();
+      const contact = contacts.find(c => (c.id || c.address) === deviceId);
+      if (contact) {
+        device = {
+          id: contact.id || contact.address,
+          address: contact.address,
+          name: contact.name || 'NEXO Device',
+          rssi: contact.rssi
+        };
+      }
+    }
+    
+    if (!device) {
+      this.showToast('❌ Contacto no disponible', 'error');
+      return;
+    }
+    
+    console.log('[BLEInterface] Solicitando abrir chat con:', device);
+    
+    // Emitir evento global para que el core de NEXO capture y abra el chat
+    const event = new CustomEvent('nexo:ble:openChat', {
+      detail: {
+        contactId: device.id || device.address,
+        name: device.name || 'NEXO Device',
+        address: device.address || device.id,
+        transport: 'ble',
+        rssi: device.rssi,
+        // [FUTURO] El core de NEXO usará Vault para obtener datos completos
+        source: 'ble_interface'
+      }
+    });
+    window.dispatchEvent(event);
+    
+    // Cerrar panel BLE para mostrar el chat (el core manejará la navegación)
+    this.togglePanel();
+  }
+
+  // ============================================================
   // [NORDIC_010] FIX v2.4.2: RENDER - Clase 'new' solo para dispositivos realmente nuevos
+  // [UX v2.4.3] MODIFICADO: Botón único mutante (Agregar → Escribir)
   // ============================================================
   renderDevicesList() {
     const list = this.elements.devicesList;
@@ -1186,9 +1274,10 @@ export class BLEInterface {
       const item = document.createElement('div');
       item.className = 'ble-device-item' + (isNew ? ' new' : '');
       
-      const actionsHtml = isAdded
-        ? `<span class="ble-added-badge">✓ Agregado</span><button class="ble-btn-connect" onclick="bleInterface.connect('${id}')">Conectar</button>`
-        : `<button class="ble-btn-add" onclick="bleInterface.addContact('${id}')">Agregar</button><button class="ble-btn-connect" onclick="bleInterface.connect('${id}')">Conectar</button>`;
+      // [UX v2.4.3] Botón único: Agregar (verde) si no está agregado, Escribir (azul) si ya está
+      const actionHtml = isAdded
+        ? `<button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>`
+        : `<button class="ble-btn-add" onclick="bleInterface.addContact('${id}')">+ Agregar</button>`;
       
       item.innerHTML = `
         <div class="ble-device-info">
@@ -1197,13 +1286,16 @@ export class BLEInterface {
           <span class="ble-device-rssi">📶 ${device.rssi || '?'} dBm</span>
         </div>
         <div class="ble-device-actions">
-          ${actionsHtml}
+          ${actionHtml}
         </div>
       `;
       list.appendChild(item);
     });
   }
 
+  // ============================================================
+  // [UX v2.4.3] MODIFICADO: Agregados usan "Escribir" en lugar de "Conectar"
+  // ============================================================
   renderAddedList() {
     const list = this.elements.addedList;
     const contacts = _getBLEContacts();
@@ -1225,7 +1317,7 @@ export class BLEInterface {
           <span class="ble-device-rssi" style="color: #888; font-size: 11px;">Agregado el ${new Date(contact.addedAt).toLocaleDateString()}</span>
         </div>
         <div class="ble-device-actions">
-          <button class="ble-btn-connect" onclick="bleInterface.connect('${id}')">Conectar</button>
+          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>
           <button class="ble-btn-disconnect" onclick="bleInterface.removeContact('${id}')">Eliminar</button>
         </div>
       `;
@@ -1251,6 +1343,7 @@ export class BLEInterface {
           <span class="ble-device-rssi" style="color: #00ff00;">● Conectado</span>
         </div>
         <div class="ble-device-actions">
+          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>
           <button class="ble-btn-disconnect" onclick="bleInterface.disconnect('${id}')">
             Desconectar
           </button>
@@ -1262,6 +1355,9 @@ export class BLEInterface {
 
   // ============================================================
   // [NORDIC_010] FIX v2.3.4: CONNECT - Nativo directo
+  // [UX v2.4.3] NOTA: connect() se mantiene para uso interno/legacy,
+  // pero la UI ya no expone botón "Conectar". El chat dispara connect
+  // automáticamente si es necesario.
   // ============================================================
   async connect(deviceId) {
     if (this.isDummyMode) return;
