@@ -1,7 +1,6 @@
 /**
- * NEXO Setup Wizard v2.2-FIX
- * Fixes: Resume listener + BT state polling + isAwaitingSettingsReturn fix
- * FIX [NORDIC_010]: Inicia advertising automáticamente después de permisos/BT
+ * NEXO Setup Wizard v2.2-FIX-2
+ * FIX CRÍTICO: Overlay propio en document.body para NO destruir #app
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -11,14 +10,20 @@ const NAP_WIZARD = '[NAP-WIZARD]';
 
 export class SetupWizard {
   constructor(containerId = 'app', onComplete) {
-    this.container = document.getElementById(containerId) || document.body;
+    // [FIX CRÍTICO] Crear overlay propio en body. NUNCA tocar innerHTML de #app
+    this.overlayContainer = document.createElement('div');
+    this.overlayContainer.id = 'nexo-setup';
+    this.overlayContainer.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 99999;';
+    document.body.appendChild(this.overlayContainer);
+    
+    this.container = this.overlayContainer;
     this.onComplete = onComplete;
     this.currentStep = 'checking';
     this.errorCount = 0;
     this.isAwaitingSettingsReturn = false;
     this.settingsCheckInterval = null;
     this.btCheckInterval = null;
-    this._successTimeout = null; // [FIX] Timeout defensivo para auto-destrucción
+    this._successTimeout = null;
     window.NEXO_WIZARD = this;
     
     this.handlePermissionsGranted = this.handlePermissionsGranted.bind(this);
@@ -45,12 +50,10 @@ export class SetupWizard {
     window.addEventListener('nexo-permissions-granted', this.handlePermissionsGranted);
     window.addEventListener('nexo-permissions-denied', this.handlePermissionsDenied);
     
-    // [REM FIX] Listener nativo de estado Bluetooth
     if (window.Capacitor?.Plugins?.NexoBLE) {
       window.Capacitor.Plugins.NexoBLE.addListener('onBluetoothStateChanged', this.handleBluetoothStateChange);
     }
     
-    // [REM FIX] Fallback cuando vuelve de configuración del sistema
     document.addEventListener('visibilitychange', this.handleAppResume);
   }
   
@@ -70,7 +73,6 @@ export class SetupWizard {
     
     if (this.isAwaitingSettingsReturn) {
       console.log(NAP_WIZARD, 'App resumed - verifying Bluetooth state');
-      // Dar 500ms para que el sistema estabilice el adapter
       setTimeout(() => this.verifyBluetoothAfterReturn(), 500);
     }
   }
@@ -83,7 +85,6 @@ export class SetupWizard {
         this.isAwaitingSettingsReturn = false;
         this.clearBtCheckInterval();
         
-        // [NORDIC_010] FIX: Iniciar advertising después de BT habilitado
         try {
           const { startBLEAdvertising } = await import('../core/ble_permissions.js');
           await startBLEAdvertising();
@@ -95,7 +96,6 @@ export class SetupWizard {
         this.renderSuccessTransition();
         setTimeout(() => this.onComplete(), 800);
       } else {
-        // Bluetooth sigue apagado, restaurar botón para reintentar
         const btn = document.getElementById('btn-bt-settings');
         if (btn) {
           btn.textContent = 'Ir a Configuración Bluetooth';
@@ -126,7 +126,6 @@ export class SetupWizard {
       const status = await SetupManager.checkPermissionsRealtime();
       
       if (status.granted) {
-        // [NORDIC_010] FIX: Iniciar advertising automáticamente después de permisos
         try {
           const { startBLEAdvertising } = await import('../core/ble_permissions.js');
           const advResult = await startBLEAdvertising();
@@ -181,15 +180,12 @@ export class SetupWizard {
   }
 
   renderChecking() {
-    this.container.innerHTML = '<div id="nexo-setup" style="position: fixed; top:0; left:0; right:0; bottom:0; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; z-index: 99999;"><div style="width: 48px; height: 48px; border: 4px solid #1a1a1a; border-top: 4px solid #00f0ff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px;"></div><h3 style="margin:0; font-size: 20px; font-weight: 600;">Verificando sistema...</h3><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style></div>';
+    this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif;"><div style="width: 48px; height: 48px; border: 4px solid #1a1a1a; border-top: 4px solid #00f0ff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px;"></div><h3 style="margin:0; font-size: 20px; font-weight: 600;">Verificando sistema...</h3><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style></div>';
   }
   
   renderSuccessTransition() {
-    const existing = document.getElementById('nexo-setup');
-    if (existing) {
-      existing.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center;"><div style="font-size: 56px; margin-bottom: 16px;">✓</div><h3 style="margin:0; font-size: 20px; font-weight: 600; color: #00ff88;">Listo</h3></div>';
-    }
-    // [FIX] Auto-destrucción defensiva: si onComplete no se ejecuta en 3.5s, forzar cleanup
+    this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div style="font-size: 56px; margin-bottom: 16px;">✓</div><h3 style="margin:0; font-size: 20px; font-weight: 600; color: #00ff88;">Listo</h3></div>';
+    
     if (this._successTimeout) clearTimeout(this._successTimeout);
     this._successTimeout = setTimeout(() => {
       console.log(NAP_WIZARD, 'Auto-destruyendo wizard por seguridad');
@@ -209,7 +205,7 @@ export class SetupWizard {
       extraMessage = '<p style="color: #ffaa00; font-size: 14px; max-width: 320px; background: rgba(255,170,0,0.1); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(255,170,0,0.2); margin-bottom: 20px; line-height: 1.5;">⚠️ Has denegado los permisos múltiples veces. Android requiere activación manual.</p>';
     }
     
-    this.container.innerHTML = '<div id="nexo-setup" style="position: fixed; top:0; left:0; right:0; bottom:0; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; font-family: -apple-system, BlinkMacSystemFont, sans-serif; z-index: 99999; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">🔐</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Permisos BLE</h2><p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">NEXO requiere Bluetooth para comunicación P2P.</p>' + extraMessage + 
+    this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">🔐</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Permisos BLE</h2><p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">NEXO requiere Bluetooth para comunicación P2P.</p>' + extraMessage + 
       (isManual ? 
         '<button id="' + btnId + '" style="background: linear-gradient(135deg, #ff6b35 0%, #ff4500 100%); color: #fff; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; max-width: 320px; margin-bottom: 12px;">Abrir Configuración</button>' :
         '<button id="' + btnId + '" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; max-width: 320px; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(0,240,255,0.3);">Conceder permisos</button><button id="' + fallbackBtnId + '" style="background: none; border: none; color: #00f0ff; font-size: 14px; cursor: pointer; text-decoration: underline; opacity: 0.8;">Configuración manual</button>'
@@ -307,14 +303,14 @@ export class SetupWizard {
   }
 
   renderBluetooth() {
-    this.container.innerHTML = '<div id="nexo-setup" style="position: fixed; top:0; left:0; right:0; bottom:0; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; font-family: -apple-system, BlinkMacSystemFont, sans-serif; z-index: 99999; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">📡</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Bluetooth desactivado</h2><p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">Activa el Bluetooth para descubrir peers NEXO.</p><button id="btn-bt-settings" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; max-width: 320px; margin-bottom: 12px;">Ir a Configuración Bluetooth</button><button id="btn-retry" style="background: transparent; color: #666; border: 1px solid #444; padding: 12px 24px; border-radius: 10px; font-size: 14px; cursor: pointer;">🔄 Verificar</button></div>';
+    this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">📡</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Bluetooth desactivado</h2><p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">Activa el Bluetooth para descubrir peers NEXO.</p><button id="btn-bt-settings" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; max-width: 320px; margin-bottom: 12px;">Ir a Configuración Bluetooth</button><button id="btn-retry" style="background: transparent; color: #666; border: 1px solid #444; padding: 12px 24px; border-radius: 10px; font-size: 14px; cursor: pointer;">🔄 Verificar</button></div>';
     
     document.getElementById('btn-bt-settings').addEventListener('click', () => this.handleOpenBluetoothSettings());
     document.getElementById('btn-retry').addEventListener('click', () => this.performCheck());
   }
 
   renderError() {
-    this.container.innerHTML = '<div id="nexo-setup" style="position: fixed; top:0; left:0; right:0; bottom:0; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; z-index: 99999; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">⚠️</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Error</h2><button id="btn-retry" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;">🔄 Reintentar</button></div>';
+    this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">⚠️</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Error</h2><button id="btn-retry" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;">🔄 Reintentar</button></div>';
     document.getElementById('btn-retry').addEventListener('click', () => this.performCheck());
   }
 
@@ -375,9 +371,7 @@ export class SetupWizard {
           this.renderSuccessTransition();
           setTimeout(() => this.onComplete(), 800);
         }
-      } catch (e) {
-        // Silenciar errores de polling
-      }
+      } catch (e) {}
     }, 2000);
     
     setTimeout(() => {
@@ -395,7 +389,6 @@ export class SetupWizard {
   }
 
   destroy() {
-    // [FIX] Limpiar timeout defensivo
     if (this._successTimeout) {
       clearTimeout(this._successTimeout);
       this._successTimeout = null;
@@ -414,7 +407,9 @@ export class SetupWizard {
     }
     this.clearBtCheckInterval();
     
-    const el = document.getElementById('nexo-setup');
-    if (el) el.remove();
+    if (this.overlayContainer) {
+      this.overlayContainer.remove();
+      this.overlayContainer = null;
+    }
   }
 }
