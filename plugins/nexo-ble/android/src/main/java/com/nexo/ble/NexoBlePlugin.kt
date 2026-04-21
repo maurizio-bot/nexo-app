@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 // Build #746-FIX-P2P
+
 // Fix: connectToDevice async real + sendMessage retry servicios + chunks con delay
 // Advertising, permisos y visibilidad: INTACTOS (v3.0.6 original)
 
