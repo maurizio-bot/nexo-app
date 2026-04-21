@@ -157,6 +157,18 @@ async function initializeNexoApp() {
     rem.success('NEXO v9.0-NAP Listo', 'INIT_OK');
     console.log('✅ NEXO v9.0-NAP Inicializado');
     
+    // ============================================
+    // FIX VISTAS: Abrir panel BLE como vista inicial
+    // El chat permanece oculto hasta que usuario pulse "Escribir"
+    // ============================================
+    if (window.NEXO.app?.bleInterface?.togglePanel) {
+      const blePanel = document.getElementById('ble-panel');
+      if (blePanel && !blePanel.classList.contains('active')) {
+        window.NEXO.app.bleInterface.togglePanel();
+        rem.info('[UI] Panel BLE abierto como vista inicial', 'BLE_PANEL_OPEN');
+      }
+    }
+    
     // Log estado final
     const status = window.NEXO.app.getStatus?.();
     if (status) {
