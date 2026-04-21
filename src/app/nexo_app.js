@@ -268,6 +268,7 @@ export class NexoApp {
       
       // [INTEGRATION v3.3.2] Listener global para chat BLE desde ble_interface.js
       // FIX VISTAS: Ahora también muestra el contenedor #app al activar chat
+      // y actualiza el header con nombre del destinatario
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
         this.activeContact = { id: contactId, name, address, transport };
@@ -277,6 +278,12 @@ export class NexoApp {
         if (appContainer) {
           appContainer.classList.remove('hidden');
         }
+        
+        // [UX] Actualizar header del chat con nombre del destinatario
+        const nameInput = document.getElementById('chat-contact-name');
+        const subtitle = document.getElementById('chat-contact-subtitle');
+        if (nameInput) nameInput.value = name || 'NEXO Device';
+        if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
         
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this.config.onStatusChange(`CHAT:${name}`);
