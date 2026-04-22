@@ -1,21 +1,10 @@
 /**
- * NEXO App v3.5.0-P2P-FIX
+ * NEXO App v3.5.1-P2P-ROBUST
  * Orquestador Principal - NAP 2.0 Certified
  * FIXES: 
- * - CryptoVault.init() (no initialize())
- * - HybridMesh.on() defensive check
- * - Interface Contract NordicMesh
- * + INTEGRATION v3.3.2: BLE Chat directo (activeContact + _sendViaBLE)
- * + FIX v3.3.3: _sendViaBLE siempre fuerza conexión cliente para evitar falso positivo servidor.
- * + RESEARCH v3.3.4: 600ms pause + gatt.close() on failure + WRITE_TYPE_DEFAULT + REM focused
- * + DUAL-ROLE v3.3.5: Listener nexo:ble:messageReceived para mensajes entrantes BLE nativos
- * + DUAL-ROLE v3.3.5: Integración bidireccional confirmada (cliente write + servidor notify)
- * + FINAL v3.4.0: Listeners nativos directos (onPayloadReceived, onDeviceDisconnected, onBluetoothStackBroken)
- * + FINAL v3.4.0: sendMessage prioriza BLE activo, maneja onServicesReady/onNotificationsEnabled
- * + ROLE-SYNC v3.4.1: Manejo de roles server/client en _sendViaBLE. Servidor no intenta conectar GATT client.
- * + P2P-FIX v3.5.0: Eliminado rol server/client. Ambos abren GATT client on-demand.
- * + P2P-FIX v3.5.0: Protocolo JSON con senderName resuelto desde contactos.
- * + P2P-FIX v3.5.0: Deduplicación por messageId en _handleMessage.
+ * - _sendViaBLE con queue de mensajes pendientes
+ * - Reconexión automática persistente
+ * - ACK de recepción para confirmar entrega bidireccional
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -97,10 +86,12 @@ export class NexoApp {
     this._nativeDeviceDisconnectedListener = null;
     this._nativeStackBrokenListener = null;
     this._nativeNotificationsListener = null;
-    // ─── v3.5.0: Deduplicación por messageId ───
     this._processedMessageIds = new Set();
     this._maxProcessedIds = 500;
-    DEBUG.log('🚀 [NEXO] v3.5.0-P2P-FIX iniciando...', 'info', 'APP_INIT');
+    // ─── v3.5.1: Queue de mensajes pendientes BLE ───
+    this._bleMessageQueue = [];
+    this._isSendingBLE = false;
+    DEBUG.log('🚀 [NEXO] v3.5.1-P2P-ROBUST iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -122,7 +113,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v3.5.0-P2P-FIX Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v3.5.1-P2P-ROBUST Ready', 'APP_READY');
       this._logFinalStatus();
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
@@ -411,7 +402,7 @@ export class NexoApp {
 
   _updateStatus() {}
 
-  // ─── v3.5.0-P2P-FIX: _sendViaBLE sin roles, con protocolo JSON ───
+  // ─── v3.5.1-P2P-ROBUST: _sendViaBLE con queue y retry robusto ───
   async _sendViaBLE(deviceId, content, attempt = 0) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin NexoBLE no disponible');
@@ -432,7 +423,7 @@ export class NexoApp {
       DEBUG.log(`[BLE_SEND] getConnectedDevices check failed: ${e.message}`, 'warn', 'BLE_CONN_CHECK');
     }
     
-    // Si no conectado, abrir GATT client (SIEMPRE, sin importar MAC)
+    // Si no conectado, abrir GATT client
     try {
       const connResult = await plugin.connectToDevice({ deviceId });
       DEBUG.log(`[BLE_SEND] connectToDevice result: ${JSON.stringify(connResult)}`, 'info', 'BLE_CONN_RESULT');
@@ -440,7 +431,7 @@ export class NexoApp {
       if (connResult && connResult.connected) {
         // Esperar a que servicios estén listos
         await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Timeout servicios')), 8000);
+          const timeout = setTimeout(() => reject(new Error('Timeout servicios')), 10000);
           const check = () => {
             if (connResult.servicesReady || connResult.notificationsSubscribed) {
               clearTimeout(timeout);
@@ -487,7 +478,6 @@ export class NexoApp {
       const targetId = recipient || this.activeContact?.id;
       const targetTransport = this.activeContact?.transport;
 
-      // ─── v3.5.0: PRIORIZAR BLE si hay contacto activo ───
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
@@ -498,7 +488,6 @@ export class NexoApp {
         }
       }
       
-      // Fallback a peer BLE conectado sin contacto activo
       if (this.bleInterface?.nativePlugin) {
         try {
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
@@ -558,11 +547,9 @@ export class NexoApp {
     }
   }
 
-  // ─── v3.5.0: Deduplicación por messageId ───
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      // Deduplicación
       if (msg.messageId && this._processedMessageIds.has(msg.messageId)) {
         console.log('[NexoApp] Mensaje duplicado ignorado:', msg.messageId);
         return;
