@@ -6,6 +6,7 @@
  * - HybridMesh.on() defensive check
  * - Interface Contract NordicMesh
  * + INTEGRATION v3.3.2: BLE Chat directo (activeContact + _sendViaBLE)
+ * + FIX v3.3.3: _sendViaBLE siempre fuerza conexión cliente para evitar falso positivo servidor.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -349,18 +350,21 @@ export class NexoApp {
 
   _updateStatus() {}
 
+  // [FIX v3.3.3] _sendViaBLE siempre llama connectToDevice antes de enviar.
+  // El plugin nativo resuelve connectToDevice SOLO cuando onServicesDiscovered confirma
+  // que el servicio y característica PAYLOAD existen. Si ya hay cliente válido, resuelve inmediato.
   async _sendViaBLE(deviceId, content) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin NexoBLE no disponible');
-    let isConnected = false;
-    try {
-      const result = await plugin.getConnectedDevices?.();
-      isConnected = result?.devices?.some(d => d.deviceId === deviceId || d.id === deviceId);
-    } catch (e) {}
-    if (!isConnected) {
-      await plugin.connectToDevice({ deviceId });
-      DEBUG.log(`🔗 Conectado a ${deviceId.substr(0,8)}...`, 'info', 'BLE_CONN');
-    }
+    
+    DEBUG.log(`[BLE_SEND] Preparando envío a ${deviceId.substr(0,8)}...`, 'info', 'BLE_PREPARE');
+    
+    // SIEMPRE asegurar conexión cliente GATT funcional antes de enviar.
+    // Si ya existe y tiene servicios listos, el plugin resuelve inmediatamente.
+    // Si no existe, conecta y espera a que discoverServices() valide el servicio NEXO.
+    await plugin.connectToDevice({ deviceId });
+    DEBUG.log(`[BLE_SEND] GATT cliente listo y servicios validados para ${deviceId.substr(0,8)}`, 'info', 'BLE_CONN');
+    
     await plugin.sendMessage({ deviceId, message: content });
     DEBUG.success(`📨 Enviado vía BLE a ${deviceId.substr(0,8)}`, 'MSG_BLE');
   }
