@@ -1,5 +1,5 @@
 /**
- * BLE Interface v2.4.3-NAP
+ * BLE Interface v2.4.4-NAP
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
  * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
@@ -7,6 +7,7 @@
  * + FIX v2.4.1: Contactos integrados en el mismo archivo (sin import externo)
  * + FIX v2.4.2: Deduplicación robusta BLE Privacy (MAC rotativa) + fix clase CSS 'new'
  * + UX v2.4.3: Botón único mutante (Agregar → Escribir) + evento global openChat
+ * + FIX-P2P-v3: Conexión proactiva en openChat() para preparar pipe BLE antes de enviar
  */
 
 export function initBLEInterface(bleMesh) {
@@ -662,6 +663,7 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
+  // [FIX-P2P-v3] Conexión proactiva al abrir chat para tener pipe BLE listo antes de escribir
   openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
     if (!device) {
@@ -681,6 +683,11 @@ export class BLEInterface {
       return;
     }
     console.log('[BLEInterface] Solicitando abrir chat con:', device);
+    
+    // [FIX-P2P-v3] Pre-conectar al peer para preparar el pipe GATT antes de que el usuario escriba
+    this.connect(deviceId).catch(err => {
+      console.log('[BLEInterface] Pre-conexión en openChat (non-critical):', err?.message || err);
+    });
     
     const appContainer = document.getElementById('app');
     if (appContainer) appContainer.classList.remove('hidden');
@@ -899,4 +906,4 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
-// Cache bust Tue Apr 21 23:55:40 UTC 2026
+// Cache bust Wed Apr 22 00:06:00 UTC 2026
