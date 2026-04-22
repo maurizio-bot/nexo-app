@@ -1,5 +1,5 @@
 /**
- * NEXO App v3.3.2-NAP
+ * NEXO App v3.3.3-ROBUST
  * Orquestador Principal - NAP 2.0 Certified
  * FIXES: 
  * - CryptoVault.init() (no initialize())
@@ -7,6 +7,7 @@
  * - Interface Contract NordicMesh
  * + INTEGRATION v3.3.2: BLE Chat directo (activeContact + _sendViaBLE)
  * + FIX v3.3.3: _sendViaBLE siempre fuerza conexión cliente para evitar falso positivo servidor.
+ * + ROBUST v3.3.3: Retry con reconexión forzada (1 reintento) + mensaje claro sin peers.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -82,7 +83,7 @@ export class NexoApp {
     this.initialized = false;
     this.activeContact = null;
     this._bleChatHandler = null;
-    DEBUG.log('🚀 [NEXO] v3.3.2-NAP iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v3.3.3-ROBUST iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -104,7 +105,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v3.3.2-NAP Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v3.3.3-ROBUST Ready', 'APP_READY');
       this._logFinalStatus();
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
@@ -350,23 +351,30 @@ export class NexoApp {
 
   _updateStatus() {}
 
-  // [FIX v3.3.3] _sendViaBLE siempre llama connectToDevice antes de enviar.
-  // El plugin nativo resuelve connectToDevice SOLO cuando onServicesDiscovered confirma
-  // que el servicio y característica PAYLOAD existen. Si ya hay cliente válido, resuelve inmediato.
-  async _sendViaBLE(deviceId, content) {
+  // [ROBUST v3.3.3] _sendViaBLE con retry de reconexión forzada (1 reintento).
+  // Si sendMessage falla por BLE_011 (GATT perdido), espera 600ms y reintenta conectando de nuevo.
+  async _sendViaBLE(deviceId, content, attempt = 0) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin NexoBLE no disponible');
     
-    DEBUG.log(`[BLE_SEND] Preparando envío a ${deviceId.substr(0,8)}...`, 'info', 'BLE_PREPARE');
+    DEBUG.log(`[BLE_SEND] Preparando envío a ${deviceId.substr(0,8)}... (attempt ${attempt + 1})`, 'info', 'BLE_PREPARE');
     
-    // SIEMPRE asegurar conexión cliente GATT funcional antes de enviar.
-    // Si ya existe y tiene servicios listos, el plugin resuelve inmediatamente.
-    // Si no existe, conecta y espera a que discoverServices() valide el servicio NEXO.
+    // SIEMPRE asegurar conexión. Si ya existe y tiene servicios, el plugin resuelve inmediatamente.
     await plugin.connectToDevice({ deviceId });
     DEBUG.log(`[BLE_SEND] GATT cliente listo y servicios validados para ${deviceId.substr(0,8)}`, 'info', 'BLE_CONN');
     
-    await plugin.sendMessage({ deviceId, message: content });
-    DEBUG.success(`📨 Enviado vía BLE a ${deviceId.substr(0,8)}`, 'MSG_BLE');
+    try {
+      await plugin.sendMessage({ deviceId, message: content });
+      DEBUG.success(`📨 Enviado vía BLE a ${deviceId.substr(0,8)}`, 'MSG_BLE');
+    } catch (e) {
+      // [ROBUST] Si falla por desconexión transitoria (BLE_011 / No conectado), reintentar una vez
+      if (attempt === 0 && (e.message?.includes('BLE_011') || e.message?.includes('No conectado') || e.message?.includes('RECONNECT_NEEDED'))) {
+        DEBUG.warn(`[BLE_SEND] Primer intento falló (${e.message}), reintentando con reconexión forzada...`, 'MSG_BLE_RETRY');
+        await new Promise(r => setTimeout(r, 600)); // Pausa para limpieza GATT de Android
+        return this._sendViaBLE(deviceId, content, 1);
+      }
+      throw e;
+    }
   }
 
   async sendMessage(msg) {
@@ -427,7 +435,8 @@ export class NexoApp {
         return true;
       }
       
-      DEBUG.warn('No transport available', 'MSG_FAIL');
+      // [ROBUST] Mensaje claro cuando no hay ningún transporte disponible
+      DEBUG.warn('No hay dispositivos NEXO disponibles. Asegúrate de que el otro dispositivo tenga NEXO abierto, Bluetooth activado y visibilidad encendida.', 'MSG_FAIL');
       return false;
     } catch (err) {
       DEBUG.error('APP_008', `SendMessage critical: ${err.message}`);
