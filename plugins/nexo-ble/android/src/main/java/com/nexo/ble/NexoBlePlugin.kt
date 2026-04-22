@@ -37,11 +37,12 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #806 → v3.3.0-P2P-FIX
-// FIX: Eliminado shouldActAsClient por MAC. Ahora ambos dispositivos pueden ser client+server.
-// FIX: Protocolo de mensaje JSON en payload con messageId, senderId, senderName.
-// FIX: GattServer siempre activo. GattClient on-demand para envío.
-// FIX: Identificación de remitente robusta vía deviceId en payload.
+// Build #811 → v3.3.1-P2P-ROBUST
+// FIX: sendMessage usa notifyClient cuando somos servidor (no abre GATT client duplicado)
+// FIX: Pending write queue ejecutada tras onServicesDiscovered
+// FIX: GATT client NO se cierra tras write (persistente durante chat)
+// FIX: Keepalive nativo cada 5s en CHAR_CONTROL para mantener enlace vivo
+// FIX: onCharacteristicWriteRequest con logging exhaustivo y error handling
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -116,6 +117,7 @@ class NexoBlePlugin : Plugin() {
         const val GATT_CLOSE_DELAY_MS = 600L
         const val RETRY_DELAY_MS = 3000L
         const val CONNECTION_COOLDOWN_MS = 5000L
+        const val KEEPALIVE_INTERVAL_MS = 5000L
         
         val SERVICE_UUID = NexoGattService.SERVICE_UUID
         val CHAR_ANNOUNCE = NexoGattService.ANNOUNCE_CHAR_UUID
@@ -160,6 +162,16 @@ class NexoBlePlugin : Plugin() {
     private val connectTimeoutRunnables = ConcurrentHashMap<String, Runnable>()
     private val connectionCooldowns = ConcurrentHashMap<String, Long>()
     private val pendingGattCloses = ConcurrentHashMap<String, BluetoothGatt>()
+    
+    // ─── v3.3.1: Queue de pending writes ───
+    private val pendingWrites = ConcurrentHashMap<String, MutableList<PendingWrite>>()
+    private val keepaliveRunnables = ConcurrentHashMap<String, Runnable>()
+
+    data class PendingWrite(
+        val call: PluginCall,
+        val payload: ByteArray,
+        val messageId: String
+    )
 
     private fun getBluetoothAdapter(): BluetoothAdapter? {
         return try {
@@ -338,8 +350,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.3.0-P2P-FIX cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.3.0-P2P-FIX loaded")
+        remToast("INIT", "NAP-BLE v3.3.1-P2P-ROBUST cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.3.1-P2P-ROBUST loaded")
         handler.postDelayed({
             if (canAccessBluetooth()) {
                 val adapter = getBluetoothAdapter()
@@ -734,6 +746,9 @@ class NexoBlePlugin : Plugin() {
         gatt ?: return
         val id = deviceId ?: try { gatt.device?.address } catch (e: Exception) { null } ?: "unknown"
         
+        // v3.3.1: Cancelar keepalive antes de cerrar
+        keepaliveRunnables.remove(id)?.let { handler.removeCallbacks(it) }
+        
         try {
             gatt.disconnect()
             napLog("BLE_SAFE_CLOSE", "disconnect() llamado para $id")
@@ -757,6 +772,7 @@ class NexoBlePlugin : Plugin() {
     }
     
     private fun completeGattClose(deviceId: String) {
+        keepaliveRunnables.remove(deviceId)?.let { handler.removeCallbacks(it) }
         val gatt = pendingGattCloses.remove(deviceId)
         if (gatt != null) {
             try {
@@ -784,6 +800,8 @@ class NexoBlePlugin : Plugin() {
     private fun cleanupAllConnections() {
         napLog("BLE_CLEANUP", "Limpiando todas las conexiones BLE")
         try {
+            keepaliveRunnables.forEach { (_, r) -> handler.removeCallbacks(r) }
+            keepaliveRunnables.clear()
             gattClients.forEach { (id, gatt) ->
                 safeCloseGatt(gatt, id)
             }
@@ -799,6 +817,7 @@ class NexoBlePlugin : Plugin() {
             pendingChunks.clear()
             retryAttempts.clear()
             connectionCooldowns.clear()
+            pendingWrites.clear()
             connectTimeoutRunnables.forEach { (_, r) -> handler.removeCallbacks(r) }
             connectTimeoutRunnables.clear()
             napLog("BLE_CLEANUP_OK", "Conexiones limpiadas")
@@ -950,16 +969,21 @@ class NexoBlePlugin : Plugin() {
             
             val controlChar = BluetoothGattCharacteristic(
                 CHAR_CONTROL,
-                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
                 BluetoothGattCharacteristic.PERMISSION_WRITE or BluetoothGattCharacteristic.PERMISSION_READ
             )
+            controlChar.addDescriptor(BluetoothGattDescriptor(
+                CCCD_UUID,
+                BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
+            ))
+            
             service.addCharacteristic(announceChar)
             service.addCharacteristic(handshakeChar)
             service.addCharacteristic(payloadChar)
             service.addCharacteristic(controlChar)
             gattServer = manager?.openGattServer(context, gattServerCallback)
             gattServer?.addService(service)
-            napLog(NAP_BLE_INIT_007, "GattServer configurado correctamente con CCCD + NOTIFY")
+            napLog(NAP_BLE_INIT_007, "GattServer configurado correctamente con CCCD + NOTIFY + CONTROL")
         } catch (e: SecurityException) {
             napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en setupGattServer: ${e.message}", "ERROR")
         } catch (e: Exception) {
@@ -1007,7 +1031,7 @@ class NexoBlePlugin : Plugin() {
                         data.put("userId", userId)
                         data.put("userName", userName)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.3.0-P2P-FIX")
+                        data.put("napVersion", "3.3.1-P2P-ROBUST")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -1028,9 +1052,13 @@ class NexoBlePlugin : Plugin() {
             value: ByteArray?
         ) {
             try {
+                napLog("BLE_SERVER_WRITE", "[SERVER] onCharacteristicWriteRequest from ${device.address} uuid=${characteristic.uuid} responseNeeded=$responseNeeded bytes=${value?.size ?: 0}")
+                
                 if (responseNeeded) {
-                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                    val responseResult = gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                    napLog("BLE_SERVER_RESP", "[SERVER] sendResponse result: $responseResult")
                 }
+                
                 value?.let { data ->
                     when (characteristic.uuid) {
                         CHAR_HANDSHAKE -> {
@@ -1041,36 +1069,53 @@ class NexoBlePlugin : Plugin() {
                         }
                         CHAR_PAYLOAD -> {
                             val payloadStr = String(data)
-                            napLog(NAP_BLE_MESSAGE_RECEIVED, "[SERVER] Payload recibido de ${device.address}: ${payloadStr.take(80)}")
+                            napLog(NAP_BLE_MESSAGE_RECEIVED, "[SERVER] Payload recibido de ${device.address}: ${payloadStr.take(100)}")
                             
-                            // Parsear JSON para extraer senderName si existe
                             var senderName = device.name ?: "Unknown"
                             var messageContent = payloadStr
+                            var messageId = ""
                             try {
                                 val json = org.json.JSONObject(payloadStr)
                                 if (json.has("senderName")) senderName = json.getString("senderName")
                                 if (json.has("content")) messageContent = json.getString("content")
-                            } catch (e: Exception) { /* payload no es JSON, usar raw */ }
+                                if (json.has("messageId")) messageId = json.getString("messageId")
+                            } catch (e: Exception) { 
+                                napLog("BLE_JSON_PARSE", "[SERVER] Payload no es JSON válido: ${e.message}", "WARN")
+                            }
                             
-                            notifyListeners("onPayloadReceived", JSObject().apply {
+                            val eventData = JSObject().apply {
                                 put("deviceId", device.address)
                                 put("data", payloadStr)
                                 put("content", messageContent)
                                 put("senderName", senderName)
+                                put("messageId", messageId)
                                 put("source", "server_write_request")
                                 put("timestamp", System.currentTimeMillis())
-                            })
+                            }
+                            napLog("BLE_NOTIFY_JS", "[SERVER] Emitiendo onPayloadReceived a JS: ${eventData.toString().take(150)}")
+                            notifyListeners("onPayloadReceived", eventData)
                         }
                         CHAR_CONTROL -> {
+                            val cmd = String(data)
+                            napLog("BLE_CONTROL_RECV", "[SERVER] Control command recibido: $cmd")
+                            if (cmd == "ping") {
+                                // Responder con pong vía notificación
+                                val svc = gattServer?.getService(SERVICE_UUID)
+                                val ctrl = svc?.getCharacteristic(CHAR_CONTROL)
+                                ctrl?.value = "pong".toByteArray()
+                                gattServer?.notifyCharacteristicChanged(device, ctrl, false)
+                            }
                             notifyListeners("onControlCommand", JSObject().apply {
                                 put("deviceId", device.address)
-                                put("command", String(data))
+                                put("command", cmd)
                             })
                         }
                     }
                 }
             } catch (e: SecurityException) {
                 napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "Error procesando write: ${e.message}", "ERROR")
+            } catch (e: Exception) {
+                napLog("BLE_SERVER_EX", "[SERVER] Excepción en onCharacteristicWriteRequest: ${e.message}", "ERROR")
             }
         }
         
@@ -1267,7 +1312,6 @@ class NexoBlePlugin : Plugin() {
         }, 300)
     }
 
-    // ─── v3.3.0-P2P-FIX: connectToDevice SIEMPRE abre GATT client, sin importar MAC ───
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1284,10 +1328,6 @@ class NexoBlePlugin : Plugin() {
             napError(call, ERR_INVALID_PARAMS, "No puedes conectarte a tu propio dispositivo")
             return
         }
-        
-        // v3.3.0: ELIMINADO shouldActAsClient por comparación de MAC.
-        // Ahora SIEMPRE actuamos como cliente GATT cuando queremos enviar/conectar.
-        // El GattServer local sigue activo para recibir conexiones entrantes.
         
         napLog("BLE_CONN_REQ", "[P2P] Solicitud conectar a: $deviceId | gattClients actuales: ${gattClients.keys}")
         
@@ -1450,8 +1490,17 @@ class NexoBlePlugin : Plugin() {
                     }, SAMSUNG_DISCOVER_DELAY_MS)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
+                    // v3.3.1: NO cerrar GATT inmediatamente si hay pending writes
+                    val hasPendingWrites = pendingWrites[deviceId]?.isNotEmpty() ?: false
                     gattClients.remove(deviceId)
-                    completeGattClose(deviceId)
+                    
+                    if (!hasPendingWrites) {
+                        completeGattClose(deviceId)
+                    } else {
+                        napLog("BLE_CONN_KEEP", "[CLIENT] GATT $deviceId mantiene cierre diferido por pending writes")
+                        handler.postDelayed({ completeGattClose(deviceId) }, 5000)
+                    }
+                    
                     notifyListeners("onDeviceDisconnected", JSObject().apply {
                         put("deviceId", deviceId)
                         put("gattStatus", status)
@@ -1499,6 +1548,12 @@ class NexoBlePlugin : Plugin() {
                     } catch (e: SecurityException) {
                         napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "[CLIENT] Error suscribiendo notificaciones: ${e.message}", "ERROR")
                     }
+                    
+                    // v3.3.1: Iniciar keepalive
+                    startKeepalive(deviceId, gatt)
+                    
+                    // v3.3.1: Procesar pending writes
+                    processPendingWrites(deviceId)
                     
                     val pending = pendingCalls.remove("connect_$deviceId")
                     pending?.resolve(JSObject().apply {
@@ -1555,9 +1610,9 @@ class NexoBlePlugin : Plugin() {
                 })
             } else {
                 napLog("BLE_SEND_FAIL", "[CLIENT] onCharacteristicWrite FAILED status=$status para $addr")
+                // v3.3.1: NO cerrar GATT inmediatamente, solo remover del mapa
                 gattClients.remove(addr)
-                safeCloseGatt(gatt, addr)
-                pending?.reject(ERR_NOT_CONNECTED, "Escritura falló (status=$status). GATT cerrado. Reconecte.")
+                pending?.reject(ERR_NOT_CONNECTED, "Escritura falló (status=$status). Reconecte.")
             }
         }
         
@@ -1584,6 +1639,14 @@ class NexoBlePlugin : Plugin() {
                         put("source", "client_notification")
                     })
                 }
+                CHAR_CONTROL -> {
+                    val cmd = data?.let { String(it) } ?: ""
+                    napLog("BLE_CONTROL_NOTIF", "[CLIENT] Control notification: $cmd")
+                    notifyListeners("onControlCommand", JSObject().apply {
+                        put("deviceId", addr)
+                        put("command", cmd)
+                    })
+                }
                 CHAR_ANNOUNCE -> {
                     notifyListeners("onAnnouncementReceived", JSObject().apply {
                         put("deviceId", addr)
@@ -1591,6 +1654,55 @@ class NexoBlePlugin : Plugin() {
                     })
                 }
             }
+        }
+    }
+
+    // ─── v3.3.1: Keepalive para mantener conexión viva ───
+    private fun startKeepalive(deviceId: String, gatt: BluetoothGatt) {
+        val runnable = object : Runnable {
+            override fun run() {
+                if (!gattClients.containsKey(deviceId)) return
+                try {
+                    val service = gatt.getService(SERVICE_UUID)
+                    val char = service?.getCharacteristic(CHAR_CONTROL)
+                    if (char != null) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            gatt.writeCharacteristic(char, "ping".toByteArray(), BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            char.value = "ping".toByteArray()
+                            @Suppress("DEPRECATION")
+                            gatt.writeCharacteristic(char)
+                        }
+                    }
+                } catch (e: Exception) {
+                    napLog("BLE_KEEPALIVE_FAIL", "Keepalive falló para $deviceId: ${e.message}", "WARN")
+                }
+                handler.postDelayed(this, KEEPALIVE_INTERVAL_MS)
+            }
+        }
+        keepaliveRunnables[deviceId] = runnable
+        handler.postDelayed(runnable, KEEPALIVE_INTERVAL_MS)
+        napLog("BLE_KEEPALIVE", "[CLIENT] Keepalive iniciado para $deviceId cada ${KEEPALIVE_INTERVAL_MS}ms")
+    }
+
+    // ─── v3.3.1: Procesar pending writes tras conexión ───
+    private fun processPendingWrites(deviceId: String) {
+        val writes = pendingWrites.remove(deviceId)
+        if (writes.isNullOrEmpty()) return
+        
+        val gatt = gattClients[deviceId]
+        if (gatt == null) {
+            napLog("BLE_PENDING_FAIL", "[SEND] GATT client no disponible para procesar pending writes de $deviceId", "WARN")
+            writes.forEach { it.call.reject(ERR_NOT_CONNECTED, "GATT no disponible para pending write") }
+            return
+        }
+        
+        napLog("BLE_PENDING_PROC", "[SEND] Procesando ${writes.size} pending writes para $deviceId")
+        writes.forEachIndexed { index, pendingWrite ->
+            handler.postDelayed({
+                performWrite(pendingWrite.call, gatt, deviceId, pendingWrite.payload, pendingWrite.messageId)
+            }, (index * 200).toLong())
         }
     }
 
@@ -1605,10 +1717,11 @@ class NexoBlePlugin : Plugin() {
             safeCloseGatt(gatt, deviceId)
         }
         serverConnections.remove(deviceId)
+        pendingWrites.remove(deviceId)
         call.resolve()
     }
 
-    // ─── v3.3.0-P2P-FIX: sendMessage con protocolo JSON y deduplicación ───
+    // ─── v3.3.1-ROBUST: sendMessage con estrategia dual (client write / server notify) ───
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1619,7 +1732,6 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        // Construir payload JSON con metadatos
         val messageId = UUID.randomUUID().toString()
         val payload = try {
             val json = org.json.JSONObject()
@@ -1640,42 +1752,52 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        napLog("BLE_SEND_LOOKUP", "[SEND] Buscando GATT para deviceId=$deviceId | gattClients keys=${gattClients.keys} | serverConnections=${serverConnections.keys}")
+        napLog("BLE_SEND_LOOKUP", "[SEND] Buscando canal para deviceId=$deviceId | gattClients=${gattClients.keys} | serverConnections=${serverConnections.keys}")
         
+        // ESTRATEGIA 1: Tenemos GATT client activo → writeCharacteristic
         val gatt = gattClients[deviceId]
         if (gatt != null) {
+            napLog("BLE_SEND_CLIENT", "[SEND] Canal GATT client activo encontrado. Enviando vía writeCharacteristic.")
             performWrite(call, gatt, deviceId, payload, messageId)
             return
         }
         
-        // Si no hay GATT client pero el peer está conectado a nuestro servidor, 
-        // DEBEMOS abrir GATT client ahora (P2P-FIX: ya no hay "rol servidor" que lo impida)
+        // ESTRATEGIA 2: Peer está conectado a nuestro servidor → notifyCharacteristicChanged
         if (serverConnections.containsKey(deviceId)) {
-            napLog("BLE_SEND_OPEN_CLIENT", "[SEND] Peer en serverConnections pero sin GATT client. Abriendo client on-demand...")
-            // Abrir GATT client hacia el peer y luego enviar
-            val adapter = getBluetoothAdapter()
-            val device = adapter?.getRemoteDevice(deviceId)
-            if (device != null) {
-                pendingCalls["connect_then_write_$deviceId"] = call
-                executeConnect(device, deviceId, 0)
-                // El envío real se hará desde onServicesDiscovered vía pendingCalls
-                // Guardamos el payload para envío posterior
-                pendingCalls["pending_payload_$deviceId"] = call
-                // Nota: En producción se necesita una queue, pero para simplificar:
-                handler.postDelayed({
-                    val gattNew = gattClients[deviceId]
-                    if (gattNew != null) {
-                        performWrite(call, gattNew, deviceId, payload, messageId)
-                    } else {
-                        call.reject(ERR_NOT_CONNECTED, "No se pudo abrir GATT client on-demand para $deviceId")
-                    }
-                }, 3000)
+            napLog("BLE_SEND_SERVER", "[SEND] Peer en serverConnections. Enviando vía notifyCharacteristicChanged.")
+            val success = notifyClient(deviceId, payload)
+            if (success) {
+                call.resolve(JSObject().apply {
+                    put("sent", true)
+                    put("bytes", payload.size)
+                    put("via", "server_notification")
+                    put("messageId", messageId)
+                })
+                napLog(NAP_BLE_MESSAGE_SENT, "[SEND] Notificación servidor enviada a $deviceId (${payload.size} bytes)")
                 return
+            } else {
+                napLog("BLE_SEND_SERVER_FAIL", "[SEND] notifyClient falló para $deviceId", "WARN")
             }
         }
         
-        napLog(ERR_NOT_CONNECTED, "[SEND] RECHAZADO: deviceId=$deviceId NO está en gattClients ni serverConnections")
-        call.reject(ERR_NOT_CONNECTED, "No conectado a dispositivo. Ni como cliente ni como servidor.")
+        // ESTRATEGIA 3: No hay canal. Abrir GATT client on-demand y encolar write.
+        napLog("BLE_SEND_OPEN_CLIENT", "[SEND] No hay canal activo. Abriendo GATT client on-demand para $deviceId")
+        val adapter = getBluetoothAdapter()
+        val device = adapter?.getRemoteDevice(deviceId)
+        if (device == null) {
+            napLog("BLE_SEND_NO_DEV", "[SEND] getRemoteDevice($deviceId) retornó null")
+            call.reject(ERR_DEVICE_NOT_FOUND, "Dispositivo no encontrado para conexión on-demand")
+            return
+        }
+        
+        // Encolar write para ejecutar cuando onServicesDiscovered complete
+        val queue = pendingWrites.getOrPut(deviceId) { mutableListOf() }
+        queue.add(PendingWrite(call, payload, messageId))
+        pendingWrites[deviceId] = queue
+        napLog("BLE_SEND_QUEUED", "[SEND] Write encolado para $deviceId. Queue size: ${queue.size}")
+        
+        // Iniciar conexión
+        executeConnect(device, deviceId, 0)
     }
     
     private fun notifyClient(deviceId: String, data: ByteArray): Boolean {
