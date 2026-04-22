@@ -35,8 +35,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #746-FIX-P2P
-// Fix: connectToDevice async real + sendMessage retry servicios + chunks con delay
+// Build #784-FIX-P2P-v2
+// Fix: connectToDevice espera onServicesDiscovered + validación de servicio/característica antes de resolver.
+// Fix: _sendViaBLE siempre fuerza conexión cliente; elimina falso positivo por conexión servidor.
 // Advertising, permisos y visibilidad: INTACTOS (v3.0.6 original)
 
 @CapacitorPlugin(
@@ -1270,7 +1271,8 @@ class NexoBlePlugin : Plugin() {
         call.resolve()
     }
 
-    // [FIX-P2P] connectToDevice ahora es ASÍNCRONO REAL. Resuelve SOLO en STATE_CONNECTED.
+    // [FIX-P2P-v2] connectToDevice ahora espera onServicesDiscovered + validación de servicio/característica.
+    // Resuelve SOLO cuando el GATT cliente está 100% listo para escribir.
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1284,13 +1286,24 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        // Si ya conectado, resolver inmediatamente
-        if (gattClients.containsKey(deviceId)) {
-            call.resolve(JSObject().apply {
-                put("connected", true)
-                put("deviceId", deviceId)
-            })
-            return
+        // Si ya conectado Y con servicios listos, resolver inmediatamente
+        val existingGatt = gattClients[deviceId]
+        if (existingGatt != null) {
+            val service = existingGatt.getService(SERVICE_UUID)
+            if (service != null && service.getCharacteristic(CHAR_PAYLOAD) != null) {
+                call.resolve(JSObject().apply {
+                    put("connected", true)
+                    put("deviceId", deviceId)
+                    put("servicesReady", true)
+                })
+                return
+            }
+            // Si existe pero sin servicios, desconectar y reconectar limpio
+            try {
+                existingGatt.disconnect()
+                existingGatt.close()
+            } catch (e: Exception) { }
+            gattClients.remove(deviceId)
         }
         
         try {
@@ -1306,14 +1319,19 @@ class NexoBlePlugin : Plugin() {
                 return
             }
             
-            // Guardar call para resolver cuando el callback nativo confirme conexión real
+            // Guardar call para resolver cuando onServicesDiscovered confirme
             pendingCalls["connect_$deviceId"] = call
             
-            // Timeout de seguridad: si no se conecta en 15s, rechazar
+            // Timeout de seguridad: si no se descubren servicios en 15s, rechazar
             handler.postDelayed({
                 val pending = pendingCalls.remove("connect_$deviceId")
                 if (pending != null) {
-                    napError(pending, ERR_NOT_CONNECTED, "Timeout esperando conexión a $deviceId")
+                    napError(pending, ERR_NOT_CONNECTED, "Timeout esperando descubrimiento de servicios para $deviceId")
+                    // Limpiar conexión huérfana si quedó
+                    gattClients[deviceId]?.let { gatt ->
+                        try { gatt.disconnect(); gatt.close() } catch (e: Exception) { }
+                    }
+                    gattClients.remove(deviceId)
                 }
             }, 15000)
             
@@ -1322,22 +1340,18 @@ class NexoBlePlugin : Plugin() {
                     when (newState) {
                         BluetoothProfile.STATE_CONNECTED -> {
                             gattClients[deviceId] = gatt
-                            napLog(NAP_BLE_CONNECTED, "Dispositivo conectado: $deviceId")
+                            napLog(NAP_BLE_CONNECTED, "GATT conectado: $deviceId. Iniciando descubrimiento de servicios...")
                             notifyListeners("onDeviceConnected", JSObject().apply {
                                 put("deviceId", deviceId)
                                 put("name", device.name ?: "Unknown")
-                            })
-                            // Resolver call pendiente con conexión confirmada
-                            val pending = pendingCalls.remove("connect_$deviceId")
-                            pending?.resolve(JSObject().apply {
-                                put("connected", true)
-                                put("deviceId", deviceId)
                             })
                             try {
                                 gatt.requestMtu(MTU_DEFAULT)
                                 gatt.discoverServices()
                             } catch (e: SecurityException) {
-                                napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "Error configurando MTU", "ERROR")
+                                napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "Error iniciando discoverServices: ${e.message}", "ERROR")
+                                val pending = pendingCalls.remove("connect_$deviceId")
+                                pending?.reject(ERR_NOT_CONNECTED, "SecurityException post-conexión: ${e.message}")
                             }
                         }
                         BluetoothProfile.STATE_DISCONNECTED -> {
@@ -1346,7 +1360,6 @@ class NexoBlePlugin : Plugin() {
                             notifyListeners("onDeviceDisconnected", JSObject().apply {
                                 put("deviceId", deviceId)
                             })
-                            // Rechazar call pendiente si la conexión falló
                             val pending = pendingCalls.remove("connect_$deviceId")
                             pending?.reject(ERR_NOT_CONNECTED, "Conexión cerrada para $deviceId")
                         }
@@ -1358,14 +1371,43 @@ class NexoBlePlugin : Plugin() {
                 }
                 
                 override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        val service = gatt.getService(SERVICE_UUID)
+                        val char = service?.getCharacteristic(CHAR_PAYLOAD)
+                        if (service != null && char != null) {
+                            napLog(NAP_BLE_READY, "Servicios NEXO validados para: $deviceId")
+                            val pending = pendingCalls.remove("connect_$deviceId")
+                            pending?.resolve(JSObject().apply {
+                                put("connected", true)
+                                put("deviceId", deviceId)
+                                put("servicesReady", true)
+                            })
+                        } else {
+                            napLog(NAP_BLE_ERR_INIT_FAILED, "Servicio NEXO no encontrado en dispositivo: $deviceId", "ERROR")
+                            val pending = pendingCalls.remove("connect_$deviceId")
+                            pending?.reject(ERR_NOT_CONNECTED, "Dispositivo no compatible NEXO (servicio/característica no encontrado)")
+                            try {
+                                gatt.disconnect()
+                                gatt.close()
+                            } catch (e: Exception) { }
+                            gattClients.remove(deviceId)
+                        }
+                    } else {
+                        napLog(NAP_BLE_ERR_CONNECTION_FAILED, "Descubrimiento falló status=$status para: $deviceId", "ERROR")
+                        val pending = pendingCalls.remove("connect_$deviceId")
+                        pending?.reject(ERR_NOT_CONNECTED, "Fallo descubrimiento de servicios (status=$status)")
+                        try {
+                            gatt.disconnect()
+                            gatt.close()
+                        } catch (e: Exception) { }
+                        gattClients.remove(deviceId)
+                    }
                     notifyListeners("onServicesDiscovered", JSObject().apply {
                         put("deviceId", deviceId)
                         put("status", status)
                     })
                 }
             })
-            
-            // NO resolver aquí. El callback nativo lo hará cuando esté realmente conectado.
             
         } catch (e: IllegalArgumentException) {
             pendingCalls.remove("connect_$deviceId")
@@ -1398,7 +1440,8 @@ class NexoBlePlugin : Plugin() {
         call.resolve()
     }
 
-    // [FIX-P2P] sendMessage ahora reintenta si servicios no listos. Chunks con delay.
+    // [FIX-P2P-v2] sendMessage ahora asume que connectToDevice ya validó servicios.
+    // attemptSend mantiene retry reducido como blindaje (15 intentos × 200ms = 3s).
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1419,28 +1462,27 @@ class NexoBlePlugin : Plugin() {
         
         val gatt = gattClients[deviceId]
         if (gatt == null) {
+            napLog(ERR_NOT_CONNECTED, "sendMessage rechazado: no hay GATT cliente para $deviceId")
             call.reject(ERR_NOT_CONNECTED, "No conectado a dispositivo")
             return
         }
         
-        // Intentar enviar con retry automático si discoverServices aún no terminó
         attemptSend(call, gatt, deviceId, payload, 0)
     }
 
-    // [FIX-P2P] Helper: reintenta hasta 10 veces (2s max) si la característica PAYLOAD no está lista
     private fun attemptSend(call: PluginCall, gatt: BluetoothGatt, deviceId: String, payload: ByteArray, attempt: Int) {
         try {
             val service = gatt.getService(SERVICE_UUID)
             val char = service?.getCharacteristic(CHAR_PAYLOAD)
             
             if (char == null) {
-                if (attempt < 10) {
+                if (attempt < 15) { // 15 retries × 200ms = 3s máximo
                     handler.postDelayed({
                         attemptSend(call, gatt, deviceId, payload, attempt + 1)
                     }, 200)
                     return
                 }
-                call.reject(ERR_NOT_CONNECTED, "Característica PAYLOAD no disponible tras descubrimiento")
+                call.reject(ERR_NOT_CONNECTED, "Característica PAYLOAD no disponible tras múltiples reintentos")
                 return
             }
             
@@ -1449,7 +1491,6 @@ class NexoBlePlugin : Plugin() {
                 gatt.writeCharacteristic(char)
             } else {
                 val chunks = payload.toList().chunked(CHUNK_SIZE)
-                // Enviar chunks espaciados 50ms para no saturar stack BLE nativo
                 chunks.forEachIndexed { index, chunk ->
                     handler.postDelayed({
                         try {
@@ -1478,12 +1519,10 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // [FIX-P2P] Ahora incluye dispositivos a los que nos conectamos como CLIENTE (gattClients)
     @PluginMethod
     fun getConnectedDevices(call: PluginCall) {
         val devices = JSArray()
         
-        // Dispositivos a los que NOSOTROS nos conectamos como cliente
         gattClients.keys.forEach { address ->
             val obj = JSObject()
             obj.put("deviceId", address)
@@ -1491,7 +1530,6 @@ class NexoBlePlugin : Plugin() {
             devices.put(obj)
         }
         
-        // Dispositivos conectados a nuestro SERVIDOR
         connectedDevices.forEach { (address, device) ->
             try {
                 val obj = JSObject()
