@@ -37,16 +37,20 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #795 → v3.1.1-SAMSUNG-FIX
-// Fixes GATT Error 133 específicos Samsung Galaxy:
+// Build #796 → v3.1.2-FINAL
+// Fixes GATT Error 133 específicos Samsung Galaxy + Android 14 Stack Bug:
 // 1. TRANSPORT_LE explícito en connectGatt
 // 2. requestMtu(512) eliminado del handshake (timeout Samsung)
-// 3. safeCloseGatt(): disconnect → delay 600ms → close → null
-// 4. refreshDeviceCache() vía reflection antes de reconectar
+// 3. safeCloseGatt(): disconnect → espera STATE_DISCONNECTED → close
+// 4. refreshDeviceCache() vía reflection EN onConnectionStateChange(STATE_CONNECTED)
 // 5. Exponential backoff retry: 1s, 2s, 4s (autoConnect=true en retries)
 // 6. NUNCA connectGatt() desde callback → siempre handler.post
 // 7. Delay 1.5s antes de discoverServices() post-conexión
 // 8. Logging a archivo interno (visible sin root)
+// 9. stopScanInternal() antes de cada connectGatt (no scan+connect simultáneo)
+// 10. connectGatt() SIEMPRE en UI thread via activity.runOnUiThread
+// 11. Detector Android 14 Stack Bug: 3 fallos 133 en 30s → onBluetoothStackBroken
+// 12. Evento onConnectionFailed enriquecido con reason, attempt, suggestion
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -121,6 +125,10 @@ class NexoBlePlugin : Plugin() {
         const val GATT_CLOSE_DELAY_MS = 600L
         const val RETRY_BASE_DELAY_MS = 1000L
         
+        // ─── FIX STACK BUG: Detector de stack corrupto ───
+        const val STACK_BUG_FAIL_THRESHOLD = 3
+        const val STACK_BUG_WINDOW_MS = 30000L
+        
         val SERVICE_UUID = NexoGattService.SERVICE_UUID
         val CHAR_ANNOUNCE = NexoGattService.ANNOUNCE_CHAR_UUID
         val CHAR_HANDSHAKE = NexoGattService.HANDSHAKE_CHAR_UUID
@@ -162,6 +170,13 @@ class NexoBlePlugin : Plugin() {
     // ─── FIX SAMSUNG: Trackers para retry y timeouts ───
     private val retryAttempts = ConcurrentHashMap<String, Int>()
     private val connectTimeoutRunnables = ConcurrentHashMap<String, Runnable>()
+
+    // ─── FIX STACK BUG: Tracker de fallos 133 ───
+    private val gatt133Failures = mutableListOf<Long>()
+    private var stackBrokenNotified = false
+
+    // ─── FIX safeClose: GATTs pendientes de cierre ───
+    private val pendingGattCloses = ConcurrentHashMap<String, BluetoothGatt>()
 
     private fun getBluetoothAdapter(): BluetoothAdapter? {
         return try {
@@ -223,7 +238,6 @@ class NexoBlePlugin : Plugin() {
             "DEBUG" -> Log.d(TAG, formatted)
             else -> Log.i(TAG, formatted)
         }
-        // ─── FIX SAMSUNG: Persistir en archivo para debugging sin root ───
         fileLog(code, "[$level] $message")
         
         val auditData = JSObject()
@@ -344,8 +358,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.1.1-SAMSUNG-FIX cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.1.1-SAMSUNG-FIX loaded - TRANSPORT_LE + safeCloseGatt + Samsung GATT 133 fixes")
+        remToast("INIT", "NAP-BLE v3.1.2-FINAL cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.1.2-FINAL loaded - TRANSPORT_LE + safeCloseGatt + Samsung GATT 133 fixes + Stack Bug detector")
         handler.postDelayed({
             if (canAccessBluetooth()) {
                 val adapter = getBluetoothAdapter()
@@ -736,21 +750,48 @@ class NexoBlePlugin : Plugin() {
         return health
     }
 
-    // ─── FIX SAMSUNG: safeCloseGatt — evita instancias fantasmas ───
-    private fun safeCloseGatt(gatt: BluetoothGatt?) {
+    // ─── FIX v3.1.2: safeCloseGatt refactorizado ───
+    // Espera STATE_DISCONNECTED antes de close(), o fuerza tras timeout extendido
+    private fun safeCloseGatt(gatt: BluetoothGatt?, deviceId: String? = null) {
         gatt ?: return
+        val id = deviceId ?: try { gatt.device?.address } catch (e: Exception) { null } ?: "unknown"
+        
+        // Paso 1: disconnect inmediato
         try {
             gatt.disconnect()
+            napLog("BLE_SAFE_CLOSE", "disconnect() llamado para $id")
         } catch (e: Exception) {
             Log.w(TAG, "safeCloseGatt disconnect error: ${e.message}")
         }
+        
+        // Paso 2: Registrar en pending para cerrar cuando llegue STATE_DISCONNECTED
+        pendingGattCloses[id] = gatt
+        
+        // Paso 3: Timeout de seguridad (si nunca llega STATE_DISCONNECTED)
         handler.postDelayed({
+            val pending = pendingGattCloses.remove(id)
+            if (pending != null) {
+                try {
+                    pending.close()
+                    napLog("BLE_SAFE_CLOSE", "close() forzado por timeout para $id")
+                } catch (e: Exception) {
+                    Log.w(TAG, "safeCloseGatt forced close error: ${e.message}")
+                }
+            }
+        }, 3000) // 3 segundos es suficiente para que llegue STATE_DISCONNECTED
+    }
+    
+    // Llamado desde onConnectionStateChange cuando llega STATE_DISCONNECTED
+    private fun completeGattClose(deviceId: String) {
+        val gatt = pendingGattCloses.remove(deviceId)
+        if (gatt != null) {
             try {
                 gatt.close()
+                napLog("BLE_SAFE_CLOSE", "close() completado tras STATE_DISCONNECTED para $deviceId")
             } catch (e: Exception) {
-                Log.w(TAG, "safeCloseGatt close error: ${e.message}")
+                Log.w(TAG, "completeGattClose error: ${e.message}")
             }
-        }, GATT_CLOSE_DELAY_MS)
+        }
     }
 
     // ─── FIX SAMSUNG: refreshDeviceCache vía reflection ───
@@ -770,10 +811,14 @@ class NexoBlePlugin : Plugin() {
     private fun cleanupAllConnections() {
         napLog("BLE_CLEANUP", "Limpiando todas las conexiones BLE")
         try {
-            gattClients.forEach { (_, gatt) ->
-                safeCloseGatt(gatt)
+            gattClients.forEach { (id, gatt) ->
+                safeCloseGatt(gatt, id)
             }
             gattClients.clear()
+            pendingGattCloses.forEach { (id, gatt) ->
+                try { gatt.close() } catch (e: Exception) { }
+            }
+            pendingGattCloses.clear()
             serverConnections.clear()
             gattServer?.close()
             gattServer = null
@@ -782,6 +827,8 @@ class NexoBlePlugin : Plugin() {
             retryAttempts.clear()
             connectTimeoutRunnables.forEach { (_, r) -> handler.removeCallbacks(r) }
             connectTimeoutRunnables.clear()
+            gatt133Failures.clear()
+            stackBrokenNotified = false
             napLog("BLE_CLEANUP_OK", "Conexiones limpiadas")
         } catch (e: Exception) {
             napLog(NAP_BLE_ERR_INIT_FAILED, "Error en cleanup: ${e.message}", "ERROR")
@@ -979,7 +1026,7 @@ class NexoBlePlugin : Plugin() {
                         val data = JSObject()
                         data.put("userId", userId)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.1.1-SAMSUNG-FIX")
+                        data.put("napVersion", "3.1.2-FINAL")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -1213,7 +1260,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve()
     }
 
-    // ─── FIX SAMSUNG: connectToDevice refactorizado con retry, TRANSPORT_LE, safeCloseGatt ───
+    // ─── FIX v3.1.2: connectToDevice con stopScan + UI thread + safeClose ───
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1233,12 +1280,14 @@ class NexoBlePlugin : Plugin() {
         
         napLog("BLE_CONN_REQ", "[CLIENT] Solicitud conectar a: $deviceId | gattClients actuales: ${gattClients.keys} | serverConnections=${serverConnections.keys}")
         
-        // Cerrar GATT existente de forma segura + refrescar cache
+        // ─── FIX v3.1.2: Detener scan ANTES de conectar (evita 133 en Samsung) ───
+        stopScanInternal()
+        
+        // Cerrar GATT existente de forma segura
         val existingGatt = gattClients.remove(deviceId)
         if (existingGatt != null) {
             napLog("BLE_CONN_CLEAN", "[CLIENT] Cerrando GATT anterior para: $deviceId")
-            refreshDeviceCache(existingGatt)
-            safeCloseGatt(existingGatt)
+            safeCloseGatt(existingGatt, deviceId)
         }
         
         if (pendingCalls.containsKey("connect_$deviceId")) {
@@ -1258,7 +1307,15 @@ class NexoBlePlugin : Plugin() {
             pendingCalls["connect_$deviceId"] = call
             retryAttempts.remove(deviceId) // Reset contador
             
-            executeConnect(device, deviceId, attempt = 0)
+            // ─── FIX v3.1.2: SIEMPRE ejecutar connectGatt en UI thread ───
+            val activity = activity
+            if (activity != null) {
+                activity.runOnUiThread {
+                    executeConnect(device, deviceId, attempt = 0)
+                }
+            } else {
+                executeConnect(device, deviceId, attempt = 0)
+            }
             
         } catch (e: IllegalArgumentException) {
             pendingCalls.remove("connect_$deviceId")
@@ -1270,9 +1327,8 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ─── FIX SAMSUNG: NUNCA llamar connectGatt desde callback. Solo desde handler. ───
     private fun executeConnect(device: BluetoothDevice, deviceId: String, attempt: Int) {
-        val autoConnect = attempt > 0 // Primer intento: false, retries: true
+        val autoConnect = attempt > 0
         val callback = ClientGattCallback(deviceId, attempt)
         
         napLog("BLE_CONN_EXEC", "[CLIENT] executeConnect deviceId=$deviceId attempt=$attempt autoConnect=$autoConnect")
@@ -1289,12 +1345,11 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        // Timeout global para conexión + descubrimiento
         val timeoutRunnable = Runnable {
             val pending = pendingCalls.remove("connect_$deviceId")
             if (pending != null) {
                 napError(pending, ERR_NOT_CONNECTED, "Timeout esperando descubrimiento de servicios para $deviceId (attempt=$attempt)")
-                safeCloseGatt(gatt)
+                safeCloseGatt(gatt, deviceId)
                 gattClients.remove(deviceId)
             }
         }
@@ -1302,20 +1357,58 @@ class NexoBlePlugin : Plugin() {
         handler.postDelayed(timeoutRunnable, 15000)
     }
 
-    // ─── FIX SAMSUNG: Retry con exponential backoff (1s, 2s, 4s) ───
+    // ─── FIX v3.1.2: Retry con exponential backoff + detector 133 ───
     private fun handleConnectFailure(deviceId: String, reason: String, attempt: Int) {
         connectTimeoutRunnables.remove(deviceId)?.let { handler.removeCallbacks(it) }
         
+        // ─── FIX STACK BUG: Trackear fallos 133 ───
+        val is133 = reason.contains("status=133") || reason.contains("GATT 133")
+        if (is133) {
+            val now = System.currentTimeMillis()
+            gatt133Failures.add(now)
+            // Limpiar fallos antiguos (>30s)
+            gatt133Failures.removeAll { now - it > STACK_BUG_WINDOW_MS }
+            
+            if (gatt133Failures.size >= STACK_BUG_FAIL_THRESHOLD && !stackBrokenNotified) {
+                stackBrokenNotified = true
+                napLog("BLE_STACK_BROKEN", "DETECTADO: $STACK_BUG_FAIL_THRESHOLD fallos GATT 133 en ${STACK_BUG_WINDOW_MS/1000}s. Stack Bluetooth corrupto.", "ERROR")
+                notifyListeners("onBluetoothStackBroken", JSObject().apply {
+                    put("failCount", gatt133Failures.size)
+                    put("windowSeconds", STACK_BUG_WINDOW_MS / 1000)
+                    put("suggestion", "Reinicie Bluetooth desde Configuración > Bluetooth")
+                    put("isAndroid14Bug", Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+                })
+            }
+        }
+        
+        // Emitir evento de fallo enriquecido para JS
+        notifyListeners("onConnectionFailed", JSObject().apply {
+            put("deviceId", deviceId)
+            put("reason", reason)
+            put("attempt", attempt)
+            put("maxAttempts", MAX_RETRY_ATTEMPTS)
+            put("isGATT133", is133)
+            put("recoverable", attempt < MAX_RETRY_ATTEMPTS)
+            put("suggestion", if (is133) "Reintentando con autoConnect=true..." else "Verifique que el dispositivo esté visible")
+        })
+        
         if (attempt < MAX_RETRY_ATTEMPTS) {
             val nextAttempt = attempt + 1
-            val delay = RETRY_BASE_DELAY_MS * (1 shl attempt) // 1000, 2000, 4000
+            val delay = RETRY_BASE_DELAY_MS * (1 shl attempt)
             retryAttempts[deviceId] = nextAttempt
             napLog("BLE_CONN_RETRY", "[CLIENT] Retry $nextAttempt para $deviceId en ${delay}ms (autoConnect=true). Razón: $reason")
             handler.postDelayed({
                 val adapter = getBluetoothAdapter()
                 val dev = adapter?.getRemoteDevice(deviceId)
                 if (dev != null) {
-                    executeConnect(dev, deviceId, nextAttempt)
+                    val activity = activity
+                    if (activity != null) {
+                        activity.runOnUiThread {
+                            executeConnect(dev, deviceId, nextAttempt)
+                        }
+                    } else {
+                        executeConnect(dev, deviceId, nextAttempt)
+                    }
                 } else {
                     val pending = pendingCalls.remove("connect_$deviceId")
                     pending?.reject(ERR_NOT_CONNECTED, "No se pudo obtener dispositivo para retry: $deviceId")
@@ -1329,7 +1422,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ─── FIX SAMSUNG: ClientGattCallback extraído a clase interna para referencia limpia ───
     private inner class ClientGattCallback(
         private val deviceId: String,
         private val attempt: Int
@@ -1342,6 +1434,10 @@ class NexoBlePlugin : Plugin() {
                         napLog("BLE_CONN_WARN", "[CLIENT] STATE_CONNECTED pero status=$status (no success). Posible GATT 133.")
                     }
                     napLog(NAP_BLE_CONNECTED, "[CLIENT] GATT conectado: $deviceId (attempt=$attempt, status=$status). Delay 1.5s antes de discoverServices...")
+                    
+                    // ─── FIX v3.1.2: refresh cache INMEDIATAMENTE tras STATE_CONNECTED ───
+                    refreshDeviceCache(gatt)
+                    
                     notifyListeners("onDeviceConnected", JSObject().apply {
                         put("deviceId", deviceId)
                         put("name", try { gatt.device?.name } catch (e: SecurityException) { "Unknown" } ?: "Unknown")
@@ -1350,7 +1446,6 @@ class NexoBlePlugin : Plugin() {
                         put("attempt", attempt)
                         put("gattStatus", status)
                     })
-                    // ─── FIX SAMSUNG: Delay 1.5s antes de discoverServices ───
                     handler.postDelayed({
                         try {
                             gatt.discoverServices()
@@ -1358,13 +1453,14 @@ class NexoBlePlugin : Plugin() {
                             napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "Error iniciando discoverServices: ${e.message}", "ERROR")
                             val pending = pendingCalls.remove("connect_$deviceId")
                             pending?.reject(ERR_NOT_CONNECTED, "SecurityException post-conexión: ${e.message}")
-                            safeCloseGatt(gatt)
+                            safeCloseGatt(gatt, deviceId)
                         }
                     }, SAMSUNG_DISCOVER_DELAY_MS)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     gattClients.remove(deviceId)
-                    safeCloseGatt(gatt)
+                    // ─── FIX v3.1.2: Completar cierre seguro tras STATE_DISCONNECTED ───
+                    completeGattClose(deviceId)
                     notifyListeners("onDeviceDisconnected", JSObject().apply {
                         put("deviceId", deviceId)
                         put("gattStatus", status)
@@ -1387,11 +1483,10 @@ class NexoBlePlugin : Plugin() {
                 val char = service?.getCharacteristic(CHAR_PAYLOAD)
                 if (service != null && char != null) {
                     gattClients[deviceId] = gatt
-                    retryAttempts.remove(deviceId) // Éxito: limpiar retries
+                    retryAttempts.remove(deviceId)
                     connectTimeoutRunnables.remove(deviceId)?.let { handler.removeCallbacks(it) }
                     napLog(NAP_BLE_READY, "[CLIENT] Servicios NEXO validados para: $deviceId. gattClients AGREGADO.")
                     
-                    // Suscribirse a notificaciones
                     try {
                         val notificationSet = gatt.setCharacteristicNotification(char, true)
                         napLog("BLE_NOTIFY_SET", "[CLIENT] setCharacteristicNotification result: $notificationSet")
@@ -1428,12 +1523,12 @@ class NexoBlePlugin : Plugin() {
                     })
                 } else {
                     napLog(NAP_BLE_ERR_INIT_FAILED, "[CLIENT] Servicio NEXO no encontrado en: $deviceId. UUIDs encontrados: ${gatt.services.map { it.uuid }}", "ERROR")
-                    safeCloseGatt(gatt)
+                    safeCloseGatt(gatt, deviceId)
                     handleConnectFailure(deviceId, "Servicio NEXO no encontrado", attempt)
                 }
             } else {
                 napLog(NAP_BLE_ERR_CONNECTION_FAILED, "[CLIENT] Descubrimiento falló status=$status para: $deviceId", "ERROR")
-                safeCloseGatt(gatt)
+                safeCloseGatt(gatt, deviceId)
                 handleConnectFailure(deviceId, "Descubrimiento falló status=$status", attempt)
             }
             notifyListeners("onServicesDiscovered", JSObject().apply {
@@ -1468,7 +1563,7 @@ class NexoBlePlugin : Plugin() {
             } else {
                 napLog("BLE_SEND_FAIL", "[CLIENT] onCharacteristicWrite FAILED status=$status para $addr")
                 gattClients.remove(addr)
-                safeCloseGatt(gatt)
+                safeCloseGatt(gatt, addr)
                 pending?.reject(ERR_NOT_CONNECTED, "Escritura falló (status=$status). GATT cerrado. Reconecte.")
             }
         }
@@ -1503,7 +1598,7 @@ class NexoBlePlugin : Plugin() {
             return
         }
         gattClients.remove(deviceId)?.let { gatt ->
-            safeCloseGatt(gatt)
+            safeCloseGatt(gatt, deviceId)
         }
         serverConnections.remove(deviceId)
         call.resolve()
