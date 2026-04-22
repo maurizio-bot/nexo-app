@@ -1,5 +1,5 @@
 /**
- * NEXO App v3.3.4-RESEARCH
+ * NEXO App v3.3.5-DUAL
  * Orquestador Principal - NAP 2.0 Certified
  * FIXES: 
  * - CryptoVault.init() (no initialize())
@@ -8,6 +8,8 @@
  * + INTEGRATION v3.3.2: BLE Chat directo (activeContact + _sendViaBLE)
  * + FIX v3.3.3: _sendViaBLE siempre fuerza conexión cliente para evitar falso positivo servidor.
  * + RESEARCH v3.3.4: 600ms pause + gatt.close() on failure + WRITE_TYPE_DEFAULT + REM focused
+ * + DUAL-ROLE v3.3.5: Listener nexo:ble:messageReceived para mensajes entrantes BLE nativos
+ * + DUAL-ROLE v3.3.5: Integración bidireccional confirmada (cliente write + servidor notify)
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -83,7 +85,8 @@ export class NexoApp {
     this.initialized = false;
     this.activeContact = null;
     this._bleChatHandler = null;
-    DEBUG.log('🚀 [NEXO] v3.3.4-RESEARCH iniciando...', 'info', 'APP_INIT');
+    this._bleMessageHandler = null; // DUAL-ROLE v3.3.5
+    DEBUG.log('🚀 [NEXO] v3.3.5-DUAL iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -105,7 +108,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v3.3.4-RESEARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v3.3.5-DUAL Ready', 'APP_READY');
       this._logFinalStatus();
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
@@ -225,6 +228,8 @@ export class NexoApp {
       if (this.bleInterface) {
         DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (dummy)'), 'UI_002');
       }
+      
+      // Handler para abrir chat desde BLE Interface
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
         this.activeContact = { id: contactId, name, address, transport };
@@ -238,6 +243,28 @@ export class NexoApp {
         this.config.onStatusChange(`CHAT:${name}`);
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
+      
+      // ─── DUAL-ROLE v3.3.5: Listener para mensajes entrantes BLE nativos ───
+      this._bleMessageHandler = (e) => {
+        const { deviceId, content, source, timestamp } = e.detail;
+        DEBUG.log(`📨 BLE mensaje entrante de ${deviceId?.substr(0,8)}: ${content?.substr(0,30)}...`, 'info', 'BLE_RECV');
+        
+        // Si no hay contacto activo o es diferente, notificar
+        if (!this.activeContact || this.activeContact.id !== deviceId) {
+          DEBUG.log(`Mensaje BLE de dispositivo no activo: ${deviceId}`, 'warn', 'BLE_RECV_PASSIVE');
+        }
+        
+        this._handleMessage({
+          content: content,
+          sender: deviceId,
+          source: 'ble_direct',
+          timestamp: timestamp || Date.now(),
+          _own: false
+        }, 'ble_direct');
+      };
+      window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
+      DEBUG.log('Listener nexo:ble:messageRegistered registrado', 'info', 'BLE_LISTENER_OK');
+      
     } catch (err) {
       DEBUG.error('UI_004', `BLE UI init failed: ${err.message}`);
       this.bleInterface = null;
@@ -351,8 +378,7 @@ export class NexoApp {
 
   _updateStatus() {}
 
-  // [RESEARCH] _sendViaBLE: 600ms pause + gatt.close() on failure.
-  // REM traces exact deviceId and plugin responses.
+  // [DUAL-ROLE v3.3.5] _sendViaBLE: conexión + envío con manejo de dirección dual
   async _sendViaBLE(deviceId, content, attempt = 0) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin NexoBLE no disponible');
@@ -485,6 +511,10 @@ export class NexoApp {
     if (this._bleChatHandler) {
       window.removeEventListener('nexo:ble:openChat', this._bleChatHandler);
       this._bleChatHandler = null;
+    }
+    if (this._bleMessageHandler) {
+      window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
+      this._bleMessageHandler = null;
     }
     if (this.bleInterface) { try { this.bleInterface.destroy(); } catch(e) {} this.bleInterface = null; }
     if (this.vaultSlider) { try { this.vaultSlider.destroy?.(); } catch(e) {} this.vaultSlider = null; }
