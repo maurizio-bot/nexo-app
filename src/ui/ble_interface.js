@@ -1,5 +1,5 @@
 /**
- * BLE Interface v2.5.0-DUAL
+ * BLE Interface v2.6.0-FINAL
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
  * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
@@ -11,6 +11,7 @@
  * + RESEARCH v2.4.6: REM limpiados de funciones robustas; solo eventos nativos
  * + DUAL-ROLE v2.5.0: Listener onPayloadReceived nativo para mensajes entrantes BLE
  * + DUAL-ROLE v2.5.0: Auto-conexión en openChat para envío bidireccional
+ * + FINAL v2.6.0: Máquina de estados BLE + onServicesReady + onNotificationsEnabled + onConnectionFailed + onBluetoothStackBroken
  */
 
 export function initBLEInterface(bleMesh) {
@@ -76,6 +77,16 @@ function _isBLEContact(deviceId) {
   return _getBLEContacts().some(c => (c.id || c.address) === deviceId);
 }
 
+// ─── Estados de conexión BLE ───
+const BLE_STATES = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  DISCOVERING_SERVICES: 'discovering_services',
+  NOTIFICATIONS_READY: 'notifications_ready',
+  READY_TO_CHAT: 'ready_to_chat',
+  ERROR: 'error'
+};
+
 export class BLEInterface {
   constructor(bleMesh) {
     this.bleMesh = bleMesh;
@@ -93,9 +104,10 @@ export class BLEInterface {
     this.canAdvertise = false;
     this.localDeviceName = 'NEXO Device';
     this.localDeviceAddress = null;
-    // ─── DUAL-ROLE v2.5.0: Buffer de mensajes entrantes ───
     this._incomingMessages = [];
     this._activeChatDeviceId = null;
+    // ─── v2.6.0: Estados de conexión por dispositivo ───
+    this._deviceStates = new Map(); // deviceId -> { state, attempt, lastError }
   }
 
   _detectMeshType() {
@@ -124,7 +136,8 @@ export class BLEInterface {
       this._initVisibility();
       this._setupNativeScanListeners();
       this._setupNativeConnectionListeners();
-      this._setupNativePayloadListener(); // DUAL-ROLE v2.5.0
+      this._setupNativePayloadListener();
+      this._setupNativeStateListeners(); // v2.6.0
       this._loadLocalDeviceInfo();
     }
     return this;
@@ -174,26 +187,112 @@ export class BLEInterface {
     
     this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', (data) => {
       console.log('[BLEInterface] Nativo: onDeviceConnected', data);
+      const deviceId = data.deviceId;
+      const attempt = data.attempt || 0;
+      
+      // v2.6.0: Actualizar estado del dispositivo
+      if (attempt > 0) {
+        this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { attempt, message: `Reintentando (${attempt}/3)...` });
+        this.showToast(`🔄 Conectando... intento ${attempt}/3`, 'warning');
+      } else {
+        this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { attempt: 0 });
+      }
+      
       this.onDeviceConnected({
-        id: data.deviceId,
-        address: data.deviceId,
+        id: deviceId,
+        address: deviceId,
         name: data.name || 'Unknown',
-        direction: data.direction || 'unknown'
+        direction: data.direction || 'unknown',
+        servicesReady: data.servicesReady === true,
+        attempt: attempt
       });
     });
     
     this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', (data) => {
       console.log('[BLEInterface] Nativo: onDeviceDisconnected', data);
+      const deviceId = data.deviceId;
+      this._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
       this.onDeviceDisconnected({
-        id: data.deviceId,
-        address: data.deviceId
+        id: deviceId,
+        address: deviceId
       });
+      // Si era el chat activo, limpiar
+      if (this._activeChatDeviceId === deviceId) {
+        this._activeChatDeviceId = null;
+      }
     });
     
     console.log('[BLEInterface] Listeners nativos de conexión configurados');
   }
 
-  // ─── DUAL-ROLE v2.5.0: Listener para mensajes entrantes vía BLE ───
+  // ─── v2.6.0: Nuevos listeners de estado ───
+  _setupNativeStateListeners() {
+    if (!this.nativePlugin) return;
+    
+    // onServicesReady: servicios descubiertos, habilitar chat
+    this._nativeServicesReadyListener = this.nativePlugin.addListener('onServicesReady', (data) => {
+      console.log('[BLEInterface] Nativo: onServicesReady', data);
+      const deviceId = data.deviceId;
+      this._setDeviceState(deviceId, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
+    });
+    
+    // onNotificationsEnabled: canal bidireccional confirmado
+    this._nativeNotificationsListener = this.nativePlugin.addListener('onNotificationsEnabled', (data) => {
+      console.log('[BLEInterface] Nativo: onNotificationsEnabled', data);
+      const deviceId = data.deviceId;
+      this._setDeviceState(deviceId, BLE_STATES.NOTIFICATIONS_READY, { notificationsEnabled: true });
+      
+      // Si es el dispositivo del chat activo, mostrar listo
+      if (this._activeChatDeviceId === deviceId) {
+        this.showToast('✅ Canal BLE listo para mensajes', 'success');
+      }
+    });
+    
+    // onConnectionFailed: mostrar retry al usuario
+    this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', (data) => {
+      console.log('[BLEInterface] Nativo: onConnectionFailed', data);
+      const deviceId = data.deviceId;
+      const attempt = data.attempt || 0;
+      const maxAttempts = data.maxAttempts || 3;
+      const isRecoverable = data.recoverable !== false;
+      
+      if (isRecoverable && attempt < maxAttempts) {
+        this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { 
+          attempt, 
+          message: `Reintentando ${attempt + 1}/${maxAttempts}...`,
+          lastError: data.reason 
+        });
+      } else {
+        this._setDeviceState(deviceId, BLE_STATES.ERROR, { 
+          lastError: data.reason,
+          suggestion: data.suggestion 
+        });
+        this.showToast(`❌ Conexión fallida: ${data.reason}`, 'error');
+      }
+    });
+    
+    // onBluetoothStackBroken: Android 14 bug detectado
+    this._nativeStackBrokenListener = this.nativePlugin.addListener('onBluetoothStackBroken', (data) => {
+      console.error('[BLEInterface] Nativo: onBluetoothStackBroken', data);
+      this.showToast('⚠️ Bluetooth necesita reiniciarse. Ve a Configuración > Bluetooth.', 'warning', 8000);
+      // Emitir evento global para que la app muestre diálogo
+      const event = new CustomEvent('nexo:ble:stackBroken', { detail: data });
+      window.dispatchEvent(event);
+    });
+    
+    console.log('[BLEInterface] Listeners nativos de estado configurados (v2.6.0)');
+  }
+
+  _setDeviceState(deviceId, state, meta = {}) {
+    this._deviceStates.set(deviceId, { state, ...meta, timestamp: Date.now() });
+    console.log(`[BLEInterface] Estado ${deviceId}: ${state}`, meta);
+    this.renderConnectedList(); // Refrescar UI
+  }
+
+  _getDeviceState(deviceId) {
+    return this._deviceStates.get(deviceId) || { state: BLE_STATES.DISCONNECTED };
+  }
+
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
     if (this._nativePayloadListener) this._nativePayloadListener.remove();
@@ -480,6 +579,7 @@ export class BLEInterface {
       .ble-btn-write { padding: 8px 16px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s ease; white-space: nowrap; }
       .ble-btn-write:hover { background: #00b8e6; transform: scale(1.05); }
       .ble-btn-write:active { transform: scale(0.95); }
+      .ble-btn-write:disabled { background: #555; color: #aaa; cursor: not-allowed; }
       .ble-added-badge { color: #00ff88; font-size: 12px; font-weight: bold; }
       .ble-btn-connect { padding: 6px 12px; background: #00d4ff; color: #000; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
       .ble-btn-disconnect { padding: 6px 12px; background: #ff4444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
@@ -489,6 +589,10 @@ export class BLEInterface {
       .ble-toast.warning { background: #ffaa00; color: #000; }
       .ble-toast.info { background: #444; }
       @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+      /* v2.6.0: Estados de conexión */
+      .ble-state-connecting { color: #ffaa00; font-size: 11px; }
+      .ble-state-ready { color: #00ff88; font-size: 11px; }
+      .ble-state-error { color: #ff4444; font-size: 11px; }
     `;
     document.head.appendChild(style);
   }
@@ -695,7 +799,6 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
-  // ─── DUAL-ROLE v2.5.0: openChat ahora auto-conecta para chat bidireccional ───
   async openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
     if (!device) {
@@ -718,16 +821,33 @@ export class BLEInterface {
     this._activeChatDeviceId = deviceId;
     console.log('[BLEInterface] Solicitando abrir chat con:', device);
     
-    // DUAL-ROLE: Asegurar conexión cliente antes de abrir chat
-    const isConnected = this.connectedDevices.has(deviceId);
+    // v2.6.0: Verificar estado antes de conectar
+    const state = this._getDeviceState(deviceId);
+    const isConnected = this.connectedDevices.has(deviceId) && 
+                        (state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT);
+    
     if (!isConnected && this.nativePlugin) {
       try {
         console.log('[BLEInterface] Auto-conectando a', deviceId, 'antes de abrir chat...');
         await this.nativePlugin.connectToDevice({ deviceId });
         this.showToast('🔗 Conectando...', 'info');
-        await new Promise(r => setTimeout(r, 800)); // Esperar handshake
+        // Esperar a que onNotificationsEnabled confirme canal listo
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout esperando canal BLE')), 8000);
+          const checkReady = () => {
+            const s = this._getDeviceState(deviceId);
+            if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
+              clearTimeout(timeout);
+              resolve();
+            } else {
+              setTimeout(checkReady, 300);
+            }
+          };
+          checkReady();
+        });
       } catch (e) {
-        console.warn('[BLEInterface] Auto-conexión falló (puede que ya esté como servidor):', e.message);
+        console.warn('[BLEInterface] Auto-conexión/timeout:', e.message);
+        this.showToast('⚠️ Conexión iniciada pero canal aún no listo. Intente enviar en unos segundos.', 'warning');
       }
     }
     
@@ -820,21 +940,37 @@ export class BLEInterface {
     }
     list.innerHTML = '';
     this.connectedDevices.forEach((device, id) => {
+      const state = this._getDeviceState(id);
+      const stateLabel = this._renderStateLabel(state);
+      const isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
+      
       const item = document.createElement('div');
       item.className = 'ble-device-item';
       item.innerHTML = `
         <div class="ble-device-info">
           <span class="ble-device-name">${device.name || 'Desconocido'}</span>
           <span class="ble-device-id">${this._formatId(id)}</span>
-          <span class="ble-device-rssi" style="color: #00ff00;">● ${device.direction || 'Conectado'}</span>
+          <span class="ble-device-rssi" style="color: #00ff00;">● ${device.direction || 'Conectado'} ${stateLabel}</span>
         </div>
         <div class="ble-device-actions">
-          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>
+          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')" ${!isReady ? 'disabled title="Esperando canal listo..."' : ''}>✉️ Escribir</button>
           <button class="ble-btn-disconnect" onclick="bleInterface.disconnect('${id}')">Desconectar</button>
         </div>
       `;
       list.appendChild(item);
     });
+  }
+
+  _renderStateLabel(state) {
+    if (!state || !state.state) return '';
+    switch (state.state) {
+      case BLE_STATES.CONNECTING: return `<span class="ble-state-connecting">⏳ ${state.message || 'Conectando...'}</span>`;
+      case BLE_STATES.DISCOVERING_SERVICES: return `<span class="ble-state-connecting">🔍 Descubriendo...</span>`;
+      case BLE_STATES.NOTIFICATIONS_READY: return `<span class="ble-state-ready">✅ Canal listo</span>`;
+      case BLE_STATES.READY_TO_CHAT: return `<span class="ble-state-ready">✅ Listo</span>`;
+      case BLE_STATES.ERROR: return `<span class="ble-state-error">❌ ${state.lastError || 'Error'}</span>`;
+      default: return '';
+    }
   }
 
   async connect(deviceId) {
@@ -914,7 +1050,7 @@ export class BLEInterface {
     }
   }
 
-  showToast(message, type = 'info') {
+  showToast(message, type = 'info', duration = 3000) {
     const existing = document.querySelector('.ble-toast');
     if (existing) existing.remove();
     const toast = document.createElement('div');
@@ -924,7 +1060,7 @@ export class BLEInterface {
     setTimeout(() => {
       toast.style.opacity = '0';
       setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    }, duration);
   }
 
   _formatId(id) {
@@ -945,9 +1081,13 @@ export class BLEInterface {
     if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
     if (this._nativePayloadListener) this._nativePayloadListener.remove();
     if (this._nativeNotificationListener) this._nativeNotificationListener.remove();
+    if (this._nativeServicesReadyListener) this._nativeServicesReadyListener.remove();
+    if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
+    if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
+    if (this._nativeStackBrokenListener) this._nativeStackBrokenListener.remove();
     if (this.isScanning) this.toggleScan();
   }
 }
 
 window.bleInterface = null;
-// Cache bust Wed Apr 22 10:11:00 UTC 2026
+// Cache bust Wed Apr 22 13:20:00 UTC 2026
