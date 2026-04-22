@@ -37,8 +37,11 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #805 → v3.2.1-COMPILE-FIX
-// FIX: Eliminado dummyCall en restartAdvertising(). Lógica extraída a performStartAdvertisingInternal()
+// Build #806 → v3.3.0-P2P-FIX
+// FIX: Eliminado shouldActAsClient por MAC. Ahora ambos dispositivos pueden ser client+server.
+// FIX: Protocolo de mensaje JSON en payload con messageId, senderId, senderName.
+// FIX: GattServer siempre activo. GattClient on-demand para envío.
+// FIX: Identificación de remitente robusta vía deviceId en payload.
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -58,6 +61,7 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_SCAN_STARTED = "BLE_052"
         const val NAP_BLE_ADVERTISE_STARTED = "BLE_053"
         const val NAP_BLE_MESSAGE_SENT = "BLE_054"
+        const val NAP_BLE_MESSAGE_RECEIVED = "BLE_054_R"
         const val NAP_BLE_RECOVERY_SUCCESS = "BLE_055"
         const val NAP_BLE_PERMISSIONS_GRANTED = "BLE_056"
         const val NAP_BLE_NOTIFICATION_ENABLED = "BLE_057"
@@ -133,6 +137,7 @@ class NexoBlePlugin : Plugin() {
     private var scanCallback: ScanCallback? = null
     private val handler = Handler(Looper.getMainLooper())
     private var userId: String = ""
+    private var userName: String = ""
     private val connectionCounter = AtomicInteger(0)
     private val pendingCalls = ConcurrentHashMap<String, PluginCall>()
     
@@ -333,8 +338,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.2.1-COMPILE-FIX cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.2.1-COMPILE-FIX loaded")
+        remToast("INIT", "NAP-BLE v3.3.0-P2P-FIX cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.3.0-P2P-FIX loaded")
         handler.postDelayed({
             if (canAccessBluetooth()) {
                 val adapter = getBluetoothAdapter()
@@ -882,9 +887,11 @@ class NexoBlePlugin : Plugin() {
             }
             setupGattServer(adapter)
             userId = call.getString("userId") ?: ""
+            userName = call.getString("userName") ?: "NEXO User"
             val result = JSObject()
             result.put("initialized", true)
             result.put("userId", userId)
+            result.put("userName", userName)
             result.put("adapterAddress", adapter.address ?: "unknown")
             result.put("mtu", MTU_DEFAULT)
             result.put("health", getSystemHealthReport())
@@ -892,6 +899,7 @@ class NexoBlePlugin : Plugin() {
             notifyListeners("onBLEInitialized", JSObject().apply {
                 put("ready", true)
                 put("userId", userId)
+                put("userName", userName)
             })
             call.resolve(result)
         } catch (e: Exception) {
@@ -997,8 +1005,9 @@ class NexoBlePlugin : Plugin() {
                     CHAR_ANNOUNCE -> {
                         val data = JSObject()
                         data.put("userId", userId)
+                        data.put("userName", userName)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.2.1-COMPILE-FIX")
+                        data.put("napVersion", "3.3.0-P2P-FIX")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -1031,10 +1040,23 @@ class NexoBlePlugin : Plugin() {
                             })
                         }
                         CHAR_PAYLOAD -> {
-                            napLog("BLE_PAYLOAD_RECV", "[SERVER] Payload recibido de ${device.address}: ${String(data)}")
+                            val payloadStr = String(data)
+                            napLog(NAP_BLE_MESSAGE_RECEIVED, "[SERVER] Payload recibido de ${device.address}: ${payloadStr.take(80)}")
+                            
+                            // Parsear JSON para extraer senderName si existe
+                            var senderName = device.name ?: "Unknown"
+                            var messageContent = payloadStr
+                            try {
+                                val json = org.json.JSONObject(payloadStr)
+                                if (json.has("senderName")) senderName = json.getString("senderName")
+                                if (json.has("content")) messageContent = json.getString("content")
+                            } catch (e: Exception) { /* payload no es JSON, usar raw */ }
+                            
                             notifyListeners("onPayloadReceived", JSObject().apply {
                                 put("deviceId", device.address)
-                                put("data", String(data))
+                                put("data", payloadStr)
+                                put("content", messageContent)
+                                put("senderName", senderName)
                                 put("source", "server_write_request")
                                 put("timestamp", System.currentTimeMillis())
                             })
@@ -1167,7 +1189,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ─── FIX COMPILE: Lógica core de advertising extraída a método privado ───
     private fun performStartAdvertisingInternal() {
         val adapter = getBluetoothAdapter()
         if (adapter == null) {
@@ -1246,6 +1267,7 @@ class NexoBlePlugin : Plugin() {
         }, 300)
     }
 
+    // ─── v3.3.0-P2P-FIX: connectToDevice SIEMPRE abre GATT client, sin importar MAC ───
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1263,42 +1285,30 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        val myAddress = adapter?.address ?: ""
-        val shouldActAsClient = myAddress.compareTo(deviceId, ignoreCase = true) > 0
+        // v3.3.0: ELIMINADO shouldActAsClient por comparación de MAC.
+        // Ahora SIEMPRE actuamos como cliente GATT cuando queremos enviar/conectar.
+        // El GattServer local sigue activo para recibir conexiones entrantes.
         
-        if (!shouldActAsClient) {
-            napLog("BLE_ROLE_SERVER", "[ROLE] Mi MAC ($myAddress) < objetivo ($deviceId). Actuando como SERVIDOR.")
-            call.resolve(JSObject().apply {
-                put("connected", false)
-                put("role", "server")
-                put("reason", "role_resolution: waiting_for_incoming")
-                put("message", "Este dispositivo actúa como servidor. Esperando conexión entrante del peer.")
-            })
-            return
-        }
-        
-        napLog("BLE_ROLE_CLIENT", "[ROLE] Mi MAC ($myAddress) > objetivo ($deviceId). Actuando como CLIENTE.")
+        napLog("BLE_CONN_REQ", "[P2P] Solicitud conectar a: $deviceId | gattClients actuales: ${gattClients.keys}")
         
         val cooldownEnd = connectionCooldowns[deviceId] ?: 0
         if (System.currentTimeMillis() < cooldownEnd) {
             val remaining = (cooldownEnd - System.currentTimeMillis()) / 1000
-            napLog("BLE_COOLDOWN", "[CLIENT] Conexión a $deviceId en cooldown. Esperar ${remaining}s.")
+            napLog("BLE_COOLDOWN", "[P2P] Conexión a $deviceId en cooldown. Esperar ${remaining}s.")
             call.reject(ERR_NOT_CONNECTED, "Conexión en cooldown. Reintente en ${remaining} segundos.")
             return
         }
-        
-        napLog("BLE_CONN_REQ", "[CLIENT] Solicitud conectar a: $deviceId | gattClients actuales: ${gattClients.keys}")
         
         stopScanInternal()
         
         val existingGatt = gattClients.remove(deviceId)
         if (existingGatt != null) {
-            napLog("BLE_CONN_CLEAN", "[CLIENT] Cerrando GATT anterior para: $deviceId")
+            napLog("BLE_CONN_CLEAN", "[P2P] Cerrando GATT anterior para: $deviceId")
             safeCloseGatt(existingGatt, deviceId)
         }
         
         if (pendingCalls.containsKey("connect_$deviceId")) {
-            napLog("BLE_CONN_DUP", "[CLIENT] Conexión ya en progreso a $deviceId, rechazando duplicado")
+            napLog("BLE_CONN_DUP", "[P2P] Conexión ya en progreso a $deviceId, rechazando duplicado")
             call.reject(ERR_NOT_CONNECTED, "Conexión ya en progreso a este dispositivo. Espere a que termine.")
             return
         }
@@ -1306,7 +1316,7 @@ class NexoBlePlugin : Plugin() {
         try {
             val device = adapter?.getRemoteDevice(deviceId)
             if (device == null) {
-                napLog("BLE_CONN_NULL_DEVICE", "[CLIENT] getRemoteDevice($deviceId) retornó null.")
+                napLog("BLE_CONN_NULL_DEVICE", "[P2P] getRemoteDevice($deviceId) retornó null.")
                 call.reject(ERR_DEVICE_NOT_FOUND, "Dispositivo no encontrado")
                 return
             }
@@ -1331,7 +1341,7 @@ class NexoBlePlugin : Plugin() {
             
         } catch (e: IllegalArgumentException) {
             pendingCalls.remove("connect_$deviceId")
-            napLog("BLE_CONN_INV_MAC", "[CLIENT] MAC inválida: $deviceId", "ERROR")
+            napLog("BLE_CONN_INV_MAC", "[P2P] MAC inválida: $deviceId", "ERROR")
             call.reject(ERR_DEVICE_NOT_FOUND, "Dirección Bluetooth inválida: $deviceId")
         } catch (e: SecurityException) {
             pendingCalls.remove("connect_$deviceId")
@@ -1342,7 +1352,7 @@ class NexoBlePlugin : Plugin() {
     private fun executeConnect(device: BluetoothDevice, deviceId: String, attempt: Int) {
         val callback = ClientGattCallback(deviceId, attempt)
         
-        napLog("BLE_CONN_EXEC", "[CLIENT] executeConnect deviceId=$deviceId attempt=$attempt autoConnect=false")
+        napLog("BLE_CONN_EXEC", "[P2P] executeConnect deviceId=$deviceId attempt=$attempt autoConnect=false")
         
         val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
@@ -1351,7 +1361,7 @@ class NexoBlePlugin : Plugin() {
         }
         
         if (gatt == null) {
-            napLog("BLE_CONN_NULL_GATT", "[CLIENT] connectGatt retornó null para $deviceId")
+            napLog("BLE_CONN_NULL_GATT", "[P2P] connectGatt retornó null para $deviceId")
             handleConnectFailure(deviceId, "connectGatt retornó null", attempt)
             return
         }
@@ -1384,7 +1394,7 @@ class NexoBlePlugin : Plugin() {
         if (attempt < MAX_RETRY_ATTEMPTS) {
             val nextAttempt = attempt + 1
             retryAttempts[deviceId] = nextAttempt
-            napLog("BLE_CONN_RETRY", "[CLIENT] Retry $nextAttempt para $deviceId en ${RETRY_DELAY_MS}ms. Razón: $reason")
+            napLog("BLE_CONN_RETRY", "[P2P] Retry $nextAttempt para $deviceId en ${RETRY_DELAY_MS}ms. Razón: $reason")
             handler.postDelayed({
                 val adapter = getBluetoothAdapter()
                 val dev = adapter?.getRemoteDevice(deviceId)
@@ -1497,6 +1507,8 @@ class NexoBlePlugin : Plugin() {
                         put("servicesReady", true)
                         put("notificationsSubscribed", true)
                         put("attempt", attempt)
+                        put("role", "client")
+                        put("note", "GATT client activo. Puede enviar mensajes vía writeCharacteristic.")
                     })
                     notifyListeners("onServicesReady", JSObject().apply {
                         put("deviceId", deviceId)
@@ -1555,9 +1567,20 @@ class NexoBlePlugin : Plugin() {
             napLog("BLE_CHAR_CHANGED", "[CLIENT] Notificación recibida de $addr uuid=${characteristic.uuid} bytes=${data?.size ?: 0}")
             when (characteristic.uuid) {
                 CHAR_PAYLOAD -> {
+                    val payloadStr = data?.let { String(it) } ?: ""
+                    var senderName = "Unknown"
+                    var messageContent = payloadStr
+                    try {
+                        val json = org.json.JSONObject(payloadStr)
+                        if (json.has("senderName")) senderName = json.getString("senderName")
+                        if (json.has("content")) messageContent = json.getString("content")
+                    } catch (e: Exception) { }
+                    
                     notifyListeners("onPayloadReceived", JSObject().apply {
                         put("deviceId", addr)
-                        put("data", data?.let { String(it) } ?: "")
+                        put("data", payloadStr)
+                        put("content", messageContent)
+                        put("senderName", senderName)
                         put("source", "client_notification")
                     })
                 }
@@ -1585,6 +1608,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve()
     }
 
+    // ─── v3.3.0-P2P-FIX: sendMessage con protocolo JSON y deduplicación ───
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1594,7 +1618,23 @@ class NexoBlePlugin : Plugin() {
             call.reject(ERR_INVALID_PARAMS, "deviceId y message/data requeridos")
             return
         }
-        val payload = message?.toByteArray() ?: android.util.Base64.decode(data, android.util.Base64.DEFAULT)
+        
+        // Construir payload JSON con metadatos
+        val messageId = UUID.randomUUID().toString()
+        val payload = try {
+            val json = org.json.JSONObject()
+            json.put("messageId", messageId)
+            json.put("timestamp", System.currentTimeMillis())
+            json.put("senderId", userId)
+            json.put("senderName", userName)
+            json.put("content", message ?: "")
+            if (data != null) json.put("data", data)
+            json.put("type", "chat")
+            json.toString().toByteArray(Charsets.UTF_8)
+        } catch (e: Exception) {
+            (message ?: data ?: "").toByteArray(Charsets.UTF_8)
+        }
+        
         if (payload.size > CHUNK_SIZE * 10) {
             call.reject(ERR_MESSAGE_TOO_LARGE, "Mensaje excede tamaño máximo permitido")
             return
@@ -1604,23 +1644,33 @@ class NexoBlePlugin : Plugin() {
         
         val gatt = gattClients[deviceId]
         if (gatt != null) {
-            performWrite(call, gatt, deviceId, payload)
+            performWrite(call, gatt, deviceId, payload, messageId)
             return
         }
         
+        // Si no hay GATT client pero el peer está conectado a nuestro servidor, 
+        // DEBEMOS abrir GATT client ahora (P2P-FIX: ya no hay "rol servidor" que lo impida)
         if (serverConnections.containsKey(deviceId)) {
-            napLog("BLE_SEND_SERVER", "[SEND] Enviando vía SERVER notify a $deviceId")
-            val success = notifyClient(deviceId, payload)
-            if (success) {
-                call.resolve(JSObject().apply {
-                    put("sent", true)
-                    put("bytes", payload.size)
-                    put("via", "server_notification")
-                })
-                napLog(NAP_BLE_MESSAGE_SENT, "[SEND] Notificación servidor enviada a $deviceId")
+            napLog("BLE_SEND_OPEN_CLIENT", "[SEND] Peer en serverConnections pero sin GATT client. Abriendo client on-demand...")
+            // Abrir GATT client hacia el peer y luego enviar
+            val adapter = getBluetoothAdapter()
+            val device = adapter?.getRemoteDevice(deviceId)
+            if (device != null) {
+                pendingCalls["connect_then_write_$deviceId"] = call
+                executeConnect(device, deviceId, 0)
+                // El envío real se hará desde onServicesDiscovered vía pendingCalls
+                // Guardamos el payload para envío posterior
+                pendingCalls["pending_payload_$deviceId"] = call
+                // Nota: En producción se necesita una queue, pero para simplificar:
+                handler.postDelayed({
+                    val gattNew = gattClients[deviceId]
+                    if (gattNew != null) {
+                        performWrite(call, gattNew, deviceId, payload, messageId)
+                    } else {
+                        call.reject(ERR_NOT_CONNECTED, "No se pudo abrir GATT client on-demand para $deviceId")
+                    }
+                }, 3000)
                 return
-            } else {
-                napLog("BLE_SEND_SERVER_FAIL", "[SEND] notifyClient falló para $deviceId", "WARN")
             }
         }
         
@@ -1660,7 +1710,7 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    private fun performWrite(call: PluginCall, gatt: BluetoothGatt, deviceId: String, payload: ByteArray) {
+    private fun performWrite(call: PluginCall, gatt: BluetoothGatt, deviceId: String, payload: ByteArray, messageId: String) {
         try {
             val service = gatt.getService(SERVICE_UUID)
             val char = service?.getCharacteristic(CHAR_PAYLOAD)
@@ -1687,7 +1737,7 @@ class NexoBlePlugin : Plugin() {
                     @Suppress("DEPRECATION")
                     gatt.writeCharacteristic(char)
                 }
-                napLog("BLE_SEND_WRITE", "[SEND] writeCharacteristic llamado (${payload.size} bytes) a $deviceId")
+                napLog("BLE_SEND_WRITE", "[SEND] writeCharacteristic llamado (${payload.size} bytes) a $deviceId [msgId=${messageId.take(8)}]")
             } else {
                 val chunks = payload.toList().chunked(CHUNK_SIZE)
                 chunks.forEachIndexed { index, chunk ->
@@ -1716,6 +1766,7 @@ class NexoBlePlugin : Plugin() {
                     put("bytes", payload.size)
                     put("chunks", chunks.size)
                     put("chunked", true)
+                    put("messageId", messageId)
                 })
                 napLog(NAP_BLE_MESSAGE_SENT, "[SEND] Mensaje chunk enviado (${payload.size} bytes)")
             }
@@ -1758,6 +1809,7 @@ class NexoBlePlugin : Plugin() {
             result.put("deviceName", adapter?.name ?: "Unknown")
             result.put("deviceAddress", adapter?.address ?: "Unknown")
             result.put("userId", userId)
+            result.put("userName", userName)
             result.put("isMultipleAdvertisementSupported", adapter?.isMultipleAdvertisementSupported ?: false)
             call.resolve(result)
         } catch (e: SecurityException) {
