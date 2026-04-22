@@ -1,6 +1,9 @@
 /**
- * NEXO Setup Wizard v2.2-FIX-2
+ * NEXO Setup Wizard v2.3.0-FINAL
  * FIX CRÍTICO: Overlay propio en document.body para NO destruir #app
+ * + v2.3.0: Escucha onConnectionFailed (retry nativo), no muestra error inmediato
+ * + v2.3.0: Escucha onBluetoothStackBroken para prompt de reinicio
+ * + v2.3.0: Timeout extendido a 20s para permitir retries nativos
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -10,7 +13,6 @@ const NAP_WIZARD = '[NAP-WIZARD]';
 
 export class SetupWizard {
   constructor(containerId = 'app', onComplete) {
-    // [FIX CRÍTICO] Crear overlay propio en body. NUNCA tocar innerHTML de #app
     this.overlayContainer = document.createElement('div');
     this.overlayContainer.id = 'nexo-setup';
     this.overlayContainer.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 99999;';
@@ -24,24 +26,29 @@ export class SetupWizard {
     this.settingsCheckInterval = null;
     this.btCheckInterval = null;
     this._successTimeout = null;
+    this._connectionAttempt = 0;
+    this._stackBrokenShown = false;
     window.NEXO_WIZARD = this;
     
     this.handlePermissionsGranted = this.handlePermissionsGranted.bind(this);
     this.handlePermissionsDenied = this.handlePermissionsDenied.bind(this);
     this.handleAppResume = this.handleAppResume.bind(this);
     this.handleBluetoothStateChange = this.handleBluetoothStateChange.bind(this);
+    this.handleConnectionFailed = this.handleConnectionFailed.bind(this);
+    this.handleStackBroken = this.handleStackBroken.bind(this);
   }
 
   async start() {
     this.renderChecking();
     this.setupGlobalListeners();
     
+    // v2.3.0: Timeout extendido a 20s para dar tiempo a retries nativos
     setTimeout(() => {
       if (this.currentStep === 'checking') {
         this.currentStep = 'error';
         this.renderError();
       }
-    }, 30000);
+    }, 20000);
     
     await this.performCheck();
   }
@@ -51,7 +58,11 @@ export class SetupWizard {
     window.addEventListener('nexo-permissions-denied', this.handlePermissionsDenied);
     
     if (window.Capacitor?.Plugins?.NexoBLE) {
-      window.Capacitor.Plugins.NexoBLE.addListener('onBluetoothStateChanged', this.handleBluetoothStateChange);
+      const plugin = window.Capacitor.Plugins.NexoBLE;
+      plugin.addListener('onBluetoothStateChanged', this.handleBluetoothStateChange);
+      // v2.3.0: Escuchar eventos de conexión y stack
+      plugin.addListener('onConnectionFailed', this.handleConnectionFailed);
+      plugin.addListener('onBluetoothStackBroken', this.handleStackBroken);
     }
     
     document.addEventListener('visibilitychange', this.handleAppResume);
@@ -66,6 +77,58 @@ export class SetupWizard {
       this.renderSuccessTransition();
       setTimeout(() => this.onComplete(), 800);
     }
+  }
+  
+  // v2.3.0: Manejar fallos de conexión con retry nativo
+  handleConnectionFailed(data) {
+    console.log(NAP_WIZARD, 'Connection failed (nativo retry en progreso):', data);
+    const attempt = data.attempt || 0;
+    const maxAttempts = data.maxAttempts || 3;
+    const isRecoverable = data.recoverable !== false;
+    
+    if (isRecoverable && attempt < maxAttempts) {
+      // No mostrar error, el nativo está reintentando
+      this._connectionAttempt = attempt;
+      // Si estamos en pantalla de error, volver a checking
+      if (this.currentStep === 'error' || this.currentStep === 'bluetooth') {
+        this.renderChecking();
+        this.currentStep = 'checking';
+      }
+    } else {
+      // Nativo se rindió, mostrar error real
+      this.currentStep = 'error';
+      this.renderError(`Conexión fallida: ${data.reason || 'Error desconocido'}`);
+    }
+  }
+  
+  // v2.3.0: Android 14 stack bug detectado
+  handleStackBroken(data) {
+    if (this._stackBrokenShown) return;
+    this._stackBrokenShown = true;
+    console.error(NAP_WIZARD, 'Android 14 Stack Bug detectado:', data);
+    
+    this.container.innerHTML = `
+      <div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;">
+        <div style="font-size: 56px; margin-bottom: 16px;">⚠️</div>
+        <h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600; color: #ffaa00;">Bluetooth necesita reiniciarse</h2>
+        <p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">
+          El stack Bluetooth de Android 14 está en estado corrupto. 
+          Apaga y enciende Bluetooth desde Configuración.
+        </p>
+        <button id="btn-bt-restart" style="background: linear-gradient(135deg, #ffaa00 0%, #ff6600 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; max-width: 320px; margin-bottom: 12px;">
+          Abrir Configuración Bluetooth
+        </button>
+        <button id="btn-retry-after-restart" style="background: transparent; color: #666; border: 1px solid #444; padding: 12px 24px; border-radius: 10px; font-size: 14px; cursor: pointer;">
+          🔄 Ya reinicié Bluetooth
+        </button>
+      </div>
+    `;
+    
+    document.getElementById('btn-bt-restart').addEventListener('click', () => this.handleOpenBluetoothSettings());
+    document.getElementById('btn-retry-after-restart').addEventListener('click', () => {
+      this._stackBrokenShown = false;
+      this.performCheck();
+    });
   }
   
   async handleAppResume() {
@@ -309,8 +372,10 @@ export class SetupWizard {
     document.getElementById('btn-retry').addEventListener('click', () => this.performCheck());
   }
 
-  renderError() {
-    this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">⚠️</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Error</h2><button id="btn-retry" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;">🔄 Reintentar</button></div>';
+  // v2.3.0: renderError ahora acepta mensaje personalizado
+  renderError(customMessage = null) {
+    const msg = customMessage || 'Error de conexión. Verifica que el otro dispositivo esté visible.';
+    this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">⚠️</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Error</h2><p style="color: #888; font-size: 14px; max-width: 320px; margin-bottom: 24px;">' + msg + '</p><button id="btn-retry" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;">🔄 Reintentar</button></div>';
     document.getElementById('btn-retry').addEventListener('click', () => this.performCheck());
   }
 
@@ -399,7 +464,8 @@ export class SetupWizard {
     document.removeEventListener('visibilitychange', this.handleAppResume);
     
     if (window.Capacitor?.Plugins?.NexoBLE) {
-      window.Capacitor.Plugins.NexoBLE.removeAllListeners();
+      const plugin = window.Capacitor.Plugins.NexoBLE;
+      plugin.removeAllListeners();
     }
     
     if (this.settingsCheckInterval) {
