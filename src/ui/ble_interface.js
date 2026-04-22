@@ -1,5 +1,5 @@
 /**
- * BLE Interface v2.4.5-ROBUST
+ * BLE Interface v2.4.6-RESEARCH
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
  * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
@@ -7,8 +7,8 @@
  * + FIX v2.4.1: Contactos integrados en el mismo archivo (sin import externo)
  * + FIX v2.4.2: Deduplicación robusta BLE Privacy (MAC rotativa) + fix clase CSS 'new'
  * + UX v2.4.3: Botón único mutante (Agregar → Escribir) + evento global openChat
- * + FIX-P2P-v3: Conexión proactiva en openChat() para preparar pipe BLE antes de enviar
  * + ROBUST v2.4.5: Filtrado dispositivo propio + eliminada pre-conexión duplicada
+ * + RESEARCH v2.4.6: REM limpiados de funciones robustas; solo eventos nativos
  */
 
 export function initBLEInterface(bleMesh) {
@@ -90,7 +90,7 @@ export class BLEInterface {
     this.isAdvertising = false;
     this.canAdvertise = false;
     this.localDeviceName = 'NEXO Device';
-    this.localDeviceAddress = null; // [NAP-ROBUST]
+    this.localDeviceAddress = null;
   }
 
   _detectMeshType() {
@@ -119,12 +119,11 @@ export class BLEInterface {
       this._initVisibility();
       this._setupNativeScanListeners();
       this._setupNativeConnectionListeners();
-      this._loadLocalDeviceInfo(); // [NAP-ROBUST] Carga nombre + address
+      this._loadLocalDeviceInfo();
     }
     return this;
   }
 
-  // [NAP-ROBUST] Carga nombre local Y dirección MAC para filtrado propio
   async _loadLocalDeviceInfo() {
     if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) return;
     try {
@@ -172,7 +171,8 @@ export class BLEInterface {
       this.onDeviceConnected({
         id: data.deviceId,
         address: data.deviceId,
-        name: data.name || 'Unknown'
+        name: data.name || 'Unknown',
+        direction: data.direction || 'unknown'
       });
     });
     
@@ -557,7 +557,6 @@ export class BLEInterface {
     }
   }
 
-  // [NAP-ROBUST] Filtrar dispositivo propio para evitar auto-conexión inválida
   onDeviceFound(device) {
     let id = (device.id || device.address || '').toString().toLowerCase().trim();
     if (!id || id === 'null' || id === 'undefined') {
@@ -565,7 +564,6 @@ export class BLEInterface {
       return;
     }
     
-    // [NAP-ROBUST] Ignorar dispositivo propio
     if (this.localDeviceAddress && id === this.localDeviceAddress) {
       console.log('[BLEInterface] Ignorando dispositivo propio en descubrimiento:', id);
       return;
@@ -621,7 +619,7 @@ export class BLEInterface {
   onDeviceConnected(device) {
     this.connectedDevices.set(device.id || device.address, device);
     this.renderConnectedList();
-    this.showToast('✅ Conectado: ' + (device.name || 'Dispositivo'), 'success');
+    this.showToast('✅ Conectado: ' + (device.name || 'Dispositivo') + (device.direction ? ` [${device.direction}]` : ''), 'success');
   }
 
   onDeviceDisconnected(device) {
@@ -675,8 +673,6 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
-  // [NAP-ROBUST] Eliminada pre-conexión. La conexión y envío son responsabilidad
-  // exclusiva de _sendViaBLE en nexo_app.js para evitar race conditions GATT duplicadas.
   openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
     if (!device) {
@@ -792,7 +788,7 @@ export class BLEInterface {
         <div class="ble-device-info">
           <span class="ble-device-name">${device.name || 'Desconocido'}</span>
           <span class="ble-device-id">${this._formatId(id)}</span>
-          <span class="ble-device-rssi" style="color: #00ff00;">● Conectado</span>
+          <span class="ble-device-rssi" style="color: #00ff00;">● ${device.direction || 'Conectado'}</span>
         </div>
         <div class="ble-device-actions">
           <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>
@@ -914,4 +910,4 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
-// Cache bust Wed Apr 22 01:49:00 UTC 2026
+// Cache bust Wed Apr 22 02:50:00 UTC 2026
