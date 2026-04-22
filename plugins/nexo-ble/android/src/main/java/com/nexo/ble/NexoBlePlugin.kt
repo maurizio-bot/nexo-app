@@ -35,12 +35,15 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #795-FIX-DEFINITIVE-v3.0.9
-// Fixes:
-// 1. onCharacteristicWrite / onCharacteristicChanged moved INSIDE BluetoothGattCallback anonymous
-// 2. gattClients only added AFTER onServicesDiscovered validates NEXO service + CHAR_PAYLOAD
-// 3. Extensive REM debug logging for physical device tracing (S24 <-> S23)
-// 4. onConnectionStateChange cleanup handles gattClients removal atomically with service validation
+// Build #795-FIX-DEFINITIVE-v3.1.0-DUAL-ROLE
+// Fixes basados en proyectos funcionales reales (BluetoothCommunicator, Android Developers BLE Guide):
+// 1. CCCD Descriptor (0x2902) agregado a CHAR_PAYLOAD para habilitar notificaciones
+// 2. PROPERTY_NOTIFY agregado a CHAR_PAYLOAD en GATT Server
+// 3. Cliente suscribe notificaciones tras discoverServices (setCharacteristicNotification + writeDescriptor)
+// 4. Servidor puede enviar notificaciones a clientes conectados vía notifyCharacteristicChanged
+// 5. sendMessage soporta envío dual: CLIENTE (writeCharacteristic) o SERVIDOR (notifyClient)
+// 6. onDescriptorWriteRequest manejado en servidor para CCCD
+// 7. onDescriptorWrite manejado en cliente para confirmar suscripción
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -62,6 +65,8 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_MESSAGE_SENT = "BLE_054"
         const val NAP_BLE_RECOVERY_SUCCESS = "BLE_055"
         const val NAP_BLE_PERMISSIONS_GRANTED = "BLE_056"
+        const val NAP_BLE_NOTIFICATION_ENABLED = "BLE_057"
+        const val NAP_BLE_NOTIFICATION_CONFIRMED = "BLE_058"
         
         const val NAP_BLE_WAITING_PERMISSIONS = "BLE_100"
         const val NAP_BLE_WAITING_BT_ON = "BLE_101"
@@ -113,6 +118,8 @@ class NexoBlePlugin : Plugin() {
         val CHAR_HANDSHAKE = NexoGattService.HANDSHAKE_CHAR_UUID
         val CHAR_PAYLOAD = NexoGattService.PAYLOAD_CHAR_UUID
         val CHAR_CONTROL = NexoGattService.CONTROL_CHAR_UUID
+        
+        val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 
     private var gattServer: BluetoothGattServer? = null
@@ -311,8 +318,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.0.9-DEFINITIVE cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.0.9-DEFINITIVE loaded - gattClients post-validation + onCharacteristicWrite in callback")
+        remToast("INIT", "NAP-BLE v3.1.0-DUAL-ROLE cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.1.0-DUAL-ROLE loaded - CCCD + NOTIFY + DualRole sendMessage")
         handler.postDelayed({
             if (canAccessBluetooth()) {
                 val adapter = getBluetoothAdapter()
@@ -836,6 +843,7 @@ class NexoBlePlugin : Plugin() {
             if (gattServer != null) return
             val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             val service = BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+            
             val announceChar = BluetoothGattCharacteristic(
                 CHAR_ANNOUNCE,
                 BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
@@ -846,11 +854,20 @@ class NexoBlePlugin : Plugin() {
                 BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
                 BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE
             )
+            
+            // ─── FIX DUAL-ROLE: CHAR_PAYLOAD ahora soporta WRITE + NOTIFY ───
             val payloadChar = BluetoothGattCharacteristic(
                 CHAR_PAYLOAD,
                 BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
                 BluetoothGattCharacteristic.PERMISSION_WRITE
             )
+            // ─── FIX DUAL-ROLE: CCCD Descriptor obligatorio para notificaciones ───
+            val cccdDescriptor = BluetoothGattDescriptor(
+                CCCD_UUID,
+                BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
+            )
+            payloadChar.addDescriptor(cccdDescriptor)
+            
             val controlChar = BluetoothGattCharacteristic(
                 CHAR_CONTROL,
                 BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_READ,
@@ -862,7 +879,7 @@ class NexoBlePlugin : Plugin() {
             service.addCharacteristic(controlChar)
             gattServer = manager?.openGattServer(context, gattServerCallback)
             gattServer?.addService(service)
-            napLog(NAP_BLE_INIT_007, "GattServer configurado correctamente")
+            napLog(NAP_BLE_INIT_007, "GattServer configurado correctamente con CCCD + NOTIFY")
         } catch (e: SecurityException) {
             napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException en setupGattServer: ${e.message}", "ERROR")
         } catch (e: Exception) {
@@ -904,7 +921,7 @@ class NexoBlePlugin : Plugin() {
                         val data = JSObject()
                         data.put("userId", userId)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.0.9-DEFINITIVE")
+                        data.put("napVersion", "3.1.0-DUAL-ROLE")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -937,9 +954,13 @@ class NexoBlePlugin : Plugin() {
                             })
                         }
                         CHAR_PAYLOAD -> {
+                            // ─── FIX DUAL-ROLE: Reenviar payload a JS como mensaje recibido ───
+                            napLog("BLE_PAYLOAD_RECV", "[SERVER] Payload recibido de ${device.address}: ${String(data)}")
                             notifyListeners("onPayloadReceived", JSObject().apply {
                                 put("deviceId", device.address)
                                 put("data", String(data))
+                                put("source", "server_write_request")
+                                put("timestamp", System.currentTimeMillis())
                             })
                         }
                         CHAR_CONTROL -> {
@@ -952,6 +973,34 @@ class NexoBlePlugin : Plugin() {
                 }
             } catch (e: SecurityException) {
                 napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "Error procesando write: ${e.message}", "ERROR")
+            }
+        }
+        
+        // ─── FIX DUAL-ROLE: Manejar escritura de descriptor CCCD por el cliente ───
+        override fun onDescriptorWriteRequest(
+            device: BluetoothDevice,
+            requestId: Int,
+            descriptor: BluetoothGattDescriptor,
+            preparedWrite: Boolean,
+            responseNeeded: Boolean,
+            offset: Int,
+            value: ByteArray?
+        ) {
+            try {
+                if (responseNeeded) {
+                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                }
+                if (descriptor.uuid == CCCD_UUID) {
+                    descriptor.value = value
+                    val enabled = value != null && value.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    napLog(NAP_BLE_NOTIFICATION_ENABLED, "[SERVER] Cliente ${device.address} configuró CCCD: notifications=$enabled")
+                    notifyListeners("onClientNotificationStateChanged", JSObject().apply {
+                        put("deviceId", device.address)
+                        put("enabled", enabled)
+                    })
+                }
+            } catch (e: SecurityException) {
+                napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "Error en descriptor write request: ${e.message}", "ERROR")
             }
         }
     }
@@ -1214,14 +1263,39 @@ class NexoBlePlugin : Plugin() {
                         val service = gatt.getService(SERVICE_UUID)
                         val char = service?.getCharacteristic(CHAR_PAYLOAD)
                         if (service != null && char != null) {
-                            // ─── FIX CRÍTICO: Solo agregar a gattClients cuando los servicios están validados ───
+                            // ─── FIX DUAL-ROLE: Solo agregar a gattClients cuando los servicios están validados ───
                             gattClients[deviceId] = gatt
                             napLog(NAP_BLE_READY, "[CLIENT] Servicios NEXO validados para: $deviceId. gattClients AGREGADO.")
+                            
+                            // ─── FIX DUAL-ROLE: Suscribirse a notificaciones de CHAR_PAYLOAD ───
+                            try {
+                                val notificationSet = gatt.setCharacteristicNotification(char, true)
+                                napLog("BLE_NOTIFY_SET", "[CLIENT] setCharacteristicNotification result: $notificationSet")
+                                
+                                val descriptor = char.getDescriptor(CCCD_UUID)
+                                if (descriptor != null) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                                        @Suppress("DEPRECATION")
+                                        gatt.writeDescriptor(descriptor)
+                                    }
+                                    napLog("BLE_CCCD_WRITE", "[CLIENT] Escritura CCCD iniciada para notificaciones")
+                                } else {
+                                    napLog("BLE_CCCD_MISSING", "[CLIENT] Descriptor CCCD no encontrado en característica", "WARN")
+                                }
+                            } catch (e: SecurityException) {
+                                napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "[CLIENT] Error suscribiendo notificaciones: ${e.message}", "ERROR")
+                            }
+                            
                             val pending = pendingCalls.remove("connect_$deviceId")
                             pending?.resolve(JSObject().apply {
                                 put("connected", true)
                                 put("deviceId", deviceId)
                                 put("servicesReady", true)
+                                put("notificationsSubscribed", true)
                             })
                             notifyListeners("onServicesReady", JSObject().apply {
                                 put("deviceId", deviceId)
@@ -1245,7 +1319,19 @@ class NexoBlePlugin : Plugin() {
                     })
                 }
                 
-                // ─── FIX CRÍTICO: onCharacteristicWrite DENTRO del callback del GATT client ───
+                // ─── FIX DUAL-ROLE: onDescriptorWrite para confirmar suscripción CCCD ───
+                override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+                    val addr = gatt.device?.address ?: "unknown"
+                    napLog("BLE_DESC_WRITE", "[CLIENT] onDescriptorWrite addr=$addr status=$status uuid=${descriptor.uuid}")
+                    if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == CCCD_UUID) {
+                        napLog(NAP_BLE_NOTIFICATION_CONFIRMED, "[CLIENT] Notificaciones activadas confirmadas para $addr")
+                        notifyListeners("onNotificationsEnabled", JSObject().apply {
+                            put("deviceId", addr)
+                            put("enabled", true)
+                        })
+                    }
+                }
+                
                 override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
                     val addr = gatt.device?.address ?: "unknown"
                     napLog("BLE_CHAR_WRITE_CB", "[CLIENT] onCharacteristicWrite addr=$addr status=$status uuid=${characteristic.uuid}")
@@ -1265,7 +1351,6 @@ class NexoBlePlugin : Plugin() {
                     }
                 }
                 
-                // ─── FIX: onCharacteristicChanged para recibir notificaciones como cliente ───
                 override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
                     val addr = gatt.device?.address ?: "unknown"
                     val data = characteristic.value
@@ -1330,14 +1415,65 @@ class NexoBlePlugin : Plugin() {
         
         napLog("BLE_SEND_LOOKUP", "[SEND] Buscando GATT para deviceId=$deviceId | gattClients keys=${gattClients.keys} | serverConnections=${serverConnections.keys}")
         
+        // ─── FIX DUAL-ROLE: Intentar envío como CLIENTE primero ───
         val gatt = gattClients[deviceId]
-        if (gatt == null) {
-            napLog(ERR_NOT_CONNECTED, "[SEND] RECHAZADO: deviceId=$deviceId NO está en gattClients. Conexiones server (entrantes) no sirven para enviar. Se requiere connectToDevice primero.")
-            call.reject(ERR_NOT_CONNECTED, "No conectado como CLIENTE a dispositivo. Conecte primero con connectToDevice.")
+        if (gatt != null) {
+            performWrite(call, gatt, deviceId, payload)
             return
         }
         
-        performWrite(call, gatt, deviceId, payload)
+        // ─── FIX DUAL-ROLE: Si no está como cliente, intentar envío como SERVIDOR (notificación) ───
+        if (serverConnections.containsKey(deviceId)) {
+            napLog("BLE_SEND_SERVER", "[SEND] Enviando vía SERVER notify a $deviceId")
+            val success = notifyClient(deviceId, payload)
+            if (success) {
+                call.resolve(JSObject().apply {
+                    put("sent", true)
+                    put("bytes", payload.size)
+                    put("via", "server_notification")
+                })
+                napLog(NAP_BLE_MESSAGE_SENT, "[SEND] Notificación servidor enviada a $deviceId")
+                return
+            } else {
+                napLog("BLE_SEND_SERVER_FAIL", "[SEND] notifyClient falló para $deviceId", "WARN")
+            }
+        }
+        
+        napLog(ERR_NOT_CONNECTED, "[SEND] RECHAZADO: deviceId=$deviceId NO está en gattClients ni serverConnections")
+        call.reject(ERR_NOT_CONNECTED, "No conectado a dispositivo. Ni como cliente ni como servidor.")
+    }
+    
+    // ─── FIX DUAL-ROLE: Método para enviar notificación desde el servidor a un cliente conectado ───
+    private fun notifyClient(deviceId: String, data: ByteArray): Boolean {
+        val device = serverConnections[deviceId]
+        if (device == null) {
+            napLog("BLE_NOTIFY_NO_DEV", "[SERVER] Dispositivo $deviceId no está en serverConnections", "WARN")
+            return false
+        }
+        val service = gattServer?.getService(SERVICE_UUID)
+        if (service == null) {
+            napLog("BLE_NOTIFY_NO_SVC", "[SERVER] GATT Server no tiene servicio NEXO", "WARN")
+            return false
+        }
+        val char = service.getCharacteristic(CHAR_PAYLOAD)
+        if (char == null) {
+            napLog("BLE_NOTIFY_NO_CHAR", "[SERVER] Característica PAYLOAD no encontrada", "WARN")
+            return false
+        }
+        
+        return try {
+            char.value = data
+            val result = gattServer?.notifyCharacteristicChanged(device, char, false) ?: false
+            if (result) {
+                napLog(NAP_BLE_MESSAGE_SENT, "[SERVER] Notificación enviada a $deviceId (${data.size} bytes)")
+            } else {
+                napLog("BLE_NOTIFY_FAIL", "[SERVER] notifyCharacteristicChanged retornó false para $deviceId", "WARN")
+            }
+            result
+        } catch (e: SecurityException) {
+            napLog(NAP_BLE_ERR_SECURITY_EXCEPTION, "[SERVER] SecurityException notificando: ${e.message}", "ERROR")
+            false
+        }
     }
 
     private fun performWrite(call: PluginCall, gatt: BluetoothGatt, deviceId: String, payload: ByteArray) {
