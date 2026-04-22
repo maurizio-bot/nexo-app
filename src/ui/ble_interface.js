@@ -1,5 +1,5 @@
 /**
- * BLE Interface v2.4.4-NAP
+ * BLE Interface v2.4.5-ROBUST
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
  * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
@@ -8,6 +8,7 @@
  * + FIX v2.4.2: Deduplicación robusta BLE Privacy (MAC rotativa) + fix clase CSS 'new'
  * + UX v2.4.3: Botón único mutante (Agregar → Escribir) + evento global openChat
  * + FIX-P2P-v3: Conexión proactiva en openChat() para preparar pipe BLE antes de enviar
+ * + ROBUST v2.4.5: Filtrado dispositivo propio + eliminada pre-conexión duplicada
  */
 
 export function initBLEInterface(bleMesh) {
@@ -89,6 +90,7 @@ export class BLEInterface {
     this.isAdvertising = false;
     this.canAdvertise = false;
     this.localDeviceName = 'NEXO Device';
+    this.localDeviceAddress = null; // [NAP-ROBUST]
   }
 
   _detectMeshType() {
@@ -117,19 +119,21 @@ export class BLEInterface {
       this._initVisibility();
       this._setupNativeScanListeners();
       this._setupNativeConnectionListeners();
-      this._loadLocalDeviceName();
+      this._loadLocalDeviceInfo(); // [NAP-ROBUST] Carga nombre + address
     }
     return this;
   }
 
-  async _loadLocalDeviceName() {
+  // [NAP-ROBUST] Carga nombre local Y dirección MAC para filtrado propio
+  async _loadLocalDeviceInfo() {
     if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) return;
     try {
       const info = await this.nativePlugin.getLocalDeviceInfo();
       this.localDeviceName = info.deviceName || 'NEXO Device';
-      console.log('[BLEInterface] Nombre local:', this.localDeviceName);
+      this.localDeviceAddress = (info.deviceAddress || '').toString().toLowerCase().trim();
+      console.log('[BLEInterface] Info local:', this.localDeviceName, this.localDeviceAddress);
     } catch (e) {
-      console.warn('[BLEInterface] No se pudo obtener nombre local:', e);
+      console.warn('[BLEInterface] No se pudo obtener info local:', e);
     }
   }
 
@@ -553,12 +557,20 @@ export class BLEInterface {
     }
   }
 
+  // [NAP-ROBUST] Filtrar dispositivo propio para evitar auto-conexión inválida
   onDeviceFound(device) {
     let id = (device.id || device.address || '').toString().toLowerCase().trim();
     if (!id || id === 'null' || id === 'undefined') {
       console.warn('[BLEInterface] onDeviceFound: deviceId inválido, ignorando:', device);
       return;
     }
+    
+    // [NAP-ROBUST] Ignorar dispositivo propio
+    if (this.localDeviceAddress && id === this.localDeviceAddress) {
+      console.log('[BLEInterface] Ignorando dispositivo propio en descubrimiento:', id);
+      return;
+    }
+    
     if (this.foundDevices.has(id)) {
       const existing = this.foundDevices.get(id);
       existing.rssi = device.rssi;
@@ -663,7 +675,8 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
-  // [FIX-P2P-v3] Conexión proactiva al abrir chat para tener pipe BLE listo antes de escribir
+  // [NAP-ROBUST] Eliminada pre-conexión. La conexión y envío son responsabilidad
+  // exclusiva de _sendViaBLE en nexo_app.js para evitar race conditions GATT duplicadas.
   openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
     if (!device) {
@@ -683,11 +696,6 @@ export class BLEInterface {
       return;
     }
     console.log('[BLEInterface] Solicitando abrir chat con:', device);
-    
-    // [FIX-P2P-v3] Pre-conectar al peer para preparar el pipe GATT antes de que el usuario escriba
-    this.connect(deviceId).catch(err => {
-      console.log('[BLEInterface] Pre-conexión en openChat (non-critical):', err?.message || err);
-    });
     
     const appContainer = document.getElementById('app');
     if (appContainer) appContainer.classList.remove('hidden');
@@ -906,4 +914,4 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
-// Cache bust Wed Apr 22 00:06:00 UTC 2026
+// Cache bust Wed Apr 22 01:49:00 UTC 2026
