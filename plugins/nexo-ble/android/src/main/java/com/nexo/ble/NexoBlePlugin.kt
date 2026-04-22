@@ -87,6 +87,11 @@ class NexoBlePlugin : Plugin() {
         const val NAP_BLE_ERR_THERMAL_SHUTDOWN = "BLE_210"
         const val NAP_BLE_ERR_AIRPLANE_MODE = "BLE_211"
         
+        // ─── CONSTANTES FALTANTES AGREGADAS (FIX BUILD #791) ───
+        const val NAP_BLE_INIT_007 = "BLE_007"
+        const val REM_PERM_REQUEST_START = "REM_PERM_REQUEST_START"
+        // ────────────────────────────────────────────────────────
+        
         const val NAP_BLE_ADV_NO_PERMISSION = "BLE_205_ADV_NO_PERMISSION"
         
         const val ERR_INVALID_PARAMS = "BLE_019"
