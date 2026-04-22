@@ -37,14 +37,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #804 → v3.2.0-ROLE-FIX
-// FIXES DUAL-ROLE COLLISION + status=135:
-// 1. ROLE RESOLUTION: MAC mayor = cliente, MAC menor = servidor (evita collision)
-// 2. refreshDeviceCache() movido a PRE-connect (no post-STATE_CONNECTED)
-// 3. autoConnect SIEMPRE false (eliminado true en retries)
-// 4. Connection Cooldown: 5s de bloqueo tras fallo
-// 5. GATT Server re-advertise tras conexión entrante
-// 6. NUNCA iniciar conexión si el otro tiene MAC menor (esperar como servidor)
+// Build #805 → v3.2.1-COMPILE-FIX
+// FIX: Eliminado dummyCall en restartAdvertising(). Lógica extraída a performStartAdvertisingInternal()
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -114,11 +108,10 @@ class NexoBlePlugin : Plugin() {
         const val THERMAL_COOLDOWN_MS = 30000L
         const val GATT_RECONNECT_PAUSE_MS = 600L
         
-        // ─── FIX ROLE: Constantes de timing ───
         const val SAMSUNG_DISCOVER_DELAY_MS = 1500L
         const val GATT_CLOSE_DELAY_MS = 600L
-        const val RETRY_DELAY_MS = 3000L // Fijo 3s, no exponencial
-        const val CONNECTION_COOLDOWN_MS = 5000L // Bloqueo tras fallo
+        const val RETRY_DELAY_MS = 3000L
+        const val CONNECTION_COOLDOWN_MS = 5000L
         
         val SERVICE_UUID = NexoGattService.SERVICE_UUID
         val CHAR_ANNOUNCE = NexoGattService.ANNOUNCE_CHAR_UUID
@@ -158,10 +151,9 @@ class NexoBlePlugin : Plugin() {
     private var permissionTimeoutRunnable: Runnable? = null
     private var isRequestingPermissions = false
 
-    // ─── FIX ROLE: Trackers ───
     private val retryAttempts = ConcurrentHashMap<String, Int>()
     private val connectTimeoutRunnables = ConcurrentHashMap<String, Runnable>()
-    private val connectionCooldowns = ConcurrentHashMap<String, Long>() // deviceId -> timestamp hasta cuando bloquear
+    private val connectionCooldowns = ConcurrentHashMap<String, Long>()
     private val pendingGattCloses = ConcurrentHashMap<String, BluetoothGatt>()
 
     private fun getBluetoothAdapter(): BluetoothAdapter? {
@@ -341,8 +333,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.2.0-ROLE-FIX cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.2.0-ROLE-FIX loaded - RoleResolution + PreConnectRefresh + Cooldown")
+        remToast("INIT", "NAP-BLE v3.2.1-COMPILE-FIX cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.2.1-COMPILE-FIX loaded")
         handler.postDelayed({
             if (canAccessBluetooth()) {
                 val adapter = getBluetoothAdapter()
@@ -771,7 +763,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ─── FIX ROLE: refreshDeviceCache vía reflection ───
     private fun refreshDeviceCache(gatt: BluetoothGatt?): Boolean {
         gatt ?: return false
         return try {
@@ -979,7 +970,6 @@ class NexoBlePlugin : Plugin() {
                         put("name", device.name ?: "Unknown")
                         put("direction", "incoming")
                     })
-                    // ─── FIX ROLE: Reanunciar para permitir más conexiones ───
                     if (advertisingActive) {
                         handler.postDelayed({
                             restartAdvertising()
@@ -1008,7 +998,7 @@ class NexoBlePlugin : Plugin() {
                         val data = JSObject()
                         data.put("userId", userId)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.2.0-ROLE-FIX")
+                        data.put("napVersion", "3.2.1-COMPILE-FIX")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -1164,66 +1154,7 @@ class NexoBlePlugin : Plugin() {
             return
         }
         try {
-            val adapter = getBluetoothAdapter()
-            if (adapter == null) {
-                napError(call, NAP_BLE_ERR_NOT_SUPPORTED, "Adapter no disponible")
-                return
-            }
-            if (!adapter.isMultipleAdvertisementSupported) {
-                napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, "Este dispositivo no soporta BLE Advertising", "ERROR")
-                return
-            }
-            val advertiser = adapter.bluetoothLeAdvertiser
-            if (advertiser == null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                    ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) 
-                    != PackageManager.PERMISSION_GRANTED) {
-                    napError(call, NAP_BLE_ADV_NO_PERMISSION, "BLUETOOTH_ADVERTISE no concedido. El advertising requiere este permiso en Android 12+.", "ERROR", recoverable = true)
-                } else if (!adapter.isEnabled) {
-                    napError(call, NAP_BLE_ERR_DISABLED, "Bluetooth está desactivado. Actívalo para poder anunciar.", "ERROR", recoverable = true)
-                } else {
-                    napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, "BluetoothLeAdvertiser no disponible. Posible causa: permiso ADVERTISE denegado o no soportado.", "ERROR", recoverable = true)
-                }
-                return
-            }
-            val settings = AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-                .setConnectable(true)
-                .build()
-            val advertiseData = AdvertiseData.Builder()
-                .addServiceUuid(ParcelUuid(SERVICE_UUID))
-                .build()
-            val scanResponse = AdvertiseData.Builder()
-                .setIncludeDeviceName(true)
-                .build()
-            advertiseCallback = object : AdvertiseCallback() {
-                override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-                    advertisingActive = true
-                    napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado correctamente")
-                    notifyListeners("onAdvertiseStarted", JSObject().apply {
-                        put("success", true)
-                        put("timestamp", System.currentTimeMillis())
-                    })
-                }
-                override fun onStartFailure(errorCode: Int) {
-                    advertisingActive = false
-                    val errorName = when(errorCode) {
-                        ADVERTISE_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"
-                        ADVERTISE_FAILED_DATA_TOO_LARGE -> "DATA_TOO_LARGE"
-                        ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "TOO_MANY_ADVERTISERS"
-                        ADVERTISE_FAILED_INTERNAL_ERROR -> "INTERNAL_ERROR"
-                        ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "FEATURE_UNSUPPORTED"
-                        else -> "UNKNOWN ($errorCode)"
-                    }
-                    napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertising failed: $errorName", "ERROR")
-                    notifyListeners("onAdvertiseFailed", JSObject().apply {
-                        put("errorCode", errorCode)
-                        put("errorName", errorName)
-                    })
-                }
-            }
-            advertiser.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback!!)
+            performStartAdvertisingInternal()
             call.resolve(JSObject().apply { 
                 put("started", true) 
                 put("pendingConfirmation", true)
@@ -1236,6 +1167,67 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // ─── FIX COMPILE: Lógica core de advertising extraída a método privado ───
+    private fun performStartAdvertisingInternal() {
+        val adapter = getBluetoothAdapter()
+        if (adapter == null) {
+            throw IllegalStateException("Adapter no disponible")
+        }
+        if (!adapter.isMultipleAdvertisementSupported) {
+            throw IllegalStateException("Este dispositivo no soporta BLE Advertising")
+        }
+        val advertiser = adapter.bluetoothLeAdvertiser
+        if (advertiser == null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) 
+                != PackageManager.PERMISSION_GRANTED) {
+                throw SecurityException("BLUETOOTH_ADVERTISE no concedido")
+            } else if (!adapter.isEnabled) {
+                throw IllegalStateException("Bluetooth está desactivado")
+            } else {
+                throw IllegalStateException("BluetoothLeAdvertiser no disponible")
+            }
+        }
+        val settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .setConnectable(true)
+            .build()
+        val advertiseData = AdvertiseData.Builder()
+            .addServiceUuid(ParcelUuid(SERVICE_UUID))
+            .build()
+        val scanResponse = AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
+            .build()
+        advertiseCallback = object : AdvertiseCallback() {
+            override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+                advertisingActive = true
+                napLog(NAP_BLE_ADVERTISE_STARTED, "Advertising iniciado correctamente")
+                notifyListeners("onAdvertiseStarted", JSObject().apply {
+                    put("success", true)
+                    put("timestamp", System.currentTimeMillis())
+                })
+            }
+            override fun onStartFailure(errorCode: Int) {
+                advertisingActive = false
+                val errorName = when(errorCode) {
+                    ADVERTISE_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"
+                    ADVERTISE_FAILED_DATA_TOO_LARGE -> "DATA_TOO_LARGE"
+                    ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "TOO_MANY_ADVERTISERS"
+                    ADVERTISE_FAILED_INTERNAL_ERROR -> "INTERNAL_ERROR"
+                    ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "FEATURE_UNSUPPORTED"
+                    else -> "UNKNOWN ($errorCode)"
+                }
+                napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Advertising failed: $errorName", "ERROR")
+                notifyListeners("onAdvertiseFailed", JSObject().apply {
+                    put("errorCode", errorCode)
+                    put("errorName", errorName)
+                })
+            }
+        }
+        advertiser.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback!!)
+    }
+
     @PluginMethod
     fun stopAdvertise(call: PluginCall) {
         stopAdvertiseInternal()
@@ -1246,19 +1238,14 @@ class NexoBlePlugin : Plugin() {
         if (!advertisingActive) return
         stopAdvertiseInternal()
         handler.postDelayed({
-            val dummyCall = object : PluginCall() {
-                override fun getString(name: String) = null
-                override fun getObject(name: String) = null
-                override fun resolve() {}
-                override fun resolve(data: JSObject?) {}
-                override fun reject(msg: String?) {}
-                override fun reject(msg: String?, data: JSObject?) {}
+            try {
+                performStartAdvertisingInternal()
+            } catch (e: Exception) {
+                napLog(NAP_BLE_ERR_ADVERTISE_FAILED, "Error en restartAdvertising: ${e.message}", "ERROR")
             }
-            startAdvertise(dummyCall)
         }, 300)
     }
 
-    // ─── FIX ROLE: connectToDevice con Role Resolution + PreConnectRefresh + Cooldown ───
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val deviceId = call.getString("deviceId")
@@ -1276,12 +1263,11 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        // ─── FIX ROLE: Role Resolution por MAC address ───
         val myAddress = adapter?.address ?: ""
         val shouldActAsClient = myAddress.compareTo(deviceId, ignoreCase = true) > 0
         
         if (!shouldActAsClient) {
-            napLog("BLE_ROLE_SERVER", "[ROLE] Mi MAC ($myAddress) < objetivo ($deviceId). Actuando como SERVIDOR. No inicio conexión.")
+            napLog("BLE_ROLE_SERVER", "[ROLE] Mi MAC ($myAddress) < objetivo ($deviceId). Actuando como SERVIDOR.")
             call.resolve(JSObject().apply {
                 put("connected", false)
                 put("role", "server")
@@ -1293,7 +1279,6 @@ class NexoBlePlugin : Plugin() {
         
         napLog("BLE_ROLE_CLIENT", "[ROLE] Mi MAC ($myAddress) > objetivo ($deviceId). Actuando como CLIENTE.")
         
-        // ─── FIX ROLE: Verificar cooldown ───
         val cooldownEnd = connectionCooldowns[deviceId] ?: 0
         if (System.currentTimeMillis() < cooldownEnd) {
             val remaining = (cooldownEnd - System.currentTimeMillis()) / 1000
@@ -1329,7 +1314,6 @@ class NexoBlePlugin : Plugin() {
             pendingCalls["connect_$deviceId"] = call
             retryAttempts.remove(deviceId)
             
-            // ─── FIX ROLE: refresh cache ANTES de conectar (no después) ───
             val tempGatt = device.connectGatt(context, false, object : BluetoothGattCallback() {})
             if (tempGatt != null) {
                 refreshDeviceCache(tempGatt)
@@ -1355,7 +1339,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ─── FIX ROLE: SIEMPRE autoConnect=false ───
     private fun executeConnect(device: BluetoothDevice, deviceId: String, attempt: Int) {
         val callback = ClientGattCallback(deviceId, attempt)
         
@@ -1385,11 +1368,9 @@ class NexoBlePlugin : Plugin() {
         handler.postDelayed(timeoutRunnable, 15000)
     }
 
-    // ─── FIX ROLE: Retry fijo 3s + cooldown ───
     private fun handleConnectFailure(deviceId: String, reason: String, attempt: Int) {
         connectTimeoutRunnables.remove(deviceId)?.let { handler.removeCallbacks(it) }
         
-        // Activar cooldown
         connectionCooldowns[deviceId] = System.currentTimeMillis() + CONNECTION_COOLDOWN_MS
         
         notifyListeners("onConnectionFailed", JSObject().apply {
@@ -1438,9 +1419,6 @@ class NexoBlePlugin : Plugin() {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     napLog(NAP_BLE_CONNECTED, "[CLIENT] GATT conectado: $deviceId (attempt=$attempt, status=$status). Delay 1.5s antes de discoverServices...")
-                    
-                    // ─── FIX ROLE: NO llamar refreshDeviceCache aquí ───
-                    // El refresh ya se hizo ANTES de connectGatt()
                     
                     notifyListeners("onDeviceConnected", JSObject().apply {
                         put("deviceId", deviceId)
