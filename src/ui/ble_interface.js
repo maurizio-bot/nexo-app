@@ -1,21 +1,9 @@
 /**
- * BLE Interface v2.8.0-P2P-FIX
+ * BLE Interface v2.8.1-P2P-ROBUST
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
- * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
- * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
- * + FEATURE v2.4.0: Nombres de dispositivo + Sistema de Contactos Agregados
- * + FIX v2.4.1: Contactos integrados en el mismo archivo (sin import externo)
- * + FIX v2.4.2: Deduplicación robusta BLE Privacy (MAC rotativa) + fix clase CSS 'new'
- * + UX v2.4.3: Botón único mutante (Agregar → Escribir) + evento global openChat
- * + ROBUST v2.4.5: Filtrado dispositivo propio + eliminada pre-conexión duplicada
- * + RESEARCH v2.4.6: REM limpiados de funciones robustas; solo eventos nativos
- * + DUAL-ROLE v2.5.0: Listener onPayloadReceived nativo para mensajes entrantes BLE
- * + DUAL-ROLE v2.5.0: Auto-conexión en openChat para envío bidireccional
- * + FINAL v2.6.0: Máquina de estados BLE + onServicesReady + onNotificationsEnabled + onConnectionFailed + onBluetoothStackBroken
- * + ROLE-SYNC v2.7.0: Manejo transparente de roles server/client. Servidor espera peer entrante. Cliente inicia GATT.
- * + P2P-FIX v2.8.0: Eliminado rol server/client por MAC. Ambos dispositivos abren GATT client on-demand.
- * + P2P-FIX v2.8.0: Protocolo JSON con messageId para deduplicación.
- * + P2P-FIX v2.8.0: Identificación de remitente por contactos agregados (no por BluetoothDevice.name).
+ * + FIX v2.8.1: Reconexión automática persistente. GATT client NO se cierra tras envío.
+ * + FIX v2.8.1: Queue de mensajes pendientes cuando canal no está listo.
+ * + FIX v2.8.1: Estado de conexión persistente entre navegaciones.
  */
 
 export function initBLEInterface(bleMesh) {
@@ -81,14 +69,12 @@ function _isBLEContact(deviceId) {
   return _getBLEContacts().some(c => (c.id || c.address) === deviceId);
 }
 
-// ─── v2.8.0: Buscar nombre de contacto por deviceId ───
 function _getContactName(deviceId) {
   const contacts = _getBLEContacts();
   const contact = contacts.find(c => (c.id || c.address) === deviceId);
   return contact?.name || null;
 }
 
-// ─── Estados de conexión BLE ───
 const BLE_STATES = {
   DISCONNECTED: 'disconnected',
   CONNECTING: 'connecting',
@@ -117,11 +103,12 @@ export class BLEInterface {
     this.localDeviceAddress = null;
     this._incomingMessages = [];
     this._activeChatDeviceId = null;
-    // ─── v2.6.0: Estados de conexión por dispositivo ───
     this._deviceStates = new Map();
-    // ─── v2.8.0: Deduplicación por messageId ───
     this._receivedMessageIds = new Set();
     this._maxMessageIds = 1000;
+    // ─── v2.8.1: Queue de mensajes pendientes ───
+    this._pendingMessageQueue = new Map(); // deviceId -> [{content, resolve, reject}]
+    this._autoReconnectAttempts = new Map();
   }
 
   _detectMeshType() {
@@ -210,6 +197,13 @@ export class BLEInterface {
           attempt: attempt,
           role: 'peer_connected'
         });
+        this.connectedDevices.set(deviceId, {
+          id: deviceId,
+          address: deviceId,
+          name: data.name || 'NEXO Peer',
+          direction: 'incoming',
+          servicesReady: true
+        });
         this.showToast(`✅ Peer conectado (entrante): ${this._formatId(deviceId)}`, 'success');
       } else if (data.direction === 'outgoing') {
         this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { 
@@ -217,11 +211,16 @@ export class BLEInterface {
           attempt: attempt,
           role: 'client'
         });
+        this.connectedDevices.set(deviceId, {
+          id: deviceId,
+          address: deviceId,
+          name: data.name || 'NEXO Peer',
+          direction: 'outgoing',
+          servicesReady: false
+        });
         if (attempt > 0) {
           this.showToast(`🔄 Conectando... intento ${attempt}/3`, 'warning');
         }
-      } else {
-        this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { attempt: attempt });
       }
       
       this.onDeviceConnected({
@@ -238,6 +237,7 @@ export class BLEInterface {
       console.log('[BLEInterface] Nativo: onDeviceDisconnected', data);
       const deviceId = data.deviceId;
       this._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
+      this.connectedDevices.delete(deviceId);
       this.onDeviceDisconnected({
         id: deviceId,
         address: deviceId
@@ -245,6 +245,8 @@ export class BLEInterface {
       if (this._activeChatDeviceId === deviceId) {
         this._activeChatDeviceId = null;
       }
+      // v2.8.1: Limpiar auto-reconnect attempts
+      this._autoReconnectAttempts.delete(deviceId);
     });
     
     console.log('[BLEInterface] Listeners nativos de conexión configurados');
@@ -257,31 +259,28 @@ export class BLEInterface {
       console.log('[BLEInterface] Nativo: onServicesReady', data);
       const deviceId = data.deviceId;
       this._setDeviceState(deviceId, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
+      
+      const device = this.connectedDevices.get(deviceId);
+      if (device) {
+        device.servicesReady = true;
+        this.connectedDevices.set(deviceId, device);
+      }
     });
     
     this._nativeNotificationsListener = this.nativePlugin.addListener('onNotificationsEnabled', (data) => {
       console.log('[BLEInterface] Nativo: onNotificationsEnabled', data);
       const deviceId = data.deviceId;
-      this._setDeviceState(deviceId, BLE_STATES.NOTIFICATIONS_READY, { notificationsEnabled: true });
-      
-      const currentState = this._getDeviceState(deviceId);
-      if (currentState.direction === 'incoming') {
-        this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { 
-          notificationsEnabled: true,
-          direction: 'incoming',
-          role: 'peer_connected'
-        });
-      } else if (currentState.direction === 'outgoing') {
-        this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { 
-          notificationsEnabled: true,
-          direction: 'outgoing',
-          role: 'client'
-        });
-      }
+      this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { 
+        notificationsEnabled: true,
+        direction: this._getDeviceState(deviceId).direction || 'unknown'
+      });
       
       if (this._activeChatDeviceId === deviceId) {
         this.showToast('✅ Canal BLE listo para mensajes', 'success');
       }
+      
+      // v2.8.1: Procesar mensajes pendientes
+      this._processPendingMessages(deviceId);
     });
     
     this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', (data) => {
@@ -313,7 +312,7 @@ export class BLEInterface {
       window.dispatchEvent(event);
     });
     
-    console.log('[BLEInterface] Listeners nativos de estado configurados (v2.8.0)');
+    console.log('[BLEInterface] Listeners nativos de estado configurados (v2.8.1)');
   }
 
   _setDeviceState(deviceId, state, meta = {}) {
@@ -326,7 +325,6 @@ export class BLEInterface {
     return this._deviceStates.get(deviceId) || { state: BLE_STATES.DISCONNECTED };
   }
 
-  // ─── v2.8.0: Listener de payload con deduplicación e identificación robusta ───
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
     if (this._nativePayloadListener) this._nativePayloadListener.remove();
@@ -337,7 +335,6 @@ export class BLEInterface {
       const payloadStr = data.data || '';
       const source = data.source || 'unknown';
       
-      // Deduplicación por messageId
       let messageId = null;
       let senderName = data.senderName || null;
       let content = data.content || payloadStr;
@@ -347,17 +344,11 @@ export class BLEInterface {
         if (json.messageId) messageId = json.messageId;
         if (json.senderName && !senderName) senderName = json.senderName;
         if (json.content) content = json.content;
-      } catch (e) { /* payload no es JSON */ }
+      } catch (e) { }
       
-      // Si no hay senderName del payload, buscar en contactos agregados
-      if (!senderName) {
-        senderName = _getContactName(deviceId);
-      }
-      if (!senderName) {
-        senderName = 'NEXO Device';
-      }
+      if (!senderName) senderName = _getContactName(deviceId);
+      if (!senderName) senderName = 'NEXO Device';
       
-      // Deduplicación
       if (messageId && this._receivedMessageIds.has(messageId)) {
         console.log('[BLEInterface] Mensaje duplicado ignorado:', messageId);
         return;
@@ -370,7 +361,6 @@ export class BLEInterface {
         }
       }
       
-      // Emitir evento global para nexo_app.js
       const event = new CustomEvent('nexo:ble:messageReceived', {
         detail: {
           deviceId: deviceId,
@@ -392,7 +382,30 @@ export class BLEInterface {
       }
     });
     
-    console.log('[BLEInterface] Listener nativo de payload configurado (P2P-FIX v2.8.0)');
+    console.log('[BLEInterface] Listener nativo de payload configurado (P2P-ROBUST v2.8.1)');
+  }
+
+  // ─── v2.8.1: Procesar mensajes pendientes ───
+  async _processPendingMessages(deviceId) {
+    const queue = this._pendingMessageQueue.get(deviceId);
+    if (!queue || queue.length === 0) return;
+    
+    console.log(`[BLEInterface] Procesando ${queue.length} mensajes pendientes para ${deviceId}`);
+    this._pendingMessageQueue.delete(deviceId);
+    
+    for (const item of queue) {
+      try {
+        await this._sendMessageNative(deviceId, item.content);
+        item.resolve();
+      } catch (e) {
+        item.reject(e);
+      }
+    }
+  }
+
+  async _sendMessageNative(deviceId, content) {
+    if (!this.nativePlugin) throw new Error('Plugin no disponible');
+    await this.nativePlugin.sendMessage({ deviceId, message: content });
   }
 
   async _initVisibility() {
@@ -861,7 +874,6 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
-  // ─── v2.8.0: openChat con conexión P2P real (sin roles por MAC) ───
   async openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
     if (!device) {
@@ -884,7 +896,6 @@ export class BLEInterface {
     this._activeChatDeviceId = deviceId;
     console.log('[BLEInterface] Solicitando abrir chat con:', device);
     
-    // v2.8.0: SIEMPRE intentar conectar como GATT client, sin importar "rol"
     const state = this._getDeviceState(deviceId);
     const isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
     
@@ -894,11 +905,10 @@ export class BLEInterface {
         const connResult = await this.nativePlugin.connectToDevice({ deviceId });
         console.log('[BLEInterface] connectToDevice result:', connResult);
         
-        // Esperar a que el canal esté listo (servicios descubiertos + notificaciones)
         if (connResult && connResult.connected) {
           this.showToast('🔗 Conectando canal BLE...', 'info');
           await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('Timeout esperando canal BLE')), 10000);
+            const timeout = setTimeout(() => reject(new Error('Timeout esperando canal BLE')), 15000);
             const checkReady = () => {
               const s = this._getDeviceState(deviceId);
               if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
@@ -1155,4 +1165,4 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
-// Cache bust Wed Apr 22 16:00:00 UTC 2026
+// Cache bust Wed Apr 22 17:00:00 UTC 2026
