@@ -1,5 +1,5 @@
 /**
- * NEXO App v3.3.5-DUAL
+ * NEXO App v3.4.0-FINAL
  * Orquestador Principal - NAP 2.0 Certified
  * FIXES: 
  * - CryptoVault.init() (no initialize())
@@ -10,6 +10,8 @@
  * + RESEARCH v3.3.4: 600ms pause + gatt.close() on failure + WRITE_TYPE_DEFAULT + REM focused
  * + DUAL-ROLE v3.3.5: Listener nexo:ble:messageReceived para mensajes entrantes BLE nativos
  * + DUAL-ROLE v3.3.5: Integración bidireccional confirmada (cliente write + servidor notify)
+ * + FINAL v3.4.0: Listeners nativos directos (onPayloadReceived, onDeviceDisconnected, onBluetoothStackBroken)
+ * + FINAL v3.4.0: sendMessage prioriza BLE activo, maneja onServicesReady/onNotificationsEnabled
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -85,8 +87,13 @@ export class NexoApp {
     this.initialized = false;
     this.activeContact = null;
     this._bleChatHandler = null;
-    this._bleMessageHandler = null; // DUAL-ROLE v3.3.5
-    DEBUG.log('🚀 [NEXO] v3.3.5-DUAL iniciando...', 'info', 'APP_INIT');
+    this._bleMessageHandler = null;
+    // ─── v3.4.0: Referencias a listeners nativos directos ───
+    this._nativePayloadListener = null;
+    this._nativeDeviceDisconnectedListener = null;
+    this._nativeStackBrokenListener = null;
+    this._nativeNotificationsListener = null;
+    DEBUG.log('🚀 [NEXO] v3.4.0-FINAL iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -108,7 +115,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v3.3.5-DUAL Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v3.4.0-FINAL Ready', 'APP_READY');
       this._logFinalStatus();
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
@@ -244,26 +251,45 @@ export class NexoApp {
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
       
-      // ─── DUAL-ROLE v3.3.5: Listener para mensajes entrantes BLE nativos ───
-      this._bleMessageHandler = (e) => {
-        const { deviceId, content, source, timestamp } = e.detail;
-        DEBUG.log(`📨 BLE mensaje entrante de ${deviceId?.substr(0,8)}: ${content?.substr(0,30)}...`, 'info', 'BLE_RECV');
+      // ─── v3.4.0: Listeners nativos DIRECTOS desde el plugin ───
+      const plugin = this.bleInterface?.nativePlugin;
+      if (plugin) {
+        // onPayloadReceived: mensajes entrantes BLE
+        this._nativePayloadListener = plugin.addListener('onPayloadReceived', (data) => {
+          DEBUG.log(`📨 BLE mensaje entrante de ${data.deviceId?.substr(0,8)}: ${data.data?.substr(0,30)}...`, 'info', 'BLE_RECV');
+          this._handleMessage({
+            content: data.data,
+            sender: data.deviceId,
+            source: 'ble_direct',
+            timestamp: data.timestamp || Date.now(),
+            _own: false
+          }, 'ble_direct');
+        });
         
-        // Si no hay contacto activo o es diferente, notificar
-        if (!this.activeContact || this.activeContact.id !== deviceId) {
-          DEBUG.log(`Mensaje BLE de dispositivo no activo: ${deviceId}`, 'warn', 'BLE_RECV_PASSIVE');
-        }
+        // onDeviceDisconnected: limpiar peer activo
+        this._nativeDeviceDisconnectedListener = plugin.addListener('onDeviceDisconnected', (data) => {
+          DEBUG.log(`🔌 BLE desconectado: ${data.deviceId?.substr(0,8)}`, 'warn', 'BLE_DISC');
+          if (this.activeContact && this.activeContact.id === data.deviceId) {
+            this.activeContact = null;
+            DEBUG.log('Chat activo limpiado por desconexión BLE', 'info', 'BLE_CHAT_CLEAR');
+          }
+        });
         
-        this._handleMessage({
-          content: content,
-          sender: deviceId,
-          source: 'ble_direct',
-          timestamp: timestamp || Date.now(),
-          _own: false
-        }, 'ble_direct');
-      };
-      window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
-      DEBUG.log('Listener nexo:ble:messageRegistered registrado', 'info', 'BLE_LISTENER_OK');
+        // onBluetoothStackBroken: Android 14 bug
+        this._nativeStackBrokenListener = plugin.addListener('onBluetoothStackBroken', (data) => {
+          DEBUG.error('BLE_STACK_BROKEN', `Stack Bluetooth corrupto detectado. ${data.suggestion}`);
+          // Emitir evento para UI
+          const event = new CustomEvent('nexo:ble:stackBroken', { detail: data });
+          window.dispatchEvent(event);
+        });
+        
+        // onNotificationsEnabled: confirmar canal bidireccional
+        this._nativeNotificationsListener = plugin.addListener('onNotificationsEnabled', (data) => {
+          DEBUG.log(`🔔 Notificaciones BLE activadas para ${data.deviceId?.substr(0,8)}`, 'info', 'BLE_NOTIFY_OK');
+        });
+        
+        DEBUG.log('Listeners nativos DIRECTOS registrados en NexoApp', 'info', 'BLE_LISTENER_OK');
+      }
       
     } catch (err) {
       DEBUG.error('UI_004', `BLE UI init failed: ${err.message}`);
@@ -378,7 +404,7 @@ export class NexoApp {
 
   _updateStatus() {}
 
-  // [DUAL-ROLE v3.3.5] _sendViaBLE: conexión + envío con manejo de dirección dual
+  // [v3.4.0] _sendViaBLE: conexión + envío con manejo de dirección dual
   async _sendViaBLE(deviceId, content, attempt = 0) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin NexoBLE no disponible');
@@ -391,7 +417,7 @@ export class NexoApp {
     } catch (e) {
       DEBUG.log(`[BLE_SEND] connectToDevice falló: ${e.message}`, 'warn', 'BLE_CONN_FAIL');
       if (attempt === 0) {
-        DEBUG.log(`[BLE_SEND] Pausa 600ms antes de reintento (Nordic/Samsung best practice)...`, 'info', 'BLE_PAUSE');
+        DEBUG.log(`[BLE_SEND] Pausa 600ms antes de reintento...`, 'info', 'BLE_PAUSE');
         await new Promise(r => setTimeout(r, 600));
         return this._sendViaBLE(deviceId, content, 1);
       }
@@ -420,6 +446,7 @@ export class NexoApp {
       const targetId = recipient || this.activeContact?.id;
       const targetTransport = this.activeContact?.transport;
 
+      // ─── v3.4.0: PRIORIZAR BLE si hay conexión activa (cliente o servidor) ───
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
@@ -427,6 +454,23 @@ export class NexoApp {
           return true;
         } catch (e) {
           DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
+        }
+      }
+      
+      // ─── v3.4.0: Si no hay contacto activo BLE pero hay peers BLE conectados, usar el primero ───
+      if (this.bleInterface?.nativePlugin) {
+        try {
+          const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
+          const bleDevices = connectedResult?.devices || [];
+          if (bleDevices.length > 0) {
+            const firstPeer = bleDevices[0];
+            DEBUG.log(`[BLE_SEND] Enviando a peer conectado ${firstPeer.deviceId?.substr(0,8)} (sin contacto activo)`, 'info', 'BLE_PEER_SEND');
+            await this._sendViaBLE(firstPeer.deviceId, content);
+            this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: firstPeer.deviceId, source: 'ble_direct' }, 'self');
+            return true;
+          }
+        } catch (e) {
+          DEBUG.log(`[BLE_SEND] Fallback a peer conectado falló: ${e.message}`, 'warn', 'BLE_PEER_FAIL');
         }
       }
 
@@ -516,6 +560,12 @@ export class NexoApp {
       window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
       this._bleMessageHandler = null;
     }
+    // ─── v3.4.0: Remover listeners nativos directos ───
+    if (this._nativePayloadListener) { try { this._nativePayloadListener.remove(); } catch(e) {} this._nativePayloadListener = null; }
+    if (this._nativeDeviceDisconnectedListener) { try { this._nativeDeviceDisconnectedListener.remove(); } catch(e) {} this._nativeDeviceDisconnectedListener = null; }
+    if (this._nativeStackBrokenListener) { try { this._nativeStackBrokenListener.remove(); } catch(e) {} this._nativeStackBrokenListener = null; }
+    if (this._nativeNotificationsListener) { try { this._nativeNotificationsListener.remove(); } catch(e) {} this._nativeNotificationsListener = null; }
+    
     if (this.bleInterface) { try { this.bleInterface.destroy(); } catch(e) {} this.bleInterface = null; }
     if (this.vaultSlider) { try { this.vaultSlider.destroy?.(); } catch(e) {} this.vaultSlider = null; }
     if (this.gestures) { try { this.gestures.destroy?.(); } catch(e) {} this.gestures = null; }
