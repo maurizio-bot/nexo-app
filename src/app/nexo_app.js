@@ -1,5 +1,5 @@
 /**
- * NEXO App v3.4.0-FINAL
+ * NEXO App v3.4.1-ROLE-SYNC
  * Orquestador Principal - NAP 2.0 Certified
  * FIXES: 
  * - CryptoVault.init() (no initialize())
@@ -12,6 +12,8 @@
  * + DUAL-ROLE v3.3.5: Integración bidireccional confirmada (cliente write + servidor notify)
  * + FINAL v3.4.0: Listeners nativos directos (onPayloadReceived, onDeviceDisconnected, onBluetoothStackBroken)
  * + FINAL v3.4.0: sendMessage prioriza BLE activo, maneja onServicesReady/onNotificationsEnabled
+ * + ROLE-SYNC v3.4.1: Manejo de roles server/client en _sendViaBLE. Servidor no intenta conectar GATT client.
+ * + ROLE-SYNC v3.4.1: Listener onDeviceConnected en NexoApp para trackear peers entrantes.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -90,10 +92,11 @@ export class NexoApp {
     this._bleMessageHandler = null;
     // ─── v3.4.0: Referencias a listeners nativos directos ───
     this._nativePayloadListener = null;
+    this._nativeDeviceConnectedListener = null; // v3.4.1
     this._nativeDeviceDisconnectedListener = null;
     this._nativeStackBrokenListener = null;
     this._nativeNotificationsListener = null;
-    DEBUG.log('🚀 [NEXO] v3.4.0-FINAL iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v3.4.1-ROLE-SYNC iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -115,7 +118,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v3.4.0-FINAL Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v3.4.1-ROLE-SYNC Ready', 'APP_READY');
       this._logFinalStatus();
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
@@ -238,20 +241,20 @@ export class NexoApp {
       
       // Handler para abrir chat desde BLE Interface
       this._bleChatHandler = (e) => {
-        const { contactId, name, address, transport } = e.detail;
-        this.activeContact = { id: contactId, name, address, transport };
+        const { contactId, name, address, transport, role } = e.detail;
+        this.activeContact = { id: contactId, name, address, transport, role };
         const appContainer = document.getElementById('app');
         if (appContainer) appContainer.classList.remove('hidden');
         const nameInput = document.getElementById('chat-contact-name');
         const subtitle = document.getElementById('chat-contact-subtitle');
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
-        DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
+        DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]${role ? ` [${role.toUpperCase()}]` : ''}`, 'BLE_CHAT');
         this.config.onStatusChange(`CHAT:${name}`);
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
       
-      // ─── v3.4.0: Listeners nativos DIRECTOS desde el plugin ───
+      // ─── v3.4.1: Listeners nativos DIRECTOS desde el plugin ───
       const plugin = this.bleInterface?.nativePlugin;
       if (plugin) {
         // onPayloadReceived: mensajes entrantes BLE
@@ -264,6 +267,14 @@ export class NexoApp {
             timestamp: data.timestamp || Date.now(),
             _own: false
           }, 'ble_direct');
+        });
+        
+        // v3.4.1: onDeviceConnected: peer conectado (entrante o saliente)
+        this._nativeDeviceConnectedListener = plugin.addListener('onDeviceConnected', (data) => {
+          DEBUG.log(`🔌 BLE conectado: ${data.deviceId?.substr(0,8)} [${data.direction}]`, 'info', 'BLE_CONN_OK');
+          if (data.direction === 'incoming' && this.activeContact && this.activeContact.id === data.deviceId) {
+            DEBUG.success(`Peer conectado al servidor. Canal listo.`, 'BLE_PEER_IN');
+          }
         });
         
         // onDeviceDisconnected: limpiar peer activo
@@ -404,18 +415,57 @@ export class NexoApp {
 
   _updateStatus() {}
 
-  // [v3.4.0] _sendViaBLE: conexión + envío con manejo de dirección dual
+  // [v3.4.1] _sendViaBLE: conexión + envío con manejo de dirección dual y roles
   async _sendViaBLE(deviceId, content, attempt = 0) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin NexoBLE no disponible');
     
     DEBUG.log(`[BLE_SEND] Preparando envío a ${deviceId.substr(0,8)}... (attempt ${attempt + 1})`, 'info', 'BLE_PREPARE');
     
+    // v3.4.1: Verificar si ya hay conexión activa antes de intentar conectar
+    try {
+      const connectedResult = await plugin.getConnectedDevices();
+      const alreadyConnected = connectedResult?.devices?.some(d => d.deviceId === deviceId);
+      if (alreadyConnected) {
+        DEBUG.log(`[BLE_SEND] Dispositivo ya conectado, enviando directamente...`, 'info', 'BLE_ALREADY_CONN');
+        await plugin.sendMessage({ deviceId, message: content });
+        DEBUG.success(`📨 Enviado vía BLE a ${deviceId.substr(0,8)}`, 'MSG_BLE');
+        return;
+      }
+    } catch (e) {
+      DEBUG.log(`[BLE_SEND] getConnectedDevices check failed: ${e.message}`, 'warn', 'BLE_CONN_CHECK');
+    }
+    
+    // Si no conectado, intentar conectar y determinar rol
     try {
       const connResult = await plugin.connectToDevice({ deviceId });
       DEBUG.log(`[BLE_SEND] connectToDevice result: ${JSON.stringify(connResult)}`, 'info', 'BLE_CONN_RESULT');
+      
+      // v3.4.1: Manejo de rol server/client
+      if (connResult && connResult.role === 'server') {
+        DEBUG.log(`[BLE_SEND] Rol SERVIDOR detectado para ${deviceId}. No se inicia GATT client.`, 'info', 'BLE_SERVER_ROLE');
+        // Guardar rol en bleInterface para referencia
+        if (this.bleInterface && this.bleInterface._deviceRoles) {
+          this.bleInterface._deviceRoles.set(deviceId, 'server');
+        }
+        throw new Error('BLE_011: Modo Servidor - Esperando que el peer cliente se conecte a este dispositivo.');
+      }
+      
+      if (connResult && connResult.role === 'client') {
+        if (this.bleInterface && this.bleInterface._deviceRoles) {
+          this.bleInterface._deviceRoles.set(deviceId, 'client');
+        }
+      }
+      
+      // Pequeña pausa para estabilizar la conexión GATT antes de write
+      await new Promise(r => setTimeout(r, 300));
+      
     } catch (e) {
       DEBUG.log(`[BLE_SEND] connectToDevice falló: ${e.message}`, 'warn', 'BLE_CONN_FAIL');
+      // No reintentar si es error de rol servidor (es un estado esperado, no un fallo de conexión)
+      if (e.message.includes('BLE_011')) {
+        throw e;
+      }
       if (attempt === 0) {
         DEBUG.log(`[BLE_SEND] Pausa 600ms antes de reintento...`, 'info', 'BLE_PAUSE');
         await new Promise(r => setTimeout(r, 600));
@@ -446,18 +496,23 @@ export class NexoApp {
       const targetId = recipient || this.activeContact?.id;
       const targetTransport = this.activeContact?.transport;
 
-      // ─── v3.4.0: PRIORIZAR BLE si hay conexión activa (cliente o servidor) ───
+      // ─── v3.4.1: PRIORIZAR BLE si hay contacto activo ───
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
           this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct' }, 'self');
           return true;
         } catch (e) {
-          DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
+          if (e.message.includes('BLE_011')) {
+            // Modo servidor: no es error, es estado esperado
+            DEBUG.warn(`BLE modo servidor: ${e.message}`, 'MSG_BLE_SERVER');
+          } else {
+            DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
+          }
         }
       }
       
-      // ─── v3.4.0: Si no hay contacto activo BLE pero hay peers BLE conectados, usar el primero ───
+      // ─── v3.4.1: Si no hay contacto activo BLE pero hay peers BLE conectados, usar el primero ───
       if (this.bleInterface?.nativePlugin) {
         try {
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
@@ -560,8 +615,9 @@ export class NexoApp {
       window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
       this._bleMessageHandler = null;
     }
-    // ─── v3.4.0: Remover listeners nativos directos ───
+    // ─── v3.4.1: Remover listeners nativos directos ───
     if (this._nativePayloadListener) { try { this._nativePayloadListener.remove(); } catch(e) {} this._nativePayloadListener = null; }
+    if (this._nativeDeviceConnectedListener) { try { this._nativeDeviceConnectedListener.remove(); } catch(e) {} this._nativeDeviceConnectedListener = null; }
     if (this._nativeDeviceDisconnectedListener) { try { this._nativeDeviceDisconnectedListener.remove(); } catch(e) {} this._nativeDeviceDisconnectedListener = null; }
     if (this._nativeStackBrokenListener) { try { this._nativeStackBrokenListener.remove(); } catch(e) {} this._nativeStackBrokenListener = null; }
     if (this._nativeNotificationsListener) { try { this._nativeNotificationsListener.remove(); } catch(e) {} this._nativeNotificationsListener = null; }
@@ -597,7 +653,7 @@ export class NexoApp {
       hasHybrid: !!this.mesh,
       hasWebSocket: !!this.wsClient?.isConnected?.(),
       hasVault: !!this.vault,
-      activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
+      activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport, role: this.activeContact.role } : null
     };
   }
 }
