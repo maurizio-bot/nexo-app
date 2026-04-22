@@ -1,5 +1,5 @@
 /**
- * BLE Interface v2.4.6-RESEARCH
+ * BLE Interface v2.5.0-DUAL
  * Sistema UI BLE con soporte Dual: NordicMesh + HybridMesh + Nativo Directo
  * + FIX v2.3.4: Escaneo conectado a plugin nativo NexoBLE directamente
  * + FIX v2.3.5: window.bleInterface asignado + listeners nativos de conexión
@@ -9,6 +9,8 @@
  * + UX v2.4.3: Botón único mutante (Agregar → Escribir) + evento global openChat
  * + ROBUST v2.4.5: Filtrado dispositivo propio + eliminada pre-conexión duplicada
  * + RESEARCH v2.4.6: REM limpiados de funciones robustas; solo eventos nativos
+ * + DUAL-ROLE v2.5.0: Listener onPayloadReceived nativo para mensajes entrantes BLE
+ * + DUAL-ROLE v2.5.0: Auto-conexión en openChat para envío bidireccional
  */
 
 export function initBLEInterface(bleMesh) {
@@ -91,6 +93,9 @@ export class BLEInterface {
     this.canAdvertise = false;
     this.localDeviceName = 'NEXO Device';
     this.localDeviceAddress = null;
+    // ─── DUAL-ROLE v2.5.0: Buffer de mensajes entrantes ───
+    this._incomingMessages = [];
+    this._activeChatDeviceId = null;
   }
 
   _detectMeshType() {
@@ -119,6 +124,7 @@ export class BLEInterface {
       this._initVisibility();
       this._setupNativeScanListeners();
       this._setupNativeConnectionListeners();
+      this._setupNativePayloadListener(); // DUAL-ROLE v2.5.0
       this._loadLocalDeviceInfo();
     }
     return this;
@@ -187,6 +193,46 @@ export class BLEInterface {
     console.log('[BLEInterface] Listeners nativos de conexión configurados');
   }
 
+  // ─── DUAL-ROLE v2.5.0: Listener para mensajes entrantes vía BLE ───
+  _setupNativePayloadListener() {
+    if (!this.nativePlugin) return;
+    if (this._nativePayloadListener) this._nativePayloadListener.remove();
+    if (this._nativeNotificationListener) this._nativeNotificationListener.remove();
+    
+    this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', (data) => {
+      console.log('[BLEInterface] Nativo: onPayloadReceived', data);
+      const deviceId = data.deviceId;
+      const messageText = data.data || '';
+      const source = data.source || 'unknown';
+      
+      // Emitir evento global para nexo_app.js
+      const event = new CustomEvent('nexo:ble:messageReceived', {
+        detail: {
+          deviceId: deviceId,
+          content: messageText,
+          source: source,
+          timestamp: data.timestamp || Date.now()
+        }
+      });
+      window.dispatchEvent(event);
+      
+      // Si el chat con este dispositivo está activo, mostrar toast silencioso
+      if (this._activeChatDeviceId === deviceId) {
+        console.log('[BLEInterface] Mensaje entrante en chat activo:', messageText);
+      } else {
+        this.showToast('📨 Mensaje BLE de ' + this._formatId(deviceId), 'info');
+        this.newDevicesCount++;
+        this.updateBadge();
+      }
+    });
+    
+    this._nativeNotificationListener = this.nativePlugin.addListener('onNotificationsEnabled', (data) => {
+      console.log('[BLEInterface] Nativo: onNotificationsEnabled', data);
+    });
+    
+    console.log('[BLEInterface] Listener nativo de payload configurado (DUAL-ROLE)');
+  }
+
   async _initVisibility() {
     if (this.isDummyMode) return;
     if (!this.nativePlugin) {
@@ -235,30 +281,6 @@ export class BLEInterface {
       this.updateVisibilityButton();
       this.showToast('❌ Error al activar visibilidad: ' + (data.errorCode || 'Unknown'), 'error');
     });
-  }
-
-  async _initVisibilityFallback() {
-    try {
-      if (this.bleMesh && this.bleMesh.getCapabilities) {
-        const caps = await this.bleMesh.getCapabilities();
-        this.canAdvertise = caps.canAdvertise || false;
-      }
-      if (this.bleMesh && this.bleMesh.getVisibilityState) {
-        const state = await this.bleMesh.getVisibilityState();
-        this.isAdvertising = state.isAdvertising || false;
-      }
-      this.updateVisibilityButton();
-      if (this.bleMesh && this.bleMesh.on) {
-        this.bleMesh.on('visibilityChanged', (data) => {
-          this.isAdvertising = data.visible || false;
-          this.updateVisibilityButton();
-        });
-      }
-    } catch (err) {
-      console.warn('[BLEInterface] Error fallback visibility:', err);
-      this.canAdvertise = false;
-      this.updateVisibilityButton();
-    }
   }
 
   updateVisibilityButton() {
@@ -673,7 +695,8 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
-  openChat(deviceId) {
+  // ─── DUAL-ROLE v2.5.0: openChat ahora auto-conecta para chat bidireccional ───
+  async openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
     if (!device) {
       const contacts = _getBLEContacts();
@@ -691,7 +714,22 @@ export class BLEInterface {
       this.showToast('❌ Contacto no disponible', 'error');
       return;
     }
+    
+    this._activeChatDeviceId = deviceId;
     console.log('[BLEInterface] Solicitando abrir chat con:', device);
+    
+    // DUAL-ROLE: Asegurar conexión cliente antes de abrir chat
+    const isConnected = this.connectedDevices.has(deviceId);
+    if (!isConnected && this.nativePlugin) {
+      try {
+        console.log('[BLEInterface] Auto-conectando a', deviceId, 'antes de abrir chat...');
+        await this.nativePlugin.connectToDevice({ deviceId });
+        this.showToast('🔗 Conectando...', 'info');
+        await new Promise(r => setTimeout(r, 800)); // Esperar handshake
+      } catch (e) {
+        console.warn('[BLEInterface] Auto-conexión falló (puede que ya esté como servidor):', e.message);
+      }
+    }
     
     const appContainer = document.getElementById('app');
     if (appContainer) appContainer.classList.remove('hidden');
@@ -905,9 +943,11 @@ export class BLEInterface {
     if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
     if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
     if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
+    if (this._nativePayloadListener) this._nativePayloadListener.remove();
+    if (this._nativeNotificationListener) this._nativeNotificationListener.remove();
     if (this.isScanning) this.toggleScan();
   }
 }
 
 window.bleInterface = null;
-// Cache bust Wed Apr 22 02:50:00 UTC 2026
+// Cache bust Wed Apr 22 10:11:00 UTC 2026
