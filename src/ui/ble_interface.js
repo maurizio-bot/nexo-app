@@ -1,8 +1,7 @@
 /**
- * BLE Interface v3.1-ARCH
+ * BLE Interface v3.2-ARCH
  * Ubicación: src/ui/ble_interface.js
- * FIX: Panel close on openChat, serverReady tracking, no double-connect
- * Coordinado con NexoBlePlugin.kt v4.1.0-ARCH + ble_permissions.js v3.1-ARCH
+ * FIX: Server error handling, better timeout messages, manifest service name fix coordination
  */
 
 export function initBLEInterface(bleMesh) {
@@ -76,8 +75,8 @@ export class BLEInterface {
     this._maxMessageIds = 1000;
     this._pendingMessageQueue = new Map();
     this._reconnectTimers = new Map();
-    // v3.1.0 FIX: Tracking de server ready
     this._serverReady = false;
+    this._serverError = null;
   }
 
   _detectMeshType() {
@@ -106,8 +105,8 @@ export class BLEInterface {
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
       this._setupNativePeerInfoListener();
-      // v3.1.0 FIX: Escuchar server ready
       this._setupNativeServerReadyListener();
+      this._setupNativeServerErrorListener();
       this._loadLocalDeviceInfo();
     }
     return this;
@@ -230,7 +229,7 @@ export class BLEInterface {
         this._setDeviceState(data.deviceId, BLE_STATES.CONNECTING, { attempt: data.attempt, message: `Reintentando...` });
       } else {
         this._setDeviceState(data.deviceId, BLE_STATES.ERROR, { lastError: data.reason });
-        this.showToast(`❌ Conexión fallida: ${data.reason}`, 'error');
+        this.showToast(`❌ Conexión fallada: ${data.reason}`, 'error');
       }
     });
     this._nativeStackBrokenListener = this.nativePlugin.addListener('onBluetoothStackBroken', (data) => {
@@ -238,13 +237,28 @@ export class BLEInterface {
     });
   }
 
-  // v3.1.0 FIX: Escuchar cuando el GATT server nativo está listo
   _setupNativeServerReadyListener() {
     if (!this.nativePlugin) return;
     if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
     this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', (data) => {
       this._serverReady = data.ready === true;
+      this._serverError = null;
       console.log('[BLEInterface] Server ready:', this._serverReady);
+    });
+  }
+
+  // FIX v3.2-ARCH: Escuchar errores del servidor nativo
+  _setupNativeServerErrorListener() {
+    if (!this.nativePlugin) return;
+    if (this._nativeServerErrorListener) this._nativeServerErrorListener.remove();
+    this._nativeServerErrorListener = this.nativePlugin.addListener('onServerError', (data) => {
+      this._serverReady = false;
+      this._serverError = { code: data.code, message: data.message };
+      console.error('[BLEInterface] Server error:', data.code, data.message);
+      // Si es error de permisos, mostrar toast específico
+      if (data.code === 'BLE_202') {
+        this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
+      }
     });
   }
 
@@ -357,20 +371,15 @@ export class BLEInterface {
     }
   }
 
-  // ==========================================================
-  // FIX v3.1-ARCH: Gate de permisos + serverReady en toggleVisibility
-  // ==========================================================
   async toggleVisibility() {
     if (this.isDummyMode) return;
 
-    // GATE: Asegurar permisos antes de cualquier operación
     const permsReady = await window.BLEPermissions.ensure();
     if (!permsReady) {
       this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
       return;
     }
 
-    // v3.1.0 FIX: Si el server no está listo, inicializar BLE primero
     if (!this._serverReady) {
       try {
         this.showToast('⏳ Inicializando servidor BLE...', 'info');
@@ -378,22 +387,29 @@ export class BLEInterface {
           userId: window.currentUser?.id || '',
           userName: window.currentUser?.name || 'NEXO User'
         });
-        // Esperar a que onServerReady dispare (max 5s)
+        // FIX v3.2: Timeout aumentado a 8s + mejor manejo de errores
         await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Timeout server ready')), 5000);
+          const timeout = setTimeout(() => {
+            if (this._serverError) {
+              reject(new Error(this._serverError.message));
+            } else {
+              reject(new Error('Timeout esperando servidor BLE'));
+            }
+          }, 8000);
           const check = () => {
             if (this._serverReady) { clearTimeout(timeout); resolve(); }
+            else if (this._serverError) { clearTimeout(timeout); reject(new Error(this._serverError.message)); }
             else setTimeout(check, 200);
           };
           check();
         });
       } catch (e) {
-        this.showToast('❌ No se pudo inicializar servidor BLE', 'error');
+        console.error('[BLEInterface] Error inicializando servidor:', e.message);
+        this.showToast('❌ No se pudo inicializar servidor BLE: ' + e.message, 'error', 5000);
         return;
       }
     }
 
-    // Actualizar canAdvertise después de permisos
     try {
       const btState = await this.nativePlugin.isBluetoothEnabled();
       this.canAdvertise = btState.canAdvertise || false;
@@ -563,13 +579,9 @@ export class BLEInterface {
     if (tabName === 'added') this.renderAddedList();
   }
 
-  // ==========================================================
-  // FIX v3.1-ARCH: Gate de permisos en toggleScan
-  // ==========================================================
   async toggleScan() {
     if (this.isDummyMode) return;
 
-    // GATE: Asegurar permisos antes de cualquier operación
     const permsReady = await window.BLEPermissions.ensure();
     if (!permsReady) {
       this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
@@ -676,9 +688,6 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
-  // ==========================================================
-  // FIX v3.1-ARCH: Gate de permisos + no double-connect + panel close
-  // ==========================================================
   async openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
     const contact = _getBLEContacts().find(c => (c.id || c.address) === deviceId);
@@ -691,7 +700,6 @@ export class BLEInterface {
     const isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
     const isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
     
-    // v3.1.0 FIX: Si ya está conectando/descubriendo, no iniciar otra conexión
     if (!isFullyReady && isConnecting && this.nativePlugin) {
       this.showToast('⏳ Conexión en progreso, esperando canal...', 'info');
       try {
@@ -713,7 +721,6 @@ export class BLEInterface {
       }
     }
     
-    // GATE: Asegurar permisos antes de conectar
     if (!isFullyReady && !isConnecting && this.nativePlugin) {
       const permsReady = await window.BLEPermissions.ensure();
       if (!permsReady) {
@@ -758,7 +765,6 @@ export class BLEInterface {
       detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
     }));
     
-    // v3.1.0 FIX: Cerrar panel explícitamente (no toggle)
     this.elements.panel.classList.remove('active');
     this.elements.overlay.classList.remove('active');
   }
@@ -941,6 +947,7 @@ export class BLEInterface {
     if (this._nativeStackBrokenListener) this._nativeStackBrokenListener.remove();
     if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove();
     if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    if (this._nativeServerErrorListener) this._nativeServerErrorListener.remove();
     if (this.isScanning) this.toggleScan();
   }
 }
