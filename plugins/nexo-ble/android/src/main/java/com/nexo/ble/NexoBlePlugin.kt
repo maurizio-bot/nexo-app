@@ -1,1284 +1,948 @@
-package com.nexo.ble
+/**
+ * BLE Interface v3.1-ARCH
+ * Ubicación: src/ui/ble_interface.js
+ * FIX: Panel close on openChat, serverReady tracking, no double-connect
+ * Coordinado con NexoBlePlugin.kt v4.1.0-ARCH + ble_permissions.js v3.1-ARCH
+ */
 
-import android.app.Activity
-import android.bluetooth.*
-import android.bluetooth.le.*
-import android.content.BroadcastReceiver
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.content.ServiceConnection
-import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Handler
-import android.os.IBinder
-import android.os.Looper
-import android.os.ParcelUuid
-import android.util.Log
-import android.util.LruCache
-import android.widget.Toast
-import androidx.activity.result.ActivityResult
-import androidx.core.content.ContextCompat
-import com.getcapacitor.*
-import com.getcapacitor.annotation.CapacitorPlugin
-import com.getcapacitor.annotation.Permission
-import com.getcapacitor.annotation.PermissionCallback
-import com.getcapacitor.annotation.ActivityCallback
-import com.getcapacitor.JSArray
-import com.nexo.ble.model.NexoGattService
-import com.nexo.ble.model.MessageChunker
-import org.json.JSONObject
-import java.util.*
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-
-// ==========================================
-// NAP-BLE v5.0.0-ARCH
-// FIX: Foreground Service, synchronized GATT, LRU dedup,
-// auto-restart server, forced disconnect timeout, memory leak cleanup
-// ==========================================
-
-@CapacitorPlugin(
-    name = "NexoBLE",
-    permissions = [
-        Permission(strings = [android.Manifest.permission.BLUETOOTH_SCAN], alias = "bluetoothScan"),
-        Permission(strings = [android.Manifest.permission.BLUETOOTH_CONNECT], alias = "bluetoothConnect"),
-        Permission(strings = [android.Manifest.permission.BLUETOOTH_ADVERTISE], alias = "bluetoothAdvertise"),
-        Permission(strings = [android.Manifest.permission.ACCESS_FINE_LOCATION], alias = "location")
-    ]
-)
-class NexoBlePlugin : Plugin() {
-    companion object {
-        const val TAG = "NAP-BLE"
-        
-        const val NAP_BLE_READY = "BLE_050"
-        const val NAP_BLE_CONNECTED = "BLE_051"
-        const val NAP_BLE_SCAN_STARTED = "BLE_052"
-        const val NAP_BLE_ADVERTISE_STARTED = "BLE_053"
-        const val NAP_BLE_MESSAGE_SENT = "BLE_054"
-        const val NAP_BLE_MESSAGE_RECEIVED = "BLE_054_R"
-        const val NAP_BLE_PERMISSIONS_GRANTED = "BLE_056"
-        const val NAP_BLE_NOTIFICATION_ENABLED = "BLE_057"
-        const val NAP_BLE_MTU_CHANGED = "BLE_058"
-        const val NAP_BLE_SERVER_READY = "BLE_059"
-        const val NAP_BLE_SERVICE_ADDED = "BLE_060"
-        
-        const val NAP_BLE_ERR_NOT_SUPPORTED = "BLE_200"
-        const val NAP_BLE_ERR_DISABLED = "BLE_201"
-        const val NAP_BLE_ERR_PERMISSION_DENIED = "BLE_202"
-        const val NAP_BLE_ERR_INIT_FAILED = "BLE_203"
-        const val NAP_BLE_ERR_SCAN_FAILED = "BLE_204"
-        const val NAP_BLE_ERR_ADVERTISE_FAILED = "BLE_205"
-        const val NAP_BLE_ERR_CONNECTION_FAILED = "BLE_206"
-        const val NAP_BLE_ERR_SECURITY_EXCEPTION = "BLE_207"
-        const val NAP_BLE_ERR_GATT_CONFLICT = "BLE_209"
-        
-        const val ERR_INVALID_PARAMS = "BLE_019"
-        const val ERR_NOT_CONNECTED = "BLE_011"
-        const val ERR_MESSAGE_TOO_LARGE = "BLE_008"
-        const val ERR_DEVICE_NOT_FOUND = "BLE_006"
-        
-        const val MTU_DEFAULT = 512
-        const val CHUNK_SIZE = 507
-        const val REQUEST_ENABLE_BT = 1001
-        
-        const val MAX_RETRY_ATTEMPTS = 3
-        const val RETRY_BASE_DELAY_MS = 2000L
-        const val RETRY_MAX_DELAY_MS = 16000L
-        const val CONNECT_TIMEOUT_MS = 15000L
-        const val WRITE_TIMEOUT_MS = 5000L
-        const val RATE_LIMIT_MS = 5000L
-        const val DISCONNECT_FORCE_CLOSE_MS = 2000L
-        
-        val SERVICE_UUID = NexoGattService.SERVICE_UUID
-        val CHAR_ANNOUNCE = NexoGattService.ANNOUNCE_CHAR_UUID
-        val CHAR_HANDSHAKE = NexoGattService.HANDSHAKE_CHAR_UUID
-        val CHAR_PAYLOAD = NexoGattService.PAYLOAD_CHAR_UUID
-        val CHAR_CONTROL = NexoGattService.CONTROL_CHAR_UUID
-        val CCCD_UUID = NexoGattService.CLIENT_CONFIG_UUID
-    }
-
-    enum class ConnectionState {
-        IDLE, CONNECTING, DISCOVERING, READY, DISCONNECTING, FAILED
-    }
-    
-    data class BLEConnection(
-        val deviceId: String,
-        var gatt: BluetoothGatt? = null,
-        var state: ConnectionState = ConnectionState.IDLE,
-        var lastStateChangeTime: Long = 0L,
-        var retryCount: Int = 0,
-        var lastAttemptTime: Long = 0L,
-        var pendingWriteCall: PluginCall? = null,
-        var pendingWritePayload: ByteArray? = null,
-        var pendingWriteMessageId: String? = null,
-        var userDisconnected: Boolean = false,
-        var negotiatedMtu: Int = 20,
-        var pendingChunks: LinkedList<ByteArray>? = null,
-        var currentChunkIndex: Int = 0,
-        var totalChunks: Int = 0,
-        var role: String = "client"
-    )
-    
-    private val connections = ConcurrentHashMap<String, BLEConnection>()
-    private val operationQueue = ConcurrentHashMap<String, LinkedList<Runnable>>()
-    private val isOperating = ConcurrentHashMap<String, AtomicBoolean>()
-    
-    private fun enqueueOperation(deviceId: String, operation: Runnable) {
-        val queue = operationQueue.getOrPut(deviceId) { LinkedList() }
-        synchronized(queue) { queue.add(operation) }
-        processNextOperation(deviceId)
-    }
-    
-    private fun processNextOperation(deviceId: String) {
-        val flag = isOperating.getOrPut(deviceId) { AtomicBoolean(false) }
-        if (flag.getAndSet(true)) return
-        val queue = operationQueue[deviceId] ?: return
-        val next: Runnable?
-        synchronized(queue) { next = queue.pollFirst() }
-        if (next == null) { flag.set(false); return }
-        handler.post {
-            try { next.run() }
-            finally {
-                flag.set(false)
-                processNextOperation(deviceId)
-            }
-        }
-    }
-
-    private var bleService: BleService? = null
-    private var serviceBound = false
-    
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as? BleService.LocalBinder
-            bleService = binder?.getService()
-            serviceBound = true
-            napLog("BLE_SVC_BOUND", "BleService conectado")
-            val ready = bleService?.isServerReady() ?: false
-            if (ready) {
-                serverReady = true
-                notifyListeners("onServerReady", JSObject().apply {
-                    put("ready", true)
-                    put("serviceUuid", SERVICE_UUID.toString())
-                })
-            }
-        }
-        override fun onServiceDisconnected(name: ComponentName?) {
-            bleService = null
-            serviceBound = false
-            napLog("BLE_SVC_DISC", "BleService desconectado", "WARN")
-        }
-    }
-
-    private val serviceEventReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                "com.nexo.ble.SERVER_READY" -> {
-                    serverReady = intent.getBooleanExtra("ready", false)
-                    notifyListeners("onServerReady", JSObject().apply {
-                        put("ready", serverReady)
-                        put("serviceUuid", SERVICE_UUID.toString())
-                    })
-                }
-                "com.nexo.ble.DEVICE_CONNECTED" -> {
-                    val deviceId = intent.getStringExtra("deviceId") ?: return
-                    val direction = intent.getStringExtra("direction") ?: "incoming"
-                    handleServerDeviceConnected(deviceId, direction)
-                }
-                "com.nexo.ble.DEVICE_DISCONNECTED" -> {
-                    val deviceId = intent.getStringExtra("deviceId") ?: return
-                    handleServerDeviceDisconnected(deviceId)
-                }
-                "com.nexo.ble.SERVICES_READY" -> {
-                    val deviceId = intent.getStringExtra("deviceId") ?: return
-                    notifyListeners("onServicesReady", JSObject().apply {
-                        put("deviceId", deviceId)
-                        put("ready", true)
-                        put("direction", "incoming")
-                        put("role", "server")
-                    })
-                }
-                "com.nexo.ble.PAYLOAD_RECEIVED" -> {
-                    val deviceId = intent.getStringExtra("deviceId") ?: return
-                    val data = intent.getByteArrayExtra("data") ?: return
-                    val source = intent.getStringExtra("source") ?: "server_write_request"
-                    handlePayloadReceived(deviceId, data, source)
-                }
-                "com.nexo.ble.NOTIFICATION_STATE" -> {
-                    val deviceId = intent.getStringExtra("deviceId") ?: return
-                    val enabled = intent.getBooleanExtra("enabled", false)
-                    notifyListeners("onClientNotificationStateChanged", JSObject().apply {
-                        put("deviceId", deviceId)
-                        put("enabled", enabled)
-                    })
-                }
-                "com.nexo.ble.ADVERTISE_STARTED" -> {
-                    advertisingActive = true
-                    notifyListeners("onAdvertiseStarted", JSObject().apply { put("success", true) })
-                }
-                "com.nexo.ble.ADVERTISE_FAILED" -> {
-                    advertisingActive = false
-                    notifyListeners("onAdvertiseFailed", JSObject().apply {
-                        put("errorCode", intent.getIntExtra("errorCode", -1))
-                    })
-                }
-            }
-        }
-    }
-
-    private var advertisingActive = false
-    private var isScanning = false
-    private var scanCallback: ScanCallback? = null
-    private var serverReady = false
-
-    private val handler = Handler(Looper.getMainLooper())
-    private var userId: String = ""
-    private var userName: String = ""
-    private val pendingCalls = ConcurrentHashMap<String, PluginCall>()
-    private var isRequestingPermissions = false
-
-    private val receivedMessageIds = LruCache<String, Long>(100)
-
-    private val unifiedGattCallback = object : BluetoothGattCallback() {
-        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            val deviceId = try { gatt.device?.address } catch (e: Exception) { null } ?: return
-            val conn = connections[deviceId] ?: return
-            
-            when (newState) {
-                BluetoothProfile.STATE_CONNECTED -> {
-                    if (conn.state == ConnectionState.CONNECTING) {
-                        conn.state = ConnectionState.DISCOVERING
-                        conn.lastStateChangeTime = System.currentTimeMillis()
-                        napLog(NAP_BLE_CONNECTED, "[CLIENT] GATT conectado: $deviceId (attempt=${conn.retryCount})")
-                        notifyListeners("onDeviceConnected", JSObject().apply {
-                            put("deviceId", deviceId)
-                            put("direction", "outgoing")
-                            put("attempt", conn.retryCount)
-                        })
-                        handler.postDelayed({
-                            try {
-                                gatt.requestMtu(MTU_DEFAULT)
-                            } catch (e: SecurityException) {
-                                napLog("BLE_MTU_EX", "SecurityException requestMtu: ${e.message}")
-                                triggerDiscoverServices(gatt, deviceId)
-                            }
-                        }, 300)
-                    }
-                }
-                BluetoothProfile.STATE_DISCONNECTED -> {
-                    val wasReady = conn.state == ConnectionState.READY
-                    conn.state = ConnectionState.IDLE
-                    conn.gatt = null
-                    conn.pendingChunks = null
-                    conn.currentChunkIndex = 0
-                    conn.totalChunks = 0
-                    try { gatt.close() } catch (e: Exception) { }
-                    
-                    notifyListeners("onDeviceDisconnected", JSObject().apply {
-                        put("deviceId", deviceId)
-                        put("gattStatus", status)
-                        put("wasReady", wasReady)
-                    })
-                    
-                    if (conn.userDisconnected) {
-                        napLog("BLE_USER_DISC", "Desconexión manual de $deviceId - no reintentar")
-                        conn.userDisconnected = false
-                        return
-                    }
-                    
-                    if (status != BluetoothGatt.GATT_SUCCESS && conn.retryCount < MAX_RETRY_ATTEMPTS) {
-                        scheduleRetry(deviceId)
-                    } else if (conn.retryCount >= MAX_RETRY_ATTEMPTS) {
-                        conn.state = ConnectionState.FAILED
-                        val call = pendingCalls.remove("connect_$deviceId")
-                        call?.reject(ERR_NOT_CONNECTED, "Falló después de $MAX_RETRY_ATTEMPTS intentos")
-                    }
-                }
-            }
-        }
-        
-        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-            val deviceId = try { gatt.device?.address } catch (e: Exception) { null } ?: return
-            val conn = connections[deviceId] ?: return
-            
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                conn.negotiatedMtu = mtu - 3
-                napLog(NAP_BLE_MTU_CHANGED, "MTU=$mtu payloadMax=${conn.negotiatedMtu} para $deviceId")
-            } else {
-                conn.negotiatedMtu = 20
-                napLog(NAP_BLE_MTU_CHANGED, "MTU falló status=$status, usando default 20 para $deviceId", "WARN")
-            }
-            triggerDiscoverServices(gatt, deviceId)
-        }
-        
-        private fun triggerDiscoverServices(gatt: BluetoothGatt, deviceId: String) {
-            handler.postDelayed({
-                try {
-                    try {
-                        val refreshMethod = gatt.javaClass.getMethod("refresh")
-                        refreshMethod.invoke(gatt)
-                        napLog("BLE_REFRESH", "Service cache refrescada para $deviceId")
-                    } catch (e: Exception) { }
-                    gatt.discoverServices()
-                } catch (e: SecurityException) {
-                    handleConnectionFailure(deviceId, "SecurityException discoverServices")
-                }
-            }, 400)
-        }
-        
-        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            val deviceId = try { gatt.device?.address } catch (e: Exception) { null } ?: return
-            val conn = connections[deviceId] ?: return
-            
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                handleConnectionFailure(deviceId, "Descubrimiento falló status=$status")
-                return
-            }
-            
-            val service = gatt.getService(SERVICE_UUID)
-            val char = service?.getCharacteristic(CHAR_PAYLOAD)
-            if (service == null || char == null) {
-                val foundServices = gatt.services?.map { it.uuid.toString() } ?: emptyList()
-                napLog("BLE_SVC_FOUND", "Servicios descubiertos en $deviceId: $foundServices")
-                handleConnectionFailure(deviceId, "Servicio NEXO no encontrado")
-                return
-            }
-            
-            try {
-                gatt.setCharacteristicNotification(char, true)
-                val descriptor = char.getDescriptor(CCCD_UUID)
-                if (descriptor != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                        @Suppress("DEPRECATION")
-                        gatt.writeDescriptor(descriptor)
-                    }
-                } else {
-                    markConnectionReady(deviceId, gatt)
-                }
-            } catch (e: SecurityException) {
-                handleConnectionFailure(deviceId, "SecurityException notifications")
-            }
-        }
-        
-        override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            val deviceId = try { gatt.device?.address } catch (e: Exception) { null } ?: return
-            if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == CCCD_UUID) {
-                notifyListeners("onNotificationsEnabled", JSObject().apply {
-                    put("deviceId", deviceId)
-                    put("enabled", true)
-                })
-                markConnectionReady(deviceId, gatt)
-            } else if (status != BluetoothGatt.GATT_SUCCESS) {
-                handleConnectionFailure(deviceId, "Descriptor write failed: $status")
-            }
-        }
-        
-        override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == CHAR_ANNOUNCE) {
-                val data = characteristic.value?.let { String(it) } ?: "{}"
-                try {
-                    val json = org.json.JSONObject(data)
-                    val peerName = json.optString("userName", "NEXO Peer")
-                    val peerId = json.optString("userId", "")
-                    notifyListeners("onPeerInfoReceived", JSObject().apply {
-                        put("deviceId", gatt.device?.address ?: "")
-                        put("name", peerName)
-                        put("userId", peerId)
-                    })
-                } catch (e: Exception) { }
-            }
-        }
-        
-        override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            val deviceId = try { gatt.device?.address } catch (e: Exception) { null } ?: return
-            val conn = connections[deviceId] ?: return
-            
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                conn.pendingWriteCall?.reject(ERR_NOT_CONNECTED, "Escritura falló status=$status")
-                conn.pendingWriteCall = null
-                conn.pendingChunks = null
-                return
-            }
-            
-            val chunks = conn.pendingChunks
-            if (chunks != null && chunks.isNotEmpty()) {
-                conn.currentChunkIndex++
-                val nextChunk = chunks.pollFirst()
-                if (nextChunk != null) {
-                    writeChunk(gatt, characteristic, nextChunk)
-                    return
-                }
-            }
-            
-            if (conn.currentChunkIndex >= conn.totalChunks - 1 || conn.totalChunks == 0) {
-                conn.pendingWriteCall?.resolve(JSObject().apply {
-                    put("sent", true)
-                    put("confirmed", true)
-                    put("messageId", conn.pendingWriteMessageId ?: "")
-                    put("chunks", conn.totalChunks.coerceAtLeast(1))
-                })
-                conn.pendingWriteCall = null
-                conn.pendingChunks = null
-                conn.currentChunkIndex = 0
-                conn.totalChunks = 0
-            }
-        }
-        
-        private fun writeChunk(gatt: BluetoothGatt, char: BluetoothGattCharacteristic, chunk: ByteArray) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                gatt.writeCharacteristic(char, chunk, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-            } else {
-                @Suppress("DEPRECATION")
-                char.value = chunk
-                @Suppress("DEPRECATION")
-                gatt.writeCharacteristic(char)
-            }
-        }
-        
-        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            val deviceId = try { gatt.device?.address } catch (e: Exception) { null } ?: return
-            val data = characteristic.value
-            
-            when (characteristic.uuid) {
-                CHAR_PAYLOAD -> {
-                    handlePayloadReceived(deviceId, data, "client_notification")
-                }
-            }
-        }
-    }
-
-    private fun scheduleRetry(deviceId: String) {
-        val conn = connections[deviceId] ?: return
-        if (conn.userDisconnected) return
-        
-        val now = System.currentTimeMillis()
-        val elapsed = now - conn.lastAttemptTime
-        if (elapsed < RATE_LIMIT_MS) {
-            handler.postDelayed({ scheduleRetry(deviceId) }, RATE_LIMIT_MS - elapsed)
-            return
-        }
-        
-        conn.retryCount++
-        conn.lastAttemptTime = now
-        val delay = minOf(RETRY_BASE_DELAY_MS * (1 shl (conn.retryCount - 1)), RETRY_MAX_DELAY_MS)
-        val jitter = Random().nextInt(1000)
-        val totalDelay = delay + jitter
-        
-        napLog("BLE_RETRY", "Retry $deviceId en ${totalDelay}ms (attempt=${conn.retryCount})")
-        
-        handler.postDelayed({
-            val adapter = getBluetoothAdapter()
-            val device = adapter?.getRemoteDevice(deviceId)
-            if (device != null && connections[deviceId]?.state == ConnectionState.IDLE) {
-                synchronized(deviceId.intern()) {
-                    executeConnectInternal(device, deviceId)
-                }
-            }
-        }, totalDelay)
-    }
-
-    private fun markConnectionReady(deviceId: String, gatt: BluetoothGatt) {
-        val conn = connections[deviceId] ?: return
-        conn.state = ConnectionState.READY
-        conn.retryCount = 0
-        conn.gatt = gatt
-        conn.lastStateChangeTime = System.currentTimeMillis()
-        
-        val call = pendingCalls.remove("connect_$deviceId")
-        call?.resolve(JSObject().apply {
-            put("connected", true)
-            put("deviceId", deviceId)
-            put("servicesReady", true)
-            put("role", "client")
-        })
-        
-        notifyListeners("onServicesReady", JSObject().apply {
-            put("deviceId", deviceId)
-            put("ready", true)
-        })
-        
-        val pendingCall = conn.pendingWriteCall
-        val pendingPayload = conn.pendingWritePayload
-        if (pendingCall != null && pendingPayload != null) {
-            conn.pendingWriteCall = null
-            conn.pendingWritePayload = null
-            performWrite(pendingCall, gatt, deviceId, pendingPayload, conn.pendingWriteMessageId ?: "")
-        }
-    }
-    
-    private fun handleConnectionFailure(deviceId: String, reason: String) {
-        val conn = connections[deviceId] ?: return
-        
-        conn.gatt?.let { gatt ->
-            try { gatt.disconnect() } catch (e: Exception) { }
-            try { gatt.close() } catch (e: Exception) { }
-        }
-        conn.gatt = null
-        conn.pendingChunks = null
-        conn.state = ConnectionState.IDLE
-        
-        notifyListeners("onConnectionFailed", JSObject().apply {
-            put("deviceId", deviceId)
-            put("reason", reason)
-            put("attempt", conn.retryCount)
-            put("maxAttempts", MAX_RETRY_ATTEMPTS)
-        })
-        
-        val call = pendingCalls.remove("connect_$deviceId")
-        
-        if (!conn.userDisconnected && conn.retryCount < MAX_RETRY_ATTEMPTS) {
-            scheduleRetry(deviceId)
-        } else {
-            conn.state = ConnectionState.FAILED
-            call?.reject(ERR_NOT_CONNECTED, reason)
-        }
-    }
-
-    private fun handlePayloadReceived(deviceId: String, data: ByteArray?, source: String) {
-        data ?: return
-        val payloadStr = String(data)
-        var senderName = "NEXO Peer"
-        var messageContent = payloadStr
-        var messageId = ""
-        try {
-            val json = org.json.JSONObject(payloadStr)
-            if (json.has("senderName")) senderName = json.getString("senderName")
-            if (json.has("content")) messageContent = json.getString("content")
-            if (json.has("messageId")) messageId = json.getString("messageId")
-        } catch (e: Exception) { }
-        
-        if (messageId.isNotEmpty()) {
-            if (receivedMessageIds.get(messageId) != null) {
-                napLog("BLE_DEDUP", "Mensaje duplicado descartado: $messageId", "DEBUG")
-                return
-            }
-            receivedMessageIds.put(messageId, System.currentTimeMillis())
-        }
-        
-        notifyListeners("onPayloadReceived", JSObject().apply {
-            put("deviceId", deviceId)
-            put("data", payloadStr)
-            put("content", messageContent)
-            put("senderName", senderName)
-            put("messageId", messageId)
-            put("source", source)
-            put("timestamp", System.currentTimeMillis())
-        })
-    }
-
-    private fun handleServerDeviceConnected(deviceId: String, direction: String) {
-        val conn = connections.getOrPut(deviceId) { BLEConnection(deviceId) }
-        conn.role = if (conn.role == "client") "both" else "server"
-        notifyListeners("onDeviceConnected", JSObject().apply {
-            put("deviceId", deviceId)
-            put("name", "NEXO Peer")
-            put("direction", direction)
-        })
-    }
-
-    private fun handleServerDeviceDisconnected(deviceId: String) {
-        val conn = connections[deviceId]
-        if (conn != null) {
-            if (conn.role == "server") {
-                connections.remove(deviceId)
-            } else if (conn.role == "both") {
-                conn.role = "client"
-            }
-        }
-        notifyListeners("onDeviceDisconnected", JSObject().apply {
-            put("deviceId", deviceId)
-        })
-    }
-
-    private fun getBluetoothAdapter(): BluetoothAdapter? {
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT)
-                    != PackageManager.PERMISSION_GRANTED) return null
-            }
-            val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-            manager?.adapter
-        } catch (e: SecurityException) { null } catch (e: Exception) { null }
-    }
-    
-    private fun napLog(code: String, message: String, level: String = "INFO") {
-        val formatted = "[$code] $message [Native:true]"
-        when (level) {
-            "ERROR" -> Log.e(TAG, formatted)
-            "WARN" -> Log.w(TAG, formatted)
-            "DEBUG" -> Log.d(TAG, formatted)
-            else -> Log.i(TAG, formatted)
-        }
-        val auditData = JSObject()
-        auditData.put("code", code)
-        auditData.put("message", message)
-        auditData.put("level", level)
-        auditData.put("timestamp", System.currentTimeMillis())
-        auditData.put("native", true)
-        notifyListeners("napAuditEvent", auditData)
-    }
-    
-    private fun napError(call: PluginCall?, code: String, message: String) {
-        napLog(code, message, "ERROR")
-        val errorData = JSObject()
-        errorData.put("code", code)
-        errorData.put("message", message)
-        call?.reject(code, "[$code] $message", errorData)
-    }
-    
-    private fun canAccessBluetooth(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED
-        } else {
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        }
-    }
-    
-    private fun canAccessAdvertising(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED
-        } else {
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED
-        }
-    }
-
-    override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v5.0.0-ARCH loaded")
-        
-        val serviceIntent = Intent(context, BleService::class.java).apply {
-            action = BleService.ACTION_START
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent)
-        } else {
-            context.startService(serviceIntent)
-        }
-        context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
-        
-        val filter = IntentFilter().apply {
-            addAction("com.nexo.ble.SERVER_READY")
-            addAction("com.nexo.ble.DEVICE_CONNECTED")
-            addAction("com.nexo.ble.DEVICE_DISCONNECTED")
-            addAction("com.nexo.ble.SERVICES_READY")
-            addAction("com.nexo.ble.PAYLOAD_RECEIVED")
-            addAction("com.nexo.ble.NOTIFICATION_STATE")
-            addAction("com.nexo.ble.ADVERTISE_STARTED")
-            addAction("com.nexo.ble.ADVERTISE_FAILED")
-        }
-        ContextCompat.registerReceiver(context, serviceEventReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
-        
-        val btFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
-        context.registerReceiver(systemStateReceiver, btFilter)
-    }
-    
-    private val systemStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
-                val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
-                when (state) {
-                    BluetoothAdapter.STATE_OFF -> {
-                        cleanupAllConnections()
-                        serverReady = false
-                    }
-                    BluetoothAdapter.STATE_ON -> {
-                        napLog("BLE_BT_ON", "Bluetooth encendido, reiniciando server...")
-                        bleService?.cleanup()
-                        handler.postDelayed({
-                            val serviceIntent = Intent(context, BleService::class.java).apply {
-                                action = BleService.ACTION_START
-                            }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                context.startForegroundService(serviceIntent)
-                            } else {
-                                context.startService(serviceIntent)
-                            }
-                        }, 1000)
-                    }
-                }
-            }
-        }
-    }
-    
-    private fun cleanupAllConnections() {
-        connections.forEach { (id, conn) ->
-            conn.userDisconnected = true
-            conn.gatt?.let { gatt ->
-                try { gatt.disconnect() } catch (e: Exception) { }
-                try { gatt.close() } catch (e: Exception) { }
-            }
-            conn.gatt = null
-            conn.pendingChunks = null
-            conn.state = ConnectionState.IDLE
-        }
-        bleService?.cleanup()
-        stopScanInternal()
-    }
-
-    @PluginMethod
-    fun requestBLEPermissions(call: PluginCall) {
-        napLog("BLE_PERM_REQ", "Solicitud de permisos BLE iniciada")
-        
-        if (canAccessBluetooth()) {
-            napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos ya concedidos")
-            call.resolve(buildPermissionsResult().apply { put("alreadyGranted", true) })
-            return
-        }
-        
-        isRequestingPermissions = true
-        saveCall(call)
-        requestAllPermissions(call, "requestPermissionsCallback")
-    }
-    
-    @PermissionCallback
-    private fun requestPermissionsCallback(call: PluginCall) {
-        isRequestingPermissions = false
-        val result = buildPermissionsResult()
-        if (result.getBoolean("allGranted", false) == true) {
-            napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos concedidos")
-            call.resolve(result)
-        } else {
-            napError(call, "BLE_109", "Permisos incompletos")
-        }
-    }
-    
-    private fun checkPermissionDirectly(alias: String): Boolean {
-        val permission = when(alias) {
-            "bluetoothConnect" -> android.Manifest.permission.BLUETOOTH_CONNECT
-            "bluetoothScan" -> android.Manifest.permission.BLUETOOTH_SCAN
-            "bluetoothAdvertise" -> android.Manifest.permission.BLUETOOTH_ADVERTISE
-            "location" -> android.Manifest.permission.ACCESS_FINE_LOCATION
-            else -> return false
-        }
-        return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-    }
-    
-    private fun buildPermissionsResult(): JSObject {
-        val result = JSObject()
-        val permissions = JSObject()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.put("bluetoothConnect", checkPermissionDirectly("bluetoothConnect"))
-            permissions.put("bluetoothScan", checkPermissionDirectly("bluetoothScan"))
-            permissions.put("bluetoothAdvertise", checkPermissionDirectly("bluetoothAdvertise"))
-        } else {
-            permissions.put("location", checkPermissionDirectly("location"))
-        }
-        result.put("permissions", permissions)
-        result.put("allGranted", canAccessBluetooth())
-        result.put("androidVersion", Build.VERSION.SDK_INT)
-        return result
-    }
-
-    @PluginMethod
-    fun initializeBLE(call: PluginCall) {
-        if (!canAccessBluetooth()) {
-            pendingCalls["init"] = call
-            requestPermissionForAlias("bluetoothConnect", call, "initPermissionCallback")
-            return
-        }
-        performInitialization(call)
-    }
-    
-    @PermissionCallback
-    private fun initPermissionCallback(call: PluginCall) {
-        if (canAccessBluetooth()) performInitialization(call)
-        else napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Permisos requeridos no concedidos")
-    }
-    
-    private fun performInitialization(call: PluginCall) {
-        val adapter = getBluetoothAdapter()
-        if (adapter == null) {
-            pendingCalls.remove("init")
-            napError(call, NAP_BLE_ERR_INIT_FAILED, "No se pudo obtener BluetoothAdapter")
-            return
-        }
-        if (!adapter.isEnabled) {
-            pendingCalls["init"] = call
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            startActivityForResult(call, enableBtIntent, "enableBluetoothResult")
-            return
-        }
-        
-        if (!serviceBound || bleService == null) {
-            val serviceIntent = Intent(context, BleService::class.java).apply {
-                action = BleService.ACTION_START
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
-            context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
-        }
-        
-        userId = call.getString("userId") ?: ""
-        userName = call.getString("userName") ?: "NEXO User"
-        
-        call.resolve(JSObject().apply {
-            put("initialized", true)
-            put("userId", userId)
-            put("userName", userName)
-            put("serverReady", serverReady)
-        })
-        napLog(NAP_BLE_READY, "Inicialización completada (serverReady=$serverReady)")
-        pendingCalls.remove("init")
-    }
-    
-    @ActivityCallback
-    private fun enableBluetoothResult(call: PluginCall, result: ActivityResult) {
-        if (result.resultCode == Activity.RESULT_OK) {
-            performInitialization(call)
-        } else {
-            pendingCalls.remove("init")
-            napError(call, NAP_BLE_ERR_DISABLED, "Usuario rechazó activar Bluetooth")
-        }
-    }
-
-    @PluginMethod
-    fun startScan(call: PluginCall) {
-        if (!canAccessBluetooth()) {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Sin permisos")
-            return
-        }
-        if (isScanning) {
-            call.resolve(JSObject().apply { put("started", true) })
-            return
-        }
-        try {
-            val adapter = getBluetoothAdapter()
-            val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE_UUID)).build()
-            val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
-            scanCallback = object : ScanCallback() {
-                override fun onScanResult(callbackType: Int, result: ScanResult?) {
-                    result?.device?.let { device ->
-                        try {
-                            val displayName = device.name ?: result.scanRecord?.deviceName ?: "NEXO Device"
-                            notifyListeners("onDeviceFound", JSObject().apply {
-                                put("deviceId", device.address)
-                                put("name", displayName)
-                                put("rssi", result.rssi)
-                            })
-                        } catch (e: SecurityException) { }
-                    }
-                }
-                override fun onScanFailed(errorCode: Int) {
-                    napLog(NAP_BLE_ERR_SCAN_FAILED, "Scan failed: $errorCode", "ERROR")
-                }
-            }
-            adapter?.bluetoothLeScanner?.startScan(listOf(filter), settings, scanCallback!!)
-            isScanning = true
-            call.resolve(JSObject().apply { put("started", true) })
-        } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_SCAN_FAILED, "Error: ${e.message}")
-        }
-    }
-    
-    @PluginMethod
-    fun stopScan(call: PluginCall) {
-        stopScanInternal()
-        call.resolve()
-    }
-    
-    private fun stopScanInternal() {
-        if (!isScanning) return
-        try {
-            scanCallback?.let { getBluetoothAdapter()?.bluetoothLeScanner?.stopScan(it) }
-            isScanning = false
-            scanCallback = null
-        } catch (e: SecurityException) { }
-    }
-
-    @PluginMethod
-    fun startAdvertise(call: PluginCall) {
-        if (!canAccessBluetooth() || !canAccessAdvertising()) {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Sin permisos")
-            return
-        }
-        if (!serverReady) {
-            napError(call, NAP_BLE_ERR_INIT_FAILED, "GATT Server no listo. Espera onServerReady o reinicia BLE.")
-            return
-        }
-        if (advertisingActive) {
-            call.resolve(JSObject().apply { put("started", true); put("alreadyActive", true) })
-            return
-        }
-        try {
-            val success = bleService?.startAdvertising() ?: false
-            if (success) {
-                call.resolve(JSObject().apply { put("started", true); put("pendingConfirmation", true) })
-            } else {
-                napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, "BleService no pudo iniciar advertising")
-            }
-        } catch (e: Exception) {
-            napError(call, NAP_BLE_ERR_ADVERTISE_FAILED, "Error: ${e.message}")
-        }
-    }
-    
-    @PluginMethod
-    fun stopAdvertise(call: PluginCall) {
-        bleService?.stopAdvertising()
-        advertisingActive = false
-        call.resolve()
-    }
-
-    @PluginMethod
-    fun connectToDevice(call: PluginCall) {
-        val deviceId = call.getString("deviceId")
-        if (deviceId == null) {
-            call.reject(ERR_INVALID_PARAMS, "deviceId requerido")
-            return
-        }
-        if (!canAccessBluetooth()) {
-            napError(call, NAP_BLE_ERR_PERMISSION_DENIED, "Sin permisos")
-            return
-        }
-        val adapter = getBluetoothAdapter()
-        if (adapter?.address == deviceId) {
-            napError(call, ERR_INVALID_PARAMS, "No puedes conectarte a ti mismo")
-            return
-        }
-        
-        val existing = connections[deviceId]
-        if (existing != null && existing.state == ConnectionState.CONNECTING) {
-            call.reject(ERR_NOT_CONNECTED, "Conexión en progreso")
-            return
-        }
-        if (existing != null && existing.state == ConnectionState.READY) {
-            call.resolve(JSObject().apply {
-                put("connected", true)
-                put("deviceId", deviceId)
-                put("servicesReady", true)
-                put("alreadyConnected", true)
-            })
-            return
-        }
-        
-        existing?.gatt?.let { oldGatt ->
-            if (existing.state == ConnectionState.IDLE || existing.state == ConnectionState.FAILED) {
-                try { oldGatt.close() } catch (e: Exception) { }
-                existing.gatt = null
-            }
-        }
-        
-        val device = adapter?.getRemoteDevice(deviceId)
-        if (device == null) {
-            call.reject(ERR_DEVICE_NOT_FOUND, "Dispositivo no encontrado")
-            return
-        }
-        
-        pendingCalls["connect_$deviceId"] = call
-        enqueueOperation(deviceId) {
-            synchronized(deviceId.intern()) {
-                executeConnectInternal(device, deviceId)
-            }
-        }
-    }
-    
-    private fun executeConnectInternal(device: BluetoothDevice, deviceId: String) {
-        val conn = connections.getOrPut(deviceId) { BLEConnection(deviceId) }
-        
-        val now = System.currentTimeMillis()
-        if (now - conn.lastAttemptTime < RATE_LIMIT_MS && conn.retryCount > 0) {
-            val wait = RATE_LIMIT_MS - (now - conn.lastAttemptTime)
-            handler.postDelayed({ 
-                synchronized(deviceId.intern()) {
-                    executeConnectInternal(device, deviceId) 
-                }
-            }, wait)
-            return
-        }
-        
-        conn.state = ConnectionState.CONNECTING
-        conn.lastAttemptTime = now
-        conn.userDisconnected = false
-        conn.negotiatedMtu = 20
-        
-        conn.gatt?.let { oldGatt ->
-            try { oldGatt.disconnect() } catch (e: Exception) { }
-            try { oldGatt.close() } catch (e: Exception) { }
-            conn.gatt = null
-        }
-        
-        napLog("BLE_CONN_REQ", "Conectar a: $deviceId (attempt=${conn.retryCount})")
-        
-        val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            device.connectGatt(context, false, unifiedGattCallback, BluetoothDevice.TRANSPORT_LE)
-        } else {
-            device.connectGatt(context, false, unifiedGattCallback)
-        }
-        
-        if (gatt == null) {
-            handleConnectionFailure(deviceId, "connectGatt retornó null")
-            return
-        }
-        
-        conn.gatt = gatt
-        
-        handler.postDelayed({
-            if (connections[deviceId]?.state == ConnectionState.CONNECTING) {
-                handleConnectionFailure(deviceId, "Timeout esperando conexión")
-            }
-        }, CONNECT_TIMEOUT_MS)
-    }
-
-    @PluginMethod
-    fun disconnectDevice(call: PluginCall) {
-        val deviceId = call.getString("deviceId")
-        if (deviceId == null) {
-            call.reject(ERR_INVALID_PARAMS, "deviceId requerido")
-            return
-        }
-        
-        synchronized(deviceId.intern()) {
-            val conn = connections[deviceId]
-            if (conn != null) {
-                conn.userDisconnected = true
-                conn.state = ConnectionState.DISCONNECTING
-                conn.pendingChunks = null
-                conn.gatt?.let { gatt ->
-                    try { gatt.disconnect() } catch (e: Exception) { }
-                }
-                handler.postDelayed({
-                    val currentConn = connections[deviceId]
-                    if (currentConn != null && currentConn.state == ConnectionState.DISCONNECTING) {
-                        napLog("BLE_FORCE_CLOSE", "Forzando close() tras timeout disconnect para $deviceId")
-                        currentConn.gatt?.let { gatt ->
-                            try { gatt.close() } catch (e: Exception) { }
-                        }
-                        currentConn.gatt = null
-                        currentConn.state = ConnectionState.IDLE
-                    }
-                }, DISCONNECT_FORCE_CLOSE_MS)
-            }
-        }
-        call.resolve()
-    }
-
-    @PluginMethod
-    fun sendMessage(call: PluginCall) {
-        val deviceId = call.getString("deviceId")
-        val message = call.getString("message")
-        val data = call.getString("data")
-        if (deviceId == null || (message == null && data == null)) {
-            call.reject(ERR_INVALID_PARAMS, "deviceId y message/data requeridos")
-            return
-        }
-        
-        val messageId = UUID.randomUUID().toString()
-        val payload = try {
-            val json = org.json.JSONObject()
-            json.put("messageId", messageId)
-            json.put("timestamp", System.currentTimeMillis())
-            json.put("senderId", userId)
-            json.put("senderName", userName)
-            json.put("content", message ?: "")
-            if (data != null) json.put("data", data)
-            json.put("type", "chat")
-            json.toString().toByteArray(Charsets.UTF_8)
-        } catch (e: Exception) {
-            (message ?: data ?: "").toByteArray(Charsets.UTF_8)
-        }
-        
-        val conn = connections[deviceId]
-        val maxPayload = (conn?.negotiatedMtu ?: 20)
-        
-        if (payload.size > maxPayload * 10) {
-            call.reject(ERR_MESSAGE_TOO_LARGE, "Mensaje demasiado grande (${payload.size} > ${maxPayload * 10})")
-            return
-        }
-        
-        if (conn != null && conn.state == ConnectionState.READY && conn.gatt != null) {
-            synchronized(deviceId.intern()) {
-                performWrite(call, conn.gatt!!, deviceId, payload, messageId)
-            }
-            return
-        }
-        
-        val serverSuccess = bleService?.notifyClient(deviceId, payload) ?: false
-        if (serverSuccess) {
-            call.resolve(JSObject().apply {
-                put("sent", true)
-                put("via", "server_notification")
-                put("messageId", messageId)
-            })
-            return
-        }
-        
-        val queueConn = connections.getOrPut(deviceId) { BLEConnection(deviceId) }
-        queueConn.pendingWriteCall = call
-        queueConn.pendingWritePayload = payload
-        queueConn.pendingWriteMessageId = messageId
-        
-        val adapter = getBluetoothAdapter()
-        val device = adapter?.getRemoteDevice(deviceId)
-        if (device != null) {
-            enqueueOperation(deviceId) {
-                synchronized(deviceId.intern()) {
-                    executeConnectInternal(device, deviceId)
-                }
-            }
-        } else {
-            call.reject(ERR_DEVICE_NOT_FOUND, "Dispositivo no encontrado")
-        }
-    }
-    
-    private fun performWrite(call: PluginCall, gatt: BluetoothGatt, deviceId: String, payload: ByteArray, messageId: String) {
-        val conn = connections[deviceId] ?: return
-        if (conn.state != ConnectionState.READY) {
-            call.reject(ERR_NOT_CONNECTED, "No está listo")
-            return
-        }
-        try {
-            val service = gatt.getService(SERVICE_UUID)
-            val char = service?.getCharacteristic(CHAR_PAYLOAD)
-            if (char == null) {
-                call.reject(ERR_NOT_CONNECTED, "Característica no disponible")
-                return
-            }
-            
-            conn.pendingWriteCall = call
-            conn.pendingWriteMessageId = messageId
-            
-            val maxPayload = conn.negotiatedMtu.coerceAtLeast(20)
-            
-            if (payload.size <= maxPayload) {
-                conn.totalChunks = 1
-                conn.currentChunkIndex = 0
-                conn.pendingChunks = null
-                
-                handler.postDelayed({
-                    if (conn.pendingWriteCall === call) {
-                        conn.pendingWriteCall = null
-                        call.reject(ERR_NOT_CONNECTED, "Timeout escritura")
-                    }
-                }, WRITE_TIMEOUT_MS)
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.writeCharacteristic(char, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                } else {
-                    @Suppress("DEPRECATION")
-                    char.value = payload
-                    @Suppress("DEPRECATION")
-                    gatt.writeCharacteristic(char)
-                }
-            } else {
-                val chunker = MessageChunker()
-                val chunks = chunker.createChunks(payload, maxPayload)
-                conn.totalChunks = chunks.size
-                conn.currentChunkIndex = 0
-                conn.pendingChunks = LinkedList(chunks)
-                
-                handler.postDelayed({
-                    if (conn.pendingWriteCall === call) {
-                        conn.pendingWriteCall = null
-                        conn.pendingChunks = null
-                        call.reject(ERR_NOT_CONNECTED, "Timeout escritura chunkada")
-                    }
-                }, WRITE_TIMEOUT_MS * chunks.size)
-                
-                val firstChunk = conn.pendingChunks!!.pollFirst()
-                if (firstChunk != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        gatt.writeCharacteristic(char, firstChunk, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        char.value = firstChunk
-                        @Suppress("DEPRECATION")
-                        gatt.writeCharacteristic(char)
-                    }
-                }
-            }
-        } catch (e: SecurityException) {
-            conn.pendingWriteCall = null
-            conn.pendingChunks = null
-            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "SecurityException enviando")
-        }
-    }
-
-    @PluginMethod
-    fun getConnectedDevices(call: PluginCall) {
-        val devices = JSArray()
-        connections.forEach { (id, conn) ->
-            if (conn.state == ConnectionState.READY) {
-                val obj = JSObject()
-                obj.put("deviceId", id)
-                obj.put("direction", "outgoing")
-                obj.put("servicesReady", true)
-                obj.put("mtu", conn.negotiatedMtu)
-                obj.put("role", conn.role)
-                devices.put(obj)
-            }
-        }
-        bleService?.getServerConnections()?.forEach { (id, device) ->
-            try {
-                val obj = JSObject()
-                obj.put("deviceId", id)
-                obj.put("name", "NEXO Peer")
-                obj.put("direction", "incoming")
-                obj.put("role", "server")
-                devices.put(obj)
-            } catch (e: SecurityException) { }
-        }
-        call.resolve(JSObject().apply { put("devices", devices) })
-    }
-    
-    @PluginMethod
-    fun getLocalDeviceInfo(call: PluginCall) {
-        try {
-            val adapter = getBluetoothAdapter()
-            call.resolve(JSObject().apply {
-                put("deviceName", adapter?.name ?: "Unknown")
-                put("deviceAddress", adapter?.address ?: "Unknown")
-                put("userId", userId)
-                put("userName", userName)
-            })
-        } catch (e: SecurityException) {
-            napError(call, NAP_BLE_ERR_SECURITY_EXCEPTION, "Error obteniendo info")
-        }
-    }
-    
-    @PluginMethod
-    fun isBluetoothEnabled(call: PluginCall) {
-        val adapter = getBluetoothAdapter()
-        val isEnabled = adapter?.state == BluetoothAdapter.STATE_ON
-        call.resolve(JSObject().apply {
-            put("enabled", isEnabled)
-            put("stateName", if (isEnabled) "ON" else "OFF")
-            put("canScan", isEnabled && canAccessBluetooth())
-            put("canAdvertise", isEnabled && canAccessAdvertising())
-            put("serverReady", serverReady)
-        })
-    }
-    
-    @PluginMethod
-    fun startAdvertising(call: PluginCall) { startAdvertise(call) }
-    @PluginMethod
-    fun stopAdvertising(call: PluginCall) { stopAdvertise(call) }
-    @PluginMethod
-    fun isAdvertising(call: PluginCall) {
-        call.resolve(JSObject().apply { put("isAdvertising", advertisingActive || (bleService?.isAdvertisingActive() ?: false)) })
-    }
-
-    override fun handleOnDestroy() {
-        try {
-            context.unregisterReceiver(serviceEventReceiver)
-        } catch (e: Exception) { }
-        try {
-            context.unregisterReceiver(systemStateReceiver)
-        } catch (e: Exception) { }
-        if (serviceBound) {
-            context.unbindService(serviceConnection)
-            serviceBound = false
-        }
-        cleanupAllConnections()
-        super.handleOnDestroy()
-    }
+export function initBLEInterface(bleMesh) {
+  const instance = new BLEInterface(bleMesh).init();
+  window.bleInterface = instance;
+  return instance;
 }
+
+const BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v1';
+
+function _getBLEContacts() {
+  try {
+    const raw = localStorage.getItem(BLE_CONTACTS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) { return []; }
+}
+
+function _addBLEContact(device) {
+  const contacts = _getBLEContacts();
+  const id = device.id || device.address;
+  if (!id || contacts.some(c => (c.id || c.address) === id)) return false;
+  contacts.push({ id, address: device.address || device.id, name: device.name || 'NEXO Device', rssi: device.rssi || null, addedAt: Date.now() });
+  localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
+  return true;
+}
+
+function _removeBLEContact(deviceId) {
+  const contacts = _getBLEContacts().filter(c => (c.id || c.address) !== deviceId);
+  localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
+}
+
+function _isBLEContact(deviceId) {
+  return _getBLEContacts().some(c => (c.id || c.address) === deviceId);
+}
+
+function _getContactName(deviceId) {
+  const c = _getBLEContacts().find(c => (c.id || c.address) === deviceId);
+  return c?.name || null;
+}
+
+const BLE_STATES = {
+  DISCONNECTED: 'disconnected',
+  CONNECTING: 'connecting',
+  DISCOVERING_SERVICES: 'discovering_services',
+  NOTIFICATIONS_READY: 'notifications_ready',
+  READY_TO_CHAT: 'ready_to_chat',
+  ERROR: 'error',
+  RECONNECTING: 'reconnecting'
+};
+
+export class BLEInterface {
+  constructor(bleMesh) {
+    this.bleMesh = bleMesh;
+    this.isScanning = false;
+    this.foundDevices = new Map();
+    this.connectedDevices = new Map();
+    this.isVisible = false;
+    this.elements = {};
+    this.newDevicesCount = 0;
+    this._renderedDeviceIds = new Set();
+    this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
+    this.isDummyMode = !bleMesh && !this.nativePlugin;
+    this.meshType = this._detectMeshType();
+    this.isAdvertising = false;
+    this.canAdvertise = false;
+    this.localDeviceName = 'NEXO Device';
+    this.localDeviceAddress = null;
+    this._activeChatDeviceId = null;
+    this._deviceStates = new Map();
+    this._receivedMessageIds = new Set();
+    this._maxMessageIds = 1000;
+    this._pendingMessageQueue = new Map();
+    this._reconnectTimers = new Map();
+    // v3.1.0 FIX: Tracking de server ready
+    this._serverReady = false;
+  }
+
+  _detectMeshType() {
+    if (!this.bleMesh) return 'none';
+    if (typeof this.bleMesh.getState === 'function') return 'nordic';
+    if (typeof this.bleMesh.getStatus === 'function') return 'hybrid';
+    return 'unknown';
+  }
+
+  init() {
+    this.createDOM();
+    this.injectStyles();
+    this.setupEventListeners();
+    if (!this.nativePlugin) {
+      this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
+      if (this.nativePlugin) this.isDummyMode = !this.bleMesh && !this.nativePlugin;
+    }
+    if (this.isDummyMode) {
+      this.updateStatus('OFFLINE (Dummy)');
+    } else {
+      this.updateStatus();
+      this._loadConnectedDevices();
+      this._initVisibility();
+      this._setupNativeScanListeners();
+      this._setupNativeConnectionListeners();
+      this._setupNativePayloadListener();
+      this._setupNativeStateListeners();
+      this._setupNativePeerInfoListener();
+      // v3.1.0 FIX: Escuchar server ready
+      this._setupNativeServerReadyListener();
+      this._loadLocalDeviceInfo();
+    }
+    return this;
+  }
+
+  async _loadLocalDeviceInfo() {
+    if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) return;
+    try {
+      const info = await this.nativePlugin.getLocalDeviceInfo();
+      this.localDeviceName = info.deviceName || 'NEXO Device';
+      this.localDeviceAddress = (info.deviceAddress || '').toString().toLowerCase().trim();
+    } catch (e) {}
+  }
+
+  _setupNativeScanListeners() {
+    if (!this.nativePlugin) return;
+    if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
+    if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
+    this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', (data) => {
+      this.onDeviceFound({ id: data.deviceId, address: data.deviceId, name: data.name || 'NEXO Device', rssi: data.rssi });
+    });
+    this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', (data) => {
+      this.isScanning = false;
+      this.onScanStateChanged(false);
+      this.showToast('❌ Error al escanear', 'error');
+    });
+  }
+
+  _setupNativePeerInfoListener() {
+    if (!this.nativePlugin) return;
+    if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove();
+    this._nativePeerInfoListener = this.nativePlugin.addListener('onPeerInfoReceived', (data) => {
+      const deviceId = data.deviceId;
+      const device = this.connectedDevices.get(deviceId);
+      if (device) {
+        device.name = data.name || device.name || 'NEXO Peer';
+        this.connectedDevices.set(deviceId, device);
+        this.renderConnectedList();
+        if (this._activeChatDeviceId === deviceId) {
+          const nameInput = document.getElementById('chat-contact-name');
+          if (nameInput) nameInput.value = device.name;
+        }
+      }
+    });
+  }
+
+  _setupNativeConnectionListeners() {
+    if (!this.nativePlugin) return;
+    if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
+    if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
+    
+    this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', (data) => {
+      const deviceId = data.deviceId;
+      const attempt = data.attempt || 0;
+      this._cancelReconnect(deviceId);
+      const contactName = _getContactName(deviceId);
+      const displayName = data.name || contactName || 'NEXO Peer';
+      
+      if (data.direction === 'incoming') {
+        this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected' });
+        this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'incoming', servicesReady: true });
+        this.showToast(`✅ Peer conectado: ${this._formatId(deviceId)}`, 'success');
+      } else {
+        this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', attempt, role: 'client' });
+        this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'outgoing', servicesReady: false });
+      }
+      this.onDeviceConnected({ id: deviceId, address: deviceId, name: displayName, direction: data.direction || 'unknown', servicesReady: data.servicesReady === true, attempt });
+    });
+    
+    this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', (data) => {
+      const deviceId = data.deviceId;
+      this._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
+      this.connectedDevices.delete(deviceId);
+      this.onDeviceDisconnected({ id: deviceId, address: deviceId });
+      if (this._activeChatDeviceId === deviceId) {
+        this.showToast('⚠️ Conexión BLE perdida. Reconectando...', 'warning');
+        this._startReconnect(deviceId);
+      }
+    });
+  }
+
+  _startReconnect(deviceId) {
+    this._cancelReconnect(deviceId);
+    this._setDeviceState(deviceId, BLE_STATES.RECONNECTING, { message: 'Reconectando...' });
+    const attemptReconnect = async () => {
+      if (this._activeChatDeviceId !== deviceId) return;
+      try {
+        console.log('[BLEInterface] Force reconnect a', deviceId, '...');
+        await this.nativePlugin.forceReconnect({ deviceId });
+      } catch (e) {
+        console.warn('[BLEInterface] Force reconnect falló:', e.message);
+        const timer = setTimeout(attemptReconnect, 3000);
+        this._reconnectTimers.set(deviceId, timer);
+      }
+    };
+    attemptReconnect();
+  }
+
+  _cancelReconnect(deviceId) {
+    const timer = this._reconnectTimers.get(deviceId);
+    if (timer) {
+      clearTimeout(timer);
+      this._reconnectTimers.delete(deviceId);
+    }
+  }
+
+  _setupNativeStateListeners() {
+    if (!this.nativePlugin) return;
+    this._nativeServicesReadyListener = this.nativePlugin.addListener('onServicesReady', (data) => {
+      this._setDeviceState(data.deviceId, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
+      const device = this.connectedDevices.get(data.deviceId);
+      if (device) { device.servicesReady = true; this.connectedDevices.set(data.deviceId, device); }
+    });
+    this._nativeNotificationsListener = this.nativePlugin.addListener('onNotificationsEnabled', (data) => {
+      this._setDeviceState(data.deviceId, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, direction: this._getDeviceState(data.deviceId).direction || 'unknown' });
+      this._processPendingMessages(data.deviceId);
+    });
+    this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', (data) => {
+      if (data.recoverable !== false && data.attempt < (data.maxAttempts || 3)) {
+        this._setDeviceState(data.deviceId, BLE_STATES.CONNECTING, { attempt: data.attempt, message: `Reintentando...` });
+      } else {
+        this._setDeviceState(data.deviceId, BLE_STATES.ERROR, { lastError: data.reason });
+        this.showToast(`❌ Conexión fallida: ${data.reason}`, 'error');
+      }
+    });
+    this._nativeStackBrokenListener = this.nativePlugin.addListener('onBluetoothStackBroken', (data) => {
+      this.showToast('⚠️ Bluetooth necesita reiniciarse', 'warning', 8000);
+    });
+  }
+
+  // v3.1.0 FIX: Escuchar cuando el GATT server nativo está listo
+  _setupNativeServerReadyListener() {
+    if (!this.nativePlugin) return;
+    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', (data) => {
+      this._serverReady = data.ready === true;
+      console.log('[BLEInterface] Server ready:', this._serverReady);
+    });
+  }
+
+  _setDeviceState(deviceId, state, meta = {}) {
+    this._deviceStates.set(deviceId, { state, ...meta, timestamp: Date.now() });
+    this.renderConnectedList();
+  }
+
+  _getDeviceState(deviceId) {
+    return this._deviceStates.get(deviceId) || { state: BLE_STATES.DISCONNECTED };
+  }
+
+  _setupNativePayloadListener() {
+    if (!this.nativePlugin) return;
+    if (this._nativePayloadListener) this._nativePayloadListener.remove();
+    this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', (data) => {
+      const deviceId = data.deviceId;
+      let messageId = null;
+      let senderName = data.senderName || null;
+      let content = data.content || data.data || '';
+      try {
+        const json = JSON.parse(data.data || '{}');
+        if (json.messageId) messageId = json.messageId;
+        if (json.senderName && !senderName) senderName = json.senderName;
+        if (json.content) content = json.content;
+      } catch (e) {}
+      if (!senderName) senderName = _getContactName(deviceId) || 'NEXO Peer';
+      if (messageId && this._receivedMessageIds.has(messageId)) return;
+      if (messageId) {
+        this._receivedMessageIds.add(messageId);
+        if (this._receivedMessageIds.size > this._maxMessageIds) {
+          const first = this._receivedMessageIds.values().next().value;
+          this._receivedMessageIds.delete(first);
+        }
+      }
+      window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
+        detail: { deviceId, content, senderName, messageId, source: data.source || 'unknown', timestamp: data.timestamp || Date.now() }
+      }));
+      if (this._activeChatDeviceId !== deviceId) {
+        this.showToast('📨 Mensaje de ' + senderName, 'info');
+        this.newDevicesCount++;
+        this.updateBadge();
+      }
+    });
+  }
+
+  async _processPendingMessages(deviceId) {
+    const queue = this._pendingMessageQueue.get(deviceId);
+    if (!queue || queue.length === 0) return;
+    this._pendingMessageQueue.delete(deviceId);
+    for (const item of queue) {
+      try { await this._sendMessageNative(deviceId, item.content); item.resolve(); }
+      catch (e) { item.reject(e); }
+    }
+  }
+
+  async _sendMessageNative(deviceId, content) {
+    if (!this.nativePlugin) throw new Error('Plugin no disponible');
+    await this.nativePlugin.sendMessage({ deviceId, message: content });
+  }
+
+  async _initVisibility() {
+    if (this.isDummyMode) return;
+    try {
+      const btState = await this.nativePlugin.isBluetoothEnabled();
+      this.canAdvertise = btState.canAdvertise || false;
+      this._serverReady = btState.serverReady || false;
+      const adState = await this.nativePlugin.isAdvertising();
+      this.isAdvertising = adState.isAdvertising === true;
+      this.updateVisibilityButton();
+      this._setupNativeAdvertisingListeners();
+    } catch (err) {
+      console.error('[BLEInterface] Error consultando estado:', err);
+    }
+  }
+  
+  _setupNativeAdvertisingListeners() {
+    if (!this.nativePlugin) return;
+    if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
+    if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
+    this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', () => {
+      this.isAdvertising = true;
+      this.updateVisibilityButton();
+      this.showToast('👁️‍🗨️ Visibilidad activada', 'success');
+    });
+    this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', () => {
+      this.isAdvertising = false;
+      this.updateVisibilityButton();
+      this.showToast('❌ Error al activar visibilidad', 'error');
+    });
+  }
+
+  updateVisibilityButton() {
+    const btn = this.elements.visibilityBtn;
+    if (!btn) return;
+    const icon = btn.querySelector('.btn-icon');
+    const text = btn.querySelector('span:last-child');
+    if (!this.canAdvertise) {
+      btn.className = 'ble-btn-visibility btn-visibility-warning';
+      if (icon) icon.textContent = '⚠️';
+      if (text) text.textContent = 'Visibilidad desactivada';
+    } else if (!this.isAdvertising) {
+      btn.className = 'ble-btn-visibility btn-visibility-off';
+      if (icon) icon.textContent = '👁️';
+      if (text) text.textContent = 'Visibilidad';
+    } else {
+      btn.className = 'ble-btn-visibility btn-visibility-on';
+      if (icon) icon.textContent = '👁️‍🗨️';
+      if (text) text.textContent = 'Visible';
+    }
+  }
+
+  // ==========================================================
+  // FIX v3.1-ARCH: Gate de permisos + serverReady en toggleVisibility
+  // ==========================================================
+  async toggleVisibility() {
+    if (this.isDummyMode) return;
+
+    // GATE: Asegurar permisos antes de cualquier operación
+    const permsReady = await window.BLEPermissions.ensure();
+    if (!permsReady) {
+      this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
+      return;
+    }
+
+    // v3.1.0 FIX: Si el server no está listo, inicializar BLE primero
+    if (!this._serverReady) {
+      try {
+        this.showToast('⏳ Inicializando servidor BLE...', 'info');
+        await this.nativePlugin.initializeBLE({
+          userId: window.currentUser?.id || '',
+          userName: window.currentUser?.name || 'NEXO User'
+        });
+        // Esperar a que onServerReady dispare (max 5s)
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout server ready')), 5000);
+          const check = () => {
+            if (this._serverReady) { clearTimeout(timeout); resolve(); }
+            else setTimeout(check, 200);
+          };
+          check();
+        });
+      } catch (e) {
+        this.showToast('❌ No se pudo inicializar servidor BLE', 'error');
+        return;
+      }
+    }
+
+    // Actualizar canAdvertise después de permisos
+    try {
+      const btState = await this.nativePlugin.isBluetoothEnabled();
+      this.canAdvertise = btState.canAdvertise || false;
+    } catch (e) {}
+
+    if (!this.canAdvertise) {
+      this.showToast('⚠️ Sin permiso de advertising', 'warning');
+      return;
+    }
+
+    try {
+      if (this.isAdvertising) {
+        await this.nativePlugin.stopAdvertising();
+        this.isAdvertising = false;
+      } else {
+        await this.nativePlugin.startAdvertising();
+      }
+      this.updateVisibilityButton();
+    } catch (err) {
+      this.showToast('❌ Error: ' + err.message, 'error');
+    }
+  }
+
+  createDOM() {
+    const tab = document.createElement('div');
+    tab.id = 'ble-tab';
+    tab.innerHTML = `<div class="ble-tab-icon">🔷</div><div class="ble-tab-label">BLE</div><div class="ble-tab-badge" id="ble-tab-badge" style="display: none;">0</div>`;
+    document.body.appendChild(tab);
+    this.elements.tab = tab;
+
+    const panel = document.createElement('div');
+    panel.id = 'ble-panel';
+    panel.innerHTML = `
+      <div class="ble-header"><h3>🔷 BLE Mesh</h3><button id="ble-close">✕</button></div>
+      <div class="ble-tabs">
+        <button class="ble-tab-btn active" data-tab="discovery">Descubrir</button>
+        <button class="ble-tab-btn" data-tab="added">Agregados</button>
+        <button class="ble-tab-btn" data-tab="connected">Conectados</button>
+      </div>
+      <div class="ble-main-controls">
+        <button id="ble-visibility-btn" class="ble-btn-visibility btn-visibility-off" ${this.isDummyMode ? 'disabled' : ''}>
+          <span class="btn-icon">🚫</span><span>Visibilidad desactivada</span>
+        </button>
+        <button id="ble-scan-btn" class="ble-btn-discover" ${this.isDummyMode ? 'disabled' : ''}>
+          <span class="btn-icon">🔍</span><span id="text-discover">Descubrir</span>
+        </button>
+      </div>
+      <div class="ble-secondary-controls">
+        <span id="ble-status" class="ble-status-offline">OFFLINE</span>
+      </div>
+      <div id="tab-discovery" class="ble-tab-content active">
+        <div class="ble-list" id="ble-devices-list"><p class="ble-empty">Presiona buscar para encontrar dispositivos</p></div>
+      </div>
+      <div id="tab-added" class="ble-tab-content">
+        <div class="ble-list" id="ble-added-list"><p class="ble-empty">No hay contactos agregados</p></div>
+      </div>
+      <div id="tab-connected" class="ble-tab-content">
+        <div class="ble-list" id="ble-connected-list"><p class="ble-empty">No hay dispositivos conectados</p></div>
+      </div>
+    `;
+    document.body.appendChild(panel);
+    this.elements.panel = panel;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'ble-overlay';
+    document.body.appendChild(overlay);
+    this.elements.overlay = overlay;
+
+    this.elements.visibilityBtn = document.getElementById('ble-visibility-btn');
+    this.elements.scanBtn = document.getElementById('ble-scan-btn');
+    this.elements.closeBtn = document.getElementById('ble-close');
+    this.elements.devicesList = document.getElementById('ble-devices-list');
+    this.elements.addedList = document.getElementById('ble-added-list');
+    this.elements.connectedList = document.getElementById('ble-connected-list');
+    this.elements.status = document.getElementById('ble-status');
+    this.elements.badge = document.getElementById('ble-tab-badge');
+  }
+
+  injectStyles() {
+    if (document.getElementById('ble-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'ble-styles';
+    style.textContent = `
+      #ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #00d4ff, #0099cc); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; }
+      .ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; }
+      @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+      #ble-panel { position: fixed; top: 0; left: 0; width: 85vw; max-width: 400px; height: 100vh; background: rgba(10,10,15,0.98); transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; padding: 20px; overflow-y: auto; }
+      #ble-panel.active { transform: translateX(0); }
+      #ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); }
+      #ble-overlay.active { display: block; }
+      .ble-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+      .ble-tabs { display: flex; gap: 8px; margin-bottom: 15px; }
+      .ble-tab-btn { flex: 1; padding: 10px 4px; background: #222; border: 1px solid #333; border-radius: 6px; color: #888; cursor: pointer; font-size: 11px; }
+      .ble-tab-btn.active { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; font-weight: bold; border-color: #00d4ff; }
+      .ble-tab-content { display: none; }
+      .ble-tab-content.active { display: block; }
+      .ble-main-controls { display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 10px; }
+      .ble-secondary-controls { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+      .ble-btn-visibility { flex: 1; max-width: 140px; height: 48px; border-radius: 12px; border: none; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.3s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ble-btn-visibility.btn-visibility-warning { background: #4A3A00 !important; color: #FFCC00 !important; border: 1px solid #FFCC00 !important; }
+      .ble-btn-visibility.btn-visibility-off { background: #3A3A3A; color: #888888; }
+      .ble-btn-visibility.btn-visibility-on { background: #00D9FF; color: #000000; box-shadow: 0 0 12px rgba(0, 217, 255, 0.4); }
+      .ble-btn-discover { flex: 1.2; height: 56px; border-radius: 14px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3); transition: all 0.3s ease; }
+      .ble-btn-discover.scanning { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; animation: pulse-red 1.5s infinite; }
+      @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); } 50% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); } }
+      #ble-status { font-size: 12px; padding: 4px 8px; border-radius: 4px; }
+      .ble-status-offline { background: #333; color: #888; }
+      .ble-status-online { background: #00d4ff; color: #000; }
+      .ble-status-scanning { background: #ffaa00; color: #000; animation: blink 1s infinite; }
+      @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.7; } }
+      .ble-list { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 300px); overflow-y: auto; }
+      .ble-empty { text-align: center; color: #666; padding: 20px; font-style: italic; }
+      .ble-device-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+      .ble-device-item:hover { background: rgba(0,212,255,0.1); border-color: #00d4ff; }
+      .ble-device-item.new { border-left: 3px solid #00d4ff; animation: slideIn 0.3s ease; }
+      @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+      .ble-device-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+      .ble-device-name { font-weight: bold; color: #fff; }
+      .ble-device-id { font-size: 11px; color: #888; }
+      .ble-device-rssi { font-size: 12px; color: #00d4ff; }
+      .ble-device-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+      .ble-btn-add { padding: 8px 16px; background: #00ff88; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
+      .ble-btn-write { padding: 8px 16px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
+      .ble-btn-write:disabled { background: #555; color: #aaa; cursor: not-allowed; }
+      .ble-btn-disconnect { padding: 6px 12px; background: #ff4444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+      .ble-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: #fff; font-weight: bold; z-index: 2147483646; animation: fadeInUp 0.3s ease; }
+      .ble-toast.success { background: #00d4ff; color: #000; }
+      .ble-toast.error { background: #ff4444; }
+      .ble-toast.warning { background: #ffaa00; color: #000; }
+      .ble-toast.info { background: #444; }
+      @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+      .ble-state-connecting { color: #ffaa00; font-size: 11px; }
+      .ble-state-ready { color: #00ff88; font-size: 11px; }
+      .ble-state-error { color: #ff4444; font-size: 11px; }
+      .ble-state-reconnecting { color: #ffaa00; font-size: 11px; animation: blink 1s infinite; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  setupEventListeners() {
+    this.elements.tab.addEventListener('click', () => this.togglePanel());
+    this.elements.closeBtn.addEventListener('click', () => this.togglePanel());
+    this.elements.overlay.addEventListener('click', () => this.togglePanel());
+    this.elements.visibilityBtn.addEventListener('click', () => this.toggleVisibility());
+    this.elements.scanBtn.addEventListener('click', () => this.toggleScan());
+    document.querySelectorAll('.ble-tab-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
+    });
+  }
+
+  togglePanel() {
+    this.elements.panel.classList.toggle('active');
+    this.elements.overlay.classList.toggle('active');
+    if (this.elements.panel.classList.contains('active')) {
+      this.newDevicesCount = 0;
+      this.updateBadge();
+      this._loadConnectedDevices();
+      this.renderAddedList();
+    }
+  }
+
+  switchTab(tabName) {
+    document.querySelectorAll('.ble-tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.ble-tab-content').forEach(content => content.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+    if (tabName === 'added') this.renderAddedList();
+  }
+
+  // ==========================================================
+  // FIX v3.1-ARCH: Gate de permisos en toggleScan
+  // ==========================================================
+  async toggleScan() {
+    if (this.isDummyMode) return;
+
+    // GATE: Asegurar permisos antes de cualquier operación
+    const permsReady = await window.BLEPermissions.ensure();
+    if (!permsReady) {
+      this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
+      return;
+    }
+
+    try {
+      if (this.isScanning) {
+        if (this.nativePlugin) await this.nativePlugin.stopScan();
+        this.isScanning = false;
+        this.onScanStateChanged(false);
+      } else {
+        this.foundDevices.clear();
+        this._renderedDeviceIds.clear();
+        this.renderDevicesList();
+        if (this.nativePlugin) await this.nativePlugin.startScan();
+        this.isScanning = true;
+        this.onScanStateChanged(true);
+      }
+    } catch (err) {
+      this.isScanning = false;
+      this.onScanStateChanged(false);
+    }
+  }
+
+  onScanStateChanged(isScanning) {
+    this.isScanning = isScanning;
+    const btn = this.elements.scanBtn;
+    const text = document.getElementById('text-discover');
+    if (isScanning) {
+      btn.classList.add('scanning');
+      if (text) text.textContent = 'Detener';
+      this.elements.status.textContent = 'ESCANEANDO...';
+      this.elements.status.className = 'ble-status-scanning';
+      this.showToast('🔍 Buscando dispositivos...', 'info');
+    } else {
+      btn.classList.remove('scanning');
+      if (text) text.textContent = 'Descubrir';
+      this.updateStatus();
+    }
+  }
+
+  onDeviceFound(device) {
+    let id = (device.id || device.address || '').toString().toLowerCase().trim();
+    if (!id || id === 'null' || id === 'undefined') return;
+    if (this.localDeviceAddress && id === this.localDeviceAddress) return;
+    if (this.foundDevices.has(id)) {
+      const existing = this.foundDevices.get(id);
+      existing.rssi = device.rssi;
+      existing.name = device.name || existing.name;
+      existing.lastSeen = Date.now();
+      this.foundDevices.set(id, existing);
+      this.renderDevicesList();
+      return;
+    }
+    device.lastSeen = Date.now();
+    this.foundDevices.set(id, device);
+    this.newDevicesCount++;
+    this.updateBadge();
+    this.renderDevicesList();
+  }
+
+  onDeviceConnected(device) {
+    this.connectedDevices.set(device.id || device.address, device);
+    this.renderConnectedList();
+    this.showToast('✅ Conectado: ' + (device.name || 'Dispositivo'), 'success');
+  }
+
+  onDeviceDisconnected(device) {
+    this.connectedDevices.delete(device.id || device.address);
+    this.renderConnectedList();
+    this.showToast('❌ Desconectado', 'info');
+  }
+
+  async _loadConnectedDevices() {
+    if (this.isDummyMode) return;
+    try {
+      let devices = [];
+      if (this.nativePlugin && this.nativePlugin.getConnectedDevices) {
+        const result = await this.nativePlugin.getConnectedDevices();
+        devices = result.devices || [];
+      }
+      this.connectedDevices.clear();
+      devices.forEach(d => this.connectedDevices.set(d.id || d.address || d.deviceId, d));
+      this.renderConnectedList();
+    } catch (err) {}
+  }
+
+  async addContact(deviceId) {
+    const device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
+    if (!device) { this.showToast('❌ Dispositivo no encontrado', 'error'); return; }
+    if (_addBLEContact(device)) {
+      this.showToast('✅ Agregado a contactos', 'success');
+      this.renderDevicesList();
+    } else {
+      this.showToast('⚠️ Ya está en contactos', 'warning');
+    }
+  }
+
+  async removeContact(deviceId) {
+    _removeBLEContact(deviceId);
+    this.showToast('❌ Eliminado', 'info');
+    this.renderAddedList();
+    this.renderDevicesList();
+  }
+
+  // ==========================================================
+  // FIX v3.1-ARCH: Gate de permisos + no double-connect + panel close
+  // ==========================================================
+  async openChat(deviceId) {
+    let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
+    const contact = _getBLEContacts().find(c => (c.id || c.address) === deviceId);
+    if (!device && contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
+    if (!device) { this.showToast('❌ Contacto no disponible', 'error'); return; }
+    
+    this._activeChatDeviceId = deviceId;
+    const displayName = contact?.name || device.name || 'NEXO Peer';
+    const state = this._getDeviceState(deviceId);
+    const isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
+    const isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
+    
+    // v3.1.0 FIX: Si ya está conectando/descubriendo, no iniciar otra conexión
+    if (!isFullyReady && isConnecting && this.nativePlugin) {
+      this.showToast('⏳ Conexión en progreso, esperando canal...', 'info');
+      try {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout')), 15000);
+          const checkReady = () => {
+            const s = this._getDeviceState(deviceId);
+            if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
+              clearTimeout(timeout);
+              resolve();
+            } else {
+              setTimeout(checkReady, 300);
+            }
+          };
+          checkReady();
+        });
+      } catch (e) {
+        this.showToast('⚠️ Canal aún no listo. Intente enviar en unos segundos.', 'warning');
+      }
+    }
+    
+    // GATE: Asegurar permisos antes de conectar
+    if (!isFullyReady && !isConnecting && this.nativePlugin) {
+      const permsReady = await window.BLEPermissions.ensure();
+      if (!permsReady) {
+        this.showToast('⚠️ Permisos BLE requeridos para conectar', 'warning', 5000);
+        return;
+      }
+
+      try {
+        console.log('[BLEInterface] Conectando a', deviceId, '...');
+        const connResult = await this.nativePlugin.connectToDevice({ deviceId });
+        console.log('[BLEInterface] connectToDevice result:', connResult);
+        if (connResult && connResult.connected && !connResult.alreadyConnected) {
+          this.showToast('🔗 Conectando canal BLE...', 'info');
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Timeout')), 15000);
+            const checkReady = () => {
+              const s = this._getDeviceState(deviceId);
+              if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
+                clearTimeout(timeout);
+                resolve();
+              } else {
+                setTimeout(checkReady, 300);
+              }
+            };
+            checkReady();
+          });
+        }
+      } catch (e) {
+        console.warn('[BLEInterface] Conexión/timeout:', e.message);
+        this.showToast('⚠️ Canal aún no listo. Intente enviar en unos segundos.', 'warning');
+      }
+    }
+    
+    const appContainer = document.getElementById('app');
+    if (appContainer) appContainer.classList.remove('hidden');
+    const nameInput = document.getElementById('chat-contact-name');
+    const subtitle = document.getElementById('chat-contact-subtitle');
+    if (nameInput) nameInput.value = displayName;
+    if (subtitle) subtitle.textContent = 'BLUETOOTH';
+    
+    window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
+      detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
+    }));
+    
+    // v3.1.0 FIX: Cerrar panel explícitamente (no toggle)
+    this.elements.panel.classList.remove('active');
+    this.elements.overlay.classList.remove('active');
+  }
+
+  renderDevicesList() {
+    const list = this.elements.devicesList;
+    if (this.foundDevices.size === 0) {
+      list.innerHTML = '<p class="ble-empty">Presiona buscar para encontrar dispositivos cercanos</p>';
+      return;
+    }
+    list.innerHTML = '';
+    this.foundDevices.forEach((device, id) => {
+      const isAdded = _isBLEContact(id);
+      const isNew = !this._renderedDeviceIds.has(id);
+      if (isNew) this._renderedDeviceIds.add(id);
+      const item = document.createElement('div');
+      item.className = 'ble-device-item' + (isNew ? ' new' : '');
+      const actionHtml = isAdded
+        ? `<button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>`
+        : `<button class="ble-btn-add" onclick="bleInterface.addContact('${id}')">+ Agregar</button>`;
+      item.innerHTML = `
+        <div class="ble-device-info">
+          <span class="ble-device-name">${device.name || 'NEXO Device'}</span>
+          <span class="ble-device-id">${this._formatId(id)}</span>
+          <span class="ble-device-rssi">📶 ${device.rssi || '?'} dBm</span>
+        </div>
+        <div class="ble-device-actions">${actionHtml}</div>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  renderAddedList() {
+    const list = this.elements.addedList;
+    const contacts = _getBLEContacts();
+    if (contacts.length === 0) {
+      list.innerHTML = '<p class="ble-empty">No hay contactos agregados</p>';
+      return;
+    }
+    list.innerHTML = '';
+    contacts.forEach((contact) => {
+      const id = contact.id || contact.address;
+      const item = document.createElement('div');
+      item.className = 'ble-device-item';
+      item.innerHTML = `
+        <div class="ble-device-info">
+          <span class="ble-device-name">${contact.name || 'NEXO Device'}</span>
+          <span class="ble-device-id">${this._formatId(id)}</span>
+        </div>
+        <div class="ble-device-actions">
+          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>
+          <button class="ble-btn-disconnect" onclick="bleInterface.removeContact('${id}')">Eliminar</button>
+        </div>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  renderConnectedList() {
+    const list = this.elements.connectedList;
+    if (this.connectedDevices.size === 0) {
+      list.innerHTML = '<p class="ble-empty">No hay dispositivos conectados</p>';
+      return;
+    }
+    list.innerHTML = '';
+    this.connectedDevices.forEach((device, id) => {
+      const state = this._getDeviceState(id);
+      const stateLabel = this._renderStateLabel(state);
+      const isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
+      const item = document.createElement('div');
+      item.className = 'ble-device-item';
+      item.innerHTML = `
+        <div class="ble-device-info">
+          <span class="ble-device-name">${device.name || 'NEXO Peer'}</span>
+          <span class="ble-device-id">${this._formatId(id)}</span>
+          <span class="ble-device-rssi" style="color: #00ff00;">● ${device.direction || 'Conectado'} ${stateLabel}</span>
+        </div>
+        <div class="ble-device-actions">
+          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')" ${!isReady ? 'disabled title="Esperando canal..."' : ''}>✉️ Escribir</button>
+          <button class="ble-btn-disconnect" onclick="bleInterface.disconnect('${id}')">Desconectar</button>
+        </div>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  _renderStateLabel(state) {
+    if (!state || !state.state) return '';
+    switch (state.state) {
+      case BLE_STATES.CONNECTING: return `<span class="ble-state-connecting">⏳ ${state.message || 'Conectando...'}</span>`;
+      case BLE_STATES.DISCOVERING_SERVICES: return `<span class="ble-state-connecting">🔍 Descubriendo...</span>`;
+      case BLE_STATES.NOTIFICATIONS_READY: return `<span class="ble-state-ready">✅ Canal listo</span>`;
+      case BLE_STATES.READY_TO_CHAT: return `<span class="ble-state-ready">✅ Listo</span>`;
+      case BLE_STATES.ERROR: return `<span class="ble-state-error">❌ ${state.lastError || 'Error'}</span>`;
+      case BLE_STATES.RECONNECTING: return `<span class="ble-state-reconnecting">🔄 ${state.message || 'Reconectando...'}</span>`;
+      default: return '';
+    }
+  }
+
+  async connect(deviceId) {
+    if (this.isDummyMode) return;
+    try {
+      if (this.nativePlugin) await this.nativePlugin.connectToDevice({ deviceId });
+    } catch (err) { this.showToast('Error al conectar', 'error'); }
+  }
+
+  async disconnect(deviceId) {
+    if (this.isDummyMode) return;
+    try {
+      this._cancelReconnect(deviceId);
+      if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId });
+      if (this._activeChatDeviceId === deviceId) this._activeChatDeviceId = null;
+    } catch (err) {}
+  }
+
+  updateBadge() {
+    const badge = this.elements.badge;
+    if (this.newDevicesCount > 0) {
+      badge.textContent = this.newDevicesCount;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  async updateStatus(customStatus) {
+    if (customStatus) {
+      this.elements.status.textContent = customStatus;
+      this.elements.status.className = 'ble-status-offline';
+      return;
+    }
+    if (this.isDummyMode) return;
+    try {
+      let state = 'UNKNOWN';
+      if (this.nativePlugin && this.nativePlugin.isBluetoothEnabled) {
+        const btState = await this.nativePlugin.isBluetoothEnabled();
+        state = btState.enabled ? 'poweredOn' : 'poweredOff';
+        this._serverReady = btState.serverReady || false;
+      }
+      this.elements.status.textContent = state.toUpperCase();
+      this.elements.status.className = state === 'poweredOn' ? 'ble-status-online' : 'ble-status-offline';
+    } catch (err) {
+      this.elements.status.textContent = 'ERROR';
+    }
+  }
+
+  showToast(message, type = 'info', duration = 3000) {
+    const existing = document.querySelector('.ble-toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = `ble-toast ${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
+
+  _formatId(id) {
+    if (!id) return '??';
+    return id.substring(0, 8) + '...' + id.substring(id.length - 4);
+  }
+
+  destroy() {
+    const styles = document.getElementById('ble-styles');
+    if (styles) styles.remove();
+    this._reconnectTimers.forEach((timer) => clearTimeout(timer));
+    this._reconnectTimers.clear();
+    if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
+    if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
+    if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
+    if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
+    if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
+    if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
+    if (this._nativePayloadListener) this._nativePayloadListener.remove();
+    if (this._nativeServicesReadyListener) this._nativeServicesReadyListener.remove();
+    if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
+    if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
+    if (this._nativeStackBrokenListener) this._nativeStackBrokenListener.remove();
+    if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove();
+    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    if (this.isScanning) this.toggleScan();
+  }
+}
+
+window.bleInterface = null;
