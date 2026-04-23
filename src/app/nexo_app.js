@@ -1,7 +1,9 @@
 /**
- * NEXO App v3.5.2-P2P-STABLE
- * FIX: _sendViaBLE con retry persistente y sin fallo inmediato
- * FIX: MSG_FAIL solo después de agotar todos los reintentos
+ * NEXO App v4.0.0-ARCH
+ * Coordinado con NexoBlePlugin.kt v4.0.0-ARCH
+ * - Nativo maneja retry, cola de mensajes, y máquina de estados
+ * - JS solo orquesta UI y escucha eventos
+ * - Eliminado retry manual BLE (el nativo lo maneja)
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -76,7 +78,7 @@ export class NexoApp {
     this._nativeNotificationsListener = null;
     this._processedMessageIds = new Set();
     this._maxProcessedIds = 500;
-    DEBUG.log('🚀 [NEXO] v3.5.2-P2P-STABLE iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v4.0.0-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -95,7 +97,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v3.5.2-P2P-STABLE Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v4.0.0-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -241,57 +243,19 @@ export class NexoApp {
   }
   _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 
-  // v3.5.2: _sendViaBLE con retry persistente (hasta 5 intentos con backoff)
-  async _sendViaBLE(deviceId, content, attempt = 0) {
+  // v4.0.0-ARCH: El nativo maneja retry y cola. Solo llamamos una vez.
+  async _sendViaBLE(deviceId, content) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin no disponible');
     
-    const MAX_BLE_RETRIES = 5;
-    const BACKOFF_MS = [300, 600, 1000, 2000, 3000];
-    
-    DEBUG.log(`[BLE_SEND] Intento ${attempt + 1}/${MAX_BLE_RETRIES} a ${deviceId.substr(0,8)}`, 'info', 'BLE_PREPARE');
+    DEBUG.log(`[BLE_SEND] Enviando a ${deviceId.substr(0,8)}...`, 'info', 'BLE_PREPARE');
     
     try {
-      // Verificar conexión existente
-      const connectedResult = await plugin.getConnectedDevices();
-      const alreadyConnected = connectedResult?.devices?.some(d => d.deviceId === deviceId);
-      
-      if (!alreadyConnected) {
-        DEBUG.log(`[BLE_SEND] No conectado. Abriendo GATT client...`, 'info', 'BLE_OPEN');
-        const connResult = await plugin.connectToDevice({ deviceId });
-        DEBUG.log(`[BLE_SEND] connectToDevice: ${JSON.stringify(connResult)}`, 'info', 'BLE_CONN_RESULT');
-        
-        if (connResult && connResult.connected && !connResult.alreadyConnected) {
-          // Esperar servicios listos
-          await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('Timeout servicios')), 10000);
-            const check = () => {
-              if (connResult.servicesReady || connResult.alreadyConnected) {
-                clearTimeout(timeout);
-                resolve();
-              } else {
-                setTimeout(check, 200);
-              }
-            };
-            check();
-          });
-        }
-        await new Promise(r => setTimeout(r, 300));
-      }
-      
+      // v4.0.0: El nativo encola automáticamente si no está conectado
       await plugin.sendMessage({ deviceId, message: content });
       DEBUG.success(`📨 Enviado vía BLE a ${deviceId.substr(0,8)}`, 'MSG_BLE');
-      
     } catch (e) {
-      DEBUG.log(`[BLE_SEND] Intento ${attempt + 1} falló: ${e.message}`, 'warn', 'BLE_SEND_FAIL');
-      
-      if (attempt < MAX_BLE_RETRIES - 1) {
-        const delay = BACKOFF_MS[attempt] || 1000;
-        DEBUG.log(`[BLE_SEND] Reintentando en ${delay}ms...`, 'info', 'BLE_RETRY');
-        await new Promise(r => setTimeout(r, delay));
-        return this._sendViaBLE(deviceId, content, attempt + 1);
-      }
-      
+      DEBUG.error('BLE_SEND_FAIL', `Envío falló: ${e.message}`);
       throw e;
     }
   }
@@ -315,7 +279,7 @@ export class NexoApp {
           this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct' }, 'self');
           return true;
         } catch (e) {
-          DEBUG.warn(`BLE falló después de reintentos: ${e.message}`, 'MSG_BLE_FAIL');
+          DEBUG.warn(`BLE falló: ${e.message}`, 'MSG_BLE_FAIL');
         }
       }
       
