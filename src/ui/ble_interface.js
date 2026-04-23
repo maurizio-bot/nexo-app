@@ -1,5 +1,6 @@
 /**
  * BLE Interface v3.0-ARCH
+ * Ubicación: src/ui/ble_interface.js
  * FIX: Gate de permisos en toggleVisibility(), toggleScan(), openChat()
  * Coordinado con ble_permissions.js v3.1-ARCH + NexoBlePlugin.kt v4.0.1-ARCH
  */
