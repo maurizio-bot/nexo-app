@@ -8,6 +8,98 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 
 const NexoBLE = registerPlugin('NexoBLE');
 
+/**
+ * NAP-BLE Permissions Manager v2.0-ARCH
+ * Ubicación: src/core/ble_permissions.js
+ * 
+ * Flujo:
+ * 1. checkBLEStatus() → solicita permisos nativos si faltan
+ * 2. isReady() → true si todos los permisos concedidos
+ * 3. ensure() → promesa que resuelve cuando los permisos están listos
+ */
+
+const BLEPermissions = {
+  state: {
+    granted: false,
+    checked: false,
+    checking: false,
+    permissions: {},
+    androidVersion: 0
+  },
+
+  /**
+   * Verifica y solicita permisos BLE nativos.
+   * Llama esto al inicio de la app, antes de cualquier operación BLE.
+   */
+  async checkBLEStatus() {
+    if (this.state.checking) {
+      // Esperar si ya hay un check en curso
+      while (this.state.checking) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+      return this.state.granted;
+    }
+
+    this.state.checking = true;
+    try {
+      const result = await NexoBLE.requestBLEPermissions();
+      
+      this.state.permissions = result.permissions || {};
+      this.state.androidVersion = result.androidVersion || 0;
+      this.state.granted = result.allGranted === true;
+      this.state.checked = true;
+
+      if (result.alreadyGranted) {
+        console.log('[BLE-PERM] Permisos ya concedidos previamente');
+      } else if (this.state.granted) {
+        console.log('[BLE-PERM] Permisos concedidos por el usuario');
+      } else {
+        console.warn('[BLE-PERM] Permisos DENEGADOS:', this.state.permissions);
+      }
+
+      return this.state.granted;
+    } catch (err) {
+      console.error('[BLE-PERM] Error solicitando permisos:', err);
+      this.state.granted = false;
+      this.state.checked = true;
+      return false;
+    } finally {
+      this.state.checking = false;
+    }
+  },
+
+  /**
+   * Verifica si los permisos están listos. Si no, los solicita.
+   */
+  async ensure() {
+    if (this.state.granted) return true;
+    if (!this.state.checked) return await this.checkBLEStatus();
+    return false;
+  },
+
+  /**
+   * Estado actual sin solicitar de nuevo.
+   */
+  isReady() {
+    return this.state.granted;
+  },
+
+  /**
+   * Estado detallado para debugging.
+   */
+  getStatus() {
+    return { ...this.state };
+  }
+};
+
+// Exportar para sistemas modulares o asignar global
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = BLEPermissions;
+} else {
+  window.BLEPermissions = BLEPermissions;
+}
+
+
 const NAP_CODES = {
   INIT: '[NAP-BLE-001]',
   PERM_REQUEST: '[NAP-BLE-002]',
