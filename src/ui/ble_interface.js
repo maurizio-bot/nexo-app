@@ -1,8 +1,8 @@
 /**
- * BLE Interface v3.0-ARCH
+ * BLE Interface v3.1-ARCH
  * Ubicación: src/ui/ble_interface.js
- * FIX: Gate de permisos en toggleVisibility(), toggleScan(), openChat()
- * Coordinado con ble_permissions.js v3.1-ARCH + NexoBlePlugin.kt v4.0.1-ARCH
+ * FIX: Panel close on openChat, serverReady tracking, no double-connect
+ * Coordinado con NexoBlePlugin.kt v4.1.0-ARCH + ble_permissions.js v3.1-ARCH
  */
 
 export function initBLEInterface(bleMesh) {
@@ -76,6 +76,8 @@ export class BLEInterface {
     this._maxMessageIds = 1000;
     this._pendingMessageQueue = new Map();
     this._reconnectTimers = new Map();
+    // v3.1.0 FIX: Tracking de server ready
+    this._serverReady = false;
   }
 
   _detectMeshType() {
@@ -104,6 +106,8 @@ export class BLEInterface {
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
       this._setupNativePeerInfoListener();
+      // v3.1.0 FIX: Escuchar server ready
+      this._setupNativeServerReadyListener();
       this._loadLocalDeviceInfo();
     }
     return this;
@@ -234,6 +238,16 @@ export class BLEInterface {
     });
   }
 
+  // v3.1.0 FIX: Escuchar cuando el GATT server nativo está listo
+  _setupNativeServerReadyListener() {
+    if (!this.nativePlugin) return;
+    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', (data) => {
+      this._serverReady = data.ready === true;
+      console.log('[BLEInterface] Server ready:', this._serverReady);
+    });
+  }
+
   _setDeviceState(deviceId, state, meta = {}) {
     this._deviceStates.set(deviceId, { state, ...meta, timestamp: Date.now() });
     this.renderConnectedList();
@@ -297,6 +311,7 @@ export class BLEInterface {
     try {
       const btState = await this.nativePlugin.isBluetoothEnabled();
       this.canAdvertise = btState.canAdvertise || false;
+      this._serverReady = btState.serverReady || false;
       const adState = await this.nativePlugin.isAdvertising();
       this.isAdvertising = adState.isAdvertising === true;
       this.updateVisibilityButton();
@@ -343,7 +358,7 @@ export class BLEInterface {
   }
 
   // ==========================================================
-  // FIX v3.0-ARCH: Gate de permisos en toggleVisibility
+  // FIX v3.1-ARCH: Gate de permisos + serverReady en toggleVisibility
   // ==========================================================
   async toggleVisibility() {
     if (this.isDummyMode) return;
@@ -353,6 +368,29 @@ export class BLEInterface {
     if (!permsReady) {
       this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
       return;
+    }
+
+    // v3.1.0 FIX: Si el server no está listo, inicializar BLE primero
+    if (!this._serverReady) {
+      try {
+        this.showToast('⏳ Inicializando servidor BLE...', 'info');
+        await this.nativePlugin.initializeBLE({
+          userId: window.currentUser?.id || '',
+          userName: window.currentUser?.name || 'NEXO User'
+        });
+        // Esperar a que onServerReady dispare (max 5s)
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout server ready')), 5000);
+          const check = () => {
+            if (this._serverReady) { clearTimeout(timeout); resolve(); }
+            else setTimeout(check, 200);
+          };
+          check();
+        });
+      } catch (e) {
+        this.showToast('❌ No se pudo inicializar servidor BLE', 'error');
+        return;
+      }
     }
 
     // Actualizar canAdvertise después de permisos
@@ -526,7 +564,7 @@ export class BLEInterface {
   }
 
   // ==========================================================
-  // FIX v3.0-ARCH: Gate de permisos en toggleScan
+  // FIX v3.1-ARCH: Gate de permisos en toggleScan
   // ==========================================================
   async toggleScan() {
     if (this.isDummyMode) return;
@@ -639,7 +677,7 @@ export class BLEInterface {
   }
 
   // ==========================================================
-  // FIX v3.0-ARCH: Gate de permisos en openChat
+  // FIX v3.1-ARCH: Gate de permisos + no double-connect + panel close
   // ==========================================================
   async openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
@@ -651,9 +689,32 @@ export class BLEInterface {
     const displayName = contact?.name || device.name || 'NEXO Peer';
     const state = this._getDeviceState(deviceId);
     const isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
+    const isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
+    
+    // v3.1.0 FIX: Si ya está conectando/descubriendo, no iniciar otra conexión
+    if (!isFullyReady && isConnecting && this.nativePlugin) {
+      this.showToast('⏳ Conexión en progreso, esperando canal...', 'info');
+      try {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout')), 15000);
+          const checkReady = () => {
+            const s = this._getDeviceState(deviceId);
+            if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
+              clearTimeout(timeout);
+              resolve();
+            } else {
+              setTimeout(checkReady, 300);
+            }
+          };
+          checkReady();
+        });
+      } catch (e) {
+        this.showToast('⚠️ Canal aún no listo. Intente enviar en unos segundos.', 'warning');
+      }
+    }
     
     // GATE: Asegurar permisos antes de conectar
-    if (!isFullyReady && this.nativePlugin) {
+    if (!isFullyReady && !isConnecting && this.nativePlugin) {
       const permsReady = await window.BLEPermissions.ensure();
       if (!permsReady) {
         this.showToast('⚠️ Permisos BLE requeridos para conectar', 'warning', 5000);
@@ -696,7 +757,10 @@ export class BLEInterface {
     window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
       detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
     }));
-    this.togglePanel();
+    
+    // v3.1.0 FIX: Cerrar panel explícitamente (no toggle)
+    this.elements.panel.classList.remove('active');
+    this.elements.overlay.classList.remove('active');
   }
 
   renderDevicesList() {
@@ -832,6 +896,7 @@ export class BLEInterface {
       if (this.nativePlugin && this.nativePlugin.isBluetoothEnabled) {
         const btState = await this.nativePlugin.isBluetoothEnabled();
         state = btState.enabled ? 'poweredOn' : 'poweredOff';
+        this._serverReady = btState.serverReady || false;
       }
       this.elements.status.textContent = state.toUpperCase();
       this.elements.status.className = state === 'poweredOn' ? 'ble-status-online' : 'ble-status-offline';
@@ -875,6 +940,7 @@ export class BLEInterface {
     if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
     if (this._nativeStackBrokenListener) this._nativeStackBrokenListener.remove();
     if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove();
+    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
     if (this.isScanning) this.toggleScan();
   }
 }
