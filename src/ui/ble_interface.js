@@ -1,7 +1,9 @@
 /**
- * BLE Interface v2.8.2-P2P-STABLE
- * FIX: Reconexión automática persistente. GATT client nunca se cierra solo.
- * FIX: Estado visual "Reconectando..." en lugar de limpiar chat inmediatamente.
+ * BLE Interface v2.9.0-P2P-ROBUST
+ * FIX v2.9.0: Maneja onPeerInfoReceived para nombre real del peer
+ * FIX v2.9.0: _startReconnect usa forceReconnect para limpiar GATT muerto
+ * FIX v2.9.0: openChat usa nombre de contacto o "NEXO Peer" en lugar de "Unknown"
+ * FIX v2.9.0: onDeviceConnected no muestra "Unknown"
  */
 
 export function initBLEInterface(bleMesh) {
@@ -102,6 +104,7 @@ export class BLEInterface {
       this._setupNativeConnectionListeners();
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
+      this._setupNativePeerInfoListener(); // FIX v2.9.0
       this._loadLocalDeviceInfo();
     }
     return this;
@@ -130,6 +133,26 @@ export class BLEInterface {
     });
   }
 
+  // FIX v2.9.0: Nuevo listener para recibir nombre real del peer
+  _setupNativePeerInfoListener() {
+    if (!this.nativePlugin) return;
+    if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove();
+    this._nativePeerInfoListener = this.nativePlugin.addListener('onPeerInfoReceived', (data) => {
+      const deviceId = data.deviceId;
+      const device = this.connectedDevices.get(deviceId);
+      if (device) {
+        device.name = data.name || device.name || 'NEXO Peer';
+        this.connectedDevices.set(deviceId, device);
+        this.renderConnectedList();
+        // Si es el chat activo, actualizar título
+        if (this._activeChatDeviceId === deviceId) {
+          const nameInput = document.getElementById('chat-contact-name');
+          if (nameInput) nameInput.value = device.name;
+        }
+      }
+    });
+  }
+
   _setupNativeConnectionListeners() {
     if (!this.nativePlugin) return;
     if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
@@ -139,18 +162,21 @@ export class BLEInterface {
       const deviceId = data.deviceId;
       const attempt = data.attempt || 0;
       
-      // Cancelar reconexión automática si estaba activa
       this._cancelReconnect(deviceId);
+      
+      // FIX v2.9.0: Usar nombre del contacto o "NEXO Peer", nunca "Unknown"
+      const contactName = _getContactName(deviceId);
+      const displayName = data.name || contactName || 'NEXO Peer';
       
       if (data.direction === 'incoming') {
         this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected' });
-        this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: data.name || 'NEXO Peer', direction: 'incoming', servicesReady: true });
+        this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'incoming', servicesReady: true });
         this.showToast(`✅ Peer conectado: ${this._formatId(deviceId)}`, 'success');
       } else {
         this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', attempt, role: 'client' });
-        this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: data.name || 'NEXO Peer', direction: 'outgoing', servicesReady: false });
+        this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'outgoing', servicesReady: false });
       }
-      this.onDeviceConnected({ id: deviceId, address: deviceId, name: data.name || 'Unknown', direction: data.direction || 'unknown', servicesReady: data.servicesReady === true, attempt });
+      this.onDeviceConnected({ id: deviceId, address: deviceId, name: displayName, direction: data.direction || 'unknown', servicesReady: data.servicesReady === true, attempt });
     });
     
     this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', (data) => {
@@ -159,7 +185,6 @@ export class BLEInterface {
       this.connectedDevices.delete(deviceId);
       this.onDeviceDisconnected({ id: deviceId, address: deviceId });
       
-      // v2.8.2: Si era el chat activo, iniciar reconexión automática en lugar de limpiar
       if (this._activeChatDeviceId === deviceId) {
         this.showToast('⚠️ Conexión BLE perdida. Reconectando...', 'warning');
         this._startReconnect(deviceId);
@@ -167,7 +192,7 @@ export class BLEInterface {
     });
   }
 
-  // v2.8.2: Reconexión automática
+  // FIX v2.9.0: Reconexión automática con forceReconnect para limpiar GATT muerto
   _startReconnect(deviceId) {
     this._cancelReconnect(deviceId);
     this._setDeviceState(deviceId, BLE_STATES.RECONNECTING, { message: 'Reconectando...' });
@@ -175,11 +200,10 @@ export class BLEInterface {
     const attemptReconnect = async () => {
       if (this._activeChatDeviceId !== deviceId) return;
       try {
-        console.log('[BLEInterface] Reconectando a', deviceId, '...');
-        await this.nativePlugin.connectToDevice({ deviceId });
+        console.log('[BLEInterface] Force reconnect a', deviceId, '...');
+        await this.nativePlugin.forceReconnect({ deviceId });
       } catch (e) {
-        console.warn('[BLEInterface] Reconexión falló:', e.message);
-        // Reintentar en 3 segundos
+        console.warn('[BLEInterface] Force reconnect falló:', e.message);
         const timer = setTimeout(attemptReconnect, 3000);
         this._reconnectTimers.set(deviceId, timer);
       }
@@ -243,7 +267,7 @@ export class BLEInterface {
         if (json.senderName && !senderName) senderName = json.senderName;
         if (json.content) content = json.content;
       } catch (e) {}
-      if (!senderName) senderName = _getContactName(deviceId) || 'NEXO Device';
+      if (!senderName) senderName = _getContactName(deviceId) || 'NEXO Peer';
       if (messageId && this._receivedMessageIds.has(messageId)) return;
       if (messageId) {
         this._receivedMessageIds.add(messageId);
@@ -595,16 +619,18 @@ export class BLEInterface {
     this.renderDevicesList();
   }
 
+  // FIX v2.9.0: openChat usa nombre de contacto o "NEXO Peer", nunca "Unknown"
   async openChat(deviceId) {
     let device = this.foundDevices.get(deviceId) || this.connectedDevices.get(deviceId);
-    if (!device) {
-      const contact = _getBLEContacts().find(c => (c.id || c.address) === deviceId);
-      if (contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
-    }
+    const contact = _getBLEContacts().find(c => (c.id || c.address) === deviceId);
+    if (!device && contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
     if (!device) { this.showToast('❌ Contacto no disponible', 'error'); return; }
     
     this._activeChatDeviceId = deviceId;
     console.log('[BLEInterface] Abriendo chat con:', device);
+    
+    // FIX v2.9.0: Usar nombre de contacto o "NEXO Peer", nunca "Unknown"
+    const displayName = contact?.name || device.name || 'NEXO Peer';
     
     const state = this._getDeviceState(deviceId);
     const isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
@@ -640,11 +666,11 @@ export class BLEInterface {
     if (appContainer) appContainer.classList.remove('hidden');
     const nameInput = document.getElementById('chat-contact-name');
     const subtitle = document.getElementById('chat-contact-subtitle');
-    if (nameInput) nameInput.value = device.name || 'NEXO Device';
+    if (nameInput) nameInput.value = displayName;
     if (subtitle) subtitle.textContent = 'BLUETOOTH';
     
     window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
-      detail: { contactId: device.id || device.address, name: device.name || 'NEXO Device', address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
+      detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
     }));
     this.togglePanel();
   }
@@ -718,7 +744,7 @@ export class BLEInterface {
       item.className = 'ble-device-item';
       item.innerHTML = `
         <div class="ble-device-info">
-          <span class="ble-device-name">${device.name || 'Desconocido'}</span>
+          <span class="ble-device-name">${device.name || 'NEXO Peer'}</span>
           <span class="ble-device-id">${this._formatId(id)}</span>
           <span class="ble-device-rssi" style="color: #00ff00;">● ${device.direction || 'Conectado'} ${stateLabel}</span>
         </div>
@@ -824,6 +850,7 @@ export class BLEInterface {
     if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
     if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
     if (this._nativeStackBrokenListener) this._nativeStackBrokenListener.remove();
+    if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove(); // FIX v2.9.0
     if (this.isScanning) this.toggleScan();
   }
 }
