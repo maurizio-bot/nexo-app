@@ -1,9 +1,8 @@
 /**
- * NEXO Setup Wizard v2.3.0-FINAL
- * FIX CRÍTICO: Overlay propio en document.body para NO destruir #app
- * + v2.3.0: Escucha onConnectionFailed (retry nativo), no muestra error inmediato
- * + v2.3.0: Escucha onBluetoothStackBroken para prompt de reinicio
- * + v2.3.0: Timeout extendido a 20s para permitir retries nativos
+ * NEXO Setup Wizard v3.0.0-ARCH
+ * Coordinado con NexoBlePlugin.kt v4.0.0-ARCH
+ * - Timeout extendido a 35s (nativo puede tardar hasta 16s en retry)
+ * - handleConnectionFailed ajustado para exponential backoff nativo
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -42,13 +41,13 @@ export class SetupWizard {
     this.renderChecking();
     this.setupGlobalListeners();
     
-    // v2.3.0: Timeout extendido a 20s para dar tiempo a retries nativos
+    // v3.0.0-ARCH: Timeout 35s (nativo puede tardar hasta 16s en retry + jitter)
     setTimeout(() => {
       if (this.currentStep === 'checking') {
         this.currentStep = 'error';
         this.renderError();
       }
-    }, 20000);
+    }, 35000);
     
     await this.performCheck();
   }
@@ -60,7 +59,6 @@ export class SetupWizard {
     if (window.Capacitor?.Plugins?.NexoBLE) {
       const plugin = window.Capacitor.Plugins.NexoBLE;
       plugin.addListener('onBluetoothStateChanged', this.handleBluetoothStateChange);
-      // v2.3.0: Escuchar eventos de conexión y stack
       plugin.addListener('onConnectionFailed', this.handleConnectionFailed);
       plugin.addListener('onBluetoothStackBroken', this.handleStackBroken);
     }
@@ -79,7 +77,7 @@ export class SetupWizard {
     }
   }
   
-  // v2.3.0: Manejar fallos de conexión con retry nativo
+  // v3.0.0-ARCH: Nativo usa exponential backoff (2s, 4s, 8s, 16s). No mostrar error prematuro.
   handleConnectionFailed(data) {
     console.log(NAP_WIZARD, 'Connection failed (nativo retry en progreso):', data);
     const attempt = data.attempt || 0;
@@ -87,21 +85,17 @@ export class SetupWizard {
     const isRecoverable = data.recoverable !== false;
     
     if (isRecoverable && attempt < maxAttempts) {
-      // No mostrar error, el nativo está reintentando
       this._connectionAttempt = attempt;
-      // Si estamos en pantalla de error, volver a checking
       if (this.currentStep === 'error' || this.currentStep === 'bluetooth') {
         this.renderChecking();
         this.currentStep = 'checking';
       }
     } else {
-      // Nativo se rindió, mostrar error real
       this.currentStep = 'error';
       this.renderError(`Conexión fallida: ${data.reason || 'Error desconocido'}`);
     }
   }
   
-  // v2.3.0: Android 14 stack bug detectado
   handleStackBroken(data) {
     if (this._stackBrokenShown) return;
     this._stackBrokenShown = true;
@@ -372,7 +366,6 @@ export class SetupWizard {
     document.getElementById('btn-retry').addEventListener('click', () => this.performCheck());
   }
 
-  // v2.3.0: renderError ahora acepta mensaje personalizado
   renderError(customMessage = null) {
     const msg = customMessage || 'Error de conexión. Verifica que el otro dispositivo esté visible.';
     this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">⚠️</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Error</h2><p style="color: #888; font-size: 14px; max-width: 320px; margin-bottom: 24px;">' + msg + '</p><button id="btn-retry" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;">🔄 Reintentar</button></div>';
@@ -382,7 +375,7 @@ export class SetupWizard {
   async handleOpenSettings() {
     this.isAwaitingSettingsReturn = true;
     await SetupManager.markAwaitingSettingsReturn();
-    await SetupManager.openSettings();
+    await SetupManager.openAppSettings();
     
     const btn = document.getElementById('btn-settings-manual');
     if (btn) {
