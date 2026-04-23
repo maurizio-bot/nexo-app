@@ -1,5 +1,6 @@
 /**
- * NEXO Setup Manager v2.1-HOTFIX
+ * NEXO Setup Manager v3.0.0-ARCH
+ * Coordinado con NexoBlePlugin.kt v4.0.0-ARCH
  * Funciona CON o SIN @capacitor/app instalado
  * Fallback: Usa visibilitychange + polling si no hay App plugin
  */
@@ -14,7 +15,6 @@ const STORAGE_KEYS = {
   AWAITING_SETTINGS_RETURN: 'nexo_awaiting_settings_return'
 };
 
-// Variable para cachear el App plugin si está disponible
 let AppPlugin = null;
 let isAppPluginLoaded = false;
 
@@ -30,9 +30,8 @@ export class SetupManager {
     }
 
     try {
-      console.log('[SetupManager] v2.1-HOTFIX - Verificando estado...');
+      console.log('[SetupManager] v3.0.0-ARCH - Verificando estado...');
       
-      // Cargar App plugin dinámicamente si existe
       if (!isAppPluginLoaded) {
         try {
           const appModule = await import('@capacitor/app');
@@ -106,26 +105,19 @@ export class SetupManager {
     }
   }
 
-  /**
-   * Configurar detección de retorno - usa App plugin si existe, o fallback visibilitychange
-   */
   static setupResumeDetection() {
-    // Limpiar listeners previos
     SetupManager.cleanup();
 
     if (AppPlugin) {
-      // Método robusto con App plugin
       SetupManager.resumeListener = AppPlugin.addListener('resume', async () => {
         console.log('[SetupManager] App resumida (App plugin)');
         await SetupManager.handleAppResume();
       });
       console.log('[SetupManager] Resume listener (App plugin) activado');
     } else {
-      // Fallback: visibilitychange API
       SetupManager.visibilityHandler = async () => {
         if (document.visibilityState === 'visible') {
           console.log('[SetupManager] App visible (visibilitychange fallback)');
-          // Pequeño delay para asegurar que la app está completamente activa
           setTimeout(() => SetupManager.handleAppResume(), 500);
         }
       };
@@ -133,11 +125,9 @@ export class SetupManager {
       console.log('[SetupManager] Visibility listener (fallback) activado');
     }
 
-    // Polling de seguridad: verificar cada 2 segundos si estamos awaiting
     SetupManager.checkInterval = setInterval(async () => {
       const wasAwaiting = localStorage.getItem(STORAGE_KEYS.AWAITING_SETTINGS_RETURN) === 'true';
       if (wasAwaiting && SetupManager.isAwaitingSettingsReturn) {
-        // Verificar si ya tenemos permisos (usuario pudo haberlos concedido sin salir de app)
         const status = await SetupManager.checkPermissionsRealtime();
         if (status.granted) {
           console.log('[SetupManager] Permisos detectados vía polling');
@@ -209,7 +199,7 @@ export class SetupManager {
       localStorage.setItem(STORAGE_KEYS.LAST_CHECK, Date.now().toString());
       localStorage.removeItem(STORAGE_KEYS.PERMISSION_DENIED_COUNT);
       localStorage.removeItem(STORAGE_KEYS.AWAITING_SETTINGS_RETURN);
-      SetupManager.cleanup(); // Limpiar listeners cuando termina
+      SetupManager.cleanup();
       console.log('[SetupManager] Setup completado');
       return true;
     } catch (e) {
@@ -244,13 +234,10 @@ export class SetupManager {
     try {
       await SetupManager.markAwaitingSettingsReturn();
       
-      // Intentar con App plugin primero, luego fallback
       if (AppPlugin) {
         await AppPlugin.openUrl({ url: 'app-settings:' });
       } else {
-        // Fallback: intentar abrir con window.location (puede no funcionar en Android WebView)
         window.location.href = 'app-settings:';
-        // O mostrar instrucciones
         setTimeout(() => {
           alert('Ve a Configuración > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
         }, 500);
