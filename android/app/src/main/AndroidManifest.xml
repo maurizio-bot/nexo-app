@@ -53,6 +53,13 @@
             </intent-filter>
         </activity>
 
+        <!-- SERVICIO BLE FOREGROUND (NAP-BLE v5.0.0-ARCH) -->
+        <service
+            android:name="com.nexo.ble.BleService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
         <!-- SERVICIO NORDIC MESH (Obligatorio para Android 14 foreground) -->
         <service
             android:name=".mesh.NordicMeshService"
