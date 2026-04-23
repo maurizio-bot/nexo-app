@@ -567,7 +567,7 @@ class NexoBlePlugin : Plugin() {
     private fun requestPermissionsCallback(call: PluginCall) {
         isRequestingPermissions = false
         val result = buildPermissionsResult()
-        if (result.getBoolean("allGranted", false)) {
+        if (result.getBoolean("allGranted", false) == true) {
             napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos concedidos")
             call.resolve(result)
         } else {
