@@ -29,9 +29,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 // ==========================================
-// NAP-BLE v4.0.0-ARCH
-// Arquitectura: Máquina de estados serializada
-// Un solo GATT por deviceId. Siempre.
+// NAP-BLE v4.0.1-ARCH
+// Fix: requestAllPermissions() para solicitar
+// SCAN + CONNECT + ADVERTISE en un solo diálogo
 // ==========================================
 
 @CapacitorPlugin(
@@ -502,7 +502,7 @@ class NexoBlePlugin : Plugin() {
     // J. LIFECYCLE
     // ============================================================
     override fun load() {
-        napLog("BLE_LOAD", "NAP-BLE v4.0.0-ARCH loaded")
+        napLog("BLE_LOAD", "NAP-BLE v4.0.1-ARCH loaded")
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
         context.registerReceiver(systemStateReceiver, filter)
     }
@@ -536,31 +536,21 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // K. PERMISOS
+    // K. PERMISOS — v4.0.1 FIX: requestAllPermissions()
     // ============================================================
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
         napLog("BLE_PERM_REQ", "Solicitud de permisos BLE iniciada")
-        isRequestingPermissions = true
         
-        val aliases = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!checkPermissionDirectly("bluetoothConnect")) aliases.add("bluetoothConnect")
-            if (!checkPermissionDirectly("bluetoothScan")) aliases.add("bluetoothScan")
-            if (!checkPermissionDirectly("bluetoothAdvertise")) aliases.add("bluetoothAdvertise")
-        } else {
-            if (!checkPermissionDirectly("location")) aliases.add("location")
-        }
-        
-        if (aliases.isEmpty()) {
+        if (canAccessBluetooth()) {
             napLog(NAP_BLE_PERMISSIONS_GRANTED, "Todos los permisos ya concedidos")
             call.resolve(buildPermissionsResult().apply { put("alreadyGranted", true) })
-            isRequestingPermissions = false
             return
         }
         
+        isRequestingPermissions = true
         saveCall(call)
-        requestPermissionForAlias(aliases[0], call, "requestPermissionsCallback")
+        requestAllPermissions(call, "requestPermissionsCallback")
     }
     
     @PermissionCallback
@@ -734,7 +724,7 @@ class NexoBlePlugin : Plugin() {
                         data.put("userId", userId)
                         data.put("userName", userName)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "4.0.0-ARCH")
+                        data.put("napVersion", "4.0.1-ARCH")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
