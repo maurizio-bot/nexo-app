@@ -35,12 +35,18 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-// Build #814 → v3.3.2-P2P-STABLE
-// FIX: CHAR_CONTROL ahora tiene PROPERTY_WRITE_NO_RESPONSE para keepalive funcional
-// FIX: Eliminado connectionCooldowns que bloqueaba reconexión rápida
-// FIX: GATT client NUNCA se cierra automáticamente (solo vía disconnectDevice)
-// FIX: Keepalive cada 2s con WRITE_TYPE_NO_RESPONSE válido
-// FIX: notifyClient con fallback a GATT client on-demand si notificación falla
+// Build #815 → v3.4.0-P2P-ROBUST
+// FIX v3.4.0: GATT se cierra INMEDIATAMENTE en desconexión (anti-133 loop)
+// FIX v3.4.0: isGattAlive() valida conexión real vía BluetoothManager
+// FIX v3.4.0: connectToDevice verifica GATT vivo antes de alreadyConnected
+// FIX v3.4.0: getConnectedDevices filtra solo GATTs vivos
+// FIX v3.4.0: sendMessage valida GATT vivo antes de escribir
+// FIX v3.4.0: notifyClient verifica suscripción CCCD antes de notificar
+// FIX v3.4.0: readPeerName() lee CHAR_ANNOUNCE para nombre real
+// FIX v3.4.0: safeCloseGatt delay reducido 3000ms→600ms (anti-bloqueo)
+// FIX v3.4.0: forceReconnect() limpia GATT muerto y reconecta limpio
+// FIX v3.4.0: userDisconnectedDevices evita auto-retry tras disconnect manual
+// FIX v3.4.0: onServicesDiscovered espera confirmación descriptor antes de ready
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -156,6 +162,12 @@ class NexoBlePlugin : Plugin() {
     private val pendingGattCloses = ConcurrentHashMap<String, BluetoothGatt>()
     private val pendingWrites = ConcurrentHashMap<String, MutableList<PendingWrite>>()
     private val keepaliveRunnables = ConcurrentHashMap<String, Runnable>()
+    
+    // FIX v3.4.0: Track dispositivos desconectados manualmente para evitar auto-retry
+    private val userDisconnectedDevices = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+    
+    // FIX v3.4.0: Track descriptor writes pendientes para esperar confirmación
+    private val pendingDescriptorWrites = ConcurrentHashMap<String, PluginCall>()
 
     data class PendingWrite(
         val call: PluginCall,
@@ -307,8 +319,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        remToast("INIT", "NAP-BLE v3.3.2-P2P-STABLE cargado")
-        napLog("BLE_LOAD", "NAP-BLE v3.3.2-P2P-STABLE loaded")
+        remToast("INIT", "NAP-BLE v3.4.0-P2P-ROBUST cargado")
+        napLog("BLE_LOAD", "NAP-BLE v3.4.0-P2P-ROBUST loaded")
         handler.postDelayed({
             if (canAccessBluetooth()) {
                 val adapter = getBluetoothAdapter()
@@ -551,6 +563,19 @@ class NexoBlePlugin : Plugin() {
         call.resolve(result)
     }
 
+    // FIX v3.4.0: Nuevo método para verificar si un GATT está realmente vivo
+    private fun isGattAlive(gatt: BluetoothGatt?): Boolean {
+        if (gatt == null) return false
+        return try {
+            val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val device = gatt.device
+            if (device == null) return false
+            val state = manager?.getConnectionState(device, BluetoothProfile.GATT)
+            state == BluetoothProfile.STATE_CONNECTED
+        } catch (e: Exception) { false }
+    }
+
+    // FIX v3.4.0: Reducido delay de 3000ms a 600ms para evitar bloquear reconexiones
     private fun safeCloseGatt(gatt: BluetoothGatt?, deviceId: String? = null) {
         gatt ?: return
         val id = deviceId ?: try { gatt.device?.address } catch (e: Exception) { null } ?: "unknown"
@@ -564,7 +589,7 @@ class NexoBlePlugin : Plugin() {
             if (pending != null) {
                 try { pending.close() } catch (e: Exception) { }
             }
-        }, 3000)
+        }, 600)
     }
     
     private fun completeGattClose(deviceId: String) {
@@ -596,6 +621,8 @@ class NexoBlePlugin : Plugin() {
         pendingWrites.clear()
         connectTimeoutRunnables.forEach { (_, r) -> handler.removeCallbacks(r) }
         connectTimeoutRunnables.clear()
+        userDisconnectedDevices.clear()
+        pendingDescriptorWrites.clear()
     }
 
     private fun stopScanInternal() {
@@ -716,7 +743,6 @@ class NexoBlePlugin : Plugin() {
             )
             payloadChar.addDescriptor(cccdDescriptor)
             
-            // v3.3.2: CHAR_CONTROL ahora tiene WRITE_NO_RESPONSE para keepalive funcional
             val controlChar = BluetoothGattCharacteristic(
                 CHAR_CONTROL,
                 BluetoothGattCharacteristic.PROPERTY_WRITE or 
@@ -736,7 +762,7 @@ class NexoBlePlugin : Plugin() {
             service.addCharacteristic(controlChar)
             gattServer = manager?.openGattServer(context, gattServerCallback)
             gattServer?.addService(service)
-            napLog(NAP_BLE_INIT_007, "GattServer configurado con WRITE_NO_RESPONSE en CONTROL")
+            napLog(NAP_BLE_INIT_007, "GattServer configurado")
         } catch (e: Exception) {
             napLog(NAP_BLE_ERR_INIT_FAILED, "Error setupGattServer: ${e.message}", "ERROR")
         }
@@ -747,10 +773,11 @@ class NexoBlePlugin : Plugin() {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     serverConnections[device.address] = device
+                    // FIX v3.4.0: No usar device.name (null en Android 14). Usar placeholder hasta que se lea CHAR_ANNOUNCE
                     napLog(NAP_BLE_CONNECTED, "[SERVER] Dispositivo conectado ENTRANTE: ${device.address}")
                     notifyListeners("onDeviceConnected", JSObject().apply {
                         put("deviceId", device.address)
-                        put("name", device.name ?: "Unknown")
+                        put("name", "NEXO Peer") // FIX v3.4.0: Placeholder, nombre real se lee vía CHAR_ANNOUNCE
                         put("direction", "incoming")
                     })
                 }
@@ -775,7 +802,7 @@ class NexoBlePlugin : Plugin() {
                         data.put("userId", userId)
                         data.put("userName", userName)
                         data.put("timestamp", System.currentTimeMillis())
-                        data.put("napVersion", "3.3.2-P2P-STABLE")
+                        data.put("napVersion", "3.4.0-P2P-ROBUST")
                         data.toString().toByteArray()
                     }
                     else -> byteArrayOf()
@@ -801,7 +828,7 @@ class NexoBlePlugin : Plugin() {
                         CHAR_PAYLOAD -> {
                             val payloadStr = String(data)
                             napLog(NAP_BLE_MESSAGE_RECEIVED, "[SERVER] Payload de ${device.address}: ${payloadStr.take(100)}")
-                            var senderName = device.name ?: "Unknown"
+                            var senderName = "NEXO Peer"
                             var messageContent = payloadStr
                             var messageId = ""
                             try {
@@ -994,9 +1021,10 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        // v3.3.2: Si ya hay GATT client activo, resolver inmediatamente
-        if (gattClients.containsKey(deviceId)) {
-            napLog("BLE_CONN_EXISTING", "[P2P] GATT client ya activo para $deviceId")
+        // FIX v3.4.0: Verificar que el GATT existente está VIVO, no solo en el mapa
+        val existingGatt = gattClients[deviceId]
+        if (existingGatt != null && isGattAlive(existingGatt)) {
+            napLog("BLE_CONN_EXISTING", "[P2P] GATT client vivo para $deviceId")
             call.resolve(JSObject().apply {
                 put("connected", true)
                 put("deviceId", deviceId)
@@ -1005,18 +1033,19 @@ class NexoBlePlugin : Plugin() {
             })
             return
         }
+        // FIX v3.4.0: Si existe pero está muerto, limpiarlo
+        if (existingGatt != null) {
+            napLog("BLE_CONN_DEAD", "[P2P] GATT muerto detectado, limpiando")
+            safeCloseGatt(existingGatt, deviceId)
+            gattClients.remove(deviceId)
+        }
+        
+        // FIX v3.4.0: Remover de userDisconnectedDevices para permitir reconexión
+        userDisconnectedDevices.remove(deviceId)
         
         napLog("BLE_CONN_REQ", "[P2P] Conectar a: $deviceId")
         
-        // v3.3.2: ELIMINADO connectionCooldowns - permite reconexión inmediata
-        
         stopScanInternal()
-        
-        val existingGatt = gattClients.remove(deviceId)
-        if (existingGatt != null) {
-            napLog("BLE_CONN_CLEAN", "[P2P] Cerrando GATT anterior")
-            safeCloseGatt(existingGatt, deviceId)
-        }
         
         if (pendingCalls.containsKey("connect_$deviceId")) {
             call.reject(ERR_NOT_CONNECTED, "Conexión en progreso")
@@ -1081,6 +1110,13 @@ class NexoBlePlugin : Plugin() {
             put("attempt", attempt)
             put("maxAttempts", MAX_RETRY_ATTEMPTS)
         })
+        
+        // FIX v3.4.0: No auto-retry si el usuario desconectó manualmente
+        if (userDisconnectedDevices.contains(deviceId)) {
+            pendingCalls.remove("connect_$deviceId")?.reject(ERR_NOT_CONNECTED, "Desconexión manual")
+            return
+        }
+        
         if (attempt < MAX_RETRY_ATTEMPTS) {
             val nextAttempt = attempt + 1
             retryAttempts[deviceId] = nextAttempt
@@ -1096,6 +1132,33 @@ class NexoBlePlugin : Plugin() {
         } else {
             pendingCalls.remove("connect_$deviceId")?.reject(ERR_NOT_CONNECTED, "Falló después de $MAX_RETRY_ATTEMPTS intentos")
         }
+    }
+
+    // FIX v3.4.0: Nuevo método para leer nombre del peer desde CHAR_ANNOUNCE
+    private fun readPeerName(gatt: BluetoothGatt, deviceId: String) {
+        try {
+            val service = gatt.getService(SERVICE_UUID)
+            val char = service?.getCharacteristic(CHAR_ANNOUNCE)
+            if (char != null) {
+                gatt.readCharacteristic(char)
+            }
+        } catch (e: Exception) { }
+    }
+
+    // FIX v3.4.0: Nuevo método para marcar cliente listo cuando todo está confirmado
+    private fun markClientReady(deviceId: String, gatt: BluetoothGatt) {
+        startKeepalive(deviceId, gatt)
+        processPendingWrites(deviceId)
+        pendingCalls.remove("connect_$deviceId")?.resolve(JSObject().apply {
+            put("connected", true)
+            put("deviceId", deviceId)
+            put("servicesReady", true)
+            put("role", "client")
+        })
+        notifyListeners("onServicesReady", JSObject().apply {
+            put("deviceId", deviceId)
+            put("ready", true)
+        })
     }
 
     private inner class ClientGattCallback(
@@ -1121,15 +1184,22 @@ class NexoBlePlugin : Plugin() {
                     }, SAMSUNG_DISCOVER_DELAY_MS)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    // v3.3.2: NO cerrar GATT automáticamente. Solo remover del mapa.
-                    // El GATT se cerrará explícitamente vía disconnectDevice()
+                    // FIX v3.4.0: Cerrar GATT INMEDIATAMENTE en desconexión. 
+                    // El GATT muerto en el mapa causa reconnect loop (Error 133).
+                    safeCloseGatt(gatt, deviceId)
                     gattClients.remove(deviceId)
+                    
                     notifyListeners("onDeviceDisconnected", JSObject().apply {
                         put("deviceId", deviceId)
                         put("gattStatus", status)
                     })
-                    if (status != BluetoothGatt.GATT_SUCCESS) {
-                        handleConnectFailure(deviceId, "Desconexión status=$status", attempt)
+                    
+                    // FIX v3.4.0: Solo retry si NO fue desconexión manual
+                    // y esperar 600ms antes de retry (anti-133)
+                    if (status != BluetoothGatt.GATT_SUCCESS && !userDisconnectedDevices.contains(deviceId)) {
+                        handler.postDelayed({
+                            handleConnectFailure(deviceId, "Desconexión status=$status", attempt)
+                        }, 600)
                     }
                 }
             }
@@ -1144,10 +1214,13 @@ class NexoBlePlugin : Plugin() {
                     retryAttempts.remove(deviceId)
                     connectTimeoutRunnables.remove(deviceId)?.let { handler.removeCallbacks(it) }
                     
+                    // FIX v3.4.0: Suscribir notificaciones y esperar confirmación de descriptor
+                    // antes de marcar ready. Usar pendingDescriptorWrites para trackear.
                     try {
                         gatt.setCharacteristicNotification(char, true)
                         val descriptor = char.getDescriptor(CCCD_UUID)
                         if (descriptor != null) {
+                            pendingDescriptorWrites[deviceId] = pendingCalls["connect_$deviceId"]
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                 gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
                             } else {
@@ -1156,22 +1229,17 @@ class NexoBlePlugin : Plugin() {
                                 @Suppress("DEPRECATION")
                                 gatt.writeDescriptor(descriptor)
                             }
+                        } else {
+                            // Sin descriptor, marcar ready inmediatamente (caso raro)
+                            markClientReady(deviceId, gatt)
                         }
-                    } catch (e: SecurityException) { }
+                    } catch (e: SecurityException) { 
+                        safeCloseGatt(gatt, deviceId)
+                        handleConnectFailure(deviceId, "SecurityException notifications", attempt)
+                    }
                     
-                    startKeepalive(deviceId, gatt)
-                    processPendingWrites(deviceId)
-                    
-                    pendingCalls.remove("connect_$deviceId")?.resolve(JSObject().apply {
-                        put("connected", true)
-                        put("deviceId", deviceId)
-                        put("servicesReady", true)
-                        put("role", "client")
-                    })
-                    notifyListeners("onServicesReady", JSObject().apply {
-                        put("deviceId", deviceId)
-                        put("ready", true)
-                    })
+                    // FIX v3.4.0: Leer nombre del peer desde CHAR_ANNOUNCE
+                    readPeerName(gatt, deviceId)
                 } else {
                     safeCloseGatt(gatt, deviceId)
                     handleConnectFailure(deviceId, "Servicio NEXO no encontrado", attempt)
@@ -1182,12 +1250,37 @@ class NexoBlePlugin : Plugin() {
             }
         }
         
+        // FIX v3.4.0: Nuevo callback para leer nombre del peer
+        override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == CHAR_ANNOUNCE) {
+                val data = characteristic.value?.let { String(it) } ?: "{}"
+                try {
+                    val json = org.json.JSONObject(data)
+                    val peerName = json.optString("userName", "NEXO Peer")
+                    val peerId = json.optString("userId", "")
+                    notifyListeners("onPeerInfoReceived", JSObject().apply {
+                        put("deviceId", gatt.device?.address ?: "")
+                        put("name", peerName)
+                        put("userId", peerId)
+                    })
+                } catch (e: Exception) { }
+            }
+        }
+        
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             val addr = gatt.device?.address ?: "unknown"
             if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == CCCD_UUID) {
                 notifyListeners("onNotificationsEnabled", JSObject().apply {
                     put("deviceId", addr)
                     put("enabled", true)
+                })
+                // FIX v3.4.0: Marcar cliente como listo para chat SOLO después de confirmación CCCD
+                markClientReady(addr, gatt)
+            } else if (status != BluetoothGatt.GATT_SUCCESS) {
+                // Descriptor write falló, conexión no es usable para notificaciones
+                notifyListeners("onConnectionFailed", JSObject().apply {
+                    put("deviceId", addr)
+                    put("reason", "Descriptor write failed: $status")
                 })
             }
         }
@@ -1211,7 +1304,7 @@ class NexoBlePlugin : Plugin() {
             when (characteristic.uuid) {
                 CHAR_PAYLOAD -> {
                     val payloadStr = data?.let { String(it) } ?: ""
-                    var senderName = "Unknown"
+                    var senderName = "NEXO Peer"
                     var messageContent = payloadStr
                     try {
                         val json = org.json.JSONObject(payloadStr)
@@ -1233,12 +1326,11 @@ class NexoBlePlugin : Plugin() {
     private fun startKeepalive(deviceId: String, gatt: BluetoothGatt) {
         val runnable = object : Runnable {
             override fun run() {
-                if (!gattClients.containsKey(deviceId)) return
+                if (!gattClients.containsKey(deviceId) || !isGattAlive(gatt)) return
                 try {
                     val service = gatt.getService(SERVICE_UUID)
                     val char = service?.getCharacteristic(CHAR_CONTROL)
                     if (char != null) {
-                        // v3.3.2: WRITE_TYPE_NO_RESPONSE ahora es válido porque CHAR_CONTROL lo soporta
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             gatt.writeCharacteristic(char, "ping".toByteArray(), BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
                         } else {
@@ -1263,7 +1355,7 @@ class NexoBlePlugin : Plugin() {
         val writes = pendingWrites.remove(deviceId)
         if (writes.isNullOrEmpty()) return
         val gatt = gattClients[deviceId]
-        if (gatt == null) {
+        if (gatt == null || !isGattAlive(gatt)) {
             writes.forEach { it.call.reject(ERR_NOT_CONNECTED, "GATT no disponible") }
             return
         }
@@ -1281,13 +1373,43 @@ class NexoBlePlugin : Plugin() {
             call.reject(ERR_INVALID_PARAMS, "deviceId requerido")
             return
         }
-        // v3.3.2: Cierre EXPLÍCITO del GATT client
+        // FIX v3.4.0: Marcar como desconexión manual para evitar auto-retry
+        userDisconnectedDevices.add(deviceId)
+        
         gattClients.remove(deviceId)?.let { gatt ->
             safeCloseGatt(gatt, deviceId)
         }
         serverConnections.remove(deviceId)
         pendingWrites.remove(deviceId)
         call.resolve()
+    }
+
+    // FIX v3.4.0: Nuevo método forceReconnect para limpiar GATT muerto y reconectar
+    @PluginMethod
+    fun forceReconnect(call: PluginCall) {
+        val deviceId = call.getString("deviceId")
+        if (deviceId == null) {
+            call.reject(ERR_INVALID_PARAMS, "deviceId requerido")
+            return
+        }
+        // Limpiar GATT muerto
+        gattClients.remove(deviceId)?.let { gatt ->
+            safeCloseGatt(gatt, deviceId)
+        }
+        serverConnections.remove(deviceId)
+        pendingWrites.remove(deviceId)
+        userDisconnectedDevices.remove(deviceId)
+        
+        handler.postDelayed({
+            val adapter = getBluetoothAdapter()
+            val device = adapter?.getRemoteDevice(deviceId)
+            if (device != null) {
+                pendingCalls["connect_$deviceId"] = call
+                executeConnect(device, deviceId, 0)
+            } else {
+                call.reject(ERR_DEVICE_NOT_FOUND, "Dispositivo no encontrado")
+            }
+        }, 600)
     }
 
     @PluginMethod
@@ -1320,14 +1442,18 @@ class NexoBlePlugin : Plugin() {
             return
         }
         
-        // ESTRATEGIA 1: GATT client activo
+        // FIX v3.4.0: ESTRATEGIA 1 - GATT client activo y VIVO
         val gatt = gattClients[deviceId]
-        if (gatt != null) {
+        if (gatt != null && isGattAlive(gatt)) {
             performWrite(call, gatt, deviceId, payload, messageId)
             return
+        } else if (gatt != null) {
+            // GATT muerto en mapa, limpiar
+            safeCloseGatt(gatt, deviceId)
+            gattClients.remove(deviceId)
         }
         
-        // ESTRATEGIA 2: Peer en serverConnections → notify
+        // FIX v3.4.0: ESTRATEGIA 2 - Peer en serverConnections → notify (verificar suscripción)
         if (serverConnections.containsKey(deviceId)) {
             val success = notifyClient(deviceId, payload)
             if (success) {
@@ -1353,19 +1479,33 @@ class NexoBlePlugin : Plugin() {
         executeConnect(device, deviceId, 0)
     }
     
+    // FIX v3.4.0: notifyClient ahora verifica que el cliente está suscrito antes de notificar
     private fun notifyClient(deviceId: String, data: ByteArray): Boolean {
         val device = serverConnections[deviceId] ?: return false
         val service = gattServer?.getService(SERVICE_UUID) ?: return false
         val char = service.getCharacteristic(CHAR_PAYLOAD) ?: return false
+        
+        // FIX v3.4.0: Verificar que el cliente está suscrito antes de notificar
+        val descriptor = char.getDescriptor(CCCD_UUID)
+        val isSubscribed = descriptor?.value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true
+        if (!isSubscribed) {
+            napLog("BLE_NOTIFY_NO_SUB", "Cliente $deviceId no suscrito a notificaciones", "WARN")
+            return false
+        }
+        
         return try {
             char.value = data
             gattServer?.notifyCharacteristicChanged(device, char, false) ?: false
-        } catch (e: Exception) {
-            false
-        }
+        } catch (e: Exception) { false }
     }
 
+    // FIX v3.4.0: performWrite valida GATT vivo antes de escribir
     private fun performWrite(call: PluginCall, gatt: BluetoothGatt, deviceId: String, payload: ByteArray, messageId: String) {
+        if (!isGattAlive(gatt)) {
+            call.reject(ERR_NOT_CONNECTED, "GATT desconectado")
+            gattClients.remove(deviceId)
+            return
+        }
         try {
             val service = gatt.getService(SERVICE_UUID)
             val char = service?.getCharacteristic(CHAR_PAYLOAD)
@@ -1393,21 +1533,35 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // FIX v3.4.0: getConnectedDevices filtra solo GATTs realmente vivos
     @PluginMethod
     fun getConnectedDevices(call: PluginCall) {
         val devices = JSArray()
-        gattClients.keys.forEach { address ->
-            val obj = JSObject()
-            obj.put("deviceId", address)
-            obj.put("direction", "outgoing")
-            obj.put("servicesReady", true)
-            devices.put(obj)
+        
+        // Filtrar GATT clients vivos
+        val deadClients = mutableListOf<String>()
+        gattClients.forEach { (address, gatt) ->
+            if (isGattAlive(gatt)) {
+                val obj = JSObject()
+                obj.put("deviceId", address)
+                obj.put("direction", "outgoing")
+                obj.put("servicesReady", true)
+                devices.put(obj)
+            } else {
+                deadClients.add(address)
+            }
         }
+        // Limpiar GATTs muertos
+        deadClients.forEach { address ->
+            gattClients[address]?.let { safeCloseGatt(it, address) }
+            gattClients.remove(address)
+        }
+        
         serverConnections.forEach { (address, device) ->
             try {
                 val obj = JSObject()
                 obj.put("deviceId", address)
-                obj.put("name", device.name ?: "Unknown")
+                obj.put("name", "NEXO Peer") // FIX v3.4.0: Placeholder consistente
                 obj.put("direction", "incoming")
                 devices.put(obj)
             } catch (e: SecurityException) { }
