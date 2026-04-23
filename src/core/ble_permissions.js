@@ -1,8 +1,7 @@
 /**
- * BLE Permissions Manager v2.2-FIX
+ * BLE Permissions Manager v3.0.0-ARCH
+ * Coordinado con NexoBlePlugin.kt v4.0.0-ARCH
  * Sin alerts bloqueantes - Solo console logging
- * FIX: Removida dependencia @capacitor/app, usando API nativa
- * FIX [NORDIC_010]: Agregado startBLEAdvertising y checkAdvertisingStatus
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -306,14 +305,6 @@ export function setVerboseLogging(enabled) {
   }
 }
 
-/**
- * NUEVO: Espera a que el usuario regrese de la configuración del sistema
- * FIX: Usa API nativa del navegador (visibilitychange/focus) en lugar de @capacitor/app
- * @param {Object} options - Configuración del watcher
- * @param {number} options.timeoutMs - Timeout en ms (default: 30000)
- * @param {number} options.pollingIntervalMs - Intervalo de polling en ms (default: 2000)
- * @returns {Promise} - Resuelve con el estado BLE cuando regresa o rechaza si timeout
- */
 export function waitForSettingsReturn(options = {}) {
   const timeoutMs = options.timeoutMs || 30000;
   const pollingIntervalMs = options.pollingIntervalMs || 2000;
@@ -326,22 +317,10 @@ export function waitForSettingsReturn(options = {}) {
     let focusHandler = null;
     
     const cleanup = () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-      }
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      if (visibilityHandler) {
-        document.removeEventListener('visibilitychange', visibilityHandler);
-        visibilityHandler = null;
-      }
-      if (focusHandler) {
-        window.removeEventListener('focus', focusHandler);
-        focusHandler = null;
-      }
+      if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
+      if (visibilityHandler) { document.removeEventListener('visibilitychange', visibilityHandler); visibilityHandler = null; }
+      if (focusHandler) { window.removeEventListener('focus', focusHandler); focusHandler = null; }
     };
     
     const checkAndResolve = async (source) => {
@@ -368,29 +347,24 @@ export function waitForSettingsReturn(options = {}) {
       }
     };
     
-    // Listener nativo: cuando el usuario vuelve a la app (más confiable que 'resume' de Capacitor)
     visibilityHandler = () => {
       if (!document.hidden) {
         napLog(NAP_CODES.SETTINGS_RETURN, 'App visible nuevamente (visibilitychange)', 'INFO');
-        // Delay pequeño para permitir que el sistema actualice el estado BLE
         setTimeout(() => checkAndResolve('visibility'), 500);
       }
     };
     document.addEventListener('visibilitychange', visibilityHandler);
     
-    // Backup: window focus (por si visibilitychange no dispara en algunos dispositivos)
     focusHandler = () => {
       napLog(NAP_CODES.SETTINGS_RETURN, 'Ventana enfocada (focus)', 'DEBUG');
       checkAndResolve('focus');
     };
     window.addEventListener('focus', focusHandler);
     
-    // Polling cada 2 segundos como fallback adicional
     pollingInterval = setInterval(() => {
       checkAndResolve('polling');
     }, pollingIntervalMs);
     
-    // Timeout de seguridad (30s default)
     timeoutId = setTimeout(() => {
       if (!isResolved) {
         cleanup();
@@ -404,24 +378,14 @@ export function waitForSettingsReturn(options = {}) {
       }
     }, timeoutMs);
     
-    // Verificación inmediata (por si ya volvió antes de que se registrara el listener)
     checkAndResolve('immediate');
   });
 }
 
-/**
- * NUEVO: Cancela un watcher activo de settings return
- */
 export function cancelSettingsWatcher() {
-  // La cancelación se maneja automáticamente mediante el reject del promise
   napLog(NAP_CODES.INIT, 'Settings watcher cancelado (si había uno activo)', 'DEBUG');
 }
 
-/**
- * NUEVO: Wrapper completo que abre configuración y espera el retorno
- * @param {Function} openSettingsFn - Función que abre la configuración (debe ser llamada externamente)
- * @param {Object} options - Opciones para waitForSettingsReturn
- */
 export async function requestAndWaitForSettings(openSettingsFn, options = {}) {
   const platform = Capacitor.getPlatform();
   
@@ -430,15 +394,12 @@ export async function requestAndWaitForSettings(openSettingsFn, options = {}) {
   }
   
   try {
-    // Iniciar el watcher ANTES de abrir configuración (race condition prevention)
     const waitPromise = waitForSettingsReturn(options);
     
-    // Abrir configuración (llamada externa)
     if (typeof openSettingsFn === 'function') {
       await openSettingsFn();
     }
     
-    // Esperar resultado
     return await waitPromise;
     
   } catch (error) {
@@ -451,10 +412,6 @@ export async function requestAndWaitForSettings(openSettingsFn, options = {}) {
   }
 }
 
-/**
- * NUEVO: Inicia advertising BLE después de permisos concedidos
- * FIX [NORDIC_010]: Conecta permisos con visibilidad activa
- */
 export async function startBLEAdvertising() {
   const platform = Capacitor.getPlatform();
   if (platform !== 'android') {
@@ -480,10 +437,6 @@ export async function startBLEAdvertising() {
   }
 }
 
-/**
- * NUEVO: Verifica estado real de advertising
- * FIX [NORDIC_010]: Consulta plugin nativo para estado real
- */
 export async function checkAdvertisingStatus() {
   const platform = Capacitor.getPlatform();
   if (platform !== 'android') {
