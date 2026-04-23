@@ -17,6 +17,25 @@ import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
 import { initBLEInterface } from '../ui/ble_interface.js';
 
+// Al inicio de la app, antes de cualquier operación BLE
+async function initApp() {
+  // 1. Solicitar permisos BLE primero
+  const permsReady = await window.BLEPermissions.ensure();
+  if (!permsReady) {
+    console.error('Permisos BLE denegados');
+    // La UI mostrará su propio mensaje cuando el usuario intente usar BLE
+  }
+  
+  // 2. Inicializar BLE nativo
+  await window.Capacitor.Plugins.NexoBLE.initializeBLE({
+    userId: currentUser.id,
+    userName: currentUser.name
+  });
+  
+  // 3. Inicializar UI BLE
+  const bleUI = initBLEInterface(meshInstance);
+}
+
 function withTimeoutNAP(promise, ms, context) {
   let timer;
   const timeoutPromise = new Promise((_, reject) => {
