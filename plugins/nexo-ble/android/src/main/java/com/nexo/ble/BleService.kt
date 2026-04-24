@@ -7,18 +7,10 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.os.*
 import android.util.Log
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-
-/**
- * BleService.kt v5.0.0-ARCH
- * Foreground always-on BLE service.
- * Mantiene GATT server vivo incluso si la app va a background.
- * Comunica con NexoBlePlugin.kt vía LocalBinder.
- */
 
 class BleService : Service() {
 
@@ -126,19 +118,16 @@ class BleService : Service() {
             Log.w(TAG, "Sin permisos para setupGattServer")
             return
         }
-
         try {
             val service = BluetoothGattService(
                 UUID.fromString(NEXO_SERVICE_UUID),
                 BluetoothGattService.SERVICE_TYPE_PRIMARY
             )
-
             val announceChar = BluetoothGattCharacteristic(
                 UUID.fromString(NEXO_CHAR_RX),
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ
             )
-
             val payloadChar = BluetoothGattCharacteristic(
                 UUID.fromString(NEXO_CHAR_TX),
                 BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
@@ -149,10 +138,8 @@ class BleService : Service() {
                     BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
                 ))
             }
-
             service.addCharacteristic(announceChar)
             service.addCharacteristic(payloadChar)
-
             gattServer = bluetoothManager?.openGattServer(this, gattServerCallback)
             gattServer?.addService(service)
             Log.i(TAG, "[NAP-BLE-SVC] GattServer abierto, servicio en cola de registro")
@@ -175,7 +162,6 @@ class BleService : Service() {
                 Log.e(TAG, "[NAP-BLE-SVC] Fallo al registrar servicio: status=$status uuid=${service?.uuid}")
             }
         }
-
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
             device ?: return
             when (newState) {
@@ -204,26 +190,23 @@ class BleService : Service() {
                 }
             }
         }
-
         override fun onCharacteristicReadRequest(
             device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic?
         ) {
             device ?: return
             val value = when (characteristic?.uuid.toString()) {
                 NEXO_CHAR_RX -> {
-                    val data = JSONObject().apply {
-                        put("userId", "")
-                        put("userName", "NEXO Service")
-                        put("timestamp", System.currentTimeMillis())
-                        put("appVersion", "5.0.0-ARCH")
+                    val json = buildString {
+                        append("{\"userId\":\"\",\"userName\":\"NEXO Service\",\"timestamp\":")
+                        append(System.currentTimeMillis())
+                        append(",\"appVersion\":\"5.0.1-ARCH\"}")
                     }
-                    data.toString().toByteArray()
+                    json.toByteArray()
                 }
                 else -> byteArrayOf()
             }
             gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
         }
-
         override fun onCharacteristicWriteRequest(
             device: BluetoothDevice?, requestId: Int, characteristic: BluetoothGattCharacteristic?,
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
@@ -245,7 +228,6 @@ class BleService : Service() {
                 }
             }
         }
-
         override fun onDescriptorWriteRequest(
             device: BluetoothDevice?, requestId: Int, descriptor: BluetoothGattDescriptor?,
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
@@ -263,7 +245,6 @@ class BleService : Service() {
                 })
             }
         }
-
         override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
             Log.i(TAG, "[NAP-BLE-SVC] MTU cambiado para ${device?.address}: $mtu")
         }
@@ -276,7 +257,6 @@ class BleService : Service() {
             Log.w(TAG, "Server no listo, no se puede anunciar")
             return false
         }
-
         val advertiser = bluetoothAdapter?.bluetoothLeAdvertiser ?: return false
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -289,7 +269,6 @@ class BleService : Service() {
         val scanResponse = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
             .build()
-
         val callback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                 isAdvertising = true
@@ -300,13 +279,12 @@ class BleService : Service() {
             }
             override fun onStartFailure(errorCode: Int) {
                 isAdvertising = false
-                Log.e(TAG, "[NAP-BLE-SVC] Advertising falló: errorCode=$errorCode")
+                Log.e(TAG, "[NAP-BLE-SVC] Advertising fallo: errorCode=$errorCode")
                 sendBroadcast(Intent("com.nexo.ble.ADVERTISE_FAILED").apply {
                     putExtra("errorCode", errorCode)
                 })
             }
         }
-
         try {
             advertiser.startAdvertising(settings, advertiseData, scanResponse, callback)
             return true
@@ -350,23 +328,5 @@ class BleService : Service() {
         } else {
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED
         }
-    }
-}
-
-private class JSONObject {
-    private val map = mutableMapOf<String, Any>()
-    fun put(key: String, value: Any) { map[key] = value }
-    override fun toString(): String {
-        val sb = StringBuilder("{")
-        map.entries.forEachIndexed { i, (k, v) ->
-            if (i > 0) sb.append(",")
-            sb.append("\\"$k\\":")
-            sb.append(when (v) {
-                is String -> "\\"$v\\""
-                else -> v.toString()
-            })
-        }
-        sb.append("}")
-        return sb.toString()
     }
 }
