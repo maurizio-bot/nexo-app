@@ -105,8 +105,11 @@ class BleService : Service() {
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            )
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -199,7 +202,7 @@ class BleService : Service() {
                     val json = buildString {
                         append("{\"userId\":\"\",\"userName\":\"NEXO Service\",\"timestamp\":")
                         append(System.currentTimeMillis())
-                        append(",\"appVersion\":\"5.0.1-ARCH\"}")
+                        append(",\"appVersion\":\"5.0.3-ARCH\"}")
                     }
                     json.toByteArray()
                 }
