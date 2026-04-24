@@ -234,8 +234,10 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
-        val deviceId = call.getString("deviceId") ?: run {
-            call.reject("deviceId required"); return
+        val deviceId = call.getString("deviceId", "")
+        if (deviceId.isEmpty()) {
+            call.reject("deviceId required")
+            return
         }
         if (!checkBluetoothAdapter(call)) return
         if (!checkPermission(Manifest.permission.BLUETOOTH_CONNECT, call)) return
@@ -276,8 +278,10 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun disconnectDevice(call: PluginCall) {
-        val deviceId = call.getString("deviceId") ?: run {
-            call.reject("deviceId required"); return
+        val deviceId = call.getString("deviceId", "")
+        if (deviceId.isEmpty()) {
+            call.reject("deviceId required")
+            return
         }
         disconnectDeviceInternal(deviceId)
         call.resolve(JSObject().put("success", true))
@@ -285,8 +289,10 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun forceReconnect(call: PluginCall) {
-        val deviceId = call.getString("deviceId") ?: run {
-            call.reject("deviceId required"); return
+        val deviceId = call.getString("deviceId", "")
+        if (deviceId.isEmpty()) {
+            call.reject("deviceId required")
+            return
         }
         disconnectDeviceInternal(deviceId)
         Handler(Looper.getMainLooper()).postDelayed({
@@ -300,11 +306,15 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun sendMessage(call: PluginCall) {
-        val deviceId = call.getString("deviceId") ?: run {
-            call.reject("deviceId required"); return
+        val deviceId = call.getString("deviceId", "")
+        if (deviceId.isEmpty()) {
+            call.reject("deviceId required")
+            return
         }
-        val message = call.getString("message") ?: run {
-            call.reject("message required"); return
+        val message = call.getString("message", "")
+        if (message.isEmpty()) {
+            call.reject("message required")
+            return
         }
         if (!serverReady.get()) {
             call.reject("GATT server not ready")
