@@ -1,12 +1,10 @@
 package com.nexo.ble
 
 import android.Manifest
-import android.app.Service
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.*
 import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo as AndroidServiceInfo
 import android.os.*
 import android.util.Log
 import androidx.core.app.ActivityCompat
@@ -106,23 +104,14 @@ class NexoBlePlugin : Plugin() {
 
     private var localUserId: String = ""
     private var localUserName: String = "NEXO User"
-
-    private var bleService: Any? = null
     private var serviceBound = AtomicBoolean(false)
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            try {
-                val binderClass = service?.javaClass
-                val getServiceMethod = binderClass?.getMethod("getService")
-                bleService = getServiceMethod?.invoke(service)
-                serviceBound.set(true)
-                Log.i(TAG, "BleService bound")
-            } catch (e: Exception) {
-                Log.w(TAG, "BleService bind failed: ${e.message}")
-            }
+            serviceBound.set(true)
+            Log.i(TAG, "BleService bound")
         }
         override fun onServiceDisconnected(name: ComponentName?) {
-            bleService = null
             serviceBound.set(false)
             Log.w(TAG, "BleService unbound")
         }
@@ -387,15 +376,6 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
-        val permissions = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
-            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
-            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
-        }
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
-            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
         requestPermissionForAlias("blePermissionsCallback", call, "blePermissionsCallback")
     }
 
