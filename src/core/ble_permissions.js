@@ -1,9 +1,8 @@
 /**
- * BLE Permissions Manager v4.0-ARCH
+ * BLE Permissions Manager v4.1-ARCH
  * Ubicación: src/core/ble_permissions.js
- * FIX: API unificada, métodos plugin alineados v5.0.0, resume event sin polling,
- *      isPermanentlyDenied consistente, sin funciones advertising mezcladas.
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v4.0-ARCH
+ * FIX: API unificada + exports compatibles legacy (checkBLEStatus, requestBLEPermissions)
+ * Coordinado con NexoBlePlugin.kt v5.0.1-ARCH + ble_interface.js v4.0-ARCH
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -187,6 +186,20 @@ const BLEPermissions = {
     else localStorage.removeItem('nexo_verbose_logs');
   }
 };
+
+// EXPORTS COMPATIBLES LEGACY (SetupManager.js / SetupWizard.js)
+
+export async function checkBLEStatus() {
+  return BLEPermissions.check();
+}
+
+export async function requestBLEPermissions() {
+  return BLEPermissions.request();
+}
+
+export function isPermanentlyDenied() {
+  return BLEPermissions.state.isPermanentlyDenied;
+}
 
 export { BLEPermissions, NAP_CODES, napLog };
 
