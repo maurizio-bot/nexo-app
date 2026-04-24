@@ -1,14 +1,19 @@
 package com.nexo.ble
 
 import android.Manifest
+import android.app.Service
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.*
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo as AndroidServiceInfo
 import android.os.*
 import android.util.Log
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.getcapacitor.*
+import com.getcapacitor.JSObject
+import com.getcapacitor.Plugin
+import com.getcapacitor.PluginCall
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.PermissionCallback
 import com.getcapacitor.annotation.PluginMethod
@@ -18,12 +23,7 @@ import java.util.*
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicBoolean
 
-@CapacitorPlugin(
-    name = "NexoBLE",
-    permissionCallbacks = [
-        PermissionCallback(name = "blePermissionsCallback", permission = Manifest.permission.BLUETOOTH_SCAN)
-    ]
-)
+@CapacitorPlugin(name = "NexoBLE")
 class NexoBlePlugin : Plugin() {
 
     companion object {
@@ -107,14 +107,19 @@ class NexoBlePlugin : Plugin() {
     private var localUserId: String = ""
     private var localUserName: String = "NEXO User"
 
-    private var bleService: BleServiceInterface? = null
+    private var bleService: Any? = null
     private var serviceBound = AtomicBoolean(false)
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as? BleService.LocalBinder
-            bleService = binder?.getService()
-            serviceBound.set(true)
-            Log.i(TAG, "BleService bound")
+            try {
+                val binderClass = service?.javaClass
+                val getServiceMethod = binderClass?.getMethod("getService")
+                bleService = getServiceMethod?.invoke(service)
+                serviceBound.set(true)
+                Log.i(TAG, "BleService bound")
+            } catch (e: Exception) {
+                Log.w(TAG, "BleService bind failed: ${e.message}")
+            }
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             bleService = null
@@ -372,12 +377,16 @@ class NexoBlePlugin : Plugin() {
         ret.put("advertiseGranted", advertisePerm)
         ret.put("locationGranted", locationPerm)
         ret.put("allGranted", scanPerm && connectPerm && advertisePerm && locationPerm)
-        ret.put("isPermanentlyDenied", !scanPerm && !shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_SCAN))
+        val act = activity
+        val permanentlyDenied = if (act != null) {
+            !scanPerm && !ActivityCompat.shouldShowRequestPermissionRationale(act, Manifest.permission.BLUETOOTH_SCAN)
+        } else false
+        ret.put("isPermanentlyDenied", permanentlyDenied)
         call.resolve(ret)
     }
 
     @PluginMethod
-    fun requestPermissions(call: PluginCall) {
+    fun requestBLEPermissions(call: PluginCall) {
         val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_SCAN)
@@ -623,10 +632,10 @@ class NexoBlePlugin : Plugin() {
                 Log.e(TAG, "Service discovery failed for $id: $status")
             }
         }
-        override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, value: ByteArray?) {
+        override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
             gatt ?: return
             val id = gatt.device?.address ?: return
-            val data = value ?: characteristic?.value ?: return
+            val data = characteristic?.value ?: return
             val payload = String(data, Charsets.UTF_8)
             Log.d(TAG, "Notification from $id: $payload")
             val json = try { JSONObject(payload) } catch (e: Exception) { null }
@@ -850,11 +859,5 @@ class NexoBlePlugin : Plugin() {
 
     private enum class ConnectionState {
         DISCONNECTED, CONNECTING, CONNECTED, DISCOVERING, READY, DISCONNECTING, ERROR
-    }
-
-    interface BleServiceInterface {
-        fun sendNotification(deviceId: String, data: ByteArray): Boolean
-        fun getConnectedDeviceIds(): List<String>
-        fun isServerReady(): Boolean
     }
 }
