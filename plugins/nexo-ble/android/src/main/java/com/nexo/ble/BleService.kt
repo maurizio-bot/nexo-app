@@ -45,7 +45,7 @@ class BleService : Service() {
                 return this@BleService.sendNotification(deviceId, data)
             }
             override fun getConnectedDeviceIds(): List<String> {
-                return this@BleService.serverConnections.keys().toList()
+                return this@BleService.serverConnections.keys.toList()
             }
             override fun isServerReady(): Boolean {
                 return this@BleService.serverReady
@@ -166,18 +166,20 @@ class BleService : Service() {
             }
         }
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
-            device ?: return
+            val dev = device ?: return
+            val id = dev.address.orEmpty()
+            if (id.isEmpty()) return
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    serverConnections[device.address] = device
-                    Log.i(TAG, "[NAP-BLE-SVC] Dispositivo conectado ENTRANTE: ${device.address}")
+                    serverConnections[id] = dev
+                    Log.i(TAG, "[NAP-BLE-SVC] Dispositivo conectado ENTRANTE: $id")
                     sendBroadcast(Intent("com.nexo.ble.DEVICE_CONNECTED").apply {
-                        putExtra("deviceId", device.address)
+                        putExtra("deviceId", id)
                         putExtra("direction", "incoming")
                     })
                     handler.postDelayed({
                         sendBroadcast(Intent("com.nexo.ble.SERVICES_READY").apply {
-                            putExtra("deviceId", device.address)
+                            putExtra("deviceId", id)
                             putExtra("ready", true)
                             putExtra("direction", "incoming")
                             putExtra("role", "server")
@@ -185,10 +187,10 @@ class BleService : Service() {
                     }, 500)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    serverConnections.remove(device.address)
-                    Log.i(TAG, "[NAP-BLE-SVC] Dispositivo desconectado: ${device.address}")
+                    serverConnections.remove(id)
+                    Log.i(TAG, "[NAP-BLE-SVC] Dispositivo desconectado: $id")
                     sendBroadcast(Intent("com.nexo.ble.DEVICE_DISCONNECTED").apply {
-                        putExtra("deviceId", device.address)
+                        putExtra("deviceId", id)
                     })
                 }
             }
@@ -196,8 +198,9 @@ class BleService : Service() {
         override fun onCharacteristicReadRequest(
             device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic?
         ) {
-            device ?: return
-            val value = when (characteristic?.uuid.toString()) {
+            val dev = device ?: return
+            val char = characteristic ?: return
+            val value = when (char.uuid.toString()) {
                 NEXO_CHAR_RX -> {
                     val json = buildString {
                         append("{\"userId\":\"\",\"userName\":\"NEXO Service\",\"timestamp\":")
@@ -208,23 +211,24 @@ class BleService : Service() {
                 }
                 else -> byteArrayOf()
             }
-            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+            gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
         }
         override fun onCharacteristicWriteRequest(
             device: BluetoothDevice?, requestId: Int, characteristic: BluetoothGattCharacteristic?,
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
         ) {
-            device ?: return
+            val dev = device ?: return
             val data = value ?: byteArrayOf()
             if (responseNeeded) {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
+                gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
             }
-            when (characteristic?.uuid.toString()) {
+            val char = characteristic ?: return
+            when (char.uuid.toString()) {
                 NEXO_CHAR_TX -> {
                     val payload = String(data, Charsets.UTF_8)
-                    Log.d(TAG, "[NAP-BLE-SVC] PAYLOAD RECIBIDO de ${device.address}: ${payload.take(100)}")
+                    Log.d(TAG, "[NAP-BLE-SVC] PAYLOAD RECIBIDO de ${dev.address}: ${payload.take(100)}")
                     sendBroadcast(Intent("com.nexo.ble.PAYLOAD_RECEIVED").apply {
-                        putExtra("deviceId", device.address)
+                        putExtra("deviceId", dev.address)
                         putExtra("data", payload)
                         putExtra("source", "server_direct")
                     })
@@ -235,21 +239,26 @@ class BleService : Service() {
             device: BluetoothDevice?, requestId: Int, descriptor: BluetoothGattDescriptor?,
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
         ) {
-            device ?: return
+            val dev = device ?: return
+            val desc = descriptor ?: return
             if (responseNeeded) {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
             }
-            if (descriptor?.uuid.toString().equals(CCCD_UUID, ignoreCase = true)) {
+            if (desc.uuid.toString().equals(CCCD_UUID, ignoreCase = true)) {
                 val enabled = value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true
-                Log.i(TAG, "[NAP-BLE-SVC] CCCD escrito por ${device.address}: enabled=$enabled")
+                Log.i(TAG, "[NAP-BLE-SVC] CCCD escrito por ${dev.address}: enabled=$enabled")
                 sendBroadcast(Intent("com.nexo.ble.NOTIFICATION_STATE").apply {
-                    putExtra("deviceId", device.address)
+                    putExtra("deviceId", dev.address)
                     putExtra("enabled", enabled)
                 })
             }
         }
         override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
-            Log.i(TAG, "[NAP-BLE-SVC] MTU cambiado para ${device?.address}: $mtu")
+            val dev = device ?: return
+            val id = dev.address.orEmpty()
+            if (id.isNotEmpty()) {
+                Log.i(TAG, "[NAP-BLE-SVC] MTU cambiado para $id: $mtu")
+            }
         }
     }
 
