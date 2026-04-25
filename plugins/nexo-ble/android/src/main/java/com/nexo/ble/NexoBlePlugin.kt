@@ -751,12 +751,12 @@ class NexoBlePlugin : Plugin() {
                     val char = service?.getCharacteristic(UUID.fromString(operation.charUuid))
                     if (char != null) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            val result = gatt.writeCharacteristic(char, operation.value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                            result == BluetoothGatt.GATT_SUCCESS
+                            gatt.writeCharacteristic(char, operation.value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS
                         } else {
                             @Suppress("DEPRECATION")
                             char.value = operation.value
-                            gatt.writeCharacteristic(char) == true
+                            gatt.writeCharacteristic(char)
+                            true
                         }
                     } else false
                 }
@@ -768,12 +768,12 @@ class NexoBlePlugin : Plugin() {
                     val desc = char?.getDescriptor(UUID.fromString(operation.descUuid))
                     if (desc != null) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            val result = gatt.writeDescriptor(desc, operation.value)
-                            result == BluetoothGatt.GATT_SUCCESS
+                            gatt.writeDescriptor(desc, operation.value) == BluetoothGatt.GATT_SUCCESS
                         } else {
                             @Suppress("DEPRECATION")
                             desc.value = operation.value
-                            gatt.writeDescriptor(desc) == true
+                            gatt.writeDescriptor(desc)
+                            true
                         }
                     } else false
                 }
@@ -782,11 +782,11 @@ class NexoBlePlugin : Plugin() {
                     val char = service?.getCharacteristic(UUID.fromString(operation.charUuid))
                     if (char != null) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            val result = gatt.readCharacteristic(char)
-                            result == BluetoothGatt.GATT_SUCCESS
+                            gatt.readCharacteristic(char) == BluetoothGatt.GATT_SUCCESS
                         } else {
                             @Suppress("DEPRECATION")
-                            gatt.readCharacteristic(char) == true
+                            gatt.readCharacteristic(char)
+                            true
                         }
                     } else false
                 }
