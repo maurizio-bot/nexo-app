@@ -207,15 +207,6 @@ class BleService : Service() {
                         putExtra("direction", "incoming")
                         putExtra("name", dev.name ?: "NEXO Peer")
                     })
-                    handler.postDelayed({
-                        if (serverConnections.containsKey(id)) {
-                            sendBroadcast(Intent("com.nexo.ble.SERVICES_READY").apply {
-                                putExtra("deviceId", id)
-                                putExtra("ready", true)
-                                putExtra("direction", "incoming")
-                            })
-                        }
-                    }, 800)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     serverConnections.remove(id)
@@ -377,11 +368,12 @@ class BleService : Service() {
             return false
         }
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            gattServer?.notifyCharacteristicChanged(device, char, false, data) ?: false
+            val result = gattServer?.notifyCharacteristicChanged(device, char, false, data)
+            result == BluetoothGatt.GATT_SUCCESS
         } else {
             @Suppress("DEPRECATION")
             char.value = data
-            gattServer?.notifyCharacteristicChanged(device, char, false) ?: false
+            gattServer?.notifyCharacteristicChanged(device, char, false) == true
         }
     }
 
