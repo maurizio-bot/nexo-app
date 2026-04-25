@@ -7,34 +7,38 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.os.*
 import android.util.Log
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import com.getcapacitor.annotation.PluginMethod
+import com.nexo.ble.model.NexoGattService
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.*
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicBoolean
 
-@CapacitorPlugin(name = "NexoBLE")
+@CapacitorPlugin(
+    name = "NexoBLE",
+    permissions = [
+        Permission(strings = [Manifest.permission.BLUETOOTH_SCAN], alias = "bleScan"),
+        Permission(strings = [Manifest.permission.BLUETOOTH_CONNECT], alias = "bleConnect"),
+        Permission(strings = [Manifest.permission.BLUETOOTH_ADVERTISE], alias = "bleAdvertise"),
+        Permission(strings = [Manifest.permission.ACCESS_FINE_LOCATION], alias = "bleLocation")
+    ]
+)
 class NexoBlePlugin : Plugin() {
 
     companion object {
         private const val TAG = "NexoBLE"
-        private const val NEXO_SERVICE_UUID = "0000feed-0000-1000-8000-00805f9b34fb"
-        private const val NEXO_CHAR_RX = "0000feed-0001-1000-8000-00805f9b34fb"
-        private const val NEXO_CHAR_TX = "0000feed-0002-1000-8000-00805f9b34fb"
-        private const val NEXO_CHAR_PEER = "0000feed-0003-1000-8000-00805f9b34fb"
-        private const val CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
         private const val GATT_TIMEOUT_MS = 10000L
         private const val RECONNECT_DELAY_MS = 2000L
         private const val MAX_RECONNECT_ATTEMPTS = 5
-        private const val SERVER_RESTART_DELAY_MS = 3000L
         private const val FORCED_DISCONNECT_DELAY_MS = 2000L
         private const val MESSAGE_DEDUP_MAX = 1000
     }
@@ -42,20 +46,11 @@ class NexoBlePlugin : Plugin() {
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var bluetoothManager: BluetoothManager? = null
     private var bluetoothLeScanner: BluetoothLeScanner? = null
-    private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
-
-    private var gattServer: BluetoothGattServer? = null
-    private val serverReady = AtomicBoolean(false)
-    private val serverRestartScheduled = AtomicBoolean(false)
 
     private val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     private val gattOperationQueues = ConcurrentHashMap<String, BlockingQueue<GattOperation>>()
     private val gattOperationWorkers = ConcurrentHashMap<String, Thread>()
     private val deviceConnectionStates = ConcurrentHashMap<String, ConnectionState>()
-
-    private var rxCharacteristic: BluetoothGattCharacteristic? = null
-    private var txCharacteristic: BluetoothGattCharacteristic? = null
-    private var peerInfoCharacteristic: BluetoothGattCharacteristic? = null
 
     private var isScanning = AtomicBoolean(false)
     private val scanCallback = object : ScanCallback() {
@@ -78,42 +73,85 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    private var isAdvertising = AtomicBoolean(false)
-    private val advertiseCallback = object : AdvertiseCallback() {
-        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            Log.i(TAG, "Advertising started")
-            isAdvertising.set(true)
-            notifyListeners("onAdvertiseStarted", JSObject())
-        }
-        override fun onStartFailure(errorCode: Int) {
-            Log.e(TAG, "Advertising failed: $errorCode")
-            isAdvertising.set(false)
-            val err = JSObject()
-            err.put("errorCode", errorCode)
-            notifyListeners("onAdvertiseFailed", err)
-        }
-    }
-
-    private val messageDedupLru = Collections.synchronizedMap(
-        object : LinkedHashMap<String, Long>(MESSAGE_DEDUP_MAX, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
-                return size > MESSAGE_DEDUP_MAX
-            }
-        }
-    )
-
     private var localUserId: String = ""
     private var localUserName: String = "NEXO User"
     private var serviceBound = AtomicBoolean(false)
+    private var bleService: BleService.ServiceInterface? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as? BleService.LocalBinder
+            bleService = binder?.getService()
             serviceBound.set(true)
             Log.i(TAG, "BleService bound")
         }
         override fun onServiceDisconnected(name: ComponentName?) {
+            bleService = null
             serviceBound.set(false)
             Log.w(TAG, "BleService unbound")
+        }
+    }
+
+    private val serviceBroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                "com.nexo.ble.PAYLOAD_RECEIVED" -> {
+                    val deviceId = intent.getStringExtra("deviceId") ?: return
+                    val data = intent.getStringExtra("data") ?: return
+                    val evt = JSObject()
+                    evt.put("deviceId", deviceId)
+                    evt.put("data", data)
+                    evt.put("source", "gatt_server")
+                    evt.put("timestamp", System.currentTimeMillis())
+                    notifyListeners("onPayloadReceived", evt)
+                }
+                "com.nexo.ble.DEVICE_CONNECTED" -> {
+                    val deviceId = intent.getStringExtra("deviceId") ?: return
+                    val direction = intent.getStringExtra("direction") ?: "incoming"
+                    val name = intent.getStringExtra("name") ?: "NEXO Peer"
+                    val data = JSObject()
+                    data.put("deviceId", deviceId)
+                    data.put("name", name)
+                    data.put("direction", direction)
+                    data.put("servicesReady", true)
+                    notifyListeners("onDeviceConnected", data)
+                }
+                "com.nexo.ble.DEVICE_DISCONNECTED" -> {
+                    val deviceId = intent.getStringExtra("deviceId") ?: return
+                    val reason = intent.getStringExtra("reason") ?: "Disconnected"
+                    val data = JSObject()
+                    data.put("deviceId", deviceId)
+                    data.put("reason", reason)
+                    notifyListeners("onDeviceDisconnected", data)
+                }
+                "com.nexo.ble.SERVER_READY" -> {
+                    val ready = intent.getBooleanExtra("ready", false)
+                    notifyListeners("onServerReady", JSObject().put("ready", ready))
+                }
+                "com.nexo.ble.NOTIFICATION_STATE" -> {
+                    val deviceId = intent.getStringExtra("deviceId") ?: return
+                    val enabled = intent.getBooleanExtra("enabled", false)
+                    if (enabled) {
+                        deviceConnectionStates[deviceId] = ConnectionState.READY
+                        val evt = JSObject()
+                        evt.put("deviceId", deviceId)
+                        evt.put("notificationsEnabled", true)
+                        notifyListeners("onNotificationsEnabled", evt)
+                        val evt2 = JSObject()
+                        evt2.put("deviceId", deviceId)
+                        evt2.put("servicesReady", true)
+                        notifyListeners("onServicesReady", evt2)
+                    }
+                }
+                "com.nexo.ble.ADVERTISE_STARTED" -> {
+                    notifyListeners("onAdvertiseStarted", JSObject().put("success", true))
+                }
+                "com.nexo.ble.ADVERTISE_FAILED" -> {
+                    val err = JSObject()
+                    err.put("errorCode", intent.getIntExtra("errorCode", -1))
+                    notifyListeners("onAdvertiseFailed", err)
+                }
+            }
         }
     }
 
@@ -122,16 +160,30 @@ class NexoBlePlugin : Plugin() {
         bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
         bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner
-        bluetoothLeAdvertiser = bluetoothAdapter?.bluetoothLeAdvertiser
+
+        val filter = IntentFilter().apply {
+            addAction("com.nexo.ble.PAYLOAD_RECEIVED")
+            addAction("com.nexo.ble.DEVICE_CONNECTED")
+            addAction("com.nexo.ble.DEVICE_DISCONNECTED")
+            addAction("com.nexo.ble.SERVER_READY")
+            addAction("com.nexo.ble.NOTIFICATION_STATE")
+            addAction("com.nexo.ble.ADVERTISE_STARTED")
+            addAction("com.nexo.ble.ADVERTISE_FAILED")
+        }
+        ContextCompat.registerReceiver(context, serviceBroadcastReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+
         bindBleService()
     }
 
     override fun handleOnDestroy() {
         super.handleOnDestroy()
-        stopAdvertisingInternal()
         stopScanInternal()
         disconnectAllDevices()
-        closeGattServer()
+        try {
+            ContextCompat.unregisterReceiver(context, serviceBroadcastReceiver)
+        } catch (e: Exception) {
+            Log.w(TAG, "unregisterReceiver error: ${e.message}")
+        }
         if (serviceBound.get()) {
             try {
                 context.unbindService(serviceConnection)
@@ -155,11 +207,19 @@ class NexoBlePlugin : Plugin() {
         localUserId = call.getString("userId", "")
         localUserName = call.getString("userName", "NEXO User")
         if (!checkBluetoothAdapter(call)) return
+
         try {
-            startGattServer()
+            // Asegurar que el service esté corriendo en foreground con nuestros datos
+            val intent = Intent(context, BleService::class.java).apply {
+                putExtra("userId", localUserId)
+                putExtra("userName", localUserName)
+            }
+            context.startForegroundService(intent)
+            bindBleService()
+
             val ret = JSObject()
             ret.put("success", true)
-            ret.put("serverReady", serverReady.get())
+            ret.put("serverReady", bleService?.isServerReady() ?: false)
             call.resolve(ret)
         } catch (e: Exception) {
             Log.e(TAG, "initializeBLE error", e)
@@ -173,16 +233,16 @@ class NexoBlePlugin : Plugin() {
         val adapter = bluetoothAdapter
         val enabled = adapter?.isEnabled == true
         ret.put("enabled", enabled)
-        ret.put("canAdvertise", enabled && bluetoothLeAdvertiser != null)
+        ret.put("canAdvertise", enabled && bluetoothAdapter?.bluetoothLeAdvertiser != null)
         ret.put("canScan", enabled && bluetoothLeScanner != null)
-        ret.put("serverReady", serverReady.get())
+        ret.put("serverReady", bleService?.isServerReady() ?: false)
         call.resolve(ret)
     }
 
     @PluginMethod
     fun isAdvertising(call: PluginCall) {
         val ret = JSObject()
-        ret.put("isAdvertising", isAdvertising.get())
+        ret.put("isAdvertising", bleService?.isAdvertising() ?: false)
         call.resolve(ret)
     }
 
@@ -190,17 +250,17 @@ class NexoBlePlugin : Plugin() {
     fun startAdvertising(call: PluginCall) {
         if (!checkBluetoothAdapter(call)) return
         if (!checkPermission(Manifest.permission.BLUETOOTH_ADVERTISE, call)) return
-        try {
-            startAdvertisingInternal()
+        val success = bleService?.startAdvertising() ?: false
+        if (success) {
             call.resolve(JSObject().put("success", true))
-        } catch (e: Exception) {
-            call.reject("Advertising failed: ${e.message}")
+        } else {
+            call.reject("Advertising failed: server not ready or missing permissions")
         }
     }
 
     @PluginMethod
     fun stopAdvertising(call: PluginCall) {
-        stopAdvertisingInternal()
+        bleService?.stopAdvertising()
         call.resolve(JSObject().put("success", true))
     }
 
@@ -213,11 +273,13 @@ class NexoBlePlugin : Plugin() {
             return
         }
         try {
-            val filters = listOf<ScanFilter>()
+            val filter = ScanFilter.Builder()
+                .setServiceUuid(ParcelUuid(NexoGattService.SERVICE_UUID))
+                .build()
             val settings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build()
-            bluetoothLeScanner?.startScan(filters, settings, scanCallback)
+            bluetoothLeScanner?.startScan(listOf(filter), settings, scanCallback)
             isScanning.set(true)
             call.resolve(JSObject().put("success", true))
         } catch (e: Exception) {
@@ -241,6 +303,7 @@ class NexoBlePlugin : Plugin() {
         }
         if (!checkBluetoothAdapter(call)) return
         if (!checkPermission(Manifest.permission.BLUETOOTH_CONNECT, call)) return
+
         val device = bluetoothAdapter?.getRemoteDevice(deviceId)
         if (device == null) {
             call.reject("Device not found")
@@ -255,23 +318,14 @@ class NexoBlePlugin : Plugin() {
             return
         }
         deviceConnectionStates[deviceId] = ConnectionState.CONNECTING
-        val attempt = call.getInt("attempt", 0)
         try {
             connectGatt(device)
             val ret = JSObject()
             ret.put("connected", true)
             ret.put("alreadyConnected", false)
-            ret.put("attempt", attempt)
             call.resolve(ret)
         } catch (e: Exception) {
             deviceConnectionStates[deviceId] = ConnectionState.ERROR
-            val err = JSObject()
-            err.put("deviceId", deviceId)
-            err.put("reason", e.message)
-            err.put("attempt", attempt)
-            err.put("recoverable", true)
-            err.put("maxAttempts", MAX_RECONNECT_ATTEMPTS)
-            notifyListeners("onConnectionFailed", err)
             call.reject("Connection failed: ${e.message}")
         }
     }
@@ -297,9 +351,7 @@ class NexoBlePlugin : Plugin() {
         disconnectDeviceInternal(deviceId)
         Handler(Looper.getMainLooper()).postDelayed({
             val device = bluetoothAdapter?.getRemoteDevice(deviceId)
-            if (device != null) {
-                connectGatt(device)
-            }
+            if (device != null) connectGatt(device)
         }, RECONNECT_DELAY_MS)
         call.resolve(JSObject().put("success", true))
     }
@@ -307,44 +359,64 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val deviceId = call.getString("deviceId", "")
-        if (deviceId.isEmpty()) {
-            call.reject("deviceId required")
-            return
-        }
         val message = call.getString("message", "")
-        if (message.isEmpty()) {
-            call.reject("message required")
+        if (deviceId.isEmpty() || message.isEmpty()) {
+            call.reject("deviceId and message required")
             return
         }
-        if (!serverReady.get()) {
-            call.reject("GATT server not ready")
+
+        val payload = JSONObject().apply {
+            put("messageId", UUID.randomUUID().toString())
+            put("senderName", localUserName)
+            put("content", message)
+            put("timestamp", System.currentTimeMillis())
+        }.toString().toByteArray(Charsets.UTF_8)
+
+        // Si es conexión ENTRANTE (alguien se conectó a nuestro server), notificamos vía Service
+        if (bleService?.getConnectedDeviceIds()?.contains(deviceId) == true) {
+            val success = bleService?.sendNotification(deviceId, payload) ?: false
+            if (success) {
+                call.resolve(JSObject().put("success", true).put("via", "server_notification"))
+            } else {
+                call.reject("Failed to send via server notification (not subscribed?)")
+            }
             return
         }
-        try {
-            val payload = JSONObject().apply {
-                put("messageId", UUID.randomUUID().toString())
-                put("senderName", localUserName)
-                put("content", message)
-                put("timestamp", System.currentTimeMillis())
-            }.toString()
-            val op = GattOperation.Write(deviceId, NEXO_CHAR_TX, payload.toByteArray(Charsets.UTF_8))
+
+        // Si es conexión SALIENTE (nosotros nos conectamos a ellos), escribimos directo
+        if (gattClients.containsKey(deviceId)) {
+            val op = GattOperation.Write(
+                deviceId,
+                NexoGattService.PAYLOAD_CHAR_UUID.toString(),
+                payload
+            )
             queueGattOperation(deviceId, op)
-            call.resolve(JSObject().put("success", true))
-        } catch (e: Exception) {
-            Log.e(TAG, "sendMessage error", e)
-            call.reject("Send failed: ${e.message}")
+            call.resolve(JSObject().put("success", true).put("via", "client_write"))
+            return
         }
+
+        call.reject("Device not connected")
     }
 
     @PluginMethod
     fun getConnectedDevices(call: PluginCall) {
         val devices = JSONArray()
+        // Conexiones salientes
         gattClients.forEach { (id, _) ->
-            val state = deviceConnectionStates[id]
             val obj = JSObject()
             obj.put("id", id)
             obj.put("address", id)
-            obj.put("state", state?.name ?: "UNKNOWN")
+            obj.put("state", deviceConnectionStates[id]?.name ?: "UNKNOWN")
+            obj.put("direction", "outgoing")
+            devices.put(obj)
+        }
+        // Conexiones entrantes
+        bleService?.getConnectedDeviceIds()?.forEach { id ->
+            val obj = JSObject()
+            obj.put("id", id)
+            obj.put("address", id)
+            obj.put("state", "READY")
+            obj.put("direction", "incoming")
             devices.put(obj)
         }
         val ret = JSObject()
@@ -371,14 +443,16 @@ class NexoBlePlugin : Plugin() {
         val locationPerm = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         } else true
+
         ret.put("scanGranted", scanPerm)
         ret.put("connectGranted", connectPerm)
         ret.put("advertiseGranted", advertisePerm)
         ret.put("locationGranted", locationPerm)
         ret.put("allGranted", scanPerm && connectPerm && advertisePerm && locationPerm)
+
         val act = activity
         val permanentlyDenied = if (act != null) {
-            !scanPerm && !ActivityCompat.shouldShowRequestPermissionRationale(act, Manifest.permission.BLUETOOTH_SCAN)
+            !scanPerm && !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(act, Manifest.permission.BLUETOOTH_SCAN)
         } else false
         ret.put("isPermanentlyDenied", permanentlyDenied)
         call.resolve(ret)
@@ -386,195 +460,46 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
-        requestPermissionForAlias("blePermissionsCallback", call, "blePermissionsCallback")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requestPermissionForAlias("bleScan", call, "bleScanCallback")
+        } else {
+            requestPermissionForAlias("bleLocation", call, "bleLocationCallback")
+        }
     }
 
     @PermissionCallback
-    fun blePermissionsCallback(call: PluginCall) {
+    fun bleScanCallback(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requestPermissionForAlias("bleConnect", call, "bleConnectCallback")
+        } else {
+            checkBLEStatus(call)
+        }
+    }
+
+    @PermissionCallback
+    fun bleConnectCallback(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requestPermissionForAlias("bleAdvertise", call, "bleAdvertiseCallback")
+        } else {
+            checkBLEStatus(call)
+        }
+    }
+
+    @PermissionCallback
+    fun bleAdvertiseCallback(call: PluginCall) {
         checkBLEStatus(call)
     }
 
-    @Synchronized
-    private fun startGattServer() {
-        if (serverReady.get() && gattServer != null) return
-        val manager = bluetoothManager ?: return
-        val service = BluetoothGattService(
-            UUID.fromString(NEXO_SERVICE_UUID),
-            BluetoothGattService.SERVICE_TYPE_PRIMARY
-        )
-        val rxChar = BluetoothGattCharacteristic(
-            UUID.fromString(NEXO_CHAR_RX),
-            BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
-            BluetoothGattCharacteristic.PERMISSION_WRITE
-        )
-        val txChar = BluetoothGattCharacteristic(
-            UUID.fromString(NEXO_CHAR_TX),
-            BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
-            BluetoothGattCharacteristic.PERMISSION_READ
-        ).apply {
-            val cccd = BluetoothGattDescriptor(
-                UUID.fromString(CCCD_UUID),
-                BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
-            )
-            cccd.value = BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
-            addDescriptor(cccd)
-        }
-        val peerChar = BluetoothGattCharacteristic(
-            UUID.fromString(NEXO_CHAR_PEER),
-            BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-            BluetoothGattCharacteristic.PERMISSION_READ
-        ).apply {
-            val cccd = BluetoothGattDescriptor(
-                UUID.fromString(CCCD_UUID),
-                BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
-            )
-            addDescriptor(cccd)
-        }
-        service.addCharacteristic(rxChar)
-        service.addCharacteristic(txChar)
-        service.addCharacteristic(peerChar)
-        rxCharacteristic = rxChar
-        txCharacteristic = txChar
-        peerInfoCharacteristic = peerChar
-        gattServer = manager.openGattServer(context, gattServerCallback)
-        gattServer?.addService(service)
+    @PermissionCallback
+    fun bleLocationCallback(call: PluginCall) {
+        checkBLEStatus(call)
     }
 
-    private val gattServerCallback = object : BluetoothGattServerCallback() {
-        override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
-            val dev = device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isEmpty()) return
-            when (newState) {
-                BluetoothProfile.STATE_CONNECTED -> {
-                    Log.i(TAG, "Server connection from $id")
-                    deviceConnectionStates[id] = ConnectionState.CONNECTED
-                    val data = JSObject()
-                    data.put("deviceId", id)
-                    data.put("name", dev.name ?: "NEXO Peer")
-                    data.put("direction", "incoming")
-                    data.put("servicesReady", true)
-                    notifyListeners("onDeviceConnected", data)
-                }
-                BluetoothProfile.STATE_DISCONNECTED -> {
-                    Log.i(TAG, "Server disconnection from $id")
-                    deviceConnectionStates[id] = ConnectionState.DISCONNECTED
-                    val data = JSObject()
-                    data.put("deviceId", id)
-                    data.put("reason", "Server disconnected")
-                    notifyListeners("onDeviceDisconnected", data)
-                }
-            }
-        }
-        override fun onServiceAdded(status: Int, service: BluetoothGattService?) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                serverReady.set(true)
-                Log.i(TAG, "GATT server ready")
-                notifyListeners("onServerReady", JSObject().put("ready", true))
-            } else {
-                Log.e(TAG, "Failed to add service: $status")
-                scheduleServerRestart()
-            }
-        }
-        override fun onCharacteristicWriteRequest(
-            device: BluetoothDevice?, requestId: Int, characteristic: BluetoothGattCharacteristic?,
-            preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
-        ) {
-            val dev = device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isEmpty()) return
-            val data = value ?: return
-            val char = characteristic ?: return
-            if (!char.uuid.toString().equals(NEXO_CHAR_RX, ignoreCase = true)) {
-                if (responseNeeded) gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
-                return
-            }
-            val payload = String(data, Charsets.UTF_8)
-            Log.d(TAG, "RX from $id: $payload")
-            val json = try { JSONObject(payload) } catch (e: Exception) { null }
-            val messageId = json?.optString("messageId")
-            if (messageId != null && messageId.isNotEmpty()) {
-                val now = System.currentTimeMillis()
-                synchronized(messageDedupLru) {
-                    if (messageDedupLru.containsKey(messageId)) {
-                        Log.d(TAG, "Duplicate message dropped: $messageId")
-                        if (responseNeeded) gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
-                        return
-                    }
-                    messageDedupLru[messageId] = now
-                }
-            }
-            val evt = JSObject()
-            evt.put("deviceId", id)
-            evt.put("data", payload)
-            evt.put("source", "gatt_server")
-            evt.put("timestamp", System.currentTimeMillis())
-            notifyListeners("onPayloadReceived", evt)
-            if (responseNeeded) {
-                gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
-            }
-        }
-        override fun onDescriptorWriteRequest(
-            device: BluetoothDevice?, requestId: Int, descriptor: BluetoothGattDescriptor?,
-            preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
-        ) {
-            val dev = device ?: return
-            val desc = descriptor ?: return
-            if (!desc.uuid.toString().equals(CCCD_UUID, ignoreCase = true)) {
-                if (responseNeeded) gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
-                return
-            }
-            desc.value = value
-            if (responseNeeded) {
-                gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
-            }
-            val id = dev.address.orEmpty()
-            if (id.isEmpty()) return
-            deviceConnectionStates[id] = ConnectionState.READY
-            val evt1 = JSObject()
-            evt1.put("deviceId", id)
-            evt1.put("notificationsEnabled", true)
-            notifyListeners("onNotificationsEnabled", evt1)
-            val evt2 = JSObject()
-            evt2.put("deviceId", id)
-            evt2.put("servicesReady", true)
-            notifyListeners("onServicesReady", evt2)
-        }
-        override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
-            val dev = device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isNotEmpty()) {
-                Log.i(TAG, "MTU changed for $id: $mtu")
-            }
-        }
-    }
-
-    private fun closeGattServer() {
-        try {
-            gattServer?.close()
-        } catch (e: Exception) {
-            Log.w(TAG, "Error closing GATT server", e)
-        }
-        gattServer = null
-        serverReady.set(false)
-    }
-
-    private fun scheduleServerRestart() {
-        if (serverRestartScheduled.getAndSet(true)) return
-        Handler(Looper.getMainLooper()).postDelayed({
-            serverRestartScheduled.set(false)
-            Log.w(TAG, "Restarting GATT server...")
-            closeGattServer()
-            startGattServer()
-        }, SERVER_RESTART_DELAY_MS)
-    }
+    // --- Client GATT Logic ---
 
     private fun connectGatt(device: BluetoothDevice) {
-        val id = device.address.orEmpty()
-        if (id.isEmpty()) return
-        gattClients[id]?.let { oldGatt ->
-            safeCloseGatt(oldGatt)
-        }
+        val id = device.address ?: return
+        gattClients[id]?.let { safeCloseGatt(it) }
         val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             device.connectGatt(context, false, gattClientCallback, BluetoothDevice.TRANSPORT_LE)
         } else {
@@ -591,8 +516,7 @@ class NexoBlePlugin : Plugin() {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             val g = gatt ?: return
             val dev = g.device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isEmpty()) return
+            val id = dev.address ?: return
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     Log.i(TAG, "Client connected to $id")
@@ -602,9 +526,8 @@ class NexoBlePlugin : Plugin() {
                     data.put("name", dev.name ?: "NEXO Peer")
                     data.put("direction", "outgoing")
                     data.put("servicesReady", false)
-                    data.put("attempt", 0)
                     notifyListeners("onDeviceConnected", data)
-                    g.discoverServices()
+                    g.requestMtu(517)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.i(TAG, "Client disconnected from $id")
@@ -619,44 +542,78 @@ class NexoBlePlugin : Plugin() {
                 }
             }
         }
+
+        override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
+            val g = gatt ?: return
+            val dev = g.device ?: return
+            val id = dev.address ?: return
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.i(TAG, "MTU negotiated for $id: $mtu")
+            }
+            signalOperationComplete(id)
+            g.discoverServices()
+        }
+
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
             val g = gatt ?: return
             val dev = g.device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isEmpty()) return
+            val id = dev.address ?: return
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 Log.i(TAG, "Services discovered for $id")
+                val service = g.getService(NexoGattService.SERVICE_UUID)
+                if (service == null) {
+                    Log.e(TAG, "NEXO service not found on $id")
+                    return
+                }
+                val payloadChar = service.getCharacteristic(NexoGattService.PAYLOAD_CHAR_UUID)
+                if (payloadChar != null) {
+                    g.setCharacteristicNotification(payloadChar, true)
+                    val cccd = payloadChar.getDescriptor(NexoGattService.CLIENT_CONFIG_UUID)
+                    if (cccd != null) {
+                        val op = GattOperation.WriteDescriptor(
+                            id,
+                            NexoGattService.CLIENT_CONFIG_UUID.toString(),
+                            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        )
+                        queueGattOperation(id, op)
+                    }
+                }
+                // Leer announce para info del peer
+                val announceChar = service.getCharacteristic(NexoGattService.ANNOUNCE_CHAR_UUID)
+                if (announceChar != null) {
+                    val op = GattOperation.Read(id, NexoGattService.ANNOUNCE_CHAR_UUID.toString())
+                    queueGattOperation(id, op)
+                }
                 deviceConnectionStates[id] = ConnectionState.DISCOVERING
                 val evt = JSObject()
                 evt.put("deviceId", id)
                 evt.put("servicesReady", true)
                 notifyListeners("onServicesReady", evt)
-                val service = g.getService(UUID.fromString(NEXO_SERVICE_UUID))
-                val txChar = service?.getCharacteristic(UUID.fromString(NEXO_CHAR_TX))
-                if (txChar != null) {
-                    g.setCharacteristicNotification(txChar, true)
-                    val cccd = txChar.getDescriptor(UUID.fromString(CCCD_UUID))
-                    if (cccd != null) {
-                        cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                        val op = GattOperation.WriteDescriptor(id, CCCD_UUID, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-                        queueGattOperation(id, op)
-                    }
-                }
             } else {
                 Log.e(TAG, "Service discovery failed for $id: $status")
             }
         }
+
         override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
             val g = gatt ?: return
             val dev = g.device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isEmpty()) return
+            val id = dev.address ?: return
             val data = characteristic?.value ?: return
             val payload = String(data, Charsets.UTF_8)
-            Log.d(TAG, "Notification from $id: $payload")
+            Log.d(TAG, "Notification from $id: ${payload.take(200)}")
+
+            if (characteristic.uuid == NexoGattService.ANNOUNCE_CHAR_UUID) {
+                val evt = JSObject()
+                evt.put("deviceId", id)
+                evt.put("peerInfo", payload)
+                evt.put("source", "peer_announce")
+                notifyListeners("onPeerInfoReceived", evt)
+                return
+            }
+
             val json = try { JSONObject(payload) } catch (e: Exception) { null }
             val messageId = json?.optString("messageId")
-            if (messageId != null && messageId.isNotEmpty()) {
+            if (!messageId.isNullOrEmpty()) {
                 val now = System.currentTimeMillis()
                 synchronized(messageDedupLru) {
                     if (messageDedupLru.containsKey(messageId)) return
@@ -670,11 +627,28 @@ class NexoBlePlugin : Plugin() {
             evt.put("timestamp", System.currentTimeMillis())
             notifyListeners("onPayloadReceived", evt)
         }
+
+        override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+            val g = gatt ?: return
+            val dev = g.device ?: return
+            val id = dev.address ?: return
+            if (status == BluetoothGatt.GATT_SUCCESS && characteristic != null) {
+                if (characteristic.uuid == NexoGattService.ANNOUNCE_CHAR_UUID) {
+                    val payload = String(characteristic.value, Charsets.UTF_8)
+                    val evt = JSObject()
+                    evt.put("deviceId", id)
+                    evt.put("peerInfo", payload)
+                    evt.put("source", "peer_announce_read")
+                    notifyListeners("onPeerInfoReceived", evt)
+                }
+            }
+            signalOperationComplete(id)
+        }
+
         override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
             val g = gatt ?: return
             val dev = g.device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isEmpty()) return
+            val id = dev.address ?: return
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 Log.d(TAG, "Write success to $id")
             } else {
@@ -682,11 +656,11 @@ class NexoBlePlugin : Plugin() {
             }
             signalOperationComplete(id)
         }
+
         override fun onDescriptorWrite(gatt: BluetoothGatt?, descriptor: BluetoothGattDescriptor?, status: Int) {
             val g = gatt ?: return
             val dev = g.device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isEmpty()) return
+            val id = dev.address ?: return
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 Log.i(TAG, "Descriptor write success for $id")
                 deviceConnectionStates[id] = ConnectionState.READY
@@ -696,14 +670,6 @@ class NexoBlePlugin : Plugin() {
                 notifyListeners("onNotificationsEnabled", evt)
             }
             signalOperationComplete(id)
-        }
-        override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
-            val g = gatt ?: return
-            val dev = g.device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isNotEmpty()) {
-                signalOperationComplete(id)
-            }
         }
     }
 
@@ -735,11 +701,20 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    private val messageDedupLru = Collections.synchronizedMap(
+        object : LinkedHashMap<String, Long>(MESSAGE_DEDUP_MAX, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
+                return size > MESSAGE_DEDUP_MAX
+            }
+        }
+    )
+
+    // --- Operation Queue ---
+
     private sealed class GattOperation {
         data class Write(val deviceId: String, val charUuid: String, val value: ByteArray) : GattOperation()
         data class WriteDescriptor(val deviceId: String, val descUuid: String, val value: ByteArray) : GattOperation()
         data class Read(val deviceId: String, val charUuid: String) : GattOperation()
-        data class RequestMtu(val deviceId: String, val mtu: Int) : GattOperation()
     }
 
     private val operationLocks = ConcurrentHashMap<String, Any>()
@@ -783,7 +758,7 @@ class NexoBlePlugin : Plugin() {
         synchronized(lock) {
             val success = when (operation) {
                 is GattOperation.Write -> {
-                    val service = gatt.getService(UUID.fromString(NEXO_SERVICE_UUID))
+                    val service = gatt.getService(NexoGattService.SERVICE_UUID)
                     val char = service?.getCharacteristic(UUID.fromString(operation.charUuid))
                     if (char != null) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -796,8 +771,10 @@ class NexoBlePlugin : Plugin() {
                     } else false
                 }
                 is GattOperation.WriteDescriptor -> {
-                    val service = gatt.getService(UUID.fromString(NEXO_SERVICE_UUID))
-                    val char = service?.characteristics?.find { it.descriptors.any { d -> d.uuid.toString().equals(operation.descUuid, ignoreCase = true) } }
+                    val service = gatt.getService(NexoGattService.SERVICE_UUID)
+                    val char = service?.characteristics?.find {
+                        it.descriptors.any { d -> d.uuid.toString().equals(operation.descUuid, ignoreCase = true) }
+                    }
                     val desc = char?.getDescriptor(UUID.fromString(operation.descUuid))
                     if (desc != null) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -810,7 +787,7 @@ class NexoBlePlugin : Plugin() {
                     } else false
                 }
                 is GattOperation.Read -> {
-                    val service = gatt.getService(UUID.fromString(NEXO_SERVICE_UUID))
+                    val service = gatt.getService(NexoGattService.SERVICE_UUID)
                     val char = service?.getCharacteristic(UUID.fromString(operation.charUuid))
                     if (char != null) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -820,9 +797,6 @@ class NexoBlePlugin : Plugin() {
                             gatt.readCharacteristic(char)
                         }
                     } else false
-                }
-                is GattOperation.RequestMtu -> {
-                    gatt.requestMtu(operation.mtu)
                 }
             }
             if (success) {
@@ -834,30 +808,6 @@ class NexoBlePlugin : Plugin() {
 
     private fun signalOperationComplete(deviceId: String) {
         operationSignals[deviceId]?.countDown()
-    }
-
-    private fun startAdvertisingInternal() {
-        if (isAdvertising.get()) return
-        val advertiser = bluetoothLeAdvertiser ?: return
-        val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-            .setConnectable(true)
-            .build()
-        val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)
-            .addServiceUuid(ParcelUuid(UUID.fromString(NEXO_SERVICE_UUID)))
-            .build()
-        val scanResponse = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
-            .build()
-        advertiser.startAdvertising(settings, data, scanResponse, advertiseCallback)
-    }
-
-    private fun stopAdvertisingInternal() {
-        if (!isAdvertising.get()) return
-        bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-        isAdvertising.set(false)
     }
 
     private fun stopScanInternal() {
