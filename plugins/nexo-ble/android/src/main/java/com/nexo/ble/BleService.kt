@@ -27,7 +27,7 @@ class BleService : Service() {
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var gattServer: BluetoothGattServer? = null
     private val serverConnections = ConcurrentHashMap<String, BluetoothDevice>()
-    private val serverConnectionStates = ConcurrentHashMap<String, String>() // "connected", "ready"
+    private val serverConnectionStates = ConcurrentHashMap<String, String>()
     private var isAdvertising = false
     private var serverReady = false
     private val handler = Handler(Looper.getMainLooper())
@@ -138,7 +138,6 @@ class BleService : Service() {
                 BluetoothGattService.SERVICE_TYPE_PRIMARY
             )
 
-            // ANNOUNCE: READ + NOTIFY (info local)
             val announceChar = BluetoothGattCharacteristic(
                 NexoGattService.ANNOUNCE_CHAR_UUID,
                 BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
@@ -150,7 +149,6 @@ class BleService : Service() {
                 ))
             }
 
-            // PAYLOAD: WRITE + NOTIFY (mensajes bidireccionales)
             val payloadChar = BluetoothGattCharacteristic(
                 NexoGattService.PAYLOAD_CHAR_UUID,
                 BluetoothGattCharacteristic.PROPERTY_WRITE or
@@ -164,7 +162,6 @@ class BleService : Service() {
                 ))
             }
 
-            // HANDSHAKE: WRITE + READ (metadatos)
             val handshakeChar = BluetoothGattCharacteristic(
                 NexoGattService.HANDSHAKE_CHAR_UUID,
                 BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_READ,
@@ -210,7 +207,6 @@ class BleService : Service() {
                         putExtra("direction", "incoming")
                         putExtra("name", dev.name ?: "NEXO Peer")
                     })
-                    // Dar tiempo al cliente para descubrir servicios antes de marcar ready
                     handler.postDelayed({
                         if (serverConnections.containsKey(id)) {
                             sendBroadcast(Intent("com.nexo.ble.SERVICES_READY").apply {
