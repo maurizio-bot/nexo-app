@@ -368,12 +368,12 @@ class BleService : Service() {
             return false
         }
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val result = gattServer?.notifyCharacteristicChanged(device, char, false, data)
-            result == BluetoothGatt.GATT_SUCCESS
+            gattServer?.notifyCharacteristicChanged(device, char, false, data) == BluetoothGatt.GATT_SUCCESS
         } else {
             @Suppress("DEPRECATION")
             char.value = data
-            gattServer?.notifyCharacteristicChanged(device, char, false) == true
+            gattServer?.notifyCharacteristicChanged(device, char, false)
+            true
         }
     }
 
