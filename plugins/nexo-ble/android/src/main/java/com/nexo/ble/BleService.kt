@@ -9,6 +9,8 @@ import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.nexo.ble.model.NexoGattService
+import org.json.JSONObject
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -18,10 +20,6 @@ class BleService : Service() {
         private const val TAG = "NexoBleService"
         private const val CHANNEL_ID = "nexo_ble_channel"
         private const val NOTIFICATION_ID = 1001
-        private const val NEXO_SERVICE_UUID = "0000feed-0000-1000-8000-00805f9b34fb"
-        private const val NEXO_CHAR_RX = "0000feed-0001-1000-8000-00805f9b34fb"
-        private const val NEXO_CHAR_TX = "0000feed-0002-1000-8000-00805f9b34fb"
-        private const val CCCD_UUID = "00002902-0000-1000-8000-00805f9b34fb"
     }
 
     private val binder = LocalBinder()
@@ -29,26 +27,38 @@ class BleService : Service() {
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var gattServer: BluetoothGattServer? = null
     private val serverConnections = ConcurrentHashMap<String, BluetoothDevice>()
+    private val serverConnectionStates = ConcurrentHashMap<String, String>() // "connected", "ready"
     private var isAdvertising = false
     private var serverReady = false
     private val handler = Handler(Looper.getMainLooper())
+    private var advertiseCallback: AdvertiseCallback? = null
+
+    private var localUserId: String = ""
+    private var localUserName: String = "NEXO User"
 
     interface ServiceInterface {
         fun sendNotification(deviceId: String, data: ByteArray): Boolean
         fun getConnectedDeviceIds(): List<String>
         fun isServerReady(): Boolean
+        fun startAdvertising(): Boolean
+        fun stopAdvertising()
+        fun isAdvertising(): Boolean
+        fun setLocalUserInfo(userId: String, userName: String)
     }
 
     inner class LocalBinder : Binder() {
         fun getService(): ServiceInterface = object : ServiceInterface {
-            override fun sendNotification(deviceId: String, data: ByteArray): Boolean {
-                return this@BleService.sendNotification(deviceId, data)
-            }
-            override fun getConnectedDeviceIds(): List<String> {
-                return this@BleService.serverConnections.keys.toList()
-            }
-            override fun isServerReady(): Boolean {
-                return this@BleService.serverReady
+            override fun sendNotification(deviceId: String, data: ByteArray): Boolean =
+                this@BleService.sendNotification(deviceId, data)
+            override fun getConnectedDeviceIds(): List<String> =
+                this@BleService.serverConnections.keys.toList()
+            override fun isServerReady(): Boolean = this@BleService.serverReady
+            override fun startAdvertising(): Boolean = this@BleService.startAdvertising()
+            override fun stopAdvertising() = this@BleService.stopAdvertising()
+            override fun isAdvertising(): Boolean = this@BleService.isAdvertising
+            override fun setLocalUserInfo(userId: String, userName: String) {
+                this@BleService.localUserId = userId
+                this@BleService.localUserName = userName
             }
         }
     }
@@ -57,22 +67,24 @@ class BleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "BleService onCreate")
+        Log.i(TAG, "[NAP-BLE-SVC] onCreate")
         bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
         createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.i(TAG, "BleService onStartCommand")
+        Log.i(TAG, "[NAP-BLE-SVC] onStartCommand")
         startAsForeground()
+        localUserId = intent?.getStringExtra("userId") ?: ""
+        localUserName = intent?.getStringExtra("userName") ?: "NEXO User"
         setupGattServer()
         return START_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.i(TAG, "BleService onDestroy")
+        Log.i(TAG, "[NAP-BLE-SVC] onDestroy")
         stopAdvertising()
         serverConnections.clear()
         gattServer?.close()
@@ -90,8 +102,7 @@ class BleService : Service() {
                 description = "Mantiene el servidor BLE activo para recibir mensajes"
                 setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
@@ -118,31 +129,52 @@ class BleService : Service() {
     private fun setupGattServer() {
         if (gattServer != null && serverReady) return
         if (!canAccessBluetooth()) {
-            Log.w(TAG, "Sin permisos para setupGattServer")
+            Log.w(TAG, "[NAP-BLE-SVC] Sin permisos para setupGattServer")
             return
         }
         try {
             val service = BluetoothGattService(
-                UUID.fromString(NEXO_SERVICE_UUID),
+                NexoGattService.SERVICE_UUID,
                 BluetoothGattService.SERVICE_TYPE_PRIMARY
             )
+
+            // ANNOUNCE: READ + NOTIFY (info local)
             val announceChar = BluetoothGattCharacteristic(
-                UUID.fromString(NEXO_CHAR_RX),
-                BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
+                NexoGattService.ANNOUNCE_CHAR_UUID,
+                BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
                 BluetoothGattCharacteristic.PERMISSION_READ
-            )
-            val payloadChar = BluetoothGattCharacteristic(
-                UUID.fromString(NEXO_CHAR_TX),
-                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-                BluetoothGattCharacteristic.PERMISSION_WRITE or BluetoothGattCharacteristic.PERMISSION_READ
             ).apply {
                 addDescriptor(BluetoothGattDescriptor(
-                    UUID.fromString(CCCD_UUID),
+                    NexoGattService.CLIENT_CONFIG_UUID,
                     BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
                 ))
             }
+
+            // PAYLOAD: WRITE + NOTIFY (mensajes bidireccionales)
+            val payloadChar = BluetoothGattCharacteristic(
+                NexoGattService.PAYLOAD_CHAR_UUID,
+                BluetoothGattCharacteristic.PROPERTY_WRITE or
+                        BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE or
+                        BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+                BluetoothGattCharacteristic.PERMISSION_WRITE or BluetoothGattCharacteristic.PERMISSION_READ
+            ).apply {
+                addDescriptor(BluetoothGattDescriptor(
+                    NexoGattService.CLIENT_CONFIG_UUID,
+                    BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
+                ))
+            }
+
+            // HANDSHAKE: WRITE + READ (metadatos)
+            val handshakeChar = BluetoothGattCharacteristic(
+                NexoGattService.HANDSHAKE_CHAR_UUID,
+                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PERMISSION_WRITE or BluetoothGattCharacteristic.PERMISSION_READ
+            )
+
             service.addCharacteristic(announceChar)
             service.addCharacteristic(payloadChar)
+            service.addCharacteristic(handshakeChar)
+
             gattServer = bluetoothManager?.openGattServer(this, gattServerCallback)
             gattServer?.addService(service)
             Log.i(TAG, "[NAP-BLE-SVC] GattServer abierto, servicio en cola de registro")
@@ -153,66 +185,74 @@ class BleService : Service() {
 
     private val gattServerCallback = object : BluetoothGattServerCallback() {
         override fun onServiceAdded(status: Int, service: BluetoothGattService?) {
-            if (status == BluetoothGatt.GATT_SUCCESS && service?.uuid.toString().equals(NEXO_SERVICE_UUID, ignoreCase = true)) {
+            if (status == BluetoothGatt.GATT_SUCCESS && service?.uuid == NexoGattService.SERVICE_UUID) {
                 serverReady = true
-                Log.i(TAG, "[NAP-BLE-SVC] Servicio NEXO registrado en stack Bluetooth")
+                Log.i(TAG, "[NAP-BLE-SVC] Servicio NEXO registrado")
                 sendBroadcast(Intent("com.nexo.ble.SERVER_READY").apply {
                     putExtra("ready", true)
-                    putExtra("serviceUuid", NEXO_SERVICE_UUID)
                 })
             } else {
                 serverReady = false
-                Log.e(TAG, "[NAP-BLE-SVC] Fallo al registrar servicio: status=$status uuid=${service?.uuid}")
+                Log.e(TAG, "[NAP-BLE-SVC] Fallo al registrar servicio: status=$status")
             }
         }
+
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
             val dev = device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isEmpty()) return
+            val id = dev.address ?: return
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     serverConnections[id] = dev
+                    serverConnectionStates[id] = "connected"
                     Log.i(TAG, "[NAP-BLE-SVC] Dispositivo conectado ENTRANTE: $id")
                     sendBroadcast(Intent("com.nexo.ble.DEVICE_CONNECTED").apply {
                         putExtra("deviceId", id)
                         putExtra("direction", "incoming")
+                        putExtra("name", dev.name ?: "NEXO Peer")
                     })
+                    // Dar tiempo al cliente para descubrir servicios antes de marcar ready
                     handler.postDelayed({
-                        sendBroadcast(Intent("com.nexo.ble.SERVICES_READY").apply {
-                            putExtra("deviceId", id)
-                            putExtra("ready", true)
-                            putExtra("direction", "incoming")
-                            putExtra("role", "server")
-                        })
-                    }, 500)
+                        if (serverConnections.containsKey(id)) {
+                            sendBroadcast(Intent("com.nexo.ble.SERVICES_READY").apply {
+                                putExtra("deviceId", id)
+                                putExtra("ready", true)
+                                putExtra("direction", "incoming")
+                            })
+                        }
+                    }, 800)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     serverConnections.remove(id)
+                    serverConnectionStates.remove(id)
                     Log.i(TAG, "[NAP-BLE-SVC] Dispositivo desconectado: $id")
                     sendBroadcast(Intent("com.nexo.ble.DEVICE_DISCONNECTED").apply {
                         putExtra("deviceId", id)
+                        putExtra("reason", "Server disconnected")
                     })
                 }
             }
         }
+
         override fun onCharacteristicReadRequest(
-            device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic?
+            device: BluetoothDevice?, requestId: Int, offset: Int,
+            characteristic: BluetoothGattCharacteristic?
         ) {
             val dev = device ?: return
             val char = characteristic ?: return
-            val value = when (char.uuid.toString()) {
-                NEXO_CHAR_RX -> {
-                    val json = buildString {
-                        append("{\"userId\":\"\",\"userName\":\"NEXO Service\",\"timestamp\":")
-                        append(System.currentTimeMillis())
-                        append(",\"appVersion\":\"5.0.3-ARCH\"}")
-                    }
-                    json.toByteArray()
+            val value = when (char.uuid) {
+                NexoGattService.ANNOUNCE_CHAR_UUID -> {
+                    JSONObject().apply {
+                        put("userId", localUserId)
+                        put("userName", localUserName)
+                        put("timestamp", System.currentTimeMillis())
+                        put("appVersion", "5.1.0-ARCH")
+                    }.toString().toByteArray(Charsets.UTF_8)
                 }
                 else -> byteArrayOf()
             }
             gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
         }
+
         override fun onCharacteristicWriteRequest(
             device: BluetoothDevice?, requestId: Int, characteristic: BluetoothGattCharacteristic?,
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
@@ -223,18 +263,27 @@ class BleService : Service() {
                 gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
             }
             val char = characteristic ?: return
-            when (char.uuid.toString()) {
-                NEXO_CHAR_TX -> {
+            when (char.uuid) {
+                NexoGattService.PAYLOAD_CHAR_UUID -> {
                     val payload = String(data, Charsets.UTF_8)
-                    Log.d(TAG, "[NAP-BLE-SVC] PAYLOAD RECIBIDO de ${dev.address}: ${payload.take(100)}")
+                    Log.d(TAG, "[NAP-BLE-SVC] PAYLOAD RECIBIDO de ${dev.address}: ${payload.take(200)}")
                     sendBroadcast(Intent("com.nexo.ble.PAYLOAD_RECEIVED").apply {
                         putExtra("deviceId", dev.address)
                         putExtra("data", payload)
                         putExtra("source", "server_direct")
                     })
                 }
+                NexoGattService.HANDSHAKE_CHAR_UUID -> {
+                    val payload = String(data, Charsets.UTF_8)
+                    Log.d(TAG, "[NAP-BLE-SVC] HANDSHAKE de ${dev.address}: $payload")
+                    sendBroadcast(Intent("com.nexo.ble.HANDSHAKE_RECEIVED").apply {
+                        putExtra("deviceId", dev.address)
+                        putExtra("data", payload)
+                    })
+                }
             }
         }
+
         override fun onDescriptorWriteRequest(
             device: BluetoothDevice?, requestId: Int, descriptor: BluetoothGattDescriptor?,
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
@@ -244,19 +293,21 @@ class BleService : Service() {
             if (responseNeeded) {
                 gattServer?.sendResponse(dev, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
             }
-            if (desc.uuid.toString().equals(CCCD_UUID, ignoreCase = true)) {
+            if (desc.uuid == NexoGattService.CLIENT_CONFIG_UUID) {
+                val id = dev.address ?: return
                 val enabled = value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true
-                Log.i(TAG, "[NAP-BLE-SVC] CCCD escrito por ${dev.address}: enabled=$enabled")
+                Log.i(TAG, "[NAP-BLE-SVC] CCCD escrito por $id: enabled=$enabled")
+                if (enabled) serverConnectionStates[id] = "ready"
                 sendBroadcast(Intent("com.nexo.ble.NOTIFICATION_STATE").apply {
-                    putExtra("deviceId", dev.address)
+                    putExtra("deviceId", id)
                     putExtra("enabled", enabled)
                 })
             }
         }
+
         override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
-            val dev = device ?: return
-            val id = dev.address.orEmpty()
-            if (id.isNotEmpty()) {
+            val id = device?.address
+            if (!id.isNullOrEmpty()) {
                 Log.i(TAG, "[NAP-BLE-SVC] MTU cambiado para $id: $mtu")
             }
         }
@@ -266,7 +317,7 @@ class BleService : Service() {
         if (!canAccessBluetooth() || !canAccessAdvertising()) return false
         if (isAdvertising) return true
         if (!serverReady) {
-            Log.w(TAG, "Server no listo, no se puede anunciar")
+            Log.w(TAG, "[NAP-BLE-SVC] Server no listo, no se puede anunciar")
             return false
         }
         val advertiser = bluetoothAdapter?.bluetoothLeAdvertiser ?: return false
@@ -276,11 +327,12 @@ class BleService : Service() {
             .setConnectable(true)
             .build()
         val advertiseData = AdvertiseData.Builder()
-            .addServiceUuid(ParcelUuid(UUID.fromString(NEXO_SERVICE_UUID)))
+            .addServiceUuid(ParcelUuid(NexoGattService.SERVICE_UUID))
             .build()
         val scanResponse = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
             .build()
+
         val callback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                 isAdvertising = true
@@ -297,32 +349,44 @@ class BleService : Service() {
                 })
             }
         }
-        try {
+        advertiseCallback = callback
+        return try {
             advertiser.startAdvertising(settings, advertiseData, scanResponse, callback)
-            return true
+            true
         } catch (e: Exception) {
             Log.e(TAG, "[NAP-BLE-SVC] Error advertising: ${e.message}")
-            return false
+            false
         }
     }
 
     fun stopAdvertising() {
         if (!isAdvertising) return
         try {
-            bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(object : AdvertiseCallback() {})
+            advertiseCallback?.let {
+                bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(it)
+            }
         } catch (e: SecurityException) { }
         isAdvertising = false
+        advertiseCallback = null
     }
 
     fun sendNotification(deviceId: String, data: ByteArray): Boolean {
         val device = serverConnections[deviceId] ?: return false
-        val service = gattServer?.getService(UUID.fromString(NEXO_SERVICE_UUID)) ?: return false
-        val char = service.getCharacteristic(UUID.fromString(NEXO_CHAR_TX)) ?: return false
-        val descriptor = char.getDescriptor(UUID.fromString(CCCD_UUID))
+        val service = gattServer?.getService(NexoGattService.SERVICE_UUID) ?: return false
+        val char = service.getCharacteristic(NexoGattService.PAYLOAD_CHAR_UUID) ?: return false
+        val descriptor = char.getDescriptor(NexoGattService.CLIENT_CONFIG_UUID)
         val isSubscribed = descriptor?.value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true
-        if (!isSubscribed) return false
-        char.value = data
-        return gattServer?.notifyCharacteristicChanged(device, char, false) ?: false
+        if (!isSubscribed) {
+            Log.w(TAG, "[NAP-BLE-SVC] Device $deviceId no está suscrito a notificaciones")
+            return false
+        }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gattServer?.notifyCharacteristicChanged(device, char, false, data) ?: false
+        } else {
+            @Suppress("DEPRECATION")
+            char.value = data
+            gattServer?.notifyCharacteristicChanged(device, char, false) ?: false
+        }
     }
 
     private fun canAccessBluetooth(): Boolean {
