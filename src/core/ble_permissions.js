@@ -2,7 +2,7 @@
  * BLE Permissions Manager v4.1-ARCH
  * Ubicación: src/core/ble_permissions.js
  * FIX: API unificada + exports compatibles legacy (checkBLEStatus, requestBLEPermissions)
- * Coordinado con NexoBlePlugin.kt v5.0.1-ARCH + ble_interface.js v4.0-ARCH
+ * Coordinado con NexoBlePlugin.kt v5.1.0-ARCH + ble_interface.js v4.0-ARCH
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -80,7 +80,7 @@ const BLEPermissions = {
     this.state.checking = true;
     try {
       napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos nativos...');
-      await NexoBLE.requestPermissions();
+      await NexoBLE.requestBLEPermissions();
       const granted = await this.check();
       if (granted) {
         napLog(NAP_CODES.PERM_GRANTED, 'Permisos concedidos');
@@ -199,6 +199,28 @@ export async function requestBLEPermissions() {
 
 export function isPermanentlyDenied() {
   return BLEPermissions.state.isPermanentlyDenied;
+}
+
+// FIX v5.1.0-ARCH: Funciones faltantes para SetupWizard.js
+// Usamos result: result || {} para evitar crash si el plugin devuelve null
+export async function startBLEAdvertising() {
+  if (Capacitor.getPlatform() !== 'android') return { success: true };
+  try {
+    const result = await NexoBLE.startAdvertising();
+    return { success: true, result: result || {} };
+  } catch (e) {
+    return { success: false, error: e.message, nap_code: 'ADVERTISE_ERROR' };
+  }
+}
+
+export async function stopBLEAdvertising() {
+  if (Capacitor.getPlatform() !== 'android') return { success: true };
+  try {
+    const result = await NexoBLE.stopAdvertising();
+    return { success: true, result: result || {} };
+  } catch (e) {
+    return { success: false, error: e.message, nap_code: 'ADVERTISE_STOP_ERROR' };
+  }
 }
 
 export { BLEPermissions, NAP_CODES, napLog };
