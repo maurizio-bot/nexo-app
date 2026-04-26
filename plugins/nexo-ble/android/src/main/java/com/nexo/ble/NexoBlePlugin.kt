@@ -1,14 +1,14 @@
 package com.nexo.ble
 
-import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.util.Log
 import com.getcapacitor.JSObject
-import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
@@ -17,158 +17,181 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 @CapacitorPlugin(
-    name = "NexoBLE",
+    name = "NexoBle",
     permissions = [
-        Permission(strings = [Manifest.permission.BLUETOOTH_SCAN], alias = "bluetoothScan"),
-        Permission(strings = [Manifest.permission.BLUETOOTH_CONNECT], alias = "bluetoothConnect"),
-        Permission(strings = [Manifest.permission.BLUETOOTH_ADVERTISE], alias = "bluetoothAdvertise"),
-        Permission(strings = [Manifest.permission.ACCESS_FINE_LOCATION], alias = "location")
+        Permission(
+            strings = [android.Manifest.permission.BLUETOOTH_SCAN],
+            alias = "bluetoothScan"
+        ),
+        Permission(
+            strings = [android.Manifest.permission.BLUETOOTH_CONNECT],
+            alias = "bluetoothConnect"
+        ),
+        Permission(
+            strings = [android.Manifest.permission.BLUETOOTH_ADVERTISE],
+            alias = "bluetoothAdvertise"
+        ),
+        Permission(
+            strings = [android.Manifest.permission.ACCESS_FINE_LOCATION],
+            alias = "location"
+        ),
+        Permission(
+            strings = [android.Manifest.permission.POST_NOTIFICATIONS],
+            alias = "postNotifications"
+        ),
+        Permission(
+            strings = [android.Manifest.permission.FOREGROUND_SERVICE],
+            alias = "foregroundService"
+        ),
+        Permission(
+            strings = [android.Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE],
+            alias = "foregroundServiceConnectedDevice"
+        )
     ]
 )
 class NexoBlePlugin : Plugin() {
 
-    private val broadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.action) {
-                BleService.ACTION_DATA_RECEIVED -> {
-                    val address = intent.getStringExtra(BleService.EXTRA_DEVICE_ADDRESS) ?: ""
-                    val data = intent.getStringExtra(BleService.EXTRA_DATA) ?: ""
-                    val type = intent.getStringExtra(BleService.EXTRA_CHAR_TYPE) ?: "payload"
-                    notifyListeners("onDataReceived", JSObject().apply {
-                        put("deviceAddress", address)
-                        put("data", data)
-                        put("type", type)
-                    })
-                }
-                BleService.ACTION_DEVICE_CONNECTED -> {
-                    val address = intent.getStringExtra(BleService.EXTRA_DEVICE_ADDRESS) ?: ""
-                    notifyListeners("onDeviceConnected", JSObject().apply {
-                        put("deviceAddress", address)
-                        put("status", "connected")
-                    })
-                }
-                BleService.ACTION_DEVICE_DISCONNECTED -> {
-                    val address = intent.getStringExtra(BleService.EXTRA_DEVICE_ADDRESS) ?: ""
-                    notifyListeners("onDeviceDisconnected", JSObject().apply {
-                        put("deviceAddress", address)
-                        put("status", "disconnected")
-                    })
-                }
-            }
-        }
+    companion object {
+        private const val TAG = "NexoBlePlugin"
     }
 
-    override fun load() {
-        val filter = IntentFilter().apply {
-            addAction(BleService.ACTION_DATA_RECEIVED)
-            addAction(BleService.ACTION_DEVICE_CONNECTED)
-            addAction(BleService.ACTION_DEVICE_DISCONNECTED)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(broadcastReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    private var messageReceiver: BroadcastReceiver? = null
+    private var connectionReceiver: BroadcastReceiver? = null
+
+    @PluginMethod
+    fun initializeBLE(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requestPermissionForAliases(
+                arrayOf("bluetoothScan", "bluetoothConnect", "bluetoothAdvertise", "postNotifications"),
+                call,
+                "permissionsCallback"
+            )
         } else {
-            context.registerReceiver(broadcastReceiver, filter)
+            requestPermissionForAliases(
+                arrayOf("location", "postNotifications"),
+                call,
+                "permissionsCallback"
+            )
         }
-    }
-
-    @PluginMethod
-    fun checkBLEStatus(call: PluginCall) {
-        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        val adapter = bluetoothManager?.adapter
-        val isEnabled = adapter?.isEnabled == true
-
-        val scanState = getPermissionState("bluetoothScan")
-        val connectState = getPermissionState("bluetoothConnect")
-        val advertiseState = getPermissionState("bluetoothAdvertise")
-        val locationState = getPermissionState("location")
-
-        val allGranted = connectState == PermissionState.GRANTED &&
-                         scanState == PermissionState.GRANTED
-
-        val ret = JSObject()
-        ret.put("scanGranted", scanState == PermissionState.GRANTED)
-        ret.put("connectGranted", connectState == PermissionState.GRANTED)
-        ret.put("advertiseGranted", advertiseState == PermissionState.GRANTED)
-        ret.put("locationGranted", locationState == PermissionState.GRANTED)
-        ret.put("allGranted", allGranted)
-        ret.put("isPermanentlyDenied", connectState == PermissionState.DENIED)
-        ret.put("bluetoothEnabled", isEnabled)
-        call.resolve(ret)
-    }
-
-    @PluginMethod
-    fun requestBLEPermissions(call: PluginCall) {
-        requestAllPermissions(call, "blePermissionCallback")
     }
 
     @PermissionCallback
-    fun blePermissionCallback(call: PluginCall) {
-        val connectState = getPermissionState("bluetoothConnect")
-        val scanState = getPermissionState("bluetoothScan")
-        val allGranted = connectState == PermissionState.GRANTED &&
-                         scanState == PermissionState.GRANTED
-        if (allGranted) {
-            call.resolve(JSObject().put("granted", true))
+    fun permissionsCallback(call: PluginCall) {
+        if (getPermissionState("bluetoothScan") == com.getcapacitor.PermissionState.GRANTED ||
+            getPermissionState("location") == com.getcapacitor.PermissionState.GRANTED
+        ) {
+            call.resolve()
         } else {
-            call.reject("Permisos BLE requeridos no concedidos")
+            call.reject("Permisos BLE denegados")
         }
     }
 
     @PluginMethod
-    fun startAdvertising(call: PluginCall) {
-        val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
-        if (adapter == null) {
-            call.reject("Bluetooth no disponible")
-            return
-        }
-        if (!adapter.isEnabled) {
-            call.reject("Bluetooth está apagado")
+    fun startBLEAdvertising(call: PluginCall) {
+        val context = activity.applicationContext
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+
+        if (adapter == null || !adapter.isEnabled) {
+            call.reject("Bluetooth desactivado")
             return
         }
 
+        // Iniciar Foreground Service con GATT Server (único dueño)
         val intent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent)
         } else {
             context.startService(intent)
         }
-        call.resolve(JSObject().put("started", true))
+
+        registerReceivers()
+        call.resolve(JSObject().put("status", "advertising_started"))
     }
 
     @PluginMethod
-    fun stopAdvertising(call: PluginCall) {
+    fun stopBLEAdvertising(call: PluginCall) {
+        val context = activity.applicationContext
         context.stopService(Intent(context, BleService::class.java))
-        context.sendBroadcast(Intent(BleService.ACTION_STOP_SERVICE))
-        call.resolve(JSObject().put("stopped", true))
+        unregisterReceivers()
+        call.resolve(JSObject().put("status", "advertising_stopped"))
     }
 
     @PluginMethod
-    fun sendData(call: PluginCall) {
-        val address = call.getString("deviceAddress")
-        val data = call.getString("data")
-        val type = call.getString("type") ?: "payload"
-
-        if (address.isNullOrEmpty() || data.isNullOrEmpty()) {
-            call.reject("Se requiere deviceAddress y data")
-            return
-        }
-
-        val intent = Intent(BleService.ACTION_SEND_DATA).apply {
-            putExtra(BleService.EXTRA_DEVICE_ADDRESS, address)
-            putExtra(BleService.EXTRA_DATA, data)
-            putExtra(BleService.EXTRA_CHAR_TYPE, type)
+    fun sendMessage(call: PluginCall) {
+        val message = call.getString("message") ?: ""
+        val context = activity.applicationContext
+        val intent = Intent(NexoBleSpec.ACTION_BLE_SEND_MESSAGE).apply {
+            putExtra(NexoBleSpec.EXTRA_MESSAGE_DATA, message)
+            setPackage(context.packageName)
         }
         context.sendBroadcast(intent)
         call.resolve(JSObject().put("sent", true))
     }
 
     @PluginMethod
-    fun isConnected(call: PluginCall) {
-        call.resolve(JSObject().put("connected", false))
+    fun startListeningMessages(call: PluginCall) {
+        registerReceivers()
+        call.resolve(JSObject().put("listening", true))
+    }
+
+    private fun registerReceivers() {
+        if (messageReceiver != null) return
+
+        messageReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED -> {
+                        val msg = intent.getStringExtra(NexoBleSpec.EXTRA_MESSAGE_DATA) ?: ""
+                        val device = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
+                        val ret = JSObject()
+                        ret.put("event", "messageReceived")
+                        ret.put("message", msg)
+                        ret.put("device", device)
+                        notifyListeners("bleMessageReceived", ret)
+                    }
+                    NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
+                        val ret = JSObject()
+                        ret.put("event", "deviceConnected")
+                        ret.put("device", intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS))
+                        notifyListeners("bleDeviceConnected", ret)
+                    }
+                    NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED -> {
+                        val ret = JSObject()
+                        ret.put("event", "deviceDisconnected")
+                        ret.put("device", intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS))
+                        notifyListeners("bleDeviceDisconnected", ret)
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter().apply {
+            addAction(NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED)
+            addAction(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED)
+            addAction(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            activity.registerReceiver(messageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            activity.registerReceiver(messageReceiver, filter)
+        }
+    }
+
+    private fun unregisterReceivers() {
+        messageReceiver?.let {
+            try {
+                activity.unregisterReceiver(it)
+            } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "Receiver ya desregistrado")
+            }
+            messageReceiver = null
+        }
     }
 
     override fun handleOnDestroy() {
-        try { context.unregisterReceiver(broadcastReceiver) } catch (e: IllegalArgumentException) {}
         super.handleOnDestroy()
+        unregisterReceivers()
     }
 }
