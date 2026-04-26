@@ -1,7 +1,7 @@
 /**
- * BLE Permissions & Communication Manager v5.0-ARCH
+ * BLE Permissions & Communication Manager v5.1-ARCH
  * Ubicación: src/core/ble_permissions.js
- * Coordinado con NexoBlePlugin.kt v6.0-ARCH (Servidor + Cliente)
+ * Coordinado con NexoBlePlugin.kt v6.1-ARCH (Servidor + Cliente)
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -46,7 +46,30 @@ const BLEPermissions = {
     permissions: {},
     platform: Capacitor.getPlatform(),
     connectedDevice: null,
-    isClient: false
+    isClient: false,
+    resumeListenerAttached: false
+  },
+
+  _attachResumeListener() {
+    if (this.state.resumeListenerAttached) return;
+    this.state.resumeListenerAttached = true;
+
+    // Escuchar cuando la app regresa de Settings (configuración manual)
+    document.addEventListener('resume', async () => {
+      napLog(NAP_CODES.RESUME_CHECK, 'App resumed — re-verificando permisos...');
+      // Pequeño delay para que Android aplique los cambios de permisos
+      await new Promise(r => setTimeout(r, 500));
+      const granted = await this.check();
+      if (granted) {
+        napLog(NAP_CODES.SETTINGS_RETURN, 'Permisos concedidos tras regreso de Settings');
+        // Disparar evento para que la UI se actualice
+        window.dispatchEvent(new CustomEvent('blePermissionsGranted', {
+          detail: { source: 'resume_check' }
+        }));
+      } else {
+        napLog(NAP_CODES.SETTINGS_RETURN, 'Permisos aún denegados tras regreso de Settings', 'WARN');
+      }
+    });
   },
 
   async check() {
@@ -55,18 +78,29 @@ const BLEPermissions = {
       this.state.checked = true;
       return true;
     }
+
+    // Asegurar que escuchamos resume (para cuando regresan de Settings)
+    this._attachResumeListener();
+
     try {
-      const result = await NexoBLE.checkBLEStatus?.() || {};
+      const result = await NexoBLE.checkBLEStatus();
       this.state.permissions = {
         scan: !!result.scanGranted,
         connect: !!result.connectGranted,
         advertise: !!result.advertiseGranted,
-        location: !!result.locationGranted
+        location: !!result.locationGranted,
+        notifications: !!result.notificationsGranted
       };
       this.state.granted = result.allGranted === true;
       this.state.isPermanentlyDenied = result.isPermanentlyDenied === true;
       this.state.checked = true;
+
       napLog(NAP_CODES.ANDROID_NATIVE, 'checkBLEStatus', 'DEBUG', this.state.permissions);
+      napLog(
+        NAP_CODES.ANDROID_NATIVE,
+        `allGranted=${this.state.granted}, permanentlyDenied=${this.state.isPermanentlyDenied}`,
+        'DEBUG'
+      );
       return this.state.granted;
     } catch (e) {
       napLog(NAP_CODES.PERM_ERROR, `check failed: ${e.message}`, 'ERROR');
@@ -82,11 +116,16 @@ const BLEPermissions = {
       while (this.state.checking) await new Promise(r => setTimeout(r, 100));
       return this.state.granted;
     }
+
     this.state.checking = true;
     try {
       napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos nativos...');
+
       await NexoBLE.initializeBLE();
+
+      // Tras el diálogo nativo, re-verificamos estado exacto
       const granted = await this.check();
+
       if (granted) {
         napLog(NAP_CODES.PERM_GRANTED, 'Permisos concedidos');
       } else if (this.state.isPermanentlyDenied) {
@@ -97,6 +136,10 @@ const BLEPermissions = {
       return granted;
     } catch (e) {
       napLog(NAP_CODES.ERROR_RECOVERY, `request error: ${e.message}`, 'ERROR');
+      // Si initializeBLE rechazó, re-verificamos para saber si es permanente
+      try {
+        await this.check();
+      } catch (_) { /* ignore */ }
       this.state.granted = false;
       return false;
     } finally {
@@ -217,15 +260,15 @@ export async function sendMessage(message) {
 
 export async function startListeningMessages(callback) {
   if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
-  
+
   // Iniciar listeners nativos
   await NexoBLE.startListeningMessages();
-  
+
   // Registrar callback para eventos del bridge
   const handler = (event) => {
     if (event?.detail) callback(event.detail);
   };
-  
+
   window.addEventListener('bleMessageReceived', handler);
   window.addEventListener('bleDeviceConnected', handler);
   window.addEventListener('bleDeviceDisconnected', handler);
@@ -233,7 +276,7 @@ export async function startListeningMessages(callback) {
   window.addEventListener('bleClientDisconnected', handler);
   window.addEventListener('bleClientReady', handler);
   window.addEventListener('bleDeviceFound', handler);
-  
+
   return { success: true, listening: true };
 }
 
