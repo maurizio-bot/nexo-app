@@ -31,7 +31,6 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
-import com.getcapacitor.annotation.PermissionCallback
 import java.nio.charset.Charset
 import java.util.UUID
 
@@ -73,6 +72,7 @@ class NexoBlePlugin : Plugin() {
     companion object {
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
+        private const val REQUEST_CODE_BLE = 1001
     }
 
     // ========== SERVER (GATT + Advertising) ==========
@@ -88,12 +88,12 @@ class NexoBlePlugin : Plugin() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
 
+    // ========== PERMISSIONS ==========
+    private var pendingPermissionCall: PluginCall? = null
+    private var hasRequestedPermissions = false
+
     // ====================================================
 
-    /**
-     * Lee el estado REAL de los permisos directamente del sistema operativo.
-     * NO usa el cache de Capacitor porque en Android 14+ queda desactualizado tras el diálogo nativo.
-     */
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
         val ctx = activity.applicationContext
@@ -125,21 +125,23 @@ class NexoBlePlugin : Plugin() {
             locationGranted && notificationsGranted
         }
 
-        // Detectar denegación permanente: si no está concedido Y no debemos mostrar rationale
+        // Detectar denegación permanente SOLO si ya solicitamos al menos una vez
         var isPermanentlyDenied = false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!scanGranted && !ActivityCompat.shouldShowRequestPermissionRationale(
-                    activity, android.Manifest.permission.BLUETOOTH_SCAN
-                )
-            ) {
-                isPermanentlyDenied = true
-            }
-        } else {
-            if (!locationGranted && !ActivityCompat.shouldShowRequestPermissionRationale(
-                    activity, android.Manifest.permission.ACCESS_FINE_LOCATION
-                )
-            ) {
-                isPermanentlyDenied = true
+        if (hasRequestedPermissions) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (!scanGranted && !ActivityCompat.shouldShowRequestPermissionRationale(
+                        activity, android.Manifest.permission.BLUETOOTH_SCAN
+                    )
+                ) {
+                    isPermanentlyDenied = true
+                }
+            } else {
+                if (!locationGranted && !ActivityCompat.shouldShowRequestPermissionRationale(
+                        activity, android.Manifest.permission.ACCESS_FINE_LOCATION
+                    )
+                ) {
+                    isPermanentlyDenied = true
+                }
             }
         }
 
@@ -157,7 +159,6 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
-        // Verificar estado REAL antes de mostrar diálogo
         val ctx = activity.applicationContext
         val alreadyGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_SCAN) ==
@@ -176,29 +177,45 @@ class NexoBlePlugin : Plugin() {
         }
 
         if (alreadyGranted) {
-            Log.i(TAG, "initializeBLE: permisos ya concedidos, saltando diálogo")
+            Log.i(TAG, "initializeBLE: permisos ya concedidos")
             call.resolve()
             return
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            requestPermissionForAliases(
-                arrayOf("bluetoothScan", "bluetoothConnect", "bluetoothAdvertise", "postNotifications"),
-                call,
-                "permissionsCallback"
+        // Guardar call para resolver en handleOnRequestPermissionsResult
+        pendingPermissionCall = call
+        hasRequestedPermissions = true
+
+        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                android.Manifest.permission.BLUETOOTH_SCAN,
+                android.Manifest.permission.BLUETOOTH_CONNECT,
+                android.Manifest.permission.BLUETOOTH_ADVERTISE,
+                android.Manifest.permission.POST_NOTIFICATIONS
             )
         } else {
-            requestPermissionForAliases(
-                arrayOf("location", "postNotifications"),
-                call,
-                "permissionsCallback"
+            arrayOf(
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.POST_NOTIFICATIONS
             )
         }
+
+        Log.i(TAG, "Lanzando ActivityCompat.requestPermissions directamente")
+        ActivityCompat.requestPermissions(activity, permissions, REQUEST_CODE_BLE)
     }
 
-    @PermissionCallback
-    fun permissionsCallback(call: PluginCall) {
-        // Usar lectura REAL del sistema, no getPermissionState()
+    override fun handleOnRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.handleOnRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode != REQUEST_CODE_BLE) return
+        if (pendingPermissionCall == null) return
+
+        Log.i(TAG, "handleOnRequestPermissionsResult: ${permissions.joinToString()}, grants=${grantResults.joinToString()}")
+
         val ctx = activity.applicationContext
         val scanGranted = ContextCompat.checkSelfPermission(
             ctx, android.Manifest.permission.BLUETOOTH_SCAN
@@ -208,14 +225,16 @@ class NexoBlePlugin : Plugin() {
             ctx, android.Manifest.permission.ACCESS_FINE_LOCATION
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-        val granted = scanGranted || locationGranted
-        Log.i(TAG, "permissionsCallback REAL: granted=$granted")
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) scanGranted else locationGranted
 
         if (granted) {
-            call.resolve()
+            Log.i(TAG, "Permisos concedidos por el usuario")
+            pendingPermissionCall?.resolve()
         } else {
-            call.reject("Permisos BLE denegados")
+            Log.w(TAG, "Permisos denegados por el usuario")
+            pendingPermissionCall?.reject("Permisos BLE denegados")
         }
+        pendingPermissionCall = null
     }
 
     // ==================== SERVER METHODS ====================
