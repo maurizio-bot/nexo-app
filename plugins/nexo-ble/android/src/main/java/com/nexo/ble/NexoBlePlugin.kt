@@ -31,7 +31,6 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
-import com.getcapacitor.annotation.PermissionCallback
 import java.nio.charset.Charset
 import java.util.UUID
 
@@ -52,6 +51,7 @@ class NexoBlePlugin : Plugin() {
     companion object {
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
+        private const val REQUEST_CODE_BLE = 1001
     }
 
     private var messageReceiver: BroadcastReceiver? = null
@@ -65,7 +65,7 @@ class NexoBlePlugin : Plugin() {
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private var hasRequestedPermissions = false
 
-    // ==================== PERMISSIONS ====================
+    // ==================== PERMISSIONS (SIN CALLBACK DE CAPACITOR) ====================
 
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
@@ -126,40 +126,31 @@ class NexoBlePlugin : Plugin() {
 
         hasRequestedPermissions = true
 
-        // CRITICAL FIX: Solicitar SOLO un permiso a la vez. Android 14+ falla con múltiples.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            requestPermissionForAliases(arrayOf("bluetoothScan"), call, "permissionsCallback")
+        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                android.Manifest.permission.BLUETOOTH_SCAN,
+                android.Manifest.permission.BLUETOOTH_CONNECT,
+                android.Manifest.permission.BLUETOOTH_ADVERTISE,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            )
         } else {
-            requestPermissionForAliases(arrayOf("location"), call, "permissionsCallback")
+            arrayOf(
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            )
         }
+
+        Log.i(TAG, "Lanzando diálogo de permisos nativo...")
+        ActivityCompat.requestPermissions(activity, permissions, REQUEST_CODE_BLE)
+
+        // CRITICAL: Resolvemos INMEDIATAMENTE. El JS hará polling con checkBLEStatus().
+        call.resolve(JSObject().put("dialogOpened", true))
     }
 
-    // Alias para compatibilidad con JS v5.0-ARCH (build #918)
+    // Alias legacy para compatibilidad
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
         initializeBLE(call)
-    }
-
-    @PermissionCallback
-    fun permissionsCallback(call: PluginCall) {
-        // CRITICAL FIX: Android 14+ no actualiza el estado instantáneamente.
-        // Esperamos 800ms en el hilo principal antes de leer el estado REAL.
-        mainHandler.postDelayed({
-            val ctx = activity.applicationContext
-            val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            } else {
-                ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            }
-
-            Log.i(TAG, "permissionsCallback DELAYED: granted=$granted")
-
-            if (granted) {
-                call.resolve()
-            } else {
-                call.reject("Permisos BLE denegados")
-            }
-        }, 800)
     }
 
     // ==================== SERVER ====================
