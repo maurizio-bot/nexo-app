@@ -22,7 +22,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -31,6 +30,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
 import java.nio.charset.Charset
 import java.util.UUID
 
@@ -51,7 +51,6 @@ class NexoBlePlugin : Plugin() {
     companion object {
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
-        private const val REQUEST_CODE_BLE = 1001
     }
 
     private var messageReceiver: BroadcastReceiver? = null
@@ -65,7 +64,7 @@ class NexoBlePlugin : Plugin() {
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private var hasRequestedPermissions = false
 
-    // ==================== PERMISSIONS (SIN CALLBACK DE CAPACITOR) ====================
+    // ==================== PERMISSIONS (Capacitor nativo simplificado) ====================
 
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
@@ -87,11 +86,11 @@ class NexoBlePlugin : Plugin() {
         var isPermanentlyDenied = false
         if (hasRequestedPermissions) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (!scanGranted && !ActivityCompat.shouldShowRequestPermissionRationale(activity, android.Manifest.permission.BLUETOOTH_SCAN)) {
+                if (!scanGranted && !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_SCAN)) {
                     isPermanentlyDenied = true
                 }
             } else {
-                if (!locationGranted && !ActivityCompat.shouldShowRequestPermissionRationale(activity, android.Manifest.permission.ACCESS_FINE_LOCATION)) {
+                if (!locationGranted && !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)) {
                     isPermanentlyDenied = true
                 }
             }
@@ -113,9 +112,13 @@ class NexoBlePlugin : Plugin() {
     fun initializeBLE(call: PluginCall) {
         val ctx = activity.applicationContext
         val alreadyGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_ADVERTISE) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         } else {
-            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         }
 
         if (alreadyGranted) {
@@ -126,31 +129,28 @@ class NexoBlePlugin : Plugin() {
 
         hasRequestedPermissions = true
 
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(
-                android.Manifest.permission.BLUETOOTH_SCAN,
-                android.Manifest.permission.BLUETOOTH_CONNECT,
-                android.Manifest.permission.BLUETOOTH_ADVERTISE,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            )
+        // CRITICAL FIX: Solo UN alias. Android 14+ consolida el diálogo automáticamente.
+        // Capacitor maneja mejor un solo permiso que múltiples.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requestPermissionForAliases(arrayOf("bluetoothScan"), call, "permissionsCallback")
         } else {
-            arrayOf(
-                android.Manifest.permission.ACCESS_FINE_LOCATION,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            )
+            requestPermissionForAliases(arrayOf("location"), call, "permissionsCallback")
         }
-
-        Log.i(TAG, "Lanzando diálogo de permisos nativo...")
-        ActivityCompat.requestPermissions(activity, permissions, REQUEST_CODE_BLE)
-
-        // CRITICAL: Resolvemos INMEDIATAMENTE. El JS hará polling con checkBLEStatus().
-        call.resolve(JSObject().put("dialogOpened", true))
     }
 
-    // Alias legacy para compatibilidad
+    // Alias legacy
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
         initializeBLE(call)
+    }
+
+    @PermissionCallback
+    fun permissionsCallback(call: PluginCall) {
+        // CRITICAL FIX: No leemos getPermissionState() (buggy en Android 14+).
+        // Simplemente notificamos que el usuario respondió al diálogo.
+        // El JS hará checkBLEStatus() para leer el estado REAL del OS.
+        Log.i(TAG, "permissionsCallback: diálogo respondido")
+        call.resolve(JSObject().put("dialogResponded", true))
     }
 
     // ==================== SERVER ====================
