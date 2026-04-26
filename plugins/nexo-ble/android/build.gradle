@@ -5,7 +5,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.1'
+        classpath 'com.android.tools.build:gradle:8.3.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -49,15 +49,4 @@ dependencies {
     implementation project(':capacitor-android')
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation 'androidx.core:core-ktx:1.12.0'
-}
-
-// FIX CRÍTICO AGP 8.2.1 + Gradle 8+: Declarar dependencias explícitas entre tareas de recursos
-// whenTaskAdded se ejecuta ANTES de que Gradle resuelva el grafo de dependencias
-tasks.whenTaskAdded { task ->
-    if (task.name == "packageDebugResources") {
-        task.dependsOn("generateDebugResValues")
-    }
-    if (task.name == "packageReleaseResources") {
-        task.dependsOn("generateReleaseResValues")
-    }
 }
