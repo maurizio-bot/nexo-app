@@ -1,6 +1,6 @@
 /**
- * BLE Permissions & Communication Manager v5.7-ARCH
- * Fix: Polling nativo en Kotlin, JS simplificado
+ * BLE Permissions & Communication Manager v5.8-ARCH
+ * Fix: Basado en plugin Capacitor producción (PrinterBridge #2327)
  * Ubicación: src/core/ble_permissions.js
  */
 
@@ -111,11 +111,12 @@ const BLEPermissions = {
     try {
       napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos nativos...');
 
-      // El nativo hace polling interno durante 5 segundos.
-      // Solo resuelve cuando detecta permisos reales concedidos.
+      // El nativo usa ActivityCompat.requestPermissions + handleOnRequestPermissionsResult
+      // que lee grantResults directamente del OS. Esto es la forma que funciona en Android 14+.
       await NexoBLE.initializeBLE();
 
-      // Nativo ya resolvió/rechazó. Verificamos estado final.
+      // Si llegamos aquí, el nativo resolvió (callback funcionó).
+      // Verificamos estado final por si acaso.
       const granted = await this.check();
 
       if (granted) {
