@@ -20,5 +20,3 @@ allprojects {
         mavenCentral()
     }
 }
-
-    implementation project(':capacitor-nexo-ble')
