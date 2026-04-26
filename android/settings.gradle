@@ -1,10 +1,18 @@
-// Cargar capacitor-android PRIMERO para que exista antes de los plugins
+// ==========================================
+// NEXO App Gradle Settings
+// Orden crítico: capacitor-android PRIMERO
+// ==========================================
+
+// 1. Cargar capacitor-android y plugins detectados por Capacitor CLI
 apply from: 'capacitor.settings.gradle'
 
-// Luego incluir módulos que dependen de capacitor-android
+// 2. Módulos nativos del proyecto
 include ':app'
 include ':capacitor-cordova-android-plugins'
 include ':capacitor-nexo-auth'
+include ':capacitor-nexo-ble'
 
+// 3. Rutas de los módulos locales
 project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
 project(':capacitor-nexo-auth').projectDir = new File('../plugins/nexo-auth/android')
+project(':capacitor-nexo-ble').projectDir = new File('../plugins/nexo-ble/android')
