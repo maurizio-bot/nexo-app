@@ -22,6 +22,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -64,7 +65,7 @@ class NexoBlePlugin : Plugin() {
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private var hasRequestedPermissions = false
 
-    // ==================== PERMISSIONS (Capacitor nativo simplificado) ====================
+    // ==================== PERMISSIONS (Polling nativo post-diálogo) ====================
 
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
@@ -86,11 +87,11 @@ class NexoBlePlugin : Plugin() {
         var isPermanentlyDenied = false
         if (hasRequestedPermissions) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (!scanGranted && !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_SCAN)) {
+                if (!scanGranted && !ActivityCompat.shouldShowRequestPermissionRationale(activity, android.Manifest.permission.BLUETOOTH_SCAN)) {
                     isPermanentlyDenied = true
                 }
             } else {
-                if (!locationGranted && !activity.shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)) {
+                if (!locationGranted && !ActivityCompat.shouldShowRequestPermissionRationale(activity, android.Manifest.permission.ACCESS_FINE_LOCATION)) {
                     isPermanentlyDenied = true
                 }
             }
@@ -129,8 +130,8 @@ class NexoBlePlugin : Plugin() {
 
         hasRequestedPermissions = true
 
-        // CRITICAL FIX: Solo UN alias. Android 14+ consolida el diálogo automáticamente.
-        // Capacitor maneja mejor un solo permiso que múltiples.
+        // CRITICAL FIX: Usar Capacitor nativo con UN SOLO alias.
+        // Android 14+ consolida el diálogo automáticamente.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             requestPermissionForAliases(arrayOf("bluetoothScan"), call, "permissionsCallback")
         } else {
@@ -146,11 +147,40 @@ class NexoBlePlugin : Plugin() {
 
     @PermissionCallback
     fun permissionsCallback(call: PluginCall) {
-        // CRITICAL FIX: No leemos getPermissionState() (buggy en Android 14+).
-        // Simplemente notificamos que el usuario respondió al diálogo.
-        // El JS hará checkBLEStatus() para leer el estado REAL del OS.
-        Log.i(TAG, "permissionsCallback: diálogo respondido")
-        call.resolve(JSObject().put("dialogResponded", true))
+        // CRITICAL FIX: Android 14+ no actualiza el estado de permisos de grupo
+        // (BLUETOOTH_SCAN/CONNECT/ADVERTISE) instantáneamente tras el diálogo.
+        // Iniciamos polling nativo cada 500ms durante 5 segundos.
+        Log.i(TAG, "permissionsCallback: iniciando polling nativo post-diálogo")
+        pollPermissionStatus(call, attempt = 1)
+    }
+
+    private fun pollPermissionStatus(call: PluginCall, attempt: Int) {
+        val ctx = activity.applicationContext
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_ADVERTISE) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else {
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+
+        Log.i(TAG, "pollPermissionStatus intento $attempt/10: granted=$granted")
+
+        if (granted) {
+            Log.i(TAG, "Permisos concedidos detectados en polling nativo")
+            call.resolve()
+            return
+        }
+
+        if (attempt >= 10) { // 10 intentos × 500ms = 5 segundos máximo
+            Log.w(TAG, "Polling nativo agotado: permisos no concedidos tras 5 segundos")
+            call.reject("Permisos BLE denegados")
+            return
+        }
+
+        mainHandler.postDelayed({ pollPermissionStatus(call, attempt + 1) }, 500)
     }
 
     // ==================== SERVER ====================
