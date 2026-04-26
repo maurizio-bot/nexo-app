@@ -57,7 +57,7 @@ dependencies {
     implementation project(':capacitor-android')
     implementation project(':capacitor-cordova-android-plugins')
     implementation project(':capacitor-nexo-auth')
-    implementation project(':capacitor-nexo-ble')   // <-- AGREGADO: Plugin BLE NEXO
+    implementation project(':capacitor-nexo-ble')
     
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
