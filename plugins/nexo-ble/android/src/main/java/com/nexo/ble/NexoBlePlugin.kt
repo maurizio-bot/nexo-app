@@ -22,6 +22,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
+import androidx.core.app.ActivityCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -79,8 +80,8 @@ class NexoBlePlugin : Plugin() {
     // ========== CLIENT (Scan + GATT Connection) ==========
     private var bluetoothScanner: BluetoothLeScanner? = null
     private var bluetoothGatt: BluetoothGatt? = null
-    private var clientTxCharacteristic: BluetoothGattCharacteristic? = null   // Notify from server
-    private var clientRxCharacteristic: BluetoothGattCharacteristic? = null   // Write to server
+    private var clientTxCharacteristic: BluetoothGattCharacteristic? = null
+    private var clientRxCharacteristic: BluetoothGattCharacteristic? = null
     private val scanResults = mutableListOf<JSObject>()
     private var scanCall: PluginCall? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -89,7 +90,90 @@ class NexoBlePlugin : Plugin() {
     // ====================================================
 
     @PluginMethod
+    fun checkBLEStatus(call: PluginCall) {
+        val result = JSObject()
+
+        val scanState = getPermissionState("bluetoothScan")
+        val connectState = getPermissionState("bluetoothConnect")
+        val advertiseState = getPermissionState("bluetoothAdvertise")
+        val locationState = getPermissionState("location")
+        val postNotificationsState = getPermissionState("postNotifications")
+
+        val scanGranted = scanState == com.getcapacitor.PermissionState.GRANTED
+        val connectGranted = connectState == com.getcapacitor.PermissionState.GRANTED
+        val advertiseGranted = advertiseState == com.getcapacitor.PermissionState.GRANTED
+        val locationGranted = locationState == com.getcapacitor.PermissionState.GRANTED
+        val notificationsGranted = postNotificationsState == com.getcapacitor.PermissionState.GRANTED
+
+        val allGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            scanGranted && connectGranted && advertiseGranted && notificationsGranted
+        } else {
+            locationGranted && notificationsGranted
+        }
+
+        // Detectar denegación permanente (shouldShowRequestPermissionRationale == false + no concedido)
+        var isPermanentlyDenied = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!scanGranted && !ActivityCompat.shouldShowRequestPermissionRationale(
+                    activity,
+                    android.Manifest.permission.BLUETOOTH_SCAN
+                )
+            ) {
+                isPermanentlyDenied = true
+            }
+            if (!connectGranted && !ActivityCompat.shouldShowRequestPermissionRationale(
+                    activity,
+                    android.Manifest.permission.BLUETOOTH_CONNECT
+                )
+            ) {
+                isPermanentlyDenied = true
+            }
+        } else {
+            if (!locationGranted && !ActivityCompat.shouldShowRequestPermissionRationale(
+                    activity,
+                    android.Manifest.permission.ACCESS_FINE_LOCATION
+                )
+            ) {
+                isPermanentlyDenied = true
+            }
+        }
+
+        result.put("scanGranted", scanGranted)
+        result.put("connectGranted", connectGranted)
+        result.put("advertiseGranted", advertiseGranted)
+        result.put("locationGranted", locationGranted)
+        result.put("notificationsGranted", notificationsGranted)
+        result.put("allGranted", allGranted)
+        result.put("isPermanentlyDenied", isPermanentlyDenied)
+
+        Log.i(TAG, "checkBLEStatus: allGranted=$allGranted, permanentlyDenied=$isPermanentlyDenied")
+        call.resolve(result)
+    }
+
+    @PluginMethod
     fun initializeBLE(call: PluginCall) {
+        // Primero verificar si ya están todos concedidos
+        val scanState = getPermissionState("bluetoothScan")
+        val connectState = getPermissionState("bluetoothConnect")
+        val advertiseState = getPermissionState("bluetoothAdvertise")
+        val locationState = getPermissionState("location")
+        val postNotificationsState = getPermissionState("postNotifications")
+
+        val alreadyGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            scanState == com.getcapacitor.PermissionState.GRANTED &&
+                    connectState == com.getcapacitor.PermissionState.GRANTED &&
+                    advertiseState == com.getcapacitor.PermissionState.GRANTED &&
+                    postNotificationsState == com.getcapacitor.PermissionState.GRANTED
+        } else {
+            locationState == com.getcapacitor.PermissionState.GRANTED &&
+                    postNotificationsState == com.getcapacitor.PermissionState.GRANTED
+        }
+
+        if (alreadyGranted) {
+            call.resolve()
+            return
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             requestPermissionForAliases(
                 arrayOf("bluetoothScan", "bluetoothConnect", "bluetoothAdvertise", "postNotifications"),
@@ -107,9 +191,13 @@ class NexoBlePlugin : Plugin() {
 
     @PermissionCallback
     fun permissionsCallback(call: PluginCall) {
-        if (getPermissionState("bluetoothScan") == com.getcapacitor.PermissionState.GRANTED ||
-            getPermissionState("location") == com.getcapacitor.PermissionState.GRANTED
-        ) {
+        val scanState = getPermissionState("bluetoothScan")
+        val locationState = getPermissionState("location")
+
+        val granted = scanState == com.getcapacitor.PermissionState.GRANTED ||
+                locationState == com.getcapacitor.PermissionState.GRANTED
+
+        if (granted) {
             call.resolve()
         } else {
             call.reject("Permisos BLE denegados")
@@ -151,13 +239,22 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val message = call.getString("message") ?: ""
-        
+
         // Si tenemos GATT client conectado, escribimos directo al otro dispositivo
         if (bluetoothGatt != null && clientRxCharacteristic != null) {
             val data = message.toByteArray(Charset.defaultCharset())
-            clientRxCharacteristic?.value = data
-            val success = bluetoothGatt?.writeCharacteristic(clientRxCharacteristic) ?: false
-            call.resolve(JSObject().put("sent", success).put("mode", "client"))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val success = bluetoothGatt?.writeCharacteristic(
+                    clientRxCharacteristic!!,
+                    data,
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                ) == BluetoothGatt.GATT_SUCCESS
+                call.resolve(JSObject().put("sent", success).put("mode", "client"))
+            } else {
+                clientRxCharacteristic?.value = data
+                val success = bluetoothGatt?.writeCharacteristic(clientRxCharacteristic) ?: false
+                call.resolve(JSObject().put("sent", success).put("mode", "client"))
+            }
             return
         }
 
@@ -241,8 +338,6 @@ class NexoBlePlugin : Plugin() {
             device.connectGatt(context, false, gattClientCallback)
         }
 
-        // Guardar call para resolver en onConnectionStateChange
-        call.save()
         // Resolvemos provisionalmente; el resultado real llega por evento
         call.resolve(JSObject().put("connecting", true).put("address", address))
     }
@@ -271,7 +366,7 @@ class NexoBlePlugin : Plugin() {
                     item.put("address", addr)
                     item.put("rssi", result.rssi)
                     scanResults.add(item)
-                    
+
                     val ret = JSObject()
                     ret.put("event", "deviceFound")
                     ret.put("device", item)
@@ -297,7 +392,7 @@ class NexoBlePlugin : Plugin() {
             Log.w(TAG, "Error stopping scan", e)
         }
         bluetoothScanner = null
-        
+
         // Resolver la call de scan si sigue activa
         scanCall?.let { call ->
             if (call.isKeptAlive) {
@@ -321,7 +416,7 @@ class NexoBlePlugin : Plugin() {
                 ret.put("event", "clientConnected")
                 ret.put("address", address)
                 notifyListeners("bleClientConnected", ret)
-                
+
                 // Descubrir servicios
                 gatt.discoverServices()
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
@@ -329,7 +424,7 @@ class NexoBlePlugin : Plugin() {
                 ret.put("event", "clientDisconnected")
                 ret.put("address", address)
                 notifyListeners("bleClientDisconnected", ret)
-                
+
                 bluetoothGatt?.close()
                 bluetoothGatt = null
                 clientTxCharacteristic = null
@@ -358,12 +453,19 @@ class NexoBlePlugin : Plugin() {
             clientTxCharacteristic?.let { characteristic ->
                 val success = gatt.setCharacteristicNotification(characteristic, true)
                 Log.i(TAG, "setCharacteristicNotification success=$success")
-                
+
                 // Escribir CCCD para activar NOTIFY
                 val descriptor = characteristic.getDescriptor(NexoBleSpec.CCCD_UUID)
                 if (descriptor != null) {
-                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    gatt.writeDescriptor(descriptor)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        gatt.writeDescriptor(
+                            descriptor,
+                            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        )
+                    } else {
+                        descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        gatt.writeDescriptor(descriptor)
+                    }
                 }
             }
 
@@ -416,12 +518,14 @@ class NexoBlePlugin : Plugin() {
                         ret.put("device", device)
                         notifyListeners("bleMessageReceived", ret)
                     }
+
                     NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
                         val ret = JSObject()
                         ret.put("event", "deviceConnected")
                         ret.put("device", intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS))
                         notifyListeners("bleDeviceConnected", ret)
                     }
+
                     NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED -> {
                         val ret = JSObject()
                         ret.put("event", "deviceDisconnected")
