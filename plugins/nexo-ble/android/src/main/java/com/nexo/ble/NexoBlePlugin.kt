@@ -31,6 +31,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
 import java.nio.charset.Charset
 import java.util.UUID
 
@@ -72,7 +73,6 @@ class NexoBlePlugin : Plugin() {
     companion object {
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
-        private const val REQUEST_CODE_BLE = 1001
     }
 
     // ========== SERVER (GATT + Advertising) ==========
@@ -89,7 +89,6 @@ class NexoBlePlugin : Plugin() {
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
 
     // ========== PERMISSIONS ==========
-    private var pendingPermissionCall: PluginCall? = null
     private var hasRequestedPermissions = false
 
     // ====================================================
@@ -182,59 +181,48 @@ class NexoBlePlugin : Plugin() {
             return
         }
 
-        // Guardar call para resolver en handleOnRequestPermissionsResult
-        pendingPermissionCall = call
         hasRequestedPermissions = true
 
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(
-                android.Manifest.permission.BLUETOOTH_SCAN,
-                android.Manifest.permission.BLUETOOTH_CONNECT,
-                android.Manifest.permission.BLUETOOTH_ADVERTISE,
-                android.Manifest.permission.POST_NOTIFICATIONS
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requestPermissionForAliases(
+                arrayOf("bluetoothScan", "bluetoothConnect", "bluetoothAdvertise", "postNotifications"),
+                call,
+                "permissionsCallback"
             )
         } else {
-            arrayOf(
-                android.Manifest.permission.ACCESS_FINE_LOCATION,
-                android.Manifest.permission.POST_NOTIFICATIONS
+            requestPermissionForAliases(
+                arrayOf("location", "postNotifications"),
+                call,
+                "permissionsCallback"
             )
         }
-
-        Log.i(TAG, "Lanzando ActivityCompat.requestPermissions directamente")
-        ActivityCompat.requestPermissions(activity, permissions, REQUEST_CODE_BLE)
     }
 
-    override fun handleOnRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.handleOnRequestPermissionsResult(requestCode, permissions, grantResults)
+    @PermissionCallback
+    fun permissionsCallback(call: PluginCall) {
+        // CRITICAL FIX: Android 14+ no actualiza el estado de permisos inmediatamente
+        // tras el diálogo nativo. Esperamos 500ms en el hilo principal antes de leer
+        // el estado REAL con ContextCompat.checkSelfPermission.
+        mainHandler.postDelayed({
+            val ctx = activity.applicationContext
+            val scanGranted = ContextCompat.checkSelfPermission(
+                ctx, android.Manifest.permission.BLUETOOTH_SCAN
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-        if (requestCode != REQUEST_CODE_BLE) return
-        if (pendingPermissionCall == null) return
+            val locationGranted = ContextCompat.checkSelfPermission(
+                ctx, android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-        Log.i(TAG, "handleOnRequestPermissionsResult: ${permissions.joinToString()}, grants=${grantResults.joinToString()}")
+            val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) scanGranted else locationGranted
 
-        val ctx = activity.applicationContext
-        val scanGranted = ContextCompat.checkSelfPermission(
-            ctx, android.Manifest.permission.BLUETOOTH_SCAN
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            Log.i(TAG, "permissionsCallback DELAYED: granted=$granted")
 
-        val locationGranted = ContextCompat.checkSelfPermission(
-            ctx, android.Manifest.permission.ACCESS_FINE_LOCATION
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-
-        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) scanGranted else locationGranted
-
-        if (granted) {
-            Log.i(TAG, "Permisos concedidos por el usuario")
-            pendingPermissionCall?.resolve()
-        } else {
-            Log.w(TAG, "Permisos denegados por el usuario")
-            pendingPermissionCall?.reject("Permisos BLE denegados")
-        }
-        pendingPermissionCall = null
+            if (granted) {
+                call.resolve()
+            } else {
+                call.reject("Permisos BLE denegados")
+            }
+        }, 500)
     }
 
     // ==================== SERVER METHODS ====================
