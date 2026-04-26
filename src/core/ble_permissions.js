@@ -1,8 +1,8 @@
 /**
- * BLE Permissions Manager v4.1-ARCH
+ * BLE Permissions Manager v4.2-ARCH
  * Ubicación: src/core/ble_permissions.js
- * FIX: API unificada + exports compatibles legacy (checkBLEStatus, requestBLEPermissions)
- * Coordinado con NexoBlePlugin.kt v5.1.0-ARCH + ble_interface.js v4.0-ARCH
+ * FIX: API unificada + exports compatibles legacy
+ * Coordinado con NexoBlePlugin.kt v5.2.0-ARCH + BleService.kt v2.0-ARCH
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -51,12 +51,12 @@ const BLEPermissions = {
       return true;
     }
     try {
-      const result = await NexoBLE.checkBLEStatus();
+      const result = await NexoBLE.checkBLEStatus() || {};
       this.state.permissions = {
-        scan: result.scanGranted,
-        connect: result.connectGranted,
-        advertise: result.advertiseGranted,
-        location: result.locationGranted
+        scan: !!result.scanGranted,
+        connect: !!result.connectGranted,
+        advertise: !!result.advertiseGranted,
+        location: !!result.locationGranted
       };
       this.state.granted = result.allGranted === true;
       this.state.isPermanentlyDenied = result.isPermanentlyDenied === true;
@@ -187,7 +187,7 @@ const BLEPermissions = {
   }
 };
 
-// EXPORTS COMPATIBLES LEGACY (SetupManager.js / SetupWizard.js)
+// EXPORTS COMPATIBLES LEGACY
 
 export async function checkBLEStatus() {
   return BLEPermissions.check();
@@ -201,8 +201,6 @@ export function isPermanentlyDenied() {
   return BLEPermissions.state.isPermanentlyDenied;
 }
 
-// FIX v5.1.0-ARCH: Funciones faltantes para SetupWizard.js
-// Usamos result: result || {} para evitar crash si el plugin devuelve null
 export async function startBLEAdvertising() {
   if (Capacitor.getPlatform() !== 'android') return { success: true };
   try {
