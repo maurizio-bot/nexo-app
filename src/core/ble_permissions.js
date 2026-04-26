@@ -1,13 +1,12 @@
 /**
- * BLE Permissions Manager v4.2-ARCH
+ * BLE Permissions & Communication Manager v5.0-ARCH
  * Ubicación: src/core/ble_permissions.js
- * FIX: API unificada + exports compatibles legacy
- * Coordinado con NexoBlePlugin.kt v5.2.0-ARCH + BleService.kt v2.0-ARCH
+ * Coordinado con NexoBlePlugin.kt v6.0-ARCH (Servidor + Cliente)
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
-const NexoBLE = registerPlugin('NexoBLE');
+const NexoBLE = registerPlugin('NexoBle');
 
 const NAP_CODES = {
   INIT: '[NAP-BLE-001]',
@@ -19,7 +18,11 @@ const NAP_CODES = {
   ANDROID_NATIVE: '[NAP-BLE-200]',
   ERROR_RECOVERY: '[NAP-BLE-900]',
   SETTINGS_RETURN: '[NAP-BLE-302]',
-  RESUME_CHECK: '[NAP-BLE-303]'
+  RESUME_CHECK: '[NAP-BLE-303]',
+  SCAN_START: '[NAP-BLE-400]',
+  SCAN_RESULT: '[NAP-BLE-401]',
+  CONNECT: '[NAP-BLE-500]',
+  MESSAGE: '[NAP-BLE-600]'
 };
 
 function napLog(code, message, level = 'INFO', data = null) {
@@ -41,7 +44,9 @@ const BLEPermissions = {
     checking: false,
     isPermanentlyDenied: false,
     permissions: {},
-    platform: Capacitor.getPlatform()
+    platform: Capacitor.getPlatform(),
+    connectedDevice: null,
+    isClient: false
   },
 
   async check() {
@@ -51,7 +56,7 @@ const BLEPermissions = {
       return true;
     }
     try {
-      const result = await NexoBLE.checkBLEStatus() || {};
+      const result = await NexoBLE.checkBLEStatus?.() || {};
       this.state.permissions = {
         scan: !!result.scanGranted,
         connect: !!result.connectGranted,
@@ -80,7 +85,7 @@ const BLEPermissions = {
     this.state.checking = true;
     try {
       napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos nativos...');
-      await NexoBLE.requestBLEPermissions();
+      await NexoBLE.initializeBLE();
       const granted = await this.check();
       if (granted) {
         napLog(NAP_CODES.PERM_GRANTED, 'Permisos concedidos');
@@ -120,74 +125,119 @@ const BLEPermissions = {
     return { ...this.state };
   },
 
-  async waitForSettingsReturn(options = {}) {
-    const timeoutMs = options.timeoutMs || 30000;
-    if (this.state.platform !== 'android') {
-      return { success: false, error: 'Solo Android', nap_code: 'NOT_ANDROID' };
-    }
-    return new Promise((resolve, reject) => {
-      let isResolved = false;
-      let removeListener = null;
-      const cleanup = () => {
-        if (removeListener) { removeListener(); removeListener = null; }
-      };
-      const onResume = async () => {
-        if (isResolved) return;
-        napLog(NAP_CODES.RESUME_CHECK, 'App resumed, re-checking permissions');
-        try {
-          const granted = await this.check();
-          if (granted) {
-            isResolved = true;
-            cleanup();
-            napLog(NAP_CODES.SETTINGS_RETURN, 'Permisos concedidos tras regreso de ajustes');
-            resolve({ success: true, granted: true, nap_code: 'SETTINGS_RETURN_SUCCESS' });
-          }
-        } catch (e) {
-          napLog(NAP_CODES.ERROR_RECOVERY, `Resume check error: ${e.message}`, 'ERROR');
-        }
-      };
-      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-        const App = window.Capacitor.Plugins.App;
-        const handler = () => onResume();
-        App.addListener('resume', handler);
-        removeListener = () => App.removeListener('resume', handler);
-      } else {
-        const handler = () => { if (!document.hidden) onResume(); };
-        document.addEventListener('visibilitychange', handler);
-        removeListener = () => document.removeEventListener('visibilitychange', handler);
-      }
-      setTimeout(() => {
-        if (!isResolved) {
-          cleanup();
-          napLog(NAP_CODES.PERM_ERROR, `Timeout esperando regreso de ajustes (${timeoutMs}ms)`, 'WARN');
-          reject({ success: false, error: 'Timeout', nap_code: 'SETTINGS_TIMEOUT', canRetry: true });
-        }
-      }, timeoutMs);
-      onResume();
-    });
-  },
-
-  async requestAndWaitForSettings(options = {}) {
-    if (this.state.platform !== 'android') {
-      return { success: false, error: 'Solo Android', nap_code: 'NOT_ANDROID' };
-    }
-    try {
-      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-        await window.Capacitor.Plugins.App.openUrl({ url: 'app-settings:' });
-      }
-      return await this.waitForSettingsReturn(options);
-    } catch (error) {
-      return { success: false, error: error.message || 'Unknown', canRetry: true };
-    }
-  },
-
   setVerboseLogging(enabled) {
     if (enabled) localStorage.setItem('nexo_verbose_logs', 'true');
     else localStorage.removeItem('nexo_verbose_logs');
   }
 };
 
-// EXPORTS COMPATIBLES LEGACY
+// ==================== SERVER FUNCTIONS ====================
+
+export async function startBLEAdvertising() {
+  if (Capacitor.getPlatform() !== 'android') return { success: true };
+  try {
+    const result = await NexoBLE.startBLEAdvertising();
+    return { success: true, result: result || {} };
+  } catch (e) {
+    return { success: false, error: e.message, nap_code: 'ADVERTISE_ERROR' };
+  }
+}
+
+export async function stopBLEAdvertising() {
+  if (Capacitor.getPlatform() !== 'android') return { success: true };
+  try {
+    const result = await NexoBLE.stopBLEAdvertising();
+    return { success: true, result: result || {} };
+  } catch (e) {
+    return { success: false, error: e.message, nap_code: 'ADVERTISE_STOP_ERROR' };
+  }
+}
+
+// ==================== CLIENT FUNCTIONS ====================
+
+export async function scanForDevices() {
+  if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
+  try {
+    napLog(NAP_CODES.SCAN_START, 'Iniciando escaneo BLE...');
+    const result = await NexoBLE.scanForDevices();
+    napLog(NAP_CODES.SCAN_RESULT, `Dispositivos encontrados: ${result?.devices?.length || 0}`, 'INFO', result);
+    return { success: true, devices: result?.devices || [] };
+  } catch (e) {
+    return { success: false, error: e.message, nap_code: 'SCAN_ERROR' };
+  }
+}
+
+export async function stopScan() {
+  if (Capacitor.getPlatform() !== 'android') return { success: true };
+  try {
+    await NexoBLE.stopScan();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+export async function connectToDevice(address) {
+  if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
+  try {
+    napLog(NAP_CODES.CONNECT, `Conectando a ${address}...`);
+    const result = await NexoBLE.connectToDevice({ address });
+    BLEPermissions.state.connectedDevice = address;
+    BLEPermissions.state.isClient = true;
+    return { success: true, result };
+  } catch (e) {
+    return { success: false, error: e.message, nap_code: 'CONNECT_ERROR' };
+  }
+}
+
+export async function disconnectDevice() {
+  if (Capacitor.getPlatform() !== 'android') return { success: true };
+  try {
+    await NexoBLE.disconnectDevice();
+    BLEPermissions.state.connectedDevice = null;
+    BLEPermissions.state.isClient = false;
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ==================== UNIFIED MESSAGING ====================
+
+export async function sendMessage(message) {
+  if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
+  try {
+    napLog(NAP_CODES.MESSAGE, `Enviando mensaje: ${message}`);
+    const result = await NexoBLE.sendMessage({ message });
+    return { success: true, mode: result?.mode || 'unknown', sent: result?.sent };
+  } catch (e) {
+    return { success: false, error: e.message, nap_code: 'SEND_ERROR' };
+  }
+}
+
+export async function startListeningMessages(callback) {
+  if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
+  
+  // Iniciar listeners nativos
+  await NexoBLE.startListeningMessages();
+  
+  // Registrar callback para eventos del bridge
+  const handler = (event) => {
+    if (event?.detail) callback(event.detail);
+  };
+  
+  window.addEventListener('bleMessageReceived', handler);
+  window.addEventListener('bleDeviceConnected', handler);
+  window.addEventListener('bleDeviceDisconnected', handler);
+  window.addEventListener('bleClientConnected', handler);
+  window.addEventListener('bleClientDisconnected', handler);
+  window.addEventListener('bleClientReady', handler);
+  window.addEventListener('bleDeviceFound', handler);
+  
+  return { success: true, listening: true };
+}
+
+// ==================== LEGACY COMPATIBILITY ====================
 
 export async function checkBLEStatus() {
   return BLEPermissions.check();
@@ -199,26 +249,6 @@ export async function requestBLEPermissions() {
 
 export function isPermanentlyDenied() {
   return BLEPermissions.state.isPermanentlyDenied;
-}
-
-export async function startBLEAdvertising() {
-  if (Capacitor.getPlatform() !== 'android') return { success: true };
-  try {
-    const result = await NexoBLE.startAdvertising();
-    return { success: true, result: result || {} };
-  } catch (e) {
-    return { success: false, error: e.message, nap_code: 'ADVERTISE_ERROR' };
-  }
-}
-
-export async function stopBLEAdvertising() {
-  if (Capacitor.getPlatform() !== 'android') return { success: true };
-  try {
-    const result = await NexoBLE.stopAdvertising();
-    return { success: true, result: result || {} };
-  } catch (e) {
-    return { success: false, error: e.message, nap_code: 'ADVERTISE_STOP_ERROR' };
-  }
 }
 
 export { BLEPermissions, NAP_CODES, napLog };
