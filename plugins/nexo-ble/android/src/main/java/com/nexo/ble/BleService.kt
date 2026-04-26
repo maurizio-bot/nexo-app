@@ -12,16 +12,21 @@ import android.bluetooth.BluetoothGattServer
 import android.bluetooth.BluetoothGattServerCallback
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.AdvertiseCallback
+import android.bluetooth.le.AdvertiseData
+import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.nio.charset.Charset
 
 /**
- * BleService: Único dueño del GATT Server.
+ * BleService: Único dueño del GATT Server + Advertising.
  * Patrón: Android-BLE-Library server example + nRF Toolbox foreground service.
  */
 class BleService : Service() {
@@ -33,6 +38,7 @@ class BleService : Service() {
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
+    private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
     private var txCharacteristic: BluetoothGattCharacteristic? = null
     private var rxCharacteristic: BluetoothGattCharacteristic? = null
     private val connectedDevices = mutableSetOf<BluetoothDevice>()
@@ -41,6 +47,7 @@ class BleService : Service() {
         super.onCreate()
         startForeground(NOTIFICATION_ID, createNotification())
         startGattServer()
+        startAdvertising()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -88,6 +95,36 @@ class BleService : Service() {
 
         val success = bluetoothGattServer?.addService(service) ?: false
         Log.i(TAG, "GATT Server addService success=$success")
+    }
+
+    private fun startAdvertising() {
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+        bluetoothLeAdvertiser = adapter.bluetoothLeAdvertiser
+
+        val settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setConnectable(true)
+            .setTimeout(0)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .build()
+
+        val data = AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
+            .addServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
+            .build()
+
+        bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
+    }
+
+    private val advertiseCallback = object : AdvertiseCallback() {
+        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+            Log.i(TAG, "BLE Advertising started successfully")
+        }
+
+        override fun onStartFailure(errorCode: Int) {
+            Log.e(TAG, "BLE Advertising failed with error code: $errorCode")
+        }
     }
 
     private val gattServerCallback = object : BluetoothGattServerCallback() {
@@ -191,7 +228,7 @@ class BleService : Service() {
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("NEXO BLE Activo")
-            .setContentText("Servidor GATT escuchando mensajes...")
+            .setContentText("Servidor GATT + Advertising...")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -200,6 +237,7 @@ class BleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
         bluetoothGattServer?.close()
         connectedDevices.clear()
         Log.i(TAG, "BleService destroyed")
