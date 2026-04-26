@@ -22,6 +22,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -127,11 +128,17 @@ class NexoBlePlugin : Plugin() {
         // Detectar denegación permanente: si no está concedido Y no debemos mostrar rationale
         var isPermanentlyDenied = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!scanGranted && !shouldShowRequestPermissionRationale(android.Manifest.permission.BLUETOOTH_SCAN)) {
+            if (!scanGranted && !ActivityCompat.shouldShowRequestPermissionRationale(
+                    activity, android.Manifest.permission.BLUETOOTH_SCAN
+                )
+            ) {
                 isPermanentlyDenied = true
             }
         } else {
-            if (!locationGranted && !shouldShowRequestPermissionRationale(android.Manifest.permission.ACCESS_FINE_LOCATION)) {
+            if (!locationGranted && !ActivityCompat.shouldShowRequestPermissionRationale(
+                    activity, android.Manifest.permission.ACCESS_FINE_LOCATION
+                )
+            ) {
                 isPermanentlyDenied = true
             }
         }
