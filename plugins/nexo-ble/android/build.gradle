@@ -51,14 +51,14 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
 }
 
-// FIX CRÍTICO Gradle 8+: Dependencias explícitas entre tareas de recursos
+// FIX CRÍTICO AGP 8.2.1 + Gradle 8+: Declarar dependencias explícitas entre tareas de recursos
 afterEvaluate {
     tasks.configureEach { task ->
-        if (task.name.contains("packageDebugResources") || task.name.contains("packageReleaseResources")) {
-            def generateTask = tasks.findByName(task.name.replace("package", "generate").replace("Resources", "ResValues"))
-            if (generateTask != null) {
-                task.dependsOn generateTask
-            }
+        if (task.name == "packageDebugResources") {
+            task.dependsOn("generateDebugResValues")
+        }
+        if (task.name == "packageReleaseResources") {
+            task.dependsOn("generateReleaseResValues")
         }
     }
 }
