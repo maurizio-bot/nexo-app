@@ -52,13 +52,12 @@ dependencies {
 }
 
 // FIX CRÍTICO AGP 8.2.1 + Gradle 8+: Declarar dependencias explícitas entre tareas de recursos
-afterEvaluate {
-    tasks.configureEach { task ->
-        if (task.name == "packageDebugResources") {
-            task.dependsOn("generateDebugResValues")
-        }
-        if (task.name == "packageReleaseResources") {
-            task.dependsOn("generateReleaseResValues")
-        }
+// whenTaskAdded se ejecuta ANTES de que Gradle resuelva el grafo de dependencias
+tasks.whenTaskAdded { task ->
+    if (task.name == "packageDebugResources") {
+        task.dependsOn("generateDebugResValues")
+    }
+    if (task.name == "packageReleaseResources") {
+        task.dependsOn("generateReleaseResValues")
     }
 }
