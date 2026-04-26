@@ -18,7 +18,6 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.getcapacitor.CapacitorActivity
 import java.nio.charset.Charset
 
 /**
@@ -178,10 +177,15 @@ class BleService : Service() {
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
 
+        // FIX: No importar CapacitorActivity. Usar launch intent del package.
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        } ?: Intent()
+
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, CapacitorActivity::class.java),
+            launchIntent,
             PendingIntent.FLAG_IMMUTABLE
         )
 
