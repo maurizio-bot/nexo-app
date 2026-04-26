@@ -145,7 +145,6 @@ class BleService : Service() {
             android.bluetooth.BluetoothGattService.SERVICE_TYPE_PRIMARY
         )
 
-        // ANNOUNCE: READ + NOTIFY (broadcast del dispositivo)
         val announceChar = BluetoothGattCharacteristic(
             NexoGattService.ANNOUNCE_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
@@ -157,14 +156,12 @@ class BleService : Service() {
         )
         announceChar.addDescriptor(announceCccd)
 
-        // HANDSHAKE: READ + WRITE (intercambio de claves/sesión)
         val handshakeChar = BluetoothGattCharacteristic(
             NexoGattService.HANDSHAKE_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
             BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE
         )
 
-        // PAYLOAD: READ + WRITE + NOTIFY (datos principales bidireccionales)
         val payloadChar = BluetoothGattCharacteristic(
             NexoGattService.PAYLOAD_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
@@ -176,7 +173,6 @@ class BleService : Service() {
         )
         payloadChar.addDescriptor(payloadCccd)
 
-        // CONTROL: WRITE (comandos de control)
         val controlChar = BluetoothGattCharacteristic(
             NexoGattService.CONTROL_CHAR_UUID,
             BluetoothGattCharacteristic.PROPERTY_WRITE,
