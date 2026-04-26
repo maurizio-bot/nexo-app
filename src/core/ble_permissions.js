@@ -1,6 +1,6 @@
 /**
- * BLE Permissions & Communication Manager v5.6-ARCH
- * Fix: Capacitor nativo un solo alias + polling JS post-diálogo
+ * BLE Permissions & Communication Manager v5.7-ARCH
+ * Fix: Polling nativo en Kotlin, JS simplificado
  * Ubicación: src/core/ble_permissions.js
  */
 
@@ -109,27 +109,21 @@ const BLEPermissions = {
 
     this.state.checking = true;
     try {
-      napLog(NAP_CODES.PERM_REQUEST, 'Abriendo diálogo de permisos nativo...');
+      napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos nativos...');
 
-      // initializeBLE abre el diálogo y retorna cuando el usuario responde
+      // El nativo hace polling interno durante 5 segundos.
+      // Solo resuelve cuando detecta permisos reales concedidos.
       await NexoBLE.initializeBLE();
 
-      // CRITICAL FIX: Esperamos 1.5s para que Android 14+ aplique el permiso,
-      // luego verificamos estado REAL con checkBLEStatus.
-      let granted = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        await new Promise(r => setTimeout(r, 1500));
-        granted = await this.check();
-        napLog(NAP_CODES.PERM_REQUEST, `Post-dialogo check intento ${attempt}/3: granted=${granted}`, 'DEBUG');
-        if (granted) break;
-      }
+      // Nativo ya resolvió/rechazó. Verificamos estado final.
+      const granted = await this.check();
 
       if (granted) {
         napLog(NAP_CODES.PERM_GRANTED, 'Permisos concedidos');
       } else if (this.state.isPermanentlyDenied) {
         napLog(NAP_CODES.PERM_PERMANENT, 'Denegación permanente detectada', 'WARN');
       } else {
-        napLog(NAP_CODES.PERM_DENIED, 'Permisos denegados o diálogo cancelado', 'WARN');
+        napLog(NAP_CODES.PERM_DENIED, 'Permisos denegados', 'WARN');
       }
       return granted;
     } catch (e) {
