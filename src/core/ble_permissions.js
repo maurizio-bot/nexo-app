@@ -1,8 +1,7 @@
 /**
- * BLE Permissions & Communication Manager v5.2-ARCH
- * Fix: Retry con delay post-diálogo nativo para race condition Android 14+
+ * BLE Permissions & Communication Manager v5.3-ARCH
+ * Fix: 800ms retry nativo + 800ms retry JS + compatibilidad legacy
  * Ubicación: src/core/ble_permissions.js
- * Coordinado con NexoBlePlugin.kt v6.2-ARCH-FIX (Servidor + Cliente)
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -57,13 +56,11 @@ const BLEPermissions = {
 
     document.addEventListener('resume', async () => {
       napLog(NAP_CODES.RESUME_CHECK, 'App resumed — re-verificando permisos...');
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 1000));
       const granted = await this.check();
       if (granted) {
         napLog(NAP_CODES.SETTINGS_RETURN, 'Permisos concedidos tras regreso de Settings');
-        window.dispatchEvent(new CustomEvent('blePermissionsGranted', {
-          detail: { source: 'resume_check' }
-        }));
+        window.dispatchEvent(new CustomEvent('blePermissionsGranted', { detail: { source: 'resume_check' } }));
       } else {
         napLog(NAP_CODES.SETTINGS_RETURN, 'Permisos aún denegados tras regreso de Settings', 'WARN');
       }
@@ -93,11 +90,7 @@ const BLEPermissions = {
       this.state.checked = true;
 
       napLog(NAP_CODES.ANDROID_NATIVE, 'checkBLEStatus', 'DEBUG', this.state.permissions);
-      napLog(
-        NAP_CODES.ANDROID_NATIVE,
-        `allGranted=${this.state.granted}, permanentlyDenied=${this.state.isPermanentlyDenied}`,
-        'DEBUG'
-      );
+      napLog(NAP_CODES.ANDROID_NATIVE, `allGranted=${this.state.granted}, permanentlyDenied=${this.state.isPermanentlyDenied}`, 'DEBUG');
       return this.state.granted;
     } catch (e) {
       napLog(NAP_CODES.PERM_ERROR, `check failed: ${e.message}`, 'ERROR');
@@ -120,11 +113,11 @@ const BLEPermissions = {
 
       await NexoBLE.initializeBLE();
 
-      // CRITICAL FIX: Android 14+ no actualiza el estado de permisos instantáneamente
-      // tras el diálogo nativo. Esperamos 600ms y reintentamos check() hasta 3 veces.
+      // CRITICAL FIX: Esperar 800ms y reintentar check() hasta 3 veces.
+      // El nativo también espera 800ms antes de leer el estado real del OS.
       let granted = false;
       for (let attempt = 1; attempt <= 3; attempt++) {
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, 800));
         granted = await this.check();
         napLog(NAP_CODES.PERM_REQUEST, `Post-dialogo check intento ${attempt}: granted=${granted}`, 'DEBUG');
         if (granted) break;
@@ -140,9 +133,7 @@ const BLEPermissions = {
       return granted;
     } catch (e) {
       napLog(NAP_CODES.ERROR_RECOVERY, `request error: ${e.message}`, 'ERROR');
-      try {
-        await this.check();
-      } catch (_) { /* ignore */ }
+      try { await this.check(); } catch (_) { /* ignore */ }
       this.state.granted = false;
       return false;
     } finally {
@@ -163,13 +154,8 @@ const BLEPermissions = {
     return await this.request();
   },
 
-  isReady() {
-    return this.state.granted;
-  },
-
-  getStatus() {
-    return { ...this.state };
-  },
+  isReady() { return this.state.granted; },
+  getStatus() { return { ...this.state }; },
 
   setVerboseLogging(enabled) {
     if (enabled) localStorage.setItem('nexo_verbose_logs', 'true');
@@ -177,16 +163,13 @@ const BLEPermissions = {
   }
 };
 
-// ==================== SERVER FUNCTIONS ====================
-
+// ==================== SERVER ====================
 export async function startBLEAdvertising() {
   if (Capacitor.getPlatform() !== 'android') return { success: true };
   try {
     const result = await NexoBLE.startBLEAdvertising();
     return { success: true, result: result || {} };
-  } catch (e) {
-    return { success: false, error: e.message, nap_code: 'ADVERTISE_ERROR' };
-  }
+  } catch (e) { return { success: false, error: e.message, nap_code: 'ADVERTISE_ERROR' }; }
 }
 
 export async function stopBLEAdvertising() {
@@ -194,13 +177,10 @@ export async function stopBLEAdvertising() {
   try {
     const result = await NexoBLE.stopBLEAdvertising();
     return { success: true, result: result || {} };
-  } catch (e) {
-    return { success: false, error: e.message, nap_code: 'ADVERTISE_STOP_ERROR' };
-  }
+  } catch (e) { return { success: false, error: e.message, nap_code: 'ADVERTISE_STOP_ERROR' }; }
 }
 
-// ==================== CLIENT FUNCTIONS ====================
-
+// ==================== CLIENT ====================
 export async function scanForDevices() {
   if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
   try {
@@ -208,19 +188,12 @@ export async function scanForDevices() {
     const result = await NexoBLE.scanForDevices();
     napLog(NAP_CODES.SCAN_RESULT, `Dispositivos encontrados: ${result?.devices?.length || 0}`, 'INFO', result);
     return { success: true, devices: result?.devices || [] };
-  } catch (e) {
-    return { success: false, error: e.message, nap_code: 'SCAN_ERROR' };
-  }
+  } catch (e) { return { success: false, error: e.message, nap_code: 'SCAN_ERROR' }; }
 }
 
 export async function stopScan() {
   if (Capacitor.getPlatform() !== 'android') return { success: true };
-  try {
-    await NexoBLE.stopScan();
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
+  try { await NexoBLE.stopScan(); return { success: true }; } catch (e) { return { success: false, error: e.message }; }
 }
 
 export async function connectToDevice(address) {
@@ -231,9 +204,7 @@ export async function connectToDevice(address) {
     BLEPermissions.state.connectedDevice = address;
     BLEPermissions.state.isClient = true;
     return { success: true, result };
-  } catch (e) {
-    return { success: false, error: e.message, nap_code: 'CONNECT_ERROR' };
-  }
+  } catch (e) { return { success: false, error: e.message, nap_code: 'CONNECT_ERROR' }; }
 }
 
 export async function disconnectDevice() {
@@ -243,33 +214,23 @@ export async function disconnectDevice() {
     BLEPermissions.state.connectedDevice = null;
     BLEPermissions.state.isClient = false;
     return { success: true };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
+  } catch (e) { return { success: false, error: e.message }; }
 }
 
-// ==================== UNIFIED MESSAGING ====================
-
+// ==================== MESSAGING ====================
 export async function sendMessage(message) {
   if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
   try {
     napLog(NAP_CODES.MESSAGE, `Enviando mensaje: ${message}`);
     const result = await NexoBLE.sendMessage({ message });
     return { success: true, mode: result?.mode || 'unknown', sent: result?.sent };
-  } catch (e) {
-    return { success: false, error: e.message, nap_code: 'SEND_ERROR' };
-  }
+  } catch (e) { return { success: false, error: e.message, nap_code: 'SEND_ERROR' }; }
 }
 
 export async function startListeningMessages(callback) {
   if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
-
   await NexoBLE.startListeningMessages();
-
-  const handler = (event) => {
-    if (event?.detail) callback(event.detail);
-  };
-
+  const handler = (event) => { if (event?.detail) callback(event.detail); };
   window.addEventListener('bleMessageReceived', handler);
   window.addEventListener('bleDeviceConnected', handler);
   window.addEventListener('bleDeviceDisconnected', handler);
@@ -277,26 +238,13 @@ export async function startListeningMessages(callback) {
   window.addEventListener('bleClientDisconnected', handler);
   window.addEventListener('bleClientReady', handler);
   window.addEventListener('bleDeviceFound', handler);
-
   return { success: true, listening: true };
 }
 
-// ==================== LEGACY COMPATIBILITY ====================
-
-export async function checkBLEStatus() {
-  return BLEPermissions.check();
-}
-
-export async function requestBLEPermissions() {
-  return BLEPermissions.request();
-}
-
-export function isPermanentlyDenied() {
-  return BLEPermissions.state.isPermanentlyDenied;
-}
-
+// ==================== LEGACY ====================
+export async function checkBLEStatus() { return BLEPermissions.check(); }
+export async function requestBLEPermissions() { return BLEPermissions.request(); }
+export function isPermanentlyDenied() { return BLEPermissions.state.isPermanentlyDenied; }
 export { BLEPermissions, NAP_CODES, napLog };
 
-if (typeof window !== 'undefined') {
-  window.BLEPermissions = BLEPermissions;
-}
+if (typeof window !== 'undefined') { window.BLEPermissions = BLEPermissions; }
