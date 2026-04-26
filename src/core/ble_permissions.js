@@ -1,6 +1,6 @@
 /**
- * BLE Permissions & Communication Manager v5.4-ARCH
- * Fix: Polling puro — initializeBLE solo abre diálogo, JS verifica con checkBLEStatus
+ * BLE Permissions & Communication Manager v5.6-ARCH
+ * Fix: Capacitor nativo un solo alias + polling JS post-diálogo
  * Ubicación: src/core/ble_permissions.js
  */
 
@@ -111,16 +111,16 @@ const BLEPermissions = {
     try {
       napLog(NAP_CODES.PERM_REQUEST, 'Abriendo diálogo de permisos nativo...');
 
-      // initializeBLE ahora solo abre el diálogo y retorna inmediatamente
+      // initializeBLE abre el diálogo y retorna cuando el usuario responde
       await NexoBLE.initializeBLE();
 
-      // CRITICAL FIX: Polling cada 800ms durante 5 intentos (4 segundos total).
-      // El usuario necesita tiempo para leer y presionar "Permitir".
+      // CRITICAL FIX: Esperamos 1.5s para que Android 14+ aplique el permiso,
+      // luego verificamos estado REAL con checkBLEStatus.
       let granted = false;
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        await new Promise(r => setTimeout(r, 800));
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await new Promise(r => setTimeout(r, 1500));
         granted = await this.check();
-        napLog(NAP_CODES.PERM_REQUEST, `Polling intento ${attempt}/5: granted=${granted}`, 'DEBUG');
+        napLog(NAP_CODES.PERM_REQUEST, `Post-dialogo check intento ${attempt}/3: granted=${granted}`, 'DEBUG');
         if (granted) break;
       }
 
