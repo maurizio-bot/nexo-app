@@ -7,6 +7,9 @@ buildscript {
         mavenCentral()
     }
     dependencies {
+       
+        implementation project(':capacitor-nexo-ble')
+
         // CRÍTICO: Android Gradle Plugin 8.1.0+ para Android 14
         classpath 'com.android.tools.build:gradle:8.1.0'
         
