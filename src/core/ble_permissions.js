@@ -1,6 +1,6 @@
 /**
- * BLE Permissions & Communication Manager v5.3-ARCH
- * Fix: 800ms retry nativo + 800ms retry JS + compatibilidad legacy
+ * BLE Permissions & Communication Manager v5.4-ARCH
+ * Fix: Polling puro — initializeBLE solo abre diálogo, JS verifica con checkBLEStatus
  * Ubicación: src/core/ble_permissions.js
  */
 
@@ -109,17 +109,18 @@ const BLEPermissions = {
 
     this.state.checking = true;
     try {
-      napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos nativos...');
+      napLog(NAP_CODES.PERM_REQUEST, 'Abriendo diálogo de permisos nativo...');
 
+      // initializeBLE ahora solo abre el diálogo y retorna inmediatamente
       await NexoBLE.initializeBLE();
 
-      // CRITICAL FIX: Esperar 800ms y reintentar check() hasta 3 veces.
-      // El nativo también espera 800ms antes de leer el estado real del OS.
+      // CRITICAL FIX: Polling cada 800ms durante 5 intentos (4 segundos total).
+      // El usuario necesita tiempo para leer y presionar "Permitir".
       let granted = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      for (let attempt = 1; attempt <= 5; attempt++) {
         await new Promise(r => setTimeout(r, 800));
         granted = await this.check();
-        napLog(NAP_CODES.PERM_REQUEST, `Post-dialogo check intento ${attempt}: granted=${granted}`, 'DEBUG');
+        napLog(NAP_CODES.PERM_REQUEST, `Polling intento ${attempt}/5: granted=${granted}`, 'DEBUG');
         if (granted) break;
       }
 
@@ -128,7 +129,7 @@ const BLEPermissions = {
       } else if (this.state.isPermanentlyDenied) {
         napLog(NAP_CODES.PERM_PERMANENT, 'Denegación permanente detectada', 'WARN');
       } else {
-        napLog(NAP_CODES.PERM_DENIED, 'Permisos denegados tras 3 intentos', 'WARN');
+        napLog(NAP_CODES.PERM_DENIED, 'Permisos denegados o diálogo cancelado', 'WARN');
       }
       return granted;
     } catch (e) {
