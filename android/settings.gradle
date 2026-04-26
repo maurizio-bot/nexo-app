@@ -5,8 +5,6 @@ apply from: 'capacitor.settings.gradle'
 include ':app'
 include ':capacitor-cordova-android-plugins'
 include ':capacitor-nexo-auth'
-include ':capacitor-nexo-ble'
 
 project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
 project(':capacitor-nexo-auth').projectDir = new File('../plugins/nexo-auth/android')
-project(':capacitor-nexo-ble').projectDir = new File('../plugins/nexo-ble/android')
