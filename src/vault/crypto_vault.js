@@ -1,6 +1,7 @@
 /**
  * NEXO v9.0 - Crypto Vault (v9.7-FIX)
  * FIX: getIdentityKey() nunca falla - siempre retorna ID usable
+ * FIX v9.7.1-ARCH: No warn VAULT_IDENTITY_FAIL cuando identidad temporal ya existe (constructor)
  * NAP 2.0 Certified - WebCrypto API + IndexedDB
  */
 
@@ -149,7 +150,10 @@ export class CryptoVault {
     try {
       await this._loadIdentityQuick();
     } catch (e) {
-      this._notifyREM('warn', 'No se pudo cargar identidad previa', NAP_CODES.VAULT_IDENTITY_FAIL);
+      // FIX v9.7.1-ARCH: No warn si identidad temporal ya existe (creada siempre en constructor)
+      if (!this.identity?.temporary) {
+        this._notifyREM('warn', 'No se pudo cargar identidad previa', NAP_CODES.VAULT_IDENTITY_FAIL);
+      }
       // FIX: Si falla carga, asegurar que al menos tengamos la temporal
       this._ensureMinimalIdentity();
     }
