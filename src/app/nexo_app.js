@@ -4,6 +4,8 @@
  * FIX: Sin listeners nativos duplicados, usa eventos ble_interface, dedup LRU, send via bleInterface,
  *      sin dependencia onMessageSent, fallback ordenado BLE→Nordic→Hybrid→Bridge→WS.
  * FIX v5.0.1-ARCH: Silenciado log DEDUP para mensajes propios (source === 'self')
+ * FIX v5.0.2-ARCH: BRIDGE_SKIP detecta BLE nativo, BLE_PREPARE/BLE_RECV silenciados de toasts,
+ *      estado P2P_BLE al abrir chat BLE (evita READY+OFFLINE contradictorio)
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -173,13 +175,16 @@ export class NexoApp {
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
+        // FIX v5.0.2-ARCH: Actualizar modo a P2P_BLE para evitar READY+OFFLINE contradictorio
+        this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
-        DEBUG.log(`📨 BLE mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`, 'info', 'BLE_RECV');
+        // FIX v5.0.2-ARCH: Silenciar BLE_RECV de toasts (usa console.log interno)
+        console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         this._handleMessage({
           content,
           sender: deviceId,
@@ -198,7 +203,11 @@ export class NexoApp {
   async _initPhase6_Bridge() {
     DEBUG.setPhase('BRIDGE');
     try {
-      if (!this.mesh && !this.nordicMesh && !this.wsClient) { DEBUG.warn('No transports', 'BRIDGE_SKIP'); return; }
+      // FIX v5.0.2-ARCH: Detectar BLE nativo como transporte válido (evita BRIDGE_SKIP falso)
+      if (!this.mesh && !this.nordicMesh && !this.wsClient && !this.bleInterface?.nativePlugin) {
+        DEBUG.warn('No transports', 'BRIDGE_SKIP');
+        return;
+      }
       this.bridge = new MeshRelayBridge({ mesh: this.mesh, nordicMesh: this.nordicMesh, relay: this.wsClient, onModeChange: (mode) => { DEBUG.setMode(mode); this.config.onStatusChange(mode); } });
       await withTimeoutNAP(this.bridge.initialize(), 5000, 'Bridge.initialize');
       DEBUG.success('Bridge ready', 'BRIDGE_002');
@@ -231,7 +240,8 @@ export class NexoApp {
   async _sendViaBLE(deviceId, content) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin no disponible');
-    DEBUG.log(`[BLE_SEND] Enviando a ${deviceId?.substring?.(0,8)}...`, 'info', 'BLE_PREPARE');
+    // FIX v5.0.2-ARCH: BLE_PREPARE silenciado de toasts (solo console.log interno)
+    console.log(`[BLE_SEND] Enviando a ${deviceId?.substring?.(0,8)}...`);
     try {
       await plugin.sendMessage({ deviceId, message: content });
       DEBUG.success(`📨 Enviado vía BLE a ${deviceId?.substring?.(0,8)}`, 'MSG_BLE');
