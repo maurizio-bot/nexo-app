@@ -1,7 +1,8 @@
 /**
- * BLE Permissions & Communication Manager v6.1-FIX
+ * BLE Permissions & Communication Manager v6.2-FIX
  * Fixes: Plugin name NexoBLE, method names aligned, no auto-start Service,
  *        REM logs en pantalla via onRemLog listener
+ * FIX v6.2-ARCH: UX permisos - contexto en reintentos, estado visual claro
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
