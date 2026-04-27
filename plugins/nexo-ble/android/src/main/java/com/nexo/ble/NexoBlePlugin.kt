@@ -749,4 +749,21 @@ class NexoBlePlugin : Plugin() {
             messageReceiver = null
         }
     }
+        // ==================== ALIAS PARA COMPATIBILIDAD v6.1 ====================
+
+    @PluginMethod
+    fun startBLEAdvertising(call: PluginCall) = startAdvertising(call)
+
+    @PluginMethod
+    fun stopBLEAdvertising(call: PluginCall) = stopAdvertising(call)
+
+    @PluginMethod
+    fun scanForDevices(call: PluginCall) = startScan(call)
+
+    @PluginMethod
+    fun startListeningMessages(call: PluginCall) {
+        registerServerReceivers()
+        call.resolve(JSObject().put("listening", true))
+    }
+
 }
