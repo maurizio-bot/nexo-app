@@ -2,6 +2,7 @@
  * BLE Interface v3.2-ARCH
  * Ubicación: src/ui/ble_interface.js
  * FIX: Server error handling, better timeout messages, manifest service name fix coordination
+ * FIX v3.2-ARCH: Badge oculto cuando chat BLE activo
  */
 
 export function initBLEInterface(bleMesh) {
@@ -247,7 +248,6 @@ export class BLEInterface {
     });
   }
 
-  // FIX v3.2-ARCH: Escuchar errores del servidor nativo
   _setupNativeServerErrorListener() {
     if (!this.nativePlugin) return;
     if (this._nativeServerErrorListener) this._nativeServerErrorListener.remove();
@@ -255,7 +255,6 @@ export class BLEInterface {
       this._serverReady = false;
       this._serverError = { code: data.code, message: data.message };
       console.error('[BLEInterface] Server error:', data.code, data.message);
-      // Si es error de permisos, mostrar toast específico
       if (data.code === 'BLE_202') {
         this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
       }
@@ -387,7 +386,6 @@ export class BLEInterface {
           userId: window.currentUser?.id || '',
           userName: window.currentUser?.name || 'NEXO User'
         });
-        // FIX v3.2: Timeout aumentado a 8s + mejor manejo de errores
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             if (this._serverError) {
@@ -882,6 +880,11 @@ export class BLEInterface {
 
   updateBadge() {
     const badge = this.elements.badge;
+    // FIX v3.2-ARCH: No mostrar badge si ya estamos en chat BLE activo
+    if (this._activeChatDeviceId) {
+      badge.style.display = 'none';
+      return;
+    }
     if (this.newDevicesCount > 0) {
       badge.textContent = this.newDevicesCount;
       badge.style.display = 'flex';
