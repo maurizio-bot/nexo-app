@@ -32,6 +32,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
 import java.nio.charset.Charset
 import java.util.UUID
 
@@ -52,7 +53,6 @@ class NexoBlePlugin : Plugin() {
     companion object {
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
-        private const val REQUEST_CODE_BLE = 1001
     }
 
     private var messageReceiver: BroadcastReceiver? = null
@@ -65,10 +65,7 @@ class NexoBlePlugin : Plugin() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
 
-    // Guardar call pendiente para resolver en handleOnRequestPermissionsResult
-    private var pendingPermissionCall: PluginCall? = null
-
-    // ==================== PERMISSIONS (Producción-ready) ====================
+    // ==================== PERMISSIONS ====================
 
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
@@ -78,13 +75,13 @@ class NexoBlePlugin : Plugin() {
         val scanGranted = ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
         val connectGranted = ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
         val advertiseGranted = ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED
+        val locationGranted = ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val notificationsGranted = ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
         val allGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             scanGranted && connectGranted && advertiseGranted && notificationsGranted
         } else {
-            ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
-            notificationsGranted
+            locationGranted && notificationsGranted
         }
 
         var isPermanentlyDenied = false
@@ -93,8 +90,7 @@ class NexoBlePlugin : Plugin() {
                 isPermanentlyDenied = true
             }
         } else {
-            if (!ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
-                !ActivityCompat.shouldShowRequestPermissionRationale(activity, android.Manifest.permission.ACCESS_FINE_LOCATION)) {
+            if (!locationGranted && !ActivityCompat.shouldShowRequestPermissionRationale(activity, android.Manifest.permission.ACCESS_FINE_LOCATION)) {
                 isPermanentlyDenied = true
             }
         }
@@ -102,7 +98,7 @@ class NexoBlePlugin : Plugin() {
         result.put("scanGranted", scanGranted)
         result.put("connectGranted", connectGranted)
         result.put("advertiseGranted", advertiseGranted)
-        result.put("locationGranted", ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+        result.put("locationGranted", locationGranted)
         result.put("notificationsGranted", notificationsGranted)
         result.put("allGranted", allGranted)
         result.put("isPermanentlyDenied", isPermanentlyDenied)
@@ -130,56 +126,22 @@ class NexoBlePlugin : Plugin() {
             return
         }
 
-        pendingPermissionCall = call
-
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(
-                android.Manifest.permission.BLUETOOTH_SCAN,
-                android.Manifest.permission.BLUETOOTH_CONNECT,
-                android.Manifest.permission.BLUETOOTH_ADVERTISE,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requestPermissionForAliases(arrayOf("bluetoothScan"), call, "permissionsCallback")
         } else {
-            arrayOf(
-                android.Manifest.permission.ACCESS_FINE_LOCATION,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            )
+            requestPermissionForAliases(arrayOf("location"), call, "permissionsCallback")
         }
-
-        Log.i(TAG, "Lanzando ActivityCompat.requestPermissions directo")
-        ActivityCompat.requestPermissions(activity, permissions, REQUEST_CODE_BLE)
     }
 
-    // Alias legacy
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
         initializeBLE(call)
     }
 
-    // CRITICAL FIX: Capacitor reenvía el callback nativo a través de este método.
-    // Leemos grantResults directamente del OS, ignorando el estado interno de Capacitor.
-    override fun handleOnRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.handleOnRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (requestCode != REQUEST_CODE_BLE) return
-        if (pendingPermissionCall == null) return
-
-        Log.i(TAG, "handleOnRequestPermissionsResult: permissions=${permissions.joinToString()}, grants=${grantResults.joinToString()}")
-
-        val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-
-        if (allGranted) {
-            Log.i(TAG, "Todos los permisos concedidos por el usuario")
-            pendingPermissionCall?.resolve()
-        } else {
-            Log.w(TAG, "Algunos permisos denegados por el usuario")
-            pendingPermissionCall?.reject("Permisos BLE denegados")
-        }
-        pendingPermissionCall = null
+    @PermissionCallback
+    fun permissionsCallback(call: PluginCall) {
+        Log.i(TAG, "permissionsCallback: diálogo respondido")
+        call.resolve(JSObject().put("dialogResponded", true))
     }
 
     // ==================== SERVER ====================
