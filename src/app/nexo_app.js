@@ -3,6 +3,7 @@
  * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v4.0-ARCH + ble_permissions.js v4.0-ARCH
  * FIX: Sin listeners nativos duplicados, usa eventos ble_interface, dedup LRU, send via bleInterface,
  *      sin dependencia onMessageSent, fallback ordenado BLE→Nordic→Hybrid→Bridge→WS.
+ * FIX v5.0.1-ARCH: Silenciado log DEDUP para mensajes propios (source === 'self')
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -303,7 +304,10 @@ export class NexoApp {
       if (msg.messageId) {
         const now = Date.now();
         if (this._messageDedupMap.has(msg.messageId)) {
-          DEBUG.log(`Deduplicado ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
+          // FIX v5.0.1-ARCH: No loggear deduplicación de mensajes propios (evita spam en consola)
+          if (source !== 'self') {
+            DEBUG.log(`Deduplicado ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
+          }
           return;
         }
         this._messageDedupMap.set(msg.messageId, now);
