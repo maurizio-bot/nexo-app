@@ -1,6 +1,8 @@
 /**
- * BLE Permissions & Communication Manager v5.8-ARCH
- * Fix: Basado en plugin Capacitor producción (PrinterBridge #2327)
+ * BLE Permissions & Communication Manager v6.0-FIX
+ * Fixes: Bug1 (aliases juntos), Bug2 (callback ciego), Bug3 (isPermanentlyDenied),
+ *        Bug4 (allGranted sin notificaciones), Bug5 (FOREGROUND_SERVICE_CONNECTED_DEVICE),
+ *        Bug6 (JS lee resultado de initializeBLE), Bug7 (isPermanentlyDenied del nativo)
  * Ubicación: src/core/ble_permissions.js
  */
 
@@ -78,19 +80,30 @@ const BLEPermissions = {
 
     try {
       const result = await NexoBLE.checkBLEStatus();
+
       this.state.permissions = {
         scan: !!result.scanGranted,
         connect: !!result.connectGranted,
         advertise: !!result.advertiseGranted,
         location: !!result.locationGranted,
-        notifications: !!result.notificationsGranted
+        notifications: !!result.notificationsGranted,
+        // FIX Bug 5: foregroundConnected viene del nativo
+        foregroundConnected: !!result.foregroundConnectedGranted
       };
+
+      // FIX Bug 4: allGranted ya no exige notificaciones (el nativo lo calcula bien)
       this.state.granted = result.allGranted === true;
+
+      // FIX Bug 7: isPermanentlyDenied viene del nativo que ya usa wasEverAsked
       this.state.isPermanentlyDenied = result.isPermanentlyDenied === true;
       this.state.checked = true;
 
       napLog(NAP_CODES.ANDROID_NATIVE, 'checkBLEStatus', 'DEBUG', this.state.permissions);
-      napLog(NAP_CODES.ANDROID_NATIVE, `allGranted=${this.state.granted}, permanentlyDenied=${this.state.isPermanentlyDenied}`, 'DEBUG');
+      napLog(
+        NAP_CODES.ANDROID_NATIVE,
+        `allGranted=${this.state.granted}, permanentlyDenied=${this.state.isPermanentlyDenied}, wasAsked=${result.wasEverAsked}`,
+        'DEBUG'
+      );
       return this.state.granted;
     } catch (e) {
       napLog(NAP_CODES.PERM_ERROR, `check failed: ${e.message}`, 'ERROR');
@@ -111,22 +124,33 @@ const BLEPermissions = {
     try {
       napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos nativos...');
 
-      // El nativo usa ActivityCompat.requestPermissions + handleOnRequestPermissionsResult
-      // que lee grantResults directamente del OS. Esto es la forma que funciona en Android 14+.
-      await NexoBLE.initializeBLE();
+      // FIX Bug 6: Leer el resultado del callback directamente.
+      // El nativo ahora devuelve { dialogResponded, granted, isPermanentlyDenied }
+      const result = await NexoBLE.initializeBLE();
 
-      // Si llegamos aquí, el nativo resolvió (callback funcionó).
-      // Verificamos estado final por si acaso.
-      const granted = await this.check();
+      if (result?.granted !== undefined) {
+        // El nativo respondió con datos del callback (usuario interactuó con el diálogo)
+        this.state.granted = !!result.granted;
+        // FIX Bug 7: isPermanentlyDenied viene del nativo (no re-calculado en JS)
+        this.state.isPermanentlyDenied = !!result.isPermanentlyDenied;
+        this.state.checked = true;
+        napLog(NAP_CODES.ANDROID_NATIVE, `initializeBLE callback: granted=${this.state.granted}`, 'DEBUG', result);
+      } else {
+        // Ya tenía permisos (el nativo resolvió sin mostrar diálogo)
+        // Hacer check para confirmar estado
+        await this.check();
+      }
 
-      if (granted) {
+      if (this.state.granted) {
         napLog(NAP_CODES.PERM_GRANTED, 'Permisos concedidos');
       } else if (this.state.isPermanentlyDenied) {
         napLog(NAP_CODES.PERM_PERMANENT, 'Denegación permanente detectada', 'WARN');
+        window.dispatchEvent(new CustomEvent('blePermissionsPermanentlyDenied'));
       } else {
-        napLog(NAP_CODES.PERM_DENIED, 'Permisos denegados', 'WARN');
+        napLog(NAP_CODES.PERM_DENIED, 'Permisos denegados por el usuario', 'WARN');
       }
-      return granted;
+
+      return this.state.granted;
     } catch (e) {
       napLog(NAP_CODES.ERROR_RECOVERY, `request error: ${e.message}`, 'ERROR');
       try { await this.check(); } catch (_) { /* ignore */ }
@@ -189,7 +213,8 @@ export async function scanForDevices() {
 
 export async function stopScan() {
   if (Capacitor.getPlatform() !== 'android') return { success: true };
-  try { await NexoBLE.stopScan(); return { success: true }; } catch (e) { return { success: false, error: e.message }; }
+  try { await NexoBLE.stopScan(); return { success: true }; }
+  catch (e) { return { success: false, error: e.message }; }
 }
 
 export async function connectToDevice(address) {
