@@ -1,8 +1,11 @@
 /**
- * BLE Interface v3.2-ARCH
+ * BLE Interface v3.3-ARCH
  * Ubicación: src/ui/ble_interface.js
  * FIX: Server error handling, better timeout messages, manifest service name fix coordination
  * FIX v3.2-ARCH: Badge oculto cuando chat BLE activo
+ * FIX v3.3-ARCH: Duplicados por nombre evitados, estado EN ESPAÑOL, placeholder corregido,
+ *      tab "Cercanos" en vez de "Descubrir" (evita confusión con botón), toast silenciado
+ *      cuando ya estás en chat con ese contacto
  */
 
 export function initBLEInterface(bleMesh) {
@@ -23,7 +26,18 @@ function _getBLEContacts() {
 function _addBLEContact(device) {
   const contacts = _getBLEContacts();
   const id = device.id || device.address;
-  if (!id || contacts.some(c => (c.id || c.address) === id)) return false;
+  if (!id) return false;
+  // FIX v3.3-ARCH: Evitar duplicados por nombre (mismo dispositivo, MAC random vs public)
+  const existingByName = contacts.find(c => c.name && device.name && c.name === device.name);
+  if (existingByName) {
+    existingByName.id = id;
+    existingByName.address = device.address || device.id;
+    existingByName.rssi = device.rssi || existingByName.rssi;
+    existingByName.updatedAt = Date.now();
+    localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
+    return true;
+  }
+  if (contacts.some(c => (c.id || c.address) === id)) return false;
   contacts.push({ id, address: device.address || device.id, name: device.name || 'NEXO Device', rssi: device.rssi || null, addedAt: Date.now() });
   localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
   return true;
@@ -296,6 +310,7 @@ export class BLEInterface {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: { deviceId, content, senderName, messageId, source: data.source || 'unknown', timestamp: data.timestamp || Date.now() }
       }));
+      // FIX v3.3-ARCH: No mostrar toast si ya estamos en chat con este contacto (evita redundancia)
       if (this._activeChatDeviceId !== deviceId) {
         this.showToast('📨 Mensaje de ' + senderName, 'info');
         this.newDevicesCount++;
@@ -443,7 +458,7 @@ export class BLEInterface {
     panel.innerHTML = `
       <div class="ble-header"><h3>🔷 BLE Mesh</h3><button id="ble-close">✕</button></div>
       <div class="ble-tabs">
-        <button class="ble-tab-btn active" data-tab="discovery">Descubrir</button>
+        <button class="ble-tab-btn active" data-tab="discovery">Cercanos</button>
         <button class="ble-tab-btn" data-tab="added">Agregados</button>
         <button class="ble-tab-btn" data-tab="connected">Conectados</button>
       </div>
@@ -459,7 +474,7 @@ export class BLEInterface {
         <span id="ble-status" class="ble-status-offline">OFFLINE</span>
       </div>
       <div id="tab-discovery" class="ble-tab-content active">
-        <div class="ble-list" id="ble-devices-list"><p class="ble-empty">Presiona buscar para encontrar dispositivos</p></div>
+        <div class="ble-list" id="ble-devices-list"><p class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</p></div>
       </div>
       <div id="tab-added" class="ble-tab-content">
         <div class="ble-list" id="ble-added-list"><p class="ble-empty">No hay contactos agregados</p></div>
@@ -770,7 +785,7 @@ export class BLEInterface {
   renderDevicesList() {
     const list = this.elements.devicesList;
     if (this.foundDevices.size === 0) {
-      list.innerHTML = '<p class="ble-empty">Presiona buscar para encontrar dispositivos cercanos</p>';
+      list.innerHTML = '<p class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</p>';
       return;
     }
     list.innerHTML = '';
@@ -907,7 +922,13 @@ export class BLEInterface {
         state = btState.enabled ? 'poweredOn' : 'poweredOff';
         this._serverReady = btState.serverReady || false;
       }
-      this.elements.status.textContent = state.toUpperCase();
+      // FIX v3.3-ARCH: Traducir estado a español
+      const stateMap = {
+        'poweredOn': 'ENCENDIDO',
+        'poweredOff': 'APAGADO',
+        'UNKNOWN': 'DESCONOCIDO'
+      };
+      this.elements.status.textContent = stateMap[state] || state.toUpperCase();
       this.elements.status.className = state === 'poweredOn' ? 'ble-status-online' : 'ble-status-offline';
     } catch (err) {
       this.elements.status.textContent = 'ERROR';
