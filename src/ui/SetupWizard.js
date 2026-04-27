@@ -1,8 +1,9 @@
 /**
- * NEXO Setup Wizard v3.0.0-ARCH
+ * NEXO Setup Wizard v3.0.1-ARCH
  * Coordinado con NexoBlePlugin.kt v4.0.0-ARCH
  * - Timeout extendido a 35s (nativo puede tardar hasta 16s en retry)
  * - handleConnectionFailed ajustado para exponential backoff nativo
+ * FIX v3.0.1-ARCH: Texto de reintentar más descriptivo, estado "Verificando..." en vez de "Esperando..."
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -299,7 +300,8 @@ export class SetupWizard {
         
         if (!pluginReady) {
           btn.style.background = 'linear-gradient(135deg, #ff6b35 0%, #ff4500 100%)';
-          btn.textContent = 'Error - Reintentar';
+          // FIX v3.0.1-ARCH: Texto descriptivo en vez de genérico "Reintentar"
+          btn.textContent = 'Reintentar solicitud';
           btn.style.opacity = '1';
           btn.style.pointerEvents = 'auto';
           return;
@@ -332,13 +334,14 @@ export class SetupWizard {
           }
         }
         
-        btn.textContent = isUserCancelled ? 'Reintentar (cerrado)' : 'Reintentar';
+        // FIX v3.0.1-ARCH: Textos descriptivos según el caso
+        btn.textContent = isUserCancelled ? 'Reintentar (diálogo cerrado)' : 'Reintentar solicitud';
       }
       
     } catch (error) {
       btn.style.opacity = '1';
       btn.style.pointerEvents = 'auto';
-      btn.textContent = 'Error - Reintentar';
+      btn.textContent = 'Reintentar solicitud';
     }
   }
 
@@ -379,7 +382,8 @@ export class SetupWizard {
     
     const btn = document.getElementById('btn-settings-manual');
     if (btn) {
-      btn.textContent = 'Esperando...';
+      // FIX v3.0.1-ARCH: Texto claro en vez de genérico "Esperando..."
+      btn.textContent = 'Verificando permisos...';
       btn.style.opacity = '0.6';
       btn.style.pointerEvents = 'none';
     }
@@ -410,7 +414,8 @@ export class SetupWizard {
     
     const btn = document.getElementById('btn-bt-settings');
     if (btn) {
-      btn.textContent = 'Esperando...';
+      // FIX v3.0.1-ARCH: Texto claro en vez de genérico "Esperando..."
+      btn.textContent = 'Verificando Bluetooth...';
       btn.style.opacity = '0.6';
       btn.style.pointerEvents = 'none';
     }
