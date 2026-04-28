@@ -1,28 +1,17 @@
 /**
- * NEXO v9.0 - TheStream v2.3-NAP-CERTIFIED
- * Sistema de renderizado de mensajes con Resource Error Management
- * Pattern: NAP 2.0 (Nexo Auth Protocol) + REM + SOC2 + MASVS
- * Auditoría: 2026-03-13 | Estado: BUILD-READY
+ * NEXO v9.0 - TheStream v2.4-NAP-CERTIFIED
+ * FIX v2.4: Preview cards usan senderName si existe, evitando MAC cruda o "Unknown".
+ *           Fallback a contacto activo o 'NEXO Peer' antes de mostrar deviceId.
  */
 
 class TheStream {
-  /**
-   * @param {string} containerId - ID del contenedor DOM
-   * @param {Object} options - Opciones NAP
-   * @param {Object} options.actionCallbacks - Callbacks para acciones (react, reply, forward)
-   * @param {Function} options.actionCallbacks.onReact - (id) => void
-   * @param {Function} options.actionCallbacks.onReply - (id) => void  
-   * @param {Function} options.actionCallbacks.onForward - (id) => void
-   */
   constructor(containerId, options = {}) {
-    // NAP 2.0: Defensive initialization
     if (!containerId || typeof containerId !== 'string') {
       containerId = 'message-container';
     }
     
     this.container = document.getElementById(containerId);
     
-    // Auto-create container if missing
     if (!this.container) {
       this.container = document.createElement('div');
       this.container.id = containerId;
@@ -30,19 +19,13 @@ class TheStream {
       document.body.appendChild(this.container);
     }
     
-    // NAP: Dependency Injection - no ghost coupling
     this.actionCallbacks = options.actionCallbacks || {};
-    
-    // REM: Resource error tracking
     this.resourceErrors = new Set();
     this.failedAvatars = new Set();
-    
-    // NAP 2.0: Memory management
     this.messageCache = new Map();
     this.avatarColors = new Map();
-    this.items = []; // Array para tracking de items
+    this.items = [];
     
-    // NAP 2.0: Configuration
     this.config = {
       maxCacheSize: 1000,
       maxRenderedItems: 500,
@@ -54,21 +37,12 @@ class TheStream {
     this.renderedCount = 0;
     this.styleInjected = false;
     
-    // NAP: Inyección de estilos controlada (no global)
     this._injectStyles();
-    
-    // REM: Global error interceptor for this container
     this._setupResourceErrorInterceptor();
     
-    console.log('[TheStream] Initialized v2.3-NAP-CERTIFIED');
+    console.log('[TheStream] Initialized v2.4-NAP-CERTIFIED');
   }
 
-  /**
-   * NAP 2.0 API: Add multiple items (batch)
-   * @param {Array|Object} items - Single item or array of items
-   * @param {Object} options - { prepend: false, animate: true, scroll: true }
-   * @returns {TheStream} Chainable
-   */
   appendItems(items, options = {}) {
     const config = {
       prepend: false,
@@ -77,33 +51,27 @@ class TheStream {
       ...options
     };
 
-    // NAP 2.0: Null-aware validation
     if (!items) {
       console.warn('[TheStream] appendItems received null/undefined');
       return this;
     }
 
-    // Normalize to array
     const batch = Array.isArray(items) ? items : [items];
     
     if (batch.length === 0) {
       return this;
     }
 
-    // REM: Pre-validate resources before rendering
     const sanitizedBatch = batch.map(item => this._sanitizeItem(item));
     
-    // Store in memory (NAP 2.0: Memory tracking)
     if (config.prepend) {
       this.items.unshift(...sanitizedBatch);
     } else {
       this.items.push(...sanitizedBatch);
     }
 
-    // Enforce memory limits (NAP 2.0)
     this._enforceMemoryLimits();
 
-    // Render batch
     sanitizedBatch.forEach((item, index) => {
       this._renderSingle(item, {
         ...config,
@@ -112,7 +80,6 @@ class TheStream {
       });
     });
 
-    // Auto-scroll logic
     if (config.scroll && this._shouldAutoScroll()) {
       this.scrollToBottom();
     }
@@ -120,17 +87,10 @@ class TheStream {
     return this;
   }
 
-  /**
-   * NAP 2.0 API: Add single item
-   * Alias for appendItems with single object
-   */
   appendItem(item, options) {
     return this.appendItems(item, options);
   }
 
-  /**
-   * NAP 2.0 API: Prepend items (for history loading)
-   */
   prependItems(items, options = {}) {
     return this.appendItems(items, { 
       ...options, 
@@ -139,17 +99,10 @@ class TheStream {
     });
   }
 
-  /**
-   * NAP 2.0 API: Legacy compatibility (old setData)
-   * @deprecated Use appendItems() instead
-   */
   setData(data) {
     return this.appendItems(data, { scroll: true });
   }
 
-  /**
-   * NAP 2.0 API: Clear all messages
-   */
   clear() {
     this.messageCache.clear();
     this.items = [];
@@ -160,9 +113,6 @@ class TheStream {
     return this;
   }
 
-  /**
-   * NAP 2.0 API: Scroll to bottom
-   */
   scrollToBottom() {
     if (this.container) {
       requestAnimationFrame(() => {
@@ -172,9 +122,6 @@ class TheStream {
     return this;
   }
 
-  /**
-   * NAP 2.0 API: Get statistics for debugging
-   */
   getStats() {
     return {
       itemsInMemory: this.items.length,
@@ -186,31 +133,22 @@ class TheStream {
     };
   }
 
-  /**
-   * NAP 2.0 API: Destroy instance and cleanup
-   */
   destroy() {
     this.clear();
     this.avatarColors.clear();
     this.resourceErrors.clear();
     this.failedAvatars.clear();
     
-    // Remove error interceptor
     if (this.container) {
       this.container.removeEventListener('error', this._handleResourceError, true);
     }
     
-    // NAP: Cleanup injected styles if no other instances
     this._removeStyles();
     
     this.initialized = false;
     console.log('[TheStream] Destroyed');
   }
 
-  /**
-   * NAP: Register action callbacks (Dependency Injection)
-   * @param {Object} callbacks - { onReact, onReply, onForward }
-   */
   registerCallbacks(callbacks) {
     if (callbacks && typeof callbacks === 'object') {
       this.actionCallbacks = { ...this.actionCallbacks, ...callbacks };
@@ -218,9 +156,6 @@ class TheStream {
     return this;
   }
 
-  /**
-   * NAP: Inyección controlada de estilos (no global scope)
-   */
   _injectStyles() {
     if (this.styleInjected || typeof document === 'undefined') return;
     
@@ -243,20 +178,11 @@ class TheStream {
     this.styleInjected = true;
   }
 
-  /**
-   * NAP: Cleanup de estilos (SOC2 - Resource management)
-   */
   _removeStyles() {
     if (!this.styleInjected) return;
-    // Solo remover si no hay otras instancias activas
-    // Por ahora, mantenemos el estilo compartido para no romper otras instancias
     this.styleInjected = false;
   }
 
-  /**
-   * REM: Resource Error Management
-   * Setup global error interceptor for images
-   */
   _setupResourceErrorInterceptor() {
     if (!this.container) return;
     
@@ -266,32 +192,24 @@ class TheStream {
       if (target.tagName === 'IMG') {
         const src = target.src;
         
-        // REM: Track failed resource
         this.resourceErrors.add(src);
         
-        // REM: Prevent infinite retry loop
         if (target.dataset.remFixed) return;
         
         console.warn(`[TheStream-REM] Resource failed: ${src.substring(0, 100)}...`);
         
-        // REM: Apply fallback immediately
         target.src = this.config.fallbackAvatar;
         target.dataset.remFixed = 'true';
         target.style.opacity = '0.7';
         
-        // Prevent default error propagation
         e.preventDefault();
         e.stopPropagation();
       }
     };
     
-    // Capture phase to intercept before bubbling
     this.container.addEventListener('error', this._handleResourceError, true);
   }
 
-  /**
-   * REM: Sanitize item and validate resources
-   */
   _sanitizeItem(item) {
     if (!item || typeof item !== 'object') {
       return {
@@ -303,45 +221,44 @@ class TheStream {
       };
     }
 
-    // NAP 2.0: Defensive property access
     const sanitized = {
       id: item.id || this._generateId(),
       content: item.content || item.text || item.message || '',
       sender: item.sender || item.from || item.author || 'Unknown',
+      senderName: item.senderName || item.sender || item.from || 'Unknown',
       timestamp: item.timestamp || item.time || Date.now(),
       avatar: item.avatar || null,
       isMe: item.isMe || item.sender === 'Tú' || false,
       type: item.type || 'message'
     };
 
-    // REM: Validate content
     if (typeof sanitized.content !== 'string') {
       sanitized.content = String(sanitized.content);
     }
 
-    // REM: Validate sender (prevents charAt errors)
     if (typeof sanitized.sender !== 'string' || !sanitized.sender.trim()) {
       sanitized.sender = 'Unknown';
+    }
+
+    // FIX v2.4: Si senderName es Unknown/vacío/MAC-like, intentar fallback a contacto activo
+    if (!sanitized.senderName || sanitized.senderName === 'Unknown' || !sanitized.senderName.trim() || /^[a-f0-9]{2}:/i.test(sanitized.senderName)) {
+      // Intentar obtener nombre del contacto activo de NEXO
+      const activeName = window.nexoApp?.activeContact?.name;
+      sanitized.senderName = activeName || sanitized.senderName || 'NEXO Peer';
     }
 
     return sanitized;
   }
 
-  /**
-   * Internal: Render single message
-   */
   _renderSingle(message, config) {
-    // Check cache to prevent duplicates
     if (message.id && this.messageCache.has(message.id)) {
       return;
     }
 
-    // Add to cache with timestamp (NAP 2.0: TTL for cache)
     if (message.id) {
       this.messageCache.set(message.id, Date.now());
     }
 
-    // NAP 2.0: Check for empty content
     const content = String(message.content || '').trim();
     if (!content) {
       return;
@@ -349,7 +266,6 @@ class TheStream {
 
     const isMe = message.isMe;
     
-    // Create message element
     const bubble = document.createElement('div');
     bubble.className = 'stream-item';
     bubble.style.cssText = `
@@ -361,26 +277,26 @@ class TheStream {
       background: ${isMe ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.05)'};
     `;
     
-    // REM: Safe avatar generation
-    const avatarSrc = this._getSafeAvatar(message.sender, isMe);
+    const avatarSrc = this._getSafeAvatar(message.senderName || message.sender, isMe);
     
-    // NAP: XSS Protection - Escapar ID para atributos data
     const safeId = this._escapeAttr(String(message.id || ''));
     
-    // REM: Safe HTML construction (sin inline handlers XSS-vulnerables)
+    // FIX v2.4: Usar senderName para el nombre visible, no sender (que puede ser MAC)
+    const displayName = message.senderName || message.sender || 'NEXO Peer';
+    
     bubble.innerHTML = `
       <img 
         src="${avatarSrc}" 
         width="40" 
         height="40" 
         style="border-radius: 12px; flex-shrink: 0;"
-        data-sender="${this._escapeHtml(message.sender)}"
+        data-sender="${this._escapeHtml(displayName)}"
         loading="lazy"
         class="stream-avatar"
       >
       <div style="flex: 1; min-width: 0;">
         <div style="font-weight: 600; color: #fff; font-size: 14px; margin-bottom: 4px;">
-          ${this._escapeHtml(message.sender)}
+          ${this._escapeHtml(displayName)}
         </div>
         <div style="color: #ddd; line-height: 1.4; word-break: break-word;">
           ${this._escapeHtml(content)}
@@ -396,7 +312,6 @@ class TheStream {
       </div>
     `;
     
-    // NAP: Bind events safely (no inline onclick XSS)
     const btnContainer = bubble.querySelector('.action-buttons');
     if (btnContainer) {
       const msgId = btnContainer.dataset.msgId;
@@ -422,7 +337,6 @@ class TheStream {
       }
     }
     
-    // REM: Avatar error handling
     const img = bubble.querySelector('.stream-avatar');
     if (img) {
       img.addEventListener('error', () => {
@@ -431,7 +345,6 @@ class TheStream {
       }, { once: true });
     }
 
-    // Insert into DOM
     if (config.prepend && this.container.firstChild) {
       this.container.insertBefore(bubble, this.container.firstChild);
     } else {
@@ -441,12 +354,8 @@ class TheStream {
     this.renderedCount++;
   }
 
-  /**
-   * REM: Safe avatar getter with fallback chain
-   */
   _getSafeAvatar(sender, isMe) {
     try {
-      // Check if we've failed for this sender before
       if (this.failedAvatars.has(sender)) {
         return this.config.fallbackAvatar;
       }
@@ -459,18 +368,13 @@ class TheStream {
     }
   }
 
-  /**
-   * Generate avatar SVG
-   */
   generateAvatarSVG(sender, isMe) {
     const key = `${sender}-${isMe}`;
     if (this.avatarColors.has(key)) return this.avatarColors.get(key);
     
-    // NAP 2.0: Defensive string operations
     const safeSender = String(sender || 'U');
     const initial = safeSender.charAt(0).toUpperCase();
     
-    // Generate color from sender name
     const hash = safeSender.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     const color = isMe 
       ? '#00FF88' 
@@ -486,35 +390,25 @@ class TheStream {
       this.avatarColors.set(key, uri);
       return uri;
     } catch (e) {
-      // REM: Encoding fallback
       return this.config.fallbackAvatar;
     }
   }
 
-  /**
-   * @deprecated Use appendItems() instead
-   */
   renderMessage(message) {
     return this._renderSingle(message, { scroll: true });
   }
 
-  /**
-   * NAP 2.0: Memory limit enforcement
-   */
   _enforceMemoryLimits() {
-    // Limit message cache
     if (this.messageCache.size > this.config.maxCacheSize) {
       const entries = Array.from(this.messageCache.entries());
       const toDelete = entries.slice(0, entries.length - this.config.maxCacheSize);
       toDelete.forEach(([key]) => this.messageCache.delete(key));
     }
 
-    // Limit items array
     if (this.items.length > this.config.maxRenderedItems) {
       const excess = this.items.length - this.config.maxRenderedItems;
       this.items = this.items.slice(excess);
       
-      // Remove old DOM elements
       const children = this.container.children;
       for (let i = 0; i < excess && children[0]; i++) {
         children[0].remove();
@@ -522,26 +416,17 @@ class TheStream {
     }
   }
 
-  /**
-   * NAP 2.0: Check if should auto-scroll
-   */
   _shouldAutoScroll() {
     if (!this.container) return false;
-    const threshold = 100; // pixels from bottom
+    const threshold = 100;
     const { scrollHeight, scrollTop, clientHeight } = this.container;
     return (scrollHeight - scrollTop - clientHeight) < threshold;
   }
 
-  /**
-   * Utility: Generate unique ID
-   */
   _generateId() {
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  /**
-   * Utility: Escape HTML entities
-   */
   _escapeHtml(text) {
     if (typeof text !== 'string') return '';
     const div = document.createElement('div');
@@ -549,9 +434,6 @@ class TheStream {
     return div.innerHTML;
   }
 
-  /**
-   * NAP: Escape HTML attributes (XSS prevention)
-   */
   _escapeAttr(text) {
     return text
       .replace(/&/g, '&amp;')
@@ -561,16 +443,13 @@ class TheStream {
       .replace(/>/g, '&gt;');
   }
 
-  /**
-   * Utility: Format timestamp
-   */
   _formatTime(timestamp) {
     if (!timestamp) return 'ahora';
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return 'ahora';
     
     const now = new Date();
-    const diff = (now - date) / 1000; // seconds
+    const diff = (now - date) / 1000;
     
     if (diff < 60) return 'ahora';
     if (diff < 3600) return `hace ${Math.floor(diff / 60)}m`;
@@ -579,6 +458,5 @@ class TheStream {
   }
 }
 
-// EXPORTS ÚNICOS AL FINAL (NAP Linkage Audit Pass)
 export { TheStream };
 export default TheStream;
