@@ -1,11 +1,9 @@
 /**
- * NEXO App v5.0.0-ARCH
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v4.0-ARCH + ble_permissions.js v4.0-ARCH
- * FIX: Sin listeners nativos duplicados, usa eventos ble_interface, dedup LRU, send via bleInterface,
- *      sin dependencia onMessageSent, fallback ordenado BLE→Nordic→Hybrid→Bridge→WS.
- * FIX v5.0.1-ARCH: Silenciado log DEDUP para mensajes propios (source === 'self')
- * FIX v5.0.2-ARCH: BRIDGE_SKIP detecta BLE nativo, BLE_PREPARE/BLE_RECV silenciados de toasts,
- *      estado P2P_BLE al abrir chat BLE (evita READY+OFFLINE contradictorio)
+ * NEXO App v5.0.3-ARCH
+ * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH + ble_permissions.js v4.0-ARCH
+ * FIX v5.0.3-ARCH: Enriquecer mensajes BLE con senderName resuelto desde bleInterface
+ *      para evitar "Unknown" y MAC cruda en lista de conversaciones de TheStream.
+ *      Disparar nexo:ble:closeChat al limpiar contacto activo.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -77,7 +75,7 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.0-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.3-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -97,7 +95,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.0-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.3-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -175,7 +173,6 @@ export class NexoApp {
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
-        // FIX v5.0.2-ARCH: Actualizar modo a P2P_BLE para evitar READY+OFFLINE contradictorio
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
       };
@@ -183,12 +180,23 @@ export class NexoApp {
 
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
-        // FIX v5.0.2-ARCH: Silenciar BLE_RECV de toasts (usa console.log interno)
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
+        
+        // FIX v5.0.3-ARCH: Resolver senderName robustamente desde bleInterface
+        // para evitar "Unknown" y MAC cruda en lista de conversaciones
+        let resolvedName = senderName;
+        if (!resolvedName || resolvedName === 'NEXO Peer') {
+          const nid = (deviceId || '').toString().toLowerCase().trim();
+          resolvedName = this.bleInterface?.connectedDevices?.get(nid)?.name
+            || this.bleInterface?.foundDevices?.get(nid)?.name
+            || senderName
+            || 'NEXO Peer';
+        }
+        
         this._handleMessage({
           content,
           sender: deviceId,
-          senderName,
+          senderName: resolvedName,
           source: source || 'ble_direct',
           timestamp: timestamp || Date.now(),
           messageId,
@@ -203,7 +211,6 @@ export class NexoApp {
   async _initPhase6_Bridge() {
     DEBUG.setPhase('BRIDGE');
     try {
-      // FIX v5.0.2-ARCH: Detectar BLE nativo como transporte válido (evita BRIDGE_SKIP falso)
       if (!this.mesh && !this.nordicMesh && !this.wsClient && !this.bleInterface?.nativePlugin) {
         DEBUG.warn('No transports', 'BRIDGE_SKIP');
         return;
@@ -240,7 +247,6 @@ export class NexoApp {
   async _sendViaBLE(deviceId, content) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin no disponible');
-    // FIX v5.0.2-ARCH: BLE_PREPARE silenciado de toasts (solo console.log interno)
     console.log(`[BLE_SEND] Enviando a ${deviceId?.substring?.(0,8)}...`);
     try {
       await plugin.sendMessage({ deviceId, message: content });
@@ -314,7 +320,6 @@ export class NexoApp {
       if (msg.messageId) {
         const now = Date.now();
         if (this._messageDedupMap.has(msg.messageId)) {
-          // FIX v5.0.1-ARCH: No loggear deduplicación de mensajes propios (evita spam en consola)
           if (source !== 'self') {
             DEBUG.log(`Deduplicado ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
           }
