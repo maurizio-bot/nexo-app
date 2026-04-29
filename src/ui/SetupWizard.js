@@ -2,10 +2,8 @@
  * NEXO Setup Wizard v3.0.2-ARCH
  * FIX v3.0.2-ARCH:
  *   1) Eventos renombrados: blePermissionsGranted / blePermissionsPermanentlyDenied
- *      (antes nexo-permissions-granted / nexo-permissions-denied que nunca llegaban)
  *   2) checkBLEStatus() retorna boolean, no objeto. Verificación corregida.
- *   3) isBluetoothEnabled consultado directo al plugin nativo, no a checkBLEStatus.
- *   4) Post-permisos: re-verificación con delay de 1.5s para race condition Android.
+ *   3) isBluetoothEnabled consultado directo al plugin nativo.
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -486,3 +484,4 @@ export class SetupWizard {
     }
   }
 }
+
