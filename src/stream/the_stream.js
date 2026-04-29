@@ -2,8 +2,8 @@
  * NEXO v9.0 - TheStream v2.5-ARCH
  * FIX v2.5-ARCH:
  *   1) forceScroll option: ignora _shouldAutoScroll() para scroll agresivo
- *   2) appendItems ahora acepta { forceScroll: true } para mensajes propios y apertura de chat
- *   3) scrollToBottom usa doble requestAnimationFrame para asegurar que DOM está listo
+ *   2) appendItems acepta { forceScroll: true }
+ *   3) scrollToBottom usa doble requestAnimationFrame
  */
 
 class TheStream {
@@ -50,7 +50,7 @@ class TheStream {
       prepend: false,
       animate: true,
       scroll: this.config.autoScroll,
-      forceScroll: false,  // FIX v2.5-ARCH
+      forceScroll: false,
       ...options
     };
 
@@ -247,7 +247,6 @@ class TheStream {
       sanitized.sender = 'Unknown';
     }
 
-    // FIX v2.4: Si senderName es Unknown/vacío/MAC-like, intentar fallback a contacto activo
     if (!sanitized.senderName || sanitized.senderName === 'Unknown' || !sanitized.senderName.trim() || /^[a-f0-9]{2}:/i.test(sanitized.senderName)) {
       const activeName = window.nexoApp?.activeContact?.name;
       sanitized.senderName = activeName || sanitized.senderName || 'NEXO Peer';
