@@ -1,12 +1,13 @@
 /**
- * BLE Permissions & Communication Manager v6.3-ARCH
+ * BLE Permissions & Communication Manager v6.4-ARCH
  * Fixes: Plugin name NexoBLE, method names aligned, no auto-start Service,
  *        REM logs en pantalla via onRemLog listener
- * FIX v6.3-ARCH:
+ * FIX v6.4-ARCH:
  *   1) Post-request verification con retry (race condition Android post-diálogo)
- *   2) Evento blePermissionsStatusChanged siempre disparado para que UI reaccione
- *   3) ensure() reintenta check() hasta 3 veces si no es permanently denied
- *   4) Diagnóstico granular de cada permiso en logs
+ *   2) Evento blePermissionsStatusChanged SIEMPRE disparado tras re-check exitoso
+ *   3) Evento blePermissionsGranted disparado tras re-check exitoso para que UI reaccione
+ *   4) ensure() reintenta check() hasta 3 veces si no es permanently denied
+ *   5) Diagnóstico granular de cada permiso en logs
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -63,7 +64,6 @@ const BLEPermissions = {
       napLog(NAP_CODES.RESUME_CHECK, 'App resumed — re-verificando permisos...');
       await new Promise(r => setTimeout(r, 800));
       const granted = await this.check();
-      // FIX v6.3: Disparar evento de estado SIEMPRE, no solo si cambió
       window.dispatchEvent(new CustomEvent('blePermissionsStatusChanged', {
         detail: { granted, source: 'resume_check', state: { ...this.state } }
       }));
@@ -126,7 +126,6 @@ const BLEPermissions = {
     try {
       napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos nativos...');
 
-      // FIX: initializeBLE ya NO inicia BleService (evita crash post-Settings)
       const result = await NexoBLE.initializeBLE();
 
       if (result?.granted !== undefined) {
@@ -138,15 +137,20 @@ const BLEPermissions = {
         await this.check();
       }
 
-      // FIX v6.3-ARCH: Si el diálogo respondió pero granted es false y NO es permanente,
+      // FIX v6.4-ARCH: Si el diálogo respondió pero granted es false y NO es permanente,
       // esperar a que Android actualice el estado interno y re-verificar.
       if (!this.state.granted && !this.state.isPermanentlyDenied) {
         napLog(NAP_CODES.PERM_REQUEST, 'Granted=false tras diálogo. Re-verificando con delay...', 'WARN');
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, 800));
         const recheck = await this.check();
         if (recheck) {
           napLog(NAP_CODES.PERM_GRANTED, 'Permisos confirmados en re-verificación post-diálogo', 'DEBUG');
           this.state.granted = true;
+          // FIX v6.4-ARCH: Disparar eventos de estado para que la UI se entere del cambio
+          window.dispatchEvent(new CustomEvent('blePermissionsStatusChanged', {
+            detail: { granted: true, source: 'request_recheck', state: { ...this.state } }
+          }));
+          window.dispatchEvent(new CustomEvent('blePermissionsGranted', { detail: { source: 'request_recheck' } }));
         }
       }
 
@@ -175,7 +179,7 @@ const BLEPermissions = {
     }
   },
 
-  // FIX v6.3-ARCH: ensure() reintenta hasta 3 veces con delay si hay denegación temporal
+  // FIX v6.4-ARCH: ensure() reintenta hasta 3 veces con delay si hay denegación temporal
   async ensure() {
     if (this.state.granted) return true;
     if (!this.state.checked) {
@@ -199,7 +203,11 @@ const BLEPermissions = {
       ok = await this.check();
       if (ok) {
         this.state.granted = true;
+        // FIX v6.4-ARCH: Disparar ambos eventos tras reintento exitoso
         window.dispatchEvent(new CustomEvent('blePermissionsGranted', { detail: { source: 'ensure_retry' } }));
+        window.dispatchEvent(new CustomEvent('blePermissionsStatusChanged', {
+          detail: { granted: true, source: 'ensure_retry', state: { ...this.state } }
+        }));
         return true;
       }
     }
