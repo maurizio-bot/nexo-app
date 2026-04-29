@@ -1,11 +1,13 @@
 /**
- * NEXO App v5.0.5-ARCH
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.7-ARCH + ble_permissions.js v4.0-ARCH
- * FIX v5.0.5-ARCH:
- *   1) _bleMessageHandler: dedup por Set con limite (elimina _lastBleFp que causaba duplicados)
- *   2) Resolucion de senderName via bleInterface.getContactName() primero (MAC inmutable)
- *   3) Fallback a nombre derivado de MAC si todo lo demas falla
- *   4) sender siempre es la MAC normalizada para que la UI de conversaciones agrupe correctamente
+ * NEXO App v5.0.6-ARCH
+ * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.7.2-ARCH + ble_permissions.js v6.4-ARCH
+ * FIX v5.0.6-ARCH:
+ *   1) Auto-scroll del contenedor de mensajes al recibir/enviar (scrollTop = scrollHeight)
+ *   2) Auto-scroll al abrir chat para mostrar conversación desde el final
+ *   3) Dedup de mensajes propios: si un mensaje con mismo messageId ya existe (pending),
+ *      actualizar el DOM existente en lugar de duplicar la burbuja
+ *   4) Fingerprint BLE sin timestamp para evitar duplicados por reintentos nativos
+ *   5) sender siempre es la MAC normalizada para que la UI de conversaciones agrupe correctamente
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -77,10 +79,10 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    // FIX v5.0.5-ARCH: Set con limite en lugar de string unico (_lastBleFp)
+    // FIX v5.0.6-ARCH: Set con limite en lugar de string unico (_lastBleFp)
     this._bleFpSet = new Set();
     this._bleFpMax = 500;
-    DEBUG.log('🚀 [NEXO] v5.0.5-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.6-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -100,7 +102,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.5-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.6-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -180,15 +182,21 @@ export class NexoApp {
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
+        // FIX v5.0.6-ARCH: Auto-scroll al abrir chat para mostrar últimos mensajes
+        requestAnimationFrame(() => {
+          const container = document.getElementById('messages-container');
+          if (container) container.scrollTop = container.scrollHeight;
+        });
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
-      // FIX v5.0.5-ARCH: Dedup robusto con Set + resolucion de nombre desde contactos persistidos
+      // FIX v5.0.6-ARCH: Dedup robusto con Set + resolucion de nombre desde contactos persistidos
+      // FIX v5.0.6-ARCH: Fingerprint SIN timestamp para evitar duplicados por reintentos nativos
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         const nid = (deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
         
-        const fp = messageId || `ble_${nid}_${(content || '').length}_${timestamp || Date.now()}`;
+        const fp = messageId || `ble_${nid}_${(content || '').length}_${(content || '').substring(0, 32)}`;
         if (this._bleFpSet.has(fp)) return;
         this._bleFpSet.add(fp);
         if (this._bleFpSet.size > this._bleFpMax) {
@@ -348,6 +356,18 @@ export class NexoApp {
       if (msg.messageId) {
         const now = Date.now();
         if (this._messageDedupMap.has(msg.messageId)) {
+          // FIX v5.0.6-ARCH: Si es mensaje propio confirmado (no pending), actualizar existente en vez de duplicar
+          if (msg._own && msg.pending === false) {
+            const existingMsg = document.querySelector(`[data-message-id="${msg.messageId}"]`);
+n            if (existingMsg) {
+              existingMsg.classList.remove('pending');
+              existingMsg.classList.add('confirmed');
+              const pendingIndicator = existingMsg.querySelector('.pending-indicator');
+              if (pendingIndicator) pendingIndicator.remove();
+            }
+            // Refrescar TTL del dedup
+            this._messageDedupMap.set(msg.messageId, now);
+          }
           if (source !== 'self') {
             DEBUG.log(`Deduplicado ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
           }
@@ -368,7 +388,14 @@ export class NexoApp {
       }
       const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
       this.config.onMessage(enriched);
-      if (this.stream?.appendItems) this.stream.appendItems([enriched]);
+      if (this.stream?.appendItems) {
+        this.stream.appendItems([enriched]);
+        // FIX v5.0.6-ARCH: Auto-scroll al recibir o enviar mensaje
+        requestAnimationFrame(() => {
+          const container = document.getElementById('messages-container');
+          if (container) container.scrollTop = container.scrollHeight;
+        });
+      }
     } catch (err) { DEBUG.error('APP_005', `Message handler: ${err.message}`); }
   }
 
