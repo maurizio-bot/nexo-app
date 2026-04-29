@@ -1,12 +1,12 @@
 /**
  * BLE Interface v3.6-ARCH
- * Ubicación: src/ui/ble_interface.js
+ * Ubicacion: src/ui/ble_interface.js
  * FIX v3.6-ARCH:
  *   1) _normId normaliza MAC addresses a hex puro (evita desfase por : o -)
  *   2) _setupNativePayloadListener deduplica por fingerprint si no hay messageId
- *   3) Comparación chat activo robusta con IDs normalizados a hex puro
+ *   3) Comparacion chat activo robusta con IDs normalizados a hex puro
  *   4) Auto-registro de contacto al recibir primer mensaje
- *   5) Toast suprimido cuando chat está activo con el mismo peer
+ *   5) Toast suprimido cuando chat esta activo con el mismo peer
  */
 
 export function initBLEInterface(bleMesh) {
@@ -20,8 +20,6 @@ const BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v1';
 function _normId(id) {
   if (!id) return '';
   const s = id.toString().toLowerCase().trim();
-  // Si parece MAC address (patrón XX:XX... o XX-XX...), normalizar a hex puro
-  // para evitar desfase por formato de separadores entre plugin nativo y UI
   if (/^[0-9a-f]{2}([:-][0-9a-f]{2}){5,}$/i.test(s)) {
     return s.replace(/[^a-f0-9]/g, '');
   }
@@ -210,7 +208,7 @@ export class BLEInterface {
       this.connectedDevices.delete(deviceId);
       this.onDeviceDisconnected({ id: deviceId, address: deviceId });
       if (this._activeChatDeviceId === deviceId) {
-        this.showToast('⚠️ Conexión BLE perdida. Reconectando...', 'warning');
+        this.showToast('⚠️ Conexion BLE perdida. Reconectando...', 'warning');
         this._startReconnect(deviceId);
       }
     });
@@ -225,7 +223,7 @@ export class BLEInterface {
         console.log('[BLEInterface] Force reconnect a', deviceId, '...');
         await this.nativePlugin.forceReconnect({ deviceId });
       } catch (e) {
-        console.warn('[BLEInterface] Force reconnect falló:', e.message);
+        console.warn('[BLEInterface] Force reconnect fallo:', e.message);
         const timer = setTimeout(attemptReconnect, 3000);
         this._reconnectTimers.set(deviceId, timer);
       }
@@ -260,7 +258,7 @@ export class BLEInterface {
         this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { attempt: data.attempt, message: `Reintentando...` });
       } else {
         this._setDeviceState(deviceId, BLE_STATES.ERROR, { lastError: data.reason });
-        this.showToast(`❌ Conexión fallada: ${data.reason}`, 'error');
+        this.showToast(`❌ Conexion fallada: ${data.reason}`, 'error');
       }
     });
     this._nativeStackBrokenListener = this.nativePlugin.addListener('onBluetoothStackBroken', (data) => {
@@ -318,7 +316,6 @@ export class BLEInterface {
         if (json.timestamp) timestamp = json.timestamp;
       } catch (e) {}
       
-      // Resolver senderName de forma robusta (contactos > conectados > found > default)
       if (!senderName || senderName === 'NEXO Peer') {
         senderName = _getContactName(deviceId) 
           || this.connectedDevices.get(deviceId)?.name 
@@ -326,12 +323,10 @@ export class BLEInterface {
           || 'NEXO Peer';
       }
       
-      // Auto-registrar contacto al recibir primer mensaje para que aparezca con nombre en lista
       if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer') {
         _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
       }
       
-      // FIX v3.6-ARCH: Deduplicación robusta por messageId o fingerprint de contenido
       const dedupKey = messageId || `ble_${deviceId}_${(content || '').length}_${timestamp}`;
       if (this._receivedMessageIds.has(dedupKey)) return;
       this._receivedMessageIds.add(dedupKey);
@@ -344,12 +339,10 @@ export class BLEInterface {
         detail: { deviceId, content, senderName, messageId, source: data.source || 'unknown', timestamp }
       }));
       
-      // FIX v3.6-ARCH: Comparación robusta de chat activo normalizando ambos IDs a hex puro
-      // Esto evita que 47:a5:00...7:9a y 47a500...79a se traten como dispositivos distintos
       const activeId = (this._activeChatDeviceId || '').toString().toLowerCase().replace(/[^a-f0-9]/g, '');
       const msgDeviceId = deviceId.toString().toLowerCase().replace(/[^a-f0-9]/g, '');
       if (activeId && activeId === msgDeviceId) {
-        return; // Silencioso: ya estamos en chat con este dispositivo
+        return;
       }
       
       this.showToast('📨 Mensaje de ' + senderName, 'info');
@@ -759,7 +752,7 @@ export class BLEInterface {
       this.showToast('✅ Agregado a contactos', 'success');
       this.renderDevicesList();
     } else {
-      this.showToast('⚠️ Ya está en contactos', 'warning');
+      this.showToast('⚠️ Ya esta en contactos', 'warning');
     }
   }
 
@@ -787,7 +780,7 @@ export class BLEInterface {
     const isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
     
     if (!isFullyReady && isConnecting && this.nativePlugin) {
-      this.showToast('⏳ Conexión en progreso, esperando canal...', 'info');
+      this.showToast('⏳ Conexion en progreso, esperando canal...', 'info');
       try {
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => reject(new Error('Timeout')), 15000);
@@ -803,7 +796,7 @@ export class BLEInterface {
           checkReady();
         });
       } catch (e) {
-        this.showToast('⚠️ Canal aún no listo. Intente enviar en unos segundos.', 'warning');
+        this.showToast('⚠️ Canal aun no listo. Intente enviar en unos segundos.', 'warning');
       }
     }
     
@@ -835,8 +828,8 @@ export class BLEInterface {
           });
         }
       } catch (e) {
-        console.warn('[BLEInterface] Conexión/timeout:', e.message);
-        this.showToast('⚠️ Canal aún no listo. Intente enviar en unos segundos.', 'warning');
+        console.warn('[BLEInterface] Conexion/timeout:', e.message);
+        this.showToast('⚠️ Canal aun no listo. Intente enviar en unos segundos.', 'warning');
       }
     }
     
