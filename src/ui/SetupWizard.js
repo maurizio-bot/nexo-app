@@ -1,9 +1,10 @@
 /**
- * NEXO Setup Wizard v3.0.2-ARCH
- * FIX v3.0.2-ARCH:
- *   1) Eventos renombrados: blePermissionsGranted / blePermissionsPermanentlyDenied
- *   2) checkBLEStatus() retorna boolean, no objeto. Verificación corregida.
- *   3) isBluetoothEnabled consultado directo al plugin nativo.
+ * NEXO Setup Wizard v3.0.3-ARCH
+ * FIX v3.0.3-ARCH:
+ *   1) handlePermissionsGranted / handlePermissionsDenied funcionan SIEMPRE,
+ *      no solo cuando isAwaitingSettingsReturn=true
+ *   2) Guardia anti-doble en renderSuccessTransition()
+ *   3) Eventos renombrados: blePermissionsGranted / blePermissionsPermanentlyDenied
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -53,7 +54,6 @@ export class SetupWizard {
   }
   
   setupGlobalListeners() {
-    // FIX v3.0.2: Nombres de eventos alineados con ble_permissions.js
     window.addEventListener('blePermissionsGranted', this.handlePermissionsGranted);
     window.addEventListener('blePermissionsPermanentlyDenied', this.handlePermissionsDenied);
     
@@ -138,7 +138,6 @@ export class SetupWizard {
     try {
       const status = await checkBLEStatus();
       
-      // FIX v3.0.2: checkBLEStatus retorna boolean (permisos concedidos)
       if (status === true) {
         this.isAwaitingSettingsReturn = false;
         this.clearBtCheckInterval();
@@ -175,38 +174,55 @@ export class SetupWizard {
     }
   }
   
+  // FIX v3.0.3: Funciona SIEMPRE, no solo cuando regresamos de settings
   async handlePermissionsGranted(event) {
     console.log(NAP_WIZARD, 'Permisos concedidos:', event.detail);
     
-    if (this.isAwaitingSettingsReturn) {
+    const status = await SetupManager.checkPermissionsRealtime();
+    
+    if (status.granted) {
       this.isAwaitingSettingsReturn = false;
-      
-      const status = await SetupManager.checkPermissionsRealtime();
-      
-      if (status.granted) {
-        try {
-          const { startBLEAdvertising } = await import('../core/ble_permissions.js');
-          const advResult = await startBLEAdvertising();
-          console.log(NAP_WIZARD, 'Advertising iniciado:', advResult.nap_code);
-        } catch (e) {
-          console.warn(NAP_WIZARD, 'No se pudo iniciar advertising automáticamente:', e);
-        }
-        
-        this.renderSuccessTransition();
-        setTimeout(() => this.onComplete(), 800);
-      } else if (!status.bluetoothEnabled) {
-        this.currentStep = 'bluetooth';
-        this.renderBluetooth();
+      if (this.settingsCheckInterval) {
+        clearInterval(this.settingsCheckInterval);
+        this.settingsCheckInterval = null;
       }
+      
+      try {
+        const { startBLEAdvertising } = await import('../core/ble_permissions.js');
+        const advResult = await startBLEAdvertising();
+        console.log(NAP_WIZARD, 'Advertising iniciado:', advResult.nap_code);
+      } catch (e) {
+        console.warn(NAP_WIZARD, 'No se pudo iniciar advertising automáticamente:', e);
+      }
+      
+      this.renderSuccessTransition();
+      setTimeout(() => this.onComplete(), 800);
     }
   }
   
+  // FIX v3.0.3: Funciona SIEMPRE, maneja denegación directa y desde settings
   handlePermissionsDenied(event) {
     console.log(NAP_WIZARD, 'Permisos denegados:', event.detail);
     
-    if (this.isAwaitingSettingsReturn) {
-      this.isAwaitingSettingsReturn = false;
+    this.isAwaitingSettingsReturn = false;
+    if (this.settingsCheckInterval) {
+      clearInterval(this.settingsCheckInterval);
+      this.settingsCheckInterval = null;
+    }
+    
+    const isPermanent = event.detail?.isPermanentDenial === true;
+    
+    if (isPermanent || this.currentStep === 'permissions_manual') {
+      this.currentStep = 'permissions_manual';
       this.renderPermissions(true);
+    } else {
+      this.errorCount++;
+      if (this.errorCount >= 2) {
+        this.currentStep = 'permissions_manual';
+        this.renderPermissions();
+      } else {
+        this.renderPermissions();
+      }
     }
   }
 
@@ -241,7 +257,11 @@ export class SetupWizard {
     this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif;"><div style="width: 48px; height: 48px; border: 4px solid #1a1a1a; border-top: 4px solid #00f0ff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px;"></div><h3 style="margin:0; font-size: 20px; font-weight: 600;">Verificando sistema...</h3><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style></div>';
   }
   
+  // FIX v3.0.3: Guardia anti-doble
   renderSuccessTransition() {
+    if (this.currentStep === 'success') return;
+    this.currentStep = 'success';
+    
     this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div style="font-size: 56px; margin-bottom: 16px;">✓</div><h3 style="margin:0; font-size: 20px; font-weight: 600; color: #00ff88;">Listo</h3></div>';
     
     if (this._successTimeout) clearTimeout(this._successTimeout);
@@ -288,7 +308,6 @@ export class SetupWizard {
       const result = await requestBLEPermissions();
       
       if (result.granted) {
-        // FIX v3.0.2: Consultar estado Bluetooth directo al plugin nativo
         let btEnabled = false;
         try {
           const plugin = window.Capacitor?.Plugins?.NexoBLE;
@@ -463,7 +482,6 @@ export class SetupWizard {
       this._successTimeout = null;
     }
     
-    // FIX v3.0.2: Remover eventos con nombres correctos
     window.removeEventListener('blePermissionsGranted', this.handlePermissionsGranted);
     window.removeEventListener('blePermissionsPermanentlyDenied', this.handlePermissionsDenied);
     document.removeEventListener('visibilitychange', this.handleAppResume);
@@ -484,4 +502,3 @@ export class SetupWizard {
     }
   }
 }
-
