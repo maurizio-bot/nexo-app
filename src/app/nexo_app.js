@@ -1,10 +1,11 @@
 /**
- * NEXO App v5.0.4-ARCH
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.6-ARCH + ble_permissions.js v4.0-ARCH
- * FIX v5.0.4-ARCH:
- *   1) Mensajes propios enriquecidos con senderName desde vault (evita "Unknown" en TheStream)
- *   2) _bleMessageHandler con deduplicacion por fingerprint (defensa en profundidad)
- *   3) Disparar nexo:ble:closeChat al limpiar contacto activo
+ * NEXO App v5.0.5-ARCH
+ * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.7-ARCH + ble_permissions.js v4.0-ARCH
+ * FIX v5.0.5-ARCH:
+ *   1) _bleMessageHandler: dedup por Set con limite (elimina _lastBleFp que causaba duplicados)
+ *   2) Resolucion de senderName via bleInterface.getContactName() primero (MAC inmutable)
+ *   3) Fallback a nombre derivado de MAC si todo lo demas falla
+ *   4) sender siempre es la MAC normalizada para que la UI de conversaciones agrupe correctamente
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -76,8 +77,10 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    this._lastBleFp = null;
-    DEBUG.log('🚀 [NEXO] v5.0.4-ARCH iniciando...', 'info', 'APP_INIT');
+    // FIX v5.0.5-ARCH: Set con limite en lugar de string unico (_lastBleFp)
+    this._bleFpSet = new Set();
+    this._bleFpMax = 500;
+    DEBUG.log('🚀 [NEXO] v5.0.5-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -97,7 +100,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.4-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.5-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -180,25 +183,46 @@ export class NexoApp {
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
+      // FIX v5.0.5-ARCH: Dedup robusto con Set + resolucion de nombre desde contactos persistidos
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
-        const fp = messageId || `${deviceId}_${(content || '').length}_${timestamp || Date.now()}`;
-        if (this._lastBleFp === fp) return;
-        this._lastBleFp = fp;
+        const nid = (deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
+        
+        const fp = messageId || `ble_${nid}_${(content || '').length}_${timestamp || Date.now()}`;
+        if (this._bleFpSet.has(fp)) return;
+        this._bleFpSet.add(fp);
+        if (this._bleFpSet.size > this._bleFpMax) {
+          const first = this._bleFpSet.values().next().value;
+          this._bleFpSet.delete(first);
+        }
+        
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
+        
+        // 1. Resolver nombre desde contactos BLE persistidos primero (MAC inmutable)
         let resolvedName = senderName;
+        if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
+          const persisted = this.bleInterface.getContactName(nid);
+          if (persisted) resolvedName = persisted;
+        }
+        
+        // 2. Fallback a dispositivos en memoria
         if (!resolvedName || resolvedName === 'NEXO Peer') {
-          const nid = (deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
           const mapName = (dev) => dev?.name;
           resolvedName = mapName(this.bleInterface?.connectedDevices?.get(nid))
             || mapName(this.bleInterface?.foundDevices?.get(nid))
             || senderName
             || 'NEXO Peer';
         }
+        
+        // 3. Si sigue siendo generico, generar nombre unico e inmutable desde la MAC
+        if (!resolvedName || resolvedName === 'NEXO Peer') {
+          resolvedName = `NEXO-${nid.substring(0, 6).toUpperCase()}`;
+        }
+        
         this._handleMessage({
           content,
-          sender: deviceId,
-          senderName: resolvedName,
+          sender: nid,              // FIX: MAC normalizada como identificador estable
+          senderName: resolvedName,   // FIX: Nombre resuelto desde contactos persistidos
           source: source || 'ble_direct',
           timestamp: timestamp || Date.now(),
           messageId,
