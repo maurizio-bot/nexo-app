@@ -1,11 +1,10 @@
 /**
- * NEXO App v5.0.7-ARCH
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.7.2-ARCH + ble_permissions.js v6.4-ARCH
- * FIX v5.0.7-ARCH:
- *   1) Auto-scroll via TheStream.scrollToBottom() y forceScroll option
- *   2) Dedup BLE usa fingerprint de contenido SIEMPRE (ignora messageId nativo inconsistente)
- *   3) _handleMessage genera messageId para dedup si no existe
- *   4) Mensajes propios confirmados no pasan a onMessage (return inmediato tras actualizar DOM)
+ * NEXO App v5.0.8-ARCH
+ * FIX v5.0.8-ARCH:
+ *   1) Dedup GLOBAL por contenido+sender (ignora fuente: Nordic/Native/Hybrid)
+ *   2) Mapa persistente _contactNameMap con localStorage: MAC → nombre
+ *   3) _bleMessageHandler y _handleNordicMessage usan el mismo nombre anclado
+ *   4) TTL de 10s para dedup por contenido (permite reenvío intencional después)
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -79,7 +78,41 @@ export class NexoApp {
     this._dedupTTL = 300000;
     this._bleFpSet = new Set();
     this._bleFpMax = 500;
-    DEBUG.log('🚀 [NEXO] v5.0.7-ARCH iniciando...', 'info', 'APP_INIT');
+    
+    // FIX v5.0.8: Dedup global por contenido+sender (cualquier fuente)
+    this._contentFpMap = new Map();
+    this._contentFpTTL = 10000; // 10 segundos
+    this._contentFpMax = 500;
+    
+    // FIX v5.0.8: Mapa persistente MAC → nombre
+    this._contactNameMap = new Map();
+    this._loadContactNames();
+    
+    DEBUG.log('🚀 [NEXO] v5.0.8-ARCH iniciando...', 'info', 'APP_INIT');
+  }
+
+  // FIX v5.0.8: Cargar nombres de contacto desde localStorage
+  _loadContactNames() {
+    try {
+      const saved = localStorage.getItem('nexo_contact_names');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        Object.entries(parsed).forEach(([k, v]) => this._contactNameMap.set(k, v));
+        DEBUG.log(`Nombres cargados: ${this._contactNameMap.size}`, 'info', 'CONTACT_LOAD');
+      }
+    } catch (e) {
+      DEBUG.warn('No se pudieron cargar nombres de contacto', 'CONTACT_LOAD_FAIL');
+    }
+  }
+
+  // FIX v5.0.8: Guardar nombres de contacto en localStorage
+  _saveContactNames() {
+    try {
+      const obj = Object.fromEntries(this._contactNameMap);
+      localStorage.setItem('nexo_contact_names', JSON.stringify(obj));
+    } catch (e) {
+      DEBUG.warn('No se pudieron guardar nombres', 'CONTACT_SAVE_FAIL');
+    }
   }
 
   async init() {
@@ -99,7 +132,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.7-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.8-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -170,6 +203,14 @@ export class NexoApp {
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
         this.activeContact = { id: contactId, name, address, transport };
+        
+        // FIX v5.0.8: Guardar nombre al abrir chat
+        const nid = (contactId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
+        if (nid && name && name !== 'NEXO Peer') {
+          this._contactNameMap.set(nid, name);
+          this._saveContactNames();
+        }
+        
         const appContainer = document.getElementById('app');
         if (appContainer) appContainer.classList.remove('hidden');
         const nameInput = document.getElementById('chat-contact-name');
@@ -179,19 +220,17 @@ export class NexoApp {
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
-        // FIX v5.0.7-ARCH: Usar scrollToBottom() de TheStream
         if (this.stream) {
           this.stream.scrollToBottom();
         }
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
-      // FIX v5.0.7-ARCH: Dedup usa fingerprint de contenido SIEMPRE, ignora messageId nativo inconsistente
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         const nid = (deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
         
-        // FIX: Fingerprint basado SOLO en contenido + remitente (sin timestamp, sin messageId nativo)
+        // FIX v5.0.8: Fingerprint BLE nativo
         const contentSnippet = (content || '').substring(0, 32);
         const fp = `ble_${nid}_${(content || '').length}_${contentSnippet}`;
         
@@ -204,12 +243,19 @@ export class NexoApp {
         
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         
+        // FIX v5.0.8: Resolver nombre con prioridad: mapa persistente > bleInterface > fallback
         let resolvedName = senderName;
-        if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
+        
+        // 1. Mapa persistente local (más confiable)
+        if (this._contactNameMap.has(nid)) {
+          resolvedName = this._contactNameMap.get(nid);
+        }
+        // 2. bleInterface si existe
+        else if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
           const persisted = this.bleInterface.getContactName(nid);
           if (persisted) resolvedName = persisted;
         }
-        
+        // 3. Maps de dispositivos conectados/encontrados
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           const mapName = (dev) => dev?.name;
           resolvedName = mapName(this.bleInterface?.connectedDevices?.get(nid))
@@ -217,12 +263,17 @@ export class NexoApp {
             || senderName
             || 'NEXO Peer';
         }
-        
+        // 4. Fallback generado
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           resolvedName = `NEXO-${nid.substring(0, 6).toUpperCase()}`;
         }
         
-        // FIX: Pasar fp como messageId para que _handleMessage también deduplique
+        // FIX v5.0.8: Guardar nombre la primera vez que lo vemos
+        if (!this._contactNameMap.has(nid) && resolvedName && resolvedName !== 'NEXO Peer') {
+          this._contactNameMap.set(nid, resolvedName);
+          this._saveContactNames();
+        }
+        
         this._handleMessage({
           content,
           sender: nid,
@@ -265,7 +316,33 @@ export class NexoApp {
 
   _handleNordicPeer(peer) { if (!peer?.id) return; this.blePeers.set(peer.id, { ...peer, discoveredAt: Date.now() }); }
   _handleNordicSession(data) { if (!data?.deviceId) return; this._updateMode('P2P_BLE'); }
-  _handleNordicMessage(msg) { if (!msg?.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
+  
+  // FIX v5.0.8: NordicMessage ahora también usa _contactNameMap y dedup global
+  _handleNordicMessage(msg) {
+    if (!msg?.deviceId) return;
+    const nid = (msg.deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
+    
+    // Resolver nombre anclado
+    let resolvedName = this._contactNameMap.get(nid);
+    if (!resolvedName) {
+      resolvedName = msg.senderName || `NEXO-${nid.substring(0, 6).toUpperCase()}`;
+      if (resolvedName && resolvedName !== 'NEXO Peer') {
+        this._contactNameMap.set(nid, resolvedName);
+        this._saveContactNames();
+      }
+    }
+    
+    this._handleMessage({
+      content: msg.content,
+      sender: nid,
+      senderName: resolvedName,
+      source: 'ble_nordic',
+      timestamp: msg.timestamp || Date.now(),
+      messageId: msg.messageId || null,
+      _own: false
+    }, 'ble_nordic');
+  }
+  
   _updateModeFromNordic(state) {
     switch(state) {
       case 'messaging': case 'connected': this._updateMode('P2P_BLE'); break;
@@ -349,12 +426,33 @@ export class NexoApp {
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      // FIX v5.0.7-ARCH: Generar messageId para dedup si no existe
       const dedupId = msg.messageId || `gen_${msg.sender}_${(msg.content || '').length}_${(msg.content || '').substring(0, 32)}`;
       const now = Date.now();
       
+      // FIX v5.0.8: Dedup GLOBAL por contenido+sender (cualquier fuente: Nordic/Native/Hybrid)
+      if (!msg._own) {
+        const contentFp = `${msg.sender}_${(msg.content || '').length}_${(msg.content || '').substring(0, 32)}`;
+        const lastSeen = this._contentFpMap.get(contentFp);
+        if (lastSeen && (now - lastSeen < this._contentFpTTL)) {
+          DEBUG.log(`Deduplicado por contenido ${contentFp.substring(0,20)} de ${source}`, 'debug', 'DEDUP_CONTENT');
+          return;
+        }
+        this._contentFpMap.set(contentFp, now);
+        // Limpiar antiguos
+        if (this._contentFpMap.size > this._contentFpMax) {
+          let oldestKey = null;
+          let oldestTime = Infinity;
+          for (const [k, v] of this._contentFpMap) {
+            if (v < oldestTime) { oldestTime = v; oldestKey = k; }
+          }
+          if (oldestKey) this._contentFpMap.delete(oldestKey);
+        }
+        for (const [k, v] of this._contentFpMap) {
+          if (now - v > this._contentFpTTL * 3) this._contentFpMap.delete(k);
+        }
+      }
+      
       if (this._messageDedupMap.has(dedupId)) {
-        // Si es mensaje propio confirmado, actualizar DOM y retornar INMEDIATAMENTE
         if (msg._own && msg.pending === false) {
           const existingMsg = document.querySelector(`[data-message-id="${dedupId}"]`);
           if (existingMsg) {
@@ -364,7 +462,7 @@ export class NexoApp {
             if (pendingIndicator) pendingIndicator.remove();
           }
           this._messageDedupMap.set(dedupId, now);
-          return; // FIX: Retornar inmediatamente, no pasar a onMessage
+          return;
         }
         
         if (source !== 'self') {
@@ -390,7 +488,6 @@ export class NexoApp {
       this.config.onMessage(enriched);
       
       if (this.stream?.appendItems) {
-        // FIX v5.0.7-ARCH: Usar forceScroll para scroll agresivo
         this.stream.appendItems([enriched], { forceScroll: true });
       }
     } catch (err) { DEBUG.error('APP_005', `Message handler: ${err.message}`); }
@@ -429,4 +526,3 @@ export class NexoApp {
 
 export default NexoApp;
 export { DEBUG };
-
