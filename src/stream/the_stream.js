@@ -1,7 +1,9 @@
 /**
- * NEXO v9.0 - TheStream v2.4-NAP-CERTIFIED
- * FIX v2.4: Preview cards usan senderName si existe, evitando MAC cruda o "Unknown".
- *           Fallback a contacto activo o 'NEXO Peer' antes de mostrar deviceId.
+ * NEXO v9.0 - TheStream v2.5-ARCH
+ * FIX v2.5-ARCH:
+ *   1) forceScroll option: ignora _shouldAutoScroll() para scroll agresivo
+ *   2) appendItems ahora acepta { forceScroll: true } para mensajes propios y apertura de chat
+ *   3) scrollToBottom usa doble requestAnimationFrame para asegurar que DOM está listo
  */
 
 class TheStream {
@@ -40,7 +42,7 @@ class TheStream {
     this._injectStyles();
     this._setupResourceErrorInterceptor();
     
-    console.log('[TheStream] Initialized v2.4-NAP-CERTIFIED');
+    console.log('[TheStream] Initialized v2.5-ARCH');
   }
 
   appendItems(items, options = {}) {
@@ -48,6 +50,7 @@ class TheStream {
       prepend: false,
       animate: true,
       scroll: this.config.autoScroll,
+      forceScroll: false,  // FIX v2.5-ARCH
       ...options
     };
 
@@ -80,7 +83,8 @@ class TheStream {
       });
     });
 
-    if (config.scroll && this._shouldAutoScroll()) {
+    // FIX v2.5-ARCH: forceScroll ignora la guardia _shouldAutoScroll()
+    if (config.scroll && (config.forceScroll || this._shouldAutoScroll())) {
       this.scrollToBottom();
     }
 
@@ -115,8 +119,11 @@ class TheStream {
 
   scrollToBottom() {
     if (this.container) {
+      // FIX v2.5-ARCH: Doble rAF para asegurar que DOM terminó de renderizar
       requestAnimationFrame(() => {
-        this.container.scrollTop = this.container.scrollHeight;
+        requestAnimationFrame(() => {
+          this.container.scrollTop = this.container.scrollHeight;
+        });
       });
     }
     return this;
@@ -242,7 +249,6 @@ class TheStream {
 
     // FIX v2.4: Si senderName es Unknown/vacío/MAC-like, intentar fallback a contacto activo
     if (!sanitized.senderName || sanitized.senderName === 'Unknown' || !sanitized.senderName.trim() || /^[a-f0-9]{2}:/i.test(sanitized.senderName)) {
-      // Intentar obtener nombre del contacto activo de NEXO
       const activeName = window.nexoApp?.activeContact?.name;
       sanitized.senderName = activeName || sanitized.senderName || 'NEXO Peer';
     }
@@ -281,7 +287,6 @@ class TheStream {
     
     const safeId = this._escapeAttr(String(message.id || ''));
     
-    // FIX v2.4: Usar senderName para el nombre visible, no sender (que puede ser MAC)
     const displayName = message.senderName || message.sender || 'NEXO Peer';
     
     bubble.innerHTML = `
