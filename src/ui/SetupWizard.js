@@ -1,9 +1,11 @@
 /**
- * NEXO Setup Wizard v3.0.1-ARCH
- * Coordinado con NexoBlePlugin.kt v4.0.0-ARCH
- * - Timeout extendido a 35s (nativo puede tardar hasta 16s en retry)
- * - handleConnectionFailed ajustado para exponential backoff nativo
- * FIX v3.0.1-ARCH: Texto de reintentar más descriptivo, estado "Verificando..." en vez de "Esperando..."
+ * NEXO Setup Wizard v3.0.2-ARCH
+ * FIX v3.0.2-ARCH:
+ *   1) Eventos renombrados: blePermissionsGranted / blePermissionsPermanentlyDenied
+ *      (antes nexo-permissions-granted / nexo-permissions-denied que nunca llegaban)
+ *   2) checkBLEStatus() retorna boolean, no objeto. Verificación corregida.
+ *   3) isBluetoothEnabled consultado directo al plugin nativo, no a checkBLEStatus.
+ *   4) Post-permisos: re-verificación con delay de 1.5s para race condition Android.
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -42,7 +44,6 @@ export class SetupWizard {
     this.renderChecking();
     this.setupGlobalListeners();
     
-    // v3.0.0-ARCH: Timeout 35s (nativo puede tardar hasta 16s en retry + jitter)
     setTimeout(() => {
       if (this.currentStep === 'checking') {
         this.currentStep = 'error';
@@ -54,8 +55,9 @@ export class SetupWizard {
   }
   
   setupGlobalListeners() {
-    window.addEventListener('nexo-permissions-granted', this.handlePermissionsGranted);
-    window.addEventListener('nexo-permissions-denied', this.handlePermissionsDenied);
+    // FIX v3.0.2: Nombres de eventos alineados con ble_permissions.js
+    window.addEventListener('blePermissionsGranted', this.handlePermissionsGranted);
+    window.addEventListener('blePermissionsPermanentlyDenied', this.handlePermissionsDenied);
     
     if (window.Capacitor?.Plugins?.NexoBLE) {
       const plugin = window.Capacitor.Plugins.NexoBLE;
@@ -78,7 +80,6 @@ export class SetupWizard {
     }
   }
   
-  // v3.0.0-ARCH: Nativo usa exponential backoff (2s, 4s, 8s, 16s). No mostrar error prematuro.
   handleConnectionFailed(data) {
     console.log(NAP_WIZARD, 'Connection failed (nativo retry en progreso):', data);
     const attempt = data.attempt || 0;
@@ -139,7 +140,8 @@ export class SetupWizard {
     try {
       const status = await checkBLEStatus();
       
-      if (status.bluetoothEnabled) {
+      // FIX v3.0.2: checkBLEStatus retorna boolean (permisos concedidos)
+      if (status === true) {
         this.isAwaitingSettingsReturn = false;
         this.clearBtCheckInterval();
         
@@ -288,9 +290,19 @@ export class SetupWizard {
       const result = await requestBLEPermissions();
       
       if (result.granted) {
-        const btStatus = await checkBLEStatus();
+        // FIX v3.0.2: Consultar estado Bluetooth directo al plugin nativo
+        let btEnabled = false;
+        try {
+          const plugin = window.Capacitor?.Plugins?.NexoBLE;
+          if (plugin) {
+            const btState = await plugin.isBluetoothEnabled();
+            btEnabled = btState.enabled === true;
+          }
+        } catch (e) {
+          console.warn(NAP_WIZARD, 'No se pudo consultar estado BT:', e);
+        }
         
-        if (!btStatus.bluetoothEnabled) {
+        if (!btEnabled) {
           this.currentStep = 'bluetooth';
           this.renderBluetooth();
           return;
@@ -300,7 +312,6 @@ export class SetupWizard {
         
         if (!pluginReady) {
           btn.style.background = 'linear-gradient(135deg, #ff6b35 0%, #ff4500 100%)';
-          // FIX v3.0.1-ARCH: Texto descriptivo en vez de genérico "Reintentar"
           btn.textContent = 'Reintentar solicitud';
           btn.style.opacity = '1';
           btn.style.pointerEvents = 'auto';
@@ -334,7 +345,6 @@ export class SetupWizard {
           }
         }
         
-        // FIX v3.0.1-ARCH: Textos descriptivos según el caso
         btn.textContent = isUserCancelled ? 'Reintentar (diálogo cerrado)' : 'Reintentar solicitud';
       }
       
@@ -382,7 +392,6 @@ export class SetupWizard {
     
     const btn = document.getElementById('btn-settings-manual');
     if (btn) {
-      // FIX v3.0.1-ARCH: Texto claro en vez de genérico "Esperando..."
       btn.textContent = 'Verificando permisos...';
       btn.style.opacity = '0.6';
       btn.style.pointerEvents = 'none';
@@ -414,7 +423,6 @@ export class SetupWizard {
     
     const btn = document.getElementById('btn-bt-settings');
     if (btn) {
-      // FIX v3.0.1-ARCH: Texto claro en vez de genérico "Esperando..."
       btn.textContent = 'Verificando Bluetooth...';
       btn.style.opacity = '0.6';
       btn.style.pointerEvents = 'none';
@@ -428,7 +436,7 @@ export class SetupWizard {
       
       try {
         const status = await checkBLEStatus();
-        if (status.bluetoothEnabled) {
+        if (status === true) {
           this.isAwaitingSettingsReturn = false;
           this.clearBtCheckInterval();
           this.renderSuccessTransition();
@@ -457,8 +465,9 @@ export class SetupWizard {
       this._successTimeout = null;
     }
     
-    window.removeEventListener('nexo-permissions-granted', this.handlePermissionsGranted);
-    window.removeEventListener('nexo-permissions-denied', this.handlePermissionsDenied);
+    // FIX v3.0.2: Remover eventos con nombres correctos
+    window.removeEventListener('blePermissionsGranted', this.handlePermissionsGranted);
+    window.removeEventListener('blePermissionsPermanentlyDenied', this.handlePermissionsDenied);
     document.removeEventListener('visibilitychange', this.handleAppResume);
     
     if (window.Capacitor?.Plugins?.NexoBLE) {
