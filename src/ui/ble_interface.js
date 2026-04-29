@@ -1,14 +1,11 @@
 /**
- * BLE Interface v3.4-ARCH
+ * BLE Interface v3.5-ARCH
  * Ubicación: src/ui/ble_interface.js
- * FIX: Server error handling, better timeout messages, manifest service name fix coordination
- * FIX v3.2-ARCH: Badge oculto cuando chat BLE activo
- * FIX v3.3-ARCH: Duplicados por nombre evitados, estado EN ESPAÑOL, placeholder corregido,
- *      tab "Cercanos" en vez de "Descubrir" (evita confusión con botón), toast silenciado
- *      cuando ya estás en chat con ese contacto
- * FIX v3.4-ARCH: Normalización defensiva de deviceId (lowercase+trim) en todo el flujo
- *      para que toasts, badge y chat activo coincidan robustamente con IDs del nativo.
- *      Estado POWEREDON/POWEREDOFF traducido correctamente sin importar casing del nativo.
+ * FIX v3.5-ARCH: 
+ *   1) Badge reseteado y protegido al abrir chat (no contamina durante chat activo)
+ *   2) Auto-registro de contacto al recibir primer mensaje (evita "Unknown" en lista)
+ *   3) Toast suprimido robustamente cuando chat está activo con el mismo peer
+ *   4) Listener nexo:ble:closeChat para limpiar _activeChatDeviceId cuando UI cierra chat
  */
 
 export function initBLEInterface(bleMesh) {
@@ -34,7 +31,6 @@ function _addBLEContact(device) {
   const contacts = _getBLEContacts();
   const id = _normId(device.id || device.address);
   if (!id) return false;
-  // FIX v3.3-ARCH: Evitar duplicados por nombre (mismo dispositivo, MAC random vs public)
   const existingByName = contacts.find(c => c.name && device.name && c.name === device.name);
   if (existingByName) {
     existingByName.id = id;
@@ -205,6 +201,7 @@ export class BLEInterface {
       this._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
       this.connectedDevices.delete(deviceId);
       this.onDeviceDisconnected({ id: deviceId, address: deviceId });
+      // FIX v3.5-ARCH: Limpiar chat activo si el peer se desconecta
       if (this._activeChatDeviceId === deviceId) {
         this.showToast('⚠️ Conexión BLE perdida. Reconectando...', 'warning');
         this._startReconnect(deviceId);
@@ -301,7 +298,6 @@ export class BLEInterface {
     if (!this.nativePlugin) return;
     if (this._nativePayloadListener) this._nativePayloadListener.remove();
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', (data) => {
-      // FIX v3.4-ARCH: Normalizar deviceId del nativo para comparación robusta
       const deviceId = _normId(data.deviceId);
       let messageId = null;
       let senderName = data.senderName || null;
@@ -312,7 +308,20 @@ export class BLEInterface {
         if (json.senderName && !senderName) senderName = json.senderName;
         if (json.content) content = json.content;
       } catch (e) {}
-      if (!senderName) senderName = _getContactName(deviceId) || 'NEXO Peer';
+      
+      // FIX v3.5-ARCH: Resolver senderName de forma robusta (contactos > conectados > found > default)
+      if (!senderName || senderName === 'NEXO Peer') {
+        senderName = _getContactName(deviceId) 
+          || this.connectedDevices.get(deviceId)?.name 
+          || this.foundDevices.get(deviceId)?.name 
+          || 'NEXO Peer';
+      }
+      
+      // FIX v3.5-ARCH: Auto-registrar contacto al recibir primer mensaje para que aparezca con nombre en lista
+      if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer') {
+        _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
+      }
+      
       if (messageId && this._receivedMessageIds.has(messageId)) return;
       if (messageId) {
         this._receivedMessageIds.add(messageId);
@@ -321,16 +330,20 @@ export class BLEInterface {
           this._receivedMessageIds.delete(first);
         }
       }
+      
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: { deviceId, content, senderName, messageId, source: data.source || 'unknown', timestamp: data.timestamp || Date.now() }
       }));
-      // FIX v3.4-ARCH: Normalizar activeChatDeviceId antes de comparar
+      
+      // FIX v3.5-ARCH: Comparación robusta - si hay chat activo con ESTE peer, NO toast, NO badge
       const activeId = _normId(this._activeChatDeviceId);
-      if (activeId !== deviceId) {
-        this.showToast('📨 Mensaje de ' + senderName, 'info');
-        this.newDevicesCount++;
-        this.updateBadge();
+      if (activeId && activeId === deviceId) {
+        return; // Silencioso: ya estamos en chat con este dispositivo
       }
+      
+      this.showToast('📨 Mensaje de ' + senderName, 'info');
+      this.newDevicesCount++;
+      this.updateBadge();
     });
   }
 
@@ -347,7 +360,6 @@ export class BLEInterface {
 
   async _sendMessageNative(deviceId, content) {
     if (!this.nativePlugin) throw new Error('Plugin no disponible');
-    // Usar ID original si está disponible en connectedDevices para el nativo
     const device = this.connectedDevices.get(_normId(deviceId));
     const targetId = device?.id || device?.address || deviceId;
     await this.nativePlugin.sendMessage({ deviceId: targetId, message: content });
@@ -590,6 +602,11 @@ export class BLEInterface {
     document.querySelectorAll('.ble-tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
     });
+    // FIX v3.5-ARCH: Escuchar cierre de chat desde la UI principal
+    window.addEventListener('nexo:ble:closeChat', () => {
+      this._activeChatDeviceId = null;
+      this.updateBadge();
+    });
   }
 
   togglePanel() {
@@ -660,6 +677,25 @@ export class BLEInterface {
     let id = _normId(device.id || device.address);
     if (!id || id === 'null' || id === 'undefined') return;
     if (this.localDeviceAddress && id === this.localDeviceAddress) return;
+    
+    // FIX v3.5-ARCH: Si estamos en chat activo, NO contaminar badge ni contador
+    // Solo actualizar lista interna silenciosamente
+    if (this._activeChatDeviceId) {
+      if (this.foundDevices.has(id)) {
+        const existing = this.foundDevices.get(id);
+        existing.rssi = device.rssi;
+        existing.name = device.name || existing.name;
+        existing.lastSeen = Date.now();
+        this.foundDevices.set(id, existing);
+        this.renderDevicesList();
+        return;
+      }
+      device.lastSeen = Date.now();
+      this.foundDevices.set(id, device);
+      this.renderDevicesList();
+      return;
+    }
+    
     if (this.foundDevices.has(id)) {
       const existing = this.foundDevices.get(id);
       existing.rssi = device.rssi;
@@ -733,8 +769,11 @@ export class BLEInterface {
     if (!device && contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
     if (!device) { this.showToast('❌ Contacto no disponible', 'error'); return; }
     
-    // FIX v3.4-ARCH: Normalizar activeChatDeviceId inmediatamente
+    // FIX v3.5-ARCH: Setear chat activo Y resetear contador de badge inmediatamente
     this._activeChatDeviceId = nid;
+    this.newDevicesCount = 0;
+    this.updateBadge();
+    
     const displayName = contact?.name || device.name || 'NEXO Peer';
     const state = this._getDeviceState(nid);
     const isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
@@ -919,13 +958,17 @@ export class BLEInterface {
       const device = this.connectedDevices.get(nid);
       const targetId = device?.id || device?.address || deviceId;
       if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId: targetId });
-      if (this._activeChatDeviceId === nid) this._activeChatDeviceId = null;
+      // FIX v3.5-ARCH: Limpiar chat activo al desconectar manualmente
+      if (this._activeChatDeviceId === nid) {
+        this._activeChatDeviceId = null;
+        this.updateBadge();
+      }
     } catch (err) {}
   }
 
   updateBadge() {
     const badge = this.elements.badge;
-    // FIX v3.2-ARCH + v3.4-ARCH: No mostrar badge si ya estamos en chat BLE activo
+    // FIX v3.5-ARCH: No mostrar badge si ya estamos en chat BLE activo
     if (this._activeChatDeviceId) {
       badge.style.display = 'none';
       return;
@@ -952,8 +995,6 @@ export class BLEInterface {
         state = btState.enabled ? 'poweredOn' : 'poweredOff';
         this._serverReady = btState.serverReady || false;
       }
-      // FIX v3.4-ARCH: Normalizar estado a lowercase antes de buscar en mapa
-      // para que funcione sin importar si el nativo envía poweredOn, POWEREDON, etc.
       const stateMap = {
         'poweredon': 'ENCENDIDO',
         'poweredoff': 'APAGADO',
