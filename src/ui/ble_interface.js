@@ -1,11 +1,12 @@
 /**
- * BLE Interface v3.5-ARCH
+ * BLE Interface v3.6-ARCH
  * Ubicación: src/ui/ble_interface.js
- * FIX v3.5-ARCH: 
- *   1) Badge reseteado y protegido al abrir chat (no contamina durante chat activo)
- *   2) Auto-registro de contacto al recibir primer mensaje (evita "Unknown" en lista)
- *   3) Toast suprimido robustamente cuando chat está activo con el mismo peer
- *   4) Listener nexo:ble:closeChat para limpiar _activeChatDeviceId cuando UI cierra chat
+ * FIX v3.6-ARCH:
+ *   1) _normId normaliza MAC addresses a hex puro (evita desfase por : o -)
+ *   2) _setupNativePayloadListener deduplica por fingerprint si no hay messageId
+ *   3) Comparación chat activo robusta con IDs normalizados a hex puro
+ *   4) Auto-registro de contacto al recibir primer mensaje
+ *   5) Toast suprimido cuando chat está activo con el mismo peer
  */
 
 export function initBLEInterface(bleMesh) {
@@ -17,7 +18,14 @@ export function initBLEInterface(bleMesh) {
 const BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v1';
 
 function _normId(id) {
-  return (id || '').toString().toLowerCase().trim();
+  if (!id) return '';
+  const s = id.toString().toLowerCase().trim();
+  // Si parece MAC address (patrón XX:XX... o XX-XX...), normalizar a hex puro
+  // para evitar desfase por formato de separadores entre plugin nativo y UI
+  if (/^[0-9a-f]{2}([:-][0-9a-f]{2}){5,}$/i.test(s)) {
+    return s.replace(/[^a-f0-9]/g, '');
+  }
+  return s;
 }
 
 function _getBLEContacts() {
@@ -201,7 +209,6 @@ export class BLEInterface {
       this._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
       this.connectedDevices.delete(deviceId);
       this.onDeviceDisconnected({ id: deviceId, address: deviceId });
-      // FIX v3.5-ARCH: Limpiar chat activo si el peer se desconecta
       if (this._activeChatDeviceId === deviceId) {
         this.showToast('⚠️ Conexión BLE perdida. Reconectando...', 'warning');
         this._startReconnect(deviceId);
@@ -299,17 +306,19 @@ export class BLEInterface {
     if (this._nativePayloadListener) this._nativePayloadListener.remove();
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', (data) => {
       const deviceId = _normId(data.deviceId);
-      let messageId = null;
+      let messageId = data.messageId || null;
       let senderName = data.senderName || null;
       let content = data.content || data.data || '';
+      let timestamp = data.timestamp || Date.now();
       try {
         const json = JSON.parse(data.data || '{}');
         if (json.messageId) messageId = json.messageId;
         if (json.senderName && !senderName) senderName = json.senderName;
         if (json.content) content = json.content;
+        if (json.timestamp) timestamp = json.timestamp;
       } catch (e) {}
       
-      // FIX v3.5-ARCH: Resolver senderName de forma robusta (contactos > conectados > found > default)
+      // Resolver senderName de forma robusta (contactos > conectados > found > default)
       if (!senderName || senderName === 'NEXO Peer') {
         senderName = _getContactName(deviceId) 
           || this.connectedDevices.get(deviceId)?.name 
@@ -317,27 +326,29 @@ export class BLEInterface {
           || 'NEXO Peer';
       }
       
-      // FIX v3.5-ARCH: Auto-registrar contacto al recibir primer mensaje para que aparezca con nombre en lista
+      // Auto-registrar contacto al recibir primer mensaje para que aparezca con nombre en lista
       if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer') {
         _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
       }
       
-      if (messageId && this._receivedMessageIds.has(messageId)) return;
-      if (messageId) {
-        this._receivedMessageIds.add(messageId);
-        if (this._receivedMessageIds.size > this._maxMessageIds) {
-          const first = this._receivedMessageIds.values().next().value;
-          this._receivedMessageIds.delete(first);
-        }
+      // FIX v3.6-ARCH: Deduplicación robusta por messageId o fingerprint de contenido
+      const dedupKey = messageId || `ble_${deviceId}_${(content || '').length}_${timestamp}`;
+      if (this._receivedMessageIds.has(dedupKey)) return;
+      this._receivedMessageIds.add(dedupKey);
+      if (this._receivedMessageIds.size > this._maxMessageIds) {
+        const first = this._receivedMessageIds.values().next().value;
+        this._receivedMessageIds.delete(first);
       }
       
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
-        detail: { deviceId, content, senderName, messageId, source: data.source || 'unknown', timestamp: data.timestamp || Date.now() }
+        detail: { deviceId, content, senderName, messageId, source: data.source || 'unknown', timestamp }
       }));
       
-      // FIX v3.5-ARCH: Comparación robusta - si hay chat activo con ESTE peer, NO toast, NO badge
-      const activeId = _normId(this._activeChatDeviceId);
-      if (activeId && activeId === deviceId) {
+      // FIX v3.6-ARCH: Comparación robusta de chat activo normalizando ambos IDs a hex puro
+      // Esto evita que 47:a5:00...7:9a y 47a500...79a se traten como dispositivos distintos
+      const activeId = (this._activeChatDeviceId || '').toString().toLowerCase().replace(/[^a-f0-9]/g, '');
+      const msgDeviceId = deviceId.toString().toLowerCase().replace(/[^a-f0-9]/g, '');
+      if (activeId && activeId === msgDeviceId) {
         return; // Silencioso: ya estamos en chat con este dispositivo
       }
       
@@ -602,7 +613,6 @@ export class BLEInterface {
     document.querySelectorAll('.ble-tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
     });
-    // FIX v3.5-ARCH: Escuchar cierre de chat desde la UI principal
     window.addEventListener('nexo:ble:closeChat', () => {
       this._activeChatDeviceId = null;
       this.updateBadge();
@@ -678,8 +688,6 @@ export class BLEInterface {
     if (!id || id === 'null' || id === 'undefined') return;
     if (this.localDeviceAddress && id === this.localDeviceAddress) return;
     
-    // FIX v3.5-ARCH: Si estamos en chat activo, NO contaminar badge ni contador
-    // Solo actualizar lista interna silenciosamente
     if (this._activeChatDeviceId) {
       if (this.foundDevices.has(id)) {
         const existing = this.foundDevices.get(id);
@@ -769,7 +777,6 @@ export class BLEInterface {
     if (!device && contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
     if (!device) { this.showToast('❌ Contacto no disponible', 'error'); return; }
     
-    // FIX v3.5-ARCH: Setear chat activo Y resetear contador de badge inmediatamente
     this._activeChatDeviceId = nid;
     this.newDevicesCount = 0;
     this.updateBadge();
@@ -958,7 +965,6 @@ export class BLEInterface {
       const device = this.connectedDevices.get(nid);
       const targetId = device?.id || device?.address || deviceId;
       if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId: targetId });
-      // FIX v3.5-ARCH: Limpiar chat activo al desconectar manualmente
       if (this._activeChatDeviceId === nid) {
         this._activeChatDeviceId = null;
         this.updateBadge();
@@ -968,7 +974,6 @@ export class BLEInterface {
 
   updateBadge() {
     const badge = this.elements.badge;
-    // FIX v3.5-ARCH: No mostrar badge si ya estamos en chat BLE activo
     if (this._activeChatDeviceId) {
       badge.style.display = 'none';
       return;
