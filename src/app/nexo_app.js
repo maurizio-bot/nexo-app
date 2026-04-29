@@ -79,7 +79,6 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    // FIX v5.0.6-ARCH: Set con limite en lugar de string unico (_lastBleFp)
     this._bleFpSet = new Set();
     this._bleFpMax = 500;
     DEBUG.log('🚀 [NEXO] v5.0.6-ARCH iniciando...', 'info', 'APP_INIT');
@@ -182,7 +181,6 @@ export class NexoApp {
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
-        // FIX v5.0.6-ARCH: Auto-scroll al abrir chat para mostrar últimos mensajes
         requestAnimationFrame(() => {
           const container = document.getElementById('messages-container');
           if (container) container.scrollTop = container.scrollHeight;
@@ -190,8 +188,6 @@ export class NexoApp {
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
-      // FIX v5.0.6-ARCH: Dedup robusto con Set + resolucion de nombre desde contactos persistidos
-      // FIX v5.0.6-ARCH: Fingerprint SIN timestamp para evitar duplicados por reintentos nativos
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         const nid = (deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
@@ -206,14 +202,12 @@ export class NexoApp {
         
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         
-        // 1. Resolver nombre desde contactos BLE persistidos primero (MAC inmutable)
         let resolvedName = senderName;
         if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
           const persisted = this.bleInterface.getContactName(nid);
           if (persisted) resolvedName = persisted;
         }
         
-        // 2. Fallback a dispositivos en memoria
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           const mapName = (dev) => dev?.name;
           resolvedName = mapName(this.bleInterface?.connectedDevices?.get(nid))
@@ -222,15 +216,14 @@ export class NexoApp {
             || 'NEXO Peer';
         }
         
-        // 3. Si sigue siendo generico, generar nombre unico e inmutable desde la MAC
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           resolvedName = `NEXO-${nid.substring(0, 6).toUpperCase()}`;
         }
         
         this._handleMessage({
           content,
-          sender: nid,              // FIX: MAC normalizada como identificador estable
-          senderName: resolvedName,   // FIX: Nombre resuelto desde contactos persistidos
+          sender: nid,
+          senderName: resolvedName,
           source: source || 'ble_direct',
           timestamp: timestamp || Date.now(),
           messageId,
@@ -356,16 +349,14 @@ export class NexoApp {
       if (msg.messageId) {
         const now = Date.now();
         if (this._messageDedupMap.has(msg.messageId)) {
-          // FIX v5.0.6-ARCH: Si es mensaje propio confirmado (no pending), actualizar existente en vez de duplicar
           if (msg._own && msg.pending === false) {
             const existingMsg = document.querySelector(`[data-message-id="${msg.messageId}"]`);
-n            if (existingMsg) {
+            if (existingMsg) {
               existingMsg.classList.remove('pending');
               existingMsg.classList.add('confirmed');
               const pendingIndicator = existingMsg.querySelector('.pending-indicator');
               if (pendingIndicator) pendingIndicator.remove();
             }
-            // Refrescar TTL del dedup
             this._messageDedupMap.set(msg.messageId, now);
           }
           if (source !== 'self') {
@@ -390,7 +381,6 @@ n            if (existingMsg) {
       this.config.onMessage(enriched);
       if (this.stream?.appendItems) {
         this.stream.appendItems([enriched]);
-        // FIX v5.0.6-ARCH: Auto-scroll al recibir o enviar mensaje
         requestAnimationFrame(() => {
           const container = document.getElementById('messages-container');
           if (container) container.scrollTop = container.scrollHeight;
