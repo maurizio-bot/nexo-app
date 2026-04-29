@@ -1,12 +1,12 @@
 /**
- * BLE Interface v3.7.1-ARCH
+ * BLE Interface v3.7.2-ARCH
  * Ubicacion: src/ui/ble_interface.js
- * FIX v3.7.1-ARCH:
+ * FIX v3.7.2-ARCH:
  *   1) Auto-registro inmediato al detectar en escaneo (onDeviceFound) con nombre del anuncio BLE
  *   2) Auto-registro inmediato al conectar por incoming (onDeviceConnected) si no existe aun
  *   3) Payload listener solo actualiza nombre, ya no crea contacto desde cero
  *   4) MAC es clave primaria INMUTABLE en localStorage (campo macAddress)
- *   5) Dedup robusto con hash parcial de contenido
+ *   5) Dedup robusto con hash parcial de contenido (SIN timestamp para evitar duplicados nativos)
  */
 
 export function initBLEInterface(bleMesh) {
@@ -33,7 +33,7 @@ function _getBLEContacts() {
   } catch (e) { return []; }
 }
 
-// FIX v3.7.1-ARCH: MAC es clave primaria INMUTABLE. Nunca sobreescribimos por nombre.
+// FIX v3.7.2-ARCH: MAC es clave primaria INMUTABLE. Nunca sobreescribimos por nombre.
 function _addBLEContact(device) {
   const contacts = _getBLEContacts();
   const mac = _normId(device.id || device.address);
@@ -197,7 +197,7 @@ export class BLEInterface {
       if (device) {
         device.name = data.name || device.name || 'NEXO Peer';
         this.connectedDevices.set(deviceId, device);
-        // FIX v3.7.1: Actualizar nombre en contactos persistidos si cambio
+        // FIX v3.7.2: Actualizar nombre en contactos persistidos si cambio
         _addBLEContact({ id: deviceId, address: deviceId, name: device.name });
         this.renderConnectedList();
         if (this._activeChatDeviceId === deviceId) {
@@ -220,7 +220,7 @@ export class BLEInterface {
       const contactName = _getContactName(deviceId);
       const displayName = data.name || contactName || 'NEXO Peer';
       
-      // FIX v3.7.1: Registrar inmediatamente al conectar (incoming o outgoing) si no existe
+      // FIX v3.7.2: Registrar inmediatamente al conectar (incoming o outgoing) si no existe
       _addBLEContact({ id: deviceId, address: deviceId, name: displayName });
       
       if (data.direction === 'incoming') {
@@ -331,8 +331,9 @@ export class BLEInterface {
     return this._deviceStates.get(_normId(deviceId)) || { state: BLE_STATES.DISCONNECTED };
   }
 
-  // FIX v3.7.1-ARCH: Payload listener ya NO crea contacto desde cero.
+  // FIX v3.7.2-ARCH: Payload listener ya NO crea contacto desde cero.
   // Solo actualiza el nombre si el payload trae uno mejor, porque el peer ya fue registrado en scan/connect.
+  // FIX v3.7.2-ARCH: DedupKey SIN timestamp para evitar duplicados por reintentos nativos.
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
     if (this._nativePayloadListener) this._nativePayloadListener.remove();
@@ -370,9 +371,9 @@ export class BLEInterface {
         senderName = _getContactName(deviceId) || `NEXO-${deviceId.substring(0, 6).toUpperCase()}`;
       }
       
-      // 4. Dedup robusto con hash parcial de contenido
-      const contentSnippet = (content || '').substring(0, 24);
-      const dedupKey = messageId || `ble_${deviceId}_${(content || '').length}_${timestamp}_${contentSnippet}`;
+      // 4. Dedup robusto con hash parcial de contenido (SIN timestamp)
+      const contentSnippet = (content || '').substring(0, 32);
+      const dedupKey = messageId || `ble_${deviceId}_${(content || '').length}_${contentSnippet}`;
       if (this._receivedMessageIds.has(dedupKey)) return;
       this._receivedMessageIds.add(dedupKey);
       if (this._receivedMessageIds.size > this._maxMessageIds) {
@@ -721,7 +722,7 @@ export class BLEInterface {
     }
   }
 
-  // FIX v3.7.1-ARCH: Auto-registro inmediato al detectar en escaneo
+  // FIX v3.7.2-ARCH: Auto-registro inmediato al detectar en escaneo
   onDeviceFound(device) {
     let id = _normId(device.id || device.address);
     if (!id || id === 'null' || id === 'undefined') return;
