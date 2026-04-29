@@ -1,13 +1,16 @@
 /**
- * BLE Permissions & Communication Manager v6.2-FIX
+ * BLE Permissions & Communication Manager v6.3-ARCH
  * Fixes: Plugin name NexoBLE, method names aligned, no auto-start Service,
  *        REM logs en pantalla via onRemLog listener
- * FIX v6.2-ARCH: UX permisos - contexto en reintentos, estado visual claro
+ * FIX v6.3-ARCH:
+ *   1) Post-request verification con retry (race condition Android post-diálogo)
+ *   2) Evento blePermissionsStatusChanged siempre disparado para que UI reaccione
+ *   3) ensure() reintenta check() hasta 3 veces si no es permanently denied
+ *   4) Diagnóstico granular de cada permiso en logs
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
-// FIX: Nombre exacto del plugin nativo
 const NexoBLE = registerPlugin('NexoBLE');
 
 const NAP_CODES = {
@@ -60,9 +63,12 @@ const BLEPermissions = {
       napLog(NAP_CODES.RESUME_CHECK, 'App resumed — re-verificando permisos...');
       await new Promise(r => setTimeout(r, 800));
       const granted = await this.check();
+      // FIX v6.3: Disparar evento de estado SIEMPRE, no solo si cambió
+      window.dispatchEvent(new CustomEvent('blePermissionsStatusChanged', {
+        detail: { granted, source: 'resume_check', state: { ...this.state } }
+      }));
       if (granted) {
         napLog(NAP_CODES.SETTINGS_RETURN, 'Permisos concedidos tras regreso de Settings');
-        // FIX: Solo notificar, NUNCA iniciar Service automáticamente
         window.dispatchEvent(new CustomEvent('blePermissionsGranted', { detail: { source: 'resume_check' } }));
       } else {
         napLog(NAP_CODES.SETTINGS_RETURN, 'Permisos aún denegados tras regreso de Settings', 'WARN');
@@ -95,7 +101,11 @@ const BLEPermissions = {
       this.state.isPermanentlyDenied = result.isPermanentlyDenied === true;
       this.state.checked = true;
 
-      napLog(NAP_CODES.ANDROID_NATIVE, `checkBLEStatus: allGranted=${this.state.granted}, permanent=${this.state.isPermanentlyDenied}`, 'DEBUG', this.state.permissions);
+      napLog(NAP_CODES.ANDROID_NATIVE,
+        `checkBLEStatus: allGranted=${this.state.granted}, ` +
+        `scan=${this.state.permissions.scan}, connect=${this.state.permissions.connect}, ` +
+        `advertise=${this.state.permissions.advertise}, location=${this.state.permissions.location}`,
+        'DEBUG', this.state.permissions);
       return this.state.granted;
     } catch (e) {
       napLog(NAP_CODES.PERM_ERROR, `check failed: ${e.message}`, 'ERROR');
@@ -128,8 +138,25 @@ const BLEPermissions = {
         await this.check();
       }
 
+      // FIX v6.3-ARCH: Si el diálogo respondió pero granted es false y NO es permanente,
+      // esperar a que Android actualice el estado interno y re-verificar.
+      if (!this.state.granted && !this.state.isPermanentlyDenied) {
+        napLog(NAP_CODES.PERM_REQUEST, 'Granted=false tras diálogo. Re-verificando con delay...', 'WARN');
+        await new Promise(r => setTimeout(r, 600));
+        const recheck = await this.check();
+        if (recheck) {
+          napLog(NAP_CODES.PERM_GRANTED, 'Permisos confirmados en re-verificación post-diálogo', 'DEBUG');
+          this.state.granted = true;
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent('blePermissionsStatusChanged', {
+        detail: { granted: this.state.granted, source: 'request', state: { ...this.state } }
+      }));
+
       if (this.state.granted) {
         napLog(NAP_CODES.PERM_GRANTED, 'Permisos concedidos');
+        window.dispatchEvent(new CustomEvent('blePermissionsGranted', { detail: { source: 'request' } }));
       } else if (this.state.isPermanentlyDenied) {
         napLog(NAP_CODES.PERM_PERMANENT, 'Denegación permanente detectada', 'WARN');
         window.dispatchEvent(new CustomEvent('blePermissionsPermanentlyDenied'));
@@ -148,6 +175,7 @@ const BLEPermissions = {
     }
   },
 
+  // FIX v6.3-ARCH: ensure() reintenta hasta 3 veces con delay si hay denegación temporal
   async ensure() {
     if (this.state.granted) return true;
     if (!this.state.checked) {
@@ -158,7 +186,25 @@ const BLEPermissions = {
       napLog(NAP_CODES.PERM_PERMANENT, 'ensure() abortado: denegación permanente', 'WARN');
       return false;
     }
-    return await this.request();
+
+    // Primer intento
+    let ok = await this.request();
+    if (ok) return true;
+
+    // Reintentos con delay (Android a veces tarda en propagar el permiso)
+    for (let i = 1; i <= 2; i++) {
+      if (this.state.isPermanentlyDenied) break;
+      napLog(NAP_CODES.PERM_REQUEST, `Reintento ${i}/2 en ensure()...`, 'WARN');
+      await new Promise(r => setTimeout(r, 500 * i));
+      ok = await this.check();
+      if (ok) {
+        this.state.granted = true;
+        window.dispatchEvent(new CustomEvent('blePermissionsGranted', { detail: { source: 'ensure_retry' } }));
+        return true;
+      }
+    }
+
+    return false;
   },
 
   isReady() { return this.state.granted; },
@@ -170,11 +216,10 @@ const BLEPermissions = {
   }
 };
 
-// ==================== SERVER (nombres alineados al plugin) ====================
+// ==================== SERVER ====================
 export async function startBLEAdvertising() {
   if (Capacitor.getPlatform() !== 'android') return { success: true };
   try {
-    // FIX: método nativo ahora se llama startAdvertising
     const result = await NexoBLE.startAdvertising();
     return { success: true, result: result || {} };
   } catch (e) { return { success: false, error: e.message, nap_code: 'ADVERTISE_ERROR' }; }
@@ -188,12 +233,11 @@ export async function stopBLEAdvertising() {
   } catch (e) { return { success: false, error: e.message, nap_code: 'ADVERTISE_STOP_ERROR' }; }
 }
 
-// ==================== CLIENT (nombres alineados al plugin) ====================
+// ==================== CLIENT ====================
 export async function scanForDevices() {
   if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
   try {
     napLog(NAP_CODES.SCAN_START, 'Iniciando escaneo BLE...');
-    // FIX: método nativo ahora se llama startScan
     const result = await NexoBLE.startScan();
     napLog(NAP_CODES.SCAN_RESULT, 'Scan iniciado', 'INFO', result);
     return { success: true, result };
@@ -210,7 +254,6 @@ export async function connectToDevice(address) {
   if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
   try {
     napLog(NAP_CODES.CONNECT, `Conectando a ${address}...`);
-    // FIX: plugin ahora usa deviceId como key
     const result = await NexoBLE.connectToDevice({ deviceId: address });
     BLEPermissions.state.connectedDevice = address;
     BLEPermissions.state.isClient = true;
@@ -240,7 +283,6 @@ export async function sendMessage(message) {
 
 export async function startListeningMessages(callback) {
   if (Capacitor.getPlatform() !== 'android') return { success: false, error: 'Solo Android' };
-  // FIX: ya no existe startListeningMessages en plugin. Los listeners se registran automáticamente.
   napLog(NAP_CODES.INIT, 'Listeners nativos se registran automáticamente via addListener');
   return { success: true, listening: true };
 }
