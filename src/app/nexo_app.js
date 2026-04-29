@@ -1,10 +1,10 @@
 /**
  * NEXO App v5.0.8-ARCH
  * FIX v5.0.8-ARCH:
- *   1) Dedup GLOBAL por contenido+sender (ignora fuente: Nordic/Native/Hybrid)
- *   2) Mapa persistente _contactNameMap con localStorage: MAC → nombre
- *   3) _bleMessageHandler y _handleNordicMessage usan el mismo nombre anclado
- *   4) TTL de 10s para dedup por contenido (permite reenvío intencional después)
+ *   1) Dedup GLOBAL por contenido+sender (bloquea duplicados NordicMesh + Nativo BLE)
+ *   2) Nombres: usa bleInterface.getContactName() — una sola fuente de verdad en localStorage
+ *   3) _handleNordicMessage resuelve nombre desde bleInterface, no genera fallback alterno
+ *   4) Eliminado _contactNameMap duplicado; ble_interface.js es el único dueño de contactos
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -79,40 +79,12 @@ export class NexoApp {
     this._bleFpSet = new Set();
     this._bleFpMax = 500;
     
-    // FIX v5.0.8: Dedup global por contenido+sender (cualquier fuente)
+    // FIX v5.0.8: Dedup GLOBAL por contenido+sender (cualquier fuente: Nordic/Native/Hybrid)
     this._contentFpMap = new Map();
     this._contentFpTTL = 10000; // 10 segundos
     this._contentFpMax = 500;
     
-    // FIX v5.0.8: Mapa persistente MAC → nombre
-    this._contactNameMap = new Map();
-    this._loadContactNames();
-    
     DEBUG.log('🚀 [NEXO] v5.0.8-ARCH iniciando...', 'info', 'APP_INIT');
-  }
-
-  // FIX v5.0.8: Cargar nombres de contacto desde localStorage
-  _loadContactNames() {
-    try {
-      const saved = localStorage.getItem('nexo_contact_names');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        Object.entries(parsed).forEach(([k, v]) => this._contactNameMap.set(k, v));
-        DEBUG.log(`Nombres cargados: ${this._contactNameMap.size}`, 'info', 'CONTACT_LOAD');
-      }
-    } catch (e) {
-      DEBUG.warn('No se pudieron cargar nombres de contacto', 'CONTACT_LOAD_FAIL');
-    }
-  }
-
-  // FIX v5.0.8: Guardar nombres de contacto en localStorage
-  _saveContactNames() {
-    try {
-      const obj = Object.fromEntries(this._contactNameMap);
-      localStorage.setItem('nexo_contact_names', JSON.stringify(obj));
-    } catch (e) {
-      DEBUG.warn('No se pudieron guardar nombres', 'CONTACT_SAVE_FAIL');
-    }
   }
 
   async init() {
@@ -203,14 +175,6 @@ export class NexoApp {
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
         this.activeContact = { id: contactId, name, address, transport };
-        
-        // FIX v5.0.8: Guardar nombre al abrir chat
-        const nid = (contactId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
-        if (nid && name && name !== 'NEXO Peer') {
-          this._contactNameMap.set(nid, name);
-          this._saveContactNames();
-        }
-        
         const appContainer = document.getElementById('app');
         if (appContainer) appContainer.classList.remove('hidden');
         const nameInput = document.getElementById('chat-contact-name');
@@ -220,9 +184,7 @@ export class NexoApp {
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
-        if (this.stream) {
-          this.stream.scrollToBottom();
-        }
+        if (this.stream) this.stream.scrollToBottom();
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
@@ -233,7 +195,6 @@ export class NexoApp {
         // FIX v5.0.8: Fingerprint BLE nativo
         const contentSnippet = (content || '').substring(0, 32);
         const fp = `ble_${nid}_${(content || '').length}_${contentSnippet}`;
-        
         if (this._bleFpSet.has(fp)) return;
         this._bleFpSet.add(fp);
         if (this._bleFpSet.size > this._bleFpMax) {
@@ -243,35 +204,15 @@ export class NexoApp {
         
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         
-        // FIX v5.0.8: Resolver nombre con prioridad: mapa persistente > bleInterface > fallback
+        // FIX v5.0.8: Resolver nombre desde bleInterface (única fuente de verdad)
         let resolvedName = senderName;
-        
-        // 1. Mapa persistente local (más confiable)
-        if (this._contactNameMap.has(nid)) {
-          resolvedName = this._contactNameMap.get(nid);
-        }
-        // 2. bleInterface si existe
-        else if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
+        if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
           const persisted = this.bleInterface.getContactName(nid);
           if (persisted) resolvedName = persisted;
         }
-        // 3. Maps de dispositivos conectados/encontrados
-        if (!resolvedName || resolvedName === 'NEXO Peer') {
-          const mapName = (dev) => dev?.name;
-          resolvedName = mapName(this.bleInterface?.connectedDevices?.get(nid))
-            || mapName(this.bleInterface?.foundDevices?.get(nid))
-            || senderName
-            || 'NEXO Peer';
-        }
-        // 4. Fallback generado
+        // Fallback generado si bleInterface no lo tiene
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           resolvedName = `NEXO-${nid.substring(0, 6).toUpperCase()}`;
-        }
-        
-        // FIX v5.0.8: Guardar nombre la primera vez que lo vemos
-        if (!this._contactNameMap.has(nid) && resolvedName && resolvedName !== 'NEXO Peer') {
-          this._contactNameMap.set(nid, resolvedName);
-          this._saveContactNames();
         }
         
         this._handleMessage({
@@ -317,19 +258,19 @@ export class NexoApp {
   _handleNordicPeer(peer) { if (!peer?.id) return; this.blePeers.set(peer.id, { ...peer, discoveredAt: Date.now() }); }
   _handleNordicSession(data) { if (!data?.deviceId) return; this._updateMode('P2P_BLE'); }
   
-  // FIX v5.0.8: NordicMessage ahora también usa _contactNameMap y dedup global
+  // FIX v5.0.8: NordicMessage usa bleInterface.getContactName() para nombre anclado
   _handleNordicMessage(msg) {
     if (!msg?.deviceId) return;
     const nid = (msg.deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
     
-    // Resolver nombre anclado
-    let resolvedName = this._contactNameMap.get(nid);
-    if (!resolvedName) {
-      resolvedName = msg.senderName || `NEXO-${nid.substring(0, 6).toUpperCase()}`;
-      if (resolvedName && resolvedName !== 'NEXO Peer') {
-        this._contactNameMap.set(nid, resolvedName);
-        this._saveContactNames();
-      }
+    // Resolver nombre desde bleInterface (única fuente de verdad)
+    let resolvedName = msg.senderName;
+    if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
+      const persisted = this.bleInterface.getContactName(nid);
+      if (persisted) resolvedName = persisted;
+    }
+    if (!resolvedName || resolvedName === 'NEXO Peer') {
+      resolvedName = `NEXO-${nid.substring(0, 6).toUpperCase()}`;
     }
     
     this._handleMessage({
