@@ -1,9 +1,11 @@
 /**
- * NEXO v9.0 - TheStream v2.5-ARCH
- * FIX v2.5-ARCH:
- *   1) forceScroll option: ignora _shouldAutoScroll() para scroll agresivo
- *   2) appendItems acepta { forceScroll: true }
- *   3) scrollToBottom usa doble requestAnimationFrame
+ * NEXO v9.0 - TheStream v2.6-ARCH
+ * FIX v2.6-ARCH:
+ *   1) data-message-id en bubble para que nexo_app.js encuentre mensajes propios
+ *   2) Clase .pending + indicador visual cuando message.pending === true
+ *   3) forceScroll option: ignora _shouldAutoScroll() para scroll agresivo
+ *   4) appendItems acepta { forceScroll: true }
+ *   5) scrollToBottom usa doble requestAnimationFrame
  */
 
 class TheStream {
@@ -42,7 +44,7 @@ class TheStream {
     this._injectStyles();
     this._setupResourceErrorInterceptor();
     
-    console.log('[TheStream] Initialized v2.5-ARCH');
+    console.log('[TheStream] Initialized v2.6-ARCH');
   }
 
   appendItems(items, options = {}) {
@@ -83,7 +85,6 @@ class TheStream {
       });
     });
 
-    // FIX v2.5-ARCH: forceScroll ignora la guardia _shouldAutoScroll()
     if (config.scroll && (config.forceScroll || this._shouldAutoScroll())) {
       this.scrollToBottom();
     }
@@ -119,7 +120,6 @@ class TheStream {
 
   scrollToBottom() {
     if (this.container) {
-      // FIX v2.5-ARCH: Doble rAF para asegurar que DOM terminó de renderizar
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           this.container.scrollTop = this.container.scrollHeight;
@@ -178,6 +178,8 @@ class TheStream {
           to { opacity: 1; transform: translateY(0); }
         }
         .stream-item { animation: fadeIn 0.3s ease-out; }
+        .stream-item.pending { opacity: 0.6; }
+        .stream-item.confirmed { opacity: 1; }
       `;
       document.head.appendChild(style);
     }
@@ -224,7 +226,9 @@ class TheStream {
         content: String(item || ''),
         sender: 'System',
         timestamp: Date.now(),
-        type: 'text'
+        type: 'text',
+        pending: false,
+        messageId: null
       };
     }
 
@@ -236,7 +240,9 @@ class TheStream {
       timestamp: item.timestamp || item.time || Date.now(),
       avatar: item.avatar || null,
       isMe: item.isMe || item.sender === 'Tú' || false,
-      type: item.type || 'message'
+      type: item.type || 'message',
+      pending: item.pending || false,
+      messageId: item.messageId || item.id || null
     };
 
     if (typeof sanitized.content !== 'string') {
@@ -273,6 +279,15 @@ class TheStream {
     
     const bubble = document.createElement('div');
     bubble.className = 'stream-item';
+    if (message.pending) {
+      bubble.classList.add('pending');
+    }
+    
+    // FIX v2.6-ARCH: data-message-id para que nexo_app.js encuentre el mensaje
+    const msgId = message.messageId || message.id || this._generateId();
+    const safeId = this._escapeAttr(String(msgId));
+    bubble.setAttribute('data-message-id', safeId);
+    
     bubble.style.cssText = `
       display: flex;
       gap: 12px;
@@ -284,9 +299,12 @@ class TheStream {
     
     const avatarSrc = this._getSafeAvatar(message.senderName || message.sender, isMe);
     
-    const safeId = this._escapeAttr(String(message.id || ''));
-    
     const displayName = message.senderName || message.sender || 'NEXO Peer';
+    
+    // FIX v2.6-ARCH: Indicador visual de pending
+    const pendingIndicator = message.pending 
+      ? '<div class="pending-indicator" style="font-size: 11px; color: #ffaa00; margin-top: 4px;">⏳ Enviando...</div>' 
+      : '';
     
     bubble.innerHTML = `
       <img 
@@ -308,6 +326,7 @@ class TheStream {
         <div style="font-size: 11px; color: #888; margin-top: 4px;">
           ${this._formatTime(message.timestamp)}
         </div>
+        ${pendingIndicator}
         <div class="action-buttons" style="display: flex; gap: 8px; margin-top: 8px;" data-msg-id="${safeId}">
           <button class="btn-react" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #fff;">⚡</button>
           <button class="btn-reply" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #fff;">↩️</button>
