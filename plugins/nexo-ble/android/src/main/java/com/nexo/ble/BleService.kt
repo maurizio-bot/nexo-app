@@ -32,6 +32,7 @@ class BleService : Service() {
         private const val TAG = "NexoBleService"
         private const val NOTIFICATION_CHANNEL_ID = "nexo_ble_channel"
         private const val NOTIFICATION_ID = 1001
+        private const val MANUFACTURER_ID = 0xFFFF // Reserved for testing; replace for production
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
@@ -39,6 +40,8 @@ class BleService : Service() {
     private var txCharacteristic: BluetoothGattCharacteristic? = null
     private var rxCharacteristic: BluetoothGattCharacteristic? = null
     private val connectedDevices = mutableSetOf<BluetoothDevice>()
+    private var deviceUUID: String = ""
+    private var deviceName: String = "NEXO Device"
 
     override fun onCreate() {
         super.onCreate()
@@ -55,7 +58,7 @@ class BleService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
             startGattServer()
-            startAdvertising()
+            // Advertising se inicia en onStartCommand con los extras
         } catch (e: Exception) {
             Log.e(TAG, "Fatal error in onCreate", e)
             stopSelf()
@@ -64,10 +67,22 @@ class BleService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand action=${intent?.action}")
+        
+        // FIX v2.1-ARCH: Leer deviceUUID y deviceName de los extras
+        deviceUUID = intent?.getStringExtra("device_uuid") ?: ""
+        deviceName = intent?.getStringExtra("device_name") ?: "NEXO Device"
+        Log.i(TAG, "Identity loaded: UUID=${deviceUUID.take(8)}..., Name=$deviceName")
+
         when (intent?.action) {
             NexoBleSpec.ACTION_BLE_SEND_MESSAGE -> {
                 val msg = intent.getStringExtra(NexoBleSpec.EXTRA_MESSAGE_DATA) ?: ""
                 sendNotificationToAll(msg)
+            }
+            else -> {
+                // Iniciar advertising con la identidad recibida
+                if (deviceUUID.isNotEmpty()) {
+                    startAdvertising()
+                }
             }
         }
         return START_STICKY
@@ -134,12 +149,16 @@ class BleService : Service() {
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
                 .build()
 
+            // FIX v2.1-ARCH: Incluir deviceUUID en Manufacturer Specific Data
+            val payload = "NEXO|$deviceUUID|$deviceName".toByteArray(Charset.defaultCharset())
             val data = AdvertiseData.Builder()
                 .setIncludeDeviceName(true)
                 .addServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
+                .addManufacturerData(MANUFACTURER_ID, payload)
                 .build()
 
             bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
+            Log.i(TAG, "Advertising started with UUID ${deviceUUID.take(8)}...")
         } catch (e: Exception) {
             Log.e(TAG, "Error starting advertising", e)
         }
