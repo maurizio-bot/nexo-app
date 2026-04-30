@@ -1,7 +1,10 @@
 // ============================================================
-// NexoBlePlugin.kt v2.2-ARCH
+// NexoBlePlugin.kt v2.3-ARCH
 // Ubicacion: plugins/nexo-ble/android/.../NexoBlePlugin.kt
-// FIXES: Ordered stop with 300ms delay before killService to let S24 BLE stack cleanup.
+// FIXES: 
+//   1) stopAdvertising() envia ACTION_STOP_ADVERTISING + espera 1500ms antes de kill
+//   2) startAdvertising() pasa extras como antes
+//   3) Scan callback lee manufacturer data del scan response (result.scanRecord)
 // ============================================================
 package com.nexo.ble
 
@@ -311,7 +314,7 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // FIX v2.2-ARCH: Orderly stop advertising before killing service. S24 BLE stack needs ~300ms cleanup.
+    // FIX v2.3-ARCH: Ordenar stop con ACTION_STOP_ADVERTISING, esperar 1500ms, luego kill service
     @PluginMethod
     fun stopAdvertising(call: PluginCall) {
         remLog("INFO", "ADVERTISING", "stopAdvertising invoked")
@@ -329,7 +332,7 @@ class NexoBlePlugin : Plugin() {
                 } catch (e: Exception) {
                     remLog("WARN", "ADVERTISING", "Error in delayed stopService: ${e.message}")
                 }
-            }, 300)
+            }, 1500)
 
             call.resolve(JSObject().put("stopped", true))
         } catch (e: Exception) {
@@ -557,6 +560,7 @@ class NexoBlePlugin : Plugin() {
                 val macAddress = device.address
                 val rssi = result.rssi
 
+                // FIX v2.3-ARCH: Extraer deviceUUID del Manufacturer Specific Data del SCAN RESPONSE
                 var deviceUUID: String? = null
                 var advertisedName: String? = null
                 val scanRecord = result.scanRecord
@@ -810,4 +814,3 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 }
-
