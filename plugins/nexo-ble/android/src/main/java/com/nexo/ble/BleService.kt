@@ -1,8 +1,12 @@
 // ============================================================
-// BleService.kt v2.2-ARCH
+// BleService.kt v2.3-ARCH
 // Ubicacion: android/app/src/main/java/com/nexo/ble/BleService.kt
-// FIXES: Truncated payload, no duplicate device name, retry ALREADY_STARTED,
-//        ordered cleanup, nullify refs in onDestroy.
+// FIXES: 
+//   1) Manufacturer Data movido a SCAN RESPONSE (no al advertising principal)
+//   2) Advertising principal solo lleva Service UUID (siempre < 31 bytes)
+//   3) onCreate() reinicia advertising inmediatamente (arquitectura funcional)
+//   4) onStartCommand() actualiza identidad si llegan extras y reinicia adv
+//   5) Delay de 1500ms en retry ALREADY_STARTED para S24
 // ============================================================
 package com.nexo.ble
 
@@ -42,7 +46,6 @@ class BleService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val MANUFACTURER_ID = 0xFFFF
         const val ACTION_STOP_ADVERTISING = "com.nexo.ble.ACTION_STOP_ADVERTISING"
-        const val ACTION_START_ADVERTISING = "com.nexo.ble.ACTION_START_ADVERTISING"
         private const val ADVERTISE_FAILED_ALREADY_STARTED = 3
         private const val ADVERTISE_FAILED_DATA_TOO_LARGE = 1
     }
@@ -55,6 +58,7 @@ class BleService : Service() {
     private var deviceUUID: String = ""
     private var deviceName: String = "NEXO Device"
     private val serviceHandler = Handler(Looper.getMainLooper())
+    private var isAdvertisingActive = false
 
     override fun onCreate() {
         super.onCreate()
@@ -71,6 +75,9 @@ class BleService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
             startGattServer()
+            // FIX v2.3-ARCH: Iniciar advertising inmediatamente con identidad default
+            // Si no hay UUID aun, usamos nombre del dispositivo como fallback
+            startAdvertising()
         } catch (e: Exception) {
             Log.e(TAG, "Fatal error in onCreate", e)
             stopSelf()
@@ -80,20 +87,29 @@ class BleService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand action=${intent?.action}")
 
-        deviceUUID = intent?.getStringExtra("device_uuid") ?: ""
-        deviceName = intent?.getStringExtra("device_name") ?: "NEXO Device"
-        Log.i(TAG, "Identity loaded: UUID=${deviceUUID.take(8)}..., Name=$deviceName")
-
         when (intent?.action) {
             ACTION_STOP_ADVERTISING -> {
                 stopAdvertisingInternal()
+                return START_NOT_STICKY
             }
             NexoBleSpec.ACTION_BLE_SEND_MESSAGE -> {
                 val msg = intent.getStringExtra(NexoBleSpec.EXTRA_MESSAGE_DATA) ?: ""
                 sendNotificationToAll(msg)
             }
             else -> {
-                if (deviceUUID.isNotEmpty()) {
+                // Actualizar identidad si llegan extras y reiniciar advertising
+                val newUUID = intent?.getStringExtra("device_uuid") ?: ""
+                val newName = intent?.getStringExtra("device_name") ?: ""
+                if (newUUID.isNotEmpty()) {
+                    deviceUUID = newUUID
+                    deviceName = newName.ifEmpty { "NEXO Device" }
+                    Log.i(TAG, "Identity updated: UUID=${deviceUUID.take(8)}..., Name=$deviceName")
+                    if (isAdvertisingActive) {
+                        restartAdvertising()
+                    } else {
+                        startAdvertising()
+                    }
+                } else if (!isAdvertisingActive) {
                     startAdvertising()
                 }
             }
@@ -145,7 +161,8 @@ class BleService : Service() {
         }
     }
 
-    // FIX v2.2-ARCH: Stop any previous advertising first, truncate payload, no duplicate name.
+    // FIX v2.3-ARCH: Advertising principal SOLO con Service UUID (siempre < 31 bytes)
+    // Manufacturer Data con UUID va en SCAN RESPONSE (31 bytes adicionales)
     private fun startAdvertising() {
         try {
             stopAdvertisingInternal()
@@ -165,25 +182,42 @@ class BleService : Service() {
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
                 .build()
 
-            // Truncate payload to 20 bytes max to avoid DATA_TOO_LARGE on strict stacks (S24)
-            val rawPayload = "NEXO|$deviceUUID".toByteArray(Charset.defaultCharset())
-            val payload = if (rawPayload.size > 20) rawPayload.copyOfRange(0, 20) else rawPayload
-
-            val data = AdvertiseData.Builder()
-                .setIncludeDeviceName(false) // Name already embedded in payload, avoid duplication
+            // Packet principal: SOLO Service UUID. Nunca excede 31 bytes.
+            val advertiseData = AdvertiseData.Builder()
+                .setIncludeDeviceName(false)
                 .addServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
-                .addManufacturerData(MANUFACTURER_ID, payload)
                 .build()
 
-            bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
-            Log.i(TAG, "Advertising start requested with UUID ${deviceUUID.take(8)}...")
+            // Scan Response: Manufacturer Data con identidad NEXO (hasta 31 bytes)
+            val scanResponse = if (deviceUUID.isNotEmpty()) {
+                val rawPayload = "NEXO|$deviceUUID|$deviceName".toByteArray(Charset.defaultCharset())
+                // Truncar a 28 bytes max para dejar espacio a headers (3 bytes)
+                val payload = if (rawPayload.size > 28) rawPayload.copyOfRange(0, 28) else rawPayload
+                AdvertiseData.Builder()
+                    .addManufacturerData(MANUFACTURER_ID, payload)
+                    .build()
+            } else {
+                null
+            }
+
+            if (scanResponse != null) {
+                bluetoothLeAdvertiser?.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback)
+            } else {
+                bluetoothLeAdvertiser?.startAdvertising(settings, advertiseData, advertiseCallback)
+            }
+            Log.i(TAG, "Advertising start requested. UUID=${deviceUUID.take(8)}..., scanResponse=${scanResponse != null}")
         } catch (e: Exception) {
             Log.e(TAG, "Error starting advertising", e)
         }
     }
 
-    // FIX v2.2-ARCH: Ordered stop + nullify to free BLE stack resources.
+    private fun restartAdvertising() {
+        stopAdvertisingInternal()
+        serviceHandler.postDelayed({ startAdvertising() }, 300)
+    }
+
     private fun stopAdvertisingInternal() {
+        isAdvertisingActive = false
         try {
             bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
             Log.i(TAG, "Advertising stopped internally")
@@ -195,20 +229,22 @@ class BleService : Service() {
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+            isAdvertisingActive = true
             Log.i(TAG, "Advertising started successfully")
         }
         override fun onStartFailure(errorCode: Int) {
+            isAdvertisingActive = false
             Log.e(TAG, "Advertising failed: $errorCode")
             when (errorCode) {
                 ADVERTISE_FAILED_ALREADY_STARTED -> {
-                    Log.w(TAG, "ADVERTISE_FAILED_ALREADY_STARTED, retrying in 500ms...")
+                    Log.w(TAG, "ADVERTISE_FAILED_ALREADY_STARTED, retrying in 1500ms...")
                     stopAdvertisingInternal()
                     serviceHandler.postDelayed({
-                        if (deviceUUID.isNotEmpty()) startAdvertising()
-                    }, 500)
+                        if (deviceUUID.isNotEmpty() || bluetoothGattServer != null) startAdvertising()
+                    }, 1500)
                 }
                 ADVERTISE_FAILED_DATA_TOO_LARGE -> {
-                    Log.e(TAG, "ADVERTISE_FAILED_DATA_TOO_LARGE - reduce payload")
+                    Log.e(TAG, "ADVERTISE_FAILED_DATA_TOO_LARGE - reduce scanResponse payload")
                 }
             }
         }
@@ -309,9 +345,9 @@ class BleService : Service() {
             .build()
     }
 
-    // FIX v2.2-ARCH: Nullify refs after stopping to prevent stale state on S24.
     override fun onDestroy() {
         super.onDestroy()
+        isAdvertisingActive = false
         stopAdvertisingInternal()
         try { bluetoothGattServer?.close() } catch (e: Exception) { Log.w(TAG, "Close server error", e) }
         bluetoothGattServer = null
