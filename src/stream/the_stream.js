@@ -1,11 +1,12 @@
 /**
- * NEXO v9.0 - TheStream v2.6-ARCH
- * FIX v2.6-ARCH:
- *   1) data-message-id en bubble para que nexo_app.js encuentre mensajes propios
- *   2) Clase .pending + indicador visual cuando message.pending === true
- *   3) forceScroll option: ignora _shouldAutoScroll() para scroll agresivo
- *   4) appendItems acepta { forceScroll: true }
- *   5) scrollToBottom usa doble requestAnimationFrame
+ * NEXO v9.0 - TheStream v2.7-ARCH
+ * FIX v2.7-ARCH:
+ *   1) Deduplicación por messageId como clave primaria (no solo id)
+ *   2) Método updateMessageById() para transición pending→confirmed sin duplicados
+ *   3) Método confirmMessage() helper para nexo_app.js
+ *   4) Hash de contenido como fallback dedup para mensajes sin ID
+ *   5) Consistencia total: cache, data-message-id, y items[] usan messageId
+ *   6) Guardia anti-duplicado en _renderSingle usa messageId || contentHash
  */
 
 class TheStream {
@@ -26,7 +27,8 @@ class TheStream {
     this.actionCallbacks = options.actionCallbacks || {};
     this.resourceErrors = new Set();
     this.failedAvatars = new Set();
-    this.messageCache = new Map();
+    // FIX v2.7: Cache indexado por messageId (clave estable), no por id local
+    this.messageCache = new Map(); // messageId -> { id, timestamp, element }
     this.avatarColors = new Map();
     this.items = [];
     
@@ -44,7 +46,105 @@ class TheStream {
     this._injectStyles();
     this._setupResourceErrorInterceptor();
     
-    console.log('[TheStream] Initialized v2.6-ARCH');
+    console.log('[TheStream] Initialized v2.7-ARCH');
+  }
+
+  // FIX v2.7: Método centralizado para obtener la clave de dedup estable
+  _getDedupKey(message) {
+    // Prioridad 1: messageId (siempre estable, viene del servidor/NAT)
+    if (message.messageId) return `mid:${message.messageId}`;
+    // Prioridad 2: id explícito
+    if (message.id) return `id:${message.id}`;
+    // Prioridad 3: hash de contenido + sender + timestamp (aproximado a 10s)
+    const timeBucket = Math.floor((message.timestamp || Date.now()) / 10000);
+    const content = String(message.content || '').trim();
+    const sender = String(message.sender || '').trim();
+    return `hash:${this._simpleHash(content + '|' + sender + '|' + timeBucket)}`;
+  }
+
+  _simpleHash(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h) + str.charCodeAt(i);
+      h |= 0;
+    }
+    return Math.abs(h).toString(36);
+  }
+
+  // FIX v2.7: Actualizar mensaje existente sin crear duplicado
+  updateMessageById(messageId, updates) {
+    if (!messageId) {
+      console.warn('[TheStream] updateMessageById: messageId vacío');
+      return false;
+    }
+    
+    const cacheKey = `mid:${messageId}`;
+    const cached = this.messageCache.get(cacheKey);
+    
+    if (!cached || !cached.element) {
+      console.log('[TheStream] updateMessageById: no encontrado en cache, messageId=' + messageId);
+      return false;
+    }
+    
+    const bubble = cached.element;
+    
+    // Actualizar estado pending
+    if (updates.pending === false) {
+      bubble.classList.remove('pending');
+      bubble.classList.add('confirmed');
+      const indicator = bubble.querySelector('.pending-indicator');
+      if (indicator) indicator.remove();
+    }
+    
+    // Actualizar contenido si cambió
+    if (updates.content !== undefined) {
+      const contentDiv = bubble.querySelector('.stream-content');
+      if (contentDiv) contentDiv.textContent = updates.content;
+    }
+    
+    // Actualizar timestamp
+    if (updates.timestamp) {
+      const timeDiv = bubble.querySelector('.stream-time');
+      if (timeDiv) timeDiv.textContent = this._formatTime(updates.timestamp);
+    }
+    
+    // Actualizar senderName
+    if (updates.senderName) {
+      const nameDiv = bubble.querySelector('.stream-sender-name');
+      if (nameDiv) nameDiv.textContent = this._escapeHtml(updates.senderName);
+    }
+    
+    // Actualizar data en cache
+    cached.timestamp = Date.now();
+    this.messageCache.set(cacheKey, cached);
+    
+    console.log('[TheStream] updateMessageById: actualizado messageId=' + messageId);
+    return true;
+  }
+
+  // FIX v2.7: Helper específico para nexo_app.js — transición pending→confirmed
+  confirmMessage(messageId, options = {}) {
+    const found = this.updateMessageById(messageId, {
+      pending: false,
+      ...options
+    });
+    
+    if (!found && options.content) {
+      // Si no se encontró y hay contenido, puede ser que nunca se renderizó como pending
+      // En ese caso, renderizar directamente como confirmed
+      console.log('[TheStream] confirmMessage: no encontrado, renderizando nuevo confirmed');
+      this.appendItems({
+        messageId: messageId,
+        content: options.content,
+        sender: options.sender || 'Unknown',
+        senderName: options.senderName,
+        timestamp: options.timestamp || Date.now(),
+        pending: false,
+        isMe: options.isMe || false
+      }, { forceScroll: options.forceScroll });
+    }
+    
+    return found;
   }
 
   appendItems(items, options = {}) {
@@ -62,10 +162,7 @@ class TheStream {
     }
 
     const batch = Array.isArray(items) ? items : [items];
-    
-    if (batch.length === 0) {
-      return this;
-    }
+    if (batch.length === 0) return this;
 
     const sanitizedBatch = batch.map(item => this._sanitizeItem(item));
     
@@ -180,6 +277,7 @@ class TheStream {
         .stream-item { animation: fadeIn 0.3s ease-out; }
         .stream-item.pending { opacity: 0.6; }
         .stream-item.confirmed { opacity: 1; }
+        .pending-indicator { font-size: 11px; color: #ffaa00; margin-top: 4px; }
       `;
       document.head.appendChild(style);
     }
@@ -242,6 +340,7 @@ class TheStream {
       isMe: item.isMe || item.sender === 'Tú' || false,
       type: item.type || 'message',
       pending: item.pending || false,
+      // FIX v2.7: messageId es la clave estable. Si no viene, usamos id.
       messageId: item.messageId || item.id || null
     };
 
@@ -262,12 +361,20 @@ class TheStream {
   }
 
   _renderSingle(message, config) {
-    if (message.id && this.messageCache.has(message.id)) {
+    // FIX v2.7: Clave de dedup unificada
+    const dedupKey = this._getDedupKey(message);
+    
+    if (this.messageCache.has(dedupKey)) {
+      console.log(`[TheStream] DEDUP HIT key=${dedupKey}`);
+      // Si ya existe pero ahora viene como confirmed, actualizar en lugar de ignorar
+      const cached = this.messageCache.get(dedupKey);
+      if (message.pending === false && cached.element) {
+        cached.element.classList.remove('pending');
+        cached.element.classList.add('confirmed');
+        const indicator = cached.element.querySelector('.pending-indicator');
+        if (indicator) indicator.remove();
+      }
       return;
-    }
-
-    if (message.id) {
-      this.messageCache.set(message.id, Date.now());
     }
 
     const content = String(message.content || '').trim();
@@ -283,9 +390,9 @@ class TheStream {
       bubble.classList.add('pending');
     }
     
-    // FIX v2.6-ARCH: data-message-id para que nexo_app.js encuentre el mensaje
-    const msgId = message.messageId || message.id || this._generateId();
-    const safeId = this._escapeAttr(String(msgId));
+    // FIX v2.7: data-message-id SIEMPRE usa messageId (clave estable)
+    const stableId = message.messageId || message.id || this._generateId();
+    const safeId = this._escapeAttr(String(stableId));
     bubble.setAttribute('data-message-id', safeId);
     
     bubble.style.cssText = `
@@ -298,14 +405,13 @@ class TheStream {
     `;
     
     const avatarSrc = this._getSafeAvatar(message.senderName || message.sender, isMe);
-    
     const displayName = message.senderName || message.sender || 'NEXO Peer';
     
-    // FIX v2.6-ARCH: Indicador visual de pending
     const pendingIndicator = message.pending 
-      ? '<div class="pending-indicator" style="font-size: 11px; color: #ffaa00; margin-top: 4px;">⏳ Enviando...</div>' 
+      ? '<div class="pending-indicator">⏳ Enviando...</div>' 
       : '';
     
+    // FIX v2.7: Clases CSS específicas para selección segura desde nexo_app.js
     bubble.innerHTML = `
       <img 
         src="${avatarSrc}" 
@@ -317,13 +423,13 @@ class TheStream {
         class="stream-avatar"
       >
       <div style="flex: 1; min-width: 0;">
-        <div style="font-weight: 600; color: #fff; font-size: 14px; margin-bottom: 4px;">
+        <div class="stream-sender-name" style="font-weight: 600; color: #fff; font-size: 14px; margin-bottom: 4px;">
           ${this._escapeHtml(displayName)}
         </div>
-        <div style="color: #ddd; line-height: 1.4; word-break: break-word;">
+        <div class="stream-content" style="color: #ddd; line-height: 1.4; word-break: break-word;">
           ${this._escapeHtml(content)}
         </div>
-        <div style="font-size: 11px; color: #888; margin-top: 4px;">
+        <div class="stream-time" style="font-size: 11px; color: #888; margin-top: 4px;">
           ${this._formatTime(message.timestamp)}
         </div>
         ${pendingIndicator}
@@ -373,6 +479,14 @@ class TheStream {
     } else {
       this.container.appendChild(bubble);
     }
+
+    // FIX v2.7: Guardar en cache con referencia al elemento DOM
+    this.messageCache.set(dedupKey, {
+      id: message.id,
+      messageId: message.messageId,
+      timestamp: Date.now(),
+      element: bubble
+    });
 
     this.renderedCount++;
   }
