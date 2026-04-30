@@ -1,6 +1,7 @@
 // ============================================================
-// NexoBlePlugin.kt — VERSIÓN FUNCIONAL build #961
+// NexoBlePlugin.kt — COMPILABLE sin dependencias cruzadas
 // plugins/nexo-ble/android/.../NexoBlePlugin.kt
+// FIX: Class.forName para BleService, strings literales para UUIDs/actions
 // ============================================================
 package com.nexo.ble
 
@@ -38,6 +39,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import java.nio.charset.Charset
+import java.util.UUID
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -56,6 +58,19 @@ class NexoBlePlugin : Plugin() {
     companion object {
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
+        private const val BLE_SERVICE_CLASS = "com.nexo.ble.BleService"
+
+        // UUIDs y actions inline (evita dependencia de NexoBleSpec.kt en módulo :app)
+        private val NEXO_SERVICE_UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+        private val TX_CHARACTERISTIC_UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
+        private val RX_CHARACTERISTIC_UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
+        private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+        private const val ACTION_BLE_SEND_MESSAGE = "com.nexo.ble.ACTION_BLE_SEND_MESSAGE"
+        private const val ACTION_BLE_MESSAGE_RECEIVED = "com.nexo.ble.ACTION_BLE_MESSAGE_RECEIVED"
+        private const val ACTION_BLE_DEVICE_CONNECTED = "com.nexo.ble.ACTION_BLE_DEVICE_CONNECTED"
+        private const val ACTION_BLE_DEVICE_DISCONNECTED = "com.nexo.ble.ACTION_BLE_DEVICE_DISCONNECTED"
+        private const val EXTRA_MESSAGE_DATA = "message_data"
+        private const val EXTRA_DEVICE_ADDRESS = "device_address"
     }
 
     private var messageReceiver: BroadcastReceiver? = null
@@ -67,6 +82,8 @@ class NexoBlePlugin : Plugin() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private val connectedDevicesMap = mutableMapOf<String, JSObject>()
+
+    private fun getBleServiceClass(): Class<*> = Class.forName(BLE_SERVICE_CLASS)
 
     private fun remLog(level: String, tag: String, message: String) {
         Log.i("NEXO_REM", "[$level][$tag] $message")
@@ -167,7 +184,7 @@ class NexoBlePlugin : Plugin() {
         val alreadyGranted = checkCoreBLEPermissions(ctx)
 
         if (alreadyGranted) {
-            remLog("INFO", "PERMISSIONS", "Permisos ya concedidos. NO inicio Service aquí (evita crash post-Settings).")
+            remLog("INFO", "PERMISSIONS", "Permisos ya concedidos.")
             notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "permissions_already_granted"))
             call.resolve(JSObject().put("granted", true).put("isPermanentlyDenied", false))
             return
@@ -239,9 +256,9 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    private fun isServiceRunning(ctx: Context, serviceClass: Class<*>): Boolean {
+    private fun isServiceRunning(ctx: Context, serviceClassName: String): Boolean {
         val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        return manager.getRunningServices(Integer.MAX_VALUE).any { it.service.className == serviceClass.name }
+        return manager.getRunningServices(Integer.MAX_VALUE).any { it.service.className == serviceClassName }
     }
 
     @PluginMethod
@@ -266,7 +283,7 @@ class NexoBlePlugin : Plugin() {
         }
 
         try {
-            val intent = Intent(context, BleService::class.java)
+            val intent = Intent(context, getBleServiceClass())
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
@@ -288,7 +305,7 @@ class NexoBlePlugin : Plugin() {
         remLog("INFO", "ADVERTISING", "stopAdvertising invoked")
         val context = activity.applicationContext
         try {
-            context.stopService(Intent(context, BleService::class.java))
+            context.stopService(Intent(context, getBleServiceClass()))
             unregisterServerReceivers()
             call.resolve(JSObject().put("stopped", true))
         } catch (e: Exception) {
@@ -300,7 +317,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun isAdvertising(call: PluginCall) {
         val ctx = activity.applicationContext
-        val running = isServiceRunning(ctx, BleService::class.java)
+        val running = isServiceRunning(ctx, BLE_SERVICE_CLASS)
         call.resolve(JSObject().put("isAdvertising", running))
     }
 
@@ -318,7 +335,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject()
             .put("enabled", enabled)
             .put("canAdvertise", canAdvertise && permsOk)
-            .put("serverReady", isServiceRunning(ctx, BleService::class.java))
+            .put("serverReady", isServiceRunning(ctx, BLE_SERVICE_CLASS))
         )
     }
 
@@ -358,8 +375,8 @@ class NexoBlePlugin : Plugin() {
         }
 
         val context = activity.applicationContext
-        val intent = Intent(NexoBleSpec.ACTION_BLE_SEND_MESSAGE).apply {
-            putExtra(NexoBleSpec.EXTRA_MESSAGE_DATA, message)
+        val intent = Intent(ACTION_BLE_SEND_MESSAGE).apply {
+            putExtra(EXTRA_MESSAGE_DATA, message)
             setPackage(context.packageName)
         }
         context.sendBroadcast(intent)
@@ -391,7 +408,7 @@ class NexoBlePlugin : Plugin() {
         scanResults.clear()
 
         val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
+            .setServiceUuid(ParcelUuid(NEXO_SERVICE_UUID))
             .build()
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
@@ -574,7 +591,7 @@ class NexoBlePlugin : Plugin() {
                 )
                 return
             }
-            val service = gatt.getService(NexoBleSpec.NEXO_SERVICE_UUID) ?: run {
+            val service = gatt.getService(NEXO_SERVICE_UUID) ?: run {
                 notifyListeners("onConnectionFailed", JSObject()
                     .put("deviceId", address)
                     .put("reason", "NEXO service not found")
@@ -583,12 +600,12 @@ class NexoBlePlugin : Plugin() {
                 return
             }
 
-            clientTxCharacteristic = service.getCharacteristic(NexoBleSpec.TX_CHARACTERISTIC_UUID)
-            clientRxCharacteristic = service.getCharacteristic(NexoBleSpec.RX_CHARACTERISTIC_UUID)
+            clientTxCharacteristic = service.getCharacteristic(TX_CHARACTERISTIC_UUID)
+            clientRxCharacteristic = service.getCharacteristic(RX_CHARACTERISTIC_UUID)
 
             clientTxCharacteristic?.let { characteristic ->
                 gatt.setCharacteristicNotification(characteristic, true)
-                val descriptor = characteristic.getDescriptor(NexoBleSpec.CCCD_UUID)
+                val descriptor = characteristic.getDescriptor(CCCD_UUID)
                 if (descriptor != null) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
@@ -606,7 +623,7 @@ class NexoBlePlugin : Plugin() {
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             val address = gatt.device?.address ?: ""
             remLog("INFO", "GATT", "onDescriptorWrite $address uuid=${descriptor.uuid} status=$status")
-            if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
+            if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == CCCD_UUID) {
                 notifyListeners("onNotificationsEnabled", JSObject()
                     .put("deviceId", address)
                     .put("notificationsEnabled", true)
@@ -616,7 +633,7 @@ class NexoBlePlugin : Plugin() {
 
         @Suppress("DEPRECATION")
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
+            if (characteristic.uuid == TX_CHARACTERISTIC_UUID) {
                 val message = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
                 val address = gatt.device?.address ?: ""
                 remLog("INFO", "GATT", "Received (legacy) from $address: $message")
@@ -632,7 +649,7 @@ class NexoBlePlugin : Plugin() {
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
-            if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
+            if (characteristic.uuid == TX_CHARACTERISTIC_UUID) {
                 val message = value.toString(Charset.defaultCharset())
                 val address = gatt.device?.address ?: ""
                 remLog("INFO", "GATT", "Received (API33+) from $address: $message")
@@ -656,9 +673,9 @@ class NexoBlePlugin : Plugin() {
         messageReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 when (intent.action) {
-                    NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED -> {
-                        val msg = intent.getStringExtra(NexoBleSpec.EXTRA_MESSAGE_DATA) ?: ""
-                        val device = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
+                    ACTION_BLE_MESSAGE_RECEIVED -> {
+                        val msg = intent.getStringExtra(EXTRA_MESSAGE_DATA) ?: ""
+                        val device = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: ""
                         remLog("INFO", "RECEIVER", "MSG from $device: $msg")
                         notifyListeners("onPayloadReceived", JSObject()
                             .put("deviceId", device)
@@ -669,8 +686,8 @@ class NexoBlePlugin : Plugin() {
                             .put("timestamp", System.currentTimeMillis())
                         )
                     }
-                    NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
-                        val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
+                    ACTION_BLE_DEVICE_CONNECTED -> {
+                        val addr = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: ""
                         remLog("INFO", "RECEIVER", "Device connected: $addr")
                         connectedDevicesMap[addr] = JSObject()
                             .put("id", addr).put("address", addr)
@@ -682,8 +699,8 @@ class NexoBlePlugin : Plugin() {
                             .put("servicesReady", true)
                         )
                     }
-                    NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED -> {
-                        val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
+                    ACTION_BLE_DEVICE_DISCONNECTED -> {
+                        val addr = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: ""
                         remLog("INFO", "RECEIVER", "Device disconnected: $addr")
                         connectedDevicesMap.remove(addr)
                         notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", addr))
@@ -693,9 +710,9 @@ class NexoBlePlugin : Plugin() {
         }
 
         val filter = IntentFilter().apply {
-            addAction(NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED)
-            addAction(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED)
-            addAction(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED)
+            addAction(ACTION_BLE_MESSAGE_RECEIVED)
+            addAction(ACTION_BLE_DEVICE_CONNECTED)
+            addAction(ACTION_BLE_DEVICE_DISCONNECTED)
         }
 
         try {
@@ -739,4 +756,3 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 }
-
