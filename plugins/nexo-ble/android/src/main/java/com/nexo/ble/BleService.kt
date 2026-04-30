@@ -1,12 +1,6 @@
 // ============================================================
-// BleService.kt v2.3-ARCH
-// Ubicacion: android/app/src/main/java/com/nexo/ble/BleService.kt
-// FIXES: 
-//   1) Manufacturer Data movido a SCAN RESPONSE (no al advertising principal)
-//   2) Advertising principal solo lleva Service UUID (siempre < 31 bytes)
-//   3) onCreate() reinicia advertising inmediatamente (arquitectura funcional)
-//   4) onStartCommand() actualiza identidad si llegan extras y reinicia adv
-//   5) Delay de 1500ms en retry ALREADY_STARTED para S24
+// BleService.kt — VERSIÓN FUNCIONAL build #961
+// android/app/src/main/java/com/nexo/ble/BleService.kt
 // ============================================================
 package com.nexo.ble
 
@@ -30,9 +24,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -44,10 +36,6 @@ class BleService : Service() {
         private const val TAG = "NexoBleService"
         private const val NOTIFICATION_CHANNEL_ID = "nexo_ble_channel"
         private const val NOTIFICATION_ID = 1001
-        private const val MANUFACTURER_ID = 0xFFFF
-        const val ACTION_STOP_ADVERTISING = "com.nexo.ble.ACTION_STOP_ADVERTISING"
-        private const val ADVERTISE_FAILED_ALREADY_STARTED = 3
-        private const val ADVERTISE_FAILED_DATA_TOO_LARGE = 1
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
@@ -55,10 +43,6 @@ class BleService : Service() {
     private var txCharacteristic: BluetoothGattCharacteristic? = null
     private var rxCharacteristic: BluetoothGattCharacteristic? = null
     private val connectedDevices = mutableSetOf<BluetoothDevice>()
-    private var deviceUUID: String = ""
-    private var deviceName: String = "NEXO Device"
-    private val serviceHandler = Handler(Looper.getMainLooper())
-    private var isAdvertisingActive = false
 
     override fun onCreate() {
         super.onCreate()
@@ -75,8 +59,6 @@ class BleService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
             startGattServer()
-            // FIX v2.3-ARCH: Iniciar advertising inmediatamente con identidad default
-            // Si no hay UUID aun, usamos nombre del dispositivo como fallback
             startAdvertising()
         } catch (e: Exception) {
             Log.e(TAG, "Fatal error in onCreate", e)
@@ -86,32 +68,10 @@ class BleService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand action=${intent?.action}")
-
         when (intent?.action) {
-            ACTION_STOP_ADVERTISING -> {
-                stopAdvertisingInternal()
-                return START_NOT_STICKY
-            }
             NexoBleSpec.ACTION_BLE_SEND_MESSAGE -> {
                 val msg = intent.getStringExtra(NexoBleSpec.EXTRA_MESSAGE_DATA) ?: ""
                 sendNotificationToAll(msg)
-            }
-            else -> {
-                // Actualizar identidad si llegan extras y reiniciar advertising
-                val newUUID = intent?.getStringExtra("device_uuid") ?: ""
-                val newName = intent?.getStringExtra("device_name") ?: ""
-                if (newUUID.isNotEmpty()) {
-                    deviceUUID = newUUID
-                    deviceName = newName.ifEmpty { "NEXO Device" }
-                    Log.i(TAG, "Identity updated: UUID=${deviceUUID.take(8)}..., Name=$deviceName")
-                    if (isAdvertisingActive) {
-                        restartAdvertising()
-                    } else {
-                        startAdvertising()
-                    }
-                } else if (!isAdvertisingActive) {
-                    startAdvertising()
-                }
             }
         }
         return START_STICKY
@@ -161,12 +121,8 @@ class BleService : Service() {
         }
     }
 
-    // FIX v2.3-ARCH: Advertising principal SOLO con Service UUID (siempre < 31 bytes)
-    // Manufacturer Data con UUID va en SCAN RESPONSE (31 bytes adicionales)
     private fun startAdvertising() {
         try {
-            stopAdvertisingInternal()
-
             val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = bluetoothManager.adapter
             if (adapter == null || !adapter.isEnabled) {
@@ -182,71 +138,23 @@ class BleService : Service() {
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
                 .build()
 
-            // Packet principal: SOLO Service UUID. Nunca excede 31 bytes.
-            val advertiseData = AdvertiseData.Builder()
-                .setIncludeDeviceName(false)
+            val data = AdvertiseData.Builder()
+                .setIncludeDeviceName(true)
                 .addServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
                 .build()
 
-            // Scan Response: Manufacturer Data con identidad NEXO (hasta 31 bytes)
-            val scanResponse = if (deviceUUID.isNotEmpty()) {
-                val rawPayload = "NEXO|$deviceUUID|$deviceName".toByteArray(Charset.defaultCharset())
-                // Truncar a 28 bytes max para dejar espacio a headers (3 bytes)
-                val payload = if (rawPayload.size > 28) rawPayload.copyOfRange(0, 28) else rawPayload
-                AdvertiseData.Builder()
-                    .addManufacturerData(MANUFACTURER_ID, payload)
-                    .build()
-            } else {
-                null
-            }
-
-            if (scanResponse != null) {
-                bluetoothLeAdvertiser?.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback)
-            } else {
-                bluetoothLeAdvertiser?.startAdvertising(settings, advertiseData, advertiseCallback)
-            }
-            Log.i(TAG, "Advertising start requested. UUID=${deviceUUID.take(8)}..., scanResponse=${scanResponse != null}")
+            bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
         } catch (e: Exception) {
             Log.e(TAG, "Error starting advertising", e)
         }
     }
 
-    private fun restartAdvertising() {
-        stopAdvertisingInternal()
-        serviceHandler.postDelayed({ startAdvertising() }, 300)
-    }
-
-    private fun stopAdvertisingInternal() {
-        isAdvertisingActive = false
-        try {
-            bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-            Log.i(TAG, "Advertising stopped internally")
-        } catch (e: Exception) {
-            Log.w(TAG, "Stop adv internal error", e)
-        }
-        bluetoothLeAdvertiser = null
-    }
-
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            isAdvertisingActive = true
-            Log.i(TAG, "Advertising started successfully")
+            Log.i(TAG, "Advertising started")
         }
         override fun onStartFailure(errorCode: Int) {
-            isAdvertisingActive = false
             Log.e(TAG, "Advertising failed: $errorCode")
-            when (errorCode) {
-                ADVERTISE_FAILED_ALREADY_STARTED -> {
-                    Log.w(TAG, "ADVERTISE_FAILED_ALREADY_STARTED, retrying in 1500ms...")
-                    stopAdvertisingInternal()
-                    serviceHandler.postDelayed({
-                        if (deviceUUID.isNotEmpty() || bluetoothGattServer != null) startAdvertising()
-                    }, 1500)
-                }
-                ADVERTISE_FAILED_DATA_TOO_LARGE -> {
-                    Log.e(TAG, "ADVERTISE_FAILED_DATA_TOO_LARGE - reduce scanResponse payload")
-                }
-            }
         }
     }
 
@@ -347,12 +255,9 @@ class BleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        isAdvertisingActive = false
-        stopAdvertisingInternal()
+        try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { Log.w(TAG, "Stop adv error", e) }
         try { bluetoothGattServer?.close() } catch (e: Exception) { Log.w(TAG, "Close server error", e) }
-        bluetoothGattServer = null
         connectedDevices.clear()
-        serviceHandler.removeCallbacksAndMessages(null)
         Log.i(TAG, "Destroyed")
     }
 }
