@@ -1,10 +1,6 @@
 // ============================================================
-// NexoBlePlugin.kt v2.3-ARCH
-// Ubicacion: plugins/nexo-ble/android/.../NexoBlePlugin.kt
-// FIXES: 
-//   1) stopAdvertising() envia ACTION_STOP_ADVERTISING + espera 1500ms antes de kill
-//   2) startAdvertising() pasa extras como antes
-//   3) Scan callback lee manufacturer data del scan response (result.scanRecord)
+// NexoBlePlugin.kt — VERSIÓN FUNCIONAL build #961
+// plugins/nexo-ble/android/.../NexoBlePlugin.kt
 // ============================================================
 package com.nexo.ble
 
@@ -60,9 +56,6 @@ class NexoBlePlugin : Plugin() {
     companion object {
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
-        private const val MANUFACTURER_ID = 0xFFFF
-        private const val PREFS_NAME = "nexo_ble_prefs"
-        private const val PREF_DEVICE_UUID = "device_uuid"
     }
 
     private var messageReceiver: BroadcastReceiver? = null
@@ -74,25 +67,6 @@ class NexoBlePlugin : Plugin() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private val connectedDevicesMap = mutableMapOf<String, JSObject>()
-
-    private fun getOrCreateDeviceUUID(): String {
-        val prefs = activity.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        var uuid = prefs.getString(PREF_DEVICE_UUID, null)
-        if (uuid == null) {
-            uuid = java.util.UUID.randomUUID().toString()
-            prefs.edit().putString(PREF_DEVICE_UUID, uuid).apply()
-            remLog("INFO", "IDENTITY", "Nuevo deviceUUID generado: ${uuid.take(8)}...")
-        } else {
-            remLog("DEBUG", "IDENTITY", "DeviceUUID existente: ${uuid.take(8)}...")
-        }
-        return uuid
-    }
-
-    private fun getLocalDeviceName(): String {
-        val context = activity.applicationContext
-        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        return bluetoothManager.adapter?.name ?: "NEXO Device"
-    }
 
     private fun remLog(level: String, tag: String, message: String) {
         Log.i("NEXO_REM", "[$level][$tag] $message")
@@ -140,7 +114,7 @@ class NexoBlePlugin : Plugin() {
     fun checkBLEStatus(call: PluginCall) {
         remLog("INFO", "PERMISSIONS", "checkBLEStatus invoked")
         val ctx = activity.applicationContext
-        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = ctx.getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE)
         val result = JSObject()
 
         val scanGranted = isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)
@@ -193,13 +167,13 @@ class NexoBlePlugin : Plugin() {
         val alreadyGranted = checkCoreBLEPermissions(ctx)
 
         if (alreadyGranted) {
-            remLog("INFO", "PERMISSIONS", "Permisos ya concedidos.")
+            remLog("INFO", "PERMISSIONS", "Permisos ya concedidos. NO inicio Service aquí (evita crash post-Settings).")
             notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "permissions_already_granted"))
             call.resolve(JSObject().put("granted", true).put("isPermanentlyDenied", false))
             return
         }
 
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ctx.getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE)
             .edit().putBoolean("ble_permissions_asked", true).apply()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -292,19 +266,14 @@ class NexoBlePlugin : Plugin() {
         }
 
         try {
-            val deviceUUID = getOrCreateDeviceUUID()
-            val deviceName = getLocalDeviceName()
-            val intent = Intent(context, BleService::class.java).apply {
-                putExtra("device_uuid", deviceUUID)
-                putExtra("device_name", deviceName)
-            }
+            val intent = Intent(context, BleService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
                 context.startService(intent)
             }
             registerServerReceivers()
-            remLog("INFO", "ADVERTISING", "Service started OK with UUID ${deviceUUID.take(8)}...")
+            remLog("INFO", "ADVERTISING", "Service started OK")
             notifyListeners("onAdvertiseStarted", JSObject().put("started", true))
             call.resolve(JSObject().put("started", true))
         } catch (e: Exception) {
@@ -314,26 +283,13 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // FIX v2.3-ARCH: Ordenar stop con ACTION_STOP_ADVERTISING, esperar 1500ms, luego kill service
     @PluginMethod
     fun stopAdvertising(call: PluginCall) {
         remLog("INFO", "ADVERTISING", "stopAdvertising invoked")
         val context = activity.applicationContext
         try {
-            val stopIntent = Intent(context, BleService::class.java).apply {
-                action = BleService.ACTION_STOP_ADVERTISING
-            }
-            context.startService(stopIntent)
-
-            mainHandler.postDelayed({
-                try {
-                    context.stopService(Intent(context, BleService::class.java))
-                    unregisterServerReceivers()
-                } catch (e: Exception) {
-                    remLog("WARN", "ADVERTISING", "Error in delayed stopService: ${e.message}")
-                }
-            }, 1500)
-
+            context.stopService(Intent(context, BleService::class.java))
+            unregisterServerReceivers()
             call.resolve(JSObject().put("stopped", true))
         } catch (e: Exception) {
             remLog("ERROR", "ADVERTISING", "Error stopping: ${e.message}")
@@ -373,12 +329,7 @@ class NexoBlePlugin : Plugin() {
         val adapter = bluetoothManager.adapter
         val name = adapter?.name ?: "NEXO Device"
         val address = try { adapter?.address ?: "" } catch (e: SecurityException) { "" }
-        val deviceUUID = getOrCreateDeviceUUID()
-        call.resolve(JSObject()
-            .put("deviceName", name)
-            .put("deviceAddress", address)
-            .put("deviceUUID", deviceUUID)
-        )
+        call.resolve(JSObject().put("deviceName", name).put("deviceAddress", address))
     }
 
     @PluginMethod
@@ -557,42 +508,16 @@ class NexoBlePlugin : Plugin() {
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result?.device?.let { device ->
-                val macAddress = device.address
-                val rssi = result.rssi
-
-                // FIX v2.3-ARCH: Extraer deviceUUID del Manufacturer Specific Data del SCAN RESPONSE
-                var deviceUUID: String? = null
-                var advertisedName: String? = null
-                val scanRecord = result.scanRecord
-                if (scanRecord != null) {
-                    val manufacturerData = scanRecord.getManufacturerSpecificData(MANUFACTURER_ID)
-                    if (manufacturerData != null && manufacturerData.isNotEmpty()) {
-                        try {
-                            val payload = String(manufacturerData, Charset.defaultCharset())
-                            val parts = payload.split("|")
-                            if (parts.size >= 2 && parts[0] == "NEXO") {
-                                deviceUUID = parts[1]
-                                advertisedName = if (parts.size >= 3) parts[2] else null
-                            }
-                        } catch (e: Exception) {
-                            remLog("WARN", "SCAN", "Error parsing manufacturer data: ${e.message}")
-                        }
-                    }
-                }
-
-                val displayName = advertisedName ?: try { device.name } catch (e: SecurityException) { null } ?: "NEXO Peer"
-                val identityKey = deviceUUID ?: macAddress
-
-                if (scanResults.none { it.getString("deviceId") == identityKey }) {
+                val name = try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
+                val addr = device.address
+                if (scanResults.none { it.getString("deviceId") == addr }) {
                     val item = JSObject().apply {
-                        put("deviceId", identityKey)
-                        put("address", macAddress)
-                        put("deviceUUID", deviceUUID ?: "")
-                        put("name", displayName)
-                        put("rssi", rssi)
+                        put("deviceId", addr)
+                        put("name", name)
+                        put("rssi", result.rssi)
                     }
                     scanResults.add(item)
-                    remLog("INFO", "SCAN", "Device found: $displayName (UUID=${deviceUUID?.take(8) ?: "none"}, MAC=$macAddress)")
+                    remLog("INFO", "SCAN", "Device found: $name ($addr)")
                     notifyListeners("onDeviceFound", item)
                 }
             }
@@ -814,3 +739,4 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 }
+
