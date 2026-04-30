@@ -1,11 +1,12 @@
 /**
- * BLE Interface v3.7.4-ARCH
+ * BLE Interface v3.8.0-ARCH
  * Ubicacion: src/ui/ble_interface.js
- * FIX v3.7.4-ARCH:
- *   1) Re-registro defensivo de listeners de escaneo antes de startScan()
- *      y tras initializeBLE() en toggleVisibility(), para recuperar listeners
- *      que el stack nativo invalida al reiniciar GATT/Advertising.
- *   2) Todo lo demás permanece intacto de v3.7.3.
+ * FIX v3.8.0-ARCH:
+ *   1) deviceUUID como clave primaria de contacto (no MAC).
+ *   2) MAC solo se guarda como lastSeenMac para reconectar.
+ *   3) Merge automatico cuando mismo UUID aparece con MAC diferente.
+ *   4) Compatibilidad con contactos legacy sin deviceUUID (migracion gradual).
+ *   5) Re-registro defensivo de listeners de escaneo (heredado v3.7.4).
  */
 
 export function initBLEInterface(bleMesh) {
@@ -15,7 +16,7 @@ export function initBLEInterface(bleMesh) {
 }
 
 const BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v1';
-const BLE_MESSAGE_FP_TTL = 60000; // 60s para mensajes BLE (retransmisiones pueden tardar)
+const BLE_MESSAGE_FP_TTL = 60000;
 
 function _normId(id) {
   if (!id) return '';
@@ -43,47 +44,69 @@ function _getBLEContacts() {
   } catch (e) { return []; }
 }
 
-// FIX v3.7.3: MAC es clave primaria INMUTABLE. Nunca sobreescribimos por nombre auto-detectado.
+// FIX v3.8.0-ARCH: deviceUUID es clave primaria. MAC solo es lastSeenMac.
 function _addBLEContact(device) {
   const contacts = _getBLEContacts();
+  const deviceUUID = device.deviceUUID || null;
   const mac = _normId(device.id || device.address);
-  if (!mac) return false;
-
-  const existingIndex = contacts.findIndex(c => _normId(c.id || c.address || c.macAddress) === mac);
+  
+  // Buscar existente: primero por UUID, luego por MAC (legacy fallback)
+  let existingIndex = -1;
+  if (deviceUUID) {
+    existingIndex = contacts.findIndex(c => c.deviceUUID && c.deviceUUID === deviceUUID);
+  }
+  if (existingIndex < 0 && mac) {
+    existingIndex = contacts.findIndex(c => _normId(c.id || c.address || c.macAddress) === mac);
+  }
+  
   if (existingIndex >= 0) {
     const existing = contacts[existingIndex];
-    // FIX v3.7.3: Solo actualizar nombre si NO esta bloqueado manualmente
+    // Merge: actualizar UUID si antes no lo tenia
+    if (deviceUUID && !existing.deviceUUID) {
+      existing.deviceUUID = deviceUUID;
+      existing.id = deviceUUID;
+    }
+    // Actualizar nombre solo si no esta bloqueado manualmente
     if (!existing.nameLocked && device.name && device.name !== existing.name && device.name !== 'NEXO Device') {
       existing.name = device.name;
     }
+    // Actualizar MAC de reconexion (siempre, porque la MAC randomizada cambia)
+    if (mac) {
+      existing.lastSeenMac = mac;
+      existing.address = mac;
+      existing.macAddress = mac;
+    }
     existing.rssi = device.rssi || existing.rssi;
     existing.updatedAt = Date.now();
-    existing.macAddress = mac;
-    existing.id = mac;
-    existing.address = mac;
     localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
     return true;
   }
 
-  contacts.push({
-    id: mac,
-    address: mac,
-    macAddress: mac,
+  if (!deviceUUID && !mac) return false;
+
+  const newContact = {
+    id: deviceUUID || mac,
+    deviceUUID: deviceUUID || null,
+    address: mac || '',
+    macAddress: mac || '',
+    lastSeenMac: mac || '',
     name: device.name || 'NEXO Device',
     nameLocked: false,
     rssi: device.rssi || null,
     addedAt: Date.now(),
     updatedAt: Date.now()
-  });
+  };
+  contacts.push(newContact);
   localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
   return true;
 }
 
-// FIX v3.7.3: Renombrar contacto manualmente — bloquea sobrescritura automatica
-function _renameBLEContact(mac, newName) {
+function _renameBLEContact(identity, newName) {
   const contacts = _getBLEContacts();
-  const normalizedMac = _normId(mac);
-  const idx = contacts.findIndex(c => _normId(c.id || c.address || c.macAddress) === normalizedMac);
+  const idx = contacts.findIndex(c => 
+    (c.deviceUUID && c.deviceUUID === identity) || 
+    _normId(c.id || c.address || c.macAddress) === _normId(identity)
+  );
   if (idx >= 0) {
     contacts[idx].name = newName;
     contacts[idx].nameLocked = true;
@@ -96,23 +119,33 @@ function _renameBLEContact(mac, newName) {
 
 function _removeBLEContact(deviceId) {
   const nid = _normId(deviceId);
-  const contacts = _getBLEContacts().filter(c => _normId(c.id || c.address || c.macAddress) !== nid);
+  const contacts = _getBLEContacts().filter(c => 
+    c.deviceUUID !== deviceId &&
+    _normId(c.id || c.address || c.macAddress) !== nid
+  );
   localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
 }
 
 function _isBLEContact(deviceId) {
-  return _getBLEContacts().some(c => _normId(c.id || c.address || c.macAddress) === _normId(deviceId));
+  return _getBLEContacts().some(c => 
+    c.deviceUUID === deviceId || 
+    _normId(c.id || c.address || c.macAddress) === _normId(deviceId)
+  );
 }
 
 function _getContactName(deviceId) {
-  const nid = _normId(deviceId);
-  const c = _getBLEContacts().find(c => _normId(c.id || c.address || c.macAddress) === nid);
+  const c = _getBLEContacts().find(c => 
+    c.deviceUUID === deviceId || 
+    _normId(c.id || c.address || c.macAddress) === _normId(deviceId)
+  );
   return c?.name || null;
 }
 
-function _getContactByMac(deviceId) {
-  const nid = _normId(deviceId);
-  return _getBLEContacts().find(c => _normId(c.id || c.address || c.macAddress) === nid) || null;
+function _getContactByIdentity(deviceId) {
+  return _getBLEContacts().find(c => 
+    c.deviceUUID === deviceId || 
+    _normId(c.id || c.address || c.macAddress) === _normId(deviceId)
+  ) || null;
 }
 
 const BLE_STATES = {
@@ -142,9 +175,9 @@ export class BLEInterface {
     this.canAdvertise = false;
     this.localDeviceName = 'NEXO Device';
     this.localDeviceAddress = null;
+    this.localDeviceUUID = null;
     this._activeChatDeviceId = null;
     this._deviceStates = new Map();
-    // FIX v3.7.3: Map con timestamp para TTL automatico
     this._receivedMessageIds = new Map();
     this._maxMessageIds = 1000;
     this._pendingMessageQueue = new Map();
@@ -191,12 +224,11 @@ export class BLEInterface {
   }
 
   getBLEContact(deviceId) {
-    return _getContactByMac(deviceId);
+    return _getContactByIdentity(deviceId);
   }
 
-  // FIX v3.7.3: Exponer rename para UI
-  renameContact(mac, newName) {
-    return _renameBLEContact(mac, newName);
+  renameContact(identity, newName) {
+    return _renameBLEContact(identity, newName);
   }
 
   async _loadLocalDeviceInfo() {
@@ -205,6 +237,7 @@ export class BLEInterface {
       const info = await this.nativePlugin.getLocalDeviceInfo();
       this.localDeviceName = info.deviceName || 'NEXO Device';
       this.localDeviceAddress = _normId(info.deviceAddress || '');
+      this.localDeviceUUID = info.deviceUUID || null;
     } catch (e) {}
   }
 
@@ -213,7 +246,13 @@ export class BLEInterface {
     if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
     if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
     this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', (data) => {
-      this.onDeviceFound({ id: data.deviceId, address: data.deviceId, name: data.name || 'NEXO Device', rssi: data.rssi });
+      this.onDeviceFound({ 
+        id: data.deviceUUID || data.deviceId, 
+        address: data.address || data.deviceId, 
+        deviceUUID: data.deviceUUID || null,
+        name: data.name || 'NEXO Device', 
+        rssi: data.rssi 
+      });
     });
     this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', (data) => {
       this.isScanning = false;
@@ -226,13 +265,12 @@ export class BLEInterface {
     if (!this.nativePlugin) return;
     if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove();
     this._nativePeerInfoListener = this.nativePlugin.addListener('onPeerInfoReceived', (data) => {
-      const deviceId = _normId(data.deviceId);
+      const deviceId = data.deviceUUID || _normId(data.deviceId);
       const device = this.connectedDevices.get(deviceId);
       if (device) {
         device.name = data.name || device.name || 'NEXO Peer';
         this.connectedDevices.set(deviceId, device);
-        // FIX v3.7.3: Solo actualizar contacto si no esta bloqueado
-        _addBLEContact({ id: deviceId, address: deviceId, name: device.name });
+        _addBLEContact({ id: deviceId, address: data.address || deviceId, deviceUUID: data.deviceUUID, name: device.name });
         this.renderConnectedList();
         if (this._activeChatDeviceId === deviceId) {
           const nameInput = document.getElementById('chat-contact-name');
@@ -248,31 +286,30 @@ export class BLEInterface {
     if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
     
     this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', (data) => {
-      const deviceId = _normId(data.deviceId);
+      const deviceId = data.deviceUUID || _normId(data.deviceId);
       const attempt = data.attempt || 0;
       this._cancelReconnect(deviceId);
       const contactName = _getContactName(deviceId);
       const displayName = data.name || contactName || 'NEXO Peer';
       
-      // FIX v3.7.3: Registrar inmediatamente al conectar (incoming o outgoing) si no existe
-      _addBLEContact({ id: deviceId, address: deviceId, name: displayName });
+      _addBLEContact({ id: deviceId, address: data.address || deviceId, deviceUUID: data.deviceUUID, name: displayName });
       
       if (data.direction === 'incoming') {
         this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected' });
-        this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'incoming', servicesReady: true });
+        this.connectedDevices.set(deviceId, { id: deviceId, address: data.address || deviceId, name: displayName, direction: 'incoming', servicesReady: true });
         this.showToast(`✅ Peer conectado: ${this._formatId(deviceId)}`, 'success');
       } else {
         this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', attempt, role: 'client' });
-        this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'outgoing', servicesReady: false });
+        this.connectedDevices.set(deviceId, { id: deviceId, address: data.address || deviceId, name: displayName, direction: 'outgoing', servicesReady: false });
       }
-      this.onDeviceConnected({ id: deviceId, address: deviceId, name: displayName, direction: data.direction || 'unknown', servicesReady: data.servicesReady === true, attempt });
+      this.onDeviceConnected({ id: deviceId, address: data.address || deviceId, name: displayName, direction: data.direction || 'unknown', servicesReady: data.servicesReady === true, attempt });
     });
     
     this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', (data) => {
-      const deviceId = _normId(data.deviceId);
+      const deviceId = data.deviceUUID || _normId(data.deviceId);
       this._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
       this.connectedDevices.delete(deviceId);
-      this.onDeviceDisconnected({ id: deviceId, address: deviceId });
+      this.onDeviceDisconnected({ id: deviceId, address: data.address || deviceId });
       if (this._activeChatDeviceId === deviceId) {
         this.showToast('⚠️ Conexion BLE perdida. Reconectando...', 'warning');
         this._startReconnect(deviceId);
@@ -308,18 +345,18 @@ export class BLEInterface {
   _setupNativeStateListeners() {
     if (!this.nativePlugin) return;
     this._nativeServicesReadyListener = this.nativePlugin.addListener('onServicesReady', (data) => {
-      const deviceId = _normId(data.deviceId);
+      const deviceId = data.deviceUUID || _normId(data.deviceId);
       this._setDeviceState(deviceId, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
       const device = this.connectedDevices.get(deviceId);
       if (device) { device.servicesReady = true; this.connectedDevices.set(deviceId, device); }
     });
     this._nativeNotificationsListener = this.nativePlugin.addListener('onNotificationsEnabled', (data) => {
-      const deviceId = _normId(data.deviceId);
+      const deviceId = data.deviceUUID || _normId(data.deviceId);
       this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, direction: this._getDeviceState(deviceId).direction || 'unknown' });
       this._processPendingMessages(deviceId);
     });
     this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', (data) => {
-      const deviceId = _normId(data.deviceId);
+      const deviceId = data.deviceUUID || _normId(data.deviceId);
       if (data.recoverable !== false && data.attempt < (data.maxAttempts || 3)) {
         this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { attempt: data.attempt, message: `Reintentando...` });
       } else {
@@ -365,12 +402,11 @@ export class BLEInterface {
     return this._deviceStates.get(_normId(deviceId)) || { state: BLE_STATES.DISCONNECTED };
   }
 
-  // FIX v3.7.3: Dedup robusto con hash completo del contenido + TTL
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
     if (this._nativePayloadListener) this._nativePayloadListener.remove();
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', (data) => {
-      const deviceId = _normId(data.deviceId);
+      const deviceId = data.deviceUUID || _normId(data.deviceId);
       let messageId = data.messageId || null;
       let senderName = data.senderName || null;
       let content = data.content || data.data || '';
@@ -383,7 +419,6 @@ export class BLEInterface {
         if (json.timestamp) timestamp = json.timestamp;
       } catch (e) {}
       
-      // 1. Resolver nombre: contactos persistidos > dispositivos en memoria > payload > derivado de MAC
       const persistedName = _getContactName(deviceId);
       if (persistedName) {
         senderName = persistedName;
@@ -393,17 +428,14 @@ export class BLEInterface {
           || 'NEXO Peer';
       }
       
-      // 2. Si el payload trae un nombre mejor, actualizar el contacto persistido (solo si no bloqueado)
       if (senderName && senderName !== 'NEXO Peer') {
-        _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
+        _addBLEContact({ id: deviceId, address: data.address || deviceId, deviceUUID: data.deviceUUID, name: senderName });
       }
       
-      // 3. Si sigue sin nombre util, generar uno unico e inmutable desde la MAC
       if (!senderName || senderName === 'NEXO Peer') {
         senderName = _getContactName(deviceId) || `NEXO-${deviceId.substring(0, 6).toUpperCase()}`;
       }
       
-      // 4. FIX v3.7.3: Dedup con hash completo del contenido + TTL
       this._cleanExpiredMessageIds();
       const contentHash = _hashContent(content || '');
       const dedupKey = messageId || `ble_${deviceId}_${contentHash}`;
@@ -430,7 +462,6 @@ export class BLEInterface {
     });
   }
 
-  // FIX v3.7.3: Limpiar IDs expirados por TTL
   _cleanExpiredMessageIds() {
     const now = Date.now();
     for (const [key, ts] of this._receivedMessageIds) {
@@ -454,7 +485,7 @@ export class BLEInterface {
   async _sendMessageNative(deviceId, content) {
     if (!this.nativePlugin) throw new Error('Plugin no disponible');
     const device = this.connectedDevices.get(_normId(deviceId));
-    const targetId = device?.id || device?.address || deviceId;
+    const targetId = device?.address || device?.id || deviceId;
     await this.nativePlugin.sendMessage({ deviceId: targetId, message: content });
   }
 
@@ -547,8 +578,6 @@ export class BLEInterface {
       }
     }
 
-    // FIX v3.7.4-ARCH: Re-registrar listeners de escaneo tras initializeBLE()
-    // porque el reinicio del stack nativo puede invalidar los callbacks previos.
     this._setupNativeScanListeners();
 
     try {
@@ -742,8 +771,6 @@ export class BLEInterface {
         this.foundDevices.clear();
         this._renderedDeviceIds.clear();
         this.renderDevicesList();
-        // FIX v3.7.4-ARCH: Re-registrar listeners de escaneo antes de startScan()
-        // por si initializeBLE() o el stack nativo invalidaron los callbacks previos.
         this._setupNativeScanListeners();
         if (this.nativePlugin) await this.nativePlugin.startScan();
         this.isScanning = true;
@@ -772,42 +799,44 @@ export class BLEInterface {
     }
   }
 
-  // FIX v3.7.3: Auto-registro inmediato al detectar en escaneo
+  // FIX v3.8.0-ARCH: Usar deviceUUID como identidad primaria
   onDeviceFound(device) {
-    let id = _normId(device.id || device.address);
-    if (!id || id === 'null' || id === 'undefined') return;
-    if (this.localDeviceAddress && id === this.localDeviceAddress) return;
+    const identity = device.deviceUUID || _normId(device.id || device.address);
+    if (!identity || identity === 'null' || identity === 'undefined') return;
+    if (this.localDeviceUUID && identity === this.localDeviceUUID) return;
+    if (this.localDeviceAddress && identity === this.localDeviceAddress) return;
     
-    // Registrar inmediatamente con nombre del anuncio BLE (silencioso, sin toast)
-    _addBLEContact({ id, address: id, name: device.name || 'NEXO Device', rssi: device.rssi });
+    _addBLEContact({ id: identity, address: _normId(device.id || device.address), deviceUUID: device.deviceUUID, name: device.name || 'NEXO Device', rssi: device.rssi });
     
     if (this._activeChatDeviceId) {
-      if (this.foundDevices.has(id)) {
-        const existing = this.foundDevices.get(id);
+      if (this.foundDevices.has(identity)) {
+        const existing = this.foundDevices.get(identity);
         existing.rssi = device.rssi;
         existing.name = device.name || existing.name;
         existing.lastSeen = Date.now();
-        this.foundDevices.set(id, existing);
+        existing.address = _normId(device.id || device.address);
+        this.foundDevices.set(identity, existing);
         this.renderDevicesList();
         return;
       }
       device.lastSeen = Date.now();
-      this.foundDevices.set(id, device);
+      this.foundDevices.set(identity, device);
       this.renderDevicesList();
       return;
     }
     
-    if (this.foundDevices.has(id)) {
-      const existing = this.foundDevices.get(id);
+    if (this.foundDevices.has(identity)) {
+      const existing = this.foundDevices.get(identity);
       existing.rssi = device.rssi;
       existing.name = device.name || existing.name;
       existing.lastSeen = Date.now();
-      this.foundDevices.set(id, existing);
+      existing.address = _normId(device.id || device.address);
+      this.foundDevices.set(identity, existing);
       this.renderDevicesList();
       return;
     }
     device.lastSeen = Date.now();
-    this.foundDevices.set(id, device);
+    this.foundDevices.set(identity, device);
     this.newDevicesCount++;
     this.updateBadge();
     this.renderDevicesList();
@@ -866,7 +895,10 @@ export class BLEInterface {
   async openChat(deviceId) {
     const nid = _normId(deviceId);
     let device = this.foundDevices.get(nid) || this.connectedDevices.get(nid);
-    const contact = _getBLEContacts().find(c => _normId(c.id || c.address || c.macAddress) === nid);
+    const contact = _getBLEContacts().find(c => 
+      c.deviceUUID === deviceId || 
+      _normId(c.id || c.address || c.macAddress) === nid
+    );
     if (!device && contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
     if (!device) { this.showToast('❌ Contacto no disponible', 'error'); return; }
     
@@ -909,7 +941,7 @@ export class BLEInterface {
 
       try {
         console.log('[BLEInterface] Conectando a', nid, '...');
-        const connResult = await this.nativePlugin.connectToDevice({ deviceId: device.id || device.address || nid });
+        const connResult = await this.nativePlugin.connectToDevice({ deviceId: device.address || device.id || nid });
         console.log('[BLEInterface] connectToDevice result:', connResult);
         if (connResult && connResult.connected && !connResult.alreadyConnected) {
           this.showToast('🔗 Conectando canal BLE...', 'info');
@@ -985,7 +1017,7 @@ export class BLEInterface {
     }
     list.innerHTML = '';
     contacts.forEach((contact) => {
-      const id = _normId(contact.id || contact.address || contact.macAddress);
+      const id = contact.deviceUUID || _normId(contact.id || contact.address || contact.macAddress);
       const item = document.createElement('div');
       item.className = 'ble-device-item';
       item.innerHTML = `
@@ -1056,7 +1088,7 @@ export class BLEInterface {
     try {
       this._cancelReconnect(nid);
       const device = this.connectedDevices.get(nid);
-      const targetId = device?.id || device?.address || deviceId;
+      const targetId = device?.address || device?.id || deviceId;
       if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId: targetId });
       if (this._activeChatDeviceId === nid) {
         this._activeChatDeviceId = null;
@@ -1121,6 +1153,7 @@ export class BLEInterface {
 
   _formatId(id) {
     if (!id) return '??';
+    if (id.length <= 16) return id;
     return id.substring(0, 8) + '...' + id.substring(id.length - 4);
   }
 
