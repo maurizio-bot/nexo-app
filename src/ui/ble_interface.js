@@ -1,12 +1,12 @@
 /**
- * BLE Interface v3.7.2-ARCH
+ * BLE Interface v3.7.3-ARCH
  * Ubicacion: src/ui/ble_interface.js
- * FIX v3.7.2-ARCH:
- *   1) Auto-registro inmediato al detectar en escaneo (onDeviceFound) con nombre del anuncio BLE
- *   2) Auto-registro inmediato al conectar por incoming (onDeviceConnected) si no existe aun
- *   3) Payload listener solo actualiza nombre, ya no crea contacto desde cero
- *   4) MAC es clave primaria INMUTABLE en localStorage (campo macAddress)
- *   5) Dedup robusto con hash parcial de contenido (SIN timestamp para evitar duplicados nativos)
+ * FIX v3.7.3-ARCH:
+ *   1) Dedup con TTL y hash completo del contenido (no substring parcial)
+ *   2) Proteccion de nombres personalizados: flag nameLocked
+ *   3) renameBLEContact() para renombrado manual persistente
+ *   4) _receivedMessageIds ahora es Map con TTL para evitar crecimiento infinito
+ *   5) dedupKey incluye hash de contenido completo + sender para cero colisiones
  */
 
 export function initBLEInterface(bleMesh) {
@@ -16,6 +16,7 @@ export function initBLEInterface(bleMesh) {
 }
 
 const BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v1';
+const BLE_MESSAGE_FP_TTL = 60000; // 60s para mensajes BLE (retransmisiones pueden tardar)
 
 function _normId(id) {
   if (!id) return '';
@@ -26,6 +27,16 @@ function _normId(id) {
   return s;
 }
 
+function _hashContent(str) {
+  let h = 0;
+  const s = String(str || '');
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h) + s.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h).toString(36).padStart(8, '0');
+}
+
 function _getBLEContacts() {
   try {
     const raw = localStorage.getItem(BLE_CONTACTS_STORAGE_KEY);
@@ -33,7 +44,7 @@ function _getBLEContacts() {
   } catch (e) { return []; }
 }
 
-// FIX v3.7.2-ARCH: MAC es clave primaria INMUTABLE. Nunca sobreescribimos por nombre.
+// FIX v3.7.3: MAC es clave primaria INMUTABLE. Nunca sobreescribimos por nombre auto-detectado.
 function _addBLEContact(device) {
   const contacts = _getBLEContacts();
   const mac = _normId(device.id || device.address);
@@ -41,29 +52,47 @@ function _addBLEContact(device) {
 
   const existingIndex = contacts.findIndex(c => _normId(c.id || c.address || c.macAddress) === mac);
   if (existingIndex >= 0) {
-    // Actualizar metadata pero PRESERVAR MAC como identidad inmutable
-    contacts[existingIndex].name = device.name || contacts[existingIndex].name || 'NEXO Device';
-    contacts[existingIndex].rssi = device.rssi || contacts[existingIndex].rssi;
-    contacts[existingIndex].updatedAt = Date.now();
-    contacts[existingIndex].macAddress = mac;
-    contacts[existingIndex].id = mac;
-    contacts[existingIndex].address = mac;
+    const existing = contacts[existingIndex];
+    // FIX v3.7.3: Solo actualizar nombre si NO esta bloqueado manualmente
+    if (!existing.nameLocked && device.name && device.name !== existing.name && device.name !== 'NEXO Device') {
+      existing.name = device.name;
+    }
+    existing.rssi = device.rssi || existing.rssi;
+    existing.updatedAt = Date.now();
+    existing.macAddress = mac;
+    existing.id = mac;
+    existing.address = mac;
     localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
     return true;
   }
 
-  // Nuevo contacto con macAddress explicito
   contacts.push({
     id: mac,
     address: mac,
     macAddress: mac,
     name: device.name || 'NEXO Device',
+    nameLocked: false,
     rssi: device.rssi || null,
     addedAt: Date.now(),
     updatedAt: Date.now()
   });
   localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
   return true;
+}
+
+// FIX v3.7.3: Renombrar contacto manualmente — bloquea sobrescritura automatica
+function _renameBLEContact(mac, newName) {
+  const contacts = _getBLEContacts();
+  const normalizedMac = _normId(mac);
+  const idx = contacts.findIndex(c => _normId(c.id || c.address || c.macAddress) === normalizedMac);
+  if (idx >= 0) {
+    contacts[idx].name = newName;
+    contacts[idx].nameLocked = true;
+    contacts[idx].updatedAt = Date.now();
+    localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts));
+    return true;
+  }
+  return false;
 }
 
 function _removeBLEContact(deviceId) {
@@ -116,7 +145,8 @@ export class BLEInterface {
     this.localDeviceAddress = null;
     this._activeChatDeviceId = null;
     this._deviceStates = new Map();
-    this._receivedMessageIds = new Set();
+    // FIX v3.7.3: Map con timestamp para TTL automatico
+    this._receivedMessageIds = new Map();
     this._maxMessageIds = 1000;
     this._pendingMessageQueue = new Map();
     this._reconnectTimers = new Map();
@@ -165,6 +195,11 @@ export class BLEInterface {
     return _getContactByMac(deviceId);
   }
 
+  // FIX v3.7.3: Exponer rename para UI
+  renameContact(mac, newName) {
+    return _renameBLEContact(mac, newName);
+  }
+
   async _loadLocalDeviceInfo() {
     if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) return;
     try {
@@ -197,7 +232,7 @@ export class BLEInterface {
       if (device) {
         device.name = data.name || device.name || 'NEXO Peer';
         this.connectedDevices.set(deviceId, device);
-        // FIX v3.7.2: Actualizar nombre en contactos persistidos si cambio
+        // FIX v3.7.3: Solo actualizar contacto si no esta bloqueado
         _addBLEContact({ id: deviceId, address: deviceId, name: device.name });
         this.renderConnectedList();
         if (this._activeChatDeviceId === deviceId) {
@@ -220,7 +255,7 @@ export class BLEInterface {
       const contactName = _getContactName(deviceId);
       const displayName = data.name || contactName || 'NEXO Peer';
       
-      // FIX v3.7.2: Registrar inmediatamente al conectar (incoming o outgoing) si no existe
+      // FIX v3.7.3: Registrar inmediatamente al conectar (incoming o outgoing) si no existe
       _addBLEContact({ id: deviceId, address: deviceId, name: displayName });
       
       if (data.direction === 'incoming') {
@@ -331,9 +366,7 @@ export class BLEInterface {
     return this._deviceStates.get(_normId(deviceId)) || { state: BLE_STATES.DISCONNECTED };
   }
 
-  // FIX v3.7.2-ARCH: Payload listener ya NO crea contacto desde cero.
-  // Solo actualiza el nombre si el payload trae uno mejor, porque el peer ya fue registrado en scan/connect.
-  // FIX v3.7.2-ARCH: DedupKey SIN timestamp para evitar duplicados por reintentos nativos.
+  // FIX v3.7.3: Dedup robusto con hash completo del contenido + TTL
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
     if (this._nativePayloadListener) this._nativePayloadListener.remove();
@@ -361,7 +394,7 @@ export class BLEInterface {
           || 'NEXO Peer';
       }
       
-      // 2. Si el payload trae un nombre mejor, actualizar el contacto persistido
+      // 2. Si el payload trae un nombre mejor, actualizar el contacto persistido (solo si no bloqueado)
       if (senderName && senderName !== 'NEXO Peer') {
         _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
       }
@@ -371,14 +404,15 @@ export class BLEInterface {
         senderName = _getContactName(deviceId) || `NEXO-${deviceId.substring(0, 6).toUpperCase()}`;
       }
       
-      // 4. Dedup robusto con hash parcial de contenido (SIN timestamp)
-      const contentSnippet = (content || '').substring(0, 32);
-      const dedupKey = messageId || `ble_${deviceId}_${(content || '').length}_${contentSnippet}`;
+      // 4. FIX v3.7.3: Dedup con hash completo del contenido + TTL
+      this._cleanExpiredMessageIds();
+      const contentHash = _hashContent(content || '');
+      const dedupKey = messageId || `ble_${deviceId}_${contentHash}`;
       if (this._receivedMessageIds.has(dedupKey)) return;
-      this._receivedMessageIds.add(dedupKey);
+      this._receivedMessageIds.set(dedupKey, Date.now());
       if (this._receivedMessageIds.size > this._maxMessageIds) {
-        const first = this._receivedMessageIds.values().next().value;
-        this._receivedMessageIds.delete(first);
+        const oldest = this._receivedMessageIds.keys().next().value;
+        this._receivedMessageIds.delete(oldest);
       }
       
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
@@ -395,6 +429,16 @@ export class BLEInterface {
       this.newDevicesCount++;
       this.updateBadge();
     });
+  }
+
+  // FIX v3.7.3: Limpiar IDs expirados por TTL
+  _cleanExpiredMessageIds() {
+    const now = Date.now();
+    for (const [key, ts] of this._receivedMessageIds) {
+      if (now - ts > BLE_MESSAGE_FP_TTL) {
+        this._receivedMessageIds.delete(key);
+      }
+    }
   }
 
   async _processPendingMessages(deviceId) {
@@ -722,7 +766,7 @@ export class BLEInterface {
     }
   }
 
-  // FIX v3.7.2-ARCH: Auto-registro inmediato al detectar en escaneo
+  // FIX v3.7.3: Auto-registro inmediato al detectar en escaneo
   onDeviceFound(device) {
     let id = _normId(device.id || device.address);
     if (!id || id === 'null' || id === 'undefined') return;
