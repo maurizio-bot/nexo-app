@@ -1,5 +1,5 @@
 // ============================================================
-// ble_interface.js — VERSIÓN FUNCIONAL build #961 (v3.5-ARCH)
+// ble_interface.js v3.9-ARCH — LOGS REM en toggleVisibility
 // src/ui/ble_interface.js
 // ============================================================
 
@@ -407,22 +407,33 @@ export class BLEInterface {
     }
   }
 
+  // DEBUG v3.9-ARCH: Logs REM exhaustivos en cada paso
   async toggleVisibility() {
     if (this.isDummyMode) return;
 
+    console.log('[BLEInterface] === toggleVisibility() START ===');
+    this.showToast('🔍 [1/8] Verificando permisos...', 'info', 2000);
+
     const permsReady = await window.BLEPermissions.ensure();
+    console.log('[BLEInterface] [2/8] permsReady=', permsReady);
+    this.showToast(`🔍 [2/8] Permisos: ${permsReady ? 'OK' : 'FALTAN'}`, permsReady ? 'success' : 'error', 2000);
+    
     if (!permsReady) {
-      this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
+      this.showToast('⚠️ [STOP] Permisos BLE requeridos', 'warning', 5000);
       return;
     }
 
     if (!this._serverReady) {
+      this.showToast('🔍 [3/8] Inicializando servidor BLE...', 'info', 2000);
+      console.log('[BLEInterface] [3/8] Server not ready, calling initializeBLE()');
       try {
-        this.showToast('⏳ Inicializando servidor BLE...', 'info');
         await this.nativePlugin.initializeBLE({
           userId: window.currentUser?.id || '',
           userName: window.currentUser?.name || 'NEXO User'
         });
+        console.log('[BLEInterface] [3/8] initializeBLE() called, waiting for onServerReady...');
+        this.showToast('🔍 [3/8] Esperando servidor...', 'info', 2000);
+        
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             if (this._serverError) {
@@ -432,39 +443,71 @@ export class BLEInterface {
             }
           }, 8000);
           const check = () => {
-            if (this._serverReady) { clearTimeout(timeout); resolve(); }
-            else if (this._serverError) { clearTimeout(timeout); reject(new Error(this._serverError.message)); }
+            if (this._serverReady) { 
+              clearTimeout(timeout); 
+              console.log('[BLEInterface] [3/8] Server READY');
+              resolve(); 
+            }
+            else if (this._serverError) { 
+              clearTimeout(timeout); 
+              console.log('[BLEInterface] [3/8] Server ERROR:', this._serverError);
+              reject(new Error(this._serverError.message)); 
+            }
             else setTimeout(check, 200);
           };
           check();
         });
+        this.showToast('✅ [3/8] Servidor BLE listo', 'success', 2000);
       } catch (e) {
-        console.error('[BLEInterface] Error inicializando servidor:', e.message);
-        this.showToast('❌ No se pudo inicializar servidor BLE: ' + e.message, 'error', 5000);
+        console.error('[BLEInterface] [3/8] Error inicializando servidor:', e.message);
+        this.showToast(`❌ [STOP] Servidor BLE falló: ${e.message}`, 'error', 5000);
         return;
       }
+    } else {
+      console.log('[BLEInterface] [3/8] Server already ready');
+      this.showToast('✅ [3/8] Servidor ya listo', 'success', 2000);
     }
 
     try {
       const btState = await this.nativePlugin.isBluetoothEnabled();
       this.canAdvertise = btState.canAdvertise || false;
-    } catch (e) {}
+      console.log('[BLEInterface] [4/8] canAdvertise=', this.canAdvertise, 'enabled=', btState.enabled, 'serverReady=', btState.serverReady);
+      this.showToast(`🔍 [4/8] canAdvertise=${this.canAdvertise}`, this.canAdvertise ? 'success' : 'error', 2000);
+    } catch (e) {
+      console.error('[BLEInterface] [4/8] Error isBluetoothEnabled:', e);
+      this.showToast('❌ [4/8] Error consultando Bluetooth', 'error', 3000);
+    }
 
     if (!this.canAdvertise) {
-      this.showToast('⚠️ Sin permiso de advertising', 'warning');
+      this.showToast('⚠️ [STOP] Sin permiso de advertising', 'warning', 5000);
       return;
     }
 
     try {
       if (this.isAdvertising) {
+        console.log('[BLEInterface] [5/8] Currently advertising, calling stopAdvertising()');
+        this.showToast('🔍 [5/8] Deteniendo advertising...', 'info', 2000);
         await this.nativePlugin.stopAdvertising();
+        console.log('[BLEInterface] [6/8] stopAdvertising() resolved');
+        this.showToast('✅ [6/8] Advertising detenido', 'success', 2000);
         this.isAdvertising = false;
       } else {
+        console.log('[BLEInterface] [5/8] Not advertising, calling startAdvertising()');
+        this.showToast('🔍 [5/8] Iniciando advertising...', 'info', 2000);
         await this.nativePlugin.startAdvertising();
+        console.log('[BLEInterface] [6/8] startAdvertising() resolved');
+        this.showToast('✅ [6/8] Advertising iniciado', 'success', 2000);
       }
+      console.log('[BLEInterface] [7/8] Updating UI button');
+      this.showToast('🔍 [7/8] Actualizando UI...', 'info', 1500);
       this.updateVisibilityButton();
+      console.log('[BLEInterface] [8/8] DONE. isAdvertising=', this.isAdvertising);
+      this.showToast(`✅ [8/8] Listo. Estado: ${this.isAdvertising ? 'VISIBLE' : 'OCULTO'}`, 'success', 3000);
     } catch (err) {
-      this.showToast('❌ Error: ' + err.message, 'error');
+      console.error('[BLEInterface] [ERROR] toggleVisibility exception:', err);
+      this.showToast(`❌ [ERROR] ${err.message}`, 'error', 5000);
+      this.isAdvertising = false;
+      this.updateVisibilityButton();
     }
   }
 
@@ -1035,4 +1078,3 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
-
