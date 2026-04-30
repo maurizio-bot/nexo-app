@@ -1,12 +1,11 @@
 /**
- * BLE Interface v3.7.3-ARCH
+ * BLE Interface v3.7.4-ARCH
  * Ubicacion: src/ui/ble_interface.js
- * FIX v3.7.3-ARCH:
- *   1) Dedup con TTL y hash completo del contenido (no substring parcial)
- *   2) Proteccion de nombres personalizados: flag nameLocked
- *   3) renameBLEContact() para renombrado manual persistente
- *   4) _receivedMessageIds ahora es Map con TTL para evitar crecimiento infinito
- *   5) dedupKey incluye hash de contenido completo + sender para cero colisiones
+ * FIX v3.7.4-ARCH:
+ *   1) Re-registro defensivo de listeners de escaneo antes de startScan()
+ *      y tras initializeBLE() en toggleVisibility(), para recuperar listeners
+ *      que el stack nativo invalida al reiniciar GATT/Advertising.
+ *   2) Todo lo demás permanece intacto de v3.7.3.
  */
 
 export function initBLEInterface(bleMesh) {
@@ -548,6 +547,10 @@ export class BLEInterface {
       }
     }
 
+    // FIX v3.7.4-ARCH: Re-registrar listeners de escaneo tras initializeBLE()
+    // porque el reinicio del stack nativo puede invalidar los callbacks previos.
+    this._setupNativeScanListeners();
+
     try {
       const btState = await this.nativePlugin.isBluetoothEnabled();
       this.canAdvertise = btState.canAdvertise || false;
@@ -739,6 +742,9 @@ export class BLEInterface {
         this.foundDevices.clear();
         this._renderedDeviceIds.clear();
         this.renderDevicesList();
+        // FIX v3.7.4-ARCH: Re-registrar listeners de escaneo antes de startScan()
+        // por si initializeBLE() o el stack nativo invalidaron los callbacks previos.
+        this._setupNativeScanListeners();
         if (this.nativePlugin) await this.nativePlugin.startScan();
         this.isScanning = true;
         this.onScanStateChanged(true);
