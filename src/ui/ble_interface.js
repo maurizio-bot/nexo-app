@@ -1,13 +1,9 @@
-/**
- * BLE Interface v3.8.0-ARCH
- * Ubicacion: src/ui/ble_interface.js
- * FIX v3.8.0-ARCH:
- *   1) deviceUUID como clave primaria de contacto (no MAC).
- *   2) MAC solo se guarda como lastSeenMac para reconectar.
- *   3) Merge automatico cuando mismo UUID aparece con MAC diferente.
- *   4) Compatibilidad con contactos legacy sin deviceUUID (migracion gradual).
- *   5) Re-registro defensivo de listeners de escaneo (heredado v3.7.4).
- */
+// ============================================================
+// ble_interface.js v3.8.1-ARCH
+// Ubicacion: src/ui/ble_interface.js
+// FIXES: Safety timeout on advertise start, clear timeout on success/failure.
+//        No other logic changed.
+// ============================================================
 
 export function initBLEInterface(bleMesh) {
   const instance = new BLEInterface(bleMesh).init();
@@ -44,13 +40,11 @@ function _getBLEContacts() {
   } catch (e) { return []; }
 }
 
-// FIX v3.8.0-ARCH: deviceUUID es clave primaria. MAC solo es lastSeenMac.
 function _addBLEContact(device) {
   const contacts = _getBLEContacts();
   const deviceUUID = device.deviceUUID || null;
   const mac = _normId(device.id || device.address);
   
-  // Buscar existente: primero por UUID, luego por MAC (legacy fallback)
   let existingIndex = -1;
   if (deviceUUID) {
     existingIndex = contacts.findIndex(c => c.deviceUUID && c.deviceUUID === deviceUUID);
@@ -61,16 +55,13 @@ function _addBLEContact(device) {
   
   if (existingIndex >= 0) {
     const existing = contacts[existingIndex];
-    // Merge: actualizar UUID si antes no lo tenia
     if (deviceUUID && !existing.deviceUUID) {
       existing.deviceUUID = deviceUUID;
       existing.id = deviceUUID;
     }
-    // Actualizar nombre solo si no esta bloqueado manualmente
     if (!existing.nameLocked && device.name && device.name !== existing.name && device.name !== 'NEXO Device') {
       existing.name = device.name;
     }
-    // Actualizar MAC de reconexion (siempre, porque la MAC randomizada cambia)
     if (mac) {
       existing.lastSeenMac = mac;
       existing.address = mac;
@@ -184,6 +175,7 @@ export class BLEInterface {
     this._reconnectTimers = new Map();
     this._serverReady = false;
     this._serverError = null;
+    this._advertiseTimeout = null; // FIX v3.8.1-ARCH
   }
 
   _detectMeshType() {
@@ -508,12 +500,23 @@ export class BLEInterface {
     if (!this.nativePlugin) return;
     if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
     if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
+    
+    // FIX v3.8.1-ARCH: Clear safety timeout on success/failure
     this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', () => {
+      if (this._advertiseTimeout) {
+        clearTimeout(this._advertiseTimeout);
+        this._advertiseTimeout = null;
+      }
       this.isAdvertising = true;
       this.updateVisibilityButton();
       this.showToast('👁️‍🗨️ Visibilidad activada', 'success');
     });
+    
     this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', () => {
+      if (this._advertiseTimeout) {
+        clearTimeout(this._advertiseTimeout);
+        this._advertiseTimeout = null;
+      }
       this.isAdvertising = false;
       this.updateVisibilityButton();
       this.showToast('❌ Error al activar visibilidad', 'error');
@@ -540,6 +543,7 @@ export class BLEInterface {
     }
   }
 
+  // FIX v3.8.1-ARCH: Safety timeout to detect stuck advertise state on S24
   async toggleVisibility() {
     if (this.isDummyMode) return;
 
@@ -590,15 +594,30 @@ export class BLEInterface {
       return;
     }
 
+    // Clear any pending advertise timeout
+    if (this._advertiseTimeout) {
+      clearTimeout(this._advertiseTimeout);
+      this._advertiseTimeout = null;
+    }
+
     try {
       if (this.isAdvertising) {
         await this.nativePlugin.stopAdvertising();
         this.isAdvertising = false;
       } else {
         await this.nativePlugin.startAdvertising();
+        // Safety timeout: if onAdvertiseStarted never fires in 5s, reset UI
+        this._advertiseTimeout = setTimeout(() => {
+          if (!this.isAdvertising) {
+            console.warn('[BLEInterface] Advertising start timeout - resetting UI state');
+            this.updateVisibilityButton();
+          }
+        }, 5000);
       }
       this.updateVisibilityButton();
     } catch (err) {
+      this.isAdvertising = false;
+      this.updateVisibilityButton();
       this.showToast('❌ Error: ' + err.message, 'error');
     }
   }
@@ -799,7 +818,6 @@ export class BLEInterface {
     }
   }
 
-  // FIX v3.8.0-ARCH: Usar deviceUUID como identidad primaria
   onDeviceFound(device) {
     const identity = device.deviceUUID || _normId(device.id || device.address);
     if (!identity || identity === 'null' || identity === 'undefined') return;
@@ -1162,6 +1180,10 @@ export class BLEInterface {
     if (styles) styles.remove();
     this._reconnectTimers.forEach((timer) => clearTimeout(timer));
     this._reconnectTimers.clear();
+    if (this._advertiseTimeout) {
+      clearTimeout(this._advertiseTimeout);
+      this._advertiseTimeout = null;
+    }
     if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
     if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
     if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
