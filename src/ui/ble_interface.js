@@ -1,8 +1,10 @@
 // ============================================================
-// ble_interface.js v3.8.1-ARCH
+// ble_interface.js v3.8.2-ARCH
 // Ubicacion: src/ui/ble_interface.js
-// FIXES: Safety timeout on advertise start, clear timeout on success/failure.
-//        No other logic changed.
+// FIXES: 
+//   1) toggleVisibility() espera 1.5s entre stop y start para S24 cleanup
+//   2) Safety timeout de 5s en advertise start
+//   3) No re-registrar scan listeners en toggleVisibility (evita duplicados)
 // ============================================================
 
 export function initBLEInterface(bleMesh) {
@@ -175,7 +177,8 @@ export class BLEInterface {
     this._reconnectTimers = new Map();
     this._serverReady = false;
     this._serverError = null;
-    this._advertiseTimeout = null; // FIX v3.8.1-ARCH
+    this._advertiseTimeout = null;
+    this._visibilityToggleInProgress = false;
   }
 
   _detectMeshType() {
@@ -501,13 +504,13 @@ export class BLEInterface {
     if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
     if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
     
-    // FIX v3.8.1-ARCH: Clear safety timeout on success/failure
     this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', () => {
       if (this._advertiseTimeout) {
         clearTimeout(this._advertiseTimeout);
         this._advertiseTimeout = null;
       }
       this.isAdvertising = true;
+      this._visibilityToggleInProgress = false;
       this.updateVisibilityButton();
       this.showToast('👁️‍🗨️ Visibilidad activada', 'success');
     });
@@ -518,6 +521,7 @@ export class BLEInterface {
         this._advertiseTimeout = null;
       }
       this.isAdvertising = false;
+      this._visibilityToggleInProgress = false;
       this.updateVisibilityButton();
       this.showToast('❌ Error al activar visibilidad', 'error');
     });
@@ -543,12 +547,18 @@ export class BLEInterface {
     }
   }
 
-  // FIX v3.8.1-ARCH: Safety timeout to detect stuck advertise state on S24
+  // FIX v3.8.2-ARCH: Delay de 1.5s entre stop/start para S24. Guard anti-doble click.
   async toggleVisibility() {
     if (this.isDummyMode) return;
+    if (this._visibilityToggleInProgress) {
+      this.showToast('⏳ Espera, operacion en progreso...', 'warning');
+      return;
+    }
+    this._visibilityToggleInProgress = true;
 
     const permsReady = await window.BLEPermissions.ensure();
     if (!permsReady) {
+      this._visibilityToggleInProgress = false;
       this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
       return;
     }
@@ -576,13 +586,12 @@ export class BLEInterface {
           check();
         });
       } catch (e) {
+        this._visibilityToggleInProgress = false;
         console.error('[BLEInterface] Error inicializando servidor:', e.message);
         this.showToast('❌ No se pudo inicializar servidor BLE: ' + e.message, 'error', 5000);
         return;
       }
     }
-
-    this._setupNativeScanListeners();
 
     try {
       const btState = await this.nativePlugin.isBluetoothEnabled();
@@ -590,11 +599,11 @@ export class BLEInterface {
     } catch (e) {}
 
     if (!this.canAdvertise) {
+      this._visibilityToggleInProgress = false;
       this.showToast('⚠️ Sin permiso de advertising', 'warning');
       return;
     }
 
-    // Clear any pending advertise timeout
     if (this._advertiseTimeout) {
       clearTimeout(this._advertiseTimeout);
       this._advertiseTimeout = null;
@@ -602,21 +611,26 @@ export class BLEInterface {
 
     try {
       if (this.isAdvertising) {
+        // FIX v3.8.2-ARCH: Esperar 1.5s despues de stop para que S24 libere advertiser
         await this.nativePlugin.stopAdvertising();
         this.isAdvertising = false;
+        this.updateVisibilityButton();
+        await new Promise(r => setTimeout(r, 1500));
+        this._visibilityToggleInProgress = false;
       } else {
         await this.nativePlugin.startAdvertising();
-        // Safety timeout: if onAdvertiseStarted never fires in 5s, reset UI
+        // Safety timeout: si onAdvertiseStarted nunca llega en 5s, resetear
         this._advertiseTimeout = setTimeout(() => {
           if (!this.isAdvertising) {
             console.warn('[BLEInterface] Advertising start timeout - resetting UI state');
+            this._visibilityToggleInProgress = false;
             this.updateVisibilityButton();
           }
         }, 5000);
       }
-      this.updateVisibilityButton();
     } catch (err) {
       this.isAdvertising = false;
+      this._visibilityToggleInProgress = false;
       this.updateVisibilityButton();
       this.showToast('❌ Error: ' + err.message, 'error');
     }
