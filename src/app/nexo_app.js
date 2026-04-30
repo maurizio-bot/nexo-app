@@ -1,12 +1,11 @@
 /**
- * NEXO App v5.0.9-ARCH
- * FIX v5.0.9-ARCH:
- *   1) sendMessage usa stream.confirmMessage() para transicion pending→confirmed sin duplicados
- *   2) _handleMessage delega confirmacion a TheStream v2.7+ cuando esta disponible
- *   3) Dedup unificado con hash completo del contenido + sender (cero colisiones)
- *   4) _bleMessageHandler dedup usa mismo hash que _handleMessage para consistencia
- *   5) Eliminado _bleFpSet duplicado; unico dedup en _handleMessage con _contentFpMap
- *   6) MAC→nombre anclado: siempre consulta bleInterface.getContactName() primero
+ * NEXO App v5.0.10-ARCH
+ * FIX v5.0.10-ARCH:
+ *   1) Mensaje propio confirmed (_own=true, pending=false) NUNCA crea burbuja nueva.
+ *      Si no encuentra pending para confirmar, ignora silenciosamente.
+ *   2) Eliminado fallback _handleMessage() desde sendMessage cuando confirmMessage falla.
+ *   3) _bleMessageHandler filtra ecos propios comparando deviceId vs localDeviceAddress.
+ *   4) _handleMessage bloquea estrictamente: confirmed propio que no confirma pending => return.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -79,15 +78,13 @@ export class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     
-    // FIX v5.0.9: Unico dedup por contenido+sender con hash completo
     this._contentFpMap = new Map();
-    this._contentFpTTL = 15000; // 15s para cubrir retransmisiones BLE
+    this._contentFpTTL = 15000;
     this._contentFpMax = 500;
     
-    DEBUG.log('🚀 [NEXO] v5.0.9-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.10-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
-  // FIX v5.0.9: Hash completo del contenido para dedup sin colisiones
   _hashContent(str) {
     let h = 0;
     const s = String(str || '');
@@ -115,7 +112,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.9-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.10-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -203,7 +200,12 @@ export class NexoApp {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         const nid = (deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
         
-        // FIX v5.0.9: Resolver nombre desde bleInterface (unica fuente de verdad)
+        // FIX v5.0.10: Filtrar ecos propios (stack nativo a veces retransmite al emisor)
+        if (this.bleInterface?.localDeviceAddress && nid === this.bleInterface.localDeviceAddress) {
+          DEBUG.log(`Eco propio ignorado de ${nid.substring(0,8)}`, 'debug', 'DEDUP_ECHO');
+          return;
+        }
+        
         let resolvedName = senderName;
         if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
           const persisted = this.bleInterface.getContactName(nid);
@@ -256,7 +258,6 @@ export class NexoApp {
   _handleNordicPeer(peer) { if (!peer?.id) return; this.blePeers.set(peer.id, { ...peer, discoveredAt: Date.now() }); }
   _handleNordicSession(data) { if (!data?.deviceId) return; this._updateMode('P2P_BLE'); }
   
-  // FIX v5.0.9: NordicMessage usa bleInterface.getContactName() para nombre anclado
   _handleNordicMessage(msg) {
     if (!msg?.deviceId) return;
     const nid = (msg.deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
@@ -361,7 +362,9 @@ export class NexoApp {
 
       if (!sentSuccessfully && this.wsClient?.isConnected?.()) { this.wsClient.send({ content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); sentSuccessfully = true; }
 
-      // 2. FIX v5.0.9: Confirmar via TheStream v2.7+ sin crear duplicado
+      // 2. FIX v5.0.10: Confirmar via TheStream. Si falla, NO crear fallback _handleMessage.
+      // El pending ya existe; si confirmMessage no lo encuentra ahora, el DOM fallback
+      // en _handleMessage lo actualizará cuando llegue el confirmed. Nunca se crea duplicado.
       if (sentSuccessfully) {
         if (this.stream?.confirmMessage) {
           const confirmed = this.stream.confirmMessage(messageId, {
@@ -370,12 +373,8 @@ export class NexoApp {
             timestamp: Date.now()
           });
           if (!confirmed) {
-            // Fallback: si no encontro el pending, renderizar confirmed nuevo
-            this._handleMessage({ content, senderName: myName, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
+            DEBUG.warn(`confirmMessage no encontro pending ${messageId.substring(0,8)}. Se actualizara en recepcion o DOM fallback.`, 'MSG_CONFIRM_FAIL');
           }
-        } else {
-          // Fallback para TheStream v2.6 y anteriores
-          this._handleMessage({ content, senderName: myName, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
         }
         return true;
       }
@@ -392,7 +391,7 @@ export class NexoApp {
       const contentHash = this._hashContent((msg.content || '') + '|' + (msg.sender || ''));
       const dedupId = msg.messageId || `gen_${contentHash}`;
       
-      // FIX v5.0.9: Dedup GLOBAL por contenido+sender (cualquier fuente: Nordic/Native/Hybrid)
+      // Dedup GLOBAL por contenido+sender para mensajes ajenos
       if (!msg._own) {
         const contentFp = `${msg.sender}_${contentHash}`;
         const lastSeen = this._contentFpMap.get(contentFp);
@@ -414,29 +413,37 @@ export class NexoApp {
         }
       }
       
-      // FIX v5.0.9: Mensaje propio confirmado — usar TheStream.confirmMessage() primero
+      // FIX v5.0.10: Mensaje propio confirmado — SOLO actualizar pending existente.
+      // NUNCA crear una burbuja nueva para un mensaje confirmed propio.
       if (msg._own && msg.pending === false) {
+        let handled = false;
+        
         if (this.stream?.confirmMessage) {
-          const confirmed = this.stream.confirmMessage(dedupId, {
+          handled = this.stream.confirmMessage(dedupId, {
             content: msg.content,
             senderName: msg.senderName,
             timestamp: msg.timestamp
           });
-          if (confirmed) {
-            this._messageDedupMap.set(dedupId, now);
-            return;
+        }
+        
+        if (!handled) {
+          const existingMsg = document.querySelector(`[data-message-id="${dedupId}"]`);
+          if (existingMsg) {
+            existingMsg.classList.remove('pending');
+            existingMsg.classList.add('confirmed');
+            const pendingIndicator = existingMsg.querySelector('.pending-indicator');
+            if (pendingIndicator) pendingIndicator.remove();
+            handled = true;
           }
         }
-        // Fallback DOM para TheStream v2.6
-        const existingMsg = document.querySelector(`[data-message-id="${dedupId}"]`);
-        if (existingMsg) {
-          existingMsg.classList.remove('pending');
-          existingMsg.classList.add('confirmed');
-          const pendingIndicator = existingMsg.querySelector('.pending-indicator');
-          if (pendingIndicator) pendingIndicator.remove();
+        
+        if (handled) {
           this._messageDedupMap.set(dedupId, now);
-          return;
+        } else {
+          DEBUG.warn(`Pending no encontrado para confirmar ${dedupId.substring(0,8)}. Ignorando confirmed.`, 'MSG_CONFIRM_SKIP');
+          this._messageDedupMap.set(dedupId, now);
         }
+        return; // SIEMPRE retornar. Nunca continuar a appendItems para confirmed propio.
       }
       
       if (this._messageDedupMap.has(dedupId)) {
