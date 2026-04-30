@@ -1,3 +1,8 @@
+// ============================================================
+// NexoBlePlugin.kt v2.2-ARCH
+// Ubicacion: plugins/nexo-ble/android/.../NexoBlePlugin.kt
+// FIXES: Ordered stop with 300ms delay before killService to let S24 BLE stack cleanup.
+// ============================================================
 package com.nexo.ble
 
 import android.app.ActivityManager
@@ -52,7 +57,7 @@ class NexoBlePlugin : Plugin() {
     companion object {
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
-        private const val MANUFACTURER_ID = 0xFFFF // Reserved for testing; replace with assigned ID for production
+        private const val MANUFACTURER_ID = 0xFFFF
         private const val PREFS_NAME = "nexo_ble_prefs"
         private const val PREF_DEVICE_UUID = "device_uuid"
     }
@@ -67,12 +72,6 @@ class NexoBlePlugin : Plugin() {
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private val connectedDevicesMap = mutableMapOf<String, JSObject>()
 
-    // ==================== DEVICE IDENTITY ====================
-
-    /**
-     * Genera o recupera un deviceUUID persistente para identificar este dispositivo
-     * independientemente de la MAC BLE randomizada por Android.
-     */
     private fun getOrCreateDeviceUUID(): String {
         val prefs = activity.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         var uuid = prefs.getString(PREF_DEVICE_UUID, null)
@@ -92,8 +91,6 @@ class NexoBlePlugin : Plugin() {
         return bluetoothManager.adapter?.name ?: "NEXO Device"
     }
 
-    // ==================== REM LOGGING ====================
-
     private fun remLog(level: String, tag: String, message: String) {
         Log.i("NEXO_REM", "[$level][$tag] $message")
         try {
@@ -103,10 +100,8 @@ class NexoBlePlugin : Plugin() {
                 .put("message", message)
                 .put("timestamp", System.currentTimeMillis())
             )
-        } catch (e: Exception) { /* evitar loop si notify falla */ }
+        } catch (e: Exception) { }
     }
-
-    // ==================== LIFECYCLE ====================
 
     override fun handleOnResume() {
         super.handleOnResume()
@@ -114,7 +109,6 @@ class NexoBlePlugin : Plugin() {
         val ctx = activity.applicationContext
         val granted = checkCoreBLEPermissions(ctx)
         remLog("INFO", "PERMISSIONS", "Post-Settings check: granted=$granted")
-
         if (granted) {
             notifyListeners("onPermissionStatusChanged", JSObject()
                 .put("granted", true)
@@ -138,8 +132,6 @@ class NexoBlePlugin : Plugin() {
             bluetoothGatt?.close()
         } catch (e: Exception) { remLog("WARN", "LIFECYCLE", "Error closing GATT: ${e.message}") }
     }
-
-    // ==================== PERMISSIONS ====================
 
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
@@ -252,8 +244,6 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("dialogResponded", true).put("granted", granted).put("isPermanentlyDenied", isPermanent))
     }
 
-    // ==================== HELPERS ====================
-
     private fun isGranted(ctx: Context, permission: String): Boolean =
         ContextCompat.checkSelfPermission(ctx, permission) == PackageManager.PERMISSION_GRANTED
 
@@ -276,8 +266,6 @@ class NexoBlePlugin : Plugin() {
         val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         return manager.getRunningServices(Integer.MAX_VALUE).any { it.service.className == serviceClass.name }
     }
-
-    // ==================== ADVERTISING / SERVICE ====================
 
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
@@ -323,13 +311,26 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // FIX v2.2-ARCH: Orderly stop advertising before killing service. S24 BLE stack needs ~300ms cleanup.
     @PluginMethod
     fun stopAdvertising(call: PluginCall) {
         remLog("INFO", "ADVERTISING", "stopAdvertising invoked")
         val context = activity.applicationContext
         try {
-            context.stopService(Intent(context, BleService::class.java))
-            unregisterServerReceivers()
+            val stopIntent = Intent(context, BleService::class.java).apply {
+                action = BleService.ACTION_STOP_ADVERTISING
+            }
+            context.startService(stopIntent)
+
+            mainHandler.postDelayed({
+                try {
+                    context.stopService(Intent(context, BleService::class.java))
+                    unregisterServerReceivers()
+                } catch (e: Exception) {
+                    remLog("WARN", "ADVERTISING", "Error in delayed stopService: ${e.message}")
+                }
+            }, 300)
+
             call.resolve(JSObject().put("stopped", true))
         } catch (e: Exception) {
             remLog("ERROR", "ADVERTISING", "Error stopping: ${e.message}")
@@ -343,8 +344,6 @@ class NexoBlePlugin : Plugin() {
         val running = isServiceRunning(ctx, BleService::class.java)
         call.resolve(JSObject().put("isAdvertising", running))
     }
-
-    // ==================== BLUETOOTH STATE ====================
 
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
@@ -378,8 +377,6 @@ class NexoBlePlugin : Plugin() {
             .put("deviceUUID", deviceUUID)
         )
     }
-
-    // ==================== MESSAGING ====================
 
     @PluginMethod
     fun sendMessage(call: PluginCall) {
@@ -415,8 +412,6 @@ class NexoBlePlugin : Plugin() {
         remLog("INFO", "MESSAGE", "Broadcasted to server mode")
         call.resolve(JSObject().put("sent", true).put("mode", "server"))
     }
-
-    // ==================== SCANNING ====================
 
     @PluginMethod
     fun startScan(call: PluginCall) {
@@ -466,8 +461,6 @@ class NexoBlePlugin : Plugin() {
         stopScanInternal()
         call.resolve(JSObject().put("stopped", true))
     }
-
-    // ==================== CONNECTION ====================
 
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
@@ -558,15 +551,12 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("reconnecting", true).put("deviceId", deviceId))
     }
 
-    // ==================== CALLBACKS ====================
-
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result?.device?.let { device ->
                 val macAddress = device.address
                 val rssi = result.rssi
 
-                // FIX v2.1-ARCH: Extraer deviceUUID del Manufacturer Specific Data
                 var deviceUUID: String? = null
                 var advertisedName: String? = null
                 val scanRecord = result.scanRecord
@@ -576,9 +566,9 @@ class NexoBlePlugin : Plugin() {
                         try {
                             val payload = String(manufacturerData, Charset.defaultCharset())
                             val parts = payload.split("|")
-                            if (parts.size >= 3 && parts[0] == "NEXO") {
+                            if (parts.size >= 2 && parts[0] == "NEXO") {
                                 deviceUUID = parts[1]
-                                advertisedName = parts[2]
+                                advertisedName = if (parts.size >= 3) parts[2] else null
                             }
                         } catch (e: Exception) {
                             remLog("WARN", "SCAN", "Error parsing manufacturer data: ${e.message}")
@@ -729,8 +719,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ==================== RECEIVERS ====================
-
     private fun registerServerReceivers() {
         if (messageReceiver != null) {
             remLog("WARN", "RECEIVER", "Receiver ya registrado, omitiendo")
@@ -807,8 +795,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ==================== ALIAS PARA COMPATIBILIDAD v6.1 ====================
-
     @PluginMethod
     fun startBLEAdvertising(call: PluginCall) = startAdvertising(call)
 
@@ -824,3 +810,4 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 }
+
