@@ -1,0 +1,20 @@
+[33m747325a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix: encoding clean + Boolean type fix v5.1.1
+[33m860aa2d[m fix: create BLE plugin native files in correct source path v5.1.0-ARCH
+[33m7734c29[m fix: rewrite BLE plugin source files v5.1.0-ARCH
+[33maa559c8[m Refactor notifyCharacteristicChanged logic
+[33m478541b[m Update NexoBlePlugin.kt
+[33mbe20e0d[m Create NexoBlePlugin.kt
+[33m41d4b75[m Delete plugins/nexo-ble/android/src/main/java/com/nexo/ble/NexoBlePlugin.kt
+[33m4253ced[m Update SetupWizard.js
+[33m90a61a3[m Update ble_interface.js
+[33me8b86d8[m Refactor Bluetooth service readiness and notification logic
+[33mbb027fc[m Update NexoBlePlugin.kt
+[33m87fa651[m Update NexoGattService.kt
+[33mc57daff[m Update NexoBlePlugin.kt
+[33m046c57c[m Refactor BLE plugin to use safe call for parameters
+[33m8b869a6[m Refactor BleService by removing comments and updating states
+[33m4e9d537[m Remove comments from NexoGattService
+[33m360e5db[m Update ble_permissions.js
+[33m479a822[m Update AndroidManifest.xml
+[33m50f249f[m Update NexoBlePlugin.kt
+[33me601d41[m Refactor BleService to use NexoGattService constants
