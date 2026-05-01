@@ -20,8 +20,10 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v2.2-ARCH — Bridge puro, sin GATT server propio.
- * Escucha broadcasts de BleService para resultados y errores.
+ * NexoBlePlugin v2.2.1-ARCH — FIX BUILD #1014
+ * 
+ * Cambio: requestPermissions y checkPermissions ahora usan 'override'
+ * porque ya existen en la clase base Plugin de Capacitor.
  */
 @CapacitorPlugin(
     name = "NexoBle",
@@ -56,13 +58,16 @@ class NexoBlePlugin : Plugin() {
     override fun load() {
         serviceIntent = Intent(context, BleService::class.java)
         registerBroadcastReceiver()
-        Log.i(TAG, "[BLE_PLUGIN] NexoBlePlugin v2.2-ARCH cargado")
+        Log.i(TAG, "[BLE_PLUGIN] NexoBlePlugin v2.2.1-ARCH cargado")
     }
 
-    // ==================== PERMISSIONS ====================
+    // ==================== PERMISSIONS (FIX: override) ====================
 
-    @PluginMethod
-    fun requestPermissions(call: PluginCall) {
+    /**
+     * FIX BUILD #1014: override en lugar de @PluginMethod
+     * porque Plugin base ya declara este método.
+     */
+    override fun requestPermissions(call: PluginCall) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             requestPermissionForAliases(
                 arrayOf("bluetoothScan", "bluetoothAdvertise", "bluetoothConnect", "location"),
@@ -87,8 +92,10 @@ class NexoBlePlugin : Plugin() {
         call.resolve(ret)
     }
 
-    @PluginMethod
-    fun checkPermissions(call: PluginCall) {
+    /**
+     * FIX BUILD #1014: override en lugar de @PluginMethod
+     */
+    override fun checkPermissions(call: PluginCall) {
         val ret = JSObject()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val scanPerm = ContextCompat.checkSelfPermission(
@@ -154,7 +161,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(ret)
     }
 
-    // ==================== SCAN (NUEVOS MÉTODOS) ====================
+    // ==================== SCAN ====================
 
     @PluginMethod
     fun startScan(call: PluginCall) {
@@ -180,14 +187,10 @@ class NexoBlePlugin : Plugin() {
         call.resolve(ret)
     }
 
-    /**
-     * NUEVO: getScanStatus — expone estado real del scan al JS
-     */
     @PluginMethod
     fun getScanStatus(call: PluginCall) {
-        // Usamos broadcast para pedir estado al service, o asumimos que el receiver ya lo tiene
         val ret = JSObject()
-        ret.put("isScanning", false) // Se actualizará vía broadcast
+        ret.put("isScanning", false)
         ret.put("resultCount", 0)
         call.resolve(ret)
     }
