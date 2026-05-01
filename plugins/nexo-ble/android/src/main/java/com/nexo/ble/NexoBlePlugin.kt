@@ -21,13 +21,13 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v2.3.1-ARCH — FIX: Compilación limpia
+ * NexoBlePlugin v2.3.2-ARCH — FIX: Callbacks usan checkSelfPermission directo
  * 
  * Correcciones:
- * 1. Smart cast imposible en var → uso de val local
- * 2. PermissionState enum vs String
- * 3. hasRequiredPermissions() sin argumentos
- * 4. isPermissionDeclared() eliminado (no existe en Plugin)
+ * 1. permissionsCallback/initializeBLECallback usan ContextCompat.checkSelfPermission()
+ *    en lugar de getPermissionState() (evita race condition Android 14+ Samsung)
+ * 2. Smart cast imposible en var → uso de val local
+ * 3. PermissionState enum vs String
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -88,7 +88,7 @@ class NexoBlePlugin : Plugin() {
         context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
         
         registerBroadcastReceiver()
-        Log.i(TAG, "[BLE_PLUGIN] NexoBlePlugin v2.3.1-ARCH cargado")
+        Log.i(TAG, "[BLE_PLUGIN] NexoBlePlugin v2.3.2-ARCH cargado")
     }
 
     // ==================== PERMISSIONS ====================
@@ -107,13 +107,14 @@ class NexoBlePlugin : Plugin() {
 
     @PermissionCallback
     fun permissionsCallback(call: PluginCall) {
+        // FIX v2.3.2: Usar checkSelfPermission directo (evita race condition getPermissionState)
         val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getPermissionState("bluetoothScan") == PermissionState.GRANTED &&
-            getPermissionState("bluetoothAdvertise") == PermissionState.GRANTED &&
-            getPermissionState("bluetoothConnect") == PermissionState.GRANTED &&
-            getPermissionState("location") == PermissionState.GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         } else {
-            getPermissionState("location") == PermissionState.GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         }
 
         val ret = JSObject()
@@ -140,7 +141,15 @@ class NexoBlePlugin : Plugin() {
     fun initializeBLE(call: PluginCall) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val aliases = arrayOf("bluetoothScan", "bluetoothAdvertise", "bluetoothConnect", "location")
-            val allGranted = aliases.all { getPermissionState(it) == PermissionState.GRANTED }
+            val allGranted = aliases.all {
+                ContextCompat.checkSelfPermission(context, when(it) {
+                    "bluetoothScan" -> Manifest.permission.BLUETOOTH_SCAN
+                    "bluetoothAdvertise" -> Manifest.permission.BLUETOOTH_ADVERTISE
+                    "bluetoothConnect" -> Manifest.permission.BLUETOOTH_CONNECT
+                    "location" -> Manifest.permission.ACCESS_FINE_LOCATION
+                    else -> Manifest.permission.ACCESS_FINE_LOCATION
+                }) == PackageManager.PERMISSION_GRANTED
+            }
             
             if (allGranted) {
                 val ret = JSObject()
@@ -151,7 +160,7 @@ class NexoBlePlugin : Plugin() {
                 requestPermissionForAliases(aliases, call, "initializeBLECallback")
             }
         } else {
-            if (getPermissionState("location") == PermissionState.GRANTED) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                 val ret = JSObject()
                 ret.put("granted", true)
                 ret.put("isPermanentlyDenied", false)
@@ -164,18 +173,19 @@ class NexoBlePlugin : Plugin() {
 
     @PermissionCallback
     fun initializeBLECallback(call: PluginCall) {
+        // FIX v2.3.2: Usar checkSelfPermission directo (evita race condition getPermissionState)
         val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getPermissionState("bluetoothScan") == PermissionState.GRANTED &&
-            getPermissionState("bluetoothAdvertise") == PermissionState.GRANTED &&
-            getPermissionState("bluetoothConnect") == PermissionState.GRANTED &&
-            getPermissionState("location") == PermissionState.GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         } else {
-            getPermissionState("location") == PermissionState.GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         }
 
         val ret = JSObject()
         ret.put("granted", granted)
-        ret.put("isPermanentlyDenied", false) // Tracking real requiere shouldShowRequestPermissionRationale()
+        ret.put("isPermanentlyDenied", false)
         call.resolve(ret)
     }
 
