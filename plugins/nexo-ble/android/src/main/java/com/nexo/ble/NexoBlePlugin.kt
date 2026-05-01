@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -20,13 +21,13 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v2.2.1-ARCH — FIX BUILD #1014
+ * NexoBlePlugin v2.3-ARCH — FIX: Todos los métodos que JS espera
  * 
- * Cambio: requestPermissions y checkPermissions ahora usan 'override'
- * porque ya existen en la clase base Plugin de Capacitor.
+ * Agregados: initializeBLE, checkBLEStatus, connectToDevice, disconnectDevice,
+ *            sendMessage, getConnectedDevices, isBluetoothEnabled
  */
 @CapacitorPlugin(
-    name = "NexoBle",
+    name = "NexoBLE",
     permissions = [
         Permission(
             strings = [Manifest.permission.BLUETOOTH_SCAN],
@@ -54,19 +55,41 @@ class NexoBlePlugin : Plugin() {
 
     private var serviceIntent: Intent? = null
     private var broadcastReceiver: BroadcastReceiver? = null
+    private var bleService: BleService? = null
+    private var serviceBound = false
+
+    private val serviceConnection = object : android.content.ServiceConnection {
+        override fun onServiceConnected(name: android.content.ComponentName?, service: android.os.IBinder?) {
+            val binder = service as BleService.LocalBinder
+            bleService = binder.getService()
+            serviceBound = true
+            Log.i(TAG, "[BLE_PLUGIN] Servicio vinculado")
+        }
+
+        override fun onServiceDisconnected(name: android.content.ComponentName?) {
+            bleService = null
+            serviceBound = false
+            Log.i(TAG, "[BLE_PLUGIN] Servicio desvinculado")
+        }
+    }
 
     override fun load() {
         serviceIntent = Intent(context, BleService::class.java)
+        
+        // Iniciar y vincular al servicio
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(serviceIntent)
+        } else {
+            context.startService(serviceIntent)
+        }
+        context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+        
         registerBroadcastReceiver()
-        Log.i(TAG, "[BLE_PLUGIN] NexoBlePlugin v2.2.1-ARCH cargado")
+        Log.i(TAG, "[BLE_PLUGIN] NexoBlePlugin v2.3-ARCH cargado")
     }
 
-    // ==================== PERMISSIONS (FIX: override) ====================
+    // ==================== PERMISSIONS (override base Plugin) ====================
 
-    /**
-     * FIX BUILD #1014: override en lugar de @PluginMethod
-     * porque Plugin base ya declara este método.
-     */
     override fun requestPermissions(call: PluginCall) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             requestPermissionForAliases(
@@ -81,33 +104,121 @@ class NexoBlePlugin : Plugin() {
 
     @PermissionCallback
     fun permissionsCallback(call: PluginCall) {
-        val granted = call.getArray("bluetoothScan")?.toList<Boolean>()?.all { it } == true ||
-                ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.BLUETOOTH_SCAN
-                ) == PackageManager.PERMISSION_GRANTED
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val scan = getPermissionState("bluetoothScan") == "granted"
+            val adv = getPermissionState("bluetoothAdvertise") == "granted"
+            val conn = getPermissionState("bluetoothConnect") == "granted"
+            val loc = getPermissionState("location") == "granted"
+            scan && adv && conn && loc
+        } else {
+            getPermissionState("location") == "granted"
+        }
 
         val ret = JSObject()
         ret.put("granted", granted)
         call.resolve(ret)
     }
 
-    /**
-     * FIX BUILD #1014: override en lugar de @PluginMethod
-     */
     override fun checkPermissions(call: PluginCall) {
         val ret = JSObject()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val scanPerm = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.BLUETOOTH_SCAN
-            ) == PackageManager.PERMISSION_GRANTED
-            ret.put("bluetoothScan", if (scanPerm) "granted" else "denied")
+            ret.put("bluetoothScan", getPermissionState("bluetoothScan"))
+            ret.put("bluetoothAdvertise", getPermissionState("bluetoothAdvertise"))
+            ret.put("bluetoothConnect", getPermissionState("bluetoothConnect"))
+            ret.put("location", getPermissionState("location"))
         } else {
-            val locationPerm = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-            ret.put("location", if (locationPerm) "granted" else "denied")
+            ret.put("location", getPermissionState("location"))
         }
+        call.resolve(ret)
+    }
+
+    // ==================== NEW: initializeBLE ====================
+
+    @PluginMethod
+    fun initializeBLE(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val aliases = arrayOf("bluetoothScan", "bluetoothAdvertise", "bluetoothConnect", "location")
+            if (hasRequiredPermissions(aliases)) {
+                val ret = JSObject()
+                ret.put("granted", true)
+                ret.put("isPermanentlyDenied", false)
+                call.resolve(ret)
+            } else {
+                requestPermissionForAliases(aliases, call, "initializeBLECallback")
+            }
+        } else {
+            if (getPermissionState("location") == "granted") {
+                val ret = JSObject()
+                ret.put("granted", true)
+                ret.put("isPermanentlyDenied", false)
+                call.resolve(ret)
+            } else {
+                requestPermissionForAlias("location", call, "initializeBLECallback")
+            }
+        }
+    }
+
+    @PermissionCallback
+    fun initializeBLECallback(call: PluginCall) {
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val scan = getPermissionState("bluetoothScan") == "granted"
+            val adv = getPermissionState("bluetoothAdvertise") == "granted"
+            val conn = getPermissionState("bluetoothConnect") == "granted"
+            val loc = getPermissionState("location") == "granted"
+            scan && adv && conn && loc
+        } else {
+            getPermissionState("location") == "granted"
+        }
+
+        val ret = JSObject()
+        ret.put("granted", granted)
+        ret.put("isPermanentlyDenied", !granted && !isPermissionDeclared("bluetoothScan")) // aproximación
+        call.resolve(ret)
+    }
+
+    // ==================== NEW: checkBLEStatus ====================
+
+    @PluginMethod
+    fun checkBLEStatus(call: PluginCall) {
+        val ret = JSObject()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val scanGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+            val advGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED
+            val connGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            val locGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+            ret.put("scanGranted", scanGranted)
+            ret.put("connectGranted", connGranted)
+            ret.put("advertiseGranted", advGranted)
+            ret.put("locationGranted", locGranted)
+            ret.put("notificationsGranted", true) // BLE notifications no requieren permiso extra en Android 14+
+            ret.put("foregroundConnectedGranted", true)
+            ret.put("allGranted", scanGranted && advGranted && connGranted && locGranted)
+            ret.put("isPermanentlyDenied", false) // Simplificación; lógica real requiere tracking
+        } else {
+            val locGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            ret.put("scanGranted", locGranted)
+            ret.put("connectGranted", locGranted)
+            ret.put("advertiseGranted", locGranted)
+            ret.put("locationGranted", locGranted)
+            ret.put("notificationsGranted", true)
+            ret.put("foregroundConnectedGranted", true)
+            ret.put("allGranted", locGranted)
+            ret.put("isPermanentlyDenied", false)
+        }
+
+        call.resolve(ret)
+    }
+
+    // ==================== NEW: isBluetoothEnabled ====================
+
+    @PluginMethod
+    fun isBluetoothEnabled(call: PluginCall) {
+        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val adapter = manager?.adapter
+        val ret = JSObject()
+        ret.put("enabled", adapter?.isEnabled == true)
         call.resolve(ret)
     }
 
@@ -133,16 +244,19 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
-        val deviceName = call.getString("deviceName") ?: 
-            (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)
+        val deviceName = call.getString("deviceName")
+            ?: (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)
                 ?.adapter?.name ?: "NEXO"
 
-        val intent = Intent(context, BleService::class.java).apply {
-            action = "START_ADVERTISING"
-            putExtra("deviceName", deviceName)
+        bleService?.startAdvertising(deviceName) ?: run {
+            // Fallback si el servicio aún no está listo
+            val intent = Intent(context, BleService::class.java).apply {
+                action = "START_ADVERTISING"
+                putExtra("deviceName", deviceName)
+            }
+            context.startForegroundService(intent)
         }
-        context.startForegroundService(intent)
-        
+
         val ret = JSObject()
         ret.put("success", true)
         ret.put("deviceName", deviceName)
@@ -151,11 +265,13 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun stopAdvertising(call: PluginCall) {
-        val intent = Intent(context, BleService::class.java).apply {
-            action = "STOP_ADVERTISING"
+        bleService?.stopAdvertising() ?: run {
+            val intent = Intent(context, BleService::class.java).apply {
+                action = "STOP_ADVERTISING"
+            }
+            context.startForegroundService(intent)
         }
-        context.startForegroundService(intent)
-        
+
         val ret = JSObject()
         ret.put("success", true)
         call.resolve(ret)
@@ -165,11 +281,13 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun startScan(call: PluginCall) {
-        val intent = Intent(context, BleService::class.java).apply {
-            action = "START_SCAN"
+        bleService?.startScan() ?: run {
+            val intent = Intent(context, BleService::class.java).apply {
+                action = "START_SCAN"
+            }
+            context.startForegroundService(intent)
         }
-        context.startForegroundService(intent)
-        
+
         val ret = JSObject()
         ret.put("success", true)
         call.resolve(ret)
@@ -177,11 +295,13 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun stopScan(call: PluginCall) {
-        val intent = Intent(context, BleService::class.java).apply {
-            action = "STOP_SCAN"
+        bleService?.stopScan() ?: run {
+            val intent = Intent(context, BleService::class.java).apply {
+                action = "STOP_SCAN"
+            }
+            context.startForegroundService(intent)
         }
-        context.startForegroundService(intent)
-        
+
         val ret = JSObject()
         ret.put("success", true)
         call.resolve(ret)
@@ -190,8 +310,70 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun getScanStatus(call: PluginCall) {
         val ret = JSObject()
-        ret.put("isScanning", false)
-        ret.put("resultCount", 0)
+        ret.put("isScanning", bleService?.isScanning() ?: false)
+        ret.put("resultCount", bleService?.getScanResultCount() ?: 0)
+        call.resolve(ret)
+    }
+
+    // ==================== NEW: CONNECTION & MESSAGING ====================
+
+    @PluginMethod
+    fun connectToDevice(call: PluginCall) {
+        val deviceId = call.getString("deviceId") ?: run {
+            call.reject("deviceId requerido")
+            return
+        }
+
+        val success = bleService?.connectToDevice(deviceId) ?: false
+        val ret = JSObject()
+        ret.put("success", success)
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun disconnectDevice(call: PluginCall) {
+        val deviceId = call.getString("deviceId") ?: run {
+            call.reject("deviceId requerido")
+            return
+        }
+
+        bleService?.disconnectDevice(deviceId)
+        val ret = JSObject()
+        ret.put("success", true)
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun sendMessage(call: PluginCall) {
+        val deviceId = call.getString("deviceId") ?: run {
+            call.reject("deviceId requerido")
+            return
+        }
+        val message = call.getString("message") ?: run {
+            call.reject("message requerido")
+            return
+        }
+
+        val success = bleService?.sendMessage(deviceId, message) ?: false
+        val ret = JSObject()
+        ret.put("success", success)
+        ret.put("sent", success)
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun getConnectedDevices(call: PluginCall) {
+        val devices = bleService?.getConnectedDevices() ?: emptyList()
+        val jsArray = JSArray()
+        devices.forEach { device ->
+            val obj = JSObject()
+            obj.put("deviceId", device["deviceId"])
+            obj.put("address", device["address"])
+            obj.put("name", device["name"])
+            jsArray.put(obj)
+        }
+        val ret = JSObject()
+        ret.put("devices", jsArray)
         call.resolve(ret)
     }
 
@@ -205,51 +387,66 @@ class NexoBlePlugin : Plugin() {
                         val address = intent.getStringExtra(BleService.EXTRA_DEVICE_ADDRESS) ?: return
                         val name = intent.getStringExtra(BleService.EXTRA_DEVICE_NAME) ?: "Unknown"
                         val rssi = intent.getIntExtra(BleService.EXTRA_RSSI, 0)
-                        
+
                         Log.d(TAG, "[BLE_PEER_FOUND] $name [$address] RSSI=$rssi")
-                        
+
                         notifyListeners("onScanResult", JSObject().apply {
                             put("address", address)
                             put("name", name)
                             put("rssi", rssi)
                         })
                     }
-                    
+
                     BleService.ACTION_SCAN_FAILED -> {
                         val errorCode = intent.getIntExtra(BleService.EXTRA_ERROR_CODE, -1)
-                        val desc = intent.getStringExtra("error_description") ?: "Unknown"
-                        
+                        val desc = intent.getStringExtra(BleService.EXTRA_ERROR_DESC) ?: "Unknown"
+
                         Log.e(TAG, "[BLE_SCAN_FAILED_JS] code=$errorCode, desc=$desc")
-                        
+
                         notifyListeners("onScanFailed", JSObject().apply {
                             put("errorCode", errorCode)
                             put("description", desc)
                         })
                     }
-                    
+
                     BleService.ACTION_SCAN_STOPPED -> {
                         val count = intent.getIntExtra("result_count", 0)
                         Log.i(TAG, "[BLE_SCAN_STOP_JS] Resultados totales: $count")
-                        
+
                         notifyListeners("onScanStopped", JSObject().apply {
                             put("resultCount", count)
                         })
                     }
-                    
+
                     BleService.ACTION_ADVERT_STATE -> {
                         val advertising = intent.getBooleanExtra(BleService.EXTRA_ADVERTISING, false)
                         notifyListeners("onAdvertStateChange", JSObject().apply {
                             put("advertising", advertising)
                         })
                     }
-                    
+
                     BleService.ACTION_MESSAGE_RECEIVED -> {
                         val address = intent.getStringExtra(BleService.EXTRA_DEVICE_ADDRESS) ?: return
                         val message = intent.getStringExtra(BleService.EXTRA_MESSAGE) ?: return
-                        
+
                         notifyListeners("onMessageReceived", JSObject().apply {
                             put("address", address)
                             put("message", message)
+                        })
+                    }
+
+                    BleService.ACTION_DEVICE_CONNECTED -> {
+                        val address = intent.getStringExtra(BleService.EXTRA_DEVICE_ADDRESS) ?: return
+                        notifyListeners("onDeviceConnected", JSObject().apply {
+                            put("address", address)
+                            put("name", intent.getStringExtra(BleService.EXTRA_DEVICE_NAME) ?: "Unknown")
+                        })
+                    }
+
+                    BleService.ACTION_DEVICE_DISCONNECTED -> {
+                        val address = intent.getStringExtra(BleService.EXTRA_DEVICE_ADDRESS) ?: return
+                        notifyListeners("onDeviceDisconnected", JSObject().apply {
+                            put("address", address)
                         })
                     }
                 }
@@ -265,7 +462,7 @@ class NexoBlePlugin : Plugin() {
             addAction(BleService.ACTION_DEVICE_CONNECTED)
             addAction(BleService.ACTION_DEVICE_DISCONNECTED)
         }
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(broadcastReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -280,6 +477,10 @@ class NexoBlePlugin : Plugin() {
             } catch (e: IllegalArgumentException) {
                 // Already unregistered
             }
+        }
+        if (serviceBound) {
+            context.unbindService(serviceConnection)
+            serviceBound = false
         }
         super.handleOnDestroy()
     }
