@@ -1,11 +1,13 @@
 /**
- * NEXO Setup Wizard v3.0.4-ARCH
- * FIX v3.0.4-ARCH:
- *   1) _completeOnce() centralizado con flag _completed + cancelación de timeouts
- *   2) Todos los handlers async usan _completeOnce() en lugar de onComplete() directo
- *   3) Cancelación proactiva de timeouts/setInterval antes de crear nuevos
- *   4) Guardia _completed en TODOS los entry points (eventos, callbacks, checks)
- *   5) destroy() limpia TODOS los recursos incluso si completó
+ * NEXO Setup Wizard v3.0.5-ARCH
+ * FIX v3.0.5-ARCH:
+ *   1) handleRequestPermissions acepta booleano u objeto (defensa contra cambios de API)
+ *   2) handlePermissionsGranted ya no depende exclusivamente de SetupManager; usa fallback
+ *   3) _completeOnce() centralizado con flag _completed + cancelación de timeouts
+ *   4) Todos los handlers async usan _completeOnce() en lugar de onComplete() directo
+ *   5) Cancelación proactiva de timeouts/setInterval antes de crear nuevos
+ *   6) Guardia _completed en TODOS los entry points (eventos, callbacks, checks)
+ *   7) destroy() limpia TODOS los recursos incluso si completó
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -30,7 +32,7 @@ export class SetupWizard {
     this._connectionAttempt = 0;
     this._stackBrokenShown = false;
     
-    // FIX v3.0.4: Flags de control de ciclo de vida
+    // FIX v3.0.5: Flags de control de ciclo de vida
     this._completed = false;
     this._completing = false;
     this._destroyed = false;
@@ -78,7 +80,7 @@ export class SetupWizard {
     document.addEventListener('visibilitychange', this.handleAppResume);
   }
   
-  // FIX v3.0.4: Método centralizado e idempotente para completar
+  // FIX v3.0.5: Método centralizado e idempotente para completar
   _completeOnce() {
     if (this._completed || this._completing || this._destroyed) {
       console.log(NAP_WIZARD, '_completeOnce: ya completado o destruido, ignorando');
@@ -230,15 +232,23 @@ export class SetupWizard {
     }
   }
   
-  // FIX v3.0.4: Funciona SIEMPRE, usa _completeOnce()
+  // FIX v3.0.5: Funciona SIEMPRE, usa _completeOnce(), con fallback si SetupManager falla
   async handlePermissionsGranted(event) {
     console.log(NAP_WIZARD, 'Permisos concedidos:', event.detail);
     
     if (this._completed || this._destroyed) return;
     
-    const status = await SetupManager.checkPermissionsRealtime();
+    // FIX v3.0.5: Fallback directo desde el evento si SetupManager no responde
+    let granted = false;
+    try {
+      const status = await SetupManager.checkPermissionsRealtime();
+      granted = !!status.granted;
+    } catch (e) {
+      console.warn(NAP_WIZARD, 'SetupManager.checkPermissionsRealtime falló, usando evento directo:', e);
+      granted = true; // El evento ya garantiza que fueron concedidos
+    }
     
-    if (status.granted) {
+    if (granted) {
       this.isAwaitingSettingsReturn = false;
       if (this.settingsCheckInterval) {
         clearInterval(this.settingsCheckInterval);
@@ -257,7 +267,7 @@ export class SetupWizard {
     }
   }
   
-  // FIX v3.0.4: Funciona SIEMPRE, maneja denegación directa y desde settings
+  // FIX v3.0.5: Funciona SIEMPRE, maneja denegación directa y desde settings
   handlePermissionsDenied(event) {
     console.log(NAP_WIZARD, 'Permisos denegados:', event.detail);
     
@@ -318,7 +328,7 @@ export class SetupWizard {
     this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif;"><div style="width: 48px; height: 48px; border: 4px solid #1a1a1a; border-top: 4px solid #00f0ff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px;"></div><h3 style="margin:0; font-size: 20px; font-weight: 600;">Verificando sistema...</h3><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style></div>';
   }
   
-  // FIX v3.0.4: Guardia anti-doble + cancelación de timeout previo
+  // FIX v3.0.5: Guardia anti-doble + cancelación de timeout previo
   renderSuccessTransition() {
     if (this.currentStep === 'success') return;
     this.currentStep = 'success';
@@ -366,7 +376,12 @@ export class SetupWizard {
       
       const result = await requestBLEPermissions();
       
-      if (result.granted) {
+      // FIX v3.0.5: Defensa contra booleano u objeto
+      const isGranted = result === true || result?.granted === true;
+      const isPermanent = result === true ? false : (result?.isPermanentDenial === true);
+      const isUserCancelled = result === true ? false : (result?.isUserCancelled === true);
+      
+      if (isGranted) {
         let btEnabled = false;
         try {
           const plugin = window.Capacitor?.Plugins?.NexoBLE;
@@ -399,9 +414,6 @@ export class SetupWizard {
       } else {
         btn.style.opacity = '1';
         btn.style.pointerEvents = 'auto';
-        
-        const isPermanent = result.isPermanentDenial === true;
-        const isUserCancelled = result.isUserCancelled === true;
         
         if (isPermanent) {
           this.currentStep = 'permissions_manual';
@@ -542,7 +554,7 @@ export class SetupWizard {
     }, 30000);
   }
 
-  // FIX v3.0.4: Limpieza completa de TODOS los recursos
+  // FIX v3.0.5: Limpieza completa de TODOS los recursos
   destroy() {
     this._destroyed = true;
     
