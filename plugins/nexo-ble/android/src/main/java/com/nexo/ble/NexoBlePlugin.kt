@@ -1,8 +1,8 @@
 // ============================================================
-// NexoBlePlugin.kt v3 — SCAN SIN hardware filter + filtro software
+// NexoBlePlugin.kt v4 — SCAN DIAGNÓSTICO + anti-throttle
 // plugins/nexo-ble/android/.../NexoBlePlugin.kt
-// FIX: Samsung S24 Android 14+ ignora ScanFilter por ServiceUuid.
-//      Scan sin filter + filtrado por software en callback.
+// FIX: Guardia anti-throttling, REMs quirúrgicos solo en scan.
+//      No se modifica advertising, GATT, permisos, ni mensajes.
 // ============================================================
 package com.nexo.ble
 
@@ -80,6 +80,7 @@ class NexoBlePlugin : Plugin() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private val connectedDevicesMap = mutableMapOf<String, JSObject>()
+    private var isScanning = false // Guardia anti-throttle
 
     private fun getBleServiceClass(): Class<*> = Class.forName(BLE_SERVICE_CLASS)
 
@@ -263,7 +264,9 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun isAdvertising(call: PluginCall) {
         val ctx = activity.applicationContext
-        call.resolve(JSObject().put("isAdvertising", isServiceRunning(ctx, BLE_SERVICE_CLASS)))
+        val running = isServiceRunning(ctx, BLE_SERVICE_CLASS)
+        remLog("INFO", "STATE", "isAdvertising=$running")
+        call.resolve(JSObject().put("isAdvertising", running))
     }
 
     @PluginMethod
@@ -320,16 +323,23 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ============================================================
-    // SCAN v3: SIN hardware filter (fix Samsung S24 Android 14+)
-    // Filtrado por software en onScanResult
+    // SCAN v4: DIAGNÓSTICO COMPLETO + anti-throttle + sin filter
     // ============================================================
     @PluginMethod
     fun startScan(call: PluginCall) {
         val context = activity.applicationContext
-        val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+
+        // --- REMs de diagnóstico previo ---
+        remLog("DEBUG", "SCAN_DIAG", "=== startScan iniciado ===")
+        remLog("DEBUG", "SCAN_DIAG", "adapter null=${adapter == null}, enabled=${adapter?.isEnabled ?: false}")
+        remLog("DEBUG", "SCAN_DIAG", "bluetoothScanner null=${bluetoothManager.adapter?.bluetoothLeScanner == null}")
+        remLog("DEBUG", "SCAN_DIAG", "BLUETOOTH_SCAN granted=${isGranted(context, android.Manifest.permission.BLUETOOTH_SCAN)}")
+        remLog("DEBUG", "SCAN_DIAG", "isScanning flag=$isScanning")
 
         if (adapter == null || !adapter.isEnabled) {
-            remLog("ERROR", "SCAN", "Bluetooth desactivado")
+            remLog("ERROR", "SCAN", "Bluetooth desactivado o adapter null")
             call.reject("Bluetooth desactivado")
             return
         }
@@ -339,8 +349,28 @@ class NexoBlePlugin : Plugin() {
             return
         }
 
+        // Anti-throttle: si ya hay scan activo, detener primero
+        if (isScanning) {
+            remLog("WARN", "SCAN", "Scan ya activo, deteniendo primero...")
+            stopScanInternal()
+            mainHandler.postDelayed({
+                startScanAfterStop(call, adapter)
+            }, 300)
+            return
+        }
+
+        startScanAfterStop(call, adapter)
+    }
+
+    private fun startScanAfterStop(call: PluginCall, adapter: android.bluetooth.BluetoothAdapter) {
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
+
+        if (bluetoothScanner == null) {
+            remLog("ERROR", "SCAN", "bluetoothLeScanner es NULL aunque adapter está enabled")
+            call.reject("BluetoothLeScanner null")
+            return
+        }
 
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
@@ -348,21 +378,42 @@ class NexoBlePlugin : Plugin() {
 
         try {
             bluetoothScanner?.startScan(null, settings, scanCallback) // null = sin hardware filter
+            isScanning = true
             mainHandler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
-            remLog("INFO", "SCAN", "Scan iniciado SIN hardware filter (fix S24)")
+            remLog("INFO", "SCAN", "✅ Scan iniciado SIN filter (anti-throttle activo)")
             call.resolve(JSObject().put("started", true))
         } catch (e: SecurityException) {
-            remLog("ERROR", "SCAN", "SecurityException: ${e.message}")
+            remLog("ERROR", "SCAN", "❌ SecurityException: ${e.message}")
             call.reject("Permiso faltante: ${e.message}")
+        } catch (e: IllegalArgumentException) {
+            remLog("ERROR", "SCAN", "❌ IllegalArgumentException: ${e.message}")
+            call.reject("Argumento inválido: ${e.message}")
         }
     }
 
     @PluginMethod
     fun stopScan(call: PluginCall) {
+        remLog("INFO", "SCAN", "stopScan llamado desde JS")
         stopScanInternal()
         call.resolve(JSObject().put("stopped", true))
     }
 
+    private fun stopScanInternal() {
+        remLog("DEBUG", "SCAN_DIAG", "stopScanInternal ejecutándose...")
+        mainHandler.removeCallbacks(scanTimeoutRunnable)
+        try {
+            bluetoothScanner?.stopScan(scanCallback)
+            remLog("INFO", "SCAN", "Scan detenido OK")
+        } catch (e: Exception) {
+            remLog("WARN", "SCAN", "Error deteniendo scan: ${e.message}")
+        }
+        bluetoothScanner = null
+        isScanning = false
+    }
+
+    // ============================================================
+    // SCAN CALLBACK: Log de TODO para diagnóstico
+    // ============================================================
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result?.device?.let { device ->
@@ -370,16 +421,20 @@ class NexoBlePlugin : Plugin() {
                 val name = try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
                 val rssi = result.rssi
 
-                // DEBUG: log de TODO lo que ve el scanner (sin filtro)
+                // REM CRÍTICO: log de todo lo que ve el scanner (sin filtrar)
                 val uuids = result.scanRecord?.serviceUuids?.joinToString(",") ?: "none"
-                remLog("DEBUG", "SCAN_RAW", "Visto: $name ($addr) RSSI=$rssi UUIDs=$uuids")
+                val rawBytes = result.scanRecord?.bytes?.let { bytes ->
+                    bytes.take(20).joinToString(" ") { "%02X".format(it) }
+                } ?: "no bytes"
+                remLog("DEBUG", "SCAN_RAW", "📡 Visto: name=$name addr=$addr RSSI=$rssi UUIDs=$uuids raw=$rawBytes...")
 
-                // FILTRO POR SOFTWARE: solo dispositivos NEXO
+                // FILTRO POR SOFTWARE: solo NEXO
                 val hasNexoUuid = result.scanRecord?.serviceUuids?.any { it.uuid == NEXO_SERVICE_UUID } ?: false
                 val isNexoDevice = hasNexoUuid || name.contains("NEXO", ignoreCase = true)
 
                 if (!isNexoDevice) {
-                    return@let // No es NEXO, ignorar
+                    // No es NEXO, ignorar silenciosamente (ya loggeado arriba)
+                    return@let
                 }
 
                 // Deduplicación por MAC
@@ -397,15 +452,18 @@ class NexoBlePlugin : Plugin() {
         }
 
         override fun onScanFailed(errorCode: Int) {
-            remLog("ERROR", "SCAN", "❌ Scan failed: errorCode=$errorCode")
-            notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode))
+            val errorMsg = when (errorCode) {
+                ScanCallback.SCAN_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"
+                ScanCallback.SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "APPLICATION_REGISTRATION_FAILED"
+                ScanCallback.SCAN_FAILED_INTERNAL_ERROR -> "INTERNAL_ERROR"
+                ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED -> "FEATURE_UNSUPPORTED"
+                ScanCallback.SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "OUT_OF_HARDWARE_RESOURCES"
+                ScanCallback.SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "SCANNING_TOO_FREQUENTLY"
+                else -> "UNKNOWN($errorCode)"
+            }
+            remLog("ERROR", "SCAN", "❌ onScanFailed: $errorMsg (code=$errorCode)")
+            notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode).put("errorMsg", errorMsg))
         }
-    }
-
-    private fun stopScanInternal() {
-        mainHandler.removeCallbacks(scanTimeoutRunnable)
-        try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
-        bluetoothScanner = null
     }
 
     @PluginMethod
