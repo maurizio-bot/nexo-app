@@ -1,7 +1,6 @@
 package com.nexo.ble
 
 import android.Manifest
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -13,6 +12,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
+import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
@@ -21,10 +21,13 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v2.3-ARCH — FIX: Todos los métodos que JS espera
+ * NexoBlePlugin v2.3.1-ARCH — FIX: Compilación limpia
  * 
- * Agregados: initializeBLE, checkBLEStatus, connectToDevice, disconnectDevice,
- *            sendMessage, getConnectedDevices, isBluetoothEnabled
+ * Correcciones:
+ * 1. Smart cast imposible en var → uso de val local
+ * 2. PermissionState enum vs String
+ * 3. hasRequiredPermissions() sin argumentos
+ * 4. isPermissionDeclared() eliminado (no existe en Plugin)
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -74,21 +77,21 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        serviceIntent = Intent(context, BleService::class.java)
+        val intent = Intent(context, BleService::class.java)
+        serviceIntent = intent
         
-        // Iniciar y vincular al servicio
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent)
+            context.startForegroundService(intent)
         } else {
-            context.startService(serviceIntent)
+            context.startService(intent)
         }
-        context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+        context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
         
         registerBroadcastReceiver()
-        Log.i(TAG, "[BLE_PLUGIN] NexoBlePlugin v2.3-ARCH cargado")
+        Log.i(TAG, "[BLE_PLUGIN] NexoBlePlugin v2.3.1-ARCH cargado")
     }
 
-    // ==================== PERMISSIONS (override base Plugin) ====================
+    // ==================== PERMISSIONS ====================
 
     override fun requestPermissions(call: PluginCall) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -105,13 +108,12 @@ class NexoBlePlugin : Plugin() {
     @PermissionCallback
     fun permissionsCallback(call: PluginCall) {
         val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val scan = getPermissionState("bluetoothScan") == "granted"
-            val adv = getPermissionState("bluetoothAdvertise") == "granted"
-            val conn = getPermissionState("bluetoothConnect") == "granted"
-            val loc = getPermissionState("location") == "granted"
-            scan && adv && conn && loc
+            getPermissionState("bluetoothScan") == PermissionState.GRANTED &&
+            getPermissionState("bluetoothAdvertise") == PermissionState.GRANTED &&
+            getPermissionState("bluetoothConnect") == PermissionState.GRANTED &&
+            getPermissionState("location") == PermissionState.GRANTED
         } else {
-            getPermissionState("location") == "granted"
+            getPermissionState("location") == PermissionState.GRANTED
         }
 
         val ret = JSObject()
@@ -122,23 +124,25 @@ class NexoBlePlugin : Plugin() {
     override fun checkPermissions(call: PluginCall) {
         val ret = JSObject()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ret.put("bluetoothScan", getPermissionState("bluetoothScan"))
-            ret.put("bluetoothAdvertise", getPermissionState("bluetoothAdvertise"))
-            ret.put("bluetoothConnect", getPermissionState("bluetoothConnect"))
-            ret.put("location", getPermissionState("location"))
+            ret.put("bluetoothScan", getPermissionState("bluetoothScan").name)
+            ret.put("bluetoothAdvertise", getPermissionState("bluetoothAdvertise").name)
+            ret.put("bluetoothConnect", getPermissionState("bluetoothConnect").name)
+            ret.put("location", getPermissionState("location").name)
         } else {
-            ret.put("location", getPermissionState("location"))
+            ret.put("location", getPermissionState("location").name)
         }
         call.resolve(ret)
     }
 
-    // ==================== NEW: initializeBLE ====================
+    // ==================== initializeBLE ====================
 
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val aliases = arrayOf("bluetoothScan", "bluetoothAdvertise", "bluetoothConnect", "location")
-            if (hasRequiredPermissions(aliases)) {
+            val allGranted = aliases.all { getPermissionState(it) == PermissionState.GRANTED }
+            
+            if (allGranted) {
                 val ret = JSObject()
                 ret.put("granted", true)
                 ret.put("isPermanentlyDenied", false)
@@ -147,7 +151,7 @@ class NexoBlePlugin : Plugin() {
                 requestPermissionForAliases(aliases, call, "initializeBLECallback")
             }
         } else {
-            if (getPermissionState("location") == "granted") {
+            if (getPermissionState("location") == PermissionState.GRANTED) {
                 val ret = JSObject()
                 ret.put("granted", true)
                 ret.put("isPermanentlyDenied", false)
@@ -161,22 +165,21 @@ class NexoBlePlugin : Plugin() {
     @PermissionCallback
     fun initializeBLECallback(call: PluginCall) {
         val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val scan = getPermissionState("bluetoothScan") == "granted"
-            val adv = getPermissionState("bluetoothAdvertise") == "granted"
-            val conn = getPermissionState("bluetoothConnect") == "granted"
-            val loc = getPermissionState("location") == "granted"
-            scan && adv && conn && loc
+            getPermissionState("bluetoothScan") == PermissionState.GRANTED &&
+            getPermissionState("bluetoothAdvertise") == PermissionState.GRANTED &&
+            getPermissionState("bluetoothConnect") == PermissionState.GRANTED &&
+            getPermissionState("location") == PermissionState.GRANTED
         } else {
-            getPermissionState("location") == "granted"
+            getPermissionState("location") == PermissionState.GRANTED
         }
 
         val ret = JSObject()
         ret.put("granted", granted)
-        ret.put("isPermanentlyDenied", !granted && !isPermissionDeclared("bluetoothScan")) // aproximación
+        ret.put("isPermanentlyDenied", false) // Tracking real requiere shouldShowRequestPermissionRationale()
         call.resolve(ret)
     }
 
-    // ==================== NEW: checkBLEStatus ====================
+    // ==================== checkBLEStatus ====================
 
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
@@ -192,10 +195,10 @@ class NexoBlePlugin : Plugin() {
             ret.put("connectGranted", connGranted)
             ret.put("advertiseGranted", advGranted)
             ret.put("locationGranted", locGranted)
-            ret.put("notificationsGranted", true) // BLE notifications no requieren permiso extra en Android 14+
+            ret.put("notificationsGranted", true)
             ret.put("foregroundConnectedGranted", true)
             ret.put("allGranted", scanGranted && advGranted && connGranted && locGranted)
-            ret.put("isPermanentlyDenied", false) // Simplificación; lógica real requiere tracking
+            ret.put("isPermanentlyDenied", false)
         } else {
             val locGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             ret.put("scanGranted", locGranted)
@@ -211,7 +214,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(ret)
     }
 
-    // ==================== NEW: isBluetoothEnabled ====================
+    // ==================== isBluetoothEnabled ====================
 
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
@@ -226,7 +229,9 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun startService(call: PluginCall) {
-        context.startForegroundService(serviceIntent)
+        serviceIntent?.let {
+            context.startForegroundService(it)
+        }
         val ret = JSObject()
         ret.put("success", true)
         call.resolve(ret)
@@ -234,7 +239,9 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun stopService(call: PluginCall) {
-        context.stopService(serviceIntent)
+        serviceIntent?.let {
+            context.stopService(it)
+        }
         val ret = JSObject()
         ret.put("success", true)
         call.resolve(ret)
@@ -249,7 +256,6 @@ class NexoBlePlugin : Plugin() {
                 ?.adapter?.name ?: "NEXO"
 
         bleService?.startAdvertising(deviceName) ?: run {
-            // Fallback si el servicio aún no está listo
             val intent = Intent(context, BleService::class.java).apply {
                 action = "START_ADVERTISING"
                 putExtra("deviceName", deviceName)
@@ -315,7 +321,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(ret)
     }
 
-    // ==================== NEW: CONNECTION & MESSAGING ====================
+    // ==================== CONNECTION & MESSAGING ====================
 
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
