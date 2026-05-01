@@ -1,13 +1,16 @@
 /**
- * ble_interface.js v3.9-ARCH
+ * ble_interface.js v3.9.1-ARCH — FIX BUILD #1015
  * 
  * FIXES:
- * - REM obsoletos eliminados (Vault, Setup, Init generales)
- * - REM nuevos para monitoreo completo de escaneo BLE
- * - Integración con onScanFailed para feedback de errores
+ * 1. Agregado export initBLEInterface (nexo_app.js lo importa)
+ * 2. Import corregido: registerPlugin('NexoBle') desde @capacitor/core
+ *    (eliminado @capacitor-community/bluetooth-le que no existe)
  */
 
-import { NexoBle } from '@capacitor-community/bluetooth-le'; // o tu import real
+import { registerPlugin } from '@capacitor/core';
+
+// Plugin BLE propio de NEXO
+const NexoBle = registerPlugin('NexoBle');
 
 let _scanCallback = null;
 let _scanResults = new Map();
@@ -17,7 +20,7 @@ let _lastScanError = null;
 // ==================== REM LOGGER ====================
 
 const REM = {
-  // NUEVOS: Escaneo BLE (lo que pediste)
+  // NUEVOS: Escaneo BLE
   scanStart: (settings) => console.log(`[BLE_SCAN_START] Modo: ${settings.mode}, Filter: ${settings.filter}`),
   scanResult: (device) => console.log(`[BLE_SCAN_RESULT] ${device.name} [${device.address}] RSSI: ${device.rssi}`),
   scanFailed: (code, desc) => console.error(`[BLE_SCAN_FAILED] Code: ${code}, Desc: ${desc}`),
@@ -31,11 +34,56 @@ const REM = {
   serviceDestroy: () => console.log(`[BLE_DESTROY] BleService destruido`),
   gattInit: (uuid) => console.log(`[BLE_GATT] GATT Server iniciado: ${uuid}`),
   messageReceived: (addr, msg) => console.log(`[BLE_MSG_RX] De ${addr}: ${msg.substring(0, 50)}...`),
-  
-  // ELIMINADOS (obsoletos, ya funcionan estables):
-  // [VAULT_INIT_START], [VAULT_INIT_SUCCESS], [CRYPTO_002]
-  // [SETUP_CHECK], [SETUP_REQUIRED], [NEXO_INIT], [APP_INIT]
 };
+
+// ==================== INIT (FIX BUILD #1015) ====================
+
+/**
+ * FIX BUILD #1015: nexo_app.js importa esta función.
+ * Inicializa el módulo BLE y registra listeners nativos.
+ */
+export async function initBLEInterface() {
+  console.log('[BLE_INIT] Inicializando BLE Interface v3.9.1-ARCH');
+  
+  // Registrar listeners nativos del plugin
+  NexoBle.addListener('onScanResult', (result) => {
+    const device = {
+      address: result.address,
+      name: result.name || 'Dispositivo desconocido',
+      rssi: result.rssi
+    };
+    
+    _scanResults.set(device.address, device);
+    REM.scanResult(device);
+    
+    if (isNexoPeer(device)) {
+      REM.peerFound(device);
+      _scanCallback?.(device);
+    }
+  });
+
+  NexoBle.addListener('onScanFailed', (error) => {
+    _isScanning = false;
+    _lastScanError = error;
+    REM.scanFailed(error.errorCode, error.description);
+  });
+
+  NexoBle.addListener('onScanStopped', (data) => {
+    _isScanning = false;
+    REM.scanStop(data.resultCount);
+  });
+
+  NexoBle.addListener('onAdvertStateChange', (data) => {
+    REM.advertState(data.advertising);
+  });
+
+  NexoBle.addListener('onMessageReceived', (data) => {
+    REM.messageReceived(data.address, data.message);
+  });
+
+  console.log('[BLE_INIT] Listeners nativos registrados');
+  return true;
+}
 
 // ==================== SCAN CONTROL ====================
 
@@ -50,36 +98,6 @@ export async function startBleScan(onDeviceFound, onError) {
   _scanCallback = onDeviceFound;
   
   try {
-    // Registrar listeners nativos
-    NexoBle.addListener('onScanResult', (result) => {
-      const device = {
-        address: result.address,
-        name: result.name || 'Dispositivo desconocido',
-        rssi: result.rssi
-      };
-      
-      _scanResults.set(device.address, device);
-      REM.scanResult(device);
-      
-      // Validar si es peer NEXO (puedes agregar lógica de filtro adicional aquí)
-      if (isNexoPeer(device)) {
-        REM.peerFound(device);
-        onDeviceFound?.(device);
-      }
-    });
-
-    NexoBle.addListener('onScanFailed', (error) => {
-      _isScanning = false;
-      _lastScanError = error;
-      REM.scanFailed(error.errorCode, error.description);
-      onError?.(error);
-    });
-
-    NexoBle.addListener('onScanStopped', (data) => {
-      _isScanning = false;
-      REM.scanStop(data.resultCount);
-    });
-
     await NexoBle.startScan();
     _isScanning = true;
     REM.scanStart({ mode: 'LOW_LATENCY', filter: 'SERVICE_UUID' });
@@ -137,20 +155,15 @@ export async function stopBleAdvertising() {
 // ==================== UTILS ====================
 
 function isNexoPeer(device) {
-  // Filtro adicional por software si es necesario
-  // Por ahora, cualquier dispositivo con nuestro Service UUID ya pasó el filtro nativo
   return true;
 }
 
 // ==================== UI INTEGRATION ====================
 
 export function renderBleMeshUI(containerId) {
-  // Tu lógica de renderizado actual...
-  // Asegúrate de mostrar _lastScanError en la UI si existe
   const container = document.getElementById(containerId);
   if (!container) return;
   
-  // Ejemplo: mostrar error de scan en UI
   if (_lastScanError) {
     const errorEl = container.querySelector('.scan-error');
     if (errorEl) {
