@@ -1,8 +1,9 @@
 /**
- * NEXO Setup Wizard v3.0.0-ARCH
- * Coordinado con NexoBlePlugin.kt v4.0.0-ARCH
- * - Timeout extendido a 35s (nativo puede tardar hasta 16s en retry)
- * - handleConnectionFailed ajustado para exponential backoff nativo
+ * NEXO Setup Wizard v3.0.6-ARCH
+ * FIX v3.0.6-ARCH:
+ *   1) handleRequestPermissions: fallback recheck directo si callback nativo retorna false
+ *   2) _completeOnce() centralizado con flag _completed + cancelación de timeouts
+ *   3) Todos los handlers async usan _completeOnce()
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -24,9 +25,16 @@ export class SetupWizard {
     this.isAwaitingSettingsReturn = false;
     this.settingsCheckInterval = null;
     this.btCheckInterval = null;
-    this._successTimeout = null;
     this._connectionAttempt = 0;
     this._stackBrokenShown = false;
+    
+    this._completed = false;
+    this._completing = false;
+    this._destroyed = false;
+    this._successTimeout = null;
+    this._completeTimeout = null;
+    this._safetyTimeout = null;
+    
     window.NEXO_WIZARD = this;
     
     this.handlePermissionsGranted = this.handlePermissionsGranted.bind(this);
@@ -41,11 +49,11 @@ export class SetupWizard {
     this.renderChecking();
     this.setupGlobalListeners();
     
-    // v3.0.0-ARCH: Timeout 35s (nativo puede tardar hasta 16s en retry + jitter)
-    setTimeout(() => {
-      if (this.currentStep === 'checking') {
+    this._safetyTimeout = setTimeout(() => {
+      if (this.currentStep === 'checking' && !this._completed) {
+        console.error(NAP_WIZARD, 'Safety timeout: check colgado > 35s');
         this.currentStep = 'error';
-        this.renderError();
+        this.renderError('Tiempo de verificación excedido. Reinicia la app.');
       }
     }, 35000);
     
@@ -53,8 +61,8 @@ export class SetupWizard {
   }
   
   setupGlobalListeners() {
-    window.addEventListener('nexo-permissions-granted', this.handlePermissionsGranted);
-    window.addEventListener('nexo-permissions-denied', this.handlePermissionsDenied);
+    window.addEventListener('blePermissionsGranted', this.handlePermissionsGranted);
+    window.addEventListener('blePermissionsPermanentlyDenied', this.handlePermissionsDenied);
     
     if (window.Capacitor?.Plugins?.NexoBLE) {
       const plugin = window.Capacitor.Plugins.NexoBLE;
@@ -66,20 +74,58 @@ export class SetupWizard {
     document.addEventListener('visibilitychange', this.handleAppResume);
   }
   
+  _completeOnce() {
+    if (this._completed || this._completing || this._destroyed) {
+      console.log(NAP_WIZARD, '_completeOnce: ya completado o destruido, ignorando');
+      return;
+    }
+    
+    this._completing = true;
+    console.log(NAP_WIZARD, '_completeOnce: completando wizard...');
+    
+    if (this._safetyTimeout) {
+      clearTimeout(this._safetyTimeout);
+      this._safetyTimeout = null;
+    }
+    
+    this.renderSuccessTransition();
+    
+    if (this._completeTimeout) {
+      clearTimeout(this._completeTimeout);
+    }
+    
+    this._completeTimeout = setTimeout(() => {
+      if (!this._completed && !this._destroyed) {
+        this._completed = true;
+        this._completing = false;
+        console.log(NAP_WIZARD, 'Wizard completado, llamando onComplete');
+        try {
+          this.onComplete();
+        } catch (e) {
+          console.error(NAP_WIZARD, 'Error en onComplete:', e);
+        }
+        setTimeout(() => this.destroy(), 3500);
+      }
+    }, 800);
+  }
+  
   handleBluetoothStateChange(state) {
     console.log(NAP_WIZARD, 'BT State Change:', state);
+    
+    if (this._completed || this._destroyed) return;
     
     if (state.stateName === 'ON' && this.isAwaitingSettingsReturn) {
       this.isAwaitingSettingsReturn = false;
       this.clearBtCheckInterval();
-      this.renderSuccessTransition();
-      setTimeout(() => this.onComplete(), 800);
+      this._completeOnce();
     }
   }
   
-  // v3.0.0-ARCH: Nativo usa exponential backoff (2s, 4s, 8s, 16s). No mostrar error prematuro.
   handleConnectionFailed(data) {
     console.log(NAP_WIZARD, 'Connection failed (nativo retry en progreso):', data);
+    
+    if (this._completed || this._destroyed) return;
+    
     const attempt = data.attempt || 0;
     const maxAttempts = data.maxAttempts || 3;
     const isRecoverable = data.recoverable !== false;
@@ -97,7 +143,7 @@ export class SetupWizard {
   }
   
   handleStackBroken(data) {
-    if (this._stackBrokenShown) return;
+    if (this._stackBrokenShown || this._completed || this._destroyed) return;
     this._stackBrokenShown = true;
     console.error(NAP_WIZARD, 'Android 14 Stack Bug detectado:', data);
     
@@ -127,6 +173,7 @@ export class SetupWizard {
   
   async handleAppResume() {
     if (document.visibilityState !== 'visible') return;
+    if (this._completed || this._destroyed) return;
     
     if (this.isAwaitingSettingsReturn) {
       console.log(NAP_WIZARD, 'App resumed - verifying Bluetooth state');
@@ -135,10 +182,12 @@ export class SetupWizard {
   }
   
   async verifyBluetoothAfterReturn() {
+    if (this._completed || this._destroyed) return;
+    
     try {
       const status = await checkBLEStatus();
       
-      if (status.bluetoothEnabled) {
+      if (status === true) {
         this.isAwaitingSettingsReturn = false;
         this.clearBtCheckInterval();
         
@@ -150,8 +199,7 @@ export class SetupWizard {
           console.warn(NAP_WIZARD, 'Advertising no iniciado:', e);
         }
         
-        this.renderSuccessTransition();
-        setTimeout(() => this.onComplete(), 800);
+        this._completeOnce();
       } else {
         const btn = document.getElementById('btn-bt-settings');
         if (btn) {
@@ -177,44 +225,71 @@ export class SetupWizard {
   async handlePermissionsGranted(event) {
     console.log(NAP_WIZARD, 'Permisos concedidos:', event.detail);
     
-    if (this.isAwaitingSettingsReturn) {
-      this.isAwaitingSettingsReturn = false;
-      
+    if (this._completed || this._destroyed) return;
+    
+    let granted = false;
+    try {
       const status = await SetupManager.checkPermissionsRealtime();
-      
-      if (status.granted) {
-        try {
-          const { startBLEAdvertising } = await import('../core/ble_permissions.js');
-          const advResult = await startBLEAdvertising();
-          console.log(NAP_WIZARD, 'Advertising iniciado:', advResult.nap_code);
-        } catch (e) {
-          console.warn(NAP_WIZARD, 'No se pudo iniciar advertising automáticamente:', e);
-        }
-        
-        this.renderSuccessTransition();
-        setTimeout(() => this.onComplete(), 800);
-      } else if (!status.bluetoothEnabled) {
-        this.currentStep = 'bluetooth';
-        this.renderBluetooth();
+      granted = !!status.granted;
+    } catch (e) {
+      console.warn(NAP_WIZARD, 'SetupManager.checkPermissionsRealtime falló, usando evento directo:', e);
+      granted = true;
+    }
+    
+    if (granted) {
+      this.isAwaitingSettingsReturn = false;
+      if (this.settingsCheckInterval) {
+        clearInterval(this.settingsCheckInterval);
+        this.settingsCheckInterval = null;
       }
+      
+      try {
+        const { startBLEAdvertising } = await import('../core/ble_permissions.js');
+        const advResult = await startBLEAdvertising();
+        console.log(NAP_WIZARD, 'Advertising iniciado:', advResult.nap_code);
+      } catch (e) {
+        console.warn(NAP_WIZARD, 'No se pudo iniciar advertising automáticamente:', e);
+      }
+      
+      this._completeOnce();
     }
   }
   
   handlePermissionsDenied(event) {
     console.log(NAP_WIZARD, 'Permisos denegados:', event.detail);
     
-    if (this.isAwaitingSettingsReturn) {
-      this.isAwaitingSettingsReturn = false;
+    if (this._completed || this._destroyed) return;
+    
+    this.isAwaitingSettingsReturn = false;
+    if (this.settingsCheckInterval) {
+      clearInterval(this.settingsCheckInterval);
+      this.settingsCheckInterval = null;
+    }
+    
+    const isPermanent = event.detail?.isPermanentDenial === true;
+    
+    if (isPermanent || this.currentStep === 'permissions_manual') {
+      this.currentStep = 'permissions_manual';
       this.renderPermissions(true);
+    } else {
+      this.errorCount++;
+      if (this.errorCount >= 2) {
+        this.currentStep = 'permissions_manual';
+        this.renderPermissions();
+      } else {
+        this.renderPermissions();
+      }
     }
   }
 
   async performCheck() {
+    if (this._completed || this._destroyed) return;
+    
     try {
       const status = await SetupManager.checkInitialStatus();
       
       if (status.ready) {
-        this.onComplete();
+        this._completeOnce();
         return;
       }
 
@@ -241,16 +316,15 @@ export class SetupWizard {
   }
   
   renderSuccessTransition() {
-    this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div style="font-size: 56px; margin-bottom: 16px;">✓</div><h3 style="margin:0; font-size: 20px; font-weight: 600; color: #00ff88;">Listo</h3></div>';
+    if (this.currentStep === 'success') return;
+    this.currentStep = 'success';
     
-    if (this._successTimeout) clearTimeout(this._successTimeout);
-    this._successTimeout = setTimeout(() => {
-      console.log(NAP_WIZARD, 'Auto-destruyendo wizard por seguridad');
-      this.destroy();
-    }, 3500);
+    this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div style="font-size: 56px; margin-bottom: 16px;">✓</div><h3 style="margin:0; font-size: 20px; font-weight: 600; color: #00ff88;">Listo</h3></div>';
   }
 
   renderPermissions(showStillPending = false) {
+    if (this._completed || this._destroyed) return;
+    
     const isManual = this.currentStep === 'permissions_manual';
     const btnId = isManual ? 'btn-settings-manual' : 'btn-perms-auto';
     const fallbackBtnId = 'btn-settings-fallback';
@@ -277,6 +351,8 @@ export class SetupWizard {
   }
 
   async handleRequestPermissions(btnElement) {
+    if (this._completed || this._destroyed) return;
+    
     const btn = btnElement;
     
     try {
@@ -286,10 +362,37 @@ export class SetupWizard {
       
       const result = await requestBLEPermissions();
       
-      if (result.granted) {
-        const btStatus = await checkBLEStatus();
+      // FIX v3.0.6: Fallback recheck directo si callback nativo tuvo race condition
+      let isGranted = result === true || result?.granted === true;
+      const isPermanent = result?.isPermanentDenial === true;
+      const isUserCancelled = result?.isUserCancelled === true;
+      
+      if (!isGranted && !isPermanent) {
+        console.log(NAP_WIZARD, 'Callback nativo retornó false — intentando recheck directo...');
+        try {
+          const directCheck = await checkBLEStatus();
+          if (directCheck === true) {
+            console.log(NAP_WIZARD, 'Recheck directo exitoso — corrigiendo race condition');
+            isGranted = true;
+          }
+        } catch (e) {
+          console.warn(NAP_WIZARD, 'Recheck directo falló:', e);
+        }
+      }
+      
+      if (isGranted) {
+        let btEnabled = false;
+        try {
+          const plugin = window.Capacitor?.Plugins?.NexoBLE;
+          if (plugin) {
+            const btState = await plugin.isBluetoothEnabled();
+            btEnabled = btState.enabled === true;
+          }
+        } catch (e) {
+          console.warn(NAP_WIZARD, 'No se pudo consultar estado BT:', e);
+        }
         
-        if (!btStatus.bluetoothEnabled) {
+        if (!btEnabled) {
           this.currentStep = 'bluetooth';
           this.renderBluetooth();
           return;
@@ -299,21 +402,17 @@ export class SetupWizard {
         
         if (!pluginReady) {
           btn.style.background = 'linear-gradient(135deg, #ff6b35 0%, #ff4500 100%)';
-          btn.textContent = 'Error - Reintentar';
+          btn.textContent = 'Reintentar solicitud';
           btn.style.opacity = '1';
           btn.style.pointerEvents = 'auto';
           return;
         }
         
-        this.renderSuccessTransition();
-        setTimeout(() => this.onComplete(), 800);
+        this._completeOnce();
         
       } else {
         btn.style.opacity = '1';
         btn.style.pointerEvents = 'auto';
-        
-        const isPermanent = result.isPermanentDenial === true;
-        const isUserCancelled = result.isUserCancelled === true;
         
         if (isPermanent) {
           this.currentStep = 'permissions_manual';
@@ -332,13 +431,13 @@ export class SetupWizard {
           }
         }
         
-        btn.textContent = isUserCancelled ? 'Reintentar (cerrado)' : 'Reintentar';
+        btn.textContent = isUserCancelled ? 'Reintentar (diálogo cerrado)' : 'Reintentar solicitud';
       }
       
     } catch (error) {
       btn.style.opacity = '1';
       btn.style.pointerEvents = 'auto';
-      btn.textContent = 'Error - Reintentar';
+      btn.textContent = 'Reintentar solicitud';
     }
   }
 
@@ -360,6 +459,8 @@ export class SetupWizard {
   }
 
   renderBluetooth() {
+    if (this._completed || this._destroyed) return;
+    
     this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">📡</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Bluetooth desactivado</h2><p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">Activa el Bluetooth para descubrir peers NEXO.</p><button id="btn-bt-settings" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; max-width: 320px; margin-bottom: 12px;">Ir a Configuración Bluetooth</button><button id="btn-retry" style="background: transparent; color: #666; border: 1px solid #444; padding: 12px 24px; border-radius: 10px; font-size: 14px; cursor: pointer;">🔄 Verificar</button></div>';
     
     document.getElementById('btn-bt-settings').addEventListener('click', () => this.handleOpenBluetoothSettings());
@@ -367,26 +468,31 @@ export class SetupWizard {
   }
 
   renderError(customMessage = null) {
+    if (this._completed || this._destroyed) return;
+    
     const msg = customMessage || 'Error de conexión. Verifica que el otro dispositivo esté visible.';
     this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">⚠️</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Error</h2><p style="color: #888; font-size: 14px; max-width: 320px; margin-bottom: 24px;">' + msg + '</p><button id="btn-retry" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer;">🔄 Reintentar</button></div>';
     document.getElementById('btn-retry').addEventListener('click', () => this.performCheck());
   }
 
   async handleOpenSettings() {
+    if (this._completed || this._destroyed) return;
+    
     this.isAwaitingSettingsReturn = true;
     await SetupManager.markAwaitingSettingsReturn();
     await SetupManager.openAppSettings();
     
     const btn = document.getElementById('btn-settings-manual');
     if (btn) {
-      btn.textContent = 'Esperando...';
+      btn.textContent = 'Verificando permisos...';
       btn.style.opacity = '0.6';
       btn.style.pointerEvents = 'none';
     }
     
     this.settingsCheckInterval = setInterval(async () => {
-      if (!this.isAwaitingSettingsReturn) {
+      if (!this.isAwaitingSettingsReturn || this._completed || this._destroyed) {
         clearInterval(this.settingsCheckInterval);
+        this.settingsCheckInterval = null;
         return;
       }
       
@@ -396,44 +502,45 @@ export class SetupWizard {
         if (status.granted) {
           this.isAwaitingSettingsReturn = false;
           clearInterval(this.settingsCheckInterval);
-          this.renderSuccessTransition();
-          setTimeout(() => this.onComplete(), 800);
+          this.settingsCheckInterval = null;
+          this._completeOnce();
         }
       } catch (e) {}
     }, 1500);
   }
 
   async handleOpenBluetoothSettings() {
+    if (this._completed || this._destroyed) return;
+    
     this.isAwaitingSettingsReturn = true;
     await SetupManager.markAwaitingSettingsReturn();
     await SetupManager.openBluetoothSettings();
     
     const btn = document.getElementById('btn-bt-settings');
     if (btn) {
-      btn.textContent = 'Esperando...';
+      btn.textContent = 'Verificando Bluetooth...';
       btn.style.opacity = '0.6';
       btn.style.pointerEvents = 'none';
     }
     
     this.btCheckInterval = setInterval(async () => {
-      if (!this.isAwaitingSettingsReturn) {
+      if (!this.isAwaitingSettingsReturn || this._completed || this._destroyed) {
         this.clearBtCheckInterval();
         return;
       }
       
       try {
         const status = await checkBLEStatus();
-        if (status.bluetoothEnabled) {
+        if (status === true) {
           this.isAwaitingSettingsReturn = false;
           this.clearBtCheckInterval();
-          this.renderSuccessTransition();
-          setTimeout(() => this.onComplete(), 800);
+          this._completeOnce();
         }
       } catch (e) {}
     }, 2000);
     
     setTimeout(() => {
-      if (this.isAwaitingSettingsReturn) {
+      if (this.isAwaitingSettingsReturn && !this._completed && !this._destroyed) {
         this.isAwaitingSettingsReturn = false;
         this.clearBtCheckInterval();
         const btnRetry = document.getElementById('btn-bt-settings');
@@ -447,13 +554,23 @@ export class SetupWizard {
   }
 
   destroy() {
+    this._destroyed = true;
+    
     if (this._successTimeout) {
       clearTimeout(this._successTimeout);
       this._successTimeout = null;
     }
+    if (this._completeTimeout) {
+      clearTimeout(this._completeTimeout);
+      this._completeTimeout = null;
+    }
+    if (this._safetyTimeout) {
+      clearTimeout(this._safetyTimeout);
+      this._safetyTimeout = null;
+    }
     
-    window.removeEventListener('nexo-permissions-granted', this.handlePermissionsGranted);
-    window.removeEventListener('nexo-permissions-denied', this.handlePermissionsDenied);
+    window.removeEventListener('blePermissionsGranted', this.handlePermissionsGranted);
+    window.removeEventListener('blePermissionsPermanentlyDenied', this.handlePermissionsDenied);
     document.removeEventListener('visibilitychange', this.handleAppResume);
     
     if (window.Capacitor?.Plugins?.NexoBLE) {
@@ -463,12 +580,15 @@ export class SetupWizard {
     
     if (this.settingsCheckInterval) {
       clearInterval(this.settingsCheckInterval);
+      this.settingsCheckInterval = null;
     }
     this.clearBtCheckInterval();
     
-    if (this.overlayContainer) {
+    if (this.overlayContainer && this.overlayContainer.parentNode) {
       this.overlayContainer.remove();
       this.overlayContainer = null;
     }
+    
+    console.log(NAP_WIZARD, 'Wizard destruido');
   }
 }

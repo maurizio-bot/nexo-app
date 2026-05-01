@@ -1,5 +1,5 @@
 /**
- * REM v2.1-COMPACT - Toasts reducidos para pantalla pequeña
+ * REM v2.1-COMPACT-ARCH - Toasts reducidos + filtro WebSocket
  */
 
 class REMSystem {
@@ -7,8 +7,8 @@ class REMSystem {
     this.version = '2.1';
     this.visible = true;
     this.history = [];
-    this.maxHistory = 50; // Reducido
-    this.toastDuration = 4000; // Más corto
+    this.maxHistory = 50;
+    this.toastDuration = 4000;
     this.initialized = false;
     this.elements = {};
     this._lastPhase = 'INIT';
@@ -32,7 +32,6 @@ class REMSystem {
     if (document.getElementById('rem-toasts')) return;
     const container = document.createElement('div');
     container.id = 'rem-toasts';
-    // COMPACTO: Menos espacio, más cerca del borde
     container.style.cssText = `
       position: fixed;
       top: 8px;
@@ -40,9 +39,9 @@ class REMSystem {
       z-index: 2147483647;
       display: flex;
       flex-direction: column;
-      gap: 4px; /* Reducido de 12px */
+      gap: 4px;
       pointer-events: none;
-      max-width: 320px; /* Más angosto */
+      max-width: 320px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
     `;
     document.body.appendChild(container);
@@ -53,21 +52,20 @@ class REMSystem {
     if (document.getElementById('rem-status')) return;
     const statusBar = document.createElement('div');
     statusBar.id = 'rem-status';
-    // COMPACTO: Altura reducida de 32px a 24px
     statusBar.style.cssText = `
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
-      height: 24px; /* Reducido de 32px */
+      height: 24px;
       background: rgba(0, 0, 0, 0.9);
       color: #00ff00;
       font-family: 'SF Mono', Monaco, monospace;
-      font-size: 10px; /* Más pequeño */
+      font-size: 10px;
       display: flex;
       align-items: center;
-      padding: 0 8px; /* Menos padding */
-      gap: 12px; /* Menos gap */
+      padding: 0 8px;
+      gap: 12px;
       z-index: 2147483646;
       border-top: 1px solid #333;
       backdrop-filter: blur(10px);
@@ -134,6 +132,9 @@ class REMSystem {
     if (!this.initialized) this.init();
     if (!this.elements.toasts) return null;
 
+    // FIX v2.1-ARCH: Silenciar spam de WebSocket relay (BLE es transporte principal)
+    if (code && (code.startsWith('WS_') || code.startsWith('WEBSOCKET_'))) return null;
+
     const colors = {
       error: { bg: '#ff4444', icon: '✕' },
       warning: { bg: '#ffaa00', icon: '⚠' },
@@ -145,14 +146,13 @@ class REMSystem {
 
     const toast = document.createElement('div');
     toast.className = 'rem-toast';
-    // COMPACTO: Menos padding, fuente más pequeña
     toast.style.cssText = `
       background: rgba(20, 20, 20, 0.95);
       border-left: 3px solid ${theme.bg};
       color: #fff;
-      padding: 6px 10px; /* Reducido de 14px 18px */
+      padding: 6px 10px;
       border-radius: 4px;
-      font-size: 11px; /* Reducido de 13px */
+      font-size: 11px;
       line-height: 1.3;
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
       max-width: 300px;
@@ -164,7 +164,6 @@ class REMSystem {
       gap: 6px;
     `;
 
-    // COMPACTO: Layout horizontal simplificado
     toast.innerHTML = `
       <span style="color: ${theme.bg}; font-size: 12px; flex-shrink: 0;">${theme.icon}</span>
       <div style="flex: 1; min-width: 0;">

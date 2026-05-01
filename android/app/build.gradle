@@ -2,17 +2,16 @@ apply plugin: 'com.android.application'
 
 android {
     namespace "com.nexo.app"
-    compileSdkVersion 34 // CRÍTICO: Android 14 para BLE robusto
+    compileSdkVersion 34
     
     defaultConfig {
         applicationId "com.nexo.app"
-        minSdkVersion 26 // BLE estable desde Android 8.0
-        targetSdkVersion 34 // CRÍTICO: Target Android 14
+        minSdkVersion 26
+        targetSdkVersion 34
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
-        // CRÍTICO: Evitar conflictos de archivos nativos BLE
         packagingOptions {
             pickFirst 'lib/x86/libc++_shared.so'
             pickFirst 'lib/x86_64/libc++_shared.so'
@@ -25,7 +24,6 @@ android {
         }
     }
     
-    // CRÍTICO: Java 17 requerido por Android 14
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -43,7 +41,6 @@ repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
-    // CRÍTICO: Repositorio Nordic para Mesh (futuro)
     mavenCentral()
     google()
 }
@@ -53,24 +50,18 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
-    
-    // CRÍTICO: AndroidX Activity para permisos runtime Android 14
     implementation "androidx.activity:activity-ktx:1.8.0"
-    
-    // CRÍTICO: Core KTX para permisos
     implementation "androidx.core:core-ktx:1.12.0"
-    
-    // NEXO Auth Plugin (Biometría Nativa)
-    implementation project(':capacitor-nexo-auth')
-    
-    // AndroidX Biometric (requerido para BiometricPrompt)
     implementation "androidx.biometric:biometric:1.1.0"
     
     implementation project(':capacitor-android')
+    implementation project(':capacitor-cordova-android-plugins')
+    implementation project(':capacitor-nexo-auth')
+    implementation project(':nexo-ble')
+    
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
-    implementation project(':capacitor-cordova-android-plugins')
 }
 
 apply from: 'capacitor.build.gradle'

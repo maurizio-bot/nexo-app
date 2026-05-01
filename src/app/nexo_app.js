@@ -1,8 +1,12 @@
 /**
- * NEXO App v5.0.0-ARCH
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v4.0-ARCH + ble_permissions.js v4.0-ARCH
- * FIX: Sin listeners nativos duplicados, usa eventos ble_interface, dedup LRU, send via bleInterface,
- *      sin dependencia onMessageSent, fallback ordenado BLE→Nordic→Hybrid→Bridge→WS.
+ * NEXO App v5.0.11-ARCH
+ * FIX v5.0.11-ARCH:
+ *   1) Mensaje propio confirmed (_own=true, pending=false) NUNCA crea burbuja nueva.
+ *      Si no encuentra pending para confirmar, ignora silenciosamente.
+ *   2) Eliminado fallback _handleMessage() desde sendMessage cuando confirmMessage falla.
+ *   3) _bleMessageHandler filtra ecos propios comparando deviceId vs localDeviceAddress.
+ *   4) _handleMessage bloquea estrictamente: confirmed propio que no confirma pending => return.
+ *   5) Compatibilidad confirmada con ble_permissions.js v6.5-ARCH y SetupWizard v3.0.5-ARCH.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -74,7 +78,22 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.0-ARCH iniciando...', 'info', 'APP_INIT');
+    
+    this._contentFpMap = new Map();
+    this._contentFpTTL = 15000;
+    this._contentFpMax = 500;
+    
+    DEBUG.log('🚀 [NEXO] v5.0.11-ARCH iniciando...', 'info', 'APP_INIT');
+  }
+
+  _hashContent(str) {
+    let h = 0;
+    const s = String(str || '');
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) - h) + s.charCodeAt(i);
+      h |= 0;
+    }
+    return Math.abs(h).toString(36).padStart(8, '0');
   }
 
   async init() {
@@ -94,7 +113,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.0-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.11-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -172,20 +191,38 @@ export class NexoApp {
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
+        this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
+        if (this.stream) this.stream.scrollToBottom();
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
-        DEBUG.log(`📨 BLE mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`, 'info', 'BLE_RECV');
+        const nid = (deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
+        
+        // FIX v5.0.11: Filtrar ecos propios (stack nativo a veces retransmite al emisor)
+        if (this.bleInterface?.localDeviceAddress && nid === this.bleInterface.localDeviceAddress) {
+          DEBUG.log(`Eco propio ignorado de ${nid.substring(0,8)}`, 'debug', 'DEDUP_ECHO');
+          return;
+        }
+        
+        let resolvedName = senderName;
+        if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
+          const persisted = this.bleInterface.getContactName(nid);
+          if (persisted) resolvedName = persisted;
+        }
+        if (!resolvedName || resolvedName === 'NEXO Peer') {
+          resolvedName = `NEXO-${nid.substring(0, 6).toUpperCase()}`;
+        }
+        
         this._handleMessage({
           content,
-          sender: deviceId,
-          senderName,
+          sender: nid,
+          senderName: resolvedName,
           source: source || 'ble_direct',
           timestamp: timestamp || Date.now(),
-          messageId,
+          messageId: messageId || null,
           _own: false
         }, 'ble_direct');
       };
@@ -197,7 +234,10 @@ export class NexoApp {
   async _initPhase6_Bridge() {
     DEBUG.setPhase('BRIDGE');
     try {
-      if (!this.mesh && !this.nordicMesh && !this.wsClient) { DEBUG.warn('No transports', 'BRIDGE_SKIP'); return; }
+      if (!this.mesh && !this.nordicMesh && !this.wsClient && !this.bleInterface?.nativePlugin) {
+        DEBUG.warn('No transports', 'BRIDGE_SKIP');
+        return;
+      }
       this.bridge = new MeshRelayBridge({ mesh: this.mesh, nordicMesh: this.nordicMesh, relay: this.wsClient, onModeChange: (mode) => { DEBUG.setMode(mode); this.config.onStatusChange(mode); } });
       await withTimeoutNAP(this.bridge.initialize(), 5000, 'Bridge.initialize');
       DEBUG.success('Bridge ready', 'BRIDGE_002');
@@ -218,7 +258,31 @@ export class NexoApp {
 
   _handleNordicPeer(peer) { if (!peer?.id) return; this.blePeers.set(peer.id, { ...peer, discoveredAt: Date.now() }); }
   _handleNordicSession(data) { if (!data?.deviceId) return; this._updateMode('P2P_BLE'); }
-  _handleNordicMessage(msg) { if (!msg?.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
+  
+  _handleNordicMessage(msg) {
+    if (!msg?.deviceId) return;
+    const nid = (msg.deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
+    
+    let resolvedName = msg.senderName;
+    if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
+      const persisted = this.bleInterface.getContactName(nid);
+      if (persisted) resolvedName = persisted;
+    }
+    if (!resolvedName || resolvedName === 'NEXO Peer') {
+      resolvedName = `NEXO-${nid.substring(0, 6).toUpperCase()}`;
+    }
+    
+    this._handleMessage({
+      content: msg.content,
+      sender: nid,
+      senderName: resolvedName,
+      source: 'ble_nordic',
+      timestamp: msg.timestamp || Date.now(),
+      messageId: msg.messageId || null,
+      _own: false
+    }, 'ble_nordic');
+  }
+  
   _updateModeFromNordic(state) {
     switch(state) {
       case 'messaging': case 'connected': this._updateMode('P2P_BLE'); break;
@@ -230,12 +294,12 @@ export class NexoApp {
   async _sendViaBLE(deviceId, content) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin no disponible');
-    DEBUG.log(`[BLE_SEND] Enviando a ${deviceId?.substring?.(0,8)}...`, 'info', 'BLE_PREPARE');
+    console.log(`[BLE_SEND] Enviando a ${deviceId?.substring?.(0,8)}...`);
     try {
       await plugin.sendMessage({ deviceId, message: content });
-      DEBUG.success(`📨 Enviado vía BLE a ${deviceId?.substring?.(0,8)}`, 'MSG_BLE');
+      DEBUG.success(`📨 Enviado via BLE a ${deviceId?.substring?.(0,8)}`, 'MSG_BLE');
     } catch (e) {
-      DEBUG.error('BLE_SEND_FAIL', `Envío falló: ${e.message}`);
+      DEBUG.error('BLE_SEND_FAIL', `Envio fallo: ${e.message}`);
       throw e;
     }
   }
@@ -246,8 +310,13 @@ export class NexoApp {
       return false;
     }
     try {
+      const myIdentity = this.vault?.getIdentity?.();
+      const myName = myIdentity?.name || myIdentity?.displayName || 'NEXO Peer';
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true, messageId }, 'self');
+      
+      // 1. Renderizar pending inmediatamente
+      const pendingMsg = { ...msg, senderName: myName, _own: true, timestamp: Date.now(), pending: true, messageId };
+      this._handleMessage(pendingMsg, 'self');
 
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
@@ -255,42 +324,59 @@ export class NexoApp {
       const targetId = recipient || this.activeContact?.id;
       const targetTransport = this.activeContact?.transport;
 
+      let sentSuccessfully = false;
+
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
-          this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
-          return true;
+          sentSuccessfully = true;
         } catch (e) {
-          DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
+          DEBUG.warn(`BLE directo fallo: ${e.message}`, 'MSG_BLE_FAIL');
         }
       }
 
-      if (this.bleInterface?.nativePlugin) {
+      if (!sentSuccessfully && this.bleInterface?.nativePlugin) {
         try {
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
           const bleDevices = connectedResult?.devices || [];
           if (bleDevices.length > 0) {
             await this._sendViaBLE(bleDevices[0].deviceId || bleDevices[0].id, content);
-            this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: bleDevices[0].deviceId, source: 'ble_direct', messageId }, 'self');
-            return true;
+            sentSuccessfully = true;
           }
-        } catch (e) { DEBUG.log(`[BLE_SEND] Fallback falló: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
+        } catch (e) { DEBUG.log(`[BLE_SEND] Fallback fallo: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
       }
 
-      const nordicPeers = this.nordicMesh?.getPeers?.() || [];
-      if (nordicPeers.length > 0) {
-        try { await this.nordicMesh.sendMessage(nordicPeers[0].id, content); DEBUG.success(`Sent via Nordic`, 'MSG_NORDIC'); return true; }
-        catch (e) { DEBUG.error('NORDIC_009', `Send failed: ${e.message}`); }
+      if (!sentSuccessfully) {
+        const nordicPeers = this.nordicMesh?.getPeers?.() || [];
+        if (nordicPeers.length > 0) {
+          try { await this.nordicMesh.sendMessage(nordicPeers[0].id, content); DEBUG.success(`Sent via Nordic`, 'MSG_NORDIC'); sentSuccessfully = true; }
+          catch (e) { DEBUG.error('NORDIC_009', `Send failed: ${e.message}`); }
+        }
       }
 
-      if (this.mesh?.getPeerCount?.() > 0) {
-        try { await this.mesh.broadcast({ content }); DEBUG.success('Sent via Hybrid', 'MSG_HYBRID'); return true; }
+      if (!sentSuccessfully && this.mesh?.getPeerCount?.() > 0) {
+        try { await this.mesh.broadcast({ content }); DEBUG.success('Sent via Hybrid', 'MSG_HYBRID'); sentSuccessfully = true; }
         catch (e) { DEBUG.error('MESH_005', `Broadcast failed: ${e.message}`); }
       }
 
-      if (this.bridge) { const result = await this.bridge.send({ content }); if (result) { DEBUG.success('Sent via Bridge', 'MSG_BRIDGE'); return true; } }
+      if (!sentSuccessfully && this.bridge) { const result = await this.bridge.send({ content }); if (result) { DEBUG.success('Sent via Bridge', 'MSG_BRIDGE'); sentSuccessfully = true; } }
 
-      if (this.wsClient?.isConnected?.()) { this.wsClient.send({ content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); return true; }
+      if (!sentSuccessfully && this.wsClient?.isConnected?.()) { this.wsClient.send({ content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); sentSuccessfully = true; }
+
+      // 2. Confirmar via TheStream. Si falla, NO crear fallback _handleMessage.
+      if (sentSuccessfully) {
+        if (this.stream?.confirmMessage) {
+          const confirmed = this.stream.confirmMessage(messageId, {
+            content: String(content),
+            senderName: myName,
+            timestamp: Date.now()
+          });
+          if (!confirmed) {
+            DEBUG.warn(`confirmMessage no encontro pending ${messageId.substring(0,8)}. Se actualizara en recepcion o DOM fallback.`, 'MSG_CONFIRM_FAIL');
+          }
+        }
+        return true;
+      }
 
       DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
       return false;
@@ -300,28 +386,90 @@ export class NexoApp {
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      if (msg.messageId) {
-        const now = Date.now();
-        if (this._messageDedupMap.has(msg.messageId)) {
-          DEBUG.log(`Deduplicado ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
+      const now = Date.now();
+      const contentHash = this._hashContent((msg.content || '') + '|' + (msg.sender || ''));
+      const dedupId = msg.messageId || `gen_${contentHash}`;
+      
+      // Dedup GLOBAL por contenido+sender para mensajes ajenos
+      if (!msg._own) {
+        const contentFp = `${msg.sender}_${contentHash}`;
+        const lastSeen = this._contentFpMap.get(contentFp);
+        if (lastSeen && (now - lastSeen < this._contentFpTTL)) {
+          DEBUG.log(`Deduplicado por contenido ${contentFp.substring(0,20)} de ${source}`, 'debug', 'DEDUP_CONTENT');
           return;
         }
-        this._messageDedupMap.set(msg.messageId, now);
-        if (this._messageDedupMap.size > this._maxProcessedIds) {
+        this._contentFpMap.set(contentFp, now);
+        if (this._contentFpMap.size > this._contentFpMax) {
           let oldestKey = null;
           let oldestTime = Infinity;
-          for (const [k, v] of this._messageDedupMap) {
+          for (const [k, v] of this._contentFpMap) {
             if (v < oldestTime) { oldestTime = v; oldestKey = k; }
           }
-          if (oldestKey) this._messageDedupMap.delete(oldestKey);
+          if (oldestKey) this._contentFpMap.delete(oldestKey);
         }
-        for (const [k, v] of this._messageDedupMap) {
-          if (now - v > this._dedupTTL) this._messageDedupMap.delete(k);
+        for (const [k, v] of this._contentFpMap) {
+          if (now - v > this._contentFpTTL * 3) this._contentFpMap.delete(k);
         }
       }
+      
+      // FIX v5.0.11: Mensaje propio confirmed — SOLO actualizar pending existente.
+      if (msg._own && msg.pending === false) {
+        let handled = false;
+        
+        if (this.stream?.confirmMessage) {
+          handled = this.stream.confirmMessage(dedupId, {
+            content: msg.content,
+            senderName: msg.senderName,
+            timestamp: msg.timestamp
+          });
+        }
+        
+        if (!handled) {
+          const existingMsg = document.querySelector(`[data-message-id="${dedupId}"]`);
+          if (existingMsg) {
+            existingMsg.classList.remove('pending');
+            existingMsg.classList.add('confirmed');
+            const pendingIndicator = existingMsg.querySelector('.pending-indicator');
+            if (pendingIndicator) pendingIndicator.remove();
+            handled = true;
+          }
+        }
+        
+        if (handled) {
+          this._messageDedupMap.set(dedupId, now);
+        } else {
+          DEBUG.warn(`Pending no encontrado para confirmar ${dedupId.substring(0,8)}. Ignorando confirmed.`, 'MSG_CONFIRM_SKIP');
+          this._messageDedupMap.set(dedupId, now);
+        }
+        return;
+      }
+      
+      if (this._messageDedupMap.has(dedupId)) {
+        if (source !== 'self') {
+          DEBUG.log(`Deduplicado ${dedupId.substring(0,8)} de ${source}`, 'debug', 'DEDUP');
+        }
+        return;
+      }
+      
+      this._messageDedupMap.set(dedupId, now);
+      if (this._messageDedupMap.size > this._maxProcessedIds) {
+        let oldestKey = null;
+        let oldestTime = Infinity;
+        for (const [k, v] of this._messageDedupMap) {
+          if (v < oldestTime) { oldestTime = v; oldestKey = k; }
+        }
+        if (oldestKey) this._messageDedupMap.delete(oldestKey);
+      }
+      for (const [k, v] of this._messageDedupMap) {
+        if (now - v > this._dedupTTL) this._messageDedupMap.delete(k);
+      }
+      
       const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
       this.config.onMessage(enriched);
-      if (this.stream?.appendItems) this.stream.appendItems([enriched]);
+      
+      if (this.stream?.appendItems) {
+        this.stream.appendItems([enriched], { forceScroll: true });
+      }
     } catch (err) { DEBUG.error('APP_005', `Message handler: ${err.message}`); }
   }
 
