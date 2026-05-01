@@ -1,11 +1,12 @@
 /**
- * NEXO App v5.0.10-ARCH
- * FIX v5.0.10-ARCH:
+ * NEXO App v5.0.11-ARCH
+ * FIX v5.0.11-ARCH:
  *   1) Mensaje propio confirmed (_own=true, pending=false) NUNCA crea burbuja nueva.
  *      Si no encuentra pending para confirmar, ignora silenciosamente.
  *   2) Eliminado fallback _handleMessage() desde sendMessage cuando confirmMessage falla.
  *   3) _bleMessageHandler filtra ecos propios comparando deviceId vs localDeviceAddress.
  *   4) _handleMessage bloquea estrictamente: confirmed propio que no confirma pending => return.
+ *   5) Compatibilidad confirmada con ble_permissions.js v6.5-ARCH y SetupWizard v3.0.5-ARCH.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -82,7 +83,7 @@ export class NexoApp {
     this._contentFpTTL = 15000;
     this._contentFpMax = 500;
     
-    DEBUG.log('🚀 [NEXO] v5.0.10-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.11-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   _hashContent(str) {
@@ -112,7 +113,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.10-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.11-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -200,7 +201,7 @@ export class NexoApp {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         const nid = (deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
         
-        // FIX v5.0.10: Filtrar ecos propios (stack nativo a veces retransmite al emisor)
+        // FIX v5.0.11: Filtrar ecos propios (stack nativo a veces retransmite al emisor)
         if (this.bleInterface?.localDeviceAddress && nid === this.bleInterface.localDeviceAddress) {
           DEBUG.log(`Eco propio ignorado de ${nid.substring(0,8)}`, 'debug', 'DEDUP_ECHO');
           return;
@@ -362,9 +363,7 @@ export class NexoApp {
 
       if (!sentSuccessfully && this.wsClient?.isConnected?.()) { this.wsClient.send({ content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); sentSuccessfully = true; }
 
-      // 2. FIX v5.0.10: Confirmar via TheStream. Si falla, NO crear fallback _handleMessage.
-      // El pending ya existe; si confirmMessage no lo encuentra ahora, el DOM fallback
-      // en _handleMessage lo actualizará cuando llegue el confirmed. Nunca se crea duplicado.
+      // 2. Confirmar via TheStream. Si falla, NO crear fallback _handleMessage.
       if (sentSuccessfully) {
         if (this.stream?.confirmMessage) {
           const confirmed = this.stream.confirmMessage(messageId, {
@@ -413,8 +412,7 @@ export class NexoApp {
         }
       }
       
-      // FIX v5.0.10: Mensaje propio confirmado — SOLO actualizar pending existente.
-      // NUNCA crear una burbuja nueva para un mensaje confirmed propio.
+      // FIX v5.0.11: Mensaje propio confirmed — SOLO actualizar pending existente.
       if (msg._own && msg.pending === false) {
         let handled = false;
         
@@ -443,7 +441,7 @@ export class NexoApp {
           DEBUG.warn(`Pending no encontrado para confirmar ${dedupId.substring(0,8)}. Ignorando confirmed.`, 'MSG_CONFIRM_SKIP');
           this._messageDedupMap.set(dedupId, now);
         }
-        return; // SIEMPRE retornar. Nunca continuar a appendItems para confirmed propio.
+        return;
       }
       
       if (this._messageDedupMap.has(dedupId)) {
