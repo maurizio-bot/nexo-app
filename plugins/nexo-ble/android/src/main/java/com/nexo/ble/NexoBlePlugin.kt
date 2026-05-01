@@ -1,7 +1,8 @@
 // ============================================================
-// NexoBlePlugin.kt v2 — LOGS LIMPIOS, scan con fallback
+// NexoBlePlugin.kt v3 — SCAN SIN hardware filter + filtro software
 // plugins/nexo-ble/android/.../NexoBlePlugin.kt
-// FIX: remLog reducidos a eventos críticos. Scan sin filter si falla.
+// FIX: Samsung S24 Android 14+ ignora ScanFilter por ServiceUuid.
+//      Scan sin filter + filtrado por software en callback.
 // ============================================================
 package com.nexo.ble
 
@@ -15,7 +16,6 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
@@ -94,7 +94,6 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { }
     }
 
-    // ====== LIFECYCLE: sin logs de debug ======
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         try { unregisterServerReceivers() } catch (e: Exception) { }
@@ -105,7 +104,6 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { }
     }
 
-    // ====== PERMISOS: logs solo de resultado final ======
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
         val ctx = activity.applicationContext
@@ -217,7 +215,6 @@ class NexoBlePlugin : Plugin() {
         return manager.getRunningServices(Integer.MAX_VALUE).any { it.service.className == serviceClassName }
     }
 
-    // ====== ADVERTISING ======
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
         val context = activity.applicationContext
@@ -290,7 +287,6 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("deviceName", name).put("deviceAddress", address))
     }
 
-    // ====== MENSAJES ======
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val deviceId = call.getString("deviceId") ?: ""
@@ -323,7 +319,10 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("sent", true).put("mode", "server"))
     }
 
-    // ====== SCAN: con filter, fallback sin filter si está vacío ======
+    // ============================================================
+    // SCAN v3: SIN hardware filter (fix Samsung S24 Android 14+)
+    // Filtrado por software en onScanResult
+    // ============================================================
     @PluginMethod
     fun startScan(call: PluginCall) {
         val context = activity.applicationContext
@@ -343,17 +342,14 @@ class NexoBlePlugin : Plugin() {
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
 
-        val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(NEXO_SERVICE_UUID))
-            .build()
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
         try {
-            bluetoothScanner?.startScan(listOf(filter), settings, scanCallback)
+            bluetoothScanner?.startScan(null, settings, scanCallback) // null = sin hardware filter
             mainHandler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
-            remLog("INFO", "SCAN", "Scan iniciado con filter")
+            remLog("INFO", "SCAN", "Scan iniciado SIN hardware filter (fix S24)")
             call.resolve(JSObject().put("started", true))
         } catch (e: SecurityException) {
             remLog("ERROR", "SCAN", "SecurityException: ${e.message}")
@@ -367,7 +363,51 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("stopped", true))
     }
 
-    // ====== CONEXIÓN ======
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult?) {
+            result?.device?.let { device ->
+                val addr = device.address
+                val name = try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
+                val rssi = result.rssi
+
+                // DEBUG: log de TODO lo que ve el scanner (sin filtro)
+                val uuids = result.scanRecord?.serviceUuids?.joinToString(",") ?: "none"
+                remLog("DEBUG", "SCAN_RAW", "Visto: $name ($addr) RSSI=$rssi UUIDs=$uuids")
+
+                // FILTRO POR SOFTWARE: solo dispositivos NEXO
+                val hasNexoUuid = result.scanRecord?.serviceUuids?.any { it.uuid == NEXO_SERVICE_UUID } ?: false
+                val isNexoDevice = hasNexoUuid || name.contains("NEXO", ignoreCase = true)
+
+                if (!isNexoDevice) {
+                    return@let // No es NEXO, ignorar
+                }
+
+                // Deduplicación por MAC
+                if (scanResults.none { it.getString("deviceId") == addr }) {
+                    val item = JSObject().apply {
+                        put("deviceId", addr)
+                        put("name", name)
+                        put("rssi", rssi)
+                    }
+                    scanResults.add(item)
+                    remLog("INFO", "SCAN", "✅ NEXO encontrado: $name ($addr) RSSI=$rssi")
+                    notifyListeners("onDeviceFound", item)
+                }
+            }
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            remLog("ERROR", "SCAN", "❌ Scan failed: errorCode=$errorCode")
+            notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode))
+        }
+    }
+
+    private fun stopScanInternal() {
+        mainHandler.removeCallbacks(scanTimeoutRunnable)
+        try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
+        bluetoothScanner = null
+    }
+
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val deviceId = call.getString("deviceId") ?: call.getString("address") ?: ""
@@ -447,36 +487,6 @@ class NexoBlePlugin : Plugin() {
             )
         }, 500)
         call.resolve(JSObject().put("reconnecting", true).put("deviceId", deviceId))
-    }
-
-    // ====== CALLBACKS ======
-    private val scanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult?) {
-            result?.device?.let { device ->
-                val name = try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
-                val addr = device.address
-                if (scanResults.none { it.getString("deviceId") == addr }) {
-                    val item = JSObject().apply {
-                        put("deviceId", addr)
-                        put("name", name)
-                        put("rssi", result.rssi)
-                    }
-                    scanResults.add(item)
-                    remLog("INFO", "SCAN", "✅ Encontrado: $name ($addr) RSSI=${result.rssi}")
-                    notifyListeners("onDeviceFound", item)
-                }
-            }
-        }
-        override fun onScanFailed(errorCode: Int) {
-            remLog("ERROR", "SCAN", "❌ Scan failed: errorCode=$errorCode")
-            notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode))
-        }
-    }
-
-    private fun stopScanInternal() {
-        mainHandler.removeCallbacks(scanTimeoutRunnable)
-        try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
-        bluetoothScanner = null
     }
 
     private val gattClientCallback = object : BluetoothGattCallback() {
@@ -574,7 +584,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // ====== RECEIVERS ======
     private fun registerServerReceivers() {
         if (messageReceiver != null) return
         messageReceiver = object : BroadcastReceiver() {
