@@ -1,13 +1,9 @@
 /**
- * NEXO Setup Wizard v3.0.5-ARCH
- * FIX v3.0.5-ARCH:
- *   1) handleRequestPermissions acepta booleano u objeto (defensa contra cambios de API)
- *   2) handlePermissionsGranted ya no depende exclusivamente de SetupManager; usa fallback
- *   3) _completeOnce() centralizado con flag _completed + cancelación de timeouts
- *   4) Todos los handlers async usan _completeOnce() en lugar de onComplete() directo
- *   5) Cancelación proactiva de timeouts/setInterval antes de crear nuevos
- *   6) Guardia _completed en TODOS los entry points (eventos, callbacks, checks)
- *   7) destroy() limpia TODOS los recursos incluso si completó
+ * NEXO Setup Wizard v3.0.6-ARCH
+ * FIX v3.0.6-ARCH:
+ *   1) handleRequestPermissions: fallback recheck directo si callback nativo retorna false
+ *   2) _completeOnce() centralizado con flag _completed + cancelación de timeouts
+ *   3) Todos los handlers async usan _completeOnce()
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -32,7 +28,6 @@ export class SetupWizard {
     this._connectionAttempt = 0;
     this._stackBrokenShown = false;
     
-    // FIX v3.0.5: Flags de control de ciclo de vida
     this._completed = false;
     this._completing = false;
     this._destroyed = false;
@@ -54,7 +49,6 @@ export class SetupWizard {
     this.renderChecking();
     this.setupGlobalListeners();
     
-    // Safety net: si algo se cuelga, forzar error
     this._safetyTimeout = setTimeout(() => {
       if (this.currentStep === 'checking' && !this._completed) {
         console.error(NAP_WIZARD, 'Safety timeout: check colgado > 35s');
@@ -80,7 +74,6 @@ export class SetupWizard {
     document.addEventListener('visibilitychange', this.handleAppResume);
   }
   
-  // FIX v3.0.5: Método centralizado e idempotente para completar
   _completeOnce() {
     if (this._completed || this._completing || this._destroyed) {
       console.log(NAP_WIZARD, '_completeOnce: ya completado o destruido, ignorando');
@@ -90,7 +83,6 @@ export class SetupWizard {
     this._completing = true;
     console.log(NAP_WIZARD, '_completeOnce: completando wizard...');
     
-    // Cancelar safety timeout
     if (this._safetyTimeout) {
       clearTimeout(this._safetyTimeout);
       this._safetyTimeout = null;
@@ -98,7 +90,6 @@ export class SetupWizard {
     
     this.renderSuccessTransition();
     
-    // Cancelar timeout previo de complete si existe
     if (this._completeTimeout) {
       clearTimeout(this._completeTimeout);
     }
@@ -113,7 +104,6 @@ export class SetupWizard {
         } catch (e) {
           console.error(NAP_WIZARD, 'Error en onComplete:', e);
         }
-        // Auto-destruir después de completar
         setTimeout(() => this.destroy(), 3500);
       }
     }, 800);
@@ -232,20 +222,18 @@ export class SetupWizard {
     }
   }
   
-  // FIX v3.0.5: Funciona SIEMPRE, usa _completeOnce(), con fallback si SetupManager falla
   async handlePermissionsGranted(event) {
     console.log(NAP_WIZARD, 'Permisos concedidos:', event.detail);
     
     if (this._completed || this._destroyed) return;
     
-    // FIX v3.0.5: Fallback directo desde el evento si SetupManager no responde
     let granted = false;
     try {
       const status = await SetupManager.checkPermissionsRealtime();
       granted = !!status.granted;
     } catch (e) {
       console.warn(NAP_WIZARD, 'SetupManager.checkPermissionsRealtime falló, usando evento directo:', e);
-      granted = true; // El evento ya garantiza que fueron concedidos
+      granted = true;
     }
     
     if (granted) {
@@ -267,7 +255,6 @@ export class SetupWizard {
     }
   }
   
-  // FIX v3.0.5: Funciona SIEMPRE, maneja denegación directa y desde settings
   handlePermissionsDenied(event) {
     console.log(NAP_WIZARD, 'Permisos denegados:', event.detail);
     
@@ -328,7 +315,6 @@ export class SetupWizard {
     this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif;"><div style="width: 48px; height: 48px; border: 4px solid #1a1a1a; border-top: 4px solid #00f0ff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px;"></div><h3 style="margin:0; font-size: 20px; font-weight: 600;">Verificando sistema...</h3><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style></div>';
   }
   
-  // FIX v3.0.5: Guardia anti-doble + cancelación de timeout previo
   renderSuccessTransition() {
     if (this.currentStep === 'success') return;
     this.currentStep = 'success';
@@ -376,10 +362,23 @@ export class SetupWizard {
       
       const result = await requestBLEPermissions();
       
-      // FIX v3.0.5: Defensa contra booleano u objeto
-      const isGranted = result === true || result?.granted === true;
-      const isPermanent = result === true ? false : (result?.isPermanentDenial === true);
-      const isUserCancelled = result === true ? false : (result?.isUserCancelled === true);
+      // FIX v3.0.6: Fallback recheck directo si callback nativo tuvo race condition
+      let isGranted = result === true || result?.granted === true;
+      const isPermanent = result?.isPermanentDenial === true;
+      const isUserCancelled = result?.isUserCancelled === true;
+      
+      if (!isGranted && !isPermanent) {
+        console.log(NAP_WIZARD, 'Callback nativo retornó false — intentando recheck directo...');
+        try {
+          const directCheck = await checkBLEStatus();
+          if (directCheck === true) {
+            console.log(NAP_WIZARD, 'Recheck directo exitoso — corrigiendo race condition');
+            isGranted = true;
+          }
+        } catch (e) {
+          console.warn(NAP_WIZARD, 'Recheck directo falló:', e);
+        }
+      }
       
       if (isGranted) {
         let btEnabled = false;
@@ -554,11 +553,9 @@ export class SetupWizard {
     }, 30000);
   }
 
-  // FIX v3.0.5: Limpieza completa de TODOS los recursos
   destroy() {
     this._destroyed = true;
     
-    // Cancelar TODOS los timeouts
     if (this._successTimeout) {
       clearTimeout(this._successTimeout);
       this._successTimeout = null;
