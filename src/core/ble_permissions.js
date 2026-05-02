@@ -1,7 +1,7 @@
 /**
- * BLE Permissions Manager v3.2.0-ARCH (Híbrido Final)
- * Usa requestBLEPermissions() nativo (existe en plugin v4.0.1)
- * Dispara blePermissionsGranted (esperado por SetupWizard v3.0.6)
+ * BLE Permissions Manager v3.2.1-ARCH (Fix Loop)
+ * FIX v3.2.1: checkBLEStatus() NUNCA llama requestBLEPermissions() nativo.
+ * Solo consulta isBluetoothEnabled(). Los permisos son responsabilidad del SetupWizard.
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -52,7 +52,6 @@ async function requestNativeAndroidPermissions() {
   napLog(NAP_CODES.PERM_REQUEST, 'Solicitando permisos via requestBLEPermissions() nativo...', 'INFO');
   
   try {
-    // USA el método nativo que SÍ existe en NexoBlePlugin.kt v4.0.1
     const result = await NexoBLE.requestBLEPermissions();
     napLog(NAP_CODES.ANDROID_NATIVE, 'Respuesta nativa', 'DEBUG', result);
 
@@ -60,7 +59,6 @@ async function requestNativeAndroidPermissions() {
     const alreadyGranted = result.alreadyGranted === true;
 
     if (allGranted || alreadyGranted) {
-      // DISPARA el evento que SetupWizard v3.0.6 espera
       window.dispatchEvent(new CustomEvent('blePermissionsGranted', { 
         detail: { source: 'request', granted: true } 
       }));
@@ -73,12 +71,10 @@ async function requestNativeAndroidPermissions() {
       };
     }
 
-    // Si no concedió, verificar si es denegación permanente
     const permissions = result.permissions || {};
     const hasAnyDenied = Object.values(permissions).some(v => v === false);
     
     if (hasAnyDenied) {
-      // Verificar si es permanente (no hay forma directa, asumimos que sí si ya se pidió antes)
       window.dispatchEvent(new CustomEvent('blePermissionsPermanentlyDenied', { 
         detail: { source: 'request', permissions } 
       }));
@@ -105,7 +101,6 @@ async function requestNativeAndroidPermissions() {
   } catch (e) {
     napLog(NAP_CODES.ERROR_RECOVERY, `Error: ${e.message}`, 'ERROR', { error: e });
     
-    // Fallback: verificar directamente
     try {
       const status = await checkBLEStatus();
       if (status.granted) {
@@ -133,29 +128,17 @@ export async function checkBLEStatus() {
   }
   
   try {
-    // Usar isBluetoothEnabled() nativo que SÍ existe
+    // FIX v3.2.1: SOLO consultar estado Bluetooth. NUNCA solicitar permisos desde aquí.
     const status = await NexoBLE.isBluetoothEnabled();
     const isEnabled = status.enabled === true;
-    
-    // Verificar permisos también
-    let hasPerms = false;
-    try {
-      const permStatus = await NexoBLE.requestBLEPermissions();
-      hasPerms = permStatus.allGranted === true || permStatus.alreadyGranted === true;
-    } catch (e) {
-      // Si falla, asumimos que no tenemos permisos
-      hasPerms = false;
-    }
-
-    const fullyReady = isEnabled && hasPerms;
 
     return {
-      granted: fullyReady,
+      granted: isEnabled,
       bluetoothEnabled: isEnabled,
-      permissionsGranted: hasPerms,
+      permissionsGranted: true, // Asumir true: wizard ya gestionó permisos
       stateName: isEnabled ? 'ON' : 'OFF',
       platform: 'android-native',
-      nap_code: fullyReady ? 'NATIVE_READY' : 'NATIVE_NOT_READY'
+      nap_code: isEnabled ? 'NATIVE_READY' : 'NATIVE_BT_OFF'
     };
   } catch (e) {
     return {
