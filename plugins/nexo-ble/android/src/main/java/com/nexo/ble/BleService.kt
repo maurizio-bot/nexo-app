@@ -198,7 +198,9 @@ class BleService : Service() {
                 if (desc.uuid == CCCD_UUID) sendBroadcast(Intent(ACTION_CLIENT_NOTIFICATION_STATE_CHANGED).apply { putExtra(EXTRA_DEVICE_ADDRESS, d.address); putExtra(EXTRA_ENABLED, v != null && v.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) })
             } catch (e: SecurityException) {}
         }
-    }    fun connectToDevice(addr: String): Boolean {
+    }
+
+    fun connectToDevice(addr: String): Boolean {
         val a = btAdapter ?: return false
         val dev = a.getRemoteDevice(addr) ?: return false
         val cn = conns.getOrPut(addr) { Conn(addr) }
@@ -325,63 +327,6 @@ class BleService : Service() {
     private fun failConn(a: String, r: String) {
         conns[a]?.let { it.state = ConnState.IDLE; it.gatt?.close(); it.gatt = null }
         bcastFail(a, r, conns[a]?.retry ?: 0)
-    }
-    fun startScan() {
-        val a = btAdapter ?: run { bcastScanFail(-1, "Adapter null"); return }
-        scanner = a.bluetoothLeScanner
-        if (scanner == null) { bcastScanFail(-2, "Scanner null"); return }
-        val now = SystemClock.elapsedRealtime()
-        while (scanTimes.isNotEmpty() && now - scanTimes.first() > SCAN_RATE_LIMIT) scanTimes.removeFirst()
-        if (scanTimes.size >= 5) { bcastScanFail(-3, "Rate limit"); return }
-        scanTimes.addLast(now)
-        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setReportDelay(0).build()
-        scanResults.clear(); isScan = true
-        try { scanner?.startScan(null, settings, scanCb); handler.postDelayed({ if (isScan) stopScan() }, SCAN_AUTO_STOP) } catch (e: SecurityException) { isScan = false; bcastScanFail(-4, "SecurityException") }
-    }
-
-    fun stopScan() { if (isScan) { try { scanner?.stopScan(scanCb) } catch (e: Exception) {}; isScan = false; sendBroadcast(Intent(ACTION_SCAN_STOPPED).apply { putExtra("result_count", scanResults.size) }) } }
-
-    private val scanCb = object : ScanCallback() {
-        override fun onScanResult(ct: Int, r: ScanResult?) {
-            r?.let { if (it.scanRecord?.serviceUuids?.any { u -> u.uuid == SERVICE_UUID } == true) { val a = it.device.address; if (scanResults[a] == null || it.rssi > (scanResults[a]?.rssi ?: -999)) scanResults[a] = it; sendBroadcast(Intent(ACTION_SCAN_RESULT).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_RSSI, it.rssi); putExtra(EXTRA_DEVICE_NAME, it.device.name ?: it.scanRecord?.deviceName ?: "NEXO Device") }) } }
-        }
-        override fun onScanFailed(ec: Int) { isScan = false; bcastScanFail(ec, when(ec) { SCAN_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"; SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "REG_FAILED"; SCAN_FAILED_INTERNAL_ERROR -> "INTERNAL"; SCAN_FAILED_FEATURE_UNSUPPORTED -> "UNSUPPORTED"; SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "NO_RESOURCES"; SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "TOO_FREQUENT"; else -> "UNKNOWN($ec)" }) }
-    }
-
-    fun startAdvertising(name: String) {
-        val a = btAdapter ?: return
-        try { a.name = name } catch (e: Exception) {}
-        advertiser = a.bluetoothLeAdvertiser
-        val settings = AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY).setConnectable(true).setTimeout(0).setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH).build()
-        val data = AdvertiseData.Builder().setIncludeDeviceName(true).addServiceUuid(ParcelUuid(SERVICE_UUID)).build()
-        advertiser?.startAdvertising(settings, data, adCb)
-    }
-
-    fun stopAdvertising() { advertiser?.stopAdvertising(adCb); isAd = false; bcastAd(false) }
-
-    private val adCb = object : AdvertiseCallback() {
-        override fun onStartSuccess(s: AdvertiseSettings?) { isAd = true; bcastAd(true) }
-        override fun onStartFailure(ec: Int) { isAd = false; bcastAd(false) }
-    }
-
-    fun setUserInfo(uid: String, uname: String) { userId = uid; userName = uname }
-    fun isBluetoothEnabled() = btAdapter?.isEnabled == true
-    fun isScanning() = isScan
-    fun isAdvertising() = isAd
-    fun getScanResultCount() = scanResults.size
-    fun getConnectedDevices(): List<Map<String, String>> {
-        val list = mutableListOf<Map<String, String>>()
-        conns.forEach { (id, c) -> if (c.state == ConnState.READY) list.add(mapOf("deviceId" to id, "address" to id, "name" to (c.gatt?.device?.name ?: "NEXO Peer"), "direction" to "outgoing", "servicesReady" to "true")) }
-        serverConns.forEach { (id, d) -> try { list.add(mapOf("deviceId" to id, "address" to id, "name" to (d.name ?: "NEXO Peer"), "direction" to "incoming", "servicesReady" to "true")) } catch (e: SecurityException) {} }
-        return list
-    }
-
-    private fun bcastScanFail(c: Int, d: String) { sendBroadcast(Intent(ACTION_SCAN_FAILED).apply { putExtra(EXTRA_ERROR_CODE, c); putExtra(EXTRA_ERROR_DESC, d) }) }
-    private fun bcastAd(v: Boolean) { sendBroadcast(Intent(ACTION_ADVERT_STATE).apply { putExtra(EXTRA_ADVERTISING, v) }) }
-    private fun bcastDev(a: String, d: BluetoothDevice?, dir: String = "", att: Int = 0, wasReady: Boolean = false) { sendBroadcast(Intent(a).apply { putExtra(EXTRA_DEVICE_ADDRESS, d?.address); putExtra(EXTRA_DEVICE_NAME, d?.name ?: "Unknown"); putExtra(EXTRA_DIRECTION, dir); putExtra(EXTRA_ATTEMPT, att); putExtra("wasReady", wasReady) }) }
-    private fun bcastFail(a: String, r: String, att: Int) { sendBroadcast(Intent(ACTION_CONNECTION_FAILED).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_REASON, r); putExtra(EXTRA_ATTEMPT, att); putExtra(EXTRA_MAX_ATTEMPTS, MAX_RETRY) }) }
-    private fun bcastRetry(a: String, delay: Long, att: Int) { sendBroadcast(Intent(ACTION_RETRY_SCHEDULED).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_DELAY_MS, delay); putExtra(EXTRA_ATTEMPT, att) }) }
-    private fun bcastSent(a: String, mid: String, ok: Boolean) { sendBroadcast(Intent(ACTION_MESSAGE_SENT).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_MESSAGE_ID, mid); putExtra(EXTRA_SUCCESS, ok) }) }
 
     fun startScan() {
         val a = btAdapter ?: run { bcastScanFail(-1, "Adapter null"); return }
@@ -442,3 +387,5 @@ class BleService : Service() {
     private fun napLog(c: String, m: String, l: String = "INFO") { val f = "[$c] $m"; when(l) { "ERROR" -> Log.e(TAG, f); "WARN" -> Log.w(TAG, f); "DEBUG" -> Log.d(TAG, f); else -> Log.i(TAG, f) }; sendBroadcast(Intent(ACTION_NAP_AUDIT).apply { putExtra(EXTRA_NAP_CODE, c); putExtra(EXTRA_NAP_MESSAGE, m); putExtra(EXTRA_NAP_LEVEL, l); putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis()) }) }
     private fun cleanup() { conns.forEach { (_, c) -> c.userDisc = true; c.gatt?.let { try { it.disconnect(); it.close() } catch (e: Exception) {} }; c.gatt = null; c.state = ConnState.IDLE }; serverConns.clear(); gattServer?.close(); gattServer = null }
 }
+
+    }
