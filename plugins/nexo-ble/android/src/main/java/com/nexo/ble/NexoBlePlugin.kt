@@ -28,9 +28,8 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v5.0.1-ARCH — BRIDGE PURO (FIX unload + ActivityResult)
- *
- * Arquitectura: Único trabajo es traducir JS ↔ Service vía bindService + Broadcasts
+ * NexoBlePlugin v5.0.2-ARCH — BRIDGE PURO
+ * FIX: Agregados isBluetoothEnabled() e isAdvertising() para compatibilidad JS v3.0.0-ARCH
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -237,7 +236,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.0.1-ARCH bridge puro cargado", "INFO")
+        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.0.2-ARCH bridge puro cargado", "INFO")
         val serviceIntent = Intent(context, BleService::class.java)
         context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
@@ -347,6 +346,31 @@ class NexoBlePlugin : Plugin() {
         result.put("androidVersion", Build.VERSION.SDK_INT)
         return result
     }
+
+    // ==================== FIX v5.0.2: Métodos que faltaban para compatibilidad JS v3.0.0-ARCH ====================
+
+    @PluginMethod
+    fun isBluetoothEnabled(call: PluginCall) {
+        val adapter = getBluetoothAdapter()
+        val enabled = adapter?.isEnabled == true
+        call.resolve(JSObject().apply {
+            put("enabled", enabled)
+            put("stateName", if (enabled) "ON" else "OFF")
+        })
+    }
+
+    @PluginMethod
+    fun isAdvertising(call: PluginCall) {
+        withService(call) { svc ->
+            val isAdv = try { svc.isAdvertising() } catch(_: Exception) { false }
+            call.resolve(JSObject().apply {
+                put("isAdvertising", isAdv)
+                put("timestamp", System.currentTimeMillis())
+            })
+        }
+    }
+
+    // ==================== Fin FIX ====================
 
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
