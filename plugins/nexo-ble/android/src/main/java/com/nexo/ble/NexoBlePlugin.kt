@@ -28,8 +28,8 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v5.0.3-ARCH — BRIDGE PURO
- * FIX: isAdvertising() responde inmediato, load() inicia foreground service
+ * NexoBlePlugin v5.0.4-ARCH — BRIDGE PURO
+ * FIX: startAdvertise → startAdvertising, stopAdvertise → stopAdvertising (nombres que espera el JS)
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -53,7 +53,6 @@ class NexoBlePlugin : Plugin() {
         const val ACTION_MESSAGE_SENT = "com.nexo.ble.MESSAGE_SENT"
         const val ACTION_DEVICE_CONNECTED = "com.nexo.ble.DEVICE_CONNECTED"
         const val ACTION_DEVICE_DISCONNECTED = "com.nexo.ble.DEVICE_DISCONNECTED"
-        const val ACTION_CONNECTION_ERROR = "com.nexo.ble.CONNECTION_ERROR"
         const val ACTION_SERVICES_READY = "com.nexo.ble.SERVICES_READY"
         const val ACTION_NOTIFICATIONS_ENABLED = "com.nexo.ble.NOTIFICATIONS_ENABLED"
         const val ACTION_CONNECTION_FAILED = "com.nexo.ble.CONNECTION_FAILED"
@@ -238,9 +237,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.0.3-ARCH bridge puro cargado", "INFO")
+        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.0.4-ARCH bridge puro cargado", "INFO")
 
-        // FIX v5.0.3: Iniciar foreground service ADEMÁS de bindService [^9^]
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(serviceIntent)
@@ -366,7 +364,6 @@ class NexoBlePlugin : Plugin() {
         })
     }
 
-    // FIX v5.0.3: Responder inmediatamente si no hay servicio bound. No encolar y olvidar.
     @PluginMethod
     fun isAdvertising(call: PluginCall) {
         val svc = bleService
@@ -377,7 +374,6 @@ class NexoBlePlugin : Plugin() {
             })
             return
         }
-        // Servicio no listo todavía — retornar false inmediato
         call.resolve(JSObject().apply {
             put("isAdvertising", false)
             put("timestamp", System.currentTimeMillis())
@@ -429,8 +425,11 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod fun startScan(call: PluginCall) { withService(call) { it.startScan(); call.resolve() } }
     @PluginMethod fun stopScan(call: PluginCall) { withService(call) { it.stopScan(); call.resolve() } }
-    @PluginMethod fun startAdvertise(call: PluginCall) { withService(call) { it.startAdvertising(userName); call.resolve() } }
-    @PluginMethod fun stopAdvertise(call: PluginCall) { withService(call) { it.stopAdvertising(); call.resolve() } }
+
+    // ==================== FIX v5.0.4: Nombres que el JS espera ====================
+    @PluginMethod fun startAdvertising(call: PluginCall) { withService(call) { it.startAdvertising(userName); call.resolve() } }
+    @PluginMethod fun stopAdvertising(call: PluginCall) { withService(call) { it.stopAdvertising(); call.resolve() } }
+    // ==================== Fin FIX ====================
 
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
