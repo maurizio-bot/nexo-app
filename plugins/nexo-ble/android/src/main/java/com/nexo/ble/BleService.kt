@@ -26,6 +26,7 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
@@ -138,6 +139,16 @@ class BleService : Service() {
         createChannel()
         startFg()
         try { initGattServer() } catch (e: Exception) { napLog("INIT", "GATT err: ${e.message}", "ERROR") }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // FIX v3.0.1: Asegurar foreground service activo cuando se inicia vía startForegroundService
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, buildNotif("NEXO BLE activo"), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotif("NEXO BLE activo"))
+        }
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -351,21 +362,94 @@ class BleService : Service() {
         override fun onScanFailed(ec: Int) { isScan = false; bcastScanFail(ec, when(ec) { SCAN_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"; SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "REG_FAILED"; SCAN_FAILED_INTERNAL_ERROR -> "INTERNAL"; SCAN_FAILED_FEATURE_UNSUPPORTED -> "UNSUPPORTED"; SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "NO_RESOURCES"; SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "TOO_FREQUENT"; else -> "UNKNOWN($ec)" }) }
     }
 
+    // ==================== FIX v3.0.1: Advertising robusto ====================
+
     fun startAdvertising(name: String) {
-        val a = btAdapter ?: return
-        try { a.name = name } catch (e: Exception) {}
-        advertiser = a.bluetoothLeAdvertiser
-        val settings = AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY).setConnectable(true).setTimeout(0).setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH).build()
-        val data = AdvertiseData.Builder().setIncludeDeviceName(true).addServiceUuid(ParcelUuid(SERVICE_UUID)).build()
-        advertiser?.startAdvertising(settings, data, adCb)
+        // FIX 1: Si ya estamos anunciando, no duplicar
+        if (isAd) {
+            napLog("ADVERT", "Ya estamos anunciando, ignorando startAdvertising duplicado", "WARN")
+            bcastAd(true)
+            return
+        }
+
+        val adapter = btAdapter
+        if (adapter == null) {
+            napLog("ADVERT", "BluetoothAdapter es null", "ERROR")
+            bcastAd(false, "Adapter null")
+            return
+        }
+
+        if (!adapter.isEnabled) {
+            napLog("ADVERT", "Bluetooth está apagado", "ERROR")
+            bcastAd(false, "Bluetooth disabled")
+            return
+        }
+
+        // FIX 2: Refrescar advertiser desde adapter CADA VEZ (no cachear) [^10^]
+        // Si BT estaba apagado al crear el servicio, advertiser quedaba null para siempre
+        val freshAdvertiser = adapter.bluetoothLeAdvertiser
+        if (freshAdvertiser == null) {
+            napLog("ADVERT", "BluetoothLeAdvertiser es null (dispositivo no soporta advertising o BT off)", "ERROR")
+            bcastAd(false, "Advertiser null")
+            return
+        }
+        this.advertiser = freshAdvertiser
+
+        // FIX 3: Verificar soporte de advertising [^13^]
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            if (!adapter.isMultipleAdvertisementSupported) {
+                napLog("ADVERT", "isMultipleAdvertisementSupported = false", "WARN")
+                // No bloqueamos — algunos Samsung retornan false pero sí anuncian
+            }
+        }
+
+        try {
+            adapter.name = name
+        } catch (e: Exception) {
+            napLog("ADVERT", "No se pudo cambiar nombre: ${e.message}", "WARN")
+        }
+
+        val settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setConnectable(true)
+            .setTimeout(0)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .build()
+
+        val data = AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
+            .addServiceUuid(ParcelUuid(SERVICE_UUID))
+            .build()
+
+        try {
+            freshAdvertiser.startAdvertising(settings, data, adCb)
+            napLog("ADVERT", "startAdvertising() llamado", "INFO")
+        } catch (e: SecurityException) {
+            napLog("ADVERT", "SecurityException al iniciar advertising: ${e.message}", "ERROR")
+            isAd = false
+            bcastAd(false, "SecurityException")
+        } catch (e: Exception) {
+            napLog("ADVERT", "Error iniciando advertising: ${e.message}", "ERROR")
+            isAd = false
+            bcastAd(false, e.message ?: "Unknown")
+        }
     }
 
-    fun stopAdvertising() { advertiser?.stopAdvertising(adCb); isAd = false; bcastAd(false) }
-
-    private val adCb = object : AdvertiseCallback() {
-        override fun onStartSuccess(s: AdvertiseSettings?) { isAd = true; bcastAd(true) }
-        override fun onStartFailure(ec: Int) { isAd = false; bcastAd(false) }
+    fun stopAdvertising() {
+        val adv = advertiser
+        if (adv != null && isAd) {
+            try {
+                adv.stopAdvertising(adCb)
+            } catch (e: Exception) {
+                napLog("ADVERT", "Error deteniendo advertising: ${e.message}", "WARN")
+            }
+        }
+        isAd = false
+        advertiser = null
+        bcastAd(false)
     }
+
+    // ==================== Fin FIX ====================
 
     fun setUserInfo(uid: String, uname: String) { userId = uid; userName = uname }
     fun isBluetoothEnabled() = btAdapter?.isEnabled == true
@@ -379,8 +463,34 @@ class BleService : Service() {
         return list
     }
 
+    private val adCb = object : AdvertiseCallback() {
+        override fun onStartSuccess(s: AdvertiseSettings?) {
+            isAd = true
+            napLog("ADVERT", "onStartSuccess", "INFO")
+            bcastAd(true)
+        }
+        override fun onStartFailure(ec: Int) {
+            isAd = false
+            val err = when(ec) {
+                ADVERTISE_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"
+                ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "FEATURE_UNSUPPORTED"
+                ADVERTISE_FAILED_INTERNAL_ERROR -> "INTERNAL_ERROR"
+                ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "TOO_MANY_ADVERTISERS"
+                ADVERTISE_FAILED_DATA_TOO_LARGE -> "DATA_TOO_LARGE"
+                else -> "UNKNOWN($ec)"
+            }
+            napLog("ADVERT", "onStartFailure: $err", "ERROR")
+            bcastAd(false, err)
+        }
+    }
+
     private fun bcastScanFail(c: Int, d: String) { sendBroadcast(Intent(ACTION_SCAN_FAILED).apply { putExtra(EXTRA_ERROR_CODE, c); putExtra(EXTRA_ERROR_DESC, d) }) }
-    private fun bcastAd(v: Boolean) { sendBroadcast(Intent(ACTION_ADVERT_STATE).apply { putExtra(EXTRA_ADVERTISING, v) }) }
+    private fun bcastAd(v: Boolean, reason: String = "") {
+        sendBroadcast(Intent(ACTION_ADVERT_STATE).apply {
+            putExtra(EXTRA_ADVERTISING, v)
+            if (reason.isNotEmpty()) putExtra(EXTRA_REASON, reason)
+        })
+    }
     private fun bcastDev(a: String, d: BluetoothDevice?, dir: String = "", att: Int = 0, wasReady: Boolean = false) { sendBroadcast(Intent(a).apply { putExtra(EXTRA_DEVICE_ADDRESS, d?.address); putExtra(EXTRA_DEVICE_NAME, d?.name ?: "Unknown"); putExtra(EXTRA_DIRECTION, dir); putExtra(EXTRA_ATTEMPT, att); putExtra("wasReady", wasReady) }) }
     private fun bcastFail(a: String, r: String, att: Int) { sendBroadcast(Intent(ACTION_CONNECTION_FAILED).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_REASON, r); putExtra(EXTRA_ATTEMPT, att); putExtra(EXTRA_MAX_ATTEMPTS, MAX_RETRY) }) }
     private fun bcastRetry(a: String, delay: Long, att: Int) { sendBroadcast(Intent(ACTION_RETRY_SCHEDULED).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_DELAY_MS, delay); putExtra(EXTRA_ATTEMPT, att) }) }
