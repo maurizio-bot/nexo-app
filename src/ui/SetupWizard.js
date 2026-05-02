@@ -1,9 +1,13 @@
 /**
- * NEXO Setup Wizard v3.0.6-ARCH
- * FIX v3.0.6-ARCH:
- *   1) handleRequestPermissions: fallback recheck directo si callback nativo retorna false
- *   2) _completeOnce() centralizado con flag _completed + cancelación de timeouts
- *   3) Todos los handlers async usan _completeOnce()
+ * NEXO Setup Wizard v3.0.7-ARCH
+ * FIX v3.0.7 (Loop Permisos↔BT):
+ *   1) verifyBluetoothAfterReturn: compara status.granted, no status === true
+ *   2) handleBluetoothStateChange: completa sin depender de isAwaitingSettingsReturn
+ *   3) handlePermissionsGranted: usa evento directo, no SetupManager fallback
+ *   4) handleRequestPermissions: recheck compara objeto.granted, no === true
+ *   5) handleAppResume: siempre verifica estado completo
+ *   6) renderBluetooth: botón Verificar llama verifyBluetoothAfterReturn, no performCheck
+ *   7) handleOpenBluetoothSettings: intervalo compara objeto.granted
  */
 
 import { SetupManager } from '../core/SetupManager.js';
@@ -114,10 +118,13 @@ export class SetupWizard {
     
     if (this._completed || this._destroyed) return;
     
-    if (state.stateName === 'ON' && this.isAwaitingSettingsReturn) {
-      this.isAwaitingSettingsReturn = false;
-      this.clearBtCheckInterval();
-      this._completeOnce();
+    // FIX v3.0.7: Completar si BT se activa, sin depender de isAwaitingSettingsReturn
+    if (state.stateName === 'ON') {
+      if (this.currentStep === 'bluetooth' || this.currentStep === 'checking') {
+        this.isAwaitingSettingsReturn = false;
+        this.clearBtCheckInterval();
+        this._completeOnce();
+      }
     }
   }
   
@@ -175,10 +182,9 @@ export class SetupWizard {
     if (document.visibilityState !== 'visible') return;
     if (this._completed || this._destroyed) return;
     
-    if (this.isAwaitingSettingsReturn) {
-      console.log(NAP_WIZARD, 'App resumed - verifying Bluetooth state');
-      setTimeout(() => this.verifyBluetoothAfterReturn(), 500);
-    }
+    // FIX v3.0.7: Siempre verificar estado completo al regresar
+    console.log(NAP_WIZARD, 'App resumed - performing full check');
+    setTimeout(() => this.performCheck(), 500);
   }
   
   async verifyBluetoothAfterReturn() {
@@ -187,7 +193,8 @@ export class SetupWizard {
     try {
       const status = await checkBLEStatus();
       
-      if (status === true) {
+      // FIX v3.0.7: checkBLEStatus retorna objeto, no boolean
+      if (status && status.granted === true) {
         this.isAwaitingSettingsReturn = false;
         this.clearBtCheckInterval();
         
@@ -201,6 +208,7 @@ export class SetupWizard {
         
         this._completeOnce();
       } else {
+        // BT sigue apagado, restaurar botón
         const btn = document.getElementById('btn-bt-settings');
         if (btn) {
           btn.textContent = 'Ir a Configuración Bluetooth';
@@ -227,14 +235,8 @@ export class SetupWizard {
     
     if (this._completed || this._destroyed) return;
     
-    let granted = false;
-    try {
-      const status = await SetupManager.checkPermissionsRealtime();
-      granted = !!status.granted;
-    } catch (e) {
-      console.warn(NAP_WIZARD, 'SetupManager.checkPermissionsRealtime falló, usando evento directo:', e);
-      granted = true;
-    }
+    // FIX v3.0.7: Usar el evento directamente, no depender de SetupManager
+    const granted = event.detail?.granted === true;
     
     if (granted) {
       this.isAwaitingSettingsReturn = false;
@@ -243,12 +245,22 @@ export class SetupWizard {
         this.settingsCheckInterval = null;
       }
       
+      // Verificar Bluetooth
+      let btEnabled = false;
       try {
-        const { startBLEAdvertising } = await import('../core/ble_permissions.js');
-        const advResult = await startBLEAdvertising();
-        console.log(NAP_WIZARD, 'Advertising iniciado:', advResult.nap_code);
+        const plugin = window.Capacitor?.Plugins?.NexoBLE;
+        if (plugin) {
+          const btState = await plugin.isBluetoothEnabled();
+          btEnabled = btState.enabled === true;
+        }
       } catch (e) {
-        console.warn(NAP_WIZARD, 'No se pudo iniciar advertising automáticamente:', e);
+        console.warn(NAP_WIZARD, 'No se pudo consultar estado BT:', e);
+      }
+      
+      if (!btEnabled) {
+        this.currentStep = 'bluetooth';
+        this.renderBluetooth();
+        return;
       }
       
       this._completeOnce();
@@ -362,16 +374,16 @@ export class SetupWizard {
       
       const result = await requestBLEPermissions();
       
-      // FIX v3.0.6: Fallback recheck directo si callback nativo tuvo race condition
       let isGranted = result === true || result?.granted === true;
       const isPermanent = result?.isPermanentDenial === true;
       const isUserCancelled = result?.isUserCancelled === true;
       
+      // FIX v3.0.7: Fallback recheck compara objeto.granted, no === true
       if (!isGranted && !isPermanent) {
         console.log(NAP_WIZARD, 'Callback nativo retornó false — intentando recheck directo...');
         try {
           const directCheck = await checkBLEStatus();
-          if (directCheck === true) {
+          if (directCheck && directCheck.granted === true) {
             console.log(NAP_WIZARD, 'Recheck directo exitoso — corrigiendo race condition');
             isGranted = true;
           }
@@ -464,7 +476,8 @@ export class SetupWizard {
     this.container.innerHTML = '<div style="width: 100%; height: 100%; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center;"><div style="font-size: 56px; margin-bottom: 16px;">📡</div><h2 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 600;">Bluetooth desactivado</h2><p style="color: #888; font-size: 16px; max-width: 320px; line-height: 1.4; margin-bottom: 32px;">Activa el Bluetooth para descubrir peers NEXO.</p><button id="btn-bt-settings" style="background: linear-gradient(135deg, #00f0ff 0%, #007bff 100%); color: #000; border: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; max-width: 320px; margin-bottom: 12px;">Ir a Configuración Bluetooth</button><button id="btn-retry" style="background: transparent; color: #666; border: 1px solid #444; padding: 12px 24px; border-radius: 10px; font-size: 14px; cursor: pointer;">🔄 Verificar</button></div>';
     
     document.getElementById('btn-bt-settings').addEventListener('click', () => this.handleOpenBluetoothSettings());
-    document.getElementById('btn-retry').addEventListener('click', () => this.performCheck());
+    // FIX v3.0.7: Botón Verificar llama verifyBluetoothAfterReturn, NO performCheck (evita loop a SetupManager)
+    document.getElementById('btn-retry').addEventListener('click', () => this.verifyBluetoothAfterReturn());
   }
 
   renderError(customMessage = null) {
@@ -531,7 +544,8 @@ export class SetupWizard {
       
       try {
         const status = await checkBLEStatus();
-        if (status === true) {
+        // FIX v3.0.7: Comparar objeto.granted, no === true
+        if (status && status.granted === true) {
           this.isAwaitingSettingsReturn = false;
           this.clearBtCheckInterval();
           this._completeOnce();
