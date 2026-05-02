@@ -28,8 +28,8 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v5.0.2-ARCH — BRIDGE PURO
- * FIX: Agregados isBluetoothEnabled() e isAdvertising() para compatibilidad JS v3.0.0-ARCH
+ * NexoBlePlugin v5.0.3-ARCH — BRIDGE PURO
+ * FIX: isAdvertising() responde inmediato, load() inicia foreground service
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -45,7 +45,6 @@ class NexoBlePlugin : Plugin() {
     companion object {
         const val TAG = "NAP-BLE-Bridge"
 
-        // Broadcast Actions
         const val ACTION_SCAN_RESULT = "com.nexo.ble.SCAN_RESULT"
         const val ACTION_SCAN_FAILED = "com.nexo.ble.SCAN_FAILED"
         const val ACTION_SCAN_STOPPED = "com.nexo.ble.SCAN_STOPPED"
@@ -64,7 +63,6 @@ class NexoBlePlugin : Plugin() {
         const val ACTION_CLIENT_NOTIFICATION_STATE_CHANGED = "com.nexo.ble.CLIENT_NOTIFICATION_STATE_CHANGED"
         const val ACTION_NAP_AUDIT = "com.nexo.ble.NAP_AUDIT"
 
-        // Extras keys
         const val EXTRA_DEVICE_ADDRESS = "device_address"
         const val EXTRA_DEVICE_NAME = "device_name"
         const val EXTRA_RSSI = "rssi"
@@ -137,10 +135,14 @@ class NexoBlePlugin : Plugin() {
                 }
                 ACTION_ADVERT_STATE -> {
                     val advertising = intent.getBooleanExtra(EXTRA_ADVERTISING, false)
+                    val reason = intent.getStringExtra(EXTRA_REASON) ?: ""
                     if (advertising) {
                         notifyListeners("onAdvertiseStarted", JSObject().apply { put("success", true) })
                     } else {
-                        notifyListeners("onAdvertiseFailed", JSObject().apply { put("errorCode", 0) })
+                        notifyListeners("onAdvertiseFailed", JSObject().apply {
+                            put("errorCode", 0)
+                            put("reason", reason)
+                        })
                     }
                 }
                 ACTION_DEVICE_CONNECTED -> {
@@ -236,8 +238,15 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.0.2-ARCH bridge puro cargado", "INFO")
+        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.0.3-ARCH bridge puro cargado", "INFO")
+
+        // FIX v5.0.3: Iniciar foreground service ADEMÁS de bindService [^9^]
         val serviceIntent = Intent(context, BleService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(serviceIntent)
+        } else {
+            context.startService(serviceIntent)
+        }
         context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         val filter = IntentFilter().apply {
@@ -347,8 +356,6 @@ class NexoBlePlugin : Plugin() {
         return result
     }
 
-    // ==================== FIX v5.0.2: Métodos que faltaban para compatibilidad JS v3.0.0-ARCH ====================
-
     @PluginMethod
     fun isBluetoothEnabled(call: PluginCall) {
         val adapter = getBluetoothAdapter()
@@ -359,18 +366,24 @@ class NexoBlePlugin : Plugin() {
         })
     }
 
+    // FIX v5.0.3: Responder inmediatamente si no hay servicio bound. No encolar y olvidar.
     @PluginMethod
     fun isAdvertising(call: PluginCall) {
-        withService(call) { svc ->
-            val isAdv = try { svc.isAdvertising() } catch(_: Exception) { false }
+        val svc = bleService
+        if (svc != null) {
             call.resolve(JSObject().apply {
-                put("isAdvertising", isAdv)
+                put("isAdvertising", svc.isAdvertising())
                 put("timestamp", System.currentTimeMillis())
             })
+            return
         }
+        // Servicio no listo todavía — retornar false inmediato
+        call.resolve(JSObject().apply {
+            put("isAdvertising", false)
+            put("timestamp", System.currentTimeMillis())
+            put("pending", true)
+        })
     }
-
-    // ==================== Fin FIX ====================
 
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
