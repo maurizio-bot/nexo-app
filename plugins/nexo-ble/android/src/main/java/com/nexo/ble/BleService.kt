@@ -327,6 +327,7 @@ class BleService : Service() {
     private fun failConn(a: String, r: String) {
         conns[a]?.let { it.state = ConnState.IDLE; it.gatt?.close(); it.gatt = null }
         bcastFail(a, r, conns[a]?.retry ?: 0)
+    }
 
     fun startScan() {
         val a = btAdapter ?: run { bcastScanFail(-1, "Adapter null"); return }
@@ -387,5 +388,3 @@ class BleService : Service() {
     private fun napLog(c: String, m: String, l: String = "INFO") { val f = "[$c] $m"; when(l) { "ERROR" -> Log.e(TAG, f); "WARN" -> Log.w(TAG, f); "DEBUG" -> Log.d(TAG, f); else -> Log.i(TAG, f) }; sendBroadcast(Intent(ACTION_NAP_AUDIT).apply { putExtra(EXTRA_NAP_CODE, c); putExtra(EXTRA_NAP_MESSAGE, m); putExtra(EXTRA_NAP_LEVEL, l); putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis()) }) }
     private fun cleanup() { conns.forEach { (_, c) -> c.userDisc = true; c.gatt?.let { try { it.disconnect(); it.close() } catch (e: Exception) {} }; c.gatt = null; c.state = ConnState.IDLE }; serverConns.clear(); gattServer?.close(); gattServer = null }
 }
-
-    }
