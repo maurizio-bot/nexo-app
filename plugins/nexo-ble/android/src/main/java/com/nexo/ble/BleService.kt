@@ -43,27 +43,33 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * BleService v3.0.0-ARCH — ÚNICO DUEÑO DE TODO BLE
- * * Arquitectura: Service monolítico estándar Android BLE 2026
+ *
+ * Arquitectura: Service monolítico estándar Android BLE 2026
  * - GATT Server (1 servicio, 1 característica principal + 1 announce)
  * - GATT Client (máquina de estados, queue, retries, timeouts)
  * - Scan (sin hardware filter, software filter S24 fix)
  * - Advertising (foreground + device name)
  * - Emite Broadcasts para Plugin bridge
+ *
+ * NO toca notifyListeners() — eso es trabajo del bridge.
  */
 class BleService : Service() {
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // COMPANION OBJECT — ÚNICO SOURCE OF TRUTH UUIDs
+    // ═══════════════════════════════════════════════════════════════════════
     companion object {
         private const val TAG = "NexoBleService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "nexo_ble_channel"
 
-        // UUIDs NEXO v1.0
+        // UUIDs NEXO v1.0 — inline para evitar dependencias cruzadas rotas
         val SERVICE_UUID: UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6")
         val MESSAGE_CHAR_UUID: UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c7")
         val ANNOUNCE_CHAR_UUID: UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c8")
         val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
-        // Broadcast Actions
+        // Broadcast Actions — contrato público Service ↔ Plugin Bridge
         const val ACTION_SCAN_RESULT = "com.nexo.ble.SCAN_RESULT"
         const val ACTION_SCAN_FAILED = "com.nexo.ble.SCAN_FAILED"
         const val ACTION_SCAN_STOPPED = "com.nexo.ble.SCAN_STOPPED"
@@ -73,15 +79,18 @@ class BleService : Service() {
         const val ACTION_DEVICE_CONNECTED = "com.nexo.ble.DEVICE_CONNECTED"
         const val ACTION_DEVICE_DISCONNECTED = "com.nexo.ble.DEVICE_DISCONNECTED"
         const val ACTION_CONNECTION_ERROR = "com.nexo.ble.CONNECTION_ERROR"
+
+        // Nuevos actions (antes notifyListeners del plugin)
         const val ACTION_SERVICES_READY = "com.nexo.ble.SERVICES_READY"
         const val ACTION_NOTIFICATIONS_ENABLED = "com.nexo.ble.NOTIFICATIONS_ENABLED"
         const val ACTION_CONNECTION_FAILED = "com.nexo.ble.CONNECTION_FAILED"
         const val ACTION_RETRY_SCHEDULED = "com.nexo.ble.RETRY_SCHEDULED"
+        const val ACTION_PAYLOAD_SENT = "com.nexo.ble.PAYLOAD_SENT"
         const val ACTION_PEER_INFO_RECEIVED = "com.nexo.ble.PEER_INFO_RECEIVED"
         const val ACTION_CLIENT_NOTIFICATION_STATE_CHANGED = "com.nexo.ble.CLIENT_NOTIFICATION_STATE_CHANGED"
         const val ACTION_NAP_AUDIT = "com.nexo.ble.NAP_AUDIT"
 
-        // Extra Keys
+        // Extras keys
         const val EXTRA_DEVICE_ADDRESS = "device_address"
         const val EXTRA_DEVICE_NAME = "device_name"
         const val EXTRA_RSSI = "rssi"
@@ -108,7 +117,9 @@ class BleService : Service() {
         const val EXTRA_DATA = "data"
         const val EXTRA_SENDER_NAME = "sender_name"
 
-        // Constantes Operativas
+        // Constantes operativas
+        const val MTU_DEFAULT = 512
+        const val CHUNK_SIZE = 507
         const val MAX_RETRY_ATTEMPTS = 3
         const val RETRY_BASE_DELAY_MS = 2000L
         const val RETRY_MAX_DELAY_MS = 16000L
@@ -117,10 +128,14 @@ class BleService : Service() {
         const val RATE_LIMIT_MS = 5000L
         const val SCAN_RATE_LIMIT_MS = 30000L
         const val SCAN_AUTO_STOP_MS = 15000L
-        const val CHUNK_SIZE = 507
     }
 
-    enum class ConnectionState { IDLE, CONNECTING, DISCOVERING, READY, DISCONNECTING, FAILED }
+    // ═══════════════════════════════════════════════════════════════════════
+    // A. MÁQUINA DE ESTADOS
+    // ═══════════════════════════════════════════════════════════════════════
+    enum class ConnectionState {
+        IDLE, CONNECTING, DISCOVERING, READY, DISCONNECTING, FAILED
+    }
 
     data class BLEConnection(
         val deviceId: String,
@@ -136,6 +151,9 @@ class BleService : Service() {
         var notificationsEnabled: Boolean = false
     )
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // B. SERIALIZACIÓN ESTRUCTA
+    // ═══════════════════════════════════════════════════════════════════════
     private val operationQueue = ConcurrentHashMap<String, LinkedList<Runnable>>()
     private val isOperating = ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicBoolean>()
 
@@ -160,24 +178,35 @@ class BleService : Service() {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // C. PROPIEDADES DEL SERVICIO
+    // ═══════════════════════════════════════════════════════════════════════
     private val binder = LocalBinder()
     private val handler = Handler(Looper.getMainLooper())
+
     private var bluetoothManager: BluetoothManager? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var advertiser: BluetoothLeAdvertiser? = null
     private var scanner: BluetoothLeScanner? = null
     private var gattServer: BluetoothGattServer? = null
+
     private var isAdvertising = false
     private var isScanning = false
+    private var lastScanStartTime: Long = 0
     private val scanResults = ConcurrentHashMap<String, ScanResult>()
     private val scanTimestamps = ArrayDeque<Long>(5)
+
     private val connectedGatts = ConcurrentHashMap<String, BluetoothGatt>()
     private val connections = ConcurrentHashMap<String, BLEConnection>()
     private val serverConnections = ConcurrentHashMap<String, BluetoothDevice>()
+
     private var userId: String = ""
     private var userName: String = "NEXO User"
 
-    inner class LocalBinder : Binder() { fun getService(): BleService = this@BleService }
+    inner class LocalBinder : Binder() {
+        fun getService(): BleService = this@BleService
+    }
+
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onCreate() {
@@ -186,15 +215,20 @@ class BleService : Service() {
         bluetoothAdapter = bluetoothManager?.adapter
         createNotificationChannel()
         startForegroundService()
-        try { initGattServer() } catch (e: Exception) { napLog("BLE_INIT", "GATT Server error: ${e.message}", "ERROR") }
-        napLog("BLE_INIT", "BleService v3.0.0-ARCH iniciado", "INFO")
+        try { initGattServer() } catch (e: Exception) { napLog("BLE_INIT", "Error GATT Server: ${e.message}", "ERROR") }
     }
 
     override fun onDestroy() {
+        stopScan()
+        stopAdvertising()
         cleanupAllConnections()
+        gattServer?.close()
         super.onDestroy()
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // D. FOREGROUND SERVICE
+    // ═══════════════════════════════════════════════════════════════════════
     private fun startForegroundService() {
         val notification = buildNotification("NEXO BLE activo")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -206,7 +240,7 @@ class BleService : Service() {
 
     private fun buildNotification(content: String): Notification {
         val intent = packageManager.getLaunchIntentForPackage(packageName)
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("NEXO Mesh")
             .setContentText(content)
@@ -223,35 +257,56 @@ class BleService : Service() {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // E. GATT SERVER
+    // ═══════════════════════════════════════════════════════════════════════
     private fun initGattServer() {
         val adapter = bluetoothAdapter ?: return
         gattServer = bluetoothManager?.openGattServer(this, gattServerCallback)
         val service = BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
         val messageChar = BluetoothGattCharacteristic(MESSAGE_CHAR_UUID, BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY, BluetoothGattCharacteristic.PERMISSION_WRITE)
-        messageChar.addDescriptor(BluetoothGattDescriptor(CCCD_UUID, BluetoothGattDescriptor.PERMISSION_WRITE or BluetoothGattDescriptor.PERMISSION_READ))
+        val cccd = BluetoothGattDescriptor(CCCD_UUID, BluetoothGattDescriptor.PERMISSION_WRITE or BluetoothGattDescriptor.PERMISSION_READ)
+        messageChar.addDescriptor(cccd)
         service.addCharacteristic(messageChar)
-        service.addCharacteristic(BluetoothGattCharacteristic(ANNOUNCE_CHAR_UUID, BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY, BluetoothGattCharacteristic.PERMISSION_READ))
+        val announceChar = BluetoothGattCharacteristic(ANNOUNCE_CHAR_UUID, BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY, BluetoothGattCharacteristic.PERMISSION_READ)
+        service.addCharacteristic(announceChar)
         gattServer?.addService(service)
     }
 
     private val gattServerCallback = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
-            val addr = device?.address ?: return
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
-                serverConnections[addr] = device
-                broadcastDeviceEvent(ACTION_DEVICE_CONNECTED, device, "incoming")
-            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                serverConnections.remove(addr)
-                broadcastDeviceEvent(ACTION_DEVICE_DISCONNECTED, device)
+            when (newState) {
+                BluetoothProfile.STATE_CONNECTED -> {
+                    device?.address?.let { addr ->
+                        serverConnections[addr] = device
+                        broadcastDeviceEvent(ACTION_DEVICE_CONNECTED, device, direction = "incoming")
+                    }
+                }
+                BluetoothProfile.STATE_DISCONNECTED -> {
+                    device?.address?.let { addr ->
+                        serverConnections.remove(addr)
+                        broadcastDeviceEvent(ACTION_DEVICE_DISCONNECTED, device)
+                    }
+                }
             }
         }
 
         override fun onCharacteristicWriteRequest(device: BluetoothDevice?, requestId: Int, characteristic: BluetoothGattCharacteristic?, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?) {
             if (characteristic?.uuid == MESSAGE_CHAR_UUID && value != null) {
                 val message = String(value, Charsets.UTF_8)
+                var senderName = "NEXO Peer"; var content = message; var mId = ""
+                try {
+                    val json = org.json.JSONObject(message)
+                    senderName = json.optString("senderName", senderName)
+                    content = json.optString("content", content)
+                    mId = json.optString("messageId", mId)
+                } catch (e: Exception) {}
                 sendBroadcast(Intent(ACTION_MESSAGE_RECEIVED).apply {
                     putExtra(EXTRA_DEVICE_ADDRESS, device?.address)
                     putExtra(EXTRA_MESSAGE, message)
+                    putExtra(EXTRA_CONTENT, content)
+                    putExtra(EXTRA_SENDER_NAME, senderName)
+                    putExtra(EXTRA_MESSAGE_ID, mId)
                     putExtra(EXTRA_SOURCE, "server_write_request")
                     putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis())
                 })
@@ -260,9 +315,14 @@ class BleService : Service() {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // F. GATT CLIENT
+    // ═══════════════════════════════════════════════════════════════════════
     fun connectToDevice(address: String): Boolean {
         val adapter = bluetoothAdapter ?: return false
         val device = adapter.getRemoteDevice(address) ?: return false
+        val conn = connections.getOrPut(address) { BLEConnection(address) }
+        if (conn.state == ConnectionState.READY || conn.state == ConnectionState.CONNECTING) return true
         enqueueOperation(address) { executeConnectInternal(device, address) }
         return true
     }
@@ -271,132 +331,188 @@ class BleService : Service() {
         val conn = connections.getOrPut(deviceId) { BLEConnection(deviceId) }
         conn.state = ConnectionState.CONNECTING
         conn.lastAttemptTime = System.currentTimeMillis()
-        conn.gatt?.close()
-        conn.gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        conn.gatt?.let { try { it.disconnect(); it.close() } catch (e: Exception) {} }
+        val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             device.connectGatt(this, false, unifiedGattCallback, BluetoothDevice.TRANSPORT_LE)
-        } else {
-            device.connectGatt(this, false, unifiedGattCallback)
-        }
+        } else { device.connectGatt(this, false, unifiedGattCallback) }
+        conn.gatt = gatt
+        handler.postDelayed({ if (connections[deviceId]?.state == ConnectionState.CONNECTING) handleConnectionFailure(deviceId, "Timeout") }, CONNECT_TIMEOUT_MS)
+    }
+
+    fun sendMessage(address: String, message: String): Boolean {
+        val conn = connections[address] ?: return false
+        if (conn.state != ConnectionState.READY) return false
+        val mId = UUID.randomUUID().toString()
+        val payload = try {
+            val json = org.json.JSONObject()
+            json.put("messageId", mId); json.put("timestamp", System.currentTimeMillis())
+            json.put("senderId", userId); json.put("senderName", userName); json.put("content", message)
+            json.toString().toByteArray()
+        } catch (e: Exception) { message.toByteArray() }
+        performWrite(address, payload, mId)
+        return true
+    }
+
+    private fun performWrite(deviceId: String, payload: ByteArray, mId: String) {
+        val conn = connections[deviceId] ?: return
+        val gatt = conn.gatt ?: return
+        try {
+            val char = gatt.getService(SERVICE_UUID)?.getCharacteristic(MESSAGE_CHAR_UUID) ?: return
+            conn.pendingWriteMessageId = mId
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeCharacteristic(char, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+            } else {
+                @Suppress("DEPRECATION") char.value = payload
+                @Suppress("DEPRECATION") gatt.writeCharacteristic(char)
+            }
+        } catch (e: Exception) { broadcastPayloadSent(deviceId, mId, false) }
     }
 
     private val unifiedGattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            val deviceId = gatt.device.address
-            val conn = connections[deviceId] ?: return
+            val addr = gatt.device.address
+            val conn = connections[addr] ?: return
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 conn.state = ConnectionState.DISCOVERING
-                handler.postDelayed({ try { gatt.discoverServices() } catch (e: SecurityException) {} }, 800)
+                handler.postDelayed({ try { gatt.discoverServices() } catch (e: Exception) {} }, 800)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                conn.state = ConnectionState.IDLE
-                if (!conn.userDisconnected && conn.retryCount < MAX_RETRY_ATTEMPTS) scheduleRetry(deviceId)
+                conn.state = ConnectionState.IDLE; conn.gatt = null
+                if (!conn.userDisconnected && conn.retryCount < MAX_RETRY_ATTEMPTS) scheduleRetry(addr)
             }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            val deviceId = gatt.device.address
+            val addr = gatt.device.address
             val service = gatt.getService(SERVICE_UUID)
             val char = service?.getCharacteristic(MESSAGE_CHAR_UUID)
             if (char != null) {
                 gatt.setCharacteristicNotification(char, true)
-                val desc = char.getDescriptor(CCCD_UUID)
-                if (desc != null) {
-                    desc.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    gatt.writeDescriptor(desc)
-                } else { markConnectionReady(deviceId, gatt) }
+                val d = char.getDescriptor(CCCD_UUID)
+                if (d != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        gatt.writeDescriptor(d, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    } else {
+                        @Suppress("DEPRECATION") d.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        @Suppress("DEPRECATION") gatt.writeDescriptor(d)
+                    }
+                } else { markConnectionReady(addr, gatt) }
             }
         }
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == CCCD_UUID) markConnectionReady(gatt.device.address, gatt)
+            if (descriptor.uuid == CCCD_UUID && status == BluetoothGatt.GATT_SUCCESS) markConnectionReady(gatt.device.address, gatt)
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             if (characteristic.uuid == MESSAGE_CHAR_UUID) {
-                val message = String(characteristic.value ?: byteArrayOf(), Charsets.UTF_8)
+                val msg = String(characteristic.value, Charsets.UTF_8)
                 sendBroadcast(Intent(ACTION_MESSAGE_RECEIVED).apply {
                     putExtra(EXTRA_DEVICE_ADDRESS, gatt.device.address)
-                    putExtra(EXTRA_MESSAGE, message)
-                    putExtra(EXTRA_SOURCE, "client_notification")
+                    putExtra(EXTRA_MESSAGE, msg)
+                    putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis())
                 })
             }
         }
+
+        override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            val addr = gatt.device.address
+            val mId = connections[addr]?.pendingWriteMessageId ?: ""
+            broadcastPayloadSent(addr, mId, status == BluetoothGatt.GATT_SUCCESS)
+        }
     }
 
-    private fun markConnectionReady(deviceId: String, gatt: BluetoothGatt) {
-        val conn = connections[deviceId] ?: return
-        conn.state = ConnectionState.READY
-        conn.retryCount = 0
-        sendBroadcast(Intent(ACTION_SERVICES_READY).apply { putExtra(EXTRA_DEVICE_ADDRESS, deviceId); putExtra(EXTRA_SUCCESS, true) })
-    }
-
-    private fun scheduleRetry(deviceId: String) {
-        val conn = connections[deviceId] ?: return
-        conn.retryCount++
-        val delay = minOf(RETRY_BASE_DELAY_MS * (1 shl (conn.retryCount - 1)), RETRY_MAX_DELAY_MS)
-        handler.postDelayed({ connectToDevice(deviceId) }, delay)
-    }
-
+    //     // ═══════════════════════════════════════════════════════════════════════
+    // G. SCAN & ADVERTISING
+    // ═══════════════════════════════════════════════════════════════════════
     fun startScan() {
         val adapter = bluetoothAdapter ?: return
-        scanner = adapter.bluetoothLeScanner ?: return
+        scanner = adapter.bluetoothLeScanner
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
-        isScanning = true
-        scanner?.startScan(null, settings, scanCallback)
-        handler.postDelayed({ stopScan() }, SCAN_AUTO_STOP_MS)
+        scanResults.clear(); isScanning = true
+        try {
+            scanner?.startScan(null, settings, scanCallback)
+            handler.postDelayed({ stopScan() }, SCAN_AUTO_STOP_MS)
+        } catch (e: Exception) { isScanning = false }
     }
 
-    fun stopScan() {
-        if (!isScanning) return
-        isScanning = false
-        try { scanner?.stopScan(scanCallback) } catch (e: Exception) {}
-        sendBroadcast(Intent(ACTION_SCAN_STOPPED))
-    }
+    fun stopScan() { if (isScanning) { try { scanner?.stopScan(scanCallback) } catch (e: Exception) {}; isScanning = false } }
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
-            result?.device?.address?.let { addr ->
-                val isNexo = result.scanRecord?.serviceUuids?.any { it.uuid == SERVICE_UUID } == true
+            result?.let {
+                val isNexo = it.scanRecord?.serviceUuids?.any { u -> u.uuid == SERVICE_UUID } == true
                 if (isNexo) {
+                    val addr = it.device.address
+                    scanResults[addr] = it
                     sendBroadcast(Intent(ACTION_SCAN_RESULT).apply {
-                        putExtra(EXTRA_DEVICE_ADDRESS, addr)
-                        putExtra(EXTRA_DEVICE_NAME, result.device.name ?: "NEXO Device")
-                        putExtra(EXTRA_RSSI, result.rssi)
+                        putExtra(EXTRA_DEVICE_ADDRESS, addr); putExtra(EXTRA_RSSI, it.rssi)
+                        putExtra(EXTRA_DEVICE_NAME, it.device.name ?: "NEXO Device")
                     })
                 }
             }
         }
     }
 
-    fun startAdvertising(deviceName: String) {
+    fun startAdvertising(name: String) {
         val adapter = bluetoothAdapter ?: return
-        advertiser = adapter.bluetoothLeAdvertiser ?: return
-        val settings = AdvertiseSettings.Builder().setConnectable(true).build()
+        try { adapter.name = name } catch (e: Exception) {}
+        advertiser = adapter.bluetoothLeAdvertiser
+        val settings = AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY).setConnectable(true).build()
         val data = AdvertiseData.Builder().setIncludeDeviceName(true).addServiceUuid(ParcelUuid(SERVICE_UUID)).build()
         advertiser?.startAdvertising(settings, data, advertiseCallback)
     }
 
+    fun stopAdvertising() { advertiser?.stopAdvertising(advertiseCallback); isAdvertising = false }
+
     private val advertiseCallback = object : AdvertiseCallback() {
-        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) { isAdvertising = true; broadcastAdvertState(true) }
+        override fun onStartSuccess(s: AdvertiseSettings?) { isAdvertising = true; broadcastAdvertState(true) }
     }
 
-    private fun broadcastAdvertState(active: Boolean) { sendBroadcast(Intent(ACTION_ADVERT_STATE).apply { putExtra(EXTRA_ADVERTISING, active) }) }
-
-    private fun broadcastDeviceEvent(action: String, device: BluetoothDevice?, direction: String = "unknown") {
-        sendBroadcast(Intent(action).apply {
-            putExtra(EXTRA_DEVICE_ADDRESS, device?.address)
-            putExtra(EXTRA_DIRECTION, direction)
-        })
+    // ═══════════════════════════════════════════════════════════════════════
+    // H. UTILIDADES
+    // ═══════════════════════════════════════════════════════════════════════
+    private fun scheduleRetry(addr: String) {
+        val conn = connections[addr] ?: return
+        conn.retryCount++
+        val delay = RETRY_BASE_DELAY_MS * conn.retryCount
+        handler.postDelayed({
+            val dev = bluetoothAdapter?.getRemoteDevice(addr)
+            if (dev != null && connections[addr]?.state == ConnectionState.IDLE) executeConnectInternal(dev, addr)
+        }, delay)
     }
 
-    private fun napLog(code: String, message: String, level: String) {
-        sendBroadcast(Intent(ACTION_NAP_AUDIT).apply {
-            putExtra(EXTRA_NAP_CODE, code); putExtra(EXTRA_NAP_MESSAGE, message); putExtra(EXTRA_NAP_LEVEL, level)
-        })
+    private fun markConnectionReady(addr: String, gatt: BluetoothGatt) {
+        val conn = connections[addr] ?: return
+        conn.state = ConnectionState.READY; conn.retryCount = 0; conn.gatt = gatt
+        sendBroadcast(Intent(ACTION_SERVICES_READY).apply { putExtra(EXTRA_DEVICE_ADDRESS, addr); putExtra(EXTRA_SUCCESS, true) })
     }
+
+    private fun handleConnectionFailure(addr: String, reason: String) {
+        connections[addr]?.let { it.state = ConnectionState.IDLE; it.gatt?.close(); it.gatt = null }
+        broadcastConnectionFailed(addr, reason, connections[addr]?.retryCount ?: 0)
+    }
+
+    private fun napLog(code: String, msg: String, level: String) {
+        val f = "[$code] $msg"; when(level){"ERROR"->Log.e(TAG,f);"WARN"->Log.w(TAG,f);else->Log.i(TAG,f)}
+        sendBroadcast(Intent(ACTION_NAP_AUDIT).apply { putExtra(EXTRA_NAP_CODE, code); putExtra(EXTRA_NAP_MESSAGE, msg); putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis()) })
+    }
+
+    private fun broadcastDeviceEvent(a: String, d: BluetoothDevice?, direction: String = "") {
+        sendBroadcast(Intent(a).apply { putExtra(EXTRA_DEVICE_ADDRESS, d?.address); putExtra(EXTRA_DIRECTION, direction) })
+    }
+
+    private fun broadcastPayloadSent(addr: String, mId: String, success: Boolean) {
+        sendBroadcast(Intent(ACTION_MESSAGE_SENT).apply { putExtra(EXTRA_DEVICE_ADDRESS, addr); putExtra(EXTRA_MESSAGE_ID, mId); putExtra(EXTRA_SUCCESS, success) })
+    }
+
+    private fun broadcastConnectionFailed(addr: String, r: String, att: Int) {
+        sendBroadcast(Intent(ACTION_CONNECTION_FAILED).apply { putExtra(EXTRA_DEVICE_ADDRESS, addr); putExtra(EXTRA_REASON, r); putExtra(EXTRA_ATTEMPT, att) })
+    }
+
+    private fun broadcastAdvertState(adv: Boolean) { sendBroadcast(Intent(ACTION_ADVERT_STATE).apply { putExtra(EXTRA_ADVERTISING, adv) }) }
 
     private fun cleanupAllConnections() {
         connections.forEach { (_, c) -> c.gatt?.close() }
-        gattServer?.close()
-        stopScan()
+        connections.clear(); serverConnections.clear(); stopScan(); stopAdvertising()
     }
 }
