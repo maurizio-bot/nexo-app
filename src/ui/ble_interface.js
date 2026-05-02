@@ -1,6 +1,6 @@
 /**
- * BLE Interface v3.0.0-ARCH
- * FIX v3.0: addContact normalizado, auto-scan discovery, scan timeout 15s
+ * BLE Interface v3.0.1-ARCH
+ * FIX v3.0.1: canAdvertise usa btState.enabled (el plugin no retorna canAdvertise)
  */
 
 export function initBLEInterface(bleMesh) {
@@ -9,7 +9,7 @@ export function initBLEInterface(bleMesh) {
   return instance;
 }
 
-const BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2'; // v2 para limpiar datos corruptos previos
+const BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
 
 function _getBLEContacts() {
   try {
@@ -27,7 +27,6 @@ function _addBLEContact(device) {
   const id = _normalizeId(device.id || device.address);
   if (!id) return false;
   
-  // Si ya existe, actualizar en lugar de rechazar
   const existingIndex = contacts.findIndex(c => _normalizeId(c.id || c.address) === id);
   const newContact = { 
     id, 
@@ -312,16 +311,26 @@ export class BLEInterface {
     await this.nativePlugin.sendMessage({ deviceId, message: content });
   }
 
+  // ==================== FIX v3.0.1: Visibilidad ====================
+
   async _initVisibility() {
     if (this.isDummyMode) return;
     try {
       const btState = await this.nativePlugin.isBluetoothEnabled();
-      this.canAdvertise = btState.canAdvertise || false;
+      // FIX: El plugin NO retorna canAdvertise. Usamos enabled como proxy.
+      // Si BT está encendido, asumimos que se puede anunciar.
+      this.canAdvertise = btState.enabled === true;
+      
       const adState = await this.nativePlugin.isAdvertising();
       this.isAdvertising = adState.isAdvertising === true;
       this.updateVisibilityButton();
       this._setupNativeAdvertisingListeners();
-    } catch (err) {}
+    } catch (err) {
+      console.warn('[BLEInterface] _initVisibility error:', err);
+      this.canAdvertise = false;
+      this.isAdvertising = false;
+      this.updateVisibilityButton();
+    }
   }
   
   _setupNativeAdvertisingListeners() {
@@ -333,10 +342,15 @@ export class BLEInterface {
       this.updateVisibilityButton();
       this.showToast('👁️‍🗨️ Visibilidad activada', 'success');
     });
-    this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', () => {
+    this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', (data) => {
       this.isAdvertising = false;
       this.updateVisibilityButton();
-      this.showToast('❌ Error al activar visibilidad', 'error');
+      const reason = data?.reason || '';
+      if (reason === 'Advertiser null') {
+        this.showToast('⚠️ Advertising no soportado en este dispositivo', 'warning', 5000);
+      } else {
+        this.showToast('❌ Error al activar visibilidad: ' + reason, 'error');
+      }
     });
   }
 
@@ -363,10 +377,7 @@ export class BLEInterface {
   async toggleVisibility() {
     if (this.isDummyMode) return;
     try {
-      if (!this.canAdvertise) {
-        this.showToast('⚠️ Sin permiso de advertising', 'warning');
-        return;
-      }
+      // FIX: No bloquear por canAdvertise. Intentar siempre — el nativo maneja errores.
       if (this.isAdvertising) {
         await this.nativePlugin.stopAdvertising();
         this.isAdvertising = false;
@@ -378,6 +389,8 @@ export class BLEInterface {
       this.showToast('❌ Error: ' + err.message, 'error');
     }
   }
+
+  // ==================== Fin FIX ====================
 
   createDOM() {
     const tab = document.createElement('div');
@@ -523,7 +536,6 @@ export class BLEInterface {
     document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
     document.getElementById(`tab-${tabName}`).classList.add('active');
     if (tabName === 'added') this.renderAddedList();
-    // FIX v3.0: Auto-scan al entrar a Descubrir
     if (tabName === 'discovery' && !this.isScanning && !this.isDummyMode) {
       this.toggleScan();
     }
@@ -543,7 +555,6 @@ export class BLEInterface {
         if (this.nativePlugin) await this.nativePlugin.startScan();
         this.isScanning = true;
         this.onScanStateChanged(true);
-        // FIX v3.0: Auto-stop después de 15 segundos
         this._scanTimeout = setTimeout(() => {
           if (this.isScanning) this.toggleScan();
         }, 15000);
@@ -620,7 +631,6 @@ export class BLEInterface {
     } catch (err) {}
   }
 
-  // FIX v3.0: addContact normalizado y robusto
   async addContact(deviceId) {
     const normalizedId = _normalizeId(deviceId);
     console.log('[BLEInterface] addContact llamado con ID:', normalizedId);
