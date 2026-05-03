@@ -1,6 +1,6 @@
 /**
- * ble_interface.js v4.2.1-ARCH — Scan Fix + Fase 1 UUID nativo
- * FIX: No generar UUID en JS (viene del nativo). No duplicar init BLE.
+ * ble_interface.js v4.2.2-ARCH — REM Exhaustivo
+ * FIX: Retroalimentación detallada en cada paso JS
  */
 
 const SVG_ICONS = {
@@ -16,7 +16,9 @@ let _globalInterface = null;
 
 export function initBLEInterface(meshInstance) {
   const plugin = window.Capacitor?.Plugins?.NexoBLE;
-  
+  console.log('[REM-JS-001] initBLEInterface() — INICIO');
+  console.log('[REM-JS-002] plugin detectado:', plugin ? 'SÍ' : 'NO', 'tipo:', typeof plugin);
+
   const state = {
     contacts: new Map(),
     devices: new Map(),
@@ -33,6 +35,8 @@ export function initBLEInterface(meshInstance) {
     _messageQueue: [],
     _deviceUUID: null,
   };
+
+  console.log('[REM-JS-003] Estado inicial:', { activeTab: state.activeTab, hasPlugin: !!state.nativePlugin });
 
   const styleId = 'nexo-ble-interface-styles';
   if (!document.getElementById(styleId)) {
@@ -171,14 +175,22 @@ export function initBLEInterface(meshInstance) {
   const barBtns = { chat: document.getElementById('btn-tab-chat'), ble: document.getElementById('btn-tab-ble'), settings: document.getElementById('btn-tab-settings') };
 
   function switchTab(tabName) {
-    if (!tabs[tabName]) return;
+    console.log('[REM-JS-004] switchTab(' + tabName + ') — llamado');
+    if (!tabs[tabName]) {
+      console.log('[REM-JS-005] switchTab: tab no encontrado:', tabName);
+      return;
+    }
     state.activeTab = tabName;
     Object.values(tabs).forEach(t => t.classList.remove('active'));
     tabs[tabName].classList.add('active');
     Object.values(barBtns).forEach(b => b.classList.remove('active'));
     if (barBtns[tabName]) barBtns[tabName].classList.add('active');
     if (tabName === 'chat' && state._activeChatDeviceId) updateChatBadge(false);
-    if (tabName === 'ble') startScan();
+    if (tabName === 'ble') {
+      console.log('[REM-JS-006] switchTab → ble, iniciando scan');
+      startScan();
+    }
+    console.log('[REM-JS-007] switchTab(' + tabName + ') — FIN');
   }
 
   Object.values(barBtns).forEach(btn => {
@@ -194,6 +206,7 @@ export function initBLEInterface(meshInstance) {
     const text = chatInput.value.trim();
     if (!text) return;
     const msgId = `${Date.now()}-${Math.random().toString(36).substr(2,9)}`;
+    console.log('[REM-JS-008] sendChatMessage() msgId=' + msgId + ' len=' + text.length);
     appendChatBubble(text, true, msgId);
     chatInput.value = '';
     window.dispatchEvent(new CustomEvent('nexo:ble:sendMessage', { detail: { content: text, deviceId: state._activeChatDeviceId, messageId: msgId } }));
@@ -216,12 +229,14 @@ export function initBLEInterface(meshInstance) {
   const scanTimer = document.getElementById('scan-timer');
 
   function renderDevices() {
+    console.log('[REM-JS-009] renderDevices() — devices.size=' + state.devices.size);
     if (state.devices.size === 0) {
       deviceListEl.innerHTML = '<div class="nexo-device-empty">Buscando dispositivos cercanos...</div>';
       return;
     }
     deviceListEl.innerHTML = '';
     state.devices.forEach((dev, id) => {
+      console.log('[REM-JS-010] renderDevices: renderizando id=' + id.substring(0,12) + ' name=' + dev.name);
       const el = document.createElement('div');
       el.className = 'nexo-device-item';
       el.innerHTML = `
@@ -233,6 +248,7 @@ export function initBLEInterface(meshInstance) {
         <div class="nexo-device-add">+</div>
       `;
       el.addEventListener('click', () => {
+        console.log('[REM-JS-011] Device clicked: id=' + id.substring(0,12));
         addContact(id, dev.name || `NEXO-${id.substring(0,6).toUpperCase()}`);
         openChat(id, dev.name || `NEXO-${id.substring(0,6).toUpperCase()}`);
       });
@@ -242,7 +258,11 @@ export function initBLEInterface(meshInstance) {
 
   function addContact(id, name) {
     const normalized = (id || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
-    if (!normalized) return;
+    if (!normalized) {
+      console.log('[REM-JS-012] addContact: id vacío, ignorando');
+      return;
+    }
+    console.log('[REM-JS-013] addContact: normalized=' + normalized.substring(0,12) + ' name=' + name);
     state.contacts.set(normalized, { name, addedAt: Date.now() });
   }
 
@@ -253,6 +273,7 @@ export function initBLEInterface(meshInstance) {
     document.getElementById('chat-avatar').textContent = (name || '?').charAt(0).toUpperCase();
     chatMessages.innerHTML = '';
     switchTab('chat');
+    console.log('[REM-JS-014] openChat: deviceId=' + deviceId.substring(0,12));
     window.dispatchEvent(new CustomEvent('nexo:ble:openChat', { detail: { contactId: deviceId, name, address: deviceId, transport: 'ble' } }));
   }
 
@@ -263,7 +284,11 @@ export function initBLEInterface(meshInstance) {
   }
 
   async function startScan() {
-    if (state.isScanning) return;
+    console.log('[REM-JS-015] startScan() — INICIO isScanning=' + state.isScanning);
+    if (state.isScanning) {
+      console.log('[REM-JS-016] startScan: ya escaneando, omitiendo');
+      return;
+    }
     state.isScanning = true;
     state.devices.clear();
     renderDevices();
@@ -277,19 +302,48 @@ export function initBLEInterface(meshInstance) {
     }, 1000);
 
     if (state.nativePlugin?.startScan) {
-      try { await state.nativePlugin.startScan(); }
-      catch (e) { console.error('[BLE] Scan error:', e); }
+      try {
+        console.log('[REM-JS-017] startScan: llamando nativePlugin.startScan()...');
+        await state.nativePlugin.startScan();
+        console.log('[REM-JS-018] startScan: nativePlugin.startScan() RESUELTO');
+      } catch (e) {
+        console.error('[REM-JS-019] startScan: nativePlugin.startScan() ERROR:', e);
+      }
+    } else {
+      console.log('[REM-JS-020] startScan: nativePlugin.startScan NO disponible');
     }
 
-    setTimeout(() => { state.isScanning = false; scanBadge.style.display = 'none'; scanTimer.textContent = ''; }, state.scanDuration * 1000);
+    setTimeout(() => {
+      console.log('[REM-JS-021] startScan: auto-stop 15s expirado');
+      state.isScanning = false;
+      scanBadge.style.display = 'none';
+      scanTimer.textContent = '';
+    }, state.scanDuration * 1000);
+    console.log('[REM-JS-022] startScan() — FIN');
   }
 
   if (state.nativePlugin?.addListener) {
+    console.log('[REM-JS-023] Registrando listeners nativos...');
+
     const l1 = state.nativePlugin.addListener('onScanResult', (result) => {
+      console.log('[REM-JS-024] onScanResult recibido:', JSON.stringify(result));
       const raw = result;
-      if (!raw?.deviceId && !raw?.address) return;
+      if (!raw?.deviceId && !raw?.address) {
+        console.log('[REM-JS-025] onScanResult: sin deviceId ni address, ignorando');
+        return;
+      }
       const id = (raw.deviceId || raw.address || '').toLowerCase().replace(/[^a-f0-9]/g, '');
-      if (!id || state.devices.has(id)) return;
+      if (!id) {
+        console.log('[REM-JS-026] onScanResult: id vacío tras normalizar');
+        return;
+      }
+      if (state.devices.has(id)) {
+        console.log('[REM-JS-027] onScanResult: id ya existe, actualizando RSSI');
+        const existing = state.devices.get(id);
+        if (raw.rssi != null) existing.rssi = raw.rssi;
+        return;
+      }
+      console.log('[REM-JS-028] onScanResult: NUEVO DISPOSITIVO id=' + id.substring(0,12) + ' name=' + (raw.name || 'NEXO Device'));
       state.devices.set(id, {
         name: raw.name || `NEXO-${id.substring(0,6).toUpperCase()}`,
         address: raw.deviceId || raw.address,
@@ -298,23 +352,46 @@ export function initBLEInterface(meshInstance) {
       });
       renderDevices();
     });
+    console.log('[REM-JS-029] Listener onScanResult registrado');
+
     const l2 = state.nativePlugin.addListener('onMessageReceived', (result) => {
+      console.log('[REM-JS-030] onMessageReceived recibido:', JSON.stringify(result));
       const { deviceId, message, senderName, messageId, source, timestamp } = result || {};
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: { deviceId, content: message, senderName, messageId, source, timestamp }
       }));
     });
-    state._listeners.push(l1, l2);
+    console.log('[REM-JS-031] Listener onMessageReceived registrado');
+
+    const l3 = state.nativePlugin.addListener('onAdvertStateChange', (result) => {
+      console.log('[REM-JS-032] onAdvertStateChange:', JSON.stringify(result));
+    });
+
+    const l4 = state.nativePlugin.addListener('onScanFailed', (result) => {
+      console.log('[REM-JS-033] onScanFailed:', JSON.stringify(result));
+    });
+
+    const l5 = state.nativePlugin.addListener('bridgeReady', (result) => {
+      console.log('[REM-JS-034] bridgeReady:', JSON.stringify(result));
+    });
+
+    const l6 = state.nativePlugin.addListener('napAuditEvent', (result) => {
+      console.log('[REM-JS-035] napAuditEvent:', JSON.stringify(result));
+    });
+
+    state._listeners.push(l1, l2, l3, l4, l5, l6);
+    console.log('[REM-JS-036] Total listeners registrados:', state._listeners.length);
+  } else {
+    console.log('[REM-JS-037] WARNING: nativePlugin.addListener NO disponible');
   }
 
-  // FIX FASE 1: NO generar UUID en JS. NO inicializar BLE aquí.
-  // nexo_app.js ya hace initializeBLE + startAdvertising en su init.
-  // Este handler solo inicia scan cuando los permisos están listos.
   window.addEventListener('blePermissionsGranted', () => {
-    console.log('[BLE] Permisos concedidos');
-    // Solo iniciar scan si estamos en tab BLE, sino esperar al tab switch
+    console.log('[REM-JS-038] Evento blePermissionsGranted recibido');
     if (state.activeTab === 'ble') {
+      console.log('[REM-JS-039] blePermissionsGranted → iniciando scan (tab=ble)');
       startScan();
+    } else {
+      console.log('[REM-JS-040] blePermissionsGranted → tab!=' + state.activeTab + ', esperando tab switch');
     }
   });
 
@@ -332,10 +409,12 @@ export function initBLEInterface(meshInstance) {
     openChat,
     appendChatBubble,
     confirmChatMessage: (msgId) => {
+      console.log('[REM-JS-041] confirmChatMessage: msgId=' + msgId);
       const el = chatMessages.querySelector(`[data-message-id="${msgId}"]`);
       if (el) { el.classList.remove('pending'); el.classList.add('confirmed'); }
     },
     updateStatus: (phase, mode, id) => {
+      console.log('[REM-JS-042] updateStatus: phase=' + phase + ' mode=' + mode + ' id=' + (id || '--').substring(0,6));
       const p = document.getElementById('status-phase');
       const m = document.getElementById('status-mode');
       const i = document.getElementById('status-id');
@@ -344,6 +423,7 @@ export function initBLEInterface(meshInstance) {
       if (i) i.textContent = (id || '--').substring(0,6);
     },
     destroy: () => {
+      console.log('[REM-JS-043] destroy() llamado');
       if (state.scanTimer) clearInterval(state.scanTimer);
       state._listeners.forEach(l => l?.remove?.());
       state._listeners = [];
@@ -353,6 +433,7 @@ export function initBLEInterface(meshInstance) {
   };
 
   _globalInterface = api;
+  console.log('[REM-JS-044] initBLEInterface() — FIN. API expuesta.');
   return api;
 }
 
