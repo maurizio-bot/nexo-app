@@ -449,15 +449,6 @@ class BleService : Service() {
             }
         }
 
-        // FIX: Truncar nombre a max 8 chars para advertising principal
-        // 31 bytes limite: Flags(3) + Name(len+type+8=10) + UUID128(18) = 31 bytes exactos
-        val safeName = name.take(8)
-        try {
-            adapter.name = safeName
-        } catch (e: Exception) {
-            napLog("ADVERT", "No se pudo cambiar nombre: ${e.message}", "WARN")
-        }
-
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
             .setConnectable(true)
@@ -465,18 +456,20 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
-        // FIX: Advertising principal SOLO con Service UUID + nombre corto
-        // Scan response lleva nombre completo si cabe
+        // FIX v3.1.2: Advertising principal SOLO con Service UUID, SIN nombre
+        // El nombre del sistema Bluetooth puede ser largo y exceder 31 bytes,
+        // causando que Android omita el Service UUID. Lo movemos al scan response.
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
+            .setIncludeDeviceName(false)   // <-- FIX: NO incluir nombre en advertising principal
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .build()
 
+        // Scan response lleva el nombre (hasta 31 bytes adicionales)
         val scanResponse = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
+            .setIncludeDeviceName(true)    // nombre va aquí, en scan response
             .build()
 
-        napLog("ADVERT", "startAdvertising() — safeName=$safeName | packet: UUID+name | scanResponse: name", "INFO")
+        napLog("ADVERT", "startAdvertising() — packet: UUID only (21 bytes) | scanResponse: name", "INFO")
 
         try {
             freshAdvertiser.startAdvertising(settings, data, scanResponse, adCb)
@@ -509,7 +502,6 @@ class BleService : Service() {
         this.userId = uid
         this.userName = uname
         napLog("USER", "setUserInfo: $uname", "INFO")
-        // FIX: Reiniciar advertising solo si ya estaba activo, con nombre truncado
         if (isAd && uname.isNotEmpty()) {
             stopAdvertising()
             handler.postDelayed({ startAdvertising(uname) }, 500)
