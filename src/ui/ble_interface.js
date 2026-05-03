@@ -1,7 +1,8 @@
 /**
- * BLE Interface v4.1.0-ARCH
- * Simplificado: BLE tab = solo scan + lista devices. Sin tabs internos.
- * Tap device → auto-guarda contacto → abre CHAT. Advertising automático en nativo.
+ * BLE Interface v4.2.0-ARCH
+ * Simplificado: BLE tab = solo scan + lista devices. Sin advertising manual.
+ * Advertising automático en nativo (BleService v3.0.2).
+ * Tap device → auto-guarda contacto → abre CHAT.
  */
 
 export function initBLEInterface(bleMesh) {
@@ -75,8 +76,6 @@ export class BLEInterface {
     this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
     this.isDummyMode = !bleMesh && !this.nativePlugin;
     this.meshType = this._detectMeshType();
-    this.isAdvertising = false;
-    this.canAdvertise = false;
     this.localDeviceName = 'NEXO Device';
     this.localDeviceAddress = null;
     this._activeChatDeviceId = null;
@@ -86,6 +85,7 @@ export class BLEInterface {
     this._pendingMessageQueue = new Map();
     this._reconnectTimers = new Map();
     this._scanTimeout = null;
+    this._timerInterval = null;
     this._currentTab = 'main';
   }
 
@@ -646,7 +646,7 @@ export class BLEInterface {
       document.body.classList.remove('chat-active');
       document.getElementById('nexo-btn-ble').classList.add('active');
       this.elements.panel.classList.add('active');
-      this.startAutoScan(); // Scan automático al entrar
+      this.startAutoScan();
     } else if (tab === 'chat') {
       document.body.classList.add('chat-active');
       document.getElementById('nexo-btn-chat').classList.add('active');
@@ -670,7 +670,6 @@ export class BLEInterface {
       if (this.nativePlugin) await this.nativePlugin.startScan();
       this.isScanning = true;
       this.onScanStateChanged(true);
-      // Auto-stop después de 10 segundos
       this._scanTimeout = setTimeout(() => {
         if (this.isScanning) this.stopScan();
       }, 10000);
@@ -856,8 +855,6 @@ export class BLEInterface {
     this._reconnectTimers.clear();
     if (this._scanTimeout) clearTimeout(this._scanTimeout);
     if (this._timerInterval) clearInterval(this._timerInterval);
-    if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
-    if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
     if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
     if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
     if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
