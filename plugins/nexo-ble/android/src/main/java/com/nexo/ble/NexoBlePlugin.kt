@@ -25,13 +25,12 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v5.2.1-ARCH — BRIDGE PURO
- * FIX: Nombre del plugin corregido a NexoBle (alineado con ble_interface.js y build #961)
- * FIX: withService timeout aumentado a 10s + reintentos para Samsung Android 14+
- * FIX: load() ahora emite evento bridgeReady para debug
+ * NexoBlePlugin v5.2.2-ARCH — BRIDGE PURO
+ * REVERT: Nombre del plugin vuelve a NexoBLE (como en builds funcionales de permisos)
+ * FIX: Solo try/catch en scan + nombre en advertising packet (sin tocar permisos)
  */
 @CapacitorPlugin(
-    name = "NexoBle", // FIX: Era "NexoBLE" — desconectaba completamente el bridge con ble_interface.js
+    name = "NexoBLE",
     permissions = [
         Permission(strings = [android.Manifest.permission.BLUETOOTH_SCAN], alias = "bluetoothScan"),
         Permission(strings = [android.Manifest.permission.BLUETOOTH_CONNECT], alias = "bluetoothConnect"),
@@ -99,7 +98,6 @@ class NexoBlePlugin : Plugin() {
             bleService = binder?.getService()
             serviceBound = true
             napLog("BRIDGE_BIND", "BleService vinculado OK", "INFO")
-            // FIX: Emitir evento para que JS sepa que el bridge está listo
             notifyListeners("bridgeReady", JSObject().apply {
                 put("ready", true)
                 put("timestamp", System.currentTimeMillis())
@@ -255,7 +253,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.2.1-ARCH bridge puro cargado", "INFO")
+        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.2.2-ARCH bridge puro cargado", "INFO")
 
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -332,7 +330,6 @@ class NexoBlePlugin : Plugin() {
         call?.reject(code, "[$code] $message", errorData)
     }
 
-    // FIX: Timeout aumentado a 10000ms + reintentos para Samsung Android 14+
     private fun withService(call: PluginCall?, block: (BleService) -> Unit) {
         val svc = bleService
         if (svc != null) {
@@ -341,15 +338,10 @@ class NexoBlePlugin : Plugin() {
         }
         val pending = Runnable {
             val svc2 = bleService
-            if (svc2 != null) {
-                block(svc2)
-            } else {
-                napLog("BRIDGE_WAIT", "Servicio aun no disponible tras espera", "WARN")
-                call?.reject("BLE_203", "Servicio BLE no disponible")
-            }
+            if (svc2 != null) block(svc2)
+            else call?.reject("BLE_203", "Servicio BLE no disponible")
         }
         pendingCalls.add(pending)
-        // FIX: 10s en lugar de 5s para dar tiempo al foreground service en Samsung
         handler.postDelayed({ pendingCalls.remove(pending) }, 10000)
     }
 
