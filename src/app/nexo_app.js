@@ -1,6 +1,12 @@
 /**
- * NEXO App v5.0.12-ARCH
- * UX1 FIX: Al finalizar init, mostrar pantalla principal limpia (no chat inmediato)
+ * NEXO App v5.0.11-ARCH
+ * FIX v5.0.11-ARCH:
+ * 1) Mensaje propio confirmed (_own=true, pending=false) NUNCA crea burbuja nueva.
+ *    Si no encuentra pending para confirmar, ignora silenciosamente.
+ * 2) Eliminado fallback _handleMessage() desde sendMessage cuando confirmMessage falla.
+ * 3) _bleMessageHandler filtra ecos propios comparando deviceId vs localDeviceAddress.
+ * 4) _handleMessage bloquea estrictamente: confirmed propio que no confirma pending => return.
+ * 5) Compatibilidad confirmada con ble_permissions.js v6.5-ARCH y SetupWizard v3.0.5-ARCH.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -72,12 +78,12 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    
+
     this._contentFpMap = new Map();
     this._contentFpTTL = 15000;
     this._contentFpMax = 500;
-    
-    DEBUG.log('🚀 [NEXO] v5.0.12-ARCH iniciando...', 'info', 'APP_INIT');
+
+    DEBUG.log('🚀 [NEXO] v5.0.11-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   _hashContent(str) {
@@ -99,8 +105,7 @@ export class NexoApp {
     try {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
-      // FIX: NexoBLE → NexoBle (alineado con plugin nativo y ble_interface.js)
-      const nativeAvailable = !!(window.Capacitor?.Plugins?.NexoBle);
+      const nativeAvailable = !!(window.Capacitor?.Plugins?.NexoBLE);
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
@@ -108,14 +113,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.12-ARCH Ready', 'APP_READY');
-      
-      // UX1 FIX: Mostrar pantalla principal limpia (fondo negro + NEXO + bottom bar)
-      // en lugar de saltar directo al chat
-      if (this.bleInterface && this.bleInterface.showMainScreen) {
-        this.bleInterface.showMainScreen();
-      }
-      
+      DEBUG.success('🎉 NEXO v5.0.11-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -202,12 +200,13 @@ export class NexoApp {
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         const nid = (deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
-        
+
+        // FIX v5.0.11: Filtrar ecos propios (stack nativo a veces retransmite al emisor)
         if (this.bleInterface?.localDeviceAddress && nid === this.bleInterface.localDeviceAddress) {
           DEBUG.log(`Eco propio ignorado de ${nid.substring(0,8)}`, 'debug', 'DEDUP_ECHO');
           return;
         }
-        
+
         let resolvedName = senderName;
         if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
           const persisted = this.bleInterface.getContactName(nid);
@@ -216,7 +215,7 @@ export class NexoApp {
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           resolvedName = `NEXO-${nid.substring(0, 6).toUpperCase()}`;
         }
-        
+
         this._handleMessage({
           content,
           sender: nid,
@@ -259,11 +258,11 @@ export class NexoApp {
 
   _handleNordicPeer(peer) { if (!peer?.id) return; this.blePeers.set(peer.id, { ...peer, discoveredAt: Date.now() }); }
   _handleNordicSession(data) { if (!data?.deviceId) return; this._updateMode('P2P_BLE'); }
-  
+
   _handleNordicMessage(msg) {
     if (!msg?.deviceId) return;
     const nid = (msg.deviceId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
-    
+
     let resolvedName = msg.senderName;
     if (this.bleInterface && typeof this.bleInterface.getContactName === 'function') {
       const persisted = this.bleInterface.getContactName(nid);
@@ -272,7 +271,7 @@ export class NexoApp {
     if (!resolvedName || resolvedName === 'NEXO Peer') {
       resolvedName = `NEXO-${nid.substring(0, 6).toUpperCase()}`;
     }
-    
+
     this._handleMessage({
       content: msg.content,
       sender: nid,
@@ -283,7 +282,7 @@ export class NexoApp {
       _own: false
     }, 'ble_nordic');
   }
-  
+
   _updateModeFromNordic(state) {
     switch(state) {
       case 'messaging': case 'connected': this._updateMode('P2P_BLE'); break;
@@ -314,7 +313,8 @@ export class NexoApp {
       const myIdentity = this.vault?.getIdentity?.();
       const myName = myIdentity?.name || myIdentity?.displayName || 'NEXO Peer';
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
+
+      // 1. Renderizar pending inmediatamente
       const pendingMsg = { ...msg, senderName: myName, _own: true, timestamp: Date.now(), pending: true, messageId };
       this._handleMessage(pendingMsg, 'self');
 
@@ -363,6 +363,7 @@ export class NexoApp {
 
       if (!sentSuccessfully && this.wsClient?.isConnected?.()) { this.wsClient.send({ content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); sentSuccessfully = true; }
 
+      // 2. Confirmar via TheStream. Si falla, NO crear fallback _handleMessage.
       if (sentSuccessfully) {
         if (this.stream?.confirmMessage) {
           const confirmed = this.stream.confirmMessage(messageId, {
@@ -388,7 +389,8 @@ export class NexoApp {
       const now = Date.now();
       const contentHash = this._hashContent((msg.content || '') + '|' + (msg.sender || ''));
       const dedupId = msg.messageId || `gen_${contentHash}`;
-      
+
+      // Dedup GLOBAL por contenido+sender para mensajes ajenos
       if (!msg._own) {
         const contentFp = `${msg.sender}_${contentHash}`;
         const lastSeen = this._contentFpMap.get(contentFp);
@@ -409,10 +411,11 @@ export class NexoApp {
           if (now - v > this._contentFpTTL * 3) this._contentFpMap.delete(k);
         }
       }
-      
+
+      // FIX v5.0.11: Mensaje propio confirmed — SOLO actualizar pending existente.
       if (msg._own && msg.pending === false) {
         let handled = false;
-        
+
         if (this.stream?.confirmMessage) {
           handled = this.stream.confirmMessage(dedupId, {
             content: msg.content,
@@ -420,7 +423,7 @@ export class NexoApp {
             timestamp: msg.timestamp
           });
         }
-        
+
         if (!handled) {
           const existingMsg = document.querySelector(`[data-message-id="${dedupId}"]`);
           if (existingMsg) {
@@ -431,7 +434,7 @@ export class NexoApp {
             handled = true;
           }
         }
-        
+
         if (handled) {
           this._messageDedupMap.set(dedupId, now);
         } else {
@@ -440,14 +443,14 @@ export class NexoApp {
         }
         return;
       }
-      
+
       if (this._messageDedupMap.has(dedupId)) {
         if (source !== 'self') {
           DEBUG.log(`Deduplicado ${dedupId.substring(0,8)} de ${source}`, 'debug', 'DEDUP');
         }
         return;
       }
-      
+
       this._messageDedupMap.set(dedupId, now);
       if (this._messageDedupMap.size > this._maxProcessedIds) {
         let oldestKey = null;
@@ -460,10 +463,10 @@ export class NexoApp {
       for (const [k, v] of this._messageDedupMap) {
         if (now - v > this._dedupTTL) this._messageDedupMap.delete(k);
       }
-      
+
       const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
       this.config.onMessage(enriched);
-      
+
       if (this.stream?.appendItems) {
         this.stream.appendItems([enriched], { forceScroll: true });
       }
