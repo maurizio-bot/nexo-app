@@ -1,6 +1,6 @@
 /**
- * ble_interface.js v4.2.0-ARCH — Scan Fix + NexoBLE name + Auto-scan
- * FIX: NexoBle → NexoBLE, onDeviceFound → onScanResult, auto-scan BLE tab + permissions
+ * ble_interface.js v4.2.1-ARCH — Scan Fix + Fase 1 UUID nativo
+ * FIX: No generar UUID en JS (viene del nativo). No duplicar init BLE.
  */
 
 const SVG_ICONS = {
@@ -307,20 +307,13 @@ export function initBLEInterface(meshInstance) {
     state._listeners.push(l1, l2);
   }
 
+  // FIX FASE 1: NO generar UUID en JS. NO inicializar BLE aquí.
+  // nexo_app.js ya hace initializeBLE + startAdvertising en su init.
+  // Este handler solo inicia scan cuando los permisos están listos.
   window.addEventListener('blePermissionsGranted', () => {
-    console.log('[BLE] Permisos concedidos, iniciando scan...');
-    if (state.nativePlugin?.initializeBLE) {
-      let uuid = localStorage.getItem('nexo_device_uuid');
-      if (!uuid) {
-        uuid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substr(2,9)}`;
-        localStorage.setItem('nexo_device_uuid', uuid);
-      }
-      state._deviceUUID = uuid;
-      state.nativePlugin.initializeBLE({ userId: uuid, userName: 'NEXO User' }).then(() => {
-        if (state.nativePlugin?.startAdvertising) state.nativePlugin.startAdvertising({ deviceName: 'NEXO' });
-        startScan();
-      }).catch(e => console.error('[BLE] Init error:', e));
-    } else {
+    console.log('[BLE] Permisos concedidos');
+    // Solo iniciar scan si estamos en tab BLE, sino esperar al tab switch
+    if (state.activeTab === 'ble') {
       startScan();
     }
   });
