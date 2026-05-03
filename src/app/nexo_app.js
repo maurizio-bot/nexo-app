@@ -1,6 +1,8 @@
 /**
- * NEXO App v5.3.0-ARCH — FASE 1: UUID persistente integration
+ * NEXO App v5.3.1-ARCH — FASE 1: UUID persistente integration
+ * FIX: Archivo completo reconstruido desde GitHub (main estaba cortado en _initPhase6_Bridge)
  * ADD: Lee deviceUUID del nativo, lo muestra en status bar, lo usa en init
+ * ADD: Anti-doble-init BLE, cleanup robusto, NAP audit completo
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -76,8 +78,9 @@ export class NexoApp {
     this._contentFpMap = new Map();
     this._contentFpTTL = 15000;
     this._contentFpMax = 500;
-    this._deviceUUID = null; // FASE 1
-    DEBUG.log('🚀 [NEXO] v5.3.0-ARCH iniciando...', 'info', 'APP_INIT');
+    this._deviceUUID = null;
+    this._bleInitialized = false; // FIX: anti-doble-init
+    DEBUG.log('🚀 [NEXO] v5.3.1-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   _hashContent(str) {
@@ -104,7 +107,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.3.0-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.3.1-ARCH Ready', 'APP_READY');
       if (this.bleInterface && this.bleInterface.showMainScreen) {
         this.bleInterface.showMainScreen();
       }
@@ -191,17 +194,17 @@ export class NexoApp {
         }
       }
 
-      // FASE 1: Inicializar BLE con UUID persistente
-      if (nativePlugin?.initializeBLE) {
+      // FASE 1: Inicializar BLE nativo SOLO UNA VEZ
+      if (nativePlugin?.initializeBLE && !this._bleInitialized) {
         try {
           const initResult = await nativePlugin.initializeBLE({
             userId: this._deviceUUID || undefined,
             userName: 'NEXO User'
           });
-          // Si el nativo genero/retorno un UUID, usarlo
           if (initResult?.deviceUUID && !this._deviceUUID) {
             this._deviceUUID = initResult.deviceUUID;
           }
+          this._bleInitialized = true;
           DEBUG.success('BLE nativo inicializado', 'BLE_INIT');
           if (nativePlugin.startAdvertising) {
             await nativePlugin.startAdvertising({ deviceName: 'NEXO' });
@@ -257,7 +260,206 @@ export class NexoApp {
     DEBUG.setPhase('BRIDGE');
     try {
       if (!this.mesh && !this.nordicMesh && !this.wsClient && !this.bleInterface?.nativePlugin) {
-        DEBUG.warn('No transports', 'BRIDGE_SKIP');
+        DEBUG.warn('No transports available for bridge', 'BRIDGE_SKIP');
         return;
       }
-      this.bridge = new MeshRelayBridge({ mesh: this.mesh, nordicMesh: this.nordicMesh, relay: this.wsClient, onModeChange: (mode) => { DEBUG.setMode(mode); this.config.onStatusChange(mode
+      this.bridge = new MeshRelayBridge({
+        mesh: this.mesh,
+        nordicMesh: this.nordicMesh,
+        relay: this.wsClient,
+        onModeChange: (mode) => { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
+      });
+      DEBUG.success('MeshRelayBridge ready', 'BRIDGE_002');
+    } catch (err) {
+      DEBUG.error('BRIDGE_005', `Bridge init failed: ${err.message}`);
+      this.bridge = null;
+    }
+  }
+
+  async _initPhase7_UI() {
+    DEBUG.setPhase('UI');
+    try {
+      if (this.config.enableGestures && !this._isDestroyed) {
+        this.gestures = new GestureEngine();
+        DEBUG.success('GestureEngine ready', 'GESTURE_002');
+      }
+      DEBUG.success('UI initialized', 'UI_007');
+    } catch (err) {
+      DEBUG.warn(`UI init: ${err.message}`, 'UI_WARN');
+    }
+  }
+
+  /* ============================================================
+     MESSAGE HANDLING
+     ============================================================ */
+
+  _handleMessage(msg, source = 'unknown') {
+    try {
+      const content = msg?.content || msg?.text || msg?.data || '';
+      const sender = msg?.sender || msg?.from || msg?.senderId || 'unknown';
+      const senderName = msg?.senderName || msg?.sender_name || 'NEXO Peer';
+      const messageId = msg?.messageId || msg?.message_id || msg?.id || this._hashContent(content + sender + Date.now());
+      const timestamp = msg?.timestamp || Date.now();
+
+      // Dedup por messageId
+      if (this._messageDedupMap.has(messageId)) {
+        DEBUG.log(`DEDUP id:${messageId.substring(0,8)}`, 'debug', 'DEDUP_ID');
+        return;
+      }
+      this._messageDedupMap.set(messageId, timestamp);
+      if (this._messageDedupMap.size > this._maxProcessedIds) {
+        const now = Date.now();
+        for (const [k, v] of this._messageDedupMap) {
+          if (now - v > this._dedupTTL) this._messageDedupMap.delete(k);
+        }
+      }
+
+      // Dedup por contenido (fingerprint)
+      const fp = this._hashContent(content);
+      const now = Date.now();
+      if (this._contentFpMap.has(fp) && (now - this._contentFpMap.get(fp)) < this._contentFpTTL) {
+        DEBUG.log(`DEDUP fp:${fp}`, 'debug', 'DEDUP_FP');
+        return;
+      }
+      this._contentFpMap.set(fp, now);
+      if (this._contentFpMap.size > this._contentFpMax) {
+        const oldest = this._contentFpMap.keys().next().value;
+        this._contentFpMap.delete(oldest);
+      }
+
+      DEBUG.success(`📩 [${source.toUpperCase()}] ${senderName}: ${content.substring(0, 40)}${content.length > 40 ? '...' : ''}`, 'MSG_RX');
+
+      // Mostrar en stream/chat si está activo
+      if (this.bleInterface && this.activeContact && sender === this.activeContact.id) {
+        this.bleInterface.appendChatBubble(content, false, messageId);
+      }
+
+      // Notificar a la app
+      this.config.onMessage({ content, sender, senderName, messageId, source, timestamp });
+    } catch (err) {
+      DEBUG.error('MSG_001', `Handle message error: ${err.message}`);
+    }
+  }
+
+  /* ============================================================
+     SEND MESSAGE
+     ============================================================ */
+
+  async sendMessage(opts = {}) {
+    const { content, recipient, messageId, transport = 'ble' } = opts;
+    if (!content || !recipient) {
+      DEBUG.error('SEND_001', 'Missing content or recipient');
+      return false;
+    }
+    const mid = messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    try {
+      if (transport === 'ble' || transport === 'ble_direct') {
+        const nativePlugin = window.Capacitor?.Plugins?.NexoBLE;
+        if (nativePlugin?.sendMessage) {
+          await nativePlugin.sendMessage({ deviceId: recipient, message: content });
+          DEBUG.success(`📤 TX BLE → ${recipient.substring(0, 8)}`, 'MSG_TX');
+          return true;
+        }
+        if (this.nordicMesh) {
+          await this.nordicMesh.send(recipient, content);
+          DEBUG.success(`📤 TX Nordic → ${recipient.substring(0, 8)}`, 'MSG_TX');
+          return true;
+        }
+        DEBUG.warn('No BLE transport available', 'SEND_002');
+        return false;
+      }
+      if (transport === 'relay' && this.wsClient) {
+        this.wsClient.send({ content, recipient, messageId: mid });
+        DEBUG.success(`📤 TX Relay → ${recipient.substring(0, 8)}`, 'MSG_TX');
+        return true;
+      }
+      DEBUG.warn(`Unknown transport: ${transport}`, 'SEND_003');
+      return false;
+    } catch (err) {
+      DEBUG.error('SEND_004', `Send failed: ${err.message}`);
+      return false;
+    }
+  }
+
+  /* ============================================================
+     NORDIC HANDLERS
+     ============================================================ */
+
+  _handleNordicPeer(peer) {
+    DEBUG.log(`Nordic peer: ${peer.name || peer.id}`, 'info', 'NORDIC_PEER');
+  }
+
+  _handleNordicSession(data) {
+    DEBUG.success(`Nordic session: ${data.peerId?.substring(0, 8) || 'unknown'}`, 'NORDIC_SESS');
+  }
+
+  _handleNordicMessage(msg) {
+    this._handleMessage(msg, 'nordic');
+  }
+
+  _updateModeFromNordic(mode) {
+    const map = { offline: 'OFFLINE', scanning: 'SCANNING', connected: 'P2P_NORDIC', relay: 'RELAY' };
+    this._updateMode(map[mode] || mode);
+  }
+
+  _updateMode(mode) {
+    DEBUG.setMode(mode);
+    this.config.onStatusChange(mode);
+  }
+
+  /* ============================================================
+     CLEANUP & DESTROY
+     ============================================================ */
+
+  async _partialCleanup() {
+    DEBUG.warn('Partial cleanup...', 'CLEANUP');
+    if (this.wsClient) { try { this.wsClient.disconnect(); } catch (e) {} this.wsClient = null; }
+    if (this.nordicMesh) { try { this.nordicMesh.destroy?.(); } catch (e) {} this.nordicMesh = null; }
+    if (this.mesh) { try { this.mesh.destroy?.(); } catch (e) {} this.mesh = null; }
+  }
+
+  destroy() {
+    if (this._isDestroyed) return;
+    this._isDestroyed = true;
+    DEBUG.warn('Destroying NEXO App...', 'APP_DESTROY');
+
+    if (this._bleChatHandler) window.removeEventListener('nexo:ble:openChat', this._bleChatHandler);
+    if (this._bleMessageHandler) window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
+    if (this._bleSendHandler) window.removeEventListener('nexo:ble:sendMessage', this._bleSendHandler);
+
+    this._resources.handlers.forEach(h => { try { h?.(); } catch (e) {} });
+    this._resources.handlers.clear();
+    this._resources.timers.forEach(t => { try { clearTimeout(t); clearInterval(t); } catch (e) {} });
+    this._resources.timers.clear();
+
+    if (this.bridge) { try { this.bridge.destroy?.(); } catch (e) {} this.bridge = null; }
+    if (this.stream) { try { this.stream.destroy?.(); } catch (e) {} this.stream = null; }
+    if (this.gestures) { try { this.gestures.destroy?.(); } catch (e) {} this.gestures = null; }
+    if (this.bleInterface) { try { this.bleInterface.destroy?.(); } catch (e) {} this.bleInterface = null; }
+
+    this._partialCleanup();
+    this.initialized = false;
+    DEBUG.success('NEXO App destroyed', 'APP_DESTROYED');
+  }
+}
+
+/* ============================================================
+   GLOBAL INSTANCE (para acceso desde consola/debug)
+   ============================================================ */
+
+let _appInstance = null;
+
+export async function createNexoApp(config = {}) {
+  if (_appInstance) {
+    DEBUG.warn('App instance exists, returning existing', 'APP_SINGLETON');
+    return _appInstance;
+  }
+  _appInstance = new NexoApp(config);
+  window._nexoApp = _appInstance;
+  return _appInstance;
+}
+
+export function getNexoApp() {
+  return _appInstance;
+}
