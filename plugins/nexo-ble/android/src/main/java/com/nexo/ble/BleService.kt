@@ -143,7 +143,7 @@ class BleService : Service() {
 
         handler.postDelayed({
             if (!isAd) {
-                startAdvertising("NEXO Device")
+                startAdvertising("NEXO")
             }
         }, 1500)
     }
@@ -372,8 +372,6 @@ class BleService : Service() {
     private val scanCb = object : ScanCallback() {
         override fun onScanResult(ct: Int, r: ScanResult?) {
             r?.let {
-                // FIX: try/catch alrededor de device.name y device.address
-                // Android 12+ puede lanzar SecurityException si falta BLUETOOTH_CONNECT en runtime
                 val addr: String
                 val devName: String
                 try {
@@ -451,8 +449,11 @@ class BleService : Service() {
             }
         }
 
+        // FIX: Truncar nombre a max 8 chars para advertising principal
+        // 31 bytes limite: Flags(3) + Name(len+type+8=10) + UUID128(18) = 31 bytes exactos
+        val safeName = name.take(8)
         try {
-            adapter.name = name
+            adapter.name = safeName
         } catch (e: Exception) {
             napLog("ADVERT", "No se pudo cambiar nombre: ${e.message}", "WARN")
         }
@@ -464,8 +465,8 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
-        // FIX: Incluir nombre en el packet principal de advertising
-        // En Samsung Android 14+, algunos escaneres no leen scanResponse de dispositivos no emparejados
+        // FIX: Advertising principal SOLO con Service UUID + nombre corto
+        // Scan response lleva nombre completo si cabe
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
@@ -475,7 +476,7 @@ class BleService : Service() {
             .setIncludeDeviceName(true)
             .build()
 
-        napLog("ADVERT", "startAdvertising() — packet: UUID + name | scanResponse: name=$name", "INFO")
+        napLog("ADVERT", "startAdvertising() — safeName=$safeName | packet: UUID+name | scanResponse: name", "INFO")
 
         try {
             freshAdvertiser.startAdvertising(settings, data, scanResponse, adCb)
@@ -508,6 +509,7 @@ class BleService : Service() {
         this.userId = uid
         this.userName = uname
         napLog("USER", "setUserInfo: $uname", "INFO")
+        // FIX: Reiniciar advertising solo si ya estaba activo, con nombre truncado
         if (isAd && uname.isNotEmpty()) {
             stopAdvertising()
             handler.postDelayed({ startAdvertising(uname) }, 500)
