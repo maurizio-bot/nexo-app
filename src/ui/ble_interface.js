@@ -1,6 +1,7 @@
 /**
- * BLE Interface v3.0.1-ARCH
- * FIX v3.0.1: canAdvertise usa btState.enabled (el plugin no retorna canAdvertise)
+ * BLE Interface v4.0.0-ARCH
+ * UX1+UX2: Bottom bar CHAT/BLE/CONFIG + Header NEXO + Panel BLE overlay
+ * NO se toca lógica nativa BLE, permisos, scan, GATT, ni contactos.
  */
 
 export function initBLEInterface(bleMesh) {
@@ -97,6 +98,7 @@ export class BLEInterface {
     this._pendingMessageQueue = new Map();
     this._reconnectTimers = new Map();
     this._scanTimeout = null;
+    this._currentTab = 'main'; // UX1 FIX: tracking de tab activo
   }
 
   _detectMeshType() {
@@ -317,8 +319,6 @@ export class BLEInterface {
     if (this.isDummyMode) return;
     try {
       const btState = await this.nativePlugin.isBluetoothEnabled();
-      // FIX: El plugin NO retorna canAdvertise. Usamos enabled como proxy.
-      // Si BT está encendido, asumimos que se puede anunciar.
       this.canAdvertise = btState.enabled === true;
       
       const adState = await this.nativePlugin.isAdvertising();
@@ -377,7 +377,6 @@ export class BLEInterface {
   async toggleVisibility() {
     if (this.isDummyMode) return;
     try {
-      // FIX: No bloquear por canAdvertise. Intentar siempre — el nativo maneja errores.
       if (this.isAdvertising) {
         await this.nativePlugin.stopAdvertising();
         this.isAdvertising = false;
@@ -392,13 +391,52 @@ export class BLEInterface {
 
   // ==================== Fin FIX ====================
 
-  createDOM() {
-    const tab = document.createElement('div');
-    tab.id = 'ble-tab';
-    tab.innerHTML = `<div class="ble-tab-icon">🔷</div><div class="ble-tab-label">BLE</div><div class="ble-tab-badge" id="ble-tab-badge" style="display: none;">0</div>`;
-    document.body.appendChild(tab);
-    this.elements.tab = tab;
+  // ==================== UX1+UX2 FIX: DOM completamente nuevo ====================
 
+  createDOM() {
+    // Eliminar elementos viejos si existen (por si hay duplicados)
+    const oldTab = document.getElementById('ble-tab');
+    if (oldTab) oldTab.remove();
+    const oldOverlay = document.getElementById('ble-overlay');
+    if (oldOverlay) oldOverlay.remove();
+
+    // 1. Header NEXO
+    const header = document.createElement('div');
+    header.id = 'nexo-header';
+    header.innerHTML = `<h1>NEXO</h1>`;
+    document.body.appendChild(header);
+    this.elements.header = header;
+
+    // 2. Bottom bar: CHAT | BLE | CONFIG
+    const bottomBar = document.createElement('div');
+    bottomBar.id = 'nexo-bottom-bar';
+    bottomBar.innerHTML = `
+      <button id="nexo-btn-chat" class="nexo-nav-btn" data-nav="chat">
+        <span class="nav-icon">💬</span>
+        <span class="nav-label">CHAT</span>
+      </button>
+      <button id="nexo-btn-ble" class="nexo-nav-btn active" data-nav="ble">
+        <span class="nav-icon">🔷</span>
+        <span class="nav-label">BLE</span>
+      </button>
+      <button id="nexo-btn-config" class="nexo-nav-btn" data-nav="config">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">CONFIG</span>
+      </button>
+    `;
+    document.body.appendChild(bottomBar);
+    this.elements.bottomBar = bottomBar;
+
+    // 3. Badge sobre botón BLE
+    const bleBtn = bottomBar.querySelector('#nexo-btn-ble');
+    const badge = document.createElement('div');
+    badge.id = 'ble-tab-badge';
+    badge.className = 'ble-tab-badge';
+    badge.style.display = 'none';
+    bleBtn.appendChild(badge);
+    this.elements.badge = badge;
+
+    // 4. Panel BLE — overlay completo entre header y bottom bar
     const panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML = `
@@ -420,7 +458,7 @@ export class BLEInterface {
         <span id="ble-status" class="ble-status-offline">OFFLINE</span>
       </div>
       <div id="tab-discovery" class="ble-tab-content active">
-        <div class="ble-list" id="ble-devices-list"><p class="ble-empty">Presiona buscar para encontrar dispositivos</p></div>
+        <div class="ble-list" id="ble-devices-list"><p class="ble-empty">Presiona buscar para encontrar dispositivos cercanos</p></div>
       </div>
       <div id="tab-added" class="ble-tab-content">
         <div class="ble-list" id="ble-added-list"><p class="ble-empty">No hay contactos agregados</p></div>
@@ -432,11 +470,19 @@ export class BLEInterface {
     document.body.appendChild(panel);
     this.elements.panel = panel;
 
-    const overlay = document.createElement('div');
-    overlay.id = 'ble-overlay';
-    document.body.appendChild(overlay);
-    this.elements.overlay = overlay;
+    // 5. Placeholder CONFIG
+    const configPanel = document.createElement('div');
+    configPanel.id = 'nexo-config-panel';
+    configPanel.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:16px;">
+        <span style="font-size:48px;">⚙️</span>
+        <p style="color:#666;font-size:16px;">Configuración próximamente</p>
+      </div>
+    `;
+    document.body.appendChild(configPanel);
+    this.elements.configPanel = configPanel;
 
+    // Referencias internas
     this.elements.visibilityBtn = document.getElementById('ble-visibility-btn');
     this.elements.scanBtn = document.getElementById('ble-scan-btn');
     this.elements.closeBtn = document.getElementById('ble-close');
@@ -444,7 +490,6 @@ export class BLEInterface {
     this.elements.addedList = document.getElementById('ble-added-list');
     this.elements.connectedList = document.getElementById('ble-connected-list');
     this.elements.status = document.getElementById('ble-status');
-    this.elements.badge = document.getElementById('ble-tab-badge');
   }
 
   injectStyles() {
@@ -452,26 +497,145 @@ export class BLEInterface {
     const style = document.createElement('style');
     style.id = 'ble-styles';
     style.textContent = `
-      #ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #00d4ff, #0099cc); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; }
-      .ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; }
+      /* ===== UX1+UX2: Ocultar elementos viejos ===== */
+      #ble-tab { display: none !important; }
+      #ble-overlay { display: none !important; }
+
+      /* ===== Header NEXO ===== */
+      #nexo-header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 56px;
+        background: #000000;
+        border-bottom: 1px solid #222222;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        z-index: 2147483640;
+      }
+      #nexo-header h1 {
+        color: #ffffff;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      /* ===== Bottom bar ===== */
+      #nexo-bottom-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 56px;
+        background: #0a0a0a;
+        border-top: 1px solid #222222;
+        display: flex;
+        z-index: 2147483640;
+      }
+      .nexo-nav-btn {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: #888888;
+        font-size: 10px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      .nexo-nav-btn .nav-icon {
+        font-size: 20px;
+        margin-bottom: 2px;
+        transition: transform 0.2s ease;
+      }
+      .nexo-nav-btn.active {
+        color: #00d4ff;
+      }
+      .nexo-nav-btn.active .nav-icon {
+        transform: scale(1.1);
+      }
+      .nexo-nav-btn:active {
+        transform: scale(0.95);
+      }
+
+      /* ===== Badge en bottom bar ===== */
+      .ble-tab-badge {
+        position: absolute;
+        top: 2px;
+        right: calc(50% - 20px);
+        background: #ff4444;
+        color: white;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: bold;
+        animation: pulse 2s infinite;
+        z-index: 10;
+      }
       @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-      #ble-panel { position: fixed; top: 0; left: 0; width: 85vw; max-width: 400px; height: 100vh; background: rgba(10,10,15,0.98); transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; padding: 20px; overflow-y: auto; }
-      #ble-panel.active { transform: translateX(0); }
-      #ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); }
-      #ble-overlay.active { display: block; }
+
+      /* ===== Panel BLE — overlay completo ===== */
+      #ble-panel {
+        position: fixed;
+        top: 56px;
+        left: 0;
+        right: 0;
+        bottom: 56px;
+        background: rgba(10, 10, 15, 0.98);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+        z-index: 2147483645;
+        color: #fff;
+        padding: 16px 16px 24px 16px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+      #ble-panel.active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      /* ===== Config panel ===== */
+      #nexo-config-panel {
+        position: fixed;
+        top: 56px;
+        left: 0;
+        right: 0;
+        bottom: 56px;
+        background: #000000;
+        display: none;
+        z-index: 2147483635;
+        color: #fff;
+      }
+
+      /* ===== Estilos internos BLE (sin cambios funcionales) ===== */
       .ble-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
       .ble-tabs { display: flex; gap: 8px; margin-bottom: 15px; }
-      .ble-tab-btn { flex: 1; padding: 10px 4px; background: #222; border: 1px solid #333; border-radius: 6px; color: #888; cursor: pointer; font-size: 11px; }
+      .ble-tab-btn { flex: 1; padding: 10px 4px; background: #222; border: 1px solid #333; border-radius: 6px; color: #888; cursor: pointer; font-size: 11px; font-family: inherit; }
       .ble-tab-btn.active { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; font-weight: bold; border-color: #00d4ff; }
       .ble-tab-content { display: none; }
       .ble-tab-content.active { display: block; }
       .ble-main-controls { display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 10px; }
       .ble-secondary-controls { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
-      .ble-btn-visibility { flex: 1; max-width: 140px; height: 48px; border-radius: 12px; border: none; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.3s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ble-btn-visibility { flex: 1; max-width: 140px; height: 48px; border-radius: 12px; border: none; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.3s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: inherit; }
       .ble-btn-visibility.btn-visibility-warning { background: #4A3A00 !important; color: #FFCC00 !important; border: 1px solid #FFCC00 !important; }
       .ble-btn-visibility.btn-visibility-off { background: #3A3A3A; color: #888888; }
       .ble-btn-visibility.btn-visibility-on { background: #00D9FF; color: #000000; box-shadow: 0 0 12px rgba(0, 217, 255, 0.4); }
-      .ble-btn-discover { flex: 1.2; height: 56px; border-radius: 14px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3); transition: all 0.3s ease; }
+      .ble-btn-discover { flex: 1.2; height: 56px; border-radius: 14px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3); transition: all 0.3s ease; font-family: inherit; }
       .ble-btn-discover.scanning { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; animation: pulse-red 1.5s infinite; }
       @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); } 50% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); } }
       #ble-status { font-size: 12px; padding: 4px 8px; border-radius: 4px; }
@@ -490,11 +654,11 @@ export class BLEInterface {
       .ble-device-id { font-size: 11px; color: #888; }
       .ble-device-rssi { font-size: 12px; color: #00d4ff; }
       .ble-device-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-      .ble-btn-add { padding: 8px 16px; background: #00ff88; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
-      .ble-btn-write { padding: 8px 16px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
+      .ble-btn-add { padding: 8px 16px; background: #00ff88; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; font-family: inherit; }
+      .ble-btn-write { padding: 8px 16px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; font-family: inherit; }
       .ble-btn-write:disabled { background: #555; color: #aaa; cursor: not-allowed; }
-      .ble-btn-disconnect { padding: 6px 12px; background: #ff4444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
-      .ble-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: #fff; font-weight: bold; z-index: 2147483646; animation: fadeInUp 0.3s ease; }
+      .ble-btn-disconnect { padding: 6px 12px; background: #ff4444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit; }
+      .ble-toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: #fff; font-weight: bold; z-index: 2147483646; animation: fadeInUp 0.3s ease; }
       .ble-toast.success { background: #00d4ff; color: #000; }
       .ble-toast.error { background: #ff4444; }
       .ble-toast.warning { background: #ffaa00; color: #000; }
@@ -509,9 +673,15 @@ export class BLEInterface {
   }
 
   setupEventListeners() {
-    this.elements.tab.addEventListener('click', () => this.togglePanel());
-    this.elements.closeBtn.addEventListener('click', () => this.togglePanel());
-    this.elements.overlay.addEventListener('click', () => this.togglePanel());
+    // UX2 FIX: Bottom bar navigation
+    document.getElementById('nexo-btn-chat').addEventListener('click', () => this.switchToTab('chat'));
+    document.getElementById('nexo-btn-ble').addEventListener('click', () => this.switchToTab('ble'));
+    document.getElementById('nexo-btn-config').addEventListener('click', () => this.switchToTab('config'));
+
+    // BLE panel close → volver a pantalla limpia
+    this.elements.closeBtn.addEventListener('click', () => this.switchToTab('main'));
+
+    // BLE controls (sin cambios)
     this.elements.visibilityBtn.addEventListener('click', () => this.toggleVisibility());
     this.elements.scanBtn.addEventListener('click', () => this.toggleScan());
     document.querySelectorAll('.ble-tab-btn').forEach(btn => {
@@ -519,14 +689,69 @@ export class BLEInterface {
     });
   }
 
-  togglePanel() {
-    this.elements.panel.classList.toggle('active');
-    this.elements.overlay.classList.toggle('active');
-    if (this.elements.panel.classList.contains('active')) {
-      this.newDevicesCount = 0;
-      this.updateBadge();
+  // UX1 FIX: Pantalla limpia inicial
+  showMainScreen() {
+    this._currentTab = 'main';
+    
+    // Ocultar chat para pantalla limpia
+    const messagesContainer = document.getElementById('messages-container');
+    if (messagesContainer) messagesContainer.style.display = 'none';
+    
+    // Asegurar header y bottom bar visibles
+    if (this.elements.header) this.elements.header.style.display = 'flex';
+    if (this.elements.bottomBar) this.elements.bottomBar.style.display = 'flex';
+    
+    // Ocultar todos los paneles
+    if (this.elements.panel) this.elements.panel.classList.remove('active');
+    if (this.elements.configPanel) this.elements.configPanel.style.display = 'none';
+    
+    // Reset botones
+    document.querySelectorAll('.nexo-nav-btn').forEach(b => b.classList.remove('active'));
+    
+    // Fondo negro absoluto
+    document.body.style.background = '#000000';
+    const app = document.getElementById('app');
+    if (app) {
+      app.style.background = '#000000';
+      app.classList.remove('hidden');
+    }
+  }
+
+  // UX2 FIX: Cambiar entre tabs
+  switchToTab(tab) {
+    this._currentTab = tab;
+    
+    // Ocultar todo primero
+    if (this.elements.panel) this.elements.panel.classList.remove('active');
+    if (this.elements.configPanel) this.elements.configPanel.style.display = 'none';
+    const messagesContainer = document.getElementById('messages-container');
+    if (messagesContainer) messagesContainer.style.display = 'none';
+    
+    // Reset botones
+    document.querySelectorAll('.nexo-nav-btn').forEach(b => b.classList.remove('active'));
+    
+    if (tab === 'ble') {
+      document.getElementById('nexo-btn-ble').classList.add('active');
+      this.elements.panel.classList.add('active');
       this._loadConnectedDevices();
       this.renderAddedList();
+    } else if (tab === 'chat') {
+      document.getElementById('nexo-btn-chat').classList.add('active');
+      if (messagesContainer) messagesContainer.style.display = 'block';
+    } else if (tab === 'config') {
+      document.getElementById('nexo-btn-config').classList.add('active');
+      if (this.elements.configPanel) this.elements.configPanel.style.display = 'block';
+    } else if (tab === 'main') {
+      // Pantalla limpia, ningún botón activo
+    }
+  }
+
+  // Legacy: redirigir a switchToTab
+  togglePanel() {
+    if (this._currentTab === 'ble') {
+      this.switchToTab('main');
+    } else {
+      this.switchToTab('ble');
     }
   }
 
@@ -540,6 +765,8 @@ export class BLEInterface {
       this.toggleScan();
     }
   }
+
+  // ==================== Fin UX1+UX2 FIX ====================
 
   async toggleScan() {
     if (this.isDummyMode) return;
@@ -705,7 +932,9 @@ export class BLEInterface {
     window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
       detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
     }));
-    this.togglePanel();
+    
+    // UX2 FIX: Al abrir chat desde BLE, cambiar a tab CHAT automáticamente
+    this.switchToTab('chat');
   }
 
   renderDevicesList() {
@@ -887,6 +1116,11 @@ export class BLEInterface {
     if (this._nativeStackBrokenListener) this._nativeStackBrokenListener.remove();
     if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove();
     if (this.isScanning) this.toggleScan();
+    
+    // UX1+UX2 FIX: Limpiar nuevos elementos
+    if (this.elements.header) this.elements.header.remove();
+    if (this.elements.bottomBar) this.elements.bottomBar.remove();
+    if (this.elements.configPanel) this.elements.configPanel.remove();
   }
 }
 
