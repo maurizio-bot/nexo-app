@@ -15,9 +15,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
-import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
-import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -28,8 +26,9 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v5.0.4-ARCH — BRIDGE PURO
- * FIX: startAdvertise → startAdvertising, stopAdvertise → stopAdvertising (nombres que espera el JS)
+ * NexoBlePlugin v5.1.0-ARCH — BRIDGE PURO
+ * FIX: Eliminados startAdvertising/stopAdvertising. Advertising automático en BleService.
+ * El JS solo controla: scan, connect, sendMessage.
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -57,7 +56,6 @@ class NexoBlePlugin : Plugin() {
         const val ACTION_NOTIFICATIONS_ENABLED = "com.nexo.ble.NOTIFICATIONS_ENABLED"
         const val ACTION_CONNECTION_FAILED = "com.nexo.ble.CONNECTION_FAILED"
         const val ACTION_RETRY_SCHEDULED = "com.nexo.ble.RETRY_SCHEDULED"
-        const val ACTION_PAYLOAD_SENT = "com.nexo.ble.PAYLOAD_SENT"
         const val ACTION_PEER_INFO_RECEIVED = "com.nexo.ble.PEER_INFO_RECEIVED"
         const val ACTION_CLIENT_NOTIFICATION_STATE_CHANGED = "com.nexo.ble.CLIENT_NOTIFICATION_STATE_CHANGED"
         const val ACTION_NAP_AUDIT = "com.nexo.ble.NAP_AUDIT"
@@ -237,7 +235,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.0.4-ARCH bridge puro cargado", "INFO")
+        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.1.0-ARCH bridge puro cargado", "INFO")
 
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -260,7 +258,6 @@ class NexoBlePlugin : Plugin() {
             addAction(ACTION_NOTIFICATIONS_ENABLED)
             addAction(ACTION_CONNECTION_FAILED)
             addAction(ACTION_RETRY_SCHEDULED)
-            addAction(ACTION_PAYLOAD_SENT)
             addAction(ACTION_PEER_INFO_RECEIVED)
             addAction(ACTION_CLIENT_NOTIFICATION_STATE_CHANGED)
             addAction(ACTION_NAP_AUDIT)
@@ -426,10 +423,8 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod fun startScan(call: PluginCall) { withService(call) { it.startScan(); call.resolve() } }
     @PluginMethod fun stopScan(call: PluginCall) { withService(call) { it.stopScan(); call.resolve() } }
 
-    // ==================== FIX v5.0.4: Nombres que el JS espera ====================
-    @PluginMethod fun startAdvertising(call: PluginCall) { withService(call) { it.startAdvertising(userName); call.resolve() } }
-    @PluginMethod fun stopAdvertising(call: PluginCall) { withService(call) { it.stopAdvertising(); call.resolve() } }
-    // ==================== Fin FIX ====================
+    // FIX v5.1.0: Eliminados startAdvertising y stopAdvertising — advertising es automático en BleService
+    // El JS ya no controla advertising. BleService lo inicia en onCreate() automáticamente.
 
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
