@@ -37,6 +37,7 @@ import android.os.ParcelUuid
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import java.util.ArrayDeque
 import java.util.LinkedList
 import java.util.Random
 import java.util.UUID
@@ -121,7 +122,7 @@ class BleService : Service() {
     private var isAd = false
     private var isScan = false
     private val scanResults = ConcurrentHashMap<String, ScanResult>()
-    private val scanTimes = ArrayDeque<Long>(5)
+    private val scanTimes = ArrayDeque<Long>()
     private val conns = ConcurrentHashMap<String, Conn>()
     private val serverConns = ConcurrentHashMap<String, BluetoothDevice>()
     private var userId = ""
@@ -140,8 +141,6 @@ class BleService : Service() {
         startFg()
         try { initGattServer() } catch (e: Exception) { napLog("INIT", "GATT err: ${e.message}", "ERROR") }
         
-        // FIX v3.0.2: Advertising automático al iniciar el servicio
-        // Delay 1.5s para asegurar que foreground service esté activo y BT esté listo
         handler.postDelayed({
             if (!isAd) {
                 startAdvertising("NEXO Device")
@@ -150,7 +149,6 @@ class BleService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // FIX v3.0.1: Asegurar foreground service activo cuando se inicia vía startForegroundService
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, buildNotif("NEXO BLE activo"), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         } else {
@@ -358,19 +356,56 @@ class BleService : Service() {
         scanTimes.addLast(now)
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setReportDelay(0).build()
         scanResults.clear(); isScan = true
+        napLog("SCAN", "startScan() iniciado — sin hardware filter", "INFO")
         try { scanner?.startScan(null, settings, scanCb); handler.postDelayed({ if (isScan) stopScan() }, SCAN_AUTO_STOP) } catch (e: SecurityException) { isScan = false; bcastScanFail(-4, "SecurityException") }
     }
 
-    fun stopScan() { if (isScan) { try { scanner?.stopScan(scanCb) } catch (e: Exception) {}; isScan = false; sendBroadcast(Intent(ACTION_SCAN_STOPPED).apply { putExtra("result_count", scanResults.size) }) } }
+    fun stopScan() { 
+        if (isScan) { 
+            try { scanner?.stopScan(scanCb) } catch (e: Exception) {} 
+            isScan = false 
+            napLog("SCAN", "stopScan() — resultados: ${scanResults.size}", "INFO")
+            sendBroadcast(Intent(ACTION_SCAN_STOPPED).apply { putExtra("result_count", scanResults.size) }) 
+        } 
+    }
 
     private val scanCb = object : ScanCallback() {
         override fun onScanResult(ct: Int, r: ScanResult?) {
-            r?.let { if (it.scanRecord?.serviceUuids?.any { u -> u.uuid == SERVICE_UUID } == true) { val a = it.device.address; if (scanResults[a] == null || it.rssi > (scanResults[a]?.rssi ?: -999)) scanResults[a] = it; sendBroadcast(Intent(ACTION_SCAN_RESULT).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_RSSI, it.rssi); putExtra(EXTRA_DEVICE_NAME, it.device.name ?: it.scanRecord?.deviceName ?: "NEXO Device") }) } }
+            r?.let { 
+                val record = it.scanRecord
+                val uuids = record?.serviceUuids
+                val hasNexoUuid = uuids?.any { u -> u.uuid == SERVICE_UUID } == true
+                val addr = it.device.address
+                val devName = it.device.name ?: record?.deviceName ?: "NEXO Device"
+                
+                napLog("SCAN_RAW", "Raw scan: addr=$addr name=$devName rssi=${it.rssi} hasNexo=$hasNexoUuid uuids=${uuids?.map { u -> u.uuid.toString().take(8) }}", "DEBUG")
+                
+                if (hasNexoUuid) { 
+                    if (scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)) scanResults[addr] = it
+                    napLog("SCAN_HIT", "NEXO device detectado: $devName [$addr] RSSI:${it.rssi}", "INFO")
+                    sendBroadcast(Intent(ACTION_SCAN_RESULT).apply { 
+                        putExtra(EXTRA_DEVICE_ADDRESS, addr)
+                        putExtra(EXTRA_RSSI, it.rssi)
+                        putExtra(EXTRA_DEVICE_NAME, devName)
+                    }) 
+                }
+            }
         }
-        override fun onScanFailed(ec: Int) { isScan = false; bcastScanFail(ec, when(ec) { SCAN_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"; SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "REG_FAILED"; SCAN_FAILED_INTERNAL_ERROR -> "INTERNAL"; SCAN_FAILED_FEATURE_UNSUPPORTED -> "UNSUPPORTED"; SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "NO_RESOURCES"; SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "TOO_FREQUENT"; else -> "UNKNOWN($ec)" }) }
+        override fun onScanFailed(ec: Int) { 
+            isScan = false
+            val err = when(ec) { 
+                SCAN_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"
+                SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "REG_FAILED"
+                SCAN_FAILED_INTERNAL_ERROR -> "INTERNAL"
+                SCAN_FAILED_FEATURE_UNSUPPORTED -> "UNSUPPORTED"
+                SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "NO_RESOURCES"
+                SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "TOO_FREQUENT"
+                else -> "UNKNOWN($ec)" 
+            }
+            napLog("SCAN_FAIL", "onScanFailed: $err", "ERROR")
+            bcastScanFail(ec, err) 
+        }
     }
-
-    // ==================== FIX v3.0.2: Advertising robusto + automático ====================
 
     fun startAdvertising(name: String) {
         if (isAd) {
@@ -420,13 +455,18 @@ class BleService : Service() {
             .build()
 
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
+            .setIncludeDeviceName(false)
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .build()
 
+        val scanResponse = AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
+            .build()
+
+        napLog("ADVERT", "startAdvertising() — packet: UUID only | scanResponse: name=$name", "INFO")
+
         try {
-            freshAdvertiser.startAdvertising(settings, data, adCb)
-            napLog("ADVERT", "startAdvertising() llamado con nombre: $name", "INFO")
+            freshAdvertiser.startAdvertising(settings, data, scanResponse, adCb)
         } catch (e: SecurityException) {
             napLog("ADVERT", "SecurityException al iniciar advertising: ${e.message}", "ERROR")
             isAd = false
@@ -452,19 +492,15 @@ class BleService : Service() {
         bcastAd(false)
     }
 
-    // FIX v3.0.2: Reiniciar advertising cuando cambia el nombre de usuario
     fun setUserInfo(uid: String, uname: String) {
         this.userId = uid
         this.userName = uname
         napLog("USER", "setUserInfo: $uname", "INFO")
-        // Si ya estamos anunciando, reiniciar con el nuevo nombre
         if (isAd && uname.isNotEmpty()) {
             stopAdvertising()
             handler.postDelayed({ startAdvertising(uname) }, 500)
         }
     }
-
-    // ==================== Fin FIX ====================
 
     fun isBluetoothEnabled() = btAdapter?.isEnabled == true
     fun isScanning() = isScan
@@ -480,7 +516,7 @@ class BleService : Service() {
     private val adCb = object : AdvertiseCallback() {
         override fun onStartSuccess(s: AdvertiseSettings?) {
             isAd = true
-            napLog("ADVERT", "onStartSuccess", "INFO")
+            napLog("ADVERT", "onStartSuccess — anunciando UUID $SERVICE_UUID", "INFO")
             bcastAd(true)
         }
         override fun onStartFailure(ec: Int) {
