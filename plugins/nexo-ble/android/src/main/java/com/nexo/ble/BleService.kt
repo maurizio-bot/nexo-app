@@ -354,9 +354,17 @@ class BleService : Service() {
         while (scanTimes.isNotEmpty() && now - scanTimes.first() > SCAN_RATE_LIMIT) scanTimes.removeFirst()
         if (scanTimes.size >= 5) { bcastScanFail(-3, "Rate limit"); return }
         scanTimes.addLast(now)
-        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setReportDelay(0).build()
+        
+        // FIX v3.2.0: MATCH_MODE_AGGRESSIVE para Samsung + CALLBACK_TYPE_ALL_MATCHES
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+            .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+            .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
+            .build()
+            
         scanResults.clear(); isScan = true
-        napLog("SCAN", "startScan() iniciado — sin hardware filter", "INFO")
+        napLog("SCAN", "startScan() — MATCH_MODE_AGGRESSIVE | CALLBACK_TYPE_ALL_MATCHES", "INFO")
         try { scanner?.startScan(null, settings, scanCb); handler.postDelayed({ if (isScan) stopScan() }, SCAN_AUTO_STOP) } catch (e: SecurityException) { isScan = false; bcastScanFail(-4, "SecurityException") }
     }
 
@@ -383,14 +391,16 @@ class BleService : Service() {
                 }
 
                 val record = it.scanRecord
+                // FIX v3.2.0: ScanRecord combina advertising + scan response data
+                // El UUID puede venir de cualquiera de los dos
                 val uuids = record?.serviceUuids
                 val hasNexoUuid = uuids?.any { u -> u.uuid == SERVICE_UUID } == true
 
-                napLog("SCAN_RAW", "Raw scan: addr=$addr name=$devName rssi=${it.rssi} hasNexo=$hasNexoUuid uuids=${uuids?.map { u -> u.uuid.toString().take(8) }}", "DEBUG")
+                napLog("SCAN_RAW", "addr=$addr name=$devName rssi=${it.rssi} hasNexo=$hasNexoUuid uuids=${uuids?.map { u -> u.uuid.toString().take(8) }}", "DEBUG")
 
                 if (hasNexoUuid) {
                     if (scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)) scanResults[addr] = it
-                    napLog("SCAN_HIT", "NEXO device detectado: $devName [$addr] RSSI:${it.rssi}", "INFO")
+                    napLog("SCAN_HIT", "NEXO detectado: $devName [$addr] RSSI:${it.rssi}", "INFO")
                     sendBroadcast(Intent(ACTION_SCAN_RESULT).apply {
                         putExtra(EXTRA_DEVICE_ADDRESS, addr)
                         putExtra(EXTRA_RSSI, it.rssi)
@@ -417,37 +427,31 @@ class BleService : Service() {
 
     fun startAdvertising(name: String) {
         if (isAd) {
-            napLog("ADVERT", "Ya estamos anunciando, ignorando startAdvertising duplicado", "WARN")
+            napLog("ADVERT", "Ya anunciando, ignorando duplicado", "WARN")
             bcastAd(true)
             return
         }
 
         val adapter = btAdapter
         if (adapter == null) {
-            napLog("ADVERT", "BluetoothAdapter es null", "ERROR")
+            napLog("ADVERT", "Adapter null", "ERROR")
             bcastAd(false, "Adapter null")
             return
         }
 
         if (!adapter.isEnabled) {
-            napLog("ADVERT", "Bluetooth esta apagado", "ERROR")
+            napLog("ADVERT", "Bluetooth apagado", "ERROR")
             bcastAd(false, "Bluetooth disabled")
             return
         }
 
         val freshAdvertiser = adapter.bluetoothLeAdvertiser
         if (freshAdvertiser == null) {
-            napLog("ADVERT", "BluetoothLeAdvertiser es null", "ERROR")
+            napLog("ADVERT", "Advertiser null", "ERROR")
             bcastAd(false, "Advertiser null")
             return
         }
         this.advertiser = freshAdvertiser
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            if (!adapter.isMultipleAdvertisementSupported) {
-                napLog("ADVERT", "isMultipleAdvertisementSupported = false", "WARN")
-            }
-        }
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -456,29 +460,32 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
-        // FIX v3.1.2: Advertising principal SOLO con Service UUID, SIN nombre
-        // El nombre del sistema Bluetooth puede ser largo y exceder 31 bytes,
-        // causando que Android omita el Service UUID. Lo movemos al scan response.
+        // FIX v3.2.0 DEFINITIVO:
+        // Advertising principal: Nombre del sistema + UUID 128-bit
+        // Android truncará nombre si excede 31 bytes, pero UUID está protegido
+        // porque también lo duplicamos en scan response.
+        // Scan response: UUID 128-bit (backup si advertising principal lo trunca)
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)   // <-- FIX: NO incluir nombre en advertising principal
+            .setIncludeDeviceName(true)        // Nombre en advertising principal (evita filtro Samsung)
+            .setIncludeTxPowerLevel(false)     // Ahorra 3 bytes
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .build()
 
-        // Scan response lleva el nombre (hasta 31 bytes adicionales)
         val scanResponse = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)    // nombre va aquí, en scan response
+            .setIncludeDeviceName(false)
+            .addServiceUuid(ParcelUuid(SERVICE_UUID))  // Backup UUID en scan response
             .build()
 
-        napLog("ADVERT", "startAdvertising() — packet: UUID only (21 bytes) | scanResponse: name", "INFO")
+        napLog("ADVERT", "startAdvertising() — principal: name+UUID | scanResponse: UUID", "INFO")
 
         try {
             freshAdvertiser.startAdvertising(settings, data, scanResponse, adCb)
         } catch (e: SecurityException) {
-            napLog("ADVERT", "SecurityException al iniciar advertising: ${e.message}", "ERROR")
+            napLog("ADVERT", "SecurityException: ${e.message}", "ERROR")
             isAd = false
             bcastAd(false, "SecurityException")
         } catch (e: Exception) {
-            napLog("ADVERT", "Error iniciando advertising: ${e.message}", "ERROR")
+            napLog("ADVERT", "Error: ${e.message}", "ERROR")
             isAd = false
             bcastAd(false, e.message ?: "Unknown")
         }
@@ -487,11 +494,7 @@ class BleService : Service() {
     fun stopAdvertising() {
         val adv = advertiser
         if (adv != null && isAd) {
-            try {
-                adv.stopAdvertising(adCb)
-            } catch (e: Exception) {
-                napLog("ADVERT", "Error deteniendo advertising: ${e.message}", "WARN")
-            }
+            try { adv.stopAdvertising(adCb) } catch (e: Exception) { napLog("ADVERT", "Error deteniendo: ${e.message}", "WARN") }
         }
         isAd = false
         advertiser = null
@@ -522,7 +525,7 @@ class BleService : Service() {
     private val adCb = object : AdvertiseCallback() {
         override fun onStartSuccess(s: AdvertiseSettings?) {
             isAd = true
-            napLog("ADVERT", "onStartSuccess — anunciando UUID $SERVICE_UUID", "INFO")
+            napLog("ADVERT", "onStartSuccess — UUID $SERVICE_UUID", "INFO")
             bcastAd(true)
         }
         override fun onStartFailure(ec: Int) {
