@@ -1,6 +1,6 @@
 /**
- * NEXO App v5.1.0-ARCH — Bottom Bar Integration
- * Integrado con ble_interface.js v4.1.0-ARCH (Bottom Bar)
+ * NEXO App v5.2.0-ARCH — Scan Fix + NexoBLE name
+ * FIX: NexoBle → NexoBLE, auto-init BLE on plugin ready
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -76,7 +76,7 @@ export class NexoApp {
     this._contentFpMap = new Map();
     this._contentFpTTL = 15000;
     this._contentFpMax = 500;
-    DEBUG.log('🚀 [NEXO] v5.1.0-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.2.0-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   _hashContent(str) {
@@ -95,7 +95,7 @@ export class NexoApp {
     try {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
-      const nativeAvailable = !!(window.Capacitor?.Plugins?.NexoBle);
+      const nativeAvailable = !!(window.Capacitor?.Plugins?.NexoBLE);
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
@@ -103,7 +103,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.1.0-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.2.0-ARCH Ready', 'APP_READY');
       if (this.bleInterface && this.bleInterface.showMainScreen) {
         this.bleInterface.showMainScreen();
       }
@@ -176,6 +176,25 @@ export class NexoApp {
         DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
         const myId = this.vault?.getIdentity?.()?.id || this.bleInterface.localDeviceAddress || '--';
         this.bleInterface.updateStatus('INIT', 'OFFLINE', myId);
+      }
+
+      const nativePlugin = window.Capacitor?.Plugins?.NexoBLE;
+      if (nativePlugin?.initializeBLE) {
+        try {
+          let uuid = localStorage.getItem('nexo_device_uuid');
+          if (!uuid) {
+            uuid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substr(2,9)}`;
+            localStorage.setItem('nexo_device_uuid', uuid);
+          }
+          await nativePlugin.initializeBLE({ userId: uuid, userName: 'NEXO User' });
+          DEBUG.success('BLE nativo inicializado', 'BLE_INIT');
+          if (nativePlugin.startAdvertising) {
+            await nativePlugin.startAdvertising({ deviceName: 'NEXO' });
+            DEBUG.success('Advertising iniciado', 'BLE_ADVERT');
+          }
+        } catch (e) {
+          DEBUG.warn(`BLE nativo init: ${e.message}`, 'BLE_INIT_WARN');
+        }
       }
 
       this._bleChatHandler = (e) => {
@@ -457,4 +476,3 @@ export class NexoApp {
 
 export default NexoApp;
 export { DEBUG };
-
