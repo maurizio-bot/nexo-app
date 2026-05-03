@@ -23,11 +23,11 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import java.util.UUID
 
 /**
- * NexoBlePlugin v5.2.2-ARCH — BRIDGE PURO
- * REVERT: Nombre del plugin vuelve a NexoBLE (como en builds funcionales de permisos)
- * FIX: Solo try/catch en scan + nombre en advertising packet (sin tocar permisos)
+ * NexoBlePlugin v5.2.3-ARCH — FASE 1: UUID persistente
+ * ADD: getDeviceUUID() lee/genera UUID en SharedPreferences
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -42,6 +42,8 @@ class NexoBlePlugin : Plugin() {
 
     companion object {
         const val TAG = "NAP-BLE-Bridge"
+        const val PREFS_NAME = "nexo_ble_prefs"
+        const val PREF_DEVICE_UUID = "device_uuid"
 
         const val ACTION_SCAN_RESULT = "com.nexo.ble.SCAN_RESULT"
         const val ACTION_SCAN_FAILED = "com.nexo.ble.SCAN_FAILED"
@@ -253,7 +255,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.2.2-ARCH bridge puro cargado", "INFO")
+        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.2.3-ARCH Fase 1 UUID cargado", "INFO")
 
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -297,6 +299,28 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { }
         super.handleOnDestroy()
     }
+
+    // ===== FASE 1: UUID PERSISTENTE =====
+    private fun getOrCreateDeviceUUID(): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        var uuid = prefs.getString(PREF_DEVICE_UUID, null)
+        if (uuid == null || uuid.isBlank()) {
+            uuid = UUID.randomUUID().toString()
+            prefs.edit().putString(PREF_DEVICE_UUID, uuid).apply()
+            napLog("UUID_GEN", "Nuevo deviceUUID generado: ${uuid.substring(0, 8)}...", "INFO")
+        }
+        return uuid
+    }
+
+    @PluginMethod
+    fun getDeviceUUID(call: PluginCall) {
+        val uuid = getOrCreateDeviceUUID()
+        call.resolve(JSObject().apply {
+            put("deviceUUID", uuid)
+            put("shortUUID", uuid.substring(0, 8))
+        })
+    }
+    // ===== END FASE 1 =====
 
     private fun canAccessBluetooth(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -415,7 +439,9 @@ class NexoBlePlugin : Plugin() {
     private fun performInitialization(call: PluginCall) {
         val adapter = getBluetoothAdapter() ?: return napError(call, "BLE_203", "Adapter nulo")
 
-        userId = call.getString("userId") ?: ""
+        // FASE 1: Usar UUID persistente si no se pasó userId
+        val passedUserId = call.getString("userId")
+        userId = if (!passedUserId.isNullOrBlank()) passedUserId else getOrCreateDeviceUUID()
         userName = call.getString("userName") ?: "NEXO User"
 
         val serviceIntent = Intent(context, BleService::class.java)
@@ -428,6 +454,8 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().apply {
             put("initialized", true)
             put("bluetoothEnabled", btEnabled)
+            put("deviceUUID", userId)
+            put("shortUUID", userId.substring(0, 8))
             if (!btEnabled) put("warning", "Bluetooth apagado — advertising comenzará al activarlo")
         })
     }
