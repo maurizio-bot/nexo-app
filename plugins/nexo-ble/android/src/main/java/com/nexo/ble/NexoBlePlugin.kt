@@ -25,9 +25,12 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v5.1.1-ARCH — BRIDGE PURO
- * FIX: Eliminado enableBluetoothResult + ActivityResult (no disponible en proyecto).
- * Advertising automático en BleService. El JS solo controla scan/connect/sendMessage.
+ * NexoBlePlugin v5.2.0-ARCH — BRIDGE PURO
+ * FIX: Eventos renombrados para coincidir con ble_interface.js
+ * FIX: SCAN_STOPPED ahora sí emite evento a JS
+ * FIX: Advertising state unificado a onAdvertStateChange
+ * FIX: Message events unificados a onMessageReceived
+ * FIX: startAdvertising/stopAdvertising stubs agregados
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -115,7 +118,8 @@ class NexoBlePlugin : Plugin() {
                     val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
                     val name = intent.getStringExtra(EXTRA_DEVICE_NAME) ?: "NEXO Device"
                     val rssi = intent.getIntExtra(EXTRA_RSSI, 0)
-                    notifyListeners("onDeviceFound", JSObject().apply {
+                    notifyListeners("onScanResult", JSObject().apply {
+                        put("address", deviceId)
                         put("deviceId", deviceId)
                         put("name", name)
                         put("rssi", rssi)
@@ -129,17 +133,19 @@ class NexoBlePlugin : Plugin() {
                         put("description", desc)
                     })
                 }
+                ACTION_SCAN_STOPPED -> {
+                    val count = intent.getIntExtra("result_count", 0)
+                    notifyListeners("onScanStopped", JSObject().apply {
+                        put("resultCount", count)
+                    })
+                }
                 ACTION_ADVERT_STATE -> {
                     val advertising = intent.getBooleanExtra(EXTRA_ADVERTISING, false)
                     val reason = intent.getStringExtra(EXTRA_REASON) ?: ""
-                    if (advertising) {
-                        notifyListeners("onAdvertiseStarted", JSObject().apply { put("success", true) })
-                    } else {
-                        notifyListeners("onAdvertiseFailed", JSObject().apply {
-                            put("errorCode", 0)
-                            put("reason", reason)
-                        })
-                    }
+                    notifyListeners("onAdvertStateChange", JSObject().apply {
+                        put("advertising", advertising)
+                        if (reason.isNotEmpty()) put("reason", reason)
+                    })
                 }
                 ACTION_DEVICE_CONNECTED -> {
                     val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
@@ -196,14 +202,26 @@ class NexoBlePlugin : Plugin() {
                     val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID) ?: ""
                     val source = intent.getStringExtra(EXTRA_SOURCE) ?: "unknown"
                     val timestamp = intent.getLongExtra(EXTRA_TIMESTAMP, System.currentTimeMillis())
-                    notifyListeners("onPayloadReceived", JSObject().apply {
+                    notifyListeners("onMessageReceived", JSObject().apply {
+                        put("address", deviceId)
                         put("deviceId", deviceId)
                         put("data", data)
+                        put("message", data)
                         put("content", content)
                         put("senderName", senderName)
                         put("messageId", messageId)
                         put("source", source)
                         put("timestamp", timestamp)
+                    })
+                }
+                ACTION_MESSAGE_SENT -> {
+                    val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
+                    val mid = intent.getStringExtra(EXTRA_MESSAGE_ID) ?: ""
+                    val ok = intent.getBooleanExtra(EXTRA_SUCCESS, false)
+                    notifyListeners("onMessageSent", JSObject().apply {
+                        put("deviceId", deviceId)
+                        put("messageId", mid)
+                        put("success", ok)
                     })
                 }
                 ACTION_PEER_INFO_RECEIVED -> {
@@ -234,7 +252,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.1.1-ARCH bridge puro cargado", "INFO")
+        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.2.0-ARCH bridge puro cargado", "INFO")
 
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -377,8 +395,6 @@ class NexoBlePlugin : Plugin() {
         })
     }
 
-    // FIX v5.1.1: Simplificado — no forzar activación de Bluetooth desde el plugin.
-    // Si BT está apagado, el Service intentará anunciar cuando se active.
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
         if (!canAccessBluetooth()) {
@@ -397,7 +413,7 @@ class NexoBlePlugin : Plugin() {
 
     private fun performInitialization(call: PluginCall) {
         val adapter = getBluetoothAdapter() ?: return napError(call, "BLE_203", "Adapter nulo")
-        
+
         userId = call.getString("userId") ?: ""
         userName = call.getString("userName") ?: "NEXO User"
 
@@ -406,10 +422,9 @@ class NexoBlePlugin : Plugin() {
         else context.startService(serviceIntent)
 
         withService(call) { svc -> svc.setUserInfo(userId, userName) }
-        
-        // FIX: Si BT está apagado, advertimos pero no fallamos — el Service anunciará cuando BT se active
+
         val btEnabled = adapter.isEnabled
-        call.resolve(JSObject().apply { 
+        call.resolve(JSObject().apply {
             put("initialized", true)
             put("bluetoothEnabled", btEnabled)
             if (!btEnabled) put("warning", "Bluetooth apagado — advertising comenzará al activarlo")
@@ -418,6 +433,15 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod fun startScan(call: PluginCall) { withService(call) { it.startScan(); call.resolve() } }
     @PluginMethod fun stopScan(call: PluginCall) { withService(call) { it.stopScan(); call.resolve() } }
+
+    // FIX v5.2.0: Stubs para compatibilidad con ble_interface.js
+    @PluginMethod fun startAdvertising(call: PluginCall) {
+        val name = call.getString("deviceName") ?: userName
+        withService(call) { it.startAdvertising(name); call.resolve() }
+    }
+    @PluginMethod fun stopAdvertising(call: PluginCall) {
+        withService(call) { it.stopAdvertising(); call.resolve() }
+    }
 
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
