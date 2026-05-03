@@ -139,6 +139,14 @@ class BleService : Service() {
         createChannel()
         startFg()
         try { initGattServer() } catch (e: Exception) { napLog("INIT", "GATT err: ${e.message}", "ERROR") }
+        
+        // FIX v3.0.2: Advertising automático al iniciar el servicio
+        // Delay 1.5s para asegurar que foreground service esté activo y BT esté listo
+        handler.postDelayed({
+            if (!isAd) {
+                startAdvertising("NEXO Device")
+            }
+        }, 1500)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -362,10 +370,9 @@ class BleService : Service() {
         override fun onScanFailed(ec: Int) { isScan = false; bcastScanFail(ec, when(ec) { SCAN_FAILED_ALREADY_STARTED -> "ALREADY_STARTED"; SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "REG_FAILED"; SCAN_FAILED_INTERNAL_ERROR -> "INTERNAL"; SCAN_FAILED_FEATURE_UNSUPPORTED -> "UNSUPPORTED"; SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "NO_RESOURCES"; SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "TOO_FREQUENT"; else -> "UNKNOWN($ec)" }) }
     }
 
-    // ==================== FIX v3.0.1: Advertising robusto ====================
+    // ==================== FIX v3.0.2: Advertising robusto + automático ====================
 
     fun startAdvertising(name: String) {
-        // FIX 1: Si ya estamos anunciando, no duplicar
         if (isAd) {
             napLog("ADVERT", "Ya estamos anunciando, ignorando startAdvertising duplicado", "WARN")
             bcastAd(true)
@@ -385,21 +392,17 @@ class BleService : Service() {
             return
         }
 
-        // FIX 2: Refrescar advertiser desde adapter CADA VEZ (no cachear) [^10^]
-        // Si BT estaba apagado al crear el servicio, advertiser quedaba null para siempre
         val freshAdvertiser = adapter.bluetoothLeAdvertiser
         if (freshAdvertiser == null) {
-            napLog("ADVERT", "BluetoothLeAdvertiser es null (dispositivo no soporta advertising o BT off)", "ERROR")
+            napLog("ADVERT", "BluetoothLeAdvertiser es null", "ERROR")
             bcastAd(false, "Advertiser null")
             return
         }
         this.advertiser = freshAdvertiser
 
-        // FIX 3: Verificar soporte de advertising [^13^]
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             if (!adapter.isMultipleAdvertisementSupported) {
                 napLog("ADVERT", "isMultipleAdvertisementSupported = false", "WARN")
-                // No bloqueamos — algunos Samsung retornan false pero sí anuncian
             }
         }
 
@@ -423,7 +426,7 @@ class BleService : Service() {
 
         try {
             freshAdvertiser.startAdvertising(settings, data, adCb)
-            napLog("ADVERT", "startAdvertising() llamado", "INFO")
+            napLog("ADVERT", "startAdvertising() llamado con nombre: $name", "INFO")
         } catch (e: SecurityException) {
             napLog("ADVERT", "SecurityException al iniciar advertising: ${e.message}", "ERROR")
             isAd = false
@@ -449,9 +452,20 @@ class BleService : Service() {
         bcastAd(false)
     }
 
+    // FIX v3.0.2: Reiniciar advertising cuando cambia el nombre de usuario
+    fun setUserInfo(uid: String, uname: String) {
+        this.userId = uid
+        this.userName = uname
+        napLog("USER", "setUserInfo: $uname", "INFO")
+        // Si ya estamos anunciando, reiniciar con el nuevo nombre
+        if (isAd && uname.isNotEmpty()) {
+            stopAdvertising()
+            handler.postDelayed({ startAdvertising(uname) }, 500)
+        }
+    }
+
     // ==================== Fin FIX ====================
 
-    fun setUserInfo(uid: String, uname: String) { userId = uid; userName = uname }
     fun isBluetoothEnabled() = btAdapter?.isEnabled == true
     fun isScanning() = isScan
     fun isAdvertising() = isAd
