@@ -20,15 +20,14 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
-import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 
 /**
- * NexoBlePlugin v5.1.0-ARCH — BRIDGE PURO
- * FIX: Eliminados startAdvertising/stopAdvertising. Advertising automático en BleService.
- * El JS solo controla: scan, connect, sendMessage.
+ * NexoBlePlugin v5.1.1-ARCH — BRIDGE PURO
+ * FIX: Eliminado enableBluetoothResult + ActivityResult (no disponible en proyecto).
+ * Advertising automático en BleService. El JS solo controla scan/connect/sendMessage.
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -235,7 +234,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.1.0-ARCH bridge puro cargado", "INFO")
+        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.1.1-ARCH bridge puro cargado", "INFO")
 
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -378,6 +377,8 @@ class NexoBlePlugin : Plugin() {
         })
     }
 
+    // FIX v5.1.1: Simplificado — no forzar activación de Bluetooth desde el plugin.
+    // Si BT está apagado, el Service intentará anunciar cuando se active.
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
         if (!canAccessBluetooth()) {
@@ -396,13 +397,7 @@ class NexoBlePlugin : Plugin() {
 
     private fun performInitialization(call: PluginCall) {
         val adapter = getBluetoothAdapter() ?: return napError(call, "BLE_203", "Adapter nulo")
-        if (!adapter.isEnabled) {
-            saveCall(call)
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            startActivityForResult(call, enableBtIntent, "enableBluetoothResult")
-            return
-        }
-
+        
         userId = call.getString("userId") ?: ""
         userName = call.getString("userName") ?: "NEXO User"
 
@@ -411,20 +406,18 @@ class NexoBlePlugin : Plugin() {
         else context.startService(serviceIntent)
 
         withService(call) { svc -> svc.setUserInfo(userId, userName) }
-        call.resolve(JSObject().apply { put("initialized", true) })
-    }
-
-    @ActivityCallback
-    private fun enableBluetoothResult(call: PluginCall, result: ActivityResult) {
-        if (result.resultCode == Activity.RESULT_OK) performInitialization(call)
-        else napError(call, "BLE_201", "Bluetooth rechazado")
+        
+        // FIX: Si BT está apagado, advertimos pero no fallamos — el Service anunciará cuando BT se active
+        val btEnabled = adapter.isEnabled
+        call.resolve(JSObject().apply { 
+            put("initialized", true)
+            put("bluetoothEnabled", btEnabled)
+            if (!btEnabled) put("warning", "Bluetooth apagado — advertising comenzará al activarlo")
+        })
     }
 
     @PluginMethod fun startScan(call: PluginCall) { withService(call) { it.startScan(); call.resolve() } }
     @PluginMethod fun stopScan(call: PluginCall) { withService(call) { it.stopScan(); call.resolve() } }
-
-    // FIX v5.1.0: Eliminados startAdvertising y stopAdvertising — advertising es automático en BleService
-    // El JS ya no controla advertising. BleService lo inicia en onCreate() automáticamente.
 
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
