@@ -113,10 +113,15 @@
 #messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 76px 20px 100px 20px;
+  padding: 76px 20px 20px 20px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* FIX v4.0.1: Padding extra solo cuando chat está activo (para dejar espacio al input) */
+.chat-active #messages-container {
+  padding-bottom: 120px;
 }
 
 .message {
@@ -155,7 +160,7 @@
   gap: 8px;
 }
 
-/* Input Area */
+/* Input Area — FIX: oculto por defecto, solo visible en chat activo */
 #input-area {
   position: fixed;
   bottom: 0;
@@ -164,9 +169,16 @@
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) 16px;
   background: rgba(10,10,10,0.95);
   backdrop-filter: blur(10px);
-  display: flex;
+  display: none; /* Oculto por defecto */
   gap: 10px;
   border-top: 1px solid rgba(255,255,255,0.1);
+  z-index: 2147483630;
+}
+
+/* FIX: Mostrar input solo cuando chat está activo, posicionado arriba de bottom bar */
+.chat-active #input-area {
+  display: flex;
+  bottom: 56px;
 }
 
 #message-input {
