@@ -99,7 +99,8 @@ export class NexoApp {
     try {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
-      const nativeAvailable = !!(window.Capacitor?.Plugins?.NexoBLE);
+      // FIX: NexoBLE → NexoBle (alineado con plugin nativo y ble_interface.js)
+      const nativeAvailable = !!(window.Capacitor?.Plugins?.NexoBle);
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
