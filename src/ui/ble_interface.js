@@ -1,7 +1,6 @@
 /**
- * ble_interface.js v4.1.0-ARCH — Bottom Bar Rebuild
- * Tabs: CHAT | BLE | AJUSTES
- * Status bar: NEXO | Phase | Mode | DeviceID
+ * ble_interface.js v4.2.0-ARCH — Scan Fix + NexoBLE name + Auto-scan
+ * FIX: NexoBle → NexoBLE, onDeviceFound → onScanResult, auto-scan BLE tab + permissions
  */
 
 const SVG_ICONS = {
@@ -16,7 +15,7 @@ const SVG_ICONS = {
 let _globalInterface = null;
 
 export function initBLEInterface(meshInstance) {
-  const plugin = window.Capacitor?.Plugins?.NexoBle;
+  const plugin = window.Capacitor?.Plugins?.NexoBLE;
   
   const state = {
     contacts: new Map(),
@@ -32,9 +31,9 @@ export function initBLEInterface(meshInstance) {
     _listeners: [],
     _activeChatDeviceId: null,
     _messageQueue: [],
+    _deviceUUID: null,
   };
 
-  // ===== CSS INJECT =====
   const styleId = 'nexo-ble-interface-styles';
   if (!document.getElementById(styleId)) {
     const style = document.createElement('style');
@@ -46,13 +45,9 @@ export function initBLEInterface(meshInstance) {
       .nexo-content { flex: 1; overflow-y: auto; position: relative; }
       .nexo-tab { display: none; height: 100%; flex-direction: column; }
       .nexo-tab.active { display: flex; }
-      
-      /* MAIN SCREEN */
       .nexo-main-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 24px; }
       .nexo-logo-graphic { width: 140px; height: 140px; opacity: 0.9; }
       .nexo-version { font-size: 14px; color: #666; letter-spacing: 4px; text-transform: uppercase; }
-      
-      /* BLE TAB */
       .nexo-ble-header { padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #222; }
       .nexo-ble-title { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; }
       .nexo-ble-icon { width: 28px; height: 28px; background: linear-gradient(135deg,#00d4ff,#7b2cbf); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
@@ -69,8 +64,6 @@ export function initBLEInterface(meshInstance) {
       .nexo-device-mac { font-size: 11px; color: #666; font-family: monospace; }
       .nexo-device-rssi { font-size: 11px; color: #00d4ff; }
       .nexo-device-add { width: 32px; height: 32px; border-radius: 50%; background: #00d4ff; color: #000; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; }
-      
-      /* CHAT TAB */
       .nexo-chat-header { padding: 12px 20px; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 12px; }
       .nexo-chat-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg,#00d4ff,#7b2cbf); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
       .nexo-chat-meta { display: flex; flex-direction: column; }
@@ -87,20 +80,14 @@ export function initBLEInterface(meshInstance) {
       .nexo-chat-input::placeholder { color: #666; }
       .nexo-chat-send { width: 44px; height: 44px; border-radius: 50%; background: #0077ff; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; flex-shrink: 0; }
       .nexo-chat-send:active { transform: scale(0.95); }
-      
-      /* SETTINGS TAB */
       .nexo-settings-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 20px; }
       .nexo-settings-icon { width: 80px; height: 80px; color: #444; }
       .nexo-settings-text { color: #666; font-size: 16px; }
-      
-      /* BOTTOM BAR */
       .nexo-bottom-bar { height: 56px; background: #0a0a0a; border-top: 1px solid #222; display: flex; align-items: center; justify-content: space-around; padding: 0 20px; }
       .nexo-bar-btn { flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: none; border: none; color: #666; cursor: pointer; transition: all 0.2s; }
       .nexo-bar-btn.active { color: #00d4ff; }
       .nexo-bar-btn svg { width: 22px; height: 22px; }
       .nexo-bar-label { font-size: 10px; font-weight: 500; letter-spacing: 0.5px; }
-      
-      /* STATUS BAR */
       .nexo-status-bar { height: 28px; background: #000; border-top: 1px solid #1a1a1a; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-size: 11px; font-family: monospace; }
       .nexo-status-left { display: flex; align-items: center; gap: 12px; }
       .nexo-status-phase { color: #00ff88; }
@@ -111,7 +98,6 @@ export function initBLEInterface(meshInstance) {
     document.head.appendChild(style);
   }
 
-  // ===== DOM STRUCTURE =====
   let appContainer = document.getElementById('app');
   if (!appContainer) {
     appContainer = document.createElement('div');
@@ -126,14 +112,12 @@ export function initBLEInterface(meshInstance) {
   appContainer.innerHTML = `
     <div class="nexo-header"><h1>NEXO</h1><div id="nexo-header-badge"></div></div>
     <div class="nexo-content" id="nexo-content">
-      <!-- MAIN -->
       <div class="nexo-tab active" id="tab-main">
         <div class="nexo-main-screen">
           <div class="nexo-logo-graphic">${SVG_ICONS.logo}</div>
           <div class="nexo-version">NEXO V9.0</div>
         </div>
       </div>
-      <!-- BLE -->
       <div class="nexo-tab" id="tab-ble">
         <div class="nexo-ble-header">
           <div class="nexo-ble-title"><div class="nexo-ble-icon">${SVG_ICONS.ble}</div> BLE Mesh</div>
@@ -147,7 +131,6 @@ export function initBLEInterface(meshInstance) {
           <div class="nexo-device-empty">Buscando dispositivos cercanos...</div>
         </div>
       </div>
-      <!-- CHAT -->
       <div class="nexo-tab" id="tab-chat">
         <div class="nexo-chat-header">
           <div class="nexo-chat-avatar" id="chat-avatar">?</div>
@@ -162,7 +145,6 @@ export function initBLEInterface(meshInstance) {
           <button class="nexo-chat-send" id="chat-send">${SVG_ICONS.send}</button>
         </div>
       </div>
-      <!-- SETTINGS -->
       <div class="nexo-tab" id="tab-settings">
         <div class="nexo-settings-screen">
           <div class="nexo-settings-icon">${SVG_ICONS.settings}</div>
@@ -185,7 +167,6 @@ export function initBLEInterface(meshInstance) {
     </div>
   `;
 
-  // ===== TAB NAVIGATION =====
   const tabs = { main: document.getElementById('tab-main'), ble: document.getElementById('tab-ble'), chat: document.getElementById('tab-chat'), settings: document.getElementById('tab-settings') };
   const barBtns = { chat: document.getElementById('btn-tab-chat'), ble: document.getElementById('btn-tab-ble'), settings: document.getElementById('btn-tab-settings') };
 
@@ -196,9 +177,8 @@ export function initBLEInterface(meshInstance) {
     tabs[tabName].classList.add('active');
     Object.values(barBtns).forEach(b => b.classList.remove('active'));
     if (barBtns[tabName]) barBtns[tabName].classList.add('active');
-    if (tabName === 'chat' && state._activeChatDeviceId) {
-      updateChatBadge(false);
-    }
+    if (tabName === 'chat' && state._activeChatDeviceId) updateChatBadge(false);
+    if (tabName === 'ble') startScan();
   }
 
   Object.values(barBtns).forEach(btn => {
@@ -206,7 +186,6 @@ export function initBLEInterface(meshInstance) {
   });
   document.getElementById('btn-ble-close')?.addEventListener('click', () => switchTab('main'));
 
-  // ===== CHAT =====
   const chatInput = document.getElementById('chat-input');
   const chatSend = document.getElementById('chat-send');
   const chatMessages = document.getElementById('chat-messages');
@@ -232,7 +211,6 @@ export function initBLEInterface(meshInstance) {
     return bubble;
   }
 
-  // ===== DEVICE LIST =====
   const deviceListEl = document.getElementById('device-list');
   const scanBadge = document.getElementById('scan-badge');
   const scanTimer = document.getElementById('scan-timer');
@@ -284,7 +262,6 @@ export function initBLEInterface(meshInstance) {
     badge.innerHTML = show ? '<span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">1</span>' : '';
   }
 
-  // ===== SCAN =====
   async function startScan() {
     if (state.isScanning) return;
     state.isScanning = true;
@@ -300,35 +277,61 @@ export function initBLEInterface(meshInstance) {
     }, 1000);
 
     if (state.nativePlugin?.startScan) {
-      try { await state.nativePlugin.startScan({ duration: state.scanDuration }); }
+      try { await state.nativePlugin.startScan(); }
       catch (e) { console.error('[BLE] Scan error:', e); }
     }
 
     setTimeout(() => { state.isScanning = false; scanBadge.style.display = 'none'; scanTimer.textContent = ''; }, state.scanDuration * 1000);
   }
 
-  // ===== PLUGIN LISTENERS =====
   if (state.nativePlugin?.addListener) {
-    const l1 = state.nativePlugin.addListener('onDeviceFound', (result) => {
-      const raw = result?.device || result;
-      if (!raw?.address) return;
-      const id = raw.address.toLowerCase().replace(/[^a-f0-9]/g, '');
-      if (state.devices.has(id)) return;
-      state.devices.set(id, { name: raw.name || `NEXO-${id.substring(0,6).toUpperCase()}`, address: raw.address, rssi: raw.rssi, foundAt: Date.now() });
+    const l1 = state.nativePlugin.addListener('onScanResult', (result) => {
+      const raw = result;
+      if (!raw?.deviceId && !raw?.address) return;
+      const id = (raw.deviceId || raw.address || '').toLowerCase().replace(/[^a-f0-9]/g, '');
+      if (!id || state.devices.has(id)) return;
+      state.devices.set(id, {
+        name: raw.name || `NEXO-${id.substring(0,6).toUpperCase()}`,
+        address: raw.deviceId || raw.address,
+        rssi: raw.rssi,
+        foundAt: Date.now()
+      });
       renderDevices();
     });
     const l2 = state.nativePlugin.addListener('onMessageReceived', (result) => {
       const { deviceId, message, senderName, messageId, source, timestamp } = result || {};
-      window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', { detail: { deviceId, content: message, senderName, messageId, source, timestamp } }));
+      window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
+        detail: { deviceId, content: message, senderName, messageId, source, timestamp }
+      }));
     });
     state._listeners.push(l1, l2);
   }
 
-  // ===== PUBLIC API =====
+  window.addEventListener('blePermissionsGranted', () => {
+    console.log('[BLE] Permisos concedidos, iniciando scan...');
+    if (state.nativePlugin?.initializeBLE) {
+      let uuid = localStorage.getItem('nexo_device_uuid');
+      if (!uuid) {
+        uuid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substr(2,9)}`;
+        localStorage.setItem('nexo_device_uuid', uuid);
+      }
+      state._deviceUUID = uuid;
+      state.nativePlugin.initializeBLE({ userId: uuid, userName: 'NEXO User' }).then(() => {
+        if (state.nativePlugin?.startAdvertising) state.nativePlugin.startAdvertising({ deviceName: 'NEXO' });
+        startScan();
+      }).catch(e => console.error('[BLE] Init error:', e));
+    } else {
+      startScan();
+    }
+  });
+
   const api = {
     nativePlugin: state.nativePlugin,
     localDeviceAddress: state.localDeviceAddress,
-    getContactName: (id) => { const n = (id||'').toString().toLowerCase().trim().replace(/[^a-f0-9]/g,''); return state.contacts.get(n)?.name || null; },
+    getContactName: (id) => {
+      const n = (id||'').toString().toLowerCase().trim().replace(/[^a-f0-9]/g,'');
+      return state.contacts.get(n)?.name || null;
+    },
     showMainScreen: () => switchTab('main'),
     switchTab,
     startScan,
@@ -344,8 +347,7 @@ export function initBLEInterface(meshInstance) {
       const m = document.getElementById('status-mode');
       const i = document.getElementById('status-id');
       if (p) p.textContent = phase || 'INIT';
-      if (m) m.textContent = mode || 'OFFLINE';
-      if (m) m.style.color = mode === 'READY' || mode === 'P2P_BLE' ? '#00ff88' : mode === 'OFFLINE' ? '#ff4444' : '#ffaa00';
+      if (m) { m.textContent = mode || 'OFFLINE'; m.style.color = mode === 'READY' || mode === 'P2P_BLE' ? '#00ff88' : mode === 'OFFLINE' ? '#ff4444' : '#ffaa00'; }
       if (i) i.textContent = (id || '--').substring(0,6);
     },
     destroy: () => {
