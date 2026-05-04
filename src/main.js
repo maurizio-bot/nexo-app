@@ -1,5 +1,5 @@
 /**
- * main.js v9.0-FINAL
+ * main.js v9.1-FINAL
  * Ultra-defensivo. Si un módulo falla, usa fallback nativo.
  * Diagnóstico visible en pantalla desde el primer segundo.
  */
@@ -11,6 +11,7 @@ function screenLog(msg, type = 'info') {
   if (!diag) {
     diag = document.createElement('div');
     diag.id = 'nexo-diagnostic';
+    // FIX: z-index 99998 → 100000 para que sea visible sobre SetupWizard (99999)
     diag.style.cssText = 'position:fixed;top:60px;left:10px;right:10px;max-height:180px;background:rgba(0,0,0,0.95);color:#00ff88;font-family:monospace;font-size:11px;overflow-y:auto;z-index:100000;padding:10px;border-radius:8px;border:1px solid rgba(0,255,136,0.3);';
     document.body.appendChild(diag);
   }
@@ -19,7 +20,7 @@ function screenLog(msg, type = 'info') {
   diag.scrollTop = diag.scrollHeight;
 }
 
-screenLog('main.js iniciado', 'info');
+screenLog('main.js v9.1 iniciado', 'info');
 
 // ===== DOM REFS =====
 const $ = (s) => document.querySelector(s);
@@ -90,6 +91,14 @@ async function doScan() {
     isScanning = false;
     els.btnBleScan.textContent = '⟳ Escanear';
     return;
+  }
+
+  // FIX: Asegurar que ble_interface.js esté inicializado antes de escanear
+  if (bleInterface?.initBLEInterface && !bleInterface._isInitialized) {
+    screenLog('Inicializando BLE interface antes de scan...', 'info');
+    try { await bleInterface.initBLEInterface(); } catch (e) {
+      screenLog(`Init BLE interface warning: ${e.message}`, 'warn');
+    }
   }
 
   els.bleDevicesList.innerHTML = '<div class="ble-empty">Escaneando...</div>';
@@ -170,6 +179,12 @@ async function init() {
     screenLog('Importando ble_interface...', 'info');
     bleInterface = await import('./ui/ble_interface.js');
     screenLog('ble_interface OK', 'info');
+    
+    // FIX: Agregar listener de log del bridge para ver diagnóstico en pantalla
+    window.addEventListener('nexo:ble:log', (e) => {
+      screenLog(`[BLE_IF] ${e.detail.msg}`, e.detail.type);
+    });
+    
     if (bleInterface.initBLEInterface) {
       await bleInterface.initBLEInterface();
       screenLog('BLE listeners activos', 'info');
