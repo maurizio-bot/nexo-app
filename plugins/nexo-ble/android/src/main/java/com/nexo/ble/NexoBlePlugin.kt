@@ -82,7 +82,6 @@ class NexoBlePlugin : Plugin() {
         const val EXTRA_DATA = "data"
         const val EXTRA_SENDER_NAME = "sender_name"
 
-        // FIX: Reutilizar normalizacion de BleService
         fun normalizeMacAddress(addr: String): String {
             return if (addr.contains(":")) addr.uppercase()
             else addr.chunked(2).joinToString(":").uppercase()
@@ -279,7 +278,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("REM-BRIDGE-020", "load() — INICIO v5.3.0-ARCH", "INFO")
+        napLog("REM-BRIDGE-020", "load() — INICIO v5.4.0-ARCH", "INFO")
         if (!canAccessBluetooth()) {
             napLog("REM-BRIDGE-020b", "Sin permisos al cargar, omitiendo startForegroundService", "WARN")
             registerReceiverOnly()
@@ -550,7 +549,6 @@ class NexoBlePlugin : Plugin() {
         withService(call) { it.stopAdvertising(); call.resolve() }
     }
 
-    // FIX: Normalizar MAC antes de pasar al service
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: return call.reject("Falta deviceId")
@@ -562,7 +560,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // FIX: Normalizar MAC antes de pasar al service
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: return call.reject("Falta deviceId")
