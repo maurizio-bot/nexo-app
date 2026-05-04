@@ -11,7 +11,7 @@ function screenLog(msg, type = 'info') {
   if (!diag) {
     diag = document.createElement('div');
     diag.id = 'nexo-diagnostic';
-    diag.style.cssText = 'position:fixed;top:60px;left:10px;right:10px;max-height:180px;background:rgba(0,0,0,0.95);color:#00ff88;font-family:monospace;font-size:11px;overflow-y:auto;z-index:99998;padding:10px;border-radius:8px;border:1px solid rgba(0,255,136,0.3);';
+    diag.style.cssText = 'position:fixed;top:60px;left:10px;right:10px;max-height:180px;background:rgba(0,0,0,0.95);color:#00ff88;font-family:monospace;font-size:11px;overflow-y:auto;z-index:100000;padding:10px;border-radius:8px;border:1px solid rgba(0,255,136,0.3);';
     document.body.appendChild(diag);
   }
   const color = type === 'error' ? '#ff4444' : type === 'warn' ? '#ffaa00' : '#00ff88';
