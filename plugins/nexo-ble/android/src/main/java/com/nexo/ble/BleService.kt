@@ -28,13 +28,16 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.ParcelUuid
+import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.util.ArrayDeque
@@ -70,6 +73,7 @@ class BleService : Service() {
         const val ACTION_RETRY_SCHEDULED = "com.nexo.ble.RETRY_SCHEDULED"
         const val ACTION_PEER_INFO_RECEIVED = "com.nexo.ble.PEER_INFO_RECEIVED"
         const val ACTION_CLIENT_NOTIFICATION_STATE_CHANGED = "com.nexo.ble.CLIENT_NOTIFICATION_STATE_CHANGED"
+        const val ACTION_NAP_AUDIT = "com.nexo.ble.NAP_AUDIT"
 
         const val EXTRA_DEVICE_ADDRESS = "device_address"
         const val EXTRA_DEVICE_NAME = "device_name"
@@ -136,30 +140,38 @@ class BleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.i(TAG, "[NAP-001] onCreate() — INICIO")
         btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         btAdapter = btManager?.adapter
+        Log.i(TAG, "[NAP-002] Adapter=${btAdapter != null}, enabled=${btAdapter?.isEnabled}")
         createChannel()
         startFg()
-        try { initGattServer() } catch (e: Exception) { Log.e(TAG, "GATT init error: ${e.message}") }
+        try { initGattServer(); Log.i(TAG, "[NAP-003] GATT Server inicializado OK") } catch (e: Exception) { Log.e(TAG, "[NAP-004] GATT init error: ${e.message}") }
+        Log.i(TAG, "[NAP-005] onCreate() — FIN")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(TAG, "[NAP-006] onStartCommand() startId=$startId")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, buildNotif("NEXO BLE activo"), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         } else {
             startForeground(NOTIFICATION_ID, buildNotif("NEXO BLE activo"))
         }
+        Log.i(TAG, "[NAP-007] startForeground() ejecutado con CONNECTED_DEVICE")
         return START_STICKY
     }
 
     override fun onDestroy() {
+        Log.i(TAG, "[NAP-008] onDestroy() — INICIO")
         stopScan(); stopAdvertising(); cleanup(); gattServer?.close(); super.onDestroy()
+        Log.i(TAG, "[NAP-009] onDestroy() — FIN")
     }
 
     private fun startFg() {
         val n = buildNotif("NEXO BLE activo")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         else startForeground(NOTIFICATION_ID, n)
+        Log.i(TAG, "[NAP-010] startFg() ejecutado")
     }
 
     private fun buildNotif(c: String): Notification {
@@ -185,8 +197,8 @@ class BleService : Service() {
     private val gattSrvCb = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(d: BluetoothDevice?, s: Int, ns: Int) {
             when (ns) {
-                BluetoothProfile.STATE_CONNECTED -> d?.address?.let { serverConns[it] = d; bcastDev(ACTION_DEVICE_CONNECTED, d, "incoming") }
-                BluetoothProfile.STATE_DISCONNECTED -> d?.address?.let { serverConns.remove(it); bcastDev(ACTION_DEVICE_DISCONNECTED, d) }
+                BluetoothProfile.STATE_CONNECTED -> d?.address?.let { serverConns[it] = d; Log.i(TAG, "[NAP-GATT-001] Server CONNECTED: $it"); bcastDev(ACTION_DEVICE_CONNECTED, d, "incoming") }
+                BluetoothProfile.STATE_DISCONNECTED -> d?.address?.let { serverConns.remove(it); Log.i(TAG, "[NAP-GATT-002] Server DISCONNECTED: $it"); bcastDev(ACTION_DEVICE_DISCONNECTED, d) }
             }
         }
         override fun onCharacteristicReadRequest(d: BluetoothDevice, rId: Int, o: Int, c: BluetoothGattCharacteristic) {
@@ -200,6 +212,7 @@ class BleService : Service() {
                 val msg = String(v, Charsets.UTF_8)
                 var sn = "NEXO Peer"; var ct = msg; var mid = ""
                 try { val j = org.json.JSONObject(msg); sn = j.optString("senderName", sn); ct = j.optString("content", ct); mid = j.optString("messageId", mid) } catch (e: Exception) {}
+                Log.i(TAG, "[NAP-GATT-003] Server recibió mensaje de ${d?.address}: ${ct.take(30)}")
                 sendLocalBroadcast(Intent(ACTION_MESSAGE_RECEIVED).apply { putExtra(EXTRA_DEVICE_ADDRESS, d?.address); putExtra(EXTRA_DEVICE_NAME, d?.name ?: "Unknown"); putExtra(EXTRA_MESSAGE, msg); putExtra(EXTRA_CONTENT, ct); putExtra(EXTRA_SENDER_NAME, sn); putExtra(EXTRA_MESSAGE_ID, mid); putExtra(EXTRA_SOURCE, "server_write_request"); putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis()) })
                 if (rN) gattServer?.sendResponse(d, rId, BluetoothGatt.GATT_SUCCESS, o, null)
             }
@@ -348,15 +361,15 @@ class BleService : Service() {
 
     fun startScan() {
         if (isScan) {
-            Log.w(TAG, "Scan already active, ignoring duplicate startScan()")
+            Log.w(TAG, "[NAP-SCAN-001] Scan already active, ignoring")
             return
         }
-        val a = btAdapter ?: run { bcastScanFail(-1, "Adapter null"); return }
+        val a = btAdapter ?: run { Log.e(TAG, "[NAP-SCAN-002] Adapter null"); bcastScanFail(-1, "Adapter null"); return }
         scanner = a.bluetoothLeScanner
-        if (scanner == null) { bcastScanFail(-2, "Scanner null"); return }
+        if (scanner == null) { Log.e(TAG, "[NAP-SCAN-003] Scanner null"); bcastScanFail(-2, "Scanner null"); return }
         val now = SystemClock.elapsedRealtime()
         while (scanTimes.isNotEmpty() && now - scanTimes.first() > SCAN_RATE_LIMIT) scanTimes.removeFirst()
-        if (scanTimes.size >= 5) { bcastScanFail(-3, "Rate limit"); return }
+        if (scanTimes.size >= 5) { Log.e(TAG, "[NAP-SCAN-004] Rate limit"); bcastScanFail(-3, "Rate limit"); return }
         scanTimes.addLast(now)
 
         val settings = ScanSettings.Builder()
@@ -371,11 +384,12 @@ class BleService : Service() {
             .build()
 
         scanResults.clear(); isScan = true
+        Log.i(TAG, "[NAP-SCAN-005] startScan() llamado con ScanFilter(SERVICE_UUID)")
         try {
             scanner?.startScan(listOf(filter), settings, scanCb)
-            handler.postDelayed({ if (isScan) stopScan() }, SCAN_AUTO_STOP)
+            handler.postDelayed({ if (isScan) { Log.i(TAG, "[NAP-SCAN-006] Auto-stop scan after ${SCAN_AUTO_STOP}ms"); stopScan() } }, SCAN_AUTO_STOP)
         } catch (e: SecurityException) {
-            isScan = false; bcastScanFail(-4, "SecurityException")
+            isScan = false; Log.e(TAG, "[NAP-SCAN-007] SecurityException: ${e.message}"); bcastScanFail(-4, "SecurityException")
         }
     }
 
@@ -383,12 +397,14 @@ class BleService : Service() {
         if (isScan) {
             try { scanner?.stopScan(scanCb) } catch (e: Exception) {}
             isScan = false
+            Log.i(TAG, "[NAP-SCAN-008] stopScan() ejecutado. Resultados=${scanResults.size}")
             sendLocalBroadcast(Intent(ACTION_SCAN_STOPPED).apply { putExtra("result_count", scanResults.size) })
         }
     }
 
     private val scanCb = object : ScanCallback() {
         override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+            Log.i(TAG, "[NAP-SCAN-009] onBatchScanResults: ${results?.size ?: 0} items")
             results?.forEach { onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, it) }
         }
 
@@ -403,6 +419,8 @@ class BleService : Service() {
 
                 val record = it.scanRecord
                 val hasNexoUuid = record?.serviceUuids?.any { u -> u.uuid == SERVICE_UUID } == true
+
+                Log.i(TAG, "[NAP-SCAN-010] onScanResult: addr=${addr.take(8)} name=$devName rssi=${it.rssi} hasNexoUuid=$hasNexoUuid")
 
                 if (hasNexoUuid || record?.serviceUuids != null) {
                     val displayName = devName.ifBlank { "NEXO Device" }
@@ -426,20 +444,19 @@ class BleService : Service() {
                 SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "TOO_FREQUENT"
                 else -> "UNKNOWN($ec)"
             }
+            Log.e(TAG, "[NAP-SCAN-011] onScanFailed: $err (code=$ec)")
             bcastScanFail(ec, err)
         }
     }
 
     fun startAdvertising(name: String = "") {
-        if (isAd) { bcastAd(true); return }
-        val adapter = btAdapter ?: run { bcastAd(false, "Adapter null"); return }
-        if (!adapter.isEnabled) { bcastAd(false, "Bluetooth disabled"); return }
-        val freshAdvertiser = adapter.bluetoothLeAdvertiser ?: run { bcastAd(false, "Advertiser null"); return }
+        if (isAd) { Log.i(TAG, "[NAP-ADVERT-001] Already advertising"); bcastAd(true); return }
+        val adapter = btAdapter ?: run { Log.e(TAG, "[NAP-ADVERT-002] Adapter null"); bcastAd(false, "Adapter null"); return }
+        if (!adapter.isEnabled) { Log.e(TAG, "[NAP-ADVERT-003] Bluetooth disabled"); bcastAd(false, "Bluetooth disabled"); return }
+        val freshAdvertiser = adapter.bluetoothLeAdvertiser ?: run { Log.e(TAG, "[NAP-ADVERT-004] Advertiser null"); bcastAd(false, "Advertiser null"); return }
         this.advertiser = freshAdvertiser
 
-        if (name.isNotBlank()) {
-            this.userName = name
-        }
+        if (name.isNotBlank()) { this.userName = name }
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -452,12 +469,13 @@ class BleService : Service() {
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .build()
 
+        Log.i(TAG, "[NAP-ADVERT-005] startAdvertising() — Service UUID=${SERVICE_UUID}, payload ~21 bytes")
         try {
             freshAdvertiser.startAdvertising(settings, data, adCb)
         } catch (e: SecurityException) {
-            isAd = false; bcastAd(false, "SecurityException")
+            isAd = false; Log.e(TAG, "[NAP-ADVERT-006] SecurityException: ${e.message}"); bcastAd(false, "SecurityException")
         } catch (e: Exception) {
-            isAd = false; bcastAd(false, e.message ?: "Unknown")
+            isAd = false; Log.e(TAG, "[NAP-ADVERT-007] Exception: ${e.message}"); bcastAd(false, e.message ?: "Unknown")
         }
     }
 
@@ -467,6 +485,7 @@ class BleService : Service() {
             try { adv.stopAdvertising(adCb) } catch (e: Exception) {}
         }
         isAd = false; advertiser = null; bcastAd(false)
+        Log.i(TAG, "[NAP-ADVERT-008] stopAdvertising() ejecutado")
     }
 
     fun setUserInfo(uid: String, uname: String) {
@@ -488,6 +507,7 @@ class BleService : Service() {
     private val adCb = object : AdvertiseCallback() {
         override fun onStartSuccess(s: AdvertiseSettings?) {
             isAd = true
+            Log.i(TAG, "[NAP-ADVERT-009] onStartSuccess — advertising activo")
             bcastAd(true)
         }
         override fun onStartFailure(ec: Int) {
@@ -500,6 +520,7 @@ class BleService : Service() {
                 ADVERTISE_FAILED_DATA_TOO_LARGE -> "DATA_TOO_LARGE"
                 else -> "UNKNOWN($ec)"
             }
+            Log.e(TAG, "[NAP-ADVERT-010] onStartFailure: $err (code=$ec)")
             bcastAd(false, err)
         }
     }
