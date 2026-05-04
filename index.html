@@ -7,16 +7,92 @@
   <title>NEXO</title>
   <link rel="stylesheet" href="src/styles/critical.css">
   <link rel="stylesheet" href="src/styles/main.css">
+  <style>
+    /* ===== SOLO LO NUEVO: Bottom nav + vistas ===== */
+    html, body { background: #000000; width: 100%; height: 100%; overflow: hidden; }
+    
+    .view { 
+      position: fixed; 
+      top: 56px; 
+      left: 0; 
+      right: 0; 
+      bottom: 96px; 
+      background: #000000; 
+      display: none; 
+      flex-direction: column; 
+      overflow-y: auto; 
+      z-index: 10;
+    }
+    .view.active { display: flex; }
+    
+    /* Home */
+    #home-view { align-items: center; justify-content: center; }
+    .home-logo svg { width: 160px; height: 160px; filter: drop-shadow(0 0 20px rgba(0,212,255,0.15)); }
+    .home-version { margin-top: 24px; font-size: 15px; color: #475569; letter-spacing: 8px; text-transform: uppercase; font-weight: 500; }
+    
+    /* BLE */
+    #ble-view { padding: 20px; }
+    .ble-title { font-size: 28px; font-weight: 700; letter-spacing: 4px; text-align: center; margin-bottom: 20px; color: #fff; }
+    .ble-device { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; margin-bottom: 8px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
+    .ble-device-name { font-size: 15px; font-weight: 500; color: #fff; }
+    .ble-device-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .ble-device-rssi { font-size: 12px; color: #00d4ff; font-weight: 600; }
+    .ble-empty { text-align: center; color: #64748b; padding: 40px 20px; font-size: 14px; }
+    
+    /* Settings */
+    #settings-view { padding: 20px; }
+    .settings-title { font-size: 20px; font-weight: 600; margin-bottom: 20px; color: #fff; }
+    .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 15px; color: #fff; }
+    .settings-row span:last-child { color: #64748b; }
+    
+    /* Bottom Nav */
+    #bottom-nav {
+      position: fixed; bottom: 40px; left: 0; right: 0; height: 56px;
+      background: rgba(0,0,0,0.95); backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; justify-content: space-around;
+      z-index: 2147483647;
+    }
+    .nav-btn { flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: none; border: none; color: #64748b; cursor: pointer; transition: color 0.2s ease; padding: 0; }
+    .nav-btn.active { color: #00d4ff; }
+    .nav-btn:active { opacity: 0.6; }
+    .nav-btn svg { width: 22px; height: 22px; }
+    .nav-btn span { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; }
+    
+    /* Status bar inferior */
+    #status-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 40px;
+      background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; z-index: 2147483646; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .sb-brand { color: #ffffff; }
+    .sb-phase { color: #10b981; }
+    .sb-mode { color: #ef4444; }
+    .sb-mode.online { color: #10b981; }
+    .sb-id { color: #64748b; font-family: monospace; font-size: 10px; }
+    
+    /* Header */
+    #top-header {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px;
+      padding: 0 20px; display: flex; align-items: center; justify-content: space-between;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); z-index: 100;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .top-title { font-size: 22px; font-weight: 700; letter-spacing: 2px; color: #ffffff; }
+    .top-pip { width: 44px; height: 44px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+    .top-pip img { width: 100%; height: 100%; object-fit: cover; }
+  </style>
 </head>
 <body>
 
-  <!-- ==================== SPLASH ==================== -->
+  <!-- Splash -->
   <div id="splash-native">
     <div id="splash-logo"></div>
     <div id="splash-text">NEXO v9.0</div>
   </div>
 
-  <!-- ==================== APP ==================== -->
+  <!-- App -->
   <div id="app">
 
     <!-- Header -->
@@ -27,7 +103,7 @@
       </div>
     </div>
 
-    <!-- ===== VISTA HOME (default) ===== -->
+    <!-- ===== HOME (default) ===== -->
     <div id="home-view" class="view active">
       <div class="home-logo">
         <svg viewBox="0 0 200 200" width="160" height="160">
@@ -47,7 +123,7 @@
       <div class="home-version">NEXO V9.0</div>
     </div>
 
-    <!-- ===== VISTA CHAT ===== -->
+    <!-- ===== CHAT ===== -->
     <div id="chat-view" class="view">
       <div id="chat-header">
         <input type="text" id="chat-contact-name" placeholder="Nombre del contacto" readonly>
@@ -60,7 +136,7 @@
       </div>
     </div>
 
-    <!-- ===== VISTA BLE ===== -->
+    <!-- ===== BLE ===== -->
     <div id="ble-view" class="view">
       <div class="ble-title">NEXO</div>
       <div id="ble-devices-list">
@@ -68,7 +144,7 @@
       </div>
     </div>
 
-    <!-- ===== VISTA CONFIGURACIÓN ===== -->
+    <!-- ===== SETTINGS ===== -->
     <div id="settings-view" class="view">
       <div class="settings-title">Configuración</div>
       <div class="settings-list">
@@ -78,23 +154,23 @@
       </div>
     </div>
 
-    <!-- ==================== BOTTOM NAV ==================== -->
+    <!-- Bottom Nav -->
     <nav id="bottom-nav">
       <button class="nav-btn" data-view="chat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span>CHAT</span>
       </button>
-      <button class="nav-btn active" data-view="ble">
+      <button class="nav-btn active" data-view="home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
         <span>BLE</span>
       </button>
       <button class="nav-btn" data-view="settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 5 15.4a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        <span>CONFIG</span>
+        <span>AJUSTES</span>
       </button>
     </nav>
 
-    <!-- ==================== STATUS BAR INFERIOR ==================== -->
+    <!-- Status bar inferior -->
     <div id="status-bar">
       <span class="sb-brand">NEXO</span>
       <span class="sb-phase" id="sb-phase">READY</span>
@@ -104,7 +180,7 @@
 
   </div>
 
-  <!-- Vault Panel -->
+  <!-- Vault -->
   <div id="vault-panel">
     <div class="vault-header">
       <h3>Vault</h3>
@@ -120,7 +196,7 @@
   <!-- Diagnóstico -->
   <div id="nexo-diagnostic"></div>
 
-  <!-- Error Fatal -->
+  <!-- Error -->
   <div id="fatal-error">
     <h2>⚠️</h2>
     <p>Algo salió mal</p>
