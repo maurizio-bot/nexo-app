@@ -135,7 +135,7 @@ class BleService : Service() {
         createChannel()
         startFg()
         try { initGattServer() } catch (e: Exception) { Log.e(TAG, "GATT init error: ${e.message}") }
-        handler.postDelayed({ if (!isAd) startAdvertising("NEXO") }, 1500)
+        handler.postDelayed({ if (!isAd) startAdvertising() }, 1500)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -338,7 +338,6 @@ class BleService : Service() {
         bcastFail(a, r, conns[a]?.retry ?: 0)
     }
 
-    // CRITICAL FIX: Scan SIN filter (null) — Samsung S24 ignora ScanFilter por hardware
     fun startScan() {
         val a = btAdapter ?: run { bcastScanFail(-1, "Adapter null"); return }
         scanner = a.bluetoothLeScanner
@@ -357,7 +356,6 @@ class BleService : Service() {
 
         scanResults.clear(); isScan = true
         try {
-            // FIX: null = sin filter. Filtrado por software en onScanResult
             scanner?.startScan(null, settings, scanCb)
             handler.postDelayed({ if (isScan) stopScan() }, SCAN_AUTO_STOP)
         } catch (e: SecurityException) {
@@ -380,16 +378,14 @@ class BleService : Service() {
                 val devName: String
                 try {
                     addr = it.device.address ?: return
-                    devName = it.device.name ?: it.scanRecord?.deviceName ?: "NEXO Device"
+                    devName = it.device.name ?: it.scanRecord?.deviceName ?: "NEXO"
                 } catch (se: SecurityException) { return }
 
                 val record = it.scanRecord
                 val uuids = record?.serviceUuids
                 val hasNexoUuid = uuids?.any { u -> u.uuid == SERVICE_UUID } == true
-                val nameLower = devName.lowercase()
 
-                // FIX: Aceptar dispositivos NEXO por UUID O por nombre
-                if (hasNexoUuid || nameLower.contains("nexo")) {
+                if (hasNexoUuid || devName.contains("NEXO", ignoreCase = true)) {
                     if (scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)) scanResults[addr] = it
                     sendBroadcast(Intent(ACTION_SCAN_RESULT).apply {
                         putExtra(EXTRA_DEVICE_ADDRESS, addr)
@@ -414,15 +410,14 @@ class BleService : Service() {
         }
     }
 
-    // FIX: Nombre corto "NEXO" (4 bytes) + UUID en data Y scanResponse
-    fun startAdvertising(name: String) {
+    // CRITICAL FIX: Advertising MINIMAL — solo Service UUID, SIN nombre del sistema
+    // Payload: Flags(3) + UUID 128-bit(18) = 21 bytes << 31 bytes limite
+    fun startAdvertising() {
         if (isAd) { bcastAd(true); return }
         val adapter = btAdapter ?: run { bcastAd(false, "Adapter null"); return }
         if (!adapter.isEnabled) { bcastAd(false, "Bluetooth disabled"); return }
         val freshAdvertiser = adapter.bluetoothLeAdvertiser ?: run { bcastAd(false, "Advertiser null"); return }
         this.advertiser = freshAdvertiser
-
-        val shortName = if (name.length > 4) "NEXO" else name
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -431,19 +426,15 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
+        // FIX: NO setIncludeDeviceName — evita que nombre largo del sistema rompa payload
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
+            .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .build()
 
-        val scanResponse = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)
-            .addServiceUuid(ParcelUuid(SERVICE_UUID))
-            .build()
-
         try {
-            freshAdvertiser.startAdvertising(settings, data, scanResponse, adCb)
+            freshAdvertiser.startAdvertising(settings, data, adCb)
         } catch (e: SecurityException) {
             isAd = false; bcastAd(false, "SecurityException")
         } catch (e: Exception) {
@@ -461,11 +452,7 @@ class BleService : Service() {
 
     fun setUserInfo(uid: String, uname: String) {
         this.userId = uid
-        this.userName = if (uname.length > 4) "NEXO" else uname
-        if (isAd) {
-            stopAdvertising()
-            handler.postDelayed({ startAdvertising(userName) }, 500)
-        }
+        this.userName = "NEXO"
     }
 
     fun isBluetoothEnabled() = btAdapter?.isEnabled == true
