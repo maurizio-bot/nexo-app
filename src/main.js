@@ -1,5 +1,5 @@
 /**
- * main.js v9.1-FINAL
+ * main.js v9.2-FINAL
  * Ultra-defensivo. Si un módulo falla, usa fallback nativo.
  * Diagnóstico visible en pantalla desde el primer segundo.
  */
@@ -11,7 +11,6 @@ function screenLog(msg, type = 'info') {
   if (!diag) {
     diag = document.createElement('div');
     diag.id = 'nexo-diagnostic';
-    // FIX: z-index 99998 → 100000 para que sea visible sobre SetupWizard (99999)
     diag.style.cssText = 'position:fixed;top:60px;left:10px;right:10px;max-height:180px;background:rgba(0,0,0,0.95);color:#00ff88;font-family:monospace;font-size:11px;overflow-y:auto;z-index:100000;padding:10px;border-radius:8px;border:1px solid rgba(0,255,136,0.3);';
     document.body.appendChild(diag);
   }
@@ -20,7 +19,7 @@ function screenLog(msg, type = 'info') {
   diag.scrollTop = diag.scrollHeight;
 }
 
-screenLog('main.js v9.1 iniciado', 'info');
+screenLog('main.js v9.2 iniciado', 'info');
 
 // ===== DOM REFS =====
 const $ = (s) => document.querySelector(s);
@@ -64,7 +63,10 @@ els.sendBtn?.addEventListener('click', async () => {
   const content = els.messageInput.value.trim();
   if (!content || !nexoApp?.activeContact) return;
   appendBubble(content, true);
-  try { await nexoApp.sendMessage({ content, recipient: nexoApp.activeContact.id, transport: 'ble' }); }
+  try {
+    const recipient = nexoApp.activeContact.rawAddress || nexoApp.activeContact.id || nexoApp.activeContact.address || '';
+    await nexoApp.sendMessage({ content, recipient, transport: 'ble' });
+  }
   catch (e) { screenLog(`Send error: ${e.message}`, 'error'); }
   els.messageInput.value = '';
 });
@@ -93,7 +95,6 @@ async function doScan() {
     return;
   }
 
-  // FIX: Asegurar que ble_interface.js esté inicializado antes de escanear
   if (bleInterface?.initBLEInterface && !bleInterface._isInitialized) {
     screenLog('Inicializando BLE interface antes de scan...', 'info');
     try { await bleInterface.initBLEInterface(); } catch (e) {
@@ -107,7 +108,6 @@ async function doScan() {
   screenLog('Scan iniciado', 'info');
 
   try {
-    // Opción 1: Usar ble_interface.js si está disponible
     if (bleInterface?.startBleScan) {
       await bleInterface.startBleScan(
         (device) => {
@@ -118,7 +118,6 @@ async function doScan() {
         (err) => { screenLog(`Scan error: ${err.description || err}`, 'error'); }
       );
     }
-    // Opción 2: Fallback directo al plugin nativo
     else if (window.Capacitor?.Plugins?.NexoBLE) {
       const plugin = window.Capacitor.Plugins.NexoBLE;
       const listener = await plugin.addListener('onScanResult', (result) => {
@@ -169,18 +168,15 @@ function renderDevice(device) {
 async function init() {
   screenLog('Iniciando...', 'info');
 
-  // 1. Esperar Capacitor
   let waited = 0;
   while (!window.Capacitor && waited < 3000) { await new Promise(r => setTimeout(r, 100)); waited += 100; }
   screenLog(`Capacitor: ${window.Capacitor ? 'OK' : 'NO'}`, window.Capacitor ? 'info' : 'warn');
 
-  // 2. Intentar importar ble_interface.js
   try {
     screenLog('Importando ble_interface...', 'info');
     bleInterface = await import('./ui/ble_interface.js');
     screenLog('ble_interface OK', 'info');
     
-    // FIX: Agregar listener de log del bridge para ver diagnóstico en pantalla
     window.addEventListener('nexo:ble:log', (e) => {
       screenLog(`[BLE_IF] ${e.detail.msg}`, e.detail.type);
     });
@@ -194,7 +190,6 @@ async function init() {
     bleInterface = null;
   }
 
-  // 3. Intentar importar nexo_app.js
   try {
     screenLog('Importando nexo_app...', 'info');
     const { createNexoApp } = await import('./app/nexo_app.js');
@@ -212,7 +207,6 @@ async function init() {
     screenLog(`nexo_app falló: ${e.message}`, 'warn');
   }
 
-  // 4. SetupWizard (permisos) - no bloquear si falla
   try {
     screenLog('SetupWizard...', 'info');
     const { SetupWizard } = await import('./ui/SetupWizard.js');
@@ -226,7 +220,6 @@ async function init() {
     screenLog(`Wizard saltado: ${e.message}`, 'warn');
   }
 
-  // 5. Mostrar app
   screenLog('Listo', 'info');
   setTimeout(() => { if (els.splash) { els.splash.style.opacity = '0'; setTimeout(() => els.splash?.remove(), 500); } }, 1000);
   switchView('ble');
