@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.3.3-ARCH — FIX: MAC format preserved for native ops
+ * NEXO App v5.3.4-ARCH — FIX: rawAddress siempre con ':' para plugin nativo
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -77,7 +77,7 @@ export class NexoApp {
     this._contentFpMax = 500;
     this._deviceUUID = null;
     this._bleInitialized = false;
-    DEBUG.log('🚀 [NEXO] v5.3.3-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.3.4-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   _hashContent(str) {
@@ -87,7 +87,6 @@ export class NexoApp {
     return Math.abs(h).toString(36).padStart(8, '0');
   }
 
-  // FIX: Helper para normalizar MAC solo para comparacion, no para nativo
   _normalizeForCompare(id) {
     return (id || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
   }
@@ -109,7 +108,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.3.3-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.3.4-ARCH Ready', 'APP_READY');
       if (this.bleInterface && this.bleInterface.showMainScreen) {
         this.bleInterface.showMainScreen();
       }
@@ -218,11 +217,9 @@ export class NexoApp {
       const displayId = this._deviceUUID || this.vault?.getIdentity?.()?.id || this.bleInterface?.localDeviceAddress || '--';
       this.bleInterface.updateStatus('INIT', 'OFFLINE', displayId);
 
-      // FIX: Guardar address RAW (con ':') para operaciones nativas, y normalized para comparacion
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
         const normalizedId = this._normalizeForCompare(contactId);
-        // FIX: Preservar address con formato MAC original para native plugin
         const rawAddress = address || contactId || '';
         this.activeContact = { 
           id: normalizedId, 
@@ -239,7 +236,6 @@ export class NexoApp {
 
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
-        // FIX: Normalizar ambos lados para comparacion de eco propio
         const nid = this._normalizeForCompare(deviceId);
         const localNormalized = this._normalizeForCompare(this.bleInterface?.localDeviceAddress);
         if (localNormalized && nid === localNormalized) {
@@ -258,10 +254,8 @@ export class NexoApp {
       };
       window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
 
-      // FIX: Usar rawAddress (con ':') para enviar al plugin nativo
       this._bleSendHandler = (e) => {
         const { content, deviceId, messageId } = e.detail;
-        // deviceId del evento DOM viene con ':' del plugin. Si no, usar activeContact.rawAddress
         const targetAddr = deviceId || this.activeContact?.rawAddress || this.activeContact?.address || '';
         this.sendMessage({ content, recipient: targetAddr, messageId, transport: 'ble' });
       };
@@ -359,7 +353,6 @@ export class NexoApp {
       if (transport === 'ble' || transport === 'ble_direct') {
         const nativePlugin = window.Capacitor?.Plugins?.NexoBLE;
         if (nativePlugin?.sendMessage) {
-          // FIX: recipient ya debe venir con formato MAC con ':'
           await nativePlugin.sendMessage({ deviceId: recipient, message: content });
           DEBUG.success(`📤 TX BLE → ${recipient.substring(0, 8)}`, 'MSG_TX');
           return true;
