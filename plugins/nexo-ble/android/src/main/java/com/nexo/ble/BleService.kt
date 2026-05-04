@@ -22,6 +22,7 @@ import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
@@ -102,7 +103,6 @@ class BleService : Service() {
         const val SCAN_RATE_LIMIT = 30000L
         const val SCAN_AUTO_STOP = 15000L
 
-        // FIX CRITICO: Normalizar MAC sin ':' al formato con ':'
         fun normalizeMacAddress(addr: String): String {
             return if (addr.contains(":")) addr.uppercase()
             else addr.chunked(2).joinToString(":").uppercase()
@@ -141,7 +141,6 @@ class BleService : Service() {
         createChannel()
         startFg()
         try { initGattServer() } catch (e: Exception) { Log.e(TAG, "GATT init error: ${e.message}") }
-        // FIX: No iniciar advertising aqui. Dejar que el plugin/JS lo controle.
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -201,7 +200,7 @@ class BleService : Service() {
                 val msg = String(v, Charsets.UTF_8)
                 var sn = "NEXO Peer"; var ct = msg; var mid = ""
                 try { val j = org.json.JSONObject(msg); sn = j.optString("senderName", sn); ct = j.optString("content", ct); mid = j.optString("messageId", mid) } catch (e: Exception) {}
-                sendBroadcast(Intent(ACTION_MESSAGE_RECEIVED).apply { putExtra(EXTRA_DEVICE_ADDRESS, d?.address); putExtra(EXTRA_DEVICE_NAME, d?.name ?: "Unknown"); putExtra(EXTRA_MESSAGE, msg); putExtra(EXTRA_CONTENT, ct); putExtra(EXTRA_SENDER_NAME, sn); putExtra(EXTRA_MESSAGE_ID, mid); putExtra(EXTRA_SOURCE, "server_write_request"); putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis()) })
+                sendLocalBroadcast(Intent(ACTION_MESSAGE_RECEIVED).apply { putExtra(EXTRA_DEVICE_ADDRESS, d?.address); putExtra(EXTRA_DEVICE_NAME, d?.name ?: "Unknown"); putExtra(EXTRA_MESSAGE, msg); putExtra(EXTRA_CONTENT, ct); putExtra(EXTRA_SENDER_NAME, sn); putExtra(EXTRA_MESSAGE_ID, mid); putExtra(EXTRA_SOURCE, "server_write_request"); putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis()) })
                 if (rN) gattServer?.sendResponse(d, rId, BluetoothGatt.GATT_SUCCESS, o, null)
             }
         }
@@ -210,13 +209,12 @@ class BleService : Service() {
                 if (rN) gattServer?.sendResponse(d, rId, BluetoothGatt.GATT_SUCCESS, 0, null)
                 if (desc.uuid == CCCD_UUID) {
                     val enabled = v != null && v.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-                    sendBroadcast(Intent(ACTION_CLIENT_NOTIFICATION_STATE_CHANGED).apply { putExtra(EXTRA_DEVICE_ADDRESS, d.address); putExtra(EXTRA_ENABLED, enabled) })
+                    sendLocalBroadcast(Intent(ACTION_CLIENT_NOTIFICATION_STATE_CHANGED).apply { putExtra(EXTRA_DEVICE_ADDRESS, d.address); putExtra(EXTRA_ENABLED, enabled) })
                 }
             } catch (e: SecurityException) {}
         }
     }
 
-    // FIX CRITICO: Normalizar MAC antes de usar
     fun connectToDevice(addr: String): Boolean {
         val normalizedAddr = normalizeMacAddress(addr)
         val a = btAdapter ?: return false
@@ -307,7 +305,7 @@ class BleService : Service() {
             } catch (e: SecurityException) { failConn(g.device.address, "SecurityException") }
         }
         override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, s: Int) {
-            if (d.uuid == CCCD_UUID && s == BluetoothGatt.GATT_SUCCESS) { sendBroadcast(Intent(ACTION_NOTIFICATIONS_ENABLED).apply { putExtra(EXTRA_DEVICE_ADDRESS, g.device.address); putExtra(EXTRA_ENABLED, true) }); markReady(g.device.address, g) }
+            if (d.uuid == CCCD_UUID && s == BluetoothGatt.GATT_SUCCESS) { sendLocalBroadcast(Intent(ACTION_NOTIFICATIONS_ENABLED).apply { putExtra(EXTRA_DEVICE_ADDRESS, g.device.address); putExtra(EXTRA_ENABLED, true) }); markReady(g.device.address, g) }
             else if (s != BluetoothGatt.GATT_SUCCESS) failConn(g.device.address, "Descriptor failed")
         }
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic) {
@@ -315,7 +313,7 @@ class BleService : Service() {
                 val msg = String(c.value ?: byteArrayOf(), Charsets.UTF_8)
                 var sn = "NEXO Peer"; var ct = msg; var mid = ""
                 try { val j = org.json.JSONObject(msg); sn = j.optString("senderName", sn); ct = j.optString("content", ct); mid = j.optString("messageId", mid) } catch (e: Exception) {}
-                sendBroadcast(Intent(ACTION_MESSAGE_RECEIVED).apply { putExtra(EXTRA_DEVICE_ADDRESS, g.device.address); putExtra(EXTRA_DEVICE_NAME, g.device.name ?: "Unknown"); putExtra(EXTRA_MESSAGE, msg); putExtra(EXTRA_CONTENT, ct); putExtra(EXTRA_SENDER_NAME, sn); putExtra(EXTRA_MESSAGE_ID, mid); putExtra(EXTRA_SOURCE, "client_notification"); putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis()) })
+                sendLocalBroadcast(Intent(ACTION_MESSAGE_RECEIVED).apply { putExtra(EXTRA_DEVICE_ADDRESS, g.device.address); putExtra(EXTRA_DEVICE_NAME, g.device.name ?: "Unknown"); putExtra(EXTRA_MESSAGE, msg); putExtra(EXTRA_CONTENT, ct); putExtra(EXTRA_SENDER_NAME, sn); putExtra(EXTRA_MESSAGE_ID, mid); putExtra(EXTRA_SOURCE, "client_notification"); putExtra(EXTRA_TIMESTAMP, System.currentTimeMillis()) })
             }
         }
         override fun onCharacteristicWrite(g: BluetoothGatt, c: BluetoothGattCharacteristic, s: Int) {
@@ -340,7 +338,7 @@ class BleService : Service() {
     private fun markReady(a: String, g: BluetoothGatt) {
         val cn = conns[a] ?: return
         cn.state = ConnState.READY; cn.retry = 0; cn.gatt = g
-        sendBroadcast(Intent(ACTION_SERVICES_READY).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_SUCCESS, true) })
+        sendLocalBroadcast(Intent(ACTION_SERVICES_READY).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_SUCCESS, true) })
     }
 
     private fun failConn(a: String, r: String) {
@@ -348,7 +346,6 @@ class BleService : Service() {
         bcastFail(a, r, conns[a]?.retry ?: 0)
     }
 
-    // FIX CRITICO: Verificar scan activo + onBatchScanResults
     fun startScan() {
         if (isScan) {
             Log.w(TAG, "Scan already active, ignoring duplicate startScan()")
@@ -369,9 +366,13 @@ class BleService : Service() {
             .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
             .build()
 
+        val filter = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(SERVICE_UUID))
+            .build()
+
         scanResults.clear(); isScan = true
         try {
-            scanner?.startScan(null, settings, scanCb)
+            scanner?.startScan(listOf(filter), settings, scanCb)
             handler.postDelayed({ if (isScan) stopScan() }, SCAN_AUTO_STOP)
         } catch (e: SecurityException) {
             isScan = false; bcastScanFail(-4, "SecurityException")
@@ -382,12 +383,11 @@ class BleService : Service() {
         if (isScan) {
             try { scanner?.stopScan(scanCb) } catch (e: Exception) {}
             isScan = false
-            sendBroadcast(Intent(ACTION_SCAN_STOPPED).apply { putExtra("result_count", scanResults.size) })
+            sendLocalBroadcast(Intent(ACTION_SCAN_STOPPED).apply { putExtra("result_count", scanResults.size) })
         }
     }
 
     private val scanCb = object : ScanCallback() {
-        // FIX: Manejar batch results por si Samsung entrega por ahi
         override fun onBatchScanResults(results: MutableList<ScanResult>?) {
             results?.forEach { onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, it) }
         }
@@ -402,18 +402,12 @@ class BleService : Service() {
                 } catch (se: SecurityException) { return }
 
                 val record = it.scanRecord
-                val uuids = record?.serviceUuids
-                val hasNexoUuid = uuids?.any { u -> u.uuid == SERVICE_UUID } == true
+                val hasNexoUuid = record?.serviceUuids?.any { u -> u.uuid == SERVICE_UUID } == true
 
-                // FIX CRITICO: Solo detectar dispositivos NEXO reales.
-                // Incluir si tiene nuestro UUID o si su nombre REAL contiene NEXO.
-                // NO asignar "NEXO" artificialmente a dispositivos sin nombre.
-                val isNexoDevice = hasNexoUuid || devName.contains("NEXO", ignoreCase = true)
-
-                if (isNexoDevice) {
+                if (hasNexoUuid || record?.serviceUuids != null) {
                     val displayName = devName.ifBlank { "NEXO Device" }
                     if (scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)) scanResults[addr] = it
-                    sendBroadcast(Intent(ACTION_SCAN_RESULT).apply {
+                    sendLocalBroadcast(Intent(ACTION_SCAN_RESULT).apply {
                         putExtra(EXTRA_DEVICE_ADDRESS, addr)
                         putExtra(EXTRA_RSSI, it.rssi)
                         putExtra(EXTRA_DEVICE_NAME, displayName)
@@ -436,7 +430,6 @@ class BleService : Service() {
         }
     }
 
-    // FIX CRITICO: Incluir device name en advertising para identificacion Samsung
     fun startAdvertising(name: String = "") {
         if (isAd) { bcastAd(true); return }
         val adapter = btAdapter ?: run { bcastAd(false, "Adapter null"); return }
@@ -455,11 +448,7 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
-        // FIX: setIncludeDeviceName(true) para que Samsung S24 pueda identificar por nombre
-        // Service UUID 128-bit (18 bytes) + Name "NEXO" (6 bytes) + Flags (3 bytes) = 27 bytes < 31 bytes limit
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
-            .setIncludeTxPowerLevel(false)
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .build()
 
@@ -515,11 +504,16 @@ class BleService : Service() {
         }
     }
 
-    private fun bcastScanFail(c: Int, d: String) { sendBroadcast(Intent(ACTION_SCAN_FAILED).apply { putExtra(EXTRA_ERROR_CODE, c); putExtra(EXTRA_ERROR_DESC, d) }) }
-    private fun bcastAd(v: Boolean, reason: String = "") { sendBroadcast(Intent(ACTION_ADVERT_STATE).apply { putExtra(EXTRA_ADVERTISING, v); if (reason.isNotEmpty()) putExtra(EXTRA_REASON, reason) }) }
-    private fun bcastDev(a: String, d: BluetoothDevice?, dir: String = "", att: Int = 0, wasReady: Boolean = false) { sendBroadcast(Intent(a).apply { putExtra(EXTRA_DEVICE_ADDRESS, d?.address); putExtra(EXTRA_DEVICE_NAME, d?.name ?: "Unknown"); putExtra(EXTRA_DIRECTION, dir); putExtra(EXTRA_ATTEMPT, att); putExtra("wasReady", wasReady) }) }
-    private fun bcastFail(a: String, r: String, att: Int) { sendBroadcast(Intent(ACTION_CONNECTION_FAILED).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_REASON, r); putExtra(EXTRA_ATTEMPT, att); putExtra(EXTRA_MAX_ATTEMPTS, MAX_RETRY) }) }
-    private fun bcastRetry(a: String, delay: Long, att: Int) { sendBroadcast(Intent(ACTION_RETRY_SCHEDULED).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_DELAY_MS, delay); putExtra(EXTRA_ATTEMPT, att) }) }
-    private fun bcastSent(a: String, mid: String, ok: Boolean) { sendBroadcast(Intent(ACTION_MESSAGE_SENT).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_MESSAGE_ID, mid); putExtra(EXTRA_SUCCESS, ok) }) }
+    private fun sendLocalBroadcast(intent: Intent) {
+        intent.setPackage(packageName)
+        sendBroadcast(intent)
+    }
+
+    private fun bcastScanFail(c: Int, d: String) { sendLocalBroadcast(Intent(ACTION_SCAN_FAILED).apply { putExtra(EXTRA_ERROR_CODE, c); putExtra(EXTRA_ERROR_DESC, d) }) }
+    private fun bcastAd(v: Boolean, reason: String = "") { sendLocalBroadcast(Intent(ACTION_ADVERT_STATE).apply { putExtra(EXTRA_ADVERTISING, v); if (reason.isNotEmpty()) putExtra(EXTRA_REASON, reason) }) }
+    private fun bcastDev(a: String, d: BluetoothDevice?, dir: String = "", att: Int = 0, wasReady: Boolean = false) { sendLocalBroadcast(Intent(a).apply { putExtra(EXTRA_DEVICE_ADDRESS, d?.address); putExtra(EXTRA_DEVICE_NAME, d?.name ?: "Unknown"); putExtra(EXTRA_DIRECTION, dir); putExtra(EXTRA_ATTEMPT, att); putExtra("wasReady", wasReady) }) }
+    private fun bcastFail(a: String, r: String, att: Int) { sendLocalBroadcast(Intent(ACTION_CONNECTION_FAILED).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_REASON, r); putExtra(EXTRA_ATTEMPT, att); putExtra(EXTRA_MAX_ATTEMPTS, MAX_RETRY) }) }
+    private fun bcastRetry(a: String, delay: Long, att: Int) { sendLocalBroadcast(Intent(ACTION_RETRY_SCHEDULED).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_DELAY_MS, delay); putExtra(EXTRA_ATTEMPT, att) }) }
+    private fun bcastSent(a: String, mid: String, ok: Boolean) { sendLocalBroadcast(Intent(ACTION_MESSAGE_SENT).apply { putExtra(EXTRA_DEVICE_ADDRESS, a); putExtra(EXTRA_MESSAGE_ID, mid); putExtra(EXTRA_SUCCESS, ok) }) }
     private fun cleanup() { conns.forEach { (_, c) -> c.userDisc = true; c.gatt?.let { try { it.disconnect(); it.close() } catch (e: Exception) {} }; c.gatt = null; c.state = ConnState.IDLE }; serverConns.clear(); gattServer?.close(); gattServer = null }
 }
