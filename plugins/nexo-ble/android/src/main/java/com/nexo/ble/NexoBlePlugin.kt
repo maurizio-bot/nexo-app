@@ -81,6 +81,12 @@ class NexoBlePlugin : Plugin() {
         const val EXTRA_CONTENT = "content"
         const val EXTRA_DATA = "data"
         const val EXTRA_SENDER_NAME = "sender_name"
+
+        // FIX: Reutilizar normalizacion de BleService
+        fun normalizeMacAddress(addr: String): String {
+            return if (addr.contains(":")) addr.uppercase()
+            else addr.chunked(2).joinToString(":").uppercase()
+        }
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -272,17 +278,13 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // FIX CRASH: No iniciar foreground service si no hay permisos
     override fun load() {
-        napLog("REM-BRIDGE-020", "load() — INICIO v5.2.6-ARCH", "INFO")
-        
-        // CRITICAL FIX: Si no hay permisos, NO iniciar service (evita crash en solicitud)
+        napLog("REM-BRIDGE-020", "load() — INICIO v5.3.0-ARCH", "INFO")
         if (!canAccessBluetooth()) {
             napLog("REM-BRIDGE-020b", "Sin permisos al cargar, omitiendo startForegroundService", "WARN")
             registerReceiverOnly()
             return
         }
-        
         startServiceAndBind()
         napLog("REM-BRIDGE-025", "load() — FIN (con permisos)", "INFO")
     }
@@ -424,7 +426,6 @@ class NexoBlePlugin : Plugin() {
         requestAllPermissions(call, "requestPermissionsCallback")
     }
 
-    // FIX CRASH: try-catch completo + iniciar service SOLO después de permisos
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
         try {
@@ -432,7 +433,6 @@ class NexoBlePlugin : Plugin() {
             val allGranted = result.getBoolean("allGranted", false) ?: false
             napLog("REM-PERM-005", "requestPermissionsCallback allGranted=$allGranted", "INFO")
             if (allGranted) {
-                // CRITICAL FIX: Iniciar service AHORA que sí hay permisos
                 startServiceAndBind()
                 call.resolve(result)
             } else {
@@ -508,7 +508,6 @@ class NexoBlePlugin : Plugin() {
         userName = call.getString("userName") ?: "NEXO User"
         napLog("REM-INIT-004", "performInitialization: userId=${userId.take(8)} name=$userName", "INFO")
 
-        // FIX: Asegurar que el service esté iniciado si no lo estaba
         if (!serviceBound) {
             startServiceAndBind()
         }
@@ -551,21 +550,25 @@ class NexoBlePlugin : Plugin() {
         withService(call) { it.stopAdvertising(); call.resolve() }
     }
 
+    // FIX: Normalizar MAC antes de pasar al service
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
-        val deviceId = call.getString("deviceId") ?: return call.reject("Falta deviceId")
-        napLog("REM-API-005", "connectToDevice($deviceId) llamado", "INFO")
+        val rawDeviceId = call.getString("deviceId") ?: return call.reject("Falta deviceId")
+        val deviceId = normalizeMacAddress(rawDeviceId)
+        napLog("REM-API-005", "connectToDevice($deviceId) llamado [raw=$rawDeviceId]", "INFO")
         withService(call) { svc ->
             if (svc.connectToDevice(deviceId)) call.resolve()
             else call.reject("Error de conexion inmediata")
         }
     }
 
+    // FIX: Normalizar MAC antes de pasar al service
     @PluginMethod
     fun sendMessage(call: PluginCall) {
-        val deviceId = call.getString("deviceId") ?: return call.reject("Falta deviceId")
+        val rawDeviceId = call.getString("deviceId") ?: return call.reject("Falta deviceId")
+        val deviceId = normalizeMacAddress(rawDeviceId)
         val content = call.getString("message") ?: call.getString("data") ?: ""
-        napLog("REM-API-006", "sendMessage($deviceId) len=${content.length} llamado", "INFO")
+        napLog("REM-API-006", "sendMessage($deviceId) len=${content.length} llamado [raw=$rawDeviceId]", "INFO")
         withService(call) { svc ->
             if (svc.sendMessage(deviceId, content)) call.resolve()
             else call.reject("No enviado")
