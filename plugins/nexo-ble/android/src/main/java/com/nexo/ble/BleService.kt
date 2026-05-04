@@ -410,14 +410,19 @@ class BleService : Service() {
         }
     }
 
-    // CRITICAL FIX: Advertising MINIMAL — solo Service UUID, SIN nombre del sistema
-    // Payload: Flags(3) + UUID 128-bit(18) = 21 bytes << 31 bytes limite
-    fun startAdvertising() {
+    // FIX BUG-001: Acepta nombre como parámetro (retrocompatible con default)
+    // FIX BUG-005: Guarda nombre para usar en ANNOUNCE characteristic
+    fun startAdvertising(name: String = "") {
         if (isAd) { bcastAd(true); return }
         val adapter = btAdapter ?: run { bcastAd(false, "Adapter null"); return }
         if (!adapter.isEnabled) { bcastAd(false, "Bluetooth disabled"); return }
         val freshAdvertiser = adapter.bluetoothLeAdvertiser ?: run { bcastAd(false, "Advertiser null"); return }
         this.advertiser = freshAdvertiser
+
+        // FIX BUG-005: Usar nombre proporcionado para identidad
+        if (name.isNotBlank()) {
+            this.userName = name
+        }
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -426,7 +431,6 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
-        // FIX: NO setIncludeDeviceName — evita que nombre largo del sistema rompa payload
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
@@ -450,9 +454,10 @@ class BleService : Service() {
         isAd = false; advertiser = null; bcastAd(false)
     }
 
+    // FIX BUG-005: Usar uname correctamente en lugar de forzar "NEXO"
     fun setUserInfo(uid: String, uname: String) {
         this.userId = uid
-        this.userName = "NEXO"
+        this.userName = uname.ifBlank { "NEXO" }
     }
 
     fun isBluetoothEnabled() = btAdapter?.isEnabled == true
