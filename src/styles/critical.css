@@ -1,334 +1,139 @@
-/* Reset básico */
+/* ==================== RESET ==================== */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* Splash Screen */
+/* ==================== SPLASH ==================== */
 #splash-native {
-  position: fixed;
-  inset: 0;
-  background: #0a0a0a;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 99999;
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  position: fixed; inset: 0; background: #0a0a0a;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 99999; transition: opacity 0.5s ease, transform 0.5s ease;
 }
+#splash-logo { width: 120px; height: 120px; background: url('../assets/logo.png') center/contain no-repeat; animation: pulse 2s infinite; }
+#splash-text { margin-top: 20px; color: #64748b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 18px; letter-spacing: 4px; text-transform: uppercase; }
+@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.95); opacity: 0.8; } }
 
-#splash-logo {
-  width: 120px;
-  height: 120px;
-  background: url('../assets/logo.png') center/contain no-repeat;
-  animation: pulse 2s infinite;
-}
-
-#splash-text {
-  margin-top: 20px;
-  color: #64748b;
+/* ==================== APP ==================== */
+#app {
+  display: flex; flex-direction: column;
+  height: 100vh; height: 100dvh;
+  background: #000000; color: #fff;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 18px;
-  letter-spacing: 4px;
-  text-transform: uppercase;
+  overflow: hidden; position: relative;
 }
 
-@keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(0.95); opacity: 0.8; }
+/* ==================== TOP HEADER ==================== */
+#top-header {
+  position: fixed; top: 0; left: 0; right: 0; height: 56px;
+  padding: 0 20px; display: flex; align-items: center; justify-content: space-between;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); z-index: 100;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
+.top-title { font-size: 22px; font-weight: 700; letter-spacing: 2px; color: #ffffff; }
+.top-pip { width: 44px; height: 44px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+.top-pip img { width: 100%; height: 100%; object-fit: cover; }
 
-/* Diagnóstico */
-#nexo-diagnostic {
-  display: none;
-  position: fixed;
-  bottom: 100px;
-  right: 20px;
-  width: 300px;
-  max-height: 200px;
-  background: rgba(0,0,0,0.9);
-  color: #00ff88;
-  font-family: monospace;
-  font-size: 11px;
-  overflow-y: auto;
-  z-index: 99998;
-  padding: 10px;
-  border-radius: 8px;
+/* ==================== VIEWS ==================== */
+.view {
+  position: fixed; top: 56px; left: 0; right: 0; bottom: 96px;
+  background: #000000; display: none; flex-direction: column; overflow-y: auto; z-index: 10;
 }
+.view.active { display: flex; }
 
+/* ==================== HOME VIEW ==================== */
+#home-view { align-items: center; justify-content: center; }
+.home-logo svg { width: 160px; height: 160px; filter: drop-shadow(0 0 20px rgba(0,212,255,0.15)); }
+.home-version { margin-top: 24px; font-size: 15px; color: #475569; letter-spacing: 8px; text-transform: uppercase; font-weight: 500; }
+
+/* ==================== CHAT VIEW ==================== */
+#chat-header {
+  position: sticky; top: 0; height: 52px; background: rgba(0,0,0,0.9); backdrop-filter: blur(10px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-bottom: 1px solid rgba(255,255,255,0.08); z-index: 50; flex-shrink: 0;
+}
+#chat-contact-name { background: transparent; border: none; color: #fff; font-size: 17px; font-weight: 600; text-align: center; width: 80%; outline: none; }
+#chat-contact-subtitle { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+#messages-container { flex: 1; overflow-y: auto; padding: 10px 16px 10px 16px; display: flex; flex-direction: column; gap: 10px; background: #000000; }
+.message { max-width: 80%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.4; animation: messageIn 0.3s ease; }
+@keyframes messageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.message.own { align-self: flex-end; background: #0066cc; color: white; border-bottom-right-radius: 4px; }
+.message.other { align-self: flex-start; background: #1f2937; color: #e5e7eb; border-bottom-left-radius: 4px; }
+.message-meta { margin-top: 4px; font-size: 11px; opacity: 0.6; display: flex; gap: 8px; }
+
+/* Input — oculto por defecto, visible con .chat-active en #app */
+#input-area {
+  position: sticky; bottom: 0; left: 0; right: 0;
+  padding: 10px 16px; background: rgba(0,0,0,0.95); backdrop-filter: blur(10px);
+  display: none; gap: 10px; border-top: 1px solid rgba(255,255,255,0.1); z-index: 60; flex-shrink: 0;
+}
+.chat-active #input-area { display: flex; }
+#message-input { flex: 1; background: #1f2937; border: none; border-radius: 28px; padding: 12px 20px; color: white; font-size: 16px; outline: none; height: 48px; }
+#message-input::placeholder { color: #6b7280; }
+#send-btn { width: 48px; height: 48px; border-radius: 50%; border: none; background: #0066cc; color: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* ==================== BLE VIEW ==================== */
+#ble-view { padding: 20px; }
+.ble-title { font-size: 28px; font-weight: 700; letter-spacing: 4px; text-align: center; margin-bottom: 20px; color: #fff; }
+#ble-devices-list { flex: 1; overflow-y: auto; }
+.ble-empty { text-align: center; color: #64748b; padding: 40px 20px; font-size: 14px; }
+.ble-device { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; margin-bottom: 8px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
+.ble-device-name { font-size: 15px; font-weight: 500; }
+.ble-device-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+.ble-device-rssi { font-size: 12px; color: #00d4ff; font-weight: 600; }
+
+/* ==================== SETTINGS VIEW ==================== */
+#settings-view { padding: 20px; }
+.settings-title { font-size: 20px; font-weight: 600; margin-bottom: 20px; }
+.settings-list { display: flex; flex-direction: column; gap: 0; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 15px; }
+
+/* ==================== BOTTOM NAV ==================== */
+#bottom-nav {
+  position: fixed; bottom: 40px; left: 0; right: 0; height: 56px;
+  background: rgba(0,0,0,0.95); backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; justify-content: space-around;
+  z-index: 2147483647;
+}
+.nav-btn { flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: none; border: none; color: #64748b; cursor: pointer; transition: color 0.2s ease; padding: 0; }
+.nav-btn.active { color: #00d4ff; }
+.nav-btn:active { opacity: 0.6; }
+.nav-btn svg { width: 22px; height: 22px; }
+.nav-btn span { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; }
+
+/* ==================== STATUS BAR INFERIOR ==================== */
+#status-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; height: 40px;
+  background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; z-index: 2147483646; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.sb-brand { color: #ffffff; }
+.sb-phase { color: #10b981; }
+.sb-mode { color: #ef4444; }
+.sb-mode.online { color: #10b981; }
+.sb-id { color: #64748b; font-family: monospace; font-size: 10px; }
+
+/* ==================== VAULT PANEL ==================== */
+#vault-panel { position: fixed; top: 0; right: 0; width: 85%; height: 100%; background: #1a1a1a; z-index: 1000; transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: -5px 0 25px rgba(0,0,0,0.5); display: flex; flex-direction: column; }
+#vault-panel.vault-visible { transform: translateX(0); }
+.vault-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.vault-header h3 { margin: 0 0 10px 0; color: #fff; }
+#current-context { display: flex; gap: 10px; font-size: 12px; color: #64748b; }
+#contacts-list { flex: 1; overflow-y: auto; padding: 20px; }
+#chispa-creator { padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 10px; }
+#chispa-creator button { padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: white; cursor: pointer; transition: all 0.2s; }
+#chispa-creator button:hover { background: rgba(255,255,255,0.1); }
+
+/* ==================== DIAGNÓSTICO ==================== */
+#nexo-diagnostic { display: none; position: fixed; bottom: 100px; right: 20px; width: 300px; max-height: 200px; background: rgba(0,0,0,0.9); color: #00ff88; font-family: monospace; font-size: 11px; overflow-y: auto; z-index: 99998; padding: 10px; border-radius: 8px; }
 #nexo-diagnostic.visible { display: block; }
 
-/* Error Fatal */
-#fatal-error {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: #0a0a0a;
-  z-index: 100000;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 40px;
-  color: #ff4444;
-}
+/* ==================== ERROR FATAL ==================== */
+#fatal-error { display: none; position: fixed; inset: 0; background: #0a0a0a; z-index: 100000; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; color: #ff4444; }
+#fatal-error h2 { font-size: 48px; margin-bottom: 10px; }
+#fatal-code { background: rgba(255,68,68,0.1); padding: 10px 20px; border-radius: 4px; font-family: monospace; font-size: 14px; color: #ff6666; }
 
-#fatal-error h2 {
-  font-size: 48px;
-  margin-bottom: 10px;
-}
-
-#fatal-code {
-  background: rgba(255,68,68,0.1);
-  padding: 10px 20px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 14px;
-  color: #ff6666;
-}
-
-/* App Principal */
-#app {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: #0a0a0a;
-  color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-#status-indicator {
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  z-index: 100;
-  transition: all 0.3s;
-}
-
-#status-indicator.offline { background: #ef4444; color: white; }
-#status-indicator.online { background: #10b981; color: white; }
-
-/* Messages */
-#messages-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 76px 20px 20px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* FIX v4.0.1: Padding extra solo cuando chat está activo (para dejar espacio al input) */
-.chat-active #messages-container {
-  padding-bottom: 120px;
-}
-
-.message {
-  max-width: 80%;
-  padding: 12px 16px;
-  border-radius: 16px;
-  font-size: 14px;
-  line-height: 1.4;
-  animation: messageIn 0.3s ease;
-}
-
-@keyframes messageIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.message.own {
-  align-self: flex-end;
-  background: #0066cc;
-  color: white;
-  border-bottom-right-radius: 4px;
-}
-
-.message.other {
-  align-self: flex-start;
-  background: #1f2937;
-  color: #e5e7eb;
-  border-bottom-left-radius: 4px;
-}
-
-.message-meta {
-  margin-top: 4px;
-  font-size: 11px;
-  opacity: 0.6;
-  display: flex;
-  gap: 8px;
-}
-
-/* Input Area — FIX: oculto por defecto, solo visible en chat activo */
-#input-area {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) 16px;
-  background: rgba(10,10,10,0.95);
-  backdrop-filter: blur(10px);
-  display: none; /* Oculto por defecto */
-  gap: 10px;
-  border-top: 1px solid rgba(255,255,255,0.1);
-  z-index: 2147483630;
-}
-
-/* FIX: Mostrar input solo cuando chat está activo, posicionado arriba de bottom bar */
-.chat-active #input-area {
-  display: flex;
-  bottom: 56px;
-}
-
-#message-input {
-  flex: 1;
-  background: #1f2937;
-  border: none;
-  border-radius: 28px;
-  padding: 12px 20px;
-  color: white;
-  font-size: 16px;
-  outline: none;
-  height: 48px;
-}
-
-#message-input::placeholder { color: #6b7280; }
-
-#send-btn {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  border: none;
-  background: #0066cc;
-  color: white;
-  font-size: 22px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-/* Vault Panel */
-#vault-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 85%;
-  height: 100%;
-  background: #1a1a1a;
-  z-index: 1000;
-  transform: translateX(100%);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: -5px 0 25px rgba(0,0,0,0.5);
-  display: flex;
-  flex-direction: column;
-}
-
-#vault-panel.vault-visible {
-  transform: translateX(0);
-}
-
-.vault-header {
-  padding: 20px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-
-.vault-header h3 {
-  margin: 0 0 10px 0;
-  color: #fff;
-}
-
-#current-context {
-  display: flex;
-  gap: 10px;
-  font-size: 12px;
-  color: #64748b;
-}
-
-#contacts-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-}
-
-#chispa-creator {
-  padding: 20px;
-  border-top: 1px solid rgba(255,255,255,0.1);
-  display: flex;
-  gap: 10px;
-}
-
-#chispa-creator button {
-  padding: 8px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: transparent;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-#chispa-creator button:hover {
-  background: rgba(255,255,255,0.1);
-}
-
-/* REM Toasts */
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-@keyframes slideOut {
-  to { transform: translateX(100%); opacity: 0; }
-}
-
-/* FIX VISTAS: Clase de control de visibilidad */
-.hidden {
-  display: none !important;
-}
-
-/* CHAT HEADER: Destinatario editable */
-#chat-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 56px;
-  background: rgba(10,10,10,0.95);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-}
-
-#chat-contact-name {
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid transparent;
-  color: #fff;
-  font-size: 17px;
-  font-weight: 600;
-  text-align: center;
-  width: 80%;
-  outline: none;
-  padding: 2px 8px;
-  transition: border-color 0.2s;
-}
-
-#chat-contact-name:focus {
-  border-bottom-color: #00d4ff;
-}
-
-#chat-contact-subtitle {
-  font-size: 11px;
-  color: #64748b;
-  margin-top: 2px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
+/* ==================== UTILIDADES ==================== */
+.hidden { display: none !important; }
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
