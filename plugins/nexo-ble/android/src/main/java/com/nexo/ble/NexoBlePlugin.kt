@@ -10,10 +10,13 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
@@ -278,7 +281,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("REM-BRIDGE-020", "load() — INICIO v5.4.0-ARCH", "INFO")
+        napLog("REM-BRIDGE-020", "load() — INICIO v5.5.0-ARCH", "INFO")
         if (!canAccessBluetooth()) {
             napLog("REM-BRIDGE-020b", "Sin permisos al cargar, omitiendo startForegroundService", "WARN")
             registerReceiverOnly()
@@ -352,6 +355,29 @@ class NexoBlePlugin : Plugin() {
             put("shortUUID", uuid.substring(0, 8))
         })
         napLog("REM-UUID-004", "getDeviceUUID() resuelto: ${uuid.substring(0, 8)}...", "INFO")
+    }
+
+    @PluginMethod
+    fun requestBatteryOptimizationExemption(call: PluginCall) {
+        napLog("REM-BATT-001", "requestBatteryOptimizationExemption() llamado", "INFO")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(context.packageName)) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                }
+                try {
+                    context.startActivity(intent)
+                    call.resolve(JSObject().apply { put("requested", true); put("message", "Solicitando exención de batería") })
+                } catch (e: Exception) {
+                    call.reject("BATT_ERR", "No se pudo abrir diálogo de batería: ${e.message}")
+                }
+            } else {
+                call.resolve(JSObject().apply { put("requested", false); put("alreadyExempt", true); put("message", "Ya está exento de optimización") })
+            }
+        } else {
+            call.resolve(JSObject().apply { put("requested", false); put("message", "No requerido en este Android") })
+        }
     }
 
     private fun canAccessBluetooth(): Boolean {
