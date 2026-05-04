@@ -1,10 +1,9 @@
 /**
- * main.js v9.2-FINAL
- * Ultra-defensivo. Si un módulo falla, usa fallback nativo.
- * Diagnóstico visible en pantalla desde el primer segundo.
+ * main.js v9.3-FINAL
+ * Fix botón escanear: toggle correcto + listener nexo:ble:deviceFound
+ * Feedback visual: pulse glow al escanear, escala al pulsar
  */
 
-// ===== LOGGING VISUAL =====
 function screenLog(msg, type = 'info') {
   console.log(`[MAIN] ${msg}`);
   let diag = document.getElementById('nexo-diagnostic');
@@ -19,9 +18,8 @@ function screenLog(msg, type = 'info') {
   diag.scrollTop = diag.scrollHeight;
 }
 
-screenLog('main.js v9.2 iniciado', 'info');
+screenLog('main.js v9.3 iniciado', 'info');
 
-// ===== DOM REFS =====
 const $ = (s) => document.querySelector(s);
 const els = {
   splash: $('#splash-native'),
@@ -44,8 +42,8 @@ let currentView = 'ble';
 let isScanning = false;
 let nexoApp = null;
 let bleInterface = null;
+let scanAutoStopTimer = null;
 
-// ===== NAVEGACIÓN =====
 function switchView(name) {
   currentView = name;
   els.views.forEach(v => v.classList.remove('active'));
@@ -58,7 +56,6 @@ function switchView(name) {
 
 els.navBtns.forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
 
-// ===== CHAT =====
 els.sendBtn?.addEventListener('click', async () => {
   const content = els.messageInput.value.trim();
   if (!content || !nexoApp?.activeContact) return;
@@ -66,8 +63,7 @@ els.sendBtn?.addEventListener('click', async () => {
   try {
     const recipient = nexoApp.activeContact.rawAddress || nexoApp.activeContact.id || nexoApp.activeContact.address || '';
     await nexoApp.sendMessage({ content, recipient, transport: 'ble' });
-  }
-  catch (e) { screenLog(`Send error: ${e.message}`, 'error'); }
+  } catch (e) { screenLog(`Send error: ${e.message}`, 'error'); }
   els.messageInput.value = '';
 });
 
@@ -81,71 +77,6 @@ function appendBubble(content, isOwn, mid = null) {
   els.messagesContainer.appendChild(b);
   els.messagesContainer.scrollTop = els.messagesContainer.scrollHeight;
 }
-
-// ===== BLE SCAN =====
-async function doScan() {
-  if (isScanning) {
-    screenLog('Deteniendo scan...', 'info');
-    try { 
-      if (bleInterface?.stopBleScan) await bleInterface.stopBleScan();
-      else if (window.Capacitor?.Plugins?.NexoBLE) await window.Capacitor.Plugins.NexoBLE.stopScan();
-    } catch (e) {}
-    isScanning = false;
-    els.btnBleScan.textContent = '⟳ Escanear';
-    return;
-  }
-
-  if (bleInterface?.initBLEInterface && !bleInterface._isInitialized) {
-    screenLog('Inicializando BLE interface antes de scan...', 'info');
-    try { await bleInterface.initBLEInterface(); } catch (e) {
-      screenLog(`Init BLE interface warning: ${e.message}`, 'warn');
-    }
-  }
-
-  els.bleDevicesList.innerHTML = '<div class="ble-empty">Escaneando...</div>';
-  els.btnBleScan.textContent = '⏹ Detener';
-  isScanning = true;
-  screenLog('Scan iniciado', 'info');
-
-  try {
-    if (bleInterface?.startBleScan) {
-      await bleInterface.startBleScan(
-        (device) => {
-          const empty = els.bleDevicesList.querySelector('.ble-empty');
-          if (empty) empty.remove();
-          renderDevice(device);
-        },
-        (err) => { screenLog(`Scan error: ${err.description || err}`, 'error'); }
-      );
-    }
-    else if (window.Capacitor?.Plugins?.NexoBLE) {
-      const plugin = window.Capacitor.Plugins.NexoBLE;
-      const listener = await plugin.addListener('onScanResult', (result) => {
-        const empty = els.bleDevicesList.querySelector('.ble-empty');
-        if (empty) empty.remove();
-        renderDevice({ address: result.address || result.deviceId, name: result.name || 'Desconocido', rssi: result.rssi });
-      });
-      await plugin.startScan();
-      setTimeout(async () => {
-        try { await plugin.stopScan(); } catch (e) {}
-        try { listener.remove(); } catch (e) {}
-        if (isScanning) { isScanning = false; els.btnBleScan.textContent = '⟳ Escanear'; }
-      }, 15000);
-    }
-    else {
-      screenLog('BLE no disponible', 'warn');
-      els.bleDevicesList.innerHTML = '<div class="ble-empty">BLE no disponible en este dispositivo</div>';
-      isScanning = false;
-      els.btnBleScan.textContent = '⟳ Escanear';
-    }
-  } catch (err) {
-    screenLog(`Scan falló: ${err.message}`, 'error');
-    isScanning = false;
-    els.btnBleScan.textContent = '⟳ Escanear';
-  }
-}
-
-els.btnBleScan?.addEventListener('click', doScan);
 
 function renderDevice(device) {
   const existing = document.querySelector(`[data-addr="${device.address}"]`);
@@ -164,6 +95,54 @@ function renderDevice(device) {
   screenLog(`Encontrado: ${device.name || 'Desconocido'}`, 'info');
 }
 
+// ===== BLE SCAN TOGGLE =====
+async function doScan() {
+  if (isScanning) {
+    screenLog('Deteniendo scan...', 'info');
+    if (scanAutoStopTimer) { clearTimeout(scanAutoStopTimer); scanAutoStopTimer = null; }
+    try { 
+      if (bleInterface?.stopBleScan) await bleInterface.stopBleScan();
+      else if (window.Capacitor?.Plugins?.NexoBLE) await window.Capacitor.Plugins.NexoBLE.stopScan();
+    } catch (e) {}
+    isScanning = false;
+    els.btnBleScan.textContent = '⟳ Escanear';
+    els.btnBleScan.classList.remove('scanning');
+    return;
+  }
+
+  els.bleDevicesList.innerHTML = '<div class="ble-empty">Escaneando...</div>';
+  els.btnBleScan.textContent = '⏹ Detener';
+  els.btnBleScan.classList.add('scanning');
+  isScanning = true;
+  screenLog('Scan iniciado', 'info');
+
+  try {
+    if (bleInterface?.startBleScan) {
+      await bleInterface.startBleScan();
+    }
+    else if (window.Capacitor?.Plugins?.NexoBLE) {
+      await window.Capacitor.Plugins.NexoBLE.startScan();
+    }
+    else {
+      screenLog('BLE no disponible', 'warn');
+      isScanning = false;
+      els.btnBleScan.textContent = '⟳ Escanear';
+      els.btnBleScan.classList.remove('scanning');
+      return;
+    }
+    scanAutoStopTimer = setTimeout(() => {
+      if (isScanning) doScan();
+    }, 15000);
+  } catch (err) {
+    screenLog(`Scan falló: ${err.message}`, 'error');
+    isScanning = false;
+    els.btnBleScan.textContent = '⟳ Escanear';
+    els.btnBleScan.classList.remove('scanning');
+  }
+}
+
+els.btnBleScan?.addEventListener('click', doScan);
+
 // ===== INICIALIZACIÓN =====
 async function init() {
   screenLog('Iniciando...', 'info');
@@ -179,6 +158,15 @@ async function init() {
     
     window.addEventListener('nexo:ble:log', (e) => {
       screenLog(`[BLE_IF] ${e.detail.msg}`, e.detail.type);
+    });
+    
+    // FIX CRITICO: Escuchar dispositivos encontrados via evento DOM de ble_interface.js
+    window.addEventListener('nexo:ble:deviceFound', (e) => {
+      const device = e.detail;
+      const empty = els.bleDevicesList.querySelector('.ble-empty');
+      if (empty && empty.textContent === 'Escaneando...') empty.remove();
+      else if (empty) empty.remove();
+      renderDevice(device);
     });
     
     if (bleInterface.initBLEInterface) {
