@@ -1,24 +1,7 @@
 /**
- * main.js v9.3-FINAL
- * Fix botón escanear: toggle correcto + listener nexo:ble:deviceFound
- * Feedback visual: pulse glow al escanear, escala al pulsar
+ * main.js v9.5-FINAL
+ * Fix: toggle escanear/detener + battery exemption Samsung + sin diagnóstico visual
  */
-
-function screenLog(msg, type = 'info') {
-  console.log(`[MAIN] ${msg}`);
-  let diag = document.getElementById('nexo-diagnostic');
-  if (!diag) {
-    diag = document.createElement('div');
-    diag.id = 'nexo-diagnostic';
-    diag.style.cssText = 'position:fixed;top:60px;left:10px;right:10px;max-height:180px;background:rgba(0,0,0,0.95);color:#00ff88;font-family:monospace;font-size:11px;overflow-y:auto;z-index:100000;padding:10px;border-radius:8px;border:1px solid rgba(0,255,136,0.3);';
-    document.body.appendChild(diag);
-  }
-  const color = type === 'error' ? '#ff4444' : type === 'warn' ? '#ffaa00' : '#00ff88';
-  diag.innerHTML += `<div style="color:${color};border-bottom:1px solid rgba(255,255,255,0.1);padding:2px 0;">${new Date().toLocaleTimeString()} ${msg}</div>`;
-  diag.scrollTop = diag.scrollHeight;
-}
-
-screenLog('main.js v9.3 iniciado', 'info');
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -63,7 +46,7 @@ els.sendBtn?.addEventListener('click', async () => {
   try {
     const recipient = nexoApp.activeContact.rawAddress || nexoApp.activeContact.id || nexoApp.activeContact.address || '';
     await nexoApp.sendMessage({ content, recipient, transport: 'ble' });
-  } catch (e) { screenLog(`Send error: ${e.message}`, 'error'); }
+  } catch (e) { console.error(`[MAIN] Send error: ${e.message}`); }
   els.messageInput.value = '';
 });
 
@@ -92,13 +75,12 @@ function renderDevice(device) {
     switchView('chat');
   });
   els.bleDevicesList.appendChild(item);
-  screenLog(`Encontrado: ${device.name || 'Desconocido'}`, 'info');
 }
 
 // ===== BLE SCAN TOGGLE =====
 async function doScan() {
   if (isScanning) {
-    screenLog('Deteniendo scan...', 'info');
+    console.log('[MAIN] Deteniendo scan...');
     if (scanAutoStopTimer) { clearTimeout(scanAutoStopTimer); scanAutoStopTimer = null; }
     try { 
       if (bleInterface?.stopBleScan) await bleInterface.stopBleScan();
@@ -114,7 +96,7 @@ async function doScan() {
   els.btnBleScan.textContent = '⏹ Detener';
   els.btnBleScan.classList.add('scanning');
   isScanning = true;
-  screenLog('Scan iniciado', 'info');
+  console.log('[MAIN] Scan iniciado');
 
   try {
     if (bleInterface?.startBleScan) {
@@ -124,7 +106,7 @@ async function doScan() {
       await window.Capacitor.Plugins.NexoBLE.startScan();
     }
     else {
-      screenLog('BLE no disponible', 'warn');
+      console.warn('[MAIN] BLE no disponible');
       isScanning = false;
       els.btnBleScan.textContent = '⟳ Escanear';
       els.btnBleScan.classList.remove('scanning');
@@ -134,7 +116,7 @@ async function doScan() {
       if (isScanning) doScan();
     }, 15000);
   } catch (err) {
-    screenLog(`Scan falló: ${err.message}`, 'error');
+    console.error(`[MAIN] Scan falló: ${err.message}`);
     isScanning = false;
     els.btnBleScan.textContent = '⟳ Escanear';
     els.btnBleScan.classList.remove('scanning');
@@ -145,22 +127,28 @@ els.btnBleScan?.addEventListener('click', doScan);
 
 // ===== INICIALIZACIÓN =====
 async function init() {
-  screenLog('Iniciando...', 'info');
+  console.log('[MAIN] Iniciando...');
 
   let waited = 0;
   while (!window.Capacitor && waited < 3000) { await new Promise(r => setTimeout(r, 100)); waited += 100; }
-  screenLog(`Capacitor: ${window.Capacitor ? 'OK' : 'NO'}`, window.Capacitor ? 'info' : 'warn');
+  console.log(`[MAIN] Capacitor: ${window.Capacitor ? 'OK' : 'NO'}`);
+
+  // FIX CRITICO: Solicitar exención de batería para Samsung (Adaptive Battery mata foreground services)
+  try {
+    const plugin = window.Capacitor?.Plugins?.NexoBLE;
+    if (plugin?.requestBatteryOptimizationExemption) {
+      const battResult = await plugin.requestBatteryOptimizationExemption();
+      console.log(`[MAIN] Battery exemption: ${JSON.stringify(battResult)}`);
+    }
+  } catch (e) {
+    console.warn(`[MAIN] Battery exemption no disponible: ${e.message}`);
+  }
 
   try {
-    screenLog('Importando ble_interface...', 'info');
+    console.log('[MAIN] Importando ble_interface...');
     bleInterface = await import('./ui/ble_interface.js');
-    screenLog('ble_interface OK', 'info');
+    console.log('[MAIN] ble_interface OK');
     
-    window.addEventListener('nexo:ble:log', (e) => {
-      screenLog(`[BLE_IF] ${e.detail.msg}`, e.detail.type);
-    });
-    
-    // FIX CRITICO: Escuchar dispositivos encontrados via evento DOM de ble_interface.js
     window.addEventListener('nexo:ble:deviceFound', (e) => {
       const device = e.detail;
       const empty = els.bleDevicesList.querySelector('.ble-empty');
@@ -171,15 +159,15 @@ async function init() {
     
     if (bleInterface.initBLEInterface) {
       await bleInterface.initBLEInterface();
-      screenLog('BLE listeners activos', 'info');
+      console.log('[MAIN] BLE listeners activos');
     }
   } catch (e) {
-    screenLog(`ble_interface falló: ${e.message}`, 'warn');
+    console.warn(`[MAIN] ble_interface falló: ${e.message}`);
     bleInterface = null;
   }
 
   try {
-    screenLog('Importando nexo_app...', 'info');
+    console.log('[MAIN] Importando nexo_app...');
     const { createNexoApp } = await import('./app/nexo_app.js');
     nexoApp = await createNexoApp({
       onMessage: (msg) => { if (msg.source === 'ble_direct') appendBubble(msg.content, false, msg.messageId); },
@@ -190,27 +178,27 @@ async function init() {
       }
     });
     if (nexoApp._deviceUUID) els.sbId.textContent = nexoApp._deviceUUID.substring(0, 6);
-    screenLog('NEXO App OK', 'info');
+    console.log('[MAIN] NEXO App OK');
   } catch (e) {
-    screenLog(`nexo_app falló: ${e.message}`, 'warn');
+    console.warn(`[MAIN] nexo_app falló: ${e.message}`);
   }
 
   try {
-    screenLog('SetupWizard...', 'info');
+    console.log('[MAIN] SetupWizard...');
     const { SetupWizard } = await import('./ui/SetupWizard.js');
     await new Promise((resolve) => {
       const wizard = new SetupWizard('app', resolve);
       wizard.start().catch(() => resolve());
       setTimeout(resolve, 8000);
     });
-    screenLog('Wizard OK', 'info');
+    console.log('[MAIN] Wizard OK');
   } catch (e) {
-    screenLog(`Wizard saltado: ${e.message}`, 'warn');
+    console.warn(`[MAIN] Wizard saltado: ${e.message}`);
   }
 
-  screenLog('Listo', 'info');
+  console.log('[MAIN] Listo');
   setTimeout(() => { if (els.splash) { els.splash.style.opacity = '0'; setTimeout(() => els.splash?.remove(), 500); } }, 1000);
   switchView('ble');
 }
 
-try { init(); } catch (e) { screenLog(`FATAL: ${e.message}`, 'error'); }
+try { init(); } catch (e) { console.error(`[MAIN] FATAL: ${e.message}`); }
