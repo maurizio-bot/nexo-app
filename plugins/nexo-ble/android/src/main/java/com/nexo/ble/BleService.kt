@@ -101,6 +101,12 @@ class BleService : Service() {
         const val RATE_LIMIT = 5000L
         const val SCAN_RATE_LIMIT = 30000L
         const val SCAN_AUTO_STOP = 15000L
+
+        // FIX CRITICO: Normalizar MAC sin ':' al formato con ':'
+        fun normalizeMacAddress(addr: String): String {
+            return if (addr.contains(":")) addr.uppercase()
+            else addr.chunked(2).joinToString(":").uppercase()
+        }
     }
 
     enum class ConnState { IDLE, CONNECTING, DISCOVERING, READY, DISCONNECTING, FAILED }
@@ -135,7 +141,7 @@ class BleService : Service() {
         createChannel()
         startFg()
         try { initGattServer() } catch (e: Exception) { Log.e(TAG, "GATT init error: ${e.message}") }
-        handler.postDelayed({ if (!isAd) startAdvertising() }, 1500)
+        // FIX: No iniciar advertising aqui. Dejar que el plugin/JS lo controle.
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -210,12 +216,14 @@ class BleService : Service() {
         }
     }
 
+    // FIX CRITICO: Normalizar MAC antes de usar
     fun connectToDevice(addr: String): Boolean {
+        val normalizedAddr = normalizeMacAddress(addr)
         val a = btAdapter ?: return false
-        val dev = a.getRemoteDevice(addr) ?: return false
-        val cn = conns.getOrPut(addr) { Conn(addr) }
+        val dev = a.getRemoteDevice(normalizedAddr) ?: return false
+        val cn = conns.getOrPut(normalizedAddr) { Conn(normalizedAddr) }
         if (cn.state == ConnState.READY || cn.state == ConnState.CONNECTING) return true
-        enqueue(addr) { execConnect(dev, addr) }
+        enqueue(normalizedAddr) { execConnect(dev, normalizedAddr) }
         return true
     }
 
@@ -246,16 +254,18 @@ class BleService : Service() {
     }
 
     fun disconnectDevice(addr: String) {
-        conns[addr]?.let { it.userDisc = true; it.state = ConnState.DISCONNECTING; it.gatt?.let { g -> try { g.disconnect() } catch (e: Exception) {} } }
-        serverConns.remove(addr)
+        val normalizedAddr = normalizeMacAddress(addr)
+        conns[normalizedAddr]?.let { it.userDisc = true; it.state = ConnState.DISCONNECTING; it.gatt?.let { g -> try { g.disconnect() } catch (e: Exception) {} } }
+        serverConns.remove(normalizedAddr)
     }
 
     fun sendMessage(addr: String, msg: String): Boolean {
-        val cn = conns[addr] ?: return false
+        val normalizedAddr = normalizeMacAddress(addr)
+        val cn = conns[normalizedAddr] ?: return false
         if (cn.state != ConnState.READY) return false
         val mid = UUID.randomUUID().toString()
         val payload = try { org.json.JSONObject().apply { put("messageId", mid); put("timestamp", System.currentTimeMillis()); put("senderId", userId); put("senderName", userName); put("content", msg) }.toString().toByteArray(Charsets.UTF_8) } catch (e: Exception) { msg.toByteArray(Charsets.UTF_8) }
-        doWrite(addr, payload, mid)
+        doWrite(normalizedAddr, payload, mid)
         return true
     }
 
@@ -338,7 +348,12 @@ class BleService : Service() {
         bcastFail(a, r, conns[a]?.retry ?: 0)
     }
 
+    // FIX CRITICO: Verificar scan activo + onBatchScanResults
     fun startScan() {
+        if (isScan) {
+            Log.w(TAG, "Scan already active, ignoring duplicate startScan()")
+            return
+        }
         val a = btAdapter ?: run { bcastScanFail(-1, "Adapter null"); return }
         scanner = a.bluetoothLeScanner
         if (scanner == null) { bcastScanFail(-2, "Scanner null"); return }
@@ -372,25 +387,36 @@ class BleService : Service() {
     }
 
     private val scanCb = object : ScanCallback() {
+        // FIX: Manejar batch results por si Samsung entrega por ahi
+        override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+            results?.forEach { onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, it) }
+        }
+
         override fun onScanResult(ct: Int, r: ScanResult?) {
             r?.let {
                 val addr: String
                 val devName: String
                 try {
                     addr = it.device.address ?: return
-                    devName = it.device.name ?: it.scanRecord?.deviceName ?: "NEXO"
+                    devName = it.device.name ?: it.scanRecord?.deviceName ?: ""
                 } catch (se: SecurityException) { return }
 
                 val record = it.scanRecord
                 val uuids = record?.serviceUuids
                 val hasNexoUuid = uuids?.any { u -> u.uuid == SERVICE_UUID } == true
 
-                if (hasNexoUuid || devName.contains("NEXO", ignoreCase = true)) {
+                // FIX CRITICO: Solo detectar dispositivos NEXO reales.
+                // Incluir si tiene nuestro UUID o si su nombre REAL contiene NEXO.
+                // NO asignar "NEXO" artificialmente a dispositivos sin nombre.
+                val isNexoDevice = hasNexoUuid || devName.contains("NEXO", ignoreCase = true)
+
+                if (isNexoDevice) {
+                    val displayName = devName.ifBlank { "NEXO Device" }
                     if (scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)) scanResults[addr] = it
                     sendBroadcast(Intent(ACTION_SCAN_RESULT).apply {
                         putExtra(EXTRA_DEVICE_ADDRESS, addr)
                         putExtra(EXTRA_RSSI, it.rssi)
-                        putExtra(EXTRA_DEVICE_NAME, devName)
+                        putExtra(EXTRA_DEVICE_NAME, displayName)
                     })
                 }
             }
@@ -410,8 +436,7 @@ class BleService : Service() {
         }
     }
 
-    // FIX BUG-001: Acepta nombre como parámetro (retrocompatible con default)
-    // FIX BUG-005: Guarda nombre para usar en ANNOUNCE characteristic
+    // FIX CRITICO: Incluir device name en advertising para identificacion Samsung
     fun startAdvertising(name: String = "") {
         if (isAd) { bcastAd(true); return }
         val adapter = btAdapter ?: run { bcastAd(false, "Adapter null"); return }
@@ -419,7 +444,6 @@ class BleService : Service() {
         val freshAdvertiser = adapter.bluetoothLeAdvertiser ?: run { bcastAd(false, "Advertiser null"); return }
         this.advertiser = freshAdvertiser
 
-        // FIX BUG-005: Usar nombre proporcionado para identidad
         if (name.isNotBlank()) {
             this.userName = name
         }
@@ -431,8 +455,10 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
+        // FIX: setIncludeDeviceName(true) para que Samsung S24 pueda identificar por nombre
+        // Service UUID 128-bit (18 bytes) + Name "NEXO" (6 bytes) + Flags (3 bytes) = 27 bytes < 31 bytes limit
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)
+            .setIncludeDeviceName(true)
             .setIncludeTxPowerLevel(false)
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .build()
@@ -454,7 +480,6 @@ class BleService : Service() {
         isAd = false; advertiser = null; bcastAd(false)
     }
 
-    // FIX BUG-005: Usar uname correctamente en lugar de forzar "NEXO"
     fun setUserInfo(uid: String, uname: String) {
         this.userId = uid
         this.userName = uname.ifBlank { "NEXO" }
