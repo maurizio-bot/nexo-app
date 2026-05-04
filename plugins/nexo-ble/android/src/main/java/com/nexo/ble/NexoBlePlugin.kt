@@ -26,8 +26,7 @@ import com.getcapacitor.annotation.PermissionCallback
 import java.util.UUID
 
 /**
- * NexoBlePlugin v5.2.4-ARCH — REM Exhaustivo
- * ADD: Retroalimentación detallada en cada paso del bridge
+ * NexoBlePlugin v5.2.5-ARCH — REM Exhaustivo + FIX compilación Boolean?
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -261,7 +260,6 @@ class NexoBlePlugin : Plugin() {
                     val message = intent.getStringExtra(EXTRA_NAP_MESSAGE) ?: ""
                     val level = intent.getStringExtra(EXTRA_NAP_LEVEL) ?: "INFO"
                     val ts = intent.getLongExtra(EXTRA_TIMESTAMP, System.currentTimeMillis())
-                    // Reenviar NAP audit como evento JS también
                     notifyListeners("napAuditEvent", JSObject().apply {
                         put("code", code)
                         put("message", message)
@@ -278,7 +276,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("REM-BRIDGE-020", "load() — INICIO v5.2.4-ARCH REM", "INFO")
+        napLog("REM-BRIDGE-020", "load() — INICIO v5.2.5-ARCH REM", "INFO")
 
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -428,7 +426,7 @@ class NexoBlePlugin : Plugin() {
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
         val result = buildPermissionsResult()
-        val allGranted = result.getBoolean("allGranted", false)
+        val allGranted = result.getBoolean("allGranted", false) ?: false
         napLog("REM-PERM-005", "requestPermissionsCallback allGranted=$allGranted", "INFO")
         if (allGranted) call.resolve(result)
         else napError(call, "BLE_109", "Permisos incompletos")
@@ -493,7 +491,7 @@ class NexoBlePlugin : Plugin() {
     private fun performInitialization(call: PluginCall) {
         val adapter = getBluetoothAdapter() ?: return napError(call, "BLE_203", "Adapter nulo")
 
-        val passedUserId = call.getString("userId")
+        val passedUserId = call.getString("userId") ?: ""
         userId = if (!passedUserId.isNullOrBlank()) passedUserId else getOrCreateDeviceUUID()
         userName = call.getString("userName") ?: "NEXO User"
         napLog("REM-INIT-004", "performInitialization: userId=${userId.take(8)} name=$userName", "INFO")
