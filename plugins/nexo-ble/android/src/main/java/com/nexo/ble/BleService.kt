@@ -379,14 +379,12 @@ class BleService : Service() {
             .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
             .build()
 
-        val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(SERVICE_UUID))
-            .build()
-
+        // FIX v3.5.1: Scan SIN hardware filter. Samsung S23/S24 bloquea 128-bit UUID filters.
+        // El filtrado por SERVICE_UUID se hace por software en onScanResult.
         scanResults.clear(); isScan = true
-        Log.i(TAG, "[NAP-SCAN-005] startScan() llamado con ScanFilter(SERVICE_UUID)")
+        Log.i(TAG, "[NAP-SCAN-005] startScan() SIN hardware filter (fix Samsung)")
         try {
-            scanner?.startScan(listOf(filter), settings, scanCb)
+            scanner?.startScan(null, settings, scanCb)
             handler.postDelayed({ if (isScan) { Log.i(TAG, "[NAP-SCAN-006] Auto-stop scan after ${SCAN_AUTO_STOP}ms"); stopScan() } }, SCAN_AUTO_STOP)
         } catch (e: SecurityException) {
             isScan = false; Log.e(TAG, "[NAP-SCAN-007] SecurityException: ${e.message}"); bcastScanFail(-4, "SecurityException")
@@ -465,8 +463,10 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
+        // FIX v3.5.1: setIncludeDeviceName(true) para que Samsung muestre nombre en scans del sistema
         val data = AdvertiseData.Builder()
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
+            .setIncludeDeviceName(true)
             .build()
 
         Log.i(TAG, "[NAP-ADVERT-005] startAdvertising() — Service UUID=${SERVICE_UUID}, payload ~21 bytes")
