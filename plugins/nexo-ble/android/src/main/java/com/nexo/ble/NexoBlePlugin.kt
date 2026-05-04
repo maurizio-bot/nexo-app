@@ -26,8 +26,8 @@ import com.getcapacitor.annotation.PermissionCallback
 import java.util.UUID
 
 /**
- * NexoBlePlugin v5.2.3-ARCH — FASE 1: UUID persistente
- * ADD: getDeviceUUID() lee/genera UUID en SharedPreferences
+ * NexoBlePlugin v5.2.4-ARCH — REM Exhaustivo
+ * ADD: Retroalimentación detallada en cada paso del bridge
  */
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -99,28 +99,36 @@ class NexoBlePlugin : Plugin() {
             val binder = service as? BleService.LocalBinder
             bleService = binder?.getService()
             serviceBound = true
-            napLog("BRIDGE_BIND", "BleService vinculado OK", "INFO")
+            napLog("REM-BRIDGE-001", "onServiceConnected — BleService vinculado OK bound=$serviceBound", "INFO")
             notifyListeners("bridgeReady", JSObject().apply {
                 put("ready", true)
                 put("timestamp", System.currentTimeMillis())
             })
+            napLog("REM-BRIDGE-002", "Pending calls: ${pendingCalls.size}", "INFO")
             pendingCalls.forEach { it.run() }
             pendingCalls.clear()
+            napLog("REM-BRIDGE-003", "Pending calls ejecutados y limpiados", "INFO")
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             bleService = null
             serviceBound = false
-            napLog("BRIDGE_UNBIND", "BleService desvinculado", "WARN")
+            napLog("REM-BRIDGE-004", "onServiceDisconnected — BleService desvinculado", "WARN")
         }
     }
 
     private val serviceEventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
+            val action = intent.action ?: "null"
+            napLog("REM-BRIDGE-005", "Broadcast recibido: action=$action", "DEBUG")
+            when (action) {
                 ACTION_SCAN_RESULT -> {
-                    val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
+                    val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: run {
+                        napLog("REM-BRIDGE-006", "SCAN_RESULT sin device_address", "WARN")
+                        return
+                    }
                     val name = intent.getStringExtra(EXTRA_DEVICE_NAME) ?: "NEXO Device"
                     val rssi = intent.getIntExtra(EXTRA_RSSI, 0)
+                    napLog("REM-BRIDGE-007", "SCAN_RESULT → JS: addr=${deviceId.take(8)} name=$name rssi=$rssi", "INFO")
                     notifyListeners("onScanResult", JSObject().apply {
                         put("address", deviceId)
                         put("deviceId", deviceId)
@@ -131,6 +139,7 @@ class NexoBlePlugin : Plugin() {
                 ACTION_SCAN_FAILED -> {
                     val code = intent.getIntExtra(EXTRA_ERROR_CODE, -1)
                     val desc = intent.getStringExtra(EXTRA_ERROR_DESC) ?: "Unknown"
+                    napLog("REM-BRIDGE-008", "SCAN_FAILED → JS: code=$code desc=$desc", "ERROR")
                     notifyListeners("onScanFailed", JSObject().apply {
                         put("errorCode", code)
                         put("description", desc)
@@ -138,6 +147,7 @@ class NexoBlePlugin : Plugin() {
                 }
                 ACTION_SCAN_STOPPED -> {
                     val count = intent.getIntExtra("result_count", 0)
+                    napLog("REM-BRIDGE-009", "SCAN_STOPPED → JS: count=$count", "INFO")
                     notifyListeners("onScanStopped", JSObject().apply {
                         put("resultCount", count)
                     })
@@ -145,6 +155,7 @@ class NexoBlePlugin : Plugin() {
                 ACTION_ADVERT_STATE -> {
                     val advertising = intent.getBooleanExtra(EXTRA_ADVERTISING, false)
                     val reason = intent.getStringExtra(EXTRA_REASON) ?: ""
+                    napLog("REM-BRIDGE-010", "ADVERT_STATE → JS: advertising=$advertising reason=$reason", "INFO")
                     notifyListeners("onAdvertStateChange", JSObject().apply {
                         put("advertising", advertising)
                         if (reason.isNotEmpty()) put("reason", reason)
@@ -154,6 +165,7 @@ class NexoBlePlugin : Plugin() {
                     val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
                     val direction = intent.getStringExtra(EXTRA_DIRECTION) ?: "unknown"
                     val attempt = intent.getIntExtra(EXTRA_ATTEMPT, 0)
+                    napLog("REM-BRIDGE-011", "DEVICE_CONNECTED → JS: addr=${deviceId.take(8)} dir=$direction attempt=$attempt", "INFO")
                     notifyListeners("onDeviceConnected", JSObject().apply {
                         put("deviceId", deviceId)
                         put("direction", direction)
@@ -163,6 +175,7 @@ class NexoBlePlugin : Plugin() {
                 ACTION_DEVICE_DISCONNECTED -> {
                     val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
                     val wasReady = intent.getBooleanExtra("wasReady", false)
+                    napLog("REM-BRIDGE-012", "DEVICE_DISCONNECTED → JS: addr=${deviceId.take(8)} wasReady=$wasReady", "INFO")
                     notifyListeners("onDeviceDisconnected", JSObject().apply {
                         put("deviceId", deviceId)
                         put("wasReady", wasReady)
@@ -171,6 +184,7 @@ class NexoBlePlugin : Plugin() {
                 ACTION_SERVICES_READY -> {
                     val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
                     val success = intent.getBooleanExtra(EXTRA_SUCCESS, false)
+                    napLog("REM-BRIDGE-013", "SERVICES_READY → JS: addr=${deviceId.take(8)} success=$success", "INFO")
                     notifyListeners("onServicesReady", JSObject().apply {
                         put("deviceId", deviceId)
                         put("ready", success)
@@ -179,6 +193,7 @@ class NexoBlePlugin : Plugin() {
                 ACTION_NOTIFICATIONS_ENABLED -> {
                     val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
                     val enabled = intent.getBooleanExtra(EXTRA_ENABLED, false)
+                    napLog("REM-BRIDGE-014", "NOTIFICATIONS_ENABLED → JS: addr=${deviceId.take(8)} enabled=$enabled", "INFO")
                     notifyListeners("onNotificationsEnabled", JSObject().apply {
                         put("deviceId", deviceId)
                         put("enabled", enabled)
@@ -189,6 +204,7 @@ class NexoBlePlugin : Plugin() {
                     val reason = intent.getStringExtra(EXTRA_REASON) ?: "Unknown"
                     val attempt = intent.getIntExtra(EXTRA_ATTEMPT, 0)
                     val maxAttempts = intent.getIntExtra(EXTRA_MAX_ATTEMPTS, 3)
+                    napLog("REM-BRIDGE-015", "CONNECTION_FAILED → JS: addr=${deviceId.take(8)} reason=$reason attempt=$attempt", "ERROR")
                     notifyListeners("onConnectionFailed", JSObject().apply {
                         put("deviceId", deviceId)
                         put("reason", reason)
@@ -205,6 +221,7 @@ class NexoBlePlugin : Plugin() {
                     val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID) ?: ""
                     val source = intent.getStringExtra(EXTRA_SOURCE) ?: "unknown"
                     val timestamp = intent.getLongExtra(EXTRA_TIMESTAMP, System.currentTimeMillis())
+                    napLog("REM-BRIDGE-016", "MESSAGE_RECEIVED → JS: addr=${deviceId.take(8)} sender=$senderName mid=$messageId", "INFO")
                     notifyListeners("onMessageReceived", JSObject().apply {
                         put("address", deviceId)
                         put("deviceId", deviceId)
@@ -221,6 +238,7 @@ class NexoBlePlugin : Plugin() {
                     val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
                     val mid = intent.getStringExtra(EXTRA_MESSAGE_ID) ?: ""
                     val ok = intent.getBooleanExtra(EXTRA_SUCCESS, false)
+                    napLog("REM-BRIDGE-017", "MESSAGE_SENT → JS: addr=${deviceId.take(8)} mid=$mid success=$ok", "INFO")
                     notifyListeners("onMessageSent", JSObject().apply {
                         put("deviceId", deviceId)
                         put("messageId", mid)
@@ -231,6 +249,7 @@ class NexoBlePlugin : Plugin() {
                     val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
                     val name = intent.getStringExtra(EXTRA_DEVICE_NAME) ?: "NEXO Peer"
                     val peerId = intent.getStringExtra(EXTRA_USER_ID) ?: ""
+                    napLog("REM-BRIDGE-018", "PEER_INFO → JS: addr=${deviceId.take(8)} name=$name", "INFO")
                     notifyListeners("onPeerInfoReceived", JSObject().apply {
                         put("deviceId", deviceId)
                         put("name", name)
@@ -242,6 +261,7 @@ class NexoBlePlugin : Plugin() {
                     val message = intent.getStringExtra(EXTRA_NAP_MESSAGE) ?: ""
                     val level = intent.getStringExtra(EXTRA_NAP_LEVEL) ?: "INFO"
                     val ts = intent.getLongExtra(EXTRA_TIMESTAMP, System.currentTimeMillis())
+                    // Reenviar NAP audit como evento JS también
                     notifyListeners("napAuditEvent", JSObject().apply {
                         put("code", code)
                         put("message", message)
@@ -250,19 +270,25 @@ class NexoBlePlugin : Plugin() {
                         put("native", true)
                     })
                 }
+                else -> {
+                    napLog("REM-BRIDGE-019", "Broadcast action desconocida: $action", "WARN")
+                }
             }
         }
     }
 
     override fun load() {
-        napLog("BRIDGE_LOAD", "NexoBlePlugin v5.2.3-ARCH Fase 1 UUID cargado", "INFO")
+        napLog("REM-BRIDGE-020", "load() — INICIO v5.2.4-ARCH REM", "INFO")
 
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            napLog("REM-BRIDGE-021", "startForegroundService() llamado", "INFO")
             context.startForegroundService(serviceIntent)
         } else {
+            napLog("REM-BRIDGE-022", "startService() llamado", "INFO")
             context.startService(serviceIntent)
         }
+        napLog("REM-BRIDGE-023", "bindService() llamado", "INFO")
         context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         val filter = IntentFilter().apply {
@@ -282,59 +308,69 @@ class NexoBlePlugin : Plugin() {
             addAction(ACTION_CLIENT_NOTIFICATION_STATE_CHANGED)
             addAction(ACTION_NAP_AUDIT)
         }
+        napLog("REM-BRIDGE-024", "registerReceiver con ${filter.countActions()} actions", "INFO")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(serviceEventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             context.registerReceiver(serviceEventReceiver, filter)
         }
+        napLog("REM-BRIDGE-025", "load() — FIN", "INFO")
     }
 
     override fun handleOnDestroy() {
+        napLog("REM-BRIDGE-026", "handleOnDestroy() — INICIO", "INFO")
         try {
             if (serviceBound) {
                 context.unbindService(serviceConnection)
                 serviceBound = false
             }
             context.unregisterReceiver(serviceEventReceiver)
-        } catch (e: Exception) { }
+        } catch (e: Exception) { napLog("REM-BRIDGE-027", "Error en destroy: ${e.message}", "WARN") }
         super.handleOnDestroy()
+        napLog("REM-BRIDGE-028", "handleOnDestroy() — FIN", "INFO")
     }
 
-    // ===== FASE 1: UUID PERSISTENTE =====
     private fun getOrCreateDeviceUUID(): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         var uuid = prefs.getString(PREF_DEVICE_UUID, null)
         if (uuid == null || uuid.isBlank()) {
             uuid = UUID.randomUUID().toString()
             prefs.edit().putString(PREF_DEVICE_UUID, uuid).apply()
-            napLog("UUID_GEN", "Nuevo deviceUUID generado: ${uuid.substring(0, 8)}...", "INFO")
+            napLog("REM-UUID-001", "Nuevo deviceUUID generado: ${uuid.substring(0, 8)}...", "INFO")
+        } else {
+            napLog("REM-UUID-002", "deviceUUID existente leído: ${uuid.substring(0, 8)}...", "INFO")
         }
         return uuid
     }
 
     @PluginMethod
     fun getDeviceUUID(call: PluginCall) {
+        napLog("REM-UUID-003", "getDeviceUUID() llamado", "INFO")
         val uuid = getOrCreateDeviceUUID()
         call.resolve(JSObject().apply {
             put("deviceUUID", uuid)
             put("shortUUID", uuid.substring(0, 8))
         })
+        napLog("REM-UUID-004", "getDeviceUUID() resuelto: ${uuid.substring(0, 8)}...", "INFO")
     }
-    // ===== END FASE 1 =====
 
     private fun canAccessBluetooth(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED
         } else {
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         }
+        napLog("REM-PERM-001", "canAccessBluetooth()=$result SDK=${Build.VERSION.SDK_INT}", "INFO")
+        return result
     }
 
     private fun getBluetoothAdapter(): BluetoothAdapter? {
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        return manager?.adapter
+        val adapter = manager?.adapter
+        napLog("REM-BT-001", "getBluetoothAdapter()=${adapter != null} enabled=${adapter?.isEnabled}", "INFO")
+        return adapter
     }
 
     private fun napLog(code: String, message: String, level: String = "INFO") {
@@ -357,13 +393,20 @@ class NexoBlePlugin : Plugin() {
     private fun withService(call: PluginCall?, block: (BleService) -> Unit) {
         val svc = bleService
         if (svc != null) {
+            napLog("REM-SVC-001", "withService: BleService disponible, ejecutando block", "INFO")
             block(svc)
             return
         }
+        napLog("REM-SVC-002", "withService: BleService null, encolando pending call", "WARN")
         val pending = Runnable {
             val svc2 = bleService
-            if (svc2 != null) block(svc2)
-            else call?.reject("BLE_203", "Servicio BLE no disponible")
+            if (svc2 != null) {
+                napLog("REM-SVC-003", "Pending call ejecutado: BleService ahora disponible", "INFO")
+                block(svc2)
+            } else {
+                napLog("REM-SVC-004", "Pending call falló: BleService sigue null", "ERROR")
+                call?.reject("BLE_203", "Servicio BLE no disponible")
+            }
         }
         pendingCalls.add(pending)
         handler.postDelayed({ pendingCalls.remove(pending) }, 10000)
@@ -371,18 +414,23 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun requestBLEPermissions(call: PluginCall) {
+        napLog("REM-PERM-002", "requestBLEPermissions() llamado", "INFO")
         if (canAccessBluetooth()) {
+            napLog("REM-PERM-003", "Permisos ya concedidos, resolviendo inmediato", "INFO")
             call.resolve(buildPermissionsResult().apply { put("alreadyGranted", true) })
             return
         }
         saveCall(call)
+        napLog("REM-PERM-004", "Solicitando permisos al sistema...", "INFO")
         requestAllPermissions(call, "requestPermissionsCallback")
     }
 
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
         val result = buildPermissionsResult()
-        if (result.getBoolean("allGranted", false) == true) call.resolve(result)
+        val allGranted = result.getBoolean("allGranted", false)
+        napLog("REM-PERM-005", "requestPermissionsCallback allGranted=$allGranted", "INFO")
+        if (allGranted) call.resolve(result)
         else napError(call, "BLE_109", "Permisos incompletos")
     }
 
@@ -397,6 +445,7 @@ class NexoBlePlugin : Plugin() {
     fun isBluetoothEnabled(call: PluginCall) {
         val adapter = getBluetoothAdapter()
         val enabled = adapter?.isEnabled == true
+        napLog("REM-BT-002", "isBluetoothEnabled()=$enabled", "INFO")
         call.resolve(JSObject().apply {
             put("enabled", enabled)
             put("stateName", if (enabled) "ON" else "OFF")
@@ -406,9 +455,11 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun isAdvertising(call: PluginCall) {
         val svc = bleService
+        val isAd = svc?.isAdvertising() == true
+        napLog("REM-ADVERT-API-001", "isAdvertising()=$isAd", "INFO")
         if (svc != null) {
             call.resolve(JSObject().apply {
-                put("isAdvertising", svc.isAdvertising())
+                put("isAdvertising", isAd)
                 put("timestamp", System.currentTimeMillis())
             })
             return
@@ -422,7 +473,9 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
+        napLog("REM-INIT-001", "initializeBLE() llamado", "INFO")
         if (!canAccessBluetooth()) {
+            napLog("REM-INIT-002", "Sin permisos, solicitando...", "INFO")
             saveCall(call)
             requestPermissionForAlias("bluetoothConnect", call, "initPermissionCallback")
             return
@@ -432,6 +485,7 @@ class NexoBlePlugin : Plugin() {
 
     @PermissionCallback
     private fun initPermissionCallback(call: PluginCall) {
+        napLog("REM-INIT-003", "initPermissionCallback", "INFO")
         if (canAccessBluetooth()) performInitialization(call)
         else napError(call, "BLE_202", "Permisos requeridos no concedidos")
     }
@@ -439,10 +493,10 @@ class NexoBlePlugin : Plugin() {
     private fun performInitialization(call: PluginCall) {
         val adapter = getBluetoothAdapter() ?: return napError(call, "BLE_203", "Adapter nulo")
 
-        // FASE 1: Usar UUID persistente si no se pasó userId
         val passedUserId = call.getString("userId")
         userId = if (!passedUserId.isNullOrBlank()) passedUserId else getOrCreateDeviceUUID()
         userName = call.getString("userName") ?: "NEXO User"
+        napLog("REM-INIT-004", "performInitialization: userId=${userId.take(8)} name=$userName", "INFO")
 
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(serviceIntent)
@@ -451,6 +505,7 @@ class NexoBlePlugin : Plugin() {
         withService(call) { svc -> svc.setUserInfo(userId, userName) }
 
         val btEnabled = adapter.isEnabled
+        napLog("REM-INIT-005", "Resolviendo: initialized=true btEnabled=$btEnabled", "INFO")
         call.resolve(JSObject().apply {
             put("initialized", true)
             put("bluetoothEnabled", btEnabled)
@@ -460,20 +515,35 @@ class NexoBlePlugin : Plugin() {
         })
     }
 
-    @PluginMethod fun startScan(call: PluginCall) { withService(call) { it.startScan(); call.resolve() } }
-    @PluginMethod fun stopScan(call: PluginCall) { withService(call) { it.stopScan(); call.resolve() } }
+    @PluginMethod
+    fun startScan(call: PluginCall) {
+        napLog("REM-API-001", "startScan() llamado", "INFO")
+        withService(call) { it.startScan(); call.resolve() }
+    }
 
-    @PluginMethod fun startAdvertising(call: PluginCall) {
+    @PluginMethod
+    fun stopScan(call: PluginCall) {
+        napLog("REM-API-002", "stopScan() llamado", "INFO")
+        withService(call) { it.stopScan(); call.resolve() }
+    }
+
+    @PluginMethod
+    fun startAdvertising(call: PluginCall) {
         val name = call.getString("deviceName") ?: userName
+        napLog("REM-API-003", "startAdvertising(name=$name) llamado", "INFO")
         withService(call) { it.startAdvertising(name); call.resolve() }
     }
-    @PluginMethod fun stopAdvertising(call: PluginCall) {
+
+    @PluginMethod
+    fun stopAdvertising(call: PluginCall) {
+        napLog("REM-API-004", "stopAdvertising() llamado", "INFO")
         withService(call) { it.stopAdvertising(); call.resolve() }
     }
 
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         val deviceId = call.getString("deviceId") ?: return call.reject("Falta deviceId")
+        napLog("REM-API-005", "connectToDevice($deviceId) llamado", "INFO")
         withService(call) { svc ->
             if (svc.connectToDevice(deviceId)) call.resolve()
             else call.reject("Error de conexion inmediata")
@@ -484,6 +554,7 @@ class NexoBlePlugin : Plugin() {
     fun sendMessage(call: PluginCall) {
         val deviceId = call.getString("deviceId") ?: return call.reject("Falta deviceId")
         val content = call.getString("message") ?: call.getString("data") ?: ""
+        napLog("REM-API-006", "sendMessage($deviceId) len=${content.length} llamado", "INFO")
         withService(call) { svc ->
             if (svc.sendMessage(deviceId, content)) call.resolve()
             else call.reject("No enviado")
