@@ -25,9 +25,6 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import java.util.UUID
 
-/**
- * NexoBlePlugin v5.2.5-ARCH — REM Exhaustivo + FIX compilación Boolean?
- */
 @CapacitorPlugin(
     name = "NexoBLE",
     permissions = [
@@ -275,9 +272,38 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // FIX CRASH: No iniciar foreground service si no hay permisos
     override fun load() {
-        napLog("REM-BRIDGE-020", "load() — INICIO v5.2.5-ARCH REM", "INFO")
+        napLog("REM-BRIDGE-020", "load() — INICIO v5.2.6-ARCH", "INFO")
+        
+        // CRITICAL FIX: Si no hay permisos, NO iniciar service (evita crash en solicitud)
+        if (!canAccessBluetooth()) {
+            napLog("REM-BRIDGE-020b", "Sin permisos al cargar, omitiendo startForegroundService", "WARN")
+            registerReceiverOnly()
+            return
+        }
+        
+        startServiceAndBind()
+        napLog("REM-BRIDGE-025", "load() — FIN (con permisos)", "INFO")
+    }
 
+    private fun registerReceiverOnly() {
+        val filter = IntentFilter().apply {
+            addAction(ACTION_SCAN_RESULT); addAction(ACTION_SCAN_FAILED); addAction(ACTION_SCAN_STOPPED)
+            addAction(ACTION_ADVERT_STATE); addAction(ACTION_MESSAGE_RECEIVED); addAction(ACTION_MESSAGE_SENT)
+            addAction(ACTION_DEVICE_CONNECTED); addAction(ACTION_DEVICE_DISCONNECTED); addAction(ACTION_SERVICES_READY)
+            addAction(ACTION_NOTIFICATIONS_ENABLED); addAction(ACTION_CONNECTION_FAILED); addAction(ACTION_RETRY_SCHEDULED)
+            addAction(ACTION_PEER_INFO_RECEIVED); addAction(ACTION_CLIENT_NOTIFICATION_STATE_CHANGED); addAction(ACTION_NAP_AUDIT)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(serviceEventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(serviceEventReceiver, filter)
+        }
+        napLog("REM-BRIDGE-024", "Receiver registrado (service NO iniciado aún)", "INFO")
+    }
+
+    private fun startServiceAndBind() {
         val serviceIntent = Intent(context, BleService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             napLog("REM-BRIDGE-021", "startForegroundService() llamado", "INFO")
@@ -288,31 +314,6 @@ class NexoBlePlugin : Plugin() {
         }
         napLog("REM-BRIDGE-023", "bindService() llamado", "INFO")
         context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
-
-        val filter = IntentFilter().apply {
-            addAction(ACTION_SCAN_RESULT)
-            addAction(ACTION_SCAN_FAILED)
-            addAction(ACTION_SCAN_STOPPED)
-            addAction(ACTION_ADVERT_STATE)
-            addAction(ACTION_MESSAGE_RECEIVED)
-            addAction(ACTION_MESSAGE_SENT)
-            addAction(ACTION_DEVICE_CONNECTED)
-            addAction(ACTION_DEVICE_DISCONNECTED)
-            addAction(ACTION_SERVICES_READY)
-            addAction(ACTION_NOTIFICATIONS_ENABLED)
-            addAction(ACTION_CONNECTION_FAILED)
-            addAction(ACTION_RETRY_SCHEDULED)
-            addAction(ACTION_PEER_INFO_RECEIVED)
-            addAction(ACTION_CLIENT_NOTIFICATION_STATE_CHANGED)
-            addAction(ACTION_NAP_AUDIT)
-        }
-        napLog("REM-BRIDGE-024", "registerReceiver con ${filter.countActions()} actions", "INFO")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(serviceEventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(serviceEventReceiver, filter)
-        }
-        napLog("REM-BRIDGE-025", "load() — FIN", "INFO")
     }
 
     override fun handleOnDestroy() {
@@ -423,13 +424,24 @@ class NexoBlePlugin : Plugin() {
         requestAllPermissions(call, "requestPermissionsCallback")
     }
 
+    // FIX CRASH: try-catch completo + iniciar service SOLO después de permisos
     @PermissionCallback
     private fun requestPermissionsCallback(call: PluginCall) {
-        val result = buildPermissionsResult()
-        val allGranted = result.getBoolean("allGranted", false) ?: false
-        napLog("REM-PERM-005", "requestPermissionsCallback allGranted=$allGranted", "INFO")
-        if (allGranted) call.resolve(result)
-        else napError(call, "BLE_109", "Permisos incompletos")
+        try {
+            val result = buildPermissionsResult()
+            val allGranted = result.getBoolean("allGranted", false) ?: false
+            napLog("REM-PERM-005", "requestPermissionsCallback allGranted=$allGranted", "INFO")
+            if (allGranted) {
+                // CRITICAL FIX: Iniciar service AHORA que sí hay permisos
+                startServiceAndBind()
+                call.resolve(result)
+            } else {
+                napError(call, "BLE_109", "Permisos incompletos")
+            }
+        } catch (e: Exception) {
+            napLog("REM-PERM-ERR", "requestPermissionsCallback CRASH: ${e.message}", "ERROR")
+            call.reject("BLE_PERM_CRASH", "Error en callback: ${e.message}")
+        }
     }
 
     private fun buildPermissionsResult(): JSObject {
@@ -496,9 +508,10 @@ class NexoBlePlugin : Plugin() {
         userName = call.getString("userName") ?: "NEXO User"
         napLog("REM-INIT-004", "performInitialization: userId=${userId.take(8)} name=$userName", "INFO")
 
-        val serviceIntent = Intent(context, BleService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(serviceIntent)
-        else context.startService(serviceIntent)
+        // FIX: Asegurar que el service esté iniciado si no lo estaba
+        if (!serviceBound) {
+            startServiceAndBind()
+        }
 
         withService(call) { svc -> svc.setUserInfo(userId, userName) }
 
