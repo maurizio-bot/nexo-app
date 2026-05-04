@@ -1,8 +1,6 @@
 /**
- * NEXO App v5.3.1-ARCH — FASE 1: UUID persistente integration
- * FIX: Archivo completo reconstruido desde GitHub (main estaba cortado en _initPhase6_Bridge)
- * ADD: Lee deviceUUID del nativo, lo muestra en status bar, lo usa en init
- * ADD: Anti-doble-init BLE, cleanup robusto, NAP audit completo
+ * NEXO App v5.3.2-ARCH — FASE 1: UUID persistente integration
+ * FIX: Normalización de activeContact.id para match con sender MAC
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -79,8 +77,8 @@ export class NexoApp {
     this._contentFpTTL = 15000;
     this._contentFpMax = 500;
     this._deviceUUID = null;
-    this._bleInitialized = false; // FIX: anti-doble-init
-    DEBUG.log('🚀 [NEXO] v5.3.1-ARCH iniciando...', 'info', 'APP_INIT');
+    this._bleInitialized = false;
+    DEBUG.log('🚀 [NEXO] v5.3.2-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   _hashContent(str) {
@@ -107,7 +105,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.3.1-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.3.2-ARCH Ready', 'APP_READY');
       if (this.bleInterface && this.bleInterface.showMainScreen) {
         this.bleInterface.showMainScreen();
       }
@@ -175,12 +173,11 @@ export class NexoApp {
     DEBUG.setPhase('BLE_UI');
     try {
       const meshInstance = this.nordicMesh || this.mesh || null;
-      this.bleInterface = initBLEInterface(meshInstance);
+      this.bleInterface = initBLEInterface();
       if (this.bleInterface) {
         DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
       }
 
-      // FASE 1: Obtener UUID persistente del nativo
       const nativePlugin = window.Capacitor?.Plugins?.NexoBLE;
       if (nativePlugin?.getDeviceUUID) {
         try {
@@ -194,7 +191,6 @@ export class NexoApp {
         }
       }
 
-      // FASE 1: Inicializar BLE nativo SOLO UNA VEZ
       if (nativePlugin?.initializeBLE && !this._bleInitialized) {
         try {
           const initResult = await nativePlugin.initializeBLE({
@@ -215,13 +211,14 @@ export class NexoApp {
         }
       }
 
-      // FASE 1: Mostrar UUID en status bar
       const displayId = this._deviceUUID || this.vault?.getIdentity?.()?.id || this.bleInterface?.localDeviceAddress || '--';
       this.bleInterface.updateStatus('INIT', 'OFFLINE', displayId);
 
+      // FIX: Normalizar contactId para match con sender MAC sin ':'
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
-        this.activeContact = { id: contactId, name, address, transport };
+        const normalizedId = (contactId || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
+        this.activeContact = { id: normalizedId, name, address, transport };
         DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
@@ -289,10 +286,6 @@ export class NexoApp {
     }
   }
 
-  /* ============================================================
-     MESSAGE HANDLING
-     ============================================================ */
-
   _handleMessage(msg, source = 'unknown') {
     try {
       const content = msg?.content || msg?.text || msg?.data || '';
@@ -301,7 +294,6 @@ export class NexoApp {
       const messageId = msg?.messageId || msg?.message_id || msg?.id || this._hashContent(content + sender + Date.now());
       const timestamp = msg?.timestamp || Date.now();
 
-      // Dedup por messageId
       if (this._messageDedupMap.has(messageId)) {
         DEBUG.log(`DEDUP id:${messageId.substring(0,8)}`, 'debug', 'DEDUP_ID');
         return;
@@ -314,7 +306,6 @@ export class NexoApp {
         }
       }
 
-      // Dedup por contenido (fingerprint)
       const fp = this._hashContent(content);
       const now = Date.now();
       if (this._contentFpMap.has(fp) && (now - this._contentFpMap.get(fp)) < this._contentFpTTL) {
@@ -329,21 +320,15 @@ export class NexoApp {
 
       DEBUG.success(`📩 [${source.toUpperCase()}] ${senderName}: ${content.substring(0, 40)}${content.length > 40 ? '...' : ''}`, 'MSG_RX');
 
-      // Mostrar en stream/chat si está activo
       if (this.bleInterface && this.activeContact && sender === this.activeContact.id) {
         this.bleInterface.appendChatBubble(content, false, messageId);
       }
 
-      // Notificar a la app
       this.config.onMessage({ content, sender, senderName, messageId, source, timestamp });
     } catch (err) {
       DEBUG.error('MSG_001', `Handle message error: ${err.message}`);
     }
   }
-
-  /* ============================================================
-     SEND MESSAGE
-     ============================================================ */
 
   async sendMessage(opts = {}) {
     const { content, recipient, messageId, transport = 'ble' } = opts;
@@ -382,10 +367,6 @@ export class NexoApp {
     }
   }
 
-  /* ============================================================
-     NORDIC HANDLERS
-     ============================================================ */
-
   _handleNordicPeer(peer) {
     DEBUG.log(`Nordic peer: ${peer.name || peer.id}`, 'info', 'NORDIC_PEER');
   }
@@ -407,10 +388,6 @@ export class NexoApp {
     DEBUG.setMode(mode);
     this.config.onStatusChange(mode);
   }
-
-  /* ============================================================
-     CLEANUP & DESTROY
-     ============================================================ */
 
   async _partialCleanup() {
     DEBUG.warn('Partial cleanup...', 'CLEANUP');
@@ -443,10 +420,6 @@ export class NexoApp {
     DEBUG.success('NEXO App destroyed', 'APP_DESTROYED');
   }
 }
-
-/* ============================================================
-   GLOBAL INSTANCE (para acceso desde consola/debug)
-   ============================================================ */
 
 let _appInstance = null;
 
