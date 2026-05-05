@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- PERMISOS BLE CRÍTICOS (Android 14 compatible) -->
+    <!-- PERMISOS BLE -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
@@ -23,9 +23,8 @@
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="com.google.android.gms.permission.NEARBY_CONNECTIONS" />
     
-    <!-- ANTI-SAMSUNG: WAKE_LOCK + BOOT + BATTERY -->
+    <!-- ANTI-SAMSUNG -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -52,7 +51,7 @@
             </intent-filter>
         </activity>
 
-        <!-- BLE existente (NO TOCAR) -->
+        <!-- BLE existente -->
         <service
             android:name="com.nexo.ble.BleService"
             android:enabled="true"
@@ -65,17 +64,23 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <!-- NUEVO: Anti-Samsung Keep-Alive Service -->
+        <!-- CORREGIDO: Keep-Alive en com.nexo.ble -->
         <service
-            android:name=".NexoKeepAliveService"
+            android:name="com.nexo.ble.NexoKeepAliveService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice"
             android:stopWithTask="false" />
 
-        <!-- NUEVO: Receivers anti-kill -->
+        <!-- CORREGIDO: ReconnectReceiver en com.nexo.ble -->
         <receiver
-            android:name=".NexoBootReceiver"
+            android:name="com.nexo.ble.NexoReconnectReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- BOOT RECEIVER: ¿EXISTE ESTE ARCHIVO? Si no existe, BORRA estas líneas -->
+        <receiver
+            android:name="com.nexo.ble.NexoBootReceiver"
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
@@ -83,11 +88,6 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
-
-        <receiver
-            android:name=".NexoReconnectReceiver"
-            android:enabled="true"
-            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
