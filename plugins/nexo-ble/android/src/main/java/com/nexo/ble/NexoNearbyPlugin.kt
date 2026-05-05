@@ -1,4 +1,4 @@
-package com.nexo.app
+package com.nexo.ble
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -53,7 +53,8 @@ class NexoNearbyPlugin : Plugin() {
                 put("authenticationToken", info.authenticationToken)
                 put("isIncomingConnection", info.isIncomingConnection)
             })
-            acceptConnection(endpointId)
+            // FIX: Renombrado para evitar conflicto con @PluginMethod acceptConnection
+            doAcceptConnection(endpointId)
         }
 
         override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
@@ -142,7 +143,7 @@ class NexoNearbyPlugin : Plugin() {
 
     @PluginMethod
     fun startKeepAliveService(call: PluginCall) {
-        val intent = Intent(context, NexoKeepAliveService::class.java)
+        val intent = Intent(context, com.nexo.app.NexoKeepAliveService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent)
         } else {
@@ -271,6 +272,11 @@ class NexoNearbyPlugin : Plugin() {
         }
         connectionsClient.acceptConnection(endpointId, payloadCallback)
         call.resolve()
+    }
+
+    // FIX: Método privado renombrado para evitar conflicto con @PluginMethod acceptConnection
+    private fun doAcceptConnection(endpointId: String) {
+        connectionsClient.acceptConnection(endpointId, payloadCallback)
     }
 
     private fun restartAdvertising() {
