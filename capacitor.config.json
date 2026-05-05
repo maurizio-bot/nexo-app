@@ -8,6 +8,9 @@
       "displayName": "NexoBLE",
       "backgroundColor": "#000000"
     },
+    "NexoNearby": {
+      "displayName": "NexoNearby"
+    },
     "SplashScreen": {
       "launchShowDuration": 2000,
       "backgroundColor": "#000000"
