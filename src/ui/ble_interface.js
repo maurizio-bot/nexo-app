@@ -1,21 +1,29 @@
 /**
- * ble_interface.js v4.1.0-ARCH
- * Bridge robusto entre plugin nativo NexoBLE y UI.
- * FIX: Listener directo garantizado, fallback nativo si bridge falla.
+ * ble_interface.js v5.0.0-ARCH
+ * Híbrido BLE nativo + Google Nearby Connections
+ * Si BLE no detecta nada en 10s, activa Nearby automáticamente.
  */
 
-let plugin = null;
+let blePlugin = null;
+let nearbyPlugin = null;
 let scanListener = null;
 let messageListener = null;
 let deviceConnectedListener = null;
 let deviceDisconnectedListener = null;
+let nearbyListeners = [];
 let isInitialized = false;
+let nearbyActive = false;
+let bleScanStarted = 0;
+let fallbackTimer = null;
 
-function getPlugin() {
-  if (!plugin) {
-    plugin = window.Capacitor?.Plugins?.NexoBLE || null;
-  }
-  return plugin;
+function getBlePlugin() {
+  if (!blePlugin) blePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
+  return blePlugin;
+}
+
+function getNearbyPlugin() {
+  if (!nearbyPlugin) nearbyPlugin = window.Capacitor?.Plugins?.NexoNearby || null;
+  return nearbyPlugin;
 }
 
 function log(msg, type = 'info') {
@@ -25,13 +33,13 @@ function log(msg, type = 'info') {
 
 export async function initBLEInterface() {
   if (isInitialized) return true;
-  const p = getPlugin();
+  const p = getBlePlugin();
   if (!p) {
     log('Plugin NexoBLE no disponible', 'error');
     return false;
   }
 
-  log('Inicializando BLE interface...', 'info');
+  log('Inicializando BLE interface híbrida...', 'info');
 
   // Inicializar BLE nativo
   try {
@@ -39,55 +47,57 @@ export async function initBLEInterface() {
     const deviceUUID = uuidResult?.deviceUUID || null;
     log(`DeviceUUID: ${deviceUUID?.substring(0, 8) || 'null'}`, 'info');
 
-    const initResult = await p.initializeBLE({
-      userId: deviceUUID || undefined,
-      userName: 'NEXO User'
-    });
+    await p.initializeBLE({ userId: deviceUUID || undefined, userName: 'NEXO User' });
     log('BLE nativo inicializado', 'success');
 
-    // Iniciar advertising
     try {
       await p.startAdvertising({ deviceName: 'NEXO' });
-      log('Advertising iniciado', 'success');
+      log('BLE Advertising iniciado', 'success');
     } catch (e) {
-      log(`Advertising warning: ${e.message}`, 'warn');
+      log(`BLE Advertising warning: ${e.message}`, 'warn');
     }
   } catch (e) {
-    log(`Init warning: ${e.message}`, 'warn');
+    log(`BLE Init warning: ${e.message}`, 'warn');
   }
 
-  // Registrar listeners permanentes
-  registerListeners();
+  // Inicializar Nearby (silencioso, no bloquea si falla)
+  try {
+    const np = getNearbyPlugin();
+    if (np) {
+      await np.startKeepAliveService();
+      await np.startAdvertising({});
+      log('Nearby KeepAlive + Advertising iniciado', 'success');
+    }
+  } catch (e) {
+    log(`Nearby init warning: ${e.message}`, 'warn');
+  }
 
+  registerListeners();
   isInitialized = true;
-  log('BLE interface lista', 'success');
+  log('BLE interface híbrida lista', 'success');
   return true;
 }
 
 function registerListeners() {
-  const p = getPlugin();
+  const p = getBlePlugin();
   if (!p) return;
-
-  // Limpiar listeners previos
   cleanupListeners();
 
-  // Listener SCAN RESULT — CRÍTICO
+  // BLE Listeners
   try {
     scanListener = p.addListener('onScanResult', (result) => {
-      const addr = result?.address || result?.deviceId || result?.deviceAddress || 'unknown';
+      const addr = result?.address || result?.deviceId || 'unknown';
       const name = result?.name || result?.deviceName || 'NEXO Device';
       const rssi = result?.rssi || 0;
-      log(`Scan result: ${name} (${addr.substring(0, 8)}...) rssi=${rssi}`, 'info');
+      log(`BLE Scan: ${name} (${addr.substring(0, 8)}) rssi=${rssi}`, 'info');
       window.dispatchEvent(new CustomEvent('nexo:ble:deviceFound', {
-        detail: { address: addr, name, rssi, deviceId: addr }
+        detail: { address: addr, name, rssi, deviceId: addr, transport: 'ble' }
       }));
+      // Si BLE funciona, pausar Nearby discovery para ahorrar batería
+      if (nearbyActive) pauseNearby();
     });
-    log('Listener onScanResult registrado', 'info');
-  } catch (e) {
-    log(`Error scan listener: ${e.message}`, 'error');
-  }
+  } catch (e) { log(`Error scan listener: ${e.message}`, 'error'); }
 
-  // Listener MESSAGE RECEIVED
   try {
     messageListener = p.addListener('onMessageReceived', (result) => {
       const deviceId = result?.address || result?.deviceId || 'unknown';
@@ -100,7 +110,6 @@ function registerListeners() {
     });
   } catch (e) { log(`Error message listener: ${e.message}`, 'warn'); }
 
-  // Listener DEVICE CONNECTED
   try {
     deviceConnectedListener = p.addListener('onDeviceConnected', (result) => {
       const deviceId = result?.address || result?.deviceId || 'unknown';
@@ -110,7 +119,6 @@ function registerListeners() {
     });
   } catch (e) { log(`Error connect listener: ${e.message}`, 'warn'); }
 
-  // Listener DEVICE DISCONNECTED
   try {
     deviceDisconnectedListener = p.addListener('onDeviceDisconnected', (result) => {
       const deviceId = result?.address || result?.deviceId || 'unknown';
@@ -120,85 +128,135 @@ function registerListeners() {
     });
   } catch (e) { log(`Error disconnect listener: ${e.message}`, 'warn'); }
 
-  // Listener SCAN FAILED
-  try {
-    p.addListener('onScanFailed', (result) => {
-      log(`Scan failed: ${result?.description || result?.errorCode || 'unknown'}`, 'error');
+  // Nearby Listeners (si disponible)
+  const np = getNearbyPlugin();
+  if (np) {
+    const events = [
+      ['onEndpointFound', (data) => {
+        window.dispatchEvent(new CustomEvent('nexo:ble:deviceFound', {
+          detail: { address: data.endpointId, name: data.endpointName, rssi: 0, deviceId: data.endpointId, transport: 'nearby' }
+        }));
+      }],
+      ['onPayloadReceived', (data) => {
+        window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
+          detail: { deviceId: data.endpointId, content: data.message, senderName: 'NEXO Peer', messageId: '', source: 'nearby', timestamp: Date.now() }
+        }));
+      }]
+    ];
+    events.forEach(([evt, handler]) => {
+      try {
+        nearbyListeners.push(np.addListener(evt, handler));
+      } catch (e) {}
     });
-  } catch (e) { log(`Error scanFailed listener: ${e.message}`, 'warn'); }
+  }
+}
+
+async function activateNearbyFallback() {
+  if (nearbyActive) return;
+  const np = getNearbyPlugin();
+  if (!np) return;
+  try {
+    log('Activando Nearby fallback (BLE no detectó nada)', 'warn');
+    await np.startDiscovery();
+    nearbyActive = true;
+  } catch (e) {
+    log(`Nearby fallback error: ${e.message}`, 'error');
+  }
+}
+
+async function pauseNearby() {
+  if (!nearbyActive) return;
+  const np = getNearbyPlugin();
+  if (!np) return;
+  try {
+    await np.stopDiscovery();
+    nearbyActive = false;
+    log('Nearby pausado (BLE activo)', 'info');
+  } catch (e) {}
 }
 
 export async function startBleScan(onDevice, onError) {
-  const p = getPlugin();
+  const p = getBlePlugin();
   if (!p) {
     if (onError) onError({ description: 'Plugin no disponible' });
     return;
   }
 
-  log('Solicitando startScan...', 'info');
+  log('Solicitando startScan BLE...', 'info');
+  bleScanStarted = Date.now();
+
   try {
     await p.startScan();
-    log('startScan() OK', 'success');
+    log('BLE startScan() OK', 'success');
   } catch (e) {
-    log(`startScan() error: ${e.message}`, 'error');
+    log(`BLE startScan() error: ${e.message}`, 'error');
     if (onError) onError({ description: e.message });
   }
+
+  // Fallback: si en 10s no hay resultados BLE, activar Nearby
+  fallbackTimer = setTimeout(() => {
+    const elapsed = Date.now() - bleScanStarted;
+    if (elapsed >= 10000) activateNearbyFallback();
+  }, 10000);
 }
 
 export async function stopBleScan() {
-  const p = getPlugin();
-  if (!p) return;
-  try {
-    await p.stopScan();
-    log('stopScan() OK', 'info');
-  } catch (e) {
-    log(`stopScan() error: ${e.message}`, 'warn');
+  if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+  const p = getBlePlugin();
+  if (p) {
+    try { await p.stopScan(); log('BLE stopScan() OK', 'info'); } catch (e) {}
+  }
+  if (nearbyActive) {
+    const np = getNearbyPlugin();
+    if (np) {
+      try { await np.stopDiscovery(); nearbyActive = false; } catch (e) {}
+    }
   }
 }
 
 export async function connectToDevice(deviceId) {
-  const p = getPlugin();
-  if (!p) return false;
-  try {
-    await p.connectToDevice({ deviceId });
-    return true;
-  } catch (e) {
-    log(`connectToDevice error: ${e.message}`, 'error');
-    return false;
+  const p = getBlePlugin();
+  if (p) {
+    try { await p.connectToDevice({ deviceId }); return true; } catch (e) {}
   }
+  const np = getNearbyPlugin();
+  if (np) {
+    try { await np.acceptConnection({ endpointId: deviceId }); return true; } catch (e) {}
+  }
+  return false;
 }
 
 export async function sendMessage(deviceId, message) {
-  const p = getPlugin();
-  if (!p) return false;
-  try {
-    await p.sendMessage({ deviceId, message });
-    return true;
-  } catch (e) {
-    log(`sendMessage error: ${e.message}`, 'error');
-    return false;
+  const p = getBlePlugin();
+  if (p) {
+    try { await p.sendMessage({ deviceId, message }); return true; } catch (e) {}
   }
+  const np = getNearbyPlugin();
+  if (np) {
+    try { await np.sendMessage({ endpointId: deviceId, message }); return true; } catch (e) {}
+  }
+  return false;
 }
 
 export function cleanupListeners() {
   [scanListener, messageListener, deviceConnectedListener, deviceDisconnectedListener].forEach(l => {
-    if (l && typeof l.remove === 'function') {
-      try { l.remove(); } catch (e) {}
-    }
+    if (l && typeof l.remove === 'function') { try { l.remove(); } catch (e) {} }
   });
-  scanListener = null;
-  messageListener = null;
-  deviceConnectedListener = null;
-  deviceDisconnectedListener = null;
+  nearbyListeners.forEach(l => {
+    if (l && typeof l.remove === 'function') { try { l.remove(); } catch (e) {} }
+  });
+  nearbyListeners = [];
+  scanListener = null; messageListener = null;
+  deviceConnectedListener = null; deviceDisconnectedListener = null;
 }
 
 export function destroyBLEInterface() {
+  if (fallbackTimer) clearTimeout(fallbackTimer);
   cleanupListeners();
-  isInitialized = false;
-  plugin = null;
-  log('BLE interface destruida', 'info');
+  isInitialized = false; nearbyActive = false;
+  blePlugin = null; nearbyPlugin = null;
+  log('BLE interface híbrida destruida', 'info');
 }
 
-// Backwards compatibility
 export const init = initBLEInterface;
 export const destroy = destroyBLEInterface;
