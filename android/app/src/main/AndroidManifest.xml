@@ -5,32 +5,31 @@
     <!-- PERMISOS BLE CRÍTICOS (Android 14 compatible) -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-    
-    <!-- CRÍTICO: neverForLocation evita depender del GPS -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    
-    <!-- FOREGROUND SERVICE (Android 14 requiere esto explícito) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    
-    <!-- Ubicación solo si necesitas escanear para ubicación, con neverForLocation arriba no es estrictamente necesario pero lo dejamos por compatibilidad -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" 
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
         android:maxSdkVersion="30" />
     
-    <!-- Red para canal WiFi de Nearby -->
+    <!-- PERMISOS NEARBY + RED -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    
-    <!-- Permiso específico Nearby -->
     <uses-permission android:name="com.google.android.gms.permission.NEARBY_CONNECTIONS" />
     
+    <!-- ANTI-SAMSUNG: WAKE_LOCK + BOOT + BATTERY -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
@@ -53,19 +52,42 @@
             </intent-filter>
         </activity>
 
-        <!-- SERVICIO BLE FOREGROUND (NAP-BLE v5.0.0-ARCH) -->
+        <!-- BLE existente (NO TOCAR) -->
         <service
             android:name="com.nexo.ble.BleService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <!-- SERVICIO NORDIC MESH (Obligatorio para Android 14 foreground) -->
         <service
             android:name=".mesh.NordicMeshService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- NUEVO: Anti-Samsung Keep-Alive Service -->
+        <service
+            android:name=".NexoKeepAliveService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false" />
+
+        <!-- NUEVO: Receivers anti-kill -->
+        <receiver
+            android:name=".NexoBootReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".NexoReconnectReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
