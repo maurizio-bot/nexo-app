@@ -1,6 +1,6 @@
 /**
- * main.js v9.6-FINAL
- * FIX: Escucha nexo:ble:deviceFound, battery exemption, toggle scan robusto.
+ * main.js v10.0-ARCH
+ * FIX: KeepAliveService + Battery Exemption + BLE/Nearby híbrido.
  */
 
 const $ = (s) => document.querySelector(s);
@@ -16,7 +16,6 @@ let bleInterface = null;
 let nexoApp = null;
 let isScanning = false;
 
-// ===== RENDER DEVICE =====
 function renderDevice(device) {
   const list = els.bleDevicesList;
   const empty = els.bleEmpty;
@@ -25,8 +24,8 @@ function renderDevice(device) {
   const id = device.deviceId || device.address || 'unknown';
   const name = device.name || 'NEXO Device';
   const rssi = device.rssi || 0;
+  const transport = device.transport || 'ble';
 
-  // Evitar duplicados
   if (document.querySelector(`[data-ble-id="${id}"]`)) return;
 
   const item = document.createElement('div');
@@ -37,6 +36,7 @@ function renderDevice(device) {
       <span class="ble-device-name">${name}</span>
       <span class="ble-device-id">${id.substring(0, 8)}...</span>
       <span class="ble-device-rssi">${rssi} dBm</span>
+      <span class="ble-device-transport" style="font-size:10px;color:#0f0;">[${transport.toUpperCase()}]</span>
     </div>
     <div class="ble-device-actions">
       <button class="ble-btn-add" onclick="addContact('${id}')">Agregar</button>
@@ -44,7 +44,7 @@ function renderDevice(device) {
     </div>
   `;
   list.appendChild(item);
-  console.log(`[MAIN] Device rendered: ${name} (${id})`);
+  console.log(`[MAIN] Device rendered: ${name} (${id}) via ${transport}`);
 }
 
 function addContact(deviceId) {
@@ -59,7 +59,6 @@ function openChat(deviceId, name) {
   }));
 }
 
-// ===== BLE SCAN TOGGLE =====
 async function doScan() {
   if (isScanning) {
     console.log('[MAIN] Deteniendo scan...');
@@ -73,7 +72,7 @@ async function doScan() {
     return;
   }
 
-  console.log('[MAIN] Iniciando scan...');
+  console.log('[MAIN] Iniciando scan híbrido BLE+Nearby...');
   isScanning = true;
   els.btnBleScan.textContent = 'Detener';
   els.btnBleScan.classList.add('scanning');
@@ -92,9 +91,8 @@ async function doScan() {
   }
 }
 
-// ===== INICIALIZACIÓN =====
 async function init() {
-  console.log('[MAIN] Iniciando...');
+  console.log('[MAIN] Iniciando v10.0-ARCH...');
 
   let waited = 0;
   while (!window.Capacitor && waited < 3000) {
@@ -103,42 +101,55 @@ async function init() {
   }
   console.log(`[MAIN] Capacitor: ${window.Capacitor ? 'OK' : 'NO'}`);
 
-  // FIX: Solicitar exención de batería para Samsung (Adaptive Battery mata foreground services)
+  // 1. Anti-Samsung: Exención de batería (obligatorio)
   try {
-    const plugin = window.Capacitor?.Plugins?.NexoBLE;
-    if (plugin?.requestBatteryOptimizationExemption) {
-      const battResult = await plugin.requestBatteryOptimizationExemption();
-      console.log(`[MAIN] Battery exemption: ${JSON.stringify(battResult)}`);
+    const blePlugin = window.Capacitor?.Plugins?.NexoBLE;
+    if (blePlugin?.requestBatteryOptimizationExemption) {
+      const batt = await blePlugin.requestBatteryOptimizationExemption();
+      console.log(`[MAIN] Battery exemption: ${JSON.stringify(batt)}`);
     }
   } catch (e) {
-    console.warn(`[MAIN] Battery exemption no disponible: ${e.message}`);
+    console.warn(`[MAIN] Battery exemption: ${e.message}`);
   }
 
-  // Importar ble_interface.js
+  // 2. Anti-Samsung: KeepAliveService (obligatorio)
   try {
-    console.log('[MAIN] Importando ble_interface...');
+    const nearbyPlugin = window.Capacitor?.Plugins?.NexoNearby;
+    if (nearbyPlugin?.startKeepAliveService) {
+      await nearbyPlugin.startKeepAliveService();
+      console.log('[MAIN] KeepAliveService iniciado');
+    }
+  } catch (e) {
+    console.warn(`[MAIN] KeepAliveService: ${e.message}`);
+  }
+
+  // 3. Importar ble_interface híbrida
+  try {
+    console.log('[MAIN] Importando ble_interface híbrida...');
     const { initBLEInterface } = await import('./ui/ble_interface.js');
     bleInterface = await initBLEInterface();
-    console.log('[MAIN] ble_interface OK');
+    console.log('[MAIN] ble_interface híbrida OK');
   } catch (e) {
     console.warn(`[MAIN] ble_interface falló: ${e.message}`);
     bleInterface = null;
   }
 
-  // FIX CRÍTICO: Escuchar dispositivos encontrados via evento DOM de ble_interface.js
+  // 4. Escuchar dispositivos (BLE o Nearby)
   window.addEventListener('nexo:ble:deviceFound', (e) => {
     const device = e.detail;
-    console.log('[MAIN] nexo:ble:deviceFound received:', device);
+    console.log('[MAIN] nexo:ble:deviceFound:', device);
     renderDevice(device);
   });
 
-  // Importar nexo_app.js
+  // 5. Importar nexo_app
   try {
     console.log('[MAIN] Importando nexo_app...');
     const { createNexoApp } = await import('./app/nexo_app.js');
     nexoApp = await createNexoApp({
       onMessage: (msg) => {
-        if (msg.source === 'ble_direct') appendBubble(msg.content, false, msg.messageId);
+        if (msg.source === 'ble_direct' || msg.source === 'nearby') {
+          appendBubble(msg.content, false, msg.messageId);
+        }
       }
     });
     console.log('[MAIN] NEXO App OK');
@@ -146,7 +157,7 @@ async function init() {
     console.warn(`[MAIN] nexo_app falló: ${e.message}`);
   }
 
-  // SetupWizard
+  // 6. SetupWizard
   try {
     console.log('[MAIN] SetupWizard...');
     const { SetupWizard } = await import('./ui/SetupWizard.js');
@@ -183,4 +194,3 @@ async function init() {
 }
 
 try { init(); } catch (e) { console.error(`[MAIN] FATAL: ${e.message}`); }
-
