@@ -2,7 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- PERMISOS BLE -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
@@ -11,20 +10,15 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" 
-        android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="30" />
-    
-    <!-- PERMISOS NEARBY + RED -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    
-    <!-- ANTI-SAMSUNG -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -51,7 +45,6 @@
             </intent-filter>
         </activity>
 
-        <!-- BLE existente -->
         <service
             android:name="com.nexo.ble.BleService"
             android:enabled="true"
@@ -64,7 +57,6 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <!-- CORREGIDO: Keep-Alive en com.nexo.ble -->
         <service
             android:name="com.nexo.ble.NexoKeepAliveService"
             android:enabled="true"
@@ -72,13 +64,11 @@
             android:foregroundServiceType="connectedDevice"
             android:stopWithTask="false" />
 
-        <!-- CORREGIDO: ReconnectReceiver en com.nexo.ble -->
         <receiver
             android:name="com.nexo.ble.NexoReconnectReceiver"
             android:enabled="true"
             android:exported="false" />
 
-        <!-- BOOT RECEIVER: ¿EXISTE ESTE ARCHIVO? Si no existe, BORRA estas líneas -->
         <receiver
             android:name="com.nexo.ble.NexoBootReceiver"
             android:enabled="true"
