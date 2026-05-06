@@ -1,5 +1,5 @@
 /**
- * ble_interface.js v5.1.0-ARCH
+ * ble_interface.js v5.2.0-ARCH
  * Híbrido BLE nativo + Google Nearby Connections
  * Discovery inicia INMEDIATAMENTE junto con advertising.
  */
@@ -103,12 +103,14 @@ function registerListeners() {
     cleanupListeners();
     try {
       scanListener = p.addListener('onScanResult', (result) => {
-        const addr = result?.address || result?.deviceId || 'unknown';
-        const name = result?.name || result?.deviceName || 'NEXO Device';
+        const addr = result?.address || 'unknown';
+        // FIX 3: nexoId = UUID persistente para anclaje, deviceId = nexoId (no MAC)
+        const nexoId = result?.deviceId || addr;
+        const name = result?.name || 'NEXO Device';
         const rssi = result?.rssi || 0;
-        log(`BLE Scan: ${name} (${addr.substring(0, 8)}) rssi=${rssi}`, 'info');
+        log(`BLE Scan: ${name} (nexoId=${nexoId.substring(0, 8)}) rssi=${rssi}`, 'info');
         window.dispatchEvent(new CustomEvent('nexo:ble:deviceFound', {
-          detail: { address: addr, name, rssi, deviceId: addr, transport: 'ble' }
+          detail: { address: addr, nexoId: nexoId, name, rssi, deviceId: nexoId, transport: 'ble' }
         }));
       });
     } catch (e) { log(`Error scan listener: ${e.message}`, 'error'); }
