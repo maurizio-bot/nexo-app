@@ -22,22 +22,18 @@ import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.ParcelUuid
-import android.os.PowerManager
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.util.ArrayDeque
@@ -53,6 +49,7 @@ class BleService : Service() {
         private const val TAG = "NexoBleService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "nexo_ble_channel"
+        const val MANUFACTURER_ID_NEXO = 0xFFFF // Bluetooth SIG reserved for internal use
 
         val SERVICE_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6")
         val MESSAGE_CHAR_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c7")
@@ -121,6 +118,8 @@ class BleService : Service() {
 
     data class Conn(val id: String, var gatt: BluetoothGatt? = null, var state: ConnState = ConnState.IDLE, var retry: Int = 0, var lastAttempt: Long = 0, var pendingMsgId: String? = null, var userDisc: Boolean = false)
 
+    private data class ScanCache(val result: ScanResult, val nexoId: String, val addr: String)
+
     private val binder = LocalBinder()
     private val handler = Handler(Looper.getMainLooper())
     private var btManager: BluetoothManager? = null
@@ -130,7 +129,7 @@ class BleService : Service() {
     private var gattServer: BluetoothGattServer? = null
     private var isAd = false
     private var isScan = false
-    private val scanResults = ConcurrentHashMap<String, ScanResult>()
+    private val scanResults = ConcurrentHashMap<String, ScanCache>() // key = nexoId
     private val scanTimes = ArrayDeque<Long>()
     private val conns = ConcurrentHashMap<String, Conn>()
     private val serverConns = ConcurrentHashMap<String, BluetoothDevice>()
@@ -148,6 +147,15 @@ class BleService : Service() {
         btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         btAdapter = btManager?.adapter
         Log.i(TAG, "[NAP-002] Adapter=${btAdapter != null}, enabled=${btAdapter?.isEnabled}")
+
+        // Restaurar userId si Android mató y recreó el service
+        val prefs = getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE)
+        val savedId = prefs.getString("device_uuid", null)
+        if (!savedId.isNullOrBlank()) {
+            userId = savedId
+            Log.i(TAG, "[NAP-002b] userId restaurado de prefs: ${userId.take(8)}...")
+        }
+
         createChannel()
         startFg()
         try { initGattServer(); Log.i(TAG, "[NAP-003] GATT Server inicializado OK") } catch (e: Exception) { Log.e(TAG, "[NAP-004] GATT init error: ${e.message}") }
@@ -363,17 +371,17 @@ class BleService : Service() {
         bcastFail(a, r, conns[a]?.retry ?: 0)
     }
 
-    // FIX v3.5.2: Re-emitir resultados acumulados si scan ya activo
     fun startScan() {
         if (isScan) {
             Log.w(TAG, "[NAP-SCAN-001] Scan already active, re-emitting ${scanResults.size} cached results")
-            scanResults.forEach { (addr, result) ->
-                val devName = try { result.device.name ?: result.scanRecord?.deviceName ?: "" } catch (e: SecurityException) { "" }
+            scanResults.forEach { (nexoId, cache) ->
+                val devName = try { cache.result.device.name ?: cache.result.scanRecord?.deviceName ?: "" } catch (e: SecurityException) { "" }
                 val displayName = devName.ifBlank { "NEXO Device" }
                 sendLocalBroadcast(Intent(ACTION_SCAN_RESULT).apply {
-                    putExtra(EXTRA_DEVICE_ADDRESS, addr)
-                    putExtra(EXTRA_RSSI, result.rssi)
+                    putExtra(EXTRA_DEVICE_ADDRESS, cache.addr)
+                    putExtra(EXTRA_RSSI, cache.result.rssi)
                     putExtra(EXTRA_DEVICE_NAME, displayName)
+                    putExtra(EXTRA_USER_ID, nexoId)
                 })
             }
             return
@@ -403,7 +411,6 @@ class BleService : Service() {
         }
     }
 
-    // FIX v3.5.2: Limpiar scanResults al detener para permitir redetección fresca
     fun stopScan() {
         if (isScan) {
             try { scanner?.stopScan(scanCb) } catch (e: Exception) {}
@@ -434,19 +441,34 @@ class BleService : Service() {
 
                 Log.i(TAG, "[NAP-SCAN-010] onScanResult: addr=${addr.take(8)} name=$devName rssi=${it.rssi} hasNexoUuid=$hasNexoUuid")
 
-                if (hasNexoUuid || record?.serviceUuids != null) {
-                    val displayName = devName.ifBlank { "NEXO Device" }
-                    // FIX v3.5.2: Emitir SIEMPRE, no solo si es nuevo o mejor RSSI
-                    val shouldUpdate = scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)
-                    if (shouldUpdate) scanResults[addr] = it
-                    sendLocalBroadcast(Intent(ACTION_SCAN_RESULT).apply {
-                        putExtra(EXTRA_DEVICE_ADDRESS, addr)
-                        putExtra(EXTRA_RSSI, it.rssi)
-                        putExtra(EXTRA_DEVICE_NAME, displayName)
-                    })
+                // FIX 1: Filtro estricto — SOLO dispositivos con nuestro SERVICE_UUID exacto
+                if (!hasNexoUuid) return
+
+                // FIX 3: Extraer nexoId del manufacturer data (8 bytes = 16 hex chars)
+                val mfrData = record?.getManufacturerSpecificData(MANUFACTURER_ID_NEXO)
+                val nexoId = if (mfrData != null && mfrData.size >= 8) {
+                    mfrData.take(8).joinToString("") { "%02X".format(it) }
+                } else {
+                    Log.w(TAG, "[NAP-SCAN-010b] Dispositivo con SERVICE_UUID pero sin manufacturer data: $addr")
+                    addr // fallback a MAC si no hay manufacturer data
                 }
+
+                // FIX 2: Nombre real del dispositivo (del sistema Bluetooth)
+                val displayName = devName.ifBlank { "NEXO Device" }
+
+                // Anti-duplicado por nexoId (no por MAC)
+                val shouldUpdate = scanResults[nexoId] == null || it.rssi > (scanResults[nexoId]?.result?.rssi ?: -999)
+                if (shouldUpdate) scanResults[nexoId] = ScanCache(it, nexoId, addr)
+
+                sendLocalBroadcast(Intent(ACTION_SCAN_RESULT).apply {
+                    putExtra(EXTRA_DEVICE_ADDRESS, addr)
+                    putExtra(EXTRA_DEVICE_NAME, displayName)
+                    putExtra(EXTRA_RSSI, it.rssi)
+                    putExtra(EXTRA_USER_ID, nexoId)
+                })
             }
         }
+
         override fun onScanFailed(ec: Int) {
             isScan = false
             val err = when(ec) {
@@ -479,12 +501,24 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
-        val data = AdvertiseData.Builder()
+        val dataBuilder = AdvertiseData.Builder()
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .setIncludeDeviceName(true)
-            .build()
 
-        Log.i(TAG, "[NAP-ADVERT-005] startAdvertising() — Service UUID=${SERVICE_UUID}, payload ~21 bytes")
+        // FIX 3: Incluir UUID persistente en manufacturer data (8 bytes = 16 hex chars)
+        if (userId.isNotBlank()) {
+            val uuidBytes = uuidToShortBytes(userId)
+            if (uuidBytes != null && uuidBytes.size == 8) {
+                dataBuilder.addManufacturerData(MANUFACTURER_ID_NEXO, uuidBytes)
+                Log.i(TAG, "[NAP-ADVERT-005b] Manufacturer data agregado: ${uuidBytes.size} bytes, nexoId=${uuidBytes.joinToString("") { "%02X".format(it) }}")
+            } else {
+                Log.w(TAG, "[NAP-ADVERT-005c] No se pudo convertir userId a bytes para advertising")
+            }
+        }
+
+        val data = dataBuilder.build()
+
+        Log.i(TAG, "[NAP-ADVERT-005] startAdvertising() — Service UUID=${SERVICE_UUID}, includeDeviceName=true, manufacturerData=${userId.isNotBlank()}")
         try {
             freshAdvertiser.startAdvertising(settings, data, adCb)
         } catch (e: SecurityException) {
@@ -506,6 +540,10 @@ class BleService : Service() {
     fun setUserInfo(uid: String, uname: String) {
         this.userId = uid
         this.userName = uname.ifBlank { "NEXO" }
+        // Persistir para sobrevivir reinicios del service por Android
+        getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE)
+            .edit().putString("device_uuid", uid).apply()
+        Log.i(TAG, "[NAP-USER-001] setUserInfo: uid=${uid.take(8)} name=$userName")
     }
 
     fun isBluetoothEnabled() = btAdapter?.isEnabled == true
@@ -517,6 +555,14 @@ class BleService : Service() {
         conns.forEach { (id, c) -> if (c.state == ConnState.READY) list.add(mapOf("deviceId" to id, "address" to id, "name" to (c.gatt?.device?.name ?: "NEXO Peer"), "direction" to "outgoing", "servicesReady" to "true")) }
         serverConns.forEach { (id, d) -> try { list.add(mapOf("deviceId" to id, "address" to id, "name" to (d.name ?: "NEXO Peer"), "direction" to "incoming", "servicesReady" to "true")) } catch (e: SecurityException) {} }
         return list
+    }
+
+    private fun uuidToShortBytes(uuidStr: String): ByteArray? {
+        return try {
+            val clean = uuidStr.replace("-", "").lowercase()
+            if (clean.length < 16) return null
+            clean.take(16).chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        } catch (e: Exception) { null }
     }
 
     private val adCb = object : AdvertiseCallback() {
