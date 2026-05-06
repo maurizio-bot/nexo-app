@@ -1,6 +1,6 @@
 /**
- * main.js v10.0-ARCH
- * FIX: KeepAliveService + Battery Exemption + BLE/Nearby híbrido.
+ * main.js v10.1-ARCH
+ * FIX: No limpiar lista al scan manual. Mantener dispositivos detectados por scan automático.
  */
 
 const $ = (s) => document.querySelector(s);
@@ -72,12 +72,12 @@ async function doScan() {
     return;
   }
 
-  console.log('[MAIN] Iniciando scan híbrido BLE+Nearby...');
+  // FIX v10.1: NO limpiar lista. NO forzar empty state.
+  // El scan automático ya pudo haber detectado dispositivos.
+  console.log('[MAIN] Iniciando scan manual...');
   isScanning = true;
   els.btnBleScan.textContent = 'Detener';
   els.btnBleScan.classList.add('scanning');
-  els.bleDevicesList.innerHTML = '';
-  if (els.bleEmpty) els.bleEmpty.style.display = 'block';
 
   try {
     if (bleInterface?.startBleScan) await bleInterface.startBleScan();
@@ -92,7 +92,7 @@ async function doScan() {
 }
 
 async function init() {
-  console.log('[MAIN] Iniciando v10.0-ARCH...');
+  console.log('[MAIN] Iniciando v10.1-ARCH...');
 
   let waited = 0;
   while (!window.Capacitor && waited < 3000) {
@@ -101,7 +101,7 @@ async function init() {
   }
   console.log(`[MAIN] Capacitor: ${window.Capacitor ? 'OK' : 'NO'}`);
 
-  // 1. Anti-Samsung: Exención de batería (obligatorio)
+  // 1. Anti-Samsung: Exención de batería
   try {
     const blePlugin = window.Capacitor?.Plugins?.NexoBLE;
     if (blePlugin?.requestBatteryOptimizationExemption) {
@@ -112,7 +112,7 @@ async function init() {
     console.warn(`[MAIN] Battery exemption: ${e.message}`);
   }
 
-  // 2. Anti-Samsung: KeepAliveService (obligatorio)
+  // 2. Anti-Samsung: KeepAliveService
   try {
     const nearbyPlugin = window.Capacitor?.Plugins?.NexoNearby;
     if (nearbyPlugin?.startKeepAliveService) {
