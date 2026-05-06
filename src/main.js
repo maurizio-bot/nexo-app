@@ -1,6 +1,6 @@
 /**
- * main.js v10.1-ARCH
- * FIX: No limpiar lista al scan manual. Mantener dispositivos detectados por scan automático.
+ * main.js v10.2-ARCH
+ * FIX: UI estética unificada. Dispositivo = botón único. Click = agregar + chat automático.
  */
 
 const $ = (s) => document.querySelector(s);
@@ -16,35 +16,46 @@ let bleInterface = null;
 let nexoApp = null;
 let isScanning = false;
 
+/* ---------- NUEVO: Click único en dispositivo ---------- */
+window.handleDeviceClick = function(deviceId, name) {
+  console.log(`[MAIN] handleDeviceClick: ${name} (${deviceId})`);
+  if (bleInterface?.addContact) bleInterface.addContact(deviceId);
+  window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
+    detail: { deviceId, name }
+  }));
+};
+
 function renderDevice(device) {
   const list = els.bleDevicesList;
   const empty = els.bleEmpty;
   if (empty) empty.style.display = 'none';
 
   const id = device.deviceId || device.address || 'unknown';
-  const name = device.name || 'NEXO Device';
+  const name = (device.name || 'NEXO Device').replace(/'/g, "\\'");
   const rssi = device.rssi || 0;
-  const transport = device.transport || 'ble';
 
-  if (document.querySelector(`[data-ble-id="${id}"]`)) return;
+  // Si ya existe, actualiza RSSI en el atributo (opcional para debug)
+  const existing = document.querySelector(`[data-ble-id="${id}"]`);
+  if (existing) {
+    existing.setAttribute('data-rssi', rssi);
+    return;
+  }
 
   const item = document.createElement('div');
-  item.className = 'ble-device-item';
+  item.className = 'ble-device-card';
   item.setAttribute('data-ble-id', id);
+  item.setAttribute('data-rssi', rssi);
+  item.setAttribute('onclick', `handleDeviceClick('${id}', '${name}')`);
   item.innerHTML = `
-    <div class="ble-device-info">
-      <span class="ble-device-name">${name}</span>
-      <span class="ble-device-id">${id.substring(0, 8)}...</span>
-      <span class="ble-device-rssi">${rssi} dBm</span>
-      <span class="ble-device-transport" style="font-size:10px;color:#0f0;">[${transport.toUpperCase()}]</span>
-    </div>
-    <div class="ble-device-actions">
-      <button class="ble-btn-add" onclick="addContact('${id}')">Agregar</button>
-      <button class="ble-btn-chat" onclick="openChat('${id}', '${name}')">Chat</button>
+    <div class="ble-device-name-btn">${name}</div>
+    <div class="ble-device-signal">
+      <span class="ble-signal-bar"></span>
+      <span class="ble-signal-bar"></span>
+      <span class="ble-signal-bar"></span>
     </div>
   `;
   list.appendChild(item);
-  console.log(`[MAIN] Device rendered: ${name} (${id}) via ${transport}`);
+  console.log(`[MAIN] Device rendered: ${name} (${id})`);
 }
 
 function addContact(deviceId) {
@@ -72,8 +83,6 @@ async function doScan() {
     return;
   }
 
-  // FIX v10.1: NO limpiar lista. NO forzar empty state.
-  // El scan automático ya pudo haber detectado dispositivos.
   console.log('[MAIN] Iniciando scan manual...');
   isScanning = true;
   els.btnBleScan.textContent = 'Detener';
@@ -92,7 +101,7 @@ async function doScan() {
 }
 
 async function init() {
-  console.log('[MAIN] Iniciando v10.1-ARCH...');
+  console.log('[MAIN] Iniciando v10.2-ARCH...');
 
   let waited = 0;
   while (!window.Capacitor && waited < 3000) {
