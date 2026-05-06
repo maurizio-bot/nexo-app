@@ -50,6 +50,11 @@ class BleService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "nexo_ble_channel"
 
+        // BRIDGEFY-STYLE: Magic bytes en manufacturer data para identificación NEXO
+        // "NX" = 0x4E 0x58 + versión 0x01 0x00
+        val NEXO_MAGIC_BYTES = byteArrayOf(0x4E, 0x58, 0x01, 0x00)
+        const val MANUFACTURER_ID_NEXO = 0xFFFF // Reserved internal use
+
         val SERVICE_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6")
         val MESSAGE_CHAR_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c7")
         val ANNOUNCE_CHAR_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c8")
@@ -140,7 +145,7 @@ class BleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "[NAP-001] onCreate() — INICIO v3.7.0-ARCH")
+        Log.i(TAG, "[NAP-001] onCreate() — INICIO v3.7.2-ARCH")
         btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         btAdapter = btManager?.adapter
         Log.i(TAG, "[NAP-002] Adapter=${btAdapter != null}, enabled=${btAdapter?.isEnabled}")
@@ -329,7 +334,6 @@ class BleService : Service() {
             if (d.uuid == CCCD_UUID && s == BluetoothGatt.GATT_SUCCESS) {
                 sendLocalBroadcast(Intent(ACTION_NOTIFICATIONS_ENABLED).apply { putExtra(EXTRA_DEVICE_ADDRESS, g.device.address); putExtra(EXTRA_ENABLED, true) })
                 markReady(g.device.address, g)
-                // BRIDGEFY-STYLE: Post-conexión, leer ANNOUNCE_CHAR_UUID para obtener identidad real del peer
                 val announceChar = g.getService(SERVICE_UUID)?.getCharacteristic(ANNOUNCE_CHAR_UUID)
                 if (announceChar != null) {
                     try {
@@ -343,7 +347,6 @@ class BleService : Service() {
                 failConn(g.device.address, "Descriptor failed")
             }
         }
-        // BRIDGEFY-STYLE: Recibir identidad del peer vía ANNOUNCE_CHAR_UUID read
         override fun onCharacteristicRead(g: BluetoothGatt, c: BluetoothGattCharacteristic, s: Int) {
             if (c.uuid == ANNOUNCE_CHAR_UUID && s == BluetoothGatt.GATT_SUCCESS) {
                 val value = c.value ?: return
@@ -470,11 +473,21 @@ class BleService : Service() {
                 } catch (se: SecurityException) { return }
 
                 val record = it.scanRecord
+
+                // v3.7.2 BRIDGEFY-STYLE: Detección por manufacturer data magic bytes
+                // Primario: buscar NEXO_MAGIC_BYTES en manufacturer data (0xFFFF)
+                // Fallback: service UUID en scan record (para compatibilidad versiones antiguas)
+                val mfrData = record?.getManufacturerSpecificData(MANUFACTURER_ID_NEXO)
+                val hasNexoMagic = mfrData != null && mfrData.size >= 2 &&
+                    mfrData[0] == NEXO_MAGIC_BYTES[0] && mfrData[1] == NEXO_MAGIC_BYTES[1]
                 val hasNexoUuid = record?.serviceUuids?.any { u -> u.uuid == SERVICE_UUID } == true
 
-                Log.i(TAG, "[NAP-SCAN-010] onScanResult: addr=${addr.take(8)} name=$devName rssi=${it.rssi} hasNexoUuid=$hasNexoUuid")
+                val isNexoDevice = hasNexoMagic || hasNexoUuid
 
-                if (!hasNexoUuid) return
+                Log.i(TAG, "[NAP-SCAN-010] onScanResult: addr=${addr.take(8)} name=$devName rssi=${it.rssi} hasNexoMagic=$hasNexoMagic hasNexoUuid=$hasNexoUuid")
+
+                // SOLO mostrar dispositivos NEXO en la lista
+                if (!isNexoDevice) return
 
                 val displayName = devName.ifBlank { "NEXO Device" }
 
@@ -521,12 +534,15 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
+        // v3.7.2 BRIDGEFY-STYLE: Advertising mínimo
+        // NO UUID128 (ahorra 16 bytes). Solo deviceName + manufacturer data con magic bytes.
+        // Payload total: ~3B flags + ~10B name + ~6B manufacturer = ~19B (cómodo dentro de 31B)
         val data = AdvertiseData.Builder()
-            .addServiceUuid(ParcelUuid(SERVICE_UUID))
             .setIncludeDeviceName(true)
+            .addManufacturerData(MANUFACTURER_ID_NEXO, NEXO_MAGIC_BYTES)
             .build()
 
-        Log.i(TAG, "[NAP-ADVERT-005] startAdvertising() — Service UUID=${SERVICE_UUID}, includeDeviceName=true")
+        Log.i(TAG, "[NAP-ADVERT-005] startAdvertising() — NO UUID128, manufacturerData=${NEXO_MAGIC_BYTES.joinToString("") { "%02X".format(it) }}, includeDeviceName=true")
         try {
             freshAdvertiser.startAdvertising(settings, data, adCb)
         } catch (e: SecurityException) {
