@@ -1,5 +1,5 @@
 /**
- * ble_interface.js v5.2.0-ARCH
+ * ble_interface.js v5.3.0-ARCH
  * Híbrido BLE nativo + Google Nearby Connections
  * Discovery inicia INMEDIATAMENTE junto con advertising.
  */
@@ -10,6 +10,7 @@ let scanListener = null;
 let messageListener = null;
 let deviceConnectedListener = null;
 let deviceDisconnectedListener = null;
+let peerInfoListener = null;
 let nearbyListeners = [];
 let isInitialized = false;
 let nearbyActive = false;
@@ -104,13 +105,12 @@ function registerListeners() {
     try {
       scanListener = p.addListener('onScanResult', (result) => {
         const addr = result?.address || 'unknown';
-        // FIX 3: nexoId = UUID persistente para anclaje, deviceId = nexoId (no MAC)
-        const nexoId = result?.deviceId || addr;
+        // v5.3.0: deviceId = MAC address (restaurado). Nombre real del dispositivo.
         const name = result?.name || 'NEXO Device';
         const rssi = result?.rssi || 0;
-        log(`BLE Scan: ${name} (nexoId=${nexoId.substring(0, 8)}) rssi=${rssi}`, 'info');
+        log(`BLE Scan: ${name} (${addr.substring(0, 8)}) rssi=${rssi}`, 'info');
         window.dispatchEvent(new CustomEvent('nexo:ble:deviceFound', {
-          detail: { address: addr, nexoId: nexoId, name, rssi, deviceId: nexoId, transport: 'ble' }
+          detail: { address: addr, name, rssi, deviceId: addr, transport: 'ble' }
         }));
       });
     } catch (e) { log(`Error scan listener: ${e.message}`, 'error'); }
@@ -144,6 +144,20 @@ function registerListeners() {
         }));
       });
     } catch (e) { log(`Error disconnect listener: ${e.message}`, 'warn'); }
+
+    // v5.3.0: Nuevo listener para recibir identidad real del peer vía GATT handshake (Bridgefy-style)
+    try {
+      peerInfoListener = p.addListener('onPeerInfoReceived', (result) => {
+        const deviceId = result?.deviceId || 'unknown';
+        const peerUserId = result?.userId || '';
+        const peerName = result?.name || 'NEXO Peer';
+        const peerTs = result?.timestamp || Date.now();
+        log(`BLE PeerInfo: ${peerName} (uid=${peerUserId?.substring(0, 8)})`, 'info');
+        window.dispatchEvent(new CustomEvent('nexo:ble:peerInfo', {
+          detail: { deviceId, peerUserId, peerName, peerTs, transport: 'ble' }
+        }));
+      });
+    } catch (e) { log(`Error peerInfo listener: ${e.message}`, 'warn'); }
   }
 
   const np = getNearbyPlugin();
@@ -239,7 +253,7 @@ export async function sendMessage(deviceId, message) {
 }
 
 export function cleanupListeners() {
-  [scanListener, messageListener, deviceConnectedListener, deviceDisconnectedListener].forEach(l => {
+  [scanListener, messageListener, deviceConnectedListener, deviceDisconnectedListener, peerInfoListener].forEach(l => {
     if (l && typeof l.remove === 'function') { try { l.remove(); } catch (e) {} }
   });
   nearbyListeners.forEach(l => {
@@ -248,6 +262,7 @@ export function cleanupListeners() {
   nearbyListeners = [];
   scanListener = null; messageListener = null;
   deviceConnectedListener = null; deviceDisconnectedListener = null;
+  peerInfoListener = null;
 }
 
 export function destroyBLEInterface() {
