@@ -132,12 +132,17 @@ class NexoBlePlugin : Plugin() {
                         napLog("REM-BRIDGE-006", "SCAN_RESULT sin device_address", "WARN")
                         return
                     }
-                    val name = intent.getStringExtra(EXTRA_DEVICE_NAME) ?: "NEXO Device"
+                    // FIX 3: nexoId = UUID persistente del manufacturer data, fallback a MAC
+                    val nexoId = intent.getStringExtra(EXTRA_USER_ID) ?: deviceId
+                    // FIX 2: Nombre real del dispositivo Bluetooth como prioridad
+                    val broadcastName = intent.getStringExtra(EXTRA_DEVICE_NAME) ?: ""
+                    val realName = getBluetoothRealName(deviceId) ?: broadcastName
+                    val name = realName.ifBlank { "NEXO Device" }
                     val rssi = intent.getIntExtra(EXTRA_RSSI, 0)
-                    napLog("REM-BRIDGE-007", "SCAN_RESULT → JS: addr=${deviceId.take(8)} name=$name rssi=$rssi", "INFO")
+                    napLog("REM-BRIDGE-007", "SCAN_RESULT → JS: addr=${deviceId.take(8)} nexoId=${nexoId.take(8)} name=$name rssi=$rssi", "INFO")
                     notifyListeners("onScanResult", JSObject().apply {
-                        put("address", deviceId)
-                        put("deviceId", deviceId)
+                        put("address", deviceId)   // MAC para conectar
+                        put("deviceId", nexoId)    // UUID persistente para anclaje
                         put("name", name)
                         put("rssi", rssi)
                     })
@@ -283,8 +288,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("REM-BRIDGE-020", "load() — INICIO v5.5.2-ARCH", "INFO")
-        registerReceiverOnly() // FIX v5.5.2: Registrar receiver SIEMPRE, no solo sin permisos
+        napLog("REM-BRIDGE-020", "load() — INICIO v5.6.0-ARCH", "INFO")
+        registerReceiverOnly()
         if (!canAccessBluetooth()) {
             napLog("REM-BRIDGE-020b", "Sin permisos al cargar, omitiendo startForegroundService", "WARN")
             return
@@ -399,6 +404,16 @@ class NexoBlePlugin : Plugin() {
         val adapter = manager?.adapter
         napLog("REM-BT-001", "getBluetoothAdapter()=${adapter != null} enabled=${adapter?.isEnabled}", "INFO")
         return adapter
+    }
+
+    // FIX 2: Obtener nombre real del dispositivo desde BluetoothAdapter
+    private fun getBluetoothRealName(addr: String): String? {
+        return try {
+            val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = manager?.adapter
+            val dev = adapter?.getRemoteDevice(addr)
+            dev?.name
+        } catch (e: Exception) { null }
     }
 
     private fun napLog(code: String, message: String, level: String = "INFO") {
