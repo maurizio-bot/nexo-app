@@ -50,10 +50,11 @@ class BleService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "nexo_ble_channel"
 
-        // BRIDGEFY-STYLE: Magic bytes en manufacturer data para identificación NEXO
-        // "NX" = 0x4E 0x58 + versión 0x01 0x00
+        // DIAGNÓSTICO TEMPORAL: true = mostrar TODOS los dispositivos, false = solo NEXO
+        const val DIAGNOSTIC_MODE = true
+
         val NEXO_MAGIC_BYTES = byteArrayOf(0x4E, 0x58, 0x01, 0x00)
-        const val MANUFACTURER_ID_NEXO = 0xFFFF // Reserved internal use
+        const val MANUFACTURER_ID_NEXO = 0xFFFF
 
         val SERVICE_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6")
         val MESSAGE_CHAR_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c7")
@@ -145,7 +146,7 @@ class BleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "[NAP-001] onCreate() — INICIO v3.7.2-ARCH")
+        Log.i(TAG, "[NAP-001] onCreate() — INICIO v3.7.3-ARCH DIAGNOSTIC=$DIAGNOSTIC_MODE")
         btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         btAdapter = btManager?.adapter
         Log.i(TAG, "[NAP-002] Adapter=${btAdapter != null}, enabled=${btAdapter?.isEnabled}")
@@ -474,31 +475,44 @@ class BleService : Service() {
 
                 val record = it.scanRecord
 
-                // v3.7.2 BRIDGEFY-STYLE: Detección por manufacturer data magic bytes
-                // Primario: buscar NEXO_MAGIC_BYTES en manufacturer data (0xFFFF)
-                // Fallback: service UUID en scan record (para compatibilidad versiones antiguas)
+                // Detección NEXO
                 val mfrData = record?.getManufacturerSpecificData(MANUFACTURER_ID_NEXO)
                 val hasNexoMagic = mfrData != null && mfrData.size >= 2 &&
                     mfrData[0] == NEXO_MAGIC_BYTES[0] && mfrData[1] == NEXO_MAGIC_BYTES[1]
                 val hasNexoUuid = record?.serviceUuids?.any { u -> u.uuid == SERVICE_UUID } == true
-
                 val isNexoDevice = hasNexoMagic || hasNexoUuid
 
-                Log.i(TAG, "[NAP-SCAN-010] onScanResult: addr=${addr.take(8)} name=$devName rssi=${it.rssi} hasNexoMagic=$hasNexoMagic hasNexoUuid=$hasNexoUuid")
+                // DIAGNÓSTICO: Log detallado de CADA dispositivo detectado
+                Log.i(TAG, "[NAP-SCAN-DIAG] addr=${addr.take(8)} name='$devName' rssi=${it.rssi} " +
+                    "mfrData=${mfrData?.joinToString("") { "%02X".format(it) } ?: "null"} " +
+                    "hasMagic=$hasNexoMagic hasUuid=$hasNexoUuid isNexo=$isNexoDevice")
 
-                // SOLO mostrar dispositivos NEXO en la lista
-                if (!isNexoDevice) return
-
-                val displayName = devName.ifBlank { "NEXO Device" }
-
-                val shouldUpdate = scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)
-                if (shouldUpdate) scanResults[addr] = it
-
-                sendLocalBroadcast(Intent(ACTION_SCAN_RESULT).apply {
-                    putExtra(EXTRA_DEVICE_ADDRESS, addr)
-                    putExtra(EXTRA_DEVICE_NAME, displayName)
-                    putExtra(EXTRA_RSSI, it.rssi)
-                })
+                // v3.7.3: Si DIAGNOSTIC_MODE=true, mostrar TODOS los dispositivos con nombre
+                // Si false, solo mostrar dispositivos NEXO
+                if (DIAGNOSTIC_MODE) {
+                    // Modo diagnóstico: mostrar todo con nombre no vacío
+                    if (devName.isBlank()) return
+                    val displayName = if (isNexoDevice) "⭐ $devName" else devName
+                    val shouldUpdate = scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)
+                    if (shouldUpdate) scanResults[addr] = it
+                    sendLocalBroadcast(Intent(ACTION_SCAN_RESULT).apply {
+                        putExtra(EXTRA_DEVICE_ADDRESS, addr)
+                        putExtra(EXTRA_DEVICE_NAME, displayName)
+                        putExtra(EXTRA_RSSI, it.rssi)
+                        putExtra(EXTRA_USER_ID, if (isNexoDevice) "NEXO" else "OTHER")
+                    })
+                } else {
+                    // Modo producción: solo NEXO
+                    if (!isNexoDevice) return
+                    val displayName = devName.ifBlank { "NEXO Device" }
+                    val shouldUpdate = scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)
+                    if (shouldUpdate) scanResults[addr] = it
+                    sendLocalBroadcast(Intent(ACTION_SCAN_RESULT).apply {
+                        putExtra(EXTRA_DEVICE_ADDRESS, addr)
+                        putExtra(EXTRA_DEVICE_NAME, displayName)
+                        putExtra(EXTRA_RSSI, it.rssi)
+                    })
+                }
             }
         }
 
@@ -534,15 +548,12 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
-        // v3.7.2 BRIDGEFY-STYLE: Advertising mínimo
-        // NO UUID128 (ahorra 16 bytes). Solo deviceName + manufacturer data con magic bytes.
-        // Payload total: ~3B flags + ~10B name + ~6B manufacturer = ~19B (cómodo dentro de 31B)
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
             .addManufacturerData(MANUFACTURER_ID_NEXO, NEXO_MAGIC_BYTES)
             .build()
 
-        Log.i(TAG, "[NAP-ADVERT-005] startAdvertising() — NO UUID128, manufacturerData=${NEXO_MAGIC_BYTES.joinToString("") { "%02X".format(it) }}, includeDeviceName=true")
+        Log.i(TAG, "[NAP-ADVERT-005] startAdvertising() — manufacturerData=${NEXO_MAGIC_BYTES.joinToString("") { "%02X".format(it) }}, includeDeviceName=true")
         try {
             freshAdvertiser.startAdvertising(settings, data, adCb)
         } catch (e: SecurityException) {
