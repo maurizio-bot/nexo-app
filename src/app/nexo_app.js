@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.3.7-ARCH — JUMP v1.0: Multi-hop relay integration + REM v2.1
+ * NEXO App v5.3.8-ARCH — Opcion C: Triple verificacion + cache dispositivos conocidos
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -80,7 +80,12 @@ export class NexoApp {
     this._deviceUUID = null;
     this._bleInitialized = false;
 
-    // REM v2.1: Escuchar audit events nativos (scan, advert, gatt) para mostrar en UI
+    // Opcion C: Cache de dispositivos conocidos (triple verificacion: MAC + userId + isNexo)
+    this._deviceCache = new Map();
+    this._deviceCacheMax = 200;
+    this._deviceCacheTTL = 300000; // 5 minutos
+
+    // REM v2.1: Escuchar audit events nativos
     this._napAuditHandler = (e) => {
       const { code, message, level } = e.detail;
       const method = level === 'ERROR' ? 'error' : level === 'WARN' ? 'warn' : level === 'SUCCESS' ? 'success' : 'info';
@@ -88,7 +93,7 @@ export class NexoApp {
     };
     window.addEventListener('nexo:nap:audit', this._napAuditHandler);
 
-    DEBUG.log('🚀 [NEXO] v5.3.7-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.3.8-ARCH Opcion-C iniciando...', 'info', 'APP_INIT');
   }
 
   _hashContent(str) {
@@ -100,6 +105,84 @@ export class NexoApp {
 
   _normalizeForCompare(id) {
     return (id || '').toString().toLowerCase().trim().replace(/[^a-f0-9]/g, '');
+  }
+
+  // Opcion C: Triple verificacion de dispositivo + cache
+  _verifyAndCacheDevice(detail) {
+    const { address, name, rssi, isNexo, userId } = detail;
+    if (!address || address === 'unknown') return null;
+
+    const normalizedAddr = this._normalizeForCompare(address);
+    const cacheKey = `${normalizedAddr}_${this._normalizeForCompare(userId || '')}`;
+
+    // 1. Verificacion 1: isNexo flag del nativo
+    if (!isNexo) {
+      // En modo diagnostico se muestra todo, pero no se cachea como NEXO
+      if (!this._deviceCache.has(cacheKey)) return { address, name, rssi, isNexo: false, userId: userId || '', cached: false };
+    }
+
+    // 2. Verificacion 2: userId presente (no vacio)
+    const validUserId = userId && userId.length >= 4;
+
+    // 3. Verificacion 3: MAC valida (formato XX:XX:XX:XX:XX:XX)
+    const macValid = /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/i.test(address);
+
+    const now = Date.now();
+    const cached = this._deviceCache.get(cacheKey);
+
+    if (cached) {
+      // Actualizar cache existente
+      cached.lastSeen = now;
+      cached.rssi = rssi;
+      cached.name = name || cached.name;
+      cached.hitCount = (cached.hitCount || 0) + 1;
+      cached.verified = isNexo && validUserId && macValid;
+      DEBUG.log(`Cache update: ${name} (${address.substring(0,8)}) hits=${cached.hitCount} verified=${cached.verified}`, 'debug', 'CACHE_UPDATE');
+      return { ...cached, cached: true };
+    }
+
+    // Nuevo entry en cache
+    const entry = {
+      address,
+      normalizedAddr,
+      name: name || 'NEXO Device',
+      rssi,
+      isNexo: !!isNexo,
+      userId: userId || '',
+      validUserId,
+      macValid,
+      verified: isNexo && validUserId && macValid,
+      firstSeen: now,
+      lastSeen: now,
+      hitCount: 1
+    };
+
+    // Limpiar cache antigua si excede max
+    if (this._deviceCache.size >= this._deviceCacheMax) {
+      let oldestKey = null;
+      let oldestTime = Infinity;
+      for (const [k, v] of this._deviceCache) {
+        if (v.lastSeen < oldestTime) { oldestTime = v.lastSeen; oldestKey = k; }
+      }
+      if (oldestKey) this._deviceCache.delete(oldestKey);
+    }
+
+    // Limpiar entries expiradas
+    for (const [k, v] of this._deviceCache) {
+      if (now - v.lastSeen > this._deviceCacheTTL) this._deviceCache.delete(k);
+    }
+
+    this._deviceCache.set(cacheKey, entry);
+    DEBUG.success(`Cache add: ${entry.name} (${address.substring(0,8)}) isNexo=${entry.isNexo} verified=${entry.verified}`, 'CACHE_ADD');
+    return { ...entry, cached: false };
+  }
+
+  getDeviceCache() {
+    return Array.from(this._deviceCache.values());
+  }
+
+  getVerifiedNexoDevices() {
+    return Array.from(this._deviceCache.values()).filter(d => d.verified);
   }
 
   async init() {
@@ -119,7 +202,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.3.7-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.3.8-ARCH Ready (Opcion C)', 'APP_READY');
       if (this.bleInterface && this.bleInterface.showMainScreen) {
         this.bleInterface.showMainScreen();
       }
@@ -274,6 +357,21 @@ export class NexoApp {
       const displayId = this._deviceUUID || this.vault?.getIdentity?.()?.id || this.bleInterface?.localDeviceAddress || '--';
       this.bleInterface.updateStatus('INIT', 'OFFLINE', displayId);
 
+      // Opcion C: Handler de deviceFound con triple verificacion + cache
+      this._bleDeviceFoundHandler = (e) => {
+        const detail = e.detail || {};
+        const verified = this._verifyAndCacheDevice(detail);
+        if (verified) {
+          const status = verified.verified ? '✅ VERIFIED' : (verified.isNexo ? '⚠️ UNVERIFIED' : '👁️ OTHER');
+          DEBUG.log(`DeviceFound ${status}: ${verified.name} (${verified.address.substring(0,8)}) rssi=${verified.rssi}`, 'info', 'DEVICE_FOUND');
+          // Emitir evento procesado para la UI
+          window.dispatchEvent(new CustomEvent('nexo:ble:deviceFound:verified', {
+            detail: verified
+          }));
+        }
+      };
+      window.addEventListener('nexo:ble:deviceFound', this._bleDeviceFoundHandler);
+
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
         const normalizedId = this._normalizeForCompare(contactId);
@@ -377,7 +475,7 @@ export class NexoApp {
       const fp = this._hashContent(content);
       const now = Date.now();
       if (this._contentFpMap.has(fp) && (now - this._contentFpMap.get(fp)) < this._contentFpTTL) {
-        DEBUG.log(`DEDUP fp:${fp}`, 'debug', 'DEDUP_FP');
+        DEBUG.log(`DEDUP_FP: ${fp}`, 'debug', 'DEDUP_FP');
         return;
       }
       this._contentFpMap.set(fp, now);
@@ -505,6 +603,7 @@ export class NexoApp {
     if (this._bleSendHandler) window.removeEventListener('nexo:ble:sendMessage', this._bleSendHandler);
     if (this._napAuditHandler) window.removeEventListener('nexo:nap:audit', this._napAuditHandler);
     if (this._jumpMessageHandler) window.removeEventListener('nexo:jump:messageReceived', this._jumpMessageHandler);
+    if (this._bleDeviceFoundHandler) window.removeEventListener('nexo:ble:deviceFound', this._bleDeviceFoundHandler);
 
     this._resources.handlers.forEach(h => { try { h?.(); } catch (e) {} });
     this._resources.handlers.clear();
@@ -516,6 +615,7 @@ export class NexoApp {
     if (this.gestures) { try { this.gestures.destroy?.(); } catch (e) {} this.gestures = null; }
     if (this.bleInterface) { try { this.bleInterface.destroy?.(); } catch (e) {} this.bleInterface = null; }
 
+    this._deviceCache.clear();
     this._partialCleanup();
     this.initialized = false;
     DEBUG.success('NEXO App destroyed', 'APP_DESTROYED');
@@ -537,4 +637,3 @@ export async function createNexoApp(config = {}) {
 export function getNexoApp() {
   return _appInstance;
 }
-
