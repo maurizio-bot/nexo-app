@@ -1,6 +1,7 @@
 /**
- * main.js v10.2-ARCH
+ * main.js v10.3-ARCH
  * FIX: UI estética unificada. Dispositivo = botón único. Click = agregar + chat automático.
+ * REM v2.1: Agregado screenLog para visibilidad de diagnóstico nativo en pantalla.
  */
 
 const $ = (s) => document.querySelector(s);
@@ -15,6 +16,46 @@ const els = {
 let bleInterface = null;
 let nexoApp = null;
 let isScanning = false;
+
+/* ---------- REM v2.1: ScreenLog para diagnóstico nativo ---------- */
+let screenLogEl = null;
+function initScreenLog() {
+  if (document.getElementById('nexo-screen-log')) return;
+  screenLogEl = document.createElement('div');
+  screenLogEl.id = 'nexo-screen-log';
+  screenLogEl.style.cssText = `
+    position: fixed; bottom: 80px; left: 10px; right: 10px;
+    max-height: 200px; overflow-y: auto;
+    background: rgba(0,0,0,0.85); color: #00ff88;
+    font-family: monospace; font-size: 11px; line-height: 1.4;
+    padding: 8px; border-radius: 8px; z-index: 100000;
+    pointer-events: none; word-break: break-all;
+    border: 1px solid #00ff88; opacity: 0.95;
+  `;
+  document.body.appendChild(screenLogEl);
+}
+
+function screenLog(msg, type = 'info') {
+  if (!screenLogEl) initScreenLog();
+  const color = type === 'error' ? '#ff4444' : type === 'warn' ? '#ffaa00' : type === 'success' ? '#00ff88' : '#88ccff';
+  const line = document.createElement('div');
+  line.style.color = color;
+  line.style.marginBottom = '2px';
+  const time = new Date().toLocaleTimeString('es-ES', { hour12: false });
+  line.textContent = `[${time}] ${msg}`;
+  screenLogEl.appendChild(line);
+  screenLogEl.scrollTop = screenLogEl.scrollHeight;
+  while (screenLogEl.children.length > 50) {
+    screenLogEl.removeChild(screenLogEl.firstChild);
+  }
+}
+
+// Escuchar REM nativos del bridge
+window.addEventListener('nexo:nap:audit', (e) => {
+  const { code, message, level } = e.detail;
+  const type = level === 'ERROR' ? 'error' : level === 'WARN' ? 'warn' : level === 'SUCCESS' ? 'success' : 'info';
+  screenLog(`[${code}] ${message}`, type);
+});
 
 /* ---------- NUEVO: Click único en dispositivo ---------- */
 window.handleDeviceClick = function(deviceId, name) {
@@ -31,10 +72,9 @@ function renderDevice(device) {
   if (empty) empty.style.display = 'none';
 
   const id = device.deviceId || device.address || 'unknown';
-  const name = (device.name || 'NEXO Device').replace(/'/g, "\\'");
+  const name = (device.name || 'NEXO Device').replace(/'/g, "\'");
   const rssi = device.rssi || 0;
 
-  // Si ya existe, actualiza RSSI en el atributo (opcional para debug)
   const existing = document.querySelector(`[data-ble-id="${id}"]`);
   if (existing) {
     existing.setAttribute('data-rssi', rssi);
@@ -47,15 +87,13 @@ function renderDevice(device) {
   item.setAttribute('data-rssi', rssi);
   item.setAttribute('onclick', `handleDeviceClick('${id}', '${name}')`);
   item.innerHTML = `
-    <div class="ble-device-name-btn">${name}</div>
-    <div class="ble-device-signal">
-      <span class="ble-signal-bar"></span>
-      <span class="ble-signal-bar"></span>
-      <span class="ble-signal-bar"></span>
-    </div>
+    <div class="ble-device-name">${name}</div>
+    <div class="ble-device-id">${id.substring(0, 17)}...</div>
+    <div class="ble-device-rssi">${rssi} dBm</div>
   `;
   list.appendChild(item);
   console.log(`[MAIN] Device rendered: ${name} (${id})`);
+  screenLog(`[SCAN] ${name} (${id.substring(0,8)}) rssi=${rssi}`, 'success');
 }
 
 function addContact(deviceId) {
@@ -73,6 +111,7 @@ function openChat(deviceId, name) {
 async function doScan() {
   if (isScanning) {
     console.log('[MAIN] Deteniendo scan...');
+    screenLog('[SCAN] Deteniendo...', 'info');
     isScanning = false;
     els.btnBleScan.textContent = 'Escanear';
     els.btnBleScan.classList.remove('scanning');
@@ -84,6 +123,7 @@ async function doScan() {
   }
 
   console.log('[MAIN] Iniciando scan manual...');
+  screenLog('[SCAN] Iniciando...', 'info');
   isScanning = true;
   els.btnBleScan.textContent = 'Detener';
   els.btnBleScan.classList.add('scanning');
@@ -92,8 +132,10 @@ async function doScan() {
     if (bleInterface?.startBleScan) await bleInterface.startBleScan();
     else await window.Capacitor.Plugins.NexoBLE.startScan();
     console.log('[MAIN] Scan iniciado OK');
+    screenLog('[SCAN] Activo', 'success');
   } catch (err) {
     console.error('[MAIN] Scan falló:', err.message);
+    screenLog(`[SCAN] Error: ${err.message}`, 'error');
     isScanning = false;
     els.btnBleScan.textContent = 'Escanear';
     els.btnBleScan.classList.remove('scanning');
@@ -101,7 +143,9 @@ async function doScan() {
 }
 
 async function init() {
-  console.log('[MAIN] Iniciando v10.2-ARCH...');
+  console.log('[MAIN] Iniciando v10.3-ARCH...');
+  initScreenLog();
+  screenLog('[MAIN] v10.3-ARCH iniciando...', 'info');
 
   let waited = 0;
   while (!window.Capacitor && waited < 3000) {
@@ -109,6 +153,7 @@ async function init() {
     waited += 100;
   }
   console.log(`[MAIN] Capacitor: ${window.Capacitor ? 'OK' : 'NO'}`);
+  screenLog(`[MAIN] Capacitor: ${window.Capacitor ? 'OK' : 'NO'}`, window.Capacitor ? 'success' : 'error');
 
   // 1. Anti-Samsung: Exención de batería
   try {
@@ -116,6 +161,7 @@ async function init() {
     if (blePlugin?.requestBatteryOptimizationExemption) {
       const batt = await blePlugin.requestBatteryOptimizationExemption();
       console.log(`[MAIN] Battery exemption: ${JSON.stringify(batt)}`);
+      screenLog(`[BATT] Exemption: ${batt.requested ? 'solicitado' : 'ya exento'}`, 'info');
     }
   } catch (e) {
     console.warn(`[MAIN] Battery exemption: ${e.message}`);
@@ -127,19 +173,24 @@ async function init() {
     if (nearbyPlugin?.startKeepAliveService) {
       await nearbyPlugin.startKeepAliveService();
       console.log('[MAIN] KeepAliveService iniciado');
+      screenLog('[NEARBY] KeepAlive iniciado', 'success');
     }
   } catch (e) {
     console.warn(`[MAIN] KeepAliveService: ${e.message}`);
+    screenLog(`[NEARBY] KeepAlive: ${e.message}`, 'warn');
   }
 
   // 3. Importar ble_interface híbrida
   try {
     console.log('[MAIN] Importando ble_interface híbrida...');
+    screenLog('[MAIN] Cargando BLE interface...', 'info');
     const { initBLEInterface } = await import('./ui/ble_interface.js');
     bleInterface = await initBLEInterface();
     console.log('[MAIN] ble_interface híbrida OK');
+    screenLog('[MAIN] BLE interface OK', 'success');
   } catch (e) {
     console.warn(`[MAIN] ble_interface falló: ${e.message}`);
+    screenLog(`[MAIN] BLE interface: ${e.message}`, 'warn');
     bleInterface = null;
   }
 
@@ -153,17 +204,20 @@ async function init() {
   // 5. Importar nexo_app
   try {
     console.log('[MAIN] Importando nexo_app...');
+    screenLog('[MAIN] Cargando NEXO App...', 'info');
     const { createNexoApp } = await import('./app/nexo_app.js');
     nexoApp = await createNexoApp({
       onMessage: (msg) => {
-        if (msg.source === 'ble_direct' || msg.source === 'nearby') {
+        if (msg.source === 'ble_direct' || msg.source === 'nearby' || msg.source === 'jump') {
           appendBubble(msg.content, false, msg.messageId);
         }
       }
     });
     console.log('[MAIN] NEXO App OK');
+    screenLog('[MAIN] NEXO App OK', 'success');
   } catch (e) {
     console.warn(`[MAIN] nexo_app falló: ${e.message}`);
+    screenLog(`[MAIN] NEXO App: ${e.message}`, 'warn');
   }
 
   // 6. SetupWizard
@@ -181,6 +235,7 @@ async function init() {
   }
 
   console.log('[MAIN] Listo');
+  screenLog('[MAIN] Listo — prueba física activa', 'success');
   setTimeout(() => {
     if (els.splash) {
       els.splash.style.opacity = '0';
@@ -198,6 +253,7 @@ async function init() {
       $('#message-input').value = '';
     } catch (e) {
       console.error(`[MAIN] Send error: ${e.message}`);
+      screenLog(`[SEND] Error: ${e.message}`, 'error');
     }
   });
 }
