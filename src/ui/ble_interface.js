@@ -1,7 +1,6 @@
 /**
- * ble_interface.js v5.3.0-ARCH
- * Híbrido BLE nativo + Google Nearby Connections
- * Discovery inicia INMEDIATAMENTE junto con advertising.
+ * ble_interface.js v5.3.1-ARCH
+ * REM v2.1: Agregado listener napAuditEvent para visibilidad scan en UI
  */
 
 let blePlugin = null;
@@ -11,6 +10,7 @@ let messageListener = null;
 let deviceConnectedListener = null;
 let deviceDisconnectedListener = null;
 let peerInfoListener = null;
+let napAuditListener = null;
 let nearbyListeners = [];
 let isInitialized = false;
 let nearbyActive = false;
@@ -38,7 +38,7 @@ export async function initBLEInterface() {
     return false;
   }
 
-  log('Inicializando BLE interface híbrida...', 'info');
+  log('Inicializando BLE interface hibrida...', 'info');
 
   try {
     const uuidResult = await p.getDeviceUUID();
@@ -94,7 +94,7 @@ export async function initBLEInterface() {
 
   registerListeners();
   isInitialized = true;
-  log('BLE interface híbrida lista', 'success');
+  log('BLE interface hibrida lista', 'success');
   return true;
 }
 
@@ -102,10 +102,23 @@ function registerListeners() {
   const p = getBlePlugin();
   if (p) {
     cleanupListeners();
+
+    // REM v2.1: Listener para audit events nativos (scan, advert, gatt)
+    try {
+      napAuditListener = p.addListener('napAuditEvent', (result) => {
+        const { code, message, level, timestamp } = result;
+        log(`[NAP] ${level}: [${code}] ${message}`, level.toLowerCase());
+        window.dispatchEvent(new CustomEvent('nexo:nap:audit', {
+          detail: { code, message, level, timestamp }
+        }));
+      });
+    } catch (e) {
+      log(`Error napAudit listener: ${e.message}`, 'error');
+    }
+
     try {
       scanListener = p.addListener('onScanResult', (result) => {
         const addr = result?.address || 'unknown';
-        // v5.3.0: deviceId = MAC address (restaurado). Nombre real del dispositivo.
         const name = result?.name || 'NEXO Device';
         const rssi = result?.rssi || 0;
         log(`BLE Scan: ${name} (${addr.substring(0, 8)}) rssi=${rssi}`, 'info');
@@ -145,7 +158,6 @@ function registerListeners() {
       });
     } catch (e) { log(`Error disconnect listener: ${e.message}`, 'warn'); }
 
-    // v5.3.0: Nuevo listener para recibir identidad real del peer vía GATT handshake (Bridgefy-style)
     try {
       peerInfoListener = p.addListener('onPeerInfoReceived', (result) => {
         const deviceId = result?.deviceId || 'unknown';
@@ -253,7 +265,7 @@ export async function sendMessage(deviceId, message) {
 }
 
 export function cleanupListeners() {
-  [scanListener, messageListener, deviceConnectedListener, deviceDisconnectedListener, peerInfoListener].forEach(l => {
+  [scanListener, messageListener, deviceConnectedListener, deviceDisconnectedListener, peerInfoListener, napAuditListener].forEach(l => {
     if (l && typeof l.remove === 'function') { try { l.remove(); } catch (e) {} }
   });
   nearbyListeners.forEach(l => {
@@ -262,14 +274,14 @@ export function cleanupListeners() {
   nearbyListeners = [];
   scanListener = null; messageListener = null;
   deviceConnectedListener = null; deviceDisconnectedListener = null;
-  peerInfoListener = null;
+  peerInfoListener = null; napAuditListener = null;
 }
 
 export function destroyBLEInterface() {
   cleanupListeners();
   isInitialized = false; nearbyActive = false;
   blePlugin = null; nearbyPlugin = null;
-  log('BLE interface híbrida destruida', 'info');
+  log('BLE interface hibrida destruida', 'info');
 }
 
 export const init = initBLEInterface;
