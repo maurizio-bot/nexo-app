@@ -1,16 +1,18 @@
 /**
- * ble_interface.js v5.3.1-ARCH
- * REM v2.1: Agregado listener napAuditEvent para visibilidad scan en UI
+ * ble_interface.js v5.3.2-ARCH
+ * REM v2.1 + JUMP v1.0
  */
 
 let blePlugin = null;
 let nearbyPlugin = null;
+let jumpRouter = null;
 let scanListener = null;
 let messageListener = null;
 let deviceConnectedListener = null;
 let deviceDisconnectedListener = null;
 let peerInfoListener = null;
 let napAuditListener = null;
+let jumpMessageListener = null;
 let nearbyListeners = [];
 let isInitialized = false;
 let nearbyActive = false;
@@ -38,7 +40,7 @@ export async function initBLEInterface() {
     return false;
   }
 
-  log('Inicializando BLE interface hibrida...', 'info');
+  log('Inicializando BLE interface hibrida + JUMP...', 'info');
 
   try {
     const uuidResult = await p.getDeviceUUID();
@@ -88,13 +90,33 @@ export async function initBLEInterface() {
     } catch (e) {
       log(`Nearby Discovery error: ${e.message}`, 'error');
     }
+
+    try {
+      const { JumpRouter } = await import('../net/jump_router.js');
+      jumpRouter = new JumpRouter({
+        localUserId: deviceUUID || '',
+        onMessageDelivered: (msg) => {
+          log(`[JUMP] Message delivered from ${msg.from} via ${msg.hops} hops`, 'success');
+          window.dispatchEvent(new CustomEvent('nexo:jump:messageReceived', {
+            detail: msg
+          }));
+        },
+        onRouteUpdated: (route) => {
+          log(`[JUMP] Route to ${route.userId}: ${route.hops} hops`, 'info');
+        }
+      });
+      await jumpRouter.init(np, deviceUUID || '');
+      log('JUMP Router inicializado', 'success');
+    } catch (e) {
+      log(`JUMP Router init error: ${e.message}`, 'error');
+    }
   } else {
     log('Plugin NexoNearby no disponible', 'warn');
   }
 
   registerListeners();
   isInitialized = true;
-  log('BLE interface hibrida lista', 'success');
+  log('BLE interface hibrida + JUMP lista', 'success');
   return true;
 }
 
@@ -103,7 +125,6 @@ function registerListeners() {
   if (p) {
     cleanupListeners();
 
-    // REM v2.1: Listener para audit events nativos (scan, advert, gatt)
     try {
       napAuditListener = p.addListener('napAuditEvent', (result) => {
         const { code, message, level, timestamp } = result;
@@ -203,6 +224,12 @@ function registerListeners() {
       }],
       ['onConnectionFailed', (data) => {
         log(`Nearby connection failed: ${data.endpointId} code=${data.statusCode}`, 'error');
+      }],
+      ['onJumpMessageReceived', (data) => {
+        log(`[JUMP] Delivered from ${data.from} via ${data.hops} hops`, 'success');
+        window.dispatchEvent(new CustomEvent('nexo:jump:messageReceived', {
+          detail: data
+        }));
       }]
     ];
     events.forEach(([evt, handler]) => {
@@ -264,8 +291,27 @@ export async function sendMessage(deviceId, message) {
   return false;
 }
 
+export async function sendJumpMessage(toUserId, message, maxHops = 4) {
+  if (!jumpRouter) {
+    log('JUMP Router no inicializado', 'error');
+    return { success: false, error: 'JUMP not initialized' };
+  }
+  try {
+    const result = await jumpRouter.sendJumpMessage(toUserId, message, maxHops);
+    log(`[JUMP] Sent to ${toUserId}: ${result.direct ? 'direct' : `relay (${result.maxHops} hops)`}`, 'success');
+    return result;
+  } catch (e) {
+    log(`[JUMP] Send failed: ${e.message}`, 'error');
+    return { success: false, error: e.message };
+  }
+}
+
+export function getJumpRoutingTable() {
+  return jumpRouter ? jumpRouter.getRoutingTable() : [];
+}
+
 export function cleanupListeners() {
-  [scanListener, messageListener, deviceConnectedListener, deviceDisconnectedListener, peerInfoListener, napAuditListener].forEach(l => {
+  [scanListener, messageListener, deviceConnectedListener, deviceDisconnectedListener, peerInfoListener, napAuditListener, jumpMessageListener].forEach(l => {
     if (l && typeof l.remove === 'function') { try { l.remove(); } catch (e) {} }
   });
   nearbyListeners.forEach(l => {
@@ -274,14 +320,18 @@ export function cleanupListeners() {
   nearbyListeners = [];
   scanListener = null; messageListener = null;
   deviceConnectedListener = null; deviceDisconnectedListener = null;
-  peerInfoListener = null; napAuditListener = null;
+  peerInfoListener = null; napAuditListener = null; jumpMessageListener = null;
 }
 
 export function destroyBLEInterface() {
   cleanupListeners();
+  if (jumpRouter) {
+    jumpRouter.destroy();
+    jumpRouter = null;
+  }
   isInitialized = false; nearbyActive = false;
   blePlugin = null; nearbyPlugin = null;
-  log('BLE interface hibrida destruida', 'info');
+  log('BLE interface hibrida + JUMP destruida', 'info');
 }
 
 export const init = initBLEInterface;
