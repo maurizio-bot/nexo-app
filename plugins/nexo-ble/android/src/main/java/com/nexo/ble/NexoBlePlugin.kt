@@ -132,17 +132,21 @@ class NexoBlePlugin : Plugin() {
                         napLog("REM-BRIDGE-006", "SCAN_RESULT sin device_address", "WARN")
                         return
                     }
-                    // CORRECCIÓN v5.7.0: deviceId = MAC address (restaurado). Nombre real del dispositivo.
                     val broadcastName = intent.getStringExtra(EXTRA_DEVICE_NAME) ?: ""
                     val realName = getBluetoothRealName(deviceId) ?: broadcastName
                     val name = realName.ifBlank { "NEXO Device" }
                     val rssi = intent.getIntExtra(EXTRA_RSSI, 0)
-                    napLog("REM-BRIDGE-007", "SCAN_RESULT → JS: addr=${deviceId.take(8)} name=$name rssi=$rssi", "INFO")
+                    // Opcion C: isNexo flag + userId from advertisement
+                    val isNexo = intent.getBooleanExtra("isNexo", false)
+                    val advertUserId = intent.getStringExtra(EXTRA_USER_ID) ?: ""
+                    napLog("REM-BRIDGE-007", "SCAN_RESULT → JS: addr=${deviceId.take(8)} name=$name rssi=$rssi isNexo=$isNexo userId=${advertUserId.take(8)}", "INFO")
                     notifyListeners("onScanResult", JSObject().apply {
                         put("address", deviceId)
                         put("deviceId", deviceId)
                         put("name", name)
                         put("rssi", rssi)
+                        put("isNexo", isNexo)
+                        put("userId", advertUserId)
                     })
                 }
                 ACTION_SCAN_FAILED -> {
@@ -288,7 +292,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("REM-BRIDGE-020", "load() — INICIO v5.7.0-ARCH", "INFO")
+        napLog("REM-BRIDGE-020", "load() — INICIO v5.8.0-ARCH Opcion-C", "INFO")
         registerReceiverOnly()
         if (!canAccessBluetooth()) {
             napLog("REM-BRIDGE-020b", "Sin permisos al cargar, omitiendo startForegroundService", "WARN")
@@ -311,7 +315,7 @@ class NexoBlePlugin : Plugin() {
         } else {
             context.registerReceiver(serviceEventReceiver, filter)
         }
-        napLog("REM-BRIDGE-024", "Receiver registrado (service NO iniciado aún)", "INFO")
+        napLog("REM-BRIDGE-024", "Receiver registrado (service NO iniciado aun)", "INFO")
     }
 
     private fun startServiceAndBind() {
@@ -348,7 +352,7 @@ class NexoBlePlugin : Plugin() {
             prefs.edit().putString(PREF_DEVICE_UUID, uuid).apply()
             napLog("REM-UUID-001", "Nuevo deviceUUID generado: ${uuid.substring(0, 8)}...", "INFO")
         } else {
-            napLog("REM-UUID-002", "deviceUUID existente leído: ${uuid.substring(0, 8)}...", "INFO")
+            napLog("REM-UUID-002", "deviceUUID existente leido: ${uuid.substring(0, 8)}...", "INFO")
         }
         return uuid
     }
@@ -375,12 +379,12 @@ class NexoBlePlugin : Plugin() {
                 }
                 try {
                     context.startActivity(intent)
-                    call.resolve(JSObject().apply { put("requested", true); put("message", "Solicitando exención de batería") })
+                    call.resolve(JSObject().apply { put("requested", true); put("message", "Solicitando exencion de bateria") })
                 } catch (e: Exception) {
-                    call.reject("BATT_ERR", "No se pudo abrir diálogo de batería: ${e.message}")
+                    call.reject("BATT_ERR", "No se pudo abrir dialogo de bateria: ${e.message}")
                 }
             } else {
-                call.resolve(JSObject().apply { put("requested", false); put("alreadyExempt", true); put("message", "Ya está exento de optimización") })
+                call.resolve(JSObject().apply { put("requested", false); put("alreadyExempt", true); put("message", "Ya esta exento de optimizacion") })
             }
         } else {
             call.resolve(JSObject().apply { put("requested", false); put("message", "No requerido en este Android") })
@@ -446,7 +450,7 @@ class NexoBlePlugin : Plugin() {
                 napLog("REM-SVC-003", "Pending call ejecutado: BleService ahora disponible", "INFO")
                 block(svc2)
             } else {
-                napLog("REM-SVC-004", "Pending call falló: BleService sigue null", "ERROR")
+                napLog("REM-SVC-004", "Pending call fallo: BleService sigue null", "ERROR")
                 call?.reject("BLE_203", "Servicio BLE no disponible")
             }
         }
@@ -562,7 +566,7 @@ class NexoBlePlugin : Plugin() {
             put("bluetoothEnabled", btEnabled)
             put("deviceUUID", userId)
             put("shortUUID", userId.substring(0, 8))
-            if (!btEnabled) put("warning", "Bluetooth apagado — advertising comenzará al activarlo")
+            if (!btEnabled) put("warning", "Bluetooth apagado — advertising comenzara al activarlo")
         })
     }
 
