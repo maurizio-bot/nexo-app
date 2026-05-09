@@ -53,9 +53,13 @@ class BleService : Service() {
         // DIAGNOSTICO TEMPORAL: true = mostrar TODOS los dispositivos, false = solo NEXO
         const val DIAGNOSTIC_MODE = true
 
+        // Opción C: UUID 16-bit para advertising (Eddystone / libre)
+        val ADVERTISE_SERVICE_UUID: ParcelUuid = ParcelUuid.fromString("0000FEAA-0000-1000-8000-00805f9b34fb")
+
         val NEXO_MAGIC_BYTES = byteArrayOf(0x4E, 0x58, 0x01, 0x00)
         const val MANUFACTURER_ID_NEXO = 0xFFFF
 
+        // GATT: UUID 128-bit original se mantiene para GATT Server/Client
         val SERVICE_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6")
         val MESSAGE_CHAR_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c7")
         val ANNOUNCE_CHAR_UUID = UUID.fromString("a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c8")
@@ -144,7 +148,6 @@ class BleService : Service() {
     inner class LocalBinder : Binder() { fun getService(): BleService = this@BleService }
     override fun onBind(i: Intent?): IBinder = binder
 
-    // REM v2.1: Helper para enviar audit logs al JS via Broadcast
     private fun napAudit(code: String, message: String, level: String = "INFO") {
         Log.i(TAG, "[$code] $message")
         sendLocalBroadcast(Intent(ACTION_NAP_AUDIT).apply {
@@ -157,7 +160,7 @@ class BleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        napAudit("NAP-001", "onCreate() — INICIO v3.7.4-ARCH DIAGNOSTIC=$DIAGNOSTIC_MODE", "INFO")
+        napAudit("NAP-001", "onCreate() — INICIO v3.8.0-ARCH Opcion-C DIAGNOSTIC=$DIAGNOSTIC_MODE", "INFO")
         btManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         btAdapter = btManager?.adapter
         napAudit("NAP-002", "Adapter=${btAdapter != null}, enabled=${btAdapter?.isEnabled}", "INFO")
@@ -426,10 +429,14 @@ class BleService : Service() {
             scanResults.forEach { (addr, result) ->
                 val devName = try { result.device.name ?: result.scanRecord?.deviceName ?: "" } catch (e: SecurityException) { "" }
                 val displayName = devName.ifBlank { "NEXO Device" }
+                val isNexo = isNexoDevice(result)
+                val extractedUserId = extractUserIdFromScan(result)
                 sendLocalBroadcast(Intent(ACTION_SCAN_RESULT).apply {
                     putExtra(EXTRA_DEVICE_ADDRESS, addr)
                     putExtra(EXTRA_RSSI, result.rssi)
                     putExtra(EXTRA_DEVICE_NAME, displayName)
+                    putExtra("isNexo", isNexo)
+                    putExtra(EXTRA_USER_ID, extractedUserId)
                 })
             }
             return
@@ -450,7 +457,7 @@ class BleService : Service() {
             .build()
 
         scanResults.clear(); isScan = true
-        napAudit("NAP-SCAN-005", "startScan() SIN hardware filter (fix Samsung)", "INFO")
+        napAudit("NAP-SCAN-005", "startScan() SIN hardware filter (Opcion C)", "INFO")
         try {
             scanner?.startScan(null, settings, scanCb)
             handler.postDelayed({ if (isScan) { napAudit("NAP-SCAN-006", "Auto-stop scan after ${SCAN_AUTO_STOP}ms", "INFO"); stopScan() } }, SCAN_AUTO_STOP)
@@ -469,6 +476,24 @@ class BleService : Service() {
         }
     }
 
+    // Opcion C: helpers para triple verificacion
+    private fun isNexoDevice(result: ScanResult): Boolean {
+        val record = result.scanRecord ?: return false
+        val hasServiceUuid16 = record.serviceUuids?.any { it == ADVERTISE_SERVICE_UUID } == true
+        val mfrData = record.getManufacturerSpecificData(MANUFACTURER_ID_NEXO)
+        val hasNexoMagic = mfrData != null && mfrData.size >= 4 &&
+                mfrData[0] == NEXO_MAGIC_BYTES[0] && mfrData[1] == NEXO_MAGIC_BYTES[1] &&
+                mfrData[2] == NEXO_MAGIC_BYTES[2] && mfrData[3] == NEXO_MAGIC_BYTES[3]
+        return hasServiceUuid16 || hasNexoMagic
+    }
+
+    private fun extractUserIdFromScan(result: ScanResult): String {
+        val mfrData = result.scanRecord?.getManufacturerSpecificData(MANUFACTURER_ID_NEXO)
+        return if (mfrData != null && mfrData.size > 4) {
+            String(mfrData.copyOfRange(4, mfrData.size), Charsets.UTF_8)
+        } else ""
+    }
+
     private val scanCb = object : ScanCallback() {
         override fun onBatchScanResults(results: MutableList<ScanResult>?) {
             napAudit("NAP-SCAN-009", "onBatchScanResults: ${results?.size ?: 0} items", "INFO")
@@ -485,30 +510,32 @@ class BleService : Service() {
                 } catch (se: SecurityException) { return }
 
                 val record = it.scanRecord
+                val isNexoDevice = isNexoDevice(it)
+                val extractedUserId = extractUserIdFromScan(it)
 
-                // Deteccion NEXO
+                // Triple verificacion: UUID 16-bit + Magic + MAC (addr ya validado arriba)
+                val hasServiceUuid16 = record?.serviceUuids?.any { u -> u == ADVERTISE_SERVICE_UUID } == true
                 val mfrData = record?.getManufacturerSpecificData(MANUFACTURER_ID_NEXO)
-                val hasNexoMagic = mfrData != null && mfrData.size >= 2 &&
+                val hasNexoMagic = mfrData != null && mfrData.size >= 4 &&
                         mfrData[0] == NEXO_MAGIC_BYTES[0] && mfrData[1] == NEXO_MAGIC_BYTES[1]
-                val hasNexoUuid = record?.serviceUuids?.any { u -> u.uuid == SERVICE_UUID } == true
-                val isNexoDevice = hasNexoMagic || hasNexoUuid
 
                 // REM v2.1: Audit de cada dispositivo detectado (solo NEXO o modo diagnostico)
                 if (isNexoDevice || DIAGNOSTIC_MODE) {
                     val hex = mfrData?.joinToString("") { "%02X".format(it) } ?: "null"
-                    napAudit("NAP-SCAN-DIAG", "addr=${addr.take(8)} name='$devName' rssi=${it.rssi} magic=$hasNexoMagic uuid=$hasNexoUuid hex=$hex", if (isNexoDevice) "SUCCESS" else "INFO")
+                    napAudit("NAP-SCAN-DIAG", "addr=${addr.take(8)} name='$devName' rssi=${it.rssi} uuid16=$hasServiceUuid16 magic=$hasNexoMagic hex=$hex userId=${extractedUserId.take(8)}", if (isNexoDevice) "SUCCESS" else "INFO")
                 }
 
                 if (DIAGNOSTIC_MODE) {
-                    if (devName.isBlank()) return
-                    val displayName = if (isNexoDevice) "NEXO $devName" else devName
+                    if (devName.isBlank() && !isNexoDevice) return
+                    val displayName = if (isNexoDevice) "NEXO $devName".trim() else devName
                     val shouldUpdate = scanResults[addr] == null || it.rssi > (scanResults[addr]?.rssi ?: -999)
                     if (shouldUpdate) scanResults[addr] = it
                     sendLocalBroadcast(Intent(ACTION_SCAN_RESULT).apply {
                         putExtra(EXTRA_DEVICE_ADDRESS, addr)
-                        putExtra(EXTRA_DEVICE_NAME, displayName)
+                        putExtra(EXTRA_DEVICE_NAME, displayName.ifBlank { "NEXO Device" })
                         putExtra(EXTRA_RSSI, it.rssi)
-                        putExtra(EXTRA_USER_ID, if (isNexoDevice) "NEXO" else "OTHER")
+                        putExtra("isNexo", isNexoDevice)
+                        putExtra(EXTRA_USER_ID, extractedUserId)
                     })
                 } else {
                     if (!isNexoDevice) return
@@ -519,6 +546,8 @@ class BleService : Service() {
                         putExtra(EXTRA_DEVICE_ADDRESS, addr)
                         putExtra(EXTRA_DEVICE_NAME, displayName)
                         putExtra(EXTRA_RSSI, it.rssi)
+                        putExtra("isNexo", true)
+                        putExtra(EXTRA_USER_ID, extractedUserId)
                     })
                 }
             }
@@ -556,12 +585,17 @@ class BleService : Service() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
+        // Opcion C: manufacturer data = magic bytes + short userId (8 chars max)
+        val shortUserId = userId.take(8).toByteArray(Charsets.UTF_8)
+        val manufacturerPayload = NEXO_MAGIC_BYTES + shortUserId
+
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
-            .addManufacturerData(MANUFACTURER_ID_NEXO, NEXO_MAGIC_BYTES)
+            .addServiceUuid(ADVERTISE_SERVICE_UUID)
+            .addManufacturerData(MANUFACTURER_ID_NEXO, manufacturerPayload)
             .build()
 
-        napAudit("NAP-ADVERT-005", "startAdvertising() — manufacturerData=${NEXO_MAGIC_BYTES.joinToString("") { "%02X".format(it) }}, includeDeviceName=true", "INFO")
+        napAudit("NAP-ADVERT-005", "startAdvertising() — uuid16=0xFEAA manufacturer=${NEXO_MAGIC_BYTES.joinToString("") { "%02X".format(it) }}+userId(${shortUserId.size}B) includeDeviceName=true", "INFO")
         try {
             freshAdvertiser.startAdvertising(settings, data, adCb)
         } catch (e: SecurityException) {
@@ -602,7 +636,7 @@ class BleService : Service() {
     private val adCb = object : AdvertiseCallback() {
         override fun onStartSuccess(s: AdvertiseSettings?) {
             isAd = true
-            napAudit("NAP-ADVERT-009", "onStartSuccess — advertising activo", "SUCCESS")
+            napAudit("NAP-ADVERT-009", "onStartSuccess — advertising activo (Opcion C)", "SUCCESS")
             bcastAd(true)
         }
         override fun onStartFailure(ec: Int) {
