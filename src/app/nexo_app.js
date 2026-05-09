@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.3.6-ARCH — REM v2.1: Agregado listener nexo:nap:audit para visibilidad scan nativo
+ * NEXO App v5.3.7-ARCH — JUMP v1.0: Multi-hop relay integration + REM v2.1
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -70,6 +70,7 @@ export class NexoApp {
     this._bleMessageHandler = null;
     this._bleSendHandler = null;
     this._napAuditHandler = null;
+    this._jumpMessageHandler = null;
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
@@ -87,7 +88,7 @@ export class NexoApp {
     };
     window.addEventListener('nexo:nap:audit', this._napAuditHandler);
 
-    DEBUG.log('🚀 [NEXO] v5.3.6-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.3.7-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   _hashContent(str) {
@@ -118,7 +119,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.3.6-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.3.7-ARCH Ready', 'APP_READY');
       if (this.bleInterface && this.bleInterface.showMainScreen) {
         this.bleInterface.showMainScreen();
       }
@@ -224,7 +225,7 @@ export class NexoApp {
         }
       }
 
-      // INICIALIZACION NEARBY
+      // INICIALIZACION NEARBY + JUMP
       const nearbyPlugin = window.Capacitor?.Plugins?.NexoNearby;
       if (nearbyPlugin) {
         try {
@@ -245,6 +246,27 @@ export class NexoApp {
         } catch (e) {
           DEBUG.warn(`Nearby Discovery: ${e.message}`, 'NEARBY_WARN');
         }
+
+        // JUMP v1.0-ARCH: Listener mensajes multi-hop
+        this._jumpMessageHandler = (e) => {
+          const detail = e.detail || {};
+          const { messageId, from, payload, route, hops, type } = detail;
+          const fromShort = (from || '').substring(0, 8);
+          const payloadPreview = (payload || '').substring(0, 40);
+          const payloadSuffix = (payload || '').length > 40 ? '...' : '';
+          DEBUG.success(`📩 [JUMP] ${hops || '?'} hops from ${fromShort}: ${payloadPreview}${payloadSuffix}`, 'JUMP_RX');
+          this._handleMessage({
+            content: payload || '',
+            sender: from || 'unknown',
+            senderName: `JUMP-${(from || '').substring(0, 6).toUpperCase()}`,
+            source: 'jump',
+            messageId: messageId || null,
+            timestamp: Date.now(),
+            _own: false
+          }, 'jump');
+        };
+        window.addEventListener('nexo:jump:messageReceived', this._jumpMessageHandler);
+        DEBUG.success('JUMP relay listener activo', 'JUMP_READY');
       } else {
         DEBUG.warn('Plugin NexoNearby no disponible', 'NEARBY_MISSING');
       }
@@ -400,17 +422,48 @@ export class NexoApp {
         DEBUG.warn('No BLE transport available', 'SEND_002');
         return false;
       }
+
+      if (transport === 'jump') {
+        const nearbyPlugin = window.Capacitor?.Plugins?.NexoNearby;
+        if (nearbyPlugin?.sendJumpMessage) {
+          await nearbyPlugin.sendJumpMessage({
+            to: recipient,
+            payload: content,
+            maxHops: 4
+          });
+          DEBUG.success(`📤 TX JUMP → ${recipient.substring(0, 8)}`, 'JUMP_TX');
+          return true;
+        }
+        DEBUG.warn('Plugin NexoNearby no disponible para JUMP', 'JUMP_NO_PLUGIN');
+        return false;
+      }
+
       if (transport === 'relay' && this.wsClient) {
         this.wsClient.send({ content, recipient, messageId: mid });
         DEBUG.success(`📤 TX Relay → ${recipient.substring(0, 8)}`, 'MSG_TX');
         return true;
       }
+
       DEBUG.warn(`Unknown transport: ${transport}`, 'SEND_003');
       return false;
     } catch (err) {
       DEBUG.error('SEND_004', `Send failed: ${err.message}`);
       return false;
     }
+  }
+
+  async getJumpRoutingTable() {
+    const nearbyPlugin = window.Capacitor?.Plugins?.NexoNearby;
+    if (nearbyPlugin?.getConnectedEndpoints) {
+      try {
+        const result = await nearbyPlugin.getConnectedEndpoints();
+        return result?.endpoints || [];
+      } catch (e) {
+        DEBUG.warn(`JUMP routing table error: ${e.message}`, 'JUMP_TABLE_ERR');
+        return [];
+      }
+    }
+    return [];
   }
 
   _handleNordicPeer(peer) {
@@ -451,6 +504,7 @@ export class NexoApp {
     if (this._bleMessageHandler) window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
     if (this._bleSendHandler) window.removeEventListener('nexo:ble:sendMessage', this._bleSendHandler);
     if (this._napAuditHandler) window.removeEventListener('nexo:nap:audit', this._napAuditHandler);
+    if (this._jumpMessageHandler) window.removeEventListener('nexo:jump:messageReceived', this._jumpMessageHandler);
 
     this._resources.handlers.forEach(h => { try { h?.(); } catch (e) {} });
     this._resources.handlers.clear();
@@ -483,3 +537,4 @@ export async function createNexoApp(config = {}) {
 export function getNexoApp() {
   return _appInstance;
 }
+
