@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.3.5-ARCH — FIX: Restaurado completo + Nearby integrado correctamente
+ * NEXO App v5.3.6-ARCH — REM v2.1: Agregado listener nexo:nap:audit para visibilidad scan nativo
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -69,6 +69,7 @@ export class NexoApp {
     this._bleChatHandler = null;
     this._bleMessageHandler = null;
     this._bleSendHandler = null;
+    this._napAuditHandler = null;
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
@@ -77,7 +78,16 @@ export class NexoApp {
     this._contentFpMax = 500;
     this._deviceUUID = null;
     this._bleInitialized = false;
-    DEBUG.log('🚀 [NEXO] v5.3.5-ARCH iniciando...', 'info', 'APP_INIT');
+
+    // REM v2.1: Escuchar audit events nativos (scan, advert, gatt) para mostrar en UI
+    this._napAuditHandler = (e) => {
+      const { code, message, level } = e.detail;
+      const method = level === 'ERROR' ? 'error' : level === 'WARN' ? 'warn' : level === 'SUCCESS' ? 'success' : 'info';
+      DEBUG.log(message, method, code);
+    };
+    window.addEventListener('nexo:nap:audit', this._napAuditHandler);
+
+    DEBUG.log('🚀 [NEXO] v5.3.6-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   _hashContent(str) {
@@ -108,7 +118,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.3.5-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.3.6-ARCH Ready', 'APP_READY');
       if (this.bleInterface && this.bleInterface.showMainScreen) {
         this.bleInterface.showMainScreen();
       }
@@ -214,7 +224,7 @@ export class NexoApp {
         }
       }
 
-      // INICIALIZACIÓN NEARBY — CRÍTICO PARA VISIBILIDAD
+      // INICIALIZACION NEARBY
       const nearbyPlugin = window.Capacitor?.Plugins?.NexoNearby;
       if (nearbyPlugin) {
         try {
@@ -440,6 +450,7 @@ export class NexoApp {
     if (this._bleChatHandler) window.removeEventListener('nexo:ble:openChat', this._bleChatHandler);
     if (this._bleMessageHandler) window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
     if (this._bleSendHandler) window.removeEventListener('nexo:ble:sendMessage', this._bleSendHandler);
+    if (this._napAuditHandler) window.removeEventListener('nexo:nap:audit', this._napAuditHandler);
 
     this._resources.handlers.forEach(h => { try { h?.(); } catch (e) {} });
     this._resources.handlers.clear();
