@@ -1,9 +1,16 @@
 package com.nexo.ble
 
+import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.ServiceConnection
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
@@ -43,6 +50,12 @@ class NexoNearbyPlugin : Plugin() {
         const val JUMP_DELIVER = "JUMP_DELIVER"
         const val MAX_HOPS = 4
         const val JUMP_ID_TTL = 60000L
+
+        // REM broadcast para unificar con BleService
+        const val ACTION_NAP_AUDIT = "com.nexo.ble.NAP_AUDIT"
+        const val EXTRA_NAP_CODE = "nap_code"
+        const val EXTRA_NAP_MESSAGE = "nap_message"
+        const val EXTRA_NAP_LEVEL = "nap_level"
     }
 
     private lateinit var connectionsClient: ConnectionsClient
@@ -55,9 +68,23 @@ class NexoNearbyPlugin : Plugin() {
     private var localUserId: String = ""
     private var localEndpointName: String = ""
 
+    // REM v2.1: Helper para enviar audit logs al JS via Broadcast
+    private fun napAudit(code: String, message: String, level: String = "INFO") {
+        Log.i(TAG, "[$code] $message")
+        val intent = Intent(ACTION_NAP_AUDIT).apply {
+            putExtra(EXTRA_NAP_CODE, code)
+            putExtra(EXTRA_NAP_MESSAGE, message)
+            putExtra(EXTRA_NAP_LEVEL, level)
+            putExtra("timestamp", System.currentTimeMillis())
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(intent)
+    }
+
     private val connectionLifecycleCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
             pendingConnections.add(endpointId)
+            napAudit("NAP-NEARBY-001", "Connection initiated: $endpointId name=${info.endpointName}", "INFO")
             notifyListeners("onConnectionInitiated", JSObject().apply {
                 put("endpointId", endpointId)
                 put("endpointName", info.endpointName)
@@ -72,6 +99,7 @@ class NexoNearbyPlugin : Plugin() {
             if (result.status.isSuccess) {
                 connectedEndpoints.add(endpointId)
                 val dev = discoveredEndpoints[endpointId]
+                napAudit("NAP-NEARBY-002", "Connected: $endpointId", "SUCCESS")
                 notifyListeners("onConnected", JSObject().apply {
                     put("endpointId", endpointId)
                     put("endpointName", dev?.getString("endpointName") ?: "Unknown")
@@ -80,6 +108,7 @@ class NexoNearbyPlugin : Plugin() {
                     put("status", "connected")
                 })
             } else {
+                napAudit("NAP-NEARBY-003", "Connection failed: $endpointId code=${result.status.statusCode}", "ERROR")
                 notifyListeners("onConnectionFailed", JSObject().apply {
                     put("endpointId", endpointId)
                     put("statusCode", result.status.statusCode)
@@ -90,6 +119,7 @@ class NexoNearbyPlugin : Plugin() {
         override fun onDisconnected(endpointId: String) {
             connectedEndpoints.remove(endpointId)
             discoveredEndpoints.remove(endpointId)
+            napAudit("NAP-NEARBY-004", "Disconnected: $endpointId", "WARN")
             notifyListeners("onDisconnected", JSObject().put("endpointId", endpointId))
             if (connectedEndpoints.isEmpty() && isAdvertising) restartAdvertising()
         }
@@ -108,20 +138,22 @@ class NexoNearbyPlugin : Plugin() {
                 put("serviceId", info.serviceId)
             }
             discoveredEndpoints[endpointId] = data
+            napAudit("NAP-NEARBY-005", "Endpoint found: $endpointId name=$userName", "SUCCESS")
             notifyListeners("onEndpointFound", data)
             connectionsClient.requestConnection(
                 "$localEndpointName|$localUserId",
                 endpointId,
                 connectionLifecycleCallback
             ).addOnSuccessListener {
-                Log.i(TAG, "[JUMP_AUTO] Connection requested to $endpointId")
+                napAudit("NAP-NEARBY-006", "Connection requested to $endpointId", "INFO")
             }.addOnFailureListener { e ->
-                Log.w(TAG, "[JUMP_AUTO] Connection request failed: ${e.message}")
+                napAudit("NAP-NEARBY-007", "Connection request failed: ${e.message}", "WARN")
             }
         }
 
         override fun onEndpointLost(endpointId: String) {
             discoveredEndpoints.remove(endpointId)
+            napAudit("NAP-NEARBY-008", "Endpoint lost: $endpointId", "WARN")
             notifyListeners("onEndpointLost", JSObject().put("endpointId", endpointId))
         }
     }
@@ -131,8 +163,10 @@ class NexoNearbyPlugin : Plugin() {
             if (payload.type == Payload.Type.BYTES) {
                 val message = payload.asBytes()?.let { String(it, Charsets.UTF_8) } ?: ""
                 if (message.startsWith(JUMP_PREFIX)) {
+                    napAudit("NAP-NEARBY-009", "JUMP payload received from $endpointId", "INFO")
                     handleJumpMessage(endpointId, message.substring(JUMP_PREFIX.length))
                 } else {
+                    napAudit("NAP-NEARBY-010", "Payload received from $endpointId: ${message.take(30)}", "INFO")
                     notifyListeners("onPayloadReceived", JSObject().apply {
                         put("endpointId", endpointId)
                         put("message", message)
@@ -141,7 +175,6 @@ class NexoNearbyPlugin : Plugin() {
                 }
             }
         }
-
         override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {}
     }
 
@@ -149,11 +182,12 @@ class NexoNearbyPlugin : Plugin() {
         super.load()
         connectionsClient = Nearby.getConnectionsClient(context.applicationContext)
         localEndpointName = getDeviceName()
-        Log.i(TAG, "[JUMP_INIT] NexoNearbyPlugin loaded. deviceName=$localEndpointName")
+        napAudit("NAP-NEARBY-INIT", "NexoNearbyPlugin loaded. deviceName=$localEndpointName", "INFO")
     }
 
     @PluginMethod
     fun requestBatteryOptimizationExemption(call: PluginCall) {
+        napAudit("NAP-BATT-001", "requestBatteryOptimizationExemption() called", "INFO")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
             val pkg = context.packageName
@@ -176,6 +210,7 @@ class NexoNearbyPlugin : Plugin() {
 
     @PluginMethod
     fun startKeepAliveService(call: PluginCall) {
+        napAudit("NAP-KEEPALIVE-001", "startKeepAliveService() called", "INFO")
         val intent = Intent(context, NexoKeepAliveService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent)
@@ -196,15 +231,18 @@ class NexoNearbyPlugin : Plugin() {
             .setStrategy(STRATEGY)
             .setLowPower(false)
             .build()
+        napAudit("NAP-NEARBY-ADVERT-001", "startAdvertising() name=$endpointName", "INFO")
         connectionsClient.startAdvertising(endpointName, SERVICE_ID, connectionLifecycleCallback, options)
             .addOnSuccessListener {
                 isAdvertising = true
+                napAudit("NAP-NEARBY-ADVERT-002", "Advertising started OK", "SUCCESS")
                 call.resolve(JSObject().apply {
                     put("success", true)
                     put("endpointName", endpointName)
                 })
             }
             .addOnFailureListener { e ->
+                napAudit("NAP-NEARBY-ADVERT-003", "Advertising failed: ${e.message}", "ERROR")
                 call.reject("ADVERTISING_FAILED", e.message, e)
             }
     }
@@ -213,6 +251,7 @@ class NexoNearbyPlugin : Plugin() {
     fun stopAdvertising(call: PluginCall) {
         connectionsClient.stopAdvertising()
         isAdvertising = false
+        napAudit("NAP-NEARBY-ADVERT-004", "stopAdvertising() executed", "INFO")
         call.resolve()
     }
 
@@ -222,12 +261,15 @@ class NexoNearbyPlugin : Plugin() {
             .setStrategy(STRATEGY)
             .setLowPower(false)
             .build()
+        napAudit("NAP-NEARBY-DISC-001", "startDiscovery() called", "INFO")
         connectionsClient.startDiscovery(SERVICE_ID, endpointDiscoveryCallback, options)
             .addOnSuccessListener {
                 isDiscovering = true
+                napAudit("NAP-NEARBY-DISC-002", "Discovery started OK", "SUCCESS")
                 call.resolve(JSObject().put("success", true))
             }
             .addOnFailureListener { e ->
+                napAudit("NAP-NEARBY-DISC-003", "Discovery failed: ${e.message}", "ERROR")
                 call.reject("DISCOVERY_FAILED", e.message, e)
             }
     }
@@ -236,6 +278,7 @@ class NexoNearbyPlugin : Plugin() {
     fun stopDiscovery(call: PluginCall) {
         connectionsClient.stopDiscovery()
         isDiscovering = false
+        napAudit("NAP-NEARBY-DISC-004", "stopDiscovery() executed", "INFO")
         call.resolve()
     }
 
@@ -253,8 +296,14 @@ class NexoNearbyPlugin : Plugin() {
         }
         val payload = Payload.fromBytes(message.toByteArray(Charsets.UTF_8))
         connectionsClient.sendPayload(endpointId, payload)
-            .addOnSuccessListener { call.resolve(JSObject().put("success", true)) }
-            .addOnFailureListener { e -> call.reject("SEND_FAILED", e.message, e) }
+            .addOnSuccessListener {
+                napAudit("NAP-NEARBY-SEND-001", "Message sent to $endpointId", "INFO")
+                call.resolve(JSObject().put("success", true))
+            }
+            .addOnFailureListener { e ->
+                napAudit("NAP-NEARBY-SEND-002", "Send failed: ${e.message}", "ERROR")
+                call.reject("SEND_FAILED", e.message, e)
+            }
     }
 
     @PluginMethod
@@ -270,6 +319,7 @@ class NexoNearbyPlugin : Plugin() {
         }
         val payload = Payload.fromBytes(message.toByteArray(Charsets.UTF_8))
         connectionsClient.sendPayload(ArrayList(connectedEndpoints), payload)
+        napAudit("NAP-NEARBY-BROADCAST-001", "Broadcast to ${connectedEndpoints.size} peers", "INFO")
         call.resolve(JSObject().apply {
             put("success", true)
             put("recipients", connectedEndpoints.size)
@@ -282,8 +332,12 @@ class NexoNearbyPlugin : Plugin() {
         if (endpointId != null) {
             connectionsClient.disconnectFromEndpoint(endpointId)
             connectedEndpoints.remove(endpointId)
+            napAudit("NAP-NEARBY-DISC-005", "Disconnected from $endpointId", "INFO")
         } else {
-            connectedEndpoints.toList().forEach { connectionsClient.disconnectFromEndpoint(it) }
+            connectedEndpoints.toList().forEach {
+                connectionsClient.disconnectFromEndpoint(it)
+                napAudit("NAP-NEARBY-DISC-006", "Disconnected from $it", "INFO")
+            }
             connectedEndpoints.clear()
         }
         call.resolve()
@@ -295,6 +349,7 @@ class NexoNearbyPlugin : Plugin() {
         connectedEndpoints.forEach { id ->
             discoveredEndpoints[id]?.let { array.put(it) }
         }
+        napAudit("NAP-NEARBY-API-001", "getConnectedEndpoints: ${connectedEndpoints.size} peers", "INFO")
         call.resolve(JSObject().put("endpoints", array))
     }
 
@@ -306,6 +361,7 @@ class NexoNearbyPlugin : Plugin() {
             return
         }
         connectionsClient.acceptConnection(endpointId, payloadCallback)
+        napAudit("NAP-NEARBY-CONN-001", "acceptConnection: $endpointId", "INFO")
         call.resolve()
     }
 
@@ -319,6 +375,7 @@ class NexoNearbyPlugin : Plugin() {
             return
         }
         if (connectedEndpoints.isEmpty()) {
+            napAudit("NAP-JUMP-001", "sendJumpMessage: NO connected peers", "ERROR")
             call.reject("NO_CONNECTIONS", "No connected peers available for JUMP relay")
             return
         }
@@ -339,9 +396,8 @@ class NexoNearbyPlugin : Plugin() {
         connectedEndpoints.forEach { epId ->
             connectionsClient.sendPayload(epId, Payload.fromBytes(bytes))
             sentCount++
-            Log.i(TAG, "[JUMP_SEND] Sent $messageId to $epId")
         }
-        Log.i(TAG, "[JUMP_SEND] Message $messageId sent to $sentCount peers, hops=$maxHops")
+        napAudit("NAP-JUMP-002", "JUMP sent $messageId to $sentCount peers, hops=$maxHops", "SUCCESS")
         call.resolve(JSObject().apply {
             put("success", true)
             put("messageId", messageId)
@@ -359,10 +415,10 @@ class NexoNearbyPlugin : Plugin() {
             val ttl = json.getInt("ttl")
             val route = json.getJSONArray("route")
             val type = json.optString("type", JUMP_RELAY)
-            Log.i(TAG, "[JUMP_HANDLE] msgId=${messageId.take(8)} from=$from to=$to ttl=$ttl")
+            napAudit("NAP-JUMP-003", "handleJumpMessage: msg=${messageId.take(8)} from=$from to=$to ttl=$ttl", "INFO")
 
             if (processedJumpIds.containsKey(messageId)) {
-                Log.d(TAG, "[JUMP_DEDUP] Duplicate message $messageId, dropping")
+                napAudit("NAP-JUMP-004", "DEDUP: $messageId already processed", "WARN")
                 return
             }
             processedJumpIds[messageId] = System.currentTimeMillis()
@@ -370,7 +426,7 @@ class NexoNearbyPlugin : Plugin() {
 
             val myId = localUserId.ifBlank { localEndpointName }
             if (to == myId) {
-                Log.i(TAG, "[JUMP_DELIVER] I am the destination! Delivering message")
+                napAudit("NAP-JUMP-005", "I am the destination! Delivering $messageId", "SUCCESS")
                 notifyListeners("onJumpMessageReceived", JSObject().apply {
                     put("messageId", messageId)
                     put("from", from)
@@ -384,13 +440,13 @@ class NexoNearbyPlugin : Plugin() {
             }
 
             if (ttl <= 0) {
-                Log.w(TAG, "[JUMP_TTL] TTL expired for $messageId")
+                napAudit("NAP-JUMP-006", "TTL expired for $messageId", "WARN")
                 return
             }
 
             for (i in 0 until route.length()) {
                 if (route.getString(i) == myId) {
-                    Log.w(TAG, "[JUMP_LOOP] Loop detected! I'm already in route")
+                    napAudit("NAP-JUMP-007", "LOOP detected! I'm already in route", "WARN")
                     return
                 }
             }
@@ -406,12 +462,11 @@ class NexoNearbyPlugin : Plugin() {
                 if (epId != fromEndpointId) {
                     connectionsClient.sendPayload(epId, Payload.fromBytes(relayBytes))
                     relayCount++
-                    Log.i(TAG, "[JUMP_RELAY] Forwarded $messageId to $epId")
                 }
             }
-            Log.i(TAG, "[JUMP_RELAY] Message $messageId relayed to $relayCount peers")
+            napAudit("NAP-JUMP-008", "Relayed $messageId to $relayCount peers", "INFO")
         } catch (e: Exception) {
-            Log.e(TAG, "[JUMP_ERROR] Failed to handle JUMP message: ${e.message}")
+            napAudit("NAP-JUMP-009", "ERROR handling JUMP: ${e.message}", "ERROR")
         }
     }
 
