@@ -1,6 +1,6 @@
 /**
- * ble_interface.js v5.3.2-ARCH
- * REM v2.1 + JUMP v1.0
+ * ble_interface.js v5.4.0-ARCH
+ * REM v2.1 + JUMP v1.0 + Opcion C (isNexo flag)
  */
 
 let blePlugin = null;
@@ -40,7 +40,7 @@ export async function initBLEInterface() {
     return false;
   }
 
-  log('Inicializando BLE interface hibrida + JUMP...', 'info');
+  log('Inicializando BLE interface hibrida + JUMP (Opcion C)...', 'info');
 
   try {
     const uuidResult = await p.getDeviceUUID();
@@ -116,7 +116,7 @@ export async function initBLEInterface() {
 
   registerListeners();
   isInitialized = true;
-  log('BLE interface hibrida + JUMP lista', 'success');
+  log('BLE interface hibrida + JUMP lista (Opcion C)', 'success');
   return true;
 }
 
@@ -142,9 +142,12 @@ function registerListeners() {
         const addr = result?.address || 'unknown';
         const name = result?.name || 'NEXO Device';
         const rssi = result?.rssi || 0;
-        log(`BLE Scan: ${name} (${addr.substring(0, 8)}) rssi=${rssi}`, 'info');
+        // Opcion C: isNexo flag + userId from advertisement
+        const isNexo = result?.isNexo === true;
+        const userId = result?.userId || '';
+        log(`BLE Scan: ${name} (${addr.substring(0, 8)}) rssi=${rssi} isNexo=${isNexo} uid=${userId.substring(0, 8)}`, 'info');
         window.dispatchEvent(new CustomEvent('nexo:ble:deviceFound', {
-          detail: { address: addr, name, rssi, deviceId: addr, transport: 'ble' }
+          detail: { address: addr, name, rssi, deviceId: addr, transport: 'ble', isNexo, userId }
         }));
       });
     } catch (e) { log(`Error scan listener: ${e.message}`, 'error'); }
@@ -199,7 +202,7 @@ function registerListeners() {
       ['onEndpointFound', (data) => {
         log(`Nearby found: ${data.endpointName} (${data.endpointId.substring(0, 8)})`, 'success');
         window.dispatchEvent(new CustomEvent('nexo:ble:deviceFound', {
-          detail: { address: data.endpointId, name: data.endpointName, rssi: 0, deviceId: data.endpointId, transport: 'nearby' }
+          detail: { address: data.endpointId, name: data.endpointName, rssi: 0, deviceId: data.endpointId, transport: 'nearby', isNexo: false, userId: '' }
         }));
       }],
       ['onEndpointLost', (data) => {
