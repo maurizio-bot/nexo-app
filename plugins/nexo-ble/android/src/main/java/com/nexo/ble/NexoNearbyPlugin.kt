@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -25,6 +26,10 @@ import com.google.android.gms.nearby.connection.Payload
 import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 @CapacitorPlugin(name = "NexoNearby")
 class NexoNearbyPlugin : Plugin() {
@@ -33,6 +38,11 @@ class NexoNearbyPlugin : Plugin() {
         const val TAG = "NAP-Nearby"
         const val SERVICE_ID = "com.nexo.app"
         val STRATEGY = Strategy.P2P_CLUSTER
+        const val JUMP_PREFIX = "JUMP::"
+        const val JUMP_RELAY = "JUMP_RELAY"
+        const val JUMP_DELIVER = "JUMP_DELIVER"
+        const val MAX_HOPS = 4
+        const val JUMP_ID_TTL = 60000L
     }
 
     private lateinit var connectionsClient: ConnectionsClient
@@ -41,6 +51,9 @@ class NexoNearbyPlugin : Plugin() {
     private val pendingConnections = mutableSetOf<String>()
     private var isAdvertising = false
     private var isDiscovering = false
+    private val processedJumpIds = ConcurrentHashMap<String, Long>()
+    private var localUserId: String = ""
+    private var localEndpointName: String = ""
 
     private val connectionLifecycleCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
@@ -62,6 +75,8 @@ class NexoNearbyPlugin : Plugin() {
                 notifyListeners("onConnected", JSObject().apply {
                     put("endpointId", endpointId)
                     put("endpointName", dev?.getString("endpointName") ?: "Unknown")
+                    put("userId", dev?.getString("userId") ?: "")
+                    put("userName", dev?.getString("endpointName") ?: "Unknown")
                     put("status", "connected")
                 })
             } else {
@@ -82,13 +97,27 @@ class NexoNearbyPlugin : Plugin() {
 
     private val endpointDiscoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
+            val parts = info.endpointName.split("|")
+            val userName = parts.getOrNull(0) ?: info.endpointName
+            val userId = parts.getOrNull(1) ?: ""
             val data = JSObject().apply {
                 put("endpointId", endpointId)
-                put("endpointName", info.endpointName)
+                put("endpointName", userName)
+                put("userId", userId)
+                put("userName", userName)
                 put("serviceId", info.serviceId)
             }
             discoveredEndpoints[endpointId] = data
             notifyListeners("onEndpointFound", data)
+            connectionsClient.requestConnection(
+                "$localEndpointName|$localUserId",
+                endpointId,
+                connectionLifecycleCallback
+            ).addOnSuccessListener {
+                Log.i(TAG, "[JUMP_AUTO] Connection requested to $endpointId")
+            }.addOnFailureListener { e ->
+                Log.w(TAG, "[JUMP_AUTO] Connection request failed: ${e.message}")
+            }
         }
 
         override fun onEndpointLost(endpointId: String) {
@@ -101,11 +130,15 @@ class NexoNearbyPlugin : Plugin() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
             if (payload.type == Payload.Type.BYTES) {
                 val message = payload.asBytes()?.let { String(it, Charsets.UTF_8) } ?: ""
-                notifyListeners("onPayloadReceived", JSObject().apply {
-                    put("endpointId", endpointId)
-                    put("message", message)
-                    put("type", "bytes")
-                })
+                if (message.startsWith(JUMP_PREFIX)) {
+                    handleJumpMessage(endpointId, message.substring(JUMP_PREFIX.length))
+                } else {
+                    notifyListeners("onPayloadReceived", JSObject().apply {
+                        put("endpointId", endpointId)
+                        put("message", message)
+                        put("type", "bytes")
+                    })
+                }
             }
         }
         override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {}
@@ -114,6 +147,8 @@ class NexoNearbyPlugin : Plugin() {
     override fun load() {
         super.load()
         connectionsClient = Nearby.getConnectionsClient(context.applicationContext)
+        localEndpointName = getDeviceName()
+        Log.i(TAG, "[JUMP_INIT] NexoNearbyPlugin loaded. deviceName=$localEndpointName")
     }
 
     @PluginMethod
@@ -151,12 +186,15 @@ class NexoNearbyPlugin : Plugin() {
 
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
-        val endpointName = call.getString("endpointName", getDeviceName()) ?: getDeviceName()
+        val userId = call.getString("userId", "")
+        val userName = call.getString("userName", getDeviceName()) ?: getDeviceName()
+        if (userId.isNotBlank()) this.localUserId = userId
+        this.localEndpointName = userName
+        val endpointName = "$userName|$localUserId"
         val options = AdvertisingOptions.Builder()
             .setStrategy(STRATEGY)
             .setLowPower(false)
             .build()
-
         connectionsClient.startAdvertising(endpointName, SERVICE_ID, connectionLifecycleCallback, options)
             .addOnSuccessListener {
                 isAdvertising = true
@@ -183,7 +221,6 @@ class NexoNearbyPlugin : Plugin() {
             .setStrategy(STRATEGY)
             .setLowPower(false)
             .build()
-
         connectionsClient.startDiscovery(SERVICE_ID, endpointDiscoveryCallback, options)
             .addOnSuccessListener {
                 isDiscovering = true
@@ -271,6 +308,117 @@ class NexoNearbyPlugin : Plugin() {
         call.resolve()
     }
 
+    @PluginMethod
+    fun sendJumpMessage(call: PluginCall) {
+        val to = call.getString("to", "") ?: ""
+        val payload = call.getString("payload", "") ?: ""
+        val maxHops = call.getInt("maxHops", MAX_HOPS)
+        if (to.isBlank()) {
+            call.reject("INVALID_PARAMS", "Missing 'to' destination")
+            return
+        }
+        if (connectedEndpoints.isEmpty()) {
+            call.reject("NO_CONNECTIONS", "No connected peers available for JUMP relay")
+            return
+        }
+        val messageId = UUID.randomUUID().toString()
+        val from = localUserId.ifBlank { localEndpointName }
+        val json = JSONObject().apply {
+            put("messageId", messageId)
+            put("from", from)
+            put("to", to)
+            put("ttl", maxHops)
+            put("payload", payload)
+            put("route", JSONArray().apply { put(from) })
+            put("type", JUMP_RELAY)
+        }
+        val jumpPayload = JUMP_PREFIX + json.toString()
+        val bytes = jumpPayload.toByteArray(Charsets.UTF_8)
+        var sentCount = 0
+        connectedEndpoints.forEach { epId ->
+            connectionsClient.sendPayload(epId, Payload.fromBytes(bytes))
+            sentCount++
+            Log.i(TAG, "[JUMP_SEND] Sent $messageId to $epId")
+        }
+        Log.i(TAG, "[JUMP_SEND] Message $messageId sent to $sentCount peers, hops=$maxHops")
+        call.resolve(JSObject().apply {
+            put("success", true)
+            put("messageId", messageId)
+            put("sentToPeers", sentCount)
+            put("maxHops", maxHops)
+        })
+    }
+
+    private fun handleJumpMessage(fromEndpointId: String, payload: String) {
+        try {
+            val json = JSONObject(payload)
+            val messageId = json.getString("messageId")
+            val from = json.getString("from")
+            val to = json.getString("to")
+            val ttl = json.getInt("ttl")
+            val route = json.getJSONArray("route")
+            val type = json.optString("type", JUMP_RELAY)
+            Log.i(TAG, "[JUMP_HANDLE] msgId=${messageId.take(8)} from=$from to=$to ttl=$ttl")
+            if (processedJumpIds.containsKey(messageId)) {
+                Log.d(TAG, "[JUMP_DEDUP] Duplicate message $messageId, dropping")
+                return
+            }
+            processedJumpIds[messageId] = System.currentTimeMillis()
+            cleanupOldJumpIds()
+            val myId = localUserId.ifBlank { localEndpointName }
+            if (to == myId) {
+                Log.i(TAG, "[JUMP_DELIVER] I am the destination! Delivering message")
+                notifyListeners("onJumpMessageReceived", JSObject().apply {
+                    put("messageId", messageId)
+                    put("from", from)
+                    put("to", to)
+                    put("payload", json.optString("payload", ""))
+                    put("route", route.toString())
+                    put("hops", route.length())
+                    put("type", JUMP_DELIVER)
+                })
+                return
+            }
+            if (ttl <= 0) {
+                Log.w(TAG, "[JUMP_TTL] TTL expired for $messageId")
+                return
+            }
+            for (i in 0 until route.length()) {
+                if (route.getString(i) == myId) {
+                    Log.w(TAG, "[JUMP_LOOP] Loop detected! I'm already in route")
+                    return
+                }
+            }
+            route.put(myId)
+            json.put("route", route)
+            json.put("ttl", ttl - 1)
+            val relayPayload = JUMP_PREFIX + json.toString()
+            val relayBytes = relayPayload.toByteArray(Charsets.UTF_8)
+            var relayCount = 0
+            connectedEndpoints.forEach { epId ->
+                if (epId != fromEndpointId) {
+                    connectionsClient.sendPayload(epId, Payload.fromBytes(relayBytes))
+                    relayCount++
+                    Log.i(TAG, "[JUMP_RELAY] Forwarded $messageId to $epId")
+                }
+            }
+            Log.i(TAG, "[JUMP_RELAY] Message $messageId relayed to $relayCount peers")
+        } catch (e: Exception) {
+            Log.e(TAG, "[JUMP_ERROR] Failed to handle JUMP message: ${e.message}")
+        }
+    }
+
+    private fun cleanupOldJumpIds() {
+        val now = System.currentTimeMillis()
+        val iterator = processedJumpIds.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (now - entry.value > JUMP_ID_TTL) {
+                iterator.remove()
+            }
+        }
+    }
+
     private fun doAcceptConnection(endpointId: String) {
         connectionsClient.acceptConnection(endpointId, payloadCallback)
     }
@@ -278,7 +426,7 @@ class NexoNearbyPlugin : Plugin() {
     private fun restartAdvertising() {
         if (isAdvertising) {
             connectionsClient.stopAdvertising()
-            val endpointName = getDeviceName()
+            val endpointName = "$localEndpointName|$localUserId"
             val options = AdvertisingOptions.Builder().setStrategy(STRATEGY).setLowPower(false).build()
             connectionsClient.startAdvertising(endpointName, SERVICE_ID, connectionLifecycleCallback, options)
         }
