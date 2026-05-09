@@ -141,6 +141,7 @@ class NexoNearbyPlugin : Plugin() {
                 }
             }
         }
+
         override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {}
     }
 
@@ -186,7 +187,7 @@ class NexoNearbyPlugin : Plugin() {
 
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
-        val userId = call.getString("userId", "")
+        val userId = call.getString("userId", "") ?: ""
         val userName = call.getString("userName", getDeviceName()) ?: getDeviceName()
         if (userId.isNotBlank()) this.localUserId = userId
         this.localEndpointName = userName
@@ -359,12 +360,14 @@ class NexoNearbyPlugin : Plugin() {
             val route = json.getJSONArray("route")
             val type = json.optString("type", JUMP_RELAY)
             Log.i(TAG, "[JUMP_HANDLE] msgId=${messageId.take(8)} from=$from to=$to ttl=$ttl")
+
             if (processedJumpIds.containsKey(messageId)) {
                 Log.d(TAG, "[JUMP_DEDUP] Duplicate message $messageId, dropping")
                 return
             }
             processedJumpIds[messageId] = System.currentTimeMillis()
             cleanupOldJumpIds()
+
             val myId = localUserId.ifBlank { localEndpointName }
             if (to == myId) {
                 Log.i(TAG, "[JUMP_DELIVER] I am the destination! Delivering message")
@@ -379,19 +382,23 @@ class NexoNearbyPlugin : Plugin() {
                 })
                 return
             }
+
             if (ttl <= 0) {
                 Log.w(TAG, "[JUMP_TTL] TTL expired for $messageId")
                 return
             }
+
             for (i in 0 until route.length()) {
                 if (route.getString(i) == myId) {
                     Log.w(TAG, "[JUMP_LOOP] Loop detected! I'm already in route")
                     return
                 }
             }
+
             route.put(myId)
             json.put("route", route)
             json.put("ttl", ttl - 1)
+
             val relayPayload = JUMP_PREFIX + json.toString()
             val relayBytes = relayPayload.toByteArray(Charsets.UTF_8)
             var relayCount = 0
@@ -433,7 +440,7 @@ class NexoNearbyPlugin : Plugin() {
     }
 
     private fun getDeviceName(): String {
-        return Build.MODEL ?: "NEXO Device"
+        return Build.MODEL?.takeIf { it.isNotBlank() } ?: "NEXO Device"
     }
 
     override fun handleOnDestroy() {
