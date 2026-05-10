@@ -28,6 +28,11 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import java.util.UUID
 
+/**
+ * NexoBlePlugin v6.0-PROD
+ * Bridge puro entre BleService y JS.
+ * Basado en investigacion de Bridgefy SDK y Android BLE docs 2025-2026.
+ */
 @CapacitorPlugin(
     name = "NexoBLE",
     permissions = [
@@ -44,6 +49,7 @@ class NexoBlePlugin : Plugin() {
         const val PREFS_NAME = "nexo_ble_prefs"
         const val PREF_DEVICE_UUID = "device_uuid"
 
+        // Actions BleService
         const val ACTION_SCAN_RESULT = "com.nexo.ble.SCAN_RESULT"
         const val ACTION_SCAN_FAILED = "com.nexo.ble.SCAN_FAILED"
         const val ACTION_SCAN_STOPPED = "com.nexo.ble.SCAN_STOPPED"
@@ -60,6 +66,7 @@ class NexoBlePlugin : Plugin() {
         const val ACTION_CLIENT_NOTIFICATION_STATE_CHANGED = "com.nexo.ble.CLIENT_NOTIFICATION_STATE_CHANGED"
         const val ACTION_NAP_AUDIT = "com.nexo.ble.NAP_AUDIT"
 
+        // Extras
         const val EXTRA_DEVICE_ADDRESS = "device_address"
         const val EXTRA_DEVICE_NAME = "device_name"
         const val EXTRA_RSSI = "rssi"
@@ -104,7 +111,7 @@ class NexoBlePlugin : Plugin() {
             val binder = service as? BleService.LocalBinder
             bleService = binder?.getService()
             serviceBound = true
-            napLog("WAR-BRIDGE-001", "BleService vinculado OK", "INFO")
+            napLog("PROD-BRIDGE-001", "BleService v6.0-PROD vinculado OK", "INFO")
             notifyListeners("bridgeReady", JSObject().apply {
                 put("ready", true)
                 put("timestamp", System.currentTimeMillis())
@@ -115,7 +122,7 @@ class NexoBlePlugin : Plugin() {
         override fun onServiceDisconnected(name: ComponentName?) {
             bleService = null
             serviceBound = false
-            napLog("WAR-BRIDGE-002", "BleService desvinculado", "WARN")
+            napLog("PROD-BRIDGE-002", "BleService desvinculado", "WARN")
         }
     }
 
@@ -126,12 +133,12 @@ class NexoBlePlugin : Plugin() {
                 ACTION_SCAN_RESULT -> {
                     val deviceId = intent.getStringExtra(EXTRA_DEVICE_ADDRESS) ?: return
                     val broadcastName = intent.getStringExtra(EXTRA_DEVICE_NAME) ?: ""
-                    val realName = getBluetoothRealName(deviceId) ?: broadcastName
+                    val realName = getBluetoothRealNameSafe(deviceId) ?: broadcastName
                     val name = realName.ifBlank { "NEXO Device" }
                     val rssi = intent.getIntExtra(EXTRA_RSSI, 0)
                     val isNexo = intent.getBooleanExtra("isNexo", false)
                     val advertUserId = intent.getStringExtra(EXTRA_USER_ID) ?: ""
-                    napLog("WAR-BRIDGE-003", "SCAN_RESULT → JS: ${deviceId.take(8)} name=$name rssi=$rssi isNexo=$isNexo", "INFO")
+                    napLog("PROD-BRIDGE-003", "SCAN_RESULT -> JS: ${deviceId.take(8)} name=$name rssi=$rssi isNexo=$isNexo", "INFO")
                     notifyListeners("onScanResult", JSObject().apply {
                         put("address", deviceId)
                         put("deviceId", deviceId)
@@ -282,14 +289,14 @@ class NexoBlePlugin : Plugin() {
     }
 
     override fun load() {
-        napLog("WAR-BRIDGE-010", "load() INICIO v5.9.0-ARCH Estrategia de Guerra", "INFO")
+        napLog("PROD-BRIDGE-010", "load() INICIO v6.0-PROD", "INFO")
         registerReceiverOnly()
         if (!canAccessBluetooth()) {
-            napLog("WAR-BRIDGE-011", "Sin permisos al cargar", "WARN")
+            napLog("PROD-BRIDGE-011", "Sin permisos al cargar - esperando requestBLEPermissions()", "WARN")
             return
         }
         startServiceAndBind()
-        napLog("WAR-BRIDGE-012", "load() FIN", "INFO")
+        napLog("PROD-BRIDGE-012", "load() FIN", "INFO")
     }
 
     private fun registerReceiverOnly() {
@@ -306,7 +313,7 @@ class NexoBlePlugin : Plugin() {
         } else {
             context.registerReceiver(serviceEventReceiver, filter)
         }
-        napLog("WAR-BRIDGE-013", "Receiver registrado", "INFO")
+        napLog("PROD-BRIDGE-013", "Receiver registrado", "INFO")
     }
 
     private fun startServiceAndBind() {
@@ -429,13 +436,16 @@ class NexoBlePlugin : Plugin() {
         return manager?.adapter
     }
 
-    private fun getBluetoothRealName(addr: String): String? {
+    // FIX: getBluetoothRealName con try-catch completo (SecurityException + IllegalArgumentException)
+    private fun getBluetoothRealNameSafe(addr: String): String? {
         return try {
             val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-            val adapter = manager?.adapter
-            val dev = adapter?.getRemoteDevice(addr)
+            val adapter = manager?.adapter ?: return null
+            val dev = adapter.getRemoteDevice(addr)
             dev?.name
-        } catch (e: Exception) { null }
+        } catch (e: SecurityException) { null }
+        catch (e: IllegalArgumentException) { null }
+        catch (e: Exception) { null }
     }
 
     private fun napLog(code: String, message: String, level: String = "INFO") {
@@ -472,7 +482,7 @@ class NexoBlePlugin : Plugin() {
     private fun requestPermissionsCallback(call: PluginCall) {
         try {
             val result = buildPermissionsResult()
-            val allGranted = result.getBoolean("allGranted", false) ?: false
+            val allGranted = result.getBoolean("allGranted", false)
             if (allGranted) {
                 startServiceAndBind()
                 call.resolve(result)
@@ -547,7 +557,11 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun startScan(call: PluginCall) {
-        withService(call) { it.startScan(); call.resolve() }
+        napLog("PROD-BRIDGE-SCAN", "JS solicita startScan()", "INFO")
+        withService(call) { 
+            it.startScan()
+            call.resolve(JSObject().apply { put("started", true) })
+        }
     }
 
     @PluginMethod
@@ -558,7 +572,11 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
         val name = call.getString("deviceName") ?: userName
-        withService(call) { it.startAdvertising(name); call.resolve() }
+        napLog("PROD-BRIDGE-ADVERT", "JS solicita startAdvertising(name=$name)", "INFO")
+        withService(call) { 
+            it.startAdvertising(name)
+            call.resolve(JSObject().apply { put("started", true) })
+        }
     }
 
     @PluginMethod
