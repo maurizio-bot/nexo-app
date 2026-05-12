@@ -1,5 +1,6 @@
 /**
  * BLE Permissions Manager v4.2-ARCH
+ 
  * Ubicación: src/core/ble_permissions.js
  * FIX: API unificada + exports compatibles legacy
  * Coordinado con NexoBlePlugin.kt v5.2.0-ARCH + BleService.kt v2.0-ARCH
