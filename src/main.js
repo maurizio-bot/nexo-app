@@ -1,5 +1,6 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.0-NAP
+ 
  * NAP 2.0 Certified - BLE Soberano P2P
  * v3.3.0 - Protocolo GATT NEXO + NordicMesh
  * Build #630: SetupWizard Integration for Android 14 BLE onboarding
