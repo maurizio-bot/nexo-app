@@ -1,0 +1,30 @@
+[33m2a8875c[m[33m ([m[1;33mtag: [m[1;33mnightly-1215-2a8875ce8a2cd520926cc12ff7d4e0bf2cbbdd1f[m[33m, [m[1;33mtag: [m[1;33mnightly-1214-03b39a20be6a2915128efdd96031a0164bd25f48[m[33m, [m[1;33mtag: [m[1;33mnightly-1213-195b4b7b0612de225de953e529cc49eeeee3f166[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Refactor NexoApp and enhance BLE message resolution
+[33m03b39a2[m[33m ([m[1;33mtag: [m[1;33mnightly-1212-4f087d3f74b7c15514798445b45c7b5aad6eab02[m[33m)[m Refactor NexoApp initialization and error handling
+[33m195b4b7[m Refactor BLE permissions management and cleanup
+[33m4f087d3[m[33m ([m[1;33mtag: [m[1;33mnightly-1211-fde2ba8682cefd636ea5caef766459380797ba3f[m[33m)[m Change greeting from 'Hello World' to 'Goodbye World'
+[33mfde2ba8[m[33m ([m[1;33mtag: [m[1;33mnightly-1210-d13d9837a0ac3dac6e6bc36c4c769df2b1aa2cf2[m[33m)[m Refactor BLE handling and improve connection logic
+[33md13d983[m Update SetupManager version and fix logging
+[33mfcb22ed[m[33m ([m[1;33mtag: [m[1;33mnightly-1209-fcb22edadd2d7c3cb35518a127d5e88ba35fa748[m[33m, [m[1;33mtag: [m[1;33mnightly-1208-8a0f5126a841271aa7cfcc523667cd83033b6607[m[33m)[m Reorganize UUID definitions in NexoBleSpec
+[33m8a0f512[m[33m ([m[1;33mtag: [m[1;33mnightly-1207-2fd1d292999ea00a56c05f2ef5c7913995111f1b[m[33m)[m Refactor NexoBlePlugin permissions and scanning logic
+[33m2fd1d29[m Refactor BleService for improved structure and clarity
+[33mc3d5c6c[m[33m ([m[1;33mtag: [m[1;33mnightly-1206-c3d5c6c2d7a98025f6e35e9535d5d1c765301be3[m[33m)[m Clean up comments in AndroidManifest.xml
+[33ma98fd14[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;33mtag: [m[1;33mnightly-1205-a98fd147fca9119f907302b6267e40b2ad3af5cf[m[33m)[m force rebuild from #961
+[33m009cbbd[m[33m ([m[1;33mtag: [m[1;33mnightly-1204-009cbbd163bcf1454a8a833b924d5ecafbbafa48[m[33m)[m Update comments in ble_permissions.js
+[33m94dc320[m[33m ([m[1;33mtag: [m[1;33mnightly-1203-94dc32073c2c06ba7f7105f18dd1fc3adfb2b523[m[33m)[m Remove blank line in src/main.js comments
+[33mb85f884[m[33m ([m[1;33mtag: [m[1;33mnightly-1202-b85f884c6a63946fc8eeb529df9ec21d22585967[m[33m)[m Update header comments in main.js
+[33m99207f8[m[33m ([m[1;33mtag: [m[1;33mnightly-1031-99207f87aeb41893c2f88e2441255513fbdbfdfa[m[33m)[m Update ble_permissions.js
+[33m0bc108f[m[33m ([m[1;33mtag: [m[1;33mnightly-1030-0bc108f5278c2c97f7c6ddead382157b484d0735[m[33m)[m Refactor BLE permissions manager and update methods
+[33m7791649[m[33m ([m[1;33mtag: [m[1;33mnightly-1029-779164983726436346bec7d6f4004dc3df682f85[m[33m)[m Update ble_interface.js
+[33m47ec9db[m[33m ([m[1;33mtag: [m[1;33mnightly-1028-47ec9db2e0d211149de4b4551a81afaaae41c36d[m[33m, [m[1;33mtag: [m[1;33mnightly-1027-b9f1ccccfc2d63c1f9d188f4b95c7834a6f23272[m[33m, [m[1;33mtag: [m[1;33mnightly-1026-ed615604c96d64d2e282fcf6900cea424cd2f486[m[33m)[m Upgrade SetupWizard to v3.0.6-ARCH with fixes
+[33mb9f1ccc[m Upgrade BLE Permissions Manager to v6.6-ARCH
+[33med61560[m Update permission handling in NexoBlePlugin
+[33m61d39f2[m[33m ([m[1;33mtag: [m[1;33mnightly-1025-61d39f2798f3a2f6aa770c9281ac64ba4df102b5[m[33m)[m Fix crash and improve GATT client in BleService
+[33me71c45d[m[33m ([m[1;33mtag: [m[1;33mnightly-1024-e71c45d8cf9a3a2a2c1c79c9eab962f9cabc9810[m[33m)[m Update NexoBlePlugin.kt
+[33m3ac4fdf[m[33m ([m[1;33mtag: [m[1;33mnightly-1022-34bd173e265895e3041a240a1f42775f0f347e9b[m[33m)[m Upgrade NexoBlePlugin to v2.3-ARCH with new BLE methods
+[33m34bd173[m Upgrade BleService to v2.3-ARCH with enhancements
+[33mabe7907[m[33m ([m[1;33mtag: [m[1;33mnightly-1021-abe7907afae83d181e30f03c3b17a4b8232d447f[m[33m, [m[1;33mtag: [m[1;33mnightly-1020-d9d8f5118aec300e86ddd7fc0c690b1f2ae14db4[m[33m, [m[1;33mtag: [m[1;33mnightly-1019-64e495313d8448bca96ae4533eb1e1b8f39078f5[m[33m)[m Update SetupWizard to version 3.0.5-ARCH
+[33md9d8f51[m Update BLE Permissions Manager to v6.5-ARCH
+[33m64e4953[m Update NEXO App version to 5.0.11-ARCH
+[33m4e9e995[m[33m ([m[1;33mtag: [m[1;33mnightly-1018-4e9e9959e9b8f3e86cdfd4b28dff8c26586cff3c[m[33m)[m Fix imports and enhance BLE interface functionality
+[33m0632d08[m[33m ([m[1;33mtag: [m[1;33mnightly-1017-0632d08c0c84e4f9af92cd964a2f3b9275094eda[m[33m)[m Fix build and enhance BLE interface functionality
+[33m6e74b96[m Update NexoBlePlugin to v2.2.1-ARCH with permission fixes
