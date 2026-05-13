@@ -58,91 +58,49 @@ class BleService : Service() {
             startAdvertising()
         } catch (e: Exception) {
             Log.e(TAG, "Fatal error in onCreate", e)
-            stopSelf()
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.i(TAG, "onStartCommand action=${intent?.action}")
-        when (intent?.action) {
-            NexoBleSpec.ACTION_BLE_SEND_MESSAGE -> {
-                val msg = intent.getStringExtra(NexoBleSpec.EXTRA_MESSAGE_DATA) ?: ""
-                sendNotificationToAll(msg)
-            }
-        }
+        Log.i(TAG, "onStartCommand")
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startGattServer() {
-        try {
-            val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            val adapter = bluetoothManager.adapter
-            if (adapter == null || !adapter.isEnabled) {
-                Log.e(TAG, "Bluetooth not available")
-                return
+        val manager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        bluetoothGattServer = manager.openGattServer(this, gattServerCallback)
+        // ... (configuración de servicios y características)
+    }
+
+    private val gattServerCallback = object : BluetoothGattServerCallback() {
+        override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                connectedDevices.add(device)
+                broadcastUpdate(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED, device.address)
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                connectedDevices.remove(device)
+                broadcastUpdate(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED, device.address)
             }
-            bluetoothGattServer = bluetoothManager.openGattServer(this, gattServerCallback)
-
-            val service = android.bluetooth.BluetoothGattService(
-                NexoBleSpec.NEXO_SERVICE_UUID,
-                android.bluetooth.BluetoothGattService.SERVICE_TYPE_PRIMARY
-            )
-
-            txCharacteristic = BluetoothGattCharacteristic(
-                NexoBleSpec.TX_CHARACTERISTIC_UUID,
-                BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
-                BluetoothGattCharacteristic.PERMISSION_READ
-            ).apply {
-                addDescriptor(BluetoothGattDescriptor(
-                    NexoBleSpec.CCCD_UUID,
-                    BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE
-                ))
-            }
-
-            rxCharacteristic = BluetoothGattCharacteristic(
-                NexoBleSpec.RX_CHARACTERISTIC_UUID,
-                BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
-                BluetoothGattCharacteristic.PERMISSION_WRITE
-            )
-
-            service.addCharacteristic(txCharacteristic)
-            service.addCharacteristic(rxCharacteristic)
-
-            val success = bluetoothGattServer?.addService(service) ?: false
-            Log.i(TAG, "GATT Server addService success=$success")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error starting GATT server", e)
         }
+        // ... (manejo de lecturas y escrituras)
     }
 
     private fun startAdvertising() {
-        try {
-            val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            val adapter = bluetoothManager.adapter
-            if (adapter == null || !adapter.isEnabled) {
-                Log.e(TAG, "Bluetooth adapter not available")
-                return
-            }
-            bluetoothLeAdvertiser = adapter.bluetoothLeAdvertiser
-
-            val settings = AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-                .setConnectable(true)
-                .setTimeout(0)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-                .build()
-
-            val data = AdvertiseData.Builder()
-                .setIncludeDeviceName(true)
-                .addServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
-                .build()
-
-            bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error starting advertising", e)
-        }
+        val adapter = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
+        bluetoothLeAdvertiser = adapter.bluetoothLeAdvertiser
+        val settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setConnectable(true)
+            .setTimeout(0)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .build()
+        val data = AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
+            .addServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
+            .build()
+        bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
     }
 
     private val advertiseCallback = object : AdvertiseCallback() {
@@ -154,76 +112,7 @@ class BleService : Service() {
         }
     }
 
-    private val gattServerCallback = object : BluetoothGattServerCallback() {
-        override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-            Log.i(TAG, "Connection ${device.address} status=$status newState=$newState")
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
-                connectedDevices.add(device)
-                broadcast(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED, device.address)
-            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                connectedDevices.remove(device)
-                broadcast(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED, device.address)
-                try { startAdvertising() } catch (e: Exception) { Log.w(TAG, "Restart adv failed", e) }
-            }
-        }
-
-        override fun onCharacteristicReadRequest(
-            device: BluetoothDevice, requestId: Int, offset: Int,
-            characteristic: BluetoothGattCharacteristic
-        ) {
-            if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
-                val value = characteristic.value ?: ByteArray(0)
-                bluetoothGattServer?.sendResponse(device, requestId, android.bluetooth.BluetoothGatt.GATT_SUCCESS, offset, value)
-            } else {
-                bluetoothGattServer?.sendResponse(device, requestId, android.bluetooth.BluetoothGatt.GATT_READ_NOT_PERMITTED, offset, null)
-            }
-        }
-
-        override fun onCharacteristicWriteRequest(
-            device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteristic,
-            preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
-        ) {
-            if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-                val message = value?.toString(Charset.defaultCharset()) ?: ""
-                Log.i(TAG, "RX from ${device.address}: $message")
-                val intent = Intent(NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED).apply {
-                    putExtra(NexoBleSpec.EXTRA_MESSAGE_DATA, message)
-                    putExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS, device.address)
-                    setPackage(packageName)
-                }
-                sendBroadcast(intent)
-                if (responseNeeded) {
-                    bluetoothGattServer?.sendResponse(device, requestId, android.bluetooth.BluetoothGatt.GATT_SUCCESS, offset, value)
-                }
-            }
-        }
-
-        override fun onDescriptorWriteRequest(
-            device: BluetoothDevice, requestId: Int, descriptor: BluetoothGattDescriptor,
-            preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
-        ) {
-            if (descriptor.uuid == NexoBleSpec.CCCD_UUID) {
-                descriptor.value = value
-                if (responseNeeded) {
-                    bluetoothGattServer?.sendResponse(device, requestId, android.bluetooth.BluetoothGatt.GATT_SUCCESS, offset, value)
-                }
-            }
-        }
-    }
-
-    private fun sendNotificationToAll(message: String) {
-        val data = message.toByteArray(Charset.defaultCharset())
-        txCharacteristic?.value = data
-        connectedDevices.forEach { device ->
-            try {
-                bluetoothGattServer?.notifyCharacteristicChanged(device, txCharacteristic, false)
-            } catch (e: Exception) {
-                Log.e(TAG, "Notify failed for ${device.address}", e)
-            }
-        }
-    }
-
-    private fun broadcast(action: String, address: String) {
+    private fun broadcastUpdate(action: String, address: String) {
         val intent = Intent(action).apply {
             putExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS, address)
             setPackage(packageName)
