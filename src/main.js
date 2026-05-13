@@ -1,27 +1,30 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.0-NAP
- * NAP 2.0 Certified - BLE Soberano P2P
- * v3.3.0 - Protocolo GATT NEXO + NordicMesh
- * Build #630: SetupWizard Integration for Android 14 BLE onboarding
+ * src/main.js - Punto de entrada NEXO v9.1-FIX
+ * FIX: SetupManager usa requestBLEPermissions en vez de checkBLEStatus (no existe en plugin 961)
+ * Fondo #000000 forzado
  */
 
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
-import { SetupManager } from './core/SetupManager.js';
 import { SetupWizard } from './ui/SetupWizard.js';
+import { requestBLEPermissions } from './core/ble_permissions.js';
 
 window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.0-NAP',
+  version: '9.1-FIX',
   initialized: false
 };
 
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
+
+// FIX: Fuerza fondo negro puro inmediatamente
+document.documentElement.style.backgroundColor = '#000000';
+document.body.style.backgroundColor = '#000000';
 
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible?.()) {
@@ -42,16 +45,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
     rem.info('[Setup] Verificando estado de configuración...', 'SETUP_CHECK');
-    const setupStatus = await SetupManager.checkInitialStatus();
+    
+    // FIX: Reemplaza SetupManager.checkInitialStatus() por check directo con requestBLEPermissions
+    let needsSetup = false;
+    try {
+      const permResult = await requestBLEPermissions();
+      // Plugin 961 devuelve boolean o objeto {scan, connect}
+      const hasPerms = permResult === true || (permResult && permResult.scan === 'granted');
+      if (!hasPerms) needsSetup = true;
+    } catch (e) {
+      console.warn('[MAIN] Error check permisos:', e.message);
+      needsSetup = true;
+    }
 
-    if (!setupStatus.ready) {
-      rem.info(`[Setup] Requerido: ${setupStatus.reason}`, 'SETUP_REQUIRED');
+    if (needsSetup) {
+      rem.info('[Setup] Requerido: permissions', 'SETUP_REQUIRED');
       NEXO_DIAG.hideSplash();
 
       const wizard = new SetupWizard('app', async () => {
         rem.success('[Setup] Wizard completado', 'SETUP_OK');
         wizard.destroy();
-        await SetupManager.markCompleted();
         await initializeNexoApp();
       });
 
@@ -82,7 +95,7 @@ async function initializeNexoApp() {
     
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.hideSplash();
-    console.log('✅ NEXO v9.0-NAP Inicializado');
+    console.log('✅ NEXO v9.1-FIX Inicializado');
   } catch (error) {
     console.error('💥 Error en NexoApp:', error);
   }
@@ -92,6 +105,7 @@ function _ensureDOMStructure() {
     if (!document.getElementById('app')) {
         const app = document.createElement('div');
         app.id = 'app';
+        app.style.backgroundColor = '#000000';
         document.body.appendChild(app);
     }
 }
