@@ -320,3 +320,9 @@
   text-transform: uppercase;
   letter-spacing: 1px;
 }
+
+/* FIX: Fuerza negro puro en todos los contenedores raíz */
+html, body, #app, #splash-native, #nexo-setup {
+  background-color: #000000 !important;
+}
+
