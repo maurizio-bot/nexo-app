@@ -428,10 +428,8 @@ export class BLEInterface {
     if (!this._serverReady) {
       try {
         this.showToast('⏳ Inicializando servidor BLE...', 'info');
-        await this.nativePlugin.initializeBLE({
-          userId: window.currentUser?.id || '',
-          userName: window.currentUser?.name || 'NEXO User'
-        });
+        await plugin.initializeBLE();
+        
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             if (this._serverError) {
