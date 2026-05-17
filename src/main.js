@@ -1,22 +1,19 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.0-NAP
- * NAP 2.0 Certified - BLE Soberano P2P
- * v3.3.0 - Protocolo GATT NEXO + NordicMesh
- * Build #630: SetupWizard Integration for Android 14 BLE onboarding
+ * src/main.js - Punto de entrada NEXO v9.1-ARCH
+ * Adaptado para plugin nativo #961 (d56834b)
+ * FIX: SetupManager/SetupWizard eliminados. BLE directo vía plugin nativo.
  */
 
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
-import { SetupManager } from './core/SetupManager.js';
-import { SetupWizard } from './ui/SetupWizard.js';
 
 window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.0-NAP',
+  version: '9.1-ARCH',
   initialized: false
 };
 
@@ -41,26 +38,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
     
-    rem.info('[Setup] Verificando estado de configuración...', 'SETUP_CHECK');
-    const setupStatus = await SetupManager.checkInitialStatus();
-    
-    if (!setupStatus.ready) {
-      rem.info(`[Setup] Requerido: ${setupStatus.reason}`, 'SETUP_REQUIRED');
-      NEXO_DIAG.hideSplash();
-      
-      const wizard = new SetupWizard('app', async () => {
-        rem.success('[Setup] Wizard completado', 'SETUP_OK');
-        wizard.destroy();
-        await SetupManager.markCompleted();
-        await initializeNexoApp();
-      });
-      
-      await wizard.start();
-      return;
+    // FIX #961: Inicializar BLE directo sin SetupWizard
+    const plugin = window.Capacitor?.Plugins?.NexoBLE;
+    if (plugin) {
+      try {
+        const status = await plugin.checkBLEStatus();
+        rem.info(`[BLE] Status: allGranted=${status.allGranted}`, 'BLE_STATUS');
+        if (!status.allGranted) {
+          rem.info('[BLE] Solicitando permisos...', 'BLE_PERM_REQ');
+          await plugin.initializeBLE();
+          rem.success('[BLE] Permisos concedidos', 'BLE_PERM_OK');
+        }
+      } catch (bleErr) {
+        rem.warn(`[BLE] Error permisos: ${bleErr.message}`, 'BLE_PERM_WARN');
+      }
     } else {
-      rem.info('[Setup] Configuración ya completada', 'SETUP_SKIP');
-      await initializeNexoApp();
+      rem.warn('[BLE] Plugin nativo no disponible', 'BLE_NO_PLUGIN');
     }
+    
+    await initializeNexoApp();
   } catch (error) {
     console.error('💥 Error fatal en inicialización:', error);
     clearTimeout(SAFETY_TIMEOUT);
@@ -99,9 +95,9 @@ async function initializeNexoApp() {
       }
     };
     
-    rem.info('🚀 [NEXO] App instance v3.3.0-NAP', 'NEXO_INIT');
+    rem.info('🚀 [NEXO] App instance v9.1-ARCH', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v3.3.0-NAP =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v9.1-ARCH =====', 'INIT_START');
     
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) => 
@@ -126,8 +122,8 @@ async function initializeNexoApp() {
     
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.0-NAP Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.0-NAP Inicializado');
+    rem.success('NEXO v9.1-ARCH Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.1-ARCH Inicializado');
     
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
