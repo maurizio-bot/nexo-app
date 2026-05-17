@@ -1,11 +1,8 @@
 /**
- * BLE Interface v3.5-ARCH
+ * BLE Interface v3.5.1-ARCH
  * Ubicación: src/ui/ble_interface.js
- * FIX v3.5-ARCH: 
- *   1) Badge reseteado y protegido al abrir chat (no contamina durante chat activo)
- *   2) Auto-registro de contacto al recibir primer mensaje (evita "Unknown" en lista)
- *   3) Toast suprimido robustamente cuando chat está activo con el mismo peer
- *   4) Listener nexo:ble:closeChat para limpiar _activeChatDeviceId cuando UI cierra chat
+ * FIX v3.5.1-ARCH:
+ * 1) plugin.initializeBLE() → this.nativePlugin.initializeBLE() (fix ReferenceError)
  */
 
 export function initBLEInterface(bleMesh) {
@@ -177,14 +174,14 @@ export class BLEInterface {
     if (!this.nativePlugin) return;
     if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
     if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
-    
+
     this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', (data) => {
       const deviceId = _normId(data.deviceId);
       const attempt = data.attempt || 0;
       this._cancelReconnect(deviceId);
       const contactName = _getContactName(deviceId);
       const displayName = data.name || contactName || 'NEXO Peer';
-      
+
       if (data.direction === 'incoming') {
         this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected' });
         this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'incoming', servicesReady: true });
@@ -195,13 +192,12 @@ export class BLEInterface {
       }
       this.onDeviceConnected({ id: deviceId, address: deviceId, name: displayName, direction: data.direction || 'unknown', servicesReady: data.servicesReady === true, attempt });
     });
-    
+
     this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', (data) => {
       const deviceId = _normId(data.deviceId);
       this._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
       this.connectedDevices.delete(deviceId);
       this.onDeviceDisconnected({ id: deviceId, address: deviceId });
-      // FIX v3.5-ARCH: Limpiar chat activo si el peer se desconecta
       if (this._activeChatDeviceId === deviceId) {
         this.showToast('⚠️ Conexión BLE perdida. Reconectando...', 'warning');
         this._startReconnect(deviceId);
@@ -308,20 +304,18 @@ export class BLEInterface {
         if (json.senderName && !senderName) senderName = json.senderName;
         if (json.content) content = json.content;
       } catch (e) {}
-      
-      // FIX v3.5-ARCH: Resolver senderName de forma robusta (contactos > conectados > found > default)
+
       if (!senderName || senderName === 'NEXO Peer') {
-        senderName = _getContactName(deviceId) 
-          || this.connectedDevices.get(deviceId)?.name 
-          || this.foundDevices.get(deviceId)?.name 
+        senderName = _getContactName(deviceId)
+          || this.connectedDevices.get(deviceId)?.name
+          || this.foundDevices.get(deviceId)?.name
           || 'NEXO Peer';
       }
-      
-      // FIX v3.5-ARCH: Auto-registrar contacto al recibir primer mensaje para que aparezca con nombre en lista
+
       if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer') {
         _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
       }
-      
+
       if (messageId && this._receivedMessageIds.has(messageId)) return;
       if (messageId) {
         this._receivedMessageIds.add(messageId);
@@ -330,17 +324,16 @@ export class BLEInterface {
           this._receivedMessageIds.delete(first);
         }
       }
-      
+
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: { deviceId, content, senderName, messageId, source: data.source || 'unknown', timestamp: data.timestamp || Date.now() }
       }));
-      
-      // FIX v3.5-ARCH: Comparación robusta - si hay chat activo con ESTE peer, NO toast, NO badge
+
       const activeId = _normId(this._activeChatDeviceId);
       if (activeId && activeId === deviceId) {
-        return; // Silencioso: ya estamos en chat con este dispositivo
+        return;
       }
-      
+
       this.showToast('📨 Mensaje de ' + senderName, 'info');
       this.newDevicesCount++;
       this.updateBadge();
@@ -379,7 +372,7 @@ export class BLEInterface {
       console.error('[BLEInterface] Error consultando estado:', err);
     }
   }
-  
+
   _setupNativeAdvertisingListeners() {
     if (!this.nativePlugin) return;
     if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
@@ -428,8 +421,9 @@ export class BLEInterface {
     if (!this._serverReady) {
       try {
         this.showToast('⏳ Inicializando servidor BLE...', 'info');
-        await plugin.initializeBLE();
-        
+        // FIX v3.5.1-ARCH: this.nativePlugin en vez de plugin
+        await this.nativePlugin.initializeBLE();
+
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             if (this._serverError) {
@@ -478,38 +472,51 @@ export class BLEInterface {
   createDOM() {
     const tab = document.createElement('div');
     tab.id = 'ble-tab';
-    tab.innerHTML = `<div class="ble-tab-icon">🔷</div><div class="ble-tab-label">BLE</div><div class="ble-tab-badge" id="ble-tab-badge" style="display: none;">0</div>`;
+    tab.innerHTML = `
+      <div style="font-size:18px;margin-bottom:2px;">🔷</div>
+      <div style="font-size:10px;writing-mode:vertical-rl;text-orientation:mixed;">BLE</div>
+      <div class="ble-tab-badge" id="ble-tab-badge" style="display:none;">0</div>
+    `;
     document.body.appendChild(tab);
     this.elements.tab = tab;
 
     const panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML = `
-      <div class="ble-header"><h3>🔷 BLE Mesh</h3><button id="ble-close">✕</button></div>
+      <div class="ble-header">
+        <h3 style="margin:0;color:#00d4ff;">🔷 BLE Mesh</h3>
+        <button id="ble-close" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button>
+      </div>
       <div class="ble-tabs">
-        <button class="ble-tab-btn active" data-tab="discovery">Cercanos</button>
+        <button class="ble-tab-btn active" data-tab="nearby">Cercanos</button>
         <button class="ble-tab-btn" data-tab="added">Agregados</button>
         <button class="ble-tab-btn" data-tab="connected">Conectados</button>
       </div>
-      <div class="ble-main-controls">
-        <button id="ble-visibility-btn" class="ble-btn-visibility btn-visibility-off" ${this.isDummyMode ? 'disabled' : ''}>
-          <span class="btn-icon">🚫</span><span>Visibilidad desactivada</span>
-        </button>
-        <button id="ble-scan-btn" class="ble-btn-discover" ${this.isDummyMode ? 'disabled' : ''}>
-          <span class="btn-icon">🔍</span><span id="text-discover">Descubrir</span>
-        </button>
+      <div class="ble-tab-content active" id="tab-nearby">
+        <div class="ble-main-controls">
+          <button id="ble-visibility-btn" class="ble-btn-visibility btn-visibility-off">
+            <span class="btn-icon">👁️</span> <span>Visibilidad</span>
+          </button>
+          <button id="ble-scan-btn" class="ble-btn-discover">
+            <span style="font-size:16px;">🔍</span> <span id="text-discover">Descubrir</span>
+          </button>
+        </div>
+        <div class="ble-secondary-controls">
+          <span id="ble-status" class="ble-status-offline">OFFLINE</span>
+        </div>
+        <div id="ble-devices-list" class="ble-list">
+          <div class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</div>
+        </div>
       </div>
-      <div class="ble-secondary-controls">
-        <span id="ble-status" class="ble-status-offline">OFFLINE</span>
+      <div class="ble-tab-content" id="tab-added">
+        <div id="ble-added-list" class="ble-list">
+          <div class="ble-empty">No hay contactos agregados</div>
+        </div>
       </div>
-      <div id="tab-discovery" class="ble-tab-content active">
-        <div class="ble-list" id="ble-devices-list"><p class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</p></div>
-      </div>
-      <div id="tab-added" class="ble-tab-content">
-        <div class="ble-list" id="ble-added-list"><p class="ble-empty">No hay contactos agregados</p></div>
-      </div>
-      <div id="tab-connected" class="ble-tab-content">
-        <div class="ble-list" id="ble-connected-list"><p class="ble-empty">No hay dispositivos conectados</p></div>
+      <div class="ble-tab-content" id="tab-connected">
+        <div id="ble-connected-list" class="ble-list">
+          <div class="ble-empty">No hay dispositivos conectados</div>
+        </div>
       </div>
     `;
     document.body.appendChild(panel);
@@ -600,7 +607,6 @@ export class BLEInterface {
     document.querySelectorAll('.ble-tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
     });
-    // FIX v3.5-ARCH: Escuchar cierre de chat desde la UI principal
     window.addEventListener('nexo:ble:closeChat', () => {
       this._activeChatDeviceId = null;
       this.updateBadge();
@@ -675,9 +681,7 @@ export class BLEInterface {
     let id = _normId(device.id || device.address);
     if (!id || id === 'null' || id === 'undefined') return;
     if (this.localDeviceAddress && id === this.localDeviceAddress) return;
-    
-    // FIX v3.5-ARCH: Si estamos en chat activo, NO contaminar badge ni contador
-    // Solo actualizar lista interna silenciosamente
+
     if (this._activeChatDeviceId) {
       if (this.foundDevices.has(id)) {
         const existing = this.foundDevices.get(id);
@@ -693,7 +697,7 @@ export class BLEInterface {
       this.renderDevicesList();
       return;
     }
-    
+
     if (this.foundDevices.has(id)) {
       const existing = this.foundDevices.get(id);
       existing.rssi = device.rssi;
@@ -766,17 +770,16 @@ export class BLEInterface {
     const contact = _getBLEContacts().find(c => _normId(c.id || c.address) === nid);
     if (!device && contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
     if (!device) { this.showToast('❌ Contacto no disponible', 'error'); return; }
-    
-    // FIX v3.5-ARCH: Setear chat activo Y resetear contador de badge inmediatamente
+
     this._activeChatDeviceId = nid;
     this.newDevicesCount = 0;
     this.updateBadge();
-    
+
     const displayName = contact?.name || device.name || 'NEXO Peer';
     const state = this._getDeviceState(nid);
     const isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
     const isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
-    
+
     if (!isFullyReady && isConnecting && this.nativePlugin) {
       this.showToast('⏳ Conexión en progreso, esperando canal...', 'info');
       try {
@@ -797,7 +800,7 @@ export class BLEInterface {
         this.showToast('⚠️ Canal aún no listo. Intente enviar en unos segundos.', 'warning');
       }
     }
-    
+
     if (!isFullyReady && !isConnecting && this.nativePlugin) {
       const permsReady = await window.BLEPermissions.ensure();
       if (!permsReady) {
@@ -830,18 +833,18 @@ export class BLEInterface {
         this.showToast('⚠️ Canal aún no listo. Intente enviar en unos segundos.', 'warning');
       }
     }
-    
+
     const appContainer = document.getElementById('app');
     if (appContainer) appContainer.classList.remove('hidden');
     const nameInput = document.getElementById('chat-contact-name');
     const subtitle = document.getElementById('chat-contact-subtitle');
     if (nameInput) nameInput.value = displayName;
     if (subtitle) subtitle.textContent = 'BLUETOOTH';
-    
+
     window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
       detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
     }));
-    
+
     this.elements.panel.classList.remove('active');
     this.elements.overlay.classList.remove('active');
   }
@@ -849,7 +852,7 @@ export class BLEInterface {
   renderDevicesList() {
     const list = this.elements.devicesList;
     if (this.foundDevices.size === 0) {
-      list.innerHTML = '<p class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</p>';
+      list.innerHTML = '<div class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</div>';
       return;
     }
     list.innerHTML = '';
@@ -860,15 +863,17 @@ export class BLEInterface {
       const item = document.createElement('div');
       item.className = 'ble-device-item' + (isNew ? ' new' : '');
       const actionHtml = isAdded
-        ? `<button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>`
-        : `<button class="ble-btn-add" onclick="bleInterface.addContact('${id}')">+ Agregar</button>`;
+        ? `<button class="ble-btn-write" onclick="window.bleInterface.openChat('${id}')">💬 Chat</button>`
+        : `<button class="ble-btn-add" onclick="window.bleInterface.addContact('${id}')">+ Agregar</button>`;
       item.innerHTML = `
         <div class="ble-device-info">
-          <span class="ble-device-name">${device.name || 'NEXO Device'}</span>
-          <span class="ble-device-id">${this._formatId(id)}</span>
-          <span class="ble-device-rssi">📶 ${device.rssi || '?'} dBm</span>
+          <div class="ble-device-name">${device.name || 'NEXO Device'}</div>
+          <div class="ble-device-id">${this._formatId(id)}</div>
+          <div class="ble-device-rssi">📶 ${device.rssi || '?'} dBm</div>
         </div>
-        <div class="ble-device-actions">${actionHtml}</div>
+        <div class="ble-device-actions">
+          ${actionHtml}
+        </div>
       `;
       list.appendChild(item);
     });
@@ -878,7 +883,7 @@ export class BLEInterface {
     const list = this.elements.addedList;
     const contacts = _getBLEContacts();
     if (contacts.length === 0) {
-      list.innerHTML = '<p class="ble-empty">No hay contactos agregados</p>';
+      list.innerHTML = '<div class="ble-empty">No hay contactos agregados</div>';
       return;
     }
     list.innerHTML = '';
@@ -888,12 +893,12 @@ export class BLEInterface {
       item.className = 'ble-device-item';
       item.innerHTML = `
         <div class="ble-device-info">
-          <span class="ble-device-name">${contact.name || 'NEXO Device'}</span>
-          <span class="ble-device-id">${this._formatId(id)}</span>
+          <div class="ble-device-name">${contact.name || 'NEXO Device'}</div>
+          <div class="ble-device-id">${this._formatId(id)}</div>
         </div>
         <div class="ble-device-actions">
-          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>
-          <button class="ble-btn-disconnect" onclick="bleInterface.removeContact('${id}')">Eliminar</button>
+          <button class="ble-btn-write" onclick="window.bleInterface.openChat('${id}')">💬 Chat</button>
+          <button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact('${id}')">🗑️</button>
         </div>
       `;
       list.appendChild(item);
@@ -903,7 +908,7 @@ export class BLEInterface {
   renderConnectedList() {
     const list = this.elements.connectedList;
     if (this.connectedDevices.size === 0) {
-      list.innerHTML = '<p class="ble-empty">No hay dispositivos conectados</p>';
+      list.innerHTML = '<div class="ble-empty">No hay dispositivos conectados</div>';
       return;
     }
     list.innerHTML = '';
@@ -915,13 +920,13 @@ export class BLEInterface {
       item.className = 'ble-device-item';
       item.innerHTML = `
         <div class="ble-device-info">
-          <span class="ble-device-name">${device.name || 'NEXO Peer'}</span>
-          <span class="ble-device-id">${this._formatId(id)}</span>
-          <span class="ble-device-rssi" style="color: #00ff00;">● ${device.direction || 'Conectado'} ${stateLabel}</span>
+          <div class="ble-device-name">${device.name || 'NEXO Peer'}</div>
+          <div class="ble-device-id">${this._formatId(id)}</div>
+          <div style="font-size:11px;color:#888;">● ${device.direction || 'Conectado'} ${stateLabel}</div>
         </div>
         <div class="ble-device-actions">
-          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')" ${!isReady ? 'disabled title="Esperando canal..."' : ''}>✉️ Escribir</button>
-          <button class="ble-btn-disconnect" onclick="bleInterface.disconnect('${id}')">Desconectar</button>
+          <button class="ble-btn-write" ${!isReady ? 'disabled' : ''} onclick="window.bleInterface.openChat('${id}')">💬 Chat</button>
+          <button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect('${id}')">❌</button>
         </div>
       `;
       list.appendChild(item);
@@ -931,12 +936,12 @@ export class BLEInterface {
   _renderStateLabel(state) {
     if (!state || !state.state) return '';
     switch (state.state) {
-      case BLE_STATES.CONNECTING: return `<span class="ble-state-connecting">⏳ ${state.message || 'Conectando...'}</span>`;
-      case BLE_STATES.DISCOVERING_SERVICES: return `<span class="ble-state-connecting">🔍 Descubriendo...</span>`;
-      case BLE_STATES.NOTIFICATIONS_READY: return `<span class="ble-state-ready">✅ Canal listo</span>`;
-      case BLE_STATES.READY_TO_CHAT: return `<span class="ble-state-ready">✅ Listo</span>`;
-      case BLE_STATES.ERROR: return `<span class="ble-state-error">❌ ${state.lastError || 'Error'}</span>`;
-      case BLE_STATES.RECONNECTING: return `<span class="ble-state-reconnecting">🔄 ${state.message || 'Reconectando...'}</span>`;
+      case BLE_STATES.CONNECTING: return `⏳ ${state.message || 'Conectando...'}`;
+      case BLE_STATES.DISCOVERING_SERVICES: return `🔍 Descubriendo...`;
+      case BLE_STATES.NOTIFICATIONS_READY: return `✅ Canal listo`;
+      case BLE_STATES.READY_TO_CHAT: return `✅ Listo`;
+      case BLE_STATES.ERROR: return `❌ ${state.lastError || 'Error'}`;
+      case BLE_STATES.RECONNECTING: return `🔄 ${state.message || 'Reconectando...'}`;
       default: return '';
     }
   }
@@ -956,7 +961,6 @@ export class BLEInterface {
       const device = this.connectedDevices.get(nid);
       const targetId = device?.id || device?.address || deviceId;
       if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId: targetId });
-      // FIX v3.5-ARCH: Limpiar chat activo al desconectar manualmente
       if (this._activeChatDeviceId === nid) {
         this._activeChatDeviceId = null;
         this.updateBadge();
@@ -966,7 +970,6 @@ export class BLEInterface {
 
   updateBadge() {
     const badge = this.elements.badge;
-    // FIX v3.5-ARCH: No mostrar badge si ya estamos en chat BLE activo
     if (this._activeChatDeviceId) {
       badge.style.display = 'none';
       return;
