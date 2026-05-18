@@ -1,7 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.1-ARCH
- * Adaptado para plugin nativo #961 (d56834b)
- * FIX: SetupManager/SetupWizard eliminados. BLE directo vía plugin nativo.
+ * src/main.js - Punto de entrada NEXO v9.2-FINAL
+ * FIX: Inicializar BLE DESPUÉS de NexoApp.init() para actividad nativa lista
  */
 
 import './styles/critical.css';
@@ -13,7 +12,7 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.1-ARCH',
+  version: '9.2-FINAL',
   initialized: false
 };
 
@@ -37,24 +36,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.NEXO.rem = rem;
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
-    
-    // FIX #961: Inicializar BLE directo sin SetupWizard
-    const plugin = window.Capacitor?.Plugins?.NexoBLE;
-    if (plugin) {
-      try {
-        const status = await plugin.checkBLEStatus();
-        rem.info(`[BLE] Status: allGranted=${status.allGranted}`, 'BLE_STATUS');
-        if (!status.allGranted) {
-          rem.info('[BLE] Solicitando permisos...', 'BLE_PERM_REQ');
-          await plugin.initializeBLE();
-          rem.success('[BLE] Permisos concedidos', 'BLE_PERM_OK');
-        }
-      } catch (bleErr) {
-        rem.warn(`[BLE] Error permisos: ${bleErr.message}`, 'BLE_PERM_WARN');
-      }
-    } else {
-      rem.warn('[BLE] Plugin nativo no disponible', 'BLE_NO_PLUGIN');
-    }
     
     await initializeNexoApp();
   } catch (error) {
@@ -95,9 +76,9 @@ async function initializeNexoApp() {
       }
     };
     
-    rem.info('🚀 [NEXO] App instance v9.1-ARCH', 'NEXO_INIT');
+    rem.info('🚀 [NEXO] App instance v9.2-FINAL', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v9.1-ARCH =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v9.2-FINAL =====', 'INIT_START');
     
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) => 
@@ -112,6 +93,24 @@ async function initializeNexoApp() {
       rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
     }
     
+    // FIX v9.2: Inicializar BLE DESPUÉS de NexoApp.init() para actividad nativa lista
+    const plugin = window.Capacitor?.Plugins?.NexoBLE;
+    if (plugin) {
+      try {
+        const status = await plugin.checkBLEStatus();
+        rem.info(`[BLE] Status: allGranted=${status.allGranted}`, 'BLE_STATUS');
+        
+        // SIEMPRE llamar initializeBLE para iniciar servidor BLE
+        rem.info('[BLE] Inicializando servidor BLE...', 'BLE_INIT');
+        await plugin.initializeBLE();
+        rem.success('[BLE] Servidor BLE inicializado', 'BLE_INIT_OK');
+      } catch (bleErr) {
+        rem.warn(`[BLE] Error: ${bleErr.message}`, 'BLE_WARN');
+      }
+    } else {
+      rem.warn('[BLE] Plugin nativo no disponible', 'BLE_NO_PLUGIN');
+    }
+    
     window.NEXO.initialized = true;
     clearTimeout(SAFETY_TIMEOUT);
     
@@ -122,8 +121,8 @@ async function initializeNexoApp() {
     
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.1-ARCH Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.1-ARCH Inicializado');
+    rem.success('NEXO v9.2-FINAL Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.2-FINAL Inicializado');
     
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
