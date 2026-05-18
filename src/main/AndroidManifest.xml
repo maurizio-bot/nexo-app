@@ -1,36 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.nexo.app">
 
-    <!-- BLE feature: evita instalación en dispositivos sin BLE -->
-    <uses-feature
-        android:name="android.hardware.bluetooth_le"
-        android:required="true" />
+    <!-- ====== LEGACY Bluetooth (Android 11 y menor) ====== -->
+    <uses-permission 
+        android:name="android.permission.BLUETOOTH" 
+        android:maxSdkVersion="30" />
+    <uses-permission 
+        android:name="android.permission.BLUOTH_ADMIN" 
+        android:maxSdkVersion="30" />
 
-    <!-- Android 12+ (API 31+): permisos runtime de BLE -->
-    <uses-permission
+    <!-- ====== ANDROID 12+ RUNTIME PERMISSIONS ====== -->
+    <!-- neverForLocation: evita que Android pida permiso de ubicación adicional -->
+    <uses-permission 
         android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation"
-        tools:targetApi="s" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission 
+        android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission 
+        android:name="android.permission.BLUETOOTH_CONNECT" />
 
-    <!-- Android <= 11 (API 30): permisos legacy -->
-    <uses-permission android:name="android.permission.BLUETOOTH"
-        android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
-        android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
+    <!-- ====== LOCATION (OEMs Samsung/Xiaomi auditan esto) ====== -->
+    <uses-permission 
+        android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission 
+        android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- Notificaciones (Android 13+) -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- Foreground service -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-
-    <!-- Android 14+ (API 34+): runtime obligatorio para foreground service tipo connectedDevice -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- ====== FOREGROUND SERVICE (Android 14+ obligatorio) ====== -->
+    <uses-permission 
+        android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- ANDROID 15: SIN ESTO = scan silenciosamente muerto -->
+    <uses-permission 
+        android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Android 13+: SIN ESTO = foreground service muere en 5 min -->
+    <uses-permission 
+        android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -38,25 +42,39 @@
         android:label="@string/app_name"
         android:theme="@style/AppTheme">
 
-        <!-- BleService: foreground con tipo connectedDevice para Android 10+ -->
-        <service
-            android:name="com.nexo.ble.BleService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
-
         <activity
-            android:name="com.getcapacitor.BridgeActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:name="com.nexo.app.MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:exported="true"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <!-- Capacitor Bridge -->
+        <service 
+            android:name="com.getcapacitor.BridgeService" 
+            android:exported="false" />
+
+        <!-- BLE Foreground Service: connectedDevice type OBLIGATORIO Android 15 -->
+        <service
+            android:name="com.nexo.ble.BleService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data 
+                android:name="android.support.FILE_PROVIDER_PATHS" 
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>
