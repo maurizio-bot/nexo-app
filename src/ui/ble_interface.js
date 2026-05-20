@@ -1,12 +1,12 @@
-/**
- * BLE Interface v3.5.1-ARCH-SHIM
- * Ubicación: src/ui/ble_interface.js
- * FIX v3.5-ARCH: 
- * 1) Badge reseteado y protegido al abrir chat (no contamina durante chat activo)
- * 2) Auto-registro de contacto al recibir primer mensaje (evita "Unknown" en lista)
- * 3) Toast suprimido robustamente cuando chat está activo con el mismo peer
- * 4) Listener nexo:ble:closeChat para limpiar _activeChatDeviceId cuando UI cierra chat
- */
+// BLE Interface v3.5.1-ARCH-SHIM
+// Ubicacion: src/ui/ble_interface.js
+// FIX v3.5.1-ARCH-SHIM: Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
+// FIX v3.5-ARCH:
+//   1) Badge reseteado y protegido al abrir chat
+//   2) Auto-registro de contacto al recibir primer mensaje
+//   3) Toast suprimido robustamente cuando chat esta activo
+//   4) Listener nexo:ble:closeChat para limpiar _activeChatDeviceId
+
 
 export function initBLEInterface(bleMesh) {
   const instance = new BLEInterface(bleMesh).init();
@@ -230,7 +230,7 @@ export class BLEInterface {
     const timer = this._reconnectTimers.get(deviceId);
     if (timer) {
       clearTimeout(timer);
-      this._reconnectTimers.delete(timer);
+      this._reconnectTimers.delete(deviceId);
     }
   }
 
@@ -1050,4 +1050,3 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
-}
