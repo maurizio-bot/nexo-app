@@ -1,9 +1,6 @@
-/**
- * src/main.js - Punto de entrada NEXO v9.1-SHIM
- * NAP 2.0 Certified - BLE Soberano P2P
- * v3.3.0 - Protocolo GATT NEXO + Permission Shim
- * Build #961-SHIM: Permission Shim Integration (SetupManager/SetupWizard removidos)
- */
+// src/main.js - Punto de entrada NEXO v9.1-SHIM
+// NAP 2.0 Certified - BLE Soberano P2P
+// Build #961-SHIM: Permission Shim Integration
 
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
@@ -21,7 +18,7 @@ window.NEXO = {
 
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
-window.permissionShim = permissionShim; // Exponer para ble_interface.js y debug
+window.permissionShim = permissionShim;
 
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible?.()) {
@@ -56,7 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initializeNexoApp();
 
   } catch (error) {
-    console.error('💥 Error fatal en inicialización:', error);
+    console.error('Error fatal en inicializacion:', error);
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('INIT_FATAL', error.message);
     rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
@@ -74,11 +71,11 @@ async function initializeNexoApp() {
       enableGestures: true,
       enableMesh: true,
       onMessage: (msg) => {
-        console.log('📨 Mensaje:', msg);
+        console.log('Mensaje:', msg);
         _renderMessage(msg);
       },
       onStatusChange: (mode) => {
-        console.log('🌐 Modo:', mode);
+        console.log('Modo:', mode);
         rem.updateMode(mode);
       },
       onError: (err) => {
@@ -87,15 +84,15 @@ async function initializeNexoApp() {
       },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
-        onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
+        onReact: (id) => rem.success('Reaccion anadida', 'REACT_OK'),
         onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
     };
 
-    rem.info('🚀 [NEXO] App instance v3.3.0-NAP', 'NEXO_INIT');
+    rem.info('[NEXO] App instance v9.1-SHIM', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v3.3.0-NAP =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v9.1-SHIM =====', 'INIT_START');
 
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) =>
@@ -104,7 +101,7 @@ async function initializeNexoApp() {
 
     try {
       await Promise.race([initPromise, timeoutPromise]);
-      rem.success('==== INICIALIZACIÓN NAP 2.0 COMPLETADA ====', 'INIT_OK');
+      rem.success('==== INICIALIZACION NAP 2.0 COMPLETADA ====', 'INIT_OK');
     } catch (timeoutErr) {
       rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
       rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
@@ -121,13 +118,13 @@ async function initializeNexoApp() {
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
     rem.success('NEXO v9.1-SHIM Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.1-SHIM Inicializado');
+    console.log('NEXO v9.1-SHIM Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
 
   } catch (error) {
-    console.error('💥 Error en NexoApp:', error);
+    console.error('Error en NexoApp:', error);
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('APP_INIT_ERROR', error.message);
     rem.error(`Error al iniciar app: ${error.message}`, 'APP_ERR');
@@ -252,8 +249,7 @@ function _renderMessage(msg) {
   const div = document.createElement('div');
   div.className = `message ${msg._own ? 'own' : 'other'}`;
 
-  const sourceBadge = msg._source ?
-    `${_getSourceIcon(msg._source)}` : '';
+  const sourceBadge = msg._source ? `${_getSourceIcon(msg._source)}` : '';
 
   div.innerHTML = `
     <div class="message-content">${msg.content || msg.text}</div>
@@ -319,7 +315,7 @@ function _enableFallbackMode() {
   const msg = document.createElement('div');
   msg.className = 'fallback-notice';
   msg.innerHTML = `
-    <h3>⚠️ Error de Inicialización</h3>
+    <h3>Error de Inicializacion</h3>
     <p>La app no pudo iniciar completamente.</p>
   `;
   body.appendChild(msg);
