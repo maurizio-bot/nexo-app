@@ -1,27 +1,27 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.0-NAP
+ * src/main.js - Punto de entrada NEXO v9.1-SHIM
  * NAP 2.0 Certified - BLE Soberano P2P
- * v3.3.0 - Protocolo GATT NEXO + NordicMesh
- * Build #630: SetupWizard Integration for Android 14 BLE onboarding
+ * v3.3.0 - Protocolo GATT NEXO + Permission Shim
+ * Build #961-SHIM: Permission Shim Integration (SetupManager/SetupWizard removidos)
  */
 
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
-import { SetupManager } from './core/SetupManager.js';
-import { SetupWizard } from './ui/SetupWizard.js';
+import { permissionShim } from './core/NexoPermissionShim.js';
 
 window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.0-NAP',
+  version: '9.1-SHIM',
   initialized: false
 };
 
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
+window.permissionShim = permissionShim; // Exponer para ble_interface.js y debug
 
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible?.()) {
@@ -36,31 +36,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
     _ensureDOMStructure();
-    
+
     window.NEXO.rem = rem;
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
-    
-    rem.info('[Setup] Verificando estado de configuración...', 'SETUP_CHECK');
-    const setupStatus = await SetupManager.checkInitialStatus();
-    
-    if (!setupStatus.ready) {
-      rem.info(`[Setup] Requerido: ${setupStatus.reason}`, 'SETUP_REQUIRED');
+
+    rem.info('[Setup] Verificando permisos BLE...', 'SETUP_CHECK');
+    const permResult = await permissionShim.ensurePermissions();
+
+    if (!permResult.success) {
+      rem.error(`[Setup] Permisos BLE denegados: ${permResult.error}`, 'SETUP_FAIL');
       NEXO_DIAG.hideSplash();
-      
-      const wizard = new SetupWizard('app', async () => {
-        rem.success('[Setup] Wizard completado', 'SETUP_OK');
-        wizard.destroy();
-        await SetupManager.markCompleted();
-        await initializeNexoApp();
-      });
-      
-      await wizard.start();
+      _forceHideSplash();
+      _enableFallbackMode();
       return;
-    } else {
-      rem.info('[Setup] Configuración ya completada', 'SETUP_SKIP');
-      await initializeNexoApp();
     }
+
+    rem.info('[Setup] Permisos BLE concedidos', 'SETUP_OK');
+    await initializeNexoApp();
+
   } catch (error) {
     console.error('💥 Error fatal en inicialización:', error);
     clearTimeout(SAFETY_TIMEOUT);
@@ -98,16 +92,16 @@ async function initializeNexoApp() {
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
     };
-    
+
     rem.info('🚀 [NEXO] App instance v3.3.0-NAP', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
     rem.info('[init] ===== INICIANDO NEXO v3.3.0-NAP =====', 'INIT_START');
-    
+
     const initPromise = window.NEXO.app.init();
-    const timeoutPromise = new Promise((_, reject) => 
+    const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('INIT_TIMEOUT')), 12000)
     );
-    
+
     try {
       await Promise.race([initPromise, timeoutPromise]);
       rem.success('==== INICIALIZACIÓN NAP 2.0 COMPLETADA ====', 'INIT_OK');
@@ -115,23 +109,23 @@ async function initializeNexoApp() {
       rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
       rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
     }
-    
+
     window.NEXO.initialized = true;
     clearTimeout(SAFETY_TIMEOUT);
-    
+
     _setupMessageInput();
     _setupVaultToggle();
     _setupChatHeader();
     _setupKeyboardShortcuts();
-    
+
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.0-NAP Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.0-NAP Inicializado');
-    
+    rem.success('NEXO v9.1-SHIM Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.1-SHIM Inicializado');
+
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
-    
+
   } catch (error) {
     console.error('💥 Error en NexoApp:', error);
     clearTimeout(SAFETY_TIMEOUT);
@@ -148,7 +142,7 @@ function _ensureDOMStructure() {
   const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
   if (stream && !stream.id) stream.id = 'nexo-stream';
   if (vault && !vault.id) vault.id = 'nexo-vault';
-  
+
   if (!document.getElementById('messages-container')) {
     const msgContainer = document.createElement('div');
     msgContainer.id = 'messages-container';
@@ -161,13 +155,13 @@ function _setupMessageInput() {
   const input = document.getElementById('message-input');
   const btn = document.getElementById('send-btn');
   if (!input || !btn || !window.NEXO.app) return;
-  
+
   const send = async () => {
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
     input.focus();
-    
+
     try {
       const sent = await window.NEXO.app.sendMessage({ content: text });
       if (sent) rem.success('Enviado', 'MSG_SENT');
@@ -176,7 +170,7 @@ function _setupMessageInput() {
       rem.error('Error al enviar', 'MSG_ERR');
     }
   };
-  
+
   btn.addEventListener('click', send);
   input.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -195,7 +189,7 @@ function _setupVaultToggle() {
 function _setupChatHeader() {
   const nameInput = document.getElementById('chat-contact-name');
   if (!nameInput) return;
-  
+
   const saveName = () => {
     const newName = nameInput.value.trim();
     if (!newName) {
@@ -220,7 +214,7 @@ function _setupChatHeader() {
       console.warn('[main] Error guardando nombre editado:', e);
     }
   };
-  
+
   nameInput.addEventListener('blur', saveName);
   nameInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -254,21 +248,21 @@ function _setupKeyboardShortcuts() {
 function _renderMessage(msg) {
   const container = document.getElementById('messages-container');
   if (!container) return;
-  
+
   const div = document.createElement('div');
   div.className = `message ${msg._own ? 'own' : 'other'}`;
-  
-  const sourceBadge = msg._source ? 
-    `<span class="msg-source" title="${msg._source}">${_getSourceIcon(msg._source)}</span>` : '';
-  
+
+  const sourceBadge = msg._source ?
+    `${_getSourceIcon(msg._source)}` : '';
+
   div.innerHTML = `
     <div class="message-content">${msg.content || msg.text}</div>
     <div class="message-meta">
-      <span>${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
+      <span class="message-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
       ${sourceBadge}
     </div>
   `;
-  
+
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
@@ -286,7 +280,7 @@ function _getSourceIcon(source) {
 function _toggleVaultUI(isOpen) {
   const vault = document.getElementById('vault-panel');
   const stream = document.getElementById('nexo-stream');
-  
+
   if (vault) {
     vault.classList.toggle('vault-hidden', !isOpen);
     vault.classList.toggle('vault-visible', isOpen);
@@ -299,8 +293,8 @@ function _toggleVaultUI(isOpen) {
 
 function _focusInput(text = '') {
   const input = document.getElementById('message-input');
-  if (input) { 
-    input.focus(); 
+  if (input) {
+    input.focus();
     if (text) input.value = text;
   }
 }
@@ -321,16 +315,12 @@ function _enableFallbackMode() {
   console.warn('[NEXO] Activando modo fallback');
   const body = document.body;
   body.classList.add('nexo-fallback-mode');
-  
+
   const msg = document.createElement('div');
   msg.className = 'fallback-notice';
   msg.innerHTML = `
-    <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-                background: #ff4444; color: white; padding: 20px; border-radius: 8px; z-index: 99999;">
-      <h3>⚠️ Error de Inicialización</h3>
-      <p>La app no pudo iniciar completamente.</p>
-      <button onclick="location.reload()" style="padding: 10px 20px; margin-top: 10px;">Reintentar</button>
-    </div>
+    <h3>⚠️ Error de Inicialización</h3>
+    <p>La app no pudo iniciar completamente.</p>
   `;
   body.appendChild(msg);
 }
