@@ -1,171 +1,240 @@
 /**
- * NexoPermissionShim v1.1-ADVERTISE-FIX (Build Fix #1255)
+ * NexoPermissionShim v1.2-WEBPACK-FIX
  * Traduce API granular #1057 → API nativa #961 sin tocar Kotlin.
  * FIX: Solicita BLUETOOTH_ADVERTISE explícitamente antes de initializeBLE().
- * FIX #1255: Export named + default para compatibilidad con main.js v9.1-SHIM.
+ * FIX #1255/#1256: Sintaxis ES6 pura compatible con Webpack 5.105.4 sin Babel.
  * Build #1254+ compatible. Singleton. Guard clauses. Retry backoff 3x500ms.
-   */
-class NexoPermissionShim {
-static _instance = null;
-static getInstance() {
-if (!NexoPermissionShim._instance) {
-NexoPermissionShim._instance = new NexoPermissionShim();
+ */
+
+function NexoPermissionShim() {
+  this._plugin = null;
+  this._initAttempts = 0;
+  this._maxRetries = 3;
+  this._backoffMs = 500;
+  this._cache = null;
+  this._cacheTs = 0;
+  this._cacheTtl = 2000;
+  this._listeners = [];
+  this._granularPermissions = [
+    'bluetooth',
+    'bluetoothScan',
+    'bluetoothConnect',
+    'bluetoothAdvertise',
+    'location'
+  ];
 }
-return NexoPermissionShim._instance;
-}
-constructor() {
-this._plugin = null;
-this._initAttempts = 0;
-this._maxRetries = 3;
-this._backoffMs = 500;
-this._cache = null;
-this._cacheTs = 0;
-this._cacheTtl = 2000;
-this._listeners = [];
-this._granularPermissions = [
-'bluetooth',
-'bluetoothScan',
-'bluetoothConnect',
-'bluetoothAdvertise',
-'location'
-];
-}
-async init() {
-try {
-const cap = window.Capacitor || window?.capacitor?.Capacitor;
-this._plugin = cap?.Plugins?.NexoBLE || cap?.Plugins?.NexoBle;
-if (!this._plugin) {
-console.warn('[NexoPermissionShim] Plugin NexoBLE no detectado');
-return false;
-}
-console.log('[NexoPermissionShim] Plugin detectado OK');
-return true;
-} catch (e) {
-console.error('[NexoPermissionShim] Error init:', e);
-return false;
-}
-}
-async requestAllPermissions() {
-try {
-if (!this._plugin) {
-const ok = await this.init();
-if (!ok) throw new Error('Plugin NexoBLE no disponible');
-}
-const cap = window.Capacitor || window?.capacitor?.Capacitor;
-const permissionsAPI = cap?.Plugins?.Permissions;
-if (permissionsAPI) {
-console.log('[NexoPermissionShim] Solicitando permisos granulares vía Capacitor Permissions...');
-const granularResults = await permissionsAPI.query({
-permissions: this._granularPermissions
-});
-const needRequest = [];
-for (const perm of this._granularPermissions) {
-const state = granularResults?.permissions?.[perm] || granularResults?.[perm];
-if (state !== 'granted') {
-needRequest.push(perm);
-}
-}
-if (needRequest.length > 0) {
-console.log([NexoPermissionShim] Pidiendo: ${needRequest.join(', ')});
-const reqResult = await permissionsAPI.request({
-permissions: needRequest
-});
-const advState = reqResult?.permissions?.bluetoothAdvertise || reqResult?.bluetoothAdvertise;
-if (advState !== 'granted') {
-console.warn('[NexoPermissionShim] BLUETOOTH_ADVERTISE DENEGADO — advertising no funcionará');
-}
-}
-} else {
-console.warn('[NexoPermissionShim] Capacitor Permissions API no disponible, delegando 100% a nativo');
-}
-let nativeStatus = null;
-for (let attempt = 1; attempt <= this._maxRetries; attempt++) {
-try {
-nativeStatus = await this._plugin.checkBLEStatus();
-if (nativeStatus?.allGranted || nativeStatus?.granted) {
-console.log([NexoPermissionShim] Nativo OK (intento ${attempt}));
-break;
-}
-if (attempt < this._maxRetries) {
-await this._sleep(this._backoffMs * attempt);
-}
-} catch (e) {
-console.warn([NexoPermissionShim] Intento ${attempt} falló:, e);
-if (attempt < this._maxRetries) {
-await this._sleep(this._backoffMs * attempt);
-}
-}
-}
-const isGranted = nativeStatus?.allGranted || nativeStatus?.granted;
-if (!isGranted) {
-console.log('[NexoPermissionShim] Forzando initializeBLE() nativo...');
-await this._plugin.initializeBLE();
-await this._sleep(300);
-nativeStatus = await this._plugin.checkBLEStatus();
-}
-this._cache = {
-allGranted: isGranted || nativeStatus?.allGranted,
-nativeStatus,
-advertisingGranted: this._checkAdvertisingGranted(),
-timestamp: Date.now()
+
+NexoPermissionShim._instance = null;
+
+NexoPermissionShim.getInstance = function() {
+  if (!NexoPermissionShim._instance) {
+    NexoPermissionShim._instance = new NexoPermissionShim();
+  }
+  return NexoPermissionShim._instance;
 };
-this._cacheTs = Date.now();
-return this._cache;
-} catch (e) {
-console.error('[NexoPermissionShim] Error requestAllPermissions:', e);
-throw e;
-}
-}
-async checkStatus() {
-const now = Date.now();
-if (this._cache && (now - this._cacheTs < this._cacheTtl)) {
-return this._cache;
-}
-return this.requestAllPermissions();
-}
-async checkAdvertisingPermission() {
-try {
-const cap = window.Capacitor || window?.capacitor?.Capacitor;
-const permissionsAPI = cap?.Plugins?.Permissions;
-if (!permissionsAPI) return { granted: false, error: 'Permissions API no disponible' };
-const result = await permissionsAPI.query({
-permissions: ['bluetoothAdvertise']
-});
-const state = result?.permissions?.bluetoothAdvertise || result?.bluetoothAdvertise;
-return { granted: state === 'granted', state };
-} catch (e) {
-return { granted: false, error: e.message };
-}
-}
-async requestAdvertisingOnly() {
-try {
-const cap = window.Capacitor || window?.capacitor?.Capacitor;
-const permissionsAPI = cap?.Plugins?.Permissions;
-if (!permissionsAPI) return { granted: false };
-const result = await permissionsAPI.request({
-permissions: ['bluetoothAdvertise']
-});
-const state = result?.permissions?.bluetoothAdvertise || result?.bluetoothAdvertise;
-return { granted: state === 'granted', state };
-} catch (e) {
-return { granted: false, error: e.message };
-}
-}
-cleanup() {
-this._listeners.forEach(l => l?.remove?.());
-this._listeners = [];
-this._cache = null;
-this._cacheTs = 0;
-}
-_checkAdvertisingGranted() {
-return true;
-}
-_sleep(ms) {
-return new Promise(r => setTimeout(r, ms));
-}
-}
+
+NexoPermissionShim.prototype.init = function() {
+  var self = this;
+  return new Promise(function(resolve) {
+    try {
+      var cap = window.Capacitor || (window.capacitor && window.capacitor.Capacitor);
+      self._plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) || (cap && cap.Plugins && cap.Plugins.NexoBle);
+      if (!self._plugin) {
+        console.warn('[NexoPermissionShim] Plugin NexoBLE no detectado');
+        resolve(false);
+        return;
+      }
+      console.log('[NexoPermissionShim] Plugin detectado OK');
+      resolve(true);
+    } catch (e) {
+      console.error('[NexoPermissionShim] Error init:', e);
+      resolve(false);
+    }
+  });
+};
+
+NexoPermissionShim.prototype.requestAllPermissions = function() {
+  var self = this;
+  return new Promise(function(resolve, reject) {
+    function doRequest() {
+      if (!self._plugin) {
+        self.init().then(function(ok) {
+          if (!ok) {
+            reject(new Error('Plugin NexoBLE no disponible'));
+            return;
+          }
+          doRequest();
+        });
+        return;
+      }
+
+      var cap = window.Capacitor || (window.capacitor && window.capacitor.Capacitor);
+      var permissionsAPI = cap && cap.Plugins && cap.Plugins.Permissions;
+
+      function handleNative() {
+        var attempt = 1;
+        function tryNative() {
+          self._plugin.checkBLEStatus().then(function(nativeStatus) {
+            var isGranted = nativeStatus && (nativeStatus.allGranted || nativeStatus.granted);
+            if (isGranted) {
+              console.log('[NexoPermissionShim] Nativo OK (intento ' + attempt + ')');
+              finish(nativeStatus, true);
+              return;
+            }
+            if (attempt < self._maxRetries) {
+              attempt++;
+              setTimeout(tryNative, self._backoffMs * attempt);
+            } else {
+              console.log('[NexoPermissionShim] Forzando initializeBLE() nativo...');
+              self._plugin.initializeBLE().then(function() {
+                setTimeout(function() {
+                  self._plugin.checkBLEStatus().then(function(finalStatus) {
+                    finish(finalStatus, finalStatus && (finalStatus.allGranted || finalStatus.granted));
+                  }).catch(function(e) {
+                    finish(nativeStatus, false);
+                  });
+                }, 300);
+              }).catch(function(e) {
+                finish(nativeStatus, false);
+              });
+            }
+          }).catch(function(e) {
+            console.warn('[NexoPermissionShim] Intento ' + attempt + ' fallo:', e);
+            if (attempt < self._maxRetries) {
+              attempt++;
+              setTimeout(tryNative, self._backoffMs * attempt);
+            } else {
+              finish(null, false);
+            }
+          });
+        }
+        tryNative();
+      }
+
+      function finish(nativeStatus, granted) {
+        self._cache = {
+          allGranted: granted,
+          nativeStatus: nativeStatus,
+          advertisingGranted: true,
+          timestamp: Date.now()
+        };
+        self._cacheTs = Date.now();
+        resolve(self._cache);
+      }
+
+      if (permissionsAPI) {
+        console.log('[NexoPermissionShim] Solicitando permisos granulares via Capacitor Permissions...');
+        permissionsAPI.query({ permissions: self._granularPermissions }).then(function(granularResults) {
+          var needRequest = [];
+          for (var i = 0; i < self._granularPermissions.length; i++) {
+            var perm = self._granularPermissions[i];
+            var state = (granularResults && granularResults.permissions && granularResults.permissions[perm]) || (granularResults && granularResults[perm]);
+            if (state !== 'granted') {
+              needRequest.push(perm);
+            }
+          }
+
+          if (needRequest.length > 0) {
+            console.log('[NexoPermissionShim] Pidiendo: ' + needRequest.join(', '));
+            permissionsAPI.request({ permissions: needRequest }).then(function(reqResult) {
+              var advState = (reqResult && reqResult.permissions && reqResult.permissions.bluetoothAdvertise) || (reqResult && reqResult.bluetoothAdvertise);
+              if (advState !== 'granted') {
+                console.warn('[NexoPermissionShim] BLUETOOTH_ADVERTISE DENEGADO — advertising no funcionara');
+              }
+              handleNative();
+            }).catch(function(e) {
+              console.warn('[NexoPermissionShim] Error request granular:', e);
+              handleNative();
+            });
+          } else {
+            handleNative();
+          }
+        }).catch(function(e) {
+          console.warn('[NexoPermissionShim] Error query granular:', e);
+          handleNative();
+        });
+      } else {
+        console.warn('[NexoPermissionShim] Capacitor Permissions API no disponible, delegando 100% a nativo');
+        handleNative();
+      }
+    }
+
+    doRequest();
+  });
+};
+
+NexoPermissionShim.prototype.checkStatus = function() {
+  var self = this;
+  var now = Date.now();
+  if (self._cache && (now - self._cacheTs < self._cacheTtl)) {
+    return Promise.resolve(self._cache);
+  }
+  return self.requestAllPermissions();
+};
+
+NexoPermissionShim.prototype.checkAdvertisingPermission = function() {
+  return new Promise(function(resolve) {
+    try {
+      var cap = window.Capacitor || (window.capacitor && window.capacitor.Capacitor);
+      var permissionsAPI = cap && cap.Plugins && cap.Plugins.Permissions;
+      if (!permissionsAPI) {
+        resolve({ granted: false, error: 'Permissions API no disponible' });
+        return;
+      }
+      permissionsAPI.query({ permissions: ['bluetoothAdvertise'] }).then(function(result) {
+        var state = (result && result.permissions && result.permissions.bluetoothAdvertise) || (result && result.bluetoothAdvertise);
+        resolve({ granted: state === 'granted', state: state });
+      }).catch(function(e) {
+        resolve({ granted: false, error: e.message });
+      });
+    } catch (e) {
+      resolve({ granted: false, error: e.message });
+    }
+  });
+};
+
+NexoPermissionShim.prototype.requestAdvertisingOnly = function() {
+  return new Promise(function(resolve) {
+    try {
+      var cap = window.Capacitor || (window.capacitor && window.capacitor.Capacitor);
+      var permissionsAPI = cap && cap.Plugins && cap.Plugins.Permissions;
+      if (!permissionsAPI) {
+        resolve({ granted: false });
+        return;
+      }
+      permissionsAPI.request({ permissions: ['bluetoothAdvertise'] }).then(function(result) {
+        var state = (result && result.permissions && result.permissions.bluetoothAdvertise) || (result && result.bluetoothAdvertise);
+        resolve({ granted: state === 'granted', state: state });
+      }).catch(function(e) {
+        resolve({ granted: false, error: e.message });
+      });
+    } catch (e) {
+      resolve({ granted: false, error: e.message });
+    }
+  });
+};
+
+NexoPermissionShim.prototype.cleanup = function() {
+  for (var i = 0; i < this._listeners.length; i++) {
+    var l = this._listeners[i];
+    if (l && typeof l.remove === 'function') {
+      l.remove();
+    }
+  }
+  this._listeners = [];
+  this._cache = null;
+  this._cacheTs = 0;
+};
+
+NexoPermissionShim.prototype._sleep = function(ms) {
+  return new Promise(function(resolve) {
+    setTimeout(resolve, ms);
+  });
+};
+
 // Singleton instance
-const permissionShim = NexoPermissionShim.getInstance();
-// FIX #1255: Export named + default para compatibilidad con main.js
+var permissionShim = NexoPermissionShim.getInstance();
+
+// Export named + default para compatibilidad con main.js v9.1-SHIM
 export { NexoPermissionShim, permissionShim };
 export default permissionShim;
