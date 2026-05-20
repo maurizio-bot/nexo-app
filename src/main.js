@@ -1,324 +1,422 @@
-// src/main.js - Punto de entrada NEXO v9.1-SHIM
-// NAP 2.0 Certified - BLE Soberano P2P
-// Build #961-SHIM: Permission Shim Integration
+/**
+ * main.js v9.2-SHIM-FIX
+ * Ultra-defensivo. Fallback nativo si ble_interface.js o Shim fallan.
+ * Integra NexoPermissionShim v1.3-MINIMAL. Sin SetupWizard/SetupManager.
+ * Compatible Webpack 5.105.4 (ES5 puro).
+ */
 
-import './styles/critical.css';
-import { NEXO_DIAG } from './core/nap.js';
-import { NexoApp, DEBUG } from './app/nexo_app.js';
-import { rem } from './ui/rem.js';
-import { permissionShim } from './core/NexoPermissionShim.js';
+(function() {
+  'use strict';
 
-window.NEXO = {
-  app: null,
-  rem: null,
-  diag: null,
-  version: '9.1-SHIM',
-  initialized: false
-};
-
-window.NEXO_REM = rem;
-window.NEXO_DIAG = NEXO_DIAG;
-window.permissionShim = permissionShim;
-
-const SAFETY_TIMEOUT = setTimeout(() => {
-  if (NEXO_DIAG.isSplashVisible?.()) {
-    rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
-    NEXO_DIAG.hideSplash();
-    document.body.classList.add('nexo-force-ready');
+  // ========== DIAGNOSTICO EN PANTALLA ==========
+  var screenLog = [];
+  function log(msg, type) {
+    type = type || 'info';
+    var line = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+    screenLog.push({ text: line, type: type });
+    console.log(line);
+    renderScreenLog();
   }
-}, 15000);
 
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    NEXO_DIAG.init();
-    window.NEXO.diag = NEXO_DIAG;
-    _ensureDOMStructure();
-
-    window.NEXO.rem = rem;
-    rem.init();
-    rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
-
-    rem.info('[Setup] Verificando permisos BLE...', 'SETUP_CHECK');
-    const permResult = await permissionShim.ensurePermissions();
-
-    if (!permResult.success) {
-      rem.error(`[Setup] Permisos BLE denegados: ${permResult.error}`, 'SETUP_FAIL');
-      NEXO_DIAG.hideSplash();
-      _forceHideSplash();
-      _enableFallbackMode();
-      return;
+  function renderScreenLog() {
+    var el = document.getElementById('screen-log');
+    if (!el) return;
+    el.innerHTML = '';
+    for (var i = Math.max(0, screenLog.length - 20); i < screenLog.length; i++) {
+      var div = document.createElement('div');
+      div.textContent = screenLog[i].text;
+      div.style.color = screenLog[i].type === 'error' ? '#ff4444' : (screenLog[i].type === 'warn' ? '#ffaa00' : '#00ff88');
+      div.style.fontSize = '11px';
+      div.style.fontFamily = 'monospace';
+      el.appendChild(div);
     }
-
-    rem.info('[Setup] Permisos BLE concedidos', 'SETUP_OK');
-    await initializeNexoApp();
-
-  } catch (error) {
-    console.error('Error fatal en inicializacion:', error);
-    clearTimeout(SAFETY_TIMEOUT);
-    NEXO_DIAG.error('INIT_FATAL', error.message);
-    rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
-    NEXO_DIAG.hideSplash();
-    _forceHideSplash();
-    _enableFallbackMode();
+    el.scrollTop = el.scrollHeight;
   }
-});
 
-async function initializeNexoApp() {
-  try {
-    const nexoConfig = {
-      relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
-      bleTimeout: 10000,
-      enableGestures: true,
-      enableMesh: true,
-      onMessage: (msg) => {
-        console.log('Mensaje:', msg);
-        _renderMessage(msg);
-      },
-      onStatusChange: (mode) => {
-        console.log('Modo:', mode);
-        rem.updateMode(mode);
-      },
-      onError: (err) => {
-        console.error('App error:', err);
-        rem.error(err.message, 'APP_ERR');
-      },
-      onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
-      actionCallbacks: {
-        onReact: (id) => rem.success('Reaccion anadida', 'REACT_OK'),
-        onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
-        onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
-      }
-    };
-
-    rem.info('[NEXO] App instance v9.1-SHIM', 'NEXO_INIT');
-    window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v9.1-SHIM =====', 'INIT_START');
-
-    const initPromise = window.NEXO.app.init();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('INIT_TIMEOUT')), 12000)
-    );
-
-    try {
-      await Promise.race([initPromise, timeoutPromise]);
-      rem.success('==== INICIALIZACION NAP 2.0 COMPLETADA ====', 'INIT_OK');
-    } catch (timeoutErr) {
-      rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
-      rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
-    }
-
-    window.NEXO.initialized = true;
-    clearTimeout(SAFETY_TIMEOUT);
-
-    _setupMessageInput();
-    _setupVaultToggle();
-    _setupChatHeader();
-    _setupKeyboardShortcuts();
-
-    NEXO_DIAG.hideSplash();
-    _forceHideSplash();
-    rem.success('NEXO v9.1-SHIM Listo', 'INIT_OK');
-    console.log('NEXO v9.1-SHIM Inicializado');
-
-    const status = window.NEXO.app.getStatus?.();
-    if (status) console.log('[NEXO STATUS]', status);
-
-  } catch (error) {
-    console.error('Error en NexoApp:', error);
-    clearTimeout(SAFETY_TIMEOUT);
-    NEXO_DIAG.error('APP_INIT_ERROR', error.message);
-    rem.error(`Error al iniciar app: ${error.message}`, 'APP_ERR');
-    NEXO_DIAG.hideSplash();
-    _forceHideSplash();
-    _enableFallbackMode();
-  }
-}
-
-function _ensureDOMStructure() {
-  const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
-  const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
-  if (stream && !stream.id) stream.id = 'nexo-stream';
-  if (vault && !vault.id) vault.id = 'nexo-vault';
-
-  if (!document.getElementById('messages-container')) {
-    const msgContainer = document.createElement('div');
-    msgContainer.id = 'messages-container';
-    msgContainer.className = 'messages-container';
-    (stream || document.body).appendChild(msgContainer);
-  }
-}
-
-function _setupMessageInput() {
-  const input = document.getElementById('message-input');
-  const btn = document.getElementById('send-btn');
-  if (!input || !btn || !window.NEXO.app) return;
-
-  const send = async () => {
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = '';
-    input.focus();
-
-    try {
-      const sent = await window.NEXO.app.sendMessage({ content: text });
-      if (sent) rem.success('Enviado', 'MSG_SENT');
-      else rem.info('En cola (offline)', 'MSG_QUEUED');
-    } catch (e) {
-      rem.error('Error al enviar', 'MSG_ERR');
-    }
+  // ========== ESTADO GLOBAL ==========
+  var appState = {
+    initialized: false,
+    bleReady: false,
+    scanning: false,
+    advertising: false,
+    devices: [],
+    activeTab: 'cercanos'
   };
 
-  btn.addEventListener('click', send);
-  input.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      send();
-    }
-  });
-  input.focus();
-}
+  var permissionShim = null;
+  var bleInterface = null;
+  var nexoApp = null;
+  var nativePlugin = null;
 
-function _setupVaultToggle() {
-  const vault = document.getElementById('vault-panel');
-  if (vault) vault.classList.add('vault-hidden');
-}
+  // ========== INICIALIZACION ==========
+  function init() {
+    log('NEXO v9.2-SHIM-FIX iniciando...');
 
-function _setupChatHeader() {
-  const nameInput = document.getElementById('chat-contact-name');
-  if (!nameInput) return;
-
-  const saveName = () => {
-    const newName = nameInput.value.trim();
-    if (!newName) {
-      nameInput.value = window.NEXO.app?.activeContact?.name || 'NEXO';
-      return;
-    }
-    if (window.NEXO.app?.activeContact) {
-      window.NEXO.app.activeContact.name = newName;
-    }
+    // 1. Detectar plugin nativo
     try {
-      const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
-      const activeId = window.NEXO.app?.activeContact?.id;
-      if (activeId) {
-        const idx = contacts.findIndex(c => (c.id || c.address) === activeId);
-        if (idx >= 0) {
-          contacts[idx].name = newName;
-          localStorage.setItem('nexo_ble_contacts_v1', JSON.stringify(contacts));
-          rem.info(`Contacto renombrado: ${newName}`, 'CONTACT_RENAME');
+      var cap = window.Capacitor || (window.capacitor && window.capacitor.Capacitor);
+      nativePlugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) || (cap && cap.Plugins && cap.Plugins.NexoBle);
+      if (nativePlugin) {
+        log('Plugin nativo NexoBLE detectado', 'info');
+      } else {
+        log('Plugin nativo NO detectado — modo simulacion', 'warn');
+      }
+    } catch (e) {
+      log('Error detectando plugin: ' + e.message, 'error');
+    }
+
+    // 2. Inicializar Shim (adapter transparente)
+    initShim().then(function() {
+      // 3. Inicializar BLE Interface si existe
+      return initBLEInterface();
+    }).then(function() {
+      // 4. Inicializar NexoApp si existe
+      return initNexoApp();
+    }).then(function() {
+      appState.initialized = true;
+      log('NEXO inicializado correctamente');
+      renderUI();
+    }).catch(function(e) {
+      log('Error en inicializacion: ' + e.message, 'error');
+      // Fallback: mostrar UI igual para que usuario pueda interactuar
+      appState.initialized = true;
+      renderUI();
+    });
+  }
+
+  function initShim() {
+    return new Promise(function(resolve) {
+      try {
+        // Importar Shim si existe como modulo
+        if (window.NexoPermissionShim) {
+          permissionShim = window.NexoPermissionShim.getInstance();
+        } else if (window.permissionShim) {
+          permissionShim = window.permissionShim;
         }
+
+        if (!permissionShim) {
+          log('Shim no disponible, usando fallback nativo', 'warn');
+          // Fallback: crear shim dummy que delega al nativo
+          permissionShim = {
+            requestAllPermissions: function() {
+              return new Promise(function(res, rej) {
+                if (nativePlugin && nativePlugin.checkBLEStatus) {
+                  nativePlugin.checkBLEStatus().then(function(s) {
+                    if (s && (s.allGranted || s.granted)) {
+                      res({ allGranted: true });
+                    } else if (nativePlugin.initializeBLE) {
+                      nativePlugin.initializeBLE().then(function() {
+                        setTimeout(function() {
+                          nativePlugin.checkBLEStatus().then(function(fs) {
+                            res({ allGranted: !!(fs && (fs.allGranted || fs.granted)) });
+                          }).catch(rej);
+                        }, 800);
+                      }).catch(rej);
+                    } else {
+                      res({ allGranted: false });
+                    }
+                  }).catch(rej);
+                } else {
+                  res({ allGranted: false });
+                }
+              });
+            },
+            checkStatus: function() {
+              return this.requestAllPermissions();
+            }
+          };
+        }
+
+        // Solicitar permisos via Shim (delega a nativo #961)
+        permissionShim.requestAllPermissions().then(function(result) {
+          if (result && result.allGranted) {
+            log('Permisos BLE concedidos');
+            appState.bleReady = true;
+          } else {
+            log('Permisos BLE pendientes — toca boton BLE para solicitar', 'warn');
+          }
+          resolve();
+        }).catch(function(e) {
+          log('Error permisos: ' + e.message, 'error');
+          resolve(); // No bloquear
+        });
+      } catch (e) {
+        log('Excepcion Shim: ' + e.message, 'error');
+        resolve();
       }
-    } catch (e) {
-      console.warn('[main] Error guardando nombre editado:', e);
-    }
-  };
+    });
+  }
 
-  nameInput.addEventListener('blur', saveName);
-  nameInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      nameInput.blur();
-    }
-  });
-}
+  function initBLEInterface() {
+    return new Promise(function(resolve) {
+      try {
+        if (window.BLEInterface || window.bleInterface) {
+          bleInterface = window.BLEInterface || window.bleInterface;
+          log('BLE Interface detectada');
+        } else {
+          log('BLE Interface no detectada — fallback nativo', 'warn');
+        }
+        resolve();
+      } catch (e) {
+        log('Error BLE Interface: ' + e.message, 'warn');
+        resolve();
+      }
+    });
+  }
 
-function _setupKeyboardShortcuts() {
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'V') {
-      e.preventDefault();
-      const vault = document.getElementById('vault-panel');
-      if (vault) {
-        const isHidden = vault.classList.contains('vault-hidden');
-        _toggleVaultUI(!isHidden);
+  function initNexoApp() {
+    return new Promise(function(resolve) {
+      try {
+        if (window.NexoApp) {
+          nexoApp = new window.NexoApp({
+            onVaultStateChange: function(state) {
+              log('Vault: ' + JSON.stringify(state));
+            }
+          });
+          if (nexoApp.init) nexoApp.init();
+          log('NexoApp inicializada');
+        } else {
+          log('NexoApp no detectada', 'warn');
+        }
+        resolve();
+      } catch (e) {
+        log('Error NexoApp: ' + e.message, 'warn');
+        resolve();
+      }
+    });
+  }
+
+  // ========== UI RENDER ==========
+  function renderUI() {
+    var container = document.getElementById('app') || document.body;
+    if (!container) {
+      log('No existe contenedor #app', 'error');
+      return;
+    }
+
+    // Si ya hay contenido, no destruir (la app ya renderizo)
+    if (container.querySelector('.nexo-main')) return;
+
+    var html = '<div class="nexo-main" style="background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;">' +
+      '<div style="padding:12px;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between;">' +
+        '<div style="font-size:18px;font-weight:bold;">BLE Mesh</div>' +
+        '<div id="ble-status" style="font-size:12px;color:#888;">' + (appState.bleReady ? 'BLE Listo' : 'BLE Pendiente') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;padding:12px;">' +
+        '<button id="btn-visibility" style="flex:1;padding:12px;background:#ffaa00;color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">' +
+          (appState.advertising ? 'Visibilidad ON' : 'Visibilidad OFF') +
+        '</button>' +
+        '<button id="btn-discover" style="flex:1;padding:12px;background:#00aaff;color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">' +
+          (appState.scanning ? 'Detener' : 'Descubrir') +
+        '</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:4px;padding:0 12px;">' +
+        '<button class="tab-btn" data-tab="cercanos" style="flex:1;padding:8px;background:' + (appState.activeTab === 'cercanos' ? '#00aaff' : '#222') + ';color:#fff;border:none;border-radius:6px;cursor:pointer;">Cercanos</button>' +
+        '<button class="tab-btn" data-tab="agregados" style="flex:1;padding:8px;background:' + (appState.activeTab === 'agregados' ? '#00aaff' : '#222') + ';color:#fff;border:none;border-radius:6px;cursor:pointer;">Agregados</button>' +
+        '<button class="tab-btn" data-tab="conectados" style="flex:1;padding:8px;background:' + (appState.activeTab === 'conectados' ? '#00aaff' : '#222') + ';color:#fff;border:none;border-radius:6px;cursor:pointer;">Conectados</button>' +
+      '</div>' +
+      '<div id="device-list" style="flex:1;overflow-y:auto;padding:12px;"></div>' +
+      '<div id="screen-log" style="max-height:120px;overflow-y:auto;padding:8px;background:#111;border-top:1px solid #333;font-family:monospace;font-size:11px;"></div>' +
+    '</div>';
+
+    container.innerHTML = html;
+
+    // Bind events
+    bindEvents();
+    renderDeviceList();
+    renderScreenLog();
+  }
+
+  function bindEvents() {
+    var btnVis = document.getElementById('btn-visibility');
+    var btnDisc = document.getElementById('btn-discover');
+
+    if (btnVis) {
+      btnVis.addEventListener('click', function() {
+        toggleVisibility();
+      });
+    }
+    if (btnDisc) {
+      btnDisc.addEventListener('click', function() {
+        toggleDiscover();
+      });
+    }
+
+    var tabs = document.querySelectorAll('.tab-btn');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].addEventListener('click', function() {
+        appState.activeTab = this.getAttribute('data-tab');
+        renderUI();
+      });
+    }
+  }
+
+  // ========== BLE ACTIONS ==========
+  function toggleVisibility() {
+    if (!appState.bleReady) {
+      log('Solicitando permisos primero...');
+      permissionShim.requestAllPermissions().then(function(r) {
+        if (r && r.allGranted) {
+          appState.bleReady = true;
+          log('Permisos OK — activando visibilidad');
+          doToggleVisibility();
+        } else {
+          log('Permisos denegados', 'error');
+        }
+        renderUI();
+      }).catch(function(e) {
+        log('Error permisos: ' + e.message, 'error');
+      });
+      return;
+    }
+    doToggleVisibility();
+  }
+
+  function doToggleVisibility() {
+    appState.advertising = !appState.advertising;
+    log('Visibilidad: ' + (appState.advertising ? 'ON' : 'OFF'));
+
+    if (nativePlugin) {
+      if (appState.advertising && nativePlugin.startAdvertising) {
+        nativePlugin.startAdvertising().then(function() {
+          log('Advertising iniciado');
+        }).catch(function(e) {
+          log('Error advertising: ' + e.message, 'error');
+          appState.advertising = false;
+          renderUI();
+        });
+      } else if (!appState.advertising && nativePlugin.stopAdvertising) {
+        nativePlugin.stopAdvertising().then(function() {
+          log('Advertising detenido');
+        }).catch(function(e) {
+          log('Error stop advertising: ' + e.message, 'warn');
+        });
       }
     }
-    if (e.ctrlKey && e.shiftKey && e.key === 'L') {
-      e.preventDefault();
-      rem.toggle?.();
+    renderUI();
+  }
+
+  function toggleDiscover() {
+    if (!appState.bleReady) {
+      log('Solicitando permisos primero...');
+      permissionShim.requestAllPermissions().then(function(r) {
+        if (r && r.allGranted) {
+          appState.bleReady = true;
+          log('Permisos OK — iniciando scan');
+          doToggleDiscover();
+        } else {
+          log('Permisos denegados', 'error');
+        }
+        renderUI();
+      }).catch(function(e) {
+        log('Error permisos: ' + e.message, 'error');
+      });
+      return;
     }
-    if (e.ctrlKey && e.shiftKey && e.key === 'H') {
-      e.preventDefault();
-      rem.showHistory?.();
+    doToggleDiscover();
+  }
+
+  function doToggleDiscover() {
+    appState.scanning = !appState.scanning;
+    log('Scan: ' + (appState.scanning ? 'ON' : 'OFF'));
+
+    if (nativePlugin) {
+      if (appState.scanning && nativePlugin.startScan) {
+        nativePlugin.startScan().then(function() {
+          log('Scan iniciado');
+        }).catch(function(e) {
+          log('Error scan: ' + e.message, 'error');
+          appState.scanning = false;
+          renderUI();
+        });
+      } else if (!appState.scanning && nativePlugin.stopScan) {
+        nativePlugin.stopScan().then(function() {
+          log('Scan detenido');
+        }).catch(function(e) {
+          log('Error stop scan: ' + e.message, 'warn');
+        });
+      }
     }
+    renderUI();
+  }
+
+  // ========== DEVICE LIST ==========
+  function renderDeviceList() {
+    var el = document.getElementById('device-list');
+    if (!el) return;
+
+    if (appState.devices.length === 0) {
+      el.innerHTML = '<div style="text-align:center;color:#666;margin-top:40px;">' +
+        '<div style="font-size:16px;margin-bottom:8px;">Presiona Descubrir para encontrar dispositivos cercanos</div>' +
+        '</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < appState.devices.length; i++) {
+      var d = appState.devices[i];
+      html += '<div style="padding:12px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;">' +
+        '<div>' +
+          '<div style="font-weight:bold;">' + (d.name || 'Desconocido') + '</div>' +
+          '<div style="font-size:12px;color:#888;">' + (d.address || d.id || '') + '</div>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#00ff88;">' + (d.rssi || '') + ' dBm</div>' +
+      '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  // ========== LISTENERS NATIVOS ==========
+  function setupNativeListeners() {
+    if (!nativePlugin) return;
+
+    // onDeviceFound
+    if (nativePlugin.addListener) {
+      nativePlugin.addListener('onDeviceFound', function(device) {
+        log('Dispositivo encontrado: ' + (device.name || device.address));
+        var exists = false;
+        for (var i = 0; i < appState.devices.length; i++) {
+          if (appState.devices[i].address === device.address || appState.devices[i].id === device.id) {
+            exists = true;
+            appState.devices[i] = device;
+            break;
+          }
+        }
+        if (!exists) appState.devices.push(device);
+        renderDeviceList();
+      });
+
+      nativePlugin.addListener('onPayloadReceived', function(data) {
+        log('Mensaje recibido: ' + JSON.stringify(data));
+      });
+
+      nativePlugin.addListener('onAdvertiseStarted', function() {
+        log('Advertising nativo iniciado');
+        appState.advertising = true;
+        renderUI();
+      });
+
+      nativePlugin.addListener('onAdvertiseFailed', function(err) {
+        log('Advertising fallo: ' + JSON.stringify(err), 'error');
+        appState.advertising = false;
+        renderUI();
+      });
+    }
+  }
+
+  // ========== ARRANQUE ==========
+  document.addEventListener('DOMContentLoaded', function() {
+    init();
+    setupNativeListeners();
   });
-}
 
-function _renderMessage(msg) {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-
-  const div = document.createElement('div');
-  div.className = `message ${msg._own ? 'own' : 'other'}`;
-
-  const sourceBadge = msg._source ? `${_getSourceIcon(msg._source)}` : '';
-
-  div.innerHTML = `
-    <div class="message-content">${msg.content || msg.text}</div>
-    <div class="message-meta">
-      <span class="message-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
-      ${sourceBadge}
-    </div>
-  `;
-
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function _getSourceIcon(source) {
-  const icons = {
-    'ble_nordic': '🔷',
-    'ble_hybrid': '📡',
-    'relay': '🌐',
-    'self': '✓'
-  };
-  return icons[source] || '•';
-}
-
-function _toggleVaultUI(isOpen) {
-  const vault = document.getElementById('vault-panel');
-  const stream = document.getElementById('nexo-stream');
-
-  if (vault) {
-    vault.classList.toggle('vault-hidden', !isOpen);
-    vault.classList.toggle('vault-visible', isOpen);
-    rem.info(isOpen ? '[VAULT] Abierto' : '[VAULT] Cerrado', 'VAULT_TOGGLE');
+  // Si DOM ya cargo
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(function() {
+      init();
+      setupNativeListeners();
+    }, 1);
   }
-  if (stream) {
-    stream.style.transform = isOpen ? 'translateX(-20%)' : 'translateX(0)';
-  }
-}
 
-function _focusInput(text = '') {
-  const input = document.getElementById('message-input');
-  if (input) {
-    input.focus();
-    if (text) input.value = text;
-  }
-}
-
-function _forceHideSplash() {
-  const selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]', '#nexo-setup'];
-  selectors.forEach(sel => {
-    const el = document.querySelector(sel);
-    if (el) {
-      el.style.opacity = '0';
-      el.style.pointerEvents = 'none';
-      setTimeout(() => el.remove(), 500);
-    }
-  });
-}
-
-function _enableFallbackMode() {
-  console.warn('[NEXO] Activando modo fallback');
-  const body = document.body;
-  body.classList.add('nexo-fallback-mode');
-
-  const msg = document.createElement('div');
-  msg.className = 'fallback-notice';
-  msg.innerHTML = `
-    <h3>Error de Inicializacion</h3>
-    <p>La app no pudo iniciar completamente.</p>
-  `;
-  body.appendChild(msg);
-}
-
-if (module.hot) module.hot.accept();
+})();
+EOF
