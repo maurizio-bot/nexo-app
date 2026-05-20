@@ -1,12 +1,7 @@
-// BLE Interface v3.5.1-ARCH-SHIM
+// BLE Interface v3.5.2-FIX
 // Ubicacion: src/ui/ble_interface.js
-// FIX v3.5.1-ARCH-SHIM: Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
-// FIX v3.5-ARCH:
-//   1) Badge reseteado y protegido al abrir chat
-//   2) Auto-registro de contacto al recibir primer mensaje
-//   3) Toast suprimido robustamente cuando chat esta activo
-//   4) Listener nexo:ble:closeChat para limpiar _activeChatDeviceId
-
+// FIX v3.5.2: Fallback directo a plugin nativo si permissionShim no responde.
+//             ensurePermissions() ahora funciona gracias a Shim v1.4.
 
 export function initBLEInterface(bleMesh) {
   const instance = new BLEInterface(bleMesh).init();
@@ -177,14 +172,14 @@ export class BLEInterface {
     if (!this.nativePlugin) return;
     if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
     if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
-    
+
     this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', (data) => {
       const deviceId = _normId(data.deviceId);
       const attempt = data.attempt || 0;
       this._cancelReconnect(deviceId);
       const contactName = _getContactName(deviceId);
       const displayName = data.name || contactName || 'NEXO Peer';
-      
+
       if (data.direction === 'incoming') {
         this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected' });
         this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'incoming', servicesReady: true });
@@ -195,13 +190,12 @@ export class BLEInterface {
       }
       this.onDeviceConnected({ id: deviceId, address: deviceId, name: displayName, direction: data.direction || 'unknown', servicesReady: data.servicesReady === true, attempt });
     });
-    
+
     this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', (data) => {
       const deviceId = _normId(data.deviceId);
       this._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
       this.connectedDevices.delete(deviceId);
       this.onDeviceDisconnected({ id: deviceId, address: deviceId });
-      // FIX v3.5-ARCH: Limpiar chat activo si el peer se desconecta
       if (this._activeChatDeviceId === deviceId) {
         this.showToast('⚠️ Conexión BLE perdida. Reconectando...', 'warning');
         this._startReconnect(deviceId);
@@ -308,20 +302,18 @@ export class BLEInterface {
         if (json.senderName && !senderName) senderName = json.senderName;
         if (json.content) content = json.content;
       } catch (e) {}
-      
-      // FIX v3.5-ARCH: Resolver senderName de forma robusta (contactos > conectados > found > default)
+
       if (!senderName || senderName === 'NEXO Peer') {
-        senderName = _getContactName(deviceId) 
-          || this.connectedDevices.get(deviceId)?.name 
-          || this.foundDevices.get(deviceId)?.name 
+        senderName = _getContactName(deviceId)
+          || this.connectedDevices.get(deviceId)?.name
+          || this.foundDevices.get(deviceId)?.name
           || 'NEXO Peer';
       }
-      
-      // FIX v3.5-ARCH: Auto-registrar contacto al recibir primer mensaje para que aparezca con nombre en lista
+
       if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer') {
         _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
       }
-      
+
       if (messageId && this._receivedMessageIds.has(messageId)) return;
       if (messageId) {
         this._receivedMessageIds.add(messageId);
@@ -330,17 +322,16 @@ export class BLEInterface {
           this._receivedMessageIds.delete(first);
         }
       }
-      
+
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: { deviceId, content, senderName, messageId, source: data.source || 'unknown', timestamp: data.timestamp || Date.now() }
       }));
-      
-      // FIX v3.5-ARCH: Comparación robusta - si hay chat activo con ESTE peer, NO toast, NO badge
+
       const activeId = _normId(this._activeChatDeviceId);
       if (activeId && activeId === deviceId) {
-        return; // Silencioso: ya estamos en chat con este dispositivo
+        return;
       }
-      
+
       this.showToast('📨 Mensaje de ' + senderName, 'info');
       this.newDevicesCount++;
       this.updateBadge();
@@ -379,7 +370,7 @@ export class BLEInterface {
       console.error('[BLEInterface] Error consultando estado:', err);
     }
   }
-  
+
   _setupNativeAdvertisingListeners() {
     if (!this.nativePlugin) return;
     if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
@@ -416,10 +407,35 @@ export class BLEInterface {
     }
   }
 
+  // FIX v3.5.2: Fallback nativo directo si permissionShim no responde
+  async _ensurePermissions() {
+    try {
+      if (window.permissionShim && typeof window.permissionShim.ensurePermissions === 'function') {
+        const result = await window.permissionShim.ensurePermissions();
+        if (result && (result.success || result.allGranted)) return { success: true };
+      }
+      // Fallback: intentar directo con el plugin nativo
+      if (this.nativePlugin && this.nativePlugin.checkBLEStatus) {
+        const status = await this.nativePlugin.checkBLEStatus();
+        if (status && (status.allGranted || status.granted)) return { success: true };
+        if (this.nativePlugin.initializeBLE) {
+          await this.nativePlugin.initializeBLE();
+          await new Promise(r => setTimeout(r, 800));
+          const final = await this.nativePlugin.checkBLEStatus();
+          if (final && (final.allGranted || final.granted)) return { success: true };
+        }
+      }
+      return { success: false };
+    } catch (e) {
+      console.warn('[BLEInterface] _ensurePermissions error:', e.message);
+      return { success: false };
+    }
+  }
+
   async toggleVisibility() {
     if (this.isDummyMode) return;
 
-    const permsResult = await window.permissionShim?.ensurePermissions();
+    const permsResult = await this._ensurePermissions();
     if (!permsResult?.success) {
       this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
       return;
@@ -480,39 +496,43 @@ export class BLEInterface {
   createDOM() {
     const tab = document.createElement('div');
     tab.id = 'ble-tab';
-    tab.innerHTML = `<div class="ble-tab-icon">🔷</div><div class="ble-tab-label">BLE</div><div class="ble-tab-badge" id="ble-tab-badge" style="display: none;">0</div>`;
+    tab.innerHTML = `
+      <div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 11px; letter-spacing: 2px;">🔷 BLE</div>
+      <div id="ble-tab-badge" class="ble-tab-badge" style="display:none">0</div>
+    `;
     document.body.appendChild(tab);
     this.elements.tab = tab;
 
     const panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML = `
-      <div class="ble-header"><h3>🔷 BLE Mesh</h3><button id="ble-close">✕</button></div>
+      <div class="ble-header">
+        <h3>BLE Mesh</h3>
+        <button id="ble-close" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button>
+      </div>
+      <div class="ble-main-controls">
+        <button id="ble-visibility-btn" class="ble-btn-visibility btn-visibility-off">
+          <span class="btn-icon">👁</span><span>Visibilidad</span>
+        </button>
+        <button id="ble-scan-btn" class="ble-btn-discover">
+          <span id="text-discover">Descubrir</span>
+        </button>
+      </div>
       <div class="ble-tabs">
-        <button class="ble-tab-btn active" data-tab="discovery">Cercanos</button>
+        <button class="ble-tab-btn active" data-tab="devices">Cercanos</button>
         <button class="ble-tab-btn" data-tab="added">Agregados</button>
         <button class="ble-tab-btn" data-tab="connected">Conectados</button>
       </div>
-      <div class="ble-main-controls">
-        <button id="ble-visibility-btn" class="ble-btn-visibility btn-visibility-off" ${this.isDummyMode ? 'disabled' : ''}>
-          <span class="btn-icon">🚫</span><span>Visibilidad desactivada</span>
-        </button>
-        <button id="ble-scan-btn" class="ble-btn-discover" ${this.isDummyMode ? 'disabled' : ''}>
-          <span class="btn-icon">🔍</span><span id="text-discover">Descubrir</span>
-        </button>
-      </div>
-      <div class="ble-secondary-controls">
-        <span id="ble-status" class="ble-status-offline">OFFLINE</span>
-      </div>
-      <div id="tab-discovery" class="ble-tab-content active">
-        <div class="ble-list" id="ble-devices-list"><p class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</p></div>
+      <div id="tab-devices" class="ble-tab-content active">
+        <div id="ble-devices-list" class="ble-list"></div>
       </div>
       <div id="tab-added" class="ble-tab-content">
-        <div class="ble-list" id="ble-added-list"><p class="ble-empty">No hay contactos agregados</p></div>
+        <div id="ble-added-list" class="ble-list"></div>
       </div>
       <div id="tab-connected" class="ble-tab-content">
-        <div class="ble-list" id="ble-connected-list"><p class="ble-empty">No hay dispositivos conectados</p></div>
+        <div id="ble-connected-list" class="ble-list"></div>
       </div>
+      <div id="ble-status" class="ble-status-offline">OFFLINE</div>
     `;
     document.body.appendChild(panel);
     this.elements.panel = panel;
@@ -556,497 +576,4 @@ export class BLEInterface {
       .ble-btn-visibility.btn-visibility-warning { background: #4A3A00 !important; color: #FFCC00 !important; border: 1px solid #FFCC00 !important; }
       .ble-btn-visibility.btn-visibility-off { background: #3A3A3A; color: #888888; }
       .ble-btn-visibility.btn-visibility-on { background: #00D9FF; color: #000000; box-shadow: 0 0 12px rgba(0, 217, 255, 0.4); }
-      .ble-btn-discover { flex: 1.2; height: 56px; border-radius: 14px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3); transition: all 0.3s ease; }
-      .ble-btn-discover.scanning { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; animation: pulse-red 1.5s infinite; }
-      @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); } 50% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); } }
-      #ble-status { font-size: 12px; padding: 4px 8px; border-radius: 4px; }
-      .ble-status-offline { background: #333; color: #888; }
-      .ble-status-online { background: #00d4ff; color: #000; }
-      .ble-status-scanning { background: #ffaa00; color: #000; animation: blink 1s infinite; }
-      @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.7; } }
-      .ble-list { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 300px); overflow-y: auto; }
-      .ble-empty { text-align: center; color: #666; padding: 20px; font-style: italic; }
-      .ble-device-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
-      .ble-device-item:hover { background: rgba(0,212,255,0.1); border-color: #00d4ff; }
-      .ble-device-item.new { border-left: 3px solid #00d4ff; animation: slideIn 0.3s ease; }
-      @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
-      .ble-device-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-      .ble-device-name { font-weight: bold; color: #fff; }
-      .ble-device-id { font-size: 11px; color: #888; }
-      .ble-device-rssi { font-size: 12px; color: #00d4ff; }
-      .ble-device-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-      .ble-btn-add { padding: 8px 16px; background: #00ff88; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
-      .ble-btn-write { padding: 8px 16px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
-      .ble-btn-write:disabled { background: #555; color: #aaa; cursor: not-allowed; }
-      .ble-btn-disconnect { padding: 6px 12px; background: #ff4444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
-      .ble-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: #fff; font-weight: bold; z-index: 2147483646; animation: fadeInUp 0.3s ease; }
-      .ble-toast.success { background: #00d4ff; color: #000; }
-      .ble-toast.error { background: #ff4444; }
-      .ble-toast.warning { background: #ffaa00; color: #000; }
-      .ble-toast.info { background: #444; }
-      @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
-      .ble-state-connecting { color: #ffaa00; font-size: 11px; }
-      .ble-state-ready { color: #00ff88; font-size: 11px; }
-      .ble-state-error { color: #ff4444; font-size: 11px; }
-      .ble-state-reconnecting { color: #ffaa00; font-size: 11px; animation: blink 1s infinite; }
-    `;
-    document.head.appendChild(style);
-  }
-
-  setupEventListeners() {
-    this.elements.tab.addEventListener('click', () => this.togglePanel());
-    this.elements.closeBtn.addEventListener('click', () => this.togglePanel());
-    this.elements.overlay.addEventListener('click', () => this.togglePanel());
-    this.elements.visibilityBtn.addEventListener('click', () => this.toggleVisibility());
-    this.elements.scanBtn.addEventListener('click', () => this.toggleScan());
-    document.querySelectorAll('.ble-tab-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
-    });
-    // FIX v3.5-ARCH: Escuchar cierre de chat desde la UI principal
-    window.addEventListener('nexo:ble:closeChat', () => {
-      this._activeChatDeviceId = null;
-      this.updateBadge();
-    });
-  }
-
-  togglePanel() {
-    this.elements.panel.classList.toggle('active');
-    this.elements.overlay.classList.toggle('active');
-    if (this.elements.panel.classList.contains('active')) {
-      this.newDevicesCount = 0;
-      this.updateBadge();
-      this._loadConnectedDevices();
-      this.renderAddedList();
-    }
-  }
-
-  switchTab(tabName) {
-    document.querySelectorAll('.ble-tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.ble-tab-content').forEach(content => content.classList.remove('active'));
-    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-    document.getElementById(`tab-${tabName}`).classList.add('active');
-    if (tabName === 'added') this.renderAddedList();
-  }
-
-  async toggleScan() {
-    if (this.isDummyMode) return;
-
-    const permsResult = await window.permissionShim?.ensurePermissions();
-    if (!permsResult?.success) {
-      this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
-      return;
-    }
-
-    try {
-      if (this.isScanning) {
-        if (this.nativePlugin) await this.nativePlugin.stopScan();
-        this.isScanning = false;
-        this.onScanStateChanged(false);
-      } else {
-        this.foundDevices.clear();
-        this._renderedDeviceIds.clear();
-        this.renderDevicesList();
-        if (this.nativePlugin) await this.nativePlugin.startScan();
-        this.isScanning = true;
-        this.onScanStateChanged(true);
-      }
-    } catch (err) {
-      this.isScanning = false;
-      this.onScanStateChanged(false);
-    }
-  }
-
-  onScanStateChanged(isScanning) {
-    this.isScanning = isScanning;
-    const btn = this.elements.scanBtn;
-    const text = document.getElementById('text-discover');
-    if (isScanning) {
-      btn.classList.add('scanning');
-      if (text) text.textContent = 'Detener';
-      this.elements.status.textContent = 'ESCANEANDO...';
-      this.elements.status.className = 'ble-status-scanning';
-      this.showToast('🔍 Buscando dispositivos...', 'info');
-    } else {
-      btn.classList.remove('scanning');
-      if (text) text.textContent = 'Descubrir';
-      this.updateStatus();
-    }
-  }
-
-  onDeviceFound(device) {
-    let id = _normId(device.id || device.address);
-    if (!id || id === 'null' || id === 'undefined') return;
-    if (this.localDeviceAddress && id === this.localDeviceAddress) return;
-    
-    // FIX v3.5-ARCH: Si estamos en chat activo, NO contaminar badge ni contador
-    // Solo actualizar lista interna silenciosamente
-    if (this._activeChatDeviceId) {
-      if (this.foundDevices.has(id)) {
-        const existing = this.foundDevices.get(id);
-        existing.rssi = device.rssi;
-        existing.name = device.name || existing.name;
-        existing.lastSeen = Date.now();
-        this.foundDevices.set(id, existing);
-        this.renderDevicesList();
-        return;
-      }
-      device.lastSeen = Date.now();
-      this.foundDevices.set(id, device);
-      this.renderDevicesList();
-      return;
-    }
-    
-    if (this.foundDevices.has(id)) {
-      const existing = this.foundDevices.get(id);
-      existing.rssi = device.rssi;
-      existing.name = device.name || existing.name;
-      existing.lastSeen = Date.now();
-      this.foundDevices.set(id, existing);
-      this.renderDevicesList();
-      return;
-    }
-    device.lastSeen = Date.now();
-    this.foundDevices.set(id, device);
-    this.newDevicesCount++;
-    this.updateBadge();
-    this.renderDevicesList();
-  }
-
-  onDeviceConnected(device) {
-    const nid = _normId(device.id || device.address);
-    this.connectedDevices.set(nid, device);
-    this.renderConnectedList();
-    this.showToast('✅ Conectado: ' + (device.name || 'Dispositivo'), 'success');
-  }
-
-  onDeviceDisconnected(device) {
-    const nid = _normId(device.id || device.address);
-    this.connectedDevices.delete(nid);
-    this.renderConnectedList();
-    this.showToast('❌ Desconectado', 'info');
-  }
-
-  async _loadConnectedDevices() {
-    if (this.isDummyMode) return;
-    try {
-      let devices = [];
-      if (this.nativePlugin && this.nativePlugin.getConnectedDevices) {
-        const result = await this.nativePlugin.getConnectedDevices();
-        devices = result.devices || [];
-      }
-      this.connectedDevices.clear();
-      devices.forEach(d => {
-        const nid = _normId(d.id || d.address || d.deviceId);
-        this.connectedDevices.set(nid, { ...d, id: nid, address: nid });
-      });
-      this.renderConnectedList();
-    } catch (err) {}
-  }
-
-  async addContact(deviceId) {
-    const nid = _normId(deviceId);
-    const device = this.foundDevices.get(nid) || this.connectedDevices.get(nid);
-    if (!device) { this.showToast('❌ Dispositivo no encontrado', 'error'); return; }
-    if (_addBLEContact(device)) {
-      this.showToast('✅ Agregado a contactos', 'success');
-      this.renderDevicesList();
-    } else {
-      this.showToast('⚠️ Ya está en contactos', 'warning');
-    }
-  }
-
-  async removeContact(deviceId) {
-    _removeBLEContact(deviceId);
-    this.showToast('❌ Eliminado', 'info');
-    this.renderAddedList();
-    this.renderDevicesList();
-  }
-
-  async openChat(deviceId) {
-    const nid = _normId(deviceId);
-    let device = this.foundDevices.get(nid) || this.connectedDevices.get(nid);
-    const contact = _getBLEContacts().find(c => _normId(c.id || c.address) === nid);
-    if (!device && contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
-    if (!device) { this.showToast('❌ Contacto no disponible', 'error'); return; }
-    
-    // FIX v3.5-ARCH: Setear chat activo Y resetear contador de badge inmediatamente
-    this._activeChatDeviceId = nid;
-    this.newDevicesCount = 0;
-    this.updateBadge();
-    
-    const displayName = contact?.name || device.name || 'NEXO Peer';
-    const state = this._getDeviceState(nid);
-    const isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
-    const isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
-    
-    if (!isFullyReady && isConnecting && this.nativePlugin) {
-      this.showToast('⏳ Conexión en progreso, esperando canal...', 'info');
-      try {
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Timeout')), 15000);
-          const checkReady = () => {
-            const s = this._getDeviceState(nid);
-            if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
-              clearTimeout(timeout);
-              resolve();
-            } else {
-              setTimeout(checkReady, 300);
-            }
-          };
-          checkReady();
-        });
-      } catch (e) {
-        this.showToast('⚠️ Canal aún no listo. Intente enviar en unos segundos.', 'warning');
-      }
-    }
-    
-    if (!isFullyReady && !isConnecting && this.nativePlugin) {
-      const permsResult = await window.permissionShim?.ensurePermissions();
-      if (!permsResult?.success) {
-        this.showToast('⚠️ Permisos BLE requeridos para conectar', 'warning', 5000);
-        return;
-      }
-
-      try {
-        console.log('[BLEInterface] Conectando a', nid, '...');
-        const connResult = await this.nativePlugin.connectToDevice({ deviceId: device.id || device.address || nid });
-        console.log('[BLEInterface] connectToDevice result:', connResult);
-        if (connResult && connResult.connected && !connResult.alreadyConnected) {
-          this.showToast('🔗 Conectando canal BLE...', 'info');
-          await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('Timeout')), 15000);
-            const checkReady = () => {
-              const s = this._getDeviceState(nid);
-              if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
-                clearTimeout(timeout);
-                resolve();
-              } else {
-                setTimeout(checkReady, 300);
-              }
-            };
-            checkReady();
-          });
-        }
-      } catch (e) {
-        console.warn('[BLEInterface] Conexión/timeout:', e.message);
-        this.showToast('⚠️ Canal aún no listo. Intente enviar en unos segundos.', 'warning');
-      }
-    }
-    
-    const appContainer = document.getElementById('app');
-    if (appContainer) appContainer.classList.remove('hidden');
-    const nameInput = document.getElementById('chat-contact-name');
-    const subtitle = document.getElementById('chat-contact-subtitle');
-    if (nameInput) nameInput.value = displayName;
-    if (subtitle) subtitle.textContent = 'BLUETOOTH';
-    
-    window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
-      detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
-    }));
-    
-    this.elements.panel.classList.remove('active');
-    this.elements.overlay.classList.remove('active');
-  }
-
-  renderDevicesList() {
-    const list = this.elements.devicesList;
-    if (this.foundDevices.size === 0) {
-      list.innerHTML = '<p class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</p>';
-      return;
-    }
-    list.innerHTML = '';
-    this.foundDevices.forEach((device, id) => {
-      const isAdded = _isBLEContact(id);
-      const isNew = !this._renderedDeviceIds.has(id);
-      if (isNew) this._renderedDeviceIds.add(id);
-      const item = document.createElement('div');
-      item.className = 'ble-device-item' + (isNew ? ' new' : '');
-      const actionHtml = isAdded
-        ? `<button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>`
-        : `<button class="ble-btn-add" onclick="bleInterface.addContact('${id}')">+ Agregar</button>`;
-      item.innerHTML = `
-        <div class="ble-device-info">
-          <span class="ble-device-name">${device.name || 'NEXO Device'}</span>
-          <span class="ble-device-id">${this._formatId(id)}</span>
-          <span class="ble-device-rssi">📶 ${device.rssi || '?'} dBm</span>
-        </div>
-        <div class="ble-device-actions">${actionHtml}</div>
-      `;
-      list.appendChild(item);
-    });
-  }
-
-  renderAddedList() {
-    const list = this.elements.addedList;
-    const contacts = _getBLEContacts();
-    if (contacts.length === 0) {
-      list.innerHTML = '<p class="ble-empty">No hay contactos agregados</p>';
-      return;
-    }
-    list.innerHTML = '';
-    contacts.forEach((contact) => {
-      const id = _normId(contact.id || contact.address);
-      const item = document.createElement('div');
-      item.className = 'ble-device-item';
-      item.innerHTML = `
-        <div class="ble-device-info">
-          <span class="ble-device-name">${contact.name || 'NEXO Device'}</span>
-          <span class="ble-device-id">${this._formatId(id)}</span>
-        </div>
-        <div class="ble-device-actions">
-          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')">✉️ Escribir</button>
-          <button class="ble-btn-disconnect" onclick="bleInterface.removeContact('${id}')">Eliminar</button>
-        </div>
-      `;
-      list.appendChild(item);
-    });
-  }
-
-  renderConnectedList() {
-    const list = this.elements.connectedList;
-    if (this.connectedDevices.size === 0) {
-      list.innerHTML = '<p class="ble-empty">No hay dispositivos conectados</p>';
-      return;
-    }
-    list.innerHTML = '';
-    this.connectedDevices.forEach((device, id) => {
-      const state = this._getDeviceState(id);
-      const stateLabel = this._renderStateLabel(state);
-      const isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
-      const item = document.createElement('div');
-      item.className = 'ble-device-item';
-      item.innerHTML = `
-        <div class="ble-device-info">
-          <span class="ble-device-name">${device.name || 'NEXO Peer'}</span>
-          <span class="ble-device-id">${this._formatId(id)}</span>
-          <span class="ble-device-rssi" style="color: #00ff00;">● ${device.direction || 'Conectado'} ${stateLabel}</span>
-        </div>
-        <div class="ble-device-actions">
-          <button class="ble-btn-write" onclick="bleInterface.openChat('${id}')" ${!isReady ? 'disabled title="Esperando canal..."' : ''}>✉️ Escribir</button>
-          <button class="ble-btn-disconnect" onclick="bleInterface.disconnect('${id}')">Desconectar</button>
-        </div>
-      `;
-      list.appendChild(item);
-    });
-  }
-
-  _renderStateLabel(state) {
-    if (!state || !state.state) return '';
-    switch (state.state) {
-      case BLE_STATES.CONNECTING: return `<span class="ble-state-connecting">⏳ ${state.message || 'Conectando...'}</span>`;
-      case BLE_STATES.DISCOVERING_SERVICES: return `<span class="ble-state-connecting">🔍 Descubriendo...</span>`;
-      case BLE_STATES.NOTIFICATIONS_READY: return `<span class="ble-state-ready">✅ Canal listo</span>`;
-      case BLE_STATES.READY_TO_CHAT: return `<span class="ble-state-ready">✅ Listo</span>`;
-      case BLE_STATES.ERROR: return `<span class="ble-state-error">❌ ${state.lastError || 'Error'}</span>`;
-      case BLE_STATES.RECONNECTING: return `<span class="ble-state-reconnecting">🔄 ${state.message || 'Reconectando...'}</span>`;
-      default: return '';
-    }
-  }
-
-  async connect(deviceId) {
-    if (this.isDummyMode) return;
-    try {
-      if (this.nativePlugin) await this.nativePlugin.connectToDevice({ deviceId });
-    } catch (err) { this.showToast('Error al conectar', 'error'); }
-  }
-
-  async disconnect(deviceId) {
-    if (this.isDummyMode) return;
-    const nid = _normId(deviceId);
-    try {
-      this._cancelReconnect(nid);
-      const device = this.connectedDevices.get(nid);
-      const targetId = device?.id || device?.address || deviceId;
-      if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId: targetId });
-      // FIX v3.5-ARCH: Limpiar chat activo al desconectar manualmente
-      if (this._activeChatDeviceId === nid) {
-        this._activeChatDeviceId = null;
-        this.updateBadge();
-      }
-    } catch (err) {}
-  }
-
-  updateBadge() {
-    const badge = this.elements.badge;
-    // FIX v3.5-ARCH: No mostrar badge si ya estamos en chat BLE activo
-    if (this._activeChatDeviceId) {
-      badge.style.display = 'none';
-      return;
-    }
-    if (this.newDevicesCount > 0) {
-      badge.textContent = this.newDevicesCount;
-      badge.style.display = 'flex';
-    } else {
-      badge.style.display = 'none';
-    }
-  }
-
-  async updateStatus(customStatus) {
-    if (customStatus) {
-      this.elements.status.textContent = customStatus;
-      this.elements.status.className = 'ble-status-offline';
-      return;
-    }
-    if (this.isDummyMode) return;
-    try {
-      let state = 'UNKNOWN';
-      if (this.nativePlugin && this.nativePlugin.isBluetoothEnabled) {
-        const btState = await this.nativePlugin.isBluetoothEnabled();
-        state = btState.enabled ? 'poweredOn' : 'poweredOff';
-        this._serverReady = btState.serverReady || false;
-      }
-      const stateMap = {
-        'poweredon': 'ENCENDIDO',
-        'poweredoff': 'APAGADO',
-        'unknown': 'DESCONOCIDO'
-      };
-      const normalizedState = (state || '').toString().toLowerCase();
-      this.elements.status.textContent = stateMap[normalizedState] || state.toUpperCase();
-      this.elements.status.className = state === 'poweredOn' ? 'ble-status-online' : 'ble-status-offline';
-    } catch (err) {
-      this.elements.status.textContent = 'ERROR';
-    }
-  }
-
-  showToast(message, type = 'info', duration = 3000) {
-    const existing = document.querySelector('.ble-toast');
-    if (existing) existing.remove();
-    const toast = document.createElement('div');
-    toast.className = `ble-toast ${type}`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      setTimeout(() => toast.remove(), 300);
-    }, duration);
-  }
-
-  _formatId(id) {
-    if (!id) return '??';
-    return id.substring(0, 8) + '...' + id.substring(id.length - 4);
-  }
-
-  destroy() {
-    const styles = document.getElementById('ble-styles');
-    if (styles) styles.remove();
-    this._reconnectTimers.forEach((timer) => clearTimeout(timer));
-    this._reconnectTimers.clear();
-    if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
-    if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
-    if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
-    if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
-    if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
-    if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
-    if (this._nativePayloadListener) this._nativePayloadListener.remove();
-    if (this._nativeServicesReadyListener) this._nativeServicesReadyListener.remove();
-    if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
-    if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
-    if (this._nativeStackBrokenListener) this._nativeStackBrokenListener.remove();
-    if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove();
-    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
-    if (this._nativeServerErrorListener) this._nativeServerErrorListener.remove();
-    if (this.isScanning) this.toggleScan();
-  }
-}
-
-window.bleInterface = null;
+      .ble-btn-discover { flex: 1.2; height: 56px; border-radius: 14px; border: none; font-weight: 700; font-size: 15px; cursor: pointer
