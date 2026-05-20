@@ -1,8 +1,6 @@
 /**
  * BLE Interface v3.5.1-ARCH-SHIM
  * Ubicación: src/ui/ble_interface.js
- * FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
  * FIX v3.5-ARCH: 
  * 1) Badge reseteado y protegido al abrir chat (no contamina durante chat activo)
  * 2) Auto-registro de contacto al recibir primer mensaje (evita "Unknown" en lista)
@@ -203,9 +201,7 @@ export class BLEInterface {
       this._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
       this.connectedDevices.delete(deviceId);
       this.onDeviceDisconnected({ id: deviceId, address: deviceId });
-      // FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
- * FIX v3.5-ARCH: Limpiar chat activo si el peer se desconecta
+      // FIX v3.5-ARCH: Limpiar chat activo si el peer se desconecta
       if (this._activeChatDeviceId === deviceId) {
         this.showToast('⚠️ Conexión BLE perdida. Reconectando...', 'warning');
         this._startReconnect(deviceId);
@@ -234,7 +230,7 @@ export class BLEInterface {
     const timer = this._reconnectTimers.get(deviceId);
     if (timer) {
       clearTimeout(timer);
-      this._reconnectTimers.delete(deviceId);
+      this._reconnectTimers.delete(timer);
     }
   }
 
@@ -313,9 +309,7 @@ export class BLEInterface {
         if (json.content) content = json.content;
       } catch (e) {}
       
-      // FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
- * FIX v3.5-ARCH: Resolver senderName de forma robusta (contactos > conectados > found > default)
+      // FIX v3.5-ARCH: Resolver senderName de forma robusta (contactos > conectados > found > default)
       if (!senderName || senderName === 'NEXO Peer') {
         senderName = _getContactName(deviceId) 
           || this.connectedDevices.get(deviceId)?.name 
@@ -323,9 +317,7 @@ export class BLEInterface {
           || 'NEXO Peer';
       }
       
-      // FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
- * FIX v3.5-ARCH: Auto-registrar contacto al recibir primer mensaje para que aparezca con nombre en lista
+      // FIX v3.5-ARCH: Auto-registrar contacto al recibir primer mensaje para que aparezca con nombre en lista
       if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer') {
         _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
       }
@@ -343,9 +335,7 @@ export class BLEInterface {
         detail: { deviceId, content, senderName, messageId, source: data.source || 'unknown', timestamp: data.timestamp || Date.now() }
       }));
       
-      // FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
- * FIX v3.5-ARCH: Comparación robusta - si hay chat activo con ESTE peer, NO toast, NO badge
+      // FIX v3.5-ARCH: Comparación robusta - si hay chat activo con ESTE peer, NO toast, NO badge
       const activeId = _normId(this._activeChatDeviceId);
       if (activeId && activeId === deviceId) {
         return; // Silencioso: ya estamos en chat con este dispositivo
@@ -612,9 +602,7 @@ export class BLEInterface {
     document.querySelectorAll('.ble-tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
     });
-    // FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
- * FIX v3.5-ARCH: Escuchar cierre de chat desde la UI principal
+    // FIX v3.5-ARCH: Escuchar cierre de chat desde la UI principal
     window.addEventListener('nexo:ble:closeChat', () => {
       this._activeChatDeviceId = null;
       this.updateBadge();
@@ -690,9 +678,7 @@ export class BLEInterface {
     if (!id || id === 'null' || id === 'undefined') return;
     if (this.localDeviceAddress && id === this.localDeviceAddress) return;
     
-    // FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
- * FIX v3.5-ARCH: Si estamos en chat activo, NO contaminar badge ni contador
+    // FIX v3.5-ARCH: Si estamos en chat activo, NO contaminar badge ni contador
     // Solo actualizar lista interna silenciosamente
     if (this._activeChatDeviceId) {
       if (this.foundDevices.has(id)) {
@@ -783,9 +769,7 @@ export class BLEInterface {
     if (!device && contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
     if (!device) { this.showToast('❌ Contacto no disponible', 'error'); return; }
     
-    // FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
- * FIX v3.5-ARCH: Setear chat activo Y resetear contador de badge inmediatamente
+    // FIX v3.5-ARCH: Setear chat activo Y resetear contador de badge inmediatamente
     this._activeChatDeviceId = nid;
     this.newDevicesCount = 0;
     this.updateBadge();
@@ -974,9 +958,7 @@ export class BLEInterface {
       const device = this.connectedDevices.get(nid);
       const targetId = device?.id || device?.address || deviceId;
       if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId: targetId });
-      // FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
- * FIX v3.5-ARCH: Limpiar chat activo al desconectar manualmente
+      // FIX v3.5-ARCH: Limpiar chat activo al desconectar manualmente
       if (this._activeChatDeviceId === nid) {
         this._activeChatDeviceId = null;
         this.updateBadge();
@@ -986,9 +968,7 @@ export class BLEInterface {
 
   updateBadge() {
     const badge = this.elements.badge;
-    // FIX v3.5.1-ARCH-SHIM:
- * 5) Reemplazo window.BLEPermissions por window.permissionShim (compatibilidad #961)
- * FIX v3.5-ARCH: No mostrar badge si ya estamos en chat BLE activo
+    // FIX v3.5-ARCH: No mostrar badge si ya estamos en chat BLE activo
     if (this._activeChatDeviceId) {
       badge.style.display = 'none';
       return;
@@ -1070,3 +1050,4 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
+}
