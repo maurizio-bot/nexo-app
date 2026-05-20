@@ -1,7 +1,6 @@
-// BLE Interface v3.5.2-FIX
+// BLE Interface v3.5.3-FIX
 // Ubicacion: src/ui/ble_interface.js
-// FIX v3.5.2: Fallback directo a plugin nativo si permissionShim no responde.
-//             ensurePermissions() ahora funciona gracias a Shim v1.4.
+// FIX v3.5.3: CSS como string concatenado (evita template literals corruptos por cat << EOF)
 
 export function initBLEInterface(bleMesh) {
   const instance = new BLEInterface(bleMesh).init();
@@ -146,7 +145,7 @@ export class BLEInterface {
     this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', (data) => {
       this.isScanning = false;
       this.onScanStateChanged(false);
-      this.showToast('❌ Error al escanear', 'error');
+      this.showToast('Error al escanear', 'error');
     });
   }
 
@@ -183,7 +182,7 @@ export class BLEInterface {
       if (data.direction === 'incoming') {
         this._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected' });
         this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'incoming', servicesReady: true });
-        this.showToast(`✅ Peer conectado: ${this._formatId(deviceId)}`, 'success');
+        this.showToast('Peer conectado: ' + this._formatId(deviceId), 'success');
       } else {
         this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', attempt, role: 'client' });
         this.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'outgoing', servicesReady: false });
@@ -197,7 +196,7 @@ export class BLEInterface {
       this.connectedDevices.delete(deviceId);
       this.onDeviceDisconnected({ id: deviceId, address: deviceId });
       if (this._activeChatDeviceId === deviceId) {
-        this.showToast('⚠️ Conexión BLE perdida. Reconectando...', 'warning');
+        this.showToast('Conexion BLE perdida. Reconectando...', 'warning');
         this._startReconnect(deviceId);
       }
     });
@@ -212,7 +211,7 @@ export class BLEInterface {
         console.log('[BLEInterface] Force reconnect a', deviceId, '...');
         await this.nativePlugin.forceReconnect({ deviceId });
       } catch (e) {
-        console.warn('[BLEInterface] Force reconnect falló:', e.message);
+        console.warn('[BLEInterface] Force reconnect fallo:', e.message);
         const timer = setTimeout(attemptReconnect, 3000);
         this._reconnectTimers.set(deviceId, timer);
       }
@@ -244,14 +243,14 @@ export class BLEInterface {
     this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', (data) => {
       const deviceId = _normId(data.deviceId);
       if (data.recoverable !== false && data.attempt < (data.maxAttempts || 3)) {
-        this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { attempt: data.attempt, message: `Reintentando...` });
+        this._setDeviceState(deviceId, BLE_STATES.CONNECTING, { attempt: data.attempt, message: 'Reintentando...' });
       } else {
         this._setDeviceState(deviceId, BLE_STATES.ERROR, { lastError: data.reason });
-        this.showToast(`❌ Conexión fallada: ${data.reason}`, 'error');
+        this.showToast('Conexion fallada: ' + data.reason, 'error');
       }
     });
     this._nativeStackBrokenListener = this.nativePlugin.addListener('onBluetoothStackBroken', (data) => {
-      this.showToast('⚠️ Bluetooth necesita reiniciarse', 'warning', 8000);
+      this.showToast('Bluetooth necesita reiniciarse', 'warning', 8000);
     });
   }
 
@@ -273,7 +272,7 @@ export class BLEInterface {
       this._serverError = { code: data.code, message: data.message };
       console.error('[BLEInterface] Server error:', data.code, data.message);
       if (data.code === 'BLE_202') {
-        this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
+        this.showToast('Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
       }
     });
   }
@@ -332,7 +331,7 @@ export class BLEInterface {
         return;
       }
 
-      this.showToast('📨 Mensaje de ' + senderName, 'info');
+      this.showToast('Mensaje de ' + senderName, 'info');
       this.newDevicesCount++;
       this.updateBadge();
     });
@@ -378,12 +377,12 @@ export class BLEInterface {
     this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', () => {
       this.isAdvertising = true;
       this.updateVisibilityButton();
-      this.showToast('👁️‍🗨️ Visibilidad activada', 'success');
+      this.showToast('Visibilidad activada', 'success');
     });
     this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', () => {
       this.isAdvertising = false;
       this.updateVisibilityButton();
-      this.showToast('❌ Error al activar visibilidad', 'error');
+      this.showToast('Error al activar visibilidad', 'error');
     });
   }
 
@@ -407,14 +406,12 @@ export class BLEInterface {
     }
   }
 
-  // FIX v3.5.2: Fallback nativo directo si permissionShim no responde
   async _ensurePermissions() {
     try {
       if (window.permissionShim && typeof window.permissionShim.ensurePermissions === 'function') {
         const result = await window.permissionShim.ensurePermissions();
         if (result && (result.success || result.allGranted)) return { success: true };
       }
-      // Fallback: intentar directo con el plugin nativo
       if (this.nativePlugin && this.nativePlugin.checkBLEStatus) {
         const status = await this.nativePlugin.checkBLEStatus();
         if (status && (status.allGranted || status.granted)) return { success: true };
@@ -437,13 +434,13 @@ export class BLEInterface {
 
     const permsResult = await this._ensurePermissions();
     if (!permsResult?.success) {
-      this.showToast('⚠️ Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
+      this.showToast('Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
       return;
     }
 
     if (!this._serverReady) {
       try {
-        this.showToast('⏳ Inicializando servidor BLE...', 'info');
+        this.showToast('Inicializando servidor BLE...', 'info');
         await this.nativePlugin.initializeBLE({
           userId: window.currentUser?.id || '',
           userName: window.currentUser?.name || 'NEXO User'
@@ -465,7 +462,7 @@ export class BLEInterface {
         });
       } catch (e) {
         console.error('[BLEInterface] Error inicializando servidor:', e.message);
-        this.showToast('❌ No se pudo inicializar servidor BLE: ' + e.message, 'error', 5000);
+        this.showToast('No se pudo inicializar servidor BLE: ' + e.message, 'error', 5000);
         return;
       }
     }
@@ -476,7 +473,7 @@ export class BLEInterface {
     } catch (e) {}
 
     if (!this.canAdvertise) {
-      this.showToast('⚠️ Sin permiso de advertising', 'warning');
+      this.showToast('Sin permiso de advertising', 'warning');
       return;
     }
 
@@ -489,51 +486,48 @@ export class BLEInterface {
       }
       this.updateVisibilityButton();
     } catch (err) {
-      this.showToast('❌ Error: ' + err.message, 'error');
+      this.showToast('Error: ' + err.message, 'error');
     }
   }
 
   createDOM() {
     const tab = document.createElement('div');
     tab.id = 'ble-tab';
-    tab.innerHTML = `
-      <div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 11px; letter-spacing: 2px;">🔷 BLE</div>
-      <div id="ble-tab-badge" class="ble-tab-badge" style="display:none">0</div>
-    `;
+    tab.innerHTML = '<div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 11px; letter-spacing: 2px;">🔷 BLE</div><div id="ble-tab-badge" class="ble-tab-badge" style="display:none">0</div>';
     document.body.appendChild(tab);
     this.elements.tab = tab;
 
     const panel = document.createElement('div');
     panel.id = 'ble-panel';
-    panel.innerHTML = `
-      <div class="ble-header">
-        <h3>BLE Mesh</h3>
-        <button id="ble-close" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button>
-      </div>
-      <div class="ble-main-controls">
-        <button id="ble-visibility-btn" class="ble-btn-visibility btn-visibility-off">
-          <span class="btn-icon">👁</span><span>Visibilidad</span>
-        </button>
-        <button id="ble-scan-btn" class="ble-btn-discover">
-          <span id="text-discover">Descubrir</span>
-        </button>
-      </div>
-      <div class="ble-tabs">
-        <button class="ble-tab-btn active" data-tab="devices">Cercanos</button>
-        <button class="ble-tab-btn" data-tab="added">Agregados</button>
-        <button class="ble-tab-btn" data-tab="connected">Conectados</button>
-      </div>
-      <div id="tab-devices" class="ble-tab-content active">
-        <div id="ble-devices-list" class="ble-list"></div>
-      </div>
-      <div id="tab-added" class="ble-tab-content">
-        <div id="ble-added-list" class="ble-list"></div>
-      </div>
-      <div id="tab-connected" class="ble-tab-content">
-        <div id="ble-connected-list" class="ble-list"></div>
-      </div>
-      <div id="ble-status" class="ble-status-offline">OFFLINE</div>
-    `;
+    panel.innerHTML = [
+      '<div class="ble-header">',
+      '  <h3>BLE Mesh</h3>',
+      '  <button id="ble-close" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button>',
+      '</div>',
+      '<div class="ble-main-controls">',
+      '  <button id="ble-visibility-btn" class="ble-btn-visibility btn-visibility-off">',
+      '    <span class="btn-icon">👁</span><span>Visibilidad</span>',
+      '  </button>',
+      '  <button id="ble-scan-btn" class="ble-btn-discover">',
+      '    <span id="text-discover">Descubrir</span>',
+      '  </button>',
+      '</div>',
+      '<div class="ble-tabs">',
+      '  <button class="ble-tab-btn active" data-tab="devices">Cercanos</button>',
+      '  <button class="ble-tab-btn" data-tab="added">Agregados</button>',
+      '  <button class="ble-tab-btn" data-tab="connected">Conectados</button>',
+      '</div>',
+      '<div id="tab-devices" class="ble-tab-content active">',
+      '  <div id="ble-devices-list" class="ble-list"></div>',
+      '</div>',
+      '<div id="tab-added" class="ble-tab-content">',
+      '  <div id="ble-added-list" class="ble-list"></div>',
+      '</div>',
+      '<div id="tab-connected" class="ble-tab-content">',
+      '  <div id="ble-connected-list" class="ble-list"></div>',
+      '</div>',
+      '<div id="ble-status" class="ble-status-offline">OFFLINE</div>'
+    ].join('');
     document.body.appendChild(panel);
     this.elements.panel = panel;
 
@@ -556,24 +550,21 @@ export class BLEInterface {
     if (document.getElementById('ble-styles')) return;
     const style = document.createElement('style');
     style.id = 'ble-styles';
-    style.textContent = `
-      #ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #00d4ff, #0099cc); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; }
-      .ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; }
-      @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-      #ble-panel { position: fixed; top: 0; left: 0; width: 85vw; max-width: 400px; height: 100vh; background: rgba(10,10,15,0.98); transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; padding: 20px; overflow-y: auto; }
-      #ble-panel.active { transform: translateX(0); }
-      #ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); }
-      #ble-overlay.active { display: block; }
-      .ble-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
-      .ble-tabs { display: flex; gap: 8px; margin-bottom: 15px; }
-      .ble-tab-btn { flex: 1; padding: 10px 4px; background: #222; border: 1px solid #333; border-radius: 6px; color: #888; cursor: pointer; font-size: 11px; }
-      .ble-tab-btn.active { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; font-weight: bold; border-color: #00d4ff; }
-      .ble-tab-content { display: none; }
-      .ble-tab-content.active { display: block; }
-      .ble-main-controls { display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 10px; }
-      .ble-secondary-controls { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
-      .ble-btn-visibility { flex: 1; max-width: 140px; height: 48px; border-radius: 12px; border: none; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.3s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .ble-btn-visibility.btn-visibility-warning { background: #4A3A00 !important; color: #FFCC00 !important; border: 1px solid #FFCC00 !important; }
-      .ble-btn-visibility.btn-visibility-off { background: #3A3A3A; color: #888888; }
-      .ble-btn-visibility.btn-visibility-on { background: #00D9FF; color: #000000; box-shadow: 0 0 12px rgba(0, 217, 255, 0.4); }
-      .ble-btn-discover { flex: 1.2; height: 56px; border-radius: 14px; border: none; font-weight: 700; font-size: 15px; cursor: pointer
+    // FIX v3.5.3: CSS como string concatenado (evita template literals corruptos)
+    style.textContent = [
+      '#ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #00d4ff, #0099cc); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; }',
+      '.ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; }',
+      '@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }',
+      '#ble-panel { position: fixed; top: 0; left: 0; width: 85vw; max-width: 400px; height: 100vh; background: rgba(10,10,15,0.98); transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; padding: 20px; overflow-y: auto; }',
+      '#ble-panel.active { transform: translateX(0); }',
+      '#ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); }',
+      '#ble-overlay.active { display: block; }',
+      '.ble-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }',
+      '.ble-tabs { display: flex; gap: 8px; margin-bottom: 15px; }',
+      '.ble-tab-btn { flex: 1; padding: 10px 4px; background: #222; border: 1px solid #333; border-radius: 6px; color: #888; cursor: pointer; font-size: 11px; }',
+      '.ble-tab-btn.active { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; font-weight: bold; border-color: #00d4ff; }',
+      '.ble-tab-content { display: none; }',
+      '.ble-tab-content.active { display: block; }',
+      '.ble-main-controls { display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 10px; }',
+      '.ble-secondary-controls { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }',
+      '.ble-btn-visibility { flex: 1; max-width: 140px; height: 48px; border-radius: 12px; border: none; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.3s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
