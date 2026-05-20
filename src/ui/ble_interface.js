@@ -1,6 +1,7 @@
-// BLE Interface v3.5.3-FIX
+// BLE Interface v3.5.4-FIX
 // Ubicacion: src/ui/ble_interface.js
-// FIX v3.5.3: CSS como string concatenado (evita template literals corruptos por cat << EOF)
+// FIX v3.5.4: CSS movido a archivo separado ble_interface.css
+//             para evitar corrupcion por cat << EOF en workflow
 
 export function initBLEInterface(bleMesh) {
   const instance = new BLEInterface(bleMesh).init();
@@ -102,7 +103,7 @@ export class BLEInterface {
 
   init() {
     this.createDOM();
-    this.injectStyles();
+    this.loadCSS();
     this.setupEventListeners();
     if (!this.nativePlugin) {
       this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
@@ -546,25 +547,463 @@ export class BLEInterface {
     this.elements.badge = document.getElementById('ble-tab-badge');
   }
 
-  injectStyles() {
-    if (document.getElementById('ble-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'ble-styles';
-    // FIX v3.5.3: CSS como string concatenado (evita template literals corruptos)
-    style.textContent = [
-      '#ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #00d4ff, #0099cc); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; }',
-      '.ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; }',
-      '@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }',
-      '#ble-panel { position: fixed; top: 0; left: 0; width: 85vw; max-width: 400px; height: 100vh; background: rgba(10,10,15,0.98); transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; padding: 20px; overflow-y: auto; }',
-      '#ble-panel.active { transform: translateX(0); }',
-      '#ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); }',
-      '#ble-overlay.active { display: block; }',
-      '.ble-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }',
-      '.ble-tabs { display: flex; gap: 8px; margin-bottom: 15px; }',
-      '.ble-tab-btn { flex: 1; padding: 10px 4px; background: #222; border: 1px solid #333; border-radius: 6px; color: #888; cursor: pointer; font-size: 11px; }',
-      '.ble-tab-btn.active { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; font-weight: bold; border-color: #00d4ff; }',
-      '.ble-tab-content { display: none; }',
-      '.ble-tab-content.active { display: block; }',
-      '.ble-main-controls { display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 10px; }',
-      '.ble-secondary-controls { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }',
-      '.ble-btn-visibility { flex: 1; max-width: 140px; height: 48px; border-radius: 12px; border: none; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.3s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+  loadCSS() {
+    if (document.getElementById('ble-styles-link')) return;
+    const link = document.createElement('link');
+    link.id = 'ble-styles-link';
+    link.rel = 'stylesheet';
+    link.href = 'assets/css/ble_interface.css';
+    document.head.appendChild(link);
+  }
+
+  setupEventListeners() {
+    this.elements.tab.addEventListener('click', () => this.togglePanel());
+    this.elements.closeBtn.addEventListener('click', () => this.togglePanel());
+    this.elements.overlay.addEventListener('click', () => this.togglePanel());
+    this.elements.visibilityBtn.addEventListener('click', () => this.toggleVisibility());
+    this.elements.scanBtn.addEventListener('click', () => this.toggleScan());
+    document.querySelectorAll('.ble-tab-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
+    });
+    window.addEventListener('nexo:ble:closeChat', () => {
+      this._activeChatDeviceId = null;
+      this.updateBadge();
+    });
+  }
+
+  togglePanel() {
+    this.elements.panel.classList.toggle('active');
+    this.elements.overlay.classList.toggle('active');
+    if (this.elements.panel.classList.contains('active')) {
+      this.newDevicesCount = 0;
+      this.updateBadge();
+      this._loadConnectedDevices();
+      this.renderAddedList();
+    }
+  }
+
+  switchTab(tabName) {
+    document.querySelectorAll('.ble-tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.ble-tab-content').forEach(content => content.classList.remove('active'));
+    document.querySelector('[data-tab="' + tabName + '"]').classList.add('active');
+    document.getElementById('tab-' + tabName).classList.add('active');
+    if (tabName === 'added') this.renderAddedList();
+  }
+
+  async toggleScan() {
+    if (this.isDummyMode) return;
+
+    const permsResult = await this._ensurePermissions();
+    if (!permsResult?.success) {
+      this.showToast('Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000);
+      return;
+    }
+
+    try {
+      if (this.isScanning) {
+        if (this.nativePlugin) await this.nativePlugin.stopScan();
+        this.isScanning = false;
+        this.onScanStateChanged(false);
+      } else {
+        this.foundDevices.clear();
+        this._renderedDeviceIds.clear();
+        this.renderDevicesList();
+        if (this.nativePlugin) await this.nativePlugin.startScan();
+        this.isScanning = true;
+        this.onScanStateChanged(true);
+      }
+    } catch (err) {
+      this.isScanning = false;
+      this.onScanStateChanged(false);
+    }
+  }
+
+  onScanStateChanged(isScanning) {
+    this.isScanning = isScanning;
+    const btn = this.elements.scanBtn;
+    const text = document.getElementById('text-discover');
+    if (isScanning) {
+      btn.classList.add('scanning');
+      if (text) text.textContent = 'Detener';
+      this.elements.status.textContent = 'ESCANEANDO...';
+      this.elements.status.className = 'ble-status-scanning';
+      this.showToast('Buscando dispositivos...', 'info');
+    } else {
+      btn.classList.remove('scanning');
+      if (text) text.textContent = 'Descubrir';
+      this.updateStatus();
+    }
+  }
+
+  onDeviceFound(device) {
+    let id = _normId(device.id || device.address);
+    if (!id || id === 'null' || id === 'undefined') return;
+    if (this.localDeviceAddress && id === this.localDeviceAddress) return;
+
+    if (this._activeChatDeviceId) {
+      if (this.foundDevices.has(id)) {
+        const existing = this.foundDevices.get(id);
+        existing.rssi = device.rssi;
+        existing.name = device.name || existing.name;
+        existing.lastSeen = Date.now();
+        this.foundDevices.set(id, existing);
+        this.renderDevicesList();
+        return;
+      }
+      device.lastSeen = Date.now();
+      this.foundDevices.set(id, device);
+      this.renderDevicesList();
+      return;
+    }
+
+    if (this.foundDevices.has(id)) {
+      const existing = this.foundDevices.get(id);
+      existing.rssi = device.rssi;
+      existing.name = device.name || existing.name;
+      existing.lastSeen = Date.now();
+      this.foundDevices.set(id, existing);
+      this.renderDevicesList();
+      return;
+    }
+    device.lastSeen = Date.now();
+    this.foundDevices.set(id, device);
+    this.newDevicesCount++;
+    this.updateBadge();
+    this.renderDevicesList();
+  }
+
+  onDeviceConnected(device) {
+    const nid = _normId(device.id || device.address);
+    this.connectedDevices.set(nid, device);
+    this.renderConnectedList();
+    this.showToast('Conectado: ' + (device.name || 'Dispositivo'), 'success');
+  }
+
+  onDeviceDisconnected(device) {
+    const nid = _normId(device.id || device.address);
+    this.connectedDevices.delete(nid);
+    this.renderConnectedList();
+    this.showToast('Desconectado', 'info');
+  }
+
+  async _loadConnectedDevices() {
+    if (this.isDummyMode) return;
+    try {
+      let devices = [];
+      if (this.nativePlugin && this.nativePlugin.getConnectedDevices) {
+        const result = await this.nativePlugin.getConnectedDevices();
+        devices = result.devices || [];
+      }
+      this.connectedDevices.clear();
+      devices.forEach(d => {
+        const nid = _normId(d.id || d.address || d.deviceId);
+        this.connectedDevices.set(nid, { ...d, id: nid, address: nid });
+      });
+      this.renderConnectedList();
+    } catch (err) {}
+  }
+
+  async addContact(deviceId) {
+    const nid = _normId(deviceId);
+    const device = this.foundDevices.get(nid) || this.connectedDevices.get(nid);
+    if (!device) { this.showToast('Dispositivo no encontrado', 'error'); return; }
+    if (_addBLEContact(device)) {
+      this.showToast('Agregado a contactos', 'success');
+      this.renderDevicesList();
+    } else {
+      this.showToast('Ya esta en contactos', 'warning');
+    }
+  }
+
+  async removeContact(deviceId) {
+    _removeBLEContact(deviceId);
+    this.showToast('Eliminado', 'info');
+    this.renderAddedList();
+    this.renderDevicesList();
+  }
+
+  async openChat(deviceId) {
+    const nid = _normId(deviceId);
+    let device = this.foundDevices.get(nid) || this.connectedDevices.get(nid);
+    const contact = _getBLEContacts().find(c => _normId(c.id || c.address) === nid);
+    if (!device && contact) device = { id: contact.id || contact.address, address: contact.address, name: contact.name || 'NEXO Device', rssi: contact.rssi };
+    if (!device) { this.showToast('Contacto no disponible', 'error'); return; }
+
+    this._activeChatDeviceId = nid;
+    this.newDevicesCount = 0;
+    this.updateBadge();
+
+    const displayName = contact?.name || device.name || 'NEXO Peer';
+    const state = this._getDeviceState(nid);
+    const isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
+    const isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
+
+    if (!isFullyReady && isConnecting && this.nativePlugin) {
+      this.showToast('Conexion en progreso, esperando canal...', 'info');
+      try {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout')), 15000);
+          const checkReady = () => {
+            const s = this._getDeviceState(nid);
+            if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
+              clearTimeout(timeout);
+              resolve();
+            } else {
+              setTimeout(checkReady, 300);
+            }
+          };
+          checkReady();
+        });
+      } catch (e) {
+        this.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
+      }
+    }
+
+    if (!isFullyReady && !isConnecting && this.nativePlugin) {
+      const permsResult = await this._ensurePermissions();
+      if (!permsResult?.success) {
+        this.showToast('Permisos BLE requeridos para conectar', 'warning', 5000);
+        return;
+      }
+
+      try {
+        console.log('[BLEInterface] Conectando a', nid, '...');
+        const connResult = await this.nativePlugin.connectToDevice({ deviceId: device.id || device.address || nid });
+        console.log('[BLEInterface] connectToDevice result:', connResult);
+        if (connResult && connResult.connected && !connResult.alreadyConnected) {
+          this.showToast('Conectando canal BLE...', 'info');
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Timeout')), 15000);
+            const checkReady = () => {
+              const s = this._getDeviceState(nid);
+              if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
+                clearTimeout(timeout);
+                resolve();
+              } else {
+                setTimeout(checkReady, 300);
+              }
+            };
+            checkReady();
+          });
+        }
+      } catch (e) {
+        console.warn('[BLEInterface] Conexion/timeout:', e.message);
+        this.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
+      }
+    }
+
+    const appContainer = document.getElementById('app');
+    if (appContainer) appContainer.classList.remove('hidden');
+    const nameInput = document.getElementById('chat-contact-name');
+    const subtitle = document.getElementById('chat-contact-subtitle');
+    if (nameInput) nameInput.value = displayName;
+    if (subtitle) subtitle.textContent = 'BLUETOOTH';
+
+    window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
+      detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
+    }));
+
+    this.elements.panel.classList.remove('active');
+    this.elements.overlay.classList.remove('active');
+  }
+
+  renderDevicesList() {
+    const list = this.elements.devicesList;
+    if (this.foundDevices.size === 0) {
+      list.innerHTML = '<div class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</div>';
+      return;
+    }
+    list.innerHTML = '';
+    this.foundDevices.forEach((device, id) => {
+      const isAdded = _isBLEContact(id);
+      const isNew = !this._renderedDeviceIds.has(id);
+      if (isNew) this._renderedDeviceIds.add(id);
+      const item = document.createElement('div');
+      item.className = 'ble-device-item' + (isNew ? ' new' : '');
+      const actionHtml = isAdded
+        ? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>'
+        : '<button class="ble-btn-add" onclick="window.bleInterface.addContact(\'' + id + '\')">Agregar</button>';
+      item.innerHTML = [
+        '<div class="ble-device-info">',
+        '  <div class="ble-device-name">' + (device.name || 'NEXO Device') + '</div>',
+        '  <div class="ble-device-id">' + this._formatId(id) + '</div>',
+        '  <div class="ble-device-rssi">' + (device.rssi || '?') + ' dBm</div>',
+        '</div>',
+        '<div class="ble-device-actions">' + actionHtml + '</div>'
+      ].join('');
+      list.appendChild(item);
+    });
+  }
+
+  renderAddedList() {
+    const list = this.elements.addedList;
+    const contacts = _getBLEContacts();
+    if (contacts.length === 0) {
+      list.innerHTML = '<div class="ble-empty">No hay contactos agregados</div>';
+      return;
+    }
+    list.innerHTML = '';
+    contacts.forEach((contact) => {
+      const id = _normId(contact.id || contact.address);
+      const item = document.createElement('div');
+      item.className = 'ble-device-item';
+      item.innerHTML = [
+        '<div class="ble-device-info">',
+        '  <div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div>',
+        '  <div class="ble-device-id">' + this._formatId(id) + '</div>',
+        '</div>',
+        '<div class="ble-device-actions">',
+        '  <button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>',
+        '  <button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(\'' + id + '\')">🗑️</button>',
+        '</div>'
+      ].join('');
+      list.appendChild(item);
+    });
+  }
+
+  renderConnectedList() {
+    const list = this.elements.connectedList;
+    if (this.connectedDevices.size === 0) {
+      list.innerHTML = '<div class="ble-empty">No hay dispositivos conectados</div>';
+      return;
+    }
+    list.innerHTML = '';
+    this.connectedDevices.forEach((device, id) => {
+      const state = this._getDeviceState(id);
+      const stateLabel = this._renderStateLabel(state);
+      const isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
+      const item = document.createElement('div');
+      item.className = 'ble-device-item';
+      item.innerHTML = [
+        '<div class="ble-device-info">',
+        '  <div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div>',
+        '  <div class="ble-device-id">' + this._formatId(id) + '</div>',
+        '  <div class="ble-state-' + state.state + '">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div>',
+        '</div>',
+        '<div class="ble-device-actions">',
+        '  <button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')"' + (!isReady ? ' disabled' : '') + '>Chat</button>',
+        '  <button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\'' + id + '\')">❌</button>',
+        '</div>'
+      ].join('');
+      list.appendChild(item);
+    });
+  }
+
+  _renderStateLabel(state) {
+    if (!state || !state.state) return '';
+    switch (state.state) {
+      case BLE_STATES.CONNECTING: return '⏳ ' + (state.message || 'Conectando...');
+      case BLE_STATES.DISCOVERING_SERVICES: return '🔍 Descubriendo...';
+      case BLE_STATES.NOTIFICATIONS_READY: return '✅ Canal listo';
+      case BLE_STATES.READY_TO_CHAT: return '✅ Listo';
+      case BLE_STATES.ERROR: return '❌ ' + (state.lastError || 'Error');
+      case BLE_STATES.RECONNECTING: return '🔄 ' + (state.message || 'Reconectando...');
+      default: return '';
+    }
+  }
+
+  async connect(deviceId) {
+    if (this.isDummyMode) return;
+    try {
+      if (this.nativePlugin) await this.nativePlugin.connectToDevice({ deviceId });
+    } catch (err) { this.showToast('Error al conectar', 'error'); }
+  }
+
+  async disconnect(deviceId) {
+    if (this.isDummyMode) return;
+    const nid = _normId(deviceId);
+    try {
+      this._cancelReconnect(nid);
+      const device = this.connectedDevices.get(nid);
+      const targetId = device?.id || device?.address || deviceId;
+      if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId: targetId });
+      if (this._activeChatDeviceId === nid) {
+        this._activeChatDeviceId = null;
+        this.updateBadge();
+      }
+    } catch (err) {}
+  }
+
+  updateBadge() {
+    const badge = this.elements.badge;
+    if (this._activeChatDeviceId) {
+      badge.style.display = 'none';
+      return;
+    }
+    if (this.newDevicesCount > 0) {
+      badge.textContent = this.newDevicesCount;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  async updateStatus(customStatus) {
+    if (customStatus) {
+      this.elements.status.textContent = customStatus;
+      this.elements.status.className = 'ble-status-offline';
+      return;
+    }
+    if (this.isDummyMode) return;
+    try {
+      let state = 'UNKNOWN';
+      if (this.nativePlugin && this.nativePlugin.isBluetoothEnabled) {
+        const btState = await this.nativePlugin.isBluetoothEnabled();
+        state = btState.enabled ? 'poweredOn' : 'poweredOff';
+        this._serverReady = btState.serverReady || false;
+      }
+      const stateMap = {
+        'poweredon': 'ENCENDIDO',
+        'poweredoff': 'APAGADO',
+        'unknown': 'DESCONOCIDO'
+      };
+      const normalizedState = (state || '').toString().toLowerCase();
+      this.elements.status.textContent = stateMap[normalizedState] || state.toUpperCase();
+      this.elements.status.className = state === 'poweredOn' ? 'ble-status-online' : 'ble-status-offline';
+    } catch (err) {
+      this.elements.status.textContent = 'ERROR';
+    }
+  }
+
+  showToast(message, type = 'info', duration = 3000) {
+    const existing = document.querySelector('.ble-toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = 'ble-toast ' + type;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
+
+  _formatId(id) {
+    if (!id) return '??';
+    return id.substring(0, 8) + '...' + id.substring(id.length - 4);
+  }
+
+  destroy() {
+    const styles = document.getElementById('ble-styles-link');
+    if (styles) styles.remove();
+    this._reconnectTimers.forEach((timer) => clearTimeout(timer));
+    this._reconnectTimers.clear();
+    if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
+    if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
+    if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
+    if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
+    if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
+    if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
+    if (this._nativePayloadListener) this._nativePayloadListener.remove();
+    if (this._nativeServicesReadyListener) this._nativeServicesReadyListener.remove();
+    if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
+    if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
+    if (this._nativeStackBrokenListener) this._nativeStackBrokenListener.remove();
+    if (this._nativePeerInfoListener) this._nativePeerInfoListener.remove();
+    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    if (this._nativeServerErrorListener) this._nativeServerErrorListener.remove();
+    if (this.isScanning) this.toggleScan();
+  }
+}
+
+window.bleInterface = null;
