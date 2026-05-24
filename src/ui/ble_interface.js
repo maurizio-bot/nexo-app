@@ -989,3 +989,4 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
+
