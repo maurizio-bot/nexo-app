@@ -1,8 +1,8 @@
 /**
- * NEXO Permission Shim v2.0-ARCH
+ * NEXO Permission Shim v2.0.1-ARCH
  * Traduce API granular de permisos (builds #1057+) a API nativa simple de build #961.
  * NO toca Kotlin. Singleton. Guard guards. Retry backoff 3x500ms. Anti-spam cache.
- * Compatible con: ble_permissions.js v6.2, main.js v9.0, ble_interface.js v3.5
+ * FIX v2.0.1: Exports restructured for webpack 5 compatibility.
  */
 
 import { Capacitor } from '@capacitor/core';
@@ -12,9 +12,9 @@ let _instance = null;
 let _initLock = false;
 
 // ─── Constants ───
-const SHIM_VERSION = '2.0-ARCH';
-const RETRY_DELAYS = [500, 500, 500]; // 3 retries, 500ms each
-const CACHE_TTL = 2000; // ms
+const SHIM_VERSION = '2.0.1-ARCH';
+const RETRY_DELAYS = [500, 500, 500];
+const CACHE_TTL = 2000;
 const STORAGE_KEY = 'nexo_shim_v2_state';
 
 const NAP_CODES = {
@@ -30,15 +30,17 @@ const NAP_CODES = {
   SHIM_EVENT: '[NAP-SHIM-302]'
 };
 
-function _napLog(code, message, level = 'INFO', data = null) {
-  const entry = `[${new Date().toISOString()}] ${code} ${message}`;
-  switch (level) {
-    case 'DEBUG':
-      if (localStorage.getItem('nexo_verbose_logs') === 'true') console.debug(entry, data || '');
-      break;
-    case 'WARN': console.warn(entry, data || ''); break;
-    case 'ERROR': console.error(entry, data || ''); break;
-    default: console.log(entry, data || '');
+function _napLog(code, message, level, data) {
+  level = level || 'INFO';
+  const entry = '[' + new Date().toISOString() + '] ' + code + ' ' + message;
+  if (level === 'DEBUG') {
+    if (localStorage.getItem('nexo_verbose_logs') === 'true') console.debug(entry, data || '');
+  } else if (level === 'WARN') {
+    console.warn(entry, data || '');
+  } else if (level === 'ERROR') {
+    console.error(entry, data || '');
+  } else {
+    console.log(entry, data || '');
   }
 }
 
@@ -54,7 +56,7 @@ class ResultCache {
     }
     return entry.value;
   }
-  set(key, value) { this._map.set(key, { value, ts: Date.now() }); }
+  set(key, value) { this._map.set(key, { value: value, ts: Date.now() }); }
   clear() { this._map.clear(); }
 }
 
@@ -62,7 +64,6 @@ class ResultCache {
 class NexoPermissionShim {
   constructor() {
     if (_instance) return _instance;
-
     this.version = SHIM_VERSION;
     this.platform = Capacitor.getPlatform();
     this.nativePlugin = null;
@@ -70,8 +71,6 @@ class NexoPermissionShim {
     this._listeners = [];
     this._resumeHandler = null;
     this._isDestroyed = false;
-
-    // State: simulamos granularidad sobre base simple
     this.state = {
       granted: false,
       checked: false,
@@ -88,24 +87,21 @@ class NexoPermissionShim {
       nativeResult: null,
       lastCheck: 0
     };
-
     this._initNativePlugin();
     this._attachResumeListener();
     _instance = this;
-
-    _napLog(NAP_CODES.SHIM_INIT, `NexoPermissionShim v${SHIM_VERSION} initialized`);
+    _napLog(NAP_CODES.SHIM_INIT, 'NexoPermissionShim v' + SHIM_VERSION + ' initialized');
   }
 
-  // ─── Native Plugin Resolution ───
   _initNativePlugin() {
     if (this.platform !== 'android') return;
     try {
-      this.nativePlugin = window.Capacitor?.Plugins?.NexoBLE || null;
+      this.nativePlugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
       if (!this.nativePlugin) {
-        _napLog(NAP_CODES.SHIM_NATIVE_MISSING, 'NexoBLE plugin no disponible aún', 'WARN');
+        _napLog(NAP_CODES.SHIM_NATIVE_MISSING, 'NexoBLE plugin no disponible aun', 'WARN');
       }
     } catch (e) {
-      _napLog(NAP_CODES.SHIM_NATIVE_MISSING, `Error accediendo plugin: ${e.message}`, 'ERROR');
+      _napLog(NAP_CODES.SHIM_NATIVE_MISSING, 'Error accediendo plugin: ' + e.message, 'ERROR');
     }
   }
 
@@ -114,39 +110,35 @@ class NexoPermissionShim {
     return !!this.nativePlugin;
   }
 
-  // ─── Resume Listener ───
   _attachResumeListener() {
     if (this._resumeHandler) return;
-    this._resumeHandler = async () => {
-      _napLog(NAP_CODES.SHIM_EVENT, 'App resumed — re-verificando permisos...');
-      await new Promise(r => setTimeout(r, 800));
-      const granted = await this.check({ bypassCache: true });
+    var self = this;
+    this._resumeHandler = async function() {
+      _napLog(NAP_CODES.SHIM_EVENT, 'App resumed - re-verificando permisos...');
+      await new Promise(function(r) { setTimeout(r, 800); });
+      var granted = await self.check({ bypassCache: true });
       if (granted) {
         _napLog(NAP_CODES.SHIM_GRANTED, 'Permisos concedidos tras resume');
-        this._dispatchGranted('resume');
+        self._dispatchGranted('resume');
       }
     };
     document.addEventListener('resume', this._resumeHandler);
-    // Fallback visibilitychange para web/PWA
-    document.addEventListener('visibilitychange', async () => {
+    document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible') {
-        setTimeout(() => this._resumeHandler(), 500);
+        setTimeout(function() { self._resumeHandler(); }, 500);
       }
     });
   }
 
-  // ─── Event Dispatch ───
   _dispatchGranted(source) {
-    const detail = { source, timestamp: Date.now(), shimVersion: this.version };
-    // Evento moderno (usado por ble_permissions.js v6.2)
-    window.dispatchEvent(new CustomEvent('nexo-permissions-granted', { detail }));
-    // Evento legacy (usado por main.js v9.0 y SetupManager)
-    window.dispatchEvent(new CustomEvent('blePermissionsGranted', { detail: { source } }));
+    var detail = { source: source, timestamp: Date.now(), shimVersion: this.version };
+    window.dispatchEvent(new CustomEvent('nexo-permissions-granted', { detail: detail }));
+    window.dispatchEvent(new CustomEvent('blePermissionsGranted', { detail: { source: source } }));
   }
 
   _dispatchDenied(source, status) {
     window.dispatchEvent(new CustomEvent('nexo-permissions-denied', {
-      detail: { source, timestamp: Date.now(), status }
+      detail: { source: source, timestamp: Date.now(), status: status }
     }));
   }
 
@@ -156,48 +148,35 @@ class NexoPermissionShim {
     }));
   }
 
-  // ─── Core: check() ───
-  async check(options = {}) {
+  async check(options) {
+    options = options || {};
     if (this._isDestroyed) return false;
     if (this.platform !== 'android') {
       this.state.granted = true;
       this.state.checked = true;
       return true;
     }
-
-    // Anti-spam cache
     if (!options.bypassCache) {
-      const cached = this._cache.get('check');
+      var cached = this._cache.get('check');
       if (cached !== null) return cached;
     }
-
     if (this.state.checking) {
-      while (this.state.checking) await new Promise(r => setTimeout(r, 50));
+      while (this.state.checking) await new Promise(function(r) { setTimeout(r, 50); });
       return this.state.granted;
     }
-
     this.state.checking = true;
-    let finalResult = false;
-
+    var finalResult = false;
     try {
       _napLog(NAP_CODES.SHIM_CHECK, 'Consultando estado BLE nativo...');
-
       if (!this._ensureNativePlugin()) {
         _napLog(NAP_CODES.SHIM_NATIVE_MISSING, 'Plugin nativo no disponible', 'WARN');
         this.state.granted = false;
         this.state.checked = true;
         return false;
       }
-
-      // Build #961 API: checkBLEStatus() → { allGranted: boolean }
-      const nativeResult = await this._callNativeWithRetry('checkBLEStatus', []);
+      var nativeResult = await this._callNativeWithRetry('checkBLEStatus', []);
       this.state.nativeResult = nativeResult;
-
-      // Traducción: #961 solo devuelve allGranted. Simulamos granularidad.
-      const allGranted = nativeResult?.allGranted === true;
-
-      // Si allGranted=true, todos los permisos granular son true
-      // Si allGranted=false, no sabemos cuál falló, marcamos todos false
+      var allGranted = nativeResult && nativeResult.allGranted === true;
       this.state.permissions = {
         scan: allGranted,
         connect: allGranted,
@@ -206,22 +185,14 @@ class NexoPermissionShim {
         notifications: allGranted,
         foregroundConnected: allGranted
       };
-
       this.state.granted = allGranted;
-      this.state.isPermanentlyDenied = nativeResult?.isPermanentlyDenied === true;
+      this.state.isPermanentlyDenied = nativeResult && nativeResult.isPermanentlyDenied === true;
       this.state.checked = true;
       this.state.lastCheck = Date.now();
-
-      _napLog(NAP_CODES.SHIM_CHECK, 
-        `checkBLEStatus: allGranted=${allGranted}, permanent=${this.state.isPermanentlyDenied}`,
-        'DEBUG',
-        nativeResult
-      );
-
+      _napLog(NAP_CODES.SHIM_CHECK, 'checkBLEStatus: allGranted=' + allGranted + ', permanent=' + this.state.isPermanentlyDenied, 'DEBUG', nativeResult);
       finalResult = allGranted;
-
     } catch (e) {
-      _napLog(NAP_CODES.SHIM_ERROR, `check failed: ${e.message}`, 'ERROR', e);
+      _napLog(NAP_CODES.SHIM_ERROR, 'check failed: ' + e.message, 'ERROR', e);
       this.state.granted = false;
       this.state.checked = true;
       finalResult = false;
@@ -229,37 +200,27 @@ class NexoPermissionShim {
       this.state.checking = false;
       this._cache.set('check', finalResult);
     }
-
     return finalResult;
   }
 
-  // ─── Core: request() ───
   async request() {
     if (this._isDestroyed) return false;
     if (this.platform !== 'android') return true;
-
     if (this.state.checking) {
-      while (this.state.checking) await new Promise(r => setTimeout(r, 100));
+      while (this.state.checking) await new Promise(function(r) { setTimeout(r, 100); });
       if (this.state.granted) return true;
     }
-
     this.state.checking = true;
-    let finalResult = false;
-
+    var finalResult = false;
     try {
       _napLog(NAP_CODES.SHIM_REQUEST, 'Solicitando permisos via initializeBLE...');
-
       if (!this._ensureNativePlugin()) {
         _napLog(NAP_CODES.SHIM_NATIVE_MISSING, 'Plugin nativo no disponible para request', 'ERROR');
         return false;
       }
-
-      // Build #961 API: initializeBLE() → { granted: boolean, isPermanentlyDenied: boolean }
-      const nativeResult = await this._callNativeWithRetry('initializeBLE', []);
-
-      const granted = nativeResult?.granted === true;
-      const permanent = nativeResult?.isPermanentlyDenied === true;
-
+      var nativeResult = await this._callNativeWithRetry('initializeBLE', []);
+      var granted = nativeResult && nativeResult.granted === true;
+      var permanent = nativeResult && nativeResult.isPermanentlyDenied === true;
       this.state.granted = granted;
       this.state.isPermanentlyDenied = permanent;
       this.state.checked = true;
@@ -272,79 +233,74 @@ class NexoPermissionShim {
         foregroundConnected: granted
       };
       this.state.lastCheck = Date.now();
-
       if (granted) {
         _napLog(NAP_CODES.SHIM_GRANTED, 'Permisos concedidos via initializeBLE');
         this._dispatchGranted('request');
       } else if (permanent) {
-        _napLog(NAP_CODES.SHIM_PERMANENT, 'Denegación permanente detectada', 'WARN');
+        _napLog(NAP_CODES.SHIM_PERMANENT, 'Denegacion permanente detectada', 'WARN');
         this._dispatchPermanentDenied();
       } else {
         _napLog(NAP_CODES.SHIM_DENIED, 'Permisos denegados por usuario', 'WARN');
         this._dispatchDenied('request', this.state);
       }
-
       finalResult = granted;
-
     } catch (e) {
-      _napLog(NAP_CODES.SHIM_ERROR, `request error: ${e.message}`, 'ERROR', e);
-      // Fallback a check()
+      _napLog(NAP_CODES.SHIM_ERROR, 'request error: ' + e.message, 'ERROR', e);
       try { finalResult = await this.check({ bypassCache: true }); } catch (_) { finalResult = false; }
     } finally {
       this.state.checking = false;
       this._cache.set('check', finalResult);
     }
-
     return finalResult;
   }
 
-  // ─── Core: ensure() ───
   async ensure() {
     if (this.state.granted) return true;
     if (!this.state.checked) {
-      const ok = await this.check();
+      var ok = await this.check();
       if (ok) return true;
     }
     if (this.state.isPermanentlyDenied) {
-      _napLog(NAP_CODES.SHIM_PERMANENT, 'ensure() abortado: denegación permanente', 'WARN');
+      _napLog(NAP_CODES.SHIM_PERMANENT, 'ensure() abortado: denegacion permanente', 'WARN');
       return false;
     }
     return await this.request();
   }
 
-  // ─── Retry Logic ───
   async _callNativeWithRetry(methodName, args) {
-    let lastError = null;
-    for (let i = 0; i <= RETRY_DELAYS.length; i++) {
+    var lastError = null;
+    for (var i = 0; i <= RETRY_DELAYS.length; i++) {
       try {
         if (!this.nativePlugin[methodName]) {
-          throw new Error(`Método nativo ${methodName} no existe en plugin`);
+          throw new Error('Metodo nativo ' + methodName + ' no existe en plugin');
         }
-        const result = await this.nativePlugin[methodName](...args);
+        var result = await this.nativePlugin[methodName].apply(this.nativePlugin, args);
         if (i > 0) {
-          _napLog(NAP_CODES.SHIM_RETRY, `${methodName} exitoso tras ${i} reintentos`);
+          _napLog(NAP_CODES.SHIM_RETRY, methodName + ' exitoso tras ' + i + ' reintentos');
         }
         return result;
       } catch (e) {
         lastError = e;
         if (i < RETRY_DELAYS.length) {
-          _napLog(NAP_CODES.SHIM_RETRY, 
-            `${methodName} falló (intento ${i + 1}/${RETRY_DELAYS.length + 1}): ${e.message}. Reintentando en ${RETRY_DELAYS[i]}ms...`,
-            'WARN'
-          );
-          await new Promise(r => setTimeout(r, RETRY_DELAYS[i]));
+          _napLog(NAP_CODES.SHIM_RETRY, methodName + ' fallo (intento ' + (i + 1) + '/' + (RETRY_DELAYS.length + 1) + '): ' + e.message + '. Reintentando en ' + RETRY_DELAYS[i] + 'ms...', 'WARN');
+          await new Promise(function(r) { setTimeout(r, RETRY_DELAYS[i]); });
         }
       }
     }
-    throw lastError || new Error(`${methodName} falló tras todos los reintentos`);
+    throw lastError || new Error(methodName + ' fallo tras todos los reintentos');
   }
 
-  // ─── Public API ───
   isReady() { return this.state.granted; }
 
   getStatus() {
     return {
-      ...this.state,
+      granted: this.state.granted,
+      checked: this.state.checked,
+      checking: this.state.checking,
+      isPermanentlyDenied: this.state.isPermanentlyDenied,
+      permissions: this.state.permissions,
+      nativeResult: this.state.nativeResult,
+      lastCheck: this.state.lastCheck,
       shimVersion: this.version,
       platform: this.platform,
       nativeAvailable: !!this.nativePlugin
@@ -352,25 +308,29 @@ class NexoPermissionShim {
   }
 
   getGranularPermissions() {
-    // Devuelve la granularidad simulada para compatibilidad con ble_permissions.js
-    return { ...this.state.permissions };
+    return {
+      scan: this.state.permissions.scan,
+      connect: this.state.permissions.connect,
+      advertise: this.state.permissions.advertise,
+      location: this.state.permissions.location,
+      notifications: this.state.permissions.notifications,
+      foregroundConnected: this.state.permissions.foregroundConnected
+    };
   }
 
-  // ─── Cleanup ───
   destroy() {
     this._isDestroyed = true;
     if (this._resumeHandler) {
       document.removeEventListener('resume', this._resumeHandler);
       this._resumeHandler = null;
     }
-    this._listeners.forEach(l => { try { l.remove(); } catch (e) {} });
+    this._listeners.forEach(function(l) { try { l.remove(); } catch (e) {} });
     this._listeners = [];
     this._cache.clear();
     _instance = null;
     _napLog(NAP_CODES.SHIM_INIT, 'NexoPermissionShim destruido');
   }
 
-  // ─── Persistence helpers ───
   _saveState() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -384,10 +344,10 @@ class NexoPermissionShim {
 
   _loadState() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved.lastCheck && Date.now() - saved.lastCheck < 300000) { // 5 min TTL
+        var saved = JSON.parse(raw);
+        if (saved.lastCheck && Date.now() - saved.lastCheck < 300000) {
           this.state.granted = saved.granted;
           this.state.checked = saved.checked;
           this.state.isPermanentlyDenied = saved.isPermanentlyDenied;
@@ -397,20 +357,20 @@ class NexoPermissionShim {
   }
 }
 
-// ─── Factory / Singleton Export ───
-export function getPermissionShim() {
+// ─── Factory ───
+function getPermissionShim() {
   if (!_instance || _instance._isDestroyed) {
     _instance = new NexoPermissionShim();
   }
   return _instance;
 }
 
-// ─── Convenience exports (API compatible con ble_permissions.js) ───
-export async function checkBLEStatus() {
-  const shim = getPermissionShim();
-  const granted = await shim.check();
+// ─── Convenience functions ───
+async function checkBLEStatus() {
+  var shim = getPermissionShim();
+  var granted = await shim.check();
   return {
-    granted,
+    granted: granted,
     allGranted: granted,
     scanGranted: shim.state.permissions.scan,
     connectGranted: shim.state.permissions.connect,
@@ -424,28 +384,43 @@ export async function checkBLEStatus() {
   };
 }
 
-export async function requestBLEPermissions() {
-  const shim = getPermissionShim();
-  const granted = await shim.request();
+async function requestBLEPermissions() {
+  var shim = getPermissionShim();
+  var granted = await shim.request();
   return {
-    granted,
+    granted: granted,
     allGranted: granted,
     isPermanentlyDenied: shim.state.isPermanentlyDenied
   };
 }
 
-export async function ensureBLEPermissions() {
-  const shim = getPermissionShim();
+async function ensureBLEPermissions() {
+  var shim = getPermissionShim();
   return await shim.ensure();
 }
 
-export function isPermanentlyDenied() {
+function isPermanentlyDenied() {
   return getPermissionShim().state.isPermanentlyDenied;
 }
 
-export function getShimStatus() {
+function getShimStatus() {
   return getPermissionShim().getStatus();
 }
+
+// ─── Object export for compatibility ───
+var permissionShim = {
+  getPermissionShim: getPermissionShim,
+  checkBLEStatus: checkBLEStatus,
+  requestBLEPermissions: requestBLEPermissions,
+  ensureBLEPermissions: ensureBLEPermissions,
+  isPermanentlyDenied: isPermanentlyDenied,
+  getShimStatus: getShimStatus,
+  NexoPermissionShim: NexoPermissionShim
+};
+
+// ─── Named exports (webpack 5 compatible) ───
+export { NexoPermissionShim, getPermissionShim, checkBLEStatus, requestBLEPermissions, ensureBLEPermissions, isPermanentlyDenied, getShimStatus, permissionShim };
+export default NexoPermissionShim;
 
 // ─── Global registration ───
 if (typeof window !== 'undefined') {
@@ -454,7 +429,5 @@ if (typeof window !== 'undefined') {
   window.checkBLEStatus = checkBLEStatus;
   window.requestBLEPermissions = requestBLEPermissions;
   window.ensureBLEPermissions = ensureBLEPermissions;
+  window.permissionShim = permissionShim;
 }
-
-export default NexoPermissionShim;
-
