@@ -3,6 +3,7 @@
 // FIX v3.5.4: CSS movido a archivo separado ble_interface.css
 //             para evitar corrupcion por cat << EOF en workflow
 
+
 export function initBLEInterface(bleMesh) {
   const instance = new BLEInterface(bleMesh).init();
   window.bleInterface = instance;
