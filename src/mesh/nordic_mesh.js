@@ -5,6 +5,7 @@
  * FEATURE: Visibilidad toggle (advertising control)
  */
 
+
 const UUIDS = Object.freeze({
   SERVICE: 'a3b5c8d2-e1f4-4a7b-9c3d-6e8f1a2b5c7d',
   ANNOUNCE: 'b4c6d9e3-f2a5-4b8c-ad4e-7f9a2b3c6d8e',
