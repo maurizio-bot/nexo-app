@@ -123,6 +123,7 @@ export class BLEInterface {
       this._initVisibility();
       this._setupNativeScanListeners();
       this._setupNativeConnectionListeners();
+      this._setupNativeServerReadyListener();
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
       // FIX v3.5.1-SHIM: Eliminados _setupNativePeerInfoListener, _setupNativeStackBrokenListener, _setupNativeServerErrorListener
@@ -157,8 +158,19 @@ export class BLEInterface {
   }
 
   // FIX v3.5.1-SHIM: Eliminado _setupNativePeerInfoListener — onPeerInfoReceived NO existe en #961
-  // FIX v3.5.1-SHIM: Eliminado _setupNativeServerReadyListener — onServerReady SI existe en #961, se mantiene
-  // pero simplificado sin dependencia de onServerError
+  // FIX v3.5.1-SHIM: RESTAURADO _setupNativeServerReadyListener — onServerReady SI existe en #961
+  // y es CRITICO para que toggleVisibility() sepa cuando el servidor esta listo
+
+  _setupNativeServerReadyListener() {
+    if (!this.nativePlugin) return;
+    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    var self = this;
+    this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', function(data) {
+      self._serverReady = true;
+      console.log('[BLEInterface] onServerReady recibido:', data);
+      self.showToast('Servidor BLE listo', 'success');
+    });
+  }
 
   _setupNativeConnectionListeners() {
     if (!this.nativePlugin) return;
@@ -356,6 +368,7 @@ export class BLEInterface {
     var self = this;
     this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', function() {
       self.isAdvertising = true;
+      self._serverReady = true;  // Backup: advertising started = server is ready
       self.updateVisibilityButton();
       self.showToast('Visibilidad activada', 'success');
     });
@@ -425,6 +438,16 @@ export class BLEInterface {
             if (this._serverReady) { clearTimeout(timeout); resolve(); }
             else { setTimeout(check, 200); }
           }.bind(this);
+          // Also resolve immediately if onServerReady fires during wait
+          var serverReadyListener = null;
+          if (this.nativePlugin) {
+            serverReadyListener = this.nativePlugin.addListener('onServerReady', function() {
+              if (serverReadyListener) serverReadyListener.remove();
+              clearTimeout(timeout);
+              this._serverReady = true;
+              resolve();
+            }.bind(this));
+          }
           check();
         }.bind(this));
       } catch (e) {
@@ -983,10 +1006,10 @@ export class BLEInterface {
     if (this._nativeServicesReadyListener) this._nativeServicesReadyListener.remove();
     if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
     if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
-    // FIX v3.5.1-SHIM: Eliminados _nativeStackBrokenListener, _nativePeerInfoListener, _nativeServerReadyListener, _nativeServerErrorListener
+    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    // FIX v3.5.1-SHIM: Eliminados _nativeStackBrokenListener, _nativePeerInfoListener, _nativeServerErrorListener
     if (this.isScanning) this.toggleScan();
   }
 }
 
 window.bleInterface = null;
-
