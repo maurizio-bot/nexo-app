@@ -1,8 +1,14 @@
 /**
- * NEXO Permission Shim v2.0.1-ARCH
+ * NEXO Permission Shim v2.1.0-HEALTH
  * Traduce API granular de permisos (builds #1057+) a API nativa simple de build #961.
  * NO toca Kotlin. Singleton. Guard guards. Retry backoff 3x500ms. Anti-spam cache.
- * FIX v2.0.1: Exports restructured for webpack 5 compatibility.
+ * 
+ * FIXES v2.1.0-HEALTH:
+ * 1) Health check: verifica estado cada 2 minutos
+ * 2) Auto-cleanup de cache cada 10 minutos
+ * 3) State freshness: invalida estado si >1h sin check
+ * 4) Memory leak prevention: limpia listeners y callbacks
+ * 5) getHealthStatus() para diagnóstico desde JS
  */
 
 import { Capacitor } from '@capacitor/core';
@@ -12,10 +18,11 @@ let _instance = null;
 let _initLock = false;
 
 // ─── Constants ───
-const SHIM_VERSION = '2.0.1-ARCH';
+const SHIM_VERSION = '2.1.0-HEALTH';
 const RETRY_DELAYS = [500, 500, 500];
 const CACHE_TTL = 2000;
 const STORAGE_KEY = 'nexo_shim_v2_state';
+const STATE_MAX_AGE_MS = 3600000; // 1 hora
 
 const NAP_CODES = {
   SHIM_INIT: '[NAP-SHIM-001]',
@@ -27,7 +34,8 @@ const NAP_CODES = {
   SHIM_RETRY: '[NAP-SHIM-007]',
   SHIM_ERROR: '[NAP-SHIM-900]',
   SHIM_NATIVE_MISSING: '[NAP-SHIM-901]',
-  SHIM_EVENT: '[NAP-SHIM-302]'
+  SHIM_EVENT: '[NAP-SHIM-302]',
+  SHIM_HEALTH: '[NAP-SHIM-100]'
 };
 
 function _napLog(code, message, level, data) {
@@ -71,6 +79,11 @@ class NexoPermissionShim {
     this._listeners = [];
     this._resumeHandler = null;
     this._isDestroyed = false;
+    this._lastEventTime = 0;
+    this._healthCheckInterval = null;
+    this._autoCleanupInterval = null;
+    this._totalChecks = 0;
+    this._totalRequests = 0;
     this.state = {
       granted: false,
       checked: false,
@@ -89,6 +102,8 @@ class NexoPermissionShim {
     };
     this._initNativePlugin();
     this._attachResumeListener();
+    this._loadState();
+    this._startHealthMonitor();
     _instance = this;
     _napLog(NAP_CODES.SHIM_INIT, 'NexoPermissionShim v' + SHIM_VERSION + ' initialized');
   }
@@ -113,7 +128,12 @@ class NexoPermissionShim {
   _attachResumeListener() {
     if (this._resumeHandler) return;
     var self = this;
+
     this._resumeHandler = async function() {
+      var now = Date.now();
+      if (now - self._lastEventTime < 2000) return;
+      self._lastEventTime = now;
+
       _napLog(NAP_CODES.SHIM_EVENT, 'App resumed - re-verificando permisos...');
       await new Promise(function(r) { setTimeout(r, 800); });
       var granted = await self.check({ bypassCache: true });
@@ -122,12 +142,70 @@ class NexoPermissionShim {
         self._dispatchGranted('resume');
       }
     };
-    document.addEventListener('resume', this._resumeHandler);
-    document.addEventListener('visibilitychange', function() {
-      if (document.visibilityState === 'visible') {
-        setTimeout(function() { self._resumeHandler(); }, 500);
+
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+      window.Capacitor.Plugins.App.addListener('appStateChange', function(state) {
+        if (state.isActive) {
+          self._resumeHandler();
+        }
+      });
+    } else {
+      document.addEventListener('resume', this._resumeHandler);
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+          setTimeout(function() { self._resumeHandler(); }, 500);
+        }
+      });
+    }
+  }
+
+  // ==================== HEALTH MONITOR ====================
+
+  _startHealthMonitor() {
+    var self = this;
+
+    // Health check cada 2 minutos
+    this._healthCheckInterval = setInterval(function() {
+      self._performHealthCheck();
+    }, 120000);
+
+    // Auto-cleanup cada 10 minutos
+    this._autoCleanupInterval = setInterval(function() {
+      self._performAutoCleanup();
+    }, 600000);
+  }
+
+  _stopHealthMonitor() {
+    if (this._healthCheckInterval) clearInterval(this._healthCheckInterval);
+    if (this._autoCleanupInterval) clearInterval(this._autoCleanupInterval);
+    this._healthCheckInterval = null;
+    this._autoCleanupInterval = null;
+  }
+
+  _performHealthCheck() {
+    try {
+      // Verificar si el estado es "stale" (>1h sin check)
+      if (this.state.lastCheck > 0 && (Date.now() - this.state.lastCheck) > STATE_MAX_AGE_MS) {
+        _napLog(NAP_CODES.SHIM_HEALTH, 'State stale detected (>1h), invalidating cache');
+        this.state.checked = false;
+        this.state.granted = false;
+        this._cache.clear();
       }
-    });
+
+      _napLog(NAP_CODES.SHIM_HEALTH, 'Health OK. Checks: ' + this._totalChecks + ', Requests: ' + this._totalRequests + ', LastCheck: ' + (this.state.lastCheck > 0 ? Math.round((Date.now() - this.state.lastCheck)/1000) + 's ago' : 'never'));
+
+    } catch (e) {
+      console.error('[SHIM HEALTH] Error:', e);
+    }
+  }
+
+  _performAutoCleanup() {
+    try {
+      this._cache.clear();
+      _napLog(NAP_CODES.SHIM_HEALTH, 'Cache auto-cleared');
+    } catch (e) {
+      console.error('[SHIM HEALTH] Cleanup error:', e);
+    }
   }
 
   _dispatchGranted(source) {
@@ -165,6 +243,7 @@ class NexoPermissionShim {
       return this.state.granted;
     }
     this.state.checking = true;
+    this._totalChecks++;
     var finalResult = false;
     try {
       _napLog(NAP_CODES.SHIM_CHECK, 'Consultando estado BLE nativo...');
@@ -174,7 +253,8 @@ class NexoPermissionShim {
         this.state.checked = true;
         return false;
       }
-      var nativeResult = await this._callNativeWithRetry('checkBLEStatus', []);
+
+      var nativeResult = await this._callNativeWithRetry('checkBLEStatus', [], 10000);
       this.state.nativeResult = nativeResult;
       var allGranted = nativeResult && nativeResult.allGranted === true;
       this.state.permissions = {
@@ -191,6 +271,7 @@ class NexoPermissionShim {
       this.state.lastCheck = Date.now();
       _napLog(NAP_CODES.SHIM_CHECK, 'checkBLEStatus: allGranted=' + allGranted + ', permanent=' + this.state.isPermanentlyDenied, 'DEBUG', nativeResult);
       finalResult = allGranted;
+      this._saveState();
     } catch (e) {
       _napLog(NAP_CODES.SHIM_ERROR, 'check failed: ' + e.message, 'ERROR', e);
       this.state.granted = false;
@@ -211,6 +292,7 @@ class NexoPermissionShim {
       if (this.state.granted) return true;
     }
     this.state.checking = true;
+    this._totalRequests++;
     var finalResult = false;
     try {
       _napLog(NAP_CODES.SHIM_REQUEST, 'Solicitando permisos via initializeBLE...');
@@ -218,7 +300,8 @@ class NexoPermissionShim {
         _napLog(NAP_CODES.SHIM_NATIVE_MISSING, 'Plugin nativo no disponible para request', 'ERROR');
         return false;
       }
-      var nativeResult = await this._callNativeWithRetry('initializeBLE', []);
+
+      var nativeResult = await this._callNativeWithRetry('initializeBLE', [], 15000);
       var granted = nativeResult && nativeResult.granted === true;
       var permanent = nativeResult && nativeResult.isPermanentlyDenied === true;
       this.state.granted = granted;
@@ -244,6 +327,7 @@ class NexoPermissionShim {
         this._dispatchDenied('request', this.state);
       }
       finalResult = granted;
+      this._saveState();
     } catch (e) {
       _napLog(NAP_CODES.SHIM_ERROR, 'request error: ' + e.message, 'ERROR', e);
       try { finalResult = await this.check({ bypassCache: true }); } catch (_) { finalResult = false; }
@@ -267,14 +351,22 @@ class NexoPermissionShim {
     return await this.request();
   }
 
-  async _callNativeWithRetry(methodName, args) {
+  async _callNativeWithRetry(methodName, args, timeoutMs) {
+    timeoutMs = timeoutMs || 10000;
     var lastError = null;
     for (var i = 0; i <= RETRY_DELAYS.length; i++) {
       try {
         if (!this.nativePlugin[methodName]) {
           throw new Error('Metodo nativo ' + methodName + ' no existe en plugin');
         }
-        var result = await this.nativePlugin[methodName].apply(this.nativePlugin, args);
+
+        var result = await Promise.race([
+          this.nativePlugin[methodName].apply(this.nativePlugin, args),
+          new Promise(function(_, reject) {
+            setTimeout(function() { reject(new Error('TIMEOUT: ' + methodName)); }, timeoutMs);
+          })
+        ]);
+
         if (i > 0) {
           _napLog(NAP_CODES.SHIM_RETRY, methodName + ' exitoso tras ' + i + ' reintentos');
         }
@@ -307,6 +399,17 @@ class NexoPermissionShim {
     };
   }
 
+  getHealthStatus() {
+    return {
+      totalChecks: this._totalChecks,
+      totalRequests: this._totalRequests,
+      stateAge: this.state.lastCheck > 0 ? Date.now() - this.state.lastCheck : null,
+      isStale: this.state.lastCheck > 0 && (Date.now() - this.state.lastCheck) > STATE_MAX_AGE_MS,
+      cacheSize: this._cache._map ? this._cache._map.size : 0,
+      isDestroyed: this._isDestroyed
+    };
+  }
+
   getGranularPermissions() {
     return {
       scan: this.state.permissions.scan,
@@ -320,6 +423,7 @@ class NexoPermissionShim {
 
   destroy() {
     this._isDestroyed = true;
+    this._stopHealthMonitor();
     if (this._resumeHandler) {
       document.removeEventListener('resume', this._resumeHandler);
       this._resumeHandler = null;
@@ -351,6 +455,7 @@ class NexoPermissionShim {
           this.state.granted = saved.granted;
           this.state.checked = saved.checked;
           this.state.isPermanentlyDenied = saved.isPermanentlyDenied;
+          _napLog(NAP_CODES.SHIM_INIT, 'Estado cargado desde localStorage: granted=' + saved.granted);
         }
       }
     } catch (e) {}
@@ -407,6 +512,10 @@ function getShimStatus() {
   return getPermissionShim().getStatus();
 }
 
+function getShimHealth() {
+  return getPermissionShim().getHealthStatus();
+}
+
 // ─── Object export for compatibility ───
 var permissionShim = {
   getPermissionShim: getPermissionShim,
@@ -415,11 +524,12 @@ var permissionShim = {
   ensureBLEPermissions: ensureBLEPermissions,
   isPermanentlyDenied: isPermanentlyDenied,
   getShimStatus: getShimStatus,
+  getShimHealth: getShimHealth,
   NexoPermissionShim: NexoPermissionShim
 };
 
 // ─── Named exports (webpack 5 compatible) ───
-export { NexoPermissionShim, getPermissionShim, checkBLEStatus, requestBLEPermissions, ensureBLEPermissions, isPermanentlyDenied, getShimStatus, permissionShim };
+export { NexoPermissionShim, getPermissionShim, checkBLEStatus, requestBLEPermissions, ensureBLEPermissions, isPermanentlyDenied, getShimStatus, getShimHealth, permissionShim };
 export default NexoPermissionShim;
 
 // ─── Global registration ───
@@ -429,5 +539,6 @@ if (typeof window !== 'undefined') {
   window.checkBLEStatus = checkBLEStatus;
   window.requestBLEPermissions = requestBLEPermissions;
   window.ensureBLEPermissions = ensureBLEPermissions;
+  window.getShimHealth = getShimHealth;
   window.permissionShim = permissionShim;
 }
