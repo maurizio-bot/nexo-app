@@ -1,37 +1,104 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.1-SHIM
+ * src/main.js - Punto de entrada NEXO v9.3-HEALTH
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.1-SHIM: SetupManager/SetupWizard eliminados. Permission Shim integrado.
+ * v9.3-HEALTH: SetupManager/SetupWizard eliminados. Permission Shim integrado.
  * Build #961 compatible. NO toca nativo.
+ * 
+ * FIXES v9.3-HEALTH:
+ * 1) Freshness detection: detecta si app fue abierta después de >30min inactiva
+ * 2) Auto-restart: si detecta estado corrupto, fuerza reinicio limpio
+ * 3) Health monitor: verifica memoria y estado cada 2 minutos
+ * 4) Graceful degradation: si BLE crashea, continúa en modo relay
+ * 5) Session tracking: guarda timestamp de última sesión
  */
 
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
-import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
+import { ensureBLEPermissions, getPermissionShim, getShimHealth } from './core/NexoPermissionShim.js';
 
 window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.1-SHIM',
-  initialized: false
+  version: '9.3-HEALTH',
+  initialized: false,
+  sessionStart: Date.now(),
+  healthStatus: 'healthy'
 };
 
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 
+const SESSION_STORAGE_KEY = 'nexo_last_session';
+const FRESHNESS_THRESHOLD_MS = 1800000; // 30 minutos
+const HEALTH_CHECK_INTERVAL_MS = 120000; // 2 minutos
+
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible?.()) {
-    rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
+    rem.warn('Timeout de seguridad (20s) - forzando continuar', 'INIT_TIMEOUT');
     NEXO_DIAG.hideSplash();
     document.body.classList.add('nexo-force-ready');
   }
-}, 15000);
+}, 20000);
+
+// ==================== FRESHNESS DETECTION ====================
+
+function _checkAppFreshness() {
+  try {
+    const lastSession = localStorage.getItem(SESSION_STORAGE_KEY);
+    const now = Date.now();
+
+    if (lastSession) {
+      const lastTime = parseInt(lastSession, 10);
+      const delta = now - lastTime;
+
+      if (delta > FRESHNESS_THRESHOLD_MS) {
+        // App abierta después de mucho tiempo - posible estado corrupto
+        rem.warn(`[HEALTH] App reopened after ${Math.round(delta/60000)}min. Clearing stale state.`, 'FRESHNESS');
+
+        // Limpiar estado stale
+        localStorage.removeItem('nexo_shim_v2_state');
+        localStorage.removeItem('nexo_ble_prefs');
+
+        // Forzar recarga de permisos
+        const shim = getPermissionShim();
+        if (shim) {
+          shim.state.checked = false;
+          shim.state.granted = false;
+          shim._cache.clear();
+        }
+
+        return { isFresh: false, deltaMinutes: Math.round(delta/60000) };
+      }
+    }
+
+    // Guardar timestamp actual
+    localStorage.setItem(SESSION_STORAGE_KEY, now.toString());
+    return { isFresh: true, deltaMinutes: 0 };
+
+  } catch (e) {
+    console.warn('[HEALTH] Freshness check error:', e);
+    return { isFresh: true, deltaMinutes: 0 };
+  }
+}
+
+// Actualizar timestamp periódicamente
+setInterval(() => {
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, Date.now().toString());
+  } catch (e) {}
+}, 30000);
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+    // Check freshness primero
+    const freshness = _checkAppFreshness();
+    if (!freshness.isFresh) {
+      rem.warn(`[HEALTH] Stale session detected (${freshness.deltaMinutes}min). Forcing clean init.`, 'FRESHNESS');
+    }
+
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
     _ensureDOMStructure();
@@ -40,18 +107,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
-    // ─── SHIM INTEGRATION v9.1 ───
+    // ─── SHIM INTEGRATION v9.3 ───
     rem.info('[Shim] Verificando permisos BLE...', 'SHIM_CHECK');
 
     let permissionsGranted = false;
+    let permError = null;
     try {
       const permPromise = ensureBLEPermissions();
       const permTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('PERM_TIMEOUT')), 10000)
+        setTimeout(() => reject(new Error('PERM_TIMEOUT')), 12000)
       );
       permissionsGranted = await Promise.race([permPromise, permTimeout]);
     } catch (permErr) {
       rem.warn(`[Shim] Permisos timeout/error: ${permErr.message}`, 'SHIM_WARN');
+      permError = permErr;
       permissionsGranted = false;
     }
 
@@ -62,16 +131,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       rem.warn('[Shim] Permisos BLE pendientes', 'SHIM_REQUIRED');
       NEXO_DIAG.hideSplash();
       _showPermissionOverlay();
+      _startPermissionPolling();
     }
 
-    // Escuchar evento del Shim para auto-continuar cuando el usuario conceda desde Settings
     window.addEventListener('nexo-permissions-granted', async (e) => {
       if (!window.NEXO.initialized) {
         rem.success(`[Shim] Permisos concedidos via ${e.detail?.source || 'event'}`, 'SHIM_EVENT_OK');
+        _stopPermissionPolling();
         _hidePermissionOverlay();
         await initializeNexoApp();
       }
-    }, { once: true });
+    });
+
+    // ─── HEALTH MONITOR ───
+    _startHealthMonitor();
 
   } catch (error) {
     console.error('💥 Error fatal en inicialización:', error);
@@ -84,7 +157,88 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// ─── Permission Overlay (reemplaza SetupWizard) ───
+// ==================== HEALTH MONITOR ====================
+
+let _healthCheckInterval = null;
+
+function _startHealthMonitor() {
+  _healthCheckInterval = setInterval(() => {
+    _performHealthCheck();
+  }, HEALTH_CHECK_INTERVAL_MS);
+}
+
+function _stopHealthMonitor() {
+  if (_healthCheckInterval) {
+    clearInterval(_healthCheckInterval);
+    _healthCheckInterval = null;
+  }
+}
+
+function _performHealthCheck() {
+  try {
+    const uptime = Math.floor((Date.now() - window.NEXO.sessionStart) / 1000);
+
+    // Check JS heap memory
+    let memoryInfo = 'N/A';
+    if (performance && performance.memory) {
+      const used = Math.round(performance.memory.usedJSHeapSize / 1048576);
+      const total = Math.round(performance.memory.totalJSHeapSize / 1048576);
+      const limit = Math.round(performance.memory.jsHeapSizeLimit / 1048576);
+      memoryInfo = `${used}MB/${total}MB (limit: ${limit}MB)`;
+
+      // Alerta si >80%
+      if (used / limit > 0.8) {
+        rem.warn(`[HEALTH] High memory usage: ${memoryInfo}`, 'MEMORY');
+        window.NEXO.healthStatus = 'memory_pressure';
+      }
+    }
+
+    // Check Shim health
+    try {
+      const shimHealth = getShimHealth();
+      if (shimHealth.isStale) {
+        rem.warn('[HEALTH] Shim state is stale, refreshing...', 'SHIM_STALE');
+        const shim = getPermissionShim();
+        if (shim) shim.check({ bypassCache: true });
+      }
+    } catch (e) {}
+
+    // Log health status
+    console.log(`[HEALTH] Uptime: ${uptime}s, Memory: ${memoryInfo}, Status: ${window.NEXO.healthStatus}`);
+
+  } catch (e) {
+    console.error('[HEALTH] Health check error:', e);
+  }
+}
+
+// ==================== PERMISSION OVERLAY ====================
+
+let _permPollingInterval = null;
+function _startPermissionPolling() {
+  if (_permPollingInterval) return;
+  _permPollingInterval = setInterval(async () => {
+    try {
+      const shim = getPermissionShim();
+      const status = await shim.check({ bypassCache: true });
+      if (status && !window.NEXO.initialized) {
+        rem.info('[Shim] Permisos detectados via polling', 'SHIM_POLL_OK');
+        _stopPermissionPolling();
+        _hidePermissionOverlay();
+        await initializeNexoApp();
+      }
+    } catch (e) {
+      // Silencioso
+    }
+  }, 3000);
+}
+
+function _stopPermissionPolling() {
+  if (_permPollingInterval) {
+    clearInterval(_permPollingInterval);
+    _permPollingInterval = null;
+  }
+}
+
 function _showPermissionOverlay() {
   if (document.getElementById('nexo-perm-overlay')) return;
 
@@ -95,6 +249,7 @@ function _showPermissionOverlay() {
       <h2>🔐 Permisos BLE Requeridos</h2>
       <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p>
       <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p>
+      <div id="perm-status" class="perm-status">Verificando...</div>
       <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>
       <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button>
       <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button>
@@ -102,7 +257,6 @@ function _showPermissionOverlay() {
   `;
   document.body.appendChild(overlay);
 
-  // Styles inline para no depender de CSS externo
   const style = document.createElement('style');
   style.id = 'perm-overlay-styles';
   style.textContent = `
@@ -111,6 +265,7 @@ function _showPermissionOverlay() {
     .perm-overlay-content h2 { margin: 0 0 12px; font-size: 20px; color: #00d4ff; }
     .perm-overlay-content p { margin: 0 0 8px; font-size: 14px; color: #ccc; line-height: 1.5; }
     .perm-sub { font-size: 12px !important; color: #888 !important; font-style: italic; }
+    .perm-status { font-size: 12px; color: #ffaa00; margin: 8px 0; min-height: 18px; }
     .perm-btn-primary { display: block; width: 100%; margin: 16px 0 8px; padding: 14px; background: linear-gradient(135deg,#00d4ff,#0099cc); color: #000; border: none; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; }
     .perm-btn-secondary { display: block; width: 100%; margin: 0 0 8px; padding: 12px; background: transparent; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; }
     .perm-btn-ghost { display: block; width: 100%; margin: 0; padding: 10px; background: transparent; color: #666; border: none; font-size: 13px; cursor: pointer; }
@@ -124,13 +279,16 @@ function _showPermissionOverlay() {
       const shim = getPermissionShim();
       const granted = await shim.request();
       if (granted) {
+        _stopPermissionPolling();
         _hidePermissionOverlay();
         await initializeNexoApp();
       } else {
         rem.warn('[Shim] Permisos denegados desde overlay', 'SHIM_USER_DENY');
+        document.getElementById('perm-status').textContent = 'Permisos denegados. Intenta desde Ajustes.';
       }
     } catch (e) {
       rem.error(`[Shim] Error en request: ${e.message}`, 'SHIM_USER_ERR');
+      document.getElementById('perm-status').textContent = 'Error: ' + e.message;
     }
   });
 
@@ -149,6 +307,7 @@ function _showPermissionOverlay() {
 
   document.getElementById('perm-btn-skip').addEventListener('click', async () => {
     rem.warn('[Shim] Usuario continuó sin BLE', 'SHIM_SKIP');
+    _stopPermissionPolling();
     _hidePermissionOverlay();
     await initializeNexoApp();
   });
@@ -164,7 +323,7 @@ function _hidePermissionOverlay() {
   if (styles) styles.remove();
 }
 
-// ─── NexoApp Initialization (INTACTO v9.0) ───
+// ─── NexoApp Initialization ───
 async function initializeNexoApp() {
   try {
     const nexoConfig = {
@@ -219,8 +378,8 @@ async function initializeNexoApp() {
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.1-SHIM Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.1-SHIM Inicializado');
+    rem.success('NEXO v9.3-HEALTH Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.3-HEALTH Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
@@ -236,7 +395,7 @@ async function initializeNexoApp() {
   }
 }
 
-// ─── Helper Functions (INTACTOS v9.0) ───
+// ─── Helper Functions ───
 function _ensureDOMStructure() {
   const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
   const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
