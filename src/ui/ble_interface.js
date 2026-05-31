@@ -1,13 +1,14 @@
 /**
- * BLE Interface v3.5.1-ARCH-SHIM
+ * BLE Interface v3.6.0-HEALTH
  * Ubicacion: src/ui/ble_interface.js
- * FIX v3.5.1-SHIM:
- * 1) Badge reseteado y protegido al abrir chat (no contamina durante chat activo)
- * 2) Auto-registro de contacto al recibir primer mensaje (evita "Unknown" en lista)
- * 3) Toast suprimido robustamente cuando chat esta activo con el mismo peer
- * 4) Listener nexo:ble:closeChat para limpiar _activeChatDeviceId cuando UI cierra chat
- * 5) SHIM FIX: Elimina 3 listeners muertos (onPeerInfoReceived, onBluetoothStackBroken, onServerError)
- * que el plugin nativo #961 no emite. Usa Shim para permisos en toggleVisibility/toggleScan.
+ * 
+ * FIXES v3.6.0-HEALTH:
+ * 1) HealthMonitor JS: verifica estado cada 2 minutos
+ * 2) Auto-cleanup cada 10 minutos: limpia foundDevices, messageIds, pending queues
+ * 3) Memory leak detection: si memoria >80MB, forzar cleanup
+ * 4) Service reboot desde JS: cada 1 hora reinicia advertising limpiamente
+ * 5) "Freshness" tracking: detecta si app fue abierta después de >30min inactiva
+ * 6) Stale connection detection: desconecta peers sin actividad >5min
  */
 
 export function initBLEInterface(bleMesh) {
@@ -97,7 +98,23 @@ export class BLEInterface {
     this._maxMessageIds = 1000;
     this._pendingMessageQueue = new Map();
     this._reconnectTimers = new Map();
+    this._reconnectAttempts = new Map();
     this._serverReady = false;
+    this._destroyed = false;
+    this._openChatTimeouts = new Map();
+    this._toastDebounceTimer = null;
+    this._lastToastMessage = '';
+    this._lastToastTime = 0;
+
+    // HEALTH MONITOR v3.6.0
+    this._healthCheckInterval = null;
+    this._autoCleanupInterval = null;
+    this._serviceRebootInterval = null;
+    this._lastActivity = Date.now();
+    this._staleConnectionCheckInterval = null;
+    this._memoryCheckInterval = null;
+    this._sessionStartTime = Date.now();
+    this._totalOperations = 0;
   }
 
   _detectMeshType() {
@@ -126,26 +143,249 @@ export class BLEInterface {
       this._setupNativeServerReadyListener();
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
-      // FIX v3.5.1-SHIM: Eliminados _setupNativePeerInfoListener, _setupNativeStackBrokenListener, _setupNativeServerErrorListener
-      // El plugin #961 NO emite onPeerInfoReceived, onBluetoothStackBroken, onServerError
       this._loadLocalDeviceInfo();
+      // HEALTH MONITOR: Iniciar monitoreo
+      this._startHealthMonitor();
     }
     return this;
+  }
+
+  // ==================== HEALTH MONITOR ====================
+
+  _startHealthMonitor() {
+    var self = this;
+
+    // Health check cada 2 minutos
+    this._healthCheckInterval = setInterval(function() {
+      self._performHealthCheck();
+    }, 120000);
+
+    // Auto-cleanup cada 10 minutos
+    this._autoCleanupInterval = setInterval(function() {
+      self._performAutoCleanup();
+    }, 600000);
+
+    // Service reboot cada 1 hora
+    this._serviceRebootInterval = setInterval(function() {
+      self._performServiceReboot();
+    }, 3600000);
+
+    // Stale connection check cada 30 segundos
+    this._staleConnectionCheckInterval = setInterval(function() {
+      self._checkStaleConnections();
+    }, 30000);
+
+    // Memory check cada 5 minutos
+    this._memoryCheckInterval = setInterval(function() {
+      self._checkMemoryPressure();
+    }, 300000);
+
+    console.log('[BLEInterface] Health Monitor iniciado');
+  }
+
+  _stopHealthMonitor() {
+    if (this._healthCheckInterval) clearInterval(this._healthCheckInterval);
+    if (this._autoCleanupInterval) clearInterval(this._autoCleanupInterval);
+    if (this._serviceRebootInterval) clearInterval(this._serviceRebootInterval);
+    if (this._staleConnectionCheckInterval) clearInterval(this._staleConnectionCheckInterval);
+    if (this._memoryCheckInterval) clearInterval(this._memoryCheckInterval);
+    this._healthCheckInterval = null;
+    this._autoCleanupInterval = null;
+    this._serviceRebootInterval = null;
+    this._staleConnectionCheckInterval = null;
+    this._memoryCheckInterval = null;
+  }
+
+  _performHealthCheck() {
+    try {
+      var now = Date.now();
+      var uptime = Math.floor((now - this._sessionStartTime) / 1000);
+      var memory = performance && performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 'N/A';
+
+      console.log('[HEALTH] Uptime: ' + uptime + 's, Memory: ' + memory + 'MB, Ops: ' + this._totalOperations + ', Found: ' + this.foundDevices.size + ', Connected: ' + this.connectedDevices.size + ', Pending: ' + this._pendingMessageQueue.size);
+
+      // Si uptime > 4 horas, sugerir reboot
+      if (uptime > 14400) {
+        console.warn('[HEALTH] Uptime > 4h, recomendando reboot de servicio');
+        this._performServiceReboot();
+      }
+
+    } catch (e) {
+      console.error('[HEALTH] Health check error:', e);
+    }
+  }
+
+  _performAutoCleanup() {
+    try {
+      console.log('[HEALTH] Auto-cleanup iniciado');
+
+      // 1. Limpiar foundDevices antiguos (>30min sin ver)
+      var now = Date.now();
+      var staleDevices = [];
+      this.foundDevices.forEach(function(device, id) {
+        if (device.lastSeen && (now - device.lastSeen) > 1800000) {
+          staleDevices.push(id);
+        }
+      });
+      staleDevices.forEach(function(id) {
+        this.foundDevices.delete(id);
+        this._renderedDeviceIds.delete(id);
+      }.bind(this));
+
+      // 2. Limpiar message IDs si hay demasiados
+      if (this._receivedMessageIds.size > this._maxMessageIds) {
+        var toRemove = this._receivedMessageIds.size - this._maxMessageIds;
+        var iter = this._receivedMessageIds.values();
+        for (var i = 0; i < toRemove; i++) {
+          var val = iter.next().value;
+          if (val) this._receivedMessageIds.delete(val);
+        }
+      }
+
+      // 3. Limpiar pending queues vacías
+      this._pendingMessageQueue.forEach(function(queue, id) {
+        if (!queue || queue.length === 0) {
+          this._pendingMessageQueue.delete(id);
+        }
+      }.bind(this));
+
+      // 4. Reset contador de operaciones
+      this._totalOperations = 0;
+
+      // 5. Forzar GC si disponible
+      if (window.gc) {
+        try { window.gc(); } catch (e) {}
+      }
+
+      console.log('[HEALTH] Auto-cleanup completado. Found: ' + this.foundDevices.size + ', MsgIds: ' + this._receivedMessageIds.size);
+
+    } catch (e) {
+      console.error('[HEALTH] Auto-cleanup error:', e);
+    }
+  }
+
+  _performServiceReboot() {
+    try {
+      console.log('[HEALTH] Service reboot iniciado');
+
+      // Solo si estamos advertising
+      if (!this.isAdvertising || !this.nativePlugin) return;
+
+      var self = this;
+
+      // 1. Detener advertising
+      this._safeNativeCall('stopAdvertising', {}, 5000).then(function() {
+        self.isAdvertising = false;
+        self._serverReady = false;
+
+        // 2. Limpiar estado
+        self.connectedDevices.clear();
+        self._deviceStates.clear();
+        self._reconnectTimers.forEach(function(t) { clearTimeout(t); });
+        self._reconnectTimers.clear();
+        self._reconnectAttempts.clear();
+
+        // 3. Esperar 2s
+        setTimeout(function() {
+          // 4. Reiniciar
+          if (!self._destroyed) {
+            self._safeNativeCall('startAdvertising', {}, 5000).then(function() {
+              self.isAdvertising = true;
+              self._serverReady = true;
+              console.log('[HEALTH] Service reboot completado');
+              self.showToast('Servicio BLE reiniciado', 'info');
+            }).catch(function(e) {
+              console.error('[HEALTH] Reboot restart failed:', e);
+            });
+          }
+        }, 2000);
+
+      }).catch(function(e) {
+        console.error('[HEALTH] Reboot stop failed:', e);
+      });
+
+    } catch (e) {
+      console.error('[HEALTH] Service reboot error:', e);
+    }
+  }
+
+  _checkStaleConnections() {
+    try {
+      var now = Date.now();
+      var stale = [];
+
+      this.connectedDevices.forEach(function(device, id) {
+        var state = this._getDeviceState(id);
+        // Si está conectado pero sin actividad >5min y no es chat activo
+        if (state.state === BLE_STATES.READY_TO_CHAT && 
+            state.timestamp && (now - state.timestamp) > 300000 &&
+            this._activeChatDeviceId !== id) {
+          stale.push(id);
+        }
+      }.bind(this));
+
+      stale.forEach(function(id) {
+        console.log('[HEALTH] Desconectando peer stale:', id);
+        this.disconnect(id);
+      }.bind(this));
+
+    } catch (e) {
+      console.error('[HEALTH] Stale check error:', e);
+    }
+  }
+
+  _checkMemoryPressure() {
+    try {
+      if (!performance || !performance.memory) return;
+
+      var used = performance.memory.usedJSHeapSize;
+      var limit = performance.memory.jsHeapSizeLimit;
+      var percent = Math.round((used / limit) * 100);
+
+      if (percent > 80) {
+        console.warn('[HEALTH] MEMORY PRESSURE: ' + percent + '% (' + Math.round(used/1048576) + 'MB/' + Math.round(limit/1048576) + 'MB)');
+        this._performAutoCleanup();
+        this.showToast('Memoria alta, limpiando...', 'warning');
+      }
+
+    } catch (e) {
+      console.error('[HEALTH] Memory check error:', e);
+    }
   }
 
   async _loadLocalDeviceInfo() {
     if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) return;
     try {
-      var info = await this.nativePlugin.getLocalDeviceInfo();
+      var info = await this._safeNativeCall('getLocalDeviceInfo', {}, 3000);
       this.localDeviceName = info.deviceName || 'NEXO Device';
       this.localDeviceAddress = _normId(info.deviceAddress || '');
     } catch (e) {}
   }
 
+  async _safeNativeCall(methodName, args, timeoutMs) {
+    timeoutMs = timeoutMs || 5000;
+    this._totalOperations++;
+    if (!this.nativePlugin || !this.nativePlugin[methodName]) {
+      throw new Error('PLUGIN_METHOD_NOT_AVAILABLE: ' + methodName);
+    }
+    try {
+      var result = await Promise.race([
+        this.nativePlugin[methodName](args),
+        new Promise(function(_, reject) {
+          setTimeout(function() { reject(new Error('NATIVE_TIMEOUT: ' + methodName)); }, timeoutMs);
+        })
+      ]);
+      return result;
+    } catch (e) {
+      console.error('[BLEInterface] safeNativeCall(' + methodName + ') failed:', e.message);
+      throw e;
+    }
+  }
+
   _setupNativeScanListeners() {
     if (!this.nativePlugin) return;
-    if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
-    if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
+    this._removeListener(this._nativeDeviceFoundListener);
+    this._removeListener(this._nativeScanFailedListener);
     var self = this;
     this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) {
       self.onDeviceFound({ id: data.deviceId, address: data.deviceId, name: data.name || 'NEXO Device', rssi: data.rssi });
@@ -157,13 +397,9 @@ export class BLEInterface {
     });
   }
 
-  // FIX v3.5.1-SHIM: Eliminado _setupNativePeerInfoListener — onPeerInfoReceived NO existe en #961
-  // FIX v3.5.1-SHIM: RESTAURADO _setupNativeServerReadyListener — onServerReady SI existe en #961
-  // y es CRITICO para que toggleVisibility() sepa cuando el servidor esta listo
-
   _setupNativeServerReadyListener() {
     if (!this.nativePlugin) return;
-    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    this._removeListener(this._nativeServerReadyListener);
     var self = this;
     this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', function(data) {
       self._serverReady = true;
@@ -174,8 +410,8 @@ export class BLEInterface {
 
   _setupNativeConnectionListeners() {
     if (!this.nativePlugin) return;
-    if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
-    if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
+    this._removeListener(this._nativeDeviceConnectedListener);
+    this._removeListener(this._nativeDeviceDisconnectedListener);
     var self = this;
 
     this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', function(data) {
@@ -202,6 +438,7 @@ export class BLEInterface {
       self.connectedDevices.delete(deviceId);
       self.onDeviceDisconnected({ id: deviceId, address: deviceId });
       if (self._activeChatDeviceId === deviceId) {
+        self._activeChatDeviceId = null;
         self.showToast('Conexion BLE perdida. Reconectando...', 'warning');
         self._startReconnect(deviceId);
       }
@@ -210,13 +447,22 @@ export class BLEInterface {
 
   _startReconnect(deviceId) {
     this._cancelReconnect(deviceId);
-    this._setDeviceState(deviceId, BLE_STATES.RECONNECTING, { message: 'Reconectando...' });
+    var currentAttempts = this._reconnectAttempts.get(deviceId) || 0;
+    if (currentAttempts >= 5) {
+      console.log('[BLEInterface] Max reintentos alcanzado para', deviceId);
+      this.showToast('No se pudo reconectar después de 5 intentos', 'error');
+      this._reconnectAttempts.delete(deviceId);
+      return;
+    }
+    this._reconnectAttempts.set(deviceId, currentAttempts + 1);
+
+    this._setDeviceState(deviceId, BLE_STATES.RECONNECTING, { message: 'Reconectando... (intento ' + (currentAttempts + 1) + '/5)' });
     var self = this;
     var attemptReconnect = async function() {
       if (self._activeChatDeviceId !== deviceId) return;
       try {
-        console.log('[BLEInterface] Force reconnect a', deviceId, '...');
-        await self.nativePlugin.forceReconnect({ deviceId: deviceId });
+        console.log('[BLEInterface] Force reconnect a', deviceId, 'intento', (self._reconnectAttempts.get(deviceId) || 0));
+        await self._safeNativeCall('forceReconnect', { deviceId: deviceId }, 8000);
       } catch (e) {
         console.warn('[BLEInterface] Force reconnect fallo:', e.message);
         var timer = setTimeout(attemptReconnect, 3000);
@@ -232,11 +478,16 @@ export class BLEInterface {
       clearTimeout(timer);
       this._reconnectTimers.delete(deviceId);
     }
+    this._reconnectAttempts.delete(deviceId);
   }
 
   _setupNativeStateListeners() {
     if (!this.nativePlugin) return;
     var self = this;
+    this._removeListener(this._nativeServicesReadyListener);
+    this._removeListener(this._nativeNotificationsListener);
+    this._removeListener(this._nativeConnectionFailedListener);
+
     this._nativeServicesReadyListener = this.nativePlugin.addListener('onServicesReady', function(data) {
       var deviceId = _normId(data.deviceId);
       self._setDeviceState(deviceId, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
@@ -257,17 +508,12 @@ export class BLEInterface {
         self.showToast('Conexion fallada: ' + data.reason, 'error');
       }
     });
-    // FIX v3.5.1-SHIM: Eliminado onBluetoothStackBroken — NO existe en #961
   }
-
-  // FIX v3.5.1-SHIM: Eliminado _setupNativeServerReadyListener y _setupNativeServerErrorListener
-  // El plugin #961 SI emite onServerReady, pero lo manejamos inline en _initVisibility
-  // onServerError NO existe en #961
 
   _setDeviceState(deviceId, state, meta) {
     meta = meta || {};
     var nid = _normId(deviceId);
-    this._deviceStates.set(nid, { state: state, ...meta, timestamp: Date.now() });
+    this._deviceStates.set(nid, Object.assign({}, meta, { state: state, timestamp: Date.now() }));
     this.renderConnectedList();
   }
 
@@ -277,7 +523,7 @@ export class BLEInterface {
 
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
-    if (this._nativePayloadListener) this._nativePayloadListener.remove();
+    this._removeListener(this._nativePayloadListener);
     var self = this;
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
       var deviceId = _normId(data.deviceId);
@@ -343,16 +589,16 @@ export class BLEInterface {
     if (!this.nativePlugin) throw new Error('Plugin no disponible');
     var device = this.connectedDevices.get(_normId(deviceId));
     var targetId = (device && device.id) || (device && device.address) || deviceId;
-    await this.nativePlugin.sendMessage({ deviceId: targetId, message: content });
+    await this._safeNativeCall('sendMessage', { deviceId: targetId, message: content }, 8000);
   }
 
   async _initVisibility() {
     if (this.isDummyMode) return;
     try {
-      var btState = await this.nativePlugin.isBluetoothEnabled();
+      var btState = await this._safeNativeCall('isBluetoothEnabled', {}, 3000);
       this.canAdvertise = btState.canAdvertise || false;
       this._serverReady = btState.serverReady || false;
-      var adState = await this.nativePlugin.isAdvertising();
+      var adState = await this._safeNativeCall('isAdvertising', {}, 3000);
       this.isAdvertising = adState.isAdvertising === true;
       this.updateVisibilityButton();
       this._setupNativeAdvertisingListeners();
@@ -363,19 +609,19 @@ export class BLEInterface {
 
   _setupNativeAdvertisingListeners() {
     if (!this.nativePlugin) return;
-    if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
-    if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
+    this._removeListener(this._nativeAdStartedListener);
+    this._removeListener(this._nativeAdFailedListener);
     var self = this;
     this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', function() {
       self.isAdvertising = true;
-      self._serverReady = true;  // Backup: advertising started = server is ready
+      self._serverReady = true;
       self.updateVisibilityButton();
       self.showToast('Visibilidad activada', 'success');
     });
-    this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', function() {
+    this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', function(data) {
       self.isAdvertising = false;
       self.updateVisibilityButton();
-      self.showToast('Error al activar visibilidad', 'error');
+      self.showToast('Error al activar visibilidad: ' + (data.error || ''), 'error');
     });
   }
 
@@ -400,18 +646,16 @@ export class BLEInterface {
   }
 
   async toggleVisibility() {
-    if (this.isDummyMode) return;
+    if (this.isDummyMode || this._destroyed) return;
 
-    // FIX v3.5.1-SHIM: Usa Shim para permisos
     var permsReady = false;
     try {
-      var shim = window.permissionShim || (window.Capacitation && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
       if (window.ensureBLEPermissions) {
         permsReady = await window.ensureBLEPermissions();
-      } else if (shim && shim.ensure) {
-        permsReady = await shim.ensure();
+      } else if (window.permissionShim && window.permissionShim.ensureBLEPermissions) {
+        permsReady = await window.permissionShim.ensureBLEPermissions();
       } else {
-        permsReady = true; // Fallback si no hay Shim aun
+        permsReady = true;
       }
     } catch (e) {
       console.warn('[BLEInterface] Shim no disponible para permisos, continuando...');
@@ -426,10 +670,7 @@ export class BLEInterface {
     if (!this._serverReady) {
       try {
         this.showToast('Inicializando servidor BLE...', 'info');
-        await this.nativePlugin.initializeBLE({
-          userId: (window.currentUser && window.currentUser.id) || '',
-          userName: (window.currentUser && window.currentUser.name) || 'NEXO User'
-        });
+        await this._safeNativeCall('initializeBLE', {}, 8000);
         await new Promise(function(resolve, reject) {
           var timeout = setTimeout(function() {
             reject(new Error('Timeout esperando servidor BLE'));
@@ -438,7 +679,6 @@ export class BLEInterface {
             if (this._serverReady) { clearTimeout(timeout); resolve(); }
             else { setTimeout(check, 200); }
           }.bind(this);
-          // Also resolve immediately if onServerReady fires during wait
           var serverReadyListener = null;
           if (this.nativePlugin) {
             serverReadyListener = this.nativePlugin.addListener('onServerReady', function() {
@@ -458,7 +698,7 @@ export class BLEInterface {
     }
 
     try {
-      var btState = await this.nativePlugin.isBluetoothEnabled();
+      var btState = await this._safeNativeCall('isBluetoothEnabled', {}, 3000);
       this.canAdvertise = btState.canAdvertise || false;
     } catch (e) {}
 
@@ -469,10 +709,10 @@ export class BLEInterface {
 
     try {
       if (this.isAdvertising) {
-        await this.nativePlugin.stopAdvertising();
+        await this._safeNativeCall('stopAdvertising', {}, 5000);
         this.isAdvertising = false;
       } else {
-        await this.nativePlugin.startAdvertising();
+        await this._safeNativeCall('startAdvertising', {}, 5000);
       }
       this.updateVisibilityButton();
     } catch (err) {
@@ -605,9 +845,8 @@ export class BLEInterface {
   }
 
   async toggleScan() {
-    if (this.isDummyMode) return;
+    if (this.isDummyMode || this._destroyed) return;
 
-    // FIX v3.5.1-SHIM: Usa Shim para permisos
     var permsReady = false;
     try {
       if (window.ensureBLEPermissions) {
@@ -629,16 +868,22 @@ export class BLEInterface {
 
     try {
       if (this.isScanning) {
-        if (this.nativePlugin) await this.nativePlugin.stopScan();
+        if (this.nativePlugin) await this._safeNativeCall('stopScan', {}, 5000);
         this.isScanning = false;
         this.onScanStateChanged(false);
       } else {
         this.foundDevices.clear();
         this._renderedDeviceIds.clear();
         this.renderDevicesList();
-        if (this.nativePlugin) await this.nativePlugin.startScan();
+        if (this.nativePlugin) await this._safeNativeCall('startScan', {}, 5000);
         this.isScanning = true;
         this.onScanStateChanged(true);
+        setTimeout(function() {
+          if (this.isScanning) {
+            this.isScanning = false;
+            this.onScanStateChanged(false);
+          }
+        }.bind(this), 15000);
       }
     } catch (err) {
       this.isScanning = false;
@@ -719,13 +964,13 @@ export class BLEInterface {
     try {
       var devices = [];
       if (this.nativePlugin && this.nativePlugin.getConnectedDevices) {
-        var result = await this.nativePlugin.getConnectedDevices();
+        var result = await this._safeNativeCall('getConnectedDevices', {}, 3000);
         devices = result.devices || [];
       }
       this.connectedDevices.clear();
       devices.forEach(function(d) {
         var nid = _normId(d.id || d.address || d.deviceId);
-        this.connectedDevices.set(nid, { ...d, id: nid, address: nid });
+        this.connectedDevices.set(nid, Object.assign({}, d, { id: nid, address: nid }));
       }.bind(this));
       this.renderConnectedList();
     } catch (err) {}
@@ -771,10 +1016,12 @@ export class BLEInterface {
       try {
         await new Promise(function(resolve, reject) {
           var timeout = setTimeout(function() { reject(new Error('Timeout')); }, 15000);
+          this._openChatTimeouts.set(nid, timeout);
           var checkReady = function() {
             var s = this._getDeviceState(nid);
             if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
               clearTimeout(timeout);
+              this._openChatTimeouts.delete(nid);
               resolve();
             } else {
               setTimeout(checkReady, 300);
@@ -801,16 +1048,18 @@ export class BLEInterface {
 
       try {
         console.log('[BLEInterface] Conectando a', nid, '...');
-        var connResult = await this.nativePlugin.connectToDevice({ deviceId: device.id || device.address || nid });
+        var connResult = await this._safeNativeCall('connectToDevice', { deviceId: device.id || device.address || nid }, 10000);
         console.log('[BLEInterface] connectToDevice result:', connResult);
         if (connResult && connResult.connected && !connResult.alreadyConnected) {
           this.showToast('Conectando canal BLE...', 'info');
           await new Promise(function(resolve, reject) {
             var timeout = setTimeout(function() { reject(new Error('Timeout')); }, 15000);
+            this._openChatTimeouts.set(nid, timeout);
             var checkReady = function() {
               var s = this._getDeviceState(nid);
               if (s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.READY_TO_CHAT) {
                 clearTimeout(timeout);
+                this._openChatTimeouts.delete(nid);
                 resolve();
               } else {
                 setTimeout(checkReady, 300);
@@ -915,7 +1164,7 @@ export class BLEInterface {
   async connect(deviceId) {
     if (this.isDummyMode) return;
     try {
-      if (this.nativePlugin) await this.nativePlugin.connectToDevice({ deviceId: deviceId });
+      if (this.nativePlugin) await this._safeNativeCall('connectToDevice', { deviceId: deviceId }, 10000);
     } catch (err) { this.showToast('Error al conectar', 'error'); }
   }
 
@@ -924,13 +1173,18 @@ export class BLEInterface {
     var nid = _normId(deviceId);
     try {
       this._cancelReconnect(nid);
-      var device = this.connectedDevices.get(nid);
-      var targetId = (device && device.id) || (device && device.address) || deviceId;
-      if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId: targetId });
       if (this._activeChatDeviceId === nid) {
         this._activeChatDeviceId = null;
         this.updateBadge();
       }
+      var chatTimeout = this._openChatTimeouts.get(nid);
+      if (chatTimeout) {
+        clearTimeout(chatTimeout);
+        this._openChatTimeouts.delete(nid);
+      }
+      var device = this.connectedDevices.get(nid);
+      var targetId = (device && device.id) || (device && device.address) || deviceId;
+      if (this.nativePlugin) await this._safeNativeCall('disconnectDevice', { deviceId: targetId }, 5000);
     } catch (err) {}
   }
 
@@ -958,7 +1212,7 @@ export class BLEInterface {
     try {
       var state = 'UNKNOWN';
       if (this.nativePlugin && this.nativePlugin.isBluetoothEnabled) {
-        var btState = await this.nativePlugin.isBluetoothEnabled();
+        var btState = await this._safeNativeCall('isBluetoothEnabled', {}, 3000);
         state = btState.enabled ? 'poweredOn' : 'poweredOff';
         this._serverReady = btState.serverReady || false;
       }
@@ -974,6 +1228,14 @@ export class BLEInterface {
   showToast(message, type, duration) {
     type = type || 'info';
     duration = duration || 3000;
+
+    var now = Date.now();
+    if (message === this._lastToastMessage && (now - this._lastToastTime) < 500) {
+      return;
+    }
+    this._lastToastMessage = message;
+    this._lastToastTime = now;
+
     var existing = document.querySelector('.ble-toast');
     if (existing) existing.remove();
     var toast = document.createElement('div');
@@ -991,23 +1253,45 @@ export class BLEInterface {
     return id.substring(0, 8) + '...' + id.substring(id.length - 4);
   }
 
+  _removeListener(listenerRef) {
+    if (listenerRef && typeof listenerRef.remove === 'function') {
+      try { listenerRef.remove(); } catch (e) {}
+    }
+  }
+
   destroy() {
+    this._destroyed = true;
+    this._stopHealthMonitor();
+
     var styles = document.getElementById('ble-styles');
     if (styles) styles.remove();
+
     this._reconnectTimers.forEach(function(timer) { clearTimeout(timer); });
     this._reconnectTimers.clear();
-    if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
-    if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
-    if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
-    if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
-    if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
-    if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
-    if (this._nativePayloadListener) this._nativePayloadListener.remove();
-    if (this._nativeServicesReadyListener) this._nativeServicesReadyListener.remove();
-    if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
-    if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
-    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
-    // FIX v3.5.1-SHIM: Eliminados _nativeStackBrokenListener, _nativePeerInfoListener, _nativeServerErrorListener
+    this._reconnectAttempts.clear();
+
+    this._openChatTimeouts.forEach(function(t) { clearTimeout(t); });
+    this._openChatTimeouts.clear();
+
+    this._pendingMessageQueue.forEach(function(queue) {
+      queue.forEach(function(item) {
+        try { item.reject(new Error('Interface destroyed')); } catch (e) {}
+      });
+    });
+    this._pendingMessageQueue.clear();
+
+    this._removeListener(this._nativeAdStartedListener);
+    this._removeListener(this._nativeAdFailedListener);
+    this._removeListener(this._nativeDeviceFoundListener);
+    this._removeListener(this._nativeScanFailedListener);
+    this._removeListener(this._nativeDeviceConnectedListener);
+    this._removeListener(this._nativeDeviceDisconnectedListener);
+    this._removeListener(this._nativePayloadListener);
+    this._removeListener(this._nativeServicesReadyListener);
+    this._removeListener(this._nativeNotificationsListener);
+    this._removeListener(this._nativeConnectionFailedListener);
+    this._removeListener(this._nativeServerReadyListener);
+
     if (this.isScanning) this.toggleScan();
   }
 }
