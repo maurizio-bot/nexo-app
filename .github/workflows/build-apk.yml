@@ -3,21 +3,13 @@ name: NEXO APK Auto-Release
 on:
   push:
     branches: [nexo961shim]
-    # Opcional: si quieres que SOLO ciertos archivos disparen el build,
-    # descomenta las líneas de abajo. Si quieres que CUALQUIER cambio
-    # en la rama dispare el build, déjalo así como está.
-    # paths:
-    #   - 'src/**'
-    #   - 'android/**'
-    #   - 'package.json'
-    #   - 'capacitor.config.*'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Necesario para crear releases
+      contents: write
 
     steps:
       - name: Checkout nexo961shim
@@ -41,9 +33,11 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Build Web
-        run: npm run build
+      # CRITICAL FIX: Solo build web (webpack), NO tocar Android todavía
+      - name: Build Web Only
+        run: npm run build:web
 
+      # Configurar AndroidX ANTES de que Capacitor genere/copie archivos Android
       - name: Pre-configure AndroidX (Pre-Sync)
         run: |
           mkdir -p android
@@ -58,6 +52,7 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      # Forzar AndroidX de nuevo por si cap sync lo sobreescribió
       - name: Emergency AndroidX Override (Post-Sync)
         working-directory: ./android
         env:
