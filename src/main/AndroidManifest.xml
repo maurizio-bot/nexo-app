@@ -32,18 +32,21 @@
     <!-- Android 14+ (API 34+): runtime obligatorio para foreground service tipo connectedDevice -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
+    <!-- FIX v2.0.1: Deshabilitar backup para evitar fuga de datos -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/AppTheme">
 
         <!-- BleService: foreground con tipo connectedDevice para Android 10+ -->
+        <!-- FIX v2.0.1: stopWithTask="true" para que se detenga con la app -->
         <service
             android:name="com.nexo.ble.BleService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="true" />
 
         <activity
             android:name="com.getcapacitor.BridgeActivity"
