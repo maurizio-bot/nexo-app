@@ -1,7 +1,7 @@
 /**
- * NEXO App v5.0.3-ARCH
+ * NEXO App v5.0.4-ARCH
  * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH + ble_permissions.js v4.0-ARCH
- * FIX v5.0.3-ARCH: Enriquecer mensajes BLE con senderName resuelto desde bleInterface
+ * FIX v5.0.4-ARCH: Enriquecer mensajes BLE con senderName resuelto desde bleInterface
  *      para evitar "Unknown" y MAC cruda en lista de conversaciones de TheStream.
  *      Disparar nexo:ble:closeChat al limpiar contacto activo.
  */
@@ -75,7 +75,11 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.3-ARCH iniciando...', 'info', 'APP_INIT');
+    this._isSendingMessage = false;
+    this._recentMessageHashes = new Map();
+    this._maxRecentHashes = 200;
+    this._hashTTL = 300000;
+    DEBUG.log('🚀 [NEXO] v5.0.4-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -95,7 +99,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.3-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.4-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -182,7 +186,7 @@ export class NexoApp {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         
-        // FIX v5.0.3-ARCH: Resolver senderName robustamente desde bleInterface
+        // FIX v5.0.4-ARCH: Resolver senderName robustamente desde bleInterface
         // para evitar "Unknown" y MAC cruda en lista de conversaciones
         let resolvedName = senderName;
         if (!resolvedName || resolvedName === 'NEXO Peer') {
@@ -262,9 +266,15 @@ export class NexoApp {
       DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
       return false;
     }
+    if (this._isSendingMessage) {
+      DEBUG.warn('Envío ya en progreso, ignorando bounce', 'MSG_SEND_BOUNCE');
+      return false;
+    }
+    this._isSendingMessage = true;
     try {
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true, messageId }, 'self');
+      // Optimistic render: mostrar inmediatamente como enviado
+      this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: false, messageId }, 'self');
 
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
@@ -275,7 +285,7 @@ export class NexoApp {
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
-          this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
+          // Mensaje ya renderizado optimísticamente; no duplicar
           return true;
         } catch (e) {
           DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
@@ -288,7 +298,7 @@ export class NexoApp {
           const bleDevices = connectedResult?.devices || [];
           if (bleDevices.length > 0) {
             await this._sendViaBLE(bleDevices[0].deviceId || bleDevices[0].id, content);
-            this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: bleDevices[0].deviceId, source: 'ble_direct', messageId }, 'self');
+            // Mensaje ya renderizado optimísticamente; no duplicar
             return true;
           }
         } catch (e) { DEBUG.log(`[BLE_SEND] Fallback falló: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
@@ -312,17 +322,17 @@ export class NexoApp {
       DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
       return false;
     } catch (err) { DEBUG.error('APP_008', `SendMessage critical: ${err.message}`); return false; }
+    finally { this._isSendingMessage = false; }
   }
 
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
+      // ─── Deduplicación por messageId ───
       if (msg.messageId) {
         const now = Date.now();
         if (this._messageDedupMap.has(msg.messageId)) {
-          if (source !== 'self') {
-            DEBUG.log(`Deduplicado ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
-          }
+          DEBUG.log(`Deduplicado por ID ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
           return;
         }
         this._messageDedupMap.set(msg.messageId, now);
@@ -338,6 +348,31 @@ export class NexoApp {
           if (now - v > this._dedupTTL) this._messageDedupMap.delete(k);
         }
       }
+
+      // ─── Deduplicación por hash (fallback para mensajes sin messageId) ───
+      const contentStr = String(msg.content || msg.text || '');
+      const senderStr = String(msg.sender || msg.senderName || msg.deviceId || 'unknown');
+      const timeBucket = Math.floor((msg.timestamp || Date.now()) / 5000); // bucket de 5 segundos
+      const hashKey = `${source}:${senderStr}:${timeBucket}:${contentStr.substring(0, 100)}`;
+
+      const now = Date.now();
+      if (this._recentMessageHashes.has(hashKey)) {
+        DEBUG.log(`Deduplicado por hash ${hashKey.substring(0,40)} de ${source}`, 'debug', 'DEDUP_HASH');
+        return;
+      }
+      this._recentMessageHashes.set(hashKey, now);
+      if (this._recentMessageHashes.size > this._maxRecentHashes) {
+        let oldestKey = null;
+        let oldestTime = Infinity;
+        for (const [k, v] of this._recentMessageHashes) {
+          if (v < oldestTime) { oldestTime = v; oldestKey = k; }
+        }
+        if (oldestKey) this._recentMessageHashes.delete(oldestKey);
+      }
+      for (const [k, v] of this._recentMessageHashes) {
+        if (now - v > this._hashTTL) this._recentMessageHashes.delete(k);
+      }
+
       const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
       this.config.onMessage(enriched);
       if (this.stream?.appendItems) this.stream.appendItems([enriched]);
