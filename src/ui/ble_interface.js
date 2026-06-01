@@ -1,8 +1,8 @@
 /**
- * BLE Interface v3.6.0-HEALTH
+ * BLE Interface v3.6.1-HEALTH
  * Ubicacion: src/ui/ble_interface.js
  * 
- * FIXES v3.6.0-HEALTH:
+ * FIXES v3.6.1-HEALTH:
  * 1) HealthMonitor JS: verifica estado cada 2 minutos
  * 2) Auto-cleanup cada 10 minutos: limpia foundDevices, messageIds, pending queues
  * 3) Memory leak detection: si memoria >80MB, forzar cleanup
@@ -115,6 +115,15 @@ export class BLEInterface {
     this._memoryCheckInterval = null;
     this._sessionStartTime = Date.now();
     this._totalOperations = 0;
+
+    // DEDUP v3.6.1: Hash de payloads recientes para deduplicar mensajes nativos sin messageId
+    this._recentPayloadHashes = new Map();
+    this._maxRecentPayloadHashes = 200;
+    this._payloadHashTTL = 30000; // 30 segundos
+
+    // NAME CACHE v3.6.1: Cachear nombre por deviceId para evitar "Unknown" una vez resuelto
+    this._nameCache = new Map();
+    this._nameCacheTTL = 3600000; // 1 hora
   }
 
   _detectMeshType() {
@@ -537,18 +546,51 @@ export class BLEInterface {
         if (json.content) content = json.content;
       } catch (e) {}
 
-      if (!senderName || senderName === 'NEXO Peer') {
-        senderName = _getContactName(deviceId)
-          || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name)
-          || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name)
-          || senderName
-          || 'NEXO Peer';
+      // ─── DEDUP NATIVO v3.6.1: Hash de payload para mensajes sin messageId ───
+      var payloadHash = null;
+      if (!messageId) {
+        var timeBucket = Math.floor((data.timestamp || Date.now()) / 5000);
+        payloadHash = 'nat:' + deviceId + ':' + timeBucket + ':' + String(content || '').substring(0, 50);
+        var now = Date.now();
+        if (self._recentPayloadHashes.has(payloadHash)) {
+          console.log('[BLEInterface] Deduplicado nativo por hash:', payloadHash.substring(0, 40));
+          return;
+        }
+        self._recentPayloadHashes.set(payloadHash, now);
+        // Cleanup TTL
+        if (self._recentPayloadHashes.size > self._maxRecentPayloadHashes) {
+          var oldestKey = null, oldestTime = Infinity;
+          self._recentPayloadHashes.forEach(function(t, k) {
+            if (t < oldestTime) { oldestTime = t; oldestKey = k; }
+          });
+          if (oldestKey) self._recentPayloadHashes.delete(oldestKey);
+        }
+        self._recentPayloadHashes.forEach(function(t, k) {
+          if (now - t > self._payloadHashTTL) self._recentPayloadHashes.delete(k);
+        });
+      }
+
+      // ─── NAME CACHE v3.6.1: Resolver y cachear nombre para evitar "Unknown" ───
+      var cachedName = self._nameCache.get(deviceId);
+      if (cachedName && (Date.now() - cachedName.ts) < self._nameCacheTTL) {
+        senderName = cachedName.name;
+      } else {
+        if (!senderName || senderName === 'NEXO Peer') {
+          senderName = _getContactName(deviceId)
+            || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name)
+            || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name)
+            || senderName
+            || 'NEXO Peer';
+        }
+        // Cachear nombre resuelto (incluso si es 'NEXO Peer', para consistencia)
+        self._nameCache.set(deviceId, { name: senderName, ts: Date.now() });
       }
 
       if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer') {
         _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
       }
 
+      // Deduplicación por messageId
       if (messageId && self._receivedMessageIds.has(messageId)) return;
       if (messageId) {
         self._receivedMessageIds.add(messageId);
@@ -1262,6 +1304,8 @@ export class BLEInterface {
   destroy() {
     this._destroyed = true;
     this._stopHealthMonitor();
+    this._recentPayloadHashes.clear();
+    this._nameCache.clear();
 
     var styles = document.getElementById('ble-styles');
     if (styles) styles.remove();
