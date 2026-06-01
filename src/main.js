@@ -1,10 +1,10 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.3-HEALTH
+ * src/main.js - Punto de entrada NEXO v9.3.2-HEALTH
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.3-HEALTH: SetupManager/SetupWizard eliminados. Permission Shim integrado.
+ * v9.3.2-HEALTH: SetupManager/SetupWizard eliminados. Permission Shim integrado.
  * Build #961 compatible. NO toca nativo.
  * 
- * FIXES v9.3-HEALTH:
+ * FIXES v9.3.2-HEALTH:
  * 1) Freshness detection: detecta si app fue abierta después de >30min inactiva
  * 2) Auto-restart: si detecta estado corrupto, fuerza reinicio limpio
  * 3) Health monitor: verifica memoria y estado cada 2 minutos
@@ -22,7 +22,7 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.3-HEALTH',
+  version: '9.3.2-HEALTH',
   initialized: false,
   sessionStart: Date.now(),
   healthStatus: 'healthy'
@@ -375,11 +375,12 @@ async function initializeNexoApp() {
     _setupVaultToggle();
     _setupChatHeader();
     _setupKeyboardShortcuts();
+    _setupAutoScroll();
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.3-HEALTH Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.3-HEALTH Inicializado');
+    rem.success('NEXO v9.3.2-HEALTH Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.3.2-HEALTH Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
@@ -415,9 +416,23 @@ function _setupMessageInput() {
   const btn = document.getElementById('send-btn');
   if (!input || !btn || !window.NEXO.app) return;
 
+  let isSending = false;
+  let lastSendTime = 0;
+  const DEBOUNCE_MS = 300;
+
   const send = async () => {
     const text = input.value.trim();
     if (!text) return;
+
+    const now = Date.now();
+    // Anti-bounce: bloquear reenvíos rápidos o concurrentes
+    if (isSending || (now - lastSendTime < DEBOUNCE_MS)) {
+      rem.warn('Envío en progreso o muy rápido, ignorando bounce', 'MSG_BOUNCE');
+      return;
+    }
+
+    isSending = true;
+    lastSendTime = now;
     input.value = '';
     input.focus();
 
@@ -427,12 +442,14 @@ function _setupMessageInput() {
       else rem.info('En cola (offline)', 'MSG_QUEUED');
     } catch (e) {
       rem.error('Error al enviar', 'MSG_ERR');
+    } finally {
+      isSending = false;
     }
   };
 
   btn.addEventListener('click', send);
-  input.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       send();
     }
@@ -505,11 +522,38 @@ function _setupKeyboardShortcuts() {
 }
 
 function _renderMessage(msg) {
+  // ─── FALLBACK CONDICIONAL ───
+  // Si TheStream está activo, NO renderizar aquí para evitar duplicados.
+  // TheStream ya renderiza mensajes con avatar, nombre completo y metadata.
+  // Este fallback solo se activa si TheStream no está disponible.
+  if (window.NEXO?.app?.stream?.appendItems) {
+    // TheStream maneja el renderizado completo. Solo autoscroll si es necesario.
+    const container = document.getElementById('messages-container');
+    if (container) {
+      const SCROLL_THRESHOLD = 120;
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
+      if (isNearBottom) {
+        requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+      }
+    }
+    return;
+  }
+
   const container = document.getElementById('messages-container');
   if (!container) return;
 
+  // Deduplicación DOM: si ya existe un mensaje con este messageId, no renderizar de nuevo
+  if (msg.messageId) {
+    const existing = container.querySelector(`[data-message-id="${msg.messageId}"]`);
+    if (existing) {
+      console.log(`[RENDER] Deduplicado DOM por messageId: ${msg.messageId}`);
+      return;
+    }
+  }
+
   const div = document.createElement('div');
   div.className = `message ${msg._own ? 'own' : 'other'}`;
+  if (msg.messageId) div.dataset.messageId = msg.messageId;
 
   const sourceBadge = msg._source ?
     `${_getSourceIcon(msg._source)}` : '';
@@ -523,7 +567,15 @@ function _renderMessage(msg) {
   `;
 
   container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
+
+  // Autoscroll inteligente: solo si el usuario está cerca del final
+  const SCROLL_THRESHOLD = 120;
+  const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
+  if (isNearBottom) {
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+  }
 }
 
 function _getSourceIcon(source) {
@@ -535,6 +587,35 @@ function _getSourceIcon(source) {
   };
   return icons[source] || '•';
 }
+
+// ─── AUTOSCROLL INTELIGENTE ───
+// Detecta mensajes añadidos por cualquier fuente (TheStream, _renderMessage, etc.)
+// y hace scroll automático SOLO si el usuario está cerca del final.
+function _setupAutoScroll() {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
+
+  const SCROLL_THRESHOLD = 120; // px desde el fondo
+
+  const observer = new MutationObserver((mutations) => {
+    const hasAddedMessage = mutations.some(m =>
+      Array.from(m.addedNodes).some(n =>
+        n.nodeType === 1 && n.classList?.contains('message')
+      )
+    );
+    if (!hasAddedMessage) return;
+
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
+    if (isNearBottom) {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    }
+  });
+
+  observer.observe(container, { childList: true, subtree: false });
+}
+
 
 function _toggleVaultUI(isOpen) {
   const vault = document.getElementById('vault-panel');
