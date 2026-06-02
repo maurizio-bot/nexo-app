@@ -1,9 +1,11 @@
 /**
- * NEXO App v5.0.5-ARCH
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.6.2-HEALTH + ble_permissions.js v4.0-ARCH
- * FIX v5.0.5-ARCH:
- * 1) _bleMessageHandler: trata "Unknown" igual que "NEXO Peer" forzando resolucion real
- * 2) _handleMessage dedup: hash ignora source variable para evitar duplicados BLE
+ * NEXO App v5.0.7-ARCH
+ * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.6.3-HEALTH + ble_permissions.js v4.0-ARCH
+ * FIX v5.0.7-ARCH:
+ * 1) sendMessage añade mensaje propio a this.stream directamente con isMe:true
+ * 2) _bleMessageHandler sincroniza senderName con activeContact.name
+ * 3) _handleMessage pasa conversationId estable para agrupacion correcta
+ * 4) Hash dedup ignora source variable, usa sender normalizado
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -79,7 +81,7 @@ export class NexoApp {
     this._recentMessageHashes = new Map();
     this._maxRecentHashes = 200;
     this._hashTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.5-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.7-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -99,7 +101,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.5-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.7-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -183,26 +185,44 @@ export class NexoApp {
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
       this._bleMessageHandler = (e) => {
-        const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
+        const { deviceId, content, senderName, messageId, source, timestamp, conversationId } = e.detail;
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         
-        // FIX v5.0.5-ARCH: Resolver senderName robustamente. Tratar "Unknown" igual que "NEXO Peer"
+        // FIX v5.0.7: Resolver senderName robustamente. Sincronizar con activeContact.
         let resolvedName = senderName;
         const isGeneric = !resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown';
         
+        const nid = (deviceId || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
+        const convId = conversationId || nid;
+        
         if (isGeneric) {
-          const nid = (deviceId || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
-          resolvedName = this.bleInterface?.connectedDevices?.get(nid)?.name
-            || this.bleInterface?.foundDevices?.get(nid)?.name
-            || senderName
-            || 'NEXO Peer';
+          // Si es el contacto activo, usar su nombre
+          if (this.activeContact && this._normalizeId(this.activeContact.id) === convId) {
+            resolvedName = this.activeContact.name || resolvedName;
+          }
+          // Intentar desde contactos BLE almacenados
+          if (!resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown') {
+            try {
+              const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
+              const contact = contacts.find(c => this._normalizeId(c.id || c.address) === convId);
+              if (contact && contact.name) resolvedName = contact.name;
+            } catch (e) {}
+          }
+          // Fallback a dispositivos encontrados/conectados
+          if (!resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown') {
+            resolvedName = this.bleInterface?.connectedDevices?.get(convId)?.name
+              || this.bleInterface?.foundDevices?.get(convId)?.name
+              || senderName
+              || 'NEXO Peer';
+          }
         }
         
         this._handleMessage({
           content,
           sender: deviceId,
           senderName: resolvedName,
-          source: 'ble_direct', // Normalizar source para deduplicacion consistente
+          conversationId: convId, // ID estable para agrupar
+          source: 'ble_direct',
           timestamp: timestamp || Date.now(),
           messageId,
           _own: false
@@ -211,6 +231,11 @@ export class NexoApp {
       window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
 
     } catch (err) { DEBUG.error('UI_004', `BLE UI init failed: ${err.message}`); this.bleInterface = null; }
+  }
+
+  _normalizeId(id) {
+    if (!id) return '';
+    return id.toString().toLowerCase().replace(/[:-]/g, '').trim();
   }
 
   async _initPhase6_Bridge() {
@@ -274,10 +299,31 @@ export class NexoApp {
     this._isSendingMessage = true;
     try {
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: false, messageId }, 'self');
-
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
+      
+      // FIX v5.0.7: Renderizar mensaje propio directamente en TheStream para que aparezca azul
+      const ownMessage = { 
+        ...msg, 
+        content, 
+        _own: true, 
+        isMe: true,
+        timestamp: Date.now(), 
+        pending: false, 
+        messageId,
+        sender: 'Tú',
+        senderName: 'Tú',
+        conversationId: this._normalizeId(this.activeContact?.id || 'self')
+      };
+      
+      // Añadir a TheStream directamente si existe
+      if (this.stream?.appendItems) {
+        this.stream.appendItems([ownMessage], { scroll: true });
+      }
+      
+      // También pasar por el pipeline normal para deduplicacion y callbacks
+      this._handleMessage(ownMessage, 'self');
+
       const recipient = isObject ? msg.recipient : null;
       const targetId = recipient || this.activeContact?.id;
       const targetTransport = this.activeContact?.transport;
@@ -347,10 +393,9 @@ export class NexoApp {
         }
       }
 
-      // Deduplicacion por hash (fallback para mensajes sin messageId)
-      // FIX v5.0.5: Ignorar source variable en hash para evitar duplicados por fuente cambiante
+      // Deduplicacion por hash - FIX v5.0.7: Usar conversationId estable, ignorar source variable
       const contentStr = String(msg.content || msg.text || '');
-      const senderStr = String(msg.sender || msg.senderName || msg.deviceId || 'unknown');
+      const senderStr = String(msg.conversationId || msg.sender || msg.senderName || msg.deviceId || 'unknown');
       const timeBucket = Math.floor((msg.timestamp || Date.now()) / 5000);
       const hashKey = `msg:${senderStr}:${timeBucket}:${contentStr.substring(0, 100)}`;
 
@@ -374,7 +419,12 @@ export class NexoApp {
 
       const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
       this.config.onMessage(enriched);
-      if (this.stream?.appendItems) this.stream.appendItems([enriched]);
+      
+      // FIX v5.0.7: Solo pasar a TheStream si no es mensaje propio (ya renderizado directamente)
+      // o si TheStream no recibió el mensaje propio por alguna razon
+      if (this.stream?.appendItems && !msg.isMe) {
+        this.stream.appendItems([enriched], { scroll: true });
+      }
     } catch (err) { DEBUG.error('APP_005', `Message handler: ${err.message}`); }
   }
 
