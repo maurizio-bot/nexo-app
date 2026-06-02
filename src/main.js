@@ -1,17 +1,14 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.3.5-HEALTH
+ * src/main.js - Punto de entrada NEXO v9.3.6-HEALTH
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.3.5-HEALTH: SetupManager/SetupWizard eliminados. Permission Shim integrado.
- * Build #961 compatible. NO toca nativo.
+ * v9.3.6-HEALTH: Autoscroll REAL + Anti-duplicados robusto
  * 
- * FIXES v9.3.5-HEALTH:
- * 1) Freshness detection: detecta si app fue abierta despues de >30min inactiva
- * 2) Auto-restart: si detecta estado corrupto, fuerza reinicio limpio
- * 3) Health monitor: verifica memoria y estado cada 2 minutos
- * 4) Graceful degradation: si BLE crashea, continua en modo relay
- * 5) Session tracking: guarda timestamp de ultima sesion
- * 6) Autoscroll robusto: observa cualquier contenedor de mensajes en el DOM
- * 7) _renderMessage ya no retorna temprano por TheStream, renderiza siempre como fallback
+ * FIXES v9.3.6-HEALTH:
+ * 1) Autoscroll forzado al enviar mensaje propio (no depende de MutationObserver)
+ * 2) MutationObserver enganchado al contenedor REAL de mensajes (detecta clase .message-bubble)
+ * 3) _renderMessage como fallback puro: NO renderiza mensajes propios si TheStream está activo
+ * 4) Scroll doble capa: inmediato (requestAnimationFrame) + confirmación (50ms)
+ * 5) Deduplicación por hash de contenido en _renderMessage
  */
 
 import './styles/critical.css';
@@ -24,7 +21,7 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.3.5-HEALTH',
+  version: '9.3.6-HEALTH',
   initialized: false,
   sessionStart: Date.now(),
   healthStatus: 'healthy'
@@ -34,8 +31,8 @@ window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 
 const SESSION_STORAGE_KEY = 'nexo_last_session';
-const FRESHNESS_THRESHOLD_MS = 1800000; // 30 minutos
-const HEALTH_CHECK_INTERVAL_MS = 120000; // 2 minutos
+const FRESHNESS_THRESHOLD_MS = 1800000;
+const HEALTH_CHECK_INTERVAL_MS = 120000;
 
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible?.()) {
@@ -51,31 +48,24 @@ function _checkAppFreshness() {
   try {
     const lastSession = localStorage.getItem(SESSION_STORAGE_KEY);
     const now = Date.now();
-
     if (lastSession) {
       const lastTime = parseInt(lastSession, 10);
       const delta = now - lastTime;
-
       if (delta > FRESHNESS_THRESHOLD_MS) {
         rem.warn(`[HEALTH] App reopened after ${Math.round(delta/60000)}min. Clearing stale state.`, 'FRESHNESS');
-
         localStorage.removeItem('nexo_shim_v2_state');
         localStorage.removeItem('nexo_ble_prefs');
-
         const shim = getPermissionShim();
         if (shim) {
           shim.state.checked = false;
           shim.state.granted = false;
           shim._cache.clear();
         }
-
         return { isFresh: false, deltaMinutes: Math.round(delta/60000) };
       }
     }
-
     localStorage.setItem(SESSION_STORAGE_KEY, now.toString());
     return { isFresh: true, deltaMinutes: 0 };
-
   } catch (e) {
     console.warn('[HEALTH] Freshness check error:', e);
     return { isFresh: true, deltaMinutes: 0 };
@@ -83,9 +73,7 @@ function _checkAppFreshness() {
 }
 
 setInterval(() => {
-  try {
-    localStorage.setItem(SESSION_STORAGE_KEY, Date.now().toString());
-  } catch (e) {}
+  try { localStorage.setItem(SESSION_STORAGE_KEY, Date.now().toString()); } catch (e) {}
 }, 30000);
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -171,20 +159,17 @@ function _stopHealthMonitor() {
 function _performHealthCheck() {
   try {
     const uptime = Math.floor((Date.now() - window.NEXO.sessionStart) / 1000);
-
     let memoryInfo = 'N/A';
     if (performance && performance.memory) {
       const used = Math.round(performance.memory.usedJSHeapSize / 1048576);
       const total = Math.round(performance.memory.totalJSHeapSize / 1048576);
       const limit = Math.round(performance.memory.jsHeapSizeLimit / 1048576);
       memoryInfo = `${used}MB/${total}MB (limit: ${limit}MB)`;
-
       if (used / limit > 0.8) {
         rem.warn(`[HEALTH] High memory usage: ${memoryInfo}`, 'MEMORY');
         window.NEXO.healthStatus = 'memory_pressure';
       }
     }
-
     try {
       const shimHealth = getShimHealth();
       if (shimHealth.isStale) {
@@ -193,9 +178,7 @@ function _performHealthCheck() {
         if (shim) shim.check({ bypassCache: true });
       }
     } catch (e) {}
-
     console.log(`[HEALTH] Uptime: ${uptime}s, Memory: ${memoryInfo}, Status: ${window.NEXO.healthStatus}`);
-
   } catch (e) {
     console.error('[HEALTH] Health check error:', e);
   }
@@ -229,7 +212,6 @@ function _stopPermissionPolling() {
 
 function _showPermissionOverlay() {
   if (document.getElementById('nexo-perm-overlay')) return;
-
   const overlay = document.createElement('div');
   overlay.id = 'nexo-perm-overlay';
   overlay.innerHTML = `
@@ -367,8 +349,8 @@ async function initializeNexoApp() {
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.3.5-HEALTH Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.3.5-HEALTH Inicializado');
+    rem.success('NEXO v9.3.6-HEALTH Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.3.6-HEALTH Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
@@ -399,6 +381,26 @@ function _ensureDOMStructure() {
   }
 }
 
+// DEDUP DOM v9.3.6: Hash de mensajes recientes para evitar duplicados en fallback
+const _renderedMessageHashes = new Map();
+const _MAX_RENDERED_HASHES = 100;
+const _RENDER_HASH_TTL = 60000;
+
+function _getMessageHash(msg) {
+  const content = String(msg.content || msg.text || '');
+  const sender = String(msg.sender || msg.senderName || msg.conversationId || 'unknown');
+  const ts = msg.timestamp || Date.now();
+  const bucket = Math.floor(ts / 2000);
+  return `${sender}:${bucket}:${content.substring(0, 50)}`;
+}
+
+function _cleanupRenderedHashes() {
+  const now = Date.now();
+  for (const [k, v] of _renderedMessageHashes) {
+    if (now - v > _RENDER_HASH_TTL) _renderedMessageHashes.delete(k);
+  }
+}
+
 function _setupMessageInput() {
   const input = document.getElementById('message-input');
   const btn = document.getElementById('send-btn');
@@ -407,6 +409,25 @@ function _setupMessageInput() {
   let isSending = false;
   let lastSendTime = 0;
   const DEBOUNCE_MS = 300;
+
+  const doScrollToBottom = () => {
+    const containers = [
+      document.getElementById('messages-container'),
+      document.querySelector('.messages-container'),
+      document.querySelector('.stream-container'),
+      document.querySelector('[class*="message"]'),
+      document.querySelector('[class*="stream"]'),
+      document.getElementById('nexo-stream')
+    ].filter(Boolean);
+    
+    containers.forEach(container => {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+        setTimeout(() => { container.scrollTop = container.scrollHeight; }, 50);
+        setTimeout(() => { container.scrollTop = container.scrollHeight; }, 150);
+      });
+    });
+  };
 
   const send = async () => {
     const text = input.value.trim();
@@ -423,10 +444,14 @@ function _setupMessageInput() {
     input.value = '';
     input.focus();
 
+    doScrollToBottom();
+
     try {
       const sent = await window.NEXO.app.sendMessage({ content: text });
       if (sent) rem.success('Enviado', 'MSG_SENT');
       else rem.info('En cola (offline)', 'MSG_QUEUED');
+      setTimeout(doScrollToBottom, 100);
+      setTimeout(doScrollToBottom, 300);
     } catch (e) {
       rem.error('Error al enviar', 'MSG_ERR');
     } finally {
@@ -509,13 +534,21 @@ function _setupKeyboardShortcuts() {
 }
 
 function _renderMessage(msg) {
-  // FIX v9.3.5: Ya no retornar temprano por TheStream. Renderizar siempre como fallback robusto.
-  // TheStream ya maneja sus propios mensajes. Este render es fallback si algo falla.
-  
   const container = document.getElementById('messages-container');
   if (!container) return;
 
-  // Deduplicacion DOM por messageId
+  if ((msg._own || msg.isMe) && window.NEXO.app?.stream) {
+    return;
+  }
+
+  const hash = _getMessageHash(msg);
+  _cleanupRenderedHashes();
+  if (_renderedMessageHashes.has(hash)) {
+    console.log(`[RENDER] Deduplicado por hash: ${hash.substring(0, 40)}`);
+    return;
+  }
+  _renderedMessageHashes.set(hash, Date.now());
+
   if (msg.messageId) {
     const existing = container.querySelector(`[data-message-id="${msg.messageId}"]`);
     if (existing) {
@@ -528,8 +561,7 @@ function _renderMessage(msg) {
   div.className = `message ${msg._own || msg.isMe ? 'own' : 'other'}`;
   if (msg.messageId) div.dataset.messageId = msg.messageId;
 
-  const sourceBadge = msg._source ?
-    `${_getSourceIcon(msg._source)}` : '';
+  const sourceBadge = msg._source ? `${_getSourceIcon(msg._source)}` : '';
 
   div.innerHTML = `
     <div class="msg-content">${msg.content || msg.text}</div>
@@ -541,7 +573,6 @@ function _renderMessage(msg) {
 
   container.appendChild(div);
 
-  // Autoscroll inmediato
   const SCROLL_THRESHOLD = 120;
   const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
   if (isNearBottom) {
@@ -561,57 +592,70 @@ function _getSourceIcon(source) {
   return icons[source] || '•';
 }
 
-// AUTOSCROLL GLOBAL v9.3.5
-// Observa CUALQUIER contenedor con overflow-y:auto en el DOM
-// y hace scroll automatico cuando se añaden elementos .message o .stream-item
 function _setupGlobalAutoScroll() {
   const SCROLL_THRESHOLD = 120;
 
-  // Funcion para hacer scroll en un contenedor
   const doScroll = (container) => {
     requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
-      setTimeout(() => {
-        container.scrollTop = container.scrollHeight;
-      }, 50);
+      setTimeout(() => { container.scrollTop = container.scrollHeight; }, 50);
+      setTimeout(() => { container.scrollTop = container.scrollHeight; }, 150);
     });
   };
 
-  // Observer global que detecta cualquier insercion de mensaje en cualquier contenedor
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((m) => {
-      if (m.type !== 'childList' || m.addedNodes.length === 0) return;
+  const findMessageContainer = () => {
+    return document.getElementById('messages-container')
+      || document.querySelector('.messages-container')
+      || document.querySelector('.stream-container')
+      || document.getElementById('nexo-stream');
+  };
+
+  const setupObserver = () => {
+    const container = findMessageContainer();
+    if (!container) {
+      setTimeout(setupObserver, 500);
+      return;
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      let shouldScroll = false;
       
-      // Verificar si se añadio un mensaje
-      const hasMessage = Array.from(m.addedNodes).some(n => 
-        n.nodeType === 1 && (
-          n.classList?.contains('message') || 
-          n.classList?.contains('stream-item') ||
-          n.querySelector?.('.message') ||
-          n.querySelector?.('.stream-item')
-        )
-      );
-      
-      if (!hasMessage) return;
-      
-      // Encontrar el contenedor padre con scroll
-      let container = m.target;
-      while (container && container !== document.body) {
-        const style = window.getComputedStyle(container);
-        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
-          const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
-          if (isNearBottom) {
-            doScroll(container);
+      mutations.forEach((m) => {
+        if (m.type !== 'childList' || m.addedNodes.length === 0) return;
+        
+        for (const node of m.addedNodes) {
+          if (node.nodeType === 1) {
+            const isMessage = node.classList?.contains('message') 
+              || node.classList?.contains('stream-item')
+              || node.classList?.contains('message-bubble')
+              || node.classList?.contains('msg-bubble')
+              || node.querySelector?.('.message, .stream-item, .message-bubble');
+            
+            if (isMessage) {
+              shouldScroll = true;
+              break;
+            }
           }
-          break;
         }
-        container = container.parentElement;
+      });
+      
+      if (shouldScroll) {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
+        if (isNearBottom) {
+          doScroll(container);
+        }
       }
     });
-  });
 
-  // Observar todo el body con subtree para capturar cualquier insercion
-  observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(container, { childList: true, subtree: true });
+    console.log('[AUTOSCROLL] Observer activo en:', container.className || container.id);
+  };
+
+  setupObserver();
+  
+  window.addEventListener('nexo:ble:openChat', () => {
+    setTimeout(setupObserver, 300);
+  });
 }
 
 function _toggleVaultUI(isOpen) {
