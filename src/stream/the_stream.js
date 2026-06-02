@@ -1,7 +1,10 @@
 /**
- * NEXO v9.0 - TheStream v2.4-NAP-CERTIFIED
- * FIX v2.4: Preview cards usan senderName si existe, evitando MAC cruda o "Unknown".
- *           Fallback a contacto activo o 'NEXO Peer' antes de mostrar deviceId.
+ * NEXO v9.0 - TheStream v2.5-NAP-CERTIFIED
+ * FIX v2.5: 
+ * 1) scrollToBottom con doble capa rAF + setTimeout para layout completo
+ * 2) conversationId estable para agrupar conversaciones, no sender variable
+ * 3) Fallback de nombre usa window.NEXO.app correctamente
+ * 4) appendItems acepta scroll explícito para mensajes propios
  */
 
 class TheStream {
@@ -30,7 +33,8 @@ class TheStream {
       maxCacheSize: 1000,
       maxRenderedItems: 500,
       fallbackAvatar: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMTgiIGZpbGw9IiMzMzMiIHN0cm9rZT0iIzU1NSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHRleHQgeD0iMjAiIHk9IjI1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic3lzdGVtLXVpIiBmb250LXNpemU9IjE0IiBmaWxsPSIjODg4Ij4/PC90ZXh0Pjwvc3ZnPg==',
-      autoScroll: true
+      autoScroll: true,
+      scrollThreshold: 120
     };
     
     this.initialized = true;
@@ -40,7 +44,7 @@ class TheStream {
     this._injectStyles();
     this._setupResourceErrorInterceptor();
     
-    console.log('[TheStream] Initialized v2.4-NAP-CERTIFIED');
+    console.log('[TheStream] Initialized v2.5-NAP-CERTIFIED');
   }
 
   appendItems(items, options = {}) {
@@ -114,11 +118,17 @@ class TheStream {
   }
 
   scrollToBottom() {
-    if (this.container) {
-      requestAnimationFrame(() => {
+    if (!this.container) return this;
+    
+    // Doble capa: rAF inmediato + setTimeout para layout completo
+    requestAnimationFrame(() => {
+      this.container.scrollTop = this.container.scrollHeight;
+      
+      setTimeout(() => {
         this.container.scrollTop = this.container.scrollHeight;
-      });
-    }
+      }, 50);
+    });
+    
     return this;
   }
 
@@ -216,19 +226,26 @@ class TheStream {
         id: this._generateId(),
         content: String(item || ''),
         sender: 'System',
+        senderName: 'System',
+        conversationId: 'system',
         timestamp: Date.now(),
         type: 'text'
       };
     }
 
+    // Normalizar conversationId: usar el ID estable del dispositivo/contacto
+    const rawSender = item.sender || item.from || item.author || item.deviceId || 'Unknown';
+    const conversationId = item.conversationId || this._normalizeId(rawSender);
+
     const sanitized = {
       id: item.id || this._generateId(),
       content: item.content || item.text || item.message || '',
-      sender: item.sender || item.from || item.author || 'Unknown',
+      sender: rawSender,
       senderName: item.senderName || item.sender || item.from || 'Unknown',
+      conversationId: conversationId,
       timestamp: item.timestamp || item.time || Date.now(),
       avatar: item.avatar || null,
-      isMe: item.isMe || item.sender === 'Tú' || false,
+      isMe: item.isMe || item._own || item.sender === 'Tú' || false,
       type: item.type || 'message'
     };
 
@@ -236,18 +253,49 @@ class TheStream {
       sanitized.content = String(sanitized.content);
     }
 
-    if (typeof sanitized.sender !== 'string' || !sanitized.sender.trim()) {
-      sanitized.sender = 'Unknown';
-    }
+    // FIX v2.5: Resolver senderName robustamente
+    // 1. Si ya es un nombre real (no Unknown, no MAC-like), usarlo
+    // 2. Si es generico, intentar fallback a contacto activo de NEXO
+    // 3. Si no, usar conversationId mapeado a nombre de contacto
+    const isGenericName = !sanitized.senderName || 
+                          sanitized.senderName === 'Unknown' || 
+                          sanitized.senderName === 'NEXO Peer' ||
+                          !sanitized.senderName.trim() ||
+                          /^[a-f0-9]{2}:/i.test(sanitized.senderName) ||
+                          /^[a-f0-9]{12}$/i.test(sanitized.senderName);
 
-    // FIX v2.4: Si senderName es Unknown/vacío/MAC-like, intentar fallback a contacto activo
-    if (!sanitized.senderName || sanitized.senderName === 'Unknown' || !sanitized.senderName.trim() || /^[a-f0-9]{2}:/i.test(sanitized.senderName)) {
-      // Intentar obtener nombre del contacto activo de NEXO
-      const activeName = window.nexoApp?.activeContact?.name;
-      sanitized.senderName = activeName || sanitized.senderName || 'NEXO Peer';
+    if (isGenericName) {
+      // Intentar obtener nombre del contacto activo de NEXO (instancia correcta)
+      const nexoApp = window.NEXO?.app;
+      const activeContact = nexoApp?.activeContact;
+      
+      // Si el mensaje es del contacto activo, usar su nombre
+      if (activeContact && this._normalizeId(activeContact.id) === conversationId) {
+        sanitized.senderName = activeContact.name || sanitized.senderName;
+      } 
+      // Intentar buscar en contactos BLE almacenados
+      else {
+        try {
+          const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
+          const contact = contacts.find(c => this._normalizeId(c.id || c.address) === conversationId);
+          if (contact && contact.name) {
+            sanitized.senderName = contact.name;
+          }
+        } catch (e) {}
+      }
+      
+      // Ultimo fallback
+      if (!sanitized.senderName || sanitized.senderName === 'Unknown') {
+        sanitized.senderName = 'NEXO Peer';
+      }
     }
 
     return sanitized;
+  }
+
+  _normalizeId(id) {
+    if (!id) return '';
+    return id.toString().toLowerCase().replace(/[:-]/g, '').trim();
   }
 
   _renderSingle(message, config) {
@@ -281,7 +329,6 @@ class TheStream {
     
     const safeId = this._escapeAttr(String(message.id || ''));
     
-    // FIX v2.4: Usar senderName para el nombre visible, no sender (que puede ser MAC)
     const displayName = message.senderName || message.sender || 'NEXO Peer';
     
     bubble.innerHTML = `
@@ -418,7 +465,7 @@ class TheStream {
 
   _shouldAutoScroll() {
     if (!this.container) return false;
-    const threshold = 100;
+    const threshold = this.config.scrollThreshold;
     const { scrollHeight, scrollTop, clientHeight } = this.container;
     return (scrollHeight - scrollTop - clientHeight) < threshold;
   }
