@@ -1,15 +1,16 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.3.2-HEALTH
+ * src/main.js - Punto de entrada NEXO v9.3.3-HEALTH
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.3.2-HEALTH: SetupManager/SetupWizard eliminados. Permission Shim integrado.
+ * v9.3.3-HEALTH: SetupManager/SetupWizard eliminados. Permission Shim integrado.
  * Build #961 compatible. NO toca nativo.
  * 
- * FIXES v9.3.2-HEALTH:
- * 1) Freshness detection: detecta si app fue abierta después de >30min inactiva
+ * FIXES v9.3.3-HEALTH:
+ * 1) Freshness detection: detecta si app fue abierta despues de >30min inactiva
  * 2) Auto-restart: si detecta estado corrupto, fuerza reinicio limpio
  * 3) Health monitor: verifica memoria y estado cada 2 minutos
- * 4) Graceful degradation: si BLE crashea, continúa en modo relay
- * 5) Session tracking: guarda timestamp de última sesión
+ * 4) Graceful degradation: si BLE crashea, continua en modo relay
+ * 5) Session tracking: guarda timestamp de ultima sesion
+ * 6) Autoscroll robusto: MutationObserver con subtree:true + doble capa rAF+setTimeout
  */
 
 import './styles/critical.css';
@@ -22,7 +23,7 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.3.2-HEALTH',
+  version: '9.3.3-HEALTH',
   initialized: false,
   sessionStart: Date.now(),
   healthStatus: 'healthy'
@@ -55,14 +56,11 @@ function _checkAppFreshness() {
       const delta = now - lastTime;
 
       if (delta > FRESHNESS_THRESHOLD_MS) {
-        // App abierta después de mucho tiempo - posible estado corrupto
         rem.warn(`[HEALTH] App reopened after ${Math.round(delta/60000)}min. Clearing stale state.`, 'FRESHNESS');
 
-        // Limpiar estado stale
         localStorage.removeItem('nexo_shim_v2_state');
         localStorage.removeItem('nexo_ble_prefs');
 
-        // Forzar recarga de permisos
         const shim = getPermissionShim();
         if (shim) {
           shim.state.checked = false;
@@ -74,7 +72,6 @@ function _checkAppFreshness() {
       }
     }
 
-    // Guardar timestamp actual
     localStorage.setItem(SESSION_STORAGE_KEY, now.toString());
     return { isFresh: true, deltaMinutes: 0 };
 
@@ -84,7 +81,6 @@ function _checkAppFreshness() {
   }
 }
 
-// Actualizar timestamp periódicamente
 setInterval(() => {
   try {
     localStorage.setItem(SESSION_STORAGE_KEY, Date.now().toString());
@@ -93,7 +89,6 @@ setInterval(() => {
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    // Check freshness primero
     const freshness = _checkAppFreshness();
     if (!freshness.isFresh) {
       rem.warn(`[HEALTH] Stale session detected (${freshness.deltaMinutes}min). Forcing clean init.`, 'FRESHNESS');
@@ -107,7 +102,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
-    // ─── SHIM INTEGRATION v9.3 ───
     rem.info('[Shim] Verificando permisos BLE...', 'SHIM_CHECK');
 
     let permissionsGranted = false;
@@ -143,11 +137,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
-    // ─── HEALTH MONITOR ───
     _startHealthMonitor();
 
   } catch (error) {
-    console.error('💥 Error fatal en inicialización:', error);
+    console.error('💥 Error fatal en inicializacion:', error);
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('INIT_FATAL', error.message);
     rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
@@ -178,7 +171,6 @@ function _performHealthCheck() {
   try {
     const uptime = Math.floor((Date.now() - window.NEXO.sessionStart) / 1000);
 
-    // Check JS heap memory
     let memoryInfo = 'N/A';
     if (performance && performance.memory) {
       const used = Math.round(performance.memory.usedJSHeapSize / 1048576);
@@ -186,14 +178,12 @@ function _performHealthCheck() {
       const limit = Math.round(performance.memory.jsHeapSizeLimit / 1048576);
       memoryInfo = `${used}MB/${total}MB (limit: ${limit}MB)`;
 
-      // Alerta si >80%
       if (used / limit > 0.8) {
         rem.warn(`[HEALTH] High memory usage: ${memoryInfo}`, 'MEMORY');
         window.NEXO.healthStatus = 'memory_pressure';
       }
     }
 
-    // Check Shim health
     try {
       const shimHealth = getShimHealth();
       if (shimHealth.isStale) {
@@ -203,7 +193,6 @@ function _performHealthCheck() {
       }
     } catch (e) {}
 
-    // Log health status
     console.log(`[HEALTH] Uptime: ${uptime}s, Memory: ${memoryInfo}, Status: ${window.NEXO.healthStatus}`);
 
   } catch (e) {
@@ -226,9 +215,7 @@ function _startPermissionPolling() {
         _hidePermissionOverlay();
         await initializeNexoApp();
       }
-    } catch (e) {
-      // Silencioso
-    }
+    } catch (e) {}
   }, 3000);
 }
 
@@ -247,8 +234,8 @@ function _showPermissionOverlay() {
   overlay.innerHTML = `
     <div class="perm-overlay-content">
       <h2>🔐 Permisos BLE Requeridos</h2>
-      <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p>
-      <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p>
+      <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicacion P2P.</p>
+      <p class="perm-sub">Si ya los concediste en Ajustes, la app continuara automaticamente.</p>
       <div id="perm-status" class="perm-status">Verificando...</div>
       <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>
       <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button>
@@ -274,7 +261,7 @@ function _showPermissionOverlay() {
   document.head.appendChild(style);
 
   document.getElementById('perm-btn-grant').addEventListener('click', async () => {
-    rem.info('[Shim] Usuario solicitó permisos desde overlay', 'SHIM_USER_REQ');
+    rem.info('[Shim] Usuario solicito permisos desde overlay', 'SHIM_USER_REQ');
     try {
       const shim = getPermissionShim();
       const granted = await shim.request();
@@ -301,12 +288,12 @@ function _showPermissionOverlay() {
         window.location.href = 'app-settings:';
       }
     } catch (e) {
-      alert('Ve a Configuración > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
+      alert('Ve a Configuracion > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
     }
   });
 
   document.getElementById('perm-btn-skip').addEventListener('click', async () => {
-    rem.warn('[Shim] Usuario continuó sin BLE', 'SHIM_SKIP');
+    rem.warn('[Shim] Usuario continuo sin BLE', 'SHIM_SKIP');
     _stopPermissionPolling();
     _hidePermissionOverlay();
     await initializeNexoApp();
@@ -345,7 +332,7 @@ async function initializeNexoApp() {
       },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
-        onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
+        onReact: (id) => rem.success('Reaccion añadida', 'REACT_OK'),
         onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
@@ -362,7 +349,7 @@ async function initializeNexoApp() {
 
     try {
       await Promise.race([initPromise, timeoutPromise]);
-      rem.success('==== INICIALIZACIÓN NAP 2.0 COMPLETADA ====', 'INIT_OK');
+      rem.success('==== INICIALIZACION NAP 2.0 COMPLETADA ====', 'INIT_OK');
     } catch (timeoutErr) {
       rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
       rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
@@ -379,8 +366,8 @@ async function initializeNexoApp() {
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.3.2-HEALTH Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.3.2-HEALTH Inicializado');
+    rem.success('NEXO v9.3.3-HEALTH Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.3.3-HEALTH Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
@@ -425,9 +412,8 @@ function _setupMessageInput() {
     if (!text) return;
 
     const now = Date.now();
-    // Anti-bounce: bloquear reenvíos rápidos o concurrentes
     if (isSending || (now - lastSendTime < DEBOUNCE_MS)) {
-      rem.warn('Envío en progreso o muy rápido, ignorando bounce', 'MSG_BOUNCE');
+      rem.warn('Envio en progreso o muy rapido, ignorando bounce', 'MSG_BOUNCE');
       return;
     }
 
@@ -522,12 +508,8 @@ function _setupKeyboardShortcuts() {
 }
 
 function _renderMessage(msg) {
-  // ─── FALLBACK CONDICIONAL ───
-  // Si TheStream está activo, NO renderizar aquí para evitar duplicados.
-  // TheStream ya renderiza mensajes con avatar, nombre completo y metadata.
-  // Este fallback solo se activa si TheStream no está disponible.
+  // FALLBACK CONDICIONAL
   if (window.NEXO?.app?.stream?.appendItems) {
-    // TheStream maneja el renderizado completo. Solo autoscroll si es necesario.
     const container = document.getElementById('messages-container');
     if (container) {
       const SCROLL_THRESHOLD = 120;
@@ -542,7 +524,6 @@ function _renderMessage(msg) {
   const container = document.getElementById('messages-container');
   if (!container) return;
 
-  // Deduplicación DOM: si ya existe un mensaje con este messageId, no renderizar de nuevo
   if (msg.messageId) {
     const existing = container.querySelector(`[data-message-id="${msg.messageId}"]`);
     if (existing) {
@@ -568,7 +549,6 @@ function _renderMessage(msg) {
 
   container.appendChild(div);
 
-  // Autoscroll inteligente: solo si el usuario está cerca del final
   const SCROLL_THRESHOLD = 120;
   const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
   if (isNearBottom) {
@@ -588,34 +568,41 @@ function _getSourceIcon(source) {
   return icons[source] || '•';
 }
 
-// ─── AUTOSCROLL INTELIGENTE ───
-// Detecta mensajes añadidos por cualquier fuente (TheStream, _renderMessage, etc.)
-// y hace scroll automático SOLO si el usuario está cerca del final.
+// AUTOSCROLL INTELIGENTE v9.3.3
+// Detecta mensajes añadidos por cualquier fuente y hace scroll automatico
+// SOLO si el usuario esta cerca del final. Usa subtree:true + doble capa rAF+setTimeout
 function _setupAutoScroll() {
   const container = document.getElementById('messages-container');
   if (!container) return;
 
-  const SCROLL_THRESHOLD = 120; // px desde el fondo
+  const SCROLL_THRESHOLD = 120;
 
   const observer = new MutationObserver((mutations) => {
     const hasAddedMessage = mutations.some(m =>
       Array.from(m.addedNodes).some(n =>
-        n.nodeType === 1 && n.classList?.contains('message')
+        n.nodeType === 1 && (n.classList?.contains('message') || n.querySelector?.('.message'))
       )
     );
     if (!hasAddedMessage) return;
 
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
-    if (isNearBottom) {
-      requestAnimationFrame(() => {
+    // Primera capa: rAF inmediato para capturar inserciones directas
+    requestAnimationFrame(() => {
+      const isNearBottom1 = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
+      if (isNearBottom1) {
         container.scrollTop = container.scrollHeight;
-      });
-    }
+      }
+      // Segunda capa: setTimeout 50ms para capturar inserciones anidadas/post-layout
+      setTimeout(() => {
+        const isNearBottom2 = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
+        if (isNearBottom2) {
+          container.scrollTop = container.scrollHeight;
+        }
+      }, 50);
+    });
   });
 
-  observer.observe(container, { childList: true, subtree: false });
+  observer.observe(container, { childList: true, subtree: true });
 }
-
 
 function _toggleVaultUI(isOpen) {
   const vault = document.getElementById('vault-panel');
@@ -659,7 +646,7 @@ function _enableFallbackMode() {
   const msg = document.createElement('div');
   msg.className = 'fallback-notice';
   msg.innerHTML = `
-    <h3>⚠️ Error de Inicialización</h3>
+    <h3>⚠️ Error de Inicializacion</h3>
     <p>La app no pudo iniciar completamente.</p>
   `;
   body.appendChild(msg);
