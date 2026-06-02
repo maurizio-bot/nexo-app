@@ -1,12 +1,12 @@
 /**
-
- * NEXO App v5.0.7-ARCH
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.6.3-HEALTH + ble_permissions.js v4.0-ARCH
- * FIX v5.0.7-ARCH:
- * 1) sendMessage añade mensaje propio a this.stream directamente con isMe:true
- * 2) _bleMessageHandler sincroniza senderName con activeContact.name
- * 3) _handleMessage pasa conversationId estable para agrupacion correcta
- * 4) Hash dedup ignora source variable, usa sender normalizado
+ * NEXO App v5.0.8-ARCH
+ * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.6.4-HEALTH + ble_permissions.js v4.0-ARCH
+ * FIX v5.0.8-ARCH:
+ * 1) sendMessage NO pasa mensaje propio por _handleMessage (evita doble render)
+ * 2) _handleMessage con debounce 150ms + timeBucket 1000ms (no 5000ms)
+ * 3) Hash dedup normaliza sender + conversationId + contenido
+ * 4) _bleMessageHandler dedup estricto: ignora mensajes con mismo hash en ventana de 2s
+ * 5) Anti-bounce: _isSendingMessage protege contra envíos rápidos
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -82,7 +82,14 @@ export class NexoApp {
     this._recentMessageHashes = new Map();
     this._maxRecentHashes = 200;
     this._hashTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.7-ARCH iniciando...', 'info', 'APP_INIT');
+    
+    this._handleMessageDebounceTimer = null;
+    this._pendingHandleMessages = [];
+    
+    this._lastProcessedHash = null;
+    this._lastProcessedTime = 0;
+    
+    DEBUG.log('🚀 [NEXO] v5.0.8-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -102,7 +109,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.7-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.8-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -189,19 +196,16 @@ export class NexoApp {
         const { deviceId, content, senderName, messageId, source, timestamp, conversationId } = e.detail;
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         
-        // FIX v5.0.7: Resolver senderName robustamente. Sincronizar con activeContact.
         let resolvedName = senderName;
         const isGeneric = !resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown';
         
-        const nid = (deviceId || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
+        const nid = this._normalizeId(deviceId);
         const convId = conversationId || nid;
         
         if (isGeneric) {
-          // Si es el contacto activo, usar su nombre
           if (this.activeContact && this._normalizeId(this.activeContact.id) === convId) {
             resolvedName = this.activeContact.name || resolvedName;
           }
-          // Intentar desde contactos BLE almacenados
           if (!resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown') {
             try {
               const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
@@ -209,7 +213,6 @@ export class NexoApp {
               if (contact && contact.name) resolvedName = contact.name;
             } catch (e) {}
           }
-          // Fallback a dispositivos encontrados/conectados
           if (!resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown') {
             resolvedName = this.bleInterface?.connectedDevices?.get(convId)?.name
               || this.bleInterface?.foundDevices?.get(convId)?.name
@@ -218,11 +221,19 @@ export class NexoApp {
           }
         }
         
+        const immediateHash = `${convId}:${content?.substring?.(0, 30)}:${Math.floor((timestamp || Date.now()) / 2000)}`;
+        if (immediateHash === this._lastProcessedHash && (Date.now() - this._lastProcessedTime) < 2000) {
+          console.log(`[BLE_RECV] Deduplicado inmediato: ${immediateHash}`);
+          return;
+        }
+        this._lastProcessedHash = immediateHash;
+        this._lastProcessedTime = Date.now();
+        
         this._handleMessage({
           content,
           sender: deviceId,
           senderName: resolvedName,
-          conversationId: convId, // ID estable para agrupar
+          conversationId: convId,
           source: 'ble_direct',
           timestamp: timestamp || Date.now(),
           messageId,
@@ -303,7 +314,6 @@ export class NexoApp {
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
       
-      // FIX v5.0.7: Renderizar mensaje propio directamente en TheStream para que aparezca azul
       const ownMessage = { 
         ...msg, 
         content, 
@@ -317,13 +327,15 @@ export class NexoApp {
         conversationId: this._normalizeId(this.activeContact?.id || 'self')
       };
       
-      // Añadir a TheStream directamente si existe
       if (this.stream?.appendItems) {
         this.stream.appendItems([ownMessage], { scroll: true });
       }
       
-      // También pasar por el pipeline normal para deduplicacion y callbacks
-      this._handleMessage(ownMessage, 'self');
+      this.config.onMessage(ownMessage);
+      
+      const ownHash = `${ownMessage.conversationId}:${Math.floor(Date.now()/2000)}:${String(content).substring(0,50)}`;
+      this._lastProcessedHash = ownHash;
+      this._lastProcessedTime = Date.now();
 
       const recipient = isObject ? msg.recipient : null;
       const targetId = recipient || this.activeContact?.id;
@@ -372,8 +384,34 @@ export class NexoApp {
 
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
+    
+    this._pendingHandleMessages.push({ msg, source });
+    
+    if (this._handleMessageDebounceTimer) {
+      clearTimeout(this._handleMessageDebounceTimer);
+    }
+    
+    this._handleMessageDebounceTimer = setTimeout(() => {
+      this._processPendingMessages();
+    }, 150);
+  }
+
+  _processPendingMessages() {
+    this._handleMessageDebounceTimer = null;
+    
+    const batch = this._pendingHandleMessages.splice(0);
+    
+    for (const { msg, source } of batch) {
+      this._processSingleMessage(msg, source);
+    }
+  }
+
+  _processSingleMessage(msg, source) {
     try {
-      // Deduplicacion por messageId
+      if (msg._own || msg.isMe) {
+        return;
+      }
+
       if (msg.messageId) {
         const now = Date.now();
         if (this._messageDedupMap.has(msg.messageId)) {
@@ -394,13 +432,17 @@ export class NexoApp {
         }
       }
 
-      // Deduplicacion por hash - FIX v5.0.7: Usar conversationId estable, ignorar source variable
       const contentStr = String(msg.content || msg.text || '');
-      const senderStr = String(msg.conversationId || msg.sender || msg.senderName || msg.deviceId || 'unknown');
-      const timeBucket = Math.floor((msg.timestamp || Date.now()) / 5000);
+      const senderStr = this._normalizeId(msg.conversationId || msg.sender || msg.senderName || msg.deviceId || 'unknown');
+      const timeBucket = Math.floor((msg.timestamp || Date.now()) / 1000);
       const hashKey = `msg:${senderStr}:${timeBucket}:${contentStr.substring(0, 100)}`;
 
       const now = Date.now();
+      
+      for (const [k, v] of this._recentMessageHashes) {
+        if (now - v > this._hashTTL) this._recentMessageHashes.delete(k);
+      }
+      
       if (this._recentMessageHashes.has(hashKey)) {
         DEBUG.log(`Deduplicado por hash ${hashKey.substring(0,40)} de ${source}`, 'debug', 'DEDUP_HASH');
         return;
@@ -414,16 +456,11 @@ export class NexoApp {
         }
         if (oldestKey) this._recentMessageHashes.delete(oldestKey);
       }
-      for (const [k, v] of this._recentMessageHashes) {
-        if (now - v > this._hashTTL) this._recentMessageHashes.delete(k);
-      }
 
       const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
       this.config.onMessage(enriched);
       
-      // FIX v5.0.7: Solo pasar a TheStream si no es mensaje propio (ya renderizado directamente)
-      // o si TheStream no recibió el mensaje propio por alguna razon
-      if (this.stream?.appendItems && !msg.isMe) {
+      if (this.stream?.appendItems && !msg.isMe && !msg._own) {
         this.stream.appendItems([enriched], { scroll: true });
       }
     } catch (err) { DEBUG.error('APP_005', `Message handler: ${err.message}`); }
