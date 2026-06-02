@@ -1,5 +1,5 @@
 /**
- * BLE Interface v3.6.3-HEALTH
+ * BLE Interface v3.6.3-HEALTH-FIX
  * Ubicacion: src/ui/ble_interface.js
  * 
  * FIXES v3.6.3-HEALTH:
@@ -7,6 +7,8 @@
  * 2) Name cache inteligente: nunca persiste "Unknown" o "NEXO Peer" por mas de 30s
  * 3) renderDevicesList: consulta _isBLEContact con ID normalizado para ocultar boton "+"
  * 4) Evento nexo:ble:messageReceived incluye conversationId estable y senderName resuelto
+ * 
+ * FIX v3.6.3-HEALTH-FIX: Corregido duplicado de showToast en openChat (linea ~1093)
  */
 
 export function initBLEInterface(bleMesh) {
@@ -1089,9 +1091,7 @@ export class BLEInterface {
         var connResult = await this._safeNativeCall('connectToDevice', { deviceId: device.id || device.address || nid }, 10000);
         console.log('[BLEInterface] connectToDevice result:', connResult);
         if (connResult && connResult.connected && !connResult.alreadyConnected) {
-          this.showToast('Conectando canal BLE...', 
-
-                  this.showToast('Conectando canal BLE...', 'info');
+          this.showToast('Conectando canal BLE...', 'info');
           await new Promise(function(resolve, reject) {
             var timeout = setTimeout(function() { reject(new Error('Timeout')); }, 15000);
             this._openChatTimeouts.set(nid, timeout);
@@ -1339,7 +1339,3 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
-
-                        
-
-                         
