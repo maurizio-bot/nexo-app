@@ -1,14 +1,11 @@
 /**
- * BLE Interface v3.6.1-HEALTH
+ * BLE Interface v3.6.2-HEALTH
  * Ubicacion: src/ui/ble_interface.js
  * 
- * FIXES v3.6.1-HEALTH:
- * 1) HealthMonitor JS: verifica estado cada 2 minutos
- * 2) Auto-cleanup cada 10 minutos: limpia foundDevices, messageIds, pending queues
- * 3) Memory leak detection: si memoria >80MB, forzar cleanup
- * 4) Service reboot desde JS: cada 1 hora reinicia advertising limpiamente
- * 5) "Freshness" tracking: detecta si app fue abierta después de >30min inactiva
- * 6) Stale connection detection: desconecta peers sin actividad >5min
+ * FIXES v3.6.2-HEALTH:
+ * 1) _normId robusto: normaliza MAC addresses eliminando ':' y '-' para evitar falsos negativos en _isBLEContact
+ * 2) Name cache inteligente: nunca persiste "Unknown" o "NEXO Peer" por mas de 30s; siempre reintenta resolucion real
+ * 3) renderDevicesList: consulta _isBLEContact con ID normalizado para ocultar boton "+" en dispositivos ya agregados
  */
 
 export function initBLEInterface(bleMesh) {
@@ -20,7 +17,8 @@ export function initBLEInterface(bleMesh) {
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v1';
 
 function _normId(id) {
-  return (id || '').toString().toLowerCase().trim();
+  if (!id) return '';
+  return id.toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
 
 function _getBLEContacts() {
@@ -121,9 +119,10 @@ export class BLEInterface {
     this._maxRecentPayloadHashes = 200;
     this._payloadHashTTL = 30000; // 30 segundos
 
-    // NAME CACHE v3.6.1: Cachear nombre por deviceId para evitar "Unknown" una vez resuelto
+    // NAME CACHE v3.6.2: Cachear nombre por deviceId para evitar "Unknown", con TTL corta para nombres genericos
     this._nameCache = new Map();
-    this._nameCacheTTL = 3600000; // 1 hora
+    this._nameCacheTTLReal = 3600000; // 1 hora para nombres reales
+    this._nameCacheTTLGeneric = 30000; // 30 segundos para "Unknown"/"NEXO Peer"
   }
 
   _detectMeshType() {
@@ -153,7 +152,6 @@ export class BLEInterface {
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
       this._loadLocalDeviceInfo();
-      // HEALTH MONITOR: Iniciar monitoreo
       this._startHealthMonitor();
     }
     return this;
@@ -213,7 +211,6 @@ export class BLEInterface {
 
       console.log('[HEALTH] Uptime: ' + uptime + 's, Memory: ' + memory + 'MB, Ops: ' + this._totalOperations + ', Found: ' + this.foundDevices.size + ', Connected: ' + this.connectedDevices.size + ', Pending: ' + this._pendingMessageQueue.size);
 
-      // Si uptime > 4 horas, sugerir reboot
       if (uptime > 14400) {
         console.warn('[HEALTH] Uptime > 4h, recomendando reboot de servicio');
         this._performServiceReboot();
@@ -228,7 +225,6 @@ export class BLEInterface {
     try {
       console.log('[HEALTH] Auto-cleanup iniciado');
 
-      // 1. Limpiar foundDevices antiguos (>30min sin ver)
       var now = Date.now();
       var staleDevices = [];
       this.foundDevices.forEach(function(device, id) {
@@ -241,7 +237,6 @@ export class BLEInterface {
         this._renderedDeviceIds.delete(id);
       }.bind(this));
 
-      // 2. Limpiar message IDs si hay demasiados
       if (this._receivedMessageIds.size > this._maxMessageIds) {
         var toRemove = this._receivedMessageIds.size - this._maxMessageIds;
         var iter = this._receivedMessageIds.values();
@@ -251,17 +246,14 @@ export class BLEInterface {
         }
       }
 
-      // 3. Limpiar pending queues vacías
       this._pendingMessageQueue.forEach(function(queue, id) {
         if (!queue || queue.length === 0) {
           this._pendingMessageQueue.delete(id);
         }
       }.bind(this));
 
-      // 4. Reset contador de operaciones
       this._totalOperations = 0;
 
-      // 5. Forzar GC si disponible
       if (window.gc) {
         try { window.gc(); } catch (e) {}
       }
@@ -275,28 +267,21 @@ export class BLEInterface {
 
   _performServiceReboot() {
     try {
-      console.log('[HEALTH] Service reboot iniciado');
-
-      // Solo si estamos advertising
       if (!this.isAdvertising || !this.nativePlugin) return;
 
       var self = this;
 
-      // 1. Detener advertising
       this._safeNativeCall('stopAdvertising', {}, 5000).then(function() {
         self.isAdvertising = false;
         self._serverReady = false;
 
-        // 2. Limpiar estado
         self.connectedDevices.clear();
         self._deviceStates.clear();
         self._reconnectTimers.forEach(function(t) { clearTimeout(t); });
         self._reconnectTimers.clear();
         self._reconnectAttempts.clear();
 
-        // 3. Esperar 2s
         setTimeout(function() {
-          // 4. Reiniciar
           if (!self._destroyed) {
             self._safeNativeCall('startAdvertising', {}, 5000).then(function() {
               self.isAdvertising = true;
@@ -325,7 +310,6 @@ export class BLEInterface {
 
       this.connectedDevices.forEach(function(device, id) {
         var state = this._getDeviceState(id);
-        // Si está conectado pero sin actividad >5min y no es chat activo
         if (state.state === BLE_STATES.READY_TO_CHAT && 
             state.timestamp && (now - state.timestamp) > 300000 &&
             this._activeChatDeviceId !== id) {
@@ -459,7 +443,7 @@ export class BLEInterface {
     var currentAttempts = this._reconnectAttempts.get(deviceId) || 0;
     if (currentAttempts >= 5) {
       console.log('[BLEInterface] Max reintentos alcanzado para', deviceId);
-      this.showToast('No se pudo reconectar después de 5 intentos', 'error');
+      this.showToast('No se pudo reconectar despues de 5 intentos', 'error');
       this._reconnectAttempts.delete(deviceId);
       return;
     }
@@ -546,7 +530,7 @@ export class BLEInterface {
         if (json.content) content = json.content;
       } catch (e) {}
 
-      // ─── DEDUP NATIVO v3.6.1: Hash de payload para mensajes sin messageId ───
+      // DEDUP NATIVO v3.6.1: Hash de payload para mensajes sin messageId
       var payloadHash = null;
       if (!messageId) {
         var timeBucket = Math.floor((data.timestamp || Date.now()) / 5000);
@@ -557,7 +541,6 @@ export class BLEInterface {
           return;
         }
         self._recentPayloadHashes.set(payloadHash, now);
-        // Cleanup TTL
         if (self._recentPayloadHashes.size > self._maxRecentPayloadHashes) {
           var oldestKey = null, oldestTime = Infinity;
           self._recentPayloadHashes.forEach(function(t, k) {
@@ -570,27 +553,35 @@ export class BLEInterface {
         });
       }
 
-      // ─── NAME CACHE v3.6.1: Resolver y cachear nombre para evitar "Unknown" ───
-      var cachedName = self._nameCache.get(deviceId);
-      if (cachedName && (Date.now() - cachedName.ts) < self._nameCacheTTL) {
-        senderName = cachedName.name;
+      // NAME CACHE v3.6.2: Resolver y cachear nombre. TTL corta para genericos.
+      var isGenericName = !senderName || senderName === 'NEXO Peer' || senderName === 'Unknown';
+      var cached = self._nameCache.get(deviceId);
+      var now = Date.now();
+      
+      if (!isGenericName) {
+        // Nombre real: cachear por 1h
+        self._nameCache.set(deviceId, { name: senderName, ts: now, isReal: true });
+      } else if (cached && cached.isReal && (now - cached.ts) < self._nameCacheTTLReal) {
+        // Tenemos nombre real en cache y aun valido: usarlo
+        senderName = cached.name;
+      } else if (cached && !cached.isReal && (now - cached.ts) < self._nameCacheTTLGeneric) {
+        // Nombre generico en cache y aun dentro de TTL corta: usarlo
+        senderName = cached.name;
       } else {
-        if (!senderName || senderName === 'NEXO Peer') {
-          senderName = _getContactName(deviceId)
-            || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name)
-            || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name)
-            || senderName
-            || 'NEXO Peer';
-        }
-        // Cachear nombre resuelto (incluso si es 'NEXO Peer', para consistencia)
-        self._nameCache.set(deviceId, { name: senderName, ts: Date.now() });
+        // Cache expirada o no existe: intentar resolver desde contactos/dispositivos
+        senderName = _getContactName(deviceId)
+          || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name)
+          || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name)
+          || senderName
+          || 'NEXO Peer';
+        // Cachear como generico con TTL corta
+        self._nameCache.set(deviceId, { name: senderName, ts: now, isReal: false });
       }
 
-      if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer') {
+      if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer' && senderName !== 'Unknown') {
         _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
       }
 
-      // Deduplicación por messageId
       if (messageId && self._receivedMessageIds.has(messageId)) return;
       if (messageId) {
         self._receivedMessageIds.add(messageId);
@@ -1145,6 +1136,7 @@ export class BLEInterface {
       if (isNew) self._renderedDeviceIds.add(id);
       var item = document.createElement('div');
       item.className = 'ble-device-item' + (isNew ? ' new' : '');
+      // FIX v3.6.2: Si ya esta agregado, solo mostrar Chat. Si no, mostrar + y Chat.
       var actionHtml = isAdded
         ? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>'
         : '<button class="ble-btn-add" onclick="window.bleInterface.addContact(\'' + id + '\')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>';
