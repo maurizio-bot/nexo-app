@@ -1,9 +1,9 @@
 /**
- * NEXO App v5.0.4-ARCH
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH + ble_permissions.js v4.0-ARCH
- * FIX v5.0.4-ARCH: Enriquecer mensajes BLE con senderName resuelto desde bleInterface
- *      para evitar "Unknown" y MAC cruda en lista de conversaciones de TheStream.
- *      Disparar nexo:ble:closeChat al limpiar contacto activo.
+ * NEXO App v5.0.5-ARCH
+ * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.6.2-HEALTH + ble_permissions.js v4.0-ARCH
+ * FIX v5.0.5-ARCH:
+ * 1) _bleMessageHandler: trata "Unknown" igual que "NEXO Peer" forzando resolucion real
+ * 2) _handleMessage dedup: hash ignora source variable para evitar duplicados BLE
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -79,7 +79,7 @@ export class NexoApp {
     this._recentMessageHashes = new Map();
     this._maxRecentHashes = 200;
     this._hashTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.4-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.5-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -99,7 +99,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.4-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.5-ARCH Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -186,11 +186,12 @@ export class NexoApp {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         
-        // FIX v5.0.4-ARCH: Resolver senderName robustamente desde bleInterface
-        // para evitar "Unknown" y MAC cruda en lista de conversaciones
+        // FIX v5.0.5-ARCH: Resolver senderName robustamente. Tratar "Unknown" igual que "NEXO Peer"
         let resolvedName = senderName;
-        if (!resolvedName || resolvedName === 'NEXO Peer') {
-          const nid = (deviceId || '').toString().toLowerCase().trim();
+        const isGeneric = !resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown';
+        
+        if (isGeneric) {
+          const nid = (deviceId || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
           resolvedName = this.bleInterface?.connectedDevices?.get(nid)?.name
             || this.bleInterface?.foundDevices?.get(nid)?.name
             || senderName
@@ -201,7 +202,7 @@ export class NexoApp {
           content,
           sender: deviceId,
           senderName: resolvedName,
-          source: source || 'ble_direct',
+          source: 'ble_direct', // Normalizar source para deduplicacion consistente
           timestamp: timestamp || Date.now(),
           messageId,
           _own: false
@@ -273,7 +274,6 @@ export class NexoApp {
     this._isSendingMessage = true;
     try {
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      // Optimistic render: mostrar inmediatamente como enviado
       this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: false, messageId }, 'self');
 
       const isObject = msg && typeof msg === 'object';
@@ -285,7 +285,6 @@ export class NexoApp {
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
-          // Mensaje ya renderizado optimísticamente; no duplicar
           return true;
         } catch (e) {
           DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
@@ -298,7 +297,6 @@ export class NexoApp {
           const bleDevices = connectedResult?.devices || [];
           if (bleDevices.length > 0) {
             await this._sendViaBLE(bleDevices[0].deviceId || bleDevices[0].id, content);
-            // Mensaje ya renderizado optimísticamente; no duplicar
             return true;
           }
         } catch (e) { DEBUG.log(`[BLE_SEND] Fallback falló: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
@@ -328,7 +326,7 @@ export class NexoApp {
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      // ─── Deduplicación por messageId ───
+      // Deduplicacion por messageId
       if (msg.messageId) {
         const now = Date.now();
         if (this._messageDedupMap.has(msg.messageId)) {
@@ -349,11 +347,12 @@ export class NexoApp {
         }
       }
 
-      // ─── Deduplicación por hash (fallback para mensajes sin messageId) ───
+      // Deduplicacion por hash (fallback para mensajes sin messageId)
+      // FIX v5.0.5: Ignorar source variable en hash para evitar duplicados por fuente cambiante
       const contentStr = String(msg.content || msg.text || '');
       const senderStr = String(msg.sender || msg.senderName || msg.deviceId || 'unknown');
-      const timeBucket = Math.floor((msg.timestamp || Date.now()) / 5000); // bucket de 5 segundos
-      const hashKey = `${source}:${senderStr}:${timeBucket}:${contentStr.substring(0, 100)}`;
+      const timeBucket = Math.floor((msg.timestamp || Date.now()) / 5000);
+      const hashKey = `msg:${senderStr}:${timeBucket}:${contentStr.substring(0, 100)}`;
 
       const now = Date.now();
       if (this._recentMessageHashes.has(hashKey)) {
