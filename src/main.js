@@ -1,16 +1,17 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.3.3-HEALTH
+ * src/main.js - Punto de entrada NEXO v9.3.5-HEALTH
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.3.3-HEALTH: SetupManager/SetupWizard eliminados. Permission Shim integrado.
+ * v9.3.5-HEALTH: SetupManager/SetupWizard eliminados. Permission Shim integrado.
  * Build #961 compatible. NO toca nativo.
  * 
- * FIXES v9.3.3-HEALTH:
+ * FIXES v9.3.5-HEALTH:
  * 1) Freshness detection: detecta si app fue abierta despues de >30min inactiva
  * 2) Auto-restart: si detecta estado corrupto, fuerza reinicio limpio
  * 3) Health monitor: verifica memoria y estado cada 2 minutos
  * 4) Graceful degradation: si BLE crashea, continua en modo relay
  * 5) Session tracking: guarda timestamp de ultima sesion
- * 6) Autoscroll robusto: MutationObserver con subtree:true + doble capa rAF+setTimeout
+ * 6) Autoscroll robusto: observa cualquier contenedor de mensajes en el DOM
+ * 7) _renderMessage ya no retorna temprano por TheStream, renderiza siempre como fallback
  */
 
 import './styles/critical.css';
@@ -23,7 +24,7 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.3.3-HEALTH',
+  version: '9.3.5-HEALTH',
   initialized: false,
   sessionStart: Date.now(),
   healthStatus: 'healthy'
@@ -362,12 +363,12 @@ async function initializeNexoApp() {
     _setupVaultToggle();
     _setupChatHeader();
     _setupKeyboardShortcuts();
-    _setupAutoScroll();
+    _setupGlobalAutoScroll();
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.3.3-HEALTH Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.3.3-HEALTH Inicializado');
+    rem.success('NEXO v9.3.5-HEALTH Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.3.5-HEALTH Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
@@ -508,22 +509,13 @@ function _setupKeyboardShortcuts() {
 }
 
 function _renderMessage(msg) {
-  // FALLBACK CONDICIONAL
-  if (window.NEXO?.app?.stream?.appendItems) {
-    const container = document.getElementById('messages-container');
-    if (container) {
-      const SCROLL_THRESHOLD = 120;
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
-      if (isNearBottom) {
-        requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
-      }
-    }
-    return;
-  }
-
+  // FIX v9.3.5: Ya no retornar temprano por TheStream. Renderizar siempre como fallback robusto.
+  // TheStream ya maneja sus propios mensajes. Este render es fallback si algo falla.
+  
   const container = document.getElementById('messages-container');
   if (!container) return;
 
+  // Deduplicacion DOM por messageId
   if (msg.messageId) {
     const existing = container.querySelector(`[data-message-id="${msg.messageId}"]`);
     if (existing) {
@@ -533,7 +525,7 @@ function _renderMessage(msg) {
   }
 
   const div = document.createElement('div');
-  div.className = `message ${msg._own ? 'own' : 'other'}`;
+  div.className = `message ${msg._own || msg.isMe ? 'own' : 'other'}`;
   if (msg.messageId) div.dataset.messageId = msg.messageId;
 
   const sourceBadge = msg._source ?
@@ -549,6 +541,7 @@ function _renderMessage(msg) {
 
   container.appendChild(div);
 
+  // Autoscroll inmediato
   const SCROLL_THRESHOLD = 120;
   const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
   if (isNearBottom) {
@@ -568,40 +561,57 @@ function _getSourceIcon(source) {
   return icons[source] || '•';
 }
 
-// AUTOSCROLL INTELIGENTE v9.3.3
-// Detecta mensajes añadidos por cualquier fuente y hace scroll automatico
-// SOLO si el usuario esta cerca del final. Usa subtree:true + doble capa rAF+setTimeout
-function _setupAutoScroll() {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-
+// AUTOSCROLL GLOBAL v9.3.5
+// Observa CUALQUIER contenedor con overflow-y:auto en el DOM
+// y hace scroll automatico cuando se añaden elementos .message o .stream-item
+function _setupGlobalAutoScroll() {
   const SCROLL_THRESHOLD = 120;
 
-  const observer = new MutationObserver((mutations) => {
-    const hasAddedMessage = mutations.some(m =>
-      Array.from(m.addedNodes).some(n =>
-        n.nodeType === 1 && (n.classList?.contains('message') || n.querySelector?.('.message'))
-      )
-    );
-    if (!hasAddedMessage) return;
-
-    // Primera capa: rAF inmediato para capturar inserciones directas
+  // Funcion para hacer scroll en un contenedor
+  const doScroll = (container) => {
     requestAnimationFrame(() => {
-      const isNearBottom1 = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
-      if (isNearBottom1) {
-        container.scrollTop = container.scrollHeight;
-      }
-      // Segunda capa: setTimeout 50ms para capturar inserciones anidadas/post-layout
+      container.scrollTop = container.scrollHeight;
       setTimeout(() => {
-        const isNearBottom2 = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
-        if (isNearBottom2) {
-          container.scrollTop = container.scrollHeight;
-        }
+        container.scrollTop = container.scrollHeight;
       }, 50);
+    });
+  };
+
+  // Observer global que detecta cualquier insercion de mensaje en cualquier contenedor
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((m) => {
+      if (m.type !== 'childList' || m.addedNodes.length === 0) return;
+      
+      // Verificar si se añadio un mensaje
+      const hasMessage = Array.from(m.addedNodes).some(n => 
+        n.nodeType === 1 && (
+          n.classList?.contains('message') || 
+          n.classList?.contains('stream-item') ||
+          n.querySelector?.('.message') ||
+          n.querySelector?.('.stream-item')
+        )
+      );
+      
+      if (!hasMessage) return;
+      
+      // Encontrar el contenedor padre con scroll
+      let container = m.target;
+      while (container && container !== document.body) {
+        const style = window.getComputedStyle(container);
+        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+          const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
+          if (isNearBottom) {
+            doScroll(container);
+          }
+          break;
+        }
+        container = container.parentElement;
+      }
     });
   });
 
-  observer.observe(container, { childList: true, subtree: true });
+  // Observar todo el body con subtree para capturar cualquier insercion
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 function _toggleVaultUI(isOpen) {
