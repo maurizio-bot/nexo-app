@@ -1,4 +1,5 @@
 /**
+
  * NEXO App v5.0.7-ARCH
  * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.6.3-HEALTH + ble_permissions.js v4.0-ARCH
  * FIX v5.0.7-ARCH:
