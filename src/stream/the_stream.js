@@ -1,10 +1,12 @@
 /**
- * NEXO v9.0 - TheStream v2.5-NAP-CERTIFIED
- * FIX v2.5: 
- * 1) scrollToBottom con doble capa rAF + setTimeout para layout completo
- * 2) conversationId estable para agrupar conversaciones, no sender variable
- * 3) Fallback de nombre usa window.NEXO.app correctamente
- * 4) appendItems acepta scroll explícito para mensajes propios
+ * NEXO v9.0 - TheStream v2.6-NAP-CERTIFIED
+ * FIX v2.6 (definitivo):
+ * 1) DEDUP por fingerprint unificado: _fingerprintCache con TTL 5min
+ * 2) scrollToBottom suave y unico: rAF + setTimeout 50ms + setTimeout 150ms
+ * 3) _shouldAutoScroll mas robusto: threshold 150px + verificacion de scrollHeight
+ * 4) _sanitizeItem calcula fingerprint si no viene del mensaje
+ * 5) appendItems con scroll inteligente: solo si usuario esta cerca del fondo
+ * 6) Preservado: conversationId estable, name cache, avatar generation
  */
 
 class TheStream {
@@ -29,12 +31,17 @@ class TheStream {
     this.avatarColors = new Map();
     this.items = [];
     
+    // v2.6: Cache de fingerprints para dedup unificado
+    this._fingerprintCache = new Map();
+    this._maxFingerprints = 500;
+    this._fingerprintTTL = 300000; // 5 minutos
+    
     this.config = {
       maxCacheSize: 1000,
       maxRenderedItems: 500,
       fallbackAvatar: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMTgiIGZpbGw9IiMzMzMiIHN0cm9rZT0iIzU1NSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHRleHQgeD0iMjAiIHk9IjI1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic3lzdGVtLXVpIiBmb250LXNpemU9IjE0IiBmaWxsPSIjODg4Ij4/PC90ZXh0Pjwvc3ZnPg==',
       autoScroll: true,
-      scrollThreshold: 120
+      scrollThreshold: 150
     };
     
     this.initialized = true;
@@ -44,7 +51,7 @@ class TheStream {
     this._injectStyles();
     this._setupResourceErrorInterceptor();
     
-    console.log('[TheStream] Initialized v2.5-NAP-CERTIFIED');
+    console.log('[TheStream] Initialized v2.6-NAP-CERTIFIED');
   }
 
   appendItems(items, options = {}) {
@@ -62,9 +69,7 @@ class TheStream {
 
     const batch = Array.isArray(items) ? items : [items];
     
-    if (batch.length === 0) {
-      return this;
-    }
+    if (batch.length === 0) return this;
 
     const sanitizedBatch = batch.map(item => this._sanitizeItem(item));
     
@@ -109,6 +114,7 @@ class TheStream {
 
   clear() {
     this.messageCache.clear();
+    this._fingerprintCache.clear();
     this.items = [];
     this.renderedCount = 0;
     if (this.container) {
@@ -117,16 +123,20 @@ class TheStream {
     return this;
   }
 
+  // v2.6: Scroll suave de triple capa para layout completo
   scrollToBottom() {
     if (!this.container) return this;
     
-    // Doble capa: rAF inmediato + setTimeout para layout completo
     requestAnimationFrame(() => {
       this.container.scrollTop = this.container.scrollHeight;
       
       setTimeout(() => {
         this.container.scrollTop = this.container.scrollHeight;
       }, 50);
+      
+      setTimeout(() => {
+        this.container.scrollTop = this.container.scrollHeight;
+      }, 150);
     });
     
     return this;
@@ -137,6 +147,7 @@ class TheStream {
       itemsInMemory: this.items.length,
       renderedCount: this.renderedCount,
       cacheSize: this.messageCache.size,
+      fingerprintCacheSize: this._fingerprintCache.size,
       resourceErrors: this.resourceErrors.size,
       failedAvatars: this.failedAvatars.size,
       containerId: this.container?.id || 'unknown'
@@ -220,6 +231,14 @@ class TheStream {
     this.container.addEventListener('error', this._handleResourceError, true);
   }
 
+  // v2.6: Calcula fingerprint unificado para dedup entre capas
+  _messageFingerprint(conversationId, content, timestamp) {
+    const nid = String(conversationId || '').toLowerCase().replace(/[:-]/g, '').trim();
+    const c = String(content || '').trim().toLowerCase().substring(0, 100);
+    const bucket = Math.floor((timestamp || Date.now()) / 30000);
+    return `fp:${nid}:${bucket}:${c}`;
+  }
+
   _sanitizeItem(item) {
     if (!item || typeof item !== 'object') {
       return {
@@ -229,13 +248,16 @@ class TheStream {
         senderName: 'System',
         conversationId: 'system',
         timestamp: Date.now(),
-        type: 'text'
+        type: 'text',
+        fingerprint: this._messageFingerprint('system', String(item || ''), Date.now())
       };
     }
 
-    // Normalizar conversationId: usar el ID estable del dispositivo/contacto
     const rawSender = item.sender || item.from || item.author || item.deviceId || 'Unknown';
     const conversationId = item.conversationId || this._normalizeId(rawSender);
+
+    // v2.6: Usar fingerprint del mensaje si existe, o calcularlo
+    const fingerprint = item.fingerprint || this._messageFingerprint(conversationId, item.content || item.text, item.timestamp || Date.now());
 
     const sanitized = {
       id: item.id || this._generateId(),
@@ -246,17 +268,15 @@ class TheStream {
       timestamp: item.timestamp || item.time || Date.now(),
       avatar: item.avatar || null,
       isMe: item.isMe || item._own || item.sender === 'Tú' || false,
-      type: item.type || 'message'
+      type: item.type || 'message',
+      fingerprint: fingerprint
     };
 
     if (typeof sanitized.content !== 'string') {
       sanitized.content = String(sanitized.content);
     }
 
-    // FIX v2.5: Resolver senderName robustamente
-    // 1. Si ya es un nombre real (no Unknown, no MAC-like), usarlo
-    // 2. Si es generico, intentar fallback a contacto activo de NEXO
-    // 3. Si no, usar conversationId mapeado a nombre de contacto
+    // FIX v2.6: Resolver senderName robustamente
     const isGenericName = !sanitized.senderName || 
                           sanitized.senderName === 'Unknown' || 
                           sanitized.senderName === 'NEXO Peer' ||
@@ -265,26 +285,19 @@ class TheStream {
                           /^[a-f0-9]{12}$/i.test(sanitized.senderName);
 
     if (isGenericName) {
-      // Intentar obtener nombre del contacto activo de NEXO (instancia correcta)
       const nexoApp = window.NEXO?.app;
       const activeContact = nexoApp?.activeContact;
       
-      // Si el mensaje es del contacto activo, usar su nombre
       if (activeContact && this._normalizeId(activeContact.id) === conversationId) {
         sanitized.senderName = activeContact.name || sanitized.senderName;
-      } 
-      // Intentar buscar en contactos BLE almacenados
-      else {
+      } else {
         try {
           const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
           const contact = contacts.find(c => this._normalizeId(c.id || c.address) === conversationId);
-          if (contact && contact.name) {
-            sanitized.senderName = contact.name;
-          }
+          if (contact && contact.name) sanitized.senderName = contact.name;
         } catch (e) {}
       }
       
-      // Ultimo fallback
       if (!sanitized.senderName || sanitized.senderName === 'Unknown') {
         sanitized.senderName = 'NEXO Peer';
       }
@@ -299,18 +312,37 @@ class TheStream {
   }
 
   _renderSingle(message, config) {
+    // v2.6: DEDUP por fingerprint unificado
+    const fp = message.fingerprint || this._messageFingerprint(message.conversationId, message.content, message.timestamp);
+    
+    // Limpiar fingerprints expirados
+    const now = Date.now();
+    for (const [k, v] of this._fingerprintCache) {
+      if (now - v > this._fingerprintTTL) this._fingerprintCache.delete(k);
+    }
+    
+    if (this._fingerprintCache.has(fp)) {
+      console.log(`[TheStream] Deduplicado por fingerprint: ${fp.substring(0, 40)}`);
+      return;
+    }
+    this._fingerprintCache.set(fp, now);
+    
+    // Limitar tamaño del cache
+    if (this._fingerprintCache.size > this._maxFingerprints) {
+      const firstKey = this._fingerprintCache.keys().next().value;
+      if (firstKey) this._fingerprintCache.delete(firstKey);
+    }
+
+    // DEDUP por messageId (respaldado)
     if (message.id && this.messageCache.has(message.id)) {
       return;
     }
-
     if (message.id) {
-      this.messageCache.set(message.id, Date.now());
+      this.messageCache.set(message.id, now);
     }
 
     const content = String(message.content || '').trim();
-    if (!content) {
-      return;
-    }
+    if (!content) return;
 
     const isMe = message.isMe;
     
@@ -326,9 +358,7 @@ class TheStream {
     `;
     
     const avatarSrc = this._getSafeAvatar(message.senderName || message.sender, isMe);
-    
     const safeId = this._escapeAttr(String(message.id || ''));
-    
     const displayName = message.senderName || message.sender || 'NEXO Peer';
     
     bubble.innerHTML = `
@@ -362,26 +392,13 @@ class TheStream {
     const btnContainer = bubble.querySelector('.action-buttons');
     if (btnContainer) {
       const msgId = btnContainer.dataset.msgId;
-      
       const btnReact = btnContainer.querySelector('.btn-react');
       const btnReply = btnContainer.querySelector('.btn-reply');
       const btnForward = btnContainer.querySelector('.btn-forward');
       
-      if (btnReact) {
-        btnReact.addEventListener('click', () => {
-          this.actionCallbacks.onReact?.(msgId);
-        });
-      }
-      if (btnReply) {
-        btnReply.addEventListener('click', () => {
-          this.actionCallbacks.onReply?.(msgId);
-        });
-      }
-      if (btnForward) {
-        btnForward.addEventListener('click', () => {
-          this.actionCallbacks.onForward?.(msgId);
-        });
-      }
+      if (btnReact) btnReact.addEventListener('click', () => this.actionCallbacks.onReact?.(msgId));
+      if (btnReply) btnReply.addEventListener('click', () => this.actionCallbacks.onReply?.(msgId));
+      if (btnForward) btnForward.addEventListener('click', () => this.actionCallbacks.onForward?.(msgId));
     }
     
     const img = bubble.querySelector('.stream-avatar');
@@ -403,10 +420,7 @@ class TheStream {
 
   _getSafeAvatar(sender, isMe) {
     try {
-      if (this.failedAvatars.has(sender)) {
-        return this.config.fallbackAvatar;
-      }
-      
+      if (this.failedAvatars.has(sender)) return this.config.fallbackAvatar;
       return this.generateAvatarSVG(sender, isMe);
     } catch (e) {
       console.warn('[TheStream-REM] Avatar generation failed:', e);
@@ -463,10 +477,12 @@ class TheStream {
     }
   }
 
+  // v2.6: Mas robusto — verifica que scrollHeight sea valido
   _shouldAutoScroll() {
     if (!this.container) return false;
     const threshold = this.config.scrollThreshold;
     const { scrollHeight, scrollTop, clientHeight } = this.container;
+    if (!scrollHeight || !clientHeight) return false;
     return (scrollHeight - scrollTop - clientHeight) < threshold;
   }
 
