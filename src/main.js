@@ -1,14 +1,14 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.3.6-HEALTH
+ * src/main.js - Punto de entrada NEXO v9.3.7-HEALTH
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.3.6-HEALTH: Autoscroll REAL + Anti-duplicados robusto
  * 
- * FIXES v9.3.6-HEALTH:
- * 1) Autoscroll forzado al enviar mensaje propio (no depende de MutationObserver)
- * 2) MutationObserver enganchado al contenedor REAL de mensajes (detecta clase .message-bubble)
- * 3) _renderMessage como fallback puro: NO renderiza mensajes propios si TheStream está activo
- * 4) Scroll doble capa: inmediato (requestAnimationFrame) + confirmación (50ms)
- * 5) Deduplicación por hash de contenido en _renderMessage
+ * FIXES v9.3.7-HEALTH (definitivos):
+ * 1) TheStream es la UNICA fuente de renderizado — main.js NUNCA renderiza si TheStream existe
+ * 2) ELIMINADO doScrollToBottom de _setupMessageInput — TheStream maneja scroll sola
+ * 3) ELIMINADO MutationObserver de scroll — era competencia que causaba saltos
+ * 4) _renderMessage es fallback puro: solo actua si TheStream NO esta disponible
+ * 5) Simplificado _setupMessageInput: solo envia y limpia input, nada de scroll
+ * 6) Preservado: Health Monitor, Permission Overlay, Freshness Detection
  */
 
 import './styles/critical.css';
@@ -21,7 +21,7 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.3.6-HEALTH',
+  version: '9.3.7-HEALTH',
   initialized: false,
   sessionStart: Date.now(),
   healthStatus: 'healthy'
@@ -301,9 +301,16 @@ async function initializeNexoApp() {
       bleTimeout: 10000,
       enableGestures: true,
       enableMesh: true,
+      // v9.3.7: onMessage solo notifica — TheStream es el unico renderizador
       onMessage: (msg) => {
-        console.log('📨 Mensaje:', msg);
-        _renderMessage(msg);
+        console.log('📨 Mensaje recibido en main:', msg.senderName || msg.sender, msg.content?.substring(0, 30));
+        // Si TheStream existe, NUNCA renderizar en fallback
+        if (window.NEXO.app?.stream) {
+          window.NEXO.app.stream.appendItems([msg], { scroll: true });
+          return;
+        }
+        // Fallback solo si TheStream no esta disponible
+        _renderMessageFallback(msg);
       },
       onStatusChange: (mode) => {
         console.log('🌐 Modo:', mode);
@@ -321,9 +328,9 @@ async function initializeNexoApp() {
       }
     };
 
-    rem.info('🚀 [NEXO] App instance v3.3.0-NAP', 'NEXO_INIT');
+    rem.info('🚀 [NEXO] App instance v5.0.9-HEALTH', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v3.3.0-NAP =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v9.3.7-HEALTH =====', 'INIT_START');
 
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) =>
@@ -345,12 +352,12 @@ async function initializeNexoApp() {
     _setupVaultToggle();
     _setupChatHeader();
     _setupKeyboardShortcuts();
-    _setupGlobalAutoScroll();
+    // v9.3.7: ELIMINADO _setupGlobalAutoScroll — TheStream maneja scroll sola
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.3.6-HEALTH Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.3.6-HEALTH Inicializado');
+    rem.success('NEXO v9.3.7-HEALTH Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.3.7-HEALTH Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
@@ -381,26 +388,40 @@ function _ensureDOMStructure() {
   }
 }
 
-// DEDUP DOM v9.3.6: Hash de mensajes recientes para evitar duplicados en fallback
-const _renderedMessageHashes = new Map();
-const _MAX_RENDERED_HASHES = 100;
-const _RENDER_HASH_TTL = 60000;
+// v9.3.7: Fallback render SOLO si TheStream no existe
+function _renderMessageFallback(msg) {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
 
-function _getMessageHash(msg) {
-  const content = String(msg.content || msg.text || '');
-  const sender = String(msg.sender || msg.senderName || msg.conversationId || 'unknown');
-  const ts = msg.timestamp || Date.now();
-  const bucket = Math.floor(ts / 2000);
-  return `${sender}:${bucket}:${content.substring(0, 50)}`;
+  const div = document.createElement('div');
+  div.className = `message ${msg._own || msg.isMe ? 'own' : 'other'}`;
+  if (msg.messageId) div.dataset.messageId = msg.messageId;
+
+  const sourceBadge = msg._source ? `${_getSourceIcon(msg._source)}` : '';
+
+  div.innerHTML = `
+    <div class="msg-content">${msg.content || msg.text}</div>
+    <div class="msg-meta">
+      <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
+      ${sourceBadge}
+    </div>
+  `;
+
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
 }
 
-function _cleanupRenderedHashes() {
-  const now = Date.now();
-  for (const [k, v] of _renderedMessageHashes) {
-    if (now - v > _RENDER_HASH_TTL) _renderedMessageHashes.delete(k);
-  }
+function _getSourceIcon(source) {
+  const icons = {
+    'ble_nordic': '🔷',
+    'ble_hybrid': '📡',
+    'relay': '🌐',
+    'self': '✓'
+  };
+  return icons[source] || '•';
 }
 
+// v9.3.7: Simplificado — solo envia, TheStream maneja render y scroll
 function _setupMessageInput() {
   const input = document.getElementById('message-input');
   const btn = document.getElementById('send-btn');
@@ -409,25 +430,6 @@ function _setupMessageInput() {
   let isSending = false;
   let lastSendTime = 0;
   const DEBOUNCE_MS = 300;
-
-  const doScrollToBottom = () => {
-    const containers = [
-      document.getElementById('messages-container'),
-      document.querySelector('.messages-container'),
-      document.querySelector('.stream-container'),
-      document.querySelector('[class*="message"]'),
-      document.querySelector('[class*="stream"]'),
-      document.getElementById('nexo-stream')
-    ].filter(Boolean);
-    
-    containers.forEach(container => {
-      requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
-        setTimeout(() => { container.scrollTop = container.scrollHeight; }, 50);
-        setTimeout(() => { container.scrollTop = container.scrollHeight; }, 150);
-      });
-    });
-  };
 
   const send = async () => {
     const text = input.value.trim();
@@ -444,14 +446,10 @@ function _setupMessageInput() {
     input.value = '';
     input.focus();
 
-    doScrollToBottom();
-
     try {
       const sent = await window.NEXO.app.sendMessage({ content: text });
       if (sent) rem.success('Enviado', 'MSG_SENT');
       else rem.info('En cola (offline)', 'MSG_QUEUED');
-      setTimeout(doScrollToBottom, 100);
-      setTimeout(doScrollToBottom, 300);
     } catch (e) {
       rem.error('Error al enviar', 'MSG_ERR');
     } finally {
@@ -530,131 +528,6 @@ function _setupKeyboardShortcuts() {
       e.preventDefault();
       rem.showHistory?.();
     }
-  });
-}
-
-function _renderMessage(msg) {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-
-  if ((msg._own || msg.isMe) && window.NEXO.app?.stream) {
-    return;
-  }
-
-  const hash = _getMessageHash(msg);
-  _cleanupRenderedHashes();
-  if (_renderedMessageHashes.has(hash)) {
-    console.log(`[RENDER] Deduplicado por hash: ${hash.substring(0, 40)}`);
-    return;
-  }
-  _renderedMessageHashes.set(hash, Date.now());
-
-  if (msg.messageId) {
-    const existing = container.querySelector(`[data-message-id="${msg.messageId}"]`);
-    if (existing) {
-      console.log(`[RENDER] Deduplicado DOM por messageId: ${msg.messageId}`);
-      return;
-    }
-  }
-
-  const div = document.createElement('div');
-  div.className = `message ${msg._own || msg.isMe ? 'own' : 'other'}`;
-  if (msg.messageId) div.dataset.messageId = msg.messageId;
-
-  const sourceBadge = msg._source ? `${_getSourceIcon(msg._source)}` : '';
-
-  div.innerHTML = `
-    <div class="msg-content">${msg.content || msg.text}</div>
-    <div class="msg-meta">
-      <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
-      ${sourceBadge}
-    </div>
-  `;
-
-  container.appendChild(div);
-
-  const SCROLL_THRESHOLD = 120;
-  const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
-  if (isNearBottom) {
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
-    });
-  }
-}
-
-function _getSourceIcon(source) {
-  const icons = {
-    'ble_nordic': '🔷',
-    'ble_hybrid': '📡',
-    'relay': '🌐',
-    'self': '✓'
-  };
-  return icons[source] || '•';
-}
-
-function _setupGlobalAutoScroll() {
-  const SCROLL_THRESHOLD = 120;
-
-  const doScroll = (container) => {
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
-      setTimeout(() => { container.scrollTop = container.scrollHeight; }, 50);
-      setTimeout(() => { container.scrollTop = container.scrollHeight; }, 150);
-    });
-  };
-
-  const findMessageContainer = () => {
-    return document.getElementById('messages-container')
-      || document.querySelector('.messages-container')
-      || document.querySelector('.stream-container')
-      || document.getElementById('nexo-stream');
-  };
-
-  const setupObserver = () => {
-    const container = findMessageContainer();
-    if (!container) {
-      setTimeout(setupObserver, 500);
-      return;
-    }
-
-    const observer = new MutationObserver((mutations) => {
-      let shouldScroll = false;
-      
-      mutations.forEach((m) => {
-        if (m.type !== 'childList' || m.addedNodes.length === 0) return;
-        
-        for (const node of m.addedNodes) {
-          if (node.nodeType === 1) {
-            const isMessage = node.classList?.contains('message') 
-              || node.classList?.contains('stream-item')
-              || node.classList?.contains('message-bubble')
-              || node.classList?.contains('msg-bubble')
-              || node.querySelector?.('.message, .stream-item, .message-bubble');
-            
-            if (isMessage) {
-              shouldScroll = true;
-              break;
-            }
-          }
-        }
-      });
-      
-      if (shouldScroll) {
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < SCROLL_THRESHOLD;
-        if (isNearBottom) {
-          doScroll(container);
-        }
-      }
-    });
-
-    observer.observe(container, { childList: true, subtree: true });
-    console.log('[AUTOSCROLL] Observer activo en:', container.className || container.id);
-  };
-
-  setupObserver();
-  
-  window.addEventListener('nexo:ble:openChat', () => {
-    setTimeout(setupObserver, 300);
   });
 }
 
