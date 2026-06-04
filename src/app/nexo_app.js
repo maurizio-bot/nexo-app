@@ -113,7 +113,7 @@ export class NexoApp {
     try {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
-      const nativeAvailable = !!(window.Capacizer?.Plugins?.NexoBLE);
+      const nativeAvailable = !!(window.Capacizer && window.Capacizer.Plugins && window.Capacizer.Plugins.NexoBLE);
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
@@ -135,7 +135,7 @@ export class NexoApp {
     try {
       this.vault = new CryptoVault();
       await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
-      const identity = this.vault.getIdentity?.();
+      const identity = this.vault.getIdentity ? this.vault.getIdentity() : undefined;
       if (identity) { DEBUG.setIdentity(identity); DEBUG.success('Vault initialized', 'CRYPTO_002'); }
     } catch (err) { DEBUG.error('CRYPTO_004', `Vault init failed: ${err.message}`); this.vault = null; }
   }
@@ -163,7 +163,7 @@ export class NexoApp {
       const unsub5 = this.nordicMesh.on('error', (err) => DEBUG.error('NORDIC_010', err.message));
       this._resources.handlers.add(unsub1, unsub2, unsub3, unsub4, unsub5);
       const result = await withTimeoutNAP(this.nordicMesh.init(), 10000, 'NordicMesh.init');
-      if (!result.success) throw new Error(result.error?.message || 'Nordic init returned false');
+      if (!result.success) throw new Error((result.error && result.error.message) || 'Nordic init returned false');
       DEBUG.success(`Nordic Mesh active [Native:${result.isNative}]`, 'NORDIC_002');
     } catch (err) { DEBUG.error('NORDIC_005', `Nordic init failed: ${err.message}`); this.nordicMesh = null; }
   }
@@ -206,7 +206,8 @@ export class NexoApp {
 
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp, conversationId, fingerprint } = e.detail;
-        console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
+        var contentPreview = (content && content.substring) ? content.substring(0, 30) : '';
+        console.log('[BLE_RECV] Mensaje de ' + senderName + ': ' + contentPreview + '...');
         
         const nid = this._normalizeId(deviceId);
         const convId = conversationId || nid;
@@ -235,8 +236,10 @@ export class NexoApp {
           }
           // 4) BLE interface connected/found devices
           if (!resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown') {
-            resolvedName = this.bleInterface?.connectedDevices?.get(convId)?.name
-              || this.bleInterface?.foundDevices?.get(convId)?.name
+            var connDev = this.bleInterface && this.bleInterface.connectedDevices ? this.bleInterface.connectedDevices.get(convId) : null;
+            var foundDev = this.bleInterface && this.bleInterface.foundDevices ? this.bleInterface.foundDevices.get(convId) : null;
+            resolvedName = (connDev && connDev.name)
+              || (foundDev && foundDev.name)
               || senderName
               || 'NEXO Peer';
           }
@@ -276,7 +279,7 @@ export class NexoApp {
   async _initPhase6_Bridge() {
     DEBUG.setPhase('BRIDGE');
     try {
-      if (!this.mesh && !this.nordicMesh && !this.wsClient && !this.bleInterface?.nativePlugin) {
+      if (!this.mesh && !this.nordicMesh && !this.wsClient && !(this.bleInterface && this.bleInterface.nativePlugin)) {
         DEBUG.warn('No transports', 'BRIDGE_SKIP');
         return;
       }
@@ -298,13 +301,13 @@ export class NexoApp {
     if (container) { try { this.stream = new TheStream(container, {}); } catch (e) {} }
   }
 
-  _handleNordicPeer(peer) { if (!peer?.id) return; this.blePeers.set(peer.id, { ...peer, discoveredAt: Date.now() }); }
-  _handleNordicSession(data) { if (!data?.deviceId) return; this._updateMode('P2P_BLE'); }
-  _handleNordicMessage(msg) { if (!msg?.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
+  _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, {discoveredAt: Date.now()})); }
+  _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
+  _handleNordicMessage(msg) { if (!msg || !msg.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
   _updateModeFromNordic(state) {
     switch(state) {
       case 'messaging': case 'connected': this._updateMode('P2P_BLE'); break;
-      case 'offline': if (!this.mesh?.getPeerCount?.() && !this.wsClient?.isConnected?.()) this._updateMode('OFFLINE'); break;
+      case 'offline': var meshPeers = this.mesh && this.mesh.getPeerCount ? this.mesh.getPeerCount() : 0; var wsConnected = this.wsClient && this.wsClient.isConnected ? this.wsClient.isConnected() : false; if (!meshPeers && !wsConnected) this._updateMode('OFFLINE'); break;
     }
   }
   _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
@@ -350,7 +353,8 @@ export class NexoApp {
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
-      const convId = this._normalizeId(this.activeContact?.id || 'self');
+      var activeId = this.activeContact && this.activeContact.id ? this.activeContact.id : 'self';
+      const convId = this._normalizeId(activeId);
       
       // v5.0.9: Calcular fingerprint ANTES de enviar para anti-eco
       const fp = _messageFingerprint(convId, content, Date.now());
@@ -376,18 +380,18 @@ export class NexoApp {
       this.config.onMessage(ownMessage);
       
       const recipient = isObject ? msg.recipient : null;
-      const targetId = recipient || this.activeContact?.id;
-      const targetTransport = this.activeContact?.transport;
+      const targetId = recipient || (this.activeContact && this.activeContact.id);
+      const targetTransport = this.activeContact && this.activeContact.transport;
 
-      if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
+      if (targetId && targetTransport === 'ble' && this.bleInterface && this.bleInterface.nativePlugin) {
         try { await this._sendViaBLE(targetId, content); return true; }
         catch (e) { DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL'); }
       }
 
-      if (this.bleInterface?.nativePlugin) {
+      if (this.bleInterface && this.bleInterface.nativePlugin) {
         try {
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
-          const bleDevices = connectedResult?.devices || [];
+          const bleDevices = (connectedResult && connectedResult.devices) || [];
           if (bleDevices.length > 0) {
             await this._sendViaBLE(bleDevices[0].deviceId || bleDevices[0].id, content);
             return true;
@@ -395,20 +399,20 @@ export class NexoApp {
         } catch (e) { DEBUG.log(`[BLE_SEND] Fallback falló: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
       }
 
-      const nordicPeers = this.nordicMesh?.getPeers?.() || [];
+      const nordicPeers = (this.nordicMesh && this.nordicMesh.getPeers) ? this.nordicMesh.getPeers() : [];
       if (nordicPeers.length > 0) {
         try { await this.nordicMesh.sendMessage(nordicPeers[0].id, content); DEBUG.success(`Sent via Nordic`, 'MSG_NORDIC'); return true; }
         catch (e) { DEBUG.error('NORDIC_009', `Send failed: ${e.message}`); }
       }
 
-      if (this.mesh?.getPeerCount?.() > 0) {
+      if (this.mesh && this.mesh.getPeerCount && this.mesh.getPeerCount() > 0) {
         try { await this.mesh.broadcast({ content }); DEBUG.success('Sent via Hybrid', 'MSG_HYBRID'); return true; }
         catch (e) { DEBUG.error('MESH_005', `Broadcast failed: ${e.message}`); }
       }
 
       if (this.bridge) { const result = await this.bridge.send({ content }); if (result) { DEBUG.success('Sent via Bridge', 'MSG_BRIDGE'); return true; } }
 
-      if (this.wsClient?.isConnected?.()) { this.wsClient.send({ content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); return true; }
+      if (this.wsClient && this.wsClient.isConnected && this.wsClient.isConnected()) { this.wsClient.send({ content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); return true; }
 
       DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
       return false;
@@ -435,7 +439,8 @@ export class NexoApp {
       const now = Date.now();
       // Nota: Set no tiene TTL nativo; usamos messageId como respaldo si existe
       if (msg.messageId && this._seenFingerprints.has(msg.messageId)) {
-        DEBUG.log(`Deduplicado por messageId ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP_ID');
+        var msgIdPreview = (msg.messageId && msg.messageId.substring) ? msg.messageId.substring(0, 8) : '';
+        DEBUG.log('Deduplicado por messageId ' + msgIdPreview + ' de ' + source, 'debug', 'DEDUP_ID');
         return;
       }
       
@@ -473,9 +478,9 @@ export class NexoApp {
   }
 
   async _partialCleanup() {
-    if (this.nordicMesh) { try { await this.nordicMesh.destroy?.(); } catch(e) {} this.nordicMesh = null; }
+    if (this.nordicMesh) { try { if (this.nordicMesh.destroy) await this.nordicMesh.destroy(); } catch(e) {} this.nordicMesh = null; }
     if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
-    if (this.wsClient) { try { this.wsClient.disconnect?.(); } catch(e) {} this.wsClient = null; }
+    if (this.wsClient) { try { if (this.wsClient.disconnect) this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
   }
 
   async destroy() {
@@ -485,10 +490,10 @@ export class NexoApp {
     if (this._bleChatHandler) { window.removeEventListener('nexo:ble:openChat', this._bleChatHandler); this._bleChatHandler = null; }
     if (this._bleMessageHandler) { window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler); this._bleMessageHandler = null; }
     if (this.bleInterface) { try { this.bleInterface.destroy(); } catch(e) {} this.bleInterface = null; }
-    if (this.nordicMesh) { this._resources.handlers.forEach(unsub => { try { unsub(); } catch(e) {} }); try { await this.nordicMesh.destroy?.(); } catch(e) {} this.nordicMesh = null; }
+    if (this.nordicMesh) { this._resources.handlers.forEach(function(unsub) { try { unsub(); } catch(e) {} }); try { if (this.nordicMesh.destroy) await this.nordicMesh.destroy(); } catch(e) {} this.nordicMesh = null; }
     if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
-    if (this.wsClient) { try { this.wsClient.disconnect?.(); } catch(e) {} this.wsClient = null; }
-    if (this.vault) { try { this.vault.destroy?.(); } catch(e) {} this.vault = null; }
+    if (this.wsClient) { try { if (this.wsClient.disconnect) this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
+    if (this.vault) { try { if (this.vault.destroy) this.vault.destroy(); } catch(e) {} this.vault = null; }
     this._resources.timers.forEach(t => clearTimeout(t));
     this._seenFingerprints.clear();
     DEBUG.success('Cleanup complete', 'DESTROY_OK');
@@ -497,7 +502,7 @@ export class NexoApp {
   getStatus() {
     return {
       initialized: this.initialized,
-      mode: this.mesh?.getStatus?.().mode || (this.nordicMesh?.getState?.() === 'messaging' ? 'p2p_ble' : 'offline'),
+      mode: (this.mesh && this.mesh.getStatus && this.mesh.getStatus().mode) || (this.nordicMesh && this.nordicMesh.getState && this.nordicMesh.getState() === 'messaging' ? 'p2p_ble' : 'offline'),
       hasBLEInterface: !!this.bleInterface,
       activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
     };
