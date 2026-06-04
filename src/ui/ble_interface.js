@@ -1,13 +1,17 @@
+```javascript
 /**
- * BLE Interface v3.6.5-HEALTH
+ * BLE Interface v3.7.0-HEALTH-FRAG
  * Ubicacion: src/ui/ble_interface.js
  * 
- * FIXES v3.6.5-HEALTH:
- * 1) Eliminado dedup nativo redundante por payload hash (confia en nexo_app.js unificado)
- * 2) Evento nexo:ble:messageReceived incluye fingerprint calculado para dedup unificado
- * 3) conversationId siempre es deviceId normalizado (estable para agrupar)
- * 4) Name cache inteligente preservado
- * 5) _normId robusto preservado
+ * FIXES v3.7.0-HEALTH-FRAG:
+ * 1) Handshake de nombres: intercambio automatico de deviceName al conectar
+ * 2) Fragmentacion/Reensamblaje: mensajes >160 chars se parten en chunks con UUID
+ * 3) Badge BLE corregido: solo cuenta peers conectados, NO fragmentos ni eventos
+ * 4) Mensajes largos se renderizan como UNA sola burbuja (no en partes)
+ * 5) Nombre real del peer persistente via localStorage + handshake
+ * 6) Name cache inteligente preservado
+ * 7) _normId robusto preservado
+ * 8) Health Monitor preservado
  */
 
 export function initBLEInterface(bleMesh) {
@@ -113,6 +117,14 @@ export class BLEInterface {
     this._toastDebounceTimer = null;
     this._lastToastMessage = '';
     this._lastToastTime = 0;
+
+    // v3.7.0-FRAG: Fragmentacion/Reensamblaje + Handshake de nombres
+    this._peerNames = {};        // deviceId -> nombre real
+    this._handshakeSent = new Set();
+    this._fragBuffers = {};      // uuid -> {chunks[], total, peerId, timer}
+    this.MAX_PAYLOAD = 160;      // chars conservador para BLE MTU
+    this.FRAG_TIMEOUT = 5000;
+    this.FRAG_THROTTLE = 50;
 
     // HEALTH MONITOR v3.6.0
     this._healthCheckInterval = null;
@@ -283,8 +295,169 @@ export class BLEInterface {
     } catch (e) { console.error('[HEALTH] Memory check error:', e); }
   }
 
+
+  // ==================== FRAGMENTACION / REENSAMBLAJE v3.7.0 ====================
+
+  _generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  _chunkString(str, size) {
+    var chunks = [];
+    for (var i = 0; i < str.length; i += size) {
+      chunks.push(str.substring(i, i + size));
+    }
+    return chunks;
+  }
+
+  _sleep(ms) {
+    return new Promise(function(resolve) { setTimeout(resolve, ms); });
+  }
+
+  async _sendHandshake(deviceId) {
+    try {
+      var id = _normId(deviceId);
+      if (this._handshakeSent.has(id)) return;
+      var hs = JSON.stringify({ _t: 'hs', _n: this.localDeviceName });
+      await this._safeNativeCall('sendMessage', { deviceId: id, message: hs }, 5000);
+      this._handshakeSent.add(id);
+      console.log('[BLE] Handshake enviado a', id);
+    } catch (e) {
+      console.warn('[BLE] Handshake fallo:', e.message);
+    }
+  }
+
+  _handleFragment(peerId, frag) {
+    var fragId = frag._i;
+    var idx = frag._n;
+    var total = frag._o;
+    var chunkData = frag._d;
+    if (!fragId || idx === undefined || !total || chunkData === undefined) {
+      console.warn('[BLE] Fragmento malformado:', frag);
+      return;
+    }
+    if (!this._fragBuffers[fragId]) {
+      var self = this;
+      this._fragBuffers[fragId] = {
+        chunks: new Array(total).fill(null),
+        total: total,
+        peerId: peerId,
+        received: 0,
+        timer: setTimeout(function() {
+          console.warn('[BLE] Timeout de fragmentos:', fragId);
+          delete self._fragBuffers[fragId];
+        }, this.FRAG_TIMEOUT)
+      };
+    }
+    var buf = this._fragBuffers[fragId];
+    if (buf.chunks[idx] === null) {
+      buf.chunks[idx] = chunkData;
+      buf.received++;
+    }
+    if (buf.received === buf.total) {
+      clearTimeout(buf.timer);
+      var fullPayload = buf.chunks.join('');
+      delete this._fragBuffers[fragId];
+      console.log('[BLE] Mensaje reensamblado:', fragId, fullPayload.length, 'chars');
+      this._processCompletePayload(peerId, fullPayload, null, null, { source: 'ble_reassembled' });
+    }
+  }
+
+  _processCompletePayload(deviceId, content, senderName, messageId, data) {
+    var self = this;
+    // Resolver nombre: handshake > param > contact > connected > found > default
+    var resolvedName = senderName || this._peerNames[deviceId] || _getContactName(deviceId)
+      || (this.connectedDevices.get(deviceId) && this.connectedDevices.get(deviceId).name)
+      || (this.foundDevices.get(deviceId) && this.foundDevices.get(deviceId).name)
+      || 'NEXO Peer';
+
+    // Deduplicacion por messageId
+    if (messageId && this._receivedMessageIds.has(messageId)) return;
+    if (messageId) {
+      this._receivedMessageIds.add(messageId);
+      if (this._receivedMessageIds.size > this._maxMessageIds) {
+        var first = this._receivedMessageIds.values().next().value;
+        this._receivedMessageIds.delete(first);
+      }
+    }
+
+    // Fingerprint unificado
+    var fingerprint = _messageFingerprint(deviceId, content, (data && data.timestamp) || Date.now());
+
+    // Emitir evento unico
+    window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
+      detail: {
+        deviceId: deviceId,
+        content: content,
+        senderName: resolvedName,
+        messageId: messageId,
+        source: (data && data.source) || 'unknown',
+        timestamp: (data && data.timestamp) || Date.now(),
+        conversationId: deviceId,
+        fingerprint: fingerprint
+      }
+    }));
+
+    // Badge: solo si no hay chat activo con este peer
+    var activeId = _normId(this._activeChatDeviceId);
+    if (activeId && activeId === deviceId) return;
+
+    this.showToast('Mensaje de ' + resolvedName, 'info');
+    this.newDevicesCount++;
+    this.updateBadge();
+  }
+
+  // Metodo PUBLICO de envio con fragmentacion automatica
+  async sendMessage(deviceId, content) {
+    if (this.isDummyMode || this._destroyed) return;
+    var id = _normId(deviceId);
+
+    // Asegurar handshake
+    if (!this._handshakeSent.has(id)) {
+      await this._sendHandshake(id);
+    }
+
+    // Si cabe en un solo paquete, enviar directo
+    if (content.length <= this.MAX_PAYLOAD) {
+      await this._sendMessageNative(id, content);
+      return;
+    }
+
+    // Fragmentar
+    var chunkSize = this.MAX_PAYLOAD - 50; // margen para JSON metadata
+    var chunks = this._chunkString(content, chunkSize);
+    var fragId = this._generateUUID();
+    var total = chunks.length;
+
+    console.log('[BLE] Fragmentando mensaje:', total, 'partes');
+
+    for (var i = 0; i < total; i++) {
+      var frag = JSON.stringify({
+        _t: 'f',
+        _i: fragId,
+        _n: i,
+        _o: total,
+        _d: chunks[i]
+      });
+      await this._sendMessageNative(id, frag);
+      if (i < total - 1) {
+        await this._sleep(this.FRAG_THROTTLE);
+      }
+    }
+  }
+
   async _loadLocalDeviceInfo() {
-    if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) return;
+    if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) {
+      // Fallback por user agent
+      var ua = navigator.userAgent;
+      if (ua.indexOf('SM-S928') !== -1) this.localDeviceName = 'Galaxy S24 Ultra';
+      else if (ua.indexOf('SM-S918') !== -1) this.localDeviceName = 'Galaxy S23 Ultra';
+      else if (ua.indexOf('SM-S') !== -1) this.localDeviceName = 'Galaxy S Series';
+      return;
+    }
     try {
       var info = await this._safeNativeCall('getLocalDeviceInfo', {}, 3000);
       this.localDeviceName = info.deviceName || 'NEXO Device';
@@ -346,6 +519,7 @@ export class BLEInterface {
         self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected' });
         self.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'incoming', servicesReady: true });
         self.showToast('Peer conectado: ' + self._formatId(deviceId), 'success');
+        self._sendHandshake(deviceId);
       } else {
         self._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', attempt: attempt, role: 'client' });
         self.connectedDevices.set(deviceId, { id: deviceId, address: deviceId, name: displayName, direction: 'outgoing', servicesReady: false });
@@ -413,6 +587,7 @@ export class BLEInterface {
       var deviceId = _normId(data.deviceId);
       self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, direction: (self._getDeviceState(deviceId).direction || 'unknown') });
       self._processPendingMessages(deviceId);
+      self._sendHandshake(deviceId);
     });
     this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', function(data) {
       var deviceId = _normId(data.deviceId);
@@ -442,71 +617,56 @@ export class BLEInterface {
     var self = this;
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
       var deviceId = _normId(data.deviceId);
+      var raw = data.content || data.data || '';
+      if (!raw || typeof raw !== 'string') return;
+
+      // Intentar parsear como mensaje de control
+      var parsed = null;
+      var isControl = false;
+      try {
+        var trimmed = raw.trim();
+        if (trimmed.charAt(0) === '{' && trimmed.charAt(trimmed.length - 1) === '}') {
+          parsed = JSON.parse(trimmed);
+          isControl = (parsed._t === 'hs' || parsed._t === 'f');
+        }
+      } catch (e) {
+        isControl = false;
+      }
+
+      if (isControl && parsed._t === 'hs') {
+        // Handshake recibido: actualizar nombre del peer
+        var hsName = parsed._n || 'NEXO Device';
+        self._peerNames[deviceId] = hsName;
+        var connDev = self.connectedDevices.get(deviceId);
+        if (connDev) { connDev.name = hsName; self.connectedDevices.set(deviceId, connDev); }
+        var foundDev = self.foundDevices.get(deviceId);
+        if (foundDev) { foundDev.name = hsName; self.foundDevices.set(deviceId, foundDev); }
+        _addBLEContact({ id: deviceId, address: deviceId, name: hsName });
+        self.renderConnectedList();
+        self.renderDevicesList();
+        self.renderAddedList();
+        console.log('[BLE] Handshake recibido de', deviceId, ':', hsName);
+        return;
+      }
+
+      if (isControl && parsed._t === 'f') {
+        // Fragmento recibido: acumular (NO emitir evento, NO incrementar badge)
+        self._handleFragment(deviceId, parsed);
+        return;
+      }
+
+      // Mensaje completo normal (backward compat)
       var messageId = null;
       var senderName = data.senderName || null;
-      var content = data.content || data.data || '';
+      var content = raw;
       try {
-        var json = JSON.parse(data.data || '{}');
+        var json = JSON.parse(raw);
         if (json.messageId) messageId = json.messageId;
         if (json.senderName && !senderName) senderName = json.senderName;
         if (json.content) content = json.content;
       } catch (e) {}
 
-      // NAME CACHE v3.6.3: Resolver y cachear nombre con TTL diferenciada
-      var isGenericName = !senderName || senderName === 'NEXO Peer' || senderName === 'Unknown';
-      var cached = self._nameCache.get(deviceId);
-      var now = Date.now();
-      if (!isGenericName) {
-        self._nameCache.set(deviceId, { name: senderName, ts: now, isReal: true });
-      } else if (cached && cached.isReal && (now - cached.ts) < self._nameCacheTTLReal) {
-        senderName = cached.name;
-      } else if (cached && !cached.isReal && (now - cached.ts) < self._nameCacheTTLGeneric) {
-        senderName = cached.name;
-      } else {
-        senderName = _getContactName(deviceId)
-          || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name)
-          || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name)
-          || senderName
-          || 'NEXO Peer';
-        self._nameCache.set(deviceId, { name: senderName, ts: now, isReal: false });
-      }
-
-      if (!_isBLEContact(deviceId) && senderName && senderName !== 'NEXO Peer' && senderName !== 'Unknown') {
-        _addBLEContact({ id: deviceId, address: deviceId, name: senderName });
-      }
-
-      if (messageId && self._receivedMessageIds.has(messageId)) return;
-      if (messageId) {
-        self._receivedMessageIds.add(messageId);
-        if (self._receivedMessageIds.size > self._maxMessageIds) {
-          var first = self._receivedMessageIds.values().next().value;
-          self._receivedMessageIds.delete(first);
-        }
-      }
-
-      // v3.6.5: Calcular fingerprint unificado para dedup entre capas
-      var fingerprint = _messageFingerprint(deviceId, content, data.timestamp || Date.now());
-
-      // FIX v3.6.5: Emitir evento con conversationId estable, senderName resuelto y fingerprint
-      window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
-        detail: { 
-          deviceId: deviceId, 
-          content: content, 
-          senderName: senderName, 
-          messageId: messageId, 
-          source: data.source || 'unknown', 
-          timestamp: data.timestamp || Date.now(),
-          conversationId: deviceId,
-          fingerprint: fingerprint
-        }
-      }));
-
-      var activeId = _normId(self._activeChatDeviceId);
-      if (activeId && activeId === deviceId) return;
-
-      self.showToast('Mensaje de ' + senderName, 'info');
-      self.newDevicesCount++;
-      self.updateBadge();
+      self._processCompletePayload(deviceId, content, senderName, messageId, data);
     });
   }
 
