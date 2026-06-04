@@ -1,37 +1,88 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.1-SHIM
+ * src/main.js - Punto de entrada NEXO v9.4.0-HEALTH-FRAG
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.1-SHIM: SetupManager/SetupWizard eliminados. Permission Shim integrado.
- * Build #961 compatible. NO toca nativo.
+ * 
+ * FIXES v9.4.0-HEALTH-FRAG (definitivos):
+ * 1) TheStream es la UNICA fuente de renderizado — main.js NUNCA renderiza si TheStream existe
+ * 2) ELIMINADO doScrollToBottom de _setupMessageInput — TheStream maneja scroll sola
+ * 3) ELIMINADO MutationObserver de scroll — era competencia que causaba saltos
+ * 4) _renderMessage es fallback puro: solo actua si TheStream NO esta disponible
+ * 5) Simplificado _setupMessageInput: solo envia y limpia input, nada de scroll
+ * 6) Preservado: Health Monitor, Permission Overlay, Freshness Detection
  */
 
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
-import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
+import { ensureBLEPermissions, getPermissionShim, getShimHealth } from './core/NexoPermissionShim.js';
 
 window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.1-SHIM',
-  initialized: false
+  version: '9.3.7-HEALTH',
+  initialized: false,
+  sessionStart: Date.now(),
+  healthStatus: 'healthy'
 };
 
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 
+const SESSION_STORAGE_KEY = 'nexo_last_session';
+const FRESHNESS_THRESHOLD_MS = 1800000;
+const HEALTH_CHECK_INTERVAL_MS = 120000;
+
 const SAFETY_TIMEOUT = setTimeout(() => {
-  if (NEXO_DIAG.isSplashVisible?.()) {
-    rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
+  if (NEXO_DIAG.isSplashVisible && NEXO_DIAG.isSplashVisible()) {
+    rem.warn('Timeout de seguridad (20s) - forzando continuar', 'INIT_TIMEOUT');
     NEXO_DIAG.hideSplash();
     document.body.classList.add('nexo-force-ready');
   }
-}, 15000);
+}, 20000);
+
+// ==================== FRESHNESS DETECTION ====================
+
+function _checkAppFreshness() {
+  try {
+    const lastSession = localStorage.getItem(SESSION_STORAGE_KEY);
+    const now = Date.now();
+    if (lastSession) {
+      const lastTime = parseInt(lastSession, 10);
+      const delta = now - lastTime;
+      if (delta > FRESHNESS_THRESHOLD_MS) {
+        rem.warn(`[HEALTH] App reopened after ${Math.round(delta/60000)}min. Clearing stale state.`, 'FRESHNESS');
+        localStorage.removeItem('nexo_shim_v2_state');
+        localStorage.removeItem('nexo_ble_prefs');
+        const shim = getPermissionShim();
+        if (shim) {
+          shim.state.checked = false;
+          shim.state.granted = false;
+          shim._cache.clear();
+        }
+        return { isFresh: false, deltaMinutes: Math.round(delta/60000) };
+      }
+    }
+    localStorage.setItem(SESSION_STORAGE_KEY, now.toString());
+    return { isFresh: true, deltaMinutes: 0 };
+  } catch (e) {
+    console.warn('[HEALTH] Freshness check error:', e);
+    return { isFresh: true, deltaMinutes: 0 };
+  }
+}
+
+setInterval(() => {
+  try { localStorage.setItem(SESSION_STORAGE_KEY, Date.now().toString()); } catch (e) {}
+}, 30000);
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+    const freshness = _checkAppFreshness();
+    if (!freshness.isFresh) {
+      rem.warn(`[HEALTH] Stale session detected (${freshness.deltaMinutes}min). Forcing clean init.`, 'FRESHNESS');
+    }
+
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
     _ensureDOMStructure();
@@ -40,18 +91,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
-    // ─── SHIM INTEGRATION v9.1 ───
     rem.info('[Shim] Verificando permisos BLE...', 'SHIM_CHECK');
 
     let permissionsGranted = false;
+    let permError = null;
     try {
       const permPromise = ensureBLEPermissions();
       const permTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('PERM_TIMEOUT')), 10000)
+        setTimeout(() => reject(new Error('PERM_TIMEOUT')), 12000)
       );
       permissionsGranted = await Promise.race([permPromise, permTimeout]);
     } catch (permErr) {
       rem.warn(`[Shim] Permisos timeout/error: ${permErr.message}`, 'SHIM_WARN');
+      permError = permErr;
       permissionsGranted = false;
     }
 
@@ -62,19 +114,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       rem.warn('[Shim] Permisos BLE pendientes', 'SHIM_REQUIRED');
       NEXO_DIAG.hideSplash();
       _showPermissionOverlay();
+      _startPermissionPolling();
     }
 
-    // Escuchar evento del Shim para auto-continuar cuando el usuario conceda desde Settings
     window.addEventListener('nexo-permissions-granted', async (e) => {
       if (!window.NEXO.initialized) {
-        rem.success(`[Shim] Permisos concedidos via ${e.detail?.source || 'event'}`, 'SHIM_EVENT_OK');
+        var shimSource = (e.detail && e.detail.source) || 'event';
+        rem.success('[Shim] Permisos concedidos via ' + shimSource, 'SHIM_EVENT_OK');
+        _stopPermissionPolling();
         _hidePermissionOverlay();
         await initializeNexoApp();
       }
-    }, { once: true });
+    });
+
+    _startHealthMonitor();
 
   } catch (error) {
-    console.error('💥 Error fatal en inicialización:', error);
+    console.error('💥 Error fatal en inicializacion:', error);
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('INIT_FATAL', error.message);
     rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
@@ -84,17 +140,87 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// ─── Permission Overlay (reemplaza SetupWizard) ───
+// ==================== HEALTH MONITOR ====================
+
+let _healthCheckInterval = null;
+
+function _startHealthMonitor() {
+  _healthCheckInterval = setInterval(() => {
+    _performHealthCheck();
+  }, HEALTH_CHECK_INTERVAL_MS);
+}
+
+function _stopHealthMonitor() {
+  if (_healthCheckInterval) {
+    clearInterval(_healthCheckInterval);
+    _healthCheckInterval = null;
+  }
+}
+
+function _performHealthCheck() {
+  try {
+    const uptime = Math.floor((Date.now() - window.NEXO.sessionStart) / 1000);
+    let memoryInfo = 'N/A';
+    if (performance && performance.memory) {
+      const used = Math.round(performance.memory.usedJSHeapSize / 1048576);
+      const total = Math.round(performance.memory.totalJSHeapSize / 1048576);
+      const limit = Math.round(performance.memory.jsHeapSizeLimit / 1048576);
+      memoryInfo = `${used}MB/${total}MB (limit: ${limit}MB)`;
+      if (used / limit > 0.8) {
+        rem.warn(`[HEALTH] High memory usage: ${memoryInfo}`, 'MEMORY');
+        window.NEXO.healthStatus = 'memory_pressure';
+      }
+    }
+    try {
+      const shimHealth = getShimHealth();
+      if (shimHealth.isStale) {
+        rem.warn('[HEALTH] Shim state is stale, refreshing...', 'SHIM_STALE');
+        const shim = getPermissionShim();
+        if (shim) shim.check({ bypassCache: true });
+      }
+    } catch (e) {}
+    console.log(`[HEALTH] Uptime: ${uptime}s, Memory: ${memoryInfo}, Status: ${window.NEXO.healthStatus}`);
+  } catch (e) {
+    console.error('[HEALTH] Health check error:', e);
+  }
+}
+
+// ==================== PERMISSION OVERLAY ====================
+
+let _permPollingInterval = null;
+function _startPermissionPolling() {
+  if (_permPollingInterval) return;
+  _permPollingInterval = setInterval(async () => {
+    try {
+      const shim = getPermissionShim();
+      const status = await shim.check({ bypassCache: true });
+      if (status && !window.NEXO.initialized) {
+        rem.info('[Shim] Permisos detectados via polling', 'SHIM_POLL_OK');
+        _stopPermissionPolling();
+        _hidePermissionOverlay();
+        await initializeNexoApp();
+      }
+    } catch (e) {}
+  }, 3000);
+}
+
+function _stopPermissionPolling() {
+  if (_permPollingInterval) {
+    clearInterval(_permPollingInterval);
+    _permPollingInterval = null;
+  }
+}
+
 function _showPermissionOverlay() {
   if (document.getElementById('nexo-perm-overlay')) return;
-
   const overlay = document.createElement('div');
   overlay.id = 'nexo-perm-overlay';
   overlay.innerHTML = `
     <div class="perm-overlay-content">
       <h2>🔐 Permisos BLE Requeridos</h2>
-      <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p>
-      <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p>
+      <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicacion P2P.</p>
+      <p class="perm-sub">Si ya los concediste en Ajustes, la app continuara automaticamente.</p>
+      <div id="perm-status" class="perm-status">Verificando...</div>
       <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>
       <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button>
       <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button>
@@ -102,7 +228,6 @@ function _showPermissionOverlay() {
   `;
   document.body.appendChild(overlay);
 
-  // Styles inline para no depender de CSS externo
   const style = document.createElement('style');
   style.id = 'perm-overlay-styles';
   style.textContent = `
@@ -111,6 +236,7 @@ function _showPermissionOverlay() {
     .perm-overlay-content h2 { margin: 0 0 12px; font-size: 20px; color: #00d4ff; }
     .perm-overlay-content p { margin: 0 0 8px; font-size: 14px; color: #ccc; line-height: 1.5; }
     .perm-sub { font-size: 12px !important; color: #888 !important; font-style: italic; }
+    .perm-status { font-size: 12px; color: #ffaa00; margin: 8px 0; min-height: 18px; }
     .perm-btn-primary { display: block; width: 100%; margin: 16px 0 8px; padding: 14px; background: linear-gradient(135deg,#00d4ff,#0099cc); color: #000; border: none; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; }
     .perm-btn-secondary { display: block; width: 100%; margin: 0 0 8px; padding: 12px; background: transparent; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; }
     .perm-btn-ghost { display: block; width: 100%; margin: 0; padding: 10px; background: transparent; color: #666; border: none; font-size: 13px; cursor: pointer; }
@@ -119,36 +245,40 @@ function _showPermissionOverlay() {
   document.head.appendChild(style);
 
   document.getElementById('perm-btn-grant').addEventListener('click', async () => {
-    rem.info('[Shim] Usuario solicitó permisos desde overlay', 'SHIM_USER_REQ');
+    rem.info('[Shim] Usuario solicito permisos desde overlay', 'SHIM_USER_REQ');
     try {
       const shim = getPermissionShim();
       const granted = await shim.request();
       if (granted) {
+        _stopPermissionPolling();
         _hidePermissionOverlay();
         await initializeNexoApp();
       } else {
         rem.warn('[Shim] Permisos denegados desde overlay', 'SHIM_USER_DENY');
+        document.getElementById('perm-status').textContent = 'Permisos denegados. Intenta desde Ajustes.';
       }
     } catch (e) {
       rem.error(`[Shim] Error en request: ${e.message}`, 'SHIM_USER_ERR');
+      document.getElementById('perm-status').textContent = 'Error: ' + e.message;
     }
   });
 
   document.getElementById('perm-btn-settings').addEventListener('click', () => {
     rem.info('[Shim] Abriendo ajustes del sistema...', 'SHIM_SETTINGS');
     try {
-      if (window.Capacitor?.Plugins?.App?.openUrl) {
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App && window.Capacitor.Plugins.App.openUrl) {
         window.Capacitor.Plugins.App.openUrl({ url: 'app-settings:' });
       } else {
         window.location.href = 'app-settings:';
       }
     } catch (e) {
-      alert('Ve a Configuración > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
+      alert('Ve a Configuracion > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
     }
   });
 
   document.getElementById('perm-btn-skip').addEventListener('click', async () => {
-    rem.warn('[Shim] Usuario continuó sin BLE', 'SHIM_SKIP');
+    rem.warn('[Shim] Usuario continuo sin BLE', 'SHIM_SKIP');
+    _stopPermissionPolling();
     _hidePermissionOverlay();
     await initializeNexoApp();
   });
@@ -164,7 +294,7 @@ function _hidePermissionOverlay() {
   if (styles) styles.remove();
 }
 
-// ─── NexoApp Initialization (INTACTO v9.0) ───
+// ─── NexoApp Initialization ───
 async function initializeNexoApp() {
   try {
     const nexoConfig = {
@@ -172,13 +302,24 @@ async function initializeNexoApp() {
       bleTimeout: 10000,
       enableGestures: true,
       enableMesh: true,
+      // v9.3.7: onMessage solo notifica — TheStream es el unico renderizador
       onMessage: (msg) => {
-        console.log('📨 Mensaje:', msg);
-        _renderMessage(msg);
+        var contentPreview = (msg.content && msg.content.substring) ? msg.content.substring(0, 30) : '';
+        console.log('📨 Mensaje recibido en main:', msg.senderName || msg.sender, contentPreview);
+        // Si TheStream existe, NUNCA renderizar en fallback
+        if (window.NEXO.app && window.NEXO.app.stream) {
+          window.NEXO.app.stream.appendItems([msg], { scroll: true });
+          return;
+        }
+        // Fallback solo si TheStream no esta disponible
+        _renderMessageFallback(msg);
+        // Actualizar badge BLE con peers conectados reales (no mensajes)
+        _updateBLEBadge();
       },
       onStatusChange: (mode) => {
         console.log('🌐 Modo:', mode);
         rem.updateMode(mode);
+        _updateBLEBadge();
       },
       onError: (err) => {
         console.error('App error:', err);
@@ -186,15 +327,15 @@ async function initializeNexoApp() {
       },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
-        onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
-        onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
+        onReact: (id) => rem.success('Reaccion añadida', 'REACT_OK'),
+        onReply: (id) => { var replyId = (id && id.substr) ? id.substr(0, 8) : ''; _focusInput('@' + replyId + ' '); },
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
     };
 
-    rem.info('🚀 [NEXO] App instance v3.3.0-NAP', 'NEXO_INIT');
+    rem.info('🚀 [NEXO] App instance v5.0.9-HEALTH', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v3.3.0-NAP =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v9.4.0-HEALTH-FRAG =====', 'INIT_START');
 
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) =>
@@ -203,7 +344,7 @@ async function initializeNexoApp() {
 
     try {
       await Promise.race([initPromise, timeoutPromise]);
-      rem.success('==== INICIALIZACIÓN NAP 2.0 COMPLETADA ====', 'INIT_OK');
+      rem.success('==== INICIALIZACION NAP 2.0 COMPLETADA ====', 'INIT_OK');
     } catch (timeoutErr) {
       rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
       rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
@@ -216,13 +357,20 @@ async function initializeNexoApp() {
     _setupVaultToggle();
     _setupChatHeader();
     _setupKeyboardShortcuts();
+    // v9.4.0: ELIMINADO _setupGlobalAutoScroll — TheStream maneja scroll sola
+
+    // Badge BLE inicial
+    _updateBLEBadge();
+    // Escuchar cambios de peers conectados para actualizar badge
+    window.addEventListener('nexo:ble:peerConnected', () => _updateBLEBadge());
+    window.addEventListener('nexo:ble:peerDisconnected', () => _updateBLEBadge());
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.1-SHIM Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.1-SHIM Inicializado');
+    rem.success('NEXO v9.4.0-HEALTH-FRAG Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.4.0-HEALTH-FRAG Inicializado');
 
-    const status = window.NEXO.app.getStatus?.();
+    const status = (window.NEXO.app && window.NEXO.app.getStatus) ? window.NEXO.app.getStatus() : null;
     if (status) console.log('[NEXO STATUS]', status);
 
   } catch (error) {
@@ -236,7 +384,7 @@ async function initializeNexoApp() {
   }
 }
 
-// ─── Helper Functions (INTACTOS v9.0) ───
+// ─── Helper Functions ───
 function _ensureDOMStructure() {
   const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
   const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
@@ -251,14 +399,101 @@ function _ensureDOMStructure() {
   }
 }
 
+// v9.3.7: Fallback render SOLO si TheStream no existe
+// v9.4.0: Badge BLE actualizado desde bleInterface (peers reales, no mensajes)
+function _updateBLEBadge() {
+  try {
+    const app = window.NEXO && window.NEXO.app;
+    if (!app) return;
+    // Intentar leer peerCount real del bleInterface
+    let peerCount = 0;
+    if (app.bleInterface) {
+      if (typeof app.bleInterface.getConnectedCount === 'function') {
+        peerCount = app.bleInterface.getConnectedCount();
+      } else if (app.bleInterface.connectedDevices) {
+        peerCount = app.bleInterface.connectedDevices.size || 0;
+      }
+    }
+    // Fallback: contar peers en status
+    if (!peerCount && app.getStatus) {
+      const status = app.getStatus();
+      peerCount = (status && status.ble && status.ble.peerCount) || 0;
+    }
+    // Actualizar badge en UI
+    const badge = document.getElementById('ble-badge') || document.getElementById('ble-tab-badge');
+    if (badge) {
+      if (peerCount > 0) {
+        badge.textContent = peerCount;
+        badge.style.display = 'flex';
+        badge.style.visibility = 'visible';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    // Actualizar boton BLE
+    const bleBtn = document.getElementById('ble-button') || document.getElementById('ble-tab');
+    if (bleBtn) {
+      bleBtn.title = peerCount === 1 ? '1 peer conectado' : `${peerCount} peers conectados`;
+    }
+  } catch (e) {
+    console.warn('[main] Error actualizando badge BLE:', e);
+  }
+}
+
+function _renderMessageFallback(msg) {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
+
+  const div = document.createElement('div');
+  div.className = `message ${msg._own || msg.isMe ? 'own' : 'other'}`;
+  if (msg.messageId) div.dataset.messageId = msg.messageId;
+
+  const sourceBadge = msg._source ? `${_getSourceIcon(msg._source)}` : '';
+
+  div.innerHTML = `
+    <div class="msg-content">${msg.content || msg.text}</div>
+    <div class="msg-meta">
+      <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
+      ${sourceBadge}
+    </div>
+  `;
+
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function _getSourceIcon(source) {
+  const icons = {
+    'ble_nordic': '🔷',
+    'ble_hybrid': '📡',
+    'relay': '🌐',
+    'self': '✓'
+  };
+  return icons[source] || '•';
+}
+
+// v9.3.7: Simplificado — solo envia, TheStream maneja render y scroll
 function _setupMessageInput() {
   const input = document.getElementById('message-input');
   const btn = document.getElementById('send-btn');
   if (!input || !btn || !window.NEXO.app) return;
 
+  let isSending = false;
+  let lastSendTime = 0;
+  const DEBOUNCE_MS = 300;
+
   const send = async () => {
     const text = input.value.trim();
     if (!text) return;
+
+    const now = Date.now();
+    if (isSending || (now - lastSendTime < DEBOUNCE_MS)) {
+      rem.warn('Envio en progreso o muy rapido, ignorando bounce', 'MSG_BOUNCE');
+      return;
+    }
+
+    isSending = true;
+    lastSendTime = now;
     input.value = '';
     input.focus();
 
@@ -268,12 +503,14 @@ function _setupMessageInput() {
       else rem.info('En cola (offline)', 'MSG_QUEUED');
     } catch (e) {
       rem.error('Error al enviar', 'MSG_ERR');
+    } finally {
+      isSending = false;
     }
   };
 
   btn.addEventListener('click', send);
-  input.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       send();
     }
@@ -293,15 +530,16 @@ function _setupChatHeader() {
   const saveName = () => {
     const newName = nameInput.value.trim();
     if (!newName) {
-      nameInput.value = window.NEXO.app?.activeContact?.name || 'NEXO';
+      var activeContactName = (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.name) || 'NEXO';
+    nameInput.value = activeContactName;
       return;
     }
-    if (window.NEXO.app?.activeContact) {
+    if (window.NEXO.app && window.NEXO.app.activeContact) {
       window.NEXO.app.activeContact.name = newName;
     }
     try {
       const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
-      const activeId = window.NEXO.app?.activeContact?.id;
+      const activeId = (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) || null;
       if (activeId) {
         const idx = contacts.findIndex(c => (c.id || c.address) === activeId);
         if (idx >= 0) {
@@ -336,45 +574,13 @@ function _setupKeyboardShortcuts() {
     }
     if (e.ctrlKey && e.shiftKey && e.key === 'L') {
       e.preventDefault();
-      rem.toggle?.();
+      if (rem.toggle) rem.toggle();
     }
     if (e.ctrlKey && e.shiftKey && e.key === 'H') {
       e.preventDefault();
-      rem.showHistory?.();
+      if (rem.showHistory) rem.showHistory();
     }
   });
-}
-
-function _renderMessage(msg) {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-
-  const div = document.createElement('div');
-  div.className = `message ${msg._own ? 'own' : 'other'}`;
-
-  const sourceBadge = msg._source ?
-    `${_getSourceIcon(msg._source)}` : '';
-
-  div.innerHTML = `
-    <div class="msg-content">${msg.content || msg.text}</div>
-    <div class="msg-meta">
-      <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
-      ${sourceBadge}
-    </div>
-  `;
-
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function _getSourceIcon(source) {
-  const icons = {
-    'ble_nordic': '🔷',
-    'ble_hybrid': '📡',
-    'relay': '🌐',
-    'self': '✓'
-  };
-  return icons[source] || '•';
 }
 
 function _toggleVaultUI(isOpen) {
@@ -419,7 +625,7 @@ function _enableFallbackMode() {
   const msg = document.createElement('div');
   msg.className = 'fallback-notice';
   msg.innerHTML = `
-    <h3>⚠️ Error de Inicialización</h3>
+    <h3>⚠️ Error de Inicializacion</h3>
     <p>La app no pudo iniciar completamente.</p>
   `;
   body.appendChild(msg);
