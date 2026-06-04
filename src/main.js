@@ -15,7 +15,7 @@ import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
-import { ensureBLEPermissions, getPermissionShim, getShimHealth } from './core/NexoPermissionShim.js';
+import { ensureBLEPermissions, getPermissionShim, getShimStatus } from './core/NexoPermissionShim.js';
 
 window.NEXO = {
   app: null,
@@ -35,7 +35,7 @@ const FRESHNESS_THRESHOLD_MS = 1800000;
 const HEALTH_CHECK_INTERVAL_MS = 120000;
 
 const SAFETY_TIMEOUT = setTimeout(() => {
-  if (NEXO_DIAG.isSplashVisible?.()) {
+  if (NEXO_DIAG.isSplashVisible && NEXO_DIAG.isSplashVisible()) {
     rem.warn('Timeout de seguridad (20s) - forzando continuar', 'INIT_TIMEOUT');
     NEXO_DIAG.hideSplash();
     document.body.classList.add('nexo-force-ready');
@@ -119,7 +119,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.addEventListener('nexo-permissions-granted', async (e) => {
       if (!window.NEXO.initialized) {
-        rem.success(`[Shim] Permisos concedidos via ${e.detail?.source || 'event'}`, 'SHIM_EVENT_OK');
+        var shimSource = (e.detail && e.detail.source) || 'event';
+        rem.success('[Shim] Permisos concedidos via ' + shimSource, 'SHIM_EVENT_OK');
         _stopPermissionPolling();
         _hidePermissionOverlay();
         await initializeNexoApp();
@@ -171,11 +172,11 @@ function _performHealthCheck() {
       }
     }
     try {
-      const shimHealth = getShimHealth();
-      if (shimHealth.isStale) {
+      const shimStatus = getShimStatus();
+      if (shimStatus && shimStatus.isStale) {
         rem.warn('[HEALTH] Shim state is stale, refreshing...', 'SHIM_STALE');
         const shim = getPermissionShim();
-        if (shim) shim.check({ bypassCache: true });
+        if (shim && shim.check) shim.check({ bypassCache: true });
       }
     } catch (e) {}
     console.log(`[HEALTH] Uptime: ${uptime}s, Memory: ${memoryInfo}, Status: ${window.NEXO.healthStatus}`);
@@ -203,6 +204,7 @@ function _startPermissionPolling() {
   }, 3000);
 }
 
+// stop poll
 function _stopPermissionPolling() {
   if (_permPollingInterval) {
     clearInterval(_permPollingInterval);
@@ -265,7 +267,7 @@ function _showPermissionOverlay() {
   document.getElementById('perm-btn-settings').addEventListener('click', () => {
     rem.info('[Shim] Abriendo ajustes del sistema...', 'SHIM_SETTINGS');
     try {
-      if (window.Capacitor?.Plugins?.App?.openUrl) {
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App && window.Capacitor.Plugins.App.openUrl) {
         window.Capacitor.Plugins.App.openUrl({ url: 'app-settings:' });
       } else {
         window.location.href = 'app-settings:';
@@ -303,9 +305,10 @@ async function initializeNexoApp() {
       enableMesh: true,
       // v9.3.7: onMessage solo notifica — TheStream es el unico renderizador
       onMessage: (msg) => {
-        console.log('📨 Mensaje recibido en main:', msg.senderName || msg.sender, msg.content?.substring(0, 30));
+        var contentPreview = (msg.content && msg.content.substring) ? msg.content.substring(0, 30) : '';
+        console.log('📨 Mensaje recibido en main:', msg.senderName || msg.sender, contentPreview);
         // Si TheStream existe, NUNCA renderizar en fallback
-        if (window.NEXO.app?.stream) {
+        if (window.NEXO.app && window.NEXO.app.stream) {
           window.NEXO.app.stream.appendItems([msg], { scroll: true });
           return;
         }
@@ -326,7 +329,7 @@ async function initializeNexoApp() {
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
         onReact: (id) => rem.success('Reaccion añadida', 'REACT_OK'),
-        onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
+        onReply: (id) => { var replyId = (id && id.substr) ? id.substr(0, 8) : ''; _focusInput('@' + replyId + ' '); },
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
     };
@@ -368,7 +371,7 @@ async function initializeNexoApp() {
     rem.success('NEXO v9.4.0-HEALTH-FRAG Listo', 'INIT_OK');
     console.log('✅ NEXO v9.4.0-HEALTH-FRAG Inicializado');
 
-    const status = window.NEXO.app.getStatus?.();
+    const status = (window.NEXO.app && window.NEXO.app.getStatus) ? window.NEXO.app.getStatus() : null;
     if (status) console.log('[NEXO STATUS]', status);
 
   } catch (error) {
@@ -401,7 +404,7 @@ function _ensureDOMStructure() {
 // v9.4.0: Badge BLE actualizado desde bleInterface (peers reales, no mensajes)
 function _updateBLEBadge() {
   try {
-    const app = window.NEXO?.app;
+    const app = window.NEXO && window.NEXO.app;
     if (!app) return;
     // Intentar leer peerCount real del bleInterface
     let peerCount = 0;
@@ -415,7 +418,7 @@ function _updateBLEBadge() {
     // Fallback: contar peers en status
     if (!peerCount && app.getStatus) {
       const status = app.getStatus();
-      peerCount = status?.ble?.peerCount || 0;
+      peerCount = (status && status.ble && status.ble.peerCount) || 0;
     }
     // Actualizar badge en UI
     const badge = document.getElementById('ble-badge') || document.getElementById('ble-tab-badge');
@@ -528,15 +531,16 @@ function _setupChatHeader() {
   const saveName = () => {
     const newName = nameInput.value.trim();
     if (!newName) {
-      nameInput.value = window.NEXO.app?.activeContact?.name || 'NEXO';
+      var activeContactName = (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.name) || 'NEXO';
+    nameInput.value = activeContactName;
       return;
     }
-    if (window.NEXO.app?.activeContact) {
+    if (window.NEXO.app && window.NEXO.app.activeContact) {
       window.NEXO.app.activeContact.name = newName;
     }
     try {
       const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
-      const activeId = window.NEXO.app?.activeContact?.id;
+      const activeId = (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) || null;
       if (activeId) {
         const idx = contacts.findIndex(c => (c.id || c.address) === activeId);
         if (idx >= 0) {
@@ -571,11 +575,11 @@ function _setupKeyboardShortcuts() {
     }
     if (e.ctrlKey && e.shiftKey && e.key === 'L') {
       e.preventDefault();
-      rem.toggle?.();
+      if (rem.toggle) rem.toggle();
     }
     if (e.ctrlKey && e.shiftKey && e.key === 'H') {
       e.preventDefault();
-      rem.showHistory?.();
+      if (rem.showHistory) rem.showHistory();
     }
   });
 }
