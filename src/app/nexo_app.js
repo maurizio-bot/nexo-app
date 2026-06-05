@@ -1,16 +1,16 @@
 /**
- * NEXO App v5.1.0-HEALTH-FRAG
- * Coordinado con ble_interface.js v3.6.5-HEALTH + main.js v9.3.7-HEALTH + TheStream v2.5
+ * NEXO App v5.1.1-HEALTH-FIX
+ * Coordinado con ble_interface.js v3.7.1-HEALTH-FIX + main.js v9.4.1-HEALTH-FIX + TheStream v2.5
  * 
- * FIXES v5.1.0-HEALTH-FRAG:
- * 1) UNICA fuente de dedup: fingerprint unificado (conversationId + bucket30s + contenido)
- * 2) sendMessage NO renderiza localmente — solo manda a TheStream via config.onMessage
- * 3) _bleMessageHandler usa fingerprint del evento BLE; si no existe, lo calcula igual
- * 4) _processSingleMessage eliminado — dedup unificado en _handleMessage directo
+ * FIXES v5.1.1-HEALTH-FIX:
+ * 1) Corregido Capacizer -> Capacitor
+ * 2) UNICA fuente de dedup: fingerprint unificado (conversationId + bucket30s + contenido)
+ * 3) sendMessage NO renderiza localmente — solo manda a TheStream via config.onMessage
+ * 4) _bleMessageHandler usa fingerprint del evento BLE; si no existe, lo calcula igual
  * 5) TheStream es el UNICO renderizador de mensajes
  * 6) Anti-eco: si fingerprint coincide con ultimo enviado propio, se ignora
  * 7) Scroll eliminado de aqui — TheStream lo maneja sola
- * 8) Compatibilidad con fragmentacion BLE v3.7.0: mensajes reensamblados llegan completos
+ * 8) Compatibilidad con fragmentacion BLE v3.7.1: mensajes reensamblados llegan completos
  * 9) Nombres reales de peers via handshake BLE (no mas "NEXO Peer" generico)
  */
 
@@ -101,7 +101,7 @@ export class NexoApp {
     this._lastOwnFingerprint = null;
     this._lastOwnFingerprintTime = 0;
     
-    DEBUG.log('🚀 [NEXO] v5.1.0-HEALTH-FRAG iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.1.1-HEALTH-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -113,7 +113,7 @@ export class NexoApp {
     try {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
-      const nativeAvailable = !!(window.Capacizer && window.Capacizer.Plugins && window.Capacizer.Plugins.NexoBLE);
+      const nativeAvailable = !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
@@ -121,7 +121,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.9-HEALTH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.1.1-HEALTH-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -137,7 +137,8 @@ export class NexoApp {
       await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
       const identity = this.vault.getIdentity ? this.vault.getIdentity() : undefined;
       if (identity) { DEBUG.setIdentity(identity); DEBUG.success('Vault initialized', 'CRYPTO_002'); }
-    } catch (err) { DEBUG.error('CRYPTO_004', `Vault init failed: ${err.message}`); this.vault = null; }
+    } catch (err) { DEBUG.error('CRYPTO_004', `Vault init failed:
+${err.message}`); this.vault = null; }
   }
 
   async _initPhase2_WebSocket() {
