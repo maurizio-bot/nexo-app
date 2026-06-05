@@ -1,14 +1,15 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.4.0-HEALTH-FRAG
+ * src/main.js - Punto de entrada NEXO v9.4.1-HEALTH-FIX
  * NAP 2.0 Certified - BLE Soberano P2P
  * 
- * FIXES v9.4.0-HEALTH-FRAG (definitivos):
- * 1) TheStream es la UNICA fuente de renderizado — main.js NUNCA renderiza si TheStream existe
- * 2) ELIMINADO doScrollToBottom de _setupMessageInput — TheStream maneja scroll sola
- * 3) ELIMINADO MutationObserver de scroll — era competencia que causaba saltos
- * 4) _renderMessage es fallback puro: solo actua si TheStream NO esta disponible
- * 5) Simplificado _setupMessageInput: solo envia y limpia input, nada de scroll
- * 6) Preservado: Health Monitor, Permission Overlay, Freshness Detection
+ * FIXES v9.4.1-HEALTH-FIX:
+ * 1) Version string sincronizada
+ * 2) TheStream es la UNICA fuente de renderizado — main.js NUNCA renderiza si TheStream existe
+ * 3) ELIMINADO doScrollToBottom de _setupMessageInput — TheStream maneja scroll sola
+ * 4) ELIMINADO MutationObserver de scroll — era competencia que causaba saltos
+ * 5) _renderMessage es fallback puro: solo actua si TheStream NO esta disponible
+ * 6) Simplificado _setupMessageInput: solo envia y limpia input, nada de scroll
+ * 7) Preservado: Health Monitor, Permission Overlay, Freshness Detection
  */
 
 import './styles/critical.css';
@@ -21,7 +22,7 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.3.7-HEALTH',
+  version: '9.4.1-HEALTH-FIX',
   initialized: false,
   sessionStart: Date.now(),
   healthStatus: 'healthy'
@@ -204,7 +205,6 @@ function _startPermissionPolling() {
   }, 3000);
 }
 
-// stop poll
 function _stopPermissionPolling() {
   if (_permPollingInterval) {
     clearInterval(_permPollingInterval);
@@ -303,18 +303,14 @@ async function initializeNexoApp() {
       bleTimeout: 10000,
       enableGestures: true,
       enableMesh: true,
-      // v9.3.7: onMessage solo notifica — TheStream es el unico renderizador
       onMessage: (msg) => {
         var contentPreview = (msg.content && msg.content.substring) ? msg.content.substring(0, 30) : '';
         console.log('📨 Mensaje recibido en main:', msg.senderName || msg.sender, contentPreview);
-        // Si TheStream existe, NUNCA renderizar en fallback
         if (window.NEXO.app && window.NEXO.app.stream) {
           window.NEXO.app.stream.appendItems([msg], { scroll: true });
           return;
         }
-        // Fallback solo si TheStream no esta disponible
         _renderMessageFallback(msg);
-        // Actualizar badge BLE con peers conectados reales (no mensajes)
         _updateBLEBadge();
       },
       onStatusChange: (mode) => {
@@ -334,9 +330,9 @@ async function initializeNexoApp() {
       }
     };
 
-    rem.info('🚀 [NEXO] App instance v5.0.9-HEALTH', 'NEXO_INIT');
+    rem.info('🚀 [NEXO] App instance v5.1.1-HEALTH-FIX', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v9.4.0-HEALTH-FRAG =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v9.4.1-HEALTH-FIX =====', 'INIT_START');
 
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) =>
@@ -358,18 +354,15 @@ async function initializeNexoApp() {
     _setupVaultToggle();
     _setupChatHeader();
     _setupKeyboardShortcuts();
-    // v9.4.0: ELIMINADO _setupGlobalAutoScroll — TheStream maneja scroll sola
 
-    // Badge BLE inicial
     _updateBLEBadge();
-    // Escuchar cambios de peers conectados para actualizar badge
     window.addEventListener('nexo:ble:peerConnected', () => _updateBLEBadge());
     window.addEventListener('nexo:ble:peerDisconnected', () => _updateBLEBadge());
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.4.0-HEALTH-FRAG Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.4.0-HEALTH-FRAG Inicializado');
+    rem.success('NEXO v9.4.1-HEALTH-FIX Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.4.1-HEALTH-FIX Inicializado');
 
     const status = (window.NEXO.app && window.NEXO.app.getStatus) ? window.NEXO.app.getStatus() : null;
     if (status) console.log('[NEXO STATUS]', status);
@@ -400,13 +393,10 @@ function _ensureDOMStructure() {
   }
 }
 
-// v9.3.7: Fallback render SOLO si TheStream no existe
-// v9.4.0: Badge BLE actualizado desde bleInterface (peers reales, no mensajes)
 function _updateBLEBadge() {
   try {
     const app = window.NEXO && window.NEXO.app;
     if (!app) return;
-    // Intentar leer peerCount real del bleInterface
     let peerCount = 0;
     if (app.bleInterface) {
       if (typeof app.bleInterface.getConnectedCount === 'function') {
@@ -415,12 +405,10 @@ function _updateBLEBadge() {
         peerCount = app.bleInterface.connectedDevices.size || 0;
       }
     }
-    // Fallback: contar peers en status
     if (!peerCount && app.getStatus) {
       const status = app.getStatus();
       peerCount = (status && status.ble && status.ble.peerCount) || 0;
     }
-    // Actualizar badge en UI
     const badge = document.getElementById('ble-badge') || document.getElementById('ble-tab-badge');
     if (badge) {
       if (peerCount > 0) {
@@ -431,7 +419,6 @@ function _updateBLEBadge() {
         badge.style.display = 'none';
       }
     }
-    // Actualizar boton BLE
     const bleBtn = document.getElementById('ble-button') || document.getElementById('ble-tab');
     if (bleBtn) {
       bleBtn.title = peerCount === 1 ? '1 peer conectado' : `${peerCount} peers conectados`;
@@ -473,7 +460,6 @@ function _getSourceIcon(source) {
   return icons[source] || '•';
 }
 
-// v9.3.7: Simplificado — solo envia, TheStream maneja render y scroll
 function _setupMessageInput() {
   const input = document.getElementById('message-input');
   const btn = document.getElementById('send-btn');
@@ -532,7 +518,7 @@ function _setupChatHeader() {
     const newName = nameInput.value.trim();
     if (!newName) {
       var activeContactName = (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.name) || 'NEXO';
-    nameInput.value = activeContactName;
+      nameInput.value = activeContactName;
       return;
     }
     if (window.NEXO.app && window.NEXO.app.activeContact) {
