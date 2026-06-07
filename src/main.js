@@ -9,7 +9,7 @@ import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
-import { ensureBLEPermissions, getPermissionShim, getShimStatus } from './core/NexoPermissionShim.js';
+import { ensureBLEPermissions, getPermissionShim, getShimStatus, getShimHealth } from './core/NexoPermissionShim.js';
 
 window.NEXO = {
   app: null, rem: null, diag: null,
@@ -205,15 +205,6 @@ function _openChat(convId, name, type) {
   }
 
   _showView('chat');
-}
-
-function _createGroup(name, participantIds) {
-  const groupId = 'group_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-  const participants = participantIds.map(_normId);
-  const conv = _getOrCreateConversation(groupId, name, 'group', participants);
-  _saveConversations();
-  _renderConversationsList();
-  _openChat(groupId, name, 'group');
 }
 
 // ==================== INICIALIZACION ====================
