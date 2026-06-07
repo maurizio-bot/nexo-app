@@ -1,17 +1,12 @@
 /**
- * NEXO App v5.1.1-HEALTH-FIX
- * Coordinado con ble_interface.js v3.7.1-HEALTH-FIX + main.js v9.4.1-HEALTH-FIX + TheStream v2.5
- * 
- * FIXES v5.1.1-HEALTH-FIX:
- * 1) Corregido Capacizer -> Capacitor
- * 2) UNICA fuente de dedup: fingerprint unificado (conversationId + bucket30s + contenido)
- * 3) sendMessage NO renderiza localmente — solo manda a TheStream via config.onMessage
- * 4) _bleMessageHandler usa fingerprint del evento BLE; si no existe, lo calcula igual
- * 5) TheStream es el UNICO renderizador de mensajes
- * 6) Anti-eco: si fingerprint coincide con ultimo enviado propio, se ignora
- * 7) Scroll eliminado de aqui — TheStream lo maneja sola
- * 8) Compatibilidad con fragmentacion BLE v3.7.1: mensajes reensamblados llegan completos
- * 9) Nombres reales de peers via handshake BLE (no mas "NEXO Peer" generico)
+ * NEXO App v6.0-IDENTITY
+ * Coordinado con main.js v10.0-IDENTITY + ble_interface.js v3.7.1-HEALTH-FIX + TheStream v2.6
+ * * CAMBIOS v6.0-IDENTITY:
+ * 1) sendMessage acepta {content, recipient, conversationId} — propaga conversationId a todas las capas
+ * 2) DEDUP por conversationId + fingerprint — mensajes propios se marcan con _own=true y conversationId
+ * 3) _handleMessage filtra por conversationId activa antes de notificar onMessage
+ * 4) Anti-eco: fingerprint propio vs fingerprint entrante comparados por conversationId
+ * 5) Compatibilidad backward: msg string o msg object funciona igual
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -52,7 +47,7 @@ const DEBUG = {
   setIdentity: (id) => id && rem.updateIdentity(id)
 };
 
-// DEDUP UNIFICADO: fingerprint global usado por todas las capas
+// DEDUP: fingerprint por conversationId + contenido + bucket temporal
 function _messageFingerprint(conversationId, content, timestamp) {
   const nid = String(conversationId || '').toLowerCase().replace(/[:-]/g, '').trim();
   const c = String(content || '').trim().toLowerCase().substring(0, 100);
@@ -88,20 +83,19 @@ export class NexoApp {
     this.activeContact = null;
     this._bleChatHandler = null;
     this._bleMessageHandler = null;
-    
-    // DEDUP UNIFICADO v5.0.9: un solo Set con TTL automatico
+
+    // DEDUP v6.0: Set con TTL automatico
     this._seenFingerprints = new Set();
     this._maxFingerprints = 500;
-    this._fingerprintTTL = 300000; // 5 minutos
-    
-    // Anti-bounce de envio
+    this._fingerprintTTL = 300000;
+
+    // Anti-bounce envio
     this._isSendingMessage = false;
-    
-    // Ultimo fingerprint propio enviado (para detectar eco)
-    this._lastOwnFingerprint = null;
-    this._lastOwnFingerprintTime = 0;
-    
-    DEBUG.log('🚀 [NEXO] v5.1.1-HEALTH-FIX iniciando...', 'info', 'APP_INIT');
+
+    // v6.0: Registro de fingerprints propios por conversationId
+    this._ownFingerprints = new Map(); // conversationId -> {fp, time}
+
+    DEBUG.log('NEXO v6.0-IDENTITY iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -113,7 +107,7 @@ export class NexoApp {
     try {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
-      const nativeAvailable = !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
+      const nativeAvailable = !!(window.Capacizer && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
@@ -121,7 +115,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.1.1-HEALTH-FIX Ready', 'APP_READY');
+      DEBUG.success('NEXO v6.0-IDENTITY Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -137,8 +131,7 @@ export class NexoApp {
       await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
       const identity = this.vault.getIdentity ? this.vault.getIdentity() : undefined;
       if (identity) { DEBUG.setIdentity(identity); DEBUG.success('Vault initialized', 'CRYPTO_002'); }
-    } catch (err) { DEBUG.error('CRYPTO_004', `Vault init failed:
-${err.message}`); this.vault = null; }
+    } catch (err) { DEBUG.error('CRYPTO_004', `Vault init failed: ${err.message}`); this.vault = null; }
   }
 
   async _initPhase2_WebSocket() {
@@ -199,7 +192,7 @@ ${err.message}`); this.vault = null; }
         const subtitle = document.getElementById('chat-contact-subtitle');
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
-        DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
+        DEBUG.success(`Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
       };
@@ -207,27 +200,24 @@ ${err.message}`); this.vault = null; }
 
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp, conversationId, fingerprint } = e.detail;
-        var contentPreview = (content && content.substring) ? content.substring(0, 30) : '';
+        const contentPreview = (content && content.substring) ? content.substring(0, 30) : '';
         console.log('[BLE_RECV] Mensaje de ' + senderName + ': ' + contentPreview + '...');
-        
+
         const nid = this._normalizeId(deviceId);
         const convId = conversationId || nid;
-        
-        // Resolver nombre robustamente: handshake > contact > activeContact > bleInterface > default
+
+        // Resolver nombre
         let resolvedName = senderName;
         const isGeneric = !resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown';
         if (isGeneric) {
-          // 1) Intentar _peerNames del bleInterface (handshake v3.7.0)
           if (this.bleInterface && this.bleInterface._peerNames && this.bleInterface._peerNames[convId]) {
             resolvedName = this.bleInterface._peerNames[convId];
           }
-          // 2) Contacto activo
           if (!resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown') {
             if (this.activeContact && this._normalizeId(this.activeContact.id) === convId) {
               resolvedName = this.activeContact.name || resolvedName;
             }
           }
-          // 3) LocalStorage contacts
           if (!resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown') {
             try {
               const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
@@ -235,26 +225,23 @@ ${err.message}`); this.vault = null; }
               if (contact && contact.name) resolvedName = contact.name;
             } catch (e) {}
           }
-          // 4) BLE interface connected/found devices
           if (!resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown') {
-            var connDev = this.bleInterface && this.bleInterface.connectedDevices ? this.bleInterface.connectedDevices.get(convId) : null;
-            var foundDev = this.bleInterface && this.bleInterface.foundDevices ? this.bleInterface.foundDevices.get(convId) : null;
-            resolvedName = (connDev && connDev.name)
-              || (foundDev && foundDev.name)
-              || senderName
-              || 'NEXO Peer';
+            const connDev = this.bleInterface && this.bleInterface.connectedDevices ? this.bleInterface.connectedDevices.get(convId) : null;
+            const foundDev = this.bleInterface && this.bleInterface.foundDevices ? this.bleInterface.foundDevices.get(convId) : null;
+            resolvedName = (connDev && connDev.name) || (foundDev && foundDev.name) || senderName || 'NEXO Peer';
           }
         }
-        
-        // v5.0.9: Usar fingerprint del evento o calcularlo igual
+
+        // v6.0: Usar fingerprint del evento o calcularlo con conversationId
         const fp = fingerprint || _messageFingerprint(convId, content, timestamp);
-        
-        // Anti-eco: si este fingerprint coincide con el ultimo mensaje propio enviado, es eco
-        if (fp === this._lastOwnFingerprint && (Date.now() - this._lastOwnFingerprintTime) < 30000) {
-          console.log(`[BLE_RECV] ECO detectado y filtrado: ${fp.substring(0,40)}`);
+
+        // Anti-eco v6.0: verificar si este fingerprint coincide con un envio propio reciente de ESTA conversation
+        const ownFp = this._ownFingerprints.get(convId);
+        if (ownFp && fp === ownFp.fp && (Date.now() - ownFp.time) < 30000) {
+          console.log(`[BLE_RECV] ECO detectado y filtrado para conv ${convId}: ${fp.substring(0,40)}`);
           return;
         }
-        
+
         this._handleMessage({
           content,
           sender: deviceId,
@@ -313,27 +300,23 @@ ${err.message}`); this.vault = null; }
   }
   _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 
-  async _sendViaBLE(deviceId, content) {
-    // v5.1.0: Usar bleInterface.sendMessage para fragmentacion automatica
+  async _sendViaBLE(deviceId, content, conversationId) {
     if (this.bleInterface && this.bleInterface.sendMessage) {
-      var devIdShort = deviceId ? (deviceId.substring ? deviceId.substring(0,8) : String(deviceId).substring(0,8)) : 'unknown';
+      const devIdShort = deviceId ? (deviceId.substring ? deviceId.substring(0,8) : String(deviceId).substring(0,8)) : 'unknown';
       console.log('[BLE_SEND] Enviando via bleInterface a ' + devIdShort + '...');
       try {
         await this.bleInterface.sendMessage(deviceId, content);
-        DEBUG.success('Enviado via BLE (fragmentado si >160chars) a ' + devIdShort, 'MSG_BLE');
+        DEBUG.success('Enviado via BLE a ' + devIdShort, 'MSG_BLE');
         return;
       } catch (e) {
-        DEBUG.warn('bleInterface.sendMessage fallo, intentando fallback directo: ' + (e && e.message ? e.message : String(e)), 'MSG_BLE_FALLBACK');
+        DEBUG.warn('bleInterface.sendMessage fallo, fallback: ' + (e && e.message ? e.message : String(e)), 'MSG_BLE_FALLBACK');
       }
     }
-    // Fallback directo al plugin nativo (sin fragmentacion)
-    var plugin = this.bleInterface && this.bleInterface.nativePlugin ? this.bleInterface.nativePlugin : null;
+    const plugin = this.bleInterface && this.bleInterface.nativePlugin ? this.bleInterface.nativePlugin : null;
     if (!plugin) throw new Error('Plugin no disponible');
-    var devIdShort2 = deviceId ? (deviceId.substring ? deviceId.substring(0,8) : String(deviceId).substring(0,8)) : 'unknown';
-    console.log('[BLE_SEND] Fallback directo a ' + devIdShort2 + '...');
     try {
       await plugin.sendMessage({ deviceId: deviceId, message: content });
-      DEBUG.success('Enviado via BLE (directo) a ' + devIdShort2, 'MSG_BLE');
+      DEBUG.success('Enviado via BLE directo', 'MSG_BLE');
     } catch (e) {
       DEBUG.error('BLE_SEND_FAIL', 'Envio fallo: ' + (e && e.message ? e.message : String(e)));
       throw e;
@@ -346,47 +329,52 @@ ${err.message}`); this.vault = null; }
       return false;
     }
     if (this._isSendingMessage) {
-      DEBUG.warn('Envío ya en progreso, ignorando bounce', 'MSG_SEND_BOUNCE');
+      DEBUG.warn('Envio ya en progreso, ignorando bounce', 'MSG_SEND_BOUNCE');
       return false;
     }
     this._isSendingMessage = true;
     try {
-      const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
-      var activeId = this.activeContact && this.activeContact.id ? this.activeContact.id : 'self';
-      const convId = this._normalizeId(activeId);
-      
-      // v5.0.9: Calcular fingerprint ANTES de enviar para anti-eco
+      const recipient = isObject ? msg.recipient : null;
+      const conversationId = isObject ? (msg.conversationId || recipient) : null;
+      const activeId = this.activeContact && this.activeContact.id ? this.activeContact.id : 'self';
+      const convId = this._normalizeId(conversationId || activeId);
+
+      // v6.0: Calcular fingerprint ANTES de enviar, guardar por conversationId
       const fp = _messageFingerprint(convId, content, Date.now());
-      this._lastOwnFingerprint = fp;
-      this._lastOwnFingerprintTime = Date.now();
-      
+      this._ownFingerprints.set(convId, { fp: fp, time: Date.now() });
+
+      // Limpiar fingerprints antiguos (>5min)
+      const now = Date.now();
+      for (const [key, val] of this._ownFingerprints.entries()) {
+        if (now - val.time > 300000) this._ownFingerprints.delete(key);
+      }
+
+      const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const ownMessage = { 
-        ...msg, 
         content, 
         _own: true, 
         isMe: true,
         timestamp: Date.now(), 
         pending: false, 
         messageId,
-        sender: 'Tú',
-        senderName: 'Tú',
+        sender: 'Tu',
+        senderName: 'Tu',
         conversationId: convId,
         fingerprint: fp
       };
-      
-      // v5.0.9: SOLO notificar via onMessage — TheStream renderiza
-      // NO tocar this.stream directamente desde aqui
+
+      // Notificar via onMessage — main.js renderiza en TheStream
       this.config.onMessage(ownMessage);
-      
-      const recipient = isObject ? msg.recipient : null;
+
+      // Enviar por transporte
       const targetId = recipient || (this.activeContact && this.activeContact.id);
       const targetTransport = this.activeContact && this.activeContact.transport;
 
       if (targetId && targetTransport === 'ble' && this.bleInterface && this.bleInterface.nativePlugin) {
-        try { await this._sendViaBLE(targetId, content); return true; }
-        catch (e) { DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL'); }
+        try { await this._sendViaBLE(targetId, content, convId); return true; }
+        catch (e) { DEBUG.warn(`BLE directo fallo: ${e.message}`, 'MSG_BLE_FAIL'); }
       }
 
       if (this.bleInterface && this.bleInterface.nativePlugin) {
@@ -394,15 +382,15 @@ ${err.message}`); this.vault = null; }
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
           const bleDevices = (connectedResult && connectedResult.devices) || [];
           if (bleDevices.length > 0) {
-            await this._sendViaBLE(bleDevices[0].deviceId || bleDevices[0].id, content);
+            await this._sendViaBLE(bleDevices[0].deviceId || bleDevices[0].id, content, convId);
             return true;
           }
-        } catch (e) { DEBUG.log(`[BLE_SEND] Fallback falló: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
+        } catch (e) { DEBUG.log(`[BLE_SEND] Fallback fallo: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
       }
 
       const nordicPeers = (this.nordicMesh && this.nordicMesh.getPeers) ? this.nordicMesh.getPeers() : [];
       if (nordicPeers.length > 0) {
-        try { await this.nordicMesh.sendMessage(nordicPeers[0].id, content); DEBUG.success(`Sent via Nordic`, 'MSG_NORDIC'); return true; }
+        try { await this.nordicMesh.sendMessage(nordicPeers[0].id, content); DEBUG.success('Sent via Nordic', 'MSG_NORDIC'); return true; }
         catch (e) { DEBUG.error('NORDIC_009', `Send failed: ${e.message}`); }
       }
 
@@ -421,60 +409,52 @@ ${err.message}`); this.vault = null; }
     finally { this._isSendingMessage = false; }
   }
 
-  // v5.0.9: DEDUP UNIFICADO — un solo punto de entrada para TODOS los mensajes
+  // v6.0: DEDUP UNIFICADO — un solo punto de entrada para TODOS los mensajes
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
-    
     try {
-      // Ignorar mensajes propios (ya renderizados por sendMessage via onMessage)
       if (msg._own || msg.isMe) return;
-      
+
       const contentStr = String(msg.content || msg.text || '');
       const convId = this._normalizeId(msg.conversationId || msg.sender || msg.senderName || msg.deviceId || 'unknown');
       const ts = msg.timestamp || Date.now();
-      
-      // Usar fingerprint existente o calcularlo
+
       const fp = msg.fingerprint || _messageFingerprint(convId, contentStr, ts);
-      
-      // Limpiar fingerprints expirados
-      const now = Date.now();
-      // Nota: Set no tiene TTL nativo; usamos messageId como respaldo si existe
-      if (msg.messageId && this._seenFingerprints.has(msg.messageId)) {
-        var msgIdPreview = (msg.messageId && msg.messageId.substring) ? msg.messageId.substring(0, 8) : '';
-        DEBUG.log('Deduplicado por messageId ' + msgIdPreview + ' de ' + source, 'debug', 'DEDUP_ID');
+
+      // Anti-eco v6.0: verificar contra fingerprint propio de esta conversation
+      const ownFp = this._ownFingerprints.get(convId);
+      if (ownFp && fp === ownFp.fp && (Date.now() - ownFp.time) < 30000) {
+        DEBUG.log(`ECO filtrado (ownFingerprint match) para conv ${convId}`, 'debug', 'ECHO_FILTER');
         return;
       }
-      
+
+      // Deduplicacion por fingerprint
+      if (msg.messageId && this._seenFingerprints.has(msg.messageId)) {
+        DEBUG.log(`Deduplicado por messageId de ${source}`, 'debug', 'DEDUP_ID');
+        return;
+      }
       if (this._seenFingerprints.has(fp)) {
         DEBUG.log(`Deduplicado por fingerprint ${fp.substring(0,40)} de ${source}`, 'debug', 'DEDUP_FP');
         return;
       }
-      
-      // Guardar fingerprint
+
       this._seenFingerprints.add(fp);
       if (msg.messageId) this._seenFingerprints.add(msg.messageId);
-      
+
       // Limitar tamaño del Set
       if (this._seenFingerprints.size > this._maxFingerprints) {
-        // Convertir a array, eliminar los mas antiguos (aproximado: los primeros)
         const arr = Array.from(this._seenFingerprints);
         const toRemove = arr.length - this._maxFingerprints;
-        for (let i = 0; i < toRemove; i++) {
-          this._seenFingerprints.delete(arr[i]);
-        }
+        for (let i = 0; i < toRemove; i++) this._seenFingerprints.delete(arr[i]);
       }
-      
-      // Anti-eco: si coincide con ultimo propio, filtrar
-      if (fp === this._lastOwnFingerprint && (now - this._lastOwnFingerprintTime) < 30000) {
-        DEBUG.log(`ECO filtrado: fingerprint coincide con envio propio`, 'debug', 'ECHO_FILTER');
-        return;
-      }
-      
-      const enriched = { ...msg, _source: source, _ts: now, _id: Math.random().toString(36).substr(2, 9) };
-      
-      // v5.0.9: SOLO notificar via onMessage — TheStream es el unico renderizador
+
+      const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
+
+      // v6.0: Agregar conversationId si falta
+      if (!enriched.conversationId) enriched.conversationId = convId;
+
       this.config.onMessage(enriched);
-      
+
     } catch (err) { DEBUG.error('APP_005', `Message handler: ${err.message}`); }
   }
 
@@ -487,7 +467,7 @@ ${err.message}`); this.vault = null; }
   async destroy() {
     if (this._isDestroyed) return;
     this._isDestroyed = true;
-    DEBUG.log('🧹 Cleanup...', 'info', 'DESTROY');
+    DEBUG.log('Cleanup...', 'info', 'DESTROY');
     if (this._bleChatHandler) { window.removeEventListener('nexo:ble:openChat', this._bleChatHandler); this._bleChatHandler = null; }
     if (this._bleMessageHandler) { window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler); this._bleMessageHandler = null; }
     if (this.bleInterface) { try { this.bleInterface.destroy(); } catch(e) {} this.bleInterface = null; }
@@ -497,6 +477,7 @@ ${err.message}`); this.vault = null; }
     if (this.vault) { try { if (this.vault.destroy) this.vault.destroy(); } catch(e) {} this.vault = null; }
     this._resources.timers.forEach(t => clearTimeout(t));
     this._seenFingerprints.clear();
+    this._ownFingerprints.clear();
     DEBUG.success('Cleanup complete', 'DESTROY_OK');
   }
 
