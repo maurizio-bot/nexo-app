@@ -1,15 +1,16 @@
 /**
- * BLE Interface v4.0.0-IDENTITY
+ * BLE Interface v3.7.0-HEALTH-FRAG
  * Ubicacion: src/ui/ble_interface.js
- * CAMBIOS v4.0.0-IDENTITY:
- * 1) openChat dispara evento con conversationId para integracion con main.js
- * 2) Handshake includes deviceName para resolucion de nombres en lista de conversaciones
- * 3) sendMessage propaga conversationId a fragmentacion
- * 4) Badge BLE cuenta peers conectados (no fragmentos ni eventos de control)
- * 5) Integracion con NexoApp v6.0: _peerNames expuesto para resolucion de nombres
+ * FIXES v3.7.0-HEALTH-FRAG:
+ * 1) Handshake de nombres: intercambio automatico de deviceName al conectar
+ * 2) Fragmentacion/Reensamblaje: mensajes >160 chars se parten en chunks con UUID
+ * 3) Badge BLE corregido: solo cuenta peers conectados, NO fragmentos ni eventos
+ * 4) Mensajes largos se renderizan como UNA sola burbuja (no en partes)
+ * 5) Nombre real del peer persistente via localStorage + handshake
  * 6) Name cache inteligente preservado
- * 7) Health Monitor preservado
- */
+ * 7) _normId robusto preservado
+ * 8) Health Monitor preservado
+     */
 export function initBLEInterface(bleMesh) {
 var instance = new BLEInterface(bleMesh).init();
 window.bleInterface = instance;
@@ -103,7 +104,7 @@ this._openChatTimeouts = new Map();
 this._toastDebounceTimer = null;
 this._lastToastMessage = '';
 this._lastToastTime = 0;
-// v4.0.0-IDENTITY: Fragmentacion/Reensamblaje + Handshake de nombres
+// v3.7.0-FRAG: Fragmentacion/Reensamblaje + Handshake de nombres
 this._peerNames = {};        // deviceId -> nombre real
 this._handshakeSent = new Set();
 this._fragBuffers = {};      // uuid -> {chunks[], total, peerId, timer}
@@ -267,7 +268,7 @@ this.showToast('Memoria alta, limpiando...', 'warning');
 }
 } catch (e) { console.error('[HEALTH] Memory check error:', e); }
 }
-// ==================== FRAGMENTACION / REENSAMBLAJE v4.0.0 ====================
+// ==================== FRAGMENTACION / REENSAMBLAJE v3.7.0 ====================
 _generateUUID() {
 return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
 var r = Math.random() * 16 | 0;
@@ -349,7 +350,7 @@ this._receivedMessageIds.delete(first);
 }
 // Fingerprint unificado
 var fingerprint = _messageFingerprint(deviceId, content, (data && data.timestamp) || Date.now());
-// v4.0.0-IDENTITY: Emitir evento con conversationId para integracion con main.js
+// Emitir evento unico
 window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
 detail: {
 deviceId: deviceId,
@@ -358,7 +359,7 @@ senderName: resolvedName,
 messageId: messageId,
 source: (data && data.source) || 'unknown',
 timestamp: (data && data.timestamp) || Date.now(),
-conversationId: deviceId,  // v4.0: conversationId = deviceId para chats individuales
+conversationId: deviceId,
 fingerprint: fingerprint
 }
 }));
@@ -370,26 +371,21 @@ this.newDevicesCount++;
 this.updateBadge();
 }
 // Metodo PUBLICO de envio con fragmentacion automatica
-async sendMessage(deviceId, content, conversationId) {
+async sendMessage(deviceId, content) {
 if (this.isDummyMode || this._destroyed) return;
 var id = _normId(deviceId);
 // Asegurar handshake
 if (!this._handshakeSent.has(id)) {
 await this._sendHandshake(id);
 }
-// v4.0.0-IDENTITY: Si hay conversationId, incluirlo en metadata
-var payload = content;
-if (conversationId) {
-payload = JSON.stringify({ _c: conversationId, _m: content });
-}
 // Si cabe en un solo paquete, enviar directo
-if (payload.length <= this.MAX_PAYLOAD) {
-await this._sendMessageNative(id, payload);
+if (content.length <= this.MAX_PAYLOAD) {
+await this._sendMessageNative(id, content);
 return;
 }
 // Fragmentar
-var chunkSize = this.MAX_PAYLOAD - 50;
-var chunks = this._chunkString(payload, chunkSize);
+var chunkSize = this.MAX_PAYLOAD - 50; // margen para JSON metadata
+var chunks = this._chunkString(content, chunkSize);
 var fragId = this._generateUUID();
 var total = chunks.length;
 console.log('[BLE] Fragmentando mensaje:', total, 'partes');
@@ -409,6 +405,7 @@ await this._sleep(this.FRAG_THROTTLE);
 }
 async _loadLocalDeviceInfo() {
 if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) {
+// Fallback por user agent
 var ua = navigator.userAgent;
 if (ua.indexOf('SM-S928') !== -1) this.localDeviceName = 'Galaxy S24 Ultra';
 else if (ua.indexOf('SM-S918') !== -1) this.localDeviceName = 'Galaxy S23 Ultra';
@@ -598,27 +595,17 @@ if (isControl && parsed._t === 'f') {
 self._handleFragment(deviceId, parsed);
 return;
 }
-// v4.0.0-IDENTITY: Intentar extraer conversationId de payload
-var messageContent = raw;
-var conversationId = deviceId;
-try {
-var payload = JSON.parse(raw);
-if (payload._c && payload._m) {
-conversationId = payload._c;
-messageContent = payload._m;
-}
-} catch (e) {}
-// Mensaje completo normal
+// Mensaje completo normal (backward compat)
 var messageId = null;
 var senderName = data.senderName || null;
-var content = messageContent;
+var content = raw;
 try {
 var json = JSON.parse(raw);
 if (json.messageId) messageId = json.messageId;
 if (json.senderName && !senderName) senderName = json.senderName;
 if (json.content) content = json.content;
 } catch (e) {}
-self._processCompletePayload(deviceId, content, senderName, messageId, { source: 'ble', timestamp: Date.now(), conversationId: conversationId });
+self._processCompletePayload(deviceId, content, senderName, messageId, data);
 });
 }
 async _processPendingMessages(deviceId) {
@@ -693,7 +680,7 @@ try {
 if (window.ensureBLEPermissions) permsReady = await window.ensureBLEPermissions();
 else if (window.permissionShim && window.permissionShim.ensureBLEPermissions) permsReady = await window.permissionShim.ensureBLEPermissions();
 else permsReady = true;
-} catch (e) { console.warn('[BLEInterface] Shim no disponible para permisos, continuando...', permsReady = true; }
+} catch (e) { console.warn('[BLEInterface] Shim no disponible para permisos, continuando...'); permsReady = true; }
 if (!permsReady) { this.showToast('Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000); return; }
 if (!this._serverReady) {
 try {
@@ -761,7 +748,7 @@ injectStyles() {
 if (document.getElementById('ble-styles')) return;
 var style = document.createElement('style');
 style.id = 'ble-styles';
-style.textContent = '#ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #00d4ff, #0099cc); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; } .ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; } @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } } #ble-panel { position: fixed; top: 0; left: 0; width: 85vw; max-width: 400px; height: 100vh; background: rgba(10,10,15,0.98); transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; padding: 20px; overflow-y: auto; } #ble-panel.active { transform: translateX(0); } #ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); } #ble-overlay.active { display: block; } .ble-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; } .ble-tabs { display: flex; gap: 8px; margin-bottom: 15px; } .ble-tab-btn { flex: 1; padding: 10px 4px; background: #222; border: 1px solid #333; border-radius: 6px; color: #888; cursor: pointer; font-size: 11px; } .ble-tab-btn.active { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; font-weight: bold; border-color: #00d4ff; } .ble-tab-content { display: none; } .ble-tab-content.active { display: block; } .ble-main-controls { display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 10px; } .ble-secondary-controls { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; } .ble-btn-visibility { flex: 1; max-width: 140px; height: 48px; border-radius: 12px; border: none; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.3s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ble-btn-visibility.btn-visibility-warning { background: #4A3A00 !important; color: #FFCC00 !important; border: 1px solid #FFCC00 !important; } .ble-btn-visibility.btn-visibility-off { background: #3A3A3A; color: #888888; } .ble-btn-visibility.btn-visibility-on { background: #00D9FF; color: #000000; box-shadow: 0 0 12px rgba(0, 217, 255, 0.4); } .ble-btn-discover { flex: 1.2; height: 56px; border-radius: 14px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3); transition: all 0.3s ease; } .ble-btn-discover.scanning { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; animation: pulse-red 1.5s infinite; } @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); } 50% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); } } #ble-status { font-size: 12px; padding: 4px 8px; border-radius: 4px; } .ble-status-offline { background: #333; color: #888; } .ble-status-online { background: #00d4ff; color: #000; } .ble-status-scanning { background: #ffaa00; color: #000; animation: blink 1s infinite; } @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.7; } } .ble-list { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 300px); overflow-y: auto; } .ble-empty { text-align: center; color: #666; padding: 20px; font-style: italic; } .ble-device-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 8px; cursor: pointer; transition: all 0.2s; } .ble-device-item:hover { background: rgba(0,212,255,0.1); border-color: #00d4ff; } .ble-device-item.new { border-left: 3px solid #00d4ff; animation: slideIn 0.3s ease; } @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } } .ble-device-info { display: flex; flex-direction: column; flex: 1; min-width: 0; } .ble-device-name { font-weight: bold; color: #fff; } .ble-device-id { font-size: 11px; color: #888; } .ble-device-rssi { font-size: 12px; color: #00d4ff; } .ble-device-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; } .ble-btn-add { padding: 8px 16px; background: #00ff88; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; } .ble-btn-write { padding: 8px 16px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; } .ble-btn-write:disabled { background: #555; color: #aaa; cursor: not-allowed; } .ble-btn-disconnect { padding: 6px 12px; background: #ff4444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; } .ble-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: #fff; font-weight: bold; z-index: 2147483646; animation: fadeInUp 0.3s ease; } .ble-toast.success { background: #00d4ff; color: #000; } .ble-toast.error { background: #ff4444; } .ble-toast.warning { background: #ffaa00; color: #000; } .ble-toast.info { background: #444; } @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } } .ble-state-connecting { color: #ffaa00; font-size: 11px; } .ble-state-ready { color: #00ff88; font-size: 11px; } .ble-state-error { color: #ff4444; font-size: 11px; } .ble-state-reconnecting { color: #ffaa00; font-size: 11px; animation: blink 1s infinite; }';
+style.textContent = `#ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #00d4ff, #0099cc); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; } .ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; } @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } } #ble-panel { position: fixed; top: 0; left: 0; width: 85vw; max-width: 400px; height: 100vh; background: rgba(10,10,15,0.98); transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; padding: 20px; overflow-y: auto; } #ble-panel.active { transform: translateX(0); } #ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); } #ble-overlay.active { display: block; } .ble-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; } .ble-tabs { display: flex; gap: 8px; margin-bottom: 15px; } .ble-tab-btn { flex: 1; padding: 10px 4px; background: #222; border: 1px solid #333; border-radius: 6px; color: #888; cursor: pointer; font-size: 11px; } .ble-tab-btn.active { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; font-weight: bold; border-color: #00d4ff; } .ble-tab-content { display: none; } .ble-tab-content.active { display: block; } .ble-main-controls { display: flex; gap: 12px; justify-content: center; align-items: center; margin-bottom: 10px; } .ble-secondary-controls { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; } .ble-btn-visibility { flex: 1; max-width: 140px; height: 48px; border-radius: 12px; border: none; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.3s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ble-btn-visibility.btn-visibility-warning { background: #4A3A00 !important; color: #FFCC00 !important; border: 1px solid #FFCC00 !important; } .ble-btn-visibility.btn-visibility-off { background: #3A3A3A; color: #888888; } .ble-btn-visibility.btn-visibility-on { background: #00D9FF; color: #000000; box-shadow: 0 0 12px rgba(0, 217, 255, 0.4); } .ble-btn-discover { flex: 1.2; height: 56px; border-radius: 14px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3); transition: all 0.3s ease; } .ble-btn-discover.scanning { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; animation: pulse-red 1.5s infinite; } @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); } 50% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); } } #ble-status { font-size: 12px; padding: 4px 8px; border-radius: 4px; } .ble-status-offline { background: #333; color: #888; } .ble-status-online { background: #00d4ff; color: #000; } .ble-status-scanning { background: #ffaa00; color: #000; animation: blink 1s infinite; } @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.7; } } .ble-list { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 300px); overflow-y: auto; } .ble-empty { text-align: center; color: #666; padding: 20px; font-style: italic; } .ble-device-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 8px; cursor: pointer; transition: all 0.2s; } .ble-device-item:hover { background: rgba(0,212,255,0.1); border-color: #00d4ff; } .ble-device-item.new { border-left: 3px solid #00d4ff; animation: slideIn 0.3s ease; } @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } } .ble-device-info { display: flex; flex-direction: column; flex: 1; min-width: 0; } .ble-device-name { font-weight: bold; color: #fff; } .ble-device-id { font-size: 11px; color: #888; } .ble-device-rssi { font-size: 12px; color: #00d4ff; } .ble-device-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; } .ble-btn-add { padding: 8px 16px; background: #00ff88; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; } .ble-btn-write { padding: 8px 16px; background: #00d4ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; } .ble-btn-write:disabled { background: #555; color: #aaa; cursor: not-allowed; } .ble-btn-disconnect { padding: 6px 12px; background: #ff4444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; } .ble-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: #fff; font-weight: bold; z-index: 2147483646; animation: fadeInUp 0.3s ease; } .ble-toast.success { background: #00d4ff; color: #000; } .ble-toast.error { background: #ff4444; } .ble-toast.warning { background: #ffaa00; color: #000; } .ble-toast.info { background: #444; } @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } } .ble-state-connecting { color: #ffaa00; font-size: 11px; } .ble-state-ready { color: #00ff88; font-size: 11px; } .ble-state-error { color: #ff4444; font-size: 11px; } .ble-state-reconnecting { color: #ffaa00; font-size: 11px; animation: blink 1s infinite; }`;
 document.head.appendChild(style);
 }
 setupEventListeners() {
@@ -912,7 +899,6 @@ this.showToast('Eliminado', 'info');
 this.renderAddedList();
 this.renderDevicesList();
 }
-// v4.0.0-IDENTITY: openChat ahora integra con sistema de conversaciones de main.js
 async openChat(deviceId) {
 var nid = _normId(deviceId);
 var device = this.foundDevices.get(nid) || this.connectedDevices.get(nid);
@@ -966,17 +952,14 @@ checkReady();
 }
 } catch (e) { console.warn('[BLEInterface] Conexion/timeout:', e.message); this.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning'); }
 }
-// v4.0.0-IDENTITY: Disparar evento con conversationId para main.js
+var appContainer = document.getElementById('app');
+if (appContainer) appContainer.classList.remove('hidden');
+var nameInput = document.getElementById('chat-contact-name');
+var subtitle = document.getElementById('chat-contact-subtitle');
+if (nameInput) nameInput.value = displayName;
+if (subtitle) subtitle.textContent = 'BLUETOOTH';
 window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
-detail: {
-contactId: device.id || device.address,
-name: displayName,
-address: device.address || device.id,
-transport: 'ble',
-rssi: device.rssi,
-source: 'ble_interface',
-conversationId: nid  // v4.0: conversationId explicito
-}
+detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
 }));
 this.elements.panel.classList.remove('active');
 this.elements.overlay.classList.remove('active');
@@ -993,8 +976,8 @@ if (isNew) self._renderedDeviceIds.add(id);
 var item = document.createElement('div');
 item.className = 'ble-device-item' + (isNew ? ' new' : '');
 var actionHtml = isAdded
-? "<button class=\"ble-btn-write\" onclick=\"window.bleInterface.openChat('" + id + "')\">Chat</button>"
-: "<button class=\"ble-btn-add\" onclick=\"window.bleInterface.addContact('" + id + "')\">+</button><button class=\"ble-btn-write\" onclick=\"window.bleInterface.openChat('" + id + "')\">Chat</button>";
+? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>'
+: '<button class="ble-btn-add" onclick="window.bleInterface.addContact(\'' + id + '\')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>';
 item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">📶 ' + (device.rssi || '?') + ' dBm</div></div><div class="ble-device-actions">' + actionHtml + '</div>';
 list.appendChild(item);
 });
@@ -1009,7 +992,7 @@ contacts.forEach(function(contact) {
 var id = _normId(contact.id || contact.address);
 var item = document.createElement('div');
 item.className = 'ble-device-item';
-item.innerHTML = "<div class=\"ble-device-info\"><div class=\"ble-device-name\">" + (contact.name || "NEXO Device") + "</div><div class=\"ble-device-id\">" + self._formatId(id) + "</div></div><div class=\"ble-device-actions\"><button class=\"ble-btn-write\" onclick=\"window.bleInterface.openChat('" + id + "')\">Chat</button><button class=\"ble-btn-disconnect\" onclick=\"window.bleInterface.removeContact('" + id + "')\">✕</button></div>";
+item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(\'' + id + '\')">✕</button></div>';
 list.appendChild(item);
 });
 }
@@ -1024,7 +1007,7 @@ var stateLabel = self._renderStateLabel(state);
 var isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
 var item = document.createElement('div');
 item.className = 'ble-device-item';
-item.innerHTML = "<div class=\"ble-device-info\"><div class=\"ble-device-name\">" + (device.name || "NEXO Peer") + "</div><div class=\"ble-device-id\">" + self._formatId(id) + "</div><div class=\"ble-device-rssi\">● " + (device.direction || "Conectado") + " " + stateLabel + "</div></div><div class=\"ble-device-actions\"><button class=\"ble-btn-write\" " + (isReady ? "" : "disabled") + " onclick=\"window.bleInterface.openChat('" + id + "')\">Chat</button><button class=\"ble-btn-disconnect\" onclick=\"window.bleInterface.disconnect('" + id + "')\">Desconectar</button></div>";
+item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\'' + id + '\')">Desconectar</button></div>';
 list.appendChild(item);
 });
 }
@@ -1130,3 +1113,4 @@ if (this.isScanning) this.toggleScan();
 }
 }
 window.bleInterface = null;
+}
