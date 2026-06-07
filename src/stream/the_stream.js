@@ -1,41 +1,46 @@
 /**
- * NEXO v9.0 - TheStream v2.6-NAP-CERTIFIED
- * FIX v2.6 (definitivo):
- * 1) DEDUP por fingerprint unificado: _fingerprintCache con TTL 5min
- * 2) scrollToBottom suave y unico: rAF + setTimeout 50ms + setTimeout 150ms
- * 3) _shouldAutoScroll mas robusto: threshold 150px + verificacion de scrollHeight
- * 4) _sanitizeItem calcula fingerprint si no viene del mensaje
- * 5) appendItems con scroll inteligente: solo si usuario esta cerca del fondo
- * 6) Preservado: conversationId estable, name cache, avatar generation
+ * TheStream v3.0-IDENTITY
+ * Renderizado unificado de mensajes para NEXO v4.0-IDENTITY
+ * FIXES v3.0:
+ * 1) DEDUP visual por fingerprint unificado con TTL 5min
+ * 2) Scroll inteligente: solo si usuario cerca del fondo (<150px)
+ * 3) Sistema de vistas: renderiza SOLO en #messages-container de #view-chat activa
+ * 4) Anti-duplicado DOM: verifica dataset.fingerprint antes de crear elemento
+ * 5) Conversation-aware: ignora mensajes si conversationId no coincide con activa
+ * 6) Preservado: avatares, acciones (react/reply/forward), memory limits
  */
 
 class TheStream {
   constructor(containerId, options = {}) {
     if (!containerId || typeof containerId !== 'string') {
-      containerId = 'message-container';
+      containerId = 'messages-container';
     }
-    
+
     this.container = document.getElementById(containerId);
-    
+
     if (!this.container) {
       this.container = document.createElement('div');
       this.container.id = containerId;
       this.container.style.cssText = 'overflow-y: auto; height: calc(100vh - 200px); padding: 16px;';
       document.body.appendChild(this.container);
     }
-    
+
     this.actionCallbacks = options.actionCallbacks || {};
     this.resourceErrors = new Set();
     this.failedAvatars = new Set();
     this.messageCache = new Map();
     this.avatarColors = new Map();
     this.items = [];
-    
-    // v2.6: Cache de fingerprints para dedup unificado
+
+    // v3.0: Cache de fingerprints para dedup visual + DOM
     this._fingerprintCache = new Map();
+    this._domFingerprints = new Set(); // fingerprints ya renderizados en DOM
     this._maxFingerprints = 500;
     this._fingerprintTTL = 300000; // 5 minutos
-    
+
+    // v3.0: Conversation tracking
+    this._currentConversationId = null;
+
     this.config = {
       maxCacheSize: 1000,
       maxRenderedItems: 500,
@@ -43,15 +48,21 @@ class TheStream {
       autoScroll: true,
       scrollThreshold: 150
     };
-    
+
     this.initialized = true;
     this.renderedCount = 0;
     this.styleInjected = false;
-    
+
     this._injectStyles();
     this._setupResourceErrorInterceptor();
-    
-    console.log('[TheStream] Initialized v2.6-NAP-CERTIFIED');
+
+    console.log('[TheStream] Initialized v3.0-IDENTITY');
+  }
+
+  // v3.0: Establecer conversation activa para filtrado
+  setConversationId(convId) {
+    this._currentConversationId = convId ? this._normalizeId(convId) : null;
+    console.log('[TheStream] Conversation activa:', this._currentConversationId);
   }
 
   appendItems(items, options = {}) {
@@ -68,11 +79,23 @@ class TheStream {
     }
 
     const batch = Array.isArray(items) ? items : [items];
-    
     if (batch.length === 0) return this;
 
-    const sanitizedBatch = batch.map(item => this._sanitizeItem(item));
-    
+    // v3.0: Filtrar por conversationId si esta establecida
+    const filteredBatch = this._currentConversationId 
+      ? batch.filter(item => {
+          const itemConvId = this._normalizeId(item.conversationId || item.sender || item.deviceId);
+          return itemConvId === this._currentConversationId;
+        })
+      : batch;
+
+    if (filteredBatch.length === 0) {
+      console.log('[TheStream] Todos los mensajes filtrados por conversationId');
+      return this;
+    }
+
+    const sanitizedBatch = filteredBatch.map(item => this._sanitizeItem(item));
+
     if (config.prepend) {
       this.items.unshift(...sanitizedBatch);
     } else {
@@ -115,6 +138,7 @@ class TheStream {
   clear() {
     this.messageCache.clear();
     this._fingerprintCache.clear();
+    this._domFingerprints.clear();
     this.items = [];
     this.renderedCount = 0;
     if (this.container) {
@@ -123,22 +147,22 @@ class TheStream {
     return this;
   }
 
-  // v2.6: Scroll suave de triple capa para layout completo
+  // v3.0: Scroll suave de triple capa
   scrollToBottom() {
     if (!this.container) return this;
-    
+
     requestAnimationFrame(() => {
       this.container.scrollTop = this.container.scrollHeight;
-      
+
       setTimeout(() => {
         this.container.scrollTop = this.container.scrollHeight;
       }, 50);
-      
+
       setTimeout(() => {
         this.container.scrollTop = this.container.scrollHeight;
       }, 150);
     });
-    
+
     return this;
   }
 
@@ -148,8 +172,10 @@ class TheStream {
       renderedCount: this.renderedCount,
       cacheSize: this.messageCache.size,
       fingerprintCacheSize: this._fingerprintCache.size,
+      domFingerprintsSize: this._domFingerprints.size,
       resourceErrors: this.resourceErrors.size,
       failedAvatars: this.failedAvatars.size,
+      currentConversationId: this._currentConversationId,
       containerId: this.container?.id || 'unknown'
     };
   }
@@ -159,13 +185,13 @@ class TheStream {
     this.avatarColors.clear();
     this.resourceErrors.clear();
     this.failedAvatars.clear();
-    
+
     if (this.container) {
       this.container.removeEventListener('error', this._handleResourceError, true);
     }
-    
+
     this._removeStyles();
-    
+
     this.initialized = false;
     console.log('[TheStream] Destroyed');
   }
@@ -179,10 +205,10 @@ class TheStream {
 
   _injectStyles() {
     if (this.styleInjected || typeof document === 'undefined') return;
-    
+
     const styleId = 'thestream-animations';
     let style = document.getElementById(styleId);
-    
+
     if (!style) {
       style = document.createElement('style');
       style.id = styleId;
@@ -192,10 +218,12 @@ class TheStream {
           to { opacity: 1; transform: translateY(0); }
         }
         .stream-item { animation: fadeIn 0.3s ease-out; }
+        .stream-item.own { background: rgba(0,255,136,0.1) !important; }
+        .stream-item.other { background: rgba(255,255,255,0.05) !important; }
       `;
       document.head.appendChild(style);
     }
-    
+
     this.styleInjected = true;
   }
 
@@ -206,37 +234,41 @@ class TheStream {
 
   _setupResourceErrorInterceptor() {
     if (!this.container) return;
-    
+
     this._handleResourceError = (e) => {
       const target = e.target;
-      
+
       if (target.tagName === 'IMG') {
         const src = target.src;
-        
+
         this.resourceErrors.add(src);
-        
+
         if (target.dataset.remFixed) return;
-        
+
         console.warn(`[TheStream-REM] Resource failed: ${src.substring(0, 100)}...`);
-        
+
         target.src = this.config.fallbackAvatar;
         target.dataset.remFixed = 'true';
         target.style.opacity = '0.7';
-        
+
         e.preventDefault();
         e.stopPropagation();
       }
     };
-    
+
     this.container.addEventListener('error', this._handleResourceError, true);
   }
 
-  // v2.6: Calcula fingerprint unificado para dedup entre capas
   _messageFingerprint(conversationId, content, timestamp) {
     const nid = String(conversationId || '').toLowerCase().replace(/[:-]/g, '').trim();
     const c = String(content || '').trim().toLowerCase().substring(0, 100);
     const bucket = Math.floor((timestamp || Date.now()) / 30000);
     return `fp:${nid}:${bucket}:${c}`;
+  }
+
+  _normalizeId(id) {
+    if (!id) return '';
+    return id.toString().toLowerCase().replace(/[:-]/g, '').trim();
   }
 
   _sanitizeItem(item) {
@@ -256,7 +288,6 @@ class TheStream {
     const rawSender = item.sender || item.from || item.author || item.deviceId || 'Unknown';
     const conversationId = item.conversationId || this._normalizeId(rawSender);
 
-    // v2.6: Usar fingerprint del mensaje si existe, o calcularlo
     const fingerprint = item.fingerprint || this._messageFingerprint(conversationId, item.content || item.text, item.timestamp || Date.now());
 
     const sanitized = {
@@ -267,7 +298,7 @@ class TheStream {
       conversationId: conversationId,
       timestamp: item.timestamp || item.time || Date.now(),
       avatar: item.avatar || null,
-      isMe: item.isMe || item._own || item.sender === 'Tú' || false,
+      isMe: item.isMe || item._own || item.sender === 'Tu' || false,
       type: item.type || 'message',
       fingerprint: fingerprint
     };
@@ -276,7 +307,7 @@ class TheStream {
       sanitized.content = String(sanitized.content);
     }
 
-    // FIX v2.6: Resolver senderName robustamente
+    // Resolver senderName robustamente
     const isGenericName = !sanitized.senderName || 
                           sanitized.senderName === 'Unknown' || 
                           sanitized.senderName === 'NEXO Peer' ||
@@ -287,17 +318,17 @@ class TheStream {
     if (isGenericName) {
       const nexoApp = window.NEXO?.app;
       const activeContact = nexoApp?.activeContact;
-      
-      if (activeContact && this._normalizeId(activeContact.id) === conversationId) {
+
+      if (activeContact && this._normalizeId(activeContact.id) === this._normalizeId(conversationId)) {
         sanitized.senderName = activeContact.name || sanitized.senderName;
       } else {
         try {
           const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
-          const contact = contacts.find(c => this._normalizeId(c.id || c.address) === conversationId);
+          const contact = contacts.find(c => this._normalizeId(c.id || c.address) === this._normalizeId(conversationId));
           if (contact && contact.name) sanitized.senderName = contact.name;
         } catch (e) {}
       }
-      
+
       if (!sanitized.senderName || sanitized.senderName === 'Unknown') {
         sanitized.senderName = 'NEXO Peer';
       }
@@ -306,31 +337,40 @@ class TheStream {
     return sanitized;
   }
 
-  _normalizeId(id) {
-    if (!id) return '';
-    return id.toString().toLowerCase().replace(/[:-]/g, '').trim();
-  }
-
   _renderSingle(message, config) {
-    // v2.6: DEDUP por fingerprint unificado
+    // v3.0: DEDUP por fingerprint unificado + DOM check
     const fp = message.fingerprint || this._messageFingerprint(message.conversationId, message.content, message.timestamp);
-    
+
     // Limpiar fingerprints expirados
     const now = Date.now();
     for (const [k, v] of this._fingerprintCache) {
-      if (now - v > this._fingerprintTTL) this._fingerprintCache.delete(k);
+      if (now - v > this._fingerprintTTL) {
+        this._fingerprintCache.delete(k);
+        this._domFingerprints.delete(k);
+      }
     }
-    
+
+    // v3.0: DEDUP DOM — verificar si ya existe elemento con este fingerprint
+    if (this._domFingerprints.has(fp)) {
+      console.log(`[TheStream] Deduplicado DOM: ${fp.substring(0, 40)}`);
+      return;
+    }
+
     if (this._fingerprintCache.has(fp)) {
       console.log(`[TheStream] Deduplicado por fingerprint: ${fp.substring(0, 40)}`);
       return;
     }
+
     this._fingerprintCache.set(fp, now);
-    
+    this._domFingerprints.add(fp);
+
     // Limitar tamaño del cache
     if (this._fingerprintCache.size > this._maxFingerprints) {
       const firstKey = this._fingerprintCache.keys().next().value;
-      if (firstKey) this._fingerprintCache.delete(firstKey);
+      if (firstKey) {
+        this._fingerprintCache.delete(firstKey);
+        this._domFingerprints.delete(firstKey);
+      }
     }
 
     // DEDUP por messageId (respaldado)
@@ -345,22 +385,16 @@ class TheStream {
     if (!content) return;
 
     const isMe = message.isMe;
-    
+
     const bubble = document.createElement('div');
-    bubble.className = 'stream-item';
-    bubble.style.cssText = `
-      display: flex;
-      gap: 12px;
-      margin-bottom: 12px;
-      padding: 12px;
-      border-radius: 16px;
-      background: ${isMe ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.05)'};
-    `;
-    
+    bubble.className = 'stream-item ' + (isMe ? 'own' : 'other');
+    bubble.dataset.messageId = message.id || '';
+    bubble.dataset.fingerprint = fp; // v3.0: fingerprint en DOM para dedup
+
     const avatarSrc = this._getSafeAvatar(message.senderName || message.sender, isMe);
     const safeId = this._escapeAttr(String(message.id || ''));
     const displayName = message.senderName || message.sender || 'NEXO Peer';
-    
+
     bubble.innerHTML = `
       <img 
         src="${avatarSrc}" 
@@ -388,19 +422,19 @@ class TheStream {
         </div>
       </div>
     `;
-    
+
     const btnContainer = bubble.querySelector('.action-buttons');
     if (btnContainer) {
       const msgId = btnContainer.dataset.msgId;
       const btnReact = btnContainer.querySelector('.btn-react');
       const btnReply = btnContainer.querySelector('.btn-reply');
       const btnForward = btnContainer.querySelector('.btn-forward');
-      
+
       if (btnReact) btnReact.addEventListener('click', () => this.actionCallbacks.onReact?.(msgId));
       if (btnReply) btnReply.addEventListener('click', () => this.actionCallbacks.onReply?.(msgId));
       if (btnForward) btnForward.addEventListener('click', () => this.actionCallbacks.onForward?.(msgId));
     }
-    
+
     const img = bubble.querySelector('.stream-avatar');
     if (img) {
       img.addEventListener('error', () => {
@@ -432,20 +466,20 @@ class TheStream {
   generateAvatarSVG(sender, isMe) {
     const key = `${sender}-${isMe}`;
     if (this.avatarColors.has(key)) return this.avatarColors.get(key);
-    
+
     const safeSender = String(sender || 'U');
     const initial = safeSender.charAt(0).toUpperCase();
-    
+
     const hash = safeSender.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     const color = isMe 
       ? '#00FF88' 
       : `hsl(${hash % 360}, 70%, 50%)`;
-    
+
     const svg = `<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
       <rect width="40" height="40" rx="12" fill="${color}" fill-opacity="0.2" stroke="${color}" stroke-width="2"/>
       <text x="20" y="27" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="${color}">${initial}</text>
     </svg>`;
-    
+
     try {
       const uri = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
       this.avatarColors.set(key, uri);
@@ -469,7 +503,7 @@ class TheStream {
     if (this.items.length > this.config.maxRenderedItems) {
       const excess = this.items.length - this.config.maxRenderedItems;
       this.items = this.items.slice(excess);
-      
+
       const children = this.container.children;
       for (let i = 0; i < excess && children[0]; i++) {
         children[0].remove();
@@ -477,7 +511,6 @@ class TheStream {
     }
   }
 
-  // v2.6: Mas robusto — verifica que scrollHeight sea valido
   _shouldAutoScroll() {
     if (!this.container) return false;
     const threshold = this.config.scrollThreshold;
@@ -510,10 +543,10 @@ class TheStream {
     if (!timestamp) return 'ahora';
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return 'ahora';
-    
+
     const now = new Date();
     const diff = (now - date) / 1000;
-    
+
     if (diff < 60) return 'ahora';
     if (diff < 3600) return `hace ${Math.floor(diff / 60)}m`;
     if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`;
