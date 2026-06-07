@@ -259,6 +259,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
+    // FIX v10.0.2: Listener para abrir chat desde BLE panel
+    window.addEventListener('nexo:ble:openChat', (e) => {
+      const detail = e.detail || {};
+      const contactId = detail.contactId || detail.address || '';
+      const name = detail.name || 'NEXO Peer';
+      const type = detail.type || 'individual';
+      if (contactId) {
+        _openChat(contactId, name, type);
+      }
+    });
+
     _startHealthMonitor();
 
   } catch (error) {
