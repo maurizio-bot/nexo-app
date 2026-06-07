@@ -2,14 +2,14 @@
  * BLE Interface v3.7.0-HEALTH-FRAG
  * Ubicacion: src/ui/ble_interface.js
  * FIXES v3.7.0-HEALTH-FRAG:
- *    1) Handshake de nombres: intercambio automatico de deviceName al conectar
- *    2) Fragmentacion/Reensamblaje: mensajes >160 chars se parten en chunks con UUID
- *    3) Badge BLE corregido: solo cuenta peers conectados, NO fragmentos ni eventos
- *    4) Mensajes largos se renderizan como UNA sola burbuja (no en partes)
- *    5) Nombre real del peer persistente via localStorage + handshake
- *    6) Name cache inteligente preservado
- *    7) _normId robusto preservado
- *    8) Health Monitor preservado
+ * 1) Handshake de nombres: intercambio automatico de deviceName al conectar
+ * 2) Fragmentacion/Reensamblaje: mensajes >160 chars se parten en chunks con UUID
+ * 3) Badge BLE corregido: solo cuenta peers conectados, NO fragmentos ni eventos
+ * 4) Mensajes largos se renderizan como UNA sola burbuja (no en partes)
+ * 5) Nombre real del peer persistente via localStorage + handshake
+ * 6) Name cache inteligente preservado
+ * 7) _normId robusto preservado
+ * 8) Health Monitor preservado
      */
 export function initBLEInterface(bleMesh) {
 var instance = new BLEInterface(bleMesh).init();
@@ -294,6 +294,7 @@ await this._safeNativeCall('sendMessage', { deviceId: id, message: hs }, 5000);
 this._handshakeSent.add(id);
 console.log('[BLE] Handshake enviado a', id);
 } catch (e) {
+max = 0;
 console.warn('[BLE] Handshake fallo:', e.message);
 }
 }
@@ -680,7 +681,7 @@ try {
 if (window.ensureBLEPermissions) permsReady = await window.ensureBLEPermissions();
 else if (window.permissionShim && window.permissionShim.ensureBLEPermissions) permsReady = await window.permissionShim.ensureBLEPermissions();
 else permsReady = true;
-} catch (e) { console.warn('[BLEInterface] Shim no disponible para permisos, continuando...', permsReady = true); }
+} catch (e) { console.warn('[BLEInterface] Shim no disponible para permisos, continuando...'); permsReady = true; }
 if (!permsReady) { this.showToast('Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000); return; }
 if (!this._serverReady) {
 try {
@@ -790,7 +791,7 @@ try {
 if (window.ensureBLEPermissions) permsReady = await window.ensureBLEPermissions();
 else if (window.permissionShim && window.permissionShim.ensureBLEPermissions) permsReady = await window.permissionShim.ensureBLEPermissions();
 else permsReady = true;
-} catch (e) { console.warn('[BLEInterface] Shim no disponible para scan, continuing...', permsReady = true); }
+} catch (e) { console.warn('[BLEInterface] Shim no disponible para scan, continuing...'); permsReady = true; }
 if (!permsReady) { this.showToast('Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000); return; }
 try {
 if (this.isScanning) {
@@ -1113,3 +1114,4 @@ if (this.isScanning) this.toggleScan();
 }
 }
 window.bleInterface = null;
+}
