@@ -1,17 +1,14 @@
 /**
- * BLE Interface v3.7.1-HEALTH-FIX
+ * BLE Interface v4.0.0-IDENTITY
  * Ubicacion: src/ui/ble_interface.js
- * FIXES v3.7.1-HEALTH-FIX:
- *    1) Corregidos errores de sintaxis en _safeNativeCall
- *    2) Corregida comilla en renderConnectedList onclick
- *    3) Handshake de nombres: intercambio automatico de deviceName al conectar
- *    4) Fragmentacion/Reensamblaje: mensajes >160 chars se parten en chunks con UUID
- *    5) Badge BLE corregido: solo cuenta peers conectados, NO fragmentos ni eventos
- *    6) Mensajes largos se renderizan como UNA sola burbuja (no en partes)
- *    7) Nombre real del peer persistente via localStorage + handshake
- *    8) Name cache inteligente preservado
- *    9) _normId robusto preservado
- *    10) Health Monitor preservado
+ * CAMBIOS v4.0.0-IDENTITY:
+ * 1) openChat dispara evento con conversationId para integracion con main.js
+ * 2) Handshake includes deviceName para resolucion de nombres en lista de conversaciones
+ * 3) sendMessage propaga conversationId a fragmentacion
+ * 4) Badge BLE cuenta peers conectados (no fragmentos ni eventos de control)
+ * 5) Integracion con NexoApp v6.0: _peerNames expuesto para resolucion de nombres
+ * 6) Name cache inteligente preservado
+ * 7) Health Monitor preservado
  */
 export function initBLEInterface(bleMesh) {
 var instance = new BLEInterface(bleMesh).init();
@@ -106,7 +103,7 @@ this._openChatTimeouts = new Map();
 this._toastDebounceTimer = null;
 this._lastToastMessage = '';
 this._lastToastTime = 0;
-// v3.7.0-FRAG: Fragmentacion/Reensamblaje + Handshake de nombres
+// v4.0.0-IDENTITY: Fragmentacion/Reensamblaje + Handshake de nombres
 this._peerNames = {};        // deviceId -> nombre real
 this._handshakeSent = new Set();
 this._fragBuffers = {};      // uuid -> {chunks[], total, peerId, timer}
@@ -270,7 +267,7 @@ this.showToast('Memoria alta, limpiando...', 'warning');
 }
 } catch (e) { console.error('[HEALTH] Memory check error:', e); }
 }
-// ==================== FRAGMENTACION / REENSAMBLAJE v3.7.0 ====================
+// ==================== FRAGMENTACION / REENSAMBLAJE v4.0.0 ====================
 _generateUUID() {
 return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
 var r = Math.random() * 16 | 0;
@@ -352,7 +349,7 @@ this._receivedMessageIds.delete(first);
 }
 // Fingerprint unificado
 var fingerprint = _messageFingerprint(deviceId, content, (data && data.timestamp) || Date.now());
-// Emitir evento unico
+// v4.0.0-IDENTITY: Emitir evento con conversationId para integracion con main.js
 window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
 detail: {
 deviceId: deviceId,
@@ -361,7 +358,7 @@ senderName: resolvedName,
 messageId: messageId,
 source: (data && data.source) || 'unknown',
 timestamp: (data && data.timestamp) || Date.now(),
-conversationId: deviceId,
+conversationId: deviceId,  // v4.0: conversationId = deviceId para chats individuales
 fingerprint: fingerprint
 }
 }));
@@ -373,21 +370,26 @@ this.newDevicesCount++;
 this.updateBadge();
 }
 // Metodo PUBLICO de envio con fragmentacion automatica
-async sendMessage(deviceId, content) {
+async sendMessage(deviceId, content, conversationId) {
 if (this.isDummyMode || this._destroyed) return;
 var id = _normId(deviceId);
 // Asegurar handshake
 if (!this._handshakeSent.has(id)) {
 await this._sendHandshake(id);
 }
+// v4.0.0-IDENTITY: Si hay conversationId, incluirlo en metadata
+var payload = content;
+if (conversationId) {
+payload = JSON.stringify({ _c: conversationId, _m: content });
+}
 // Si cabe en un solo paquete, enviar directo
-if (content.length <= this.MAX_PAYLOAD) {
-await this._sendMessageNative(id, content);
+if (payload.length <= this.MAX_PAYLOAD) {
+await this._sendMessageNative(id, payload);
 return;
 }
 // Fragmentar
-var chunkSize = this.MAX_PAYLOAD - 50; // margen para JSON metadata
-var chunks = this._chunkString(content, chunkSize);
+var chunkSize = this.MAX_PAYLOAD - 50;
+var chunks = this._chunkString(payload, chunkSize);
 var fragId = this._generateUUID();
 var total = chunks.length;
 console.log('[BLE] Fragmentando mensaje:', total, 'partes');
@@ -407,7 +409,6 @@ await this._sleep(this.FRAG_THROTTLE);
 }
 async _loadLocalDeviceInfo() {
 if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) {
-// Fallback por user agent
 var ua = navigator.userAgent;
 if (ua.indexOf('SM-S928') !== -1) this.localDeviceName = 'Galaxy S24 Ultra';
 else if (ua.indexOf('SM-S918') !== -1) this.localDeviceName = 'Galaxy S23 Ultra';
@@ -597,17 +598,27 @@ if (isControl && parsed._t === 'f') {
 self._handleFragment(deviceId, parsed);
 return;
 }
-// Mensaje completo normal (backward compat)
+// v4.0.0-IDENTITY: Intentar extraer conversationId de payload
+var messageContent = raw;
+var conversationId = deviceId;
+try {
+var payload = JSON.parse(raw);
+if (payload._c && payload._m) {
+conversationId = payload._c;
+messageContent = payload._m;
+}
+} catch (e) {}
+// Mensaje completo normal
 var messageId = null;
 var senderName = data.senderName || null;
-var content = raw;
+var content = messageContent;
 try {
 var json = JSON.parse(raw);
 if (json.messageId) messageId = json.messageId;
 if (json.senderName && !senderName) senderName = json.senderName;
 if (json.content) content = json.content;
 } catch (e) {}
-self._processCompletePayload(deviceId, content, senderName, messageId, data);
+self._processCompletePayload(deviceId, content, senderName, messageId, { source: 'ble', timestamp: Date.now(), conversationId: conversationId });
 });
 }
 async _processPendingMessages(deviceId) {
@@ -901,6 +912,7 @@ this.showToast('Eliminado', 'info');
 this.renderAddedList();
 this.renderDevicesList();
 }
+// v4.0.0-IDENTITY: openChat ahora integra con sistema de conversaciones de main.js
 async openChat(deviceId) {
 var nid = _normId(deviceId);
 var device = this.foundDevices.get(nid) || this.connectedDevices.get(nid);
@@ -954,14 +966,17 @@ checkReady();
 }
 } catch (e) { console.warn('[BLEInterface] Conexion/timeout:', e.message); this.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning'); }
 }
-var appContainer = document.getElementById('app');
-if (appContainer) appContainer.classList.remove('hidden');
-var nameInput = document.getElementById('chat-contact-name');
-var subtitle = document.getElementById('chat-contact-subtitle');
-if (nameInput) nameInput.value = displayName;
-if (subtitle) subtitle.textContent = 'BLUETOOTH';
+// v4.0.0-IDENTITY: Disparar evento con conversationId para main.js
 window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
-detail: { contactId: device.id || device.address, name: displayName, address: device.address || device.id, transport: 'ble', rssi: device.rssi, source: 'ble_interface' }
+detail: {
+contactId: device.id || device.address,
+name: displayName,
+address: device.address || device.id,
+transport: 'ble',
+rssi: device.rssi,
+source: 'ble_interface',
+conversationId: nid  // v4.0: conversationId explicito
+}
 }));
 this.elements.panel.classList.remove('active');
 this.elements.overlay.classList.remove('active');
@@ -978,8 +993,8 @@ if (isNew) self._renderedDeviceIds.add(id);
 var item = document.createElement('div');
 item.className = 'ble-device-item' + (isNew ? ' new' : '');
 var actionHtml = isAdded
-? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>'
-: '<button class="ble-btn-add" onclick="window.bleInterface.addContact(\'' + id + '\')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>';
+? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(''' + id + '')">Chat</button>'
+: '<button class="ble-btn-add" onclick="window.bleInterface.addContact(''' + id + '')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat(''' + id + '')">Chat</button>';
 item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">📶 ' + (device.rssi || '?') + ' dBm</div></div><div class="ble-device-actions">' + actionHtml + '</div>';
 list.appendChild(item);
 });
@@ -994,7 +1009,7 @@ contacts.forEach(function(contact) {
 var id = _normId(contact.id || contact.address);
 var item = document.createElement('div');
 item.className = 'ble-device-item';
-item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(\'' + id + '\')">✕</button></div>';
+item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat(''' + id + '')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(''' + id + '')">✕</button></div>';
 list.appendChild(item);
 });
 }
@@ -1009,7 +1024,7 @@ var stateLabel = self._renderStateLabel(state);
 var isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
 var item = document.createElement('div');
 item.className = 'ble-device-item';
-item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\'' + id + '\')">Desconectar</button></div>';
+item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(''' + id + '')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(''' + id + '')">Desconectar</button></div>';
 list.appendChild(item);
 });
 }
