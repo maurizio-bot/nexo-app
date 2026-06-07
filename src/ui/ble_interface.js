@@ -693,7 +693,7 @@ try {
 if (window.ensureBLEPermissions) permsReady = await window.ensureBLEPermissions();
 else if (window.permissionShim && window.permissionShim.ensureBLEPermissions) permsReady = await window.permissionShim.ensureBLEPermissions();
 else permsReady = true;
-} catch (e) { console.warn('[BLEInterface] Shim no disponible para permisos, continuando...'); permsReady = true; }
+} catch (e) { console.warn('[BLEInterface] Shim no disponible para permisos, continuando...', permsReady = true; }
 if (!permsReady) { this.showToast('Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000); return; }
 if (!this._serverReady) {
 try {
@@ -1130,4 +1130,3 @@ if (this.isScanning) this.toggleScan();
 }
 }
 window.bleInterface = null;
-}
