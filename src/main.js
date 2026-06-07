@@ -529,7 +529,7 @@ async function initializeNexoApp() {
     _forceHideSplash();
     rem.error('Error fatal: ' + error.message, 'FATAL_INIT');
   }
-});
+}
 
 // ==================== FUNCIONES AUXILIARES ====================
 
@@ -553,7 +553,6 @@ function _toggleVaultUI(isOpen) {
 }
 
 function _updateBLEBadge() {
-  // Actualizar indicador de estado BLE si existe
   const indicator = document.getElementById('status-indicator');
   if (indicator && window.NEXO && window.NEXO.app) {
     const status = window.NEXO.app.getStatus();
@@ -579,7 +578,6 @@ function _focusInput(text) {
 }
 
 function _showPermissionOverlay() {
-  // El overlay de permisos se maneja en el HTML o por el PermissionShim
   console.log('[main] Permisos pendientes - overlay delegado a PermissionShim');
 }
 
@@ -589,12 +587,11 @@ function _hidePermissionOverlay() {
 }
 
 function _startPermissionPolling() {
-  // Polling delegado al PermissionShim
   console.log('[main] Permission polling delegado a PermissionShim');
 }
 
 function _stopPermissionPolling() {
-  // No-op, el shim maneja su propio cleanup
+  // No-op
 }
 
 function _startHealthMonitor() {
@@ -613,7 +610,6 @@ function _startHealthMonitor() {
 }
 
 function _ensureDOMStructure() {
-  // Verificar que las vistas existen
   const requiredIds = ['view-conversations', 'view-chat', 'view-create-group', 'nexo-stream', 'messages-container'];
   const missing = requiredIds.filter(id => !document.getElementById(id));
   if (missing.length > 0) {
