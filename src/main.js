@@ -481,4 +481,145 @@ async function initializeNexoApp() {
     };
 
     rem.info('NEXO App v5.1.1-HEALTH-FIX', 'NEXO_INIT');
-    window.N
+
+    window.NEXO.app = new NexoApp(nexoConfig);
+    await window.NEXO.app.init();
+    window.NEXO.initialized = true;
+
+    // Setup stream con conversationId
+    if (window.NEXO.app.stream) {
+      window.NEXO.app.stream.setConversationId(window.NEXO.activeConversationId);
+    }
+
+    // Setup send button
+    const sendBtn = document.getElementById('send-btn');
+    const msgInput = document.getElementById('message-input');
+    if (sendBtn && msgInput) {
+      sendBtn.addEventListener('click', async () => {
+        const content = msgInput.value.trim();
+        if (!content) return;
+        msgInput.value = '';
+        const convId = window.NEXO.activeConversationId;
+        if (!convId) {
+          rem.warn('Selecciona una conversacion primero', 'NO_CONV');
+          return;
+        }
+        await window.NEXO.app.sendMessage({
+          content: content,
+          recipient: convId,
+          conversationId: convId
+        });
+      });
+      msgInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendBtn.click();
+        }
+      });
+    }
+
+    rem.success('NEXO v10.0-IDENTITY Ready', 'INIT_OK');
+    NEXO_DIAG.hideSplash();
+    _showView('conversations');
+
+  } catch (error) {
+    console.error('Error fatal en inicializacion:', error);
+    clearTimeout(SAFETY_TIMEOUT);
+    NEXO_DIAG.hideSplash();
+    _forceHideSplash();
+    rem.error('Error fatal: ' + error.message, 'FATAL_INIT');
+  }
+});
+
+// ==================== FUNCIONES AUXILIARES ====================
+
+function _forceHideSplash() {
+  const splash = document.getElementById('splash-native');
+  if (splash) {
+    splash.style.opacity = '0';
+    splash.style.transform = 'scale(1.1)';
+    setTimeout(() => {
+      splash.style.display = 'none';
+    }, 500);
+  }
+}
+
+function _toggleVaultUI(isOpen) {
+  const vault = document.getElementById('vault-panel');
+  if (vault) {
+    if (isOpen) vault.classList.add('vault-visible');
+    else vault.classList.remove('vault-visible');
+  }
+}
+
+function _updateBLEBadge() {
+  // Actualizar indicador de estado BLE si existe
+  const indicator = document.getElementById('status-indicator');
+  if (indicator && window.NEXO && window.NEXO.app) {
+    const status = window.NEXO.app.getStatus();
+    if (status.mode === 'p2p_ble' || status.mode === 'P2P_BLE') {
+      indicator.className = 'online';
+      indicator.textContent = 'BLE';
+    } else if (status.mode === 'offline' || status.mode === 'OFFLINE') {
+      indicator.className = 'offline';
+      indicator.textContent = 'OFF';
+    } else {
+      indicator.className = 'online';
+      indicator.textContent = status.mode;
+    }
+  }
+}
+
+function _focusInput(text) {
+  const input = document.getElementById('message-input');
+  if (input) {
+    input.value = text || '';
+    input.focus();
+  }
+}
+
+function _showPermissionOverlay() {
+  // El overlay de permisos se maneja en el HTML o por el PermissionShim
+  console.log('[main] Permisos pendientes - overlay delegado a PermissionShim');
+}
+
+function _hidePermissionOverlay() {
+  const overlay = document.getElementById('nexo-perm-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function _startPermissionPolling() {
+  // Polling delegado al PermissionShim
+  console.log('[main] Permission polling delegado a PermissionShim');
+}
+
+function _stopPermissionPolling() {
+  // No-op, el shim maneja su propio cleanup
+}
+
+function _startHealthMonitor() {
+  setInterval(() => {
+    try {
+      if (window.NEXO && window.NEXO.app && window.NEXO.app.getStatus) {
+        const status = window.NEXO.app.getStatus();
+        if (status.initialized) {
+          window.NEXO.healthStatus = 'healthy';
+        }
+      }
+    } catch (e) {
+      console.warn('[HEALTH] Check failed:', e.message);
+    }
+  }, HEALTH_CHECK_INTERVAL_MS);
+}
+
+function _ensureDOMStructure() {
+  // Verificar que las vistas existen
+  const requiredIds = ['view-conversations', 'view-chat', 'view-create-group', 'nexo-stream', 'messages-container'];
+  const missing = requiredIds.filter(id => !document.getElementById(id));
+  if (missing.length > 0) {
+    console.warn('[main] DOM elements missing:', missing.join(', '));
+  }
+}
+
+// ==================== EXPORTS ====================
+export { NEXO_DIAG, DEBUG };
