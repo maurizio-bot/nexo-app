@@ -1,3 +1,5 @@
+rm -f src/ui/ble_interface.js
+cat << 'EOF' > src/ui/ble_interface.js
 /**
  * BLE Interface v3.7.0-HEALTH-FRAG
  * Ubicacion: src/ui/ble_interface.js
@@ -1114,3 +1116,4 @@ if (this.isScanning) this.toggleScan();
 }
 window.bleInterface = null;
 }
+EOF
