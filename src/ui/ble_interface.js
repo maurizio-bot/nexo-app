@@ -1,4 +1,3 @@
-
 /**
  * BLE Interface v3.7.0-HEALTH-FRAG
  * Ubicacion: src/ui/ble_interface.js
@@ -494,7 +493,7 @@ this._cancelReconnect(deviceId);
 var currentAttempts = this._reconnectAttempts.get(deviceId) || 0;
 if (currentAttempts >= 5) {
 console.log('[BLEInterface] Max reintentos alcanzado para', deviceId);
-this.showToast('No se pudo reconectar despues de 5 intentos', 'error');
+self.showToast('No se pudo reconectar despues de 5 intentos', 'error');
 this._reconnectAttempts.delete(deviceId);
 return;
 }
