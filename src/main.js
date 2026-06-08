@@ -33,7 +33,7 @@ const CONVERSATIONS_KEY = 'nexo_conversations_v4';
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible && NEXO_DIAG.isSplashVisible()) {
     rem.warn('Timeout seguridad (20s) - forzando continuar', 'INIT_TIMEOUT');
-    NEXO_DIAG.hideSplash();
+    _forceHideSplash();
     document.body.classList.add('nexo-force-ready');
   }
 }, 20000);
@@ -171,6 +171,9 @@ function _showView(viewName) {
   const view = document.getElementById('view-' + viewName);
   if (view) view.classList.add('active');
 
+  // FIX: Asegurar que el splash nunca tape la vista
+  _forceHideSplash();
+
   if (viewName === 'conversations') {
     _renderConversationsList();
     window.NEXO.activeConversationId = null;
@@ -244,7 +247,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       await initializeNexoApp();
     } else {
       rem.warn('[Shim] Permisos BLE pendientes', 'SHIM_REQUIRED');
-      NEXO_DIAG.hideSplash();
+      _forceHideSplash();
       _showPermissionOverlay();
       _startPermissionPolling();
     }
@@ -275,7 +278,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (error) {
     console.error('Error fatal:', error);
     clearTimeout(SAFETY_TIMEOUT);
-    NEXO_DIAG.hideSplash();
     _forceHideSplash();
   }
 });
@@ -521,13 +523,13 @@ async function initializeNexoApp() {
     }
 
     rem.success('NEXO v10.0-IDENTITY Ready', 'INIT_OK');
-    NEXO_DIAG.hideSplash();
+    // FIX: Usar _forceHideSplash() que SI oculta el splash nativo
+    _forceHideSplash();
     _showView('conversations');
 
   } catch (error) {
     console.error('Error fatal en inicializacion:', error);
     clearTimeout(SAFETY_TIMEOUT);
-    NEXO_DIAG.hideSplash();
     _forceHideSplash();
     rem.error('Error fatal: ' + error.message, 'FATAL_INIT');
   }
@@ -540,9 +542,14 @@ function _forceHideSplash() {
   if (splash) {
     splash.style.opacity = '0';
     splash.style.transform = 'scale(1.1)';
+    splash.style.pointerEvents = 'none';
     setTimeout(() => {
       splash.style.display = 'none';
     }, 500);
+  }
+  // Tambien notificar a NEXO_DIAG si existe
+  if (NEXO_DIAG && typeof NEXO_DIAG.hideSplash === 'function') {
+    try { NEXO_DIAG.hideSplash(); } catch (e) {}
   }
 }
 
@@ -617,6 +624,15 @@ function _ensureDOMStructure() {
   if (missing.length > 0) {
     console.warn('[main] DOM elements missing:', missing.join(', '));
   }
+}
+
+function _createGroup(name, selectedIds) {
+  const groupId = 'group_' + Date.now();
+  const conv = _getOrCreateConversation(groupId, name, 'group', selectedIds);
+  conv.participants = selectedIds;
+  _saveConversations();
+  _renderConversationsList();
+  rem.success(`Grupo "${name}" creado`, 'GROUP_CREATED');
 }
 
 // ==================== EXPORTS ====================
