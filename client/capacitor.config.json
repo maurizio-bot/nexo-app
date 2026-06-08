@@ -1,43 +1,22 @@
 {
-  "appId": "com.nexo.app",
-  "appName": "NEXO",
-  "webDir": "dist",
-  "bundledWebRuntime": false,
-  "server": {
-    "androidScheme": "https",
-    "cleartext": false,
-    "hostname": "localhost"
-  },
-  "plugins": {
-    "SplashScreen": {
-      "launchShowDuration": 3000,
-      "launchAutoHide": true,
-      "androidScaleType": "CENTER_CROP",
-      "showSpinner": false,
-      "splashFullScreen": true,
-      "splashImmersive": true,
-      "backgroundColor": "#0a0a0a",
-      "androidSplashResourceName": "splash"
-    },
-    "StatusBar": {
-      "backgroundColor": "#0a0a0a",
-      "style": "DARK",
-      "overlaysWebView": true
-    },
-    "App": {
-      "backButtonBehavior": "none"
-    }
-  },
-  "android": {
-    "buildOptions": {
-      "keystorePath": null,
-      "keystorePassword": null,
-      "keystoreAlias": null,
-      "keystoreAliasPassword": null,
-      "releaseType": "APK",
-      "minSdkVersion": 26,
-      "targetSdkVersion": 34,
-      "compileSdkVersion": 34
-    }
-  }
+"appId": "com.nexo.app",
+"appName": "NEXO",
+"webDir": "dist",
+"bundledWebRuntime": false,
+"plugins": {
+"NexoBLE": {
+"displayName": "NexoBLE",
+"backgroundColor": "#000000"
+},
+"SplashScreen": {
+"launchShowDuration": 0,
+"backgroundColor": "#000000"
+}
+},
+"android": {
+"buildOptions": {
+"keystorePath": null,
+"keystoreAlias": null
+}
+}
 }
