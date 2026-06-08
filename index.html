@@ -13,6 +13,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
   
   <title>NEXO v9.0</title>
+  <link rel="stylesheet" href="css/critical.css">
 </head>
 <body>
   <!-- SPLASH SCREEN -->
@@ -26,31 +27,33 @@
     <div class="perm-overlay-content">
       <h2>Permisos necesarios</h2>
       <p>NEXO requiere permisos de Bluetooth y ubicación para funcionar.</p>
-      <button id="btn-request-perms">Conceder permisos</button>
+      <button id="btn-request-perms" class="perm-btn-primary">Conceder permisos</button>
     </div>
   </div>
 
   <!-- VISTA: LISTA DE CONVERSACIONES -->
   <div id="view-conversations" class="view active">
-    <div class="view-header">
-      <h2>NEXO</h2>
+    <div id="conversations-header">
+      <h1>NEXO</h1>
       <div id="status-indicator" class="offline">OFF</div>
-      <button id="btn-new-group">➕</button>
+      <button id="btn-new-group" class="header-btn">➕</button>
     </div>
-    <div id="conversations-list"></div>
+    <div id="conversations-list" class="conversations-scroll"></div>
   </div>
 
   <!-- VISTA: CHAT -->
   <div id="view-chat" class="view">
     <div id="chat-header">
-      <button id="btn-back">←</button>
-      <input type="text" id="chat-contact-name" value="NEXO" autocomplete="off" spellcheck="false">
-      <span id="chat-contact-subtitle">OFFLINE</span>
-      <button id="btn-call">📞</button>
-      <button id="btn-video">🎥</button>
-      <button id="btn-attach">📎</button>
-      <button id="btn-sticker">😀</button>
-      <button id="btn-ble-panel">📡</button>
+      <button id="btn-back" class="header-btn">←</button>
+      <div class="chat-header-info">
+        <input type="text" id="chat-contact-name" value="NEXO" autocomplete="off" spellcheck="false">
+        <span id="chat-contact-subtitle">OFFLINE</span>
+      </div>
+      <button id="btn-call" class="header-btn">📞</button>
+      <button id="btn-video" class="header-btn">🎥</button>
+      <button id="btn-attach" class="header-btn">📎</button>
+      <button id="btn-sticker" class="header-btn">😀</button>
+      <button id="btn-ble-panel" class="header-btn">📡</button>
     </div>
     
     <div id="nexo-stream" class="stream-container">
@@ -58,6 +61,7 @@
     </div>
     
     <div id="input-area">
+      <button id="btn-attach-input" class="input-btn">📎</button>
       <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
       <button id="send-btn">➤</button>
     </div>
@@ -65,15 +69,17 @@
 
   <!-- VISTA: CREAR GRUPO -->
   <div id="view-create-group" class="view">
-    <div class="view-header">
-      <button id="btn-group-back">←</button>
+    <div id="group-header">
+      <button id="btn-group-back" class="header-btn">←</button>
       <h2>Nuevo Grupo</h2>
     </div>
-    <div class="group-form">
+    <div id="group-form">
       <input type="text" id="group-name-input" placeholder="Nombre del grupo" autocomplete="off">
-      <h3>Contactos</h3>
-      <div id="group-available-contacts"></div>
-      <button id="btn-create-group-confirm">Crear grupo</button>
+      <div id="group-contacts-select">
+        <h3>Contactos</h3>
+        <div id="group-available-contacts"></div>
+      </div>
+      <button id="btn-create-group-confirm" class="btn-primary">Crear grupo</button>
     </div>
   </div>
 
