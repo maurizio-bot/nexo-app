@@ -1,6 +1,7 @@
 /**
- * BLE Interface v3.7.1-HEALTH-FIX
+ * BLE Interface v3.7.2-HEALTH-FIX-SYNTAX
  * Ubicacion: src/ui/ble_interface.js
+ * FIX v3.7.2: Eliminado } extra al final que rompía webpack (linea 1174)
  * FIXES v3.7.1-HEALTH-FIX:
  * 1) Texto "Visibilidad desactivada" → "Bluetooth apagado"
  * 2) Texto "Sin permiso de advertising" → "Necesitas activar Bluetooth"
@@ -1171,4 +1172,3 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
-}
