@@ -1,9 +1,10 @@
 /**
- * src/main.js - NEXO v10.0-IDENTITY-FIX2
+ * src/main.js - NEXO v10.0-IDENTITY-FIX3
  * Orquestador principal: 3 vistas (conversaciones, chat, crear-grupo)
  * DEDUP DEFINITIVO: unico punto de renderizado via TheStream
  * NAP 2.0 Certified
- * FIX2: Splash oculto inmediatamente al cargar DOM. Safety timeout incondicional.
+ * FIX3: Corregido ReferenceError en onMessage (normalizedId/name/type no definidos)
+ * FIX3: setConversationId() sincronizado en _openChat y btn-back
  */
 
 import './styles/critical.css';
@@ -14,7 +15,7 @@ import { ensureBLEPermissions, getPermissionShim, getShimStatus, getShimHealth }
 
 window.NEXO = {
   app: null, rem: null, diag: null,
-  version: '10.0-IDENTITY-FIX2',
+  version: '10.0-IDENTITY-FIX3',
   initialized: false, sessionStart: Date.now(),
   healthStatus: 'healthy',
   currentView: 'conversations',
@@ -186,6 +187,8 @@ function _openChat(convId, name, type) {
   if (subtitle) subtitle.textContent = type === 'group' ? `${conv.participants.length} participantes` : 'BLUETOOTH';
 
   if (window.NEXO.app && window.NEXO.app.stream) {
+    // FIX3: Sincronizar conversationId en TheStream antes de renderizar
+    window.NEXO.app.stream.setConversationId(normalizedId);
     window.NEXO.app.stream.clear();
     conv.messages.forEach(msg => {
       window.NEXO.app.stream.appendItems([msg], { scroll: false });
@@ -197,7 +200,7 @@ function _openChat(convId, name, type) {
 
 // ==================== INICIALIZACION ====================
 document.addEventListener('DOMContentLoaded', async () => {
-  // FIX2: Ocultar splash INMEDIATAMENTE al cargar el DOM, antes de cualquier otra cosa
+  // FIX3: Ocultar splash INMEDIATAMENTE al cargar el DOM, antes de cualquier otra cosa
   _forceHideSplash();
 
   try {
@@ -265,14 +268,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// FIX2: Safety timeout INCONDICIONAL — siempre oculta el splash a los 20s
+// FIX3: Safety timeout INCONDICIONAL — siempre oculta el splash a los 20s
 const SAFETY_TIMEOUT = setTimeout(() => {
   rem.warn('Timeout seguridad (20s) - forzando continuar', 'INIT_TIMEOUT');
   _forceHideSplash();
   document.body.classList.add('nexo-force-ready');
 }, 20000);
 
-// FIX2: Verificacion periodica de splash durante 30s
+// FIX3: Verificacion periodica de splash durante 30s
 const SPLASH_CHECK_INTERVAL = setInterval(() => {
   const splash = document.getElementById('splash-native');
   if (splash && splash.style.display !== 'none') {
@@ -287,6 +290,10 @@ function _setupNavigation() {
   if (btnBack) {
     btnBack.addEventListener('click', () => {
       window.NEXO.activeConversationId = null;
+      // FIX3: Limpiar conversationId en TheStream al salir del chat
+      if (window.NEXO.app && window.NEXO.app.stream) {
+        window.NEXO.app.stream.setConversationId(null);
+      }
       _showView('conversations');
     });
   }
@@ -419,6 +426,7 @@ async function initializeNexoApp() {
           return;
         }
 
+        // FIX3: Usar convId, msg.senderName y 'individual' en lugar de variables inexistentes
         const conv = _getOrCreateConversation(convId, msg.senderName || msg.sender || 'NEXO Peer', 'individual');
 
         const messageObj = {
@@ -504,7 +512,7 @@ async function initializeNexoApp() {
       });
     }
 
-    rem.success('NEXO v10.0-IDENTITY-FIX2 Ready', 'INIT_OK');
+    rem.success('NEXO v10.0-IDENTITY-FIX3 Ready', 'INIT_OK');
     _forceHideSplash();
     _showView('conversations');
 
@@ -518,7 +526,7 @@ async function initializeNexoApp() {
 
 // ==================== FUNCIONES AUXILIARES ====================
 
-// FIX2: _forceHideSplash ahora es AGRESIVA e INMEDIATA
+// FIX3: _forceHideSplash ahora es AGRESIVA e INMEDIATA
 function _forceHideSplash() {
   const splash = document.getElementById('splash-native');
   if (splash) {
