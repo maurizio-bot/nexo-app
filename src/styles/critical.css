@@ -1,4 +1,3 @@
-cat << 'EOF' > critical.css
 /* Reset básico */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -614,4 +613,3 @@ cat << 'EOF' > critical.css
   position: fixed;
   inset: 0;
 }
-EOF
