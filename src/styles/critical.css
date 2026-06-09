@@ -613,3 +613,5 @@ cat << 'EOF' > critical.css
 .fallback-notice {
   position: fixed;
   inset: 0;
+}
+EOF
