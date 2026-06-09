@@ -383,8 +383,11 @@ export class BLEInterface {
       }
     }));
     var activeId = _normId(this._activeChatDeviceId);
-    if (activeId && activeId === deviceId) return;
-    this.showToast('Mensaje de ' + resolvedName, 'info');
+    // FIX: Siempre disparar el evento para que la app procese el mensaje.
+    // El toast solo se muestra si NO estamos en el chat activo con ese peer.
+    if (!activeId || activeId !== deviceId) {
+      this.showToast('Mensaje de ' + resolvedName, 'info');
+    }
     this.newDevicesCount++;
     this.updateBadge();
   }
@@ -707,7 +710,7 @@ export class BLEInterface {
       if (window.ensureBLEPermissions) permsReady = await window.ensureBLEPermissions();
       else if (window.permissionShim && window.permissionShim.ensureBLEPermissions) permsReady = await window.permissionShim.ensureBLEPermissions();
       else permsReady = true;
-    } catch (e) { console.warn('[BLEInterface] Shim no disponible para permisos, continuando...'); permsReady = true; }
+    } catch (e) { console.warn('[BLEInterface] Shim no disponible para permisos, continuando...', permsReady = true); }
     if (!permsReady) { this.showToast('Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000); return; }
     if (!this._serverReady) {
       try {
@@ -823,7 +826,7 @@ export class BLEInterface {
       if (window.ensureBLEPermissions) permsReady = await window.ensureBLEPermissions();
       else if (window.permissionShim && window.permissionShim.ensureBLEPermissions) permsReady = await window.permissionShim.ensureBLEPermissions();
       else permsReady = true;
-    } catch (e) { console.warn('[BLEInterface] Shim no disponible para scan, continuing...'); permsReady = true; }
+    } catch (e) { console.warn('[BLEInterface] Shim no disponible para scan, continuing...', permsReady = true); }
     if (!permsReady) { this.showToast('Permisos BLE requeridos. Concede los permisos en Ajustes.', 'warning', 5000); return; }
     try {
       if (this.isScanning) {
@@ -1168,3 +1171,4 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
+}
