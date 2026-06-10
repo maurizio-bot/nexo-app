@@ -1,12 +1,8 @@
 /**
- * NEXO App v6.0-IDENTITY
- * Coordinado con main.js v10.0-IDENTITY + ble_interface.js v3.7.1-HEALTH-FIX + TheStream v2.6
- * * CAMBIOS v6.0-IDENTITY:
- * 1) sendMessage acepta {content, recipient, conversationId} — propaga conversationId a todas las capas
- * 2) DEDUP por conversationId + fingerprint — mensajes propios se marcan con _own=true y conversationId
- * 3) _handleMessage filtra por conversationId activa antes de notificar onMessage
- * 4) Anti-eco: fingerprint propio vs fingerprint entrante comparados por conversationId
- * 5) Compatibilidad backward: msg string o msg object funciona igual
+ * NEXO App v6.0.1-FIX
+ * FIX: Anti-eco por messageId (no por fingerprint de contenido)
+ * FIX: Eliminar dedup duplicado en _bleMessageHandler y _handleMessage
+ * Coordinado con main.js v10.0-IDENTITY + ble_interface.js v3.7.2
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -47,14 +43,6 @@ const DEBUG = {
   setIdentity: (id) => id && rem.updateIdentity(id)
 };
 
-// DEDUP: fingerprint por conversationId + contenido + bucket temporal
-function _messageFingerprint(conversationId, content, timestamp) {
-  const nid = String(conversationId || '').toLowerCase().replace(/[:-]/g, '').trim();
-  const c = String(content || '').trim().toLowerCase().substring(0, 100);
-  const bucket = Math.floor((timestamp || Date.now()) / 30000);
-  return `fp:${nid}:${bucket}:${c}`;
-}
-
 export class NexoApp {
   constructor(config = {}) {
     this.config = {
@@ -84,18 +72,18 @@ export class NexoApp {
     this._bleChatHandler = null;
     this._bleMessageHandler = null;
 
-    // DEDUP v6.0: Set con TTL automatico
-    this._seenFingerprints = new Set();
-    this._maxFingerprints = 500;
-    this._fingerprintTTL = 300000;
+    // FIX v6.0.1: Set de messageIds propios para anti-eco REAL
+    this._ownMessageIds = new Set();
+    this._maxOwnMessageIds = 200;
+
+    // Dedup general por messageId visto (cualquier origen)
+    this._seenMessageIds = new Set();
+    this._maxSeenMessageIds = 500;
 
     // Anti-bounce envio
     this._isSendingMessage = false;
 
-    // v6.0: Registro de fingerprints propios por conversationId
-    this._ownFingerprints = new Map(); // conversationId -> {fp, time}
-
-    DEBUG.log('NEXO v6.0-IDENTITY iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v6.0.1-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -107,7 +95,7 @@ export class NexoApp {
     try {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
-      const nativeAvailable = !!(window.Capacizer && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
+      const nativeAvailable = !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
@@ -115,7 +103,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v6.0-IDENTITY Ready', 'APP_READY');
+      DEBUG.success('NEXO v6.0.1-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -199,14 +187,14 @@ export class NexoApp {
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
       this._bleMessageHandler = (e) => {
-        const { deviceId, content, senderName, messageId, source, timestamp, conversationId, fingerprint } = e.detail;
+        const { deviceId, content, senderName, messageId, source, timestamp, conversationId } = e.detail;
         const contentPreview = (content && content.substring) ? content.substring(0, 30) : '';
         console.log('[BLE_RECV] Mensaje de ' + senderName + ': ' + contentPreview + '...');
 
         const nid = this._normalizeId(deviceId);
         const convId = conversationId || nid;
 
-        // Resolver nombre
+        // Resolver nombre (sin cambios)
         let resolvedName = senderName;
         const isGeneric = !resolvedName || resolvedName === 'NEXO Peer' || resolvedName === 'Unknown';
         if (isGeneric) {
@@ -232,13 +220,9 @@ export class NexoApp {
           }
         }
 
-        // v6.0: Usar fingerprint del evento o calcularlo con conversationId
-        const fp = fingerprint || _messageFingerprint(convId, content, timestamp);
-
-        // Anti-eco v6.0: verificar si este fingerprint coincide con un envio propio reciente de ESTA conversation
-        const ownFp = this._ownFingerprints.get(convId);
-        if (ownFp && fp === ownFp.fp && (Date.now() - ownFp.time) < 30000) {
-          console.log(`[BLE_RECV] ECO detectado y filtrado para conv ${convId}: ${fp.substring(0,40)}`);
+        // FIX v6.0.1: Anti-eco por messageId propio (NO por fingerprint de contenido)
+        if (messageId && this._ownMessageIds.has(messageId)) {
+          console.log(`[BLE_RECV] ECO REAL filtrado (messageId propio): ${messageId}`);
           return;
         }
 
@@ -250,7 +234,6 @@ export class NexoApp {
           source: 'ble_direct',
           timestamp: timestamp || Date.now(),
           messageId,
-          fingerprint: fp,
           _own: false
         }, 'ble_direct');
       };
@@ -341,17 +324,14 @@ export class NexoApp {
       const activeId = this.activeContact && this.activeContact.id ? this.activeContact.id : 'self';
       const convId = this._normalizeId(conversationId || activeId);
 
-      // v6.0: Calcular fingerprint ANTES de enviar, guardar por conversationId
-      const fp = _messageFingerprint(convId, content, Date.now());
-      this._ownFingerprints.set(convId, { fp: fp, time: Date.now() });
-
-      // Limpiar fingerprints antiguos (>5min)
-      const now = Date.now();
-      for (const [key, val] of this._ownFingerprints.entries()) {
-        if (now - val.time > 300000) this._ownFingerprints.delete(key);
+      // FIX v6.0.1: Generar messageId y guardar en _ownMessageIds ANTES de enviar
+      const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      this._ownMessageIds.add(messageId);
+      if (this._ownMessageIds.size > this._maxOwnMessageIds) {
+        const first = this._ownMessageIds.values().next().value;
+        this._ownMessageIds.delete(first);
       }
 
-      const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const ownMessage = { 
         content, 
         _own: true, 
@@ -361,8 +341,7 @@ export class NexoApp {
         messageId,
         sender: 'Tu',
         senderName: 'Tu',
-        conversationId: convId,
-        fingerprint: fp
+        conversationId: convId
       };
 
       // Notificar via onMessage — main.js renderiza en TheStream
@@ -409,49 +388,37 @@ export class NexoApp {
     finally { this._isSendingMessage = false; }
   }
 
-  // v6.0: DEDUP UNIFICADO — un solo punto de entrada para TODOS los mensajes
+  // FIX v6.0.1: DEDUP UNIFICADO — un solo punto de entrada, por messageId
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      if (msg._own || msg.isMe) return;
+      // Filtrar mensajes propios (marcados como _own o isMe)
+      if (msg._own === true || msg.isMe === true) return;
 
-      const contentStr = String(msg.content || msg.text || '');
+      const messageId = msg.messageId;
+
+      // FIX v6.0.1: Dedup por messageId (único y confiable)
+      if (messageId && this._seenMessageIds.has(messageId)) {
+        DEBUG.log(`Deduplicado por messageId: ${messageId}`, 'debug', 'DEDUP_ID');
+        return;
+      }
+
+      if (messageId) {
+        this._seenMessageIds.add(messageId);
+        if (this._seenMessageIds.size > this._maxSeenMessageIds) {
+          const first = this._seenMessageIds.values().next().value;
+          this._seenMessageIds.delete(first);
+        }
+      }
+
       const convId = this._normalizeId(msg.conversationId || msg.sender || msg.senderName || msg.deviceId || 'unknown');
-      const ts = msg.timestamp || Date.now();
-
-      const fp = msg.fingerprint || _messageFingerprint(convId, contentStr, ts);
-
-      // Anti-eco v6.0: verificar contra fingerprint propio de esta conversation
-      const ownFp = this._ownFingerprints.get(convId);
-      if (ownFp && fp === ownFp.fp && (Date.now() - ownFp.time) < 30000) {
-        DEBUG.log(`ECO filtrado (ownFingerprint match) para conv ${convId}`, 'debug', 'ECHO_FILTER');
-        return;
-      }
-
-      // Deduplicacion por fingerprint
-      if (msg.messageId && this._seenFingerprints.has(msg.messageId)) {
-        DEBUG.log(`Deduplicado por messageId de ${source}`, 'debug', 'DEDUP_ID');
-        return;
-      }
-      if (this._seenFingerprints.has(fp)) {
-        DEBUG.log(`Deduplicado por fingerprint ${fp.substring(0,40)} de ${source}`, 'debug', 'DEDUP_FP');
-        return;
-      }
-
-      this._seenFingerprints.add(fp);
-      if (msg.messageId) this._seenFingerprints.add(msg.messageId);
-
-      // Limitar tamaño del Set
-      if (this._seenFingerprints.size > this._maxFingerprints) {
-        const arr = Array.from(this._seenFingerprints);
-        const toRemove = arr.length - this._maxFingerprints;
-        for (let i = 0; i < toRemove; i++) this._seenFingerprints.delete(arr[i]);
-      }
-
-      const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
-
-      // v6.0: Agregar conversationId si falta
-      if (!enriched.conversationId) enriched.conversationId = convId;
+      const enriched = { 
+        ...msg, 
+        _source: source, 
+        _ts: Date.now(), 
+        _id: Math.random().toString(36).substr(2, 9),
+        conversationId: msg.conversationId || convId
+      };
 
       this.config.onMessage(enriched);
 
@@ -476,8 +443,8 @@ export class NexoApp {
     if (this.wsClient) { try { if (this.wsClient.disconnect) this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
     if (this.vault) { try { if (this.vault.destroy) this.vault.destroy(); } catch(e) {} this.vault = null; }
     this._resources.timers.forEach(t => clearTimeout(t));
-    this._seenFingerprints.clear();
-    this._ownFingerprints.clear();
+    this._ownMessageIds.clear();
+    this._seenMessageIds.clear();
     DEBUG.success('Cleanup complete', 'DESTROY_OK');
   }
 
