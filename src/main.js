@@ -1,10 +1,9 @@
 /**
- * src/main.js - NEXO v10.0-IDENTITY-FIX3
+ * src/main.js - NEXO v10.0.2-FIX
+ * FIX: Polling de status-indicator cada 3s para reflejar estado BLE real
  * Orquestador principal: 3 vistas (conversaciones, chat, crear-grupo)
  * DEDUP DEFINITIVO: unico punto de renderizado via TheStream
  * NAP 2.0 Certified
- * FIX3: Corregido ReferenceError en onMessage (normalizedId/name/type no definidos)
- * FIX3: setConversationId() sincronizado en _openChat y btn-back
  */
 
 import './styles/critical.css';
@@ -15,7 +14,7 @@ import { ensureBLEPermissions, getPermissionShim, getShimStatus, getShimHealth }
 
 window.NEXO = {
   app: null, rem: null, diag: null,
-  version: '10.0-IDENTITY-FIX3',
+  version: '10.0.2-FIX',
   initialized: false, sessionStart: Date.now(),
   healthStatus: 'healthy',
   currentView: 'conversations',
@@ -187,7 +186,6 @@ function _openChat(convId, name, type) {
   if (subtitle) subtitle.textContent = type === 'group' ? `${conv.participants.length} participantes` : 'BLUETOOTH';
 
   if (window.NEXO.app && window.NEXO.app.stream) {
-    // FIX3: Sincronizar conversationId en TheStream antes de renderizar
     window.NEXO.app.stream.setConversationId(normalizedId);
     window.NEXO.app.stream.clear();
     conv.messages.forEach(msg => {
@@ -200,7 +198,6 @@ function _openChat(convId, name, type) {
 
 // ==================== INICIALIZACION ====================
 document.addEventListener('DOMContentLoaded', async () => {
-  // FIX3: Ocultar splash INMEDIATAMENTE al cargar el DOM, antes de cualquier otra cosa
   _forceHideSplash();
 
   try {
@@ -268,14 +265,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// FIX3: Safety timeout INCONDICIONAL — siempre oculta el splash a los 20s
 const SAFETY_TIMEOUT = setTimeout(() => {
   rem.warn('Timeout seguridad (20s) - forzando continuar', 'INIT_TIMEOUT');
   _forceHideSplash();
   document.body.classList.add('nexo-force-ready');
 }, 20000);
 
-// FIX3: Verificacion periodica de splash durante 30s
 const SPLASH_CHECK_INTERVAL = setInterval(() => {
   const splash = document.getElementById('splash-native');
   if (splash && splash.style.display !== 'none') {
@@ -290,7 +285,6 @@ function _setupNavigation() {
   if (btnBack) {
     btnBack.addEventListener('click', () => {
       window.NEXO.activeConversationId = null;
-      // FIX3: Limpiar conversationId en TheStream al salir del chat
       if (window.NEXO.app && window.NEXO.app.stream) {
         window.NEXO.app.stream.setConversationId(null);
       }
@@ -426,7 +420,6 @@ async function initializeNexoApp() {
           return;
         }
 
-        // FIX3: Usar convId, msg.senderName y 'individual' en lugar de variables inexistentes
         const conv = _getOrCreateConversation(convId, msg.senderName || msg.sender || 'NEXO Peer', 'individual');
 
         const messageObj = {
@@ -476,7 +469,7 @@ async function initializeNexoApp() {
       }
     };
 
-    rem.info('NEXO App v5.1.1-HEALTH-FIX', 'NEXO_INIT');
+    rem.info('NEXO App v6.0.1-FIX', 'NEXO_INIT');
 
     window.NEXO.app = new NexoApp(nexoConfig);
     await window.NEXO.app.init();
@@ -512,7 +505,11 @@ async function initializeNexoApp() {
       });
     }
 
-    rem.success('NEXO v10.0-IDENTITY-FIX3 Ready', 'INIT_OK');
+    // FIX v10.0.2: Polling de status-indicator cada 3 segundos
+    _updateBLEBadge();
+    setInterval(() => _updateBLEBadge(), 3000);
+
+    rem.success('NEXO v10.0.2-FIX Ready', 'INIT_OK');
     _forceHideSplash();
     _showView('conversations');
 
@@ -526,11 +523,9 @@ async function initializeNexoApp() {
 
 // ==================== FUNCIONES AUXILIARES ====================
 
-// FIX3: _forceHideSplash ahora es AGRESIVA e INMEDIATA
 function _forceHideSplash() {
   const splash = document.getElementById('splash-native');
   if (splash) {
-    // Ocultar inmediatamente sin transicion
     splash.style.display = 'none';
     splash.style.opacity = '0';
     splash.style.visibility = 'hidden';
@@ -552,18 +547,36 @@ function _toggleVaultUI(isOpen) {
 
 function _updateBLEBadge() {
   const indicator = document.getElementById('status-indicator');
-  if (indicator && window.NEXO && window.NEXO.app) {
-    const status = window.NEXO.app.getStatus();
-    if (status.mode === 'p2p_ble' || status.mode === 'P2P_BLE') {
-      indicator.className = 'online';
-      indicator.textContent = 'BLE';
-    } else if (status.mode === 'offline' || status.mode === 'OFFLINE') {
-      indicator.className = 'offline';
-      indicator.textContent = 'OFF';
-    } else {
-      indicator.className = 'online';
-      indicator.textContent = status.mode;
+  if (!indicator) return;
+  
+  // FIX v10.0.2: Verificar estado real del plugin nativo
+  let mode = 'OFFLINE';
+  try {
+    if (window.NEXO && window.NEXO.app) {
+      const status = window.NEXO.app.getStatus();
+      mode = status.mode || 'OFFLINE';
+      
+      // Si hay dispositivos conectados en ble_interface, forzar BLE
+      if (window.NEXO.app.bleInterface && window.NEXO.app.bleInterface.connectedDevices) {
+        const connectedCount = window.NEXO.app.bleInterface.connectedDevices.size;
+        if (connectedCount > 0) {
+          mode = 'P2P_BLE';
+        }
+      }
     }
+  } catch (e) {
+    mode = 'OFFLINE';
+  }
+
+  if (mode === 'p2p_ble' || mode === 'P2P_BLE') {
+    indicator.className = 'online';
+    indicator.textContent = 'BLE';
+  } else if (mode === 'offline' || mode === 'OFFLINE') {
+    indicator.className = 'offline';
+    indicator.textContent = 'OFF';
+  } else {
+    indicator.className = 'online';
+    indicator.textContent = mode;
   }
 }
 
