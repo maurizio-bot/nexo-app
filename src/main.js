@@ -1,25 +1,22 @@
 /**
- * src/main.js - NEXO v10.0-IDENTITY
- * Orquestador principal: 3 vistas (conversaciones, chat, crear-grupo)
- * DEDUP DEFINITIVO: unico punto de renderizado via TheStream
- * NAP 2.0 Certified
+ * src/main.js - NEXO v9.1-961-FIX
+ * Orquestador principal para build #961
+ * SOLO cambio: permisos via plugin nativo directo (sin Shim)
  */
 
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
-import { ensureBLEPermissions, getPermissionShim, getShimStatus, getShimHealth } from './core/NexoPermissionShim.js';
 
 window.NEXO = {
   app: null, rem: null, diag: null,
-  version: '10.0-IDENTITY',
+  version: '9.1-961-FIX',
   initialized: false, sessionStart: Date.now(),
   healthStatus: 'healthy',
-  // v4.0: Estado de navegacion
   currentView: 'conversations',
   activeConversationId: null,
-  conversations: new Map() // conversationId -> {name, type, messages[], lastMessage, unread, participants[]}
+  conversations: new Map()
 };
 
 window.NEXO_REM = rem;
@@ -38,7 +35,6 @@ const SAFETY_TIMEOUT = setTimeout(() => {
   }
 }, 20000);
 
-// ==================== FRESHNESS ====================
 function _checkAppFreshness() {
   try {
     const lastSession = localStorage.getItem(SESSION_STORAGE_KEY);
@@ -47,10 +43,7 @@ function _checkAppFreshness() {
       const delta = now - parseInt(lastSession, 10);
       if (delta > FRESHNESS_THRESHOLD_MS) {
         rem.warn(`[HEALTH] Reapertura tras ${Math.round(delta/60000)}min. Limpiando estado.`, 'FRESHNESS');
-        localStorage.removeItem('nexo_shim_v2_state');
         localStorage.removeItem('nexo_ble_prefs');
-        const shim = getPermissionShim();
-        if (shim) { shim.state.checked = false; shim.state.granted = false; shim._cache.clear(); }
         return { isFresh: false };
       }
     }
@@ -63,7 +56,6 @@ setInterval(() => {
   try { localStorage.setItem(SESSION_STORAGE_KEY, Date.now().toString()); } catch (e) {}
 }, 30000);
 
-// ==================== PERSISTENCIA DE CONVERSACIONES ====================
 function _loadConversations() {
   try {
     const raw = localStorage.getItem(CONVERSATIONS_KEY);
@@ -112,7 +104,6 @@ function _normId(id) {
   return id.toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
 
-// ==================== RENDER LISTA DE CONVERSACIONES ====================
 function _renderConversationsList() {
   const list = document.getElementById('conversations-list');
   if (!list) return;
@@ -131,7 +122,7 @@ function _renderConversationsList() {
     item.className = 'conversation-item' + (conv.unread > 0 ? ' unread' : '');
     item.dataset.convId = conv.id;
 
-    const typeIcon = conv.type === 'group' ? '👥' : '👤';
+    const typeIcon = conv.type === 'group' ? '則' : '側';
     const lastMsg = conv.lastMessage ? conv.lastMessage.content : 'Sin mensajes';
     const time = conv.lastMessage ? _formatTime(conv.lastMessage.timestamp) : '';
     const unreadBadge = conv.unread > 0 ? `<span class="unread-badge">${conv.unread}</span>` : '';
@@ -164,7 +155,6 @@ function _formatTime(timestamp) {
   return date.toLocaleDateString();
 }
 
-// ==================== NAVEGACION DE VISTAS ====================
 function _showView(viewName) {
   window.NEXO.currentView = viewName;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -182,23 +172,19 @@ function _openChat(convId, name, type) {
   const conv = _getOrCreateConversation(normalizedId, name, type);
   window.NEXO.activeConversationId = normalizedId;
 
-  // Reset unread
   if (conv.unread > 0) {
     conv.unread = 0;
     _saveConversations();
     _renderConversationsList();
   }
 
-  // Actualizar header
   const nameInput = document.getElementById('chat-contact-name');
   const subtitle = document.getElementById('chat-contact-subtitle');
   if (nameInput) nameInput.value = conv.name;
   if (subtitle) subtitle.textContent = type === 'group' ? `${conv.participants.length} participantes` : 'BLUETOOTH';
 
-  // Limpiar y cargar mensajes de esta conversacion
   if (window.NEXO.app && window.NEXO.app.stream) {
     window.NEXO.app.stream.clear();
-    // Cargar mensajes previos de la conversacion
     conv.messages.forEach(msg => {
       window.NEXO.app.stream.appendItems([msg], { scroll: false });
     });
@@ -226,49 +212,64 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.NEXO.rem = rem;
     rem.init();
-    rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
+    rem.info('REM v2.1 initialized', 'REM_INIT');
 
-    // Cargar conversaciones persistidas
     _loadConversations();
-
-    // Setup navegacion
     _setupNavigation();
 
-    rem.info('[Shim] Verificando permisos BLE...', 'SHIM_CHECK');
+    // FIX #961: Permisos via plugin nativo directo (sin Shim)
+    rem.info('[BLE] Verificando permisos via plugin nativo...', 'BLE_PERM_CHECK');
 
     let permissionsGranted = false;
     try {
-      const permPromise = ensureBLEPermissions();
-      const permTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('PERM_TIMEOUT')), 12000)
-      );
-      permissionsGranted = await Promise.race([permPromise, permTimeout]);
+      const plugin = window.Capacitor?.Plugins?.NexoBLE;
+      if (plugin && plugin.checkBLEStatus) {
+        const status = await plugin.checkBLEStatus();
+        if (status && status.allGranted) {
+          permissionsGranted = true;
+          rem.success('[BLE] Permisos ya concedidos', 'BLE_PERM_OK');
+        } else {
+          rem.info('[BLE] Solicitando permisos...', 'BLE_PERM_REQ');
+          await plugin.initializeBLE();
+          // Esperar callback de permisos
+          permissionsGranted = await new Promise((resolve) => {
+            const handler = (e) => {
+              window.removeEventListener('nexo-permissions-granted', handler);
+              resolve(true);
+            };
+            window.addEventListener('nexo-permissions-granted', handler);
+            // Timeout fallback 10s
+            setTimeout(() => {
+              window.removeEventListener('nexo-permissions-granted', handler);
+              resolve(false);
+            }, 10000);
+          });
+        }
+      } else {
+        rem.warn('[BLE] Plugin nativo no disponible, continuando sin BLE', 'BLE_NO_PLUGIN');
+        permissionsGranted = true; // Continuar sin BLE
+      }
     } catch (permErr) {
-      rem.warn(`[Shim] Permisos timeout: ${permErr.message}`, 'SHIM_WARN');
+      rem.warn(`[BLE] Error permisos: ${permErr.message}`, 'BLE_PERM_ERR');
       permissionsGranted = false;
     }
 
     if (permissionsGranted) {
-      rem.success('[Shim] Permisos BLE concedidos', 'SHIM_OK');
       await initializeNexoApp();
     } else {
-      rem.warn('[Shim] Permisos BLE pendientes', 'SHIM_REQUIRED');
+      rem.warn('[BLE] Permisos pendientes - mostrando overlay', 'BLE_PERM_PENDING');
       NEXO_DIAG.hideSplash();
       _showPermissionOverlay();
-      _startPermissionPolling();
     }
 
     window.addEventListener('nexo-permissions-granted', async (e) => {
       if (!window.NEXO.initialized) {
-        const shimSource = (e.detail && e.detail.source) || 'event';
-        rem.success(`[Shim] Permisos via ${shimSource}`, 'SHIM_EVENT_OK');
-        _stopPermissionPolling();
+        rem.success('[BLE] Permisos concedidos via evento', 'BLE_PERM_EVENT');
         _hidePermissionOverlay();
         await initializeNexoApp();
       }
     });
 
-    // FIX v10.0.2: Listener para abrir chat desde BLE panel
     window.addEventListener('nexo:ble:openChat', (e) => {
       const detail = e.detail || {};
       const contactId = detail.contactId || detail.address || '';
@@ -289,9 +290,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// ==================== NAVEGACION EVENT LISTENERS ====================
 function _setupNavigation() {
-  // Boton volver al chat
   const btnBack = document.getElementById('btn-back');
   if (btnBack) {
     btnBack.addEventListener('click', () => {
@@ -300,7 +299,6 @@ function _setupNavigation() {
     });
   }
 
-  // Boton nuevo grupo
   const btnNewGroup = document.getElementById('btn-new-group');
   if (btnNewGroup) {
     btnNewGroup.addEventListener('click', () => {
@@ -309,13 +307,11 @@ function _setupNavigation() {
     });
   }
 
-  // Boton volver de crear grupo
   const btnGroupBack = document.getElementById('btn-group-back');
   if (btnGroupBack) {
     btnGroupBack.addEventListener('click', () => _showView('conversations'));
   }
 
-  // Boton crear grupo confirmar
   const btnCreateConfirm = document.getElementById('btn-create-group-confirm');
   if (btnCreateConfirm) {
     btnCreateConfirm.addEventListener('click', () => {
@@ -339,7 +335,6 @@ function _setupNavigation() {
     });
   }
 
-  // Botones de chat (llamada, video, adjuntar, sticker)
   const btnCall = document.getElementById('btn-call');
   if (btnCall) btnCall.addEventListener('click', () => rem.info('Llamada - proximamente', 'CALL_PLACEHOLDER'));
 
@@ -356,7 +351,6 @@ function _setupNavigation() {
         const file = e.target.files[0];
         if (!file) return;
         rem.info(`Archivo seleccionado: ${file.name}`, 'FILE_SELECTED');
-        // TODO: Implementar envio de archivo
       };
       input.click();
     });
@@ -365,7 +359,6 @@ function _setupNavigation() {
   const btnSticker = document.getElementById('btn-sticker');
   if (btnSticker) btnSticker.addEventListener('click', () => rem.info('Stickers - proximamente', 'STICKER_PLACEHOLDER'));
 
-  // Boton BLE panel
   const btnBlePanel = document.getElementById('btn-ble-panel');
   if (btnBlePanel) {
     btnBlePanel.addEventListener('click', () => {
@@ -386,7 +379,6 @@ function _renderGroupContacts() {
     stored.forEach(c => contacts.push({ id: _normId(c.id || c.address), name: c.name || 'NEXO Device' }));
   } catch (e) {}
 
-  // Tambien agregar dispositivos conectados
   if (window.NEXO.app && window.NEXO.app.bleInterface) {
     const ble = window.NEXO.app.bleInterface;
     if (ble.connectedDevices) {
@@ -415,19 +407,16 @@ function _renderGroupContacts() {
   });
 }
 
-// ==================== NexoApp Initialization ====================
 async function initializeNexoApp() {
   try {
     const nexoConfig = {
       relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
       bleTimeout: 10000, enableGestures: true, enableMesh: true,
 
-      // v4.0: UNICO punto de entrada para mensajes - TheStream renderiza TODO
       onMessage: (msg) => {
         const contentPreview = (msg.content && msg.content.substring) ? msg.content.substring(0, 30) : '';
         console.log('Mensaje:', msg.senderName || msg.sender, contentPreview);
 
-        // Determinar conversationId
         let convId = msg.conversationId;
         if (!convId && msg.sender) convId = _normId(msg.sender);
         if (!convId && msg.deviceId) convId = _normId(msg.deviceId);
@@ -437,10 +426,8 @@ async function initializeNexoApp() {
           return;
         }
 
-        // Crear/obtener conversacion
         const conv = _getOrCreateConversation(convId, msg.senderName || msg.sender || 'NEXO Peer', 'individual');
 
-        // Guardar mensaje en conversacion
         const messageObj = {
           id: msg.messageId || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
           content: msg.content || msg.text || '',
@@ -454,18 +441,15 @@ async function initializeNexoApp() {
         };
 
         conv.messages.push(messageObj);
-        if (conv.messages.length > 500) conv.messages = conv.messages.slice(-500); // limitar
+        if (conv.messages.length > 500) conv.messages = conv.messages.slice(-500);
 
-        // Actualizar preview
         _updateConversationLastMessage(convId, messageObj.content, messageObj.timestamp, messageObj.isMe);
 
-        // Renderizar SOLO si estamos en esta conversacion
         if (window.NEXO.currentView === 'chat' && window.NEXO.activeConversationId === convId) {
           if (window.NEXO.app && window.NEXO.app.stream) {
             window.NEXO.app.stream.appendItems([messageObj], { scroll: true });
           }
         } else if (!messageObj.isMe) {
-          // Incrementar unread si no estamos en esta conversacion
           conv.unread = (conv.unread || 0) + 1;
           _saveConversations();
           _renderConversationsList();
@@ -485,24 +469,22 @@ async function initializeNexoApp() {
       },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
-        onReact: (id) => rem.success('Reaccion añadida', 'REACT_OK'),
+        onReact: (id) => rem.success('Reaccion aﾃｱadida', 'REACT_OK'),
         onReply: (id) => { const rid = (id && id.substr) ? id.substr(0, 8) : ''; _focusInput('@' + rid + ' '); },
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
     };
 
-    rem.info('NEXO App v5.1.1-HEALTH-FIX', 'NEXO_INIT');
+    rem.info('NEXO App v5.0.3-ARCH', 'NEXO_INIT');
 
     window.NEXO.app = new NexoApp(nexoConfig);
     await window.NEXO.app.init();
     window.NEXO.initialized = true;
 
-    // Setup stream con conversationId
     if (window.NEXO.app.stream) {
       window.NEXO.app.stream.setConversationId(window.NEXO.activeConversationId);
     }
 
-    // Setup send button
     const sendBtn = document.getElementById('send-btn');
     const msgInput = document.getElementById('message-input');
     if (sendBtn && msgInput) {
@@ -529,7 +511,7 @@ async function initializeNexoApp() {
       });
     }
 
-    rem.success('NEXO v10.0-IDENTITY Ready', 'INIT_OK');
+    rem.success('NEXO v9.1-961-FIX Ready', 'INIT_OK');
     NEXO_DIAG.hideSplash();
     _showView('conversations');
 
@@ -541,8 +523,6 @@ async function initializeNexoApp() {
     rem.error('Error fatal: ' + error.message, 'FATAL_INIT');
   }
 }
-
-// ==================== FUNCIONES AUXILIARES ====================
 
 function _forceHideSplash() {
   const splash = document.getElementById('splash-native');
@@ -589,20 +569,12 @@ function _focusInput(text) {
 }
 
 function _showPermissionOverlay() {
-  console.log('[main] Permisos pendientes - overlay delegado a PermissionShim');
+  console.log('[main] Permisos pendientes');
 }
 
 function _hidePermissionOverlay() {
   const overlay = document.getElementById('nexo-perm-overlay');
   if (overlay) overlay.style.display = 'none';
-}
-
-function _startPermissionPolling() {
-  console.log('[main] Permission polling delegado a PermissionShim');
-}
-
-function _stopPermissionPolling() {
-  // No-op
 }
 
 function _startHealthMonitor() {
@@ -628,5 +600,4 @@ function _ensureDOMStructure() {
   }
 }
 
-// ==================== EXPORTS ====================
 export { NEXO_DIAG, DEBUG };
