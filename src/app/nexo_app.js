@@ -1,9 +1,7 @@
 /**
- * NEXO App v5.0.3-ARCH
+ * NEXO App v5.0.3-ARCH-FIX
  * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH + ble_permissions.js v4.0-ARCH
- * FIX v5.0.3-ARCH: Enriquecer mensajes BLE con senderName resuelto desde bleInterface
- *      para evitar "Unknown" y MAC cruda en lista de conversaciones de TheStream.
- *      Disparar nexo:ble:closeChat al limpiar contacto activo.
+ * FIX #961: checkBLEStatus + initializeBLE en _initPhase5_BLEUI para permisos nativos
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -75,7 +73,7 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.3-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.3-ARCH-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -95,7 +93,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.3-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.3-ARCH-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -159,6 +157,22 @@ export class NexoApp {
   async _initPhase5_BLEUI() {
     DEBUG.setPhase('BLE_UI');
     try {
+      // FIX #961: Inicializar permisos BLE nativo antes de UI
+      const plugin = window.Capacitor?.Plugins?.NexoBLE;
+      if (plugin && plugin.checkBLEStatus) {
+        try {
+          const status = await plugin.checkBLEStatus();
+          if (!status || !status.allGranted) {
+            DEBUG.log('[BLE] Permisos pendientes, solicitando...', 'info', 'BLE_PERM_INIT');
+            await plugin.initializeBLE();
+          } else {
+            DEBUG.log('[BLE] Permisos ya concedidos', 'info', 'BLE_PERM_OK');
+          }
+        } catch (permErr) {
+          DEBUG.warn(`BLE perm check failed: ${permErr.message}`, 'BLE_PERM_WARN');
+        }
+      }
+
       const meshInstance = this.nordicMesh || this.mesh || null;
       this.bleInterface = initBLEInterface(meshInstance);
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
@@ -182,8 +196,6 @@ export class NexoApp {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         
-        // FIX v5.0.3-ARCH: Resolver senderName robustamente desde bleInterface
-        // para evitar "Unknown" y MAC cruda en lista de conversaciones
         let resolvedName = senderName;
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           const nid = (deviceId || '').toString().toLowerCase().trim();
