@@ -122,7 +122,7 @@ function _renderConversationsList() {
     item.className = 'conversation-item' + (conv.unread > 0 ? ' unread' : '');
     item.dataset.convId = conv.id;
 
-    const typeIcon = conv.type === 'group' ? '則' : '側';
+    const typeIcon = conv.type === 'group' ? '👥' : '👤';
     const lastMsg = conv.lastMessage ? conv.lastMessage.content : 'Sin mensajes';
     const time = conv.lastMessage ? _formatTime(conv.lastMessage.timestamp) : '';
     const unreadBadge = conv.unread > 0 ? `<span class="unread-badge">${conv.unread}</span>` : '';
@@ -469,7 +469,7 @@ async function initializeNexoApp() {
       },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
-        onReact: (id) => rem.success('Reaccion aﾃｱadida', 'REACT_OK'),
+        onReact: (id) => rem.success('Reaccion añadida', 'REACT_OK'),
         onReply: (id) => { const rid = (id && id.substr) ? id.substr(0, 8) : ''; _focusInput('@' + rid + ' '); },
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
