@@ -1,7 +1,7 @@
-/**
- * NEXO App v5.0.4-ARCH-FIX
+nexo_app_js = '''/**
+ * NEXO App v5.0.5-ARCH-FIX
  * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH
- * FIX v5.0.4: sendMessage content string + BLE UI con plugin nativo directo
+ * FIX v5.0.5: sendMessage usa activeContact correctamente + guard en stream
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -73,7 +73,7 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.4-ARCH-FIX iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.5-ARCH-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -86,7 +86,6 @@ export class NexoApp {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
       const nativeAvailable = !!(window.Capacitor?.Plugins?.NexoBLE);
-      // FIX v5.0.4: Inicializar mesh fallback SOLO si no hay nativo
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
@@ -94,7 +93,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.4-ARCH-FIX Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.5-ARCH-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -158,7 +157,6 @@ export class NexoApp {
   async _initPhase5_BLEUI() {
     DEBUG.setPhase('BLE_UI');
     try {
-      // FIX v5.0.4: Inicializar permisos BLE nativo antes de UI
       const plugin = window.Capacitor?.Plugins?.NexoBLE;
       if (plugin && plugin.checkBLEStatus) {
         try {
@@ -174,11 +172,9 @@ export class NexoApp {
         }
       }
 
-      // FIX v5.0.4: Si hay plugin nativo, pasar objeto wrapper en lugar de null
       const nativePlugin = window.Capacitor?.Plugins?.NexoBLE;
       let meshInstance = this.nordicMesh || this.mesh || null;
       
-      // Si hay plugin nativo pero no hay mesh, crear wrapper mínimo
       if (!meshInstance && nativePlugin) {
         meshInstance = { 
           nativePlugin: nativePlugin,
@@ -189,7 +185,6 @@ export class NexoApp {
 
       this.bleInterface = initBLEInterface(meshInstance);
       if (this.bleInterface) {
-        // Asegurar que bleInterface tenga referencia al plugin nativo
         if (nativePlugin && !this.bleInterface.nativePlugin) {
           this.bleInterface.nativePlugin = nativePlugin;
         }
@@ -261,7 +256,14 @@ export class NexoApp {
     if (streamEl && vaultEl) { try { this.vaultSlider = new CoreGestureEngine(streamEl, vaultEl); } catch (e) {} }
     DEBUG.setPhase('STREAM');
     const container = document.getElementById('messages-container');
-    if (container) { try { this.stream = new TheStream(container, {}); } catch (e) {} }
+    if (container) { 
+      try { 
+        this.stream = new TheStream(container, {}); 
+      } catch (e) {
+        DEBUG.warn(`TheStream init failed: ${e.message}`, 'STREAM_WARN');
+        this.stream = null;
+      }
+    }
   }
 
   _handleNordicPeer(peer) { if (!peer?.id) return; this.blePeers.set(peer.id, { ...peer, discoveredAt: Date.now() }); }
@@ -278,7 +280,6 @@ export class NexoApp {
   async _sendViaBLE(deviceId, content) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin no disponible');
-    // FIX v5.0.4: Asegurar que content sea string
     const messageStr = typeof content === 'string' ? content : JSON.stringify(content);
     console.log(`[BLE_SEND] Enviando a ${deviceId?.substring?.(0,8)}...`);
     try {
@@ -299,7 +300,6 @@ export class NexoApp {
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true, messageId }, 'self');
 
-      // FIX v5.0.4: Extraer content correctamente, siempre como string
       let content = '';
       if (typeof msg === 'string') {
         content = msg;
@@ -311,9 +311,15 @@ export class NexoApp {
       }
       
       const recipient = msg && typeof msg === 'object' ? msg.recipient : null;
-      const targetId = recipient || this.activeContact?.id;
-      const targetTransport = this.activeContact?.transport;
+      const convId = msg && typeof msg === 'object' ? msg.conversationId : null;
+      
+      // FIX v5.0.5: Usar activeContact como fuente principal de target
+      let targetId = recipient || this.activeContact?.id || convId;
+      let targetTransport = this.activeContact?.transport;
 
+      console.log('[SEND] targetId:', targetId, 'targetTransport:', targetTransport, 'activeContact:', this.activeContact);
+
+      // Si hay targetId y transport BLE, enviar por BLE
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
@@ -324,13 +330,16 @@ export class NexoApp {
         }
       }
 
+      // Fallback: Si no hay activeContact pero hay dispositivos BLE conectados, usar el primero
       if (this.bleInterface?.nativePlugin) {
         try {
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
           const bleDevices = connectedResult?.devices || [];
           if (bleDevices.length > 0) {
-            await this._sendViaBLE(bleDevices[0].deviceId || bleDevices[0].id, content);
-            this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: bleDevices[0].deviceId, source: 'ble_direct', messageId }, 'self');
+            const device = bleDevices[0];
+            const deviceId = device.deviceId || device.id;
+            await this._sendViaBLE(deviceId, content);
+            this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: deviceId, source: 'ble_direct', messageId }, 'self');
             return true;
           }
         } catch (e) { DEBUG.log(`[BLE_SEND] Fallback falló: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
@@ -382,7 +391,10 @@ export class NexoApp {
       }
       const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
       this.config.onMessage(enriched);
-      if (this.stream?.appendItems) this.stream.appendItems([enriched]);
+      // FIX: Guard en stream.appendItems
+      if (this.stream && typeof this.stream.appendItems === 'function') {
+        this.stream.appendItems([enriched]);
+      }
     } catch (err) { DEBUG.error('APP_005', `Message handler: ${err.message}`); }
   }
 
@@ -419,3 +431,9 @@ export class NexoApp {
 
 export default NexoApp;
 export { DEBUG };
+'''
+
+with open('/mnt/agents/output/nexo_app.js', 'w') as f:
+    f.write(nexo_app_js)
+
+print(f"nexo_app.js guardado: {len(nexo_app_js)} chars")
