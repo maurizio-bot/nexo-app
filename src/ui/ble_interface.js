@@ -1,7 +1,7 @@
 /**
- * BLE Interface v3.7.0-HEALTH-FRAG
+ * BLE Interface v3.7.1-HEALTH-FIX
  * Ubicacion: src/ui/ble_interface.js
- * FIXES v3.7.0-HEALTH-FRAG:
+ * FIXES v3.7.1-HEALTH-FIX:
  * 1) Handshake de nombres: intercambio automatico de deviceName al conectar
  * 2) Fragmentacion/Reensamblaje: mensajes >160 chars se parten en chunks con UUID
  * 3) Badge BLE corregido: solo cuenta peers conectados, NO fragmentos ni eventos
@@ -10,7 +10,8 @@
  * 6) Name cache inteligente preservado
  * 7) _normId robusto preservado
  * 8) Health Monitor preservado
-     */
+ * 9) FIX: Error de sintaxis linea 1117 - variable 'max' no declarada eliminada
+ */
 export function initBLEInterface(bleMesh) {
 var instance = new BLEInterface(bleMesh).init();
 window.bleInterface = instance;
@@ -105,10 +106,10 @@ this._toastDebounceTimer = null;
 this._lastToastMessage = '';
 this._lastToastTime = 0;
 // v3.7.0-FRAG: Fragmentacion/Reensamblaje + Handshake de nombres
-this._peerNames = {};        // deviceId -> nombre real
+this._peerNames = {};
 this._handshakeSent = new Set();
-this._fragBuffers = {};      // uuid -> {chunks[], total, peerId, timer}
-this.MAX_PAYLOAD = 160;      // chars conservador para BLE MTU
+this._fragBuffers = {};
+this.MAX_PAYLOAD = 160;
 this.FRAG_TIMEOUT = 5000;
 this.FRAG_THROTTLE = 50;
 // HEALTH MONITOR v3.6.0
@@ -294,7 +295,6 @@ await this._safeNativeCall('sendMessage', { deviceId: id, message: hs }, 5000);
 this._handshakeSent.add(id);
 console.log('[BLE] Handshake enviado a', id);
 } catch (e) {
-max = 0;
 console.warn('[BLE] Handshake fallo:', e.message);
 }
 }
@@ -335,12 +335,10 @@ this._processCompletePayload(peerId, fullPayload, null, null, { source: 'ble_rea
 }
 _processCompletePayload(deviceId, content, senderName, messageId, data) {
 var self = this;
-// Resolver nombre: handshake > param > contact > connected > found > default
 var resolvedName = senderName || this._peerNames[deviceId] || _getContactName(deviceId)
 || (this.connectedDevices.get(deviceId) && this.connectedDevices.get(deviceId).name)
 || (this.foundDevices.get(deviceId) && this.foundDevices.get(deviceId).name)
 || 'NEXO Peer';
-// Deduplicacion por messageId
 if (messageId && this._receivedMessageIds.has(messageId)) return;
 if (messageId) {
 this._receivedMessageIds.add(messageId);
@@ -349,9 +347,7 @@ var first = this._receivedMessageIds.values().next().value;
 this._receivedMessageIds.delete(first);
 }
 }
-// Fingerprint unificado
 var fingerprint = _messageFingerprint(deviceId, content, (data && data.timestamp) || Date.now());
-// Emitir evento unico
 window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
 detail: {
 deviceId: deviceId,
@@ -364,28 +360,23 @@ conversationId: deviceId,
 fingerprint: fingerprint
 }
 }));
-// Badge: solo si no hay chat activo con este peer
 var activeId = _normId(this._activeChatDeviceId);
 if (activeId && activeId === deviceId) return;
 this.showToast('Mensaje de ' + resolvedName, 'info');
 this.newDevicesCount++;
 this.updateBadge();
 }
-// Metodo PUBLICO de envio con fragmentacion automatica
 async sendMessage(deviceId, content) {
 if (this.isDummyMode || this._destroyed) return;
 var id = _normId(deviceId);
-// Asegurar handshake
 if (!this._handshakeSent.has(id)) {
 await this._sendHandshake(id);
 }
-// Si cabe en un solo paquete, enviar directo
 if (content.length <= this.MAX_PAYLOAD) {
 await this._sendMessageNative(id, content);
 return;
 }
-// Fragmentar
-var chunkSize = this.MAX_PAYLOAD - 50; // margen para JSON metadata
+var chunkSize = this.MAX_PAYLOAD - 50;
 var chunks = this._chunkString(content, chunkSize);
 var fragId = this._generateUUID();
 var total = chunks.length;
@@ -406,7 +397,6 @@ await this._sleep(this.FRAG_THROTTLE);
 }
 async _loadLocalDeviceInfo() {
 if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) {
-// Fallback por user agent
 var ua = navigator.userAgent;
 if (ua.indexOf('SM-S928') !== -1) this.localDeviceName = 'Galaxy S24 Ultra';
 else if (ua.indexOf('SM-S918') !== -1) this.localDeviceName = 'Galaxy S23 Ultra';
@@ -564,7 +554,6 @@ this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived',
 var deviceId = _normId(data.deviceId);
 var raw = data.content || data.data || '';
 if (!raw || typeof raw !== 'string') return;
-// Intentar parsear como mensaje de control
 var parsed = null;
 var isControl = false;
 try {
@@ -577,7 +566,6 @@ isControl = (parsed._t === 'hs' || parsed._t === 'f');
 isControl = false;
 }
 if (isControl && parsed._t === 'hs') {
-// Handshake recibido: actualizar nombre del peer
 var hsName = parsed._n || 'NEXO Device';
 self._peerNames[deviceId] = hsName;
 var connDev = self.connectedDevices.get(deviceId);
@@ -592,11 +580,9 @@ console.log('[BLE] Handshake recibido de', deviceId, ':', hsName);
 return;
 }
 if (isControl && parsed._t === 'f') {
-// Fragmento recibido: acumular (NO emitir evento, NO incrementar badge)
 self._handleFragment(deviceId, parsed);
 return;
 }
-// Mensaje completo normal (backward compat)
 var messageId = null;
 var senderName = data.senderName || null;
 var content = raw;
@@ -1114,4 +1100,3 @@ if (this.isScanning) this.toggleScan();
 }
 }
 window.bleInterface = null;
-}
