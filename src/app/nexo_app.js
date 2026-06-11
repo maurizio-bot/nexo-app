@@ -1,7 +1,7 @@
 /**
- * NEXO App v5.0.3-ARCH-FIX
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH + ble_permissions.js v4.0-ARCH
- * FIX #961: checkBLEStatus + initializeBLE en _initPhase5_BLEUI para permisos nativos
+ * NEXO App v5.0.4-ARCH-FIX
+ * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH
+ * FIX v5.0.4: sendMessage content string + BLE UI con plugin nativo directo
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -73,7 +73,7 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.3-ARCH-FIX iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.4-ARCH-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -86,6 +86,7 @@ export class NexoApp {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
       const nativeAvailable = !!(window.Capacitor?.Plugins?.NexoBLE);
+      // FIX v5.0.4: Inicializar mesh fallback SOLO si no hay nativo
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
@@ -93,7 +94,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.3-ARCH-FIX Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.4-ARCH-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -157,7 +158,7 @@ export class NexoApp {
   async _initPhase5_BLEUI() {
     DEBUG.setPhase('BLE_UI');
     try {
-      // FIX #961: Inicializar permisos BLE nativo antes de UI
+      // FIX v5.0.4: Inicializar permisos BLE nativo antes de UI
       const plugin = window.Capacitor?.Plugins?.NexoBLE;
       if (plugin && plugin.checkBLEStatus) {
         try {
@@ -173,9 +174,27 @@ export class NexoApp {
         }
       }
 
-      const meshInstance = this.nordicMesh || this.mesh || null;
+      // FIX v5.0.4: Si hay plugin nativo, pasar objeto wrapper en lugar de null
+      const nativePlugin = window.Capacitor?.Plugins?.NexoBLE;
+      let meshInstance = this.nordicMesh || this.mesh || null;
+      
+      // Si hay plugin nativo pero no hay mesh, crear wrapper mínimo
+      if (!meshInstance && nativePlugin) {
+        meshInstance = { 
+          nativePlugin: nativePlugin,
+          isNativeWrapper: true,
+          getConnectedDevices: () => nativePlugin.getConnectedDevices?.() || Promise.resolve({ devices: [] })
+        };
+      }
+
       this.bleInterface = initBLEInterface(meshInstance);
-      if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
+      if (this.bleInterface) {
+        // Asegurar que bleInterface tenga referencia al plugin nativo
+        if (nativePlugin && !this.bleInterface.nativePlugin) {
+          this.bleInterface.nativePlugin = nativePlugin;
+        }
+        DEBUG.success('BLE UI ready' + (meshInstance?.isNativeWrapper ? ' (native)' : ''), 'UI_002');
+      }
 
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
@@ -259,9 +278,11 @@ export class NexoApp {
   async _sendViaBLE(deviceId, content) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin no disponible');
+    // FIX v5.0.4: Asegurar que content sea string
+    const messageStr = typeof content === 'string' ? content : JSON.stringify(content);
     console.log(`[BLE_SEND] Enviando a ${deviceId?.substring?.(0,8)}...`);
     try {
-      await plugin.sendMessage({ deviceId, message: content });
+      await plugin.sendMessage({ deviceId, message: messageStr });
       DEBUG.success(`📨 Enviado vía BLE a ${deviceId?.substring?.(0,8)}`, 'MSG_BLE');
     } catch (e) {
       DEBUG.error('BLE_SEND_FAIL', `Envío falló: ${e.message}`);
@@ -278,9 +299,18 @@ export class NexoApp {
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true, messageId }, 'self');
 
-      const isObject = msg && typeof msg === 'object';
-      const content = isObject ? (msg.content || msg) : msg;
-      const recipient = isObject ? msg.recipient : null;
+      // FIX v5.0.4: Extraer content correctamente, siempre como string
+      let content = '';
+      if (typeof msg === 'string') {
+        content = msg;
+      } else if (msg && typeof msg === 'object') {
+        content = msg.content || msg.text || msg.message || '';
+        if (typeof content !== 'string') {
+          content = String(content);
+        }
+      }
+      
+      const recipient = msg && typeof msg === 'object' ? msg.recipient : null;
       const targetId = recipient || this.activeContact?.id;
       const targetTransport = this.activeContact?.transport;
 
