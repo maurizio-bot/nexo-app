@@ -1,7 +1,7 @@
 /**
- * src/main.js - NEXO v9.1.1-961-FIX
+ * src/main.js - NEXO v9.1.2-961-FIX
  * Orquestador principal para build #961
- * FIX v9.1.1: Botón BLE restaurado en header
+ * FIX v9.1.2: Botón BLE forzado en header + init robusta
  */
 
 import './styles/critical.css';
@@ -11,7 +11,7 @@ import { rem } from './ui/rem.js';
 
 window.NEXO = {
   app: null, rem: null, diag: null,
-  version: '9.1.1-961-FIX',
+  version: '9.1.2-961-FIX',
   initialized: false, sessionStart: Date.now(),
   healthStatus: 'healthy',
   currentView: 'conversations',
@@ -91,7 +91,7 @@ function _getOrCreateConversation(id, name, type, participants) {
 function _updateConversationLastMessage(convId, content, timestamp, isMe) {
   const conv = window.NEXO.conversations.get(convId);
   if (!conv) return;
-  conv.lastMessage = { content: content.substring(0, 50), timestamp, isMe };
+  conv.lastMessage = { content: (content || '').substring(0, 50), timestamp, isMe };
   if (!isMe && window.NEXO.currentView !== 'chat' && window.NEXO.activeConversationId !== convId) {
     conv.unread = (conv.unread || 0) + 1;
   }
@@ -207,8 +207,26 @@ function _ensureBLEButton() {
   let btn = document.getElementById('btn-ble-panel');
   if (btn) return;
 
-  const header = document.querySelector('.conversations-header') || document.querySelector('.app-header') || document.getElementById('conversations-header');
-  if (!header) return;
+  // FIX v9.1.2: Buscar header en múltiples selectores posibles
+  const header = document.querySelector('.conversations-header') 
+    || document.querySelector('.app-header') 
+    || document.getElementById('conversations-header')
+    || document.querySelector('header')
+    || document.querySelector('.view.active .header')
+    || document.querySelector('[class*="header"]');
+
+  if (!header) {
+    // Si no hay header, crearlo flotante
+    btn = document.createElement('button');
+    btn.id = 'btn-ble-panel';
+    btn.className = 'header-btn ble-btn';
+    btn.innerHTML = '🔷';
+    btn.title = 'BLE Mesh';
+    btn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9999;background:rgba(0,212,255,0.2);border:1px solid #00d4ff;color:#00d4ff;font-size:24px;cursor:pointer;padding:8px 12px;border-radius:8px;';
+    btn.addEventListener('click', _onBleButtonClick);
+    document.body.appendChild(btn);
+    return;
+  }
 
   btn = document.createElement('button');
   btn.id = 'btn-ble-panel';
@@ -216,14 +234,18 @@ function _ensureBLEButton() {
   btn.innerHTML = '🔷';
   btn.title = 'BLE Mesh';
   btn.style.cssText = 'background:none;border:none;color:#00d4ff;font-size:24px;cursor:pointer;padding:8px;margin-left:auto;';
-  btn.addEventListener('click', () => {
-    if (window.NEXO.app && window.NEXO.app.bleInterface) {
-      window.NEXO.app.bleInterface.togglePanel();
-    } else if (window.bleInterface) {
-      window.bleInterface.togglePanel();
-    }
-  });
+  btn.addEventListener('click', _onBleButtonClick);
   header.appendChild(btn);
+}
+
+function _onBleButtonClick() {
+  if (window.NEXO.app && window.NEXO.app.bleInterface) {
+    window.NEXO.app.bleInterface.togglePanel();
+  } else if (window.bleInterface) {
+    window.bleInterface.togglePanel();
+  } else {
+    rem.warn('BLE no inicializado aún', 'BLE_NOT_READY');
+  }
 }
 
 // ==================== INICIALIZACION ====================
@@ -276,20 +298,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       permissionsGranted = false;
     }
 
-    if (permissionsGranted) {
-      await initializeNexoApp();
-    } else {
-      rem.warn('[BLE] Permisos pendientes - mostrando overlay', 'BLE_PERM_PENDING');
-      NEXO_DIAG.hideSplash();
-      _forceHideSplash();
+    // FIX v9.1.2: Inicializar app SIEMPRE, incluso sin permisos BLE
+    // El botón BLE debe existir para que el usuario pueda intentar después
+    await initializeNexoApp();
+
+    if (!permissionsGranted) {
+      rem.warn('[BLE] Permisos pendientes - overlay visible', 'BLE_PERM_PENDING');
       _showPermissionOverlay();
     }
 
     window.addEventListener('nexo-permissions-granted', async (e) => {
-      if (!window.NEXO.initialized) {
-        rem.success('[BLE] Permisos concedidos via evento', 'BLE_PERM_EVENT');
-        _hidePermissionOverlay();
-        await initializeNexoApp();
+      rem.success('[BLE] Permisos concedidos via evento', 'BLE_PERM_EVENT');
+      _hidePermissionOverlay();
+      // Re-inicializar BLE si es necesario
+      if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface.nativePlugin) {
+        try {
+          await window.NEXO.app.bleInterface.nativePlugin.initializeBLE();
+        } catch (e) {}
       }
     });
 
@@ -381,17 +406,6 @@ function _setupNavigation() {
 
   const btnSticker = document.getElementById('btn-sticker');
   if (btnSticker) btnSticker.addEventListener('click', () => rem.info('Stickers - proximamente', 'STICKER_PLACEHOLDER'));
-
-  const btnBlePanel = document.getElementById('btn-ble-panel');
-  if (btnBlePanel) {
-    btnBlePanel.addEventListener('click', () => {
-      if (window.NEXO.app && window.NEXO.app.bleInterface) {
-        window.NEXO.app.bleInterface.togglePanel();
-      } else if (window.bleInterface) {
-        window.bleInterface.togglePanel();
-      }
-    });
-  }
 }
 
 function _renderGroupContacts() {
@@ -536,7 +550,7 @@ async function initializeNexoApp() {
       });
     }
 
-    rem.success('NEXO v9.1.1-961-FIX Ready', 'INIT_OK');
+    rem.success('NEXO v9.1.2-961-FIX Ready', 'INIT_OK');
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
     _showView('conversations');
