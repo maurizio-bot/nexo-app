@@ -1,7 +1,7 @@
 /**
- * src/main.js - NEXO v9.1-961-FIX
+ * src/main.js - NEXO v9.1.1-961-FIX
  * Orquestador principal para build #961
- * SOLO cambio: permisos via plugin nativo directo (sin Shim)
+ * FIX v9.1.1: Botón BLE restaurado en header
  */
 
 import './styles/critical.css';
@@ -11,7 +11,7 @@ import { rem } from './ui/rem.js';
 
 window.NEXO = {
   app: null, rem: null, diag: null,
-  version: '9.1-961-FIX',
+  version: '9.1.1-961-FIX',
   initialized: false, sessionStart: Date.now(),
   healthStatus: 'healthy',
   currentView: 'conversations',
@@ -202,6 +202,30 @@ function _createGroup(name, participantIds) {
   _openChat(groupId, name, 'group');
 }
 
+// ==================== BOTON BLE ====================
+function _ensureBLEButton() {
+  let btn = document.getElementById('btn-ble-panel');
+  if (btn) return;
+
+  const header = document.querySelector('.conversations-header') || document.querySelector('.app-header') || document.getElementById('conversations-header');
+  if (!header) return;
+
+  btn = document.createElement('button');
+  btn.id = 'btn-ble-panel';
+  btn.className = 'header-btn ble-btn';
+  btn.innerHTML = '🔷';
+  btn.title = 'BLE Mesh';
+  btn.style.cssText = 'background:none;border:none;color:#00d4ff;font-size:24px;cursor:pointer;padding:8px;margin-left:auto;';
+  btn.addEventListener('click', () => {
+    if (window.NEXO.app && window.NEXO.app.bleInterface) {
+      window.NEXO.app.bleInterface.togglePanel();
+    } else if (window.bleInterface) {
+      window.bleInterface.togglePanel();
+    }
+  });
+  header.appendChild(btn);
+}
+
 // ==================== INICIALIZACION ====================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
@@ -209,6 +233,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
     _ensureDOMStructure();
+    _ensureBLEButton();
 
     window.NEXO.rem = rem;
     rem.init();
@@ -217,7 +242,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     _loadConversations();
     _setupNavigation();
 
-    // FIX #961: Permisos via plugin nativo directo (sin Shim)
     rem.info('[BLE] Verificando permisos via plugin nativo...', 'BLE_PERM_CHECK');
 
     let permissionsGranted = false;
@@ -231,14 +255,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
           rem.info('[BLE] Solicitando permisos...', 'BLE_PERM_REQ');
           await plugin.initializeBLE();
-          // Esperar callback de permisos
           permissionsGranted = await new Promise((resolve) => {
             const handler = (e) => {
               window.removeEventListener('nexo-permissions-granted', handler);
               resolve(true);
             };
             window.addEventListener('nexo-permissions-granted', handler);
-            // Timeout fallback 10s
             setTimeout(() => {
               window.removeEventListener('nexo-permissions-granted', handler);
               resolve(false);
@@ -247,7 +269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       } else {
         rem.warn('[BLE] Plugin nativo no disponible, continuando sin BLE', 'BLE_NO_PLUGIN');
-        permissionsGranted = true; // Continuar sin BLE
+        permissionsGranted = true;
       }
     } catch (permErr) {
       rem.warn(`[BLE] Error permisos: ${permErr.message}`, 'BLE_PERM_ERR');
@@ -259,6 +281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       rem.warn('[BLE] Permisos pendientes - mostrando overlay', 'BLE_PERM_PENDING');
       NEXO_DIAG.hideSplash();
+      _forceHideSplash();
       _showPermissionOverlay();
     }
 
@@ -364,6 +387,8 @@ function _setupNavigation() {
     btnBlePanel.addEventListener('click', () => {
       if (window.NEXO.app && window.NEXO.app.bleInterface) {
         window.NEXO.app.bleInterface.togglePanel();
+      } else if (window.bleInterface) {
+        window.bleInterface.togglePanel();
       }
     });
   }
@@ -511,8 +536,9 @@ async function initializeNexoApp() {
       });
     }
 
-    rem.success('NEXO v9.1-961-FIX Ready', 'INIT_OK');
+    rem.success('NEXO v9.1.1-961-FIX Ready', 'INIT_OK');
     NEXO_DIAG.hideSplash();
+    _forceHideSplash();
     _showView('conversations');
 
   } catch (error) {
