@@ -29,6 +29,16 @@
     #send-btn{background:#00d4ff;border:none;border-radius:12px;padding:10px 20px;color:#000;font-weight:600;cursor:pointer}
     #send-btn:active{opacity:0.7}
     .hidden{display:none !important}
+    #ble-controls{display:flex;gap:8px;padding:8px 16px;background:#111}
+    .ble-btn{background:#222;border:1px solid #333;border-radius:8px;padding:8px 12px;color:#fff;font-size:12px;cursor:pointer}
+    .ble-btn.active{background:#00d4ff;color:#000;border-color:#00d4ff}
+    #device-list{position:fixed;top:60px;right:16px;width:280px;max-height:400px;background:#1a1a1a;border:1px solid #333;border-radius:12px;overflow-y:auto;z-index:100;display:none}
+    #device-list.visible{display:block}
+    .device-item{padding:12px;border-bottom:1px solid #222;cursor:pointer}
+    .device-item:hover{background:rgba(0,212,255,0.1)}
+    .device-name{font-weight:600;font-size:14px}
+    .device-id{font-size:11px;color:#888}
+    .device-rssi{font-size:11px;color:#00d4ff}
   </style>
 </head>
 <body>
@@ -41,12 +51,21 @@
       <input type="text" id="chat-contact-name" value="NEXO" autocomplete="off" spellcheck="false">
       <span id="chat-contact-subtitle">OFFLINE</span>
     </div>
+    <div id="ble-controls">
+      <button class="ble-btn" id="btn-scan">Buscar</button>
+      <button class="ble-btn" id="btn-visibility">Visible</button>
+      <button class="ble-btn" id="btn-devices">Dispositivos</button>
+    </div>
     <div id="messages-container"></div>
     <div id="input-area">
       <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
       <button id="send-btn">Enviar</button>
     </div>
   </div>
-  <script type="module" src="./main.js"></script>
+  <div id="device-list">
+    <div style="padding:12px;border-bottom:1px solid #333;font-weight:600">Dispositivos BLE</div>
+    <div id="device-list-content"></div>
+  </div>
+  <script src="./main.js"></script>
 </body>
 </html>
