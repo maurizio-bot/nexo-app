@@ -1,7 +1,9 @@
 /**
- * NEXO App v5.0.6-ARCH-FIX
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH
- * FIX v5.0.6: Guard en stream + sendMessage no doble-render + targetTransport default 'ble'
+ * NEXO App v5.0.7-ARCH-FIX
+ * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.7.6-HEALTH-FIX
+ * FIX v5.0.7: Guard en stream + sendMessage no doble-render + targetTransport default 'ble'
+ * FIX v5.0.7: activeContact siempre seteado, fallback a connectedDevices[0]
+ * FIX v5.0.7: _handleMessage guard robusto, dedup por fingerprint + messageId
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -73,7 +75,7 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.6-ARCH-FIX iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.0.7-ARCH-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -93,7 +95,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.6-ARCH-FIX Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.0.7-ARCH-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -193,14 +195,14 @@ export class NexoApp {
 
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport } = e.detail;
-        this.activeContact = { id: contactId, name, address, transport };
+        this.activeContact = { id: contactId, name, address, transport: transport || 'ble' };
         const appContainer = document.getElementById('app');
         if (appContainer) appContainer.classList.remove('hidden');
         const nameInput = document.getElementById('chat-contact-name');
         const subtitle = document.getElementById('chat-contact-subtitle');
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
-        DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
+        DEBUG.success(`💬 Chat activo: ${name} [${(transport || 'ble').toUpperCase()}]`, 'BLE_CHAT');
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
       };
@@ -312,11 +314,34 @@ export class NexoApp {
       const recipient = msg && typeof msg === 'object' ? msg.recipient : null;
       const convId = msg && typeof msg === 'object' ? msg.conversationId : null;
 
-      // FIX v5.0.6: Usar activeContact como fuente principal + default transport 'ble'
+      // FIX v5.0.7: Usar activeContact como fuente principal + default transport 'ble'
       let targetId = recipient || this.activeContact?.id || convId;
-      let targetTransport = this.activeContact?.transport || 'ble';  // FIX: Default 'ble'
+      let targetTransport = this.activeContact?.transport || 'ble';
 
       console.log('[SEND] targetId:', targetId, 'targetTransport:', targetTransport, 'activeContact:', this.activeContact);
+
+      // FIX v5.0.7: Si no hay targetId pero hay bleInterface con dispositivos conectados, usar el primero
+      if (!targetId && this.bleInterface) {
+        try {
+          const connectedResult = await this.bleInterface.nativePlugin?.getConnectedDevices?.() || { devices: [] };
+          const bleDevices = connectedResult?.devices || [];
+          if (bleDevices.length > 0) {
+            targetId = bleDevices[0].deviceId || bleDevices[0].id;
+            targetTransport = 'ble';
+            console.log('[SEND] Fallback a connected device:', targetId);
+          }
+        } catch (e) { console.log('[SEND] Fallback connected failed:', e.message); }
+      }
+
+      // FIX v5.0.7: Si aun no hay targetId, buscar en foundDevices
+      if (!targetId && this.bleInterface?.foundDevices) {
+        const firstFound = this.bleInterface.foundDevices.values().next().value;
+        if (firstFound) {
+          targetId = firstFound.id || firstFound.address;
+          targetTransport = 'ble';
+          console.log('[SEND] Fallback a found device:', targetId);
+        }
+      }
 
       // Renderizar UNA SOLA VEZ como pending
       const pendingMsg = {
@@ -383,7 +408,7 @@ export class NexoApp {
         sent = true; 
       }
 
-      // FIX v5.0.6: Actualizar estado del mensaje existente, NO doble-render
+      // FIX v5.0.7: Actualizar estado del mensaje existente, NO doble-render
       const finalSource = sent ? 'ble_direct' : 'self';
       if (this.stream && typeof this.stream.updateMessage === 'function') {
         try {
@@ -418,36 +443,42 @@ export class NexoApp {
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      if (msg.messageId) {
-        const now = Date.now();
-        if (this._messageDedupMap.has(msg.messageId)) {
+      // FIX v5.0.7: Deduplicacion por messageId + fingerprint
+      const dedupKey = msg.messageId || msg.fingerprint || `${msg.sender}-${msg.timestamp}-${(msg.content || '').substring(0, 20)}`;
+      const now = Date.now();
+
+      if (this._messageDedupMap.has(dedupKey)) {
+        const existing = this._messageDedupMap.get(dedupKey);
+        // Permitir update de estado (pending -> sent) pero no nuevo render
+        if (source === 'self' && msg.pending !== undefined && existing.pending !== msg.pending) {
+          // continuar para actualizar
+        } else if (source !== 'self') {
           if (source !== 'self') {
-            DEBUG.log(`Deduplicado ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
+            DEBUG.log(`Deduplicado ${dedupKey?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
           }
-          // FIX v5.0.6: Si es self y es update (pending cambió), permitir pasar para actualizar UI
-          const existing = this._messageDedupMap.get(msg.messageId);
-          if (source === 'self' && msg.pending !== undefined && existing.pending !== msg.pending) {
-            // Permitir continuar para actualizar estado
-          } else {
-            return;
-          }
-        }
-        this._messageDedupMap.set(msg.messageId, { timestamp: now, pending: msg.pending });
-        if (this._messageDedupMap.size > this._maxProcessedIds) {
-          let oldestKey = null;
-          let oldestTime = Infinity;
-          for (const [k, v] of this._messageDedupMap) {
-            if (v.timestamp < oldestTime) { oldestTime = v.timestamp; oldestKey = k; }
-          }
-          if (oldestKey) this._messageDedupMap.delete(oldestKey);
-        }
-        for (const [k, v] of this._messageDedupMap) {
-          if (now - v.timestamp > this._dedupTTL) this._messageDedupMap.delete(k);
+          return;
         }
       }
+
+      this._messageDedupMap.set(dedupKey, { timestamp: now, pending: msg.pending });
+
+      // Cleanup dedup map
+      if (this._messageDedupMap.size > this._maxProcessedIds) {
+        let oldestKey = null;
+        let oldestTime = Infinity;
+        for (const [k, v] of this._messageDedupMap) {
+          if (v.timestamp < oldestTime) { oldestTime = v.timestamp; oldestKey = k; }
+        }
+        if (oldestKey) this._messageDedupMap.delete(oldestKey);
+      }
+      for (const [k, v] of this._messageDedupMap) {
+        if (now - v.timestamp > this._dedupTTL) this._messageDedupMap.delete(k);
+      }
+
       const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
       this.config.onMessage(enriched);
-      // FIX v5.0.6: Guard robusto en stream.appendItems
+
+      // FIX v5.0.7: Guard robusto en stream.appendItems
       if (this.stream && typeof this.stream.appendItems === 'function') {
         try {
           this.stream.appendItems([enriched]);
