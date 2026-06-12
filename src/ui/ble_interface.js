@@ -473,7 +473,7 @@ this._cancelReconnect(deviceId);
 var currentAttempts = this._reconnectAttempts.get(deviceId) || 0;
 if (currentAttempts >= 5) {
 console.log('[BLEInterface] Max reintentos alcanzado para', deviceId);
-this.showToast('No se pudo reconectar despues de 5 intentos', 'error');
+self.showToast('No se pudo reconectar despues de 5 intentos', 'error');
 this._reconnectAttempts.delete(deviceId);
 return;
 }
@@ -950,8 +950,8 @@ if (isNew) self._renderedDeviceIds.add(id);
 var item = document.createElement('div');
 item.className = 'ble-device-item' + (isNew ? ' new' : '');
 var actionHtml = isAdded
-? '<button class="ble-btn-write" onclick="window.bleInterface.openChat('' + id + '')">Chat</button>'
-: '<button class="ble-btn-add" onclick="window.bleInterface.addContact('' + id + '')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat('' + id + '')">Chat</button>';
+? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>'
+: '<button class="ble-btn-add" onclick="window.bleInterface.addContact(\'' + id + '\')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>';
 item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">📶 ' + (device.rssi || '?') + ' dBm</div></div><div class="ble-device-actions">' + actionHtml + '</div>';
 list.appendChild(item);
 });
@@ -966,7 +966,7 @@ contacts.forEach(function(contact) {
 var id = _normId(contact.id || contact.address);
 var item = document.createElement('div');
 item.className = 'ble-device-item';
-item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat('' + id + '')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact('' + id + '')">✕</button></div>';
+item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(\'' + id + '\')">✕</button></div>';
 list.appendChild(item);
 });
 }
@@ -981,7 +981,7 @@ var stateLabel = self._renderStateLabel(state);
 var isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
 var item = document.createElement('div');
 item.className = 'ble-device-item';
-item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat('' + id + '')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect('' + id + '')">Desconectar</button></div>';
+item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\'' + id + '\')">Desconectar</button></div>';
 list.appendChild(item);
 });
 }
