@@ -1,7 +1,7 @@
-main_js = '''/**
- * src/main.js - NEXO v9.1.3-961-FIX
+/**
+ * src/main.js - NEXO v9.1.4-961-FIX
  * Orquestador principal para build #961
- * FIX v9.1.3: activeContact sincronizado + sendMessage robusto
+ * FIX v9.1.4: Guards en stream + activeContact transport:ble forzado + sendBtn safety
  */
 
 import './styles/critical.css';
@@ -11,7 +11,7 @@ import { rem } from './ui/rem.js';
 
 window.NEXO = {
   app: null, rem: null, diag: null,
-  version: '9.1.3-961-FIX',
+  version: '9.1.4-961-FIX',
   initialized: false, sessionStart: Date.now(),
   healthStatus: 'healthy',
   currentView: 'conversations',
@@ -122,7 +122,7 @@ function _renderConversationsList() {
     item.className = 'conversation-item' + (conv.unread > 0 ? ' unread' : '');
     item.dataset.convId = conv.id;
 
-    const typeIcon = conv.type === 'group' ? '👥' : '👤';
+    const typeIcon = conv.type === 'group' ? '則' : '側';
     const lastMsg = conv.lastMessage ? conv.lastMessage.content : 'Sin mensajes';
     const time = conv.lastMessage ? _formatTime(conv.lastMessage.timestamp) : '';
     const unreadBadge = conv.unread > 0 ? `<span class="unread-badge">${conv.unread}</span>` : '';
@@ -167,18 +167,17 @@ function _showView(viewName) {
   }
 }
 
-// FIX v9.1.3: Sincronizar activeContact con NexoApp al abrir chat
+// FIX v9.1.4: activeContact SIEMPRE con transport: 'ble'
 function _openChat(convId, name, type) {
   const normalizedId = _normId(convId);
   const conv = _getOrCreateConversation(normalizedId, name, type);
   window.NEXO.activeConversationId = normalizedId;
 
-  // FIX: Sincronizar activeContact en NexoApp para que sendMessage sepa usar BLE
   if (window.NEXO.app) {
     window.NEXO.app.activeContact = {
       id: normalizedId,
       name: conv.name || 'NEXO Peer',
-      transport: 'ble'
+      transport: 'ble'  // FIX: Siempre BLE para chats
     };
     console.log('[main] activeContact seteado:', window.NEXO.app.activeContact);
   }
@@ -194,11 +193,16 @@ function _openChat(convId, name, type) {
   if (nameInput) nameInput.value = conv.name;
   if (subtitle) subtitle.textContent = type === 'group' ? `${conv.participants.length} participantes` : 'BLUETOOTH';
 
+  // FIX v9.1.4: Guard en stream
   if (window.NEXO.app && window.NEXO.app.stream) {
-    window.NEXO.app.stream.clear();
-    conv.messages.forEach(msg => {
-      window.NEXO.app.stream.appendItems([msg], { scroll: false });
-    });
+    try {
+      window.NEXO.app.stream.clear();
+      conv.messages.forEach(msg => {
+        window.NEXO.app.stream.appendItems([msg], { scroll: false });
+      });
+    } catch (e) {
+      console.warn('[main] Error cargando mensajes en stream:', e.message);
+    }
   }
 
   _showView('chat');
@@ -229,7 +233,7 @@ function _ensureBLEButton() {
     btn = document.createElement('button');
     btn.id = 'btn-ble-panel';
     btn.className = 'header-btn ble-btn';
-    btn.innerHTML = '🔷';
+    btn.innerHTML = '塙';
     btn.title = 'BLE Mesh';
     btn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9999;background:rgba(0,212,255,0.2);border:1px solid #00d4ff;color:#00d4ff;font-size:24px;cursor:pointer;padding:8px 12px;border-radius:8px;';
     btn.addEventListener('click', _onBleButtonClick);
@@ -240,7 +244,7 @@ function _ensureBLEButton() {
   btn = document.createElement('button');
   btn.id = 'btn-ble-panel';
   btn.className = 'header-btn ble-btn';
-  btn.innerHTML = '🔷';
+  btn.innerHTML = '塙';
   btn.title = 'BLE Mesh';
   btn.style.cssText = 'background:none;border:none;color:#00d4ff;font-size:24px;cursor:pointer;padding:8px;margin-left:auto;';
   btn.addEventListener('click', _onBleButtonClick);
@@ -253,7 +257,7 @@ function _onBleButtonClick() {
   } else if (window.bleInterface) {
     window.bleInterface.togglePanel();
   } else {
-    rem.warn('BLE no inicializado aún', 'BLE_NOT_READY');
+    rem.warn('BLE no inicializado aun', 'BLE_NOT_READY');
   }
 }
 
@@ -299,7 +303,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
         }
       } else {
-        rem.warn('[BLE] Plugin nativo no disponible, continuando sin BLE', 'BLE_NO_PLUGIN');
+        rem.warn('[BLE] Plugin nativo no disponible, continuing sin BLE', 'BLE_NO_PLUGIN');
         permissionsGranted = true;
       }
     } catch (permErr) {
@@ -349,7 +353,6 @@ function _setupNavigation() {
   if (btnBack) {
     btnBack.addEventListener('click', () => {
       window.NEXO.activeConversationId = null;
-      // FIX: Limpiar activeContact al salir del chat
       if (window.NEXO.app) window.NEXO.app.activeContact = null;
       _showView('conversations');
     });
@@ -492,9 +495,14 @@ async function initializeNexoApp() {
 
         _updateConversationLastMessage(convId, messageObj.content, messageObj.timestamp, messageObj.isMe);
 
+        // FIX v9.1.4: Guard en stream
         if (window.NEXO.currentView === 'chat' && window.NEXO.activeConversationId === convId) {
           if (window.NEXO.app && window.NEXO.app.stream) {
-            window.NEXO.app.stream.appendItems([messageObj], { scroll: true });
+            try {
+              window.NEXO.app.stream.appendItems([messageObj], { scroll: true });
+            } catch (e) {
+              console.warn('[main] Error append en stream:', e.message);
+            }
           }
         } else if (!messageObj.isMe) {
           conv.unread = (conv.unread || 0) + 1;
@@ -516,7 +524,7 @@ async function initializeNexoApp() {
       },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
-        onReact: (id) => rem.success('Reaccion añadida', 'REACT_OK'),
+        onReact: (id) => rem.success('Reaccion aﾃｱadida', 'REACT_OK'),
         onReply: (id) => { const rid = (id && id.substr) ? id.substr(0, 8) : ''; _focusInput('@' + rid + ' '); },
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
@@ -528,11 +536,16 @@ async function initializeNexoApp() {
     await window.NEXO.app.init();
     window.NEXO.initialized = true;
 
-    // FIX: Solo setear conversationId si stream existe
+    // FIX v9.1.4: Guard en stream.setConversationId
     if (window.NEXO.app.stream && window.NEXO.app.stream.setConversationId) {
-      window.NEXO.app.stream.setConversationId(window.NEXO.activeConversationId);
+      try {
+        window.NEXO.app.stream.setConversationId(window.NEXO.activeConversationId);
+      } catch (e) {
+        console.warn('[main] setConversationId failed:', e.message);
+      }
     }
 
+    // FIX v9.1.4: Safety en sendBtn
     const sendBtn = document.getElementById('send-btn');
     const msgInput = document.getElementById('message-input');
     if (sendBtn && msgInput) {
@@ -545,7 +558,7 @@ async function initializeNexoApp() {
           rem.warn('Selecciona una conversacion primero', 'NO_CONV');
           return;
         }
-        // FIX: Asegurar que activeContact esté seteado antes de enviar
+        // FIX: Asegurar activeContact
         if (window.NEXO.app && !window.NEXO.app.activeContact) {
           window.NEXO.app.activeContact = {
             id: convId,
@@ -553,11 +566,20 @@ async function initializeNexoApp() {
             transport: 'ble'
           };
         }
-        await window.NEXO.app.sendMessage({
-          content: content,
-          recipient: convId,
-          conversationId: convId
-        });
+        // FIX: Guard en sendMessage
+        if (window.NEXO.app && typeof window.NEXO.app.sendMessage === 'function') {
+          try {
+            await window.NEXO.app.sendMessage({
+              content: content,
+              recipient: convId,
+              conversationId: convId
+            });
+          } catch (e) {
+            rem.error('Error enviando: ' + e.message, 'SEND_ERR');
+          }
+        } else {
+          rem.error('App no lista para enviar', 'APP_NOT_READY');
+        }
       });
       msgInput.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -567,7 +589,7 @@ async function initializeNexoApp() {
       });
     }
 
-    rem.success('NEXO v9.1.3-961-FIX Ready', 'INIT_OK');
+    rem.success('NEXO v9.1.4-961-FIX Ready', 'INIT_OK');
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
     _showView('conversations');
@@ -658,9 +680,3 @@ function _ensureDOMStructure() {
 }
 
 export { NEXO_DIAG, DEBUG };
-'''
-
-with open('/mnt/agents/output/main.js', 'w') as f:
-    f.write(main_js)
-
-print(f"main.js guardado: {len(main_js)} chars")
