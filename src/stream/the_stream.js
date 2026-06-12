@@ -1,7 +1,8 @@
 /**
- * NEXO v9.0 - TheStream v2.4-NAP-CERTIFIED
- * FIX v2.4: Preview cards usan senderName si existe, evitando MAC cruda o "Unknown".
- *           Fallback a contacto activo o 'NEXO Peer' antes de mostrar deviceId.
+ * NEXO v9.0 - TheStream v2.4.1-NAP
+ * FIX v2.4.1: Agregado updateMessage() para actualizar pending status sin duplicar
+ *             Preview cards usan senderName si existe, evitando MAC cruda o "Unknown".
+ *             Fallback a contacto activo o 'NEXO Peer' antes de mostrar deviceId.
  */
 
 class TheStream {
@@ -9,38 +10,73 @@ class TheStream {
     if (!containerId || typeof containerId !== 'string') {
       containerId = 'message-container';
     }
-    
+
     this.container = document.getElementById(containerId);
-    
+
     if (!this.container) {
       this.container = document.createElement('div');
       this.container.id = containerId;
       this.container.style.cssText = 'overflow-y: auto; height: calc(100vh - 200px); padding: 16px;';
       document.body.appendChild(this.container);
     }
-    
+
     this.actionCallbacks = options.actionCallbacks || {};
     this.resourceErrors = new Set();
     this.failedAvatars = new Set();
     this.messageCache = new Map();
     this.avatarColors = new Map();
     this.items = [];
-    
+
     this.config = {
       maxCacheSize: 1000,
       maxRenderedItems: 500,
       fallbackAvatar: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMTgiIGZpbGw9IiMzMzMiIHN0cm9rZT0iIzU1NSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHRleHQgeD0iMjAiIHk9IjI1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic3lzdGVtLXVpIiBmb250LXNpemU9IjE0IiBmaWxsPSIjODg4Ij4/PC90ZXh0Pjwvc3ZnPg==',
       autoScroll: true
     };
-    
+
     this.initialized = true;
     this.renderedCount = 0;
     this.styleInjected = false;
-    
+
     this._injectStyles();
     this._setupResourceErrorInterceptor();
-    
-    console.log('[TheStream] Initialized v2.4-NAP-CERTIFIED');
+
+    console.log('[TheStream] Initialized v2.4.1-NAP');
+  }
+
+  // FIX v2.4.1: Actualizar mensaje existente sin duplicar
+  updateMessage(messageId, updates) {
+    if (!messageId || !updates || typeof updates !== 'object') return this;
+
+    // Actualizar en items array
+    const itemIndex = this.items.findIndex(item => item.id === messageId || item.messageId === messageId);
+    if (itemIndex >= 0) {
+      this.items[itemIndex] = { ...this.items[itemIndex], ...updates };
+    }
+
+    // Actualizar en DOM si existe
+    const bubbles = this.container.querySelectorAll('.stream-item');
+    for (let i = 0; i < bubbles.length; i++) {
+      const bubble = bubbles[i];
+      const msgIdAttr = bubble.dataset.messageId;
+      if (msgIdAttr === messageId) {
+        // Actualizar estado pending si aplica
+        if (updates.pending !== undefined) {
+          const statusEl = bubble.querySelector('.message-status');
+          if (statusEl) {
+            statusEl.textContent = updates.pending ? '⏳ Enviando...' : '✓ Enviado';
+            statusEl.style.color = updates.pending ? '#ffaa00' : '#00ff88';
+          }
+        }
+        // Actualizar source si aplica
+        if (updates.source !== undefined) {
+          bubble.dataset.source = updates.source;
+        }
+        break;
+      }
+    }
+
+    return this;
   }
 
   appendItems(items, options = {}) {
@@ -57,13 +93,13 @@ class TheStream {
     }
 
     const batch = Array.isArray(items) ? items : [items];
-    
+
     if (batch.length === 0) {
       return this;
     }
 
     const sanitizedBatch = batch.map(item => this._sanitizeItem(item));
-    
+
     if (config.prepend) {
       this.items.unshift(...sanitizedBatch);
     } else {
@@ -138,13 +174,13 @@ class TheStream {
     this.avatarColors.clear();
     this.resourceErrors.clear();
     this.failedAvatars.clear();
-    
+
     if (this.container) {
       this.container.removeEventListener('error', this._handleResourceError, true);
     }
-    
+
     this._removeStyles();
-    
+
     this.initialized = false;
     console.log('[TheStream] Destroyed');
   }
@@ -158,10 +194,10 @@ class TheStream {
 
   _injectStyles() {
     if (this.styleInjected || typeof document === 'undefined') return;
-    
+
     const styleId = 'thestream-animations';
     let style = document.getElementById(styleId);
-    
+
     if (!style) {
       style = document.createElement('style');
       style.id = styleId;
@@ -174,7 +210,7 @@ class TheStream {
       `;
       document.head.appendChild(style);
     }
-    
+
     this.styleInjected = true;
   }
 
@@ -185,28 +221,28 @@ class TheStream {
 
   _setupResourceErrorInterceptor() {
     if (!this.container) return;
-    
+
     this._handleResourceError = (e) => {
       const target = e.target;
-      
+
       if (target.tagName === 'IMG') {
         const src = target.src;
-        
+
         this.resourceErrors.add(src);
-        
+
         if (target.dataset.remFixed) return;
-        
+
         console.warn(`[TheStream-REM] Resource failed: ${src.substring(0, 100)}...`);
-        
+
         target.src = this.config.fallbackAvatar;
         target.dataset.remFixed = 'true';
         target.style.opacity = '0.7';
-        
+
         e.preventDefault();
         e.stopPropagation();
       }
     };
-    
+
     this.container.addEventListener('error', this._handleResourceError, true);
   }
 
@@ -222,13 +258,15 @@ class TheStream {
     }
 
     const sanitized = {
-      id: item.id || this._generateId(),
+      id: item.id || item.messageId || this._generateId(),
+      messageId: item.messageId || item.id || this._generateId(),
       content: item.content || item.text || item.message || '',
       sender: item.sender || item.from || item.author || 'Unknown',
       senderName: item.senderName || item.sender || item.from || 'Unknown',
       timestamp: item.timestamp || item.time || Date.now(),
       avatar: item.avatar || null,
-      isMe: item.isMe || item.sender === 'Tú' || false,
+      isMe: item.isMe || item.sender === 'Tú' || item._own || false,
+      pending: item.pending || false,
       type: item.type || 'message'
     };
 
@@ -240,9 +278,7 @@ class TheStream {
       sanitized.sender = 'Unknown';
     }
 
-    // FIX v2.4: Si senderName es Unknown/vacío/MAC-like, intentar fallback a contacto activo
     if (!sanitized.senderName || sanitized.senderName === 'Unknown' || !sanitized.senderName.trim() || /^[a-f0-9]{2}:/i.test(sanitized.senderName)) {
-      // Intentar obtener nombre del contacto activo de NEXO
       const activeName = window.nexoApp?.activeContact?.name;
       sanitized.senderName = activeName || sanitized.senderName || 'NEXO Peer';
     }
@@ -265,9 +301,12 @@ class TheStream {
     }
 
     const isMe = message.isMe;
-    
+    const isPending = message.pending;
+
     const bubble = document.createElement('div');
     bubble.className = 'stream-item';
+    bubble.dataset.messageId = message.messageId || message.id || '';
+    bubble.dataset.source = message.source || 'unknown';
     bubble.style.cssText = `
       display: flex;
       gap: 12px;
@@ -276,14 +315,15 @@ class TheStream {
       border-radius: 16px;
       background: ${isMe ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.05)'};
     `;
-    
+
     const avatarSrc = this._getSafeAvatar(message.senderName || message.sender, isMe);
-    
+
     const safeId = this._escapeAttr(String(message.id || ''));
-    
-    // FIX v2.4: Usar senderName para el nombre visible, no sender (que puede ser MAC)
+
     const displayName = message.senderName || message.sender || 'NEXO Peer';
-    
+    const statusText = isPending ? '⏳ Enviando...' : '✓ Enviado';
+    const statusColor = isPending ? '#ffaa00' : '#00ff88';
+
     bubble.innerHTML = `
       <img 
         src="${avatarSrc}" 
@@ -301,8 +341,13 @@ class TheStream {
         <div style="color: #ddd; line-height: 1.4; word-break: break-word;">
           ${this._escapeHtml(content)}
         </div>
-        <div style="font-size: 11px; color: #888; margin-top: 4px;">
-          ${this._formatTime(message.timestamp)}
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+          <span style="font-size: 11px; color: #888;">
+            ${this._formatTime(message.timestamp)}
+          </span>
+          <span class="message-status" style="font-size: 11px; color: ${statusColor};">
+            ${statusText}
+          </span>
         </div>
         <div class="action-buttons" style="display: flex; gap: 8px; margin-top: 8px;" data-msg-id="${safeId}">
           <button class="btn-react" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #fff;">⚡</button>
@@ -311,15 +356,15 @@ class TheStream {
         </div>
       </div>
     `;
-    
+
     const btnContainer = bubble.querySelector('.action-buttons');
     if (btnContainer) {
       const msgId = btnContainer.dataset.msgId;
-      
+
       const btnReact = btnContainer.querySelector('.btn-react');
       const btnReply = btnContainer.querySelector('.btn-reply');
       const btnForward = btnContainer.querySelector('.btn-forward');
-      
+
       if (btnReact) {
         btnReact.addEventListener('click', () => {
           this.actionCallbacks.onReact?.(msgId);
@@ -336,7 +381,7 @@ class TheStream {
         });
       }
     }
-    
+
     const img = bubble.querySelector('.stream-avatar');
     if (img) {
       img.addEventListener('error', () => {
@@ -359,7 +404,7 @@ class TheStream {
       if (this.failedAvatars.has(sender)) {
         return this.config.fallbackAvatar;
       }
-      
+
       return this.generateAvatarSVG(sender, isMe);
     } catch (e) {
       console.warn('[TheStream-REM] Avatar generation failed:', e);
@@ -371,20 +416,20 @@ class TheStream {
   generateAvatarSVG(sender, isMe) {
     const key = `${sender}-${isMe}`;
     if (this.avatarColors.has(key)) return this.avatarColors.get(key);
-    
+
     const safeSender = String(sender || 'U');
     const initial = safeSender.charAt(0).toUpperCase();
-    
+
     const hash = safeSender.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     const color = isMe 
       ? '#00FF88' 
       : `hsl(${hash % 360}, 70%, 50%)`;
-    
+
     const svg = `<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
       <rect width="40" height="40" rx="12" fill="${color}" fill-opacity="0.2" stroke="${color}" stroke-width="2"/>
       <text x="20" y="27" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="${color}">${initial}</text>
     </svg>`;
-    
+
     try {
       const uri = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
       this.avatarColors.set(key, uri);
@@ -408,7 +453,7 @@ class TheStream {
     if (this.items.length > this.config.maxRenderedItems) {
       const excess = this.items.length - this.config.maxRenderedItems;
       this.items = this.items.slice(excess);
-      
+
       const children = this.container.children;
       for (let i = 0; i < excess && children[0]; i++) {
         children[0].remove();
@@ -447,10 +492,10 @@ class TheStream {
     if (!timestamp) return 'ahora';
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return 'ahora';
-    
+
     const now = new Date();
     const diff = (now - date) / 1000;
-    
+
     if (diff < 60) return 'ahora';
     if (diff < 3600) return `hace ${Math.floor(diff / 60)}m`;
     if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`;
