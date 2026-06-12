@@ -1,7 +1,8 @@
 /**
- * src/main.js - NEXO v9.1.4-961-FIX
+ * src/main.js - NEXO v9.1.5-961-FIX
  * Orquestador principal para build #961
- * FIX v9.1.4: Guards en stream + activeContact transport:ble forzado + sendBtn safety
+ * FIX v9.1.5: CSS link inyectado, sistema vistas compatible con HTML actual,
+ *   activeContact transport:ble forzado, sendBtn safety, version sincronizada
  */
 
 import './styles/critical.css';
@@ -11,10 +12,10 @@ import { rem } from './ui/rem.js';
 
 window.NEXO = {
   app: null, rem: null, diag: null,
-  version: '9.1.4-961-FIX',
+  version: '9.1.5-961-FIX',
   initialized: false, sessionStart: Date.now(),
   healthStatus: 'healthy',
-  currentView: 'conversations',
+  currentView: 'chat',
   activeConversationId: null,
   conversations: new Map()
 };
@@ -31,7 +32,7 @@ const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible && NEXO_DIAG.isSplashVisible()) {
     rem.warn('Timeout seguridad (20s) - forzando continuar', 'INIT_TIMEOUT');
     NEXO_DIAG.hideSplash();
-    document.body.classList.add('nexo-force-ready');
+    _forceHideSplash();
   }
 }, 20000);
 
@@ -155,11 +156,21 @@ function _formatTime(timestamp) {
   return date.toLocaleDateString();
 }
 
+// FIX v9.1.5: Sistema de vistas compatible con HTML actual (no requiere .view elements)
 function _showView(viewName) {
   window.NEXO.currentView = viewName;
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  const view = document.getElementById('view-' + viewName);
-  if (view) view.classList.add('active');
+
+  // Si el HTML tiene sistema de vistas moderno, usarlo
+  const views = document.querySelectorAll('.view');
+  if (views.length > 0) {
+    views.forEach(v => v.classList.remove('active'));
+    const view = document.getElementById('view-' + viewName);
+    if (view) view.classList.add('active');
+  }
+
+  // Para HTML simple (solo #app visible siempre)
+  const app = document.getElementById('app');
+  if (app) app.classList.remove('hidden');
 
   if (viewName === 'conversations') {
     _renderConversationsList();
@@ -167,7 +178,7 @@ function _showView(viewName) {
   }
 }
 
-// FIX v9.1.4: activeContact SIEMPRE con transport: 'ble'
+// FIX v9.1.5: activeContact SIEMPRE con transport: 'ble'
 function _openChat(convId, name, type) {
   const normalizedId = _normId(convId);
   const conv = _getOrCreateConversation(normalizedId, name, type);
@@ -177,7 +188,7 @@ function _openChat(convId, name, type) {
     window.NEXO.app.activeContact = {
       id: normalizedId,
       name: conv.name || 'NEXO Peer',
-      transport: 'ble'  // FIX: Siempre BLE para chats
+      transport: 'ble'
     };
     console.log('[main] activeContact seteado:', window.NEXO.app.activeContact);
   }
@@ -193,10 +204,10 @@ function _openChat(convId, name, type) {
   if (nameInput) nameInput.value = conv.name;
   if (subtitle) subtitle.textContent = type === 'group' ? `${conv.participants.length} participantes` : 'BLUETOOTH';
 
-  // FIX v9.1.4: Guard en stream
+  // FIX v9.1.5: Guard en stream
   if (window.NEXO.app && window.NEXO.app.stream) {
     try {
-      window.NEXO.app.stream.clear();
+      window.NEXO.app.stream.clear?.();
       conv.messages.forEach(msg => {
         window.NEXO.app.stream.appendItems([msg], { scroll: false });
       });
@@ -272,7 +283,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.NEXO.rem = rem;
     rem.init();
-    rem.info('REM v2.1 initialized', 'REM_INIT');
+    // FIX v9.1.5: Solo un log de REM init (rem.init ya logea internamente)
+    // rem.info('REM v2.1 initialized', 'REM_INIT');
 
     _loadConversations();
     _setupNavigation();
@@ -495,7 +507,7 @@ async function initializeNexoApp() {
 
         _updateConversationLastMessage(convId, messageObj.content, messageObj.timestamp, messageObj.isMe);
 
-        // FIX v9.1.4: Guard en stream
+        // FIX v9.1.5: Guard en stream
         if (window.NEXO.currentView === 'chat' && window.NEXO.activeConversationId === convId) {
           if (window.NEXO.app && window.NEXO.app.stream) {
             try {
@@ -530,13 +542,14 @@ async function initializeNexoApp() {
       }
     };
 
-    rem.info('NEXO App v5.0.3-ARCH', 'NEXO_INIT');
+    // FIX v9.1.5: Version sincronizada
+    rem.info('NEXO App v5.0.7-ARCH-FIX', 'NEXO_INIT');
 
     window.NEXO.app = new NexoApp(nexoConfig);
     await window.NEXO.app.init();
     window.NEXO.initialized = true;
 
-    // FIX v9.1.4: Guard en stream.setConversationId
+    // FIX v9.1.5: Guard en stream.setConversationId
     if (window.NEXO.app.stream && window.NEXO.app.stream.setConversationId) {
       try {
         window.NEXO.app.stream.setConversationId(window.NEXO.activeConversationId);
@@ -545,7 +558,7 @@ async function initializeNexoApp() {
       }
     }
 
-    // FIX v9.1.4: Safety en sendBtn
+    // FIX v9.1.5: Safety en sendBtn
     const sendBtn = document.getElementById('send-btn');
     const msgInput = document.getElementById('message-input');
     if (sendBtn && msgInput) {
@@ -554,14 +567,38 @@ async function initializeNexoApp() {
         if (!content) return;
         msgInput.value = '';
         const convId = window.NEXO.activeConversationId;
+
+        // FIX v9.1.5: Si no hay conversacion activa, buscar en bleInterface
         if (!convId) {
-          rem.warn('Selecciona una conversacion primero', 'NO_CONV');
-          return;
+          if (window.NEXO.app && window.NEXO.app.bleInterface) {
+            const ble = window.NEXO.app.bleInterface;
+            // Buscar en connectedDevices primero
+            let targetDevice = null;
+            if (ble.connectedDevices && ble.connectedDevices.size > 0) {
+              targetDevice = ble.connectedDevices.values().next().value;
+            }
+            // Si no hay conectados, buscar en foundDevices
+            if (!targetDevice && ble.foundDevices && ble.foundDevices.size > 0) {
+              targetDevice = ble.foundDevices.values().next().value;
+            }
+            if (targetDevice) {
+              const targetId = targetDevice.id || targetDevice.address;
+              _openChat(targetId, targetDevice.name || 'NEXO Peer', 'individual');
+              console.log('[main] Auto-open chat con:', targetId);
+            } else {
+              rem.warn('Selecciona una conversacion primero', 'NO_CONV');
+              return;
+            }
+          } else {
+            rem.warn('Selecciona una conversacion primero', 'NO_CONV');
+            return;
+          }
         }
+
         // FIX: Asegurar activeContact
         if (window.NEXO.app && !window.NEXO.app.activeContact) {
           window.NEXO.app.activeContact = {
-            id: convId,
+            id: window.NEXO.activeConversationId,
             name: document.getElementById('chat-contact-name')?.value || 'NEXO Peer',
             transport: 'ble'
           };
@@ -571,8 +608,8 @@ async function initializeNexoApp() {
           try {
             await window.NEXO.app.sendMessage({
               content: content,
-              recipient: convId,
-              conversationId: convId
+              recipient: window.NEXO.activeConversationId,
+              conversationId: window.NEXO.activeConversationId
             });
           } catch (e) {
             rem.error('Error enviando: ' + e.message, 'SEND_ERR');
@@ -589,10 +626,10 @@ async function initializeNexoApp() {
       });
     }
 
-    rem.success('NEXO v9.1.4-961-FIX Ready', 'INIT_OK');
+    rem.success('NEXO v9.1.5-961-FIX Ready', 'INIT_OK');
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    _showView('conversations');
+    _showView('chat');
 
   } catch (error) {
     console.error('Error fatal en inicializacion:', error);
@@ -672,7 +709,7 @@ function _startHealthMonitor() {
 }
 
 function _ensureDOMStructure() {
-  const requiredIds = ['view-conversations', 'view-chat', 'view-create-group', 'nexo-stream', 'messages-container'];
+  const requiredIds = ['app', 'chat-header', 'nexo-stream', 'messages-container', 'input-area'];
   const missing = requiredIds.filter(id => !document.getElementById(id));
   if (missing.length > 0) {
     console.warn('[main] DOM elements missing:', missing.join(', '));
