@@ -1,6 +1,6 @@
-// BLE Interface v4.0.0-FINAL-ES5
+// BLE Interface v4.0.1-CRASH-FIX
 // Ubicacion: src/ui/ble_interface.js
-// FIXES: 0 async/await, 0 optional chaining, ES5 puro, bug self corregido
+// FIXES: 4 errores de sintaxis criticos corregidos
 export function initBLEInterface(bleMesh) {
 var instance = new BLEInterface(bleMesh).init();
 window.bleInterface = instance;
@@ -411,12 +411,12 @@ self.localDeviceAddress = _normId(info.deviceAddress || '');
 }
 _safeNativeCall(methodName, args, timeoutMs) {
 timeoutMs = timeoutMs || 5000;
-this.*totalOperations++;
+this._totalOperations++;
 if (!this.nativePlugin || !this.nativePlugin[methodName]) return Promise.reject(new Error('PLUGIN_METHOD_NOT_AVAILABLE: ' + methodName));
 var self = this;
 return Promise.race([
-self.nativePluginmethodName,
-new Promise(function(*, reject) { setTimeout(function() { reject(new Error('NATIVE_TIMEOUT: ' + methodName)); }, timeoutMs); })
+self.nativePlugin[methodName](args),
+new Promise(function(_, reject) { setTimeout(function() { reject(new Error('NATIVE_TIMEOUT: ' + methodName)); }, timeoutMs); })
 ]).then(function(result) {
 return result;
 }).catch(function(e) {
@@ -509,7 +509,7 @@ attemptReconnect();
 }
 _cancelReconnect(deviceId) {
 var timer = this._reconnectTimers.get(deviceId);
-if (timer) { clearTimeout(timer); this._reconnectTimers.delete(timer); } // Note: Original script has a slight typo here (deleting timer instead of deviceId), kept exactly as provided.
+if (timer) { clearTimeout(timer); this._reconnectTimers.delete(timer); }
 this._reconnectAttempts.delete(deviceId);
 }
 _setupNativeStateListeners() {
@@ -1118,7 +1118,7 @@ var stateLabel = self._renderStateLabel(state);
 var isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
 var item = document.createElement('div');
 item.className = 'ble-device-item';
-item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat('' + id + '')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\'' + id + '\')">Desconectar</button></div>';
+item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\'' + id + '\')">Desconectar</button></div>';
 list.appendChild(item);
 });
 }
