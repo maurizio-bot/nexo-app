@@ -1,14 +1,14 @@
 /**
- * BLE Interface v3.5.2-ARCH-SHIM-FIX
+ * BLE Interface v3.5.3-SHIM-FIX
  * Ubicacion: src/ui/ble_interface.js
+ * FIX v3.5.3-SHIM: Reemplazados emojis de 4 bytes UTF-8 por texto ASCII para compatibilidad webpack.
  * FIX v3.5.2-SHIM: Agregado listener onServerReady que faltaba. Plugin #961 SI lo emite.
  * FIX v3.5.1-SHIM:
- * 1) Badge reseteado y protegido al abrir chat (no contamina durante chat activo)
- * 2) Auto-registro de contacto al recibir primer mensaje (evita "Unknown" en lista)
- * 3) Toast suprimido robustamente cuando chat esta activo con el mismo peer
- * 4) Listener nexo:ble:closeChat para limpiar _activeChatDeviceId cuando UI cierra chat
- * 5) SHIM FIX: Elimina 3 listeners muertos (onPeerInfoReceived, onBluetoothStackBroken, onServerError)
- * que el plugin nativo #961 no emite. Usa Shim para permisos en toggleVisibility/toggleScan.
+ * 1) Badge reseteado y protegido al abrir chat
+ * 2) Auto-registro de contacto al recibir primer mensaje
+ * 3) Toast suprimido robustamente cuando chat esta activo
+ * 4) Listener nexo:ble:closeChat para limpiar _activeChatDeviceId
+ * 5) SHIM FIX: Eliminados 3 listeners muertos (onPeerInfoReceived, onBluetoothStackBroken, onServerError)
  */
 
 export function initBLEInterface(bleMesh) {
@@ -127,8 +127,6 @@ export class BLEInterface {
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
       this._setupNativeServerReadyListener();
-      // FIX v3.5.1-SHIM: Eliminados _setupNativePeerInfoListener, _setupNativeStackBrokenListener, _setupNativeServerErrorListener
-      // El plugin #961 NO emite onPeerInfoReceived, onBluetoothStackBroken, onServerError
       this._loadLocalDeviceInfo();
     }
     return this;
@@ -157,9 +155,6 @@ export class BLEInterface {
       self.showToast('Error al escanear', 'error');
     });
   }
-
-  // FIX v3.5.1-SHIM: Eliminado _setupNativePeerInfoListener — onPeerInfoReceived NO existe en #961
-  // FIX v3.5.2-SHIM: Agregado _setupNativeServerReadyListener — onServerReady SI existe en #961
 
   _setupNativeServerReadyListener() {
     if (!this.nativePlugin) return;
@@ -257,11 +252,7 @@ export class BLEInterface {
         self.showToast('Conexion fallada: ' + data.reason, 'error');
       }
     });
-    // FIX v3.5.1-SHIM: Eliminado onBluetoothStackBroken — NO existe en #961
   }
-
-  // FIX v3.5.1-SHIM: Eliminado _setupNativeServerErrorListener
-  // onServerError NO existe en #961
 
   _setDeviceState(deviceId, state, meta) {
     meta = meta || {};
@@ -384,15 +375,15 @@ export class BLEInterface {
     var text = btn.querySelector('span:last-child');
     if (!this.canAdvertise) {
       btn.className = 'ble-btn-visibility btn-visibility-warning';
-      if (icon) icon.textContent = '⚠️';
+      if (icon) icon.textContent = 'WARN';
       if (text) text.textContent = 'Visibilidad desactivada';
     } else if (!this.isAdvertising) {
       btn.className = 'ble-btn-visibility btn-visibility-off';
-      if (icon) icon.textContent = '👁️';
+      if (icon) icon.textContent = 'EYE';
       if (text) text.textContent = 'Visibilidad';
     } else {
       btn.className = 'ble-btn-visibility btn-visibility-on';
-      if (icon) icon.textContent = '👁️‍🗨️';
+      if (icon) icon.textContent = 'EYE';
       if (text) text.textContent = 'Visible';
     }
   }
@@ -400,16 +391,15 @@ export class BLEInterface {
   async toggleVisibility() {
     if (this.isDummyMode) return;
 
-    // FIX v3.5.1-SHIM: Usa Shim para permisos
     var permsReady = false;
     try {
-      var shim = window.permissionShim || (window.Capacitation && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
+      var shim = window.permissionShim || (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
       if (window.ensureBLEPermissions) {
         permsReady = await window.ensureBLEPermissions();
       } else if (shim && shim.ensure) {
         permsReady = await shim.ensure();
       } else {
-        permsReady = true; // Fallback si no hay Shim aun
+        permsReady = true;
       }
     } catch (e) {
       console.warn('[BLEInterface] Shim no disponible para permisos, continuando...');
@@ -471,13 +461,13 @@ export class BLEInterface {
   createDOM() {
     var tab = document.createElement('div');
     tab.id = 'ble-tab';
-    tab.innerHTML = '<div class="ble-tab-icon">🔷</div><div class="ble-tab-label">BLE</div><div class="ble-tab-badge" id="ble-tab-badge" style="display:none">0</div>';
+    tab.innerHTML = '<div class="ble-tab-icon">BLE</div><div class="ble-tab-label">BLE</div><div class="ble-tab-badge" id="ble-tab-badge" style="display:none">0</div>';
     document.body.appendChild(tab);
     this.elements.tab = tab;
 
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
-    panel.innerHTML = '<div class="ble-header"><h3>BLE Mesh</h3><button id="ble-close">✕</button></div><div class="ble-tabs"><button class="ble-tab-btn active" data-tab="devices">Dispositivos</button><button class="ble-tab-btn" data-tab="added">Contactos</button><button class="ble-tab-btn" data-tab="connected">Conectados</button></div><div class="ble-main-controls"><button id="ble-visibility-btn" class="ble-btn-visibility btn-visibility-off"><span class="btn-icon">👁️</span><span>Visibilidad</span></button><button id="ble-scan-btn" class="ble-btn-discover"><span id="text-discover">Descubrir</span></button></div><div class="ble-secondary-controls"><span id="ble-status" class="ble-status-offline">OFFLINE</span></div><div id="tab-devices" class="ble-tab-content active"><div id="ble-devices-list" class="ble-list"><div class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</div></div></div><div id="tab-added" class="ble-tab-content"><div id="ble-added-list" class="ble-list"><div class="ble-empty">No hay contactos agregados</div></div></div><div id="tab-connected" class="ble-tab-content"><div id="ble-connected-list" class="ble-list"><div class="ble-empty">No hay dispositivos conectados</div></div></div>';
+    panel.innerHTML = '<div class="ble-header"><h3>BLE Mesh</h3><button id="ble-close">X</button></div><div class="ble-tabs"><button class="ble-tab-btn active" data-tab="devices">Dispositivos</button><button class="ble-tab-btn" data-tab="added">Contactos</button><button class="ble-tab-btn" data-tab="connected">Conectados</button></div><div class="ble-main-controls"><button id="ble-visibility-btn" class="ble-btn-visibility btn-visibility-off"><span class="btn-icon">EYE</span><span>Visibilidad</span></button><button id="ble-scan-btn" class="ble-btn-discover"><span id="text-discover">Descubrir</span></button></div><div class="ble-secondary-controls"><span id="ble-status" class="ble-status-offline">OFFLINE</span></div><div id="tab-devices" class="ble-tab-content active"><div id="ble-devices-list" class="ble-list"><div class="ble-empty">Presiona Descubrir para encontrar dispositivos cercanos</div></div></div><div id="tab-added" class="ble-tab-content"><div id="ble-added-list" class="ble-list"><div class="ble-empty">No hay contactos agregados</div></div></div><div id="tab-connected" class="ble-tab-content"><div id="ble-connected-list" class="ble-list"><div class="ble-empty">No hay dispositivos conectados</div></div></div>';
     document.body.appendChild(panel);
     this.elements.panel = panel;
 
@@ -595,7 +585,6 @@ export class BLEInterface {
   async toggleScan() {
     if (this.isDummyMode) return;
 
-    // FIX v3.5.1-SHIM: Usa Shim para permisos
     var permsReady = false;
     try {
       if (window.ensureBLEPermissions) {
@@ -845,7 +834,7 @@ export class BLEInterface {
       var actionHtml = isAdded
         ? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button>'
         : '<button class="ble-btn-add" onclick="window.bleInterface.addContact(\\'' + id + '\\')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button>';
-      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">📶 ' + (device.rssi || '?') + ' dBm</div></div><div class="ble-device-actions">' + actionHtml + '</div>';
+      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">RSSI: ' + (device.rssi || '?') + ' dBm</div></div><div class="ble-device-actions">' + actionHtml + '</div>';
       list.appendChild(item);
     });
   }
@@ -863,7 +852,7 @@ export class BLEInterface {
       var id = _normId(contact.id || contact.address);
       var item = document.createElement('div');
       item.className = 'ble-device-item';
-      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(\\'' + id + '\\')">✕</button></div>';
+      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(\\'' + id + '\\')">X</button></div>';
       list.appendChild(item);
     });
   }
@@ -882,7 +871,7 @@ export class BLEInterface {
       var isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
       var item = document.createElement('div');
       item.className = 'ble-device-item';
-      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\\'' + id + '\\')">Desconectar</button></div>';
+      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">* ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\\'' + id + '\\')">Desconectar</button></div>';
       list.appendChild(item);
     });
   }
@@ -890,12 +879,12 @@ export class BLEInterface {
   _renderStateLabel(state) {
     if (!state || !state.state) return '';
     switch (state.state) {
-      case BLE_STATES.CONNECTING: return '⏳ ' + (state.message || 'Conectando...');
-      case BLE_STATES.DISCOVERING_SERVICES: return '🔍 Descubriendo...';
-      case BLE_STATES.NOTIFICATIONS_READY: return '✅ Canal listo';
-      case BLE_STATES.READY_TO_CHAT: return '✅ Listo';
-      case BLE_STATES.ERROR: return '❌ ' + (state.lastError || 'Error');
-      case BLE_STATES.RECONNECTING: return '🔄 ' + (state.message || 'Reconectando...');
+      case BLE_STATES.CONNECTING: return 'WAIT ' + (state.message || 'Conectando...');
+      case BLE_STATES.DISCOVERING_SERVICES: return 'FIND Descubriendo...';
+      case BLE_STATES.NOTIFICATIONS_READY: return 'OK Canal listo';
+      case BLE_STATES.READY_TO_CHAT: return 'OK Listo';
+      case BLE_STATES.ERROR: return 'ERR ' + (state.lastError || 'Error');
+      case BLE_STATES.RECONNECTING: return 'SYNC ' + (state.message || 'Reconectando...');
       default: return '';
     }
   }
@@ -995,7 +984,6 @@ export class BLEInterface {
     if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
     if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
     if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
-    // FIX v3.5.1-SHIM: Eliminados _nativeStackBrokenListener, _nativePeerInfoListener, _nativeServerErrorListener
     if (this.isScanning) this.toggleScan();
   }
 }
