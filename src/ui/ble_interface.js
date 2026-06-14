@@ -1,10 +1,8 @@
 /**
- * BLE Interface v4.1.1-FIX
- * Ubicacion: src/ui/ble_interface.js
- * FIX: _loadConnectedDevices() removido del init() - plugin #961 no tiene getConnectedDevices()
- * UI: Sin tabs, lista contactos + barra inferior nuevos
- * UUID: Agregar conecta GATT en background, recibe UUID real, guarda
- * Anti-duplicado: Por UUID, no por MAC
+ * BLE Interface v4.1.2-CRASHFIX
+ * FIX: _addNewDevice() ya NO llama connectToDevice() - plugin #961 no tiene ese metodo
+ *      Agrega contacto directo con UUID temporal. La conexion GATT la maneja el plugin nativo.
+ *      Previene crash nativo al tocar "+".
  */
 
 export function initBLEInterface(bleMesh) {
@@ -166,7 +164,6 @@ export class BLEInterface {
       this.updateStatus('OFFLINE (Dummy)');
     } else {
       this.updateStatus();
-      // FIX v4.1.1: No llamar _loadConnectedDevices() - plugin #961 no tiene getConnectedDevices
       this._initVisibility();
       this._setupNativeScanListeners();
       this._setupNativeConnectionListeners();
@@ -850,7 +847,9 @@ export class BLEInterface {
     }
   }
 
-  async _addNewDevice() {
+  // FIX v4.1.2-CRASHFIX: _addNewDevice ya NO llama connectToDevice()
+  // Plugin #961 no tiene ese metodo. Agrega contacto directamente.
+  _addNewDevice() {
     var bar = this.elements.newDeviceBar;
     var mac = bar.dataset.mac;
     if (!mac) return;
@@ -860,31 +859,29 @@ export class BLEInterface {
     
     var name = device.name || 'NEXO Peer';
     
+    // Anti-duplicado por nombre (solo si no es generico)
     var existingByName = _getContactByName(name);
     if (existingByName && name !== 'NEXO Peer' && name !== 'NEXO Device') {
       this.showToast('Ya tienes un contacto con ese nombre', 'warning');
       return;
     }
     
-    bar.style.opacity = '0.5';
+    // Generar UUID temporal basado en MAC
+    var tempUUID = 'mac-' + mac.replace(/:/g, '');
+    this._macToUuidMap.set(mac, tempUUID);
+    this._uuidToMacMap.set(tempUUID, mac);
     
-    this._pendingAdds.set(mac, { name: name, mac: mac });
+    // Agregar a contactos
+    _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
     
-    try {
-      await this.nativePlugin.connectToDevice({ deviceId: mac });
-      this.showToast('Conectando para agregar...', 'info');
-    } catch (e) {
-      console.warn('[BLEInterface] Conexion fallo para agregar, usando MAC temporal:', e.message);
-      var tempUUID = 'mac-' + mac.replace(/:/g, '');
-      this._macToUuidMap.set(mac, tempUUID);
-      this._uuidToMacMap.set(tempUUID, mac);
-      _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
-      this.foundDevices.delete(mac);
-      this.renderContactsList();
-      this.renderNewDeviceBar();
-      this.showToast('Agregado: ' + name, 'success');
-      bar.style.opacity = '1';
-    }
+    // Limpiar de foundDevices
+    this.foundDevices.delete(mac);
+    
+    // Refrescar UI
+    this.renderContactsList();
+    this.renderNewDeviceBar();
+    
+    this.showToast('Agregado: ' + name, 'success');
   }
 
   async openChat(deviceUUID) {
