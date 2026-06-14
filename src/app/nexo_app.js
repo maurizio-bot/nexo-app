@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.0.3-ARCH
+ * NEXO App v5.0.3-ARCH 06/2026
  * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH + ble_permissions.js v4.0-ARCH
  * FIX v5.0.3-ARCH: Enriquecer mensajes BLE con senderName resuelto desde bleInterface
  *      para evitar "Unknown" y MAC cruda en lista de conversaciones de TheStream.
