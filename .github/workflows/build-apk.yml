@@ -2,7 +2,7 @@ name: NEXO APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, recuperado-1273]  # <-- AGREGADO recuperado-1273
   workflow_dispatch:
 
 jobs:
