@@ -1,8 +1,9 @@
 /**
- * BLE Interface v3.5.3-SHIM-FIX
+ * BLE Interface v3.5.4-SHIM-FIX
  * Ubicacion: src/ui/ble_interface.js
- * FIX v3.5.3-SHIM: Reemplazados emojis de 4 bytes UTF-8 por texto ASCII para compatibilidad webpack.
- * FIX v3.5.2-SHIM: Agregado listener onServerReady que faltaba. Plugin #961 SI lo emite.
+ * FIX v3.5.4-SHIM: Reemplazados onclick inline por addEventListener para compatibilidad webpack.
+ * FIX v3.5.3-SHIM: Reemplazados emojis de 4 bytes UTF-8 por texto ASCII.
+ * FIX v3.5.2-SHIM: Agregado listener onServerReady que faltaba.
  * FIX v3.5.1-SHIM:
  * 1) Badge reseteado y protegido al abrir chat
  * 2) Auto-registro de contacto al recibir primer mensaje
@@ -831,10 +832,28 @@ export class BLEInterface {
       if (isNew) self._renderedDeviceIds.add(id);
       var item = document.createElement('div');
       item.className = 'ble-device-item' + (isNew ? ' new' : '');
-      var actionHtml = isAdded
-        ? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button>'
-        : '<button class="ble-btn-add" onclick="window.bleInterface.addContact(\\'' + id + '\\')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button>';
-      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">RSSI: ' + (device.rssi || '?') + ' dBm</div></div><div class="ble-device-actions">' + actionHtml + '</div>';
+      
+      var infoDiv = document.createElement('div');
+      infoDiv.className = 'ble-device-info';
+      infoDiv.innerHTML = '<div class="ble-device-name">' + (device.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">RSSI: ' + (device.rssi || '?') + ' dBm</div>';
+      item.appendChild(infoDiv);
+      
+      var actionsDiv = document.createElement('div');
+      actionsDiv.className = 'ble-device-actions';
+      if (!isAdded) {
+        var addBtn = document.createElement('button');
+        addBtn.className = 'ble-btn-add';
+        addBtn.textContent = '+';
+        addBtn.addEventListener('click', function() { self.addContact(id); });
+        actionsDiv.appendChild(addBtn);
+      }
+      var chatBtn = document.createElement('button');
+      chatBtn.className = 'ble-btn-write';
+      chatBtn.textContent = 'Chat';
+      chatBtn.addEventListener('click', function() { self.openChat(id); });
+      actionsDiv.appendChild(chatBtn);
+      item.appendChild(actionsDiv);
+      
       list.appendChild(item);
     });
   }
@@ -852,7 +871,26 @@ export class BLEInterface {
       var id = _normId(contact.id || contact.address);
       var item = document.createElement('div');
       item.className = 'ble-device-item';
-      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(\\'' + id + '\\')">X</button></div>';
+      
+      var infoDiv = document.createElement('div');
+      infoDiv.className = 'ble-device-info';
+      infoDiv.innerHTML = '<div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div>';
+      item.appendChild(infoDiv);
+      
+      var actionsDiv = document.createElement('div');
+      actionsDiv.className = 'ble-device-actions';
+      var chatBtn = document.createElement('button');
+      chatBtn.className = 'ble-btn-write';
+      chatBtn.textContent = 'Chat';
+      chatBtn.addEventListener('click', function() { self.openChat(id); });
+      actionsDiv.appendChild(chatBtn);
+      var removeBtn = document.createElement('button');
+      removeBtn.className = 'ble-btn-disconnect';
+      removeBtn.textContent = 'X';
+      removeBtn.addEventListener('click', function() { self.removeContact(id); });
+      actionsDiv.appendChild(removeBtn);
+      item.appendChild(actionsDiv);
+      
       list.appendChild(item);
     });
   }
@@ -871,7 +909,27 @@ export class BLEInterface {
       var isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
       var item = document.createElement('div');
       item.className = 'ble-device-item';
-      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">* ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\\'' + id + '\\')">Desconectar</button></div>';
+      
+      var infoDiv = document.createElement('div');
+      infoDiv.className = 'ble-device-info';
+      infoDiv.innerHTML = '<div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">* ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div>';
+      item.appendChild(infoDiv);
+      
+      var actionsDiv = document.createElement('div');
+      actionsDiv.className = 'ble-device-actions';
+      var chatBtn = document.createElement('button');
+      chatBtn.className = 'ble-btn-write';
+      chatBtn.textContent = 'Chat';
+      chatBtn.disabled = !isReady;
+      chatBtn.addEventListener('click', function() { self.openChat(id); });
+      actionsDiv.appendChild(chatBtn);
+      var disconnectBtn = document.createElement('button');
+      disconnectBtn.className = 'ble-btn-disconnect';
+      disconnectBtn.textContent = 'Desconectar';
+      disconnectBtn.addEventListener('click', function() { self.disconnect(id); });
+      actionsDiv.appendChild(disconnectBtn);
+      item.appendChild(actionsDiv);
+      
       list.appendChild(item);
     });
   }
