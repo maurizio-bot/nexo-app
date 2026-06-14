@@ -1,8 +1,7 @@
 /**
- * BLE Interface v4.1.2-CRASHFIX
- * FIX: _addNewDevice() ya NO llama connectToDevice() - plugin #961 no tiene ese metodo
- *      Agrega contacto directo con UUID temporal. La conexion GATT la maneja el plugin nativo.
- *      Previene crash nativo al tocar "+".
+ * BLE Interface v4.1.3-CHATFIX
+ * FIX: openChat() ya NO llama connectToDevice() - plugin #961 no lo tiene
+ *      Abre chat UI directamente. Conexion nativa automatica al enviar mensaje.
  */
 
 export function initBLEInterface(bleMesh) {
@@ -807,6 +806,7 @@ export class BLEInterface {
       var chatBtn = document.createElement('button');
       chatBtn.className = 'ble-btn-chat';
       chatBtn.textContent = 'Chat';
+      // FIX v4.1.3: openChat ahora es sync, no async. Sin await, sin crash.
       chatBtn.addEventListener('click', function() { self.openChat(uuid); });
       actionsDiv.appendChild(chatBtn);
       var removeBtn = document.createElement('button');
@@ -847,8 +847,6 @@ export class BLEInterface {
     }
   }
 
-  // FIX v4.1.2-CRASHFIX: _addNewDevice ya NO llama connectToDevice()
-  // Plugin #961 no tiene ese metodo. Agrega contacto directamente.
   _addNewDevice() {
     var bar = this.elements.newDeviceBar;
     var mac = bar.dataset.mac;
@@ -859,32 +857,29 @@ export class BLEInterface {
     
     var name = device.name || 'NEXO Peer';
     
-    // Anti-duplicado por nombre (solo si no es generico)
     var existingByName = _getContactByName(name);
     if (existingByName && name !== 'NEXO Peer' && name !== 'NEXO Device') {
       this.showToast('Ya tienes un contacto con ese nombre', 'warning');
       return;
     }
     
-    // Generar UUID temporal basado en MAC
     var tempUUID = 'mac-' + mac.replace(/:/g, '');
     this._macToUuidMap.set(mac, tempUUID);
     this._uuidToMacMap.set(tempUUID, mac);
     
-    // Agregar a contactos
     _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
     
-    // Limpiar de foundDevices
     this.foundDevices.delete(mac);
     
-    // Refrescar UI
     this.renderContactsList();
     this.renderNewDeviceBar();
     
     this.showToast('Agregado: ' + name, 'success');
   }
 
-  async openChat(deviceUUID) {
+  // FIX v4.1.3-CHATFIX: openChat ya NO es async. NO llama connectToDevice().
+  // Plugin #961 maneja conexion automaticamente. Solo abre UI.
+  openChat(deviceUUID) {
     var uuid = _normId(deviceUUID);
     var contact = _getContactByUUID(uuid);
     var mac = this._uuidToMacMap.get(uuid) || (contact && contact.macAddress);
@@ -910,17 +905,8 @@ export class BLEInterface {
       return;
     }
     
-    var state = this._getDeviceState(mac);
-    var isReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
-    
-    if (!isReady && this.nativePlugin) {
-      try {
-        await this.nativePlugin.connectToDevice({ deviceId: mac });
-        await this._waitForReadyToChat(mac, 15000);
-      } catch (e) {
-        this.showToast('Conectando... intenta enviar en unos segundos', 'warning');
-      }
-    }
+    // NO llamar connectToDevice() - plugin #961 no lo tiene
+    // La conexion la maneja el nativo cuando envias mensaje
     
     var appContainer = document.getElementById('app');
     if (appContainer) appContainer.classList.remove('hidden');
