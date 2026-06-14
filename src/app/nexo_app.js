@@ -1,5 +1,5 @@
 /**
- * nexo_app.js - NEXO App v5.1.0-FINAL-FIX
+ * nexo_app.js - NEXO App v5.1.0-FINAL-FIX 06/20
  * 0 optional chaining. 0 async class methods. ES5 compatible.
  */
 
