@@ -1,6 +1,7 @@
 /**
- * BLE Interface v4.1.0-UI-UUID
+ * BLE Interface v4.1.1-FIX
  * Ubicacion: src/ui/ble_interface.js
+ * FIX: _loadConnectedDevices() removido del init() - plugin #961 no tiene getConnectedDevices()
  * UI: Sin tabs, lista contactos + barra inferior nuevos
  * UUID: Agregar conecta GATT en background, recibe UUID real, guarda
  * Anti-duplicado: Por UUID, no por MAC
@@ -52,7 +53,6 @@ function _addBLEContact(contact) {
   
   if (!uuid) return false;
   
-  // Buscar por UUID
   var existingIdx = contacts.findIndex(function(c) {
     return _normId(c.deviceUUID) === uuid;
   });
@@ -66,7 +66,6 @@ function _addBLEContact(contact) {
     return true;
   }
   
-  // Nuevo contacto
   contacts.push({
     deviceUUID: uuid,
     name: contact.name || 'NEXO Peer',
@@ -167,7 +166,7 @@ export class BLEInterface {
       this.updateStatus('OFFLINE (Dummy)');
     } else {
       this.updateStatus();
-      this._loadConnectedDevices();
+      // FIX v4.1.1: No llamar _loadConnectedDevices() - plugin #961 no tiene getConnectedDevices
       this._initVisibility();
       this._setupNativeScanListeners();
       this._setupNativeConnectionListeners();
@@ -243,7 +242,8 @@ export class BLEInterface {
       self._cancelReconnect(mac);
       
       var peerUUID = self._macToUuidMap.get(mac);
-      var displayName = data.name || (peerUUID ? _getContactByUUID(peerUUID)?.name : null) || 'NEXO Peer';
+      var contact = peerUUID ? _getContactByUUID(peerUUID) : null;
+      var displayName = data.name || (contact ? contact.name : null) || 'NEXO Peer';
       
       if (data.direction === 'incoming') {
         self._setDeviceState(mac, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected', deviceUUID: peerUUID });
@@ -253,7 +253,6 @@ export class BLEInterface {
         self.connectedDevices.set(mac, { id: mac, address: mac, name: displayName, direction: 'outgoing', servicesReady: false, deviceUUID: peerUUID });
       }
       
-      // Si hay un agregar pendiente para este MAC, procesarlo
       self._processPendingAdd(mac);
     });
 
@@ -273,10 +272,8 @@ export class BLEInterface {
     this._pendingAdds.delete(mac);
     
     try {
-      // Esperar a que el canal este listo para recibir UUID
       await this._waitForReadyToChat(mac, 10000);
       
-      // Si ya tenemos UUID del payload, usarlo. Si no, usar MAC como fallback temporal
       var uuid = this._macToUuidMap.get(mac);
       if (!uuid) {
         uuid = 'mac-' + mac.replace(/:/g, '');
@@ -398,9 +395,11 @@ export class BLEInterface {
       }
       
       if (!senderName || senderName === 'NEXO Peer') {
-        senderName = _getContactByUUID(senderUUID)?.name
-          || self.connectedDevices.get(mac)?.name
-          || self.foundDevices.get(mac)?.name
+        var contact = _getContactByUUID(senderUUID);
+        var cname = contact ? contact.name : null;
+        senderName = cname
+          || (self.connectedDevices.get(mac) && self.connectedDevices.get(mac).name)
+          || (self.foundDevices.get(mac) && self.foundDevices.get(mac).name)
           || 'NEXO Peer';
       }
       
@@ -576,6 +575,12 @@ export class BLEInterface {
   }
 
   createDOM() {
+    var tab = document.createElement('div');
+    tab.id = 'ble-tab';
+    tab.innerHTML = '<div class="ble-tab-icon">BLE</div><div class="ble-tab-label">BLE</div><div class="ble-tab-badge" id="ble-tab-badge" style="display:none">0</div>';
+    document.body.appendChild(tab);
+    this.elements.tab = tab;
+    
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML = `
@@ -621,6 +626,10 @@ export class BLEInterface {
     var style = document.createElement('style');
     style.id = 'ble-styles-v4';
     style.textContent = `
+      #ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #00d4ff, #0099cc); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; }
+      .ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; }
+      @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+      
       #ble-panel { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0a0a15; transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; display: flex; flex-direction: column; }
       #ble-panel.active { transform: translateX(0); }
       #ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); }
@@ -675,6 +684,7 @@ export class BLEInterface {
 
   setupEventListeners() {
     var self = this;
+    this.elements.tab.addEventListener('click', function() { self.togglePanel(); });
     this.elements.backBtn.addEventListener('click', function() { self.togglePanel(); });
     this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
     this.elements.visibilityBtn.addEventListener('click', function() { self.toggleVisibility(); });
@@ -742,7 +752,6 @@ export class BLEInterface {
     if (!mac || mac === 'null' || mac === 'undefined') return;
     if (this.localDeviceAddress && mac === this.localDeviceAddress) return;
     
-    // Si ya es contacto conocido, solo actualizar online status
     var knownUUID = this._macToUuidMap.get(mac);
     if (knownUUID && _isBLEContact(knownUUID)) {
       var contacts = _getBLEContacts();
@@ -757,7 +766,6 @@ export class BLEInterface {
       return;
     }
     
-    // Si ya esta en foundDevices, actualizar
     if (this.foundDevices.has(mac)) {
       var existing = this.foundDevices.get(mac);
       existing.rssi = device.rssi;
@@ -768,7 +776,6 @@ export class BLEInterface {
       return;
     }
     
-    // Nuevo dispositivo encontrado
     device.lastSeen = Date.now();
     this.foundDevices.set(mac, device);
     this.newDevicesCount++;
@@ -823,7 +830,6 @@ export class BLEInterface {
     var bar = this.elements.newDeviceBar;
     var nameSpan = this.elements.newDeviceName;
     
-    // Buscar el primer dispositivo no agregado
     var newDevice = null;
     var newMac = null;
     this.foundDevices.forEach(function(device, mac) {
@@ -854,25 +860,20 @@ export class BLEInterface {
     
     var name = device.name || 'NEXO Peer';
     
-    // Verificar si ya existe por nombre
     var existingByName = _getContactByName(name);
     if (existingByName && name !== 'NEXO Peer' && name !== 'NEXO Device') {
       this.showToast('Ya tienes un contacto con ese nombre', 'warning');
       return;
     }
     
-    // Marcar como agregando
     bar.style.opacity = '0.5';
     
-    // Conectar en background para obtener UUID real
     this._pendingAdds.set(mac, { name: name, mac: mac });
     
     try {
       await this.nativePlugin.connectToDevice({ deviceId: mac });
-      // La conexion disparara _processPendingAdd cuando reciba UUID
       this.showToast('Conectando para agregar...', 'info');
     } catch (e) {
-      // Si falla conexion, agregar con MAC temporal
       console.warn('[BLEInterface] Conexion fallo para agregar, usando MAC temporal:', e.message);
       var tempUUID = 'mac-' + mac.replace(/:/g, '');
       this._macToUuidMap.set(mac, tempUUID);
@@ -963,7 +964,18 @@ export class BLEInterface {
   }
 
   updateBadge() {
-    // Badge ya no usado en esta UI, pero mantener compatibilidad
+    var badge = document.getElementById('ble-tab-badge');
+    if (!badge) return;
+    if (this._activeChatDeviceId) {
+      badge.style.display = 'none';
+      return;
+    }
+    if (this.newDevicesCount > 0) {
+      badge.textContent = this.newDevicesCount;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
   }
 
   async updateStatus(customStatus) {
