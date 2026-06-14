@@ -1,6 +1,7 @@
 /**
- * BLE Interface v3.5.1-ARCH-SHIM
+ * BLE Interface v3.5.2-ARCH-SHIM-FIX
  * Ubicacion: src/ui/ble_interface.js
+ * FIX v3.5.2-SHIM: Agregado listener onServerReady que faltaba. Plugin #961 SI lo emite.
  * FIX v3.5.1-SHIM:
  * 1) Badge reseteado y protegido al abrir chat (no contamina durante chat activo)
  * 2) Auto-registro de contacto al recibir primer mensaje (evita "Unknown" en lista)
@@ -125,6 +126,7 @@ export class BLEInterface {
       this._setupNativeConnectionListeners();
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
+      this._setupNativeServerReadyListener();
       // FIX v3.5.1-SHIM: Eliminados _setupNativePeerInfoListener, _setupNativeStackBrokenListener, _setupNativeServerErrorListener
       // El plugin #961 NO emite onPeerInfoReceived, onBluetoothStackBroken, onServerError
       this._loadLocalDeviceInfo();
@@ -157,8 +159,18 @@ export class BLEInterface {
   }
 
   // FIX v3.5.1-SHIM: Eliminado _setupNativePeerInfoListener — onPeerInfoReceived NO existe en #961
-  // FIX v3.5.1-SHIM: Eliminado _setupNativeServerReadyListener — onServerReady SI existe en #961, se mantiene
-  // pero simplificado sin dependencia de onServerError
+  // FIX v3.5.2-SHIM: Agregado _setupNativeServerReadyListener — onServerReady SI existe en #961
+
+  _setupNativeServerReadyListener() {
+    if (!this.nativePlugin) return;
+    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    var self = this;
+    this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', function(data) {
+      console.log('[BLEInterface] onServerReady recibido:', data);
+      self._serverReady = true;
+      self.showToast('Servidor BLE listo', 'success');
+    });
+  }
 
   _setupNativeConnectionListeners() {
     if (!this.nativePlugin) return;
@@ -248,8 +260,7 @@ export class BLEInterface {
     // FIX v3.5.1-SHIM: Eliminado onBluetoothStackBroken — NO existe en #961
   }
 
-  // FIX v3.5.1-SHIM: Eliminado _setupNativeServerReadyListener y _setupNativeServerErrorListener
-  // El plugin #961 SI emite onServerReady, pero lo manejamos inline en _initVisibility
+  // FIX v3.5.1-SHIM: Eliminado _setupNativeServerErrorListener
   // onServerError NO existe en #961
 
   _setDeviceState(deviceId, state, meta) {
@@ -832,8 +843,8 @@ export class BLEInterface {
       var item = document.createElement('div');
       item.className = 'ble-device-item' + (isNew ? ' new' : '');
       var actionHtml = isAdded
-        ? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>'
-        : '<button class="ble-btn-add" onclick="window.bleInterface.addContact(\'' + id + '\')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button>';
+        ? '<button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button>'
+        : '<button class="ble-btn-add" onclick="window.bleInterface.addContact(\\'' + id + '\\')">+</button><button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button>';
       item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">📶 ' + (device.rssi || '?') + ' dBm</div></div><div class="ble-device-actions">' + actionHtml + '</div>';
       list.appendChild(item);
     });
@@ -852,7 +863,7 @@ export class BLEInterface {
       var id = _normId(contact.id || contact.address);
       var item = document.createElement('div');
       item.className = 'ble-device-item';
-      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(\'' + id + '\')">✕</button></div>';
+      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (contact.name || 'NEXO Device') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.removeContact(\\'' + id + '\\')">✕</button></div>';
       list.appendChild(item);
     });
   }
@@ -871,7 +882,7 @@ export class BLEInterface {
       var isReady = state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.READY_TO_CHAT;
       var item = document.createElement('div');
       item.className = 'ble-device-item';
-      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(\'' + id + '\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\'' + id + '\')">Desconectar</button></div>';
+      item.innerHTML = '<div class="ble-device-info"><div class="ble-device-name">' + (device.name || 'NEXO Peer') + '</div><div class="ble-device-id">' + self._formatId(id) + '</div><div class="ble-device-rssi">● ' + (device.direction || 'Conectado') + ' ' + stateLabel + '</div></div><div class="ble-device-actions"><button class="ble-btn-write" ' + (isReady ? '' : 'disabled') + ' onclick="window.bleInterface.openChat(\\'' + id + '\\')">Chat</button><button class="ble-btn-disconnect" onclick="window.bleInterface.disconnect(\\'' + id + '\\')">Desconectar</button></div>';
       list.appendChild(item);
     });
   }
@@ -983,10 +994,10 @@ export class BLEInterface {
     if (this._nativeServicesReadyListener) this._nativeServicesReadyListener.remove();
     if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
     if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
-    // FIX v3.5.1-SHIM: Eliminados _nativeStackBrokenListener, _nativePeerInfoListener, _nativeServerReadyListener, _nativeServerErrorListener
+    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    // FIX v3.5.1-SHIM: Eliminados _nativeStackBrokenListener, _nativePeerInfoListener, _nativeServerErrorListener
     if (this.isScanning) this.toggleScan();
   }
 }
 
 window.bleInterface = null;
-
