@@ -1,14 +1,17 @@
 /**
- * main.js - NEXO v10.1-FIX
- * Punto de entrada. Navegacion entre 3 vistas: chat-list, chat, ble-scan.
- * FIXES: boton regreso en BLE, SCAN con manejo de error, sin duplicados.
+ * main.js - NEXO v10.2-ID-FIX
+ * Punto de entrada. Unifica contactos con ble_interface.js via eventos.
+ * FIX: Escucha nexo:ble:openChat y nexo:ble:messageReceived.
+ * FIX: sendMessage delega a nexoApp.sendMessage() con deviceUUID correcto.
+ * FIX: No registra listeners nativos duplicados.
  */
+
 // ============================================================
 // CONFIG
 // ============================================================
 const CFG = {
   APP_NAME: 'NEXO',
-  VERSION: '10.1.0',
+  VERSION: '10.2.0',
   SPLASH_MS: 2500,
   DEDUP_TTL: 30000,
 };
@@ -65,27 +68,24 @@ function showView(name) {
   };
   const el = document.getElementById(views[name]);
   if (el) el.classList.add('active');
-  // Header dinamico
   const title = $('#header-title');
   const sub = $('#header-subtitle');
   const action = $('#header-action');
+  const scanCont = $('#scan-container');
   if (name === 'chat-list') {
     if (title) { title.textContent = 'NEXO'; title.style.textAlign = 'center'; }
     if (sub) { sub.textContent = 'v10.0'; sub.style.display = 'block'; }
     if (action) { action.style.display = 'flex'; action.innerHTML = '&#9673;'; }
-    const scanCont = $('#scan-container');
     if (scanCont) scanCont.style.display = 'block';
   } else if (name === 'chat') {
-    if (title) { title.textContent = ST.activeContact || 'Chat'; title.style.textAlign = 'left'; }
+    if (title) { title.textContent = ST.activeContact ? ST.activeContact.name : 'Chat'; title.style.textAlign = 'left'; }
     if (sub) { sub.style.display = 'none'; }
     if (action) { action.style.display = 'none'; }
-    const scanCont = $('#scan-container');
     if (scanCont) scanCont.style.display = 'none';
   } else if (name === 'ble') {
     if (title) { title.textContent = 'BLE Mesh'; title.style.textAlign = 'center'; }
     if (sub) { sub.style.display = 'none'; }
     if (action) { action.style.display = 'none'; }
-    const scanCont = $('#scan-container');
     if (scanCont) scanCont.style.display = 'none';
   }
 }
@@ -111,6 +111,40 @@ function toast(msg, type) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 // ============================================================
+// CONTACTOS (unificado con ble_interface.js)
+// ============================================================
+function addOrUpdateContact(contactData) {
+  const uuid = (contactData.deviceUUID || contactData.id || '').toString().toLowerCase().trim();
+  const name = contactData.name || 'NEXO Peer';
+  const mac = contactData.macAddress || contactData.mac || contactData.address || '';
+  if (!uuid) return;
+  const key = uuid;
+  const existing = ST.contacts.get(key);
+  if (existing) {
+    existing.name = name;
+    existing.mac = mac || existing.mac;
+    existing.lastSeen = Date.now();
+    existing.online = true;
+  } else {
+    ST.contacts.set(key, {
+      id: uuid,
+      name: name,
+      mac: mac,
+      deviceUUID: uuid,
+      addedAt: Date.now(),
+      lastSeen: Date.now(),
+      online: true
+    });
+  }
+  renderChatList();
+}
+function removeContact(uuid) {
+  const key = uuid.toString().toLowerCase().trim();
+  ST.contacts.delete(key);
+  ST.conversations.delete(key);
+  renderChatList();
+}
+// ============================================================
 // CHAT LIST
 // ============================================================
 function renderChatList() {
@@ -125,13 +159,13 @@ function renderChatList() {
   }
   if (empty) empty.style.display = 'none';
   contacts.forEach(c => {
-    const key = c.name.toLowerCase();
+    const key = c.id;
     const conv = ST.conversations.get(key) || [];
     const lastMsg = conv[conv.length - 1];
     const unread = conv.filter(m => !m.read).length;
     const item = document.createElement('div');
     item.className = 'chat-item';
-    item.dataset.name = c.name;
+    item.dataset.uuid = c.id;
     const avatarLetter = (c.name && c.name[0]) ? c.name[0].toUpperCase() : '?';
     const lastContent = (lastMsg && lastMsg.content) ? lastMsg.content : 'Sin mensajes';
     const lastTime = lastMsg ? fmtTime(lastMsg.timestamp) : '';
@@ -145,16 +179,24 @@ function renderChatList() {
       '<div class="chat-time">' + lastTime + '</div>' +
       badgeHtml +
       '</div>';
-    item.addEventListener('click', () => openChat(c.name));
+    item.addEventListener('click', () => openChat(c.id, c.name, c.mac));
     container.appendChild(item);
   });
 }
 // ============================================================
 // CHAT
 // ============================================================
-function openChat(name) {
-  ST.activeContact = name;
-  const key = name.toLowerCase();
+function openChat(contactId, name, mac) {
+  const key = contactId.toString().toLowerCase().trim();
+  const contact = ST.contacts.get(key);
+  const displayName = contact ? contact.name : (name || 'NEXO Peer');
+  const deviceMac = contact ? contact.mac : (mac || '');
+  ST.activeContact = {
+    id: key,
+    name: displayName,
+    mac: deviceMac,
+    deviceUUID: key
+  };
   // Marcar como leidos
   const conv = ST.conversations.get(key) || [];
   conv.forEach(m => m.read = true);
@@ -162,21 +204,25 @@ function openChat(name) {
   const hName = $('#chat-header-name');
   const hStatus = $('#chat-header-status');
   const hDot = $('#chat-status-dot');
-  if (hName) hName.textContent = name;
+  if (hName) hName.textContent = displayName;
   if (hStatus) hStatus.textContent = 'BLUETOOTH';
   if (hDot) hDot.style.display = 'inline-block';
+  // Sincronizar con nexoApp
+  if (window.nexoApp) {
+    window.nexoApp.activeContact = ST.activeContact;
+  }
   // Renderizar mensajes
-  renderMessages(name);
+  renderMessages(key);
   showView('chat');
 }
-function renderMessages(contactName) {
+function renderMessages(contactKey) {
   const container = $('#messages-container');
   if (!container) return;
   container.innerHTML = '';
-  const key = (contactName || '').toLowerCase();
+  const key = (contactKey || '').toString().toLowerCase().trim();
   const msgs = ST.conversations.get(key) || [];
   msgs.forEach(m => {
-    const isOwn = m.own || m.sender === 'Tu';
+    const isOwn = m.own === true || m.sender === 'Tu' || m._own === true;
     const div = document.createElement('div');
     div.className = 'msg ' + (isOwn ? 'sent' : 'rcvd');
     div.innerHTML = escHtml(m.content) + ' <span class="msg-time">' + fmtTime(m.timestamp) + (isOwn ? ' &#10003;' : '') + '</span>';
@@ -204,193 +250,122 @@ function sendMessage() {
     own: true,
     read: true,
   };
-  const key = ST.activeContact.toLowerCase();
+  const key = ST.activeContact.id;
   if (!ST.conversations.has(key)) ST.conversations.set(key, []);
   ST.conversations.get(key).push(msg);
-  renderMessages(ST.activeContact);
+  renderMessages(key);
   if (input) input.value = '';
-  // Enviar via BLE
-  const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
-  const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
-  try {
-    if (ST.blePlugin && ST.blePlugin.sendMessage) {
-      ST.blePlugin.sendMessage({ content: content, recipient: ST.activeContact });
-    } else if (plugin && plugin.sendMessage) {
-      plugin.sendMessage({ content: content, recipient: ST.activeContact });
+  // Delegar envio a nexoApp si existe
+  if (window.nexoApp && window.nexoApp.sendMessage) {
+    window.nexoApp.sendMessage({
+      content: content,
+      recipient: ST.activeContact.id,
+      messageId: msg.id,
+      senderName: 'Tu'
+    }).catch(function(e) {
+      console.warn('[NEXO] nexoApp.sendMessage error:', e);
+    });
+  } else {
+    // Fallback directo al plugin
+    try {
+      const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
+      const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
+      if (plugin && plugin.sendMessage) {
+        plugin.sendMessage({ deviceId: ST.activeContact.mac || ST.activeContact.id, message: content });
+      }
+    } catch (e) {
+      console.error('[NEXO] Send error:', e);
     }
-  } catch (e) {
-    console.error('[NEXO] Send error:', e);
   }
   renderChatList();
 }
 function onMessageReceived(payload) {
   const content = (payload && payload.content) || (payload && payload.text) || (payload && payload.message) || '';
-  const sender = (payload && payload.sender) || (payload && payload.from) || (payload && payload.deviceName) || 'Desconocido';
+  const senderUUID = (payload && payload.sender) || (payload && payload.deviceUUID) || (payload && payload.from) || 'desconocido';
+  const senderName = (payload && payload.senderName) || senderUUID;
   const ts = (payload && payload.timestamp) || Date.now();
-  const id = (payload && payload.messageId) || (payload && payload.id) || hashMsg(sender, content, ts);
+  const id = (payload && payload.messageId) || (payload && payload.id) || hashMsg(senderUUID, content, ts);
   if (ST.seenIds.has(id)) return;
   ST.seenIds.add(id);
   setTimeout(() => ST.seenIds.delete(id), CFG.DEDUP_TTL);
   // Agregar contacto si es nuevo
-  const sKey = sender.toLowerCase();
+  const sKey = senderUUID.toString().toLowerCase().trim();
   if (!ST.contacts.has(sKey)) {
     ST.contacts.set(sKey, {
-      name: sender,
-      deviceId: (payload && payload.deviceId) || '',
-      mac: (payload && payload.mac) || ''
+      id: sKey,
+      name: senderName,
+      deviceUUID: sKey,
+      mac: (payload && payload.macAddress) || '',
+      addedAt: Date.now(),
+      lastSeen: Date.now(),
+      online: true
     });
+  } else {
+    const c = ST.contacts.get(sKey);
+    c.lastSeen = Date.now();
+    c.online = true;
   }
   // Guardar mensaje
   if (!ST.conversations.has(sKey)) ST.conversations.set(sKey, []);
-  ST.conversations.get(sKey).push({ id: id, content: content, sender: sender, timestamp: ts, own: false });
+  ST.conversations.get(sKey).push({ id: id, content: content, sender: senderName, timestamp: ts, own: false, read: false });
   // Renderizar si es chat activo
-  if (ST.view === 'chat' && ST.activeContact && ST.activeContact.toLowerCase() === sKey) {
-    renderMessages(ST.activeContact);
+  if (ST.view === 'chat' && ST.activeContact && ST.activeContact.id === sKey) {
+    renderMessages(sKey);
   } else {
-    toast('Nuevo mensaje de ' + sender, 'ok');
+    toast('Nuevo mensaje de ' + senderName, 'ok');
     renderChatList();
   }
 }
 // ============================================================
-// BLE SCAN
+// BLE SCAN (delegado a ble_interface.js, solo UI en main.js)
 // ============================================================
 function toggleScan() {
-  if (ST.isScanning) {
-    stopScan();
+  if (window.bleInterface && window.bleInterface.toggleScan) {
+    window.bleInterface.toggleScan();
   } else {
-    startScan();
+    toast('BLE Interface no disponible', 'err');
   }
 }
-function startScan() {
-  ST.isScanning = true;
-  const btn = $('#scan-btn');
-  if (btn) {
-    btn.textContent = '...';
-    btn.classList.add('scanning');
-  }
-  toast('Escaneando dispositivos BLE...', 'ok');
-  // Limpiar lista
-  const list = $('#devices-list');
-  const empty = $('#devices-empty');
-  if (list) list.innerHTML = '';
-  if (empty) empty.style.display = 'none';
-  // Llamar plugin nativo con manejo de error robusto
-  try {
-    const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
-    const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
-    if (plugin && plugin.startScan) {
-      plugin.startScan().catch(function(e) {
-        console.warn('[NEXO] startScan error:', e);
-        toast('Error al escanear: ' + (e.message || 'desconocido'), 'err');
-        stopScan();
+// ============================================================
+// EVENTOS DE BLE_INTERFACE (unificacion)
+// ============================================================
+function setupBLEEvents() {
+  // Contacto agregado desde ble_interface.js
+  window.addEventListener('nexo:contact:added', function(e) {
+    if (e.detail && e.detail.contact) {
+      addOrUpdateContact(e.detail.contact);
+    }
+  });
+  // Contacto actualizado
+  window.addEventListener('nexo:contact:updated', function(e) {
+    if (e.detail && e.detail.contact) {
+      addOrUpdateContact(e.detail.contact);
+    }
+  });
+  // Contacto eliminado
+  window.addEventListener('nexo:contact:removed', function(e) {
+    if (e.detail && e.detail.deviceUUID) {
+      removeContact(e.detail.deviceUUID);
+    }
+  });
+  // Abrir chat desde ble_interface.js
+  window.addEventListener('nexo:ble:openChat', function(e) {
+    if (e.detail) {
+      const d = e.detail;
+      addOrUpdateContact({
+        deviceUUID: d.contactId,
+        name: d.name,
+        macAddress: d.address
       });
-    } else {
-      console.warn('[NEXO] Plugin startScan no disponible');
-      toast('BLE no disponible', 'err');
-      stopScan();
+      openChat(d.contactId, d.name, d.address);
     }
-  } catch (e) {
-    console.warn('[NEXO] startScan exception:', e);
-    toast('Error BLE', 'err');
-    stopScan();
-  }
-  // Auto-stop despues de 10s
-  setTimeout(stopScan, 10000);
-}
-function stopScan() {
-  ST.isScanning = false;
-  const btn = $('#scan-btn');
-  if (btn) {
-    btn.textContent = 'SCAN';
-    btn.classList.remove('scanning');
-  }
-  try {
-    const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
-    const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
-    if (plugin && plugin.stopScan) {
-      plugin.stopScan().catch(function() {});
-    }
-  } catch (e) {}
-}
-function onDeviceFound(device) {
-  const name = (device && device.name) || (device && device.deviceName) || 'Dispositivo';
-  const mac = (device && device.address) || (device && device.mac) || '';
-  const key = name.toLowerCase();
-  if (!ST.contacts.has(key)) {
-    ST.contacts.set(key, {
-      name: name,
-      mac: mac,
-      deviceId: (device && device.deviceId) || ''
-    });
-  }
-  renderDeviceCard(name, mac, device);
-  renderChatList();
-}
-function renderDeviceCard(name, mac, device) {
-  const list = $('#devices-list');
-  if (!list) return;
-  // Evitar duplicados en la lista
-  const existing = list.querySelector('[data-name="' + CSS.escape(name) + '"]');
-  if (existing) return;
-  const card = document.createElement('div');
-  card.className = 'device-card';
-  card.dataset.name = name;
-  const macHtml = mac ? '<div class="device-mac">' + escHtml(mac) + '</div>' : '';
-  card.innerHTML = '<div class="device-info">' +
-    '<div class="device-name">' + escHtml(name) + '</div>' +
-    '<div class="device-status">Disponible</div>' +
-    macHtml +
-    '</div>' +
-    '<div class="device-actions">' +
-    '<button class="btn-sm btn-chat" data-name="' + escHtml(name) + '">Chat</button>' +
-    '<button class="btn-sm btn-del" data-name="' + escHtml(name) + '">&#10005;</button>' +
-    '</div>';
-  card.querySelector('.btn-chat').addEventListener('click', () => {
-    addContact(name, device);
-    openChat(name);
   });
-  card.querySelector('.btn-del').addEventListener('click', () => {
-    card.remove();
+  // Mensaje recibido desde ble_interface.js
+  window.addEventListener('nexo:ble:messageReceived', function(e) {
+    if (e.detail) {
+      onMessageReceived(e.detail);
+    }
   });
-  list.appendChild(card);
-}
-function addContact(name, device) {
-  const key = name.toLowerCase();
-  if (ST.contacts.has(key)) return;
-  ST.contacts.set(key, {
-    name: name,
-    mac: (device && device.address) || (device && device.mac) || '',
-    deviceId: (device && device.deviceId) || ''
-  });
-  renderChatList();
-}
-// ============================================================
-// BLE INIT
-// ============================================================
-async function initBLE() {
-  try {
-    const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
-    const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
-    if (!plugin) {
-      console.warn('[NEXO] Plugin no disponible');
-      return;
-    }
-    ST.blePlugin = plugin;
-    const status = (plugin.checkBLEStatus) ? await plugin.checkBLEStatus() : null;
-    console.log('[NEXO] BLE status:', status);
-    if (!(status && status.allGranted)) {
-      if (plugin.initializeBLE) {
-        await plugin.initializeBLE();
-      }
-    }
-    // Listeners nativos - SOLO en main.js, NO duplicados
-    if (plugin.addListener) {
-      plugin.addListener('onDeviceFound', (d) => onDeviceFound(d));
-      plugin.addListener('onPayloadReceived', (p) => onMessageReceived(p));
-    }
-  } catch (e) {
-    console.error('[NEXO] BLE init error:', e);
-  }
 }
 // ============================================================
 // EVENTS
@@ -400,7 +375,11 @@ function bindEvents() {
   const bleBtn = $('#header-action');
   if (bleBtn) {
     bleBtn.addEventListener('click', () => {
-      showView('ble');
+      if (window.bleInterface && window.bleInterface.togglePanel) {
+        window.bleInterface.togglePanel();
+      } else {
+        showView('ble');
+      }
     });
   }
   // BLE back button -> volver a chat-list
@@ -440,8 +419,8 @@ function bindEvents() {
 // ============================================================
 async function boot() {
   console.log('[NEXO] Boot ' + CFG.APP_NAME + ' v' + CFG.VERSION);
+  setupBLEEvents();
   bindEvents();
-  await initBLE();
   renderChatList();
   showView('chat-list');
   setTimeout(hideSplash, CFG.SPLASH_MS);
