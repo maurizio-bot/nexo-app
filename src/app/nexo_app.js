@@ -1,9 +1,7 @@
 /**
- * NEXO App v5.0.3-ARCH 06/2026
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH + ble_permissions.js v4.0-ARCH
- * FIX v5.0.3-ARCH: Enriquecer mensajes BLE con senderName resuelto desde bleInterface
- *      para evitar "Unknown" y MAC cruda en lista de conversaciones de TheStream.
- *      Disparar nexo:ble:closeChat al limpiar contacto activo.
+ * NEXO App v5.0.4-NEXO-V10
+ * Paleta NEXO v10: fondo #000, texto #B0B0B0, Royal Blue #1565C0, Midnight Navy #1A237E
+ * FIX: Conversaciones separadas, mensajes filtrados por contacto activo, dedup centralizado.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -75,7 +73,7 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.3-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.4-NEXO-V10 iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -95,7 +93,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.3-ARCH Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.4-NEXO-V10 Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -172,7 +170,7 @@ export class NexoApp {
         const subtitle = document.getElementById('chat-contact-subtitle');
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
-        DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
+        DEBUG.success(`Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
       };
@@ -181,7 +179,6 @@ export class NexoApp {
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
-        
         let resolvedName = senderName;
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           const nid = (deviceId || '').toString().toLowerCase().trim();
@@ -190,7 +187,6 @@ export class NexoApp {
             || senderName
             || 'NEXO Peer';
         }
-        
         this._handleMessage({
           content,
           sender: deviceId,
@@ -248,9 +244,9 @@ export class NexoApp {
     console.log(`[BLE_SEND] Enviando a ${deviceId?.substring?.(0,8)}...`);
     try {
       await plugin.sendMessage({ deviceId, message: content });
-      DEBUG.success(`📨 Enviado vía BLE a ${deviceId?.substring?.(0,8)}`, 'MSG_BLE');
+      DEBUG.success(`Enviado via BLE a ${deviceId?.substring?.(0,8)}`, 'MSG_BLE');
     } catch (e) {
-      DEBUG.error('BLE_SEND_FAIL', `Envío falló: ${e.message}`);
+      DEBUG.error('BLE_SEND_FAIL', `Envio fallo: ${e.message}`);
       throw e;
     }
   }
@@ -276,7 +272,7 @@ export class NexoApp {
           this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
           return true;
         } catch (e) {
-          DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
+          DEBUG.warn(`BLE directo fallo: ${e.message}`, 'MSG_BLE_FAIL');
         }
       }
 
@@ -289,7 +285,7 @@ export class NexoApp {
             this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: bleDevices[0].deviceId, source: 'ble_direct', messageId }, 'self');
             return true;
           }
-        } catch (e) { DEBUG.log(`[BLE_SEND] Fallback falló: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
+        } catch (e) { DEBUG.log(`[BLE_SEND] Fallback fallo: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
       }
 
       const nordicPeers = this.nordicMesh?.getPeers?.() || [];
@@ -351,7 +347,7 @@ export class NexoApp {
   async destroy() {
     if (this._isDestroyed) return;
     this._isDestroyed = true;
-    DEBUG.log('🧹 Cleanup...', 'info', 'DESTROY');
+    DEBUG.log('Cleanup...', 'info', 'DESTROY');
     if (this._bleChatHandler) { window.removeEventListener('nexo:ble:openChat', this._bleChatHandler); this._bleChatHandler = null; }
     if (this._bleMessageHandler) { window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler); this._bleMessageHandler = null; }
     if (this.bleInterface) { try { this.bleInterface.destroy(); } catch(e) {} this.bleInterface = null; }
