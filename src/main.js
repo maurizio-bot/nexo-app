@@ -1,8 +1,9 @@
-/**
- * src/main.js - Punto de entrada NEXO v9.1-SHIM
- * NAP 2.0 Certified - BLE Soberano P2P
- * v9.1-SHIM: SetupManager/SetupWizard eliminados. Permission Shim integrado.
- * Build #961 compatible. NO toca nativo.
+/** main.js v10.0-SHIM-NEXO con paleta v10 **/
+
+main_js_v10 = r'''/**
+ * src/main.js - Punto de entrada NEXO v10.0-SHIM-NEXO
+ * FIX: Conversaciones separadas, mensajes filtrados por contacto activo,
+ *      dedup centralizado. Paleta NEXO v10: fondo #000, texto #B0B0B0.
  */
 
 import './styles/critical.css';
@@ -15,12 +16,15 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.1-SHIM',
+  version: '10.0-SHIM-NEXO',
   initialized: false
 };
 
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
+
+const _conversations = new Map();
+let _activeConversationId = null;
 
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible?.()) {
@@ -40,13 +44,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
-    // ─── SHIM INTEGRATION v9.1 ───
-    rem.info('[Shim] Verificando permisos BLE...', 'SHIM_CHECK');
-
     let permissionsGranted = false;
     try {
       const permPromise = ensureBLEPermissions();
-      const permTimeout = new Promise((_, reject) => 
+      const permTimeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('PERM_TIMEOUT')), 10000)
       );
       permissionsGranted = await Promise.race([permPromise, permTimeout]);
@@ -64,7 +65,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       _showPermissionOverlay();
     }
 
-    // Escuchar evento del Shim para auto-continuar cuando el usuario conceda desde Settings
     window.addEventListener('nexo-permissions-granted', async (e) => {
       if (!window.NEXO.initialized) {
         rem.success(`[Shim] Permisos concedidos via ${e.detail?.source || 'event'}`, 'SHIM_EVENT_OK');
@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, { once: true });
 
   } catch (error) {
-    console.error('💥 Error fatal en inicialización:', error);
+    console.error('Error fatal en inicializacion:', error);
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('INIT_FATAL', error.message);
     rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
@@ -84,87 +84,187 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// ─── Permission Overlay (reemplaza SetupWizard) ───
-function _showPermissionOverlay() {
-  if (document.getElementById('nexo-perm-overlay')) return;
+function _showView(viewId) {
+  const views = ['conversations-view', 'app'];
+  views.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      if (id === viewId) {
+        el.classList.remove('hidden');
+        el.classList.add('active');
+      } else {
+        el.classList.add('hidden');
+        el.classList.remove('active');
+      }
+    }
+  });
+}
 
-  const overlay = document.createElement('div');
-  overlay.id = 'nexo-perm-overlay';
-  overlay.innerHTML = `
-    <div class="perm-overlay-content">
-      <h2>🔐 Permisos BLE Requeridos</h2>
-      <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p>
-      <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p>
-      <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>
-      <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button>
-      <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button>
+function _showConversations() {
+  _activeConversationId = null;
+  if (window.NEXO.app) window.NEXO.app.activeContact = null;
+  _renderConversationsList();
+  _showView('conversations-view');
+}
+
+function _showChat(contactId, name, address, transport) {
+  _activeConversationId = contactId;
+  if (window.NEXO.app) {
+    window.NEXO.app.activeContact = { id: contactId, name, address, transport };
+  }
+  const nameInput = document.getElementById('chat-contact-name');
+  const subtitle = document.getElementById('chat-contact-subtitle');
+  if (nameInput) nameInput.value = name || 'NEXO';
+  if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
+  _renderMessagesForConversation(contactId);
+  _showView('app');
+}
+
+function _renderConversationsList() {
+  const list = document.getElementById('conversations-list');
+  if (!list) return;
+
+  if (_conversations.size === 0) {
+    list.innerHTML = '<div class="conv-empty">No hay conversaciones</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  const sorted = Array.from(_conversations.entries()).sort((a, b) => {
+    const ta = b[1].lastMessage?.timestamp || 0;
+    const tb = a[1].lastMessage?.timestamp || 0;
+    return tb - ta;
+  });
+
+  sorted.forEach(([convId, conv]) => {
+    const item = document.createElement('div');
+    item.className = 'conversation-item';
+    const initial = (conv.name || 'N').charAt(0).toUpperCase();
+    const preview = conv.lastMessage ? (conv.lastMessage.content || '').substring(0, 40) : 'Sin mensajes';
+    const time = conv.lastMessage ? _formatTime(conv.lastMessage.timestamp) : '';
+    const unread = conv.unread || 0;
+
+    item.innerHTML = `
+      <div class="conv-avatar">${initial}</div>
+      <div class="conv-info">
+        <div class="conv-name">${conv.name || 'NEXO Peer'}</div>
+        <div class="conv-preview">${preview}</div>
+      </div>
+      <div class="conv-meta">
+        <div class="conv-time">${time}</div>
+        ${unread > 0 ? `<div class="conv-badge">${unread}</div>` : ''}
+      </div>
+    `;
+    item.addEventListener('click', () => {
+      conv.unread = 0;
+      _showChat(convId, conv.name, conv.address, conv.transport || 'ble');
+    });
+    list.appendChild(item);
+  });
+}
+
+function _formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function _getOrCreateConversation(convId, name, address, transport) {
+  if (!_conversations.has(convId)) {
+    _conversations.set(convId, {
+      id: convId,
+      name: name || 'NEXO Peer',
+      address: address || '',
+      transport: transport || 'ble',
+      messages: [],
+      unread: 0,
+      lastMessage: null
+    });
+  }
+  return _conversations.get(convId);
+}
+
+function _renderMessagesForConversation(convId) {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const conv = _conversations.get(convId);
+  if (!conv || !conv.messages.length) return;
+
+  conv.messages.forEach(msg => _renderMessageToDOM(msg));
+  container.scrollTop = container.scrollHeight;
+}
+
+function _renderMessageToDOM(msg) {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
+
+  const div = document.createElement('div');
+  div.className = `message ${msg._own ? 'own' : 'other'}`;
+  div.dataset.messageId = msg.messageId || '';
+
+  const senderHtml = !msg._own && msg.senderName
+    ? `<span class="message-sender">${msg.senderName}</span>`
+    : '';
+
+  const checkIcon = msg._own
+    ? (msg.pending ? '<span class="message-check sent">&#10003;</span>'
+       : '<span class="message-check delivered">&#10003;&#10003;</span>')
+    : '';
+
+  div.innerHTML = `
+    ${senderHtml}
+    <div class="msg-content">${msg.content || msg.text || ''}</div>
+    <div class="message-meta">
+      <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
+      ${checkIcon}
     </div>
   `;
-  document.body.appendChild(overlay);
-
-  // Styles inline para no depender de CSS externo
-  const style = document.createElement('style');
-  style.id = 'perm-overlay-styles';
-  style.textContent = `
-    #nexo-perm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 2147483647; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
-    .perm-overlay-content { background: #0a0a15; border: 1px solid #00d4ff; border-radius: 16px; padding: 32px; max-width: 360px; width: 90%; text-align: center; color: #fff; box-shadow: 0 0 40px rgba(0,212,255,0.15); }
-    .perm-overlay-content h2 { margin: 0 0 12px; font-size: 20px; color: #00d4ff; }
-    .perm-overlay-content p { margin: 0 0 8px; font-size: 14px; color: #ccc; line-height: 1.5; }
-    .perm-sub { font-size: 12px !important; color: #888 !important; font-style: italic; }
-    .perm-btn-primary { display: block; width: 100%; margin: 16px 0 8px; padding: 14px; background: linear-gradient(135deg,#00d4ff,#0099cc); color: #000; border: none; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; }
-    .perm-btn-secondary { display: block; width: 100%; margin: 0 0 8px; padding: 12px; background: transparent; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; }
-    .perm-btn-ghost { display: block; width: 100%; margin: 0; padding: 10px; background: transparent; color: #666; border: none; font-size: 13px; cursor: pointer; }
-    .perm-btn-primary:hover { box-shadow: 0 0 20px rgba(0,212,255,0.3); }
-  `;
-  document.head.appendChild(style);
-
-  document.getElementById('perm-btn-grant').addEventListener('click', async () => {
-    rem.info('[Shim] Usuario solicitó permisos desde overlay', 'SHIM_USER_REQ');
-    try {
-      const shim = getPermissionShim();
-      const granted = await shim.request();
-      if (granted) {
-        _hidePermissionOverlay();
-        await initializeNexoApp();
-      } else {
-        rem.warn('[Shim] Permisos denegados desde overlay', 'SHIM_USER_DENY');
-      }
-    } catch (e) {
-      rem.error(`[Shim] Error en request: ${e.message}`, 'SHIM_USER_ERR');
-    }
-  });
-
-  document.getElementById('perm-btn-settings').addEventListener('click', () => {
-    rem.info('[Shim] Abriendo ajustes del sistema...', 'SHIM_SETTINGS');
-    try {
-      if (window.Capacitor?.Plugins?.App?.openUrl) {
-        window.Capacitor.Plugins.App.openUrl({ url: 'app-settings:' });
-      } else {
-        window.location.href = 'app-settings:';
-      }
-    } catch (e) {
-      alert('Ve a Configuración > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
-    }
-  });
-
-  document.getElementById('perm-btn-skip').addEventListener('click', async () => {
-    rem.warn('[Shim] Usuario continuó sin BLE', 'SHIM_SKIP');
-    _hidePermissionOverlay();
-    await initializeNexoApp();
-  });
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
 }
 
-function _hidePermissionOverlay() {
-  const overlay = document.getElementById('nexo-perm-overlay');
-  if (overlay) {
-    overlay.style.opacity = '0';
-    setTimeout(() => overlay.remove(), 300);
+function _renderMessage(msg) {
+  let convId = msg.conversationId;
+  if (!convId) {
+    if (msg._own && msg.recipient) convId = msg.recipient;
+    else if (!msg._own && msg.sender) convId = msg.sender;
+    else convId = 'general';
   }
-  const styles = document.getElementById('perm-overlay-styles');
-  if (styles) styles.remove();
+
+  const conv = _getOrCreateConversation(
+    convId,
+    msg.senderName || msg.sender || 'NEXO Peer',
+    msg.address || '',
+    msg.transport || 'ble'
+  );
+
+  const exists = conv.messages.some(m => m.messageId && msg.messageId && m.messageId === msg.messageId);
+  if (exists) return;
+
+  conv.messages.push(msg);
+  conv.lastMessage = msg;
+
+  if (!msg._own && convId !== _activeConversationId) {
+    conv.unread = (conv.unread || 0) + 1;
+  }
+
+  if (convId === _activeConversationId) {
+    _renderMessageToDOM(msg);
+  } else if (!msg._own) {
+    _renderConversationsList();
+  }
+
+  if (msg._own && convId !== _activeConversationId) {
+    _renderConversationsList();
+  }
 }
 
-// ─── NexoApp Initialization (INTACTO v9.0) ───
 async function initializeNexoApp() {
   try {
     const nexoConfig = {
@@ -173,11 +273,11 @@ async function initializeNexoApp() {
       enableGestures: true,
       enableMesh: true,
       onMessage: (msg) => {
-        console.log('📨 Mensaje:', msg);
+        console.log('Mensaje:', msg);
         _renderMessage(msg);
       },
       onStatusChange: (mode) => {
-        console.log('🌐 Modo:', mode);
+        console.log('Modo:', mode);
         rem.updateMode(mode);
       },
       onError: (err) => {
@@ -186,15 +286,15 @@ async function initializeNexoApp() {
       },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
-        onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
+        onReact: (id) => rem.success('Reaccion anadida', 'REACT_OK'),
         onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
     };
 
-    rem.info('🚀 [NEXO] App instance v3.3.0-NAP', 'NEXO_INIT');
+    rem.info('[NEXO] App instance v10.0-SHIM-NEXO', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v3.3.0-NAP =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v10.0-SHIM-NEXO =====', 'INIT_START');
 
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) =>
@@ -203,7 +303,7 @@ async function initializeNexoApp() {
 
     try {
       await Promise.race([initPromise, timeoutPromise]);
-      rem.success('==== INICIALIZACIÓN NAP 2.0 COMPLETADA ====', 'INIT_OK');
+      rem.success('==== INICIALIZACION NAP 2.0 COMPLETADA ====', 'INIT_OK');
     } catch (timeoutErr) {
       rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
       rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
@@ -219,35 +319,20 @@ async function initializeNexoApp() {
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.1-SHIM Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.1-SHIM Inicializado');
+    rem.success('NEXO v10.0-SHIM-NEXO Listo', 'INIT_OK');
+    console.log('NEXO v10.0-SHIM-NEXO Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
 
   } catch (error) {
-    console.error('💥 Error en NexoApp:', error);
+    console.error('Error en NexoApp:', error);
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('APP_INIT_ERROR', error.message);
     rem.error(`Error al iniciar app: ${error.message}`, 'APP_ERR');
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
     _enableFallbackMode();
-  }
-}
-
-// ─── Helper Functions (INTACTOS v9.0) ───
-function _ensureDOMStructure() {
-  const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
-  const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
-  if (stream && !stream.id) stream.id = 'nexo-stream';
-  if (vault && !vault.id) vault.id = 'nexo-vault';
-
-  if (!document.getElementById('messages-container')) {
-    const msgContainer = document.createElement('div');
-    msgContainer.id = 'messages-container';
-    msgContainer.className = 'messages-container';
-    (stream || document.body).appendChild(msgContainer);
   }
 }
 
@@ -299,14 +384,17 @@ function _setupChatHeader() {
     if (window.NEXO.app?.activeContact) {
       window.NEXO.app.activeContact.name = newName;
     }
+    if (_activeConversationId && _conversations.has(_activeConversationId)) {
+      _conversations.get(_activeConversationId).name = newName;
+    }
     try {
-      const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
+      const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v2') || '[]');
       const activeId = window.NEXO.app?.activeContact?.id;
       if (activeId) {
-        const idx = contacts.findIndex(c => (c.id || c.address) === activeId);
+        const idx = contacts.findIndex(c => _normId(c.deviceUUID) === _normId(activeId));
         if (idx >= 0) {
           contacts[idx].name = newName;
-          localStorage.setItem('nexo_ble_contacts_v1', JSON.stringify(contacts));
+          localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(contacts));
           rem.info(`Contacto renombrado: ${newName}`, 'CONTACT_RENAME');
         }
       }
@@ -345,36 +433,18 @@ function _setupKeyboardShortcuts() {
   });
 }
 
-function _renderMessage(msg) {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
+function _ensureDOMStructure() {
+  const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
+  const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
+  if (stream && !stream.id) stream.id = 'nexo-stream';
+  if (vault && !vault.id) vault.id = 'nexo-vault';
 
-  const div = document.createElement('div');
-  div.className = `message ${msg._own ? 'own' : 'other'}`;
-
-  const sourceBadge = msg._source ?
-    `${_getSourceIcon(msg._source)}` : '';
-
-  div.innerHTML = `
-    <div class="msg-content">${msg.content || msg.text}</div>
-    <div class="msg-meta">
-      <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
-      ${sourceBadge}
-    </div>
-  `;
-
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function _getSourceIcon(source) {
-  const icons = {
-    'ble_nordic': '🔷',
-    'ble_hybrid': '📡',
-    'relay': '🌐',
-    'self': '✓'
-  };
-  return icons[source] || '•';
+  if (!document.getElementById('messages-container')) {
+    const msgContainer = document.createElement('div');
+    msgContainer.id = 'messages-container';
+    msgContainer.className = 'messages-container';
+    (stream || document.body).appendChild(msgContainer);
+  }
 }
 
 function _toggleVaultUI(isOpen) {
@@ -419,10 +489,19 @@ function _enableFallbackMode() {
   const msg = document.createElement('div');
   msg.className = 'fallback-notice';
   msg.innerHTML = `
-    <h3>⚠️ Error de Inicialización</h3>
+    <h3>Error de Inicializacion</h3>
     <p>La app no pudo iniciar completamente.</p>
   `;
   body.appendChild(msg);
 }
 
+function _normId(id) {
+  return (id || '').toString().toLowerCase().trim();
+}
+
 if (module.hot) module.hot.accept();
+'''
+
+with open('/mnt/agents/output/main.js', 'w') as f:
+    f.write(main_js_v10)
+print(f"main.js: {len(main_js_v10)} chars - OK")
