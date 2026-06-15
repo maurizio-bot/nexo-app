@@ -1,7 +1,8 @@
 /**
- * BLE Interface v4.1.4-NEXO-V10
- * Paleta NEXO v10: fondo #000, texto #B0B0B0, Royal Blue #1565C0, Midnight Navy #1A237E
- * FIX: openChat() sync, sin connectToDevice(). Plugin #961 maneja conexion nativa.
+ * BLE Interface v4.2.0-ID-FIX
+ * FIX: ID unico de instalacion (timestamp+random+hash). 
+ * MAC solo como transporte, no como identidad.
+ * Contactos notifican a main.js via eventos personalizados.
  */
 
 export function initBLEInterface(bleMesh) {
@@ -10,8 +11,28 @@ export function initBLEInterface(bleMesh) {
   return instance;
 }
 
-var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
-var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
+var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v3';
+var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid_v2';
+var BLE_ID_SEED_KEY = 'nexo_device_id_seed';
+
+function _generateStableUUID() {
+  var seed = localStorage.getItem(BLE_ID_SEED_KEY);
+  if (seed) return seed;
+  var ts = Date.now().toString(36);
+  var rand = Math.random().toString(36).substring(2, 10);
+  var rand2 = Math.random().toString(36).substring(2, 10);
+  var combined = ts + rand + rand2 + navigator.userAgent.substring(0, 20);
+  var hash = 0;
+  for (var i = 0; i < combined.length; i++) {
+    var chr = combined.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0;
+  }
+  var hashStr = Math.abs(hash).toString(36);
+  seed = 'nexo-' + ts + '-' + rand.substring(0, 6) + '-' + hashStr.substring(0, 8);
+  localStorage.setItem(BLE_ID_SEED_KEY, seed);
+  return seed;
+}
 
 function _generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -57,17 +78,20 @@ function _addBLEContact(contact) {
     contacts[existingIdx].lastSeen = Date.now();
     contacts[existingIdx].online = true;
     _saveBLEContacts(contacts);
+    _notifyContactUpdated(contacts[existingIdx]);
     return true;
   }
-  contacts.push({
+  var newContact = {
     deviceUUID: uuid,
     name: contact.name || 'NEXO Peer',
     macAddress: contact.macAddress || null,
     addedAt: Date.now(),
     lastSeen: Date.now(),
     online: true
-  });
+  };
+  contacts.push(newContact);
   _saveBLEContacts(contacts);
+  _notifyContactAdded(newContact);
   return true;
 }
 
@@ -77,6 +101,7 @@ function _removeBLEContact(deviceUUID) {
     return _normId(c.deviceUUID) !== uuid;
   });
   _saveBLEContacts(contacts);
+  _notifyContactRemoved(uuid);
 }
 
 function _isBLEContact(deviceUUID) {
@@ -97,6 +122,24 @@ function _getContactByName(name) {
   return _getBLEContacts().find(function(c) {
     return (c.name || '').trim().toLowerCase() === n;
   });
+}
+
+function _notifyContactAdded(contact) {
+  window.dispatchEvent(new CustomEvent('nexo:contact:added', {
+    detail: { contact: contact }
+  }));
+}
+
+function _notifyContactUpdated(contact) {
+  window.dispatchEvent(new CustomEvent('nexo:contact:updated', {
+    detail: { contact: contact }
+  }));
+}
+
+function _notifyContactRemoved(uuid) {
+  window.dispatchEvent(new CustomEvent('nexo:contact:removed', {
+    detail: { deviceUUID: uuid }
+  }));
 }
 
 var BLE_STATES = {
@@ -127,6 +170,7 @@ export class BLEInterface {
     this.localDeviceName = 'NEXO Device';
     this.localDeviceAddress = null;
     this.localDeviceUUID = _getDeviceUUID();
+    this.localStableId = _generateStableUUID();
     this._activeChatDeviceId = null;
     this._activeChatMAC = null;
     this._deviceStates = new Map();
@@ -169,6 +213,7 @@ export class BLEInterface {
       this._autoStartAdvertising();
     }
     console.log('[BLEInterface] UUID local:', this.localDeviceUUID);
+    console.log('[BLEInterface] Stable ID:', this.localStableId);
     return this;
   }
 
@@ -203,7 +248,8 @@ export class BLEInterface {
     this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) {
       var mac = _normId(data.deviceId);
       var name = data.name || 'NEXO Device';
-      self.onDeviceFound({ id: mac, address: mac, name: name, rssi: data.rssi });
+      var deviceUUID = data.deviceUUID || null;
+      self.onDeviceFound({ id: mac, address: mac, name: name, rssi: data.rssi, deviceUUID: deviceUUID });
     });
     this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', function(data) {
       self.isScanning = false;
@@ -363,12 +409,14 @@ export class BLEInterface {
       var messageId = null;
       var senderName = null;
       var senderUUID = null;
+      var senderStableId = null;
       var content = data.content || data.data || '';
       try {
         var json = JSON.parse(data.data || '{}');
         if (json.messageId) messageId = json.messageId;
         if (json.senderName) senderName = json.senderName;
         if (json.deviceUUID) senderUUID = json.deviceUUID;
+        if (json.stableId) senderStableId = json.stableId;
         if (json.content) content = json.content;
       } catch (e) {}
       if (!senderUUID) senderUUID = self._macToUuidMap.get(mac);
@@ -396,7 +444,7 @@ export class BLEInterface {
           self._receivedMessageIds.delete(first);
         }
       }
-      var stableId = senderUUID || mac;
+      var stableId = senderStableId || senderUUID || mac;
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: {
           deviceId: stableId,
@@ -406,7 +454,8 @@ export class BLEInterface {
           senderName: senderName,
           messageId: messageId,
           source: data.source || 'unknown',
-          timestamp: data.timestamp || Date.now()
+          timestamp: data.timestamp || Date.now(),
+          stableId: senderStableId
         }
       }));
       var activeUUID = self._activeChatDeviceId;
@@ -435,6 +484,7 @@ export class BLEInterface {
     var targetId = (device && device.id) || (device && device.address) || deviceMAC;
     var enrichedPayload = JSON.stringify({
       deviceUUID: this.localDeviceUUID,
+      stableId: this.localStableId,
       deviceName: this.localDeviceName,
       content: content,
       messageId: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
@@ -719,9 +769,10 @@ export class BLEInterface {
     if (!mac || mac === 'null' || mac === 'undefined') return;
     if (this.localDeviceAddress && mac === this.localDeviceAddress) return;
     var knownUUID = this._macToUuidMap.get(mac);
-    if (knownUUID && _isBLEContact(knownUUID)) {
+    var deviceUUID = device.deviceUUID || knownUUID;
+    if (deviceUUID && _isBLEContact(deviceUUID)) {
       var contacts = _getBLEContacts();
-      var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(knownUUID); });
+      var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(deviceUUID); });
       if (idx >= 0) {
         contacts[idx].online = true;
         contacts[idx].lastSeen = Date.now();
@@ -735,6 +786,7 @@ export class BLEInterface {
       var existing = this.foundDevices.get(mac);
       existing.rssi = device.rssi;
       existing.name = device.name || existing.name;
+      existing.deviceUUID = deviceUUID || existing.deviceUUID;
       existing.lastSeen = Date.now();
       this.foundDevices.set(mac, existing);
       this.renderNewDeviceBar();
@@ -771,7 +823,10 @@ export class BLEInterface {
       var chatBtn = document.createElement('button');
       chatBtn.className = 'ble-btn-chat';
       chatBtn.textContent = 'Chat';
-      chatBtn.addEventListener('click', function() { self.openChat(uuid); });
+      chatBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        self.openChat(uuid);
+      });
       actionsDiv.appendChild(chatBtn);
       var removeBtn = document.createElement('button');
       removeBtn.className = 'ble-btn-remove';
@@ -820,7 +875,7 @@ export class BLEInterface {
       this.showToast('Ya tienes un contacto con ese nombre', 'warning');
       return;
     }
-    var tempUUID = 'mac-' + mac.replace(/:/g, '');
+    var tempUUID = device.deviceUUID || 'mac-' + mac.replace(/:/g, '');
     this._macToUuidMap.set(mac, tempUUID);
     this._uuidToMacMap.set(tempUUID, mac);
     _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
@@ -851,14 +906,15 @@ export class BLEInterface {
       this.showToast('Dispositivo no disponible para conectar', 'warning');
       return;
     }
-    var appContainer = document.getElementById('app');
-    if (appContainer) appContainer.classList.remove('hidden');
-    var nameInput = document.getElementById('chat-contact-name');
-    var subtitle = document.getElementById('chat-contact-subtitle');
-    if (nameInput) nameInput.value = displayName;
-    if (subtitle) subtitle.textContent = 'BLUETOOTH';
     window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
-      detail: { contactId: uuid, name: displayName, address: mac, transport: 'ble', source: 'ble_interface' }
+      detail: { 
+        contactId: uuid, 
+        name: displayName, 
+        address: mac, 
+        transport: 'ble', 
+        source: 'ble_interface',
+        stableId: contact ? contact.deviceUUID : uuid
+      }
     }));
     this.togglePanel();
   }
