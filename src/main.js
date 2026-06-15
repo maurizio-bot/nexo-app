@@ -1,444 +1,437 @@
 /**
- * src/main.js - Punto de entrada NEXO v10.0-SHIM-NEXO
- * FIX: Conversaciones separadas, mensajes filtrados por contacto activo,
- *      dedup centralizado. Paleta NEXO v10: fondo #000, texto #B0B0B0.
- */
-
-import { NEXO_DIAG } from './core/nap.js';
-
+ * main.js - NEXO v10.0
+ * Punto de entrada. Navegación entre 3 vistas: chat-list, chat, ble-scan.
+   */
 // ============================================================
-// CONFIGURACION
+// CONFIG
 // ============================================================
-const CONFIG = {
-  APP_NAME: 'NEXO',
-  VERSION: '10.0.0-SHIM',
-  BUILD: 'NEXO-v10.0-20260614',
-  SPLASH_TIMEOUT: 4000,
-  RECONNECT_INTERVAL: 5000,
-  MESSAGE_MAX_LEN: 2000,
-  DEBOUNCE_MS: 300,
-  DEDUP_TTL_MS: 30000,
+const CFG = {
+APP_NAME: 'NEXO',
+VERSION: '10.0.0',
+SPLASH_MS: 2500,
+DEDUP_TTL: 30000,
 };
-
 // ============================================================
-// ESTADO GLOBAL
+// ESTADO
 // ============================================================
-const STATE = {
-  initialized: false,
-  splashHidden: false,
-  activeContact: null,
-  contacts: new Map(),
-  conversations: new Map(),
-  seenMessageIds: new Set(),
-  bleInterface: null,
-  nexoApp: null,
-  pendingSends: new Map(),
-  lastRenderTime: 0,
+const ST = {
+initialized: false,
+splashHidden: false,
+view: 'chat-list',        // chat-list | chat | ble
+activeContact: null,
+contacts: new Map(),
+conversations: new Map(),
+seenIds: new Set(),
+blePlugin: null,
+isScanning: false,
 };
-
 // ============================================================
-// UTILIDADES
+// UTILS
 // ============================================================
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+function gid() {
+return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
-
-function hashPayload(sender, content, timestamp) {
-  let h = 0;
-  const str = (sender || '') + '|' + (content || '') + '|' + (timestamp || Date.now());
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) - h) + str.charCodeAt(i);
-    h |= 0;
-  }
-  return 'h' + Math.abs(h).toString(36);
+function hashMsg(sender, content, ts) {
+let h = 0;
+const str = (sender || '') + '|' + (content || '') + '|' + (ts || Date.now());
+for (let i = 0; i < str.length; i++) {
+h = ((h << 5) - h) + str.charCodeAt(i);
+h |= 0;
 }
-
-function debounce(fn, ms) {
-  let t;
-  return (...args) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), ms);
-  };
+return 'h' + Math.abs(h).toString(36);
 }
-
-function formatTime(ts) {
-  const d = new Date(ts);
-  return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+function fmtTime(ts) {
+const d = new Date(ts || Date.now());
+return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 }
-
+function escHtml(t) {
+const d = document.createElement('div');
+d.textContent = t || '';
+return d.innerHTML;
+}
 // ============================================================
-// SPLASH SCREEN
+// VISTAS
 // ============================================================
-function _forceHideSplash() {
-  const splash = document.getElementById('splash-native');
-  if (!splash) return;
-  splash.style.opacity = '0';
-  splash.style.pointerEvents = 'none';
-  splash.style.transform = 'scale(1.05)';
-  setTimeout(() => {
-    splash.style.display = 'none';
-    STATE.splashHidden = true;
-  }, 500);
+function showView(name) {
+ST.view = name;
+$$('.view').forEach(v => v.classList.remove('active'));
+const views = {
+'chat-list': 'chat-list-view',
+'chat': 'chat-view',
+'ble': 'ble-view',
+};
+const el = document.getElementById(views[name]);
+if (el) el.classList.add('active');
+// Header dinámico
+const title = $('#header-title');
+const sub = $('#header-subtitle');
+const action = $('#header-action');
+if (name === 'chat-list') {
+if (title) { title.textContent = 'NEXO'; title.style.textAlign = 'center'; }
+if (sub) { sub.textContent = 'v10.0'; sub.style.display = 'block'; }
+if (action) { action.style.display = 'flex'; action.innerHTML = '◉'; }
+$('#scan-container').style.display = 'block';
+} else if (name === 'chat') {
+if (title) { title.textContent = ST.activeContact || 'Chat'; title.style.textAlign = 'left'; }
+if (sub) { sub.style.display = 'none'; }
+if (action) { action.style.display = 'none'; }
+$('#scan-container').style.display = 'none';
+} else if (name === 'ble') {
+if (title) { title.textContent = 'BLE Mesh'; title.style.textAlign = 'center'; }
+if (sub) { sub.style.display = 'none'; }
+if (action) { action.style.display = 'none'; }
+$('#scan-container').style.display = 'none';
 }
-
+}
 // ============================================================
-// INICIALIZACION BLE (Permission Shim)
+// SPLASH
 // ============================================================
-async function initBLEWithShim() {
-  try {
-    const plugin = Capacitor?.Plugins?.NexoBLE;
-    if (!plugin) {
-      console.warn('[NEXO] Plugin NexoBLE no disponible');
-      return false;
-    }
-
-    const status = await plugin.checkBLEStatus();
-    console.log('[NEXO] BLE status:', status);
-
-    if (!status?.allGranted) {
-      console.log('[NEXO] Solicitando permisos BLE...');
-      await plugin.initializeBLE();
-    }
-
-    return true;
-  } catch (err) {
-    console.error('[NEXO] Error init BLE:', err);
-    return false;
-  }
+function hideSplash() {
+const s = $('#splash-native');
+if (!s || ST.splashHidden) return;
+s.classList.add('hidden');
+ST.splashHidden = true;
+setTimeout(() => { s.style.display = 'none'; }, 500);
 }
-
 // ============================================================
-// THE STREAM (Renderizado de mensajes)
+// TOAST
 // ============================================================
-function getTheStream() {
-  if (window.TheStream && typeof window.TheStream.appendItems === 'function') {
-    return window.TheStream;
-  }
-  return null;
+function toast(msg, type) {
+const t = $('#toast');
+if (!t) return;
+t.textContent = msg;
+t.className = 'toast ' + (type || '');
+t.classList.add('show');
+setTimeout(() => t.classList.remove('show'), 3000);
 }
-
-function renderMessageToDOM(msg) {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-
-  const isOwn = msg.sender === 'Tú' || msg.sender === STATE.myName || msg.own;
-  const div = document.createElement('div');
-  div.className = `message ${isOwn ? 'own' : 'other'}`;
-  div.dataset.msgId = msg.id || msg.messageId;
-
-  div.innerHTML = `
-    <div class="message-content">${escapeHtml(msg.content || msg.text || '')}</div>
-    <div class="message-meta">
-      <span>${escapeHtml(msg.sender || 'Desconocido')}</span>
-      <span>${formatTime(msg.timestamp || msg.time || Date.now())}</span>
-    </div>
-  `;
-
-  container.appendChild(div);
-  scrollToBottom();
-}
-
-function scrollToBottom() {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-  const nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 120;
-  if (nearBottom) {
-    container.scrollTop = container.scrollHeight;
-  }
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 // ============================================================
-// CONVERSACIONES
+// CHAT LIST
 // ============================================================
-function getConversationKey(contactName) {
-  return contactName?.toLowerCase()?.trim() || 'default';
+function renderChatList() {
+const container = $('#chat-list-container');
+const empty = $('#chat-empty');
+if (!container) return;
+container.innerHTML = '';
+const contacts = Array.from(ST.contacts.values());
+if (contacts.length === 0) {
+if (empty) empty.style.display = 'flex';
+return;
 }
-
-function ensureConversation(contactName) {
-  const key = getConversationKey(contactName);
-  if (!STATE.conversations.has(key)) {
-    STATE.conversations.set(key, []);
-  }
-  return STATE.conversations.get(key);
+if (empty) empty.style.display = 'none';
+contacts.forEach(c => {
+const key = c.name.toLowerCase();
+const conv = ST.conversations.get(key) || [];
+const lastMsg = conv[conv.length - 1];
+const unread = conv.filter(m => !m.read).length;
+const item = document.createElement('div');
+item.className = 'chat-item';
+item.dataset.name = c.name;
+item.innerHTML = <div class="chat-avatar">${escHtml(c.name[0]?.toUpperCase() || '?')}</div> <div class="chat-info"> <div class="chat-name">${escHtml(c.name)}</div> <div class="chat-preview">${escHtml(lastMsg?.content || 'Sin mensajes')}</div> </div> <div class="chat-meta"> <div class="chat-time">${lastMsg ? fmtTime(lastMsg.timestamp) : ''}</div> ${unread > 0 ?<div class="chat-badge">${unread}</div>: ''} </div>;
+item.addEventListener('click', () => openChat(c.name));
+container.appendChild(item);
+});
 }
-
-function addMessageToConversation(contactName, msg) {
-  const conv = ensureConversation(contactName);
-  const msgId = msg.id || msg.messageId || hashPayload(msg.sender, msg.content, msg.timestamp);
-
-  // DEDUP: Verificar si ya existe
-  if (STATE.seenMessageIds.has(msgId)) {
-    console.log('[NEXO] DEDUP: mensaje duplicado ignorado', msgId);
-    return false;
-  }
-  STATE.seenMessageIds.add(msgId);
-  setTimeout(() => STATE.seenMessageIds.delete(msgId), CONFIG.DEDUP_TTL_MS);
-
-  conv.push({ ...msg, id: msgId, conversationId: contactName });
-  return true;
-}
-
-function renderConversation(contactName) {
-  const key = getConversationKey(contactName);
-  const msgs = STATE.conversations.get(key) || [];
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-
-  container.innerHTML = '';
-  msgs.forEach(msg => renderMessageToDOM(msg));
-
-  // Actualizar header
-  const headerName = document.getElementById('chat-contact-name');
-  if (headerName) headerName.textContent = contactName || 'NEXO Chat';
-}
-
 // ============================================================
-// CONTACTOS
+// CHAT
 // ============================================================
-function addContact(name, deviceId, mac) {
-  const key = name?.toLowerCase()?.trim();
-  if (!key || STATE.contacts.has(key)) return false;
-
-  STATE.contacts.set(key, {
-    name: name,
-    deviceId: deviceId,
-    mac: mac,
-    lastSeen: Date.now(),
-  });
-  return true;
+function openChat(name) {
+ST.activeContact = name;
+const key = name.toLowerCase();
+// Marcar como leídos
+const conv = ST.conversations.get(key) || [];
+conv.forEach(m => m.read = true);
+// Actualizar header
+const hName = $('#chat-header-name');
+const hStatus = $('#chat-header-status');
+const hDot = $('#chat-status-dot');
+if (hName) hName.textContent = name;
+if (hStatus) hStatus.textContent = 'BLUETOOTH';
+if (hDot) hDot.style.display = 'inline-block';
+// Renderizar mensajes
+renderMessages(name);
+showView('chat');
 }
-
-function getContactList() {
-  return Array.from(STATE.contacts.values());
+function renderMessages(contactName) {
+const container = $('#messages-container');
+if (!container) return;
+container.innerHTML = '';
+const key = (contactName || '').toLowerCase();
+const msgs = ST.conversations.get(key) || [];
+msgs.forEach(m => {
+const isOwn = m.own || m.sender === 'Tú';
+const div = document.createElement('div');
+div.className = 'msg ' + (isOwn ? 'sent' : 'rcvd');
+div.innerHTML = ${escHtml(m.content)} <span class="msg-time">${fmtTime(m.timestamp)} ${isOwn ? '&#10003;' : ''}</span>;
+container.appendChild(div);
+});
+scrollChat();
 }
-
-function setActiveContact(name) {
-  STATE.activeContact = name;
-  renderConversation(name);
-
-  const headerName = document.getElementById('chat-contact-name');
-  const headerSub = document.getElementById('chat-contact-subtitle');
-  if (headerName) headerName.textContent = name || 'NEXO Chat';
-  if (headerSub) headerSub.textContent = name ? 'En línea via BLE' : 'Selecciona un contacto';
+function scrollChat() {
+const area = $('#messages-area');
+if (area) area.scrollTop = area.scrollHeight;
 }
-
-// ============================================================
-// ENVIO DE MENSAJES
-// ============================================================
-async function sendMessage(content) {
-  if (!content?.trim()) return;
-  if (!STATE.activeContact) {
-    showToast('Selecciona un contacto primero', 'warning');
-    return;
-  }
-
-  const msg = {
-    id: generateId(),
-    content: content.trim(),
-    sender: 'Tú',
-    timestamp: Date.now(),
-    own: true,
-    conversationId: STATE.activeContact,
-  };
-
-  // Guardar en conversacion propia
-  addMessageToConversation(STATE.activeContact, msg);
-
-  // Renderizar solo si es la conversacion activa
-  if (STATE.activeContact === msg.conversationId) {
-    renderMessageToDOM(msg);
-  }
-
-  // Enviar via BLE si disponible
-  try {
-    if (STATE.bleInterface && typeof STATE.bleInterface.sendMessage === 'function') {
-      await STATE.bleInterface.sendMessage({
-        content: msg.content,
-        to: STATE.activeContact,
-      });
-    } else if (Capacitor?.Plugins?.NexoBLE) {
-      await Capacitor.Plugins.NexoBLE.sendMessage({
-        content: msg.content,
-        recipient: STATE.activeContact,
-      });
-    }
-  } catch (err) {
-    console.error('[NEXO] Error enviando:', err);
-    showToast('Error al enviar', 'error');
-  }
-
-  // Limpiar input
-  const input = document.getElementById('message-input');
-  if (input) input.value = '';
+function sendMessage() {
+const input = $('#message-input');
+const content = input?.value?.trim();
+if (!content) return;
+if (!ST.activeContact) {
+toast('Selecciona un contacto primero', 'err');
+return;
 }
-
-// ============================================================
-// RECEPCION DE MENSAJES (Callback BLE)
-// ============================================================
+const msg = {
+id: gid(),
+content,
+sender: 'Tú',
+timestamp: Date.now(),
+own: true,
+read: true,
+};
+const key = ST.activeContact.toLowerCase();
+if (!ST.conversations.has(key)) ST.conversations.set(key, []);
+ST.conversations.get(key).push(msg);
+renderMessages(ST.activeContact);
+if (input) input.value = '';
+// Enviar via BLE
+try {
+if (ST.blePlugin) {
+ST.blePlugin.sendMessage({ content, recipient: ST.activeContact });
+} else if (Capacitor?.Plugins?.NexoBLE) {
+Capacitor.Plugins.NexoBLE.sendMessage({ content, recipient: ST.activeContact });
+}
+} catch (e) {
+console.error('[NEXO] Send error:', e);
+}
+renderChatList();
+}
 function onMessageReceived(payload) {
-  const content = payload?.content || payload?.text || payload?.message || '';
-  const sender = payload?.sender || payload?.from || payload?.deviceName || 'Desconocido';
-  const timestamp = payload?.timestamp || payload?.time || Date.now();
-
-  const msg = {
-    id: payload?.id || payload?.messageId || hashPayload(sender, content, timestamp),
-    content: content,
-    sender: sender,
-    timestamp: timestamp,
-    own: false,
-    conversationId: sender,
-  };
-
-  // Siempre guardar en conversacion del remitente
-  const isNew = addMessageToConversation(sender, msg);
-
-  // Renderizar solo si es la conversacion activa
-  if (isNew && STATE.activeContact === sender) {
-    renderMessageToDOM(msg);
-  } else if (isNew && STATE.activeContact !== sender) {
-    // Notificacion sutil de nuevo mensaje
-    showToast(`Nuevo mensaje de ${sender}`, 'info');
-  }
+const content = payload?.content || payload?.text || payload?.message || '';
+const sender = payload?.sender || payload?.from || payload?.deviceName || 'Desconocido';
+const ts = payload?.timestamp || Date.now();
+const id = payload?.id || payload?.messageId || hashMsg(sender, content, ts);
+if (ST.seenIds.has(id)) return;
+ST.seenIds.add(id);
+setTimeout(() => ST.seenIds.delete(id), CFG.DEDUP_TTL);
+// Agregar contacto si es nuevo
+const sKey = sender.toLowerCase();
+if (!ST.contacts.has(sKey)) {
+ST.contacts.set(sKey, { name: sender, deviceId: payload?.deviceId, mac: payload?.mac });
 }
-
-// ============================================================
-// BLE INTERFACE WRAPPER
-// ============================================================
-function initBLEInterface() {
-  if (window.BLEInterface) {
-    STATE.bleInterface = window.BLEInterface;
-
-    // Sobreescribir callback para usar nuestro handler
-    const originalOnMessage = STATE.bleInterface.onMessage;
-    STATE.bleInterface.onMessage = (payload) => {
-      onMessageReceived(payload);
-      if (typeof originalOnMessage === 'function') originalOnMessage(payload);
-    };
-  }
+// Guardar mensaje
+if (!ST.conversations.has(sKey)) ST.conversations.set(sKey, []);
+ST.conversations.get(sKey).push({ id, content, sender, timestamp: ts, own: false });
+// Renderizar si es chat activo
+if (ST.view === 'chat' && ST.activeContact?.toLowerCase() === sKey) {
+renderMessages(ST.activeContact);
+} else {
+toast(Nuevo mensaje de ${sender}, 'ok');
+renderChatList();
 }
-
-// ============================================================
-// UI EVENTS
-// ============================================================
-function setupUIEvents() {
-  const sendBtn = document.getElementById('send-btn');
-  const input = document.getElementById('message-input');
-
-  if (sendBtn) {
-    sendBtn.addEventListener('click', () => {
-      if (input) sendMessage(input.value);
-    });
-  }
-
-  if (input) {
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage(input.value);
-    });
-  }
-
-  // Vault toggle
-  const vaultBtn = document.getElementById('vault-btn');
-  const vaultPanel = document.getElementById('vault-panel');
-  if (vaultBtn && vaultPanel) {
-    vaultBtn.addEventListener('click', () => {
-      vaultPanel.classList.toggle('vault-visible');
-    });
-  }
 }
-
 // ============================================================
-// TOASTS
+// BLE SCAN
 // ============================================================
-function showToast(message, type = 'info') {
-  const colors = {
-    info: '#1E6FD9',
-    success: '#10B981',
-    warning: '#F59E0B',
-    error: '#EF4444',
-  };
-
-  const toast = document.createElement('div');
-  toast.style.cssText = `
-    position: fixed;
-    bottom: 80px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: ${colors[type] || colors.info};
-    color: #000;
-    padding: 10px 20px;
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: 600;
-    z-index: 99999;
-    animation: slideIn 0.3s ease;
-  `;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.animation = 'slideOut 0.3s ease';
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
+function toggleScan() {
+if (ST.isScanning) {
+stopScan();
+} else {
+startScan();
 }
-
-// ============================================================
-// INICIALIZACION PRINCIPAL
-// ============================================================
-async function initializeNexoApp() {
-  if (STATE.initialized) return;
-  console.log(`[NEXO] Iniciando ${CONFIG.APP_NAME} v${CONFIG.VERSION}`);
-
-  // Diagnostico
-  if (typeof NEXO_DIAG !== 'undefined') {
-    NEXO_DIAG.log('NEXO v10.0 iniciando...');
-  }
-
-  // Inicializar BLE
-  await initBLEWithShim();
-
-  // Setup UI
-  setupUIEvents();
-  initBLEInterface();
-
-  // Ocultar splash
-  setTimeout(() => {
-    _forceHideSplash();
-  }, CONFIG.SPLASH_TIMEOUT);
-
-  STATE.initialized = true;
-  console.log('[NEXO] Inicializado correctamente');
 }
-
+function startScan() {
+ST.isScanning = true;
+const btn = $('#scan-btn');
+if (btn) {
+btn.textContent = '...';
+btn.classList.add('scanning');
+}
+toast('Escaneando dispositivos BLE...', 'ok');
+// Limpiar lista
+const list = $('#devices-list');
+const empty = $('#devices-empty');
+if (list) list.innerHTML = '';
+if (empty) empty.style.display = 'none';
+// Llamar plugin nativo
+try {
+if (Capacitor?.Plugins?.NexoBLE?.startScan) {
+Capacitor.Plugins.NexoBLE.startScan();
+}
+} catch (e) {
+console.warn('[NEXO] startScan:', e);
+}
+// Auto-stop después de 10s
+setTimeout(stopScan, 10000);
+}
+// ============================================================
+// BLE SCAN
+// ============================================================
+function toggleScan() {
+if (ST.isScanning) {
+stopScan();
+} else {
+startScan();
+}
+}
+function startScan() {
+ST.isScanning = true;
+const btn = $('#scan-btn');
+if (btn) {
+btn.textContent = '...';
+btn.classList.add('scanning');
+}
+toast('Escaneando dispositivos BLE...', 'ok');
+// Limpiar lista
+const list = $('#devices-list');
+const empty = $('#devices-empty');
+if (list) list.innerHTML = '';
+if (empty) empty.style.display = 'none';
+// Llamar plugin nativo
+try {
+if (Capacitor?.Plugins?.NexoBLE?.startScan) {
+Capacitor.Plugins.NexoBLE.startScan();
+}
+} catch (e) {
+console.warn('[NEXO] startScan:', e);
+}
+// Auto-stop después de 10s
+setTimeout(stopScan, 10000);
+}
+function stopScan() {
+ST.isScanning = false;
+const btn = $('#scan-btn');
+if (btn) {
+btn.textContent = 'SCAN';
+btn.classList.remove('scanning');
+}
+try {
+if (Capacitor?.Plugins?.NexoBLE?.stopScan) {
+Capacitor.Plugins.NexoBLE.stopScan();
+}
+} catch (e) {}
+}
+function onDeviceFound(device) {
+const name = device?.name || device?.deviceName || 'Dispositivo';
+const mac = device?.address || device?.mac || '';
+const key = name.toLowerCase();
+if (!ST.contacts.has(key)) {
+ST.contacts.set(key, { name, mac, deviceId: device?.deviceId });
+}
+renderDeviceCard(name, mac, device);
+renderChatList();
+}
+function renderDeviceCard(name, mac, device) {
+const list = $('#devices-list');
+if (!list) return;
+const card = document.createElement('div');
+card.className = 'device-card';
+card.dataset.name = name;
+card.innerHTML = <div class="device-info"> <div class="device-name">${escHtml(name)}</div> <div class="device-status">Disponible</div> ${mac ?<div class="device-mac">${escHtml(mac)}</div>: ''} </div> <div class="device-actions"> <button class="btn-sm btn-chat" data-name="${escHtml(name)}">Chat</button> <button class="btn-sm btn-del" data-name="${escHtml(name)}">&#10005;</button> </div>;
+card.querySelector('.btn-chat').addEventListener('click', () => {
+addContact(name, device);
+openChat(name);
+});
+card.querySelector('.btn-del').addEventListener('click', () => {
+card.remove();
+});
+list.appendChild(card);
+}
+function addContact(name, device) {
+const key = name.toLowerCase();
+if (ST.contacts.has(key)) return;
+ST.contacts.set(key, {
+name,
+mac: device?.address || device?.mac,
+deviceId: device?.deviceId,
+});
+renderChatList();
+}
+// ============================================================
+// BLE INIT
+// ============================================================
+async function initBLE() {
+try {
+const plugin = Capacitor?.Plugins?.NexoBLE;
+if (!plugin) {
+console.warn('[NEXO] Plugin no disponible');
+return;
+}
+ST.blePlugin = plugin;
+const status = await plugin.checkBLEStatus?.();
+console.log('[NEXO] BLE status:', status);
+if (!status?.allGranted) {
+await plugin.initializeBLE?.();
+}
+// Listeners nativos
+if (plugin.addListener) {
+plugin.addListener('onDeviceFound', (d) => onDeviceFound(d));
+plugin.addListener('onPayloadReceived', (p) => onMessageReceived(p));
+}
+} catch (e) {
+console.error('[NEXO] BLE init error:', e);
+}
+}
+// ============================================================
+// EVENTS
+// ============================================================
+function bindEvents() {
+// Header BLE button -> abrir vista BLE
+const bleBtn = $('#header-action');
+if (bleBtn) {
+bleBtn.addEventListener('click', () => {
+showView('ble');
+});
+}
+// Chat back button
+const backBtn = $('#chat-back');
+if (backBtn) {
+backBtn.addEventListener('click', () => {
+showView('chat-list');
+});
+}
+// Scan button
+const scanBtn = $('#scan-btn');
+if (scanBtn) {
+scanBtn.addEventListener('click', toggleScan);
+}
+// Send button
+const sendBtn = $('#send-btn');
+if (sendBtn) {
+sendBtn.addEventListener('click', sendMessage);
+}
+// Enter key
+const input = $('#message-input');
+if (input) {
+input.addEventListener('keypress', (e) => {
+if (e.key === 'Enter') sendMessage();
+});
+}
+}
 // ============================================================
 // BOOT
 // ============================================================
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeNexoApp);
-} else {
-  initializeNexoApp();
-}
-
+async function boot() {
+console.log([NEXO] Boot ${CFG.APP_NAME} v${CFG.VERSION});
+bindEvents();
+await initBLE();
+renderChatList();
+showView('chat-list');
+setTimeout(hideSplash, CFG.SPLASH_MS);
 // Safety timeout
 setTimeout(() => {
-  if (!STATE.splashHidden) _forceHideSplash();
-}, 10000);
-
-// Exports para compatibilidad
-window.NEXO_MAIN = {
-  sendMessage,
-  setActiveContact,
-  addContact,
-  getContactList,
-  onMessageReceived,
-  STATE,
-  CONFIG,
+if (!ST.splashHidden) hideSplash();
+}, 8000);
+}
+if (document.readyState === 'loading') {
+document.addEventListener('DOMContentLoaded', boot);
+} else {
+boot();
+}
+// Exports
+window.NEXO = {
+sendMessage,
+openChat,
+showView,
+toast,
+ST,
 };
