@@ -12,46 +12,221 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
   <title>NEXO v10.0</title>
-  <link rel="stylesheet" href="critical.css">
+  <style>
+    /* ===== RESET ===== */
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+
+    /* ===== VARIABLES ===== */
+    :root{
+      --bg:#000000;
+      --bg-secondary:#0A0A0A;
+      --bg-card:#1A1A1A;
+      --bg-input:#1A1A1A;
+      --border:#2A2A2A;
+      --text-primary:#FFFFFF;
+      --text-secondary:#888888;
+      --text-muted:#666666;
+      --accent:#4169E1;
+      --accent-light:#5A7FE8;
+      --accent-dark:#2E4DB3;
+      --mine:#4169E1;
+      --theirs:#191970;
+      --online:#00C853;
+      --error:#FF4444;
+      --success:#00C853;
+    }
+
+    /* ===== SPLASH ===== */
+    #splash-native{position:fixed;top:0;left:0;width:100%;height:100%;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s ease}
+    #splash-native.hidden{opacity:0;pointer-events:none}
+    #splash-logo{width:72px;height:72px;border:3px solid var(--accent);border-radius:18px;display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+    #splash-logo::after{content:'N';font-size:36px;font-weight:bold;color:var(--accent)}
+    #splash-text{font-size:16px;font-weight:600;color:#fff;letter-spacing:2px}
+
+    /* ===== APP SHELL ===== */
+    #app{width:100%;height:100%;display:flex;flex-direction:column;background:var(--bg);position:relative}
+
+    /* ===== HEADER ===== */
+    .header{display:flex;align-items:center;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top));background:var(--bg-secondary);border-bottom:1px solid var(--border);gap:12px;flex-shrink:0;height:56px}
+    .header-btn{width:36px;height:36px;border-radius:50%;background:transparent;border:none;color:var(--text-primary);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;flex-shrink:0}
+    .header-btn:active{background:rgba(255,255,255,.1)}
+    .header-title{flex:1;font-size:17px;font-weight:600;color:var(--text-primary);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .header-subtitle{font-size:12px;color:var(--text-secondary);text-align:center}
+    .header-right{width:36px;height:36px;display:flex;align-items:center;justify-content:center}
+    .online-dot{width:10px;height:10px;border-radius:50%;background:var(--online);box-shadow:0 0 6px var(--online)}
+
+    /* ===== VIEWS ===== */
+    .view{position:absolute;top:56px;left:0;width:100%;height:calc(100% - 56px);background:var(--bg);display:none;flex-direction:column;overflow:hidden}
+    .view.active{display:flex}
+    .view.with-bottom{height:calc(100% - 56px - 70px)}
+
+    /* ===== CHAT LIST ===== */
+    #chat-list-view{padding-top:8px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    .chat-item{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+    .chat-item:active{background:rgba(255,255,255,.05)}
+    .chat-avatar{width:52px;height:52px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:bold;color:#fff;flex-shrink:0;position:relative}
+    .chat-avatar-dot{position:absolute;bottom:2px;right:2px;width:14px;height:14px;border-radius:50%;background:var(--online);border:2px solid var(--bg)}
+    .chat-info{flex:1;min-width:0}
+    .chat-name{font-size:16px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .chat-preview{font-size:14px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+    .chat-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+    .chat-time{font-size:12px;color:var(--text-secondary)}
+    .chat-badge{min-width:20px;height:20px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;padding:0 6px}
+
+    /* ===== CHAT VIEW ===== */
+    #chat-view{background:var(--bg)}
+    .chat-header{height:auto;padding:8px 16px;padding-top:calc(8px + env(safe-area-inset-top));background:var(--bg-secondary);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0}
+    .chat-header-back{width:32px;height:32px;border-radius:50%;background:transparent;border:none;color:var(--text-primary);font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .chat-header-info{flex:1}
+    .chat-header-name{font-size:16px;font-weight:600;color:var(--text-primary)}
+    .chat-header-status{font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px}
+    #messages-area{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 16px;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
+    .msg{max-width:78%;padding:10px 14px;border-radius:18px;font-size:15px;line-height:1.35;word-wrap:break-word;position:relative;animation:msgIn .2s ease}
+    @keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .msg.sent{align-self:flex-end;background:var(--mine);color:#fff;border-bottom-right-radius:4px}
+    .msg.rcvd{align-self:flex-start;background:var(--theirs);color:#fff;border-bottom-left-radius:4px}
+    .msg-time{font-size:11px;opacity:.7;margin-top:4px;display:block;text-align:right}
+    .msg.sent .msg-time{color:rgba(255,255,255,.8)}
+    .msg.rcvd .msg-time{color:rgba(255,255,255,.6)}
+    .msg-sys{align-self:center;background:var(--bg-card);color:var(--text-secondary);font-size:12px;padding:6px 14px;border-radius:12px;max-width:90%}
+
+    /* ===== INPUT AREA ===== */
+    #input-area{display:flex;align-items:center;gap:10px;padding:10px 16px;padding-bottom:calc(10px + env(safe-area-inset-bottom));background:var(--bg-secondary);border-top:1px solid var(--border);flex-shrink:0}
+    #message-input{flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:22px;color:var(--text-primary);font-size:15px;padding:10px 16px;outline:none}
+    #message-input::placeholder{color:var(--text-muted)}
+    #message-input:focus{border-color:var(--accent)}
+    #send-btn{width:44px;height:44px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .1s}
+    #send-btn:active{transform:scale(.93)}
+    #send-btn:disabled{background:var(--border);color:var(--text-muted)}
+
+    /* ===== BLE SCAN VIEW ===== */
+    #ble-view{padding-top:8px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    .section-title{font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:1px;padding:12px 16px 8px}
+    .device-card{display:flex;align-items:center;gap:12px;margin:8px 16px;padding:14px 16px;background:var(--bg-card);border-radius:16px;border:1px solid var(--border)}
+    .device-info{flex:1;min-width:0}
+    .device-name{font-size:16px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .device-status{font-size:13px;color:var(--text-secondary);margin-top:2px}
+    .device-mac{font-size:11px;color:var(--text-muted);margin-top:2px;font-family:monospace}
+    .device-actions{display:flex;gap:8px;flex-shrink:0}
+    .btn-sm{padding:8px 16px;border-radius:14px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s}
+    .btn-sm:active{opacity:.8}
+    .btn-chat{background:var(--accent);color:#fff}
+    .btn-chat:disabled{background:var(--border);color:var(--text-muted)}
+    .btn-del{background:var(--error);color:#fff;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;font-size:16px}
+
+    /* ===== SCAN BUTTON ===== */
+    .scan-container{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:50}
+    #scan-btn{width:64px;height:64px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 20px rgba(65,105,225,.4);display:flex;align-items:center;justify-content:center;transition:all .2s}
+    #scan-btn:active{transform:scale(.93);box-shadow:0 2px 10px rgba(65,105,225,.3)}
+    #scan-btn.scanning{animation:scanPulse 1.5s infinite;background:var(--error)}
+    @keyframes scanPulse{0%,100%{box-shadow:0 4px 20px rgba(65,105,225,.4)}50%{box-shadow:0 4px 30px rgba(65,105,225,.8)}}
+
+    /* ===== BOTTOM STATUS BAR ===== */
+    #status-bar{position:fixed;bottom:0;left:0;width:100%;height:28px;background:var(--bg);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;padding-bottom:env(safe-area-inset-bottom);font-size:11px;z-index:40}
+    .status-item{color:var(--text-secondary)}
+    .status-item.active{color:var(--online);font-weight:600}
+    .status-item.accent{color:var(--accent)}
+
+    /* ===== FAB ===== */
+    .fab{position:fixed;bottom:calc(50px + env(safe-area-inset-bottom));right:20px;width:56px;height:56px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(65,105,225,.35);z-index:50;transition:transform .15s}
+    .fab:active{transform:scale(.9)}
+
+    /* ===== TOAST ===== */
+    .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--bg-card);color:var(--text-primary);padding:12px 20px;border-radius:24px;font-size:14px;z-index:10000;opacity:0;transition:all .3s ease;border:1px solid var(--border);max-width:80%;text-align:center}
+    .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+    .toast.err{border-color:var(--error);color:var(--error)}
+    .toast.ok{border-color:var(--success);color:var(--success)}
+
+    /* ===== EMPTY STATE ===== */
+    .empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-secondary);gap:12px;padding:40px}
+    .empty-state-icon{font-size:48px;opacity:.3}
+    .empty-state-text{font-size:15px;text-align:center}
+
+    /* ===== SCROLLBAR ===== */
+    ::-webkit-scrollbar{width:3px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
+    ::selection{background:rgba(65,105,225,.3);color:#fff}
+  </style>
 </head>
 <body>
-  <!-- SPLASH SCREEN -->
+  <!-- SPLASH -->
   <div id="splash-native">
     <div id="splash-logo"></div>
     <div id="splash-text">NEXO v10.0</div>
   </div>
 
-  <!-- UI PRINCIPAL -->
+  <!-- APP -->
   <div id="app">
-    <!-- CHAT HEADER -->
-    <div id="chat-header">
-      <button id="ble-scan-btn" title="Escanear BLE">&#9673;</button>
-      <input type="text" id="chat-contact-name" value="NEXO" autocomplete="off" spellcheck="false">
-      <span id="chat-contact-subtitle">OFFLINE</span>
+    <!-- HEADER -->
+    <div class="header" id="main-header">
+      <div style="width:36px"></div>
+      <div style="flex:1;text-align:center">
+        <div class="header-title" id="header-title">NEXO</div>
+        <div class="header-subtitle" id="header-subtitle">v10.0</div>
+      </div>
+      <button class="header-btn" id="header-action" title="BLE">&#9673;</button>
     </div>
 
-    <!-- MESSAGES AREA -->
-    <div id="nexo-stream" class="stream-container">
-      <div id="messages-container"></div>
+    <!-- VIEW: CHAT LIST -->
+    <div class="view active" id="chat-list-view">
+      <div id="chat-list-container"></div>
+      <div class="empty-state" id="chat-empty" style="display:none">
+        <div class="empty-state-icon">&#128172;</div>
+        <div class="empty-state-text">No hay conversaciones aún.<br>Toca SCAN para encontrar dispositivos.</div>
+      </div>
     </div>
 
-    <!-- INPUT AREA -->
-    <div id="input-area">
-      <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
-      <button id="send-btn">&#10148;</button>
+    <!-- VIEW: CHAT -->
+    <div class="view" id="chat-view">
+      <div class="chat-header">
+        <button class="chat-header-back" id="chat-back">&#8592;</button>
+        <div class="chat-header-info">
+          <div class="chat-header-name" id="chat-header-name">NEXO</div>
+          <div class="chat-header-status">
+            <span class="online-dot" id="chat-status-dot" style="display:none"></span>
+            <span id="chat-header-status">OFFLINE</span>
+          </div>
+        </div>
+        <div class="header-right" style="width:32px"></div>
+      </div>
+      <div id="messages-area">
+        <div id="messages-container"></div>
+      </div>
+      <div id="input-area">
+        <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
+        <button id="send-btn">&#10148;</button>
+      </div>
+    </div>
+
+    <!-- VIEW: BLE SCAN -->
+    <div class="view" id="ble-view">
+      <div class="section-title">Dispositivos Encontrados</div>
+      <div id="devices-list"></div>
+      <div class="empty-state" id="devices-empty">
+        <div class="empty-state-icon">&#128269;</div>
+        <div class="empty-state-text">Presiona SCAN para buscar<br>dispositivos BLE cercanos</div>
+      </div>
+    </div>
+
+    <!-- SCAN BUTTON -->
+    <div class="scan-container" id="scan-container">
+      <button id="scan-btn">SCAN</button>
+    </div>
+
+    <!-- STATUS BAR -->
+    <div id="status-bar">
+      <span class="status-item" id="status-nexo">NEXO</span>
+      <span class="status-item active" id="status-ble">BLE</span>
+      <span class="status-item" id="status-chat"></span>
+      <span class="status-item" id="status-id"></span>
     </div>
   </div>
 
-  <!-- VAULT PANEL (Compartir) - OCULTO POR DEFECTO -->
-  <div id="vault-panel">
-    <div class="vault-header">
-      <h3>Compartir</h3>
-      <button class="vault-close" id="vault-close-btn">Cerrar</button>
-    </div>
-    <div id="contacts-list"></div>
-  </div>
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
 
-  <!-- SCRIPTS -->
   <script src="main.js" type="module"></script>
 </body>
 </html>
