@@ -1,7 +1,8 @@
 /**
- * NEXO v9.0 - TheStream v2.4-NAP-CERTIFIED
- * FIX v2.4: Preview cards usan senderName si existe, evitando MAC cruda o "Unknown".
- *           Fallback a contacto activo o 'NEXO Peer' antes de mostrar deviceId.
+ * NEXO v9.0 - TheStream v2.5-ID-FIX
+ * FIX: Deduplicacion por deviceUUID + messageId. 
+ * FIX: senderName propagado correctamente en mensajes propios.
+ * FIX: No renderiza duplicados si mismo deviceUUID envia dos veces.
  */
 
 class TheStream {
@@ -25,6 +26,7 @@ class TheStream {
     this.messageCache = new Map();
     this.avatarColors = new Map();
     this.items = [];
+    this._deviceMessageMap = new Map();
     
     this.config = {
       maxCacheSize: 1000,
@@ -40,7 +42,7 @@ class TheStream {
     this._injectStyles();
     this._setupResourceErrorInterceptor();
     
-    console.log('[TheStream] Initialized v2.4-NAP-CERTIFIED');
+    console.log('[TheStream] Initialized v2.5-ID-FIX');
   }
 
   appendItems(items, options = {}) {
@@ -105,6 +107,7 @@ class TheStream {
 
   clear() {
     this.messageCache.clear();
+    this._deviceMessageMap.clear();
     this.items = [];
     this.renderedCount = 0;
     if (this.container) {
@@ -127,6 +130,7 @@ class TheStream {
       itemsInMemory: this.items.length,
       renderedCount: this.renderedCount,
       cacheSize: this.messageCache.size,
+      deviceMapSize: this._deviceMessageMap.size,
       resourceErrors: this.resourceErrors.size,
       failedAvatars: this.failedAvatars.size,
       containerId: this.container?.id || 'unknown'
@@ -222,13 +226,14 @@ class TheStream {
     }
 
     const sanitized = {
-      id: item.id || this._generateId(),
+      id: item.id || item.messageId || this._generateId(),
       content: item.content || item.text || item.message || '',
       sender: item.sender || item.from || item.author || 'Unknown',
       senderName: item.senderName || item.sender || item.from || 'Unknown',
+      deviceUUID: item.deviceUUID || item.stableId || item.sender || null,
       timestamp: item.timestamp || item.time || Date.now(),
       avatar: item.avatar || null,
-      isMe: item.isMe || item.sender === 'Tú' || false,
+      isMe: item.isMe || item._own || item.sender === 'Tu' || item.sender === 'Tú' || false,
       type: item.type || 'message'
     };
 
@@ -240,17 +245,30 @@ class TheStream {
       sanitized.sender = 'Unknown';
     }
 
-    // FIX v2.4: Si senderName es Unknown/vacío/MAC-like, intentar fallback a contacto activo
+    // FIX v2.5: Si senderName es Unknown/vacio/MAC-like, intentar fallback
     if (!sanitized.senderName || sanitized.senderName === 'Unknown' || !sanitized.senderName.trim() || /^[a-f0-9]{2}:/i.test(sanitized.senderName)) {
-      // Intentar obtener nombre del contacto activo de NEXO
       const activeName = window.nexoApp?.activeContact?.name;
       sanitized.senderName = activeName || sanitized.senderName || 'NEXO Peer';
+    }
+
+    // FIX v2.5: Mensajes propios siempre muestran "Tu"
+    if (sanitized.isMe) {
+      sanitized.senderName = 'Tú';
     }
 
     return sanitized;
   }
 
   _renderSingle(message, config) {
+    // FIX v2.5: Deduplicacion por deviceUUID + messageId
+    const deviceUUID = message.deviceUUID || message.sender || 'unknown';
+    const msgKey = deviceUUID + '|' + (message.id || message.messageId || '');
+    
+    if (this._deviceMessageMap.has(msgKey)) {
+      return;
+    }
+    this._deviceMessageMap.set(msgKey, Date.now());
+
     if (message.id && this.messageCache.has(message.id)) {
       return;
     }
@@ -281,7 +299,6 @@ class TheStream {
     
     const safeId = this._escapeAttr(String(message.id || ''));
     
-    // FIX v2.4: Usar senderName para el nombre visible, no sender (que puede ser MAC)
     const displayName = message.senderName || message.sender || 'NEXO Peer';
     
     bubble.innerHTML = `
@@ -305,9 +322,9 @@ class TheStream {
           ${this._formatTime(message.timestamp)}
         </div>
         <div class="action-buttons" style="display: flex; gap: 8px; margin-top: 8px;" data-msg-id="${safeId}">
-          <button class="btn-react" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #fff;">⚡</button>
-          <button class="btn-reply" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #fff;">↩️</button>
-          <button class="btn-forward" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #fff;">↗️</button>
+          <button class="btn-react" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #fff;">&#9889;</button>
+          <button class="btn-reply" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #fff;">&#8617;&#65039;</button>
+          <button class="btn-forward" style="background: rgba(255,255,255,0.1); border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: #fff;">&#8618;&#65039;</button>
         </div>
       </div>
     `;
@@ -403,6 +420,12 @@ class TheStream {
       const entries = Array.from(this.messageCache.entries());
       const toDelete = entries.slice(0, entries.length - this.config.maxCacheSize);
       toDelete.forEach(([key]) => this.messageCache.delete(key));
+    }
+
+    if (this._deviceMessageMap.size > this.config.maxCacheSize) {
+      const entries = Array.from(this._deviceMessageMap.entries());
+      const toDelete = entries.slice(0, entries.length - this.config.maxCacheSize);
+      toDelete.forEach(([key]) => this._deviceMessageMap.delete(key));
     }
 
     if (this.items.length > this.config.maxRenderedItems) {
