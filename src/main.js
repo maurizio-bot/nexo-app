@@ -1,9 +1,6 @@
 /**
  * main.js - NEXO v10.2-ID-FIX
- * Punto de entrada. Unifica contactos con ble_interface.js via eventos.
- * FIX: Escucha nexo:ble:openChat y nexo:ble:messageReceived.
- * FIX: sendMessage delega a nexoApp.sendMessage() con deviceUUID correcto.
- * FIX: No registra listeners nativos duplicados.
+ * FIX toggleScan: abre panel BLE de ble_interface.js
  */
 
 // ============================================================
@@ -197,21 +194,17 @@ function openChat(contactId, name, mac) {
     mac: deviceMac,
     deviceUUID: key
   };
-  // Marcar como leidos
   const conv = ST.conversations.get(key) || [];
   conv.forEach(m => m.read = true);
-  // Actualizar header
   const hName = $('#chat-header-name');
   const hStatus = $('#chat-header-status');
   const hDot = $('#chat-status-dot');
   if (hName) hName.textContent = displayName;
   if (hStatus) hStatus.textContent = 'BLUETOOTH';
   if (hDot) hDot.style.display = 'inline-block';
-  // Sincronizar con nexoApp
   if (window.nexoApp) {
     window.nexoApp.activeContact = ST.activeContact;
   }
-  // Renderizar mensajes
   renderMessages(key);
   showView('chat');
 }
@@ -255,7 +248,6 @@ function sendMessage() {
   ST.conversations.get(key).push(msg);
   renderMessages(key);
   if (input) input.value = '';
-  // Delegar envio a nexoApp si existe
   if (window.nexoApp && window.nexoApp.sendMessage) {
     window.nexoApp.sendMessage({
       content: content,
@@ -266,7 +258,6 @@ function sendMessage() {
       console.warn('[NEXO] nexoApp.sendMessage error:', e);
     });
   } else {
-    // Fallback directo al plugin
     try {
       const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
       const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
@@ -288,7 +279,6 @@ function onMessageReceived(payload) {
   if (ST.seenIds.has(id)) return;
   ST.seenIds.add(id);
   setTimeout(() => ST.seenIds.delete(id), CFG.DEDUP_TTL);
-  // Agregar contacto si es nuevo
   const sKey = senderUUID.toString().toLowerCase().trim();
   if (!ST.contacts.has(sKey)) {
     ST.contacts.set(sKey, {
@@ -305,10 +295,8 @@ function onMessageReceived(payload) {
     c.lastSeen = Date.now();
     c.online = true;
   }
-  // Guardar mensaje
   if (!ST.conversations.has(sKey)) ST.conversations.set(sKey, []);
   ST.conversations.get(sKey).push({ id: id, content: content, sender: senderName, timestamp: ts, own: false, read: false });
-  // Renderizar si es chat activo
   if (ST.view === 'chat' && ST.activeContact && ST.activeContact.id === sKey) {
     renderMessages(sKey);
   } else {
@@ -317,11 +305,11 @@ function onMessageReceived(payload) {
   }
 }
 // ============================================================
-// BLE SCAN (delegado a ble_interface.js, solo UI en main.js)
+// BLE SCAN - FIX: abre panel BLE de ble_interface.js
 // ============================================================
 function toggleScan() {
-  if (window.bleInterface && window.bleInterface.toggleScan) {
-    window.bleInterface.toggleScan();
+  if (window.bleInterface && window.bleInterface.togglePanel) {
+    window.bleInterface.togglePanel();
   } else {
     toast('BLE Interface no disponible', 'err');
   }
@@ -330,25 +318,21 @@ function toggleScan() {
 // EVENTOS DE BLE_INTERFACE (unificacion)
 // ============================================================
 function setupBLEEvents() {
-  // Contacto agregado desde ble_interface.js
   window.addEventListener('nexo:contact:added', function(e) {
     if (e.detail && e.detail.contact) {
       addOrUpdateContact(e.detail.contact);
     }
   });
-  // Contacto actualizado
   window.addEventListener('nexo:contact:updated', function(e) {
     if (e.detail && e.detail.contact) {
       addOrUpdateContact(e.detail.contact);
     }
   });
-  // Contacto eliminado
   window.addEventListener('nexo:contact:removed', function(e) {
     if (e.detail && e.detail.deviceUUID) {
       removeContact(e.detail.deviceUUID);
     }
   });
-  // Abrir chat desde ble_interface.js
   window.addEventListener('nexo:ble:openChat', function(e) {
     if (e.detail) {
       const d = e.detail;
@@ -360,7 +344,6 @@ function setupBLEEvents() {
       openChat(d.contactId, d.name, d.address);
     }
   });
-  // Mensaje recibido desde ble_interface.js
   window.addEventListener('nexo:ble:messageReceived', function(e) {
     if (e.detail) {
       onMessageReceived(e.detail);
@@ -371,7 +354,6 @@ function setupBLEEvents() {
 // EVENTS
 // ============================================================
 function bindEvents() {
-  // Header BLE button -> abrir vista BLE
   const bleBtn = $('#header-action');
   if (bleBtn) {
     bleBtn.addEventListener('click', () => {
@@ -382,31 +364,26 @@ function bindEvents() {
       }
     });
   }
-  // BLE back button -> volver a chat-list
   const bleBack = $('#ble-back');
   if (bleBack) {
     bleBack.addEventListener('click', () => {
       showView('chat-list');
     });
   }
-  // Chat back button
   const backBtn = $('#chat-back');
   if (backBtn) {
     backBtn.addEventListener('click', () => {
       showView('chat-list');
     });
   }
-  // Scan button
   const scanBtn = $('#scan-btn');
   if (scanBtn) {
     scanBtn.addEventListener('click', toggleScan);
   }
-  // Send button
   const sendBtn = $('#send-btn');
   if (sendBtn) {
     sendBtn.addEventListener('click', sendMessage);
   }
-  // Enter key
   const input = $('#message-input');
   if (input) {
     input.addEventListener('keypress', (e) => {
@@ -424,7 +401,6 @@ async function boot() {
   renderChatList();
   showView('chat-list');
   setTimeout(hideSplash, CFG.SPLASH_MS);
-  // Safety timeout
   setTimeout(() => {
     if (!ST.splashHidden) hideSplash();
   }, 8000);
