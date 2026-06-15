@@ -102,6 +102,9 @@
 
     /* ===== BLE SCAN VIEW ===== */
     #ble-view{padding-top:8px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    .ble-view-header{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px}
+    .ble-view-back{width:36px;height:36px;border-radius:50%;background:transparent;border:none;color:var(--text-primary);font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .ble-view-title{flex:1;font-size:17px;font-weight:600;color:var(--text-primary);text-align:center}
     .section-title{font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:1px;padding:12px 16px 8px}
     .device-card{display:flex;align-items:center;gap:12px;margin:8px 16px;padding:14px 16px;background:var(--bg-card);border-radius:16px;border:1px solid var(--border)}
     .device-info{flex:1;min-width:0}
@@ -202,6 +205,11 @@
 
     <!-- VIEW: BLE SCAN -->
     <div class="view" id="ble-view">
+      <div class="ble-view-header">
+        <button class="ble-view-back" id="ble-back">&#8592;</button>
+        <div class="ble-view-title">BLE Mesh</div>
+        <div style="width:36px"></div>
+      </div>
       <div class="section-title">Dispositivos Encontrados</div>
       <div id="devices-list"></div>
       <div class="empty-state" id="devices-empty">
