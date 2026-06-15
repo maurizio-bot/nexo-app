@@ -1,7 +1,7 @@
 /**
- * NEXO App v5.0.4-NEXO-V10
- * Paleta NEXO v10: fondo #000, texto #B0B0B0, Royal Blue #1565C0, Midnight Navy #1A237E
- * FIX: Conversaciones separadas, mensajes filtrados por contacto activo, dedup centralizado.
+ * NEXO App v5.0.5-ID-FIX
+ * FIX: activeContact usa deviceUUID como id. sendMessage pasa recipient correcto.
+ * Pipeline de mensajes unificado. No rompe UI de main.js.
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -73,7 +73,7 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('NEXO v5.0.4-NEXO-V10 iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.5-ID-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -93,7 +93,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.4-NEXO-V10 Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.5-ID-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -162,8 +162,14 @@ export class NexoApp {
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
 
       this._bleChatHandler = (e) => {
-        const { contactId, name, address, transport } = e.detail;
-        this.activeContact = { id: contactId, name, address, transport };
+        const { contactId, name, address, transport, stableId } = e.detail;
+        this.activeContact = { 
+          id: contactId, 
+          name, 
+          address, 
+          transport,
+          stableId: stableId || contactId
+        };
         const appContainer = document.getElementById('app');
         if (appContainer) appContainer.classList.remove('hidden');
         const nameInput = document.getElementById('chat-contact-name');
@@ -177,7 +183,7 @@ export class NexoApp {
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
       this._bleMessageHandler = (e) => {
-        const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
+        const { deviceId, content, senderName, messageId, source, timestamp, stableId } = e.detail;
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         let resolvedName = senderName;
         if (!resolvedName || resolvedName === 'NEXO Peer') {
@@ -189,7 +195,7 @@ export class NexoApp {
         }
         this._handleMessage({
           content,
-          sender: deviceId,
+          sender: stableId || deviceId,
           senderName: resolvedName,
           source: source || 'ble_direct',
           timestamp: timestamp || Date.now(),
@@ -263,13 +269,13 @@ export class NexoApp {
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
       const recipient = isObject ? msg.recipient : null;
-      const targetId = recipient || this.activeContact?.id;
+      const targetId = recipient || this.activeContact?.id || this.activeContact?.address;
       const targetTransport = this.activeContact?.transport;
 
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
-          this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
+          this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId, senderName: 'Tú' }, 'self');
           return true;
         } catch (e) {
           DEBUG.warn(`BLE directo fallo: ${e.message}`, 'MSG_BLE_FAIL');
@@ -281,8 +287,9 @@ export class NexoApp {
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
           const bleDevices = connectedResult?.devices || [];
           if (bleDevices.length > 0) {
-            await this._sendViaBLE(bleDevices[0].deviceId || bleDevices[0].id, content);
-            this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: bleDevices[0].deviceId, source: 'ble_direct', messageId }, 'self');
+            const fallbackId = bleDevices[0].deviceId || bleDevices[0].id || bleDevices[0].address;
+            await this._sendViaBLE(fallbackId, content);
+            this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: fallbackId, source: 'ble_direct', messageId, senderName: 'Tú' }, 'self');
             return true;
           }
         } catch (e) { DEBUG.log(`[BLE_SEND] Fallback fallo: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
@@ -311,15 +318,16 @@ export class NexoApp {
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
+      const dedupKey = msg.messageId || (msg.sender + '|' + msg.content + '|' + Math.floor((msg.timestamp || Date.now()) / 1000));
       if (msg.messageId) {
         const now = Date.now();
-        if (this._messageDedupMap.has(msg.messageId)) {
+        if (this._messageDedupMap.has(dedupKey)) {
           if (source !== 'self') {
-            DEBUG.log(`Deduplicado ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
+            DEBUG.log(`Deduplicado ${dedupKey?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
           }
           return;
         }
-        this._messageDedupMap.set(msg.messageId, now);
+        this._messageDedupMap.set(dedupKey, now);
         if (this._messageDedupMap.size > this._maxProcessedIds) {
           let oldestKey = null;
           let oldestTime = Infinity;
@@ -355,19 +363,4 @@ export class NexoApp {
     if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
     if (this.wsClient) { try { this.wsClient.disconnect?.(); } catch(e) {} this.wsClient = null; }
     if (this.vault) { try { this.vault.destroy?.(); } catch(e) {} this.vault = null; }
-    this._resources.timers.forEach(t => clearTimeout(t));
-    DEBUG.success('Cleanup complete', 'DESTROY_OK');
-  }
-
-  getStatus() {
-    return {
-      initialized: this.initialized,
-      mode: this.mesh?.getStatus?.().mode || (this.nordicMesh?.getState?.() === 'messaging' ? 'p2p_ble' : 'offline'),
-      hasBLEInterface: !!this.bleInterface,
-      activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
-    };
-  }
-}
-
-export default NexoApp;
-export { DEBUG };
+    this._resources.timers.forEach(t
