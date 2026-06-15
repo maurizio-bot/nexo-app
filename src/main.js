@@ -1,7 +1,8 @@
 /**
- * main.js - NEXO v10.0
- * Punto de entrada. Navegación entre 3 vistas: chat-list, chat, ble-scan.
-   */
+ * main.js - NEXO v10.0-FIX
+ * Punto de entrada. Navegacion entre 3 vistas: chat-list, chat, ble-scan.
+ * SIN optional chaining (?.), SIN duplicados.
+ */
 // ============================================================
 // CONFIG
 // ============================================================
@@ -17,7 +18,7 @@ DEDUP_TTL: 30000,
 const ST = {
 initialized: false,
 splashHidden: false,
-view: 'chat-list',        // chat-list | chat | ble
+view: 'chat-list',
 activeContact: null,
 contacts: new Map(),
 conversations: new Map(),
@@ -64,25 +65,28 @@ const views = {
 };
 const el = document.getElementById(views[name]);
 if (el) el.classList.add('active');
-// Header dinámico
+// Header dinamico
 const title = $('#header-title');
 const sub = $('#header-subtitle');
 const action = $('#header-action');
 if (name === 'chat-list') {
 if (title) { title.textContent = 'NEXO'; title.style.textAlign = 'center'; }
 if (sub) { sub.textContent = 'v10.0'; sub.style.display = 'block'; }
-if (action) { action.style.display = 'flex'; action.innerHTML = '◉'; }
-$('#scan-container').style.display = 'block';
+if (action) { action.style.display = 'flex'; action.innerHTML = '&#9673;'; }
+const scanCont = $('#scan-container');
+if (scanCont) scanCont.style.display = 'block';
 } else if (name === 'chat') {
 if (title) { title.textContent = ST.activeContact || 'Chat'; title.style.textAlign = 'left'; }
 if (sub) { sub.style.display = 'none'; }
 if (action) { action.style.display = 'none'; }
-$('#scan-container').style.display = 'none';
+const scanCont = $('#scan-container');
+if (scanCont) scanCont.style.display = 'none';
 } else if (name === 'ble') {
 if (title) { title.textContent = 'BLE Mesh'; title.style.textAlign = 'center'; }
 if (sub) { sub.style.display = 'none'; }
 if (action) { action.style.display = 'none'; }
-$('#scan-container').style.display = 'none';
+const scanCont = $('#scan-container');
+if (scanCont) scanCont.style.display = 'none';
 }
 }
 // ============================================================
@@ -128,7 +132,19 @@ const unread = conv.filter(m => !m.read).length;
 const item = document.createElement('div');
 item.className = 'chat-item';
 item.dataset.name = c.name;
-item.innerHTML = <div class="chat-avatar">${escHtml(c.name[0]?.toUpperCase() || '?')}</div> <div class="chat-info"> <div class="chat-name">${escHtml(c.name)}</div> <div class="chat-preview">${escHtml(lastMsg?.content || 'Sin mensajes')}</div> </div> <div class="chat-meta"> <div class="chat-time">${lastMsg ? fmtTime(lastMsg.timestamp) : ''}</div> ${unread > 0 ?<div class="chat-badge">${unread}</div>: ''} </div>;
+const avatarLetter = (c.name && c.name[0]) ? c.name[0].toUpperCase() : '?';
+const lastContent = (lastMsg && lastMsg.content) ? lastMsg.content : 'Sin mensajes';
+const lastTime = lastMsg ? fmtTime(lastMsg.timestamp) : '';
+const badgeHtml = unread > 0 ? '<div class="chat-badge">' + unread + '</div>' : '';
+item.innerHTML = '<div class="chat-avatar">' + escHtml(avatarLetter) + '</div>' +
+'<div class="chat-info">' +
+'<div class="chat-name">' + escHtml(c.name) + '</div>' +
+'<div class="chat-preview">' + escHtml(lastContent) + '</div>' +
+'</div>' +
+'<div class="chat-meta">' +
+'<div class="chat-time">' + lastTime + '</div>' +
+badgeHtml +
+'</div>';
 item.addEventListener('click', () => openChat(c.name));
 container.appendChild(item);
 });
@@ -139,7 +155,7 @@ container.appendChild(item);
 function openChat(name) {
 ST.activeContact = name;
 const key = name.toLowerCase();
-// Marcar como leídos
+// Marcar como leidos
 const conv = ST.conversations.get(key) || [];
 conv.forEach(m => m.read = true);
 // Actualizar header
@@ -160,10 +176,10 @@ container.innerHTML = '';
 const key = (contactName || '').toLowerCase();
 const msgs = ST.conversations.get(key) || [];
 msgs.forEach(m => {
-const isOwn = m.own || m.sender === 'Tú';
+const isOwn = m.own || m.sender === 'Tu';
 const div = document.createElement('div');
 div.className = 'msg ' + (isOwn ? 'sent' : 'rcvd');
-div.innerHTML = ${escHtml(m.content)} <span class="msg-time">${fmtTime(m.timestamp)} ${isOwn ? '&#10003;' : ''}</span>;
+div.innerHTML = escHtml(m.content) + ' <span class="msg-time">' + fmtTime(m.timestamp) + (isOwn ? ' &#10003;' : '') + '</span>';
 container.appendChild(div);
 });
 scrollChat();
@@ -174,7 +190,7 @@ if (area) area.scrollTop = area.scrollHeight;
 }
 function sendMessage() {
 const input = $('#message-input');
-const content = input?.value?.trim();
+const content = (input && input.value) ? input.value.trim() : '';
 if (!content) return;
 if (!ST.activeContact) {
 toast('Selecciona un contacto primero', 'err');
@@ -182,8 +198,8 @@ return;
 }
 const msg = {
 id: gid(),
-content,
-sender: 'Tú',
+content: content,
+sender: 'Tu',
 timestamp: Date.now(),
 own: true,
 read: true,
@@ -194,11 +210,13 @@ ST.conversations.get(key).push(msg);
 renderMessages(ST.activeContact);
 if (input) input.value = '';
 // Enviar via BLE
+const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
+const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
 try {
-if (ST.blePlugin) {
-ST.blePlugin.sendMessage({ content, recipient: ST.activeContact });
-} else if (Capacitor?.Plugins?.NexoBLE) {
-Capacitor.Plugins.NexoBLE.sendMessage({ content, recipient: ST.activeContact });
+if (ST.blePlugin && ST.blePlugin.sendMessage) {
+ST.blePlugin.sendMessage({ content: content, recipient: ST.activeContact });
+} else if (plugin && plugin.sendMessage) {
+plugin.sendMessage({ content: content, recipient: ST.activeContact });
 }
 } catch (e) {
 console.error('[NEXO] Send error:', e);
@@ -206,26 +224,30 @@ console.error('[NEXO] Send error:', e);
 renderChatList();
 }
 function onMessageReceived(payload) {
-const content = payload?.content || payload?.text || payload?.message || '';
-const sender = payload?.sender || payload?.from || payload?.deviceName || 'Desconocido';
-const ts = payload?.timestamp || Date.now();
-const id = payload?.id || payload?.messageId || hashMsg(sender, content, ts);
+const content = (payload && payload.content) || (payload && payload.text) || (payload && payload.message) || '';
+const sender = (payload && payload.sender) || (payload && payload.from) || (payload && payload.deviceName) || 'Desconocido';
+const ts = (payload && payload.timestamp) || Date.now();
+const id = (payload && payload.id) || (payload && payload.messageId) || hashMsg(sender, content, ts);
 if (ST.seenIds.has(id)) return;
 ST.seenIds.add(id);
 setTimeout(() => ST.seenIds.delete(id), CFG.DEDUP_TTL);
 // Agregar contacto si es nuevo
 const sKey = sender.toLowerCase();
 if (!ST.contacts.has(sKey)) {
-ST.contacts.set(sKey, { name: sender, deviceId: payload?.deviceId, mac: payload?.mac });
+ST.contacts.set(sKey, {
+name: sender,
+deviceId: (payload && payload.deviceId) || '',
+mac: (payload && payload.mac) || ''
+});
 }
 // Guardar mensaje
 if (!ST.conversations.has(sKey)) ST.conversations.set(sKey, []);
-ST.conversations.get(sKey).push({ id, content, sender, timestamp: ts, own: false });
+ST.conversations.get(sKey).push({ id: id, content: content, sender: sender, timestamp: ts, own: false });
 // Renderizar si es chat activo
-if (ST.view === 'chat' && ST.activeContact?.toLowerCase() === sKey) {
+if (ST.view === 'chat' && ST.activeContact && ST.activeContact.toLowerCase() === sKey) {
 renderMessages(ST.activeContact);
 } else {
-toast(Nuevo mensaje de ${sender}, 'ok');
+toast('Nuevo mensaje de ' + sender, 'ok');
 renderChatList();
 }
 }
@@ -253,48 +275,16 @@ const empty = $('#devices-empty');
 if (list) list.innerHTML = '';
 if (empty) empty.style.display = 'none';
 // Llamar plugin nativo
+const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
+const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
 try {
-if (Capacitor?.Plugins?.NexoBLE?.startScan) {
-Capacitor.Plugins.NexoBLE.startScan();
+if (plugin && plugin.startScan) {
+plugin.startScan();
 }
 } catch (e) {
 console.warn('[NEXO] startScan:', e);
 }
-// Auto-stop después de 10s
-setTimeout(stopScan, 10000);
-}
-// ============================================================
-// BLE SCAN
-// ============================================================
-function toggleScan() {
-if (ST.isScanning) {
-stopScan();
-} else {
-startScan();
-}
-}
-function startScan() {
-ST.isScanning = true;
-const btn = $('#scan-btn');
-if (btn) {
-btn.textContent = '...';
-btn.classList.add('scanning');
-}
-toast('Escaneando dispositivos BLE...', 'ok');
-// Limpiar lista
-const list = $('#devices-list');
-const empty = $('#devices-empty');
-if (list) list.innerHTML = '';
-if (empty) empty.style.display = 'none';
-// Llamar plugin nativo
-try {
-if (Capacitor?.Plugins?.NexoBLE?.startScan) {
-Capacitor.Plugins.NexoBLE.startScan();
-}
-} catch (e) {
-console.warn('[NEXO] startScan:', e);
-}
-// Auto-stop después de 10s
+// Auto-stop despues de 10s
 setTimeout(stopScan, 10000);
 }
 function stopScan() {
@@ -304,18 +294,24 @@ if (btn) {
 btn.textContent = 'SCAN';
 btn.classList.remove('scanning');
 }
+const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
+const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
 try {
-if (Capacitor?.Plugins?.NexoBLE?.stopScan) {
-Capacitor.Plugins.NexoBLE.stopScan();
+if (plugin && plugin.stopScan) {
+plugin.stopScan();
 }
 } catch (e) {}
 }
 function onDeviceFound(device) {
-const name = device?.name || device?.deviceName || 'Dispositivo';
-const mac = device?.address || device?.mac || '';
+const name = (device && device.name) || (device && device.deviceName) || 'Dispositivo';
+const mac = (device && device.address) || (device && device.mac) || '';
 const key = name.toLowerCase();
 if (!ST.contacts.has(key)) {
-ST.contacts.set(key, { name, mac, deviceId: device?.deviceId });
+ST.contacts.set(key, {
+name: name,
+mac: mac,
+deviceId: (device && device.deviceId) || ''
+});
 }
 renderDeviceCard(name, mac, device);
 renderChatList();
@@ -326,7 +322,16 @@ if (!list) return;
 const card = document.createElement('div');
 card.className = 'device-card';
 card.dataset.name = name;
-card.innerHTML = <div class="device-info"> <div class="device-name">${escHtml(name)}</div> <div class="device-status">Disponible</div> ${mac ?<div class="device-mac">${escHtml(mac)}</div>: ''} </div> <div class="device-actions"> <button class="btn-sm btn-chat" data-name="${escHtml(name)}">Chat</button> <button class="btn-sm btn-del" data-name="${escHtml(name)}">&#10005;</button> </div>;
+const macHtml = mac ? '<div class="device-mac">' + escHtml(mac) + '</div>' : '';
+card.innerHTML = '<div class="device-info">' +
+'<div class="device-name">' + escHtml(name) + '</div>' +
+'<div class="device-status">Disponible</div>' +
+macHtml +
+'</div>' +
+'<div class="device-actions">' +
+'<button class="btn-sm btn-chat" data-name="' + escHtml(name) + '">Chat</button>' +
+'<button class="btn-sm btn-del" data-name="' + escHtml(name) + '">&#10005;</button>' +
+'</div>';
 card.querySelector('.btn-chat').addEventListener('click', () => {
 addContact(name, device);
 openChat(name);
@@ -340,9 +345,9 @@ function addContact(name, device) {
 const key = name.toLowerCase();
 if (ST.contacts.has(key)) return;
 ST.contacts.set(key, {
-name,
-mac: device?.address || device?.mac,
-deviceId: device?.deviceId,
+name: name,
+mac: (device && device.address) || (device && device.mac) || '',
+deviceId: (device && device.deviceId) || ''
 });
 renderChatList();
 }
@@ -351,16 +356,19 @@ renderChatList();
 // ============================================================
 async function initBLE() {
 try {
-const plugin = Capacitor?.Plugins?.NexoBLE;
+const cap = (typeof Capacitor !== 'undefined') ? Capacitor : null;
+const plugin = (cap && cap.Plugins && cap.Plugins.NexoBLE) ? cap.Plugins.NexoBLE : null;
 if (!plugin) {
 console.warn('[NEXO] Plugin no disponible');
 return;
 }
 ST.blePlugin = plugin;
-const status = await plugin.checkBLEStatus?.();
+const status = (plugin.checkBLEStatus) ? await plugin.checkBLEStatus() : null;
 console.log('[NEXO] BLE status:', status);
-if (!status?.allGranted) {
-await plugin.initializeBLE?.();
+if (!(status && status.allGranted)) {
+if (plugin.initializeBLE) {
+await plugin.initializeBLE();
+}
 }
 // Listeners nativos
 if (plugin.addListener) {
@@ -411,7 +419,7 @@ if (e.key === 'Enter') sendMessage();
 // BOOT
 // ============================================================
 async function boot() {
-console.log([NEXO] Boot ${CFG.APP_NAME} v${CFG.VERSION});
+console.log('[NEXO] Boot ' + CFG.APP_NAME + ' v' + CFG.VERSION);
 bindEvents();
 await initBLE();
 renderChatList();
@@ -429,9 +437,9 @@ boot();
 }
 // Exports
 window.NEXO = {
-sendMessage,
-openChat,
-showView,
-toast,
-ST,
+sendMessage: sendMessage,
+openChat: openChat,
+showView: showView,
+toast: toast,
+ST: ST
 };
