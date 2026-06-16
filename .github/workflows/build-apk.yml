@@ -1,5 +1,3 @@
-cd /workspaces/nexo-app
-cat > .github/workflows/build.yml << 'EOF'
 name: NEXO APK
 
 on:
