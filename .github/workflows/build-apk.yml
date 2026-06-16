@@ -1,8 +1,10 @@
+cd /workspaces/nexo-app
+cat > .github/workflows/build.yml << 'EOF'
 name: NEXO APK
 
 on:
   push:
-    branches: [main, recuperado-1273]  # <-- AGREGADO recuperado-1273
+    branches: [main, recuperado]
   workflow_dispatch:
 
 jobs:
@@ -83,3 +85,8 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+EOF
+
+git add .github/workflows/build.yml
+git commit -m "Fix workflow: trigger on recuperado branch"
+git push --force origin recuperado
