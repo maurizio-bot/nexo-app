@@ -83,8 +83,3 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-EOF
-
-git add .github/workflows/build.yml
-git commit -m "Fix workflow: trigger on recuperado branch"
-git push --force origin recuperado
