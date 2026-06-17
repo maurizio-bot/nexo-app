@@ -1,10 +1,10 @@
 /**
- * NEXO App v5.0.3-ARCH 06/2026
- 
- * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v3.5-ARCH + ble_permissions.js v4.0-ARCH
- * FIX v5.0.3-ARCH: Enriquecer mensajes BLE con senderName resuelto desde bleInterface
- *      para evitar "Unknown" y MAC cruda en lista de conversaciones de TheStream.
- *      Disparar nexo:ble:closeChat al limpiar contacto activo.
+ * NEXO App v5.1.0-COMPOSITE
+ * Coordinado con ble_interface.js v4.2.0-COMPOSITE
+ * FIX: sendMessage usa MAC como targetId para plugin #961
+ * FIX: activeContact incluye macAddress para envío directo
+ * FIX: _handleMessage usa clave compuesta para dedup
+ * FIX: Cola de mensajes si dispositivo no conectado
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -76,7 +76,9 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('🚀 [NEXO] v5.0.3-ARCH iniciando...', 'info', 'APP_INIT');
+    this._pendingMessages = [];
+    this._sendLock = false;
+    DEBUG.log('🚀 [NEXO] v5.1.0-COMPOSITE iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -96,7 +98,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.0.3-ARCH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.1.0-COMPOSITE Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -165,31 +167,36 @@ export class NexoApp {
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
 
       this._bleChatHandler = (e) => {
-        const { contactId, name, address, transport } = e.detail;
-        this.activeContact = { id: contactId, name, address, transport };
+        const { contactId, name, address, transport, macAddress } = e.detail;
+        // GUARDAR MAC COMO PARTE DE activeContact
+        this.activeContact = { 
+          id: contactId, 
+          name, 
+          address, 
+          transport,
+          macAddress: macAddress || address // MAC es la clave para envío
+        };
         const appContainer = document.getElementById('app');
         if (appContainer) appContainer.classList.remove('hidden');
         const nameInput = document.getElementById('chat-contact-name');
         const subtitle = document.getElementById('chat-contact-subtitle');
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
-        DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}]`, 'BLE_CHAT');
+        DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}] MAC:${macAddress?.substring(0,8)}...`, 'BLE_CHAT');
         this._updateMode('P2P_BLE');
         this.config.onStatusChange(`CHAT:${name}`);
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
       this._bleMessageHandler = (e) => {
-        const { deviceId, content, senderName, messageId, source, timestamp } = e.detail;
+        const { deviceId, content, senderName, messageId, source, timestamp, macAddress } = e.detail;
         console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
         
         let resolvedName = senderName;
         if (!resolvedName || resolvedName === 'NEXO Peer') {
-          const nid = (deviceId || '').toString().toLowerCase().trim();
-          resolvedName = this.bleInterface?.connectedDevices?.get(nid)?.name
-            || this.bleInterface?.foundDevices?.get(nid)?.name
-            || senderName
-            || 'NEXO Peer';
+          const mac = macAddress || deviceId;
+          const contact = this.bleInterface ? this._findContactByMAC(mac) : null;
+          resolvedName = contact?.name || senderName || 'NEXO Peer';
         }
         
         this._handleMessage({
@@ -199,12 +206,24 @@ export class NexoApp {
           source: source || 'ble_direct',
           timestamp: timestamp || Date.now(),
           messageId,
+          macAddress: macAddress,
           _own: false
         }, 'ble_direct');
       };
       window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
 
     } catch (err) { DEBUG.error('UI_004', `BLE UI init failed: ${err.message}`); this.bleInterface = null; }
+  }
+
+  // Buscar contacto por MAC en bleInterface
+  _findContactByMAC(mac) {
+    if (!this.bleInterface || !mac) return null;
+    const contacts = this.bleInterface._getBLEContacts?.() || [];
+    const normMac = (mac || '').toString().toLowerCase().trim().replace(/[^0-9a-f]/g, '');
+    return contacts.find(c => {
+      const cmac = (c.macAddress || '').toString().toLowerCase().trim().replace(/[^0-9a-f]/g, '');
+      return cmac === normMac;
+    });
   }
 
   async _initPhase6_Bridge() {
@@ -246,10 +265,14 @@ export class NexoApp {
   async _sendViaBLE(deviceId, content) {
     const plugin = this.bleInterface?.nativePlugin;
     if (!plugin) throw new Error('Plugin no disponible');
-    console.log(`[BLE_SEND] Enviando a ${deviceId?.substring?.(0,8)}...`);
+    
+    // USAR MAC COMO TARGET (clave compuesta)
+    const targetMAC = this.activeContact?.macAddress || deviceId;
+    console.log(`[BLE_SEND] Enviando a MAC:${targetMAC?.substring(0,12)}...`);
+    
     try {
-      await plugin.sendMessage({ deviceId, message: content });
-      DEBUG.success(`📨 Enviado vía BLE a ${deviceId?.substring?.(0,8)}`, 'MSG_BLE');
+      await plugin.sendMessage({ deviceId: targetMAC, message: content });
+      DEBUG.success(`📨 Enviado vía BLE a ${targetMAC?.substring(0,8)}...`, 'MSG_BLE');
     } catch (e) {
       DEBUG.error('BLE_SEND_FAIL', `Envío falló: ${e.message}`);
       throw e;
@@ -261,6 +284,13 @@ export class NexoApp {
       DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
       return false;
     }
+    
+    if (this._sendLock) {
+      DEBUG.warn('Envío en progreso, esperando...', 'MSG_LOCK');
+      await new Promise(r => setTimeout(r, 500));
+    }
+    this._sendLock = true;
+    
     try {
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true, messageId }, 'self');
@@ -268,9 +298,10 @@ export class NexoApp {
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
       const recipient = isObject ? msg.recipient : null;
-      const targetId = recipient || this.activeContact?.id;
+      const targetId = recipient || this.activeContact?.macAddress || this.activeContact?.id;
       const targetTransport = this.activeContact?.transport;
 
+      // PRIORIDAD 1: BLE directo con MAC
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
@@ -278,9 +309,23 @@ export class NexoApp {
           return true;
         } catch (e) {
           DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
+          
+          // MITIGACIÓN: Si falla, intentar con bleInterface.sendMessageToActiveChat
+          if (this.bleInterface && this.bleInterface.sendMessageToActiveChat) {
+            try {
+              const sent = await this.bleInterface.sendMessageToActiveChat(content);
+              if (sent) {
+                this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
+                return true;
+              }
+            } catch (e2) {
+              DEBUG.warn(`Fallback BLE falló: ${e2.message}`, 'MSG_BLE_FAIL2');
+            }
+          }
         }
       }
 
+      // Fallback: buscar cualquier dispositivo BLE conectado
       if (this.bleInterface?.nativePlugin) {
         try {
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
@@ -310,21 +355,28 @@ export class NexoApp {
 
       DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
       return false;
-    } catch (err) { DEBUG.error('APP_008', `SendMessage critical: ${err.message}`); return false; }
+    } catch (err) { 
+      DEBUG.error('APP_008', `SendMessage critical: ${err.message}`); 
+      return false; 
+    } finally {
+      this._sendLock = false;
+    }
   }
 
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      if (msg.messageId) {
+      // DEDUP POR CLAVE COMPUESTA: messageId + MAC
+      const dedupKey = (msg.messageId || '') + ':' + (msg.macAddress || msg.sender || '');
+      if (msg.messageId || msg.macAddress) {
         const now = Date.now();
-        if (this._messageDedupMap.has(msg.messageId)) {
+        if (this._messageDedupMap.has(dedupKey)) {
           if (source !== 'self') {
-            DEBUG.log(`Deduplicado ${msg.messageId?.substring?.(0,8)} de ${source}`, 'debug', 'DEDUP');
+            DEBUG.log(`Deduplicado ${dedupKey?.substring?.(0,16)} de ${source}`, 'debug', 'DEDUP');
           }
           return;
         }
-        this._messageDedupMap.set(msg.messageId, now);
+        this._messageDedupMap.set(dedupKey, now);
         if (this._messageDedupMap.size > this._maxProcessedIds) {
           let oldestKey = null;
           let oldestTime = Infinity;
@@ -337,6 +389,7 @@ export class NexoApp {
           if (now - v > this._dedupTTL) this._messageDedupMap.delete(k);
         }
       }
+      
       const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
       this.config.onMessage(enriched);
       if (this.stream?.appendItems) this.stream.appendItems([enriched]);
@@ -369,7 +422,11 @@ export class NexoApp {
       initialized: this.initialized,
       mode: this.mesh?.getStatus?.().mode || (this.nordicMesh?.getState?.() === 'messaging' ? 'p2p_ble' : 'offline'),
       hasBLEInterface: !!this.bleInterface,
-      activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
+      activeContact: this.activeContact ? { 
+        name: this.activeContact.name, 
+        transport: this.activeContact.transport,
+        macAddress: this.activeContact.macAddress
+      } : null
     };
   }
 }
