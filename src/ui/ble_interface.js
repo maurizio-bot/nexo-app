@@ -1,8 +1,9 @@
 /**
- * BLE Interface v4.2.0-COMPOSITE
- * CLAVE COMPUESTA: MAC primaria + Nombre secundario para identificación estable
- * FIX: openChat() ya NO llama connectToDevice() - plugin #961 maneja conexión nativa
- * FIX: _addBLEContact usa MAC como clave primaria, UUID como referencia local
+ * BLE Interface v4.2.1-COMPOSITE
+ * CLAVE COMPUESTA: MAC primaria + Nombre secundaria para identificación estable
+ * FIX v4.2.1: openChat() conecta automáticamente vía GATT antes de abrir UI
+ * FIX: _connectToDevice() wrapper nativo con espera de READY_TO_CHAT
+ * FIX: sendMessageToActiveChat() verifica conexión y reconecta si es necesario
  * FIX: Detección de MAC cambiada por randomización Android
  * FIX: Cola de mensajes pendientes antes de conexión lista
  * FIX: Reconexión automática con scan rápido si envío falla
@@ -435,6 +436,96 @@ export class BLEInterface {
           setTimeout(check, 300);
         }
       };
+      check();
+    });
+  }
+
+  // FIX v4.2.1: Nuevo método para conectar a dispositivo antes de abrir chat
+  async _connectToDevice(mac) {
+    if (!this.nativePlugin) {
+      throw new Error('Plugin BLE no disponible');
+    }
+    
+    var normMac = _normMAC(mac);
+    
+    // Verificar si ya está conectado y listo
+    var currentState = this._getDeviceState(normMac);
+    if (currentState.state === BLE_STATES.READY_TO_CHAT || 
+        currentState.state === BLE_STATES.NOTIFICATIONS_READY) {
+      console.log('[BLEInterface] Dispositivo ya conectado:', normMac);
+      return true;
+    }
+    
+    // Verificar si ya está en proceso de conexión
+    if (currentState.state === BLE_STATES.CONNECTING) {
+      console.log('[BLEInterface] Conexión en progreso, esperando...');
+      try {
+        await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 15000);
+        return true;
+      } catch (e) {
+        throw new Error('Timeout esperando conexión existente');
+      }
+    }
+    
+    // Iniciar conexión nueva
+    console.log('[BLEInterface] Conectando a:', normMac);
+    this._setDeviceState(normMac, BLE_STATES.CONNECTING, { message: 'Conectando...' });
+    
+    try {
+      // El plugin #961 usa connectToDevice con deviceId = MAC
+      await this.nativePlugin.connectToDevice({ deviceId: normMac });
+      
+      // Esperar a que la conexión esté lista para chat
+      await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 15000);
+      
+      console.log('[BLEInterface] Conexión establecida:', normMac);
+      return true;
+      
+    } catch (e) {
+      this._setDeviceState(normMac, BLE_STATES.ERROR, { lastError: e.message });
+      console.error('[BLEInterface] Fallo conexión:', e.message);
+      throw e;
+    }
+  }
+
+  // FIX v4.2.1: Nuevo método para esperar estado específico de conexión
+  async _waitForConnectionState(mac, targetState, timeoutMs) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      var normMac = _normMAC(mac);
+      var elapsed = 0;
+      var interval = 200;
+      
+      var check = function() {
+        var state = self._getDeviceState(normMac);
+        
+        // READY_TO_CHAT o NOTIFICATIONS_READY ambos son válidos para chat
+        if (targetState === BLE_STATES.READY_TO_CHAT) {
+          if (state.state === BLE_STATES.READY_TO_CHAT || 
+              state.state === BLE_STATES.NOTIFICATIONS_READY) {
+            resolve();
+            return;
+          }
+        } else if (state.state === targetState) {
+          resolve();
+          return;
+        }
+        
+        // Verificar error
+        if (state.state === BLE_STATES.ERROR) {
+          reject(new Error('Conexión en error: ' + (state.lastError || 'Unknown')));
+          return;
+        }
+        
+        elapsed += interval;
+        if (elapsed >= timeoutMs) {
+          reject(new Error('Timeout esperando estado ' + targetState));
+          return;
+        }
+        
+        setTimeout(check, interval);
+      };
+      
       check();
     });
   }
@@ -1052,8 +1143,8 @@ export class BLEInterface {
     this.showToast('Agregado: ' + name, 'success');
   }
 
-  // FIX v4.2.0: openChat usa MAC como clave primaria
-  openChat(deviceUUID) {
+  // FIX v4.2.1: openChat ahora conecta automáticamente vía GATT
+  async openChat(deviceUUID) {
     var uuid = _normId(deviceUUID);
     var contact = _getContactByUUID(uuid);
     var mac = this._uuidToMacMap.get(uuid) || (contact && _normMAC(contact.macAddress));
@@ -1070,39 +1161,53 @@ export class BLEInterface {
     
     var displayName = (contact && contact.name) || 'NEXO Peer';
     
-    this._activeChatDeviceId = uuid;
-    this._activeChatMAC = mac;
-    this.newDevicesCount = 0;
-    this.updateBadge();
-    
     if (!mac) {
       this.showToast('Dispositivo no disponible para conectar', 'warning');
       return;
     }
     
-    // Enviar evento con MAC incluida para que nexo_app.js use MAC como target
-    var appContainer = document.getElementById('app');
-    if (appContainer) appContainer.classList.remove('hidden');
-    var nameInput = document.getElementById('chat-contact-name');
-    var subtitle = document.getElementById('chat-contact-subtitle');
-    if (nameInput) nameInput.value = displayName;
-    if (subtitle) subtitle.textContent = 'BLUETOOTH';
+    // FIX v4.2.1: Conectar antes de abrir chat
+    this.showToast('Conectando a ' + displayName + '...', 'info', 3000);
     
-    window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
-      detail: { 
-        contactId: uuid, 
-        name: displayName, 
-        address: mac, 
-        transport: 'ble', 
-        source: 'ble_interface',
-        macAddress: mac
-      }
-    }));
-    
-    this.togglePanel();
+    try {
+      await this._connectToDevice(mac);
+      
+      // Conexión exitosa - ahora sí abrir chat
+      this._activeChatDeviceId = uuid;
+      this._activeChatMAC = mac;
+      this.newDevicesCount = 0;
+      this.updateBadge();
+      
+      var appContainer = document.getElementById('app');
+      if (appContainer) appContainer.classList.remove('hidden');
+      var nameInput = document.getElementById('chat-contact-name');
+      var subtitle = document.getElementById('chat-contact-subtitle');
+      if (nameInput) nameInput.value = displayName;
+      if (subtitle) subtitle.textContent = 'BLUETOOTH ●';
+      
+      window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
+        detail: { 
+          contactId: uuid, 
+          name: displayName, 
+          address: mac, 
+          transport: 'ble', 
+          source: 'ble_interface',
+          macAddress: mac
+        }
+      }));
+      
+      this.showToast('Conectado a ' + displayName, 'success', 2000);
+      this.togglePanel();
+      
+    } catch (e) {
+      this.showToast('No se pudo conectar: ' + e.message, 'error', 5000);
+      console.error('[BLEInterface] openChat fallo:', e);
+      // No abrir chat si no hay conexión
+      return;
+    }
   }
 
-  // ENVÍO DE MENSAJE CON RECUPERACIÓN AUTOMÁTICA
+  // FIX v4.2.1: sendMessageToActiveChat verifica conexión y reconecta si es necesario
   async sendMessageToActiveChat(content) {
     if (!this._activeChatMAC) {
       this.showToast('No hay chat activo', 'error');
@@ -1112,16 +1217,24 @@ export class BLEInterface {
     var mac = this._activeChatMAC;
     var state = this._getDeviceState(mac);
     
-    // Si no está conectado, encolar
+    // Si no está conectado, intentar reconectar primero
+    if (state.state !== BLE_STATES.READY_TO_CHAT && state.state !== BLE_STATES.NOTIFICATIONS_READY) {
+      this.showToast('Reconectando...', 'info', 2000);
+      
+      try {
+        await this._connectToDevice(mac);
+      } catch (e) {
+        this._enqueueMessage(mac, content);
+        this.showToast('Mensaje en cola - reconectando...', 'info', 3000);
+        return false;
+      }
+    }
+    
+    // Verificar estado después de posible reconexión
+    state = this._getDeviceState(mac);
     if (state.state !== BLE_STATES.READY_TO_CHAT && state.state !== BLE_STATES.NOTIFICATIONS_READY) {
       this._enqueueMessage(mac, content);
-      
-      // Intentar reconectar
-      try {
-        await this._attemptReconnectWithScan(mac);
-      } catch (e) {
-        this.showToast('No se pudo conectar', 'error');
-      }
+      this.showToast('Mensaje en cola - esperando conexión', 'info', 3000);
       return false;
     }
     
@@ -1132,14 +1245,14 @@ export class BLEInterface {
     } catch (e) {
       console.warn('[BLEInterface] Envío falló:', e.message);
       
-      // Reintento con scan rápido
+      // Reintento con reconexión
       var retryCount = this._sendRetryCount.get(mac) || 0;
       if (retryCount < 3) {
         this._sendRetryCount.set(mac, retryCount + 1);
         this.showToast('Reintentando... (' + (retryCount + 1) + '/3)', 'warning', 2000);
         
         try {
-          await this._attemptReconnectWithScan(mac);
+          await this._connectToDevice(mac);
           await this._sendMessageNative(mac, content);
           this._sendRetryCount.delete(mac);
           return true;
