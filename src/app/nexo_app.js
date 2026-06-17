@@ -1,7 +1,8 @@
 /**
- * NEXO App v5.1.0-COMPOSITE
- * Coordinado con ble_interface.js v4.2.0-COMPOSITE
- * FIX: sendMessage usa MAC como targetId para plugin #961
+ * NEXO App v5.1.1-COMPOSITE
+ * Coordinado con ble_interface.js v4.2.1-COMPOSITE
+ * FIX: sendMessage delega a bleInterface.sendMessageToActiveChat() primero
+ * FIX: _sendViaBLE pasa a fallback directo al plugin
  * FIX: activeContact incluye macAddress para envío directo
  * FIX: _handleMessage usa clave compuesta para dedup
  * FIX: Cola de mensajes si dispositivo no conectado
@@ -78,7 +79,7 @@ export class NexoApp {
     this._dedupTTL = 300000;
     this._pendingMessages = [];
     this._sendLock = false;
-    DEBUG.log('🚀 [NEXO] v5.1.0-COMPOSITE iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.1.1-COMPOSITE iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -98,7 +99,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.1.0-COMPOSITE Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.1.1-COMPOSITE Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', `Init failed: ${err.message}`);
       await this._partialCleanup();
@@ -279,6 +280,7 @@ export class NexoApp {
     }
   }
 
+  // FIX v5.1.1: sendMessage delega a bleInterface primero para manejo de conexión
   async sendMessage(msg) {
     if (!this.initialized || this._isDestroyed) {
       DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
@@ -293,6 +295,8 @@ export class NexoApp {
     
     try {
       const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Render optimista inmediato
       this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true, messageId }, 'self');
 
       const isObject = msg && typeof msg === 'object';
@@ -301,7 +305,25 @@ export class NexoApp {
       const targetId = recipient || this.activeContact?.macAddress || this.activeContact?.id;
       const targetTransport = this.activeContact?.transport;
 
-      // PRIORIDAD 1: BLE directo con MAC
+      // FIX v5.1.1: PRIORIDAD 0 - Delegar a bleInterface si está disponible
+      // bleInterface ya maneja: verificación de conexión, reconexión, cola, reintentos
+      if (targetTransport === 'ble' && this.bleInterface?.sendMessageToActiveChat) {
+        try {
+          const sent = await this.bleInterface.sendMessageToActiveChat(content);
+          if (sent) {
+            this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
+            return true;
+          }
+          // Si sendMessageToActiveChat devuelve false, el mensaje quedó en cola
+          DEBUG.info('Mensaje encolado - esperando conexión BLE', 'MSG_QUEUED');
+          return false;
+        } catch (e) {
+          DEBUG.warn(`bleInterface.sendMessageToActiveChat falló: ${e.message}`, 'MSG_BLE_FAIL');
+          // Continuar a fallback directo
+        }
+      }
+
+      // PRIORIDAD 1: BLE directo con MAC (fallback si bleInterface no disponible)
       if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
@@ -309,19 +331,6 @@ export class NexoApp {
           return true;
         } catch (e) {
           DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
-          
-          // MITIGACIÓN: Si falla, intentar con bleInterface.sendMessageToActiveChat
-          if (this.bleInterface && this.bleInterface.sendMessageToActiveChat) {
-            try {
-              const sent = await this.bleInterface.sendMessageToActiveChat(content);
-              if (sent) {
-                this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
-                return true;
-              }
-            } catch (e2) {
-              DEBUG.warn(`Fallback BLE falló: ${e2.message}`, 'MSG_BLE_FAIL2');
-            }
-          }
         }
       }
 
