@@ -1,7 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.1-SHIM
+ * src/main.js - Punto de entrada NEXO v9.2-COMPOSITE
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.1-SHIM: SetupManager/SetupWizard eliminados. Permission Shim integrado.
+ * v9.2-COMPOSITE: Integración con clave compuesta MAC+nombre
  * Build #961 compatible. NO toca nativo.
  */
 
@@ -15,7 +15,7 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.1-SHIM',
+  version: '9.2-COMPOSITE',
   initialized: false
 };
 
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
-    // ─── SHIM INTEGRATION v9.1 ───
+    // ─── SHIM INTEGRATION v9.2 ───
     rem.info('[Shim] Verificando permisos BLE...', 'SHIM_CHECK');
 
     let permissionsGranted = false;
@@ -102,7 +102,6 @@ function _showPermissionOverlay() {
   `;
   document.body.appendChild(overlay);
 
-  // Styles inline para no depender de CSS externo
   const style = document.createElement('style');
   style.id = 'perm-overlay-styles';
   style.textContent = `
@@ -164,7 +163,7 @@ function _hidePermissionOverlay() {
   if (styles) styles.remove();
 }
 
-// ─── NexoApp Initialization (INTACTO v9.0) ───
+// ─── NexoApp Initialization ───
 async function initializeNexoApp() {
   try {
     const nexoConfig = {
@@ -179,6 +178,7 @@ async function initializeNexoApp() {
       onStatusChange: (mode) => {
         console.log('🌐 Modo:', mode);
         rem.updateMode(mode);
+        _updateConnectionStatus(mode);
       },
       onError: (err) => {
         console.error('App error:', err);
@@ -192,9 +192,9 @@ async function initializeNexoApp() {
       }
     };
 
-    rem.info('🚀 [NEXO] App instance v3.3.0-NAP', 'NEXO_INIT');
+    rem.info('🚀 [NEXO] App instance v5.1.0-COMPOSITE', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v3.3.0-NAP =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v5.1.0-COMPOSITE =====', 'INIT_START');
 
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) =>
@@ -216,11 +216,12 @@ async function initializeNexoApp() {
     _setupVaultToggle();
     _setupChatHeader();
     _setupKeyboardShortcuts();
+    _setupBLEStatusIndicator();
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.1-SHIM Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.1-SHIM Inicializado');
+    rem.success('NEXO v9.2-COMPOSITE Listo', 'INIT_OK');
+    console.log('✅ NEXO v9.2-COMPOSITE Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
@@ -236,7 +237,64 @@ async function initializeNexoApp() {
   }
 }
 
-// ─── Helper Functions (INTACTOS v9.0) ───
+// ─── Indicador de estado BLE en UI ───
+function _setupBLEStatusIndicator() {
+  const header = document.getElementById('chat-header');
+  if (!header) return;
+  
+  let indicator = document.getElementById('ble-status-indicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'ble-status-indicator';
+    indicator.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#666;margin-left:8px;display:inline-block;transition:background 0.3s;';
+    const subtitle = document.getElementById('chat-contact-subtitle');
+    if (subtitle) subtitle.parentNode.insertBefore(indicator, subtitle.nextSibling);
+  }
+  
+  // Actualizar cada 3 segundos
+  setInterval(() => {
+    const app = window.NEXO.app;
+    if (!app || !app.bleInterface) {
+      indicator.style.background = '#666';
+      return;
+    }
+    const activeMAC = app.bleInterface._activeChatMAC;
+    if (!activeMAC) {
+      indicator.style.background = '#666';
+      return;
+    }
+    const state = app.bleInterface._getDeviceState?.(activeMAC);
+    if (state?.state === 'ready_to_chat' || state?.state === 'notifications_ready') {
+      indicator.style.background = '#00ff88';
+    } else if (state?.state === 'connecting' || state?.state === 'reconnecting') {
+      indicator.style.background = '#ffaa00';
+    } else {
+      indicator.style.background = '#ff4444';
+    }
+  }, 3000);
+}
+
+function _updateConnectionStatus(mode) {
+  const subtitle = document.getElementById('chat-contact-subtitle');
+  if (!subtitle) return;
+  
+  const statusMap = {
+    'P2P_BLE': 'BLUETOOTH ●',
+    'RELAY': 'RELAY 🌐',
+    'OFFLINE': 'OFFLINE ○',
+    'CHAT:': 'BLUETOOTH ●'
+  };
+  
+  for (const [key, value] of Object.entries(statusMap)) {
+    if (mode.startsWith(key)) {
+      subtitle.textContent = value;
+      return;
+    }
+  }
+  subtitle.textContent = mode;
+}
+
+// ─── Helper Functions ───
 function _ensureDOMStructure() {
   const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
   const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
@@ -300,13 +358,13 @@ function _setupChatHeader() {
       window.NEXO.app.activeContact.name = newName;
     }
     try {
-      const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
+      const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v3') || '[]');
       const activeId = window.NEXO.app?.activeContact?.id;
       if (activeId) {
-        const idx = contacts.findIndex(c => (c.id || c.address) === activeId);
+        const idx = contacts.findIndex(c => (c.id || c.deviceUUID) === activeId);
         if (idx >= 0) {
           contacts[idx].name = newName;
-          localStorage.setItem('nexo_ble_contacts_v1', JSON.stringify(contacts));
+          localStorage.setItem('nexo_ble_contacts_v3', JSON.stringify(contacts));
           rem.info(`Contacto renombrado: ${newName}`, 'CONTACT_RENAME');
         }
       }
@@ -349,13 +407,22 @@ function _renderMessage(msg) {
   const container = document.getElementById('messages-container');
   if (!container) return;
 
+  // DEDUP EN UI: no renderizar duplicados
+  const msgId = msg.messageId || msg._id;
+  if (msgId) {
+    const existing = container.querySelector(`[data-msg-id="${msgId}"]`);
+    if (existing) return;
+  }
+
   const div = document.createElement('div');
   div.className = `message ${msg._own ? 'own' : 'other'}`;
+  if (msgId) div.setAttribute('data-msg-id', msgId);
 
-  const sourceBadge = msg._source ?
-    `${_getSourceIcon(msg._source)}` : '';
+  const senderName = msg.senderName || (msg._own ? 'Tú' : 'NEXO Peer');
+  const sourceBadge = msg._source ? `${_getSourceIcon(msg._source)}` : '';
 
   div.innerHTML = `
+    <div class="msg-sender">${senderName}</div>
     <div class="msg-content">${msg.content || msg.text}</div>
     <div class="msg-meta">
       <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
@@ -371,6 +438,7 @@ function _getSourceIcon(source) {
   const icons = {
     'ble_nordic': '🔷',
     'ble_hybrid': '📡',
+    'ble_direct': '🔵',
     'relay': '🌐',
     'self': '✓'
   };
