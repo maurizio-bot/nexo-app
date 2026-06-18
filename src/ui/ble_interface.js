@@ -1,6 +1,7 @@
 /**
- * BLE Interface v4.2.4-ANTI-CRASH
+ * BLE Interface v4.2.5-ANTI-CRASH
  * Interfaz con plugin nativo Capacitor NexoBLE
+ * FIX: Debounce + desactivación visual en botón Chat para prevenir crash por doble click
  */
 
 export function initBLEInterface(bleMesh) {
@@ -237,6 +238,8 @@ export class BLEInterface {
     this._sendRetryCount = new Map();
     this._macChangeDetection = new Map();
     this._waitTimers = new Map();
+    // FIX v4.2.5: Timer de debounce para botón Chat
+    this._chatClickTimers = new Map();
   }
 
   _detectMeshType() {
@@ -973,6 +976,7 @@ export class BLEInterface {
       .ble-contact-status { font-size: 11px; color: #888; margin-top: 2px; }
       .ble-contact-actions { display: flex; gap: 8px; }
       .ble-btn-chat { padding: 8px 16px; background: #00d4ff; color: #000; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: bold; }
+      .ble-btn-chat:disabled { opacity: 0.5; pointer-events: none; cursor: not-allowed; }
       .ble-btn-remove { padding: 8px 12px; background: #ff4444; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; }
       
       .ble-empty { text-align: center; color: #666; padding: 40px 20px; font-style: italic; }
@@ -1142,20 +1146,68 @@ export class BLEInterface {
       var actionsDiv = document.createElement('div');
       actionsDiv.className = 'ble-contact-actions';
       
+      // FIX v4.2.5: Botón Chat con debounce + desactivación visual robusta
       var chatBtn = document.createElement('button');
       chatBtn.className = 'ble-btn-chat';
       chatBtn.textContent = 'Chat';
+      
+      // Función para reactivar el botón visualmente
+      function _enableChatBtn() {
+        chatBtn.disabled = false;
+        chatBtn.style.opacity = '1';
+        chatBtn.style.pointerEvents = 'auto';
+        chatBtn.textContent = 'Chat';
+      }
+      
+      // Función para desactivar el botón visualmente
+      function _disableChatBtn() {
+        chatBtn.disabled = true;
+        chatBtn.style.opacity = '0.5';
+        chatBtn.style.pointerEvents = 'none';
+        chatBtn.textContent = '...';
+      }
+      
       chatBtn.addEventListener('click', function(e) {
         e.stopPropagation();
+        
+        // Triple protección contra doble click
         if (self._isOpeningChat) {
           self.showToast('Conectando...', 'info', 1500);
           return;
         }
-        self.openChat(uuid).catch(function(err) {
+        if (chatBtn.disabled) {
+          return;
+        }
+        
+        // Limpiar timer anterior si existe
+        var existingTimer = self._chatClickTimers.get(uuid);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+        }
+        
+        // Desactivar inmediatamente
+        _disableChatBtn();
+        self._isOpeningChat = true;
+        
+        // Ejecutar openChat
+        self.openChat(uuid).then(function() {
+          // Éxito: reactivar tras debounce
+          var timer = setTimeout(function() {
+            _enableChatBtn();
+            self._isOpeningChat = false;
+            self._chatClickTimers.delete(uuid);
+          }, 800);
+          self._chatClickTimers.set(uuid, timer);
+        }).catch(function(err) {
           console.error('[BLEInterface] openChat error:', err);
           self.showToast('Error al abrir chat', 'error');
+          // Error: reactivar inmediatamente
+          _enableChatBtn();
+          self._isOpeningChat = false;
+          self._chatClickTimers.delete(uuid);
         });
       });
+      
       actionsDiv.appendChild(chatBtn);
       
       var removeBtn = document.createElement('button');
@@ -1295,6 +1347,8 @@ export class BLEInterface {
       console.error('[BLEInterface] openChat conexion fallo:', e);
       this.showToast('Error de conexion: ' + (e.message || e), 'error', 3000);
     } finally {
+      // Siempre liberar el flag, incluso si hay error
+      // El debounce del botón maneja la reactivación visual
       this._isOpeningChat = false;
     }
   }
@@ -1499,6 +1553,9 @@ export class BLEInterface {
     
     this._waitTimers.forEach(function(timer) { clearTimeout(timer); });
     this._waitTimers.clear();
+    
+    this._chatClickTimers.forEach(function(timer) { clearTimeout(timer); });
+    this._chatClickTimers.clear();
     
     if (this._nativeAdStartedListener && typeof this._nativeAdStartedListener.remove === 'function') {
       this._nativeAdStartedListener.remove();
