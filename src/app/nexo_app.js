@@ -1,6 +1,7 @@
 /**
- * src/app/nexo_app.js - NEXO App v5.1.3-ANTI-CRASH
+ * src/app/nexo_app.js - NEXO App v5.1.3-ANTI-CRASH-FIX
  * Core de la aplicacion: inicializacion, mensajeria, estado BLE
+ * FIX: _bleChatHandler ahora muestra explicitamente la vista chat
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -173,6 +174,7 @@ export class NexoApp {
       this.bleInterface = initBLEInterface(meshInstance);
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
 
+      // FIX v5.1.3-FIX: _bleChatHandler ahora muestra explicitamente el chat
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport, macAddress } = e.detail;
         if (this.activeContact && this.activeContact.id === contactId) {
@@ -186,12 +188,47 @@ export class NexoApp {
           transport,
           macAddress: macAddress || address
         };
+        
+        // Mostrar app container
         const appContainer = document.getElementById('app');
-        if (appContainer) appContainer.classList.remove('hidden');
+        if (appContainer) {
+          appContainer.classList.remove('hidden');
+          appContainer.style.display = 'flex';
+        }
+        
+        // Actualizar header
         const nameInput = document.getElementById('chat-contact-name');
         const subtitle = document.getElementById('chat-contact-subtitle');
         if (nameInput) nameInput.value = name || 'NEXO Device';
-        if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
+        if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH \u25cf' : 'NEXO MESH';
+        
+        // FIX: Mostrar explicitamente el stream de mensajes
+        const stream = document.getElementById('nexo-stream');
+        const messagesContainer = document.getElementById('messages-container');
+        if (stream) {
+          stream.style.display = 'block';
+          stream.style.visibility = 'visible';
+          stream.style.opacity = '1';
+        }
+        if (messagesContainer) {
+          messagesContainer.style.display = 'flex';
+          messagesContainer.style.visibility = 'visible';
+        }
+        
+        // Enfocar input
+        const msgInput = document.getElementById('message-input');
+        if (msgInput) {
+          setTimeout(() => msgInput.focus(), 300);
+        }
+        
+        // Scroll al fondo
+        if (stream) {
+          setTimeout(() => { stream.scrollTop = stream.scrollHeight; }, 100);
+        }
+        
+        // Marcar body como chat activo
+        document.body.classList.add('chat-active');
+        
         var macShort = macAddress ? macAddress.substring(0,8) : 'N/A';
         DEBUG.success('💬 Chat activo: ' + name + ' [' + transport.toUpperCase() + '] MAC:' + macShort + '...', 'BLE_CHAT');
         this._updateMode('P2P_BLE');
