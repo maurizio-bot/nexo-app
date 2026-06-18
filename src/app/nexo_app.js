@@ -1,52 +1,6 @@
-# Generar nexo_app.js v5.1.3-ANTI-CRASH con comentarios explicativos
-
-nexo_app_code = r'''/**
- * =============================================================================
- * NEXO App v5.1.3-ANTI-CRASH
- * =============================================================================
- * 
- * ARQUITECTURA GENERAL:
- * ---------------------
- * NexoApp es el coordinador central de la aplicacion. Su responsabilidad es:
- * 
- *   1. INICIALIZAR: Configurar vault criptografico, WebSocket, mesh, BLE UI
- *   2. COORDINAR: Enrutar mensajes entre transportes (BLE, WebSocket, Mesh)
- *   3. RENDERIZAR: Delegar renderizado a TheStream via main.js
- *   4. DEDUPLICAR: Evitar mensajes duplicados en conversaciones
- *   5. GESTIONAR: Estado de contacto activo, envio, reconexion
- * 
- * PIPELINE DE MENSAJES ENVIADOS:
- * ------------------------------
- *   Usuario escribe mensaje -> Input en main.js
- *        |
- *        v  sendMessage()
- *   NexoApp.sendMessage()
- *        |
- *        v  Delega a BLEInterface.sendMessageToActiveChat()
- *   BLEInterface._sendMessageNative()
- *        |
- *        v  Plugin nativo sendMessage()
- *   Dispositivo BLE receptor
- * 
- * PIPELINE DE MENSAJES RECIBIDOS:
- * -------------------------------
- *   Plugin nativo onPayloadReceived
- *        |
- *        v  BLEInterface dispara 'nexo:ble:messageReceived'
- *   NexoApp._bleMessageHandler (este archivo)
- *        |
- *        v  _handleMessage() con dedup
- *   config.onMessage() -> main.js _renderMessage()
- *        |
- *        v  TheStream.appendItems()
- *   DOM
- * 
- * FIX v5.1.3:
- *   - _bleChatHandler guard: si ya hay chat activo, no sobrescribir
- *   - _handleMessage usa clave compuesta para dedup (messageId + MAC)
- *   - sendMessage delega a bleInterface primero, fallback a nativo directo
- *   - NO renderiza duplicados en conversaciones (Set _renderedConversationIds)
- *   - NO optional chaining, todo verificacion explicita
+/**
+ * src/app/nexo_app.js - NEXO App v5.1.3-ANTI-CRASH
+ * Core de la aplicacion: inicializacion, mensajeria, estado BLE
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -60,11 +14,6 @@ import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
 import { initBLEInterface } from '../ui/ble_interface.js';
 
-// ============================================================================
-// UTILIDAD: Promise con timeout para NAP (No Async Panic)
-// ============================================================================
-// Por que? Porque si un plugin nativo se cuelga, la Promise nunca resuelve
-// y toda la app se congela. Este wrapper fuerza un rechazo despues de N ms.
 function withTimeoutNAP(promise, ms, context) {
   let timer;
   const timeoutPromise = new Promise((_, reject) => {
@@ -73,9 +22,6 @@ function withTimeoutNAP(promise, ms, context) {
   return Promise.race([promise, timeoutPromise]).finally(() => { if (timer) clearTimeout(timer); });
 }
 
-// ============================================================================
-// DEBUG: Sistema de logging con buffer circular
-// ============================================================================
 const DEBUG = {
   rem: rem,
   _logBuffer: [],
@@ -123,31 +69,15 @@ export class NexoApp {
     this.activeContact = null;
     this._bleChatHandler = null;
     this._bleMessageHandler = null;
-    
-    // Deduplicacion de mensajes: Map<clave, timestamp>
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
-    this._dedupTTL = 300000; // 5 minutos
-    
-    // FIX v5.1.3: Set para evitar duplicados en lista de conversaciones
+    this._dedupTTL = 300000;
     this._renderedConversationIds = new Set();
-    
     this._pendingMessages = [];
     this._sendLock = false;
     DEBUG.log('🚀 [NEXO] v5.1.3-ANTI-CRASH iniciando...', 'info', 'APP_INIT');
   }
 
-  // ============================================================================
-  // INICIALIZACION: Fases secuenciales con timeout NAP
-  // ============================================================================
-  // Orden de fases:
-  // 1. CryptoVault (clave privada, identidad)
-  // 2. WebSocket (conexion a relay)
-  // 3. NordicMesh (BLE mesh nativo)
-  // 4. HybridMesh (BLE mesh JS)
-  // 5. BLE UI (panel BLE, listeners nativos)
-  // 6. Bridge (enrutamiento entre transportes)
-  // 7. UI (gestos, vault slider, stream)
   async init() {
     if (this.initialized) { DEBUG.warn('Already initialized', 'APP_SKIP'); return this; }
     if (this._isInitializing) throw new Error('[APP_018] Initialization in progress');
@@ -236,17 +166,6 @@ export class NexoApp {
     } catch (err) { DEBUG.error('APP_016', 'Hybrid Mesh: ' + err.message); this.mesh = null; }
   }
 
-  // ============================================================================
-  // FASE 5: BLE UI - Inicializacion del panel BLE y listeners
-  // ============================================================================
-  // Aqui conectamos BLEInterface con NexoApp via eventos CustomEvent.
-  // 
-  // Eventos que escuchamos:
-  // - 'nexo:ble:openChat': Usuario abrio chat desde panel BLE
-  // - 'nexo:ble:messageReceived': Llego mensaje del dispositivo BLE
-  //
-  // FIX v5.1.3: _bleChatHandler tiene guard para no sobrescribir activeContact
-  // si ya hay un chat activo. Esto previene la race condition del crash #1470.
   async _initPhase5_BLEUI() {
     DEBUG.setPhase('BLE_UI');
     try {
@@ -254,17 +173,12 @@ export class NexoApp {
       this.bleInterface = initBLEInterface(meshInstance);
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
 
-      // Handler para cuando se abre un chat desde el panel BLE
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport, macAddress } = e.detail;
-        
-        // FIX v5.1.3: GUARD - Si ya hay chat activo con el MISMO contacto, ignorar
-        // Si es un contacto DIFERENTE, permitir cambio (usuario eligio otro chat)
         if (this.activeContact && this.activeContact.id === contactId) {
           DEBUG.log('Chat ya activo con este contacto, ignorando evento duplicado', 'info', 'CHAT_DEDUP');
           return;
         }
-        
         this.activeContact = { 
           id: contactId, 
           name, 
@@ -272,33 +186,26 @@ export class NexoApp {
           transport,
           macAddress: macAddress || address
         };
-        
         const appContainer = document.getElementById('app');
         if (appContainer) appContainer.classList.remove('hidden');
         const nameInput = document.getElementById('chat-contact-name');
         const subtitle = document.getElementById('chat-contact-subtitle');
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
-        
         var macShort = macAddress ? macAddress.substring(0,8) : 'N/A';
         DEBUG.success('💬 Chat activo: ' + name + ' [' + transport.toUpperCase() + '] MAC:' + macShort + '...', 'BLE_CHAT');
-        
         this._updateMode('P2P_BLE');
         this.config.onStatusChange('CHAT:' + name);
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
-      // Handler para mensajes recibidos via BLE
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp, macAddress } = e.detail;
-        
         var contentPreview = '';
         if (content && typeof content.substring === 'function') {
           contentPreview = content.substring(0,30);
         }
         console.log('[BLE_RECV] Mensaje de ' + senderName + ': ' + contentPreview + '...');
-        
-        // Resolver nombre del remitente
         let resolvedName = senderName;
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           const mac = macAddress || deviceId;
@@ -306,8 +213,6 @@ export class NexoApp {
           resolvedName = senderName || 'NEXO Peer';
           if (contact && contact.name) resolvedName = contact.name;
         }
-        
-        // Enviar al pipeline de mensajes con dedup
         this._handleMessage({
           content,
           sender: deviceId,
@@ -324,7 +229,6 @@ export class NexoApp {
     } catch (err) { DEBUG.error('UI_004', 'BLE UI init failed: ' + err.message); this.bleInterface = null; }
   }
 
-  // Buscar contacto por MAC en la lista de BLEInterface
   _findContactByMAC(mac) {
     if (!this.bleInterface || !mac) return null;
     var contacts = [];
@@ -365,9 +269,6 @@ export class NexoApp {
     if (container) { try { this.stream = new TheStream(container, {}); } catch (e) {} }
   }
 
-  // ============================================================================
-  // HANDLERS NORDIC MESH
-  // ============================================================================
   _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
   _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
   _handleNordicMessage(msg) { if (!msg || !msg.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
@@ -385,25 +286,18 @@ export class NexoApp {
   }
   _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 
-  // ============================================================================
-  // ENVIO VIA BLE DIRECTO: _sendViaBLE
-  // ============================================================================
-  // Envia un mensaje directamente al plugin nativo BLE.
-  // Usa la MAC del activeContact como target.
   async _sendViaBLE(deviceId, content) {
     var plugin = null;
     if (this.bleInterface && this.bleInterface.nativePlugin) {
       plugin = this.bleInterface.nativePlugin;
     }
     if (!plugin) throw new Error('Plugin no disponible');
-    
     var targetMAC = deviceId;
     if (this.activeContact && this.activeContact.macAddress) {
       targetMAC = this.activeContact.macAddress;
     }
     var macShort = targetMAC ? targetMAC.substring(0,12) : 'N/A';
     console.log('[BLE_SEND] Enviando a MAC:' + macShort + '...');
-    
     try {
       if (typeof plugin.sendMessage !== 'function') throw new Error('sendMessage no disponible');
       await plugin.sendMessage({ deviceId: targetMAC, message: content });
@@ -415,38 +309,19 @@ export class NexoApp {
     }
   }
 
-  // ============================================================================
-  // SEND MESSAGE: Enviar mensaje al contacto activo
-  // ============================================================================
-  // Estrategia de envio (en orden de prioridad):
-  // 1. BLEInterface.sendMessageToActiveChat() (metodo preferido)
-  // 2. BLE directo via plugin nativo
-  // 3. NordicMesh
-  // 4. HybridMesh
-  // 5. Bridge
-  // 6. WebSocket
-  //
-  // FIX v5.1.3: Lock de envio para evitar envios concurrentes que puedan
-  // causar race conditions en el plugin nativo.
   async sendMessage(msg) {
     if (!this.initialized || this._isDestroyed) {
       DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
       return false;
     }
-    
-    // Lock de envio: evitar envios concurrentes
     if (this._sendLock) {
       DEBUG.warn('Envío en progreso, esperando...', 'MSG_LOCK');
       await new Promise(r => setTimeout(r, 500));
     }
     this._sendLock = true;
-    
     try {
       const messageId = msg.messageId || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
-      
-      // Renderizar optimista (mostrar inmediatamente en UI)
       this._handleMessage(Object.assign({}, msg, { _own: true, timestamp: Date.now(), pending: true, messageId }), 'self');
-
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
       const recipient = isObject ? msg.recipient : null;
@@ -457,7 +332,6 @@ export class NexoApp {
       var targetTransport = null;
       if (this.activeContact) targetTransport = this.activeContact.transport;
 
-      // ESTRATEGIA 1: BLEInterface (metodo preferido)
       if (targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendMessageToActiveChat === 'function') {
         try {
           const sent = await this.bleInterface.sendMessageToActiveChat(content);
@@ -472,7 +346,6 @@ export class NexoApp {
         }
       }
 
-      // ESTRATEGIA 2: BLE directo via plugin nativo
       var hasNativePlugin = false;
       if (this.bleInterface && this.bleInterface.nativePlugin) hasNativePlugin = true;
       if (targetId && targetTransport === 'ble' && hasNativePlugin) {
@@ -485,7 +358,6 @@ export class NexoApp {
         }
       }
 
-      // ESTRATEGIA 3: Fallback a cualquier dispositivo BLE conectado
       if (this.bleInterface && this.bleInterface.nativePlugin) {
         try {
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
@@ -499,7 +371,6 @@ export class NexoApp {
         } catch (e) { DEBUG.log('[BLE_SEND] Fallback falló: ' + e.message, 'warn', 'BLE_PEER_FAIL'); }
       }
 
-      // ESTRATEGIA 4: NordicMesh
       var nordicPeers = [];
       if (this.nordicMesh && typeof this.nordicMesh.getPeers === 'function') {
         nordicPeers = this.nordicMesh.getPeers();
@@ -509,7 +380,6 @@ export class NexoApp {
         catch (e) { DEBUG.error('NORDIC_009', 'Send failed: ' + e.message); }
       }
 
-      // ESTRATEGIA 5: HybridMesh
       var meshCount2 = 0;
       if (this.mesh && typeof this.mesh.getPeerCount === 'function') {
         meshCount2 = this.mesh.getPeerCount();
@@ -519,10 +389,8 @@ export class NexoApp {
         catch (e) { DEBUG.error('MESH_005', 'Broadcast failed: ' + e.message); }
       }
 
-      // ESTRATEGIA 6: Bridge
       if (this.bridge) { const result = await this.bridge.send({ content: content }); if (result) { DEBUG.success('Sent via Bridge', 'MSG_BRIDGE'); return true; } }
 
-      // ESTRATEGIA 7: WebSocket
       var wsConn = false;
       if (this.wsClient && typeof this.wsClient.isConnected === 'function') wsConn = this.wsClient.isConnected();
       if (wsConn) { this.wsClient.send({ content: content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); return true; }
@@ -537,20 +405,10 @@ export class NexoApp {
     }
   }
 
-  // ============================================================================
-  // HANDLE MESSAGE: Procesar mensaje recibido con deduplicacion
-  // ============================================================================
-  // Dedup key: messageId + MAC (clave compuesta)
-  // Si no hay messageId, usa sender + timestamp truncado a segundos
-  //
-  // FIX v5.1.3: Tambien verifica _renderedConversationIds para evitar
-  // duplicados en la lista de conversaciones.
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      // Construir clave de dedup
       const dedupKey = (msg.messageId || '') + ':' + (msg.macAddress || msg.sender || '');
-      
       if (msg.messageId || msg.macAddress) {
         const now = Date.now();
         if (this._messageDedupMap.has(dedupKey)) {
@@ -562,8 +420,6 @@ export class NexoApp {
           return;
         }
         this._messageDedupMap.set(dedupKey, now);
-        
-        // Limpiar entradas antiguas (LRU + TTL)
         if (this._messageDedupMap.size > this._maxProcessedIds) {
           let oldestKey = null;
           let oldestTime = Infinity;
@@ -576,14 +432,8 @@ export class NexoApp {
           if (now - v > this._dedupTTL) this._messageDedupMap.delete(k);
         }
       }
-      
-      // Enriquecer mensaje con metadatos
       const enriched = Object.assign({}, msg, { _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) });
-      
-      // Enviar al callback de renderizado (main.js)
       this.config.onMessage(enriched);
-      
-      // Tambien agregar al stream si existe
       if (this.stream && typeof this.stream.appendItems === 'function') this.stream.appendItems([enriched]);
     } catch (err) { DEBUG.error('APP_005', 'Message handler: ' + err.message); }
   }
@@ -633,15 +483,3 @@ export class NexoApp {
 
 export default NexoApp;
 export { DEBUG };
-'''
-
-with open('/mnt/agents/output/nexo_app_v5.1.3-ANTI-CRASH.js', 'w') as f:
-    f.write(nexo_app_code)
-
-# Verificar
-open_braces = nexo_app_code.count('{')
-close_braces = nexo_app_code.count('}')
-print("nexo_app.js - Balance llaves:", open_braces - close_braces)
-print("Lineas:", nexo_app_code.count('\n'))
-print("Optional chaining:", len(re.findall(r'\?\.', nexo_app_code)))
-print("Comillas triples:", len(re.findall(r"'''|\"\"\"", nexo_app_code)))
