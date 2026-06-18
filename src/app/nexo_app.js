@@ -1,7 +1,6 @@
 /**
- * src/app/nexo_app.js - NEXO App v5.1.4-FIX
+ * src/app/nexo_app.js - NEXO App v5.1.5-FIX
  * Core de la aplicacion: inicializacion, mensajeria, estado BLE
- * FIX: _bleChatHandler fuerza visibilidad con !important y maneja race conditions
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -76,7 +75,7 @@ export class NexoApp {
     this._renderedConversationIds = new Set();
     this._pendingMessages = [];
     this._sendLock = false;
-    DEBUG.log('🚀 [NEXO] v5.1.4-FIX iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.1.5-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -99,7 +98,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.1.4-FIX Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.1.5-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + err.message);
       await this._partialCleanup();
@@ -174,14 +173,8 @@ export class NexoApp {
       this.bleInterface = initBLEInterface(meshInstance);
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
 
-      // FIX v5.1.4-FIX: _bleChatHandler con visibilidad forzada y anti-race
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport, macAddress } = e.detail;
-        
-        // Anti-race: si ble_interface esta en medio de openChat, esperar
-        if (this.bleInterface && this.bleInterface._isOpeningChat) {
-          DEBUG.log('Esperando que ble_interface termine openChat...', 'info', 'CHAT_RACE');
-        }
         
         if (this.activeContact && this.activeContact.id === contactId) {
           DEBUG.log('Chat ya activo con este contacto, ignorando evento duplicado', 'info', 'CHAT_DEDUP');
@@ -196,7 +189,6 @@ export class NexoApp {
           macAddress: macAddress || address
         };
         
-        // FIX: Forzar visibilidad del app con !important para sobrescribir cualquier CSS
         const appContainer = document.getElementById('app');
         if (appContainer) {
           appContainer.classList.remove('hidden');
@@ -211,13 +203,11 @@ export class NexoApp {
           appContainer.style.setProperty('z-index', '2147483640', 'important');
         }
         
-        // Actualizar header
         const nameInput = document.getElementById('chat-contact-name');
         const subtitle = document.getElementById('chat-contact-subtitle');
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH \u25cf' : 'NEXO MESH';
         
-        // FIX: Mostrar explicitamente el stream con dimensiones forzadas
         const stream = document.getElementById('nexo-stream');
         const messagesContainer = document.getElementById('messages-container');
         if (stream) {
@@ -234,28 +224,23 @@ export class NexoApp {
           messagesContainer.style.setProperty('height', '100%', 'important');
         }
         
-        // FIX: Mostrar input area
         const inputArea = document.getElementById('input-area');
         if (inputArea) {
           inputArea.style.setProperty('display', 'flex', 'important');
           inputArea.style.setProperty('visibility', 'visible', 'important');
         }
         
-        // Enfocar input
         const msgInput = document.getElementById('message-input');
         if (msgInput) {
           setTimeout(() => msgInput.focus(), 300);
         }
         
-        // Scroll al fondo
         if (stream) {
           setTimeout(() => { stream.scrollTop = stream.scrollHeight; }, 100);
         }
         
-        // Marcar body como chat activo
         document.body.classList.add('chat-active');
         
-        // Asegurar que no haya splash visible
         const splash = document.getElementById('splash-screen');
         if (splash) {
           splash.style.setProperty('display', 'none', 'important');
