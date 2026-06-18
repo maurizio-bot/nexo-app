@@ -1,7 +1,7 @@
 /**
- * src/app/nexo_app.js - NEXO App v5.1.3-ANTI-CRASH-FIX
+ * src/app/nexo_app.js - NEXO App v5.1.4-FIX
  * Core de la aplicacion: inicializacion, mensajeria, estado BLE
- * FIX: _bleChatHandler ahora muestra explicitamente la vista chat
+ * FIX: _bleChatHandler fuerza visibilidad con !important y maneja race conditions
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -76,7 +76,7 @@ export class NexoApp {
     this._renderedConversationIds = new Set();
     this._pendingMessages = [];
     this._sendLock = false;
-    DEBUG.log('🚀 [NEXO] v5.1.3-ANTI-CRASH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.1.4-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -99,7 +99,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.1.3-ANTI-CRASH Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.1.4-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + err.message);
       await this._partialCleanup();
@@ -174,13 +174,20 @@ export class NexoApp {
       this.bleInterface = initBLEInterface(meshInstance);
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
 
-      // FIX v5.1.3-FIX: _bleChatHandler ahora muestra explicitamente el chat
+      // FIX v5.1.4-FIX: _bleChatHandler con visibilidad forzada y anti-race
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport, macAddress } = e.detail;
+        
+        // Anti-race: si ble_interface esta en medio de openChat, esperar
+        if (this.bleInterface && this.bleInterface._isOpeningChat) {
+          DEBUG.log('Esperando que ble_interface termine openChat...', 'info', 'CHAT_RACE');
+        }
+        
         if (this.activeContact && this.activeContact.id === contactId) {
           DEBUG.log('Chat ya activo con este contacto, ignorando evento duplicado', 'info', 'CHAT_DEDUP');
           return;
         }
+        
         this.activeContact = { 
           id: contactId, 
           name, 
@@ -189,11 +196,19 @@ export class NexoApp {
           macAddress: macAddress || address
         };
         
-        // Mostrar app container
+        // FIX: Forzar visibilidad del app con !important para sobrescribir cualquier CSS
         const appContainer = document.getElementById('app');
         if (appContainer) {
           appContainer.classList.remove('hidden');
-          appContainer.style.display = 'flex';
+          appContainer.style.setProperty('display', 'flex', 'important');
+          appContainer.style.setProperty('visibility', 'visible', 'important');
+          appContainer.style.setProperty('opacity', '1', 'important');
+          appContainer.style.setProperty('height', '100vh', 'important');
+          appContainer.style.setProperty('width', '100vw', 'important');
+          appContainer.style.setProperty('position', 'fixed', 'important');
+          appContainer.style.setProperty('top', '0', 'important');
+          appContainer.style.setProperty('left', '0', 'important');
+          appContainer.style.setProperty('z-index', '2147483640', 'important');
         }
         
         // Actualizar header
@@ -202,17 +217,28 @@ export class NexoApp {
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH \u25cf' : 'NEXO MESH';
         
-        // FIX: Mostrar explicitamente el stream de mensajes
+        // FIX: Mostrar explicitamente el stream con dimensiones forzadas
         const stream = document.getElementById('nexo-stream');
         const messagesContainer = document.getElementById('messages-container');
         if (stream) {
-          stream.style.display = 'block';
-          stream.style.visibility = 'visible';
-          stream.style.opacity = '1';
+          stream.style.setProperty('display', 'block', 'important');
+          stream.style.setProperty('visibility', 'visible', 'important');
+          stream.style.setProperty('opacity', '1', 'important');
+          stream.style.setProperty('height', 'calc(100vh - 120px)', 'important');
+          stream.style.setProperty('overflow-y', 'auto', 'important');
         }
         if (messagesContainer) {
-          messagesContainer.style.display = 'flex';
-          messagesContainer.style.visibility = 'visible';
+          messagesContainer.style.setProperty('display', 'flex', 'important');
+          messagesContainer.style.setProperty('visibility', 'visible', 'important');
+          messagesContainer.style.setProperty('flex-direction', 'column', 'important');
+          messagesContainer.style.setProperty('height', '100%', 'important');
+        }
+        
+        // FIX: Mostrar input area
+        const inputArea = document.getElementById('input-area');
+        if (inputArea) {
+          inputArea.style.setProperty('display', 'flex', 'important');
+          inputArea.style.setProperty('visibility', 'visible', 'important');
         }
         
         // Enfocar input
@@ -228,6 +254,14 @@ export class NexoApp {
         
         // Marcar body como chat activo
         document.body.classList.add('chat-active');
+        
+        // Asegurar que no haya splash visible
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+          splash.style.setProperty('display', 'none', 'important');
+          splash.style.setProperty('opacity', '0', 'important');
+          splash.style.setProperty('pointer-events', 'none', 'important');
+        }
         
         var macShort = macAddress ? macAddress.substring(0,8) : 'N/A';
         DEBUG.success('💬 Chat activo: ' + name + ' [' + transport.toUpperCase() + '] MAC:' + macShort + '...', 'BLE_CHAT');
