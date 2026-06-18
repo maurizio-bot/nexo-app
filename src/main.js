@@ -1,6 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.3-ANTI-CRASH
- * Pipeline: NexoApp._handleMessage() -> config.onMessage(msg) -> _renderMessage(msg) -> TheStream.appendItems([msg])
+ * src/main.js - Punto de entrada NEXO v9.3.1-FIX
+ * Pipeline: NexoApp._handleMessage() -> config.onMessage(msg) -> _renderMessage(msg) -> DOM append
  */
 
 import './styles/critical.css';
@@ -13,7 +13,7 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.3-ANTI-CRASH',
+  version: '9.3.1-FIX',
   initialized: false
 };
 
@@ -221,9 +221,9 @@ async function initializeNexoApp() {
       }
     };
 
-    rem.info('[NEXO] App instance v5.1.3-ANTI-CRASH', 'NEXO_INIT');
+    rem.info('[NEXO] App instance v5.1.5-FIX-1', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v5.1.3-ANTI-CRASH =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v9.3.1-FIX =====', 'INIT_START');
 
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) =>
@@ -249,8 +249,10 @@ async function initializeNexoApp() {
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.3-ANTI-CRASH Listo', 'INIT_OK');
-    console.log('NEXO v9.3-ANTI-CRASH Inicializado');
+    setTimeout(_forceHideSplash, 500);
+    setTimeout(_forceHideSplash, 1500);
+    rem.success('NEXO v9.3.1-FIX Listo', 'INIT_OK');
+    console.log('NEXO v9.3.1-FIX Inicializado');
 
     const status = window.NEXO.app.getStatus && window.NEXO.app.getStatus();
     if (status) console.log('[NEXO STATUS]', status);
@@ -439,9 +441,13 @@ function _renderMessage(msg) {
     if (existing) return;
   }
 
+  // FIX: Intentar TheStream pero NO retornar, siempre hacer fallback manual
   if (window.NEXO.app && window.NEXO.app.stream && typeof window.NEXO.app.stream.appendItems === 'function') {
-    window.NEXO.app.stream.appendItems([msg], { scroll: true });
-    return;
+    try {
+      window.NEXO.app.stream.appendItems([msg], { scroll: true });
+    } catch (e) {
+      console.warn('[main] TheStream.appendItems failed, using fallback', e);
+    }
   }
 
   const div = document.createElement('div');
@@ -497,11 +503,12 @@ function _focusInput(text) {
   }
 }
 
+// FIX: _forceHideSplash más agresivo - limpia TODOS los splash posibles
 function _forceHideSplash() {
-  const selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]', '#nexo-setup'];
+  const selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]', '#nexo-setup', '.setup-wizard', '#setup-overlay', '[class*="setup"]'];
   selectors.forEach(sel => {
-    const el = document.querySelector(sel);
-    if (el) {
+    const els = document.querySelectorAll(sel);
+    els.forEach(el => {
       el.style.opacity = '0';
       el.style.pointerEvents = 'none';
       el.style.transition = 'opacity 0.3s ease';
@@ -509,14 +516,19 @@ function _forceHideSplash() {
         el.style.display = 'none';
         el.remove();
       }, 500);
-    }
+    });
   });
 
   const app = document.getElementById('app');
   if (app) {
     app.classList.remove('hidden');
     app.style.display = 'flex';
+    app.style.visibility = 'visible';
+    app.style.opacity = '1';
   }
+
+  document.body.classList.add('nexo-ready');
+  document.body.style.overflow = 'auto';
 }
 
 function _enableFallbackMode() {
