@@ -1,5 +1,5 @@
 /**
- * src/app/nexo_app.js - NEXO App v5.1.5-FIX
+ * src/app/nexo_app.js - NEXO App v5.1.5-FIX-1
  * Core de la aplicacion: inicializacion, mensajeria, estado BLE
  */
 
@@ -75,7 +75,7 @@ export class NexoApp {
     this._renderedConversationIds = new Set();
     this._pendingMessages = [];
     this._sendLock = false;
-    DEBUG.log('🚀 [NEXO] v5.1.5-FIX iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.1.5-FIX-1 iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -98,7 +98,7 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.1.5-FIX Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.1.5-FIX-1 Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + err.message);
       await this._partialCleanup();
@@ -490,7 +490,7 @@ export class NexoApp {
       }
       const enriched = Object.assign({}, msg, { _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) });
       this.config.onMessage(enriched);
-      if (this.stream && typeof this.stream.appendItems === 'function') this.stream.appendItems([enriched]);
+      // FIX: Eliminado this.stream.appendItems duplicado - el renderizado lo maneja main.js _renderMessage
     } catch (err) { DEBUG.error('APP_005', 'Message handler: ' + err.message); }
   }
 
