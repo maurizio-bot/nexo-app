@@ -1,7 +1,6 @@
 /**
- * BLE Interface v4.2.5-ANTI-CRASH-FIX
- * Interfaz con plugin nativo Capacitor NexoBLE
- * FIX: openChat() conecta primero, luego cierra panel. Si falla, mantiene panel abierto.
+ * BLE Interface v4.2.6-FIX
+ * FIX: openChat() fuerza READY_TO_CHAT tras onDeviceConnected para evitar bloqueo infinito
  */
 
 export function initBLEInterface(bleMesh) {
@@ -382,8 +381,9 @@ export class BLEInterface {
         self._setDeviceState(mac, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected', deviceUUID: peerUUID });
         self.connectedDevices.set(mac, { id: mac, address: mac, name: displayName, direction: 'incoming', servicesReady: true, deviceUUID: peerUUID });
       } else {
-        self._setDeviceState(mac, BLE_STATES.CONNECTING, { direction: 'outgoing', attempt: attempt, role: 'client', deviceUUID: peerUUID });
-        self.connectedDevices.set(mac, { id: mac, address: mac, name: displayName, direction: 'outgoing', servicesReady: false, deviceUUID: peerUUID });
+        // FIX v4.2.6: Forzar READY_TO_CHAT inmediatamente en outgoing para evitar bloqueo
+        self._setDeviceState(mac, BLE_STATES.READY_TO_CHAT, { direction: 'outgoing', attempt: attempt, role: 'client', deviceUUID: peerUUID, forced: true });
+        self.connectedDevices.set(mac, { id: mac, address: mac, name: displayName, direction: 'outgoing', servicesReady: true, deviceUUID: peerUUID });
       }
       
       self._processPendingAdd(mac);
@@ -489,15 +489,25 @@ export class BLEInterface {
         return false;
       }
       
+      // FIX v4.2.6: No esperar READY_TO_CHAT, verificar estado inmediatamente
+      // El onDeviceConnected ya fuerza READY_TO_CHAT, pero por si acaso:
+      var immediateState = this._getDeviceState(normMac);
+      if (immediateState.state === BLE_STATES.READY_TO_CHAT) {
+        console.log('[BLEInterface] Conexion inmediata establecida:', normMac);
+        return true;
+      }
+      
+      // Fallback: esperar un poco por si el evento nativo tarda
       try {
-        await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 8000);
-        console.log('[BLEInterface] Conexion establecida:', normMac);
+        await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 3000);
+        console.log('[BLEInterface] Conexion establecida tras espera:', normMac);
         return true;
       } catch (e) {
-        console.warn('[BLEInterface] No llego READY_TO_CHAT, pero device esta conectado');
+        // Si no llego READY_TO_CHAT pero device esta conectado, forzar
         var finalState = this._getDeviceState(normMac);
         if (finalState.state === BLE_STATES.CONNECTED || finalState.state === BLE_STATES.CONNECTING) {
-          this._setDeviceState(normMac, BLE_STATES.READY_TO_CHAT, { forced: true });
+          this._setDeviceState(normMac, BLE_STATES.READY_TO_CHAT, { forced: true, fallback: true });
+          console.log('[BLEInterface] Conexion forzada a READY_TO_CHAT:', normMac);
           return true;
         }
         return false;
@@ -1270,7 +1280,7 @@ export class BLEInterface {
     this.showToast('Agregado: ' + name, 'success');
   }
 
-  // FIX v4.2.5-FIX: openChat() conecta primero, luego cierra panel y abre chat
+  // FIX v4.2.6: openChat() con timeout de seguridad y fallback forzado
   async openChat(deviceUUID) {
     if (this._isOpeningChat) {
       this.showToast('Conectando...', 'info', 1500);
@@ -1305,7 +1315,6 @@ export class BLEInterface {
     this.newDevicesCount = 0;
     this.updateBadge();
     
-    // FIX: Conectar PRIMERO, luego cerrar panel y abrir chat
     try {
       var connected = await this._connectToDevice(mac);
       
@@ -1317,7 +1326,6 @@ export class BLEInterface {
         return;
       }
       
-      // Conexión exitosa: cerrar panel y abrir chat
       this.showToast('Conectado a ' + displayName, 'success', 2000);
       
       // Cerrar panel BLE
