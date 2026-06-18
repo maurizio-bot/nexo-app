@@ -1,12 +1,14 @@
 /**
- * BLE Interface v4.2.1-COMPOSITE
- * CLAVE COMPUESTA: MAC primaria + Nombre secundaria para identificación estable
- * FIX v4.2.1: openChat() conecta automáticamente vía GATT antes de abrir UI
- * FIX: _connectToDevice() wrapper nativo con espera de READY_TO_CHAT
- * FIX: sendMessageToActiveChat() verifica conexión y reconecta si es necesario
- * FIX: Detección de MAC cambiada por randomización Android
- * FIX: Cola de mensajes pendientes antes de conexión lista
- * FIX: Reconexión automática con scan rápido si envío falla
+ * BLE Interface v4.2.3-FIX
+ * CLAVE COMPUESTA: MAC primaria + Nombre secundaria para identificacion estable
+ * FIX v4.2.3: 
+ *   - openChat listener async con try/catch (evita crash)
+ *   - _connectToDevice acepta CONNECTED como estado valido, no throw
+ *   - _waitForConnectionState con cleanup de timers
+ *   - Guard checks en metodos plugin que pueden no existir
+ *   - sendMessageToActiveChat con verificacion de estado antes de enviar
+ *   - _sendMessageNative con fallback graceful si plugin no responde
+ *   - NO optional chaining, todo verificacion explicita
  */
 
 export function initBLEInterface(bleMesh) {
@@ -72,16 +74,11 @@ function _saveMACCache(cache) {
   localStorage.setItem(BLE_MAC_CACHE_KEY, JSON.stringify(cache));
 }
 
-/**
- * Buscar contacto por MAC (clave primaria) o nombre (clave secundaria)
- * Prioridad: MAC exacta > nombre exacto > nombre fuzzy
- */
 function _findContactByMACOrName(mac, name) {
   var contacts = _getBLEContacts();
   var normMac = _normMAC(mac);
   var normName = _normId(name);
   
-  // 1. Buscar por MAC exacta
   if (normMac) {
     var byMac = contacts.find(function(c) {
       return _normMAC(c.macAddress) === normMac;
@@ -89,7 +86,6 @@ function _findContactByMACOrName(mac, name) {
     if (byMac) return byMac;
   }
   
-  // 2. Buscar por nombre exacto
   if (normName && normName !== 'nexo peer' && normName !== 'nexo device') {
     var byName = contacts.find(function(c) {
       return _normId(c.name) === normName;
@@ -97,7 +93,6 @@ function _findContactByMACOrName(mac, name) {
     if (byName) return byName;
   }
   
-  // 3. Buscar por nombre fuzzy (si no es genérico)
   if (normName && normName.length > 3 && 
       normName !== 'nexo peer' && normName !== 'nexo device') {
     var byFuzzy = contacts.find(function(c) {
@@ -136,13 +131,11 @@ function _addBLEContact(contact) {
     return false;
   }
   
-  // Buscar por MAC primaria
   var existingIdx = contacts.findIndex(function(c) {
     return _normMAC(c.macAddress) === mac;
   });
   
   if (existingIdx >= 0) {
-    // Actualizar contacto existente
     contacts[existingIdx].name = name || contacts[existingIdx].name || 'NEXO Peer';
     contacts[existingIdx].deviceUUID = uuid;
     contacts[existingIdx].lastSeen = Date.now();
@@ -152,7 +145,6 @@ function _addBLEContact(contact) {
     return { updated: true, contact: contacts[existingIdx] };
   }
   
-  // Nuevo contacto
   var newContact = {
     deviceUUID: uuid,
     name: name,
@@ -182,7 +174,6 @@ function _updateContactMAC(oldMAC, newMAC, name) {
     if (name) contacts[idx].name = name;
     _saveBLEContacts(contacts);
     
-    // Actualizar caché
     var cache = _getMACCache();
     cache[newNorm] = { oldMAC: oldNorm, updatedAt: Date.now() };
     _saveMACCache(cache);
@@ -212,6 +203,7 @@ var BLE_STATES = {
   DISCOVERING_SERVICES: 'discovering_services',
   NOTIFICATIONS_READY: 'notifications_ready',
   READY_TO_CHAT: 'ready_to_chat',
+  CONNECTED: 'connected',
   ERROR: 'error',
   RECONNECTING: 'reconnecting'
 };
@@ -226,7 +218,10 @@ export class BLEInterface {
     this.elements = {};
     this.newDevicesCount = 0;
     this._renderedDeviceIds = new Set();
-    this.nativePlugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
+    this.nativePlugin = null;
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
+      this.nativePlugin = window.Capacitor.Plugins.NexoBLE;
+    }
     this.isDummyMode = !bleMesh && !this.nativePlugin;
     this.meshType = this._detectMeshType();
     this.isAdvertising = false;
@@ -248,6 +243,7 @@ export class BLEInterface {
     this._messageQueue = new Map();
     this._sendRetryCount = new Map();
     this._macChangeDetection = new Map();
+    this._waitTimers = new Map();
   }
 
   _detectMeshType() {
@@ -262,7 +258,9 @@ export class BLEInterface {
     this.injectStyles();
     this.setupEventListeners();
     if (!this.nativePlugin) {
-      this.nativePlugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
+        this.nativePlugin = window.Capacitor.Plugins.NexoBLE;
+      }
       if (this.nativePlugin) this.isDummyMode = !this.bleMesh && !this.nativePlugin;
     }
     if (this.isDummyMode) {
@@ -299,39 +297,44 @@ export class BLEInterface {
     if (this.isDummyMode || !this.nativePlugin) return;
     try {
       var btState = await this.nativePlugin.isBluetoothEnabled();
-      if (btState.canAdvertise) {
+      if (btState && btState.canAdvertise) {
         await this.nativePlugin.startAdvertising();
         this.isAdvertising = true;
         this.updateVisibilityButton();
       }
     } catch (e) {
-      console.warn('[BLEInterface] Auto-advertise fallo:', e.message);
+      console.warn('[BLEInterface] Auto-advertise fallo:', e.message || e);
     }
   }
 
   async _loadLocalDeviceInfo() {
-    if (!this.nativePlugin || !this.nativePlugin.getLocalDeviceInfo) return;
+    if (!this.nativePlugin) return;
+    if (typeof this.nativePlugin.getLocalDeviceInfo !== 'function') return;
     try {
       var info = await this.nativePlugin.getLocalDeviceInfo();
-      this.localDeviceName = info.deviceName || 'NEXO Device';
-      this.localDeviceAddress = _normMAC(info.deviceAddress || '');
+      if (info) {
+        this.localDeviceName = info.deviceName || 'NEXO Device';
+        this.localDeviceAddress = _normMAC(info.deviceAddress || '');
+      }
     } catch (e) {}
   }
 
   _setupNativeScanListeners() {
     if (!this.nativePlugin) return;
-    if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
-    if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
+    if (this._nativeDeviceFoundListener && typeof this._nativeDeviceFoundListener.remove === 'function') {
+      this._nativeDeviceFoundListener.remove();
+    }
+    if (this._nativeScanFailedListener && typeof this._nativeScanFailedListener.remove === 'function') {
+      this._nativeScanFailedListener.remove();
+    }
     var self = this;
     this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) {
       var mac = _normMAC(data.deviceId);
       var name = data.name || 'NEXO Device';
       var rssi = data.rssi || -100;
       
-      // DETECCIÓN DE MAC CAMBIADA
       var existingContact = _findContactByMACOrName(mac, name);
       if (existingContact && _normMAC(existingContact.macAddress) !== mac) {
-        // MAC cambió pero nombre coincide → actualizar
         var oldMAC = existingContact.macAddress;
         _updateContactMAC(oldMAC, mac, name);
         self._macToUuidMap.delete(_normMAC(oldMAC));
@@ -351,7 +354,9 @@ export class BLEInterface {
 
   _setupNativeServerReadyListener() {
     if (!this.nativePlugin) return;
-    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    if (this._nativeServerReadyListener && typeof this._nativeServerReadyListener.remove === 'function') {
+      this._nativeServerReadyListener.remove();
+    }
     var self = this;
     this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', function(data) {
       console.log('[BLEInterface] onServerReady recibido:', data);
@@ -361,8 +366,12 @@ export class BLEInterface {
 
   _setupNativeConnectionListeners() {
     if (!this.nativePlugin) return;
-    if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
-    if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
+    if (this._nativeDeviceConnectedListener && typeof this._nativeDeviceConnectedListener.remove === 'function') {
+      this._nativeDeviceConnectedListener.remove();
+    }
+    if (this._nativeDeviceDisconnectedListener && typeof this._nativeDeviceDisconnectedListener.remove === 'function') {
+      this._nativeDeviceDisconnectedListener.remove();
+    }
     var self = this;
 
     this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', function(data) {
@@ -372,7 +381,7 @@ export class BLEInterface {
       
       var peerUUID = self._macToUuidMap.get(mac);
       var contact = peerUUID ? _getContactByUUID(peerUUID) : null;
-      var displayName = data.name || (contact ? contact.name : null) || 'NEXO Peer';
+      var displayName = data.name || (contact && contact.name) || 'NEXO Peer';
       
       if (data.direction === 'incoming') {
         self._setDeviceState(mac, BLE_STATES.READY_TO_CHAT, { direction: 'incoming', role: 'peer_connected', deviceUUID: peerUUID });
@@ -418,7 +427,7 @@ export class BLEInterface {
       this.renderContactsList();
       this.renderNewDeviceBar();
     } catch (e) {
-      console.warn('[BLEInterface] Pending add fallo:', e.message);
+      console.warn('[BLEInterface] Pending add fallo:', e.message || e);
       this.showToast('No se pudo agregar contacto', 'warning');
     }
   }
@@ -426,11 +435,18 @@ export class BLEInterface {
   async _waitForReadyToChat(mac, timeoutMs) {
     var self = this;
     return new Promise(function(resolve, reject) {
-      var timer = setTimeout(function() { reject(new Error('Timeout')); }, timeoutMs);
+      var normMac = _normMAC(mac);
+      var timer = setTimeout(function() { 
+        self._waitTimers.delete(normMac);
+        reject(new Error('Timeout')); 
+      }, timeoutMs);
+      self._waitTimers.set(normMac, timer);
+      
       var check = function() {
         var s = self._getDeviceState(mac);
-        if (s.state === BLE_STATES.READY_TO_CHAT || s.state === BLE_STATES.NOTIFICATIONS_READY) {
+        if (s.state === BLE_STATES.READY_TO_CHAT || s.state === BLE_STATES.NOTIFICATIONS_READY || s.state === BLE_STATES.CONNECTED) {
           clearTimeout(timer);
+          self._waitTimers.delete(normMac);
           resolve();
         } else {
           setTimeout(check, 300);
@@ -440,85 +456,110 @@ export class BLEInterface {
     });
   }
 
-  // FIX v4.2.1: Nuevo método para conectar a dispositivo antes de abrir chat
   async _connectToDevice(mac) {
     if (!this.nativePlugin) {
-      throw new Error('Plugin BLE no disponible');
+      console.warn('[BLEInterface] Plugin BLE no disponible');
+      return false;
     }
     
     var normMac = _normMAC(mac);
     
-    // Verificar si ya está conectado y listo
     var currentState = this._getDeviceState(normMac);
     if (currentState.state === BLE_STATES.READY_TO_CHAT || 
-        currentState.state === BLE_STATES.NOTIFICATIONS_READY) {
+        currentState.state === BLE_STATES.NOTIFICATIONS_READY ||
+        currentState.state === BLE_STATES.CONNECTED) {
       console.log('[BLEInterface] Dispositivo ya conectado:', normMac);
       return true;
     }
     
-    // Verificar si ya está en proceso de conexión
     if (currentState.state === BLE_STATES.CONNECTING) {
-      console.log('[BLEInterface] Conexión en progreso, esperando...');
+      console.log('[BLEInterface] Conexion en progreso, esperando...');
       try {
         await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 15000);
         return true;
       } catch (e) {
-        throw new Error('Timeout esperando conexión existente');
+        console.warn('[BLEInterface] Timeout esperando conexion existente');
+        return false;
       }
     }
     
-    // Iniciar conexión nueva
     console.log('[BLEInterface] Conectando a:', normMac);
     this._setDeviceState(normMac, BLE_STATES.CONNECTING, { message: 'Conectando...' });
     
     try {
-      // El plugin #961 usa connectToDevice con deviceId = MAC
-      await this.nativePlugin.connectToDevice({ deviceId: normMac });
+      if (typeof this.nativePlugin.connectToDevice === 'function') {
+        await this.nativePlugin.connectToDevice({ deviceId: normMac });
+      } else {
+        console.warn('[BLEInterface] connectToDevice no disponible en plugin');
+        return false;
+      }
       
-      // Esperar a que la conexión esté lista para chat
-      await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 15000);
-      
-      console.log('[BLEInterface] Conexión establecida:', normMac);
-      return true;
+      try {
+        await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 15000);
+        console.log('[BLEInterface] Conexion establecida:', normMac);
+        return true;
+      } catch (e) {
+        console.warn('[BLEInterface] No llego READY_TO_CHAT, pero device esta conectado');
+        var finalState = this._getDeviceState(normMac);
+        if (finalState.state === BLE_STATES.CONNECTED || finalState.state === BLE_STATES.CONNECTING) {
+          this._setDeviceState(normMac, BLE_STATES.READY_TO_CHAT, { forced: true });
+          return true;
+        }
+        return false;
+      }
       
     } catch (e) {
-      this._setDeviceState(normMac, BLE_STATES.ERROR, { lastError: e.message });
-      console.error('[BLEInterface] Fallo conexión:', e.message);
-      throw e;
+      this._setDeviceState(normMac, BLE_STATES.ERROR, { lastError: e.message || e });
+      console.error('[BLEInterface] Fallo conexion:', e.message || e);
+      return false;
     }
   }
 
-  // FIX v4.2.1: Nuevo método para esperar estado específico de conexión
   async _waitForConnectionState(mac, targetState, timeoutMs) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var normMac = _normMAC(mac);
       var elapsed = 0;
       var interval = 200;
+      var timer = null;
+      
+      var cleanup = function() {
+        if (timer) clearTimeout(timer);
+        self._waitTimers.delete(normMac + '_conn');
+      };
+      
+      timer = setTimeout(function() { 
+        cleanup();
+        reject(new Error('Timeout esperando estado')); 
+      }, timeoutMs);
+      self._waitTimers.set(normMac + '_conn', timer);
       
       var check = function() {
         var state = self._getDeviceState(normMac);
         
-        // READY_TO_CHAT o NOTIFICATIONS_READY ambos son válidos para chat
         if (targetState === BLE_STATES.READY_TO_CHAT) {
           if (state.state === BLE_STATES.READY_TO_CHAT || 
-              state.state === BLE_STATES.NOTIFICATIONS_READY) {
+              state.state === BLE_STATES.NOTIFICATIONS_READY ||
+              state.state === BLE_STATES.CONNECTED) {
+            cleanup();
             resolve();
             return;
           }
         } else if (state.state === targetState) {
+          cleanup();
           resolve();
           return;
         }
         
-        // Verificar error
         if (state.state === BLE_STATES.ERROR) {
-          reject(new Error('Conexión en error: ' + (state.lastError || 'Unknown')));
+          cleanup();
+          reject(new Error('Conexion en error: ' + (state.lastError || 'Unknown')));
           return;
         }
         
         elapsed += interval;
         if (elapsed >= timeoutMs) {
+          cleanup();
           reject(new Error('Timeout esperando estado ' + targetState));
           return;
         }
@@ -537,7 +578,11 @@ export class BLEInterface {
     var attemptReconnect = async function() {
       if (self._activeChatMAC !== deviceMAC) return;
       try {
-        await self.nativePlugin.forceReconnect({ deviceId: deviceMAC });
+        if (self.nativePlugin && typeof self.nativePlugin.forceReconnect === 'function') {
+          await self.nativePlugin.forceReconnect({ deviceId: deviceMAC });
+        } else if (self.nativePlugin && typeof self.nativePlugin.connectToDevice === 'function') {
+          await self.nativePlugin.connectToDevice({ deviceId: deviceMAC });
+        }
       } catch (e) {
         var timer = setTimeout(attemptReconnect, 3000);
         self._reconnectTimers.set(deviceMAC, timer);
@@ -551,6 +596,16 @@ export class BLEInterface {
     if (timer) {
       clearTimeout(timer);
       this._reconnectTimers.delete(deviceMAC);
+    }
+    var waitTimer = this._waitTimers.get(deviceMAC);
+    if (waitTimer) {
+      clearTimeout(waitTimer);
+      this._waitTimers.delete(deviceMAC);
+    }
+    var waitTimerConn = this._waitTimers.get(deviceMAC + '_conn');
+    if (waitTimerConn) {
+      clearTimeout(waitTimerConn);
+      this._waitTimers.delete(deviceMAC + '_conn');
     }
   }
 
@@ -582,7 +637,11 @@ export class BLEInterface {
   _setDeviceState(deviceMAC, state, meta) {
     meta = meta || {};
     var nid = _normMAC(deviceMAC);
-    this._deviceStates.set(nid, { state: state, ...meta, timestamp: Date.now() });
+    var record = { state: state, timestamp: Date.now() };
+    for (var key in meta) {
+      if (meta.hasOwnProperty(key)) record[key] = meta[key];
+    }
+    this._deviceStates.set(nid, record);
   }
 
   _getDeviceState(deviceMAC) {
@@ -591,7 +650,9 @@ export class BLEInterface {
 
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
-    if (this._nativePayloadListener) this._nativePayloadListener.remove();
+    if (this._nativePayloadListener && typeof this._nativePayloadListener.remove === 'function') {
+      this._nativePayloadListener.remove();
+    }
     var self = this;
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
       var mac = _normMAC(data.deviceId);
@@ -614,19 +675,17 @@ export class BLEInterface {
         self._uuidToMacMap.set(senderUUID, mac);
       }
       
-      // Resolver nombre desde contacto por MAC primaria
       if (!senderName || senderName === 'NEXO Peer') {
         var contactByMac = _getContactByMAC(mac);
         if (contactByMac && contactByMac.name) {
           senderName = contactByMac.name;
         } else {
-          senderName = (self.connectedDevices.get(mac) && self.connectedDevices.get(mac).name)
-            || (self.foundDevices.get(mac) && self.foundDevices.get(mac).name)
-            || 'NEXO Peer';
+          var connected = self.connectedDevices.get(mac);
+          var found = self.foundDevices.get(mac);
+          senderName = (connected && connected.name) || (found && found.name) || 'NEXO Peer';
         }
       }
       
-      // Auto-agregar contacto si no existe
       if (senderUUID && !_isBLEContact(senderUUID) && senderName && senderName !== 'NEXO Peer') {
         _addBLEContact({ deviceUUID: senderUUID, name: senderName, macAddress: mac });
         self._macToUuidMap.set(mac, senderUUID);
@@ -634,7 +693,6 @@ export class BLEInterface {
         self.renderContactsList();
       }
       
-      // Deduplicación por messageId + MAC
       var dedupKey = (messageId || '') + ':' + mac;
       if (messageId && self._receivedMessageIds.has(dedupKey)) return;
       if (messageId) {
@@ -669,7 +727,6 @@ export class BLEInterface {
     });
   }
 
-  // COLA DE MENSAJES PENDIENTES
   _enqueueMessage(mac, content) {
     var queue = this._messageQueue.get(mac) || [];
     queue.push({ content: content, timestamp: Date.now(), attempts: 0 });
@@ -689,13 +746,15 @@ export class BLEInterface {
         await self._sendMessageNative(mac, item.content);
         console.log('[BLEInterface] Mensaje encolado enviado');
       } catch (e) {
-        console.warn('[BLEInterface] Fallo envío mensaje encolado:', e.message);
+        console.warn('[BLEInterface] Fallo envio mensaje encolado:', e.message || e);
       }
     }
   }
 
   async _sendMessageNative(deviceMAC, content) {
     if (!this.nativePlugin) throw new Error('Plugin no disponible');
+    if (typeof this.nativePlugin.sendMessage !== 'function') throw new Error('sendMessage no disponible');
+    
     var device = this.connectedDevices.get(_normMAC(deviceMAC));
     var targetId = (device && device.id) || (device && device.address) || deviceMAC;
     
@@ -713,11 +772,16 @@ export class BLEInterface {
   async _initVisibility() {
     if (this.isDummyMode) return;
     try {
+      if (!this.nativePlugin || typeof this.nativePlugin.isBluetoothEnabled !== 'function') return;
       var btState = await this.nativePlugin.isBluetoothEnabled();
-      this.canAdvertise = btState.canAdvertise || false;
-      this._serverReady = btState.serverReady || false;
-      var adState = await this.nativePlugin.isAdvertising();
-      this.isAdvertising = adState.isAdvertising === true;
+      if (btState) {
+        this.canAdvertise = btState.canAdvertise || false;
+        this._serverReady = btState.serverReady || false;
+      }
+      if (this.nativePlugin && typeof this.nativePlugin.isAdvertising === 'function') {
+        var adState = await this.nativePlugin.isAdvertising();
+        this.isAdvertising = adState && adState.isAdvertising === true;
+      }
       this.updateVisibilityButton();
       this._setupNativeAdvertisingListeners();
     } catch (err) {
@@ -727,8 +791,12 @@ export class BLEInterface {
 
   _setupNativeAdvertisingListeners() {
     if (!this.nativePlugin) return;
-    if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
-    if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
+    if (this._nativeAdStartedListener && typeof this._nativeAdStartedListener.remove === 'function') {
+      this._nativeAdStartedListener.remove();
+    }
+    if (this._nativeAdFailedListener && typeof this._nativeAdFailedListener.remove === 'function') {
+      this._nativeAdFailedListener.remove();
+    }
     var self = this;
     this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', function() {
       self.isAdvertising = true;
@@ -769,7 +837,7 @@ export class BLEInterface {
     
     var permsReady = false;
     try {
-      if (window.ensureBLEPermissions) {
+      if (window.ensureBLEPermissions && typeof window.ensureBLEPermissions === 'function') {
         permsReady = await window.ensureBLEPermissions();
       } else {
         permsReady = true;
@@ -783,10 +851,12 @@ export class BLEInterface {
     
     if (!this._serverReady) {
       try {
-        await this.nativePlugin.initializeBLE({
-          userId: (window.currentUser && window.currentUser.id) || '',
-          userName: (window.currentUser && window.currentUser.name) || 'NEXO User'
-        });
+        if (this.nativePlugin && typeof this.nativePlugin.initializeBLE === 'function') {
+          await this.nativePlugin.initializeBLE({
+            userId: (window.currentUser && window.currentUser.id) || '',
+            userName: (window.currentUser && window.currentUser.name) || 'NEXO User'
+          });
+        }
         await new Promise(function(resolve, reject) {
           var timeout = setTimeout(function() { reject(new Error('Timeout')); }, 8000);
           var check = function() {
@@ -803,15 +873,19 @@ export class BLEInterface {
     
     try {
       if (this.isAdvertising) {
-        await this.nativePlugin.stopAdvertising();
+        if (this.nativePlugin && typeof this.nativePlugin.stopAdvertising === 'function') {
+          await this.nativePlugin.stopAdvertising();
+        }
         this.isAdvertising = false;
       } else {
-        await this.nativePlugin.startAdvertising();
+        if (this.nativePlugin && typeof this.nativePlugin.startAdvertising === 'function') {
+          await this.nativePlugin.startAdvertising();
+        }
         this.isAdvertising = true;
       }
       this.updateVisibilityButton();
     } catch (err) {
-      this.showToast('Error: ' + err.message, 'error');
+      this.showToast('Error: ' + (err.message || err), 'error');
     }
   }
 
@@ -954,7 +1028,7 @@ export class BLEInterface {
     
     var permsReady = false;
     try {
-      if (window.ensureBLEPermissions) {
+      if (window.ensureBLEPermissions && typeof window.ensureBLEPermissions === 'function') {
         permsReady = await window.ensureBLEPermissions();
       } else {
         permsReady = true;
@@ -968,7 +1042,9 @@ export class BLEInterface {
     
     try {
       if (this.isScanning) {
-        if (this.nativePlugin) await this.nativePlugin.stopScan();
+        if (this.nativePlugin && typeof this.nativePlugin.stopScan === 'function') {
+          await this.nativePlugin.stopScan();
+        }
         this.isScanning = false;
         this.updateScanButton();
         this.updateStatus();
@@ -977,7 +1053,9 @@ export class BLEInterface {
         this._renderedDeviceIds.clear();
         this.renderContactsList();
         this.renderNewDeviceBar();
-        if (this.nativePlugin) await this.nativePlugin.startScan();
+        if (this.nativePlugin && typeof this.nativePlugin.startScan === 'function') {
+          await this.nativePlugin.startScan();
+        }
         this.isScanning = true;
         this.updateScanButton();
         this.elements.status.textContent = 'ESCANEANDO...';
@@ -994,10 +1072,8 @@ export class BLEInterface {
     if (!mac || mac === 'null' || mac === 'undefined') return;
     if (this.localDeviceAddress && mac === this.localDeviceAddress) return;
     
-    // Verificar si es un contacto conocido con MAC diferente
     var existingContact = _findContactByMACOrName(mac, device.name);
     if (existingContact && _normMAC(existingContact.macAddress) !== mac) {
-      // MAC cambió - actualizar
       var oldMAC = existingContact.macAddress;
       _updateContactMAC(oldMAC, mac, device.name);
       this._macToUuidMap.delete(_normMAC(oldMAC));
@@ -1008,7 +1084,6 @@ export class BLEInterface {
       return;
     }
     
-    // Si es contacto conocido con misma MAC, actualizar online status
     var knownUUID = this._macToUuidMap.get(mac);
     if (knownUUID && _isBLEContact(knownUUID)) {
       var contacts = _getBLEContacts();
@@ -1023,7 +1098,6 @@ export class BLEInterface {
       return;
     }
     
-    // Nuevo dispositivo encontrado
     if (this.foundDevices.has(mac)) {
       var existing = this.foundDevices.get(mac);
       existing.rssi = device.rssi;
@@ -1070,7 +1144,13 @@ export class BLEInterface {
       var chatBtn = document.createElement('button');
       chatBtn.className = 'ble-btn-chat';
       chatBtn.textContent = 'Chat';
-      chatBtn.addEventListener('click', function() { self.openChat(uuid); });
+      chatBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        self.openChat(uuid).catch(function(err) {
+          console.error('[BLEInterface] openChat error:', err);
+          self.showToast('Error al abrir chat', 'error');
+        });
+      });
       actionsDiv.appendChild(chatBtn);
       var removeBtn = document.createElement('button');
       removeBtn.className = 'ble-btn-remove';
@@ -1120,7 +1200,6 @@ export class BLEInterface {
     
     var name = device.name || 'NEXO Peer';
     
-    // Verificar duplicado por nombre
     var existingByName = _getBLEContacts().find(function(c) {
       return _normId(c.name) === _normId(name);
     });
@@ -1143,14 +1222,12 @@ export class BLEInterface {
     this.showToast('Agregado: ' + name, 'success');
   }
 
-  // FIX v4.2.1: openChat ahora conecta automáticamente vía GATT
   async openChat(deviceUUID) {
     var uuid = _normId(deviceUUID);
     var contact = _getContactByUUID(uuid);
     var mac = this._uuidToMacMap.get(uuid) || (contact && _normMAC(contact.macAddress));
     
     if (!mac && contact) {
-      // Fallback: buscar MAC en foundDevices o connectedDevices
       this.foundDevices.forEach(function(d, m) {
         if (!mac && d.deviceUUID === uuid) mac = m;
       });
@@ -1166,13 +1243,16 @@ export class BLEInterface {
       return;
     }
     
-    // FIX v4.2.1: Conectar antes de abrir chat
     this.showToast('Conectando a ' + displayName + '...', 'info', 3000);
     
     try {
-      await this._connectToDevice(mac);
+      var connected = await this._connectToDevice(mac);
       
-      // Conexión exitosa - ahora sí abrir chat
+      if (!connected) {
+        this.showToast('No se pudo conectar a ' + displayName, 'error', 5000);
+        return;
+      }
+      
       this._activeChatDeviceId = uuid;
       this._activeChatMAC = mac;
       this.newDevicesCount = 0;
@@ -1183,7 +1263,7 @@ export class BLEInterface {
       var nameInput = document.getElementById('chat-contact-name');
       var subtitle = document.getElementById('chat-contact-subtitle');
       if (nameInput) nameInput.value = displayName;
-      if (subtitle) subtitle.textContent = 'BLUETOOTH ●';
+      if (subtitle) subtitle.textContent = 'BLUETOOTH \u25cf';
       
       window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
         detail: { 
@@ -1200,14 +1280,11 @@ export class BLEInterface {
       this.togglePanel();
       
     } catch (e) {
-      this.showToast('No se pudo conectar: ' + e.message, 'error', 5000);
+      this.showToast('No se pudo conectar: ' + (e.message || e), 'error', 5000);
       console.error('[BLEInterface] openChat fallo:', e);
-      // No abrir chat si no hay conexión
-      return;
     }
   }
 
-  // FIX v4.2.1: sendMessageToActiveChat verifica conexión y reconecta si es necesario
   async sendMessageToActiveChat(content) {
     if (!this._activeChatMAC) {
       this.showToast('No hay chat activo', 'error');
@@ -1217,12 +1294,18 @@ export class BLEInterface {
     var mac = this._activeChatMAC;
     var state = this._getDeviceState(mac);
     
-    // Si no está conectado, intentar reconectar primero
-    if (state.state !== BLE_STATES.READY_TO_CHAT && state.state !== BLE_STATES.NOTIFICATIONS_READY) {
+    if (state.state !== BLE_STATES.READY_TO_CHAT && 
+        state.state !== BLE_STATES.NOTIFICATIONS_READY &&
+        state.state !== BLE_STATES.CONNECTED) {
       this.showToast('Reconectando...', 'info', 2000);
       
       try {
-        await this._connectToDevice(mac);
+        var reconnected = await this._connectToDevice(mac);
+        if (!reconnected) {
+          this._enqueueMessage(mac, content);
+          this.showToast('Mensaje en cola - reconectando...', 'info', 3000);
+          return false;
+        }
       } catch (e) {
         this._enqueueMessage(mac, content);
         this.showToast('Mensaje en cola - reconectando...', 'info', 3000);
@@ -1230,22 +1313,21 @@ export class BLEInterface {
       }
     }
     
-    // Verificar estado después de posible reconexión
     state = this._getDeviceState(mac);
-    if (state.state !== BLE_STATES.READY_TO_CHAT && state.state !== BLE_STATES.NOTIFICATIONS_READY) {
+    if (state.state !== BLE_STATES.READY_TO_CHAT && 
+        state.state !== BLE_STATES.NOTIFICATIONS_READY &&
+        state.state !== BLE_STATES.CONNECTED) {
       this._enqueueMessage(mac, content);
-      this.showToast('Mensaje en cola - esperando conexión', 'info', 3000);
+      this.showToast('Mensaje en cola - esperando conexion', 'info', 3000);
       return false;
     }
     
-    // Enviar directo
     try {
       await this._sendMessageNative(mac, content);
       return true;
     } catch (e) {
-      console.warn('[BLEInterface] Envío falló:', e.message);
+      console.warn('[BLEInterface] Envio fallo:', e.message || e);
       
-      // Reintento con reconexión
       var retryCount = this._sendRetryCount.get(mac) || 0;
       if (retryCount < 3) {
         this._sendRetryCount.set(mac, retryCount + 1);
@@ -1257,7 +1339,7 @@ export class BLEInterface {
           this._sendRetryCount.delete(mac);
           return true;
         } catch (e2) {
-          this.showToast('Fallo después de reintento', 'error');
+          this.showToast('Fallo despues de reintento', 'error');
         }
       }
       
@@ -1270,14 +1352,16 @@ export class BLEInterface {
   async _attemptReconnectWithScan(mac) {
     if (!this.nativePlugin) throw new Error('Plugin no disponible');
     
-    // Scan rápido de 5 segundos
     try {
-      await this.nativePlugin.startScan();
+      if (typeof this.nativePlugin.startScan === 'function') {
+        await this.nativePlugin.startScan();
+      }
       await new Promise(function(resolve) { setTimeout(resolve, 5000); });
-      await this.nativePlugin.stopScan();
+      if (typeof this.nativePlugin.stopScan === 'function') {
+        await this.nativePlugin.stopScan();
+      }
     } catch (e) {}
     
-    // Verificar si MAC cambió
     var contact = _getContactByMAC(mac);
     if (contact) {
       var newMac = this._findNewMACForContact(contact);
@@ -1288,9 +1372,12 @@ export class BLEInterface {
       }
     }
     
-    // Intentar conectar
     try {
-      await this.nativePlugin.forceReconnect({ deviceId: mac });
+      if (this.nativePlugin && typeof this.nativePlugin.forceReconnect === 'function') {
+        await this.nativePlugin.forceReconnect({ deviceId: mac });
+      } else if (this.nativePlugin && typeof this.nativePlugin.connectToDevice === 'function') {
+        await this.nativePlugin.connectToDevice({ deviceId: mac });
+      }
       await this._waitForReadyToChat(mac, 8000);
     } catch (e) {
       throw e;
@@ -1322,7 +1409,9 @@ export class BLEInterface {
       this._cancelReconnect(mac);
       var device = this.connectedDevices.get(mac);
       var targetId = (device && device.id) || (device && device.address) || deviceMAC;
-      if (this.nativePlugin) await this.nativePlugin.disconnectDevice({ deviceId: targetId });
+      if (this.nativePlugin && typeof this.nativePlugin.disconnectDevice === 'function') {
+        await this.nativePlugin.disconnectDevice({ deviceId: targetId });
+      }
       var uuid = this._macToUuidMap.get(mac);
       if (this._activeChatDeviceId === uuid || this._activeChatMAC === mac) {
         this._activeChatDeviceId = null;
@@ -1356,10 +1445,12 @@ export class BLEInterface {
     if (this.isDummyMode) return;
     try {
       var state = 'UNKNOWN';
-      if (this.nativePlugin && this.nativePlugin.isBluetoothEnabled) {
+      if (this.nativePlugin && typeof this.nativePlugin.isBluetoothEnabled === 'function') {
         var btState = await this.nativePlugin.isBluetoothEnabled();
-        state = btState.enabled ? 'poweredOn' : 'poweredOff';
-        this._serverReady = btState.serverReady || false;
+        if (btState) {
+          state = btState.enabled ? 'poweredOn' : 'poweredOff';
+          this._serverReady = btState.serverReady || false;
+        }
       }
       var stateMap = { 'poweredon': 'ENCENDIDO', 'poweredoff': 'APAGADO', 'unknown': 'DESCONOCIDO' };
       var normalizedState = (state || '').toString().toLowerCase();
@@ -1388,19 +1479,46 @@ export class BLEInterface {
   destroy() {
     var styles = document.getElementById('ble-styles-v4');
     if (styles) styles.remove();
+    
     this._reconnectTimers.forEach(function(timer) { clearTimeout(timer); });
     this._reconnectTimers.clear();
-    if (this._nativeAdStartedListener) this._nativeAdStartedListener.remove();
-    if (this._nativeAdFailedListener) this._nativeAdFailedListener.remove();
-    if (this._nativeDeviceFoundListener) this._nativeDeviceFoundListener.remove();
-    if (this._nativeScanFailedListener) this._nativeScanFailedListener.remove();
-    if (this._nativeDeviceConnectedListener) this._nativeDeviceConnectedListener.remove();
-    if (this._nativeDeviceDisconnectedListener) this._nativeDeviceDisconnectedListener.remove();
-    if (this._nativePayloadListener) this._nativePayloadListener.remove();
-    if (this._nativeServicesReadyListener) this._nativeServicesReadyListener.remove();
-    if (this._nativeNotificationsListener) this._nativeNotificationsListener.remove();
-    if (this._nativeConnectionFailedListener) this._nativeConnectionFailedListener.remove();
-    if (this._nativeServerReadyListener) this._nativeServerReadyListener.remove();
+    
+    this._waitTimers.forEach(function(timer) { clearTimeout(timer); });
+    this._waitTimers.clear();
+    
+    if (this._nativeAdStartedListener && typeof this._nativeAdStartedListener.remove === 'function') {
+      this._nativeAdStartedListener.remove();
+    }
+    if (this._nativeAdFailedListener && typeof this._nativeAdFailedListener.remove === 'function') {
+      this._nativeAdFailedListener.remove();
+    }
+    if (this._nativeDeviceFoundListener && typeof this._nativeDeviceFoundListener.remove === 'function') {
+      this._nativeDeviceFoundListener.remove();
+    }
+    if (this._nativeScanFailedListener && typeof this._nativeScanFailedListener.remove === 'function') {
+      this._nativeScanFailedListener.remove();
+    }
+    if (this._nativeDeviceConnectedListener && typeof this._nativeDeviceConnectedListener.remove === 'function') {
+      this._nativeDeviceConnectedListener.remove();
+    }
+    if (this._nativeDeviceDisconnectedListener && typeof this._nativeDeviceDisconnectedListener.remove === 'function') {
+      this._nativeDeviceDisconnectedListener.remove();
+    }
+    if (this._nativePayloadListener && typeof this._nativePayloadListener.remove === 'function') {
+      this._nativePayloadListener.remove();
+    }
+    if (this._nativeServicesReadyListener && typeof this._nativeServicesReadyListener.remove === 'function') {
+      this._nativeServicesReadyListener.remove();
+    }
+    if (this._nativeNotificationsListener && typeof this._nativeNotificationsListener.remove === 'function') {
+      this._nativeNotificationsListener.remove();
+    }
+    if (this._nativeConnectionFailedListener && typeof this._nativeConnectionFailedListener.remove === 'function') {
+      this._nativeConnectionFailedListener.remove();
+    }
+    if (this._nativeServerReadyListener && typeof this._nativeServerReadyListener.remove === 'function') {
+      this._nativeServerReadyListener.remove();
+    }
     if (this.isScanning) this.toggleScan();
   }
 }
