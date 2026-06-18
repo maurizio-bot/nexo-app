@@ -1,14 +1,48 @@
-/**
- * BLE Interface v4.2.3-FIX
- * CLAVE COMPUESTA: MAC primaria + Nombre secundaria para identificacion estable
- * FIX v4.2.3: 
- *   - openChat listener async con try/catch (evita crash)
- *   - _connectToDevice acepta CONNECTED como estado valido, no throw
- *   - _waitForConnectionState con cleanup de timers
- *   - Guard checks en metodos plugin que pueden no existir
- *   - sendMessageToActiveChat con verificacion de estado antes de enviar
- *   - _sendMessageNative con fallback graceful si plugin no responde
- *   - NO optional chaining, todo verificacion explicita
+# Guardar ble_interface.js completo en archivo directamente
+# Parte 1: Header y utilidades
+
+part1 = r'''/**
+ * =============================================================================
+ * BLE Interface v4.2.4-ANTI-CRASH
+ * =============================================================================
+ * 
+ * ARQUITECTURA GENERAL:
+ * ---------------------
+ * Este modulo es la capa de abstraccion entre el plugin nativo BLE (Kotlin)
+ * y la aplicacion NEXO. Su responsabilidad es:
+ * 
+ *   1. ESCANEAR: Descubrir dispositivos BLE cercanos via startScan()
+ *   2. CONECTAR: Establecer conexion GATT con un dispositivo especifico
+ *   3. IDENTIFICAR: Usar CLAVE COMPUESTA (MAC + Nombre) para identificacion estable
+ *   4. AGREGAR: Persistir contactos en localStorage con metadatos
+ *   5. ESCUCHAR: Recibir mensajes del plugin nativo y reenviarlos a nexo_app.js
+ *   6. HABLAR: Enviar mensajes al dispositivo conectado via plugin nativo
+ * 
+ * PIPELINE DE MENSAJES (FLUJO UNIDIRECCIONAL):
+ * ---------------------------------------------
+ *   Plugin Nativo (Kotlin)
+ *        |
+ *        v  onPayloadReceived event
+ *   BLEInterface._setupNativePayloadListener()
+ *        |
+ *        v  dispatch CustomEvent 'nexo:ble:messageReceived'
+ *   NexoApp._bleMessageHandler (en nexo_app.js)
+ *        |
+ *        v  _handleMessage() -> config.onMessage()
+ *   main.js _renderMessage()
+ *        |
+ *        v  TheStream.appendItems()
+ *   DOM (UI del chat)
+ * 
+ * REGLA DE ORO: Este archivo NUNCA renderiza en el DOM directamente.
+ * Solo dispara eventos para que nexo_app.js maneje la UI.
+ * 
+ * FIX v4.2.4:
+ *   - _isOpeningChat flag previene race condition (doble toque en Chat)
+ *   - _connectToDevice timeout reducido a 8s (antes 15s)
+ *   - openChat() abre UI inmediatamente, conecta GATT en paralelo
+ *   - Guard en _bleChatHandler: si ya hay chat activo, no sobrescribir
+ *   - NO optional chaining, todo verificacion explicita para compatibilidad
  */
 
 export function initBLEInterface(bleMesh) {
@@ -229,6 +263,10 @@ export class BLEInterface {
     this.localDeviceName = 'NEXO Device';
     this.localDeviceAddress = null;
     this.localDeviceUUID = _getDeviceUUID();
+    
+    // FIX v4.2.4: FLAG ANTI-CRASH - previene doble llamada a openChat
+    this._isOpeningChat = false;
+    
     this._activeChatDeviceId = null;
     this._activeChatMAC = null;
     this._deviceStates = new Map();
@@ -455,7 +493,26 @@ export class BLEInterface {
       check();
     });
   }
+'''
 
+with open('/mnt/agents/output/ble_interface_v4.2.4_part1.js', 'w') as f:
+    f.write(part1)
+
+print("Parte 1 guardada: " + str(len(part1)) + " chars")
+# Parte 2: Conexion, reconexion, estados, payload listener, cola
+
+part2 = r'''
+  // ============================================================================
+  // CONEXION GATT: _connectToDevice
+  // ============================================================================
+  // Este metodo establece la conexion BLE con un dispositivo especifico.
+  // 
+  // LOGICA DE ESTADOS:
+  // - Si ya esta READY_TO_CHAT/CONNECTED: retorna true inmediatamente
+  // - Si esta CONNECTING: espera a que termine (evita doble conexion)
+  // - Si esta DISCONNECTED: inicia nueva conexion
+  // 
+  // FIX v4.2.4: Timeout reducido a 8000ms (antes 15000ms) para no bloquear UI
   async _connectToDevice(mac) {
     if (!this.nativePlugin) {
       console.warn('[BLEInterface] Plugin BLE no disponible');
@@ -464,6 +521,7 @@ export class BLEInterface {
     
     var normMac = _normMAC(mac);
     
+    // Verificar si ya esta conectado y listo
     var currentState = this._getDeviceState(normMac);
     if (currentState.state === BLE_STATES.READY_TO_CHAT || 
         currentState.state === BLE_STATES.NOTIFICATIONS_READY ||
@@ -472,10 +530,11 @@ export class BLEInterface {
       return true;
     }
     
+    // Si ya hay una conexion en progreso, esperarla en lugar de crear otra
     if (currentState.state === BLE_STATES.CONNECTING) {
       console.log('[BLEInterface] Conexion en progreso, esperando...');
       try {
-        await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 15000);
+        await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 8000);
         return true;
       } catch (e) {
         console.warn('[BLEInterface] Timeout esperando conexion existente');
@@ -487,6 +546,7 @@ export class BLEInterface {
     this._setDeviceState(normMac, BLE_STATES.CONNECTING, { message: 'Conectando...' });
     
     try {
+      // Llamar al plugin nativo para conectar
       if (typeof this.nativePlugin.connectToDevice === 'function') {
         await this.nativePlugin.connectToDevice({ deviceId: normMac });
       } else {
@@ -494,11 +554,13 @@ export class BLEInterface {
         return false;
       }
       
+      // Esperar a que la conexion este lista (servicios + notificaciones)
       try {
-        await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 15000);
+        await this._waitForConnectionState(normMac, BLE_STATES.READY_TO_CHAT, 8000);
         console.log('[BLEInterface] Conexion establecida:', normMac);
         return true;
       } catch (e) {
+        // Si timeout pero el device reporta conectado, forzar estado listo
         console.warn('[BLEInterface] No llego READY_TO_CHAT, pero device esta conectado');
         var finalState = this._getDeviceState(normMac);
         if (finalState.state === BLE_STATES.CONNECTED || finalState.state === BLE_STATES.CONNECTING) {
@@ -515,6 +577,7 @@ export class BLEInterface {
     }
   }
 
+  // Espera activa hasta que un dispositivo alcance un estado especifico
   async _waitForConnectionState(mac, targetState, timeoutMs) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -523,6 +586,7 @@ export class BLEInterface {
       var interval = 200;
       var timer = null;
       
+      // Funcion de cleanup para evitar memory leaks
       var cleanup = function() {
         if (timer) clearTimeout(timer);
         self._waitTimers.delete(normMac + '_conn');
@@ -537,6 +601,7 @@ export class BLEInterface {
       var check = function() {
         var state = self._getDeviceState(normMac);
         
+        // Para READY_TO_CHAT, aceptamos cualquier estado operativo
         if (targetState === BLE_STATES.READY_TO_CHAT) {
           if (state.state === BLE_STATES.READY_TO_CHAT || 
               state.state === BLE_STATES.NOTIFICATIONS_READY ||
@@ -551,12 +616,14 @@ export class BLEInterface {
           return;
         }
         
+        // Si hay error, rechazar inmediatamente
         if (state.state === BLE_STATES.ERROR) {
           cleanup();
           reject(new Error('Conexion en error: ' + (state.lastError || 'Unknown')));
           return;
         }
         
+        // Verificar timeout
         elapsed += interval;
         if (elapsed >= timeoutMs) {
           cleanup();
@@ -571,6 +638,11 @@ export class BLEInterface {
     });
   }
 
+  // ============================================================================
+  // RECONEXION AUTOMATICA
+  // ============================================================================
+  // Cuando un dispositivo se desconecta y es el chat activo, intentamos
+  // reconectar automaticamente cada 3 segundos hasta que el usuario cierre el chat.
   _startReconnect(deviceMAC) {
     this._cancelReconnect(deviceMAC);
     this._setDeviceState(deviceMAC, BLE_STATES.RECONNECTING, { message: 'Reconectando...' });
@@ -591,6 +663,7 @@ export class BLEInterface {
     attemptReconnect();
   }
 
+  // Cancela todos los timers de reconexion y espera
   _cancelReconnect(deviceMAC) {
     var timer = this._reconnectTimers.get(deviceMAC);
     if (timer) {
@@ -609,21 +682,30 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================================
+  // LISTENERS NATIVOS: Estados de servicios y notificaciones
+  // ============================================================================
+  // onServicesReady: El plugin descubrio los servicios GATT del peer
+  // onNotificationsEnabled: El plugin activo notificaciones en la caracteristica RX
+  // onConnectionFailed: La conexion fallo, puede ser recuperable
   _setupNativeStateListeners() {
     if (!this.nativePlugin) return;
     var self = this;
+    
     this._nativeServicesReadyListener = this.nativePlugin.addListener('onServicesReady', function(data) {
       var mac = _normMAC(data.deviceId);
       self._setDeviceState(mac, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
       var device = self.connectedDevices.get(mac);
       if (device) { device.servicesReady = true; self.connectedDevices.set(mac, device); }
     });
+    
     this._nativeNotificationsListener = this.nativePlugin.addListener('onNotificationsEnabled', function(data) {
       var mac = _normMAC(data.deviceId);
       var peerUUID = self._macToUuidMap.get(mac);
       self._setDeviceState(mac, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: peerUUID });
       self._drainMessageQueue(mac);
     });
+    
     this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', function(data) {
       var mac = _normMAC(data.deviceId);
       if (data.recoverable !== false && data.attempt < (data.maxAttempts || 3)) {
@@ -648,12 +730,29 @@ export class BLEInterface {
     return this._deviceStates.get(_normMAC(deviceMAC)) || { state: BLE_STATES.DISCONNECTED };
   }
 
+  // ============================================================================
+  // LISTENER NATIVO CRITICO: Recepcion de mensajes (onPayloadReceived)
+  // ============================================================================
+  // Este es el CORAZON del pipeline de recepcion. Cuando el plugin nativo recibe
+  // un mensaje BLE, este listener:
+  //
+  // 1. Parsea el payload JSON (enriquecido con deviceUUID, senderName, etc.)
+  // 2. Resuelve el nombre del remitente (contacto > dispositivo conectado > found)
+  // 3. Auto-registra contactos nuevos si el mensaje trae UUID desconocido
+  // 4. Deduplica por messageId (evita mostrar el mismo mensaje 2 veces)
+  // 5. DISPARA EVENTO 'nexo:ble:messageReceived' -> nexo_app.js lo recibe
+  // 6. Muestra toast solo si NO es el chat activo (evita spam)
+  //
+  // REGLA DE ORO: Este metodo NUNCA renderiza en el DOM. Solo dispara eventos.
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
+    
     if (this._nativePayloadListener && typeof this._nativePayloadListener.remove === 'function') {
       this._nativePayloadListener.remove();
     }
+    
     var self = this;
+    
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
       var mac = _normMAC(data.deviceId);
       var messageId = null;
@@ -661,6 +760,7 @@ export class BLEInterface {
       var senderUUID = null;
       var content = data.content || data.data || '';
       
+      // Parsear payload JSON enriquecido
       try {
         var json = JSON.parse(data.data || '{}');
         if (json.messageId) messageId = json.messageId;
@@ -669,12 +769,14 @@ export class BLEInterface {
         if (json.content) content = json.content;
       } catch (e) {}
       
+      // Resolver UUID del remitente
       if (!senderUUID) senderUUID = self._macToUuidMap.get(mac);
       if (senderUUID) {
         self._macToUuidMap.set(mac, senderUUID);
         self._uuidToMacMap.set(senderUUID, mac);
       }
       
+      // Resolver nombre del remitente (prioridad: contacto > conectado > found > default)
       if (!senderName || senderName === 'NEXO Peer') {
         var contactByMac = _getContactByMAC(mac);
         if (contactByMac && contactByMac.name) {
@@ -686,6 +788,7 @@ export class BLEInterface {
         }
       }
       
+      // Auto-registrar contacto nuevo si trae UUID y nombre validos
       if (senderUUID && !_isBLEContact(senderUUID) && senderName && senderName !== 'NEXO Peer') {
         _addBLEContact({ deviceUUID: senderUUID, name: senderName, macAddress: mac });
         self._macToUuidMap.set(mac, senderUUID);
@@ -693,18 +796,24 @@ export class BLEInterface {
         self.renderContactsList();
       }
       
+      // DEDUP: Evitar procesar el mismo mensaje 2 veces
       var dedupKey = (messageId || '') + ':' + mac;
       if (messageId && self._receivedMessageIds.has(dedupKey)) return;
       if (messageId) {
         self._receivedMessageIds.add(dedupKey);
+        // LRU: mantener solo los ultimos 1000 IDs
         if (self._receivedMessageIds.size > self._maxMessageIds) {
           var first = self._receivedMessageIds.values().next().value;
           self._receivedMessageIds.delete(first);
         }
       }
       
+      // ID estable para el dispositivo (UUID > MAC)
       var stableId = senderUUID || mac;
       
+      // ========================================================================
+      // DISPARAR EVENTO -> nexo_app.js recibe y maneja la UI
+      // ========================================================================
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: {
           deviceId: stableId,
@@ -718,6 +827,7 @@ export class BLEInterface {
         }
       }));
       
+      // Mostrar toast solo si NO es el chat activo actual
       var activeUUID = self._activeChatDeviceId;
       if (activeUUID && activeUUID === senderUUID) return;
       
@@ -727,6 +837,11 @@ export class BLEInterface {
     });
   }
 
+  // ============================================================================
+  // COLA DE MENSAJES: Encolar y drenar
+  // ============================================================================
+  // Cuando intentamos enviar un mensaje pero el dispositivo no esta READY_TO_CHAT,
+  // encolamos el mensaje y lo enviamos automaticamente cuando la conexion este lista.
   _enqueueMessage(mac, content) {
     var queue = this._messageQueue.get(mac) || [];
     queue.push({ content: content, timestamp: Date.now(), attempts: 0 });
@@ -751,6 +866,12 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================================
+  // ENVIO NATIVO: _sendMessageNative
+  // ============================================================================
+  // Envia un mensaje al dispositivo conectado via plugin nativo.
+  // El payload se enriquece con metadatos (UUID local, nombre, timestamp, messageId)
+  // para que el receptor pueda identificar al remitente y deduplicar.
   async _sendMessageNative(deviceMAC, content) {
     if (!this.nativePlugin) throw new Error('Plugin no disponible');
     if (typeof this.nativePlugin.sendMessage !== 'function') throw new Error('sendMessage no disponible');
@@ -768,7 +889,19 @@ export class BLEInterface {
     
     await this.nativePlugin.sendMessage({ deviceId: targetId, message: enrichedPayload });
   }
+'''
 
+with open('/mnt/agents/output/ble_interface_v4.2.4_part2.js', 'w') as f:
+    f.write(part2)
+
+print("Parte 2 guardada: " + str(len(part2)) + " chars")
+
+# Parte 3: Visibilidad, DOM, estilos, event listeners, scan, onDeviceFound
+
+part3 = r'''
+  // ============================================================================
+  // VISIBILIDAD: Estado del Bluetooth y advertising
+  // ============================================================================
   async _initVisibility() {
     if (this.isDummyMode) return;
     try {
@@ -832,9 +965,13 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================================
+  // TOGGLE VISIBILIDAD: Hacer visible/ocultar el dispositivo
+  // ============================================================================
   async toggleVisibility() {
     if (this.isDummyMode) return;
     
+    // Verificar permisos primero
     var permsReady = false;
     try {
       if (window.ensureBLEPermissions && typeof window.ensureBLEPermissions === 'function') {
@@ -849,6 +986,7 @@ export class BLEInterface {
       return;
     }
     
+    // Asegurar que el servidor GATT este listo antes de advertise
     if (!this._serverReady) {
       try {
         if (this.nativePlugin && typeof this.nativePlugin.initializeBLE === 'function') {
@@ -889,13 +1027,18 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================================
+  // DOM: Creacion del panel BLE
+  // ============================================================================
   createDOM() {
+    // Tab lateral (siempre visible)
     var tab = document.createElement('div');
     tab.id = 'ble-tab';
     tab.innerHTML = '<div class="ble-tab-icon">BLE</div><div class="ble-tab-label">BLE</div><div class="ble-tab-badge" id="ble-tab-badge" style="display:none">0</div>';
     document.body.appendChild(tab);
     this.elements.tab = tab;
     
+    // Panel principal (deslizable desde la izquierda)
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML = `
@@ -921,11 +1064,13 @@ export class BLEInterface {
     document.body.appendChild(panel);
     this.elements.panel = panel;
     
+    // Overlay oscuro detras del panel
     var overlay = document.createElement('div');
     overlay.id = 'ble-overlay';
     document.body.appendChild(overlay);
     this.elements.overlay = overlay;
     
+    // Cachear referencias a elementos frecuentes
     this.elements.backBtn = document.getElementById('ble-back');
     this.elements.visibilityBtn = document.getElementById('ble-visibility-btn');
     this.elements.scanBtn = document.getElementById('ble-scan-btn');
@@ -936,6 +1081,16 @@ export class BLEInterface {
     this.elements.addBtn = document.getElementById('ble-add-btn');
   }
 
+  // ============================================================================
+  // ESTILOS CSS: Inyeccion dinamica del tema NEXO
+  // ============================================================================
+  // Paleta de colores NEXO:
+  // - Fondo: #0a0a15 (negro azulado)
+  // - Mensajes propios: #0066cc (royal blue)
+  // - Mensajes otros: #1f2937 (midnight navy)
+  // - Acento: #00d4ff (cyan)
+  // - Online: #00ff88 (verde)
+  // - Error: #ff4444 (rojo)
   injectStyles() {
     if (document.getElementById('ble-styles-v4')) return;
     var style = document.createElement('style');
@@ -998,6 +1153,9 @@ export class BLEInterface {
     document.head.appendChild(style);
   }
 
+  // ============================================================================
+  // EVENT LISTENERS: Interaccion del usuario con el panel BLE
+  // ============================================================================
   setupEventListeners() {
     var self = this;
     this.elements.tab.addEventListener('click', function() { self.togglePanel(); });
@@ -1006,6 +1164,8 @@ export class BLEInterface {
     this.elements.visibilityBtn.addEventListener('click', function() { self.toggleVisibility(); });
     this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
     this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
+    
+    // Evento para cerrar chat (desde nexo_app.js o main.js)
     window.addEventListener('nexo:ble:closeChat', function() {
       self._activeChatDeviceId = null;
       self._activeChatMAC = null;
@@ -1023,6 +1183,11 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================================
+  // ESCANEAR: toggleScan
+  // ============================================================================
+  // Inicia o detiene el escaneo BLE. Cuando encuentra dispositivos,
+  // el listener onDeviceFound (configurado en _setupNativeScanListeners) los procesa.
   async toggleScan() {
     if (this.isDummyMode) return;
     
@@ -1042,6 +1207,7 @@ export class BLEInterface {
     
     try {
       if (this.isScanning) {
+        // Detener escaneo
         if (this.nativePlugin && typeof this.nativePlugin.stopScan === 'function') {
           await this.nativePlugin.stopScan();
         }
@@ -1049,6 +1215,7 @@ export class BLEInterface {
         this.updateScanButton();
         this.updateStatus();
       } else {
+        // Iniciar escaneo
         this.foundDevices.clear();
         this._renderedDeviceIds.clear();
         this.renderContactsList();
@@ -1067,11 +1234,22 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================================
+  // CALLBACK: onDeviceFound
+  // ============================================================================
+  // Procesa un dispositivo descubierto durante el escaneo.
+  // Logica de deduplicacion y deteccion de contactos conocidos:
+  //
+  // 1. Ignorar MAC nula o propia
+  // 2. Verificar si es contacto existente con MAC rotada -> actualizar
+  // 3. Si es contacto conocido: marcar online y actualizar lastSeen
+  // 4. Si es nuevo: agregar a foundDevices para mostrar en barra
   onDeviceFound(device) {
     var mac = _normMAC(device.id || device.address);
     if (!mac || mac === 'null' || mac === 'undefined') return;
     if (this.localDeviceAddress && mac === this.localDeviceAddress) return;
     
+    // Verificar si es contacto existente con MAC diferente (rotacion Android)
     var existingContact = _findContactByMACOrName(mac, device.name);
     if (existingContact && _normMAC(existingContact.macAddress) !== mac) {
       var oldMAC = existingContact.macAddress;
@@ -1084,6 +1262,7 @@ export class BLEInterface {
       return;
     }
     
+    // Si es contacto conocido, solo actualizar estado
     var knownUUID = this._macToUuidMap.get(mac);
     if (knownUUID && _isBLEContact(knownUUID)) {
       var contacts = _getBLEContacts();
@@ -1098,6 +1277,7 @@ export class BLEInterface {
       return;
     }
     
+    // Si ya existe en foundDevices, actualizar RSSI y lastSeen
     if (this.foundDevices.has(mac)) {
       var existing = this.foundDevices.get(mac);
       existing.rssi = device.rssi;
@@ -1108,13 +1288,31 @@ export class BLEInterface {
       return;
     }
     
+    // Nuevo dispositivo encontrado
     device.lastSeen = Date.now();
     this.foundDevices.set(mac, device);
     this.newDevicesCount++;
     this.updateBadge();
     this.renderNewDeviceBar();
   }
+'''
 
+with open('/mnt/agents/output/ble_interface_v4.2.4_part3.js', 'w') as f:
+    f.write(part3)
+
+print("Parte 3 guardada: " + str(len(part3)) + " chars")
+
+# Parte 4: Renderizado, openChat con FIX anti-crash, envio, utilidades, destroy
+
+part4 = r'''
+  // ============================================================================
+  // RENDERIZADO: Lista de contactos y barra de nuevos dispositivos
+  // ============================================================================
+  // Renderiza la lista de contactos persistidos. Cada contacto muestra:
+  // - Nombre (editable)
+  // - MAC (formato legible)
+  // - Estado (online/offline)
+  // - Botones: Chat (abre conversacion) y X (elimina contacto)
   renderContactsList() {
     var list = this.elements.contactsList;
     var contacts = _getBLEContacts();
@@ -1141,17 +1339,26 @@ export class BLEInterface {
       
       var actionsDiv = document.createElement('div');
       actionsDiv.className = 'ble-contact-actions';
+      
+      // Boton Chat: abre la conversacion con este contacto
       var chatBtn = document.createElement('button');
       chatBtn.className = 'ble-btn-chat';
       chatBtn.textContent = 'Chat';
       chatBtn.addEventListener('click', function(e) {
         e.stopPropagation();
+        // FIX v4.2.4: Si ya estamos abriendo chat, ignorar segundo toque
+        if (self._isOpeningChat) {
+          self.showToast('Conectando...', 'info', 1500);
+          return;
+        }
         self.openChat(uuid).catch(function(err) {
           console.error('[BLEInterface] openChat error:', err);
           self.showToast('Error al abrir chat', 'error');
         });
       });
       actionsDiv.appendChild(chatBtn);
+      
+      // Boton Eliminar: remueve el contacto
       var removeBtn = document.createElement('button');
       removeBtn.className = 'ble-btn-remove';
       removeBtn.textContent = 'X';
@@ -1166,6 +1373,7 @@ export class BLEInterface {
     });
   }
 
+  // Renderiza la barra de "nuevo dispositivo encontrado" en la parte inferior
   renderNewDeviceBar() {
     var bar = this.elements.newDeviceBar;
     var nameSpan = this.elements.newDeviceName;
@@ -1190,6 +1398,7 @@ export class BLEInterface {
     }
   }
 
+  // Agrega el dispositivo de la barra a contactos
   _addNewDevice() {
     var bar = this.elements.newDeviceBar;
     var mac = bar.dataset.mac;
@@ -1200,6 +1409,7 @@ export class BLEInterface {
     
     var name = device.name || 'NEXO Peer';
     
+    // Verificar duplicado por nombre
     var existingByName = _getBLEContacts().find(function(c) {
       return _normId(c.name) === _normId(name);
     });
@@ -1222,11 +1432,43 @@ export class BLEInterface {
     this.showToast('Agregado: ' + name, 'success');
   }
 
+  // ============================================================================
+  // OPEN CHAT: Abrir conversacion con un contacto BLE
+  // ============================================================================
+  // FIX v4.2.4 - FLUJO ANTI-CRASH:
+  // 
+  // Antes (v4.2.3): openChat() conectaba GATT primero, luego abria UI.
+  //                 Si el usuario tocaba Chat 2 veces: doble conexion -> crash.
+  // 
+  // Ahora (v4.2.4): 
+  //   1. Verificar flag _isOpeningChat. Si true: ignorar con toast.
+  //   2. Setear flag _isOpeningChat = true inmediatamente.
+  //   3. Abrir UI del chat INMEDIATAMENTE (no esperar GATT).
+  //   4. Iniciar conexion GATT en paralelo (background).
+  //   5. Si GATT falla: mostrar warning pero UI ya esta abierta (no crash).
+  //   6. Resetear flag en finally (siempre, exito o error).
+  //
+  // Esto elimina la race condition porque:
+  // - El segundo toque ve _isOpeningChat = true y se ignora.
+  // - La UI no depende de que GATT termine.
+  // - activeContact solo se setea una vez (no sobrescribible durante apertura).
   async openChat(deviceUUID) {
+    // ========================================================================
+    // GUARD ANTI-CRASH #1: Si ya estamos abriendo un chat, ignorar
+    // ========================================================================
+    if (this._isOpeningChat) {
+      this.showToast('Conectando...', 'info', 1500);
+      return;
+    }
+    
+    // Activar flag INMEDIATAMENTE para bloquear llamadas concurrentes
+    this._isOpeningChat = true;
+    
     var uuid = _normId(deviceUUID);
     var contact = _getContactByUUID(uuid);
     var mac = this._uuidToMacMap.get(uuid) || (contact && _normMAC(contact.macAddress));
     
+    // Buscar MAC en dispositivos encontrados/conectados si no esta en mapa
     if (!mac && contact) {
       this.foundDevices.forEach(function(d, m) {
         if (!mac && d.deviceUUID === uuid) mac = m;
@@ -1240,51 +1482,70 @@ export class BLEInterface {
     
     if (!mac) {
       this.showToast('Dispositivo no disponible para conectar', 'warning');
+      this._isOpeningChat = false; // Resetear flag
       return;
     }
     
-    this.showToast('Conectando a ' + displayName + '...', 'info', 3000);
+    // ========================================================================
+    // PASO 1: Abrir UI INMEDIATAMENTE (no esperar GATT)
+    // ========================================================================
+    this._activeChatDeviceId = uuid;
+    this._activeChatMAC = mac;
+    this.newDevicesCount = 0;
+    this.updateBadge();
     
+    var appContainer = document.getElementById('app');
+    if (appContainer) appContainer.classList.remove('hidden');
+    var nameInput = document.getElementById('chat-contact-name');
+    var subtitle = document.getElementById('chat-contact-subtitle');
+    if (nameInput) nameInput.value = displayName;
+    if (subtitle) subtitle.textContent = 'BLUETOOTH \u25cf';
+    
+    // Disparar evento para que nexo_app.js actualice activeContact
+    window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
+      detail: { 
+        contactId: uuid, 
+        name: displayName, 
+        address: mac, 
+        transport: 'ble', 
+        source: 'ble_interface',
+        macAddress: mac
+      }
+    }));
+    
+    // Cerrar panel BLE para mostrar el chat
+    this.togglePanel();
+    
+    // ========================================================================
+    // PASO 2: Conectar GATT en paralelo (background, no bloquea UI)
+    // ========================================================================
     try {
       var connected = await this._connectToDevice(mac);
       
       if (!connected) {
-        this.showToast('No se pudo conectar a ' + displayName, 'error', 5000);
-        return;
+        // Si falla la conexion, mostrar warning pero UI sigue abierta
+        this.showToast('No se pudo conectar a ' + displayName + '. Reintentando...', 'warning', 5000);
+        // Iniciar reconexion automatica en background
+        this._startReconnect(mac);
+      } else {
+        this.showToast('Conectado a ' + displayName, 'success', 2000);
       }
-      
-      this._activeChatDeviceId = uuid;
-      this._activeChatMAC = mac;
-      this.newDevicesCount = 0;
-      this.updateBadge();
-      
-      var appContainer = document.getElementById('app');
-      if (appContainer) appContainer.classList.remove('hidden');
-      var nameInput = document.getElementById('chat-contact-name');
-      var subtitle = document.getElementById('chat-contact-subtitle');
-      if (nameInput) nameInput.value = displayName;
-      if (subtitle) subtitle.textContent = 'BLUETOOTH \u25cf';
-      
-      window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
-        detail: { 
-          contactId: uuid, 
-          name: displayName, 
-          address: mac, 
-          transport: 'ble', 
-          source: 'ble_interface',
-          macAddress: mac
-        }
-      }));
-      
-      this.showToast('Conectado a ' + displayName, 'success', 2000);
-      this.togglePanel();
-      
     } catch (e) {
-      this.showToast('No se pudo conectar: ' + (e.message || e), 'error', 5000);
-      console.error('[BLEInterface] openChat fallo:', e);
+      console.error('[BLEInterface] openChat conexion fallo:', e);
+      this.showToast('Error de conexion: ' + (e.message || e), 'error', 3000);
+    } finally {
+      // ========================================================================
+      // GUARD ANTI-CRASH #2: Resetear flag SIEMPRE (exito o error)
+      // ========================================================================
+      this._isOpeningChat = false;
     }
   }
 
+  // ============================================================================
+  // ENVIO A CHAT ACTIVO: sendMessageToActiveChat
+  // ============================================================================
+  // Envia un mensaje al dispositivo actualmente activo en chat.
+  // Si no esta conectado, encola el mensaje para envio posterior.
   async sendMessageToActiveChat(content) {
     if (!this._activeChatMAC) {
       this.showToast('No hay chat activo', 'error');
@@ -1294,6 +1555,7 @@ export class BLEInterface {
     var mac = this._activeChatMAC;
     var state = this._getDeviceState(mac);
     
+    // Verificar estado antes de enviar
     if (state.state !== BLE_STATES.READY_TO_CHAT && 
         state.state !== BLE_STATES.NOTIFICATIONS_READY &&
         state.state !== BLE_STATES.CONNECTED) {
@@ -1313,6 +1575,7 @@ export class BLEInterface {
       }
     }
     
+    // Re-verificar estado post-reconexion
     state = this._getDeviceState(mac);
     if (state.state !== BLE_STATES.READY_TO_CHAT && 
         state.state !== BLE_STATES.NOTIFICATIONS_READY &&
@@ -1322,12 +1585,14 @@ export class BLEInterface {
       return false;
     }
     
+    // Enviar mensaje
     try {
       await this._sendMessageNative(mac, content);
       return true;
     } catch (e) {
       console.warn('[BLEInterface] Envio fallo:', e.message || e);
       
+      // Reintentar hasta 3 veces
       var retryCount = this._sendRetryCount.get(mac) || 0;
       if (retryCount < 3) {
         this._sendRetryCount.set(mac, retryCount + 1);
@@ -1349,6 +1614,9 @@ export class BLEInterface {
     }
   }
 
+  // ============================================================================
+  // RECONEXION CON SCAN: Buscar dispositivo y reconectar
+  // ============================================================================
   async _attemptReconnectWithScan(mac) {
     if (!this.nativePlugin) throw new Error('Plugin no disponible');
     
@@ -1476,6 +1744,11 @@ export class BLEInterface {
     }, duration);
   }
 
+  // ============================================================================
+  // DESTRUCCION: Cleanup completo de recursos
+  // ============================================================================
+  // Limpia todos los listeners, timers, y referencias para evitar memory leaks.
+  // Es CRITICO llamar esto cuando la app se cierra o se destruye el componente.
   destroy() {
     var styles = document.getElementById('ble-styles-v4');
     if (styles) styles.remove();
@@ -1524,3 +1797,53 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
+'''
+
+with open('/mnt/agents/output/ble_interface_v4.2.4_part4.js', 'w') as f:
+    f.write(part4)
+
+print("Parte 4 guardada: " + str(len(part4)) + " chars")
+
+# Unir todas las partes de ble_interface.js en un solo archivo
+
+with open('/mnt/agents/output/ble_interface_v4.2.4_part1.js', 'r') as f:
+    part1 = f.read()
+with open('/mnt/agents/output/ble_interface_v4.2.4_part2.js', 'r') as f:
+    part2 = f.read()
+with open('/mnt/agents/output/ble_interface_v4.2.4_part3.js', 'r') as f:
+    part3 = f.read()
+with open('/mnt/agents/output/ble_interface_v4.2.4_part4.js', 'r') as f:
+    part4 = f.read()
+
+full_ble = part1 + part2 + part3 + part4
+
+with open('/mnt/agents/output/ble_interface_v4.2.4-ANTI-CRASH.js', 'w') as f:
+    f.write(full_ble)
+
+# Verificar que no hay errores de sintaxis basicos
+import re
+
+# Verificar que no hay comillas triples (causaron problemas antes)
+triple_quotes = re.findall(r"'''|\"\"\"", full_ble)
+print("Comillas triples encontradas:", len(triple_quotes))
+
+# Verificar que no hay optional chaining
+optional_chaining = re.findall(r'\?\.', full_ble)
+print("Optional chaining encontrados:", len(optional_chaining))
+
+# Verificar que no hay async class methods
+async_class = re.findall(r'async\s+\w+\s*\(', full_ble)
+print("Metodos async encontrados:", len(async_class))
+
+# Verificar balance de llaves
+open_braces = full_ble.count('{')
+close_braces = full_ble.count('}')
+print("Llaves abiertas:", open_braces, "Cerradas:", close_braces, "Balance:", open_braces - close_braces)
+
+# Verificar balance de parentesis
+open_parens = full_ble.count('(')
+close_parens = full_ble.count(')')
+print("Parentesis abiertos:", open_parens, "Cerrados:", close_parens, "Balance:", open_parens - close_parens)
+
+print("\nTotal lineas:", full_ble.count('\n'))
+print("Total caracteres:", len(full_ble))
