@@ -1,39 +1,6 @@
-m
-# Generar main.js v9.3-ANTI-CRASH con comentarios explicativos
-
-main_js_code = r'''/**
- * =============================================================================
+/**
  * src/main.js - Punto de entrada NEXO v9.3-ANTI-CRASH
- * =============================================================================
- * 
- * ARQUITECTURA GENERAL:
- * ---------------------
- * main.js es el punto de entrada de la aplicacion. Su flujo:
- * 
- *   1. ESPERAR: DOMContentLoaded (documento listo)
- *   2. VERIFICAR: Permisos BLE via PermissionShim
- *   3. INICIALIZAR: NexoApp con todas sus fases
- *   4. CONFIGURAR: Input de mensajes, vault toggle, chat header
- *   5. RENDERIZAR: Mensajes recibidos via TheStream
- *   6. OCULTAR: Splash screen cuando todo esta listo
- * 
- * PIPELINE DE RENDERIZADO DE MENSAJES:
- * -------------------------------------
- *   NexoApp._handleMessage()
- *        |
- *        v  config.onMessage(msg)
- *   main.js _renderMessage(msg)
- *        |
- *        v  TheStream.appendItems([msg])
- *   DOM (burbujas de chat)
- * 
- * FIX v9.3:
- *   - _forceHideSplash() agresivo: multiple selectores + CSS inline
- *   - Safety timeout reducido a 10000ms (antes 15000ms)
- *   - CSS critico inyectado inline si no hay <link> al stylesheet
- *   - _renderMessage usa TheStream en lugar de DOM manual (unificado)
- *   - DEDUP en UI: verificar data-msg-id antes de renderizar
- *   - NO optional chaining
+ * Pipeline: NexoApp._handleMessage() -> config.onMessage(msg) -> _renderMessage(msg) -> TheStream.appendItems([msg])
  */
 
 import './styles/critical.css';
@@ -53,11 +20,6 @@ window.NEXO = {
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 
-// ============================================================================
-// SAFETY TIMEOUT: Forzar continuar si el splash no desaparece
-// ============================================================================
-// FIX v9.3: Reducido a 10000ms. Si despues de 10s no se oculto el splash,
-// forzamos la continuacion. Esto evita que la app se quede congelada.
 const SAFETY_TIMEOUT = setTimeout(() => {
   if (NEXO_DIAG.isSplashVisible && NEXO_DIAG.isSplashVisible()) {
     rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
@@ -67,27 +29,21 @@ const SAFETY_TIMEOUT = setTimeout(() => {
   document.body.classList.add('nexo-force-ready');
 }, 10000);
 
-// ============================================================================
-// DOMContentLoaded: Punto de entrada principal
-// ============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
     _ensureDOMStructure();
-    
-    // FIX v9.3: Inyectar CSS critico inline si no hay stylesheet cargado
     _injectCriticalCSS();
 
     window.NEXO.rem = rem;
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
-    // Verificar permisos BLE
     let permissionsGranted = false;
     try {
       const permPromise = ensureBLEPermissions();
-      const permTimeout = new Promise((_, reject) => 
+      const permTimeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('PERM_TIMEOUT')), 10000)
       );
       permissionsGranted = await Promise.race([permPromise, permTimeout]);
@@ -106,7 +62,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       _showPermissionOverlay();
     }
 
-    // Escuchar evento del Shim para auto-continuar
     window.addEventListener('nexo-permissions-granted', async (e) => {
       if (!window.NEXO.initialized) {
         rem.success('[Shim] Permisos concedidos via ' + (e.detail && e.detail.source ? e.detail.source : 'event'), 'SHIM_EVENT_OK');
@@ -126,14 +81,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// ============================================================================
-// CSS CRITICO: Inyeccion inline como fallback
-// ============================================================================
-// FIX v9.3: Si el HTML no tiene <link rel="stylesheet"> al CSS (problema
-// identificado en build #1341), inyectamos los estilos criticos inline.
 function _injectCriticalCSS() {
   if (document.getElementById('nexo-critical-css')) return;
-  
+
   var style = document.createElement('style');
   style.id = 'nexo-critical-css';
   style.textContent = `
@@ -165,9 +115,6 @@ function _injectCriticalCSS() {
   document.head.appendChild(style);
 }
 
-// ============================================================================
-// Permission Overlay (reemplaza SetupWizard)
-// ============================================================================
 function _showPermissionOverlay() {
   if (document.getElementById('nexo-perm-overlay')) return;
 
@@ -175,9 +122,9 @@ function _showPermissionOverlay() {
   overlay.id = 'nexo-perm-overlay';
   overlay.innerHTML = `
     <div class="perm-overlay-content">
-      <h2>🔐 Permisos BLE Requeridos</h2>
+      <h2>Permisos BLE Requeridos</h2>
       <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicacion P2P.</p>
-      <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p>
+      <p class="perm-sub">Si ya los concediste en Ajustes, la app continuara automaticamente.</p>
       <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>
       <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button>
       <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button>
@@ -201,7 +148,7 @@ function _showPermissionOverlay() {
   document.head.appendChild(style);
 
   document.getElementById('perm-btn-grant').addEventListener('click', async () => {
-    rem.info('[Shim] Usuario solicitó permisos desde overlay', 'SHIM_USER_REQ');
+    rem.info('[Shim] Usuario solicito permisos desde overlay', 'SHIM_USER_REQ');
     try {
       const shim = getPermissionShim();
       const granted = await shim.request();
@@ -230,7 +177,7 @@ function _showPermissionOverlay() {
   });
 
   document.getElementById('perm-btn-skip').addEventListener('click', async () => {
-    rem.warn('[Shim] Usuario continuó sin BLE', 'SHIM_SKIP');
+    rem.warn('[Shim] Usuario continuo sin BLE', 'SHIM_SKIP');
     _hidePermissionOverlay();
     await initializeNexoApp();
   });
@@ -246,9 +193,6 @@ function _hidePermissionOverlay() {
   if (styles) styles.remove();
 }
 
-// ============================================================================
-// INICIALIZACION DE NEXOAPP
-// ============================================================================
 async function initializeNexoApp() {
   try {
     const nexoConfig = {
@@ -271,7 +215,7 @@ async function initializeNexoApp() {
       },
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
-        onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
+        onReact: (id) => rem.success('Reaccion anadida', 'REACT_OK'),
         onReply: (id) => _focusInput('@' + (id ? id.substr(0,8) : '') + ' '),
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
@@ -322,13 +266,10 @@ async function initializeNexoApp() {
   }
 }
 
-// ============================================================================
-// INDICADOR DE ESTADO BLE EN UI
-// ============================================================================
 function _setupBLEStatusIndicator() {
   const header = document.getElementById('chat-header');
   if (!header) return;
-  
+
   let indicator = document.getElementById('ble-status-indicator');
   if (!indicator) {
     indicator = document.createElement('div');
@@ -337,8 +278,7 @@ function _setupBLEStatusIndicator() {
     const subtitle = document.getElementById('chat-contact-subtitle');
     if (subtitle) subtitle.parentNode.insertBefore(indicator, subtitle.nextSibling);
   }
-  
-  // Actualizar cada 3 segundos
+
   setInterval(() => {
     const app = window.NEXO.app;
     if (!app || !app.bleInterface) {
@@ -364,14 +304,14 @@ function _setupBLEStatusIndicator() {
 function _updateConnectionStatus(mode) {
   const subtitle = document.getElementById('chat-contact-subtitle');
   if (!subtitle) return;
-  
+
   const statusMap = {
-    'P2P_BLE': 'BLUETOOTH ●',
-    'RELAY': 'RELAY 🌐',
-    'OFFLINE': 'OFFLINE ○',
-    'CHAT:': 'BLUETOOTH ●'
+    'P2P_BLE': 'BLUETOOTH',
+    'RELAY': 'RELAY',
+    'OFFLINE': 'OFFLINE',
+    'CHAT:': 'BLUETOOTH'
   };
-  
+
   for (const key in statusMap) {
     if (mode && mode.startsWith && mode.startsWith(key)) {
       subtitle.textContent = statusMap[key];
@@ -381,9 +321,6 @@ function _updateConnectionStatus(mode) {
   subtitle.textContent = mode || 'OFFLINE';
 }
 
-// ============================================================================
-// ESTRUCTURA DOM: Asegurar que existen los elementos necesarios
-// ============================================================================
 function _ensureDOMStructure() {
   const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
   const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
@@ -398,9 +335,6 @@ function _ensureDOMStructure() {
   }
 }
 
-// ============================================================================
-// INPUT DE MENSAJES: Configurar send button y Enter key
-// ============================================================================
 function _setupMessageInput() {
   const input = document.getElementById('message-input');
   const btn = document.getElementById('send-btn');
@@ -436,9 +370,6 @@ function _setupVaultToggle() {
   if (vault) vault.classList.add('vault-hidden');
 }
 
-// ============================================================================
-// CHAT HEADER: Nombre editable del destinatario
-// ============================================================================
 function _setupChatHeader() {
   const nameInput = document.getElementById('chat-contact-name');
   if (!nameInput) return;
@@ -498,44 +429,26 @@ function _setupKeyboardShortcuts() {
   });
 }
 
-// ============================================================================
-// RENDERIZADO DE MENSAJES: _renderMessage
-// ============================================================================
-// FIX v9.3: Pipeline unificado de renderizado.
-// 
-// Antes: _renderMessage creaba DOM manualmente + TheStream tambien renderizaba.
-//        Resultado: mensajes duplicados en pantalla.
-// 
-// Ahora: _renderMessage usa TheStream.appendItems() EXCLUSIVAMENTE.
-//        TheStream maneja dedup interno por messageId.
-//        Si TheStream no esta disponible, fallback a DOM manual.
-//
-// DEDUP EN UI:
-// - Verificar data-msg-id antes de crear elemento
-// - TheStream tiene su propio messageCache
 function _renderMessage(msg) {
   const container = document.getElementById('messages-container');
   if (!container) return;
 
-  // DEDUP EN UI: no renderizar duplicados
   const msgId = msg.messageId || msg._id;
   if (msgId) {
     const existing = container.querySelector('[data-msg-id="' + msgId + '"]');
     if (existing) return;
   }
 
-  // Usar TheStream si esta disponible (pipeline unificado)
   if (window.NEXO.app && window.NEXO.app.stream && typeof window.NEXO.app.stream.appendItems === 'function') {
     window.NEXO.app.stream.appendItems([msg], { scroll: true });
     return;
   }
 
-  // Fallback: renderizado manual si TheStream no esta listo
   const div = document.createElement('div');
   div.className = 'message ' + (msg._own ? 'own' : 'other');
   if (msgId) div.setAttribute('data-msg-id', msgId);
 
-  const senderName = msg.senderName || (msg._own ? 'Tú' : 'NEXO Peer');
+  const senderName = msg.senderName || (msg._own ? 'Tu' : 'NEXO Peer');
   const sourceBadge = msg._source ? _getSourceIcon(msg._source) : '';
 
   div.innerHTML = `
@@ -553,13 +466,13 @@ function _renderMessage(msg) {
 
 function _getSourceIcon(source) {
   const icons = {
-    'ble_nordic': '🔷',
-    'ble_hybrid': '📡',
-    'ble_direct': '🔵',
-    'relay': '🌐',
-    'self': '✓'
+    'ble_nordic': 'BLE',
+    'ble_hybrid': 'HYB',
+    'ble_direct': 'DIR',
+    'relay': 'REL',
+    'self': 'YOU'
   };
-  return icons[source] || '•';
+  return icons[source] || '';
 }
 
 function _toggleVaultUI(isOpen) {
@@ -584,15 +497,6 @@ function _focusInput(text) {
   }
 }
 
-// ============================================================================
-// FORCE HIDE SPLASH: Ocultar splash de forma agresiva
-// ============================================================================
-// FIX v9.3: Multiple estrategias para ocultar el splash:
-// 1. Buscar por ID especifico (#splash-native)
-// 2. Buscar por selectores genericos (.splash-screen, [id*="splash"])
-// 3. Aplicar opacity:0 + pointerEvents:none + display:none
-// 4. Remover del DOM tras 500ms
-// 5. Mostrar #app si estaba oculto
 function _forceHideSplash() {
   const selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]', '#nexo-setup'];
   selectors.forEach(sel => {
@@ -607,8 +511,7 @@ function _forceHideSplash() {
       }, 500);
     }
   });
-  
-  // Asegurar que la app es visible
+
   const app = document.getElementById('app');
   if (app) {
     app.classList.remove('hidden');
@@ -624,22 +527,10 @@ function _enableFallbackMode() {
   const msg = document.createElement('div');
   msg.className = 'fallback-notice';
   msg.innerHTML = `
-    <h3>⚠️ Error de Inicialización</h3>
+    <h3>Error de Inicializacion</h3>
     <p>La app no pudo iniciar completamente.</p>
   `;
   body.appendChild(msg);
 }
 
 if (module.hot) module.hot.accept();
-'''
-
-with open('/mnt/agents/output/main_v9.3-ANTI-CRASH.js', 'w') as f:
-    f.write(main_js_code)
-
-# Verificar
-open_braces = main_js_code.count('{')
-close_braces = main_js_code.count('}')
-print("main.js - Balance llaves:", open_braces - close_braces)
-print("Lineas:", main_js_code.count('\n'))
-print("Optional chaining:", len(re.findall(r'\?\.', main_js_code)))
-print("Comillas triples:", len(re.findall(r"'''|\"\"\"", main_js_code)))
