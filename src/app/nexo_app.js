@@ -1,11 +1,12 @@
 /**
- * NEXO App v5.1.1-COMPOSITE
- * Coordinado con ble_interface.js v4.2.1-COMPOSITE
+ * NEXO App v5.1.2-FIX
+ * Coordinado con ble_interface.js v4.2.3-FIX
  * FIX: sendMessage delega a bleInterface.sendMessageToActiveChat() primero
  * FIX: _sendViaBLE pasa a fallback directo al plugin
- * FIX: activeContact incluye macAddress para envío directo
+ * FIX: activeContact incluye macAddress para envio directo
  * FIX: _handleMessage usa clave compuesta para dedup
  * FIX: Cola de mensajes si dispositivo no conectado
+ * FIX: NO optional chaining, todo verificacion explicita
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -22,7 +23,7 @@ import { initBLEInterface } from '../ui/ble_interface.js';
 function withTimeoutNAP(promise, ms, context) {
   let timer;
   const timeoutPromise = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`[NAP_TIMEOUT] ${context}`)), ms);
+    timer = setTimeout(() => reject(new Error('[NAP_TIMEOUT] ' + context)), ms);
   });
   return Promise.race([promise, timeoutPromise]).finally(() => { if (timer) clearTimeout(timer); });
 }
@@ -34,7 +35,7 @@ const DEBUG = {
     const entry = { ts: Date.now(), time: new Date().toLocaleTimeString(), type, code, msg };
     DEBUG._logBuffer.push(entry);
     if (DEBUG._logBuffer.length > 1000) DEBUG._logBuffer.shift();
-    console.log(`[${entry.time}] [${type.toUpperCase()}]${code ? `[${code}]` : ''} ${msg}`);
+    console.log('[' + entry.time + '] [' + type.toUpperCase() + ']' + (code ? '[' + code + ']' : '') + ' ' + msg);
     const method = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warn' ? 'warn' : 'info';
     if (code) rem[method](msg, code); else rem[method](msg);
   },
@@ -79,7 +80,7 @@ export class NexoApp {
     this._dedupTTL = 300000;
     this._pendingMessages = [];
     this._sendLock = false;
-    DEBUG.log('🚀 [NEXO] v5.1.1-COMPOSITE iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('🚀 [NEXO] v5.1.2-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -91,7 +92,10 @@ export class NexoApp {
     try {
       await this._initPhase1_Crypto();
       await this._initPhase2_WebSocket();
-      const nativeAvailable = !!(window.Capacitor?.Plugins?.NexoBLE);
+      var nativeAvailable = false;
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
+        nativeAvailable = true;
+      }
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
       if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
       await this._initPhase5_BLEUI();
@@ -99,9 +103,9 @@ export class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('🎉 NEXO v5.1.1-COMPOSITE Ready', 'APP_READY');
+      DEBUG.success('🎉 NEXO v5.1.2-FIX Ready', 'APP_READY');
     } catch (err) {
-      DEBUG.error('APP_020', `Init failed: ${err.message}`);
+      DEBUG.error('APP_020', 'Init failed: ' + err.message);
       await this._partialCleanup();
       throw err;
     } finally { this._isInitializing = false; }
@@ -113,9 +117,12 @@ export class NexoApp {
     try {
       this.vault = new CryptoVault();
       await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
-      const identity = this.vault.getIdentity?.();
+      var identity = null;
+      if (this.vault && typeof this.vault.getIdentity === 'function') {
+        identity = this.vault.getIdentity();
+      }
       if (identity) { DEBUG.setIdentity(identity); DEBUG.success('Vault initialized', 'CRYPTO_002'); }
-    } catch (err) { DEBUG.error('CRYPTO_004', `Vault init failed: ${err.message}`); this.vault = null; }
+    } catch (err) { DEBUG.error('CRYPTO_004', 'Vault init failed: ' + err.message); this.vault = null; }
   }
 
   async _initPhase2_WebSocket() {
@@ -126,7 +133,7 @@ export class NexoApp {
       this.wsClient.onMessage = (m) => this._handleMessage(m, 'relay');
       this.wsClient.onOpen = () => DEBUG.setMode('RELAY');
       await withTimeoutNAP(this.wsClient.connect(), 8000, 'WebSocket.connect');
-    } catch (err) { DEBUG.warn(`WebSocket unavailable: ${err.message}`, 'WS_004'); this.wsClient = null; }
+    } catch (err) { DEBUG.warn('WebSocket unavailable: ' + err.message, 'WS_004'); this.wsClient = null; }
   }
 
   async _initPhase3_NordicMesh() {
@@ -141,23 +148,27 @@ export class NexoApp {
       const unsub5 = this.nordicMesh.on('error', (err) => DEBUG.error('NORDIC_010', err.message));
       this._resources.handlers.add(unsub1, unsub2, unsub3, unsub4, unsub5);
       const result = await withTimeoutNAP(this.nordicMesh.init(), 10000, 'NordicMesh.init');
-      if (!result.success) throw new Error(result.error?.message || 'Nordic init returned false');
-      DEBUG.success(`Nordic Mesh active [Native:${result.isNative}]`, 'NORDIC_002');
-    } catch (err) { DEBUG.error('NORDIC_005', `Nordic init failed: ${err.message}`); this.nordicMesh = null; }
+      if (!result.success) {
+        var errMsg = 'Nordic init returned false';
+        if (result.error && result.error.message) errMsg = result.error.message;
+        throw new Error(errMsg);
+      }
+      DEBUG.success('Nordic Mesh active [Native:' + result.isNative + ']', 'NORDIC_002');
+    } catch (err) { DEBUG.error('NORDIC_005', 'Nordic init failed: ' + err.message); this.nordicMesh = null; }
   }
 
   async _initPhase4_HybridMesh() {
     DEBUG.setPhase('MESH');
     try {
       this.mesh = new HybridMesh({
-        onDeviceFound: (d) => { DEBUG.log(`Hybrid found: ${d.name}`, 'info', 'MESH_DEVICE'); },
-        onDeviceConnected: (d) => { DEBUG.success(`Hybrid connected: ${d.name}`, 'MESH_CONN'); },
-        onDeviceDisconnected: (d) => { DEBUG.log(`Hybrid disconnected`, 'warn', 'MESH_DISC'); },
+        onDeviceFound: (d) => { DEBUG.log('Hybrid found: ' + d.name, 'info', 'MESH_DEVICE'); },
+        onDeviceConnected: (d) => { DEBUG.success('Hybrid connected: ' + d.name, 'MESH_CONN'); },
+        onDeviceDisconnected: (d) => { DEBUG.log('Hybrid disconnected', 'warn', 'MESH_DISC'); },
         onError: (code, msg) => DEBUG.error('MESH_006', msg)
       });
       await withTimeoutNAP(this.mesh.initialize(), 15000, 'HybridMesh.initialize');
       DEBUG.success('Hybrid Mesh ready', 'MESH_002');
-    } catch (err) { DEBUG.error('APP_016', `Hybrid Mesh: ${err.message}`); this.mesh = null; }
+    } catch (err) { DEBUG.error('APP_016', 'Hybrid Mesh: ' + err.message); this.mesh = null; }
   }
 
   async _initPhase5_BLEUI() {
@@ -169,13 +180,12 @@ export class NexoApp {
 
       this._bleChatHandler = (e) => {
         const { contactId, name, address, transport, macAddress } = e.detail;
-        // GUARDAR MAC COMO PARTE DE activeContact
         this.activeContact = { 
           id: contactId, 
           name, 
           address, 
           transport,
-          macAddress: macAddress || address // MAC es la clave para envío
+          macAddress: macAddress || address
         };
         const appContainer = document.getElementById('app');
         if (appContainer) appContainer.classList.remove('hidden');
@@ -183,21 +193,27 @@ export class NexoApp {
         const subtitle = document.getElementById('chat-contact-subtitle');
         if (nameInput) nameInput.value = name || 'NEXO Device';
         if (subtitle) subtitle.textContent = transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
-        DEBUG.success(`💬 Chat activo: ${name} [${transport.toUpperCase()}] MAC:${macAddress?.substring(0,8)}...`, 'BLE_CHAT');
+        var macShort = macAddress ? macAddress.substring(0,8) : 'N/A';
+        DEBUG.success('💬 Chat activo: ' + name + ' [' + transport.toUpperCase() + '] MAC:' + macShort + '...', 'BLE_CHAT');
         this._updateMode('P2P_BLE');
-        this.config.onStatusChange(`CHAT:${name}`);
+        this.config.onStatusChange('CHAT:' + name);
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 
       this._bleMessageHandler = (e) => {
         const { deviceId, content, senderName, messageId, source, timestamp, macAddress } = e.detail;
-        console.log(`[BLE_RECV] Mensaje de ${senderName}: ${content?.substring?.(0,30) || ''}...`);
+        var contentPreview = '';
+        if (content && typeof content.substring === 'function') {
+          contentPreview = content.substring(0,30);
+        }
+        console.log('[BLE_RECV] Mensaje de ' + senderName + ': ' + contentPreview + '...');
         
         let resolvedName = senderName;
         if (!resolvedName || resolvedName === 'NEXO Peer') {
           const mac = macAddress || deviceId;
           const contact = this.bleInterface ? this._findContactByMAC(mac) : null;
-          resolvedName = contact?.name || senderName || 'NEXO Peer';
+          resolvedName = senderName || 'NEXO Peer';
+          if (contact && contact.name) resolvedName = contact.name;
         }
         
         this._handleMessage({
@@ -213,16 +229,18 @@ export class NexoApp {
       };
       window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
 
-    } catch (err) { DEBUG.error('UI_004', `BLE UI init failed: ${err.message}`); this.bleInterface = null; }
+    } catch (err) { DEBUG.error('UI_004', 'BLE UI init failed: ' + err.message); this.bleInterface = null; }
   }
 
-  // Buscar contacto por MAC en bleInterface
   _findContactByMAC(mac) {
     if (!this.bleInterface || !mac) return null;
-    const contacts = this.bleInterface._getBLEContacts?.() || [];
-    const normMac = (mac || '').toString().toLowerCase().trim().replace(/[^0-9a-f]/g, '');
-    return contacts.find(c => {
-      const cmac = (c.macAddress || '').toString().toLowerCase().trim().replace(/[^0-9a-f]/g, '');
+    var contacts = [];
+    if (this.bleInterface && typeof this.bleInterface._getBLEContacts === 'function') {
+      contacts = this.bleInterface._getBLEContacts();
+    }
+    var normMac = (mac || '').toString().toLowerCase().trim().replace(/[^0-9a-f]/g, '');
+    return contacts.find(function(c) {
+      var cmac = (c.macAddress || '').toString().toLowerCase().trim().replace(/[^0-9a-f]/g, '');
       return cmac === normMac;
     });
   }
@@ -230,14 +248,16 @@ export class NexoApp {
   async _initPhase6_Bridge() {
     DEBUG.setPhase('BRIDGE');
     try {
-      if (!this.mesh && !this.nordicMesh && !this.wsClient && !this.bleInterface?.nativePlugin) {
+      var hasBlePlugin = false;
+      if (this.bleInterface && this.bleInterface.nativePlugin) hasBlePlugin = true;
+      if (!this.mesh && !this.nordicMesh && !this.wsClient && !hasBlePlugin) {
         DEBUG.warn('No transports', 'BRIDGE_SKIP');
         return;
       }
       this.bridge = new MeshRelayBridge({ mesh: this.mesh, nordicMesh: this.nordicMesh, relay: this.wsClient, onModeChange: (mode) => { DEBUG.setMode(mode); this.config.onStatusChange(mode); } });
       await withTimeoutNAP(this.bridge.initialize(), 5000, 'Bridge.initialize');
       DEBUG.success('Bridge ready', 'BRIDGE_002');
-    } catch (err) { DEBUG.warn(`Bridge init failed: ${err.message}`, 'BRIDGE_003'); this.bridge = null; }
+    } catch (err) { DEBUG.warn('Bridge init failed: ' + err.message, 'BRIDGE_003'); this.bridge = null; }
   }
 
   async _initPhase7_UI() {
@@ -252,35 +272,48 @@ export class NexoApp {
     if (container) { try { this.stream = new TheStream(container, {}); } catch (e) {} }
   }
 
-  _handleNordicPeer(peer) { if (!peer?.id) return; this.blePeers.set(peer.id, { ...peer, discoveredAt: Date.now() }); }
-  _handleNordicSession(data) { if (!data?.deviceId) return; this._updateMode('P2P_BLE'); }
-  _handleNordicMessage(msg) { if (!msg?.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
+  _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
+  _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
+  _handleNordicMessage(msg) { if (!msg || !msg.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
   _updateModeFromNordic(state) {
     switch(state) {
       case 'messaging': case 'connected': this._updateMode('P2P_BLE'); break;
-      case 'offline': if (!this.mesh?.getPeerCount?.() && !this.wsClient?.isConnected?.()) this._updateMode('OFFLINE'); break;
+      case 'offline': 
+        var meshCount = 0;
+        if (this.mesh && typeof this.mesh.getPeerCount === 'function') meshCount = this.mesh.getPeerCount();
+        var wsConnected = false;
+        if (this.wsClient && typeof this.wsClient.isConnected === 'function') wsConnected = this.wsClient.isConnected();
+        if (!meshCount && !wsConnected) this._updateMode('OFFLINE'); 
+        break;
     }
   }
   _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 
   async _sendViaBLE(deviceId, content) {
-    const plugin = this.bleInterface?.nativePlugin;
+    var plugin = null;
+    if (this.bleInterface && this.bleInterface.nativePlugin) {
+      plugin = this.bleInterface.nativePlugin;
+    }
     if (!plugin) throw new Error('Plugin no disponible');
     
-    // USAR MAC COMO TARGET (clave compuesta)
-    const targetMAC = this.activeContact?.macAddress || deviceId;
-    console.log(`[BLE_SEND] Enviando a MAC:${targetMAC?.substring(0,12)}...`);
+    var targetMAC = deviceId;
+    if (this.activeContact && this.activeContact.macAddress) {
+      targetMAC = this.activeContact.macAddress;
+    }
+    var macShort = targetMAC ? targetMAC.substring(0,12) : 'N/A';
+    console.log('[BLE_SEND] Enviando a MAC:' + macShort + '...');
     
     try {
+      if (typeof plugin.sendMessage !== 'function') throw new Error('sendMessage no disponible');
       await plugin.sendMessage({ deviceId: targetMAC, message: content });
-      DEBUG.success(`📨 Enviado vía BLE a ${targetMAC?.substring(0,8)}...`, 'MSG_BLE');
+      var macShort2 = targetMAC ? targetMAC.substring(0,8) : 'N/A';
+      DEBUG.success('📨 Enviado vía BLE a ' + macShort2 + '...', 'MSG_BLE');
     } catch (e) {
-      DEBUG.error('BLE_SEND_FAIL', `Envío falló: ${e.message}`);
+      DEBUG.error('BLE_SEND_FAIL', 'Envío falló: ' + (e.message || e));
       throw e;
     }
   }
 
-  // FIX v5.1.1: sendMessage delega a bleInterface primero para manejo de conexión
   async sendMessage(msg) {
     if (!this.initialized || this._isDestroyed) {
       DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
@@ -294,78 +327,87 @@ export class NexoApp {
     this._sendLock = true;
     
     try {
-      const messageId = msg.messageId || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const messageId = msg.messageId || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
       
-      // Render optimista inmediato
-      this._handleMessage({ ...msg, _own: true, timestamp: Date.now(), pending: true, messageId }, 'self');
+      this._handleMessage(Object.assign({}, msg, { _own: true, timestamp: Date.now(), pending: true, messageId }), 'self');
 
       const isObject = msg && typeof msg === 'object';
       const content = isObject ? (msg.content || msg) : msg;
       const recipient = isObject ? msg.recipient : null;
-      const targetId = recipient || this.activeContact?.macAddress || this.activeContact?.id;
-      const targetTransport = this.activeContact?.transport;
+      var targetId = recipient;
+      if (!targetId && this.activeContact) {
+        targetId = this.activeContact.macAddress || this.activeContact.id;
+      }
+      var targetTransport = null;
+      if (this.activeContact) targetTransport = this.activeContact.transport;
 
-      // FIX v5.1.1: PRIORIDAD 0 - Delegar a bleInterface si está disponible
-      // bleInterface ya maneja: verificación de conexión, reconexión, cola, reintentos
-      if (targetTransport === 'ble' && this.bleInterface?.sendMessageToActiveChat) {
+      if (targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendMessageToActiveChat === 'function') {
         try {
           const sent = await this.bleInterface.sendMessageToActiveChat(content);
           if (sent) {
             this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
             return true;
           }
-          // Si sendMessageToActiveChat devuelve false, el mensaje quedó en cola
-          DEBUG.info('Mensaje encolado - esperando conexión BLE', 'MSG_QUEUED');
+          DEBUG.info('Mensaje encolado - esperando conexion BLE', 'MSG_QUEUED');
           return false;
         } catch (e) {
-          DEBUG.warn(`bleInterface.sendMessageToActiveChat falló: ${e.message}`, 'MSG_BLE_FAIL');
-          // Continuar a fallback directo
+          DEBUG.warn('bleInterface.sendMessageToActiveChat falló: ' + e.message, 'MSG_BLE_FAIL');
         }
       }
 
-      // PRIORIDAD 1: BLE directo con MAC (fallback si bleInterface no disponible)
-      if (targetId && targetTransport === 'ble' && this.bleInterface?.nativePlugin) {
+      var hasNativePlugin = false;
+      if (this.bleInterface && this.bleInterface.nativePlugin) hasNativePlugin = true;
+      if (targetId && targetTransport === 'ble' && hasNativePlugin) {
         try {
           await this._sendViaBLE(targetId, content);
           this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId }, 'self');
           return true;
         } catch (e) {
-          DEBUG.warn(`BLE directo falló: ${e.message}`, 'MSG_BLE_FAIL');
+          DEBUG.warn('BLE directo falló: ' + e.message, 'MSG_BLE_FAIL');
         }
       }
 
-      // Fallback: buscar cualquier dispositivo BLE conectado
-      if (this.bleInterface?.nativePlugin) {
+      if (this.bleInterface && this.bleInterface.nativePlugin) {
         try {
           const connectedResult = await this.bleInterface.nativePlugin.getConnectedDevices();
-          const bleDevices = connectedResult?.devices || [];
+          var bleDevices = [];
+          if (connectedResult && connectedResult.devices) bleDevices = connectedResult.devices;
           if (bleDevices.length > 0) {
             await this._sendViaBLE(bleDevices[0].deviceId || bleDevices[0].id, content);
             this._handleMessage({ content, _own: true, timestamp: Date.now(), pending: false, recipient: bleDevices[0].deviceId, source: 'ble_direct', messageId }, 'self');
             return true;
           }
-        } catch (e) { DEBUG.log(`[BLE_SEND] Fallback falló: ${e.message}`, 'warn', 'BLE_PEER_FAIL'); }
+        } catch (e) { DEBUG.log('[BLE_SEND] Fallback falló: ' + e.message, 'warn', 'BLE_PEER_FAIL'); }
       }
 
-      const nordicPeers = this.nordicMesh?.getPeers?.() || [];
+      var nordicPeers = [];
+      if (this.nordicMesh && typeof this.nordicMesh.getPeers === 'function') {
+        nordicPeers = this.nordicMesh.getPeers();
+      }
       if (nordicPeers.length > 0) {
-        try { await this.nordicMesh.sendMessage(nordicPeers[0].id, content); DEBUG.success(`Sent via Nordic`, 'MSG_NORDIC'); return true; }
-        catch (e) { DEBUG.error('NORDIC_009', `Send failed: ${e.message}`); }
+        try { await this.nordicMesh.sendMessage(nordicPeers[0].id, content); DEBUG.success('Sent via Nordic', 'MSG_NORDIC'); return true; }
+        catch (e) { DEBUG.error('NORDIC_009', 'Send failed: ' + e.message); }
       }
 
-      if (this.mesh?.getPeerCount?.() > 0) {
-        try { await this.mesh.broadcast({ content }); DEBUG.success('Sent via Hybrid', 'MSG_HYBRID'); return true; }
-        catch (e) { DEBUG.error('MESH_005', `Broadcast failed: ${e.message}`); }
+      var meshCount2 = 0;
+      if (this.mesh && typeof this.mesh.getPeerCount === 'function') {
+        meshCount2 = this.mesh.getPeerCount();
+      }
+      if (meshCount2 > 0) {
+        try { await this.mesh.broadcast({ content: content }); DEBUG.success('Sent via Hybrid', 'MSG_HYBRID'); return true; }
+        catch (e) { DEBUG.error('MESH_005', 'Broadcast failed: ' + e.message); }
       }
 
-      if (this.bridge) { const result = await this.bridge.send({ content }); if (result) { DEBUG.success('Sent via Bridge', 'MSG_BRIDGE'); return true; } }
+      if (this.bridge) { const result = await this.bridge.send({ content: content }); if (result) { DEBUG.success('Sent via Bridge', 'MSG_BRIDGE'); return true; } }
 
-      if (this.wsClient?.isConnected?.()) { this.wsClient.send({ content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); return true; }
+      var wsConn = false;
+      if (this.wsClient && typeof this.wsClient.isConnected === 'function') wsConn = this.wsClient.isConnected();
+      if (wsConn) { this.wsClient.send({ content: content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); return true; }
 
       DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
       return false;
     } catch (err) { 
-      DEBUG.error('APP_008', `SendMessage critical: ${err.message}`); 
+      DEBUG.error('APP_008', 'SendMessage critical: ' + err.message); 
       return false; 
     } finally {
       this._sendLock = false;
@@ -375,13 +417,14 @@ export class NexoApp {
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      // DEDUP POR CLAVE COMPUESTA: messageId + MAC
       const dedupKey = (msg.messageId || '') + ':' + (msg.macAddress || msg.sender || '');
       if (msg.messageId || msg.macAddress) {
         const now = Date.now();
         if (this._messageDedupMap.has(dedupKey)) {
           if (source !== 'self') {
-            DEBUG.log(`Deduplicado ${dedupKey?.substring?.(0,16)} de ${source}`, 'debug', 'DEDUP');
+            var dedupShort = '';
+            if (dedupKey && typeof dedupKey.substring === 'function') dedupShort = dedupKey.substring(0,16);
+            DEBUG.log('Deduplicado ' + dedupShort + ' de ' + source, 'debug', 'DEDUP');
           }
           return;
         }
@@ -399,16 +442,16 @@ export class NexoApp {
         }
       }
       
-      const enriched = { ...msg, _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) };
+      const enriched = Object.assign({}, msg, { _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) });
       this.config.onMessage(enriched);
-      if (this.stream?.appendItems) this.stream.appendItems([enriched]);
-    } catch (err) { DEBUG.error('APP_005', `Message handler: ${err.message}`); }
+      if (this.stream && typeof this.stream.appendItems === 'function') this.stream.appendItems([enriched]);
+    } catch (err) { DEBUG.error('APP_005', 'Message handler: ' + err.message); }
   }
 
   async _partialCleanup() {
-    if (this.nordicMesh) { try { await this.nordicMesh.destroy?.(); } catch(e) {} this.nordicMesh = null; }
+    if (this.nordicMesh) { try { if (typeof this.nordicMesh.destroy === 'function') await this.nordicMesh.destroy(); } catch(e) {} this.nordicMesh = null; }
     if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
-    if (this.wsClient) { try { this.wsClient.disconnect?.(); } catch(e) {} this.wsClient = null; }
+    if (this.wsClient) { try { if (typeof this.wsClient.disconnect === 'function') this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
   }
 
   async destroy() {
@@ -418,23 +461,31 @@ export class NexoApp {
     if (this._bleChatHandler) { window.removeEventListener('nexo:ble:openChat', this._bleChatHandler); this._bleChatHandler = null; }
     if (this._bleMessageHandler) { window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler); this._bleMessageHandler = null; }
     if (this.bleInterface) { try { this.bleInterface.destroy(); } catch(e) {} this.bleInterface = null; }
-    if (this.nordicMesh) { this._resources.handlers.forEach(unsub => { try { unsub(); } catch(e) {} }); try { await this.nordicMesh.destroy?.(); } catch(e) {} this.nordicMesh = null; }
+    if (this.nordicMesh) { this._resources.handlers.forEach(function(unsub) { try { unsub(); } catch(e) {} }); try { if (typeof this.nordicMesh.destroy === 'function') await this.nordicMesh.destroy(); } catch(e) {} this.nordicMesh = null; }
     if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
-    if (this.wsClient) { try { this.wsClient.disconnect?.(); } catch(e) {} this.wsClient = null; }
-    if (this.vault) { try { this.vault.destroy?.(); } catch(e) {} this.vault = null; }
+    if (this.wsClient) { try { if (typeof this.wsClient.disconnect === 'function') this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
+    if (this.vault) { try { if (typeof this.vault.destroy === 'function') this.vault.destroy(); } catch(e) {} this.vault = null; }
     this._resources.timers.forEach(t => clearTimeout(t));
     DEBUG.success('Cleanup complete', 'DESTROY_OK');
   }
 
   getStatus() {
+    var meshMode = 'offline';
+    if (this.mesh && typeof this.mesh.getStatus === 'function') {
+      var ms = this.mesh.getStatus();
+      if (ms && ms.mode) meshMode = ms.mode;
+    }
+    var nordicState = '';
+    if (this.nordicMesh && typeof this.nordicMesh.getState === 'function') nordicState = this.nordicMesh.getState();
+    var finalMode = meshMode || (nordicState === 'messaging' ? 'p2p_ble' : 'offline');
     return {
       initialized: this.initialized,
-      mode: this.mesh?.getStatus?.().mode || (this.nordicMesh?.getState?.() === 'messaging' ? 'p2p_ble' : 'offline'),
+      mode: finalMode,
       hasBLEInterface: !!this.bleInterface,
       activeContact: this.activeContact ? { 
         name: this.activeContact.name, 
         transport: this.activeContact.transport,
-        macAddress: this.activeContact.macAddress
+        macAddress: this.activeContact ? this.activeContact.macAddress : null
       } : null
     };
   }
