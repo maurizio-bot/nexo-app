@@ -1,8 +1,39 @@
-/**
- * src/main.js - Punto de entrada NEXO v9.2-COMPOSITE
- * NAP 2.0 Certified - BLE Soberano P2P
- * v9.2-COMPOSITE: Integración con clave compuesta MAC+nombre
- * Build #961 compatible. NO toca nativo.
+m
+# Generar main.js v9.3-ANTI-CRASH con comentarios explicativos
+
+main_js_code = r'''/**
+ * =============================================================================
+ * src/main.js - Punto de entrada NEXO v9.3-ANTI-CRASH
+ * =============================================================================
+ * 
+ * ARQUITECTURA GENERAL:
+ * ---------------------
+ * main.js es el punto de entrada de la aplicacion. Su flujo:
+ * 
+ *   1. ESPERAR: DOMContentLoaded (documento listo)
+ *   2. VERIFICAR: Permisos BLE via PermissionShim
+ *   3. INICIALIZAR: NexoApp con todas sus fases
+ *   4. CONFIGURAR: Input de mensajes, vault toggle, chat header
+ *   5. RENDERIZAR: Mensajes recibidos via TheStream
+ *   6. OCULTAR: Splash screen cuando todo esta listo
+ * 
+ * PIPELINE DE RENDERIZADO DE MENSAJES:
+ * -------------------------------------
+ *   NexoApp._handleMessage()
+ *        |
+ *        v  config.onMessage(msg)
+ *   main.js _renderMessage(msg)
+ *        |
+ *        v  TheStream.appendItems([msg])
+ *   DOM (burbujas de chat)
+ * 
+ * FIX v9.3:
+ *   - _forceHideSplash() agresivo: multiple selectores + CSS inline
+ *   - Safety timeout reducido a 10000ms (antes 15000ms)
+ *   - CSS critico inyectado inline si no hay <link> al stylesheet
+ *   - _renderMessage usa TheStream en lugar de DOM manual (unificado)
+ *   - DEDUP en UI: verificar data-msg-id antes de renderizar
+ *   - NO optional chaining
  */
 
 import './styles/critical.css';
@@ -15,34 +46,44 @@ window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.2-COMPOSITE',
+  version: '9.3-ANTI-CRASH',
   initialized: false
 };
 
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 
+// ============================================================================
+// SAFETY TIMEOUT: Forzar continuar si el splash no desaparece
+// ============================================================================
+// FIX v9.3: Reducido a 10000ms. Si despues de 10s no se oculto el splash,
+// forzamos la continuacion. Esto evita que la app se quede congelada.
 const SAFETY_TIMEOUT = setTimeout(() => {
-  if (NEXO_DIAG.isSplashVisible?.()) {
+  if (NEXO_DIAG.isSplashVisible && NEXO_DIAG.isSplashVisible()) {
     rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
-    NEXO_DIAG.hideSplash();
-    document.body.classList.add('nexo-force-ready');
   }
-}, 15000);
+  NEXO_DIAG.hideSplash();
+  _forceHideSplash();
+  document.body.classList.add('nexo-force-ready');
+}, 10000);
 
+// ============================================================================
+// DOMContentLoaded: Punto de entrada principal
+// ============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
     _ensureDOMStructure();
+    
+    // FIX v9.3: Inyectar CSS critico inline si no hay stylesheet cargado
+    _injectCriticalCSS();
 
     window.NEXO.rem = rem;
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
-    // ─── SHIM INTEGRATION v9.2 ───
-    rem.info('[Shim] Verificando permisos BLE...', 'SHIM_CHECK');
-
+    // Verificar permisos BLE
     let permissionsGranted = false;
     try {
       const permPromise = ensureBLEPermissions();
@@ -51,7 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       );
       permissionsGranted = await Promise.race([permPromise, permTimeout]);
     } catch (permErr) {
-      rem.warn(`[Shim] Permisos timeout/error: ${permErr.message}`, 'SHIM_WARN');
+      rem.warn('[Shim] Permisos timeout/error: ' + permErr.message, 'SHIM_WARN');
       permissionsGranted = false;
     }
 
@@ -61,30 +102,72 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       rem.warn('[Shim] Permisos BLE pendientes', 'SHIM_REQUIRED');
       NEXO_DIAG.hideSplash();
+      _forceHideSplash();
       _showPermissionOverlay();
     }
 
-    // Escuchar evento del Shim para auto-continuar cuando el usuario conceda desde Settings
+    // Escuchar evento del Shim para auto-continuar
     window.addEventListener('nexo-permissions-granted', async (e) => {
       if (!window.NEXO.initialized) {
-        rem.success(`[Shim] Permisos concedidos via ${e.detail?.source || 'event'}`, 'SHIM_EVENT_OK');
+        rem.success('[Shim] Permisos concedidos via ' + (e.detail && e.detail.source ? e.detail.source : 'event'), 'SHIM_EVENT_OK');
         _hidePermissionOverlay();
         await initializeNexoApp();
       }
     }, { once: true });
 
   } catch (error) {
-    console.error('💥 Error fatal en inicialización:', error);
+    console.error('Error fatal en inicializacion:', error);
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('INIT_FATAL', error.message);
-    rem.error(`Error fatal: ${error.message}`, 'INIT_FATAL');
+    rem.error('Error fatal: ' + error.message, 'INIT_FATAL');
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
     _enableFallbackMode();
   }
 });
 
-// ─── Permission Overlay (reemplaza SetupWizard) ───
+// ============================================================================
+// CSS CRITICO: Inyeccion inline como fallback
+// ============================================================================
+// FIX v9.3: Si el HTML no tiene <link rel="stylesheet"> al CSS (problema
+// identificado en build #1341), inyectamos los estilos criticos inline.
+function _injectCriticalCSS() {
+  if (document.getElementById('nexo-critical-css')) return;
+  
+  var style = document.createElement('style');
+  style.id = 'nexo-critical-css';
+  style.textContent = `
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    #splash-native { position: fixed; inset: 0; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 99999; transition: opacity 0.5s ease; }
+    #splash-native.hidden { opacity: 0; pointer-events: none; }
+    #app { display: flex; flex-direction: column; height: 100vh; background: #0a0a0a; }
+    #app.hidden { display: none !important; }
+    #chat-header { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: rgba(10,10,10,0.95); backdrop-filter: blur(10px); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    #chat-contact-name { background: transparent; border: none; border-bottom: 1px solid transparent; color: #fff; font-size: 17px; font-weight: 600; text-align: center; width: 80%; outline: none; padding: 2px 8px; }
+    #chat-contact-name:focus { border-bottom-color: #00d4ff; }
+    #chat-contact-subtitle { font-size: 11px; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 1px; }
+    #nexo-stream { flex: 1; overflow-y: auto; padding: 76px 20px 100px 20px; }
+    #messages-container { display: flex; flex-direction: column; gap: 10px; }
+    .message { max-width: 80%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.4; }
+    .message.own { align-self: flex-end; background: #0066cc; color: white; border-bottom-right-radius: 4px; }
+    .message.other { align-self: flex-start; background: #1f2937; color: #e5e7eb; border-bottom-left-radius: 4px; }
+    .msg-sender { font-weight: 600; font-size: 12px; margin-bottom: 4px; opacity: 0.8; }
+    .msg-content { word-break: break-word; }
+    .msg-meta { margin-top: 4px; font-size: 11px; opacity: 0.6; display: flex; gap: 8px; }
+    #input-area { position: fixed; bottom: 0; left: 0; right: 0; padding: 12px 16px; background: rgba(10,10,10,0.95); backdrop-filter: blur(10px); display: flex; gap: 10px; border-top: 1px solid rgba(255,255,255,0.1); }
+    #message-input { flex: 1; background: #1f2937; border: none; border-radius: 28px; padding: 12px 20px; color: white; font-size: 16px; outline: none; }
+    #send-btn { width: 52px; height: 52px; border-radius: 50%; border: none; background: #0066cc; color: white; font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    #vault-panel { position: fixed; top: 0; right: 0; width: 85%; height: 100%; background: #1a1a1a; z-index: 1000; transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: -5px 0 25px rgba(0,0,0,0.5); }
+    #vault-panel.vault-visible { transform: translateX(0); }
+    .vault-hidden { transform: translateX(100%) !important; }
+  `;
+  document.head.appendChild(style);
+}
+
+// ============================================================================
+// Permission Overlay (reemplaza SetupWizard)
+// ============================================================================
 function _showPermissionOverlay() {
   if (document.getElementById('nexo-perm-overlay')) return;
 
@@ -93,7 +176,7 @@ function _showPermissionOverlay() {
   overlay.innerHTML = `
     <div class="perm-overlay-content">
       <h2>🔐 Permisos BLE Requeridos</h2>
-      <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p>
+      <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicacion P2P.</p>
       <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p>
       <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>
       <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button>
@@ -129,20 +212,20 @@ function _showPermissionOverlay() {
         rem.warn('[Shim] Permisos denegados desde overlay', 'SHIM_USER_DENY');
       }
     } catch (e) {
-      rem.error(`[Shim] Error en request: ${e.message}`, 'SHIM_USER_ERR');
+      rem.error('[Shim] Error en request: ' + e.message, 'SHIM_USER_ERR');
     }
   });
 
   document.getElementById('perm-btn-settings').addEventListener('click', () => {
     rem.info('[Shim] Abriendo ajustes del sistema...', 'SHIM_SETTINGS');
     try {
-      if (window.Capacitor?.Plugins?.App?.openUrl) {
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App && window.Capacitor.Plugins.App.openUrl) {
         window.Capacitor.Plugins.App.openUrl({ url: 'app-settings:' });
       } else {
         window.location.href = 'app-settings:';
       }
     } catch (e) {
-      alert('Ve a Configuración > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
+      alert('Ve a Configuracion > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
     }
   });
 
@@ -163,7 +246,9 @@ function _hidePermissionOverlay() {
   if (styles) styles.remove();
 }
 
-// ─── NexoApp Initialization ───
+// ============================================================================
+// INICIALIZACION DE NEXOAPP
+// ============================================================================
 async function initializeNexoApp() {
   try {
     const nexoConfig = {
@@ -172,11 +257,11 @@ async function initializeNexoApp() {
       enableGestures: true,
       enableMesh: true,
       onMessage: (msg) => {
-        console.log('📨 Mensaje:', msg);
+        console.log('Mensaje recibido:', msg);
         _renderMessage(msg);
       },
       onStatusChange: (mode) => {
-        console.log('🌐 Modo:', mode);
+        console.log('Modo:', mode);
         rem.updateMode(mode);
         _updateConnectionStatus(mode);
       },
@@ -187,14 +272,14 @@ async function initializeNexoApp() {
       onVaultStateChange: (isOpen) => _toggleVaultUI(isOpen),
       actionCallbacks: {
         onReact: (id) => rem.success('Reacción añadida', 'REACT_OK'),
-        onReply: (id) => _focusInput(`@${id?.substr(0,8)} `),
+        onReply: (id) => _focusInput('@' + (id ? id.substr(0,8) : '') + ' '),
         onForward: (id) => rem.info('Listo para reenviar', 'FORWARD_READY')
       }
     };
 
-    rem.info('🚀 [NEXO] App instance v5.1.0-COMPOSITE', 'NEXO_INIT');
+    rem.info('[NEXO] App instance v5.1.3-ANTI-CRASH', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v5.1.0-COMPOSITE =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v5.1.3-ANTI-CRASH =====', 'INIT_START');
 
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) =>
@@ -203,7 +288,7 @@ async function initializeNexoApp() {
 
     try {
       await Promise.race([initPromise, timeoutPromise]);
-      rem.success('==== INICIALIZACIÓN NAP 2.0 COMPLETADA ====', 'INIT_OK');
+      rem.success('==== INICIALIZACION NAP 2.0 COMPLETADA ====', 'INIT_OK');
     } catch (timeoutErr) {
       rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
       rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
@@ -220,24 +305,26 @@ async function initializeNexoApp() {
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.2-COMPOSITE Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.2-COMPOSITE Inicializado');
+    rem.success('NEXO v9.3-ANTI-CRASH Listo', 'INIT_OK');
+    console.log('NEXO v9.3-ANTI-CRASH Inicializado');
 
-    const status = window.NEXO.app.getStatus?.();
+    const status = window.NEXO.app.getStatus && window.NEXO.app.getStatus();
     if (status) console.log('[NEXO STATUS]', status);
 
   } catch (error) {
-    console.error('💥 Error en NexoApp:', error);
+    console.error('Error en NexoApp:', error);
     clearTimeout(SAFETY_TIMEOUT);
     NEXO_DIAG.error('APP_INIT_ERROR', error.message);
-    rem.error(`Error al iniciar app: ${error.message}`, 'APP_ERR');
+    rem.error('Error al iniciar app: ' + error.message, 'APP_ERR');
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
     _enableFallbackMode();
   }
 }
 
-// ─── Indicador de estado BLE en UI ───
+// ============================================================================
+// INDICADOR DE ESTADO BLE EN UI
+// ============================================================================
 function _setupBLEStatusIndicator() {
   const header = document.getElementById('chat-header');
   if (!header) return;
@@ -263,10 +350,10 @@ function _setupBLEStatusIndicator() {
       indicator.style.background = '#666';
       return;
     }
-    const state = app.bleInterface._getDeviceState?.(activeMAC);
-    if (state?.state === 'ready_to_chat' || state?.state === 'notifications_ready') {
+    const state = app.bleInterface._getDeviceState && app.bleInterface._getDeviceState(activeMAC);
+    if (state && (state.state === 'ready_to_chat' || state.state === 'notifications_ready')) {
       indicator.style.background = '#00ff88';
-    } else if (state?.state === 'connecting' || state?.state === 'reconnecting') {
+    } else if (state && (state.state === 'connecting' || state.state === 'reconnecting')) {
       indicator.style.background = '#ffaa00';
     } else {
       indicator.style.background = '#ff4444';
@@ -285,16 +372,18 @@ function _updateConnectionStatus(mode) {
     'CHAT:': 'BLUETOOTH ●'
   };
   
-  for (const [key, value] of Object.entries(statusMap)) {
-    if (mode.startsWith(key)) {
-      subtitle.textContent = value;
+  for (const key in statusMap) {
+    if (mode && mode.startsWith && mode.startsWith(key)) {
+      subtitle.textContent = statusMap[key];
       return;
     }
   }
-  subtitle.textContent = mode;
+  subtitle.textContent = mode || 'OFFLINE';
 }
 
-// ─── Helper Functions ───
+// ============================================================================
+// ESTRUCTURA DOM: Asegurar que existen los elementos necesarios
+// ============================================================================
 function _ensureDOMStructure() {
   const stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
   const vault = document.getElementById('nexo-vault') || document.querySelector('.vault-panel');
@@ -309,6 +398,9 @@ function _ensureDOMStructure() {
   }
 }
 
+// ============================================================================
+// INPUT DE MENSAJES: Configurar send button y Enter key
+// ============================================================================
 function _setupMessageInput() {
   const input = document.getElementById('message-input');
   const btn = document.getElementById('send-btn');
@@ -344,6 +436,9 @@ function _setupVaultToggle() {
   if (vault) vault.classList.add('vault-hidden');
 }
 
+// ============================================================================
+// CHAT HEADER: Nombre editable del destinatario
+// ============================================================================
 function _setupChatHeader() {
   const nameInput = document.getElementById('chat-contact-name');
   if (!nameInput) return;
@@ -351,21 +446,21 @@ function _setupChatHeader() {
   const saveName = () => {
     const newName = nameInput.value.trim();
     if (!newName) {
-      nameInput.value = window.NEXO.app?.activeContact?.name || 'NEXO';
+      nameInput.value = (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.name) || 'NEXO';
       return;
     }
-    if (window.NEXO.app?.activeContact) {
+    if (window.NEXO.app && window.NEXO.app.activeContact) {
       window.NEXO.app.activeContact.name = newName;
     }
     try {
       const contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v3') || '[]');
-      const activeId = window.NEXO.app?.activeContact?.id;
+      const activeId = window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id;
       if (activeId) {
         const idx = contacts.findIndex(c => (c.id || c.deviceUUID) === activeId);
         if (idx >= 0) {
           contacts[idx].name = newName;
           localStorage.setItem('nexo_ble_contacts_v3', JSON.stringify(contacts));
-          rem.info(`Contacto renombrado: ${newName}`, 'CONTACT_RENAME');
+          rem.info('Contacto renombrado: ' + newName, 'CONTACT_RENAME');
         }
       }
     } catch (e) {
@@ -394,15 +489,30 @@ function _setupKeyboardShortcuts() {
     }
     if (e.ctrlKey && e.shiftKey && e.key === 'L') {
       e.preventDefault();
-      rem.toggle?.();
+      if (rem.toggle) rem.toggle();
     }
     if (e.ctrlKey && e.shiftKey && e.key === 'H') {
       e.preventDefault();
-      rem.showHistory?.();
+      if (rem.showHistory) rem.showHistory();
     }
   });
 }
 
+// ============================================================================
+// RENDERIZADO DE MENSAJES: _renderMessage
+// ============================================================================
+// FIX v9.3: Pipeline unificado de renderizado.
+// 
+// Antes: _renderMessage creaba DOM manualmente + TheStream tambien renderizaba.
+//        Resultado: mensajes duplicados en pantalla.
+// 
+// Ahora: _renderMessage usa TheStream.appendItems() EXCLUSIVAMENTE.
+//        TheStream maneja dedup interno por messageId.
+//        Si TheStream no esta disponible, fallback a DOM manual.
+//
+// DEDUP EN UI:
+// - Verificar data-msg-id antes de crear elemento
+// - TheStream tiene su propio messageCache
 function _renderMessage(msg) {
   const container = document.getElementById('messages-container');
   if (!container) return;
@@ -410,20 +520,27 @@ function _renderMessage(msg) {
   // DEDUP EN UI: no renderizar duplicados
   const msgId = msg.messageId || msg._id;
   if (msgId) {
-    const existing = container.querySelector(`[data-msg-id="${msgId}"]`);
+    const existing = container.querySelector('[data-msg-id="' + msgId + '"]');
     if (existing) return;
   }
 
+  // Usar TheStream si esta disponible (pipeline unificado)
+  if (window.NEXO.app && window.NEXO.app.stream && typeof window.NEXO.app.stream.appendItems === 'function') {
+    window.NEXO.app.stream.appendItems([msg], { scroll: true });
+    return;
+  }
+
+  // Fallback: renderizado manual si TheStream no esta listo
   const div = document.createElement('div');
-  div.className = `message ${msg._own ? 'own' : 'other'}`;
+  div.className = 'message ' + (msg._own ? 'own' : 'other');
   if (msgId) div.setAttribute('data-msg-id', msgId);
 
   const senderName = msg.senderName || (msg._own ? 'Tú' : 'NEXO Peer');
-  const sourceBadge = msg._source ? `${_getSourceIcon(msg._source)}` : '';
+  const sourceBadge = msg._source ? _getSourceIcon(msg._source) : '';
 
   div.innerHTML = `
     <div class="msg-sender">${senderName}</div>
-    <div class="msg-content">${msg.content || msg.text}</div>
+    <div class="msg-content">${msg.content || msg.text || ''}</div>
     <div class="msg-meta">
       <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
       ${sourceBadge}
@@ -459,7 +576,7 @@ function _toggleVaultUI(isOpen) {
   }
 }
 
-function _focusInput(text = '') {
+function _focusInput(text) {
   const input = document.getElementById('message-input');
   if (input) {
     input.focus();
@@ -467,6 +584,15 @@ function _focusInput(text = '') {
   }
 }
 
+// ============================================================================
+// FORCE HIDE SPLASH: Ocultar splash de forma agresiva
+// ============================================================================
+// FIX v9.3: Multiple estrategias para ocultar el splash:
+// 1. Buscar por ID especifico (#splash-native)
+// 2. Buscar por selectores genericos (.splash-screen, [id*="splash"])
+// 3. Aplicar opacity:0 + pointerEvents:none + display:none
+// 4. Remover del DOM tras 500ms
+// 5. Mostrar #app si estaba oculto
 function _forceHideSplash() {
   const selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]', '#nexo-setup'];
   selectors.forEach(sel => {
@@ -474,9 +600,20 @@ function _forceHideSplash() {
     if (el) {
       el.style.opacity = '0';
       el.style.pointerEvents = 'none';
-      setTimeout(() => el.remove(), 500);
+      el.style.transition = 'opacity 0.3s ease';
+      setTimeout(() => {
+        el.style.display = 'none';
+        el.remove();
+      }, 500);
     }
   });
+  
+  // Asegurar que la app es visible
+  const app = document.getElementById('app');
+  if (app) {
+    app.classList.remove('hidden');
+    app.style.display = 'flex';
+  }
 }
 
 function _enableFallbackMode() {
@@ -494,3 +631,15 @@ function _enableFallbackMode() {
 }
 
 if (module.hot) module.hot.accept();
+'''
+
+with open('/mnt/agents/output/main_v9.3-ANTI-CRASH.js', 'w') as f:
+    f.write(main_js_code)
+
+# Verificar
+open_braces = main_js_code.count('{')
+close_braces = main_js_code.count('}')
+print("main.js - Balance llaves:", open_braces - close_braces)
+print("Lineas:", main_js_code.count('\n'))
+print("Optional chaining:", len(re.findall(r'\?\.', main_js_code)))
+print("Comillas triples:", len(re.findall(r"'''|\"\"\"", main_js_code)))
