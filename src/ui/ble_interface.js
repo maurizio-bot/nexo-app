@@ -1,7 +1,7 @@
 /**
- * BLE Interface v4.2.5-ANTI-CRASH
+ * BLE Interface v4.2.5-ANTI-CRASH-FIX
  * Interfaz con plugin nativo Capacitor NexoBLE
- * FIX: Debounce + desactivación visual en botón Chat para prevenir crash por doble click
+ * FIX: openChat() conecta primero, luego cierra panel. Si falla, mantiene panel abierto.
  */
 
 export function initBLEInterface(bleMesh) {
@@ -238,7 +238,6 @@ export class BLEInterface {
     this._sendRetryCount = new Map();
     this._macChangeDetection = new Map();
     this._waitTimers = new Map();
-    // FIX v4.2.5: Timer de debounce para botón Chat
     this._chatClickTimers = new Map();
   }
 
@@ -1146,12 +1145,10 @@ export class BLEInterface {
       var actionsDiv = document.createElement('div');
       actionsDiv.className = 'ble-contact-actions';
       
-      // FIX v4.2.5: Botón Chat con debounce + desactivación visual robusta
       var chatBtn = document.createElement('button');
       chatBtn.className = 'ble-btn-chat';
       chatBtn.textContent = 'Chat';
       
-      // Función para reactivar el botón visualmente
       function _enableChatBtn() {
         chatBtn.disabled = false;
         chatBtn.style.opacity = '1';
@@ -1159,7 +1156,6 @@ export class BLEInterface {
         chatBtn.textContent = 'Chat';
       }
       
-      // Función para desactivar el botón visualmente
       function _disableChatBtn() {
         chatBtn.disabled = true;
         chatBtn.style.opacity = '0.5';
@@ -1170,7 +1166,6 @@ export class BLEInterface {
       chatBtn.addEventListener('click', function(e) {
         e.stopPropagation();
         
-        // Triple protección contra doble click
         if (self._isOpeningChat) {
           self.showToast('Conectando...', 'info', 1500);
           return;
@@ -1179,19 +1174,15 @@ export class BLEInterface {
           return;
         }
         
-        // Limpiar timer anterior si existe
         var existingTimer = self._chatClickTimers.get(uuid);
         if (existingTimer) {
           clearTimeout(existingTimer);
         }
         
-        // Desactivar inmediatamente
         _disableChatBtn();
         self._isOpeningChat = true;
         
-        // Ejecutar openChat
         self.openChat(uuid).then(function() {
-          // Éxito: reactivar tras debounce
           var timer = setTimeout(function() {
             _enableChatBtn();
             self._isOpeningChat = false;
@@ -1201,7 +1192,6 @@ export class BLEInterface {
         }).catch(function(err) {
           console.error('[BLEInterface] openChat error:', err);
           self.showToast('Error al abrir chat', 'error');
-          // Error: reactivar inmediatamente
           _enableChatBtn();
           self._isOpeningChat = false;
           self._chatClickTimers.delete(uuid);
@@ -1280,6 +1270,7 @@ export class BLEInterface {
     this.showToast('Agregado: ' + name, 'success');
   }
 
+  // FIX v4.2.5-FIX: openChat() conecta primero, luego cierra panel y abre chat
   async openChat(deviceUUID) {
     if (this._isOpeningChat) {
       this.showToast('Conectando...', 'info', 1500);
@@ -1314,41 +1305,66 @@ export class BLEInterface {
     this.newDevicesCount = 0;
     this.updateBadge();
     
-    var appContainer = document.getElementById('app');
-    if (appContainer) appContainer.classList.remove('hidden');
-    var nameInput = document.getElementById('chat-contact-name');
-    var subtitle = document.getElementById('chat-contact-subtitle');
-    if (nameInput) nameInput.value = displayName;
-    if (subtitle) subtitle.textContent = 'BLUETOOTH \u25cf';
-    
-    window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
-      detail: { 
-        contactId: uuid, 
-        name: displayName, 
-        address: mac, 
-        transport: 'ble', 
-        source: 'ble_interface',
-        macAddress: mac
-      }
-    }));
-    
-    this.togglePanel();
-    
+    // FIX: Conectar PRIMERO, luego cerrar panel y abrir chat
     try {
       var connected = await this._connectToDevice(mac);
       
       if (!connected) {
-        this.showToast('No se pudo conectar a ' + displayName + '. Reintentando...', 'warning', 5000);
-        this._startReconnect(mac);
-      } else {
-        this.showToast('Conectado a ' + displayName, 'success', 2000);
+        this.showToast('No se pudo conectar a ' + displayName, 'error', 5000);
+        this._activeChatDeviceId = null;
+        this._activeChatMAC = null;
+        this._isOpeningChat = false;
+        return;
       }
+      
+      // Conexión exitosa: cerrar panel y abrir chat
+      this.showToast('Conectado a ' + displayName, 'success', 2000);
+      
+      // Cerrar panel BLE
+      this.elements.panel.classList.remove('active');
+      this.elements.overlay.classList.remove('active');
+      
+      // Mostrar app container
+      var appContainer = document.getElementById('app');
+      if (appContainer) {
+        appContainer.classList.remove('hidden');
+        appContainer.style.display = 'flex';
+      }
+      
+      // Actualizar header
+      var nameInput = document.getElementById('chat-contact-name');
+      var subtitle = document.getElementById('chat-contact-subtitle');
+      if (nameInput) nameInput.value = displayName;
+      if (subtitle) subtitle.textContent = 'BLUETOOTH \u25cf';
+      
+      // Hacer visible el stream de mensajes
+      var stream = document.getElementById('nexo-stream');
+      if (stream) stream.style.display = 'block';
+      
+      // Enfocar input
+      var msgInput = document.getElementById('message-input');
+      if (msgInput) {
+        setTimeout(function() { msgInput.focus(); }, 300);
+      }
+      
+      // Disparar evento para nexo_app.js
+      window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
+        detail: { 
+          contactId: uuid, 
+          name: displayName, 
+          address: mac, 
+          transport: 'ble', 
+          source: 'ble_interface',
+          macAddress: mac
+        }
+      }));
+      
     } catch (e) {
       console.error('[BLEInterface] openChat conexion fallo:', e);
       this.showToast('Error de conexion: ' + (e.message || e), 'error', 3000);
+      this._activeChatDeviceId = null;
+      this._activeChatMAC = null;
     } finally {
-      // Siempre liberar el flag, incluso si hay error
-      // El debounce del botón maneja la reactivación visual
       this._isOpeningChat = false;
     }
   }
@@ -1523,7 +1539,7 @@ export class BLEInterface {
       var stateMap = { 'poweredon': 'ENCENDIDO', 'poweredoff': 'APAGADO', 'unknown': 'DESCONOCIDO' };
       var normalizedState = (state || '').toString().toLowerCase();
       this.elements.status.textContent = stateMap[normalizedState] || state.toUpperCase();
-      this.elements.status.className = state === 'poweredOn' ? 'ble-status-online' : 'ble-status-offline';
+      this.elements.status.className = state === 'powerOn' ? 'ble-status-online' : 'ble-status-offline';
     } catch (err) {
       this.elements.status.textContent = 'ERROR';
     }
