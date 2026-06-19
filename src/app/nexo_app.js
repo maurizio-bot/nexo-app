@@ -1,9 +1,11 @@
 /**
- * NEXO App v5.0.4-ARCH 06/2026
+ * NEXO App v5.0.5-ARCH 06/2026
  * Coordinado con NexoBlePlugin.kt v5.0.0-ARCH + ble_interface.js v4.2.0-ARCH
- * FIX v5.0.4-ARCH: sendMessage usa bleInterface.sendChatMessage() para BLE.
- *      Fix deduplicacion: ahora SI bloquea duplicados incluso de source='self'.
- *      Fallback ordenado: BLE directo -> Nordic -> Hybrid -> Bridge -> WS.
+ * FIX v5.0.5-ARCH: 
+ *      - init() robusto: Bridge falla NO rompe todo. initialized=true si vault+BLE UI OK.
+ *      - sendMessage pasa messageId a bleInterface.sendChatMessage().
+ *      - Deduplicacion: actualiza pending->sent sin duplicar en stream.
+ *      - Fallback ordenado: BLE directo -> Nordic -> Hybrid -> Bridge -> WS.
  *      SYNTAX: ES5 compatible (var, function, no arrow, no template literal)
  */
 
@@ -90,7 +92,7 @@ export class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('噫 [NEXO] v5.0.4-ARCH iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('噫 [NEXO] v5.0.5-ARCH iniciando...', 'info', 'APP_INIT');
   }
 
   init() {
@@ -117,13 +119,15 @@ export class NexoApp {
     }).then(function() {
       return self._initPhase5_BLEUI();
     }).then(function() {
+      // FIX v5.0.5: Bridge es opcional. Si falla, NO rompe init().
       return self._initPhase6_Bridge();
     }).then(function() {
       return self._initPhase7_UI();
     }).then(function() {
+      // FIX v5.0.5: initialized=true SIEMPRE si llegamos aqui, aunque bridge haya fallado.
       self.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('脂 NEXO v5.0.4-ARCH Ready', 'APP_READY');
+      DEBUG.success('脂 NEXO v5.0.5-ARCH Ready', 'APP_READY');
       return self;
     }).catch(function(err) {
       DEBUG.error('APP_020', 'Init failed: ' + err.message);
@@ -272,17 +276,26 @@ export class NexoApp {
     DEBUG.setPhase('BRIDGE');
     var self = this;
     return new Promise(function(resolve) {
-      if (!self.mesh && !self.nordicMesh && !self.wsClient && !(self.bleInterface && self.bleInterface.nativePlugin)) {
-        DEBUG.warn('No transports', 'BRIDGE_SKIP');
+      // FIX v5.0.5: Bridge es opcional. Si no hay transportes, solo loguea warning y sigue.
+      var hasTransport = self.mesh || self.nordicMesh || self.wsClient || (self.bleInterface && self.bleInterface.nativePlugin);
+      if (!hasTransport) {
+        DEBUG.warn('No transports available for bridge', 'BRIDGE_SKIP');
         resolve();
         return;
       }
-      self.bridge = new MeshRelayBridge({
-        mesh: self.mesh,
-        nordicMesh: self.nordicMesh,
-        relay: self.wsClient,
-        onModeChange: function(mode) { DEBUG.setMode(mode); self.config.onStatusChange(mode); }
-      });
+      try {
+        self.bridge = new MeshRelayBridge({
+          mesh: self.mesh,
+          nordicMesh: self.nordicMesh,
+          relay: self.wsClient,
+          onModeChange: function(mode) { DEBUG.setMode(mode); self.config.onStatusChange(mode); }
+        });
+      } catch (err) {
+        DEBUG.warn('Bridge constructor failed: ' + err.message, 'BRIDGE_ERR');
+        self.bridge = null;
+        resolve();
+        return;
+      }
       withTimeoutNAP(self.bridge.initialize(), 5000, 'Bridge.initialize').then(function() {
         DEBUG.success('Bridge ready', 'BRIDGE_002');
         resolve();
@@ -341,7 +354,10 @@ export class NexoApp {
     return new Promise(function(resolve) {
       try {
         var messageId = (msg && msg.messageId) ? msg.messageId : (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
-        self._handleMessage(Object.assign({}, msg, { _own: true, timestamp: Date.now(), pending: true, messageId: messageId }), 'self');
+        
+        // FIX v5.0.5: Agregar pendingMessage con ID unico para poder actualizarlo luego
+        var pendingMsg = Object.assign({}, msg, { _own: true, timestamp: Date.now(), pending: true, messageId: messageId });
+        self._handleMessage(pendingMsg, 'self_pending');
 
         var isObject = msg && typeof msg === 'object';
         var content = isObject ? (msg.content || msg) : msg;
@@ -349,10 +365,11 @@ export class NexoApp {
         var targetId = recipient || (self.activeContact && self.activeContact.id);
         var targetTransport = self.activeContact && self.activeContact.transport;
 
-        // FIX v5.0.4: Si hay contacto activo BLE, usar bleInterface.sendChatMessage()
+        // FIX v5.0.5: Si hay contacto activo BLE, usar bleInterface.sendChatMessage() con messageId
         if (targetId && targetTransport === 'ble' && self.bleInterface && self.bleInterface.sendChatMessage) {
-          self.bleInterface.sendChatMessage(targetId, content).then(function() {
-            self._handleMessage({ content: content, _own: true, timestamp: Date.now(), pending: false, recipient: targetId, source: 'ble_direct', messageId: messageId }, 'self');
+          self.bleInterface.sendChatMessage(targetId, content, messageId).then(function() {
+            // FIX v5.0.5: Actualizar el mensaje pending a sent, NO crear duplicado
+            self._updateMessageStatus(messageId, false);
             resolve(true);
           }).catch(function(e) {
             DEBUG.warn('BLE sendChatMessage fallo: ' + e.message, 'MSG_BLE_FAIL');
@@ -369,6 +386,17 @@ export class NexoApp {
     });
   }
 
+  // FIX v5.0.5: Actualiza un mensaje pending a sent sin duplicar en stream
+  _updateMessageStatus(messageId, pending) {
+    if (!this.stream || !this.stream.updateItem) return;
+    try {
+      this.stream.updateItem(messageId, { pending: pending });
+    } catch (e) {
+      // Si stream no tiene updateItem, fallback: re-emitir con mismo ID (dedup lo bloqueara)
+      console.warn('[NexoApp] stream.updateItem no disponible');
+    }
+  }
+
   _fallbackSend(content, messageId) {
     var self = this;
 
@@ -376,6 +404,7 @@ export class NexoApp {
     var nordicPeers = (self.nordicMesh && self.nordicMesh.getPeers) ? self.nordicMesh.getPeers() : [];
     if (nordicPeers.length > 0) {
       return self.nordicMesh.sendMessage(nordicPeers[0].id, content).then(function() {
+        self._updateMessageStatus(messageId, false);
         DEBUG.success('Sent via Nordic', 'MSG_NORDIC');
         return true;
       }).catch(function(e) {
@@ -392,6 +421,7 @@ export class NexoApp {
     // Fallback: Hybrid Mesh
     if (self.mesh && self.mesh.getPeerCount && self.mesh.getPeerCount() > 0) {
       return self.mesh.broadcast({ content: content }).then(function() {
+        self._updateMessageStatus(messageId, false);
         DEBUG.success('Sent via Hybrid', 'MSG_HYBRID');
         return true;
       }).catch(function(e) {
@@ -408,12 +438,17 @@ export class NexoApp {
     // Fallback: Bridge
     if (self.bridge) {
       var result = self.bridge.send({ content: content });
-      if (result) { DEBUG.success('Sent via Bridge', 'MSG_BRIDGE'); return Promise.resolve(true); }
+      if (result) { 
+        self._updateMessageStatus(messageId, false);
+        DEBUG.success('Sent via Bridge', 'MSG_BRIDGE'); 
+        return Promise.resolve(true); 
+      }
     }
 
     // Fallback: WebSocket
     if (self.wsClient && self.wsClient.isConnected && self.wsClient.isConnected()) {
       self.wsClient.send({ content: content });
+      self._updateMessageStatus(messageId, false);
       DEBUG.success('Sent via WebSocket', 'MSG_WS');
       return Promise.resolve(true);
     }
@@ -427,12 +462,18 @@ export class NexoApp {
     try {
       if (msg.messageId) {
         var now = Date.now();
-        // FIX v5.0.4: Deduplicacion ahora SI bloquea duplicados de TODAS las fuentes
-        if (this._messageDedupMap.has(msg.messageId)) {
+        // FIX v5.0.5: Si es actualizacion de pending->sent (mismo ID, source cambia), NO bloquear
+        var existing = this._messageDedupMap.get(msg.messageId);
+        if (existing && msg._own && !msg.pending && source !== 'self_pending') {
+          // Es el mismo mensaje pasando de pending a sent, permitir actualizacion
+          this._messageDedupMap.set(msg.messageId, now);
+        } else if (existing && !(msg._own && !msg.pending)) {
+          // Bloquear duplicados reales
           DEBUG.log('Deduplicado ' + (msg.messageId && msg.messageId.substring ? msg.messageId.substring(0, 8) : '') + ' de ' + source, 'debug', 'DEDUP');
           return;
+        } else {
+          this._messageDedupMap.set(msg.messageId, now);
         }
-        this._messageDedupMap.set(msg.messageId, now);
         if (this._messageDedupMap.size > this._maxProcessedIds) {
           var oldestKey = null;
           var oldestTime = Infinity;
