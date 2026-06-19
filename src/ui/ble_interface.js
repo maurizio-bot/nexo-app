@@ -1,7 +1,6 @@
 /**
- * BLE Interface v4.2.1-CHATFIX
- * FIX: openChat() ahora conecta automaticamente si no hay conexion activa
- *      (antes: "plugin #961 maneja conexion automatica" -> NO funcionaba)
+ * BLE Interface v4.2.1-FIXED
+ * FIX: openChat() ahora declara var self = this; al inicio
  */
 
 export function initBLEInterface(bleMesh) {
@@ -901,9 +900,10 @@ export class BLEInterface {
   }
 
   // ============================================================
-  // FIX v4.2.1: openChat() ahora conecta automaticamente
+  // FIX v4.2.1-FIXED: openChat() ahora declara var self = this;
   // ============================================================
   async openChat(deviceUUID) {
+    var self = this;  // <-- FIX: declarar self aqui para usar en callbacks/promises
     var uuid = _normId(deviceUUID);
     var contact = _getContactByUUID(uuid);
     var mac = this._uuidToMacMap.get(uuid) || (contact && contact.macAddress);
@@ -929,13 +929,13 @@ export class BLEInterface {
       return;
     }
     
-    // FIX: Verificar si ya estamos conectados y listos
+    // Verificar si ya estamos conectados y listos
     var deviceState = this._getDeviceState(mac);
     var isConnected = this.connectedDevices.has(mac);
     var isReady = deviceState.state === BLE_STATES.READY_TO_CHAT || 
                   deviceState.state === BLE_STATES.NOTIFICATIONS_READY;
     
-    // FIX: Si no estamos conectados o listos, conectar ahora
+    // Si no estamos conectados o listos, conectar ahora
     if (!isConnected || !isReady) {
       this.showToast('Conectando...', 'info');
       try {
