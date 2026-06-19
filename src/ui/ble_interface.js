@@ -1,8 +1,7 @@
 /**
- * BLE Interface v4.2.0-CHATFIX
- * FIX: Agregado sendChatMessage() publico para nexo_app.js v5.0.5
- *      _sendMessageNative ahora acepta messageId opcional.
- *      openChat() sin cambios — plugin #961 maneja conexion automatica.
+ * BLE Interface v4.2.1-CHATFIX
+ * FIX: openChat() ahora conecta automaticamente si no hay conexion activa
+ *      (antes: "plugin #961 maneja conexion automatica" -> NO funcionaba)
  */
 
 export function initBLEInterface(bleMesh) {
@@ -450,7 +449,6 @@ export class BLEInterface {
     }
   }
 
-  // FIX v4.2.0: Ahora acepta messageId opcional para preservar el ID de nexo_app.js
   async _sendMessageNative(deviceMAC, content, messageId) {
     if (!this.nativePlugin) throw new Error('Plugin no disponible');
     var device = this.connectedDevices.get(_normId(deviceMAC));
@@ -467,17 +465,14 @@ export class BLEInterface {
     await this.nativePlugin.sendMessage({ deviceId: targetId, message: enrichedPayload });
   }
 
-  // FIX v4.2.0: Metodo publico que nexo_app.js necesita para enviar por BLE
   sendChatMessage(deviceUUID, content, messageId) {
     var uuid = _normId(deviceUUID);
     var mac = this._uuidToMacMap.get(uuid);
     
-    // Fallback: si es el chat activo, usar el MAC guardado
     if (!mac && this._activeChatDeviceId === uuid) {
       mac = this._activeChatMAC;
     }
     
-    // Buscar en dispositivos encontrados/conectados
     if (!mac) {
       this.foundDevices.forEach(function(d, m) {
         if (!mac && _normId(d.deviceUUID) === uuid) mac = m;
@@ -905,7 +900,10 @@ export class BLEInterface {
     this.showToast('Agregado: ' + name, 'success');
   }
 
-  openChat(deviceUUID) {
+  // ============================================================
+  // FIX v4.2.1: openChat() ahora conecta automaticamente
+  // ============================================================
+  async openChat(deviceUUID) {
     var uuid = _normId(deviceUUID);
     var contact = _getContactByUUID(uuid);
     var mac = this._uuidToMacMap.get(uuid) || (contact && contact.macAddress);
@@ -929,6 +927,41 @@ export class BLEInterface {
     if (!mac) {
       this.showToast('Dispositivo no disponible para conectar', 'warning');
       return;
+    }
+    
+    // FIX: Verificar si ya estamos conectados y listos
+    var deviceState = this._getDeviceState(mac);
+    var isConnected = this.connectedDevices.has(mac);
+    var isReady = deviceState.state === BLE_STATES.READY_TO_CHAT || 
+                  deviceState.state === BLE_STATES.NOTIFICATIONS_READY;
+    
+    // FIX: Si no estamos conectados o listos, conectar ahora
+    if (!isConnected || !isReady) {
+      this.showToast('Conectando...', 'info');
+      try {
+        await this.nativePlugin.connectToDevice({ deviceId: mac });
+        // Esperar a que la conexion este lista (max 15s)
+        await new Promise(function(resolve, reject) {
+          var timeout = setTimeout(function() { reject(new Error('Timeout conexion')); }, 15000);
+          var check = function() {
+            var s = self._getDeviceState(mac);
+            if (s.state === BLE_STATES.READY_TO_CHAT || s.state === BLE_STATES.NOTIFICATIONS_READY) {
+              clearTimeout(timeout);
+              resolve();
+            } else if (s.state === BLE_STATES.ERROR) {
+              clearTimeout(timeout);
+              reject(new Error(s.lastError || 'Error de conexion'));
+            } else {
+              setTimeout(check, 300);
+            }
+          };
+          check();
+        });
+        this.showToast('Conectado', 'success');
+      } catch (e) {
+        this.showToast('No se pudo conectar: ' + e.message, 'warning');
+        // Continuar igual, el usuario puede intentar enviar y el sistema hace fallback
+      }
     }
     
     var appContainer = document.getElementById('app');
