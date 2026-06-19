@@ -1,7 +1,8 @@
 /**
- * BLE Interface v4.1.3-CHATFIX
- * FIX: openChat() ya NO llama connectToDevice() - plugin #961 no lo tiene
- *      Abre chat UI directamente. Conexion nativa automatica al enviar mensaje.
+ * BLE Interface v4.2.0-CHATFIX
+ * FIX: Agregado sendChatMessage() publico para nexo_app.js v5.0.5
+ *      _sendMessageNative ahora acepta messageId opcional.
+ *      openChat() sin cambios — plugin #961 maneja conexion automatica.
  */
 
 export function initBLEInterface(bleMesh) {
@@ -444,12 +445,13 @@ export class BLEInterface {
     this._pendingMessageQueue.delete(nid);
     for (var i = 0; i < queue.length; i++) {
       var item = queue[i];
-      try { await this._sendMessageNative(nid, item.content); item.resolve(); }
+      try { await this._sendMessageNative(nid, item.content, item.messageId); item.resolve(); }
       catch (e) { item.reject(e); }
     }
   }
 
-  async _sendMessageNative(deviceMAC, content) {
+  // FIX v4.2.0: Ahora acepta messageId opcional para preservar el ID de nexo_app.js
+  async _sendMessageNative(deviceMAC, content, messageId) {
     if (!this.nativePlugin) throw new Error('Plugin no disponible');
     var device = this.connectedDevices.get(_normId(deviceMAC));
     var targetId = (device && device.id) || (device && device.address) || deviceMAC;
@@ -458,11 +460,38 @@ export class BLEInterface {
       deviceUUID: this.localDeviceUUID,
       deviceName: this.localDeviceName,
       content: content,
-      messageId: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      messageId: messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)),
       timestamp: Date.now()
     });
     
     await this.nativePlugin.sendMessage({ deviceId: targetId, message: enrichedPayload });
+  }
+
+  // FIX v4.2.0: Metodo publico que nexo_app.js necesita para enviar por BLE
+  sendChatMessage(deviceUUID, content, messageId) {
+    var uuid = _normId(deviceUUID);
+    var mac = this._uuidToMacMap.get(uuid);
+    
+    // Fallback: si es el chat activo, usar el MAC guardado
+    if (!mac && this._activeChatDeviceId === uuid) {
+      mac = this._activeChatMAC;
+    }
+    
+    // Buscar en dispositivos encontrados/conectados
+    if (!mac) {
+      this.foundDevices.forEach(function(d, m) {
+        if (!mac && _normId(d.deviceUUID) === uuid) mac = m;
+      });
+      this.connectedDevices.forEach(function(d, m) {
+        if (!mac && _normId(d.deviceUUID) === uuid) mac = m;
+      });
+    }
+    
+    if (!mac) {
+      return Promise.reject(new Error('Dispositivo no encontrado para chat'));
+    }
+    
+    return this._sendMessageNative(mac, content, messageId);
   }
 
   async _initVisibility() {
@@ -806,7 +835,6 @@ export class BLEInterface {
       var chatBtn = document.createElement('button');
       chatBtn.className = 'ble-btn-chat';
       chatBtn.textContent = 'Chat';
-      // FIX v4.1.3: openChat ahora es sync, no async. Sin await, sin crash.
       chatBtn.addEventListener('click', function() { self.openChat(uuid); });
       actionsDiv.appendChild(chatBtn);
       var removeBtn = document.createElement('button');
@@ -877,8 +905,6 @@ export class BLEInterface {
     this.showToast('Agregado: ' + name, 'success');
   }
 
-  // FIX v4.1.3-CHATFIX: openChat ya NO es async. NO llama connectToDevice().
-  // Plugin #961 maneja conexion automaticamente. Solo abre UI.
   openChat(deviceUUID) {
     var uuid = _normId(deviceUUID);
     var contact = _getContactByUUID(uuid);
@@ -904,9 +930,6 @@ export class BLEInterface {
       this.showToast('Dispositivo no disponible para conectar', 'warning');
       return;
     }
-    
-    // NO llamar connectToDevice() - plugin #961 no lo tiene
-    // La conexion la maneja el nativo cuando envias mensaje
     
     var appContainer = document.getElementById('app');
     if (appContainer) appContainer.classList.remove('hidden');
