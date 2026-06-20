@@ -217,3 +217,12 @@ var NEXO_CONFIG = (function() {
     };
 
 })();
+
+// ─── FIX v9.1: Exponer en window para compatibilidad global ───
+if (typeof window !== 'undefined') {
+    window.NEXO_CONFIG = NEXO_CONFIG;
+}
+
+// ─── FIX v9.1: Exports ES6 para importación modular ───
+export default NEXO_CONFIG;
+export { NEXO_CONFIG };
