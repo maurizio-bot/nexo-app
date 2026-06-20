@@ -1,6 +1,6 @@
 /**
- * BLE Interface v4.2.1-FIXED
- * FIX: openChat() ahora declara var self = this; al inicio
+ * BLE Interface v4.2.2-DEFENSIVE
+ * FIX: openChat() blindado contra crashes. Validaciones null/undefined en cada paso.
  */
 
 export function initBLEInterface(bleMesh) {
@@ -900,82 +900,133 @@ export class BLEInterface {
   }
 
   // ============================================================
-  // FIX v4.2.1-FIXED: openChat() ahora declara var self = this;
+  // FIX v4.2.2-DEFENSIVE: openChat() blindado contra crashes
   // ============================================================
   async openChat(deviceUUID) {
-    var self = this;  // <-- FIX: declarar self aqui para usar en callbacks/promises
-    var uuid = _normId(deviceUUID);
-    var contact = _getContactByUUID(uuid);
-    var mac = this._uuidToMacMap.get(uuid) || (contact && contact.macAddress);
+    var self = this;
     
-    if (!mac && contact) {
-      this.foundDevices.forEach(function(d, m) {
-        if (!mac && d.deviceUUID === uuid) mac = m;
-      });
-      this.connectedDevices.forEach(function(d, m) {
-        if (!mac && d.deviceUUID === uuid) mac = m;
-      });
-    }
-    
-    var displayName = (contact && contact.name) || 'NEXO Peer';
-    
-    this._activeChatDeviceId = uuid;
-    this._activeChatMAC = mac;
-    this.newDevicesCount = 0;
-    this.updateBadge();
-    
-    if (!mac) {
-      this.showToast('Dispositivo no disponible para conectar', 'warning');
-      return;
-    }
-    
-    // Verificar si ya estamos conectados y listos
-    var deviceState = this._getDeviceState(mac);
-    var isConnected = this.connectedDevices.has(mac);
-    var isReady = deviceState.state === BLE_STATES.READY_TO_CHAT || 
-                  deviceState.state === BLE_STATES.NOTIFICATIONS_READY;
-    
-    // Si no estamos conectados o listos, conectar ahora
-    if (!isConnected || !isReady) {
-      this.showToast('Conectando...', 'info');
-      try {
-        await this.nativePlugin.connectToDevice({ deviceId: mac });
-        // Esperar a que la conexion este lista (max 15s)
-        await new Promise(function(resolve, reject) {
-          var timeout = setTimeout(function() { reject(new Error('Timeout conexion')); }, 15000);
-          var check = function() {
-            var s = self._getDeviceState(mac);
-            if (s.state === BLE_STATES.READY_TO_CHAT || s.state === BLE_STATES.NOTIFICATIONS_READY) {
-              clearTimeout(timeout);
-              resolve();
-            } else if (s.state === BLE_STATES.ERROR) {
-              clearTimeout(timeout);
-              reject(new Error(s.lastError || 'Error de conexion'));
-            } else {
-              setTimeout(check, 300);
-            }
-          };
-          check();
-        });
-        this.showToast('Conectado', 'success');
-      } catch (e) {
-        this.showToast('No se pudo conectar: ' + e.message, 'warning');
-        // Continuar igual, el usuario puede intentar enviar y el sistema hace fallback
+    try {
+      // --- VALIDACION 1: plugin nativo disponible ---
+      if (!self.nativePlugin) {
+        self.showToast('BLE no inicializado', 'error');
+        console.error('[openChat] nativePlugin es null');
+        return;
       }
+      
+      var uuid = _normId(deviceUUID);
+      if (!uuid) {
+        self.showToast('UUID invalido', 'error');
+        console.error('[openChat] uuid invalido');
+        return;
+      }
+      
+      var contact = _getContactByUUID(uuid);
+      var mac = self._uuidToMacMap.get(uuid) || (contact && contact.macAddress);
+      
+      // --- VALIDACION 2: buscar MAC si no lo tenemos ---
+      if (!mac && contact) {
+        self.foundDevices.forEach(function(d, m) {
+          if (!mac && d.deviceUUID === uuid) mac = m;
+        });
+        self.connectedDevices.forEach(function(d, m) {
+          if (!mac && d.deviceUUID === uuid) mac = m;
+        });
+      }
+      
+      var displayName = (contact && contact.name) || 'NEXO Peer';
+      
+      self._activeChatDeviceId = uuid;
+      self._activeChatMAC = mac;
+      self.newDevicesCount = 0;
+      self.updateBadge();
+      
+      // --- VALIDACION 3: si no hay MAC, abrir chat igual pero sin conectar ---
+      if (!mac) {
+        self.showToast('Dispositivo no disponible para conectar', 'warning');
+        // ABRIR CHAT IGUAL para que el usuario vea la UI
+        self._openChatUI(uuid, displayName, null);
+        return;
+      }
+      
+      // --- VALIDACION 4: verificar estado de conexion ---
+      var deviceState = self._getDeviceState(mac);
+      var isConnected = self.connectedDevices.has(mac);
+      var isReady = deviceState.state === BLE_STATES.READY_TO_CHAT || 
+                    deviceState.state === BLE_STATES.NOTIFICATIONS_READY;
+      
+      // Si no estamos conectados o listos, conectar ahora
+      if (!isConnected || !isReady) {
+        self.showToast('Conectando...', 'info');
+        try {
+          await self.nativePlugin.connectToDevice({ deviceId: mac });
+          
+          // Esperar a que la conexion este lista (max 15s)
+          await new Promise(function(resolve, reject) {
+            var timeout = setTimeout(function() { 
+              reject(new Error('Timeout conexion')); 
+            }, 15000);
+            var check = function() {
+              try {
+                var s = self._getDeviceState(mac);
+                if (s.state === BLE_STATES.READY_TO_CHAT || s.state === BLE_STATES.NOTIFICATIONS_READY) {
+                  clearTimeout(timeout);
+                  resolve();
+                } else if (s.state === BLE_STATES.ERROR) {
+                  clearTimeout(timeout);
+                  reject(new Error(s.lastError || 'Error de conexion'));
+                } else {
+                  setTimeout(check, 300);
+                }
+              } catch (checkErr) {
+                clearTimeout(timeout);
+                reject(checkErr);
+              }
+            };
+            check();
+          });
+          
+          self.showToast('Conectado', 'success');
+        } catch (e) {
+          self.showToast('No se pudo conectar: ' + (e && e.message ? e.message : 'Error desconocido'), 'warning');
+          // NO return - abrir chat igual para que el usuario pueda intentar enviar
+        }
+      }
+      
+      // --- ABRIR UI DEL CHAT ---
+      self._openChatUI(uuid, displayName, mac);
+      
+    } catch (outerErr) {
+      // --- ULTIMO ESCUDO: cualquier error no capturado ---
+      console.error('[openChat] CRASH PREVENIDO:', outerErr);
+      self.showToast('Error al abrir chat', 'error');
     }
-    
-    var appContainer = document.getElementById('app');
-    if (appContainer) appContainer.classList.remove('hidden');
-    var nameInput = document.getElementById('chat-contact-name');
-    var subtitle = document.getElementById('chat-contact-subtitle');
-    if (nameInput) nameInput.value = displayName;
-    if (subtitle) subtitle.textContent = 'BLUETOOTH';
-    
-    window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
-      detail: { contactId: uuid, name: displayName, address: mac, transport: 'ble', source: 'ble_interface' }
-    }));
-    
-    this.togglePanel();
+  }
+  
+  // --- NUEVO: helper separado para abrir UI del chat ---
+  _openChatUI(uuid, displayName, mac) {
+    try {
+      var appContainer = document.getElementById('app');
+      if (appContainer) appContainer.classList.remove('hidden');
+      
+      var nameInput = document.getElementById('chat-contact-name');
+      var subtitle = document.getElementById('chat-contact-subtitle');
+      if (nameInput) nameInput.value = displayName;
+      if (subtitle) subtitle.textContent = 'BLUETOOTH';
+      
+      window.dispatchEvent(new CustomEvent('nexo:ble:openChat', {
+        detail: { 
+          contactId: uuid, 
+          name: displayName, 
+          address: mac, 
+          transport: 'ble', 
+          source: 'ble_interface' 
+        }
+      }));
+      
+      this.togglePanel();
+    } catch (uiErr) {
+      console.error('[_openChatUI] Error:', uiErr);
+    }
   }
 
   async removeContact(deviceUUID) {
