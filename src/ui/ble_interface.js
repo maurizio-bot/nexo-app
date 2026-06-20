@@ -1,9 +1,9 @@
-```javascript
 /**
  * BLE Interface v4.2.1-FUSION
  * Base: v4.2.0-1273 + GATT connection from 961
  * FIX: openChat() now calls connectToDevice() to establish GATT before chat
  *      Maintains: UUIDs, sendChatMessage(), dedup, ES5 syntax
+ *      FIX v4.2.1: Object.assign() instead of spread operator for webpack ES5
  */
 
 export function initBLEInterface(bleMesh) {
@@ -360,7 +360,8 @@ export class BLEInterface {
   _setDeviceState(deviceMAC, state, meta) {
     meta = meta || {};
     var nid = _normId(deviceMAC);
-    this._deviceStates.set(nid, { state: state, ...meta, timestamp: Date.now() });
+    var stateObj = Object.assign({}, meta, { state: state, timestamp: Date.now() });
+    this._deviceStates.set(nid, stateObj);
   }
 
   _getDeviceState(deviceMAC) {
@@ -902,9 +903,6 @@ export class BLEInterface {
     this.showToast('Agregado: ' + name, 'success');
   }
 
-  // ============================================================
-  // FUSION FIX: openChat() ahora establece GATT como en 961
-  // ============================================================
   async openChat(deviceUUID) {
     var uuid = _normId(deviceUUID);
     var contact = _getContactByUUID(uuid);
@@ -931,7 +929,6 @@ export class BLEInterface {
       return;
     }
 
-    // FUSION: Verificar estado GATT y conectar si es necesario (de 961)
     var state = this._getDeviceState(mac);
     var isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
     var isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
@@ -1073,5 +1070,3 @@ export class BLEInterface {
 }
 
 window.bleInterface = null;
-
-```
