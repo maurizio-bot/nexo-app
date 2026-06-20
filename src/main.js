@@ -1,21 +1,28 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.1-SHIM
+ * src/main.js - Punto de entrada NEXO v9.1-CONFIG
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.1-SHIM: SetupManager/SetupWizard eliminados. Permission Shim integrado.
- * Build #961 compatible. NO toca nativo.
+ * v9.1-CONFIG: Integra nexo_config.js como fuente única de verdad.
+ * Build #1273 compatible. NO toca nativo.
  */
 
+// ─── CONFIG PRIMERO ───
+import './core/nexo_config.js';
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
 import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
 
+// ─── ASSERTS DE ARRANQUE ───
+NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
+NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe estar importado');
+NEXO_CONFIG.assert(typeof rem !== 'undefined', 'rem debe estar importado');
+
 window.NEXO = {
   app: null,
   rem: null,
   diag: null,
-  version: '9.1-SHIM',
+  version: NEXO_CONFIG.VERSION.toString(),
   initialized: false
 };
 
@@ -28,7 +35,7 @@ const SAFETY_TIMEOUT = setTimeout(() => {
     NEXO_DIAG.hideSplash();
     document.body.classList.add('nexo-force-ready');
   }
-}, 15000);
+}, NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE + 12000); // 15s total
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
@@ -47,7 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const permPromise = ensureBLEPermissions();
       const permTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('PERM_TIMEOUT')), 10000)
+        setTimeout(() => reject(new Error('PERM_TIMEOUT')), NEXO_CONFIG.TIMEOUTS.SCAN)
       );
       permissionsGranted = await Promise.race([permPromise, permTimeout]);
     } catch (permErr) {
@@ -167,9 +174,11 @@ function _hidePermissionOverlay() {
 // ─── NexoApp Initialization (INTACTO v9.0) ───
 async function initializeNexoApp() {
   try {
+    NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase válida');
+
     const nexoConfig = {
       relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
-      bleTimeout: 10000,
+      bleTimeout: NEXO_CONFIG.TIMEOUTS.BLE,
       enableGestures: true,
       enableMesh: true,
       onMessage: (msg) => {
@@ -198,7 +207,7 @@ async function initializeNexoApp() {
 
     const initPromise = window.NEXO.app.init();
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('INIT_TIMEOUT')), 12000)
+      setTimeout(() => reject(new Error('INIT_TIMEOUT')), NEXO_CONFIG.TIMEOUTS.CONNECT + 3000)
     );
 
     try {
@@ -219,8 +228,8 @@ async function initializeNexoApp() {
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO v9.1-SHIM Listo', 'INIT_OK');
-    console.log('✅ NEXO v9.1-SHIM Inicializado');
+    rem.success('NEXO ' + NEXO_CONFIG.VERSION.toString() + ' Listo', 'INIT_OK');
+    console.log('✅ NEXO ' + NEXO_CONFIG.VERSION.toString() + ' Inicializado');
 
     const status = window.NEXO.app.getStatus?.();
     if (status) console.log('[NEXO STATUS]', status);
@@ -263,6 +272,7 @@ function _setupMessageInput() {
     input.focus();
 
     try {
+      NEXO_CONFIG.assert(window.NEXO.app !== null, 'NEXO.app no debe ser null al enviar');
       const sent = await window.NEXO.app.sendMessage({ content: text });
       if (sent) rem.success('Enviado', 'MSG_SENT');
       else rem.info('En cola (offline)', 'MSG_QUEUED');
@@ -346,6 +356,8 @@ function _setupKeyboardShortcuts() {
 }
 
 function _renderMessage(msg) {
+  NEXO_CONFIG.assert(msg !== null && msg !== undefined, 'msg no puede ser null/undefined');
+  
   const container = document.getElementById('messages-container');
   if (!container) return;
 
