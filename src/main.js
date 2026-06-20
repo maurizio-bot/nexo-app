@@ -6,7 +6,7 @@
  */
 
 // ─── CONFIG PRIMERO ───
-import './core/nexo_config.js';
+import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
