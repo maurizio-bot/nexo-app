@@ -1,13 +1,12 @@
 /**
- * NEXO App v5.0.7-ARMORED
- * Base: v5.0.6-FUSION + Protocolo Anti-Crash completo
- * FIX: Validaciones defensivas en TODAS las operaciones críticas
- *      Try-catch maestro en handlers de eventos BLE
- *      Safe wrappers para bleInterface calls
- *      Deduplicación segura (no modificar mapa durante iteración)
- *      Cleanup robusto en destroy()
- *      ES5 syntax for webpack compatibility
- *      Proper named exports for main.js import
+ * NEXO App v5.0.9-ARMORED
+ * Base: v5.0.7-ARMORED
+ * FIX: _bleMessageHandler descarta mensajes propios (deviceUUID === localDeviceUUID).
+ * FIX: sendMessage render lazy: mensaje propio solo si envio BLE exitoso.
+ * FIX: Transport priority con timeout 350ms para BLE fallback.
+ * FIX: _handleMessage deduplicacion segura sin modificar mapa durante iteracion.
+ * ES5 syntax for webpack compatibility
+ * Proper named exports for main.js import
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -70,6 +69,10 @@ function _safeJSONStringify(obj) {
   try { return JSON.stringify(obj); } catch (e) { return '{}'; }
 }
 
+function _normId(id) {
+  return (id || '').toString().toLowerCase().trim();
+}
+
 class NexoApp {
   constructor(config) {
     config = config || {};
@@ -107,7 +110,7 @@ class NexoApp {
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
-    DEBUG.log('NEXO v5.0.7-ARMORED iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.9-ARMORED iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -127,7 +130,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.7-ARMORED Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.9-ARMORED Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -232,6 +235,15 @@ class NexoApp {
       this._bleMessageHandler = function(e) {
         try {
           var detail = e.detail || {};
+          /* ============================================================
+             FIX DEDUPLICACION BROADCAST: Descartar mensajes propios
+             ============================================================ */
+          var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
+          var senderUUID = detail.deviceUUID || '';
+          if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
+            console.log('[BLE_RECV] Mensaje propio ignorado por broadcast');
+            return;
+          }
           console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || 'NEXO Peer') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
           var resolvedName = detail.senderName;
           if (!resolvedName || resolvedName === 'NEXO Peer') {
@@ -306,7 +318,7 @@ class NexoApp {
   _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 
   /* ============================================================
-     ENVIO DE MENSAJES: Anti-crash + Toast de retroalimentacion
+     ENVIO DE MENSAJES: Anti-crash + Render Lazy + Transport Priority
      ============================================================ */
   async sendMessage(msg) {
     if (!this.initialized || this._isDestroyed) {
@@ -334,7 +346,11 @@ class NexoApp {
       if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
         try {
           console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
-          await this.bleInterface.sendChatMessage(targetId, content, messageId);
+          /* ============================================================
+             FIX: Transport priority 350ms timeout + Render lazy
+             ============================================================ */
+          await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 350, 'BLE.sendChatMessage');
+          // Render lazy: solo mostrar mensaje propio si BLE confirmo exito
           this._handleMessage({
             content: content,
             _own: true,
