@@ -1,11 +1,8 @@
 /**
- * BLE Interface v4.2.5-ARMORED
- * Base: v4.2.4-ARMORED
- * FIX: sendChatMessage con conexion GATT antes de enviar + cache de conexion.
- * FIX: _sendMessageNative verifica connectedDevices + heartbeat 10s.
- * FIX: _waitForReadyToChat event-driven con timeout 3s.
- * FIX: Fast-path JSON parsing en onPayloadReceived.
- * FIX: Timeout adaptativo en openChat (5s reconexion, 15s nueva).
+ * BLE Interface v4.2.6-ARMORED
+ * Base: v4.2.5-ARMORED
+ * FIX: sendChatMessage busca MAC en localStorage si no está en _uuidToMacMap
+ * FIX: _addNewDevice sincroniza maps inmediatamente
  * ES5 syntax compatible con webpack
  */
 export function initBLEInterface(bleMesh) {
@@ -649,7 +646,13 @@ reject(new Error('Mensaje vacio'));
 return;
 }
 var contact = _getContactByUUID(uuid);
-var mac = self._uuidToMacMap.get(uuid) || (contact && _normId(contact.macAddress));
+/* ============================================================
+   FIX: Buscar MAC en localStorage si no está en maps en memoria
+   ============================================================ */
+var mac = self._uuidToMacMap.get(uuid);
+if (!mac && contact && contact.macAddress) {
+mac = _normId(contact.macAddress);
+}
 if (!mac && self._activeChatDeviceId === uuid) {
 mac = self._activeChatMAC;
 }
@@ -661,11 +664,22 @@ self.connectedDevices.forEach(function(d, m) {
 if (!mac && _normId(d.deviceUUID) === uuid) mac = m;
 });
 }
+/* Si aun no hay MAC, buscar en TODOS los contactos de localStorage */
+if (!mac) {
+var allContacts = _getBLEContacts();
+for (var i = 0; i < allContacts.length; i++) {
+if (_normId(allContacts[i].deviceUUID) === uuid && allContacts[i].macAddress) {
+mac = _normId(allContacts[i].macAddress);
+break;
+}
+}
+}
 if (!_isValidMAC(mac)) {
 self.showToast('Dispositivo no encontrado para chat. Verifica el contacto.', 'error');
 reject(new Error('Dispositivo no encontrado para chat'));
 return;
 }
+/* Sincronizar maps para futuro */
 if (contact && !_isValidMAC(self._uuidToMacMap.get(uuid))) {
 self._uuidToMacMap.set(uuid, mac);
 self._macToUuidMap.set(mac, uuid);
@@ -919,7 +933,7 @@ style.textContent = `
 .ble-new-device { display: flex; align-items: center; gap: 10px; flex: 1; background: rgba(65,105,225,0.1); border: 1px solid #4169E1; border-radius: 12px; padding: 10px 14px; }
 .ble-new-device span { color: #fff; font-size: 14px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ble-btn-add-small { width: 36px; height: 36px; border-radius: 50%; background: #4169E1; color: #000; border: none; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.ble-btn-scan-round { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #4169E1, #191970); color: #000; border: none; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 15px rgba(65,105,225,0.3); transition: all 0.3s; }
+.ble-btn-scan-round { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #4169E1, #191970); color: #000; border: none; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 15px rgba(65,105,255,0.3); transition: all 0.3s; }
 .ble-btn-scan-round.scanning { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; animation: pulse-red 1.5s infinite; }
 .ble-btn-scan-round::before { content: 'SCAN'; font-size: 10px; }
 .ble-btn-scan-round.scanning::before { content: 'STOP'; }
