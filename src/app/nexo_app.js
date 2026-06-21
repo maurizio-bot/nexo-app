@@ -216,9 +216,15 @@ class NexoApp {
           DEBUG.success('Chat activo: ' + (detail.name || 'NEXO') + ' [' + (detail.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
           self._updateMode('P2P_BLE');
           self.config.onStatusChange('CHAT:' + (detail.name || 'NEXO'));
+          if (self.bleInterface && self.bleInterface.showToast) {
+            self.bleInterface.showToast('Chat con ' + (detail.name || 'NEXO') + ' listo', 'success');
+          }
         } catch (handlerErr) {
           console.error('[NexoApp] Error en _bleChatHandler:', handlerErr);
           DEBUG.error('BLE_UI_001', 'Error en chat handler: ' + (handlerErr.message || 'unknown'));
+          if (self.bleInterface && self.bleInterface.showToast) {
+            self.bleInterface.showToast('Error al abrir chat: ' + (handlerErr.message || 'desconocido'), 'error');
+          }
         }
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
@@ -246,6 +252,9 @@ class NexoApp {
         } catch (handlerErr) {
           console.error('[NexoApp] Error en _bleMessageHandler:', handlerErr);
           DEBUG.error('BLE_UI_002', 'Error en message handler: ' + (handlerErr.message || 'unknown'));
+          if (self.bleInterface && self.bleInterface.showToast) {
+            self.bleInterface.showToast('Error al recibir mensaje: ' + (handlerErr.message || 'desconocido'), 'error');
+          }
         }
       };
       window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
@@ -296,9 +305,15 @@ class NexoApp {
 
   _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 
+  /* ============================================================
+     ENVIO DE MENSAJES: Anti-crash + Toast de retroalimentacion
+     ============================================================ */
   async sendMessage(msg) {
     if (!this.initialized || this._isDestroyed) {
       DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
+      if (this.bleInterface && this.bleInterface.showToast) {
+        this.bleInterface.showToast('Error: App no inicializada', 'error');
+      }
       return false;
     }
     try {
@@ -308,6 +323,13 @@ class NexoApp {
       var recipient = isObject ? msg.recipient : null;
       var targetId = recipient || (this.activeContact ? this.activeContact.id : null);
       var targetTransport = this.activeContact ? this.activeContact.transport : null;
+
+      if (!content || (typeof content === 'string' && content.trim() === '')) {
+        if (this.bleInterface && this.bleInterface.showToast) {
+          this.bleInterface.showToast('Escribe un mensaje antes de enviar', 'warning');
+        }
+        return false;
+      }
 
       if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
         try {
@@ -323,9 +345,15 @@ class NexoApp {
             messageId: messageId
           }, 'self');
           DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
+          if (this.bleInterface && this.bleInterface.showToast) {
+            this.bleInterface.showToast('Mensaje enviado', 'success');
+          }
           return true;
         } catch (e) {
           DEBUG.warn('BLE directo fallo: ' + (e.message || 'unknown'), 'MSG_BLE_FAIL');
+          if (this.bleInterface && this.bleInterface.showToast) {
+            this.bleInterface.showToast('Fallo envio BLE: ' + (e.message || 'Error desconocido'), 'error');
+          }
         }
       }
 
@@ -345,8 +373,17 @@ class NexoApp {
       if (this.wsClient && this.wsClient.isConnected && this.wsClient.isConnected()) { this.wsClient.send({ content: content }); DEBUG.success('Sent via WebSocket', 'MSG_WS'); return true; }
 
       DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
+      if (this.bleInterface && this.bleInterface.showToast) {
+        this.bleInterface.showToast('No hay dispositivos NEXO disponibles. Mensaje no enviado.', 'warning');
+      }
       return false;
-    } catch (err) { DEBUG.error('APP_008', 'SendMessage critical: ' + (err.message || 'unknown')); return false; }
+    } catch (err) { 
+      DEBUG.error('APP_008', 'SendMessage critical: ' + (err.message || 'unknown')); 
+      if (this.bleInterface && this.bleInterface.showToast) {
+        this.bleInterface.showToast('Error critico al enviar: ' + (err.message || 'desconocido'), 'error');
+      }
+      return false; 
+    }
   }
 
   _handleMessage(msg, source) {
@@ -369,7 +406,6 @@ class NexoApp {
           });
           if (oldestKey) this._messageDedupMap.delete(oldestKey);
         }
-        // Limpieza segura: no modificar durante iteración
         var keysToDelete = [];
         this._messageDedupMap.forEach(function(v, k) {
           if (now - v > this._dedupTTL) keysToDelete.push(k);
@@ -381,7 +417,12 @@ class NexoApp {
       var enriched = Object.assign({}, msg, { _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) });
       this.config.onMessage(enriched);
       if (this.stream && this.stream.appendItems) this.stream.appendItems([enriched]);
-    } catch (err) { DEBUG.error('APP_005', 'Message handler: ' + (err.message || 'unknown')); }
+    } catch (err) { 
+      DEBUG.error('APP_005', 'Message handler: ' + (err.message || 'unknown')); 
+      if (this.bleInterface && this.bleInterface.showToast) {
+        this.bleInterface.showToast('Error al mostrar mensaje: ' + (err.message || 'desconocido'), 'error');
+      }
+    }
   }
 
   async _partialCleanup() {
