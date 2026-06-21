@@ -125,7 +125,7 @@ reject(new Error('Metodo ' + method + ' no disponible en plugin nativo'));
 return;
 }
 try {
-var result = pluginmethod;
+var result = plugin[method].apply(plugin, args || []);
 if (result && typeof result.then === 'function') {
 result.then(resolve).catch(reject);
 } else {
@@ -692,7 +692,7 @@ document.body.appendChild(tab);
 this.elements.tab = tab;
 var panel = document.createElement('div');
 panel.id = 'ble-panel';
-panel.innerHTML = <div class="ble-header"> <button id="ble-back" class="ble-btn-back">&larr;</button> <h3>BLE Mesh</h3> <button id="ble-visibility-btn" class="ble-btn-visibility-round"></button> </div> <div class="ble-status-bar"> <span id="ble-status" class="ble-status-offline">OFFLINE</span> </div> <div id="ble-contacts-list" class="ble-contacts-list"> <div class="ble-empty">No hay contactos. Presiona Descubrir para encontrar dispositivos.</div> </div> <div class="ble-bottom-bar"> <div id="ble-new-device" class="ble-new-device" style="display:none"> <span id="ble-new-device-name"></span> <button id="ble-add-btn" class="ble-btn-add-small">+</button> </div> <button id="ble-scan-btn" class="ble-btn-scan-round"></button> </div>;
+panel.innerHTML = '<div class="ble-header"> <button id="ble-back" class="ble-btn-back">&larr;</button> <h3>BLE Mesh</h3> <button id="ble-visibility-btn" class="ble-btn-visibility-round"></button> </div> <div class="ble-status-bar"> <span id="ble-status" class="ble-status-offline">OFFLINE</span> </div> <div id="ble-contacts-list" class="ble-contacts-list"> <div class="ble-empty">No hay contactos. Presiona Descubrir para encontrar dispositivos.</div> </div> <div class="ble-bottom-bar"> <div id="ble-new-device" class="ble-new-device" style="display:none"> <span id="ble-new-device-name"></span> <button id="ble-add-btn" class="ble-btn-add-small">+</button> </div> <button id="ble-scan-btn" class="ble-btn-scan-round"></button> </div>';
 document.body.appendChild(panel);
 this.elements.panel = panel;
 var overlay = document.createElement('div');
