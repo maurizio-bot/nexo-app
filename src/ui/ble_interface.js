@@ -441,6 +441,9 @@ this._deviceStates.set(nid, stateObj);
 _getDeviceState(deviceMAC) {
 return this._deviceStates.get(_normId(deviceMAC)) || { state: BLE_STATES.DISCONNECTED };
 }
+/* ============================================================
+RECEPCION DE MENSAJES: Anti-crash + Toast de retroalimentacion
+============================================================ */
 _setupNativePayloadListener() {
 if (!this.nativePlugin) return;
 if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
@@ -479,7 +482,10 @@ if (senderUUID && !_isBLEContact(senderUUID) && senderName && senderName !== 'NE
 _addBLEContact({ deviceUUID: senderUUID, name: senderName, macAddress: mac });
 self.renderContactsList();
 }
-if (messageId && self._receivedMessageIds.has(messageId)) return;
+if (messageId && self._receivedMessageIds.has(messageId)) {
+self.showToast('Mensaje duplicado ignorado de ' + senderName, 'warning');
+return;
+}
 if (messageId) {
 self._receivedMessageIds.add(messageId);
 if (self._receivedMessageIds.size > self._maxMessageIds) {
@@ -499,34 +505,56 @@ source: data.source || 'unknown',
 timestamp: data.timestamp || Date.now()
 });
 var activeUUID = self._activeChatDeviceId;
-if (activeUUID && activeUUID === senderUUID) return;
-self.showToast('Mensaje de ' + senderName, 'info');
+if (activeUUID && activeUUID === senderUUID) {
+self.showToast('Mensaje recibido de ' + senderName, 'info');
+return;
+}
+self.showToast('Mensaje nuevo de ' + senderName, 'info');
 self.newDevicesCount++;
 self.updateBadge();
 } catch (e) {
 console.warn('[BLEInterface] Error en onPayloadReceived callback:', e.message);
+self.showToast('Error al recibir mensaje: ' + (e.message || 'desconocido'), 'error');
 }
 });
 }
+/* ============================================================
+ENVIO DE MENSAJES: Anti-crash + Toast de retroalimentacion
+============================================================ */
 async _processPendingMessages(deviceMAC) {
 var nid = _normId(deviceMAC);
-if (!nid) return;
+if (!nid) {
+this.showToast('Error interno: MAC invalida en cola de mensajes', 'error');
+return;
+}
 var queue = this._pendingMessageQueue.get(nid);
 if (!queue || queue.length === 0) return;
 this._pendingMessageQueue.delete(nid);
+var failed = 0;
 for (var i = 0; i < queue.length; i++) {
 var item = queue[i];
 try {
 await this._sendMessageNative(nid, item.content, item.messageId);
 item.resolve();
 } catch (e) {
+failed++;
 item.reject(e);
 }
 }
+if (failed > 0) {
+this.showToast(failed + ' mensaje(s) pendiente(s) no se pudieron enviar', 'error');
+}
 }
 async _sendMessageNative(deviceMAC, content, messageId) {
-if (!this.nativePlugin) throw new Error('Plugin no disponible');
-if (!_isValidMAC(deviceMAC)) throw new Error('MAC invalida');
+try {
+if (!this.nativePlugin) {
+this.showToast('Plugin BLE no disponible para enviar', 'error');
+throw new Error('Plugin no disponible');
+}
+if (!_isValidMAC(deviceMAC)) {
+this.showToast('Direccion MAC invalida para envio', 'error');
+throw new Error('MAC invalida');
+}
 var device = this.connectedDevices.get(_normId(deviceMAC));
 var targetId = (device && device.id) || (device && device.address) || deviceMAC;
 var enrichedPayload = JSON.stringify({
@@ -538,14 +566,31 @@ timestamp: Date.now()
 });
 if (_hasNativeMethod(this.nativePlugin, 'sendMessage')) {
 await _safeNativeCall(this.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload });
+this.showToast('Mensaje enviado por BLE', 'success');
 } else {
+this.showToast('Metodo sendMessage no disponible en plugin', 'error');
 throw new Error('sendMessage no disponible en plugin');
+}
+} catch (e) {
+this.showToast('Fallo al enviar mensaje: ' + (e.message || 'Error desconocido'), 'error');
+throw e;
 }
 }
 sendChatMessage(deviceUUID, content, messageId) {
 var self = this;
 return new Promise(function(resolve, reject) {
+try {
 var uuid = _normId(deviceUUID);
+if (!uuid) {
+self.showToast('Error: ID de dispositivo vacio', 'error');
+reject(new Error('deviceUUID vacio'));
+return;
+}
+if (!content || typeof content !== 'string' || content.trim() === '') {
+self.showToast('Error: Mensaje vacio', 'warning');
+reject(new Error('Mensaje vacio'));
+return;
+}
 var mac = self._uuidToMacMap.get(uuid);
 if (!mac && self._activeChatDeviceId === uuid) {
 mac = self._activeChatMAC;
@@ -559,10 +604,20 @@ if (!mac && _normId(d.deviceUUID) === uuid) mac = m;
 });
 }
 if (!_isValidMAC(mac)) {
+self.showToast('Dispositivo no encontrado para chat. Verifica el contacto.', 'error');
 reject(new Error('Dispositivo no encontrado para chat'));
 return;
 }
-self._sendMessageNative(mac, content, messageId).then(resolve).catch(reject);
+self._sendMessageNative(mac, content, messageId).then(function() {
+resolve();
+}).catch(function(err) {
+self.showToast('No se pudo enviar: ' + (err.message || 'Error BLE'), 'error');
+reject(err);
+});
+} catch (fatal) {
+self.showToast('Error critico al enviar mensaje: ' + (fatal.message || 'desconocido'), 'error');
+reject(fatal);
+}
 });
 }
 async _initVisibility() {
@@ -615,7 +670,7 @@ var btn = this.elements.visibilityBtn;
 if (!btn) return;
 if (this.isAdvertising) {
 btn.classList.add('active');
-btn.style.background = '#00D9FF';
+btn.style.background = '#4169E1';
 btn.style.color = '#000';
 } else {
 btn.classList.remove('active');
@@ -708,52 +763,55 @@ this.elements.newDeviceBar = document.getElementById('ble-new-device');
 this.elements.newDeviceName = document.getElementById('ble-new-device-name');
 this.elements.addBtn = document.getElementById('ble-add-btn');
 }
+/* ============================================================
+COLORES NEXO: Fondo #000, Royal Blue #4169E1, Midnight Navy #191970
+============================================================ */
 injectStyles() {
 if (document.getElementById('ble-styles-v4')) return;
 var style = document.createElement('style');
 style.id = 'ble-styles-v4';
 style.textContent = `
-#ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #00d4ff, #0099cc); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; }
+#ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: linear-gradient(180deg, #4169E1, #191970); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #000; font-weight: bold; }
 .ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-#ble-panel { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0a0a15; transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; display: flex; flex-direction: column; }
+#ble-panel { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000000; transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; display: flex; flex-direction: column; }
 #ble-panel.active { transform: translateX(0); }
 #ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); }
 #ble-overlay.active { display: block; }
 .ble-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #333; }
 .ble-header h3 { margin: 0; font-size: 18px; color: #fff; flex: 1; text-align: center; }
-.ble-btn-back { background: none; border: none; color: #00d4ff; font-size: 24px; cursor: pointer; padding: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
-.ble-btn-visibility-round { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #00d4ff; background: rgba(255,255,255,0.1); color: #888; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
-.ble-btn-visibility-round.active { background: #00D9FF; color: #000; border-color: #00D9FF; box-shadow: 0 0 12px rgba(0,217,255,0.4); }
+.ble-btn-back { background: none; border: none; color: #4169E1; font-size: 24px; cursor: pointer; padding: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+.ble-btn-visibility-round { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #4169E1; background: rgba(255,255,255,0.1); color: #888; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
+.ble-btn-visibility-round.active { background: #4169E1; color: #000; border-color: #4169E1; box-shadow: 0 0 12px rgba(65,105,225,0.4); }
 .ble-btn-visibility-round::before { content: 'EYE'; font-size: 10px; font-weight: bold; }
 .ble-status-bar { padding: 8px 20px; }
 .ble-status-offline { font-size: 12px; color: #888; }
-.ble-status-online { font-size: 12px; color: #00d4ff; }
+.ble-status-online { font-size: 12px; color: #4169E1; }
 .ble-status-scanning { font-size: 12px; color: #ffaa00; animation: blink 1s infinite; }
 @keyframes blink { 0%,50% { opacity: 1; } 51%,100% { opacity: 0.7; } }
 .ble-contacts-list { flex: 1; overflow-y: auto; padding: 0 20px; }
 .ble-contact-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 12px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
-.ble-contact-item:hover { background: rgba(0,212,255,0.1); border-color: #00d4ff; }
-.ble-contact-item.online { border-left: 3px solid #00ff88; }
+.ble-contact-item:hover { background: rgba(65,105,225,0.1); border-color: #4169E1; }
+.ble-contact-item.online { border-left: 3px solid #4169E1; }
 .ble-contact-item.offline { border-left: 3px solid #666; }
 .ble-contact-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .ble-contact-name { font-weight: 600; font-size: 15px; color: #fff; }
 .ble-contact-status { font-size: 11px; color: #888; margin-top: 2px; }
 .ble-contact-actions { display: flex; gap: 8px; }
-.ble-btn-chat { padding: 8px 16px; background: #00d4ff; color: #000; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: bold; }
+.ble-btn-chat { padding: 8px 16px; background: #4169E1; color: #000; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: bold; }
 .ble-btn-remove { padding: 8px 12px; background: #ff4444; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; }
 .ble-empty { text-align: center; color: #666; padding: 40px 20px; font-style: italic; }
 .ble-bottom-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-top: 1px solid #333; gap: 12px; }
-.ble-new-device { display: flex; align-items: center; gap: 10px; flex: 1; background: rgba(0,212,255,0.1); border: 1px solid #00d4ff; border-radius: 12px; padding: 10px 14px; }
+.ble-new-device { display: flex; align-items: center; gap: 10px; flex: 1; background: rgba(65,105,225,0.1); border: 1px solid #4169E1; border-radius: 12px; padding: 10px 14px; }
 .ble-new-device span { color: #fff; font-size: 14px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ble-btn-add-small { width: 36px; height: 36px; border-radius: 50%; background: #00ff88; color: #000; border: none; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.ble-btn-scan-round { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000; border: none; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 15px rgba(0,212,255,0.3); transition: all 0.3s; }
+.ble-btn-add-small { width: 36px; height: 36px; border-radius: 50%; background: #4169E1; color: #000; border: none; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ble-btn-scan-round { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #4169E1, #191970); color: #000; border: none; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 15px rgba(65,105,225,0.3); transition: all 0.3s; }
 .ble-btn-scan-round.scanning { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; animation: pulse-red 1.5s infinite; }
 .ble-btn-scan-round::before { content: 'SCAN'; font-size: 10px; }
 .ble-btn-scan-round.scanning::before { content: 'STOP'; }
 @keyframes pulse-red { 0%,100% { box-shadow: 0 0 0 0 rgba(255,68,68,0.4); } 50% { box-shadow: 0 0 0 10px rgba(255,68,68,0); } }
 .ble-toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: #fff; font-weight: bold; z-index: 2147483646; animation: fadeInUp 0.3s ease; }
-.ble-toast.success { background: #00d4ff; color: #000; }
+.ble-toast.success { background: #4169E1; color: #000; }
 .ble-toast.error { background: #ff4444; }
 .ble-toast.warning { background: #ffaa00; color: #000; }
 .ble-toast.info { background: #444; }
@@ -1015,10 +1073,14 @@ self.showToast('Error al abrir chat: ' + (fatalErr.message || 'desconocido'), 'e
 }
 }
 async removeContact(deviceUUID) {
+try {
 _removeBLEContact(deviceUUID);
 this.showToast('Eliminado', 'info');
 this.renderContactsList();
 this.renderNewDeviceBar();
+} catch (e) {
+this.showToast('Error al eliminar contacto: ' + (e.message || 'desconocido'), 'error');
+}
 }
 async disconnect(deviceMAC) {
 if (this.isDummyMode) return;
@@ -1037,7 +1099,9 @@ this._activeChatDeviceId = null;
 this._activeChatMAC = null;
 this.updateBadge();
 }
-} catch (err) {}
+} catch (err) {
+this.showToast('Error al desconectar: ' + (err.message || 'desconocido'), 'error');
+}
 }
 updateBadge() {
 var badge = document.getElementById('ble-tab-badge');
