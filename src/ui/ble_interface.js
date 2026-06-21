@@ -1,13 +1,11 @@
 /**
- * BLE Interface v4.2.2-ARMORED
- * Base: v4.2.1-FUSION + Protocolo Anti-Crash completo
- * FIX: Validaciones defensivas en TODAS las llamadas al plugin nativo
- * Validacion estricta de MAC/null/undefined strings
- * Try-catch maestro en openChat()
- * Safe wrappers para nativePlugin calls
- * Safe event dispatch
+ * BLE Interface v4.2.3-ARMORED
+ * Base: v4.2.2-ARMORED
+ * FIX: _safeNativeCall ahora envuelve objetos-params correctamente.
+ * FIX: Reconstruccion de MAC/UUID maps desde localStorage al iniciar.
+ * FIX: Sincronizacion de maps al agregar contacto por payload.
  * ES5 syntax compatible con webpack
-   */
+ */
 export function initBLEInterface(bleMesh) {
 var instance = new BLEInterface(bleMesh).init();
 window.bleInterface = instance;
@@ -125,7 +123,17 @@ reject(new Error('Metodo ' + method + ' no disponible en plugin nativo'));
 return;
 }
 try {
-var result = plugin[method].apply(plugin, args || []);
+var callArgs;
+if (Array.isArray(args)) {
+callArgs = args;
+} else if (args) {
+var hasKeys = false;
+for (var k in args) { if (args.hasOwnProperty(k)) { hasKeys = true; break; } }
+callArgs = hasKeys ? [args] : [];
+} else {
+callArgs = [];
+}
+var result = plugin[method].apply(plugin, callArgs);
 if (result && typeof result.then === 'function') {
 result.then(resolve).catch(reject);
 } else {
@@ -200,10 +208,23 @@ this._setupNativePayloadListener();
 this._setupNativeStateListeners();
 this._setupNativeServerReadyListener();
 this._loadLocalDeviceInfo();
+this._rebuildMacMaps();
 this._autoStartAdvertising();
 }
 console.log('[BLEInterface] UUID local:', this.localDeviceUUID);
 return this;
+}
+_rebuildMacMaps() {
+var self = this;
+var contacts = _getBLEContacts();
+contacts.forEach(function(contact) {
+var uuid = _normId(contact.deviceUUID);
+var mac = _normId(contact.macAddress);
+if (uuid && _isValidMAC(mac)) {
+self._macToUuidMap.set(mac, uuid);
+self._uuidToMacMap.set(uuid, mac);
+}
+});
 }
 async _autoStartAdvertising() {
 if (this.isDummyMode || !this.nativePlugin) return;
@@ -479,6 +500,8 @@ senderName = cname
 || 'NEXO Peer';
 }
 if (senderUUID && !_isBLEContact(senderUUID) && senderName && senderName !== 'NEXO Peer') {
+self._macToUuidMap.set(mac, senderUUID);
+self._uuidToMacMap.set(senderUUID, mac);
 _addBLEContact({ deviceUUID: senderUUID, name: senderName, macAddress: mac });
 self.renderContactsList();
 }
@@ -591,7 +614,8 @@ self.showToast('Error: Mensaje vacio', 'warning');
 reject(new Error('Mensaje vacio'));
 return;
 }
-var mac = self._uuidToMacMap.get(uuid);
+var contact = _getContactByUUID(uuid);
+var mac = self._uuidToMacMap.get(uuid) || (contact && _normId(contact.macAddress));
 if (!mac && self._activeChatDeviceId === uuid) {
 mac = self._activeChatMAC;
 }
@@ -607,6 +631,10 @@ if (!_isValidMAC(mac)) {
 self.showToast('Dispositivo no encontrado para chat. Verifica el contacto.', 'error');
 reject(new Error('Dispositivo no encontrado para chat'));
 return;
+}
+if (contact && !_isValidMAC(self._uuidToMacMap.get(uuid))) {
+self._uuidToMacMap.set(uuid, mac);
+self._macToUuidMap.set(mac, uuid);
 }
 self._sendMessageNative(mac, content, messageId).then(function() {
 resolve();
@@ -1006,7 +1034,7 @@ self.showToast('ID de dispositivo invalido', 'warning');
 return;
 }
 var contact = _getContactByUUID(uuid);
-var mac = self._uuidToMacMap.get(uuid) || (contact && contact.macAddress);
+var mac = self._uuidToMacMap.get(uuid) || (contact && _normId(contact.macAddress));
 if (!mac && contact) {
 self.foundDevices.forEach(function(d, m) {
 if (!mac && d.deviceUUID === uuid) mac = m;
