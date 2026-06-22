@@ -4,6 +4,7 @@
  * FIX: _addNewDevice inicia conexion GATT automaticamente al agregar contacto
  * FIX: openChat NO bloquea apertura si canal no esta listo (sendChatMessage maneja conexion)
  * FIX: Workaround onServicesReady fuerza READY_TO_CHAT si onNotificationsEnabled no llega en 3s
+ * FIX v4.2.7a: sendChatMessage usa _activeChatMAC como fallback prioritario
  * ES5 syntax compatible con webpack
  */
 export function initBLEInterface(bleMesh) {
@@ -653,6 +654,7 @@ throw e;
 }
 /* ============================================================
 sendChatMessage: FIX conexion GATT + cache + timeout 350ms
+FIX v4.2.7a: _activeChatMAC como fallback prioritario
 ============================================================ */
 sendChatMessage(deviceUUID, content, messageId) {
 var self = this;
@@ -671,14 +673,14 @@ return;
 }
 var contact = _getContactByUUID(uuid);
 /* ============================================================
-   FIX: Buscar MAC en localStorage si no esta en maps en memoria
+   FIX v4.2.7a: Fallback prioritario a _activeChatMAC
    ============================================================ */
 var mac = self._uuidToMacMap.get(uuid);
+if (!mac && self._activeChatDeviceId === uuid && self._activeChatMAC) {
+mac = self._activeChatMAC;
+}
 if (!mac && contact && contact.macAddress) {
 mac = _normId(contact.macAddress);
-}
-if (!mac && self._activeChatDeviceId === uuid) {
-mac = self._activeChatMAC;
 }
 if (!mac) {
 self.foundDevices.forEach(function(d, m) {
