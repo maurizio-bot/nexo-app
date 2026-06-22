@@ -1,8 +1,9 @@
 /**
- * BLE Interface v4.2.6-ARMORED
- * Base: v4.2.5-ARMORED
- * FIX: sendChatMessage busca MAC en localStorage si no está en _uuidToMacMap
- * FIX: _addNewDevice sincroniza maps inmediatamente
+ * BLE Interface v4.2.7-ARMORED
+ * Base: v4.2.6-ARMORED
+ * FIX: _addNewDevice inicia conexion GATT automaticamente al agregar contacto
+ * FIX: openChat NO bloquea apertura si canal no esta listo (sendChatMessage maneja conexion)
+ * FIX: Workaround onServicesReady fuerza READY_TO_CHAT si onNotificationsEnabled no llega en 3s
  * ES5 syntax compatible con webpack
  */
 export function initBLEInterface(bleMesh) {
@@ -185,6 +186,10 @@ this._reconnectAttemptCounts = new Map();
    OPTIMIZACION: Resolvers event-driven para _waitForReadyToChat
    ============================================================ */
 this._readyResolvers = new Map();
+/* ============================================================
+   WORKAROUND: Timers fallback para onNotificationsEnabled
+   ============================================================ */
+this._notificationFallbackTimers = new Map();
 }
 _detectMeshType() {
 if (!this.bleMesh) return 'none';
@@ -440,6 +445,19 @@ var mac = _normId(data.deviceId);
 self._setDeviceState(mac, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
 var device = self.connectedDevices.get(mac);
 if (device) { device.servicesReady = true; self.connectedDevices.set(mac, device); }
+/* ============================================================
+   WORKAROUND: Si el plugin nativo no emite onNotificationsEnabled,
+   forzar READY_TO_CHAT tras 3s para evitar bloqueo infinito
+   ============================================================ */
+var fallbackTimer = setTimeout(function() {
+var st = self._getDeviceState(mac);
+if (st.state === BLE_STATES.DISCOVERING_SERVICES) {
+console.warn('[BLEInterface] Workaround: forzando READY_TO_CHAT por timeout de notificaciones');
+self._setDeviceState(mac, BLE_STATES.READY_TO_CHAT);
+self._resolveReadyToChat(mac);
+}
+}, 3000);
+self._notificationFallbackTimers.set(mac, fallbackTimer);
 } catch (e) {
 console.warn('[BLEInterface] Error en onServicesReady callback:', e.message);
 }
@@ -447,6 +465,9 @@ console.warn('[BLEInterface] Error en onServicesReady callback:', e.message);
 this._nativeNotificationsListener = this.nativePlugin.addListener('onNotificationsEnabled', function(data) {
 try {
 var mac = _normId(data.deviceId);
+/* Cancelar workaround si llego el evento real */
+var ft = self._notificationFallbackTimers.get(mac);
+if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(mac); }
 var peerUUID = self._macToUuidMap.get(mac);
 self._setDeviceState(mac, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: peerUUID });
 self._resolveReadyToChat(mac);
@@ -458,6 +479,9 @@ console.warn('[BLEInterface] Error en onNotificationsEnabled callback:', e.messa
 this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', function(data) {
 try {
 var mac = _normId(data.deviceId);
+/* Cancelar workaround si existe */
+var ft = self._notificationFallbackTimers.get(mac);
+if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(mac); }
 if (data.recoverable !== false && data.attempt < (data.maxAttempts || 3)) {
 self._setDeviceState(mac, BLE_STATES.CONNECTING, { attempt: data.attempt, message: 'Reintentando...' });
 } else {
@@ -647,7 +671,7 @@ return;
 }
 var contact = _getContactByUUID(uuid);
 /* ============================================================
-   FIX: Buscar MAC en localStorage si no está en maps en memoria
+   FIX: Buscar MAC en localStorage si no esta en maps en memoria
    ============================================================ */
 var mac = self._uuidToMacMap.get(uuid);
 if (!mac && contact && contact.macAddress) {
@@ -709,7 +733,7 @@ self.showToast('Estableciendo canal BLE...', 'info');
 _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: mac })
 .then(function(connResult) {
 if (connResult && (connResult.connected || connResult.alreadyConnected)) {
-return self._waitForReadyToChat(mac, 3000);
+return self._waitForReadyToChat(mac, 5000);
 }
 throw new Error('No se pudo conectar al dispositivo');
 })
@@ -724,7 +748,7 @@ return;
 }
 
 if (!isReady && isConnecting) {
-self._waitForReadyToChat(mac, 3000)
+self._waitForReadyToChat(mac, 5000)
 .then(function() {
 doSend();
 })
@@ -1101,6 +1125,9 @@ bar.style.display = 'none';
 bar.dataset.mac = '';
 }
 }
+/* ============================================================
+_addNewDevice: FIX inicia conexion GATT automaticamente
+============================================================ */
 _addNewDevice() {
 var bar = this.elements.newDeviceBar;
 var mac = bar.dataset.mac;
@@ -1117,13 +1144,54 @@ var tempUUID = 'mac-' + mac.replace(/:/g, '');
 this._macToUuidMap.set(mac, tempUUID);
 this._uuidToMacMap.set(tempUUID, mac);
 _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
+
+/* NUEVO: Iniciar conexion GATT automaticamente al agregar */
+this._autoConnectGATT(mac, device);
+
 this.foundDevices.delete(mac);
 this.renderContactsList();
 this.renderNewDeviceBar();
 this.showToast('Agregado: ' + name, 'success');
 }
 /* ============================================================
-openChat(): TIMEOUT ADAPTATIVO + bloqueo si conexion falla
+_autoConnectGATT: Conecta GATT inmediatamente al agregar contacto
+============================================================ */
+async _autoConnectGATT(mac, device) {
+if (!this.nativePlugin || !_hasNativeMethod(this.nativePlugin, 'connectToDevice')) {
+console.warn('[BLEInterface] Plugin no tiene connectToDevice, skip auto-connect');
+return;
+}
+var nid = _normId(mac);
+var state = this._getDeviceState(nid);
+if (state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.CONNECTING) {
+return;
+}
+this._setDeviceState(nid, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
+this.connectedDevices.set(nid, {
+id: nid,
+address: nid,
+name: (device && device.name) || 'NEXO Peer',
+direction: 'outgoing',
+servicesReady: false,
+deviceUUID: this._macToUuidMap.get(nid)
+});
+try {
+console.log('[BLEInterface] Auto-connect GATT a', nid, '...');
+var result = await _safeNativeCall(this.nativePlugin, 'connectToDevice', { deviceId: nid });
+console.log('[BLEInterface] Auto-connect resultado:', result);
+if (result && (result.connected || result.alreadyConnected)) {
+await this._waitForReadyToChat(nid, 8000);
+console.log('[BLEInterface] Auto-connect exitoso para', nid);
+} else {
+this._setDeviceState(nid, BLE_STATES.DISCONNECTED);
+}
+} catch (e) {
+console.warn('[BLEInterface] Auto-connect GATT fallo:', e.message);
+this._setDeviceState(nid, BLE_STATES.DISCONNECTED);
+}
+}
+/* ============================================================
+openChat(): NO BLOQUEA — abre chat siempre, sendChatMessage maneja conexion
 ============================================================ */
 async openChat(deviceUUID) {
 var self = this;
@@ -1162,7 +1230,26 @@ var lastSeen = contact ? contact.lastSeen : 0;
 var isRecent = lastSeen && (Date.now() - lastSeen) < 30000;
 var timeoutMs = isRecent ? 5000 : 15000;
 
-if (!isFullyReady && isConnecting && self.nativePlugin) {
+/* Si no esta ready, intentar conectar rapido pero NO bloquear apertura */
+if (!isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+if (!isConnecting) {
+try {
+console.log('[BLEInterface] openChat: conectando GATT a', mac, '...');
+var connResult = await _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: mac });
+if (connResult && (connResult.connected || connResult.alreadyConnected)) {
+self.showToast('Conectando canal BLE...', 'info');
+try {
+await self._waitForReadyToChat(mac, timeoutMs);
+isFullyReady = true;
+} catch (e) {
+self.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
+}
+}
+} catch (e) {
+console.warn('[BLEInterface] Conexion GATT en openChat fallo:', e.message);
+self.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
+}
+} else {
 self.showToast('Conexion en progreso, esperando canal...', 'info');
 try {
 await self._waitForReadyToChat(mac, timeoutMs);
@@ -1171,33 +1258,9 @@ isFullyReady = true;
 self.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
 }
 }
-if (!isFullyReady && !isConnecting && self.nativePlugin) {
-try {
-if (!_hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
-self.showToast('Conexion BLE no disponible', 'error');
-return;
 }
-console.log('[BLEInterface] Conectando GATT a', mac, '...');
-var connResult = await _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: mac });
-console.log('[BLEInterface] connectToDevice result:', connResult);
-if (connResult && (connResult.connected || connResult.alreadyConnected)) {
-self.showToast('Conectando canal BLE...', 'info');
-await self._waitForReadyToChat(mac, timeoutMs);
-isFullyReady = true;
-} else {
-self.showToast('No se pudo conectar al dispositivo', 'error');
-return;
-}
-} catch (e) {
-console.warn('[BLEInterface] Conexion GATT fallo:', e.message);
-self.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
-return;
-}
-}
-if (!isFullyReady) {
-self.showToast('Canal BLE no listo. Intente de nuevo.', 'warning');
-return;
-}
+
+/* ABRIR CHAT SIEMPRE — no bloquear */
 var appContainer = document.getElementById('app');
 if (appContainer) appContainer.classList.remove('hidden');
 var nameInput = document.getElementById('chat-contact-name');
@@ -1310,6 +1373,9 @@ clearTimeout(resolver.timer);
 try { resolver.resolve(); } catch(e) {}
 });
 this._readyResolvers.clear();
+/* Limpiar fallback timers */
+this._notificationFallbackTimers.forEach(function(timer) { clearTimeout(timer); });
+this._notificationFallbackTimers.clear();
 var listeners = [
 this._nativeAdStartedListener,
 this._nativeAdFailedListener,
