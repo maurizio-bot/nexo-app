@@ -1,8 +1,7 @@
-
 /**
- * src/main.js - Punto de entrada NEXO v9.2-ARMORED
+ * src/main.js - Punto de entrada NEXO v9.3-ARMORED
  * NAP 2.0 Certified - BLE Soberano P2P
- * v9.2-ARMORED: Protocolo anti-crash aplicado. Validaciones defensivas.
+ * v9.3-ARMORED: Fix contactos v2, versiones sincronizadas, diag BLE mejorado
  * Build #1273 compatible. NO toca nativo.
  */
 
@@ -48,7 +47,7 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   try {
-    console.log('[MAIN] NEXO v9.2-FIXED iniciando...');
+    console.log('[MAIN] NEXO v9.3-ARMORED iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -58,7 +57,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
-    // ─── SHIM INTEGRATION v9.2 ───
+    // ─── SHIM INTEGRATION v9.3 ───
     rem.info('[Shim] Verificando permisos BLE...', 'SHIM_CHECK');
 
     var permissionsGranted = false;
@@ -235,9 +234,9 @@ async function initializeNexoApp() {
       }
     };
 
-    rem.info('[NEXO] App instance v5.0.7-ARMORED', 'NEXO_INIT');
+    rem.info('[NEXO] App instance v5.0.10-ARMORED', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v5.0.7-ARMORED =====', 'INIT_START');
+    rem.info('[init] ===== INICIANDO NEXO v5.0.10-ARMORED =====', 'INIT_START');
 
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(_, reject) {
@@ -254,7 +253,7 @@ async function initializeNexoApp() {
 
     window.NEXO.initialized = true;
     clearTimeout(SAFETY_TIMEOUT);
-    /* FIX: Log de diagnóstico BLE */
+    /* FIX v9.3: Log de diagnóstico BLE detallado */
     try {
       if (window.NEXO.app && window.NEXO.app.bleInterface) {
         var bi = window.NEXO.app.bleInterface;
@@ -376,14 +375,15 @@ function _setupChatHeader() {
         if (window.NEXO.app && window.NEXO.app.activeContact) {
           window.NEXO.app.activeContact.name = newName;
         }
+        /* FIX v9.3: Usar nexo_ble_contacts_v2 (no v1) */
         try {
           var contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v2') || '[]');
           var activeId = window.NEXO.app && window.NEXO.app.activeContact ? window.NEXO.app.activeContact.id : null;
           if (activeId) {
-            var idx = contacts.findIndex(function(c) { return (c.id || c.address) === activeId; });
+            var idx = contacts.findIndex(function(c) { return (c.deviceUUID || c.id || c.address) === activeId; });
             if (idx >= 0) {
               contacts[idx].name = newName;
-              localStorage.setItem('nexo_ble_contacts_v1', JSON.stringify(contacts));
+              localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(contacts));
               rem.info('Contacto renombrado: ' + newName, 'CONTACT_RENAME');
             }
           }
@@ -439,7 +439,9 @@ function _renderMessage(msg) {
     if (!container) return;
 
     var div = document.createElement('div');
-    div.className = 'message ' + (msg._own ? 'own' : 'other');
+    var isOwn = !!msg._own;
+    div.className = 'message ' + (isOwn ? 'own' : 'other');
+    if (msg.pending) div.classList.add('pending');
 
     var sourceBadge = msg._source ? _getSourceIcon(msg._source) : '';
 
@@ -463,6 +465,7 @@ function _getSourceIcon(source) {
     var icons = {
       'ble_nordic': '🔷',
       'ble_hybrid': '📡',
+      'ble_direct': '🔵',
       'relay': '🌐',
       'self': '✓'
     };
