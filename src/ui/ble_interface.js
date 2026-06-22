@@ -1,10 +1,8 @@
 /**
- * BLE Interface v4.2.7-ARMORED
- * Base: v4.2.6-ARMORED
- * FIX: _addNewDevice inicia conexion GATT automaticamente al agregar contacto
- * FIX: openChat NO bloquea apertura si canal no esta listo (sendChatMessage maneja conexion)
- * FIX: Workaround onServicesReady fuerza READY_TO_CHAT si onNotificationsEnabled no llega en 3s
- * FIX v4.2.7a: sendChatMessage usa _activeChatMAC como fallback prioritario
+ * BLE Interface v4.2.8-ARMORED
+ * Base: v4.2.7a-ARMORED
+ * FIX: Fallback MAC absoluto (_activeChatMAC sin condicion UUID match)
+ * FIX: _sendMessageNative acepta estado READY_TO_CHAT como valido
  * ES5 syntax compatible con webpack
  */
 export function initBLEInterface(bleMesh) {
@@ -625,10 +623,15 @@ throw new Error('MAC invalida');
 }
 var nid = _normId(deviceMAC);
 var device = this.connectedDevices.get(nid);
-/* Heartbeat: si no hay device o servicesReady=false y ultimo estado viejo >10s, rechazar */
 var state = this._getDeviceState(nid);
 var stateAge = Date.now() - (state.timestamp || 0);
-if (!device || (!device.servicesReady && stateAge > 10000)) {
+var isStateReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
+/* FIX v4.2.8: Aceptar estado READY_TO_CHAT como valido, no solo connectedDevices.servicesReady */
+if (!device && !isStateReady) {
+this.showToast('Dispositivo no conectado. Reconecte primero.', 'error');
+throw new Error('Dispositivo no conectado');
+}
+if (device && !device.servicesReady && !isStateReady && stateAge > 10000) {
 this.showToast('Dispositivo no conectado. Reconecte primero.', 'error');
 throw new Error('Dispositivo no conectado');
 }
@@ -654,7 +657,7 @@ throw e;
 }
 /* ============================================================
 sendChatMessage: FIX conexion GATT + cache + timeout 350ms
-FIX v4.2.7a: _activeChatMAC como fallback prioritario
+FIX v4.2.8: _activeChatMAC como fallback absoluto (sin condicion UUID)
 TOASTS agregados en cada paso para diagnostico visual
 ============================================================ */
 sendChatMessage(deviceUUID, content, messageId) {
@@ -681,10 +684,10 @@ self.showToast('[PASO 2/7] Mensaje valido (' + content.length + ' chars)', 'info
 /* === PASO 3: Buscar contacto y MAC === */
 var contact = _getContactByUUID(uuid);
 /* ============================================================
-   FIX v4.2.7a: Fallback prioritario a _activeChatMAC
+   FIX v4.2.8: Fallback absoluto a _activeChatMAC sin condicion UUID
    ============================================================ */
 var mac = self._uuidToMacMap.get(uuid);
-if (!mac && self._activeChatDeviceId === uuid && self._activeChatMAC) {
+if (!mac && self._activeChatMAC) {
 mac = self._activeChatMAC;
 self.showToast('[PASO 3/7] MAC desde chat activo: ' + mac.substring(0, 8) + '...', 'info', 1500);
 }
