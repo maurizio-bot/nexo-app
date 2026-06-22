@@ -1,20 +1,23 @@
 /**
- * NEXO App v5.0.9c-ARMORED
- * Base: v5.0.9b-TOASTS
- * FIX: Timeout BLE 350ms -> 15000ms para dar tiempo a conexion GATT completa
+ * NEXO App v5.0.9d-ARMORED-FIXED
+ * Base: v5.0.9c-ARMORED
+ * FIX: Timeout BLE 8000ms -> 15000ms para conexion GATT completa
+ * FIX: Dedup por MAC ademas de UUID
+ * FIX: deviceUUID pasado a _handleMessage
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
-   */
-   import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
-   import { CryptoVault } from '../vault/crypto_vault.js';
-   import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
-   import { NordicMesh } from '../mesh/nordic_mesh.js';
-   import { WebSocketClient } from '../net/web_socket_client.js';
-   import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
-   import { GestureEngine } from '../ui/gesture_engine.js';
-   import { TheStream } from '../stream/the_stream.js';
-   import { rem } from '../ui/rem.js';
-   import { initBLEInterface } from '../ui/ble_interface.js';
+ */
+import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
+import { CryptoVault } from '../vault/crypto_vault.js';
+import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
+import { NordicMesh } from '../mesh/nordic_mesh.js';
+import { WebSocketClient } from '../net/web_socket_client.js';
+import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
+import { GestureEngine } from '../ui/gesture_engine.js';
+import { TheStream } from '../stream/the_stream.js';
+import { rem } from '../ui/rem.js';
+import { initBLEInterface } from '../ui/ble_interface.js';
+
 function withTimeoutNAP(promise, ms, context) {
 var timer;
 var timeoutPromise = new Promise(function(_, reject) {
@@ -22,6 +25,7 @@ timer = setTimeout(function() { reject(new Error('[NAP_TIMEOUT] ' + context)); }
 });
 return Promise.race([promise, timeoutPromise]).finally(function() { if (timer) clearTimeout(timer); });
 }
+
 var DEBUG = {
 rem: rem,
 _logBuffer: [],
@@ -32,7 +36,7 @@ DEBUG._logBuffer.push(entry);
 if (DEBUG._logBuffer.length > 1000) DEBUG._logBuffer.shift();
 console.log('[' + entry.time + '] [' + type.toUpperCase() + ']' + (code ? '[' + code + ']' : '') + ' ' + msg);
 var method = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warn' ? 'warn' : 'info';
-if (code) rem[method](msg, code); else remmethod;
+if (code) rem[method](msg, code); else rem[method](msg);
 },
 error: function(code, msg) { DEBUG.log(msg, 'error', code); },
 success: function(msg, code) { DEBUG.log(msg, 'success', code); },
@@ -41,6 +45,7 @@ setPhase: function(p) { rem.updatePhase(p); },
 setMode: function(m) { rem.updateMode(m); },
 setIdentity: function(id) { if (id) rem.updateIdentity(id); }
 };
+
 /* ============================================================
 HELPERS DEFENSIVOS
 ============================================================ */
@@ -63,6 +68,7 @@ try { return JSON.stringify(obj); } catch (e) { return '{}'; }
 function _normId(id) {
 return (id || '').toString().toLowerCase().trim();
 }
+
 class NexoApp {
 constructor(config) {
 config = config || {};
@@ -100,7 +106,7 @@ this._bleMessageHandler = null;
 this._messageDedupMap = new Map();
 this._maxProcessedIds = 1000;
 this._dedupTTL = 300000;
-DEBUG.log('NEXO v5.0.9-ARMORED iniciando...', 'info', 'APP_INIT');
+DEBUG.log('NEXO v5.0.9d-ARMORED iniciando...', 'info', 'APP_INIT');
 }
 async init() {
 if (this.initialized) { DEBUG.warn('Already initialized', 'APP_SKIP'); return this; }
@@ -119,7 +125,7 @@ await this._initPhase6_Bridge();
 await this._initPhase7_UI();
 this.initialized = true;
 DEBUG.setPhase('READY');
-DEBUG.success('NEXO v5.0.9-ARMORED Ready', 'APP_READY');
+DEBUG.success('NEXO v5.0.9d-ARMORED Ready', 'APP_READY');
 } catch (err) {
 DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
 await this._partialCleanup();
@@ -217,9 +223,7 @@ window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 this._bleMessageHandler = function(e) {
 try {
 var detail = e.detail || {};
-/* ============================================================
-FIX DEDUPLICACION BROADCAST: Descartar mensajes propios
-============================================================ */
+/* FIX DEDUPLICACION BROADCAST: Descartar mensajes propios */
 var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
 var senderUUID = detail.deviceUUID || '';
 var senderMAC = detail.macAddress || '';
@@ -303,20 +307,15 @@ case 'offline': if ((!this.mesh || !this.mesh.getPeerCount || this.mesh.getPeerC
 _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 /* ============================================================
 ENVIO DE MENSAJES: Anti-crash + Render Lazy + Transport Priority
-TOASTS agregados en cada paso para diagnostico visual
-FIX v5.0.9c: Timeout BLE 350ms -> 15000ms (tiempo real GATT)
+FIX v5.0.9d: Timeout BLE 8000ms -> 15000ms (tiempo real GATT)
 ============================================================ */
 async sendMessage(msg) {
-/* === PASO 0: Validar estado de la app === */
 if (!this.initialized || this._isDestroyed) {
 DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
 if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 0/10] Error: App no inicializada', 'error');
+this.bleInterface.showToast('Error: App no inicializada', 'error');
 }
 return false;
-}
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 0/10] App inicializada OK', 'info', 1500);
 }
 try {
 var messageId = msg.messageId || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
@@ -325,35 +324,18 @@ var content = isObject ? (msg.content || msg) : msg;
 var recipient = isObject ? msg.recipient : null;
 var targetId = recipient || (this.activeContact ? this.activeContact.id : null);
 var targetTransport = this.activeContact ? this.activeContact.transport : null;
-/* === PASO 1: Validar contenido === */
 if (!content || (typeof content === 'string' && content.trim() === '')) {
 if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 1/10] Error: Escribe un mensaje', 'warning');
+this.bleInterface.showToast('Error: Escribe un mensaje', 'warning');
 }
 return false;
 }
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 1/10] Contenido valido (' + (typeof content === 'string' ? content.length : 'obj') + ' chars)', 'info', 1500);
-}
-/* === PASO 2: Verificar targetId === */
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 2/10] Target ID: ' + (targetId ? targetId.substring(0, 8) : 'NULL') + ' Transport: ' + (targetTransport || 'null'), 'info', 1500);
-}
 /* === PASO 3: Intentar BLE directo === */
 if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 3/10] BLE directo: contacto BLE + sendChatMessage disponible', 'info', 1500);
-}
 try {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 4/10] Llamando sendChatMessage...', 'info', 1500);
-}
 console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
-/* FIX v5.0.9c: 350ms -> 15000ms para dar tiempo a conexion GATT completa */
-await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 8000, 'BLE.sendChatMessage');
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 5/10] sendChatMessage respondio OK', 'success', 1500);
-}
+/* FIX v5.0.9d: 15000ms para dar tiempo a conexion GATT completa */
+await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
 this._handleMessage({
 content: content,
 _own: true,
@@ -365,126 +347,62 @@ messageId: messageId
 }, 'self');
 DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
 if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 6/10] Mensaje renderizado en chat', 'success', 1500);
 this.bleInterface.showToast('Mensaje enviado', 'success');
 }
 return true;
 } catch (e) {
 DEBUG.warn('BLE directo fallo: ' + (e.message || 'unknown'), 'MSG_BLE_FAIL');
 if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 4/10] sendChatMessage FALLO: ' + (e.message || 'Timeout'), 'error', 3000);
 this.bleInterface.showToast('Fallo envio BLE: ' + (e.message || 'Error desconocido'), 'error');
 }
 }
-} else {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 3/10] BLE directo: NO aplica (targetId=' + !!targetId + ' transport=' + targetTransport + ' bleInterface=' + !!this.bleInterface + ')', 'warning', 2000);
-}
 }
 /* === PASO 7: Intentar Nordic Mesh === */
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 7/10] Intentando Nordic Mesh...', 'info', 1500);
-}
 var nordicPeers = this.nordicMesh && this.nordicMesh.getPeers ? this.nordicMesh.getPeers() : [];
 if (nordicPeers.length > 0) {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 7/10] Nordic peers: ' + nordicPeers.length, 'info', 1500);
-}
 try {
 await this.nordicMesh.sendMessage(nordicPeers[0].id, content);
 DEBUG.success('Sent via Nordic', 'MSG_NORDIC');
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 7/10] Nordic OK', 'success', 1500);
-}
 return true;
 }
 catch (e) {
 DEBUG.error('NORDIC_009', 'Send failed: ' + (e.message || 'unknown'));
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 7/10] Nordic FALLO: ' + (e.message || 'unknown'), 'error', 1500);
-}
-}
-} else {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 7/10] Nordic: no peers', 'warning', 1500);
 }
 }
 /* === PASO 8: Intentar Hybrid Mesh === */
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 8/10] Intentando Hybrid Mesh...', 'info', 1500);
-}
 if (this.mesh && this.mesh.getPeerCount && this.mesh.getPeerCount() > 0) {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 8/10] Hybrid peers: ' + this.mesh.getPeerCount(), 'info', 1500);
-}
 try {
 await this.mesh.broadcast({ content: content });
 DEBUG.success('Sent via Hybrid', 'MSG_HYBRID');
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 8/10] Hybrid OK', 'success', 1500);
-}
 return true;
 }
 catch (e) {
 DEBUG.error('MESH_005', 'Broadcast failed: ' + (e.message || 'unknown'));
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 8/10] Hybrid FALLO: ' + (e.message || 'unknown'), 'error', 1500);
-}
-}
-} else {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 8/10] Hybrid: no peers', 'warning', 1500);
 }
 }
 /* === PASO 9: Intentar Bridge === */
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 9/10] Intentando Bridge...', 'info', 1500);
-}
 if (this.bridge) {
 var result = await this.bridge.send({ content: content });
 if (result) {
 DEBUG.success('Sent via Bridge', 'MSG_BRIDGE');
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 9/10] Bridge OK', 'success', 1500);
-}
 return true;
-} else {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 9/10] Bridge: no envio', 'warning', 1500);
-}
-}
-} else {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 9/10] Bridge: no disponible', 'warning', 1500);
 }
 }
 /* === PASO 10: Intentar WebSocket === */
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 10/10] Intentando WebSocket...', 'info', 1500);
-}
 if (this.wsClient && this.wsClient.isConnected && this.wsClient.isConnected()) {
 this.wsClient.send({ content: content });
 DEBUG.success('Sent via WebSocket', 'MSG_WS');
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 10/10] WebSocket OK', 'success', 1500);
-}
 return true;
-} else {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO 10/10] WebSocket: no conectado', 'warning', 1500);
-}
 }
 /* === FALLO: Ningun transporte disponible === */
 DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
 if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO FINAL] NINGUN TRANSPORTE DISPONIBLE', 'error', 4000);
 this.bleInterface.showToast('No hay dispositivos NEXO disponibles. Mensaje no enviado.', 'warning');
 }
 return false;
 } catch (err) {
 DEBUG.error('APP_008', 'SendMessage critical: ' + (err.message || 'unknown'));
 if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('[PASO CRITICO] Error: ' + (err.message || 'desconocido'), 'error', 4000);
 this.bleInterface.showToast('Error critico al enviar: ' + (err.message || 'desconocido'), 'error');
 }
 return false;
