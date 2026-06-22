@@ -1,8 +1,9 @@
 /**
- * BLE Interface v4.2.8-ARMORED
- * Base: v4.2.7a-ARMORED
- * FIX: Fallback MAC absoluto (_activeChatMAC sin condicion UUID match)
- * FIX: _sendMessageNative acepta estado READY_TO_CHAT como valido
+ * BLE Interface v4.2.8-ARMORED-FIXED
+ * Base: v4.2.8-ARMORED
+ * FIX: MAC maps persistidos en localStorage (_saveMacMaps/_loadMacMaps)
+ * FIX: Fallback a localStorage en sendChatMessage
+ * FIX: 5 puntos de guardado automático de maps
  * ES5 syntax compatible con webpack
  */
 export function initBLEInterface(bleMesh) {
@@ -12,6 +13,36 @@ return instance;
 }
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
+var BLE_MAC_MAP_STORAGE_KEY = 'nexo_ble_mac_map_v1';
+var BLE_UUID_MAP_STORAGE_KEY = 'nexo_ble_uuid_map_v1';
+
+function _saveMacMaps(uuidToMacMap, macToUuidMap) {
+try {
+var u2m = {};
+uuidToMacMap.forEach(function(v, k) { u2m[k] = v; });
+var m2u = {};
+macToUuidMap.forEach(function(v, k) { m2u[k] = v; });
+localStorage.setItem(BLE_MAC_MAP_STORAGE_KEY, JSON.stringify(u2m));
+localStorage.setItem(BLE_UUID_MAP_STORAGE_KEY, JSON.stringify(m2u));
+} catch (e) {
+console.warn('[BLEInterface] No se pudieron guardar MAC maps:', e.message);
+}
+}
+
+function _loadMacMaps() {
+try {
+var u2mRaw = localStorage.getItem(BLE_MAC_MAP_STORAGE_KEY);
+var m2uRaw = localStorage.getItem(BLE_UUID_MAP_STORAGE_KEY);
+return {
+uuidToMac: u2mRaw ? JSON.parse(u2mRaw) : {},
+macToUuid: m2uRaw ? JSON.parse(m2uRaw) : {}
+};
+} catch (e) {
+console.warn('[BLEInterface] No se pudieron cargar MAC maps:', e.message);
+return { uuidToMac: {}, macToUuid: {} };
+}
+}
+
 function _generateUUID() {
 return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
 var r = Math.random() * 16 | 0;
@@ -181,6 +212,19 @@ this._uuidToMacMap = new Map();
 this._pendingAdds = new Map();
 this._maxReconnectAttempts = 10;
 this._reconnectAttemptCounts = new Map();
+/* FIX: Cargar maps desde localStorage */
+var loadedMaps = _loadMacMaps();
+for (var k in loadedMaps.uuidToMac) {
+if (loadedMaps.uuidToMac.hasOwnProperty(k)) {
+this._uuidToMacMap.set(k, loadedMaps.uuidToMac[k]);
+}
+}
+for (var k in loadedMaps.macToUuid) {
+if (loadedMaps.macToUuid.hasOwnProperty(k)) {
+this._macToUuidMap.set(k, loadedMaps.macToUuid[k]);
+}
+}
+console.log('[BLEInterface] MAC maps cargados:', this._uuidToMacMap.size, 'entradas');
 /* ============================================================
    OPTIMIZACION: Resolvers event-driven para _waitForReadyToChat
    ============================================================ */
@@ -360,6 +404,8 @@ uuid = 'mac-' + mac.replace(/:/g, '');
 this._macToUuidMap.set(mac, uuid);
 this._uuidToMacMap.set(uuid, mac);
 }
+/* FIX: Guardar maps en localStorage */
+_saveMacMaps(this._uuidToMacMap, this._macToUuidMap);
 var contactName = pending.name || 'NEXO Peer';
 _addBLEContact({ deviceUUID: uuid, name: contactName, macAddress: mac });
 this.showToast('Agregado: ' + contactName, 'success');
@@ -545,6 +591,8 @@ senderName = cname
 if (senderUUID && !_isBLEContact(senderUUID) && senderName && senderName !== 'NEXO Peer') {
 self._macToUuidMap.set(mac, senderUUID);
 self._uuidToMacMap.set(senderUUID, mac);
+/* FIX: Guardar maps en localStorage */
+_saveMacMaps(self._uuidToMacMap, self._macToUuidMap);
 _addBLEContact({ deviceUUID: senderUUID, name: senderName, macAddress: mac });
 self.renderContactsList();
 }
@@ -709,9 +757,17 @@ var allContacts = _getBLEContacts();
 for (var i = 0; i < allContacts.length; i++) {
 if (_normId(allContacts[i].deviceUUID) === uuid && allContacts[i].macAddress) {
 mac = _normId(allContacts[i].macAddress);
-self.showToast('[PASO 3/7] MAC desde localStorage: ' + mac.substring(0, 8) + '...', 'info', 1500);
+self.showToast('[PASO 3/7] MAC desde contactos: ' + mac.substring(0, 8) + '...', 'info', 1500);
 break;
 }
+}
+}
+/* FIX: Fallback a localStorage maps */
+if (!mac) {
+var loaded = _loadMacMaps();
+if (loaded.uuidToMac[uuid]) {
+mac = loaded.uuidToMac[uuid];
+self.showToast('[PASO 3/7] MAC desde localStorage maps: ' + mac.substring(0, 8) + '...', 'info', 1500);
 }
 }
 if (!mac) {
@@ -726,6 +782,8 @@ self.showToast('[PASO 3/7] MAC resuelta: ' + mac, 'info', 1500);
 if (contact && !_isValidMAC(self._uuidToMacMap.get(uuid))) {
 self._uuidToMacMap.set(uuid, mac);
 self._macToUuidMap.set(mac, uuid);
+/* FIX: Guardar maps en localStorage */
+_saveMacMaps(self._uuidToMacMap, self._macToUuidMap);
 }
 
 /* === PASO 4: Verificar estado de conexion === */
@@ -1176,9 +1234,12 @@ if (existingByName && name !== 'NEXO Peer' && name !== 'NEXO Device') {
 this.showToast('Ya tienes un contacto con ese nombre', 'warning');
 return;
 }
+/* FIX: Usar UUID estable basado en MAC */
 var tempUUID = 'mac-' + mac.replace(/:/g, '');
 this._macToUuidMap.set(mac, tempUUID);
 this._uuidToMacMap.set(tempUUID, mac);
+/* FIX: Guardar maps en localStorage */
+_saveMacMaps(this._uuidToMacMap, this._macToUuidMap);
 _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
 
 /* NUEVO: Iniciar conexion GATT automaticamente al agregar */
@@ -1265,6 +1326,8 @@ self._activeChatDeviceId = uuid;
 self._activeChatMAC = mac;
 self.newDevicesCount = 0;
 self.updateBadge();
+/* FIX: Guardar maps en localStorage */
+_saveMacMaps(self._uuidToMacMap, self._macToUuidMap);
 
 self.showToast('[openChat] PASO 3/5: Verificando estado BLE...', 'info', 1500);
 var state = self._getDeviceState(mac);
