@@ -1,3 +1,4 @@
+
 /**
  * src/main.js - Punto de entrada NEXO v9.2-ARMORED
  * NAP 2.0 Certified - BLE Soberano P2P
@@ -47,6 +48,8 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   try {
+    console.log('[MAIN] NEXO v9.2-FIXED iniciando...');
+    console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
     _ensureDOMStructure();
@@ -251,6 +254,20 @@ async function initializeNexoApp() {
 
     window.NEXO.initialized = true;
     clearTimeout(SAFETY_TIMEOUT);
+    /* FIX: Log de diagnóstico BLE */
+    try {
+      if (window.NEXO.app && window.NEXO.app.bleInterface) {
+        var bi = window.NEXO.app.bleInterface;
+        console.log('[MAIN] BLE Interface estado:', {
+          localUUID: bi.localDeviceUUID,
+          localMAC: bi.localDeviceAddress,
+          activeChatMAC: bi._activeChatMAC,
+          activeChatId: bi._activeChatDeviceId,
+          mapSize: bi._uuidToMacMap ? bi._uuidToMacMap.size : 0,
+          contacts: bi._getBLEContacts ? bi._getBLEContacts().length : 0
+        });
+      }
+    } catch (logErr) { console.warn('[MAIN] Log BLE error:', logErr); }
 
     _setupMessageInput();
     _setupVaultToggle();
@@ -360,7 +377,7 @@ function _setupChatHeader() {
           window.NEXO.app.activeContact.name = newName;
         }
         try {
-          var contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v1') || '[]');
+          var contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v2') || '[]');
           var activeId = window.NEXO.app && window.NEXO.app.activeContact ? window.NEXO.app.activeContact.id : null;
           if (activeId) {
             var idx = contacts.findIndex(function(c) { return (c.id || c.address) === activeId; });
