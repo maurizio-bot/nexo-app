@@ -1,7 +1,7 @@
 /**
- * NEXO App v5.0.9b-TOASTS
- * Base: v5.0.9-ARMORED
- * FIX: Toasts en cada paso del flujo sendMessage para diagnostico visual
+ * NEXO App v5.0.9c-ARMORED
+ * Base: v5.0.9b-TOASTS
+ * FIX: Timeout BLE 350ms -> 15000ms para dar tiempo a conexion GATT completa
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
  */
@@ -317,6 +317,7 @@ class NexoApp {
   /* ============================================================
      ENVIO DE MENSAJES: Anti-crash + Render Lazy + Transport Priority
      TOASTS agregados en cada paso para diagnostico visual
+     FIX v5.0.9c: Timeout BLE 350ms -> 15000ms (tiempo real GATT)
      ============================================================ */
   async sendMessage(msg) {
     /* === PASO 0: Validar estado de la app === */
@@ -364,7 +365,8 @@ class NexoApp {
             this.bleInterface.showToast('[PASO 4/10] Llamando sendChatMessage...', 'info', 1500);
           }
           console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
-          await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 350, 'BLE.sendChatMessage');
+          /* FIX v5.0.9c: 350ms -> 15000ms para dar tiempo a conexion GATT completa */
+          await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
           if (this.bleInterface && this.bleInterface.showToast) {
             this.bleInterface.showToast('[PASO 5/10] sendChatMessage respondio OK', 'success', 1500);
           }
