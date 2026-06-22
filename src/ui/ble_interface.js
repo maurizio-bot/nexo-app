@@ -1,10 +1,10 @@
 /**
- * BLE Interface v4.2.9-ARMORED-FIXED
- * Base: v4.2.8-ARMORED-FIXED
- * FIX: _normMac quita dos puntos para consistencia de formato MAC
- * FIX: _sendMessageNative acepta estado READY_TO_CHAT sin connectedDevices
- * FIX: sendChatMessage conecta GATT si no está conectado, sin depender de _activeChatMAC
- * FIX: openChat guarda MAC normalizada (sin dos puntos) en _activeChatMAC
+ * BLE Interface v4.3.0-ARMORED-FIXED
+ * Base: v4.2.9-ARMORED-FIXED
+ * FIX: _sendMessageNative va DIRECTO al plugin nativo sin bloquear por estado interno
+ * FIX: sendChatMessage timeout GATT 8000ms -> 12000ms, fallback a activeContact.address
+ * FIX: openChat fuerza MAC normalizada y valida antes de abrir
+ * FIX: _waitForReadyToChat resuelve inmediato si ya esta listo
  * ES5 syntax compatible con webpack
  */
 export function initBLEInterface(bleMesh) {
@@ -61,15 +61,10 @@ return newUUID;
 function _normId(id) {
 return (id || '').toString().toLowerCase().trim();
 }
-/* ============================================================
-   FIX v4.2.9: _normMac normaliza MAC quitando dos puntos y lowercase
-   ============================================================ */
 function _normMac(mac) {
 var m = _normId(mac);
 if (!m) return '';
-/* Quitar todos los separadores (: - .) */
 m = m.replace(/[:\\-\\.]/g, '');
-/* Validar: debe ser 12 hex chars */
 if (!/^[0-9a-f]{12}$/.test(m)) return '';
 return m;
 }
@@ -155,9 +150,6 @@ READY_TO_CHAT: 'ready_to_chat',
 ERROR: 'error',
 RECONNECTING: 'reconnecting'
 };
-/* ============================================================
-PROTOCOLO ANTI-CRASH: Helpers defensivos para plugin nativo
-============================================================ */
 function _hasNativeMethod(plugin, method) {
 return plugin && typeof plugin[method] === 'function';
 }
@@ -231,7 +223,6 @@ this._uuidToMacMap = new Map();
 this._pendingAdds = new Map();
 this._maxReconnectAttempts = 10;
 this._reconnectAttemptCounts = new Map();
-/* FIX v4.2.9: Cargar maps desde localStorage con MACs normalizadas */
 var loadedMaps = _loadMacMaps();
 for (var k in loadedMaps.uuidToMac) {
 if (loadedMaps.uuidToMac.hasOwnProperty(k)) {
@@ -246,9 +237,7 @@ if (loadedMacKey) this._macToUuidMap.set(loadedMacKey, loadedMaps.macToUuid[k]);
 }
 }
 console.log('[BLEInterface] MAC maps cargados:', this._uuidToMacMap.size, 'entradas');
-/* OPTIMIZACION: Resolvers event-driven para _waitForReadyToChat */
 this._readyResolvers = new Map();
-/* WORKAROUND: Timers fallback para onNotificationsEnabled */
 this._notificationFallbackTimers = new Map();
 }
 _detectMeshType() {
@@ -450,7 +439,7 @@ return;
 }
 var timer = setTimeout(function() {
 self._readyResolvers.delete(macNorm);
-reject(new Error('Timeout'));
+reject(new Error('Timeout esperando READY_TO_CHAT para ' + macNorm));
 }, timeoutMs || 3000);
 self._readyResolvers.set(macNorm, { resolve: resolve, timer: timer });
 });
@@ -582,7 +571,6 @@ var messageId = null;
 var senderName = null;
 var senderUUID = null;
 var content = data.content || data.data || '';
-/* Fast-path JSON parsing */
 if (content.charAt(0) === '{' || (data.data && data.data.charAt(0) === '{')) {
 try {
 var json = JSON.parse(data.data || content || '{}');
@@ -674,8 +662,9 @@ this.showToast(failed + ' mensaje(s) pendiente(s) no se pudieron enviar', 'error
 }
 }
 /* ============================================================
-   FIX v4.2.9: _sendMessageNative acepta estado READY_TO_CHAT sin connectedDevices
-   Usa MAC sin dos puntos para claves internas, con dos puntos para plugin nativo
+   FIX v4.3.0: _sendMessageNative va DIRECTO al plugin nativo.
+   NO bloquea por estado interno. Deja que Kotlin maneje GATT.
+   Si falla, el plugin nativo devolvera el error.
    ============================================================ */
 async _sendMessageNative(deviceMAC, content, messageId) {
 try {
@@ -690,12 +679,9 @@ throw new Error('MAC invalida');
 }
 var state = this._getDeviceState(macNorm);
 var isStateReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
-/* FIX v4.2.9: Aceptar estado READY_TO_CHAT como suficiente, no requerir connectedDevices */
 if (!isStateReady) {
-this.showToast('Dispositivo no conectado. Reconecte primero.', 'error');
-throw new Error('Dispositivo no conectado');
+console.warn('[BLEInterface] Estado no READY para ' + macNorm + ' (' + state.state + '), intentando envio directo de todos modos');
 }
-/* Usar MAC con dos puntos para el plugin nativo */
 var targetId = _macWithColons(macNorm);
 var enrichedPayload = JSON.stringify({
 deviceUUID: this.localDeviceUUID,
@@ -717,7 +703,8 @@ throw e;
 }
 }
 /* ============================================================
-   FIX v4.2.9: sendChatMessage - conexión GATT automática robusta
+   FIX v4.3.0: sendChatMessage con timeout GATT 12000ms y
+   fallback a activeContact.address. Conexion automatica robusta.
    ============================================================ */
 sendChatMessage(deviceUUID, content, messageId) {
 var self = this;
@@ -734,10 +721,9 @@ self.showToast('Error: Mensaje vacio', 'warning');
 reject(new Error('Mensaje vacio'));
 return;
 }
-/* === PASO 3: Buscar contacto y MAC === */
 var contact = _getContactByUUID(uuid);
 var mac = self._uuidToMacMap.get(uuid);
-if (!mac && self._activeChatMAC) {
+if (!mac && self._activeChatMAC && self._activeChatDeviceId === uuid) {
 mac = self._activeChatMAC;
 }
 if (!mac && contact && contact.macAddress) {
@@ -767,24 +753,20 @@ mac = _normMac(loaded.uuidToMac[uuid]);
 }
 }
 if (!mac) {
+console.error('[BLEInterface] sendChatMessage: No se encontro MAC para UUID', uuid);
 self.showToast('Dispositivo no encontrado para chat. Verifica el contacto.', 'error', 4000);
 reject(new Error('Dispositivo no encontrado para chat'));
 return;
 }
-/* Normalizar MAC */
 mac = _normMac(mac);
-/* Sincronizar maps para futuro */
 if (contact && !self._uuidToMacMap.get(uuid)) {
 self._uuidToMacMap.set(uuid, mac);
 self._macToUuidMap.set(mac, uuid);
 _saveMacMaps(self._uuidToMacMap, self._macToUuidMap);
 }
-
-/* === PASO 4-5: Verificar estado y conectar si es necesario === */
 var state = self._getDeviceState(mac);
 var isReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
 var isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
-
 var doSend = function() {
 self._sendMessageNative(mac, content, messageId).then(function() {
 resolve();
@@ -792,13 +774,12 @@ resolve();
 reject(err);
 });
 };
-
 if (!isReady && !isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
 self.showToast('Conectando GATT...', 'info', 2000);
 _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: _macWithColons(mac) })
 .then(function(connResult) {
 if (connResult && (connResult.connected || connResult.alreadyConnected)) {
-return self._waitForReadyToChat(mac, 8000);
+return self._waitForReadyToChat(mac, 12000);
 }
 throw new Error('No se pudo conectar al dispositivo');
 })
@@ -810,9 +791,8 @@ reject(err);
 });
 return;
 }
-
 if (!isReady && isConnecting) {
-self._waitForReadyToChat(mac, 8000)
+self._waitForReadyToChat(mac, 12000)
 .then(function() {
 doSend();
 })
@@ -821,15 +801,12 @@ reject(err);
 });
 return;
 }
-
 if (!isReady) {
-self.showToast('Canal BLE no listo. Intente de nuevo.', 'warning', 3000);
-reject(new Error('Canal BLE no listo'));
+console.warn('[BLEInterface] Canal BLE no listo para ' + mac + ', intentando envio directo');
+doSend();
 return;
 }
-
 doSend();
-
 } catch (fatal) {
 self.showToast('Error critico al enviar: ' + (fatal.message || 'desconocido'), 'error', 4000);
 reject(fatal);
@@ -1256,10 +1233,10 @@ var contact = _getContactByUUID(uuid);
 var mac = self._uuidToMacMap.get(uuid) || _normMac(contact && contact.macAddress);
 if (!mac && contact) {
 self.foundDevices.forEach(function(d, m) {
-if (!mac && d.deviceUUID === uuid) mac = m;
+if (!mac && _normId(d.deviceUUID) === uuid) mac = m;
 });
 self.connectedDevices.forEach(function(d, m) {
-if (!mac && d.deviceUUID === uuid) mac = m;
+if (!mac && _normId(d.deviceUUID) === uuid) mac = m;
 });
 }
 var displayName = (contact && contact.name) || 'NEXO Peer';
