@@ -655,22 +655,30 @@ throw e;
 /* ============================================================
 sendChatMessage: FIX conexion GATT + cache + timeout 350ms
 FIX v4.2.7a: _activeChatMAC como fallback prioritario
+TOASTS agregados en cada paso para diagnostico visual
 ============================================================ */
 sendChatMessage(deviceUUID, content, messageId) {
 var self = this;
 return new Promise(function(resolve, reject) {
 try {
+/* === PASO 1: Validar UUID === */
 var uuid = _normId(deviceUUID);
 if (!uuid) {
-self.showToast('Error: ID de dispositivo vacio', 'error');
+self.showToast('[PASO 1/7] Error: ID de dispositivo vacio', 'error');
 reject(new Error('deviceUUID vacio'));
 return;
 }
+self.showToast('[PASO 1/7] UUID valido: ' + uuid.substring(0, 8) + '...', 'info', 1500);
+
+/* === PASO 2: Validar mensaje === */
 if (!content || typeof content !== 'string' || content.trim() === '') {
-self.showToast('Error: Mensaje vacio', 'warning');
+self.showToast('[PASO 2/7] Error: Mensaje vacio', 'warning');
 reject(new Error('Mensaje vacio'));
 return;
 }
+self.showToast('[PASO 2/7] Mensaje valido (' + content.length + ' chars)', 'info', 1500);
+
+/* === PASO 3: Buscar contacto y MAC === */
 var contact = _getContactByUUID(uuid);
 /* ============================================================
    FIX v4.2.7a: Fallback prioritario a _activeChatMAC
@@ -678,9 +686,11 @@ var contact = _getContactByUUID(uuid);
 var mac = self._uuidToMacMap.get(uuid);
 if (!mac && self._activeChatDeviceId === uuid && self._activeChatMAC) {
 mac = self._activeChatMAC;
+self.showToast('[PASO 3/7] MAC desde chat activo: ' + mac.substring(0, 8) + '...', 'info', 1500);
 }
 if (!mac && contact && contact.macAddress) {
 mac = _normId(contact.macAddress);
+self.showToast('[PASO 3/7] MAC desde contacto: ' + mac.substring(0, 8) + '...', 'info', 1500);
 }
 if (!mac) {
 self.foundDevices.forEach(function(d, m) {
@@ -696,80 +706,101 @@ var allContacts = _getBLEContacts();
 for (var i = 0; i < allContacts.length; i++) {
 if (_normId(allContacts[i].deviceUUID) === uuid && allContacts[i].macAddress) {
 mac = _normId(allContacts[i].macAddress);
+self.showToast('[PASO 3/7] MAC desde localStorage: ' + mac.substring(0, 8) + '...', 'info', 1500);
 break;
 }
 }
 }
-if (!_isValidMAC(mac)) {
-self.showToast('Dispositivo no encontrado para chat. Verifica el contacto.', 'error');
+if (!mac) {
+self.showToast('[PASO 3/7] MAC NO ENCONTRADA para UUID ' + uuid.substring(0, 8), 'error', 4000);
+self.showToast('Dispositivo no encontrado para chat. Verifica el contacto.', 'error', 4000);
 reject(new Error('Dispositivo no encontrado para chat'));
 return;
 }
+self.showToast('[PASO 3/7] MAC resuelta: ' + mac, 'info', 1500);
+
 /* Sincronizar maps para futuro */
 if (contact && !_isValidMAC(self._uuidToMacMap.get(uuid))) {
 self._uuidToMacMap.set(uuid, mac);
 self._macToUuidMap.set(mac, uuid);
 }
 
-var doSend = function() {
-self._sendMessageNative(mac, content, messageId).then(function() {
-resolve();
-}).catch(function(err) {
-self.showToast('Fallo envio: ' + (err.message || 'Error BLE'), 'error');
-reject(err);
-});
-};
-
+/* === PASO 4: Verificar estado de conexion === */
 var state = self._getDeviceState(mac);
 var isReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
 var isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
-
 /* Cache: si connectedDevices tiene servicesReady, saltar conexion */
 var cachedDevice = self.connectedDevices.get(_normId(mac));
 if (cachedDevice && cachedDevice.servicesReady) {
 isReady = true;
+self.showToast('[PASO 4/7] Cache: device con servicesReady', 'info', 1500);
+} else if (isReady) {
+self.showToast('[PASO 4/7] Estado: READY_TO_CHAT', 'info', 1500);
+} else if (isConnecting) {
+self.showToast('[PASO 4/7] Estado: CONECTANDO...', 'warning', 1500);
+} else {
+self.showToast('[PASO 4/7] Estado: DESCONECTADO — intentando conectar', 'warning', 1500);
 }
 
+/* === PASO 5: Conectar si es necesario === */
+var doSend = function() {
+self.showToast('[PASO 6/7] Enviando mensaje...', 'info', 1500);
+self._sendMessageNative(mac, content, messageId).then(function() {
+self.showToast('[PASO 7/7] Mensaje enviado OK', 'success', 2000);
+resolve();
+}).catch(function(err) {
+self.showToast('[PASO 7/7] ERROR al enviar: ' + (err.message || 'Error BLE'), 'error', 3000);
+reject(err);
+});
+};
+
 if (!isReady && !isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
-self.showToast('Estableciendo canal BLE...', 'info');
+self.showToast('[PASO 5/7] Conectando GATT a ' + mac.substring(0, 8) + '...', 'info', 2000);
 _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: mac })
 .then(function(connResult) {
 if (connResult && (connResult.connected || connResult.alreadyConnected)) {
+self.showToast('[PASO 5/7] GATT conectado, esperando canal listo...', 'info', 2000);
 return self._waitForReadyToChat(mac, 5000);
 }
 throw new Error('No se pudo conectar al dispositivo');
 })
 .then(function() {
+self.showToast('[PASO 5/7] Canal listo!', 'success', 1500);
 doSend();
 })
 .catch(function(err) {
-self.showToast('Canal BLE no disponible: ' + (err.message || 'desconocido'), 'error');
+self.showToast('[PASO 5/7] Fallo conexion GATT: ' + (err.message || 'desconocido'), 'error', 3000);
 reject(err);
 });
 return;
 }
 
 if (!isReady && isConnecting) {
+self.showToast('[PASO 5/7] Esperando conexion existente...', 'info', 2000);
 self._waitForReadyToChat(mac, 5000)
 .then(function() {
+self.showToast('[PASO 5/7] Conexion lista!', 'success', 1500);
 doSend();
 })
 .catch(function(err) {
-self.showToast('Canal BLE no listo: ' + (err.message || 'Timeout'), 'error');
+self.showToast('[PASO 5/7] Timeout esperando conexion: ' + (err.message || 'Timeout'), 'error', 3000);
 reject(err);
 });
 return;
 }
 
 if (!isReady) {
-self.showToast('Canal BLE no listo. Intente de nuevo.', 'warning');
+self.showToast('[PASO 5/7] Canal BLE no listo. Intente de nuevo.', 'warning', 3000);
 reject(new Error('Canal BLE no listo'));
 return;
 }
 
+/* === PASO 6-7: Enviar directo === */
+self.showToast('[PASO 5/7] Canal ya listo, enviando directo...', 'info', 1500);
 doSend();
+
 } catch (fatal) {
-self.showToast('Error critico al enviar mensaje: ' + (fatal.message || 'desconocido'), 'error');
+self.showToast('[PASO FATAL] Error critico: ' + (fatal.message || 'desconocido'), 'error', 4000);
 reject(fatal);
 }
 });
@@ -1194,15 +1225,21 @@ this._setDeviceState(nid, BLE_STATES.DISCONNECTED);
 }
 /* ============================================================
 openChat(): NO BLOQUEA — abre chat siempre, sendChatMessage maneja conexion
+TOASTS agregados en cada paso para diagnostico visual
 ============================================================ */
 async openChat(deviceUUID) {
 var self = this;
 try {
+self.showToast('[openChat] PASO 1/5: Validando UUID...', 'info', 1500);
 var uuid = _normId(deviceUUID);
 if (!uuid) {
+self.showToast('[openChat] PASO 1/5: Error — ID invalido', 'error', 3000);
 self.showToast('ID de dispositivo invalido', 'warning');
 return;
 }
+self.showToast('[openChat] PASO 1/5: UUID OK — ' + uuid.substring(0, 8), 'info', 1500);
+
+self.showToast('[openChat] PASO 2/5: Buscando contacto y MAC...', 'info', 1500);
 var contact = _getContactByUUID(uuid);
 var mac = self._uuidToMacMap.get(uuid) || (contact && _normId(contact.macAddress));
 if (!mac && contact) {
@@ -1215,54 +1252,64 @@ if (!mac && d.deviceUUID === uuid) mac = m;
 }
 var displayName = (contact && contact.name) || 'NEXO Peer';
 if (!_isValidMAC(mac)) {
+self.showToast('[openChat] PASO 2/5: Error — MAC no encontrada', 'error', 3000);
 self.showToast('Dispositivo no disponible para conectar', 'warning');
 return;
 }
+self.showToast('[openChat] PASO 2/5: MAC OK — ' + mac.substring(0, 8), 'info', 1500);
+
 self._activeChatDeviceId = uuid;
 self._activeChatMAC = mac;
 self.newDevicesCount = 0;
 self.updateBadge();
 
+self.showToast('[openChat] PASO 3/5: Verificando estado BLE...', 'info', 1500);
 var state = self._getDeviceState(mac);
 var isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
 var isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
 
-/* Timeout adaptativo: 5s si ya se vio en scan reciente, 15s si es nuevo */
 var lastSeen = contact ? contact.lastSeen : 0;
 var isRecent = lastSeen && (Date.now() - lastSeen) < 30000;
 var timeoutMs = isRecent ? 5000 : 15000;
 
-/* Si no esta ready, intentar conectar rapido pero NO bloquear apertura */
 if (!isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
 if (!isConnecting) {
+self.showToast('[openChat] PASO 4/5: Conectando GATT...', 'info', 2000);
 try {
-console.log('[BLEInterface] openChat: conectando GATT a', mac, '...');
 var connResult = await _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: mac });
 if (connResult && (connResult.connected || connResult.alreadyConnected)) {
-self.showToast('Conectando canal BLE...', 'info');
+self.showToast('[openChat] PASO 4/5: GATT conectado, esperando canal...', 'info', 2000);
 try {
 await self._waitForReadyToChat(mac, timeoutMs);
 isFullyReady = true;
+self.showToast('[openChat] PASO 4/5: Canal listo!', 'success', 1500);
 } catch (e) {
+self.showToast('[openChat] PASO 4/5: Canal no listo aun', 'warning', 3000);
 self.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
 }
 }
 } catch (e) {
-console.warn('[BLEInterface] Conexion GATT en openChat fallo:', e.message);
+self.showToast('[openChat] PASO 4/5: Fallo conexion GATT', 'error', 3000);
 self.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
 }
 } else {
-self.showToast('Conexion en progreso, esperando canal...', 'info');
+self.showToast('[openChat] PASO 4/5: Conexion en progreso...', 'info', 2000);
 try {
 await self._waitForReadyToChat(mac, timeoutMs);
 isFullyReady = true;
+self.showToast('[openChat] PASO 4/5: Conexion lista!', 'success', 1500);
 } catch (e) {
+self.showToast('[openChat] PASO 4/5: Timeout esperando conexion', 'warning', 3000);
 self.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
 }
 }
+} else if (isFullyReady) {
+self.showToast('[openChat] PASO 4/5: Canal ya estaba listo', 'success', 1500);
+} else {
+self.showToast('[openChat] PASO 4/5: No hay plugin para conectar', 'warning', 3000);
 }
 
-/* ABRIR CHAT SIEMPRE — no bloquear */
+self.showToast('[openChat] PASO 5/5: Abriendo chat...', 'info', 1500);
 var appContainer = document.getElementById('app');
 if (appContainer) appContainer.classList.remove('hidden');
 var nameInput = document.getElementById('chat-contact-name');
@@ -1276,9 +1323,11 @@ address: mac,
 transport: 'ble',
 source: 'ble_interface'
 });
+self.showToast('[openChat] PASO 5/5: Chat abierto — ' + displayName, 'success', 2000);
 self.togglePanel();
 } catch (fatalErr) {
 console.error('[BLEInterface] FATAL openChat:', fatalErr);
+self.showToast('[openChat] FATAL: ' + (fatalErr.message || 'desconocido'), 'error', 4000);
 self.showToast('Error al abrir chat: ' + (fatalErr.message || 'desconocido'), 'error');
 }
 }
