@@ -1,9 +1,10 @@
 /**
- * NEXO App v5.0.9d-ARMORED-FIXED
- * Base: v5.0.9c-ARMORED
- * FIX: Timeout BLE 8000ms -> 15000ms para conexion GATT completa
- * FIX: Dedup por MAC ademas de UUID
- * FIX: deviceUUID pasado a _handleMessage
+ * NEXO App v5.0.10-ARMORED-FIXED
+ * Base: v5.0.9d-ARMORED-FIXED
+ * FIX: Render optimista de mensaje propio (aparece inmediato en pantalla)
+ * FIX: _handleMessage fuerza _own como booleano
+ * FIX: _bleMessageHandler pasa deviceUUID correcto a _handleMessage
+ * FIX: Timeout BLE coherente 15000ms
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
  */
@@ -46,9 +47,6 @@ setMode: function(m) { rem.updateMode(m); },
 setIdentity: function(id) { if (id) rem.updateIdentity(id); }
 };
 
-/* ============================================================
-HELPERS DEFENSIVOS
-============================================================ */
 function _safeCall(obj, method, args, fallback) {
 try {
 if (obj && typeof obj[method] === 'function') {
@@ -106,7 +104,7 @@ this._bleMessageHandler = null;
 this._messageDedupMap = new Map();
 this._maxProcessedIds = 1000;
 this._dedupTTL = 300000;
-DEBUG.log('NEXO v5.0.9d-ARMORED iniciando...', 'info', 'APP_INIT');
+DEBUG.log('NEXO v5.0.10-ARMORED iniciando...', 'info', 'APP_INIT');
 }
 async init() {
 if (this.initialized) { DEBUG.warn('Already initialized', 'APP_SKIP'); return this; }
@@ -125,7 +123,7 @@ await this._initPhase6_Bridge();
 await this._initPhase7_UI();
 this.initialized = true;
 DEBUG.setPhase('READY');
-DEBUG.success('NEXO v5.0.9d-ARMORED Ready', 'APP_READY');
+DEBUG.success('NEXO v5.0.10-ARMORED Ready', 'APP_READY');
 } catch (err) {
 DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
 await this._partialCleanup();
@@ -223,11 +221,9 @@ window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
 this._bleMessageHandler = function(e) {
 try {
 var detail = e.detail || {};
-/* FIX DEDUPLICACION BROADCAST: Descartar mensajes propios */
 var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
 var senderUUID = detail.deviceUUID || '';
 var senderMAC = detail.macAddress || '';
-/* FIX: Ignorar mensajes propios por UUID o MAC */
 if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
 console.log('[BLE_RECV] Mensaje propio ignorado por UUID');
 return;
@@ -306,9 +302,10 @@ case 'offline': if ((!this.mesh || !this.mesh.getPeerCount || this.mesh.getPeerC
 }
 _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 /* ============================================================
-ENVIO DE MENSAJES: Anti-crash + Render Lazy + Transport Priority
-FIX v5.0.9d: Timeout BLE 8000ms -> 15000ms (tiempo real GATT)
-============================================================ */
+   ENVIO DE MENSAJES: Anti-crash + Render Optimista + Transport Priority
+   FIX v5.0.10: Mensaje propio se renderiza INMEDIATAMENTE (optimistic UI)
+   FIX: Timeout BLE 15000ms coherente
+   ============================================================ */
 async sendMessage(msg) {
 if (!this.initialized || this._isDestroyed) {
 DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
@@ -330,21 +327,21 @@ this.bleInterface.showToast('Error: Escribe un mensaje', 'warning');
 }
 return false;
 }
-/* === PASO 3: Intentar BLE directo === */
-if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
-try {
-console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
-/* FIX v5.0.9d: 15000ms para dar tiempo a conexion GATT completa */
-await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
+/* === RENDER OPTIMISTA: Mostrar mensaje propio inmediatamente === */
 this._handleMessage({
 content: content,
 _own: true,
 timestamp: Date.now(),
-pending: false,
+pending: true,
 recipient: targetId,
-source: 'ble_direct',
+source: 'self',
 messageId: messageId
 }, 'self');
+/* === PASO 3: Intentar BLE directo === */
+if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
+try {
+console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
+await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
 DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
 if (this.bleInterface && this.bleInterface.showToast) {
 this.bleInterface.showToast('Mensaje enviado', 'success');
@@ -436,7 +433,13 @@ for (var i = 0; i < keysToDelete.length; i++) {
 this._messageDedupMap.delete(keysToDelete[i]);
 }
 }
-var enriched = Object.assign({}, msg, { _source: source, _ts: Date.now(), _id: Math.random().toString(36).substr(2, 9) });
+/* FIX v5.0.10: Forzar _own como booleano */
+var enriched = Object.assign({}, msg, {
+_own: !!msg._own,
+_source: source,
+_ts: Date.now(),
+_id: Math.random().toString(36).substr(2, 9)
+});
 this.config.onMessage(enriched);
 if (this.stream && this.stream.appendItems) this.stream.appendItems([enriched]);
 } catch (err) {
