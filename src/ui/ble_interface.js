@@ -154,10 +154,10 @@
    // FIX v5.0.1: Capacitor espera objeto plano, NO array
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
-      result = plugin[method](args);
+   result = pluginmethod;
    } else {
-      var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
-      result = plugin[method].apply(plugin, callArgs);
+   var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
+   result = plugin[method].apply(plugin, callArgs);
    }
    if (result && typeof result.then === 'function') {
    result.then(resolve).catch(reject);
@@ -1390,3 +1390,6 @@
    }
    }
    window.bleInterface = null;
+
+
+
