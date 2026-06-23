@@ -1,10 +1,10 @@
 /**
- * BLE Interface v4.3.0-ARMORED-FIXED
- * Base: v4.2.9-ARMORED-FIXED
- * FIX: _sendMessageNative va DIRECTO al plugin nativo sin bloquear por estado interno
- * FIX: sendChatMessage timeout GATT 8000ms -> 12000ms, fallback a activeContact.address
- * FIX: openChat fuerza MAC normalizada y valida antes de abrir
- * FIX: _waitForReadyToChat resuelve inmediato si ya esta listo
+ * BLE Interface v4.3.1-ARMORED-FIXED
+ * Base: v4.3.0-ARMORED-FIXED
+ * FIX: _activeChatMAC persistido en localStorage para sobrevivir recargas
+ * FIX: sendChatMessage usa localStorage fallback si no encuentra MAC en memoria
+ * FIX: _addNewDevice guarda MAC inmediatamente en localStorage como active_chat_mac
+ * FIX: openChat guarda MAC en localStorage
  * ES5 syntax compatible con webpack
  */
 export function initBLEInterface(bleMesh) {
@@ -16,6 +16,7 @@ var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
 var BLE_MAC_MAP_STORAGE_KEY = 'nexo_ble_mac_map_v2';
 var BLE_UUID_MAP_STORAGE_KEY = 'nexo_ble_uuid_map_v2';
+var BLE_ACTIVE_CHAT_MAC_KEY = 'nexo_active_chat_mac';
 
 function _saveMacMaps(uuidToMacMap, macToUuidMap) {
 try {
@@ -661,11 +662,6 @@ if (failed > 0) {
 this.showToast(failed + ' mensaje(s) pendiente(s) no se pudieron enviar', 'error');
 }
 }
-/* ============================================================
-   FIX v4.3.0: _sendMessageNative va DIRECTO al plugin nativo.
-   NO bloquea por estado interno. Deja que Kotlin maneje GATT.
-   Si falla, el plugin nativo devolvera el error.
-   ============================================================ */
 async _sendMessageNative(deviceMAC, content, messageId) {
 try {
 if (!this.nativePlugin) {
@@ -703,8 +699,8 @@ throw e;
 }
 }
 /* ============================================================
-   FIX v4.3.0: sendChatMessage con timeout GATT 12000ms y
-   fallback a activeContact.address. Conexion automatica robusta.
+   FIX v4.3.1: sendChatMessage con fallback a localStorage
+   para _activeChatMAC. Persistencia robusta.
    ============================================================ */
 sendChatMessage(deviceUUID, content, messageId) {
 var self = this;
@@ -751,6 +747,16 @@ var loaded = _loadMacMaps();
 if (loaded.uuidToMac[uuid]) {
 mac = _normMac(loaded.uuidToMac[uuid]);
 }
+}
+/* FIX v4.3.1: Fallback a localStorage para _activeChatMAC */
+if (!mac) {
+try {
+var storedMac = localStorage.getItem(BLE_ACTIVE_CHAT_MAC_KEY);
+if (storedMac) {
+mac = _normMac(storedMac);
+console.log('[BLEInterface] sendChatMessage: MAC recuperada de localStorage:', mac);
+}
+} catch (e) {}
 }
 if (!mac) {
 console.error('[BLEInterface] sendChatMessage: No se encontro MAC para UUID', uuid);
@@ -1020,6 +1026,7 @@ this.elements.addBtn.addEventListener('click', function() { self._addNewDevice()
 window.addEventListener('nexo:ble:closeChat', function() {
 self._activeChatDeviceId = null;
 self._activeChatMAC = null;
+try { localStorage.removeItem(BLE_ACTIVE_CHAT_MAC_KEY); } catch(e) {}
 self.updateBadge();
 });
 }
@@ -1180,6 +1187,11 @@ this._macToUuidMap.set(mac, tempUUID);
 this._uuidToMacMap.set(tempUUID, mac);
 _saveMacMaps(this._uuidToMacMap, this._macToUuidMap);
 _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
+/* FIX v4.3.1: Guardar MAC en localStorage inmediatamente */
+try {
+localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac);
+console.log('[BLEInterface] _addNewDevice: MAC guardada en localStorage:', mac);
+} catch (e) {}
 this._autoConnectGATT(mac, device);
 this.foundDevices.delete(mac);
 this.renderContactsList();
@@ -1247,6 +1259,11 @@ return;
 mac = _normMac(mac);
 self._activeChatDeviceId = uuid;
 self._activeChatMAC = mac;
+/* FIX v4.3.1: Persistir MAC en localStorage */
+try {
+localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac);
+console.log('[BLEInterface] openChat: MAC guardada en localStorage:', mac);
+} catch (e) {}
 self.newDevicesCount = 0;
 self.updateBadge();
 _saveMacMaps(self._uuidToMacMap, self._macToUuidMap);
@@ -1325,6 +1342,7 @@ var uuid = this._macToUuidMap.get(macNorm);
 if (this._activeChatDeviceId === uuid || this._activeChatMAC === macNorm) {
 this._activeChatDeviceId = null;
 this._activeChatMAC = null;
+try { localStorage.removeItem(BLE_ACTIVE_CHAT_MAC_KEY); } catch(e) {}
 this.updateBadge();
 }
 } catch (err) {
