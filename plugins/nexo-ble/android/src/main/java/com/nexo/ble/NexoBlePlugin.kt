@@ -38,6 +38,8 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
+import org.json.JSONObject
+import org.json.JSONTokener
 
 @CapacitorPlugin(
     name = "NexoBLE",
@@ -58,6 +60,7 @@ class NexoBlePlugin : Plugin() {
         private const val SCAN_TIMEOUT_MS = 15000L
         private const val RECONNECT_DELAY_MS = 3000L
         private const val MAX_RECONNECT_ATTEMPTS = 10
+        private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L  // FIX FRAGMENTATION: max tiempo esperando chunks
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
@@ -86,6 +89,10 @@ class NexoBlePlugin : Plugin() {
 
     private var messageReceiver: BroadcastReceiver? = null
 
+    // FIX FRAGMENTATION: Buffers de reensamblaje por dispositivo MAC
+    private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
+    private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
+
     private fun remLog(level: String, tag: String, message: String) {
         Log.i("NEXO_REM", "[$level][$tag] $message")
         try {
@@ -96,6 +103,85 @@ class NexoBlePlugin : Plugin() {
                 .put("timestamp", System.currentTimeMillis())
             )
         } catch (e: Exception) { }
+    }
+
+    // FIX FRAGMENTATION: Función central de reensamblaje de mensajes
+    private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
+        val macNorm = normalizeMac(deviceId)
+        
+        // Cancelar timer anterior si existe
+        messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
+        
+        // Obtener o crear buffer
+        val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
+        buffer.append(chunk)
+        
+        val accumulated = buffer.toString()
+        remLog("DEBUG", "REASSEMBLY", "Buffer for $macNorm: len=${accumulated.length}, content=${accumulated.take(60)}...")
+        
+        // Intentar parsear como JSON completo
+        val completeMessage = tryExtractCompleteJson(accumulated)
+        
+        if (completeMessage != null) {
+            // ¡JSON completo encontrado! Emitir y limpiar
+            remLog("INFO", "REASSEMBLY", "Mensaje completo reensamblado de $macNorm")
+            messageBuffers.remove(macNorm)
+            messageBufferTimers.remove(macNorm)
+            
+            notifyListeners("onPayloadReceived", JSObject()
+                .put("deviceId", deviceId)
+                .put("content", completeMessage)
+                .put("data", completeMessage)
+                .put("source", source)
+                .put("timestamp", System.currentTimeMillis())
+                .put("reassembled", true)
+            )
+        } else {
+            // Aún incompleto, iniciar timer de timeout
+            val timeoutRunnable = Runnable {
+                remLog("WARN", "REASSEMBLY", "Timeout reensamblaje para $macNorm, descartando buffer")
+                messageBuffers.remove(macNorm)
+                messageBufferTimers.remove(macNorm)
+            }
+            messageBufferTimers[macNorm] = timeoutRunnable
+            mainHandler.postDelayed(timeoutRunnable, MESSAGE_REASSEMBLY_TIMEOUT_MS)
+        }
+    }
+    
+    // FIX FRAGMENTATION: Intenta extraer JSON válido del buffer
+    private fun tryExtractCompleteJson(buffer: String): String? {
+        if (buffer.isBlank()) return null
+        
+        // Buscar el primer '{' y el último '}' balanceado
+        var braceCount = 0
+        var startIdx = -1
+        var endIdx = -1
+        
+        for (i in buffer.indices) {
+            val c = buffer[i]
+            if (c == '{') {
+                if (braceCount == 0) startIdx = i
+                braceCount++
+            } else if (c == '}') {
+                braceCount--
+                if (braceCount == 0 && startIdx >= 0) {
+                    endIdx = i
+                    break
+                }
+            }
+        }
+        
+        if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) return null
+        
+        val candidate = buffer.substring(startIdx, endIdx + 1)
+        
+        // Validar que es JSON válido
+        return try {
+            JSONObject(candidate)  // Si parsea, es válido
+            candidate
+        } catch (e: Exception) {
+            null
+        }
     }
 
     override fun handleOnResume() {
@@ -124,6 +210,10 @@ class NexoBlePlugin : Plugin() {
         try { stopScanInternal() } catch (e: Exception) { }
         try { stopGattServer() } catch (e: Exception) { }
         try { stopAdvertisingInternal() } catch (e: Exception) { }
+        // FIX FRAGMENTATION: Limpiar buffers
+        messageBuffers.clear()
+        messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+        messageBufferTimers.clear()
     }
 
     private fun cleanupAllConnections() {
@@ -144,6 +234,10 @@ class NexoBlePlugin : Plugin() {
         reconnectTimers.clear()
         reconnectAttempts.clear()
         scannedDevices.clear()
+        // FIX FRAGMENTATION: Limpiar buffers de reensamblaje
+        messageBuffers.clear()
+        messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+        messageBufferTimers.clear()
     }
 
     @PluginMethod
@@ -309,6 +403,9 @@ class NexoBlePlugin : Plugin() {
                 )
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 serverConnectedDevices.remove(mac)
+                // FIX FRAGMENTATION: Limpiar buffer al desconectar
+                messageBuffers.remove(mac)
+                messageBufferTimers.remove(mac)?.let { mainHandler.removeCallbacks(it) }
                 notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", device.address))
             }
         }
@@ -318,16 +415,13 @@ class NexoBlePlugin : Plugin() {
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
         ) {
             if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-                val message = value?.toString(Charset.defaultCharset()) ?: ""
+                val chunk = value?.toString(Charset.defaultCharset()) ?: ""
                 val mac = device.address
-                remLog("INFO", "GATT_SERVER", "RX from $mac: $message")
-                notifyListeners("onPayloadReceived", JSObject()
-                    .put("deviceId", mac)
-                    .put("content", message)
-                    .put("data", message)
-                    .put("source", "gatt_server")
-                    .put("timestamp", System.currentTimeMillis())
-                )
+                remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${chunk.length}")
+                
+                // FIX FRAGMENTATION: Usar reensamblaje en vez de emitir directo
+                processReceivedChunk(mac, chunk, "gatt_server")
+                
                 if (responseNeeded) {
                     bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
                 }
@@ -479,6 +573,9 @@ class NexoBlePlugin : Plugin() {
                     clientRxCharacteristics.remove(macNorm)
                     clientTxCharacteristics.remove(macNorm)
                     clientConnectionStates.remove(macNorm)
+                    // FIX FRAGMENTATION: Limpiar buffer al desconectar
+                    messageBuffers.remove(macNorm)
+                    messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
                     try { gatt.close() } catch (e: Exception) { }
                     startAutoReconnect(macNorm)
                 }
@@ -530,31 +627,21 @@ class NexoBlePlugin : Plugin() {
             @Suppress("DEPRECATION")
             override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
                 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
-                    val message = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
+                    val chunk = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
                     val address = gatt.device?.address ?: ""
-                    remLog("INFO", "GATT_CLIENT_CB", "Received (legacy) from $address: $message")
-                    notifyListeners("onPayloadReceived", JSObject()
-                        .put("deviceId", address)
-                        .put("content", message)
-                        .put("data", message)
-                        .put("source", "gatt_client")
-                        .put("timestamp", System.currentTimeMillis())
-                    )
+                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from $address: len=${chunk.length}")
+                    // FIX FRAGMENTATION: Usar reensamblaje
+                    processReceivedChunk(address, chunk, "gatt_client")
                 }
             }
 
             override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
                 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
-                    val message = value.toString(Charset.defaultCharset())
+                    val chunk = value.toString(Charset.defaultCharset())
                     val address = gatt.device?.address ?: ""
-                    remLog("INFO", "GATT_CLIENT_CB", "Received (API33+) from $address: $message")
-                    notifyListeners("onPayloadReceived", JSObject()
-                        .put("deviceId", address)
-                        .put("content", message)
-                        .put("data", message)
-                        .put("source", "gatt_client")
-                        .put("timestamp", System.currentTimeMillis())
-                    )
+                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from $address: len=${chunk.length}")
+                    // FIX FRAGMENTATION: Usar reensamblaje
+                    processReceivedChunk(address, chunk, "gatt_client")
                 }
             }
         }
@@ -608,6 +695,9 @@ class NexoBlePlugin : Plugin() {
         clientRxCharacteristics.remove(macNorm)
         clientTxCharacteristics.remove(macNorm)
         clientConnectionStates.remove(macNorm)
+        // FIX FRAGMENTATION: Limpiar buffer
+        messageBuffers.remove(macNorm)
+        messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         pendingCalls.remove(macNorm)
         notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
         call.resolve(JSObject().put("disconnected", true))
@@ -622,6 +712,9 @@ class NexoBlePlugin : Plugin() {
         gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
         gattClients.remove(macNorm)
         clientConnectionStates.remove(macNorm)
+        // FIX FRAGMENTATION: Limpiar buffer
+        messageBuffers.remove(macNorm)
+        messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         mainHandler.postDelayed({ startAutoReconnect(macNorm) }, 500)
         call.resolve(JSObject().put("reconnecting", true))
     }
@@ -848,6 +941,7 @@ class NexoBlePlugin : Plugin() {
                     NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED -> {
                         val msg = intent.getStringExtra(NexoBleSpec.EXTRA_MESSAGE_DATA) ?: ""
                         val device = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
+                        // FIX FRAGMENTATION: Broadcast ya viene completo, no necesita reensamblaje
                         notifyListeners("onPayloadReceived", JSObject()
                             .put("deviceId", device)
                             .put("content", msg)
