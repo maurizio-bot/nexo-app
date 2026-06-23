@@ -25,7 +25,19 @@ import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.nio.charset.Charset
+import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * BleService v2.0 - DUAL GATT SUPPORT
+ * 
+ * Este servicio mantiene:
+ * 1. GATT Server local (para que otros dispositivos se conecten a nosotros)
+ * 2. BLE Advertising (para que otros nos encuentren)
+ * 
+ * NOTA: Las conexiones GATT Client (nosotros conectandonos a otros) 
+ * ahora se manejan directamente en NexoBlePlugin.kt para tener
+ * multiples conexiones simultaneas.
+ */
 class BleService : Service() {
 
     companion object {
@@ -38,11 +50,11 @@ class BleService : Service() {
     private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
     private var txCharacteristic: BluetoothGattCharacteristic? = null
     private var rxCharacteristic: BluetoothGattCharacteristic? = null
-    private val connectedDevices = mutableSetOf<BluetoothDevice>()
+    private val connectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "onCreate")
+        Log.i(TAG, "onCreate - Dual GATT Service")
         try {
             val notification = createNotification()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -158,12 +170,12 @@ class BleService : Service() {
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             Log.i(TAG, "Connection ${device.address} status=$status newState=$newState")
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                connectedDevices.add(device)
+                connectedDevices[device.address] = device
                 broadcast(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED, device.address)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                connectedDevices.remove(device)
+                connectedDevices.remove(device.address)
                 broadcast(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED, device.address)
-                try { startAdvertising() } catch (e: Exception) { Log.w(TAG, "Restart adv failed", e) }
+                try { startAdvertising() } catch (e: Exception) { }
             }
         }
 
@@ -214,7 +226,7 @@ class BleService : Service() {
     private fun sendNotificationToAll(message: String) {
         val data = message.toByteArray(Charset.defaultCharset())
         txCharacteristic?.value = data
-        connectedDevices.forEach { device ->
+        connectedDevices.forEach { (_, device) ->
             try {
                 bluetoothGattServer?.notifyCharacteristicChanged(device, txCharacteristic, false)
             } catch (e: Exception) {
@@ -251,8 +263,8 @@ class BleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { Log.w(TAG, "Stop adv error", e) }
-        try { bluetoothGattServer?.close() } catch (e: Exception) { Log.w(TAG, "Close server error", e) }
+        try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { }
+        try { bluetoothGattServer?.close() } catch (e: Exception) { }
         connectedDevices.clear()
         Log.i(TAG, "Destroyed")
     }
