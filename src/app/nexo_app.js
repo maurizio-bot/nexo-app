@@ -218,7 +218,33 @@ self.bleInterface.showToast('Error al abrir chat: ' + (handlerErr.message || 'de
 }
 };
 window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
-this._bleMessageHandler = function(e) {
+// FIX: Escuchar eventos de conexion nativa para actualizar modo
+    this._nativeDeviceConnectedHandler = function(e) {
+      try {
+        var detail = e.detail || {};
+        self._updateMode('P2P_BLE');
+        self.config.onStatusChange('CONECTADO:' + (detail.name || 'NEXO'));
+        if (self.bleInterface && self.bleInterface.showToast) {
+          self.bleInterface.showToast('Dispositivo conectado: ' + (detail.name || 'NEXO'), 'success');
+        }
+      } catch (err) {
+        console.warn('[NexoApp] Error en _nativeDeviceConnectedHandler:', err);
+      }
+    };
+    window.addEventListener('nexo:ble:deviceConnected', this._nativeDeviceConnectedHandler);
+    this._nativeDeviceDisconnectedHandler = function(e) {
+      try {
+        self._updateMode('OFFLINE');
+        self.config.onStatusChange('OFFLINE');
+        if (self.bleInterface && self.bleInterface.showToast) {
+          self.bleInterface.showToast('Dispositivo desconectado', 'warning');
+        }
+      } catch (err) {
+        console.warn('[NexoApp] Error en _nativeDeviceDisconnectedHandler:', err);
+      }
+    };
+    window.addEventListener('nexo:ble:deviceDisconnected', this._nativeDeviceDisconnectedHandler);
+    this._bleMessageHandler = function(e) {
 try {
 var detail = e.detail || {};
 var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
@@ -482,9 +508,17 @@ this._resources.timers.forEach(function(t) { clearTimeout(t); });
 DEBUG.success('Cleanup complete', 'DESTROY_OK');
 }
 getStatus() {
+var mode = 'offline';
+if (this.mesh && this.mesh.getStatus) {
+  mode = this.mesh.getStatus().mode;
+} else if (this.nordicMesh && this.nordicMesh.getState && this.nordicMesh.getState() === 'messaging') {
+  mode = 'p2p_ble';
+} else if (this.bleInterface && this.bleInterface.nativePlugin && this.bleInterface.connectedDevices && this.bleInterface.connectedDevices.size > 0) {
+  mode = 'P2P_BLE';
+}
 return {
 initialized: this.initialized,
-mode: (this.mesh && this.mesh.getStatus) ? this.mesh.getStatus().mode : (this.nordicMesh && this.nordicMesh.getState && this.nordicMesh.getState() === 'messaging' ? 'p2p_ble' : 'offline'),
+mode: mode,
 hasBLEInterface: !!this.bleInterface,
 activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
 };
