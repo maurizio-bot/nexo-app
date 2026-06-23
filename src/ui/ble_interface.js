@@ -70,7 +70,8 @@
    function _macWithColons(mac) {
    var m = _normMac(mac);
    if (!m) return '';
-   return m.match(/.{2}/g).join(':');
+   // FIX v5.0.1: Asegurar formato XX:XX:XX:XX:XX:XX lowercase
+   return m.match(/.{2}/g).join(':').toLowerCase();
    }
    function _isValidMAC(mac) {
    return _normMac(mac).length === 12;
@@ -150,8 +151,14 @@
    if (!plugin) { reject(new Error('Plugin nativo no disponible')); return; }
    if (typeof plugin[method] !== 'function') { reject(new Error('Metodo ' + method + ' no disponible')); return; }
    try {
-   var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
-   var result = plugin[method].apply(plugin, callArgs);
+   // FIX v5.0.1: Capacitor espera objeto plano, NO array
+   var result;
+   if (args && typeof args === 'object' && !Array.isArray(args)) {
+      result = plugin[method](args);
+   } else {
+      var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
+      result = plugin[method].apply(plugin, callArgs);
+   }
    if (result && typeof result.then === 'function') {
    result.then(resolve).catch(reject);
    } else { resolve(result); }
@@ -1160,15 +1167,6 @@
    this.updateBadge();
    this.renderNewDeviceBar();
    }
-   renderContactsList() {
-   var list = this.elements.contactsList;
-   var contacts = _getBLEContacts();
-   if (contacts.length === 0) {
-   list.innerHTML = '<div class="ble-empty">No hay contactos. Presiona Descubrir para encontrar dispositivos.</div>';
-   return;
-   }
-   list.innerHTML = '';
-   var self = this;
    contacts.forEach(function(contact) {
    var uuid = _normId(contact.deviceUUID);
    var mac = self._uuidToMacMap.get(uuid) || _normMac(contact.macAddress);
