@@ -88,6 +88,7 @@ class NexoBlePlugin : Plugin() {
     private val pendingCalls = ConcurrentHashMap<String, PluginCall>()
 
     private var messageReceiver: BroadcastReceiver? = null
+    private var isAdvertisingActive = false
 
     // FIX FRAGMENTATION: Buffers de reensamblaje por dispositivo MAC
     private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
@@ -209,6 +210,7 @@ class NexoBlePlugin : Plugin() {
         try { unregisterServerReceivers() } catch (e: Exception) { }
         try { stopScanInternal() } catch (e: Exception) { }
         try { stopGattServer() } catch (e: Exception) { }
+        isAdvertisingActive = false
         try { stopAdvertisingInternal() } catch (e: Exception) { }
         // FIX FRAGMENTATION: Limpiar buffers
         messageBuffers.clear()
@@ -407,6 +409,21 @@ class NexoBlePlugin : Plugin() {
                 messageBuffers.remove(mac)
                 messageBufferTimers.remove(mac)?.let { mainHandler.removeCallbacks(it) }
                 notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", device.address))
+                // FIX: Reanudar advertising al desconectar para que otros dispositivos puedan encontrarnos
+                if (isAdvertisingActive) {
+                    remLog("INFO", "GATT_SERVER", "Reanudando advertising tras desconexion")
+                    try {
+                        val ctx = activity.applicationContext
+                        val intent = Intent(ctx, BleService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            ctx.startForegroundService(intent)
+                        } else {
+                            ctx.startService(intent)
+                        }
+                    } catch (e: Exception) {
+                        remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: ${e.message}")
+                    }
+                }
             }
         }
 
@@ -778,6 +795,7 @@ class NexoBlePlugin : Plugin() {
                 ctx.startService(intent)
             }
             registerServerReceivers()
+            isAdvertisingActive = true
             notifyListeners("onAdvertiseStarted", JSObject().put("started", true))
             call.resolve(JSObject().put("started", true))
         } catch (e: Exception) {
@@ -789,6 +807,7 @@ class NexoBlePlugin : Plugin() {
     fun stopAdvertising(call: PluginCall) {
         val ctx = activity.applicationContext
         try {
+            isAdvertisingActive = false
             ctx.stopService(Intent(ctx, BleService::class.java))
             unregisterServerReceivers()
             call.resolve(JSObject().put("stopped", true))
@@ -806,14 +825,17 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun stopAdvertisingInternal() {
+        isAdvertisingActive = false
         try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { }
     }
 
     private val advertiseCallback = object : android.bluetooth.le.AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: android.bluetooth.le.AdvertiseSettings?) {
+            isAdvertisingActive = true
             remLog("INFO", "ADVERTISING", "Started")
         }
         override fun onStartFailure(errorCode: Int) {
+            isAdvertisingActive = false
             remLog("ERROR", "ADVERTISING", "Failed: $errorCode")
         }
     }
@@ -892,7 +914,7 @@ class NexoBlePlugin : Plugin() {
         val enabled = adapter != null && adapter.isEnabled
         call.resolve(JSObject()
             .put("enabled", enabled)
-            .put("canAdvertise", enabled && bluetoothGattServer != null)
+            .put("canAdvertise", enabled && isAdvertisingActive)
             .put("serverReady", bluetoothGattServer != null)
         )
     }
