@@ -1,4 +1,3 @@
-
 package com.nexo.ble
 
 import android.app.Notification
@@ -24,6 +23,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.ParcelUuid
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
@@ -47,6 +47,12 @@ class BleService : Service() {
         private const val NOTIFICATION_ID = 1001
     }
 
+    private fun showToast(message: String) {
+        try {
+            Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) { }
+    }
+
     private var bluetoothGattServer: BluetoothGattServer? = null
     private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
     private var txCharacteristic: BluetoothGattCharacteristic? = null
@@ -55,6 +61,7 @@ class BleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        showToast("[BLE Svc] onCreate - Dual GATT")
         Log.i(TAG, "onCreate - Dual GATT Service")
         try {
             val notification = createNotification()
@@ -70,6 +77,7 @@ class BleService : Service() {
             startGattServer()
             startAdvertising()
         } catch (e: Exception) {
+            showToast("[BLE Svc] FATAL onCreate: ${e.message}")
             Log.e(TAG, "Fatal error in onCreate", e)
             stopSelf()
         }
@@ -89,6 +97,7 @@ class BleService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startGattServer() {
+        showToast("[BLE Svc] startGattServer...")
         try {
             val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = bluetoothManager.adapter
@@ -124,13 +133,16 @@ class BleService : Service() {
             service.addCharacteristic(rxCharacteristic)
 
             val success = bluetoothGattServer?.addService(service) ?: false
+            showToast("[BLE Svc] GATT Server: addService=$success")
             Log.i(TAG, "GATT Server addService success=$success")
         } catch (e: Exception) {
+            showToast("[BLE Svc] GATT Server ERROR: ${e.message}")
             Log.e(TAG, "Error starting GATT server", e)
         }
     }
 
     private fun startAdvertising() {
+        showToast("[BLE Svc] startAdvertising...")
         try {
             val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = bluetoothManager.adapter
@@ -153,16 +165,20 @@ class BleService : Service() {
                 .build()
 
             bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
+            showToast("[BLE Svc] Advertising iniciado")
         } catch (e: Exception) {
+            showToast("[BLE Svc] Advertising ERROR: ${e.message}")
             Log.e(TAG, "Error starting advertising", e)
         }
     }
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+            showToast("[BLE Svc] Advertising STARTED")
             Log.i(TAG, "Advertising started")
         }
         override fun onStartFailure(errorCode: Int) {
+            showToast("[BLE Svc] Advertising FAILED: $errorCode")
             Log.e(TAG, "Advertising failed: $errorCode")
         }
     }
@@ -171,9 +187,11 @@ class BleService : Service() {
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             Log.i(TAG, "Connection ${device.address} status=$status newState=$newState")
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                showToast("[BLE Svc] Device CONNECTED: ${device.address}")
                 connectedDevices[device.address] = device
                 broadcast(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED, device.address)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                showToast("[BLE Svc] Device DISCONNECTED: ${device.address}")
                 connectedDevices.remove(device.address)
                 broadcast(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED, device.address)
                 try { startAdvertising() } catch (e: Exception) { }
@@ -196,6 +214,7 @@ class BleService : Service() {
             device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteristic,
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
         ) {
+            showToast("[BLE Svc] RX WriteRequest from ${device.address}")
             if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
                 val message = value?.toString(Charset.defaultCharset()) ?: ""
                 Log.i(TAG, "RX from ${device.address}: $message")
@@ -225,6 +244,7 @@ class BleService : Service() {
     }
 
     private fun sendNotificationToAll(message: String) {
+        showToast("[BLE Svc] Notify all: ${message.take(20)}...")
         val data = message.toByteArray(Charset.defaultCharset())
         txCharacteristic?.value = data
         connectedDevices.forEach { (_, device) ->
@@ -264,6 +284,7 @@ class BleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        showToast("[BLE Svc] onDestroy")
         try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { }
         try { bluetoothGattServer?.close() } catch (e: Exception) { }
         connectedDevices.clear()
