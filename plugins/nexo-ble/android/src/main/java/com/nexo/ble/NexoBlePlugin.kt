@@ -1,4 +1,3 @@
-
 package com.nexo.ble
 
 import android.app.ActivityManager
@@ -41,7 +40,7 @@ import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * NEXO BLE Plugin v6.0 - DUAL GATT ARCHITECTURE
+ * NEXO BLE Plugin v6.1 - DUAL GATT ARCHITECTURE
  * 
  * Cada dispositivo es simultaneamente:
  * - GATT Server (recibe mensajes de otros)
@@ -79,13 +78,9 @@ class NexoBlePlugin : Plugin() {
     private val serverConnectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
 
     // ==================== DUAL GATT: GATT CLIENTS (ENVIO) ====================
-    // Map<MAC_normalizada, BluetoothGatt> - una conexion GATT por destino
     private val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
-    // Map<MAC, Characteristic RX del remoto> - para escribir mensajes
     private val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
-    // Map<MAC, Characteristic TX del remoto> - para recibir notificaciones
     private val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
-    // Map<MAC, estado de conexion>
     private val clientConnectionStates = ConcurrentHashMap<String, Int>()
 
     // ==================== ADVERTISING ====================
@@ -251,8 +246,22 @@ class NexoBlePlugin : Plugin() {
         } else isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
+    /**
+     * Normaliza MAC a formato sin separadores, lowercase (para usar como key interna)
+     */
     private fun normalizeMac(mac: String): String {
-        return mac.replace(":", "").replace("-", "").lowercase()
+        return mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
+    }
+
+    /**
+     * Formatea MAC para Android Bluetooth API (requiere XX:XX:XX:XX:XX:XX)
+     */
+    private fun formatMacForAndroid(mac: String): String? {
+        val clean = mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
+        if (clean.length != 12 || !clean.all { it in '0'..'9' || it in 'a'..'f' }) {
+            return null
+        }
+        return clean.chunked(2).joinToString(":")
     }
 
     // ==================== DUAL GATT: GATT SERVER (RECEPCION) ====================
@@ -369,22 +378,34 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         try {
-            val deviceId = call.getString("deviceId") ?: call.getString("address") ?: ""
-            remLog("INFO", "GATT_CLIENT", "connectToDevice deviceId=$deviceId")
-            if (deviceId.isEmpty()) {
+            val rawDeviceId = call.getString("deviceId") ?: call.getString("address") ?: ""
+            remLog("INFO", "GATT_CLIENT", "connectToDevice raw='$rawDeviceId'")
+
+            if (rawDeviceId.isEmpty()) {
                 call.reject("deviceId requerido", "INVALID_DEVICE_ID")
                 return
             }
-            val macNorm = normalizeMac(deviceId)
+
+            // Formatear MAC para Android API (requiere XX:XX:XX:XX:XX:XX)
+            val macFormatted = formatMacForAndroid(rawDeviceId)
+            if (macFormatted == null) {
+                call.reject("MAC invalida: $rawDeviceId", "INVALID_MAC")
+                return
+            }
+
+            val macNorm = normalizeMac(rawDeviceId)
+            remLog("INFO", "GATT_CLIENT", "connectToDevice formatted='$macFormatted' norm='$macNorm'")
+
             if (gattClients.containsKey(macNorm) && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
                 remLog("INFO", "GATT_CLIENT", "Ya conectado a $macNorm")
                 call.resolve(JSObject()
                     .put("connected", true)
                     .put("alreadyConnected", true)
-                    .put("deviceId", deviceId)
+                    .put("deviceId", macFormatted)
                 )
                 return
             }
+
             val ctx = activity.applicationContext
             val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = bluetoothManager.adapter
@@ -396,31 +417,42 @@ class NexoBlePlugin : Plugin() {
                 call.reject("BLUETOOTH_CONNECT no concedido", "PERMISSION_DENIED")
                 return
             }
+
             val device: BluetoothDevice
             try {
-                device = adapter.getRemoteDevice(deviceId)
+                device = adapter.getRemoteDevice(macFormatted)
             } catch (e: IllegalArgumentException) {
-                call.reject("MAC invalida: $deviceId", "INVALID_MAC")
+                call.reject("MAC invalida para Bluetooth API: $macFormatted", "INVALID_MAC")
+                return
+            } catch (e: SecurityException) {
+                call.reject("Permiso BLUETOOTH_CONNECT requerido para conectar", "PERMISSION_DENIED")
                 return
             }
+
             gattClients[macNorm]?.let { oldGatt ->
                 try { oldGatt.disconnect(); oldGatt.close() } catch (e: Exception) { }
             }
+
             pendingCalls[macNorm] = call
             call.setKeepAlive(true)
+
             val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
             } else {
                 device.connectGatt(ctx, false, createGattClientCallback(macNorm))
             }
+
             if (gatt == null) {
                 pendingCalls.remove(macNorm)
                 call.reject("No se pudo iniciar GATT", "GATT_NULL")
                 return
             }
+
             gattClients[macNorm] = gatt
             clientConnectionStates[macNorm] = BluetoothProfile.STATE_CONNECTING
             remLog("INFO", "GATT_CLIENT", "Conexion iniciada a $macNorm")
+
+            // Timeout de conexion
             mainHandler.postDelayed({
                 if (pendingCalls.containsKey(macNorm)) {
                     remLog("WARN", "GATT_CLIENT", "Timeout conectando a $macNorm")
@@ -429,14 +461,15 @@ class NexoBlePlugin : Plugin() {
                     gattClients.remove(macNorm)
                     clientConnectionStates.remove(macNorm)
                     notifyListeners("onConnectionFailed", JSObject()
-                        .put("deviceId", deviceId)
+                        .put("deviceId", macFormatted)
                         .put("reason", "Connection timeout")
                         .put("recoverable", true)
                     )
                 }
             }, 15000)
+
         } catch (e: Exception) {
-            remLog("ERROR", "GATT_CLIENT", "Fatal: ${e.message}")
+            remLog("ERROR", "GATT_CLIENT", "Fatal connectToDevice: ${e.message}")
             call.reject("Error interno: ${e.message}", "INTERNAL_ERROR")
         }
     }
@@ -568,7 +601,8 @@ class NexoBlePlugin : Plugin() {
             val adapter = bluetoothManager.adapter
             if (adapter == null || !adapter.isEnabled) return@Runnable
             try {
-                val device = adapter.getRemoteDevice(macNorm.chunked(2).joinToString(":"))
+                val macFormatted = macNorm.chunked(2).joinToString(":")
+                val device = adapter.getRemoteDevice(macFormatted)
                 val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
                 } else {
@@ -588,9 +622,9 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun disconnectDevice(call: PluginCall) {
-        val deviceId = call.getString("deviceId") ?: ""
-        val macNorm = normalizeMac(deviceId)
-        remLog("INFO", "GATT_CLIENT", "disconnectDevice $deviceId")
+        val rawDeviceId = call.getString("deviceId") ?: ""
+        val macNorm = normalizeMac(rawDeviceId)
+        remLog("INFO", "GATT_CLIENT", "disconnectDevice $rawDeviceId")
         reconnectTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
         reconnectTimers.remove(macNorm)
         reconnectAttempts.remove(macNorm)
@@ -600,15 +634,15 @@ class NexoBlePlugin : Plugin() {
         clientTxCharacteristics.remove(macNorm)
         clientConnectionStates.remove(macNorm)
         pendingCalls.remove(macNorm)
-        notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", deviceId))
+        notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
         call.resolve(JSObject().put("disconnected", true))
     }
 
     @PluginMethod
     fun forceReconnect(call: PluginCall) {
-        val deviceId = call.getString("deviceId") ?: ""
-        val macNorm = normalizeMac(deviceId)
-        remLog("INFO", "GATT_CLIENT", "forceReconnect $deviceId")
+        val rawDeviceId = call.getString("deviceId") ?: ""
+        val macNorm = normalizeMac(rawDeviceId)
+        remLog("INFO", "GATT_CLIENT", "forceReconnect $rawDeviceId")
         reconnectAttempts[macNorm] = 0
         gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
         gattClients.remove(macNorm)
@@ -620,11 +654,11 @@ class NexoBlePlugin : Plugin() {
     // ==================== DUAL GATT: ENVIO DE MENSAJES ====================
     @PluginMethod
     fun sendMessage(call: PluginCall) {
-        val deviceId = call.getString("deviceId") ?: ""
+        val rawDeviceId = call.getString("deviceId") ?: ""
         val message = call.getString("message") ?: ""
-        val macNorm = normalizeMac(deviceId)
-        remLog("INFO", "SEND", "sendMessage to=$deviceId len=${message.length}")
-        if (deviceId.isEmpty()) {
+        val macNorm = normalizeMac(rawDeviceId)
+        remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
+        if (rawDeviceId.isEmpty()) {
             call.reject("deviceId requerido")
             return
         }
@@ -641,7 +675,7 @@ class NexoBlePlugin : Plugin() {
                 gatt.writeCharacteristic(rxChar) ?: false
             }
             remLog("INFO", "SEND", "GATT Client write success=$success")
-            call.resolve(JSObject().put("sent", success).put("mode", "gatt_client").put("deviceId", deviceId))
+            call.resolve(JSObject().put("sent", success).put("mode", "gatt_client").put("deviceId", rawDeviceId))
             return
         }
         remLog("WARN", "SEND", "No GATT client para $macNorm, usando broadcast fallback")
@@ -651,7 +685,7 @@ class NexoBlePlugin : Plugin() {
             setPackage(ctx.packageName)
         }
         ctx.sendBroadcast(intent)
-        call.resolve(JSObject().put("sent", true).put("mode", "broadcast").put("deviceId", deviceId))
+        call.resolve(JSObject().put("sent", true).put("mode", "broadcast").put("deviceId", rawDeviceId))
     }
 
     // ==================== ADVERTISING ====================
