@@ -3,11 +3,11 @@
  * Base: v5.0.2 con fix de renderContactsList y _safeNativeCall
  * + LIMPIEZA AUTOMATICA DE CACHE al iniciar
  * DUAL GATT CHANGES:
- *    * openChat() garantiza conexion GATT Client hacia el remoto
- *    * sendChatMessage() usa SOLO GATT Client (no broadcast fallback)
- *    * onPayloadReceived acepta source 'gatt_server' y 'gatt_client'
- *    * Auto-reconnect manejado por plugin nativo (no en JS)
- *    * Eliminado fallback broadcast confuso
+ * * openChat() garantiza conexion GATT Client hacia el remoto
+ * * sendChatMessage() usa SOLO GATT Client (no broadcast fallback)
+ * * onPayloadReceived acepta source 'gatt_server' y 'gatt_client'
+ * * Auto-reconnect manejado por plugin nativo (no en JS)
+ * * Eliminado fallback broadcast confuso
  * ES5 syntax compatible con webpack - NO async/await en metodos de clase
  */
 export function initBLEInterface(bleMesh) {
@@ -179,7 +179,7 @@ function _safeNativeCall(plugin, method, args) {
       if (result && typeof result.then === 'function') {
         result.then(resolve).catch(reject);
       } else { resolve(result); }
-    } catch (e) { reject(e); }
+    } catch (e) reject(e); }
   });
 }
 
@@ -1496,30 +1496,54 @@ export class BLEInterface {
 
   updateStatus(customStatus) {
     var self = this;
+    var statusEl = self.elements.status;
+    if (!statusEl) return Promise.resolve();
     if (customStatus) {
-      self.elements.status.textContent = customStatus;
-      self.elements.status.className = 'ble-status-offline';
+      statusEl.textContent = customStatus;
+      statusEl.className = 'ble-status-offline';
       return Promise.resolve();
     }
-    if (self.isDummyMode) return Promise.resolve();
-    var checkConnected = function() {
-      if (_hasNativeMethod(self.nativePlugin, 'getConnectedDevices')) {
-        return _safeNativeCall(self.nativePlugin, 'getConnectedDevices', {})
-          .then(function(result) {
-            var devices = (result && result.devices) || [];
-            var hasConnected = devices.length > 0;
-            if (hasConnected) {
-              self.elements.status.textContent = 'CONECTADO (' + devices.length + ')';
-              self.elements.status.className = 'ble-status-online';
-              return true;
-            }
-            return false;
-          })
-          .catch(function() { return false; });
-      }
-      return Promise.resolve(false);
-    };
-    if (_hasNativeMethod(self.nativePlugin, 'isBluetoothEnabled')) {
+    if (self.isScanning) {
+      statusEl.textContent = 'ESCANEANDO...';
+      statusEl.className = 'ble-status-scanning';
+      return Promise.resolve();
+    }
+    if (self.connectedDevices.size > 0) {
+      statusEl.textContent = 'CONECTADO (' + self.connectedDevices.size + ')';
+      statusEl.className = 'ble-status-online';
+      return Promise.resolve();
+    }
+    if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'isBluetoothEnabled')) {
       return _safeNativeCall(self.nativePlugin, 'isBluetoothEnabled', {})
-        .then(function(btState) {
-          var enabled = btState && btState.enabled;
+        .then(function(state) {
+          if (state && state.enabled) {
+            statusEl.textContent = 'LISTO';
+            statusEl.className = 'ble-status-online';
+          } else {
+            statusEl.textContent = 'BLUETOOTH DESACTIVADO';
+            statusEl.className = 'ble-status-offline';
+          }
+        })
+        .catch(function(err) {
+          console.error('[BLEInterface] Error consultando estado:', err);
+          self.elements.status.textContent = 'ERROR';
+          self.elements.status.className = 'ble-status-offline';
+        });
+    }
+    self.elements.status.textContent = 'OFFLINE';
+    self.elements.status.className = 'ble-status-offline';
+    return Promise.resolve();
+  }
+
+  showToast(message, type, duration) {
+    type = type || 'info';
+    duration = duration || 3000;
+    var toast = document.createElement('div');
+    toast.className = 'ble-toast ' + type;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(function() {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, duration);
+  }
+}
