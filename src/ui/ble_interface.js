@@ -1512,7 +1512,323 @@ export class BLEInterface {
     if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) {
       return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: _macWithColons(macNorm) })
         .then(function() {
-          var uuid = self._macToUuidMap        .then(function() {
+          var uuid = self._macToUuidMap.get(macNorm);
+          if (self._activeChatDeviceId === uuid || self._activeChatMAC === macNorm) {
+            self._activeChatDeviceId = null;
+            self._activeChatMAC = null;
+            try { localtry { localStorage.removeItem(BLE_ACTIVE_CHAT_MAC_KEY); } catch(e) {}
+      self.updateBadge();
+    });
+  }
+
+  togglePanel() {
+    this.elements.panel.classList.toggle('active');
+    this.elements.overlay.classList.toggle('active');
+    if (this.elements.panel.classList.contains('active')) {
+      this.newDevicesCount = 0;
+      this.updateBadge();
+      this.renderContactsList();
+    }
+  }
+
+  toggleScan() {
+    var self = this;
+    if (self.isDummyMode) return Promise.resolve();
+    var permsReady = false;
+    if (window.ensureBLEPermissions) {
+      return window.ensureBLEPermissions()
+        .then(function(result) {
+          permsReady = result;
+        })
+        .catch(function() {
+          permsReady = true;
+        })
+        .then(function() {
+          if (!permsReady) {
+            self.showToast('Permisos BLE requeridos', 'warning', 5000);
+            return Promise.resolve();
+          }
+          if (self.isScanning) {
+            self.showToast('[BLE JS] Stopping scan...', 'info', 2000);
+            if (_hasNativeMethod(self.nativePlugin, 'stopScan')) {
+              return _safeNativeCall(self.nativePlugin, 'stopScan', {})
+                .then(function() {
+                  self.isScanning = false;
+                  self.updateScanButton();
+                  self.updateStatus();
+                  self.showToast('[BLE JS] Scan STOPPED', 'info', 2000);
+                });
+            }
+            self.isScanning = false;
+            self.updateScanButton();
+            self.updateStatus();
+            return Promise.resolve();
+          } else {
+            self.showToast('[BLE JS] Starting scan...', 'info', 2000);
+            self.foundDevices.clear();
+            self._renderedDeviceIds.clear();
+            self.renderContactsList();
+            self.renderNewDeviceBar();
+            if (_hasNativeMethod(self.nativePlugin, 'startScan')) {
+              return _safeNativeCall(self.nativePlugin, 'startScan', {})
+                .then(function() {
+                  self.isScanning = true;
+                  self.updateScanButton();
+                  self.elements.status.textContent = 'ESCANEANDO...';
+                  self.elements.status.className = 'ble-status-scanning';
+                  self.showToast('[BLE JS] Scan STARTED', 'success', 2000);
+                });
+            }
+            self.isScanning = true;
+            self.updateScanButton();
+            self.elements.status.textContent = 'ESCANEANDO...';
+            self.elements.status.className = 'ble-status-scanning';
+            return Promise.resolve();
+          }
+        })
+        .catch(function(err) {
+          self.isScanning = false;
+          self.updateScanButton();
+        });
+    } else {
+      permsReady = true;
+    }
+    if (!permsReady) {
+      self.showToast('Permisos BLE requeridos', 'warning', 5000);
+      return Promise.resolve();
+    }
+    if (self.isScanning) {
+      if (_hasNativeMethod(self.nativePlugin, 'stopScan')) {
+        return _safeNativeCall(self.nativePlugin, 'stopScan', {})
+          .then(function() {
+            self.isScanning = false;
+            self.updateScanButton();
+            self.updateStatus();
+          });
+      }
+      self.isScanning = false;
+      self.updateScanButton();
+      self.updateStatus();
+    } else {
+      self.foundDevices.clear();
+      self._renderedDeviceIds.clear();
+      self.renderContactsList();
+      self.renderNewDeviceBar();
+      if (_hasNativeMethod(self.nativePlugin, 'startScan')) {
+        return _safeNativeCall(self.nativePlugin, 'startScan', {})
+          .then(function() {
+            self.isScanning = true;
+            self.updateScanButton();
+            self.elements.status.textContent = 'ESCANEANDO...';
+            self.elements.status.className = 'ble-status-scanning';
+          });
+      }
+      self.isScanning = true;
+      self.updateScanButton();
+      self.elements.status.textContent = 'ESCANEANDO...';
+      self.elements.status.className = 'ble-status-scanning';
+    }
+    return Promise.resolve();
+  }
+
+  onDeviceFound(device) {
+    var mac = _normMac(device.id || device.address);
+    this.showToast('[BLE JS] onDeviceFound: ' + (device.name || 'Unknown') + ' mac=' + mac, 'info', 2000);
+    if (!mac) return;
+    if (this.localDeviceAddress && mac === this.localDeviceAddress) return;
+    var knownUUID = this._macToUuidMap.get(mac);
+    if (knownUUID && _isBLEContact(knownUUID)) {
+      var contacts = _getBLEContacts();
+      var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(knownUUID); });
+      if (idx >= 0) {
+        contacts[idx].online = true;
+        contacts[idx].lastSeen = Date.now();
+        contacts[idx].macAddress = mac;
+        _saveBLEContacts(contacts);
+      }
+      this.renderContactsList();
+      return;
+    }
+    if (this.foundDevices.has(mac)) {
+      var existing = this.foundDevices.get(mac);
+      existing.rssi = device.rssi;
+      existing.name = device.name || existing.name;
+      existing.lastSeen = Date.now();
+      this.foundDevices.set(mac, existing);
+      this.renderNewDeviceBar();
+      return;
+    }
+    device.lastSeen = Date.now();
+    this.foundDevices.set(mac, device);
+    this.newDevicesCount++;
+    this.updateBadge();
+    this.renderNewDeviceBar();
+  }
+
+  renderContactsList() {
+    var self = this;
+    var list = this.elements.contactsList;
+    if (!list) return;
+    list.innerHTML = '';
+    var contacts = _getBLEContacts();
+    if (contacts.length === 0) {
+      list.innerHTML = '<div class="ble-empty">No hay contactos. Presiona Descubrir para encontrar dispositivos.</div>';
+      return;
+    }
+    contacts.forEach(function(contact) {
+      var uuid = _normId(contact.deviceUUID);
+      var mac = self._uuidToMacMap.get(uuid) || _normMac(contact.macAddress);
+      var isOnline = contact.online && (Date.now() - (contact.lastSeen || 0)) < 60000;
+      var item = document.createElement('div');
+      item.className = 'ble-contact-item ' + (isOnline ? 'online' : 'offline');
+      var infoDiv = document.createElement('div');
+      infoDiv.className = 'ble-contact-info';
+      infoDiv.innerHTML = '<div class="ble-contact-name">' + (contact.name || 'NEXO Peer') + '</div><div class="ble-contact-status">' + (isOnline ? 'En linea' : 'Offline') + '</div>';
+      item.appendChild(infoDiv);
+      var actionsDiv = document.createElement('div');
+      actionsDiv.className = 'ble-contact-actions';
+      var chatBtn = document.createElement('button');
+      chatBtn.className = 'ble-btn-chat';
+      chatBtn.textContent = 'Chat';
+      chatBtn.addEventListener('click', function() { self.openChat(uuid); });
+      actionsDiv.appendChild(chatBtn);
+      var removeBtn = document.createElement('button');
+      removeBtn.className = 'ble-btn-remove';
+      removeBtn.textContent = 'X';
+      removeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        self.removeContact(uuid);
+      });
+      actionsDiv.appendChild(removeBtn);
+      item.appendChild(actionsDiv);
+      list.appendChild(item);
+    });
+  }
+
+  renderNewDeviceBar() {
+    var bar = this.elements.newDeviceBar;
+    var nameSpan = this.elements.newDeviceName;
+    var newDevice = null;
+    var newMac = null;
+    this.foundDevices.forEach(function(device, mac) {
+      var uuid = device.deviceUUID || this._macToUuidMap.get(mac);
+      if (!uuid || !_isBLEContact(uuid)) {
+        newDevice = device;
+        newMac = mac;
+      }
+    }.bind(this));
+    if (newDevice && newMac) {
+      nameSpan.textContent = newDevice.name || 'NEXO Device';
+      bar.style.display = 'flex';
+      bar.dataset.mac = newMac;
+    } else {
+      bar.style.display = 'none';
+      bar.dataset.mac = '';
+    }
+  }
+
+  _addNewDevice() {
+    this.showToast('[BLE JS] _addNewDevice iniciado', 'info', 2000);
+    var bar = this.elements.newDeviceBar;
+    var mac = _normMac(bar.dataset.mac);
+    if (!mac) { this.showToast('[BLE JS] AddNewDevice: MAC invalida', 'error', 2000); return; }
+    var device = this.foundDevices.get(mac);
+    if (!device) { this.showToast('[BLE JS] AddNewDevice: device not found', 'error', 2000); return; }
+    var name = device.name || 'NEXO Peer';
+    var existingUUID = this._macToUuidMap.get(mac);
+    var existingContact = existingUUID ? _getContactByUUID(existingUUID) : null;
+    if (existingContact) {
+      this.showToast('Contacto ya existe: ' + existingContact.name, 'warning', 2000);
+      existingContact.online = true;
+      existingContact.lastSeen = Date.now();
+      existingContact.macAddress = mac;
+      var contacts = _getBLEContacts();
+      var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(existingUUID); });
+      if (idx >= 0) {
+        contacts[idx] = existingContact;
+        _saveBLEContacts(contacts);
+      }
+      try { localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac); } catch (e) {}
+      this._autoConnectGATT(mac, device);
+      this.foundDevices.delete(mac);
+      this.renderContactsList();
+      this.renderNewDeviceBar();
+      return;
+    }
+    var tempUUID = 'mac-' + mac;
+    this._macToUuidMap.set(mac, tempUUID);
+    this._uuidToMacMap.set(tempUUID, mac);
+    _saveMacMaps(this._uuidToMacMap, this._macToUuidMap);
+    _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
+    try {
+      localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac);
+    } catch (e) {}
+    this._autoConnectGATT(mac, device);
+    this.foundDevices.delete(mac);
+    this.renderContactsList();
+    this.renderNewDeviceBar();
+    this.showToast('Agregado: ' + name, 'success');
+  }
+
+  _autoConnectGATT(mac, device) {
+    var self = this;
+    self.showToast('[BLE JS] AutoConnectGATT: ' + mac, 'info', 2000);
+    if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+      self.showToast('[BLE JS] AutoConnect: plugin sin connectToDevice', 'error', 2000);
+      console.warn('[BLEInterface] Plugin no tiene connectToDevice');
+      return Promise.resolve();
+    }
+    var macNorm = _normMac(mac);
+    if (!macNorm) return Promise.resolve();
+    var state = self._getDeviceState(macNorm);
+    if (state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.CONNECTING) {
+      return Promise.resolve();
+    }
+    self._setDeviceState(macNorm, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
+    self.connectedDevices.set(macNorm, {
+      id: macNorm, address: macNorm, name: (device && device.name) || 'NEXO Peer',
+      direction: 'outgoing', servicesReady: false, deviceUUID: self._macToUuidMap.get(macNorm)
+    });
+    console.log('[BLEInterface] Auto-connect GATT a', macNorm);
+    return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: _macWithColons(macNorm) })
+      .then(function(result) {
+        self.showToast('[BLE JS] AutoConnect result: ' + JSON.stringify(result), 'info', 2000);
+        console.log('[BLEInterface] Auto-connect resultado:', result);
+        if (result && (result.connected || result.alreadyConnected)) {
+          return self._waitForReadyToChat(macNorm, 8000)
+            .then(function() {
+              console.log('[BLEInterface] Auto-connect exitoso para', macNorm);
+            });
+        } else {
+          self._setDeviceState(macNorm, BLE_STATES.DISCONNECTED);
+        }
+      })
+      .catch(function(e) {
+        self.showToast('[BLE JS] AutoConnect FAILED: ' + e.message, 'error', 3000);
+        console.warn('[BLEInterface] Auto-connect GATT fallo:', e.message);
+        self._setDeviceState(macNorm, BLE_STATES.DISCONNECTED);
+      });
+  }
+
+  removeContact(deviceUUID) {
+    try {
+      _removeBLEContact(deviceUUID);
+      this.showToast('Eliminado', 'info');
+      this.renderContactsList();
+      this.renderNewDeviceBar();
+    } catch (e) {
+      this.showToast('Error al eliminar: ' + (e.message || 'desconocido'), 'error');
+    }
+  }
+
+  disconnect(deviceMAC) {
+    var self = this;
+    if (self.isDummyMode) return Promise.resolve();
+    var macNorm = _normMac(deviceMAC);
+    if (!macNorm) return Promise.resolve();
+    if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) {
+      return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: _macWithColons(macNorm) })
+        .then(function() {
           var uuid = self._macToUuidMap.get(macNorm);
           if (self._activeChatDeviceId === uuid || self._activeChatMAC === macNorm) {
             self._activeChatDeviceId = null;
@@ -1590,3 +1906,4 @@ export class BLEInterface {
     }, duration);
   }
 }
+
