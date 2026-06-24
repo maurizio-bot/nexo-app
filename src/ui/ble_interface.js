@@ -1,7 +1,8 @@
 /**
- * BLE Interface v5.0.3-DUAL-GATT-ES5-CACHE-CLEAR
- * Base: v5.0.2 con fix de renderContactsList y _safeNativeCall
- * + LIMPIEZA AUTOMATICA DE CACHE al iniciar
+ * BLE Interface v5.0.4-ACK-ANTI-LOOP-ES5
+ * Base: v5.0.3-DUAL-GATT-ES5-CACHE-CLEAR
+ * FIX: Anti-bucle ACK — los paquetes ACK/read_receipt no generan respuesta ACK
+ * FIX: ACK passthrough por GATT sin reensamblaje especial
  * DUAL GATT CHANGES:
  *    * openChat() guarantees connection GATT Client towards the remote
  *    * sendChatMessage() uses ONLY GATT Client (no broadcast fallback)
@@ -224,6 +225,16 @@ function _clearStaleCache() {
   }
 }
 
+/* ============================================================
+   FIX v5.0.4: Detectar si contenido es ACK o read_receipt
+   ============================================================ */
+function _isControlPacket(content) {
+  if (!content || typeof content !== 'string') return false;
+  if (content.indexOf('"type":"ack"') !== -1) return true;
+  if (content.indexOf('"type":"read_receipt"') !== -1) return true;
+  return false;
+}
+
 export class BLEInterface {
   constructor(bleMesh) {
     this.bleMesh = bleMesh;
@@ -265,7 +276,7 @@ export class BLEInterface {
     }
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
-    console.log('[BLEInterface] DUAL GATT v5.0.3-ES5 iniciado. MAC maps:', this._uuidToMacMap.size, 'entradas');
+    console.log('[BLEInterface] DUAL GATT v5.0.4-ACK-ANTI-LOOP iniciado. MAC maps:', this._uuidToMacMap.size, 'entradas');
   }
 
   _detectMeshType() {
@@ -546,6 +557,30 @@ export class BLEInterface {
         var senderName = null;
         var senderUUID = null;
         var content = data.content || data.data || '';
+
+        /* FIX v5.0.4: Detectar ACK/read_receipt ANTES de reensamblaje */
+        var isControl = _isControlPacket(content);
+        if (isControl) {
+          try {
+            var ctrl = JSON.parse(content);
+            messageId = ctrl.messageId;
+            senderUUID = ctrl.deviceUUID || self._macToUuidMap.get(mac);
+            senderName = ctrl.senderName || 'NEXO Peer';
+            _safeDispatchEvent('nexo:ble:messageReceived', {
+              deviceId: mac,
+              deviceUUID: senderUUID,
+              macAddress: mac,
+              content: content,
+              senderName: senderName,
+              messageId: messageId,
+              source: source,
+              timestamp: data.timestamp || Date.now(),
+              isControl: true
+            });
+            return;
+          } catch (ctrlErr) {}
+        }
+
         if (content.charAt(0) === '{' || (data.data && data.data.charAt(0) === '{')) {
           try {
             var json = JSON.parse(data.data || content || '{}');
@@ -675,6 +710,9 @@ export class BLEInterface {
     return processNext(0);
   }
 
+  /* ============================================================
+     FIX v5.0.4: _sendMessageNative con anti-bucle ACK
+     ============================================================ */
   _sendMessageNative(deviceMAC, content, messageId) {
     var self = this;
     self.showToast('[BLE JS] _sendMessageNative: ' + deviceMAC, 'info', 2000);
@@ -692,13 +730,23 @@ export class BLEInterface {
           return;
         }
         var targetId = _macWithColons(macNorm);
-        var enrichedPayload = JSON.stringify({
-          deviceUUID: self.localDeviceUUID,
-          senderName: self.localDeviceName,
-          content: content,
-          messageId: messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)),
-          timestamp: Date.now()
-        });
+
+        /* FIX v5.0.4: Si es ACK/read_receipt, NO agregar senderName ni deviceUUID
+           para evitar que el receptor lo interprete como mensaje normal */
+        var isCtrl = _isControlPacket(content);
+        var enrichedPayload;
+        if (isCtrl) {
+          enrichedPayload = content;
+        } else {
+          enrichedPayload = JSON.stringify({
+            deviceUUID: self.localDeviceUUID,
+            senderName: self.localDeviceName,
+            content: content,
+            messageId: messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)),
+            timestamp: Date.now()
+          });
+        }
+
         if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
           self.showToast('[BLE JS] Llamando sendMessage nativo...', 'info', 2000);
           _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
@@ -1464,6 +1512,7 @@ export class BLEInterface {
     if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) {
       return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: _macWithColons(macNorm) })
         .then(function() {
+          var uuid = self._macToUuidMap        .then(function() {
           var uuid = self._macToUuidMap.get(macNorm);
           if (self._activeChatDeviceId === uuid || self._activeChatMAC === macNorm) {
             self._activeChatDeviceId = null;
