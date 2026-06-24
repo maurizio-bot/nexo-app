@@ -1,6 +1,7 @@
 /**
- * ble_interface.js v5.1.0-ACK-ES5
+ * ble_interface.js v5.1.1-ACK-ES5
  * Dual GATT + ACK + Read Receipt + Retry Queue
+ * FIX: Exports nombrados ES6 compatibles con webpack
  */
 var bleInterface = (function() {
     'use strict';
@@ -16,7 +17,6 @@ var bleInterface = (function() {
     var _readListeners = [];
     var _connListeners = [];
 
-    // UUIDs 16-bit NEXO
     var SERVICE_UUID = '0000abcd-0000-1000-8000-00805f9b34fb';
     var RX_CHAR_UUID = '0000abce-0000-1000-8000-00805f9b34fb';
     var TX_CHAR_UUID = '0000abcf-0000-1000-8000-00805f9b34fb';
@@ -65,7 +65,6 @@ var bleInterface = (function() {
             if (!payload || !payload.t) return null;
             return payload;
         } catch (e) {
-            // Legacy plain text fallback
             return { t: 'MSG', id: _generateMessageId(), body: raw, ts: Date.now() };
         }
     }
@@ -135,7 +134,6 @@ var bleInterface = (function() {
             connectedDevices[mac] = { mac: mac, connected: true, ts: Date.now() };
             _notify('connected', { mac: mac, status: 'connected' });
             if (callbacks.onDeviceConnected) callbacks.onDeviceConnected(mac);
-            // Retry queued messages upon reconnection
             setTimeout(_processPendingQueue, 800);
         });
 
@@ -154,7 +152,6 @@ var bleInterface = (function() {
             if (!payload) return;
 
             if (payload.t === 'MSG') {
-                // Auto-ACK
                 if (mac && payload.id) {
                     _sendAck(mac, payload.id);
                 }
@@ -231,10 +228,6 @@ var bleInterface = (function() {
         });
     }
 
-    /**
-     * sendChatMessage(mac, text, prebuiltPayload, prebuiltId)
-     * Returns promise that resolves with { messageId, status }
-     */
     function sendChatMessage(mac, text, prebuiltPayload, prebuiltId) {
         var cleanMac = _macWithColons(mac);
         var messageId = prebuiltId || _generateMessageId();
@@ -251,7 +244,6 @@ var bleInterface = (function() {
                     resolve({ messageId: messageId, status: 'sent' });
                 })
                 .catch(function(err) {
-                    // Enqueue for retry on reconnection
                     _enqueuePending(messageId, cleanMac, payload);
                     reject({ messageId: messageId, error: err, queued: true });
                 });
@@ -261,7 +253,6 @@ var bleInterface = (function() {
     function openChat(mac) {
         var cleanMac = _macWithColons(mac);
         return connectToDevice(cleanMac).catch(function() {
-            // Even if GATT connect fails, allow chat; messages will queue
             return cleanMac;
         });
     }
@@ -316,7 +307,7 @@ var bleInterface = (function() {
         _sendReadReceipt(_macWithColons(mac), messageIds);
     }
 
-    return {
+    var api = {
         init: init,
         requestPermissions: requestPermissions,
         startScan: startScan,
@@ -338,8 +329,36 @@ var bleInterface = (function() {
         RX_CHAR_UUID: RX_CHAR_UUID,
         TX_CHAR_UUID: TX_CHAR_UUID
     };
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = api;
+    }
+
+    if (typeof exports !== 'undefined') {
+        exports.bleInterface = api;
+        exports.initBLEInterface = init;
+        exports.init = init;
+        exports.requestPermissions = requestPermissions;
+        exports.startScan = startScan;
+        exports.stopScan = stopScan;
+        exports.connectToDevice = connectToDevice;
+        exports.disconnectDevice = disconnectDevice;
+        exports.sendChatMessage = sendChatMessage;
+        exports.openChat = openChat;
+        exports.updateStatus = updateStatus;
+        exports.getConnectedDevices = getConnectedDevices;
+        exports.isDeviceConnected = isDeviceConnected;
+        exports.onMessageReceived = onMessageReceived;
+        exports.onMessageAcked = onMessageAcked;
+        exports.onMessageRead = onMessageRead;
+        exports.onConnectionChanged = onConnectionChanged;
+        exports.setCallbacks = setCallbacks;
+        exports.sendReadReceipt = sendReadReceipt;
+    }
+
+    return api;
 })();
 
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = bleInterface;
+if (typeof window !== 'undefined') {
+    window.bleInterface = bleInterface;
 }
