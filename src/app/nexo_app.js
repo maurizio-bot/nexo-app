@@ -1,7 +1,7 @@
 /**
  * nexo_app.js v5.1.2-ACK-ES5
  * ACK + Read Receipt + Estados de entrega + Cola + UI
- * FIX: ES6 export nativo para webpack + new NexoApp(config)
+ * FIX: ES6 export nativo + compatible con main.js existente
  */
 
 export var DEBUG = false;
@@ -21,6 +21,13 @@ export function NexoApp(config) {
     self._lastReadMessageId = {};
     self.bleInterface = (typeof bleInterface !== 'undefined') ? bleInterface : 
                         (typeof window !== 'undefined' && window.bleInterface) ? window.bleInterface : null;
+
+    // Exponer propiedades que main.js espera
+    self.activeContact = null;
+    self.localDeviceUUID = null;
+    self.localDeviceAddress = null;
+    self._uuidToMacMap = new Map();
+    self._activeChatDeviceId = null;
 
     var STATUS = {
         SENDING: 'sending',
@@ -185,6 +192,16 @@ export function NexoApp(config) {
             self.showNotification(mac, 'Nuevo mensaje', body);
             self.updateContactBadge(mac, self._unreadCounts[mac]);
         }
+
+        // Notificar a main.js si tiene callback
+        if (self._config && typeof self._config.onMessage === 'function') {
+            self._config.onMessage({
+                content: body,
+                timestamp: ts,
+                _source: 'ble_direct',
+                _own: false
+            });
+        }
     }
 
     function _handleAck(data) {
@@ -208,6 +225,10 @@ export function NexoApp(config) {
         } else {
             self.updateStatusBar('DESCONECTADO');
         }
+
+        if (self._config && typeof self._config.onStatusChange === 'function') {
+            self._config.onStatusChange(status === 'connected' ? 'P2P_BLE' : 'OFFLINE');
+        }
     }
 
     self.init = function() {
@@ -229,6 +250,8 @@ export function NexoApp(config) {
     self.openChat = function(mac) {
         var cleanMac = _macWithColons(mac);
         self._activeChatMAC = cleanMac;
+        self._activeChatDeviceId = cleanMac;
+        self.activeContact = { id: cleanMac, name: cleanMac, address: cleanMac };
         _loadChatHistory(cleanMac);
         _sendReadReceiptsForUnread(cleanMac);
 
@@ -241,12 +264,20 @@ export function NexoApp(config) {
         self.updateStatusBar('CONECTADO: ' + cleanMac);
     };
 
-    self.sendMessage = function(text) {
+    // Compatible con main.js: sendMessage({ content: text }) o sendMessage(text)
+    self.sendMessage = function(arg) {
+        var text = '';
+        if (typeof arg === 'string') {
+            text = arg;
+        } else if (arg && typeof arg === 'object') {
+            text = arg.content || arg.text || arg.message || '';
+        }
+
         if (!self._activeChatMAC) {
             self.showToast('No hay chat activo');
-            return;
+            return Promise.resolve(false);
         }
-        if (!text || !text.trim()) return;
+        if (!text || !text.trim()) return Promise.resolve(false);
 
         var messageId = _generateId();
         var cleanMac = self._activeChatMAC;
@@ -267,11 +298,12 @@ export function NexoApp(config) {
         if (!self.bleInterface || !self.bleInterface.sendChatMessage) {
             _updateMessageStatus(messageId, STATUS.FAILED);
             self.showToast('BLE no disponible');
-            return;
+            return Promise.resolve(false);
         }
 
-        self.bleInterface.sendChatMessage(cleanMac, text.trim()).then(function(result) {
+        return self.bleInterface.sendChatMessage(cleanMac, text.trim()).then(function(result) {
             _updateMessageStatus(messageId, STATUS.SENT);
+            return true;
         }).catch(function(err) {
             if (err && err.queued) {
                 _updateMessageStatus(messageId, STATUS.QUEUED);
@@ -280,6 +312,7 @@ export function NexoApp(config) {
                 _updateMessageStatus(messageId, STATUS.FAILED);
                 self.showToast('Error al enviar');
             }
+            return false;
         });
     };
 
@@ -312,6 +345,15 @@ export function NexoApp(config) {
             initialized: true,
             bleAvailable: !!self.bleInterface
         };
+    };
+
+    // Metodos que main.js espera
+    self._getBLEContacts = function() {
+        try {
+            return JSON.parse(localStorage.getItem('nexo_ble_contacts_v2') || '[]');
+        } catch (e) {
+            return [];
+        }
     };
 
     return self;
