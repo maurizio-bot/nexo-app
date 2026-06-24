@@ -3,12 +3,12 @@
  * Base: v5.0.2 con fix de renderContactsList y _safeNativeCall
  * + LIMPIEZA AUTOMATICA DE CACHE al iniciar
  * DUAL GATT CHANGES:
- * * openChat() garantiza conexion GATT Client hacia el remoto
- * * sendChatMessage() usa SOLO GATT Client (no broadcast fallback)
- * * onPayloadReceived acepta source 'gatt_server' y 'gatt_client'
- * * Auto-reconnect manejado por plugin nativo (no en JS)
- * * Eliminado fallback broadcast confuso
- * ES5 syntax compatible con webpack - NO async/await en metodos de clase
+ *    * openChat() guarantees connection GATT Client towards the remote
+ *    * sendChatMessage() uses ONLY GATT Client (no broadcast fallback)
+ *    * onPayloadReceived accepts source 'gatt_server' and 'gatt_client'
+ *    * Auto-reconnect handled by native plugin (not in JS)
+ *    * Removed confusing broadcast fallback
+ * ES5 syntax compatible with webpack - NO async/await in class methods
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -179,7 +179,7 @@ function _safeNativeCall(plugin, method, args) {
       if (result && typeof result.then === 'function') {
         result.then(resolve).catch(reject);
       } else { resolve(result); }
-    } catch (e) reject(e); }
+    } catch (e) { reject(e); }
   });
 }
 
@@ -1496,32 +1496,26 @@ export class BLEInterface {
 
   updateStatus(customStatus) {
     var self = this;
-    var statusEl = self.elements.status;
-    if (!statusEl) return Promise.resolve();
+    if (!self.elements.status) return Promise.resolve();
     if (customStatus) {
-      statusEl.textContent = customStatus;
-      statusEl.className = 'ble-status-offline';
+      self.elements.status.textContent = customStatus;
+      self.elements.status.className = 'ble-status-offline';
       return Promise.resolve();
     }
-    if (self.isScanning) {
-      statusEl.textContent = 'ESCANEANDO...';
-      statusEl.className = 'ble-status-scanning';
-      return Promise.resolve();
-    }
-    if (self.connectedDevices.size > 0) {
-      statusEl.textContent = 'CONECTADO (' + self.connectedDevices.size + ')';
-      statusEl.className = 'ble-status-online';
+    if (self.isDummyMode) {
+      self.elements.status.textContent = 'OFFLINE (Dummy)';
+      self.elements.status.className = 'ble-status-offline';
       return Promise.resolve();
     }
     if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'isBluetoothEnabled')) {
       return _safeNativeCall(self.nativePlugin, 'isBluetoothEnabled', {})
         .then(function(state) {
           if (state && state.enabled) {
-            statusEl.textContent = 'LISTO';
-            statusEl.className = 'ble-status-online';
+            self.elements.status.textContent = 'ONLINE';
+            self.elements.status.className = 'ble-status-online';
           } else {
-            statusEl.textContent = 'BLUETOOTH DESACTIVADO';
-            statusEl.className = 'ble-status-offline';
+            self.elements.status.textContent = 'OFFLINE';
+            self.elements.status.className = 'ble-status-offline';
           }
         })
         .catch(function(err) {
