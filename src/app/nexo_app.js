@@ -1,13 +1,11 @@
 /**
  * nexo_app.js v5.1.2-ACK-ES5
  * ACK + Read Receipt + Estados de entrega + Cola + UI
- * FIX: ES6 named exports compatibles con webpack + new NexoApp(config)
+ * FIX: ES6 export nativo para webpack + new NexoApp(config)
  */
 
-// Export NAMED primero (webpack lo detecta)
 export var DEBUG = false;
 
-// Clase ES5 como function constructora
 export function NexoApp(config) {
     'use strict';
     if (!(this instanceof NexoApp)) {
@@ -319,5 +317,4 @@ export function NexoApp(config) {
     return self;
 }
 
-// Default export para compatibilidad
 export default NexoApp;
