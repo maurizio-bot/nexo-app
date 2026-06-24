@@ -1,10 +1,10 @@
 /**
- * NEXO App v5.0.10-ARMORED-FIXED
- * Base: v5.0.9d-ARMORED-FIXED
- * FIX: Render optimista de mensaje propio (aparece inmediato en pantalla)
- * FIX: _handleMessage fuerza _own como booleano
- * FIX: _bleMessageHandler pasa deviceUUID correcto a _handleMessage
- * FIX: Timeout BLE coherente 15000ms
+ * NEXO App v5.0.11-ACK-FIXED
+ * Base: v5.0.10-ARMORED-FIXED
+ * FIX: Doble pantalla eliminada (no appendItems en TheStream)
+ * FIX: Infraestructura ACK completa (pending/sent/delivered/read)
+ * FIX: ACK automatico al recibir mensaje BLE
+ * FIX: Read receipt cuando chat activo con remitente
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
  */
@@ -104,7 +104,9 @@ this._bleMessageHandler = null;
 this._messageDedupMap = new Map();
 this._maxProcessedIds = 1000;
 this._dedupTTL = 300000;
-DEBUG.log('NEXO v5.0.10-ARMORED iniciando...', 'info', 'APP_INIT');
+/* FIX v5.0.11: Mapa de mensajes pendientes para estados ACK */
+this._pendingMessages = new Map();
+DEBUG.log('NEXO v5.0.11-ACK-FIXED iniciando...', 'info', 'APP_INIT');
 }
 async init() {
 if (this.initialized) { DEBUG.warn('Already initialized', 'APP_SKIP'); return this; }
@@ -123,7 +125,7 @@ await this._initPhase6_Bridge();
 await this._initPhase7_UI();
 this.initialized = true;
 DEBUG.setPhase('READY');
-DEBUG.success('NEXO v5.0.10-ARMORED Ready', 'APP_READY');
+DEBUG.success('NEXO v5.0.11-ACK-FIXED Ready', 'APP_READY');
 } catch (err) {
 DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
 await this._partialCleanup();
@@ -266,6 +268,31 @@ var connDev = self.bleInterface && self.bleInterface.connectedDevices ? self.ble
 var foundDev = self.bleInterface && self.bleInterface.foundDevices ? self.bleInterface.foundDevices.get(nid) : null;
 resolvedName = (connDev && connDev.name) || (foundDev && foundDev.name) || detail.senderName || 'NEXO Peer';
 }
+
+/* FIX v5.0.11: Detectar ACK y read receipts antes de procesar como mensaje */
+var messageId = null;
+var content = detail.content || detail.data || '';
+if (content.charAt(0) === '{' || (detail.data && detail.data.charAt(0) === '{')) {
+  try {
+    var json = JSON.parse(detail.data || content || '{}');
+    if (json.messageId) messageId = json.messageId;
+    if (json.deviceUUID) senderUUID = json.deviceUUID;
+  } catch (e) {}
+}
+if (messageId && content && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
+  try {
+    var ctrl = JSON.parse(detail.content || detail.data || content);
+    if (ctrl.type === 'ack') {
+      self._handleACK(ctrl.messageId, ctrl.ackType || 'delivered');
+      return;
+    }
+    if (ctrl.type === 'read_receipt') {
+      self._handleACK(ctrl.messageId, 'read');
+      return;
+    }
+  } catch (ackErr) {}
+}
+
 self._handleMessage({
 content: detail.content,
 sender: detail.deviceId,
@@ -277,6 +304,12 @@ deviceUUID: detail.deviceUUID || detail.deviceId,
 macAddress: detail.macAddress || '',
 _own: false
 }, 'ble_direct');
+
+/* FIX v5.0.11: Enviar ACK de entrega al remitente */
+if (senderUUID && detail.messageId) {
+  setTimeout(function() { self._sendACK(senderUUID, detail.messageId); }, 100);
+}
+
 } catch (handlerErr) {
 console.error('[NexoApp] Error en _bleMessageHandler:', handlerErr);
 DEBUG.error('BLE_UI_002', 'Error en message handler: ' + (handlerErr.message || 'unknown'));
@@ -328,9 +361,8 @@ case 'offline': if ((!this.mesh || !this.mesh.getPeerCount || this.mesh.getPeerC
 }
 _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 /* ============================================================
-   ENVIO DE MENSAJES: Anti-crash + Render Optimista + Transport Priority
-   FIX v5.0.10: Mensaje propio se renderiza INMEDIATAMENTE (optimistic UI)
-   FIX: Timeout BLE 15000ms coherente
+   ENVIO DE MENSAJES: Anti-crash + Render Optimista + ACK States
+   FIX v5.0.11: Estados enviado/entregado/leído funcionales
    ============================================================ */
 async sendMessage(msg) {
 if (!this.initialized || this._isDestroyed) {
@@ -353,6 +385,11 @@ this.bleInterface.showToast('Error: Escribe un mensaje', 'warning');
 }
 return false;
 }
+
+/* FIX v5.0.11: Limpiar mensajes pendientes antiguos y registrar nuevo */
+this._cleanupPendingMessages();
+this._pendingMessages.set(messageId, { status: 'pending', timestamp: Date.now(), recipient: targetId, retries: 0 });
+
 /* === RENDER OPTIMISTA: Mostrar mensaje propio inmediatamente === */
 this._handleMessage({
 content: content,
@@ -363,12 +400,14 @@ recipient: targetId,
 source: 'self',
 messageId: messageId
 }, 'self');
+
 /* === PASO 3: Intentar BLE directo === */
 if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
 try {
 console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
 await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
 DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
+this._updateMessageStatus(messageId, 'sent');
 if (this.bleInterface && this.bleInterface.showToast) {
 this.bleInterface.showToast('Mensaje enviado', 'success');
 }
@@ -386,6 +425,7 @@ if (nordicPeers.length > 0) {
 try {
 await this.nordicMesh.sendMessage(nordicPeers[0].id, content);
 DEBUG.success('Sent via Nordic', 'MSG_NORDIC');
+this._updateMessageStatus(messageId, 'sent');
 return true;
 }
 catch (e) {
@@ -397,6 +437,7 @@ if (this.mesh && this.mesh.getPeerCount && this.mesh.getPeerCount() > 0) {
 try {
 await this.mesh.broadcast({ content: content });
 DEBUG.success('Sent via Hybrid', 'MSG_HYBRID');
+this._updateMessageStatus(messageId, 'sent');
 return true;
 }
 catch (e) {
@@ -408,6 +449,7 @@ if (this.bridge) {
 var result = await this.bridge.send({ content: content });
 if (result) {
 DEBUG.success('Sent via Bridge', 'MSG_BRIDGE');
+this._updateMessageStatus(messageId, 'sent');
 return true;
 }
 }
@@ -415,6 +457,7 @@ return true;
 if (this.wsClient && this.wsClient.isConnected && this.wsClient.isConnected()) {
 this.wsClient.send({ content: content });
 DEBUG.success('Sent via WebSocket', 'MSG_WS');
+this._updateMessageStatus(messageId, 'sent');
 return true;
 }
 /* === FALLO: Ningun transporte disponible === */
@@ -467,7 +510,16 @@ _ts: Date.now(),
 _id: Math.random().toString(36).substr(2, 9)
 });
 this.config.onMessage(enriched);
-if (this.stream && this.stream.appendItems) this.stream.appendItems([enriched]);
+
+/* FIX v5.0.11: Enviar read receipt si chat activo con el remitente */
+if (!enriched._own && this.activeContact && enriched.sender === this.activeContact.id && enriched.messageId) {
+  var self = this;
+  setTimeout(function() { self._sendReadReceipt(enriched.messageId, enriched.sender); }, 800);
+}
+
+/* FIX v5.0.11: Eliminado appendItems para evitar doble pantalla */
+// if (this.stream && this.stream.appendItems) this.stream.appendItems([enriched]);
+
 } catch (err) {
 DEBUG.error('APP_005', 'Message handler: ' + (err.message || 'unknown'));
 if (this.bleInterface && this.bleInterface.showToast) {
@@ -505,6 +557,8 @@ if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
 if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
 if (this.vault) { try { if (this.vault.destroy) await this.vault.destroy(); } catch(e) {} this.vault = null; }
 this._resources.timers.forEach(function(t) { clearTimeout(t); });
+/* FIX v5.0.11: Limpiar pending messages */
+this._pendingMessages.clear();
 DEBUG.success('Cleanup complete', 'DESTROY_OK');
 }
 getStatus() {
@@ -522,6 +576,60 @@ mode: mode,
 hasBLEInterface: !!this.bleInterface,
 activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
 };
+}
+
+/* ============================================================
+   FIX v5.0.11: Métodos ACK / Read Receipt / Estados
+   ============================================================ */
+_cleanupPendingMessages() {
+  var now = Date.now();
+  var keysToDelete = [];
+  this._pendingMessages.forEach(function(v, k) {
+    if (now - v.timestamp > 300000) keysToDelete.push(k);
+  });
+  for (var i = 0; i < keysToDelete.length; i++) {
+    this._pendingMessages.delete(keysToDelete[i]);
+  }
+}
+_updateMessageStatus(messageId, status) {
+  if (!messageId) return;
+  var pending = this._pendingMessages.get(messageId);
+  if (!pending) {
+    if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, status);
+    return;
+  }
+  if (pending.status === 'read') return;
+  if (pending.status === 'delivered' && status !== 'read') return;
+  pending.status = status;
+  this._pendingMessages.set(messageId, pending);
+  if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, status);
+}
+_handleACK(messageId, ackType) {
+  if (!messageId) return;
+  var pending = this._pendingMessages.get(messageId);
+  if (!pending) {
+    DEBUG.log('ACK recibido pero mensaje no en pending: ' + messageId, 'warn', 'ACK_WARN');
+    return;
+  }
+  var newStatus = ackType === 'read' ? 'read' : (ackType === 'delivered' ? 'delivered' : 'sent');
+  if (pending.status === 'read') return;
+  if (pending.status === 'delivered' && newStatus !== 'read') return;
+  pending.status = newStatus;
+  this._pendingMessages.set(messageId, pending);
+  if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, newStatus);
+  DEBUG.log('ACK recibido: ' + messageId + ' -> ' + newStatus, 'info', 'ACK_RECV');
+}
+_sendACK(deviceUUID, messageId) {
+  if (!deviceUUID || !messageId) return;
+  if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
+  var payload = JSON.stringify({ type: 'ack', messageId: messageId, ackType: 'delivered', timestamp: Date.now() });
+  this.bleInterface.sendChatMessage(deviceUUID, payload, 'ack_' + messageId).catch(function(e) {});
+}
+_sendReadReceipt(messageId, recipientId) {
+  if (!messageId || !recipientId) return;
+  if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
+  var payload = JSON.stringify({ type: 'read_receipt', messageId: messageId, timestamp: Date.now() });
+  this.bleInterface.sendChatMessage(recipientId, payload, 'rr_' + messageId).catch(function(e) {});
 }
 }
 export { NexoApp, DEBUG };
