@@ -1,7 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.3-ARMORED
- * NAP 2.0 Certified - BLE Soberano P2P
- * v9.3-ARMORED: Fix contactos v2, versiones sincronizadas, diag BLE mejorado
+ * src/main.js - Punto de entrada NEXO v9.3-ARMORED-FIXED
+ * FIX: Scroll en nexo-stream (padre), no messages-container
+ * FIX: Agregado msg-status DOM element para estados enviado/entregado/leído
  * Build #1273 compatible. NO toca nativo.
  */
 
@@ -47,7 +47,7 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   try {
-    console.log('[MAIN] NEXO v9.3-ARMORED iniciando...');
+    console.log('[MAIN] NEXO v9.3-ARMORED-FIXED iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -432,6 +432,9 @@ function _setupKeyboardShortcuts() {
   }
 }
 
+/* ============================================================
+   FIX v9.3: _renderMessage con scroll correcto + estados ACK
+   ============================================================ */
 function _renderMessage(msg) {
   try {
     if (!msg) return;
@@ -442,21 +445,57 @@ function _renderMessage(msg) {
     var isOwn = !!msg._own;
     div.className = 'message ' + (isOwn ? 'own' : 'other');
     if (msg.pending) div.classList.add('pending');
+    div.dataset.msgId = msg.messageId || msg._id || '';
 
     var sourceBadge = msg._source ? _getSourceIcon(msg._source) : '';
+
+    /* FIX: Agregado msg-status span para estados enviado/entregado/leído */
+    var statusHtml = '';
+    if (isOwn) {
+      var statusClass = 'status-pending';
+      var statusIcon = '○';
+      if (msg.status === 'sent') { statusClass = 'status-sent'; statusIcon = '✓'; }
+      else if (msg.status === 'delivered') { statusClass = 'status-delivered'; statusIcon = '✓✓'; }
+      else if (msg.status === 'read') { statusClass = 'status-read'; statusIcon = '✓✓'; }
+      statusHtml = '<span class="msg-status ' + statusClass + '" data-msg-id="' + (msg.messageId || msg._id || '') + '">' + statusIcon + '</span>';
+    }
 
     div.innerHTML = `
       <div class="msg-content">${msg.content || msg.text || ''}</div>
       <div class="msg-meta">
         <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
         ${sourceBadge}
+        ${statusHtml}
       </div>
     `;
 
     container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+
+    /* FIX: Scroll en nexo-stream (padre con overflow), no messages-container */
+    var stream = document.getElementById('nexo-stream');
+    if (stream) {
+      stream.scrollTop = stream.scrollHeight;
+    }
   } catch (e) {
     console.warn('[MAIN] _renderMessage error:', e);
+  }
+}
+
+/* FIX v9.3: Actualizar estado visual de un mensaje por ID */
+function _updateMessageStatus(messageId, status) {
+  try {
+    if (!messageId) return;
+    var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
+    if (!statusEl) return;
+
+    statusEl.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
+    statusEl.classList.add('status-' + status);
+
+    if (status === 'sent') statusEl.textContent = '✓';
+    else if (status === 'delivered') statusEl.textContent = '✓✓';
+    else if (status === 'read') statusEl.textContent = '✓✓';
+  } catch (e) {
+    console.warn('[MAIN] _updateMessageStatus error:', e);
   }
 }
 
@@ -534,5 +573,8 @@ function _enableFallbackMode() {
     console.error('[MAIN] _enableFallbackMode error:', e);
   }
 }
+
+/* Exponer _updateMessageStatus globalmente para nexo_app.js */
+window.NEXO_updateMessageStatus = _updateMessageStatus;
 
 if (module && module.hot) module.hot.accept();
