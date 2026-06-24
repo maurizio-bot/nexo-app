@@ -1,18 +1,24 @@
 /**
- * nexo_app.js v5.1.0-ACK-ES5
+ * nexo_app.js v5.1.1-ACK-ES5
  * ACK + Read Receipt + Estados de entrega + Cola + UI
+ * FIX: Clase ES5 compatible con new NexoApp(config) + exports nombrados
  */
-var NexoApp = (function() {
+function NexoApp(config) {
     'use strict';
+    if (!(this instanceof NexoApp)) {
+        return new NexoApp(config);
+    }
 
-    var self = {};
-    var _activeChatMAC = null;
-    var _chatMessages = {};
-    var _messageStatus = {};
-    var _unreadCounts = {};
-    var _lastReadMessageId = {};
+    var self = this;
+    self._config = config || {};
+    self._activeChatMAC = null;
+    self._chatMessages = {};
+    self._messageStatus = {};
+    self._unreadCounts = {};
+    self._lastReadMessageId = {};
+    self.bleInterface = (typeof bleInterface !== 'undefined') ? bleInterface : 
+                        (typeof window !== 'undefined' && window.bleInterface) ? window.bleInterface : null;
 
-    // Estados de mensaje
     var STATUS = {
         SENDING: 'sending',
         SENT: 'sent',
@@ -74,8 +80,8 @@ var NexoApp = (function() {
     }
 
     function _updateMessageStatus(messageId, status) {
-        if (!_messageStatus[messageId]) _messageStatus[messageId] = {};
-        _messageStatus[messageId].status = status;
+        if (!self._messageStatus[messageId]) self._messageStatus[messageId] = {};
+        self._messageStatus[messageId].status = status;
 
         var el = document.querySelector('[data-msg-id="' + messageId + '"] .msg-meta');
         if (el) {
@@ -84,28 +90,27 @@ var NexoApp = (function() {
             el.innerHTML = timeStr + ' ' + _getStatusIcon(status);
         }
 
-        // Persistir estado
         try {
-            localStorage.setItem('nexo_msg_status_' + messageId, JSON.stringify(_messageStatus[messageId]));
+            localStorage.setItem('nexo_msg_status_' + messageId, JSON.stringify(self._messageStatus[messageId]));
         } catch (e) {}
     }
 
     function _storeMessage(mac, msg) {
         var key = 'nexo_chat_' + mac;
-        if (!_chatMessages[mac]) {
+        if (!self._chatMessages[mac]) {
             try {
                 var stored = localStorage.getItem(key);
-                _chatMessages[mac] = stored ? JSON.parse(stored) : [];
+                self._chatMessages[mac] = stored ? JSON.parse(stored) : [];
             } catch (e) {
-                _chatMessages[mac] = [];
+                self._chatMessages[mac] = [];
             }
         }
-        _chatMessages[mac].push(msg);
-        if (_chatMessages[mac].length > 200) {
-            _chatMessages[mac] = _chatMessages[mac].slice(-200);
+        self._chatMessages[mac].push(msg);
+        if (self._chatMessages[mac].length > 200) {
+            self._chatMessages[mac] = self._chatMessages[mac].slice(-200);
         }
         try {
-            localStorage.setItem(key, JSON.stringify(_chatMessages[mac]));
+            localStorage.setItem(key, JSON.stringify(self._chatMessages[mac]));
         } catch (e) {}
     }
 
@@ -117,12 +122,12 @@ var NexoApp = (function() {
         var key = 'nexo_chat_' + mac;
         try {
             var stored = localStorage.getItem(key);
-            _chatMessages[mac] = stored ? JSON.parse(stored) : [];
+            self._chatMessages[mac] = stored ? JSON.parse(stored) : [];
         } catch (e) {
-            _chatMessages[mac] = [];
+            self._chatMessages[mac] = [];
         }
 
-        _chatMessages[mac].forEach(function(msg) {
+        self._chatMessages[mac].forEach(function(msg) {
             _renderMessage(msg, true);
         });
     }
@@ -144,10 +149,8 @@ var NexoApp = (function() {
             }
         });
 
-        if (unreadIds.length > 0) {
-            if (typeof bleInterface !== 'undefined' && bleInterface.sendReadReceipt) {
-                bleInterface.sendReadReceipt(mac, unreadIds);
-            }
+        if (unreadIds.length > 0 && self.bleInterface && self.bleInterface.sendReadReceipt) {
+            self.bleInterface.sendReadReceipt(mac, unreadIds);
             try {
                 localStorage.setItem(key, JSON.stringify(msgs));
             } catch (e) {}
@@ -171,15 +174,13 @@ var NexoApp = (function() {
 
         _storeMessage(mac, msg);
 
-        if (_activeChatMAC === mac) {
+        if (self._activeChatMAC === mac) {
             _renderMessage(msg, true);
-            // Auto-read if chat is open
             _sendReadReceiptsForUnread(mac);
         } else {
-            // Increment unread counter
-            _unreadCounts[mac] = (_unreadCounts[mac] || 0) + 1;
+            self._unreadCounts[mac] = (self._unreadCounts[mac] || 0) + 1;
             self.showNotification(mac, 'Nuevo mensaje', body);
-            self.updateContactBadge(mac, _unreadCounts[mac]);
+            self.updateContactBadge(mac, self._unreadCounts[mac]);
         }
     }
 
@@ -207,47 +208,45 @@ var NexoApp = (function() {
     }
 
     self.init = function() {
-        if (typeof bleInterface === 'undefined' || !bleInterface.init()) {
+        if (!self.bleInterface || !self.bleInterface.init()) {
             console.error('[NexoApp] BLE interface not available');
             return false;
         }
 
-        bleInterface.onMessageReceived(_handleIncomingMessage);
-        bleInterface.onMessageAcked(_handleAck);
-        bleInterface.onMessageRead(_handleRead);
-        bleInterface.onConnectionChanged(_handleConnectionChange);
+        self.bleInterface.onMessageReceived(_handleIncomingMessage);
+        self.bleInterface.onMessageAcked(_handleAck);
+        self.bleInterface.onMessageRead(_handleRead);
+        self.bleInterface.onConnectionChanged(_handleConnectionChange);
 
-        // Request permissions
-        bleInterface.requestPermissions().catch(function() {});
+        self.bleInterface.requestPermissions().catch(function() {});
 
         return true;
     };
 
     self.openChat = function(mac) {
         var cleanMac = _macWithColons(mac);
-        _activeChatMAC = cleanMac;
+        self._activeChatMAC = cleanMac;
         _loadChatHistory(cleanMac);
-
-        // Send read receipts for messages received while chat was closed
         _sendReadReceiptsForUnread(cleanMac);
 
-        // Try to establish GATT connection
-        bleInterface.openChat(cleanMac).catch(function(err) {
-            console.warn('[NexoApp] openChat failed, messages will queue:', err);
-        });
+        if (self.bleInterface && self.bleInterface.openChat) {
+            self.bleInterface.openChat(cleanMac).catch(function(err) {
+                console.warn('[NexoApp] openChat failed, messages will queue:', err);
+            });
+        }
 
         self.updateStatusBar('CONECTADO: ' + cleanMac);
     };
 
     self.sendMessage = function(text) {
-        if (!_activeChatMAC) {
+        if (!self._activeChatMAC) {
             self.showToast('No hay chat activo');
             return;
         }
         if (!text || !text.trim()) return;
 
         var messageId = _generateId();
-        var cleanMac = _activeChatMAC;
+        var cleanMac = self._activeChatMAC;
         var ts = Date.now();
 
         var msg = {
@@ -262,12 +261,18 @@ var NexoApp = (function() {
         _storeMessage(cleanMac, msg);
         _renderMessage(msg, true);
 
-        bleInterface.sendChatMessage(cleanMac, text.trim()).then(function(result) {
+        if (!self.bleInterface || !self.bleInterface.sendChatMessage) {
+            _updateMessageStatus(messageId, STATUS.FAILED);
+            self.showToast('BLE no disponible');
+            return;
+        }
+
+        self.bleInterface.sendChatMessage(cleanMac, text.trim()).then(function(result) {
             _updateMessageStatus(messageId, STATUS.SENT);
         }).catch(function(err) {
-            if (err.queued) {
+            if (err && err.queued) {
                 _updateMessageStatus(messageId, STATUS.QUEUED);
-                self.showToast('Sin conexión. Mensaje encolado.');
+                self.showToast('Sin conexion. Mensaje encolado.');
             } else {
                 _updateMessageStatus(messageId, STATUS.FAILED);
                 self.showToast('Error al enviar');
@@ -276,8 +281,8 @@ var NexoApp = (function() {
     };
 
     self.onChatVisible = function() {
-        if (_activeChatMAC) {
-            _sendReadReceiptsForUnread(_activeChatMAC);
+        if (self._activeChatMAC) {
+            _sendReadReceiptsForUnread(self._activeChatMAC);
         }
     };
 
@@ -287,23 +292,40 @@ var NexoApp = (function() {
     };
 
     self.showToast = function(msg) {
-        // Implementación depende de tu UI
         console.log('[Toast]', msg);
     };
 
     self.showNotification = function(mac, title, body) {
-        // Implementación depende de tu UI
         console.log('[Notification]', mac, title, body);
     };
 
     self.updateContactBadge = function(mac, count) {
-        // Implementación depende de tu UI
         console.log('[Badge]', mac, count);
     };
 
+    self.getStatus = function() {
+        return {
+            activeChatMAC: self._activeChatMAC,
+            initialized: true,
+            bleAvailable: !!self.bleInterface
+        };
+    };
+
     return self;
-})();
+}
+
+var DEBUG = false;
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = NexoApp;
+    module.exports = { NexoApp: NexoApp, DEBUG: DEBUG };
+}
+
+if (typeof exports !== 'undefined') {
+    exports.NexoApp = NexoApp;
+    exports.DEBUG = DEBUG;
+}
+
+if (typeof window !== 'undefined') {
+    window.NexoApp = NexoApp;
+    window.DEBUG = DEBUG;
 }
