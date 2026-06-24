@@ -161,3 +161,236 @@ body {
 .chispa-float {
   animation: float 2s ease-in-out infinite;
 }
+
+/* ============================================
+   NEXO Chat v5.1.0 - Estados de mensaje + ACK
+   ============================================ */
+
+/* Contenedor de mensajes */
+#chat-messages {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  gap: 4px;
+}
+
+/* Burbujas de mensaje */
+.msg-bubble {
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  margin: 4px 0;
+  word-wrap: break-word;
+  position: relative;
+  animation: popIn 0.2s ease-out;
+}
+
+.msg-bubble.own {
+  background: #1A73E8;
+  color: #fff;
+  align-self: flex-end;
+  margin-left: auto;
+  border-bottom-right-radius: 4px;
+}
+
+.msg-bubble.peer {
+  background: #333;
+  color: #fff;
+  align-self: flex-start;
+  margin-right: auto;
+  border-bottom-left-radius: 4px;
+}
+
+/* Texto del mensaje */
+.msg-text {
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+/* Meta info: hora + estado */
+.msg-meta {
+  font-size: 10px;
+  opacity: 0.7;
+  margin-top: 4px;
+  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* Estados de entrega */
+.msg-status {
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: -1px;
+}
+
+.msg-status.sending {
+  color: #ccc;
+}
+
+.msg-status.sent {
+  color: #aaa;
+}
+
+.msg-status.delivered {
+  color: #aaa;
+}
+
+.msg-status.read {
+  color: #0082FC; /* Azul BLE Samsung */
+}
+
+.msg-status.queued {
+  color: #FFA500;
+}
+
+.msg-status.failed {
+  color: #FF4444;
+}
+
+/* Badge de mensajes no leídos en contacto */
+.contact-badge {
+  background: #FF4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: bold;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  padding: 0 6px;
+}
+
+/* Input de chat */
+#chat-input-container {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  gap: 10px;
+  border-top: 1px solid #333;
+  background: #111;
+}
+
+#chat-input {
+  flex: 1;
+  background: #222;
+  border: none;
+  border-radius: 24px;
+  padding: 12px 16px;
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+}
+
+#chat-send-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #1A73E8;
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+#chat-send-btn:active {
+  transform: scale(0.92);
+}
+
+/* Botón BLE flotante */
+#ble-btn {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 80px;
+  background: #0082FC;
+  border: none;
+  border-radius: 0 12px 12px 0;
+  color: #fff;
+  font-weight: bold;
+  font-size: 12px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  cursor: pointer;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.2s;
+}
+
+#ble-btn:active {
+  width: 56px;
+}
+
+/* Header del chat */
+#chat-header {
+  padding: 12px 16px;
+  background: #111;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#chat-header-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+#chat-header-subtitle {
+  font-size: 12px;
+  color: #0082FC;
+}
+
+/* Status bar inferior */
+#status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 6px 16px;
+  background: #000;
+  color: #0f0;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 300;
+  border-top: 1px solid #222;
+}
+
+/* Toast notification */
+.nexo-toast {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 24px;
+  font-size: 13px;
+  z-index: 400;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
