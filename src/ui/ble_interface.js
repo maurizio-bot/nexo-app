@@ -1198,10 +1198,16 @@ export class BLEInterface {
     this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
     this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
     window.addEventListener('nexo:ble:closeChat', function() {
+      var tab = document.getElementById('ble-tab');
+      if (tab) tab.style.display = '';
       self._activeChatDeviceId = null;
       self._activeChatMAC = null;
       try { localStorage.removeItem(BLE_ACTIVE_CHAT_MAC_KEY); } catch(e) {}
       self.updateBadge();
+    });
+    window.addEventListener('nexo:ble:openChat', function() {
+      var tab = document.getElementById('ble-tab');
+      if (tab) tab.style.display = 'none';
     });
   }
 
@@ -1590,4 +1596,3 @@ export class BLEInterface {
     }, duration);
   }
 }
-
