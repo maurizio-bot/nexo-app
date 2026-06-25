@@ -258,7 +258,7 @@ async function initializeNexoApp() {
     _setupMessageInput();
     _setupVaultToggle();
     _setupChatHeader();
-    _setupKeyboardShortshortcuts();
+    _setupKeyboardShortcuts();
     _setupJumpButton();
 
     // FIX v9.4: Cargar mensajes persistidos del contacto activo
@@ -563,9 +563,9 @@ function _renderMessage(msg, skipSave) {
     var isOwn = !!msg._own;
     div.className = 'message ' + (isOwn ? 'own' : 'other');
 
-    // FIX: Agregar clase de estado al div para bordes CSS
-    if (isOwn && msg.status) {
-      div.classList.add('status-' + msg.status);
+    // FIX v9.5: Agregar clase de estado SIEMPRE para enviados (default pending)
+    if (isOwn) {
+      div.classList.add('status-' + (msg.status || 'pending'));
     }
 
     div.dataset.msgId = msgId;
