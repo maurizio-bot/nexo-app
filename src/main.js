@@ -695,7 +695,16 @@ function _setupBackButton() {
   try {
     var backBtn = document.getElementById('chat-back-btn');
     if (!backBtn) return;
+    // Mostrar flecha cuando se abre chat
+    window.addEventListener('nexo:ble:openChat', function() {
+      backBtn.classList.add('visible');
+    });
+    // Ocultar flecha cuando se cierra chat (desde cualquier lado)
+    window.addEventListener('nexo:ble:closeChat', function() {
+      backBtn.classList.remove('visible');
+    });
     backBtn.addEventListener('click', function() {
+      backBtn.classList.remove('visible');
       // Disparar evento para que BLE interface muestre el tab
       try {
         window.dispatchEvent(new CustomEvent('nexo:ble:closeChat'));
