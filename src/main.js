@@ -1,7 +1,8 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.6-FIX
+ * src/main.js - Punto de entrada NEXO v9.7-FIX
  * FIX: Back button del chat vuelve a BLE Mesh (vault-panel), no a Principal
  * FIX: vault-panel oculto al inicio, setProperty con !important para CSS inline
+ * FIX: Re-renderizar contactos BLE al volver del chat + deduplicacion vista
  * Build #1605+ compatible. NO toca nativo.
  */
 
@@ -45,7 +46,7 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   try {
-    console.log('[MAIN] NEXO v9.6-FIX iniciando...');
+    console.log('[MAIN] NEXO v9.7-FIX iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -693,7 +694,12 @@ function _enableFallbackMode() {
   }
 }
 
-/* FIX: Back button del chat cierra chat y vuelve a BLE Mesh (vault-panel) */
+/* =================================================================
+   FIX v9.7: Back button del chat cierra chat y vuelve a BLE Mesh
+   - z-index 100 para asegurar visibilidad
+   - Oculta messages-container del chat
+   - Re-renderiza contactos BLE desde localStorage (con deduplicacion)
+   ================================================================= */
 function _setupBackButton() {
   try {
     var backBtn = document.getElementById('chat-back-btn');
@@ -723,8 +729,14 @@ function _setupBackButton() {
     backBtn.addEventListener('click', function() {
       backBtn.classList.remove('visible');
       if (app) app.classList.remove('chat-view-active');
-      
-      /* Mostrar BLE Mesh (vault-panel) al cerrar chat */
+
+      /* Ocultar explícitamente el contenedor de mensajes del chat */
+      var msgContainer = document.getElementById('messages-container');
+      if (msgContainer) {
+        msgContainer.style.setProperty('display', 'none', 'important');
+      }
+
+      /* Mostrar BLE Mesh (vault-panel) al cerrar chat - FORZADO con z-index alto */
       if (vault) {
         vault.classList.remove('vault-hidden');
         vault.classList.add('vault-visible');
@@ -733,11 +745,14 @@ function _setupBackButton() {
         vault.style.setProperty('opacity', '1', 'important');
         vault.style.setProperty('pointer-events', 'auto', 'important');
         vault.style.setProperty('position', 'relative', 'important');
-        vault.style.setProperty('z-index', '1', 'important');
+        vault.style.setProperty('z-index', '100', 'important');
       }
-      
+
+      /* Re-renderizar contactos BLE desde localStorage para evitar pantalla vacia */
+      _refreshBLEContactsList();
+
       /* NO disparar nexo:ble:closeChat para evitar que nexo_app.js vaya a Principal */
-      
+
       if (window.NEXO.app) {
         window.NEXO.app.activeContact = null;
       }
@@ -749,6 +764,119 @@ function _setupBackButton() {
     });
   } catch (e) {
     console.warn('[MAIN] _setupBackButton error:', e);
+  }
+}
+
+/* =================================================================
+   NUEVO v9.7: Re-renderizar contactos BLE desde localStorage
+   Deduplica por deviceUUID / id / address / mac
+   ================================================================= */
+function _refreshBLEContactsList() {
+  try {
+    var contactsList = document.getElementById('contacts-list');
+    if (!contactsList) {
+      console.warn('[MAIN] _refreshBLEContactsList: #contacts-list no encontrado');
+      return;
+    }
+
+    var raw = localStorage.getItem('nexo_ble_contacts_v2');
+    var contacts = raw ? JSON.parse(raw) : [];
+
+    /* DEDUPLICAR por clave unica */
+    var seen = {};
+    var unique = [];
+    for (var i = 0; i < contacts.length; i++) {
+      var c = contacts[i];
+      var key = (c.deviceUUID || c.id || c.address || c.mac || '').toString().toLowerCase().trim();
+      if (key && !seen[key]) {
+        seen[key] = true;
+        unique.push(c);
+      }
+    }
+
+    /* Si habia duplicados, limpiar storage */
+    if (unique.length < contacts.length) {
+      localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(unique));
+      rem.info('Contactos deduplicados: ' + (contacts.length - unique.length) + ' removidos', 'CONTACT_DEDUP');
+    }
+
+    contactsList.innerHTML = '';
+
+    if (unique.length === 0) {
+      contactsList.innerHTML = '<div class="contact-empty" style="padding:24px;text-align:center;color:#888;font-size:14px;">No hay dispositivos BLE cercanos</div>';
+      return;
+    }
+
+    for (var j = 0; j < unique.length; j++) {
+      var contact = unique[j];
+      var name = contact.name || contact.deviceName || 'Dispositivo BLE';
+      var status = contact.status || contact.connectionStatus || 'Offline';
+      var id = (contact.deviceUUID || contact.id || contact.address || contact.mac || '').toString();
+
+      var item = document.createElement('div');
+      item.className = 'contact-item';
+      item.innerHTML = ''
+        + '<div class="contact-info">'
+        +   '<div class="contact-name">' + name + '</div>'
+        +   '<div class="contact-status">' + status + '</div>'
+        + '</div>'
+        + '<div class="contact-actions">'
+        +   '<button class="chat-btn" data-contact-id="' + id + '">Chat</button>'
+        +   '<button class="remove-btn" data-contact-id="' + id + '">X</button>'
+        + '</div>';
+
+      contactsList.appendChild(item);
+    }
+
+    /* Re-attach event listeners a botones Chat */
+    var chatBtns = contactsList.querySelectorAll('.chat-btn');
+    for (var k = 0; k < chatBtns.length; k++) {
+      chatBtns[k].addEventListener('click', function() {
+        var contactId = this.getAttribute('data-contact-id');
+        if (window.NEXO.app && typeof window.NEXO.app.openChat === 'function') {
+          window.NEXO.app.openChat(contactId);
+        } else {
+          rem.warn('openChat no disponible', 'CHAT_ERR');
+        }
+      });
+    }
+
+    /* Re-attach event listeners a botones Remove (X) */
+    var removeBtns = contactsList.querySelectorAll('.remove-btn');
+    for (var m = 0; m < removeBtns.length; m++) {
+      removeBtns[m].addEventListener('click', function() {
+        var contactId = this.getAttribute('data-contact-id');
+        _removeBLEContact(contactId);
+      });
+    }
+
+  } catch (e) {
+    console.warn('[MAIN] _refreshBLEContactsList error:', e);
+  }
+}
+
+/* =================================================================
+   NUEVO v9.7: Eliminar contacto BLE del storage y refrescar lista
+   ================================================================= */
+function _removeBLEContact(contactId) {
+  try {
+    if (!contactId) return;
+    var raw = localStorage.getItem('nexo_ble_contacts_v2');
+    var contacts = raw ? JSON.parse(raw) : [];
+    var before = contacts.length;
+
+    contacts = contacts.filter(function(c) {
+      var cid = (c.deviceUUID || c.id || c.address || c.mac || '').toString().toLowerCase().trim();
+      return cid !== contactId.toString().toLowerCase().trim();
+    });
+
+    if (contacts.length < before) {
+      localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(contacts));
+      rem.info('Contacto eliminado', 'CONTACT_REMOVE');
+    }
+    _refreshBLEContactsList();
+  } catch (e) {
+    console.warn('[MAIN] _removeBLEContact error:', e);
   }
 }
 
