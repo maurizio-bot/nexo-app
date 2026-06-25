@@ -2,6 +2,8 @@
  * src/main.js - Punto de entrada NEXO v9.3-ARMORED-FIXED
  * FIX: Scroll en nexo-stream (padre), no messages-container
  * FIX: Agregado msg-status DOM element para estados enviado/entregado/leído
+ * FIX: Vault-panel oculto definitivamente con display:none (evita "segunda pantalla")
+ * FIX: Splash cubre todo hasta que la app esté lista (evita destello de vault al inicio)
  * Build #1273 compatible. NO toca nativo.
  */
 
@@ -353,10 +355,15 @@ function _setupMessageInput() {
   }
 }
 
+/* FIX v9.3: Vault-panel oculto definitivamente con display:none */
 function _setupVaultToggle() {
   try {
     var vault = document.getElementById('vault-panel');
-    if (vault) vault.classList.add('vault-hidden');
+    if (vault) {
+      vault.classList.add('vault-hidden');
+      vault.style.display = 'none';
+      vault.style.visibility = 'hidden';
+    }
   } catch (e) {}
 }
 
@@ -512,6 +519,7 @@ function _getSourceIcon(source) {
   } catch (e) { return '•'; }
 }
 
+/* FIX v9.3: _toggleVaultUI ahora controla display:none correctamente */
 function _toggleVaultUI(isOpen) {
   try {
     var vault = document.getElementById('vault-panel');
@@ -520,6 +528,8 @@ function _toggleVaultUI(isOpen) {
     if (vault) {
       vault.classList.toggle('vault-hidden', !isOpen);
       vault.classList.toggle('vault-visible', isOpen);
+      vault.style.display = isOpen ? '' : 'none';
+      vault.style.visibility = isOpen ? 'visible' : 'hidden';
       rem.info(isOpen ? '[VAULT] Abierto' : '[VAULT] Cerrado', 'VAULT_TOGGLE');
     }
     if (stream) {
