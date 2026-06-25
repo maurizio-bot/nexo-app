@@ -39,11 +39,11 @@
       margin: 0;
       padding: 0;
     }
-    /* CHAT BACK BUTTON */
+    /* CHAT BACK BUTTON - FIX: azul y posicionado a la izquierda */
     .chat-back-btn {
       background: none;
       border: none;
-      color: #fff;
+      color: #0082FC;
       font-size: 22px;
       cursor: pointer;
       padding: 0 8px;
@@ -53,16 +53,23 @@
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
     }
     .chat-back-btn.visible {
       display: flex;
     }
     #chat-header {
       display: flex;
+      flex-direction: row !important;
       align-items: center;
+      justify-content: center;
       padding: 8px 12px;
       border-bottom: 1px solid #333;
       gap: 8px;
+      position: relative;
     }
     #chat-contact-name {
       background: none;
@@ -72,6 +79,7 @@
       font-weight: 600;
       flex: 1;
       outline: none;
+      text-align: center;
     }
     #chat-contact-subtitle {
       font-size: 11px;
@@ -103,6 +111,13 @@
       opacity: 1;
       transform: translateY(0);
       pointer-events: auto;
+    }
+    /* FIX: Ocultar vista de chat cuando no está activa */
+    #app:not(.chat-view-active) #chat-header,
+    #app:not(.chat-view-active) #nexo-stream,
+    #app:not(.chat-view-active) #input-area,
+    #app:not(.chat-view-active) #jump-to-bottom {
+      display: none !important;
     }
   </style>
 </head>
@@ -136,7 +151,6 @@
     <div id="contacts-list"></div>
   </div>
 
-  <!-- JUMP BUTTON -->
   <button id="jump-to-bottom" class="hidden">↓</button>
 
 </body>
