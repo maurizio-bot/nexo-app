@@ -2,6 +2,7 @@
  * src/main.js - Punto de entrada NEXO v9.5-FIX
  * FIX: No renderizar mensaje local inmediatamente (evita duplicados)
  * FIX: Jump button, persistencia, estados de borde mantenidos
+ * FIX: Back button vuelve a Mesh, flecha azul, input oculto en inicio
  * Build #1605 compatible. NO toca nativo.
  */
 
@@ -262,7 +263,6 @@ async function initializeNexoApp() {
     _setupJumpButton();
     _setupBackButton();
 
-    // FIX v9.4: Cargar mensajes persistidos del contacto activo
     _loadPersistedMessages();
 
     NEXO_DIAG.hideSplash();
@@ -306,9 +306,6 @@ function _ensureDOMStructure() {
   }
 }
 
-/* FIX v9.5: NO renderizar mensaje local inmediatamente.
-   El callback onMessage de NexoApp renderizará cuando confirme.
-   Esto evita duplicados cuando el mismo mensaje llega por BLE. */
 function _setupMessageInput() {
   try {
     var input = document.getElementById('message-input');
@@ -326,9 +323,6 @@ function _setupMessageInput() {
           rem.error('NEXO.app no disponible', 'MSG_ERR');
           return;
         }
-
-        // FIX v9.5: Solo enviar, NO renderizar localmente.
-        // onMessage callback se encargará de renderizar cuando el plugin confirme.
         var sent = await window.NEXO.app.sendMessage({ content: text });
         if (!sent) {
           rem.info('En cola (offline)', 'MSG_QUEUED');
@@ -439,7 +433,6 @@ function _setupKeyboardShortcuts() {
   }
 }
 
-/* JUMP BUTTON */
 function _setupJumpButton() {
   try {
     var stream = document.getElementById('nexo-stream');
@@ -466,7 +459,6 @@ function _setupJumpButton() {
   }
 }
 
-/* PERSISTENCIA */
 function _getContactStorageKey() {
   var contactId = 'default';
   try {
@@ -524,7 +516,6 @@ function _loadPersistedMessages() {
   }
 }
 
-/* RENDER MESSAGE con estados de borde */
 function _renderMessage(msg, skipSave) {
   try {
     if (!msg) return;
@@ -537,7 +528,6 @@ function _renderMessage(msg, skipSave) {
       msg.messageId = msgId;
     }
 
-    // Deduplicación por ID
     var existing = document.querySelector('[data-msg-id="' + msgId + '"]');
     if (existing) {
       if (msg.status) {
@@ -547,14 +537,11 @@ function _renderMessage(msg, skipSave) {
       return;
     }
 
-    // FIX v9.5: Deduplicación por contenido + timestamp cercano (fallback)
     if (!msg._own && msg.content) {
       var recentMessages = container.querySelectorAll('.message.other');
       for (var i = recentMessages.length - 1; i >= Math.max(0, recentMessages.length - 5); i--) {
         var existingContent = recentMessages[i].querySelector('.msg-content');
-        var existingTime = recentMessages[i].querySelector('.msg-time');
         if (existingContent && existingContent.textContent === msg.content) {
-          // Mismo contenido en los últimos 5 mensajes recibidos = duplicado
           return;
         }
       }
@@ -564,7 +551,6 @@ function _renderMessage(msg, skipSave) {
     var isOwn = !!msg._own;
     div.className = 'message ' + (isOwn ? 'own' : 'other');
 
-    // FIX v9.5: Agregar clase de estado SIEMPRE para enviados (default pending)
     if (isOwn) {
       div.classList.add('status-' + (msg.status || 'pending'));
     }
@@ -690,30 +676,32 @@ function _enableFallbackMode() {
   }
 }
 
-/* BACK BUTTON: cerrar chat y volver a pantalla principal */
+/* BACK BUTTON: cerrar chat, volver a Mesh, ocultar vista de chat */
 function _setupBackButton() {
   try {
     var backBtn = document.getElementById('chat-back-btn');
+    var app = document.getElementById('app');
     if (!backBtn) return;
-    // Mostrar flecha cuando se abre chat
+
     window.addEventListener('nexo:ble:openChat', function() {
       backBtn.classList.add('visible');
+      if (app) app.classList.add('chat-view-active');
     });
-    // Ocultar flecha cuando se cierra chat (desde cualquier lado)
+
     window.addEventListener('nexo:ble:closeChat', function() {
       backBtn.classList.remove('visible');
+      if (app) app.classList.remove('chat-view-active');
     });
+
     backBtn.addEventListener('click', function() {
       backBtn.classList.remove('visible');
-      // Disparar evento para que BLE interface muestre el tab
+      if (app) app.classList.remove('chat-view-active');
       try {
         window.dispatchEvent(new CustomEvent('nexo:ble:closeChat'));
       } catch (e) {}
-      // Limpiar contacto activo
       if (window.NEXO.app) {
         window.NEXO.app.activeContact = null;
       }
-      // Limpiar BLE interface active chat
       if (window.NEXO.app && window.NEXO.app.bleInterface) {
         window.NEXO.app.bleInterface._activeChatDeviceId = null;
         window.NEXO.app.bleInterface._activeChatMAC = null;
