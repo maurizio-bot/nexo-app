@@ -14,7 +14,6 @@
   
   <title>NEXO v9.0</title>
   
-  <!-- CRITICAL CSS: Ocultar vault-panel ANTES de que cargue cualquier CSS/JS -->
   <style>
     #vault-panel {
       display: none !important;
@@ -40,24 +39,47 @@
       margin: 0;
       padding: 0;
     }
+    /* JUMP BUTTON */
+    #jump-to-bottom {
+      position: fixed;
+      bottom: 80px;
+      right: 16px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(0, 132, 255, 0.9);
+      color: #fff;
+      border: none;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    #jump-to-bottom.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
-  <!-- SPLASH SCREEN -->
   <div id="splash-native">
     <div id="splash-logo"></div>
     <div id="splash-text">NEXO v9.0</div>
   </div>
 
-  <!-- UI PRINCIPAL -->
   <div id="app">
-    <!-- CHAT HEADER: Nombre del destinatario editable -->
     <div id="chat-header">
       <input type="text" id="chat-contact-name" value="NEXO" autocomplete="off" spellcheck="false">
       <span id="chat-contact-subtitle">OFFLINE</span>
     </div>
     
-    <!-- Stream container para Vault Slider -->
     <div id="nexo-stream" class="stream-container">
       <div id="messages-container"></div>
     </div>
@@ -68,13 +90,15 @@
     </div>
   </div>
 
-  <!-- Vault Panel -->
   <div id="vault-panel" class="vault-hidden">
     <div class="vault-header">
       <h3>Compartir</h3>
     </div>
     <div id="contacts-list"></div>
   </div>
+
+  <!-- JUMP BUTTON -->
+  <button id="jump-to-bottom" class="hidden">↓</button>
 
 </body>
 </html>
