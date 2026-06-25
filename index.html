@@ -11,9 +11,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
-  
+
   <title>NEXO v9.0</title>
-  
+
   <style>
     #vault-panel {
       display: none !important;
@@ -38,6 +38,41 @@
       overflow: hidden;
       margin: 0;
       padding: 0;
+    }
+    /* CHAT BACK BUTTON */
+    .chat-back-btn {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 0 8px;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    #chat-header {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid #333;
+      gap: 8px;
+    }
+    #chat-contact-name {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      flex: 1;
+      outline: none;
+    }
+    #chat-contact-subtitle {
+      font-size: 11px;
+      color: #888;
     }
     /* JUMP BUTTON */
     #jump-to-bottom {
@@ -76,14 +111,15 @@
 
   <div id="app">
     <div id="chat-header">
+      <button id="chat-back-btn" class="chat-back-btn">&larr;</button>
       <input type="text" id="chat-contact-name" value="NEXO" autocomplete="off" spellcheck="false">
       <span id="chat-contact-subtitle">OFFLINE</span>
     </div>
-    
+
     <div id="nexo-stream" class="stream-container">
       <div id="messages-container"></div>
     </div>
-    
+
     <div id="input-area">
       <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
       <button id="send-btn">➤</button>
