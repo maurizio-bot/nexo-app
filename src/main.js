@@ -1,9 +1,8 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.5-FIX
- * FIX: No renderizar mensaje local inmediatamente (evita duplicados)
- * FIX: Jump button, persistencia, estados de borde mantenidos
- * FIX: Back button vuelve a Mesh, flecha azul, input oculto en inicio
- * Build #1605 compatible. NO toca nativo.
+ * src/main.js - Punto de entrada NEXO v9.6-FIX
+ * FIX: Back button del chat vuelve a BLE Mesh (vault-panel), no a Principal
+ * FIX: vault-panel oculto al inicio, setProperty con !important para CSS inline
+ * Build #1605+ compatible. NO toca nativo.
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -46,7 +45,7 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   try {
-    console.log('[MAIN] NEXO v9.5-FIX iniciando...');
+    console.log('[MAIN] NEXO v9.6-FIX iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -351,13 +350,17 @@ function _setupMessageInput() {
   }
 }
 
+/* FIX: vault-panel oculto al inicio - pantalla principal es la default */
 function _setupVaultToggle() {
   try {
     var vault = document.getElementById('vault-panel');
     if (vault) {
       vault.classList.add('vault-hidden');
-      vault.style.display = 'none';
-      vault.style.visibility = 'hidden';
+      vault.classList.remove('vault-visible');
+      vault.style.setProperty('display', 'none', 'important');
+      vault.style.setProperty('visibility', 'hidden', 'important');
+      vault.style.setProperty('opacity', '0', 'important');
+      vault.style.setProperty('pointer-events', 'none', 'important');
     }
   } catch (e) {}
 }
@@ -614,6 +617,7 @@ function _updateMessageStatus(messageId, status) {
   }
 }
 
+/* FIX: setProperty con !important para sobreescribir CSS inline del HTML */
 function _toggleVaultUI(isOpen) {
   try {
     var vault = document.getElementById('vault-panel');
@@ -621,8 +625,21 @@ function _toggleVaultUI(isOpen) {
     if (vault) {
       vault.classList.toggle('vault-hidden', !isOpen);
       vault.classList.toggle('vault-visible', isOpen);
-      vault.style.display = isOpen ? '' : 'none';
-      vault.style.visibility = isOpen ? 'visible' : 'hidden';
+      if (isOpen) {
+        vault.style.setProperty('display', 'flex', 'important');
+        vault.style.setProperty('visibility', 'visible', 'important');
+        vault.style.setProperty('opacity', '1', 'important');
+        vault.style.setProperty('pointer-events', 'auto', 'important');
+        vault.style.setProperty('position', 'relative', 'important');
+        vault.style.setProperty('z-index', '1', 'important');
+      } else {
+        vault.style.setProperty('display', 'none', 'important');
+        vault.style.setProperty('visibility', 'hidden', 'important');
+        vault.style.setProperty('opacity', '0', 'important');
+        vault.style.setProperty('pointer-events', 'none', 'important');
+        vault.style.setProperty('position', 'absolute', 'important');
+        vault.style.setProperty('z-index', '-9999', 'important');
+      }
       rem.info(isOpen ? '[VAULT] Abierto' : '[VAULT] Cerrado', 'VAULT_TOGGLE');
     }
     if (stream) {
@@ -676,16 +693,26 @@ function _enableFallbackMode() {
   }
 }
 
-/* BACK BUTTON: cerrar chat, volver a Mesh, ocultar vista de chat */
+/* FIX: Back button del chat cierra chat y vuelve a BLE Mesh (vault-panel) */
 function _setupBackButton() {
   try {
     var backBtn = document.getElementById('chat-back-btn');
     var app = document.getElementById('app');
+    var vault = document.getElementById('vault-panel');
     if (!backBtn) return;
 
     window.addEventListener('nexo:ble:openChat', function() {
       backBtn.classList.add('visible');
       if (app) app.classList.add('chat-view-active');
+      /* Ocultar BLE Mesh al abrir chat */
+      if (vault) {
+        vault.classList.remove('vault-visible');
+        vault.classList.add('vault-hidden');
+        vault.style.setProperty('display', 'none', 'important');
+        vault.style.setProperty('visibility', 'hidden', 'important');
+        vault.style.setProperty('opacity', '0', 'important');
+        vault.style.setProperty('pointer-events', 'none', 'important');
+      }
     });
 
     window.addEventListener('nexo:ble:closeChat', function() {
@@ -696,9 +723,21 @@ function _setupBackButton() {
     backBtn.addEventListener('click', function() {
       backBtn.classList.remove('visible');
       if (app) app.classList.remove('chat-view-active');
-      try {
-        window.dispatchEvent(new CustomEvent('nexo:ble:closeChat'));
-      } catch (e) {}
+      
+      /* Mostrar BLE Mesh (vault-panel) al cerrar chat */
+      if (vault) {
+        vault.classList.remove('vault-hidden');
+        vault.classList.add('vault-visible');
+        vault.style.setProperty('display', 'flex', 'important');
+        vault.style.setProperty('visibility', 'visible', 'important');
+        vault.style.setProperty('opacity', '1', 'important');
+        vault.style.setProperty('pointer-events', 'auto', 'important');
+        vault.style.setProperty('position', 'relative', 'important');
+        vault.style.setProperty('z-index', '1', 'important');
+      }
+      
+      /* NO disparar nexo:ble:closeChat para evitar que nexo_app.js vaya a Principal */
+      
       if (window.NEXO.app) {
         window.NEXO.app.activeContact = null;
       }
@@ -706,7 +745,7 @@ function _setupBackButton() {
         window.NEXO.app.bleInterface._activeChatDeviceId = null;
         window.NEXO.app.bleInterface._activeChatMAC = null;
       }
-      rem.info('Chat cerrado', 'CHAT_CLOSE');
+      rem.info('Chat cerrado - volviendo a BLE Mesh', 'CHAT_CLOSE');
     });
   } catch (e) {
     console.warn('[MAIN] _setupBackButton error:', e);
