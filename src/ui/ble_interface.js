@@ -1522,6 +1522,7 @@ export class BLEInterface {
               
             }
             self.updateBadge();
+          }
     });
   }
 
