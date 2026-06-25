@@ -4,6 +4,7 @@
  * FIX: Agregado msg-status DOM element para estados enviado/entregado/leído
  * FIX: Vault-panel oculto definitivamente con display:none (evita "segunda pantalla")
  * FIX: Splash cubre todo hasta que la app esté lista (evita destello de vault al inicio)
+ * FIX: Scroll automático robusto con requestAnimationFrame
  * Build #1273 compatible. NO toca nativo.
  */
 
@@ -441,6 +442,7 @@ function _setupKeyboardShortcuts() {
 
 /* ============================================================
    FIX v9.3: _renderMessage con scroll correcto + estados ACK
+   FIX: requestAnimationFrame para scroll robusto
    ============================================================ */
 function _renderMessage(msg) {
   try {
@@ -478,10 +480,12 @@ function _renderMessage(msg) {
 
     container.appendChild(div);
 
-    /* FIX: Scroll en nexo-stream (padre con overflow), no messages-container */
+    /* FIX: Scroll automático robusto en nexo-stream */
     var stream = document.getElementById('nexo-stream');
     if (stream) {
-      stream.scrollTop = stream.scrollHeight;
+      requestAnimationFrame(function() {
+        stream.scrollTop = stream.scrollHeight;
+      });
     }
   } catch (e) {
     console.warn('[MAIN] _renderMessage error:', e);
