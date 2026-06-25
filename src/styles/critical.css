@@ -88,7 +88,7 @@
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;              /* FIX: dynamic viewport, se reajusta con teclado */
   background: #000000;
   color: #e5e7eb;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -116,12 +116,10 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  padding-top: 56px;        /* espacio para chat-header fijo */
-  padding-bottom: 80px;     /* espacio para input-area fijo */
   -webkit-overflow-scrolling: touch;
 }
 
-/* Messages: sin overflow ni flex:1, solo layout de mensajes */
+/* Messages */
 #messages-container {
   display: flex;
   flex-direction: column;
@@ -168,17 +166,13 @@
 
 /* Input Area */
 #input-area {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;              /* FIX: parte del flujo flex, no fixed */
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) 16px;
   background: rgba(0,0,0,0.95);
   backdrop-filter: blur(10px);
   display: flex;
   gap: 10px;
   border-top: 1px solid rgba(255,255,255,0.1);
-  z-index: 60;
 }
 
 #message-input {
@@ -291,15 +285,11 @@
 
 /* CHAT HEADER: Destinatario editable */
 #chat-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;              /* FIX: parte del flujo flex, no fixed */
   height: 56px;
   background: rgba(0,0,0,0.95);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  z-index: 50;
   display: flex;
   flex-direction: column;
   align-items: center;
