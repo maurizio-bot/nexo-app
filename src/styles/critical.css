@@ -135,7 +135,7 @@
   font-size: 14px;
   line-height: 1.4;
   animation: messageIn 0.3s ease;
-  border: 2px solid transparent; /* FIX v9.4: borde base para estados */
+  border: 2px solid transparent;
 }
 
 @keyframes messageIn {
@@ -152,19 +152,19 @@
 }
 
 .message.own.status-pending {
-  border-color: transparent; /* Sin borde visible */
+  border-color: transparent;
 }
 
 .message.own.status-sent {
-  border-color: #6b7280; /* Gris */
+  border-color: #6b7280;
 }
 
 .message.own.status-delivered {
-  border-color: #00d4ff; /* Cian */
+  border-color: #00d4ff;
 }
 
 .message.own.status-read {
-  border-color: #22c55e; /* Verde */
+  border-color: #2196f3; /* FIX: azul (tú pediste azul, no verde) */
 }
 
 /* Mensajes RECIBIDOS - sin esfera azul, sin estados */
@@ -194,7 +194,7 @@
 .msg-status.status-pending { color: rgba(255,255,255,0.3); }
 .msg-status.status-sent { color: #6b7280; }
 .msg-status.status-delivered { color: #00d4ff; }
-.msg-status.status-read { color: #22c55e; }
+.msg-status.status-read { color: #2196f3; }
 
 /* Input Area */
 #input-area {
