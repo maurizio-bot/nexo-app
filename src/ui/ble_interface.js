@@ -1516,7 +1516,11 @@ export class BLEInterface {
           if (self._activeChatDeviceId === uuid || self._activeChatMAC === macNorm) {
             self._activeChatDeviceId = null;
             self._activeChatMAC = null;
-            try { localStorage.removeItem(BLE_ACTIVE_CHAT_MAC_KEY); } catch(e) {}
+            try { 
+                localStorage.removeItem(BLE_ACTIVE_CHAT_MAC_KEY); 
+            } catch(e) {
+              
+            }
             self.updateBadge();
     });
   }
