@@ -1,14 +1,11 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.3-ARMORED-FIXED
- * FIX: Scroll en nexo-stream (padre), no messages-container
- * FIX: Agregado msg-status DOM element para estados enviado/entregado/leído
- * FIX: Vault-panel oculto definitivamente con display:none (evita "segunda pantalla")
- * FIX: Splash cubre todo hasta que la app esté lista (evita destello de vault al inicio)
- * FIX: Scroll automático robusto con requestAnimationFrame
- * Build #1273 compatible. NO toca nativo.
+ * src/main.js - Punto de entrada NEXO v9.4-JUMP-PERSIST
+ * FIX: Jump button flotante para scroll rápido
+ * FIX: Persistencia de mensajes en localStorage por contacto
+ * FIX: Deduplicación por data-msg-id
+ * Build #1601 compatible. NO toca nativo.
  */
 
-// ─── CONFIG PRIMERO ───
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
@@ -16,7 +13,6 @@ import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
 import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
 
-// ─── ASSERTS DE ARRANQUE ───
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
   NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe estar importado');
@@ -50,7 +46,7 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   try {
-    console.log('[MAIN] NEXO v9.3-ARMORED-FIXED iniciando...');
+    console.log('[MAIN] NEXO v9.4-JUMP-PERSIST iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -59,9 +55,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     window.NEXO.rem = rem;
     rem.init();
     rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
-
-    // ─── SHIM INTEGRATION v9.3 ───
-    rem.info('[Shim] Verificando permisos BLE...', 'SHIM_CHECK');
 
     var permissionsGranted = false;
     try {
@@ -84,7 +77,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       _showPermissionOverlay();
     }
 
-    // Escuchar evento del Shim para auto-continuar cuando el usuario conceda desde Settings
     window.addEventListener('nexo-permissions-granted', async function(e) {
       try {
         if (!window.NEXO.initialized) {
@@ -111,11 +103,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
 });
 
-// ─── Permission Overlay (reemplaza SetupWizard) ───
 function _showPermissionOverlay() {
   try {
     if (document.getElementById('nexo-perm-overlay')) return;
-
     var overlay = document.createElement('div');
     overlay.id = 'nexo-perm-overlay';
     overlay.innerHTML = `
@@ -129,8 +119,6 @@ function _showPermissionOverlay() {
       </div>
     `;
     document.body.appendChild(overlay);
-
-    // Styles inline para no depender de CSS externo
     var style = document.createElement('style');
     style.id = 'perm-overlay-styles';
     style.textContent = `
@@ -167,7 +155,6 @@ function _showPermissionOverlay() {
         }
       });
     }
-
     if (btnSettings) {
       btnSettings.addEventListener('click', function() {
         rem.info('[Shim] Abriendo ajustes del sistema...', 'SHIM_SETTINGS');
@@ -182,7 +169,6 @@ function _showPermissionOverlay() {
         }
       });
     }
-
     if (btnSkip) {
       btnSkip.addEventListener('click', async function() {
         rem.warn('[Shim] Usuario continuo sin BLE', 'SHIM_SKIP');
@@ -207,7 +193,6 @@ function _hidePermissionOverlay() {
   } catch (e) {}
 }
 
-// ─── NexoApp Initialization (ARMORED) ───
 async function initializeNexoApp() {
   try {
     NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase valida');
@@ -256,7 +241,7 @@ async function initializeNexoApp() {
 
     window.NEXO.initialized = true;
     clearTimeout(SAFETY_TIMEOUT);
-    /* FIX v9.3: Log de diagnóstico BLE detallado */
+
     try {
       if (window.NEXO.app && window.NEXO.app.bleInterface) {
         var bi = window.NEXO.app.bleInterface;
@@ -275,6 +260,10 @@ async function initializeNexoApp() {
     _setupVaultToggle();
     _setupChatHeader();
     _setupKeyboardShortcuts();
+    _setupJumpButton(); // FIX v9.4
+
+    // FIX v9.4: Cargar mensajes persistidos del contacto activo
+    _loadPersistedMessages();
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
@@ -299,7 +288,6 @@ async function initializeNexoApp() {
   }
 }
 
-// ─── Helper Functions (ARMORED) ───
 function _ensureDOMStructure() {
   try {
     var stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
@@ -335,9 +323,28 @@ function _setupMessageInput() {
           rem.error('NEXO.app no disponible', 'MSG_ERR');
           return;
         }
+
+        // FIX v9.4: Generar mensaje propio con ID único, renderizar y guardar
+        var msgId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        var msgObj = {
+          content: text,
+          timestamp: Date.now(),
+          _own: true,
+          messageId: msgId,
+          _id: msgId,
+          status: 'pending',
+          _source: 'self'
+        };
+        _renderMessage(msgObj);
+        _saveMessageToStorage(msgObj);
+
         var sent = await window.NEXO.app.sendMessage({ content: text });
-        if (sent) rem.success('Enviado', 'MSG_SENT');
-        else rem.info('En cola (offline)', 'MSG_QUEUED');
+        if (sent) {
+          _updateMessageStatus(msgId, 'sent');
+          _updateMessageStorageStatus(msgId, 'sent');
+        } else {
+          rem.info('En cola (offline)', 'MSG_QUEUED');
+        }
       } catch (e) {
         rem.error('Error al enviar', 'MSG_ERR');
       }
@@ -352,7 +359,6 @@ function _setupMessageInput() {
     });
     input.focus();
 
-    // FIX: Scroll al final cuando el teclado aparece o desaparece
     window.addEventListener('resize', function() {
       var s = document.getElementById('nexo-stream');
       if (s) requestAnimationFrame(function() { s.scrollTop = s.scrollHeight; });
@@ -363,7 +369,6 @@ function _setupMessageInput() {
   }
 }
 
-/* FIX v9.3: Vault-panel oculto definitivamente con display:none */
 function _setupVaultToggle() {
   try {
     var vault = document.getElementById('vault-panel');
@@ -390,7 +395,6 @@ function _setupChatHeader() {
         if (window.NEXO.app && window.NEXO.app.activeContact) {
           window.NEXO.app.activeContact.name = newName;
         }
-        /* FIX v9.3: Usar nexo_ble_contacts_v2 (no v1) */
         try {
           var contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v2') || '[]');
           var activeId = window.NEXO.app && window.NEXO.app.activeContact ? window.NEXO.app.activeContact.id : null;
@@ -448,24 +452,127 @@ function _setupKeyboardShortcuts() {
 }
 
 /* ============================================================
-   FIX v9.3: _renderMessage con scroll correcto + estados ACK
-   FIX: requestAnimationFrame para scroll robusto
+   FIX v9.4: JUMP BUTTON - aparece al scrollear hacia arriba
    ============================================================ */
-function _renderMessage(msg) {
+function _setupJumpButton() {
+  try {
+    var stream = document.getElementById('nexo-stream');
+    var jumpBtn = document.getElementById('jump-to-bottom');
+    if (!stream || !jumpBtn) return;
+
+    var threshold = 150; // pixels desde el fondo para mostrar botón
+
+    stream.addEventListener('scroll', function() {
+      var scrollBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight;
+      if (scrollBottom > threshold) {
+        jumpBtn.classList.add('visible');
+      } else {
+        jumpBtn.classList.remove('visible');
+      }
+    });
+
+    jumpBtn.addEventListener('click', function() {
+      stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' });
+      jumpBtn.classList.remove('visible');
+    });
+  } catch (e) {
+    console.warn('[MAIN] _setupJumpButton error:', e);
+  }
+}
+
+/* ============================================================
+   FIX v9.4: PERSISTENCIA - guardar/cargar mensajes en localStorage
+   ============================================================ */
+function _getContactStorageKey() {
+  var contactId = 'default';
+  try {
+    if (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) {
+      contactId = window.NEXO.app.activeContact.id;
+    } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface._activeChatMAC) {
+      contactId = window.NEXO.app.bleInterface._activeChatMAC;
+    }
+  } catch (e) {}
+  return 'nexo_messages_' + contactId;
+}
+
+function _saveMessageToStorage(msg) {
+  try {
+    if (!msg || !msg.messageId) return;
+    var key = _getContactStorageKey();
+    var messages = JSON.parse(localStorage.getItem(key) || '[]');
+    var exists = messages.some(function(m) { return m.messageId === msg.messageId; });
+    if (!exists) {
+      messages.push(msg);
+      if (messages.length > 500) messages = messages.slice(-500);
+      localStorage.setItem(key, JSON.stringify(messages));
+    }
+  } catch (e) {
+    console.warn('[MAIN] _saveMessageToStorage error:', e);
+  }
+}
+
+function _updateMessageStorageStatus(messageId, status) {
+  try {
+    if (!messageId) return;
+    var key = _getContactStorageKey();
+    var messages = JSON.parse(localStorage.getItem(key) || '[]');
+    var idx = messages.findIndex(function(m) { return m.messageId === messageId; });
+    if (idx >= 0) {
+      messages[idx].status = status;
+      localStorage.setItem(key, JSON.stringify(messages));
+    }
+  } catch (e) {
+    console.warn('[MAIN] _updateMessageStorageStatus error:', e);
+  }
+}
+
+function _loadPersistedMessages() {
+  try {
+    var key = _getContactStorageKey();
+    var messages = JSON.parse(localStorage.getItem(key) || '[]');
+    if (messages.length === 0) return;
+    rem.info('Cargando ' + messages.length + ' mensajes persistidos', 'PERSIST_LOAD');
+    messages.forEach(function(msg) {
+      _renderMessage(msg, true); // true = skipSave (evita loop)
+    });
+  } catch (e) {
+    console.warn('[MAIN] _loadPersistedMessages error:', e);
+  }
+}
+
+/* ============================================================
+   FIX v9.4: _renderMessage con deduplicación + persistencia
+   ============================================================ */
+function _renderMessage(msg, skipSave) {
   try {
     if (!msg) return;
     var container = document.getElementById('messages-container');
     if (!container) return;
 
+    var msgId = msg.messageId || msg._id || msg.id || '';
+    if (!msgId) {
+      msgId = 'msg_' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
+      msg.messageId = msgId;
+    }
+
+    // Deduplicación: si ya existe en DOM, solo actualizar estado
+    var existing = document.querySelector('[data-msg-id="' + msgId + '"]');
+    if (existing) {
+      if (msg.status) {
+        _updateMessageStatus(msgId, msg.status);
+        if (!skipSave) _updateMessageStorageStatus(msgId, msg.status);
+      }
+      return;
+    }
+
     var div = document.createElement('div');
     var isOwn = !!msg._own;
     div.className = 'message ' + (isOwn ? 'own' : 'other');
     if (msg.pending) div.classList.add('pending');
-    div.dataset.msgId = msg.messageId || msg._id || '';
+    div.dataset.msgId = msgId;
 
     var sourceBadge = msg._source ? _getSourceIcon(msg._source) : '';
 
-    /* FIX: Agregado msg-status span para estados enviado/entregado/leído */
     var statusHtml = '';
     if (isOwn) {
       var statusClass = 'status-pending';
@@ -473,7 +580,7 @@ function _renderMessage(msg) {
       if (msg.status === 'sent') { statusClass = 'status-sent'; statusIcon = '✓'; }
       else if (msg.status === 'delivered') { statusClass = 'status-delivered'; statusIcon = '✓✓'; }
       else if (msg.status === 'read') { statusClass = 'status-read'; statusIcon = '✓✓'; }
-      statusHtml = '<span class="msg-status ' + statusClass + '" data-msg-id="' + (msg.messageId || msg._id || '') + '">' + statusIcon + '</span>';
+      statusHtml = '<span class="msg-status ' + statusClass + '" data-msg-id="' + msgId + '">' + statusIcon + '</span>';
     }
 
     div.innerHTML = `
@@ -487,28 +594,29 @@ function _renderMessage(msg) {
 
     container.appendChild(div);
 
-    /* FIX: Scroll automático robusto en nexo-stream */
     var stream = document.getElementById('nexo-stream');
     if (stream) {
       requestAnimationFrame(function() {
         stream.scrollTop = stream.scrollHeight;
       });
     }
+
+    // Persistir (solo si no viene de carga inicial)
+    if (!skipSave) {
+      _saveMessageToStorage(msg);
+    }
   } catch (e) {
     console.warn('[MAIN] _renderMessage error:', e);
   }
 }
 
-/* FIX v9.3: Actualizar estado visual de un mensaje por ID */
 function _updateMessageStatus(messageId, status) {
   try {
     if (!messageId) return;
     var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
     if (!statusEl) return;
-
     statusEl.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
     statusEl.classList.add('status-' + status);
-
     if (status === 'sent') statusEl.textContent = '✓';
     else if (status === 'delivered') statusEl.textContent = '✓✓';
     else if (status === 'read') statusEl.textContent = '✓✓';
@@ -530,12 +638,10 @@ function _getSourceIcon(source) {
   } catch (e) { return '•'; }
 }
 
-/* FIX v9.3: _toggleVaultUI ahora controla display:none correctamente */
 function _toggleVaultUI(isOpen) {
   try {
     var vault = document.getElementById('vault-panel');
     var stream = document.getElementById('nexo-stream');
-
     if (vault) {
       vault.classList.toggle('vault-hidden', !isOpen);
       vault.classList.toggle('vault-visible', isOpen);
@@ -582,7 +688,6 @@ function _enableFallbackMode() {
     console.warn('[NEXO] Activando modo fallback');
     var body = document.body;
     body.classList.add('nexo-fallback-mode');
-
     var msg = document.createElement('div');
     msg.className = 'fallback-notice';
     msg.innerHTML = `
@@ -595,7 +700,6 @@ function _enableFallbackMode() {
   }
 }
 
-/* Exponer _updateMessageStatus globalmente para nexo_app.js */
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 
 if (module && module.hot) module.hot.accept();
