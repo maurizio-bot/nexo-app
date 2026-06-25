@@ -88,7 +88,7 @@
 #app {
   display: flex;
   flex-direction: column;
-  height: 100dvh;              /* FIX: dynamic viewport, se reajusta con teclado */
+  height: 100dvh;
   background: #000000;
   color: #e5e7eb;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -135,6 +135,7 @@
   font-size: 14px;
   line-height: 1.4;
   animation: messageIn 0.3s ease;
+  border: 2px solid transparent; /* FIX v9.4: borde base para estados */
 }
 
 @keyframes messageIn {
@@ -142,6 +143,7 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* FIX v9.4: Estados de borde para mensajes ENVIADOS */
 .message.own {
   align-self: flex-end;
   background: #4169E1;
@@ -149,6 +151,23 @@
   border-bottom-right-radius: 4px;
 }
 
+.message.own.status-pending {
+  border-color: transparent; /* Sin borde visible */
+}
+
+.message.own.status-sent {
+  border-color: #6b7280; /* Gris */
+}
+
+.message.own.status-delivered {
+  border-color: #00d4ff; /* Cian */
+}
+
+.message.own.status-read {
+  border-color: #22c55e; /* Verde */
+}
+
+/* Mensajes RECIBIDOS - sin esfera azul, sin estados */
 .message.other {
   align-self: flex-start;
   background: #191970;
@@ -162,11 +181,24 @@
   opacity: 0.6;
   display: flex;
   gap: 8px;
+  align-items: center;
 }
+
+/* FIX v9.4: msg-status solo para enviados, sin palomitas */
+.msg-status {
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.msg-status.status-pending { color: rgba(255,255,255,0.3); }
+.msg-status.status-sent { color: #6b7280; }
+.msg-status.status-delivered { color: #00d4ff; }
+.msg-status.status-read { color: #22c55e; }
 
 /* Input Area */
 #input-area {
-  flex-shrink: 0;              /* FIX: parte del flujo flex, no fixed */
+  flex-shrink: 0;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) 16px;
   background: rgba(0,0,0,0.95);
   backdrop-filter: blur(10px);
@@ -285,7 +317,7 @@
 
 /* CHAT HEADER: Destinatario editable */
 #chat-header {
-  flex-shrink: 0;              /* FIX: parte del flujo flex, no fixed */
+  flex-shrink: 0;
   height: 56px;
   background: rgba(0,0,0,0.95);
   backdrop-filter: blur(10px);
@@ -321,4 +353,33 @@
   margin-top: 2px;
   text-transform: uppercase;
   letter-spacing: 1px;
+}
+
+/* FIX v9.4: Jump button */
+#jump-to-bottom {
+  position: fixed;
+  bottom: 80px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 132, 255, 0.9);
+  color: #fff;
+  border: none;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+#jump-to-bottom.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
