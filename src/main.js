@@ -351,6 +351,13 @@ function _setupMessageInput() {
       }
     });
     input.focus();
+
+    // FIX: Scroll al final cuando el teclado aparece o desaparece
+    window.addEventListener('resize', function() {
+      var s = document.getElementById('nexo-stream');
+      if (s) requestAnimationFrame(function() { s.scrollTop = s.scrollHeight; });
+    });
+
   } catch (e) {
     console.warn('[MAIN] _setupMessageInput error:', e);
   }
