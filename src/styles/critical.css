@@ -123,14 +123,15 @@
 #messages-container {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   padding: 20px;
   min-height: 100%;
 }
 
+/* FIX v9.6: Padding reducido a la mitad */
 .message {
   max-width: 80%;
-  padding: 12px 16px;
+  padding: 6px 10px;
   border-radius: 16px;
   font-size: 14px;
   line-height: 1.4;
@@ -143,7 +144,7 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* FIX v9.4: Estados de borde para mensajes ENVIADOS */
+/* FIX v9.6: Estados de borde con !important para forzar */
 .message.own {
   align-self: flex-end;
   background: #4169E1;
@@ -152,22 +153,22 @@
 }
 
 .message.own.status-pending {
-  border-color: transparent;
+  border-color: rgba(255,255,255,0.1) !important;
 }
 
 .message.own.status-sent {
-  border-color: #6b7280;
+  border-color: #6b7280 !important;
 }
 
 .message.own.status-delivered {
-  border-color: #00d4ff;
+  border-color: #00d4ff !important;
 }
 
 .message.own.status-read {
-  border-color: #2196f3;
+  border-color: #2196f3 !important;
 }
 
-/* Mensajes RECIBIDOS - sin esfera azul, sin estados */
+/* Mensajes RECIBIDOS */
 .message.other {
   align-self: flex-start;
   background: #191970;
@@ -175,22 +176,21 @@
   border-bottom-left-radius: 4px;
 }
 
-/* FIX v9.5: msg-meta (antes message-meta, nunca coincidía con HTML) */
+/* FIX v9.6: msg-meta y msg-time más chicos con !important */
 .msg-meta {
-  margin-top: 4px;
-  font-size: 10px;
+  margin-top: 2px;
+  font-size: 10px !important;
   opacity: 0.5;
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-/* FIX v9.5: Hora más chica */
 .msg-time {
-  font-size: 10px;
+  font-size: 10px !important;
 }
 
-/* FIX v9.4: msg-status solo para enviados, sin palomitas */
+/* FIX v9.4: msg-status solo para enviados */
 .msg-status {
   font-size: 10px;
   font-weight: 700;
