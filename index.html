@@ -13,6 +13,34 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
   
   <title>NEXO v9.0</title>
+  
+  <!-- CRITICAL CSS: Ocultar vault-panel ANTES de que cargue cualquier CSS/JS -->
+  <style>
+    #vault-panel {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      position: absolute !important;
+      z-index: -9999 !important;
+    }
+    #splash-native {
+      position: fixed;
+      inset: 0;
+      background: #0a0a0a;
+      z-index: 999999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    body {
+      background: #0a0a0a;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
 </head>
 <body>
   <!-- SPLASH SCREEN -->
