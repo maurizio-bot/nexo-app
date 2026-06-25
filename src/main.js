@@ -260,6 +260,7 @@ async function initializeNexoApp() {
     _setupChatHeader();
     _setupKeyboardShortcuts();
     _setupJumpButton();
+    _setupBackButton();
 
     // FIX v9.4: Cargar mensajes persistidos del contacto activo
     _loadPersistedMessages();
@@ -686,6 +687,32 @@ function _enableFallbackMode() {
     body.appendChild(msg);
   } catch (e) {
     console.error('[MAIN] _enableFallbackMode error:', e);
+  }
+}
+
+/* BACK BUTTON: cerrar chat y volver a pantalla principal */
+function _setupBackButton() {
+  try {
+    var backBtn = document.getElementById('chat-back-btn');
+    if (!backBtn) return;
+    backBtn.addEventListener('click', function() {
+      // Disparar evento para que BLE interface muestre el tab
+      try {
+        window.dispatchEvent(new CustomEvent('nexo:ble:closeChat'));
+      } catch (e) {}
+      // Limpiar contacto activo
+      if (window.NEXO.app) {
+        window.NEXO.app.activeContact = null;
+      }
+      // Limpiar BLE interface active chat
+      if (window.NEXO.app && window.NEXO.app.bleInterface) {
+        window.NEXO.app.bleInterface._activeChatDeviceId = null;
+        window.NEXO.app.bleInterface._activeChatMAC = null;
+      }
+      rem.info('Chat cerrado', 'CHAT_CLOSE');
+    });
+  } catch (e) {
+    console.warn('[MAIN] _setupBackButton error:', e);
   }
 }
 
