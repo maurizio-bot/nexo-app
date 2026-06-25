@@ -1,11 +1,8 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.4-STATUS
- * FIX: Jump button flotante para scroll rápido
- * FIX: Persistencia de mensajes en localStorage por contacto
- * FIX: Deduplicación por data-msg-id
- * FIX: Bordes de estado en mensajes enviados (pending/sent/delivered/read)
- * FIX: Quitar esfera azul de mensajes recibidos
- * Build #1603 compatible. NO toca nativo.
+ * src/main.js - Punto de entrada NEXO v9.5-FIX
+ * FIX: No renderizar mensaje local inmediatamente (evita duplicados)
+ * FIX: Jump button, persistencia, estados de borde mantenidos
+ * Build #1605 compatible. NO toca nativo.
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -48,7 +45,7 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   try {
-    console.log('[MAIN] NEXO v9.4-STATUS iniciando...');
+    console.log('[MAIN] NEXO v9.5-FIX iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -261,8 +258,8 @@ async function initializeNexoApp() {
     _setupMessageInput();
     _setupVaultToggle();
     _setupChatHeader();
-    _setupKeyboardShortcuts();
-    _setupJumpButton(); // FIX v9.4
+    _setupKeyboardShortshortcuts();
+    _setupJumpButton();
 
     // FIX v9.4: Cargar mensajes persistidos del contacto activo
     _loadPersistedMessages();
@@ -308,6 +305,9 @@ function _ensureDOMStructure() {
   }
 }
 
+/* FIX v9.5: NO renderizar mensaje local inmediatamente.
+   El callback onMessage de NexoApp renderizará cuando confirme.
+   Esto evita duplicados cuando el mismo mensaje llega por BLE. */
 function _setupMessageInput() {
   try {
     var input = document.getElementById('message-input');
@@ -326,25 +326,10 @@ function _setupMessageInput() {
           return;
         }
 
-        // FIX v9.4: Generar mensaje propio con ID único, renderizar y guardar
-        var msgId = 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-        var msgObj = {
-          content: text,
-          timestamp: Date.now(),
-          _own: true,
-          messageId: msgId,
-          _id: msgId,
-          status: 'pending',
-          _source: 'self'
-        };
-        _renderMessage(msgObj);
-        _saveMessageToStorage(msgObj);
-
+        // FIX v9.5: Solo enviar, NO renderizar localmente.
+        // onMessage callback se encargará de renderizar cuando el plugin confirme.
         var sent = await window.NEXO.app.sendMessage({ content: text });
-        if (sent) {
-          _updateMessageStatus(msgId, 'sent');
-          _updateMessageStorageStatus(msgId, 'sent');
-        } else {
+        if (!sent) {
           rem.info('En cola (offline)', 'MSG_QUEUED');
         }
       } catch (e) {
@@ -453,16 +438,14 @@ function _setupKeyboardShortcuts() {
   }
 }
 
-/* ============================================================
-   FIX v9.4: JUMP BUTTON - aparece al scrollear hacia arriba
-   ============================================================ */
+/* JUMP BUTTON */
 function _setupJumpButton() {
   try {
     var stream = document.getElementById('nexo-stream');
     var jumpBtn = document.getElementById('jump-to-bottom');
     if (!stream || !jumpBtn) return;
 
-    var threshold = 150; // pixels desde el fondo para mostrar botón
+    var threshold = 150;
 
     stream.addEventListener('scroll', function() {
       var scrollBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight;
@@ -482,9 +465,7 @@ function _setupJumpButton() {
   }
 }
 
-/* ============================================================
-   FIX v9.4: PERSISTENCIA - guardar/cargar mensajes en localStorage
-   ============================================================ */
+/* PERSISTENCIA */
 function _getContactStorageKey() {
   var contactId = 'default';
   try {
@@ -535,16 +516,14 @@ function _loadPersistedMessages() {
     if (messages.length === 0) return;
     rem.info('Cargando ' + messages.length + ' mensajes persistidos', 'PERSIST_LOAD');
     messages.forEach(function(msg) {
-      _renderMessage(msg, true); // true = skipSave (evita loop)
+      _renderMessage(msg, true);
     });
   } catch (e) {
     console.warn('[MAIN] _loadPersistedMessages error:', e);
   }
 }
 
-/* ============================================================
-   FIX v9.4-STATUS: _renderMessage con bordes de estado + quitar esfera azul
-   ============================================================ */
+/* RENDER MESSAGE con estados de borde */
 function _renderMessage(msg, skipSave) {
   try {
     if (!msg) return;
@@ -557,7 +536,7 @@ function _renderMessage(msg, skipSave) {
       msg.messageId = msgId;
     }
 
-    // Deduplicación: si ya existe en DOM, solo actualizar estado
+    // Deduplicación por ID
     var existing = document.querySelector('[data-msg-id="' + msgId + '"]');
     if (existing) {
       if (msg.status) {
@@ -567,20 +546,29 @@ function _renderMessage(msg, skipSave) {
       return;
     }
 
+    // FIX v9.5: Deduplicación por contenido + timestamp cercano (fallback)
+    if (!msg._own && msg.content) {
+      var recentMessages = container.querySelectorAll('.message.other');
+      for (var i = recentMessages.length - 1; i >= Math.max(0, recentMessages.length - 5); i--) {
+        var existingContent = recentMessages[i].querySelector('.msg-content');
+        var existingTime = recentMessages[i].querySelector('.msg-time');
+        if (existingContent && existingContent.textContent === msg.content) {
+          // Mismo contenido en los últimos 5 mensajes recibidos = duplicado
+          return;
+        }
+      }
+    }
+
     var div = document.createElement('div');
     var isOwn = !!msg._own;
     div.className = 'message ' + (isOwn ? 'own' : 'other');
-    if (msg.pending) div.classList.add('pending');
 
-    // FIX v9.4-STATUS: Agregar clase de estado al div para bordes CSS
+    // FIX: Agregar clase de estado al div para bordes CSS
     if (isOwn && msg.status) {
       div.classList.add('status-' + msg.status);
     }
 
     div.dataset.msgId = msgId;
-
-    // FIX v9.4: No mostrar source badge en mensajes recibidos (quitar esfera azul)
-    var sourceBadge = (isOwn && msg._source) ? _getSourceIcon(msg._source) : '';
 
     var statusHtml = '';
     if (isOwn) {
@@ -596,7 +584,6 @@ function _renderMessage(msg, skipSave) {
       <div class="msg-content">${msg.content || msg.text || ''}</div>
       <div class="msg-meta">
         <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
-        ${sourceBadge}
         ${statusHtml}
       </div>
     `;
@@ -610,7 +597,6 @@ function _renderMessage(msg, skipSave) {
       });
     }
 
-    // Persistir (solo si no viene de carga inicial)
     if (!skipSave) {
       _saveMessageToStorage(msg);
     }
@@ -619,7 +605,6 @@ function _renderMessage(msg, skipSave) {
   }
 }
 
-/* FIX v9.4-STATUS: Actualizar estado visual + clase del div padre para borde */
 function _updateMessageStatus(messageId, status) {
   try {
     if (!messageId) return;
@@ -632,7 +617,6 @@ function _updateMessageStatus(messageId, status) {
     else if (status === 'delivered') statusEl.textContent = '✓✓';
     else if (status === 'read') statusEl.textContent = '✓✓';
 
-    // FIX v9.4-STATUS: Actualizar también clase del div padre para borde
     var msgDiv = statusEl.closest('.message');
     if (msgDiv) {
       msgDiv.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
@@ -641,19 +625,6 @@ function _updateMessageStatus(messageId, status) {
   } catch (e) {
     console.warn('[MAIN] _updateMessageStatus error:', e);
   }
-}
-
-function _getSourceIcon(source) {
-  try {
-    var icons = {
-      'ble_nordic': '🔷',
-      'ble_hybrid': '📡',
-      'ble_direct': '🔵',
-      'relay': '🌐',
-      'self': '✓'
-    };
-    return icons[source] || '•';
-  } catch (e) { return '•'; }
 }
 
 function _toggleVaultUI(isOpen) {
