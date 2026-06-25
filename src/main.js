@@ -1,9 +1,11 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.4-JUMP-PERSIST
+ * src/main.js - Punto de entrada NEXO v9.4-STATUS
  * FIX: Jump button flotante para scroll rápido
  * FIX: Persistencia de mensajes en localStorage por contacto
  * FIX: Deduplicación por data-msg-id
- * Build #1601 compatible. NO toca nativo.
+ * FIX: Bordes de estado en mensajes enviados (pending/sent/delivered/read)
+ * FIX: Quitar esfera azul de mensajes recibidos
+ * Build #1603 compatible. NO toca nativo.
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -46,7 +48,7 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   try {
-    console.log('[MAIN] NEXO v9.4-JUMP-PERSIST iniciando...');
+    console.log('[MAIN] NEXO v9.4-STATUS iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -541,7 +543,7 @@ function _loadPersistedMessages() {
 }
 
 /* ============================================================
-   FIX v9.4: _renderMessage con deduplicación + persistencia
+   FIX v9.4-STATUS: _renderMessage con bordes de estado + quitar esfera azul
    ============================================================ */
 function _renderMessage(msg, skipSave) {
   try {
@@ -569,9 +571,16 @@ function _renderMessage(msg, skipSave) {
     var isOwn = !!msg._own;
     div.className = 'message ' + (isOwn ? 'own' : 'other');
     if (msg.pending) div.classList.add('pending');
+
+    // FIX v9.4-STATUS: Agregar clase de estado al div para bordes CSS
+    if (isOwn && msg.status) {
+      div.classList.add('status-' + msg.status);
+    }
+
     div.dataset.msgId = msgId;
 
-    var sourceBadge = msg._source ? _getSourceIcon(msg._source) : '';
+    // FIX v9.4: No mostrar source badge en mensajes recibidos (quitar esfera azul)
+    var sourceBadge = (isOwn && msg._source) ? _getSourceIcon(msg._source) : '';
 
     var statusHtml = '';
     if (isOwn) {
@@ -610,16 +619,25 @@ function _renderMessage(msg, skipSave) {
   }
 }
 
+/* FIX v9.4-STATUS: Actualizar estado visual + clase del div padre para borde */
 function _updateMessageStatus(messageId, status) {
   try {
     if (!messageId) return;
     var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
     if (!statusEl) return;
+
     statusEl.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
     statusEl.classList.add('status-' + status);
     if (status === 'sent') statusEl.textContent = '✓';
     else if (status === 'delivered') statusEl.textContent = '✓✓';
     else if (status === 'read') statusEl.textContent = '✓✓';
+
+    // FIX v9.4-STATUS: Actualizar también clase del div padre para borde
+    var msgDiv = statusEl.closest('.message');
+    if (msgDiv) {
+      msgDiv.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
+      msgDiv.classList.add('status-' + status);
+    }
   } catch (e) {
     console.warn('[MAIN] _updateMessageStatus error:', e);
   }
