@@ -968,7 +968,9 @@ export class BLEInterface {
             source: 'ble_interface'
           });
           self.showToast('Chat con ' + displayName + ' listo', 'success');
-          self.togglePanel();
+          self.elements.panel.classList.remove('active');
+          self.elements.overlay.classList.remove('active');
+
           resolve();
         }
         if (!isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
@@ -1220,7 +1222,6 @@ export class BLEInterface {
       this.renderContactsList();
     } else {
       /* FIX v5.0.6: Al cerrar panel, salir del chat y mostrar BLE panel */
-      document.body.classList.remove('chat-view-active');
       var blePanel = document.getElementById('ble-panel');
       var bleOverlay = document.getElementById('ble-overlay');
       if (blePanel) blePanel.style.display = '';
