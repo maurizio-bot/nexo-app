@@ -1527,14 +1527,7 @@ export class BLEInterface {
     return Promise.resolve();
   }
 
-  updateBadge() {
-    var badge = document.getElementById('ble-tab-badge');
-    if (!badge) return;
-    if (this._activeChat
-    return Promise.resolve();
-  }
-
-  updateBadge() {
+    updateBadge() {
     var badge = document.getElementById('ble-tab-badge');
     if (!badge) return;
     if (this._activeChatDeviceId) {
