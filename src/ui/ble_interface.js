@@ -1,15 +1,8 @@
 /**
- * BLE Interface v5.0.4-ACK-ANTI-LOOP-ES5
- * Base: v5.0.3-DUAL-GATT-ES5-CACHE-CLEAR
- * FIX: Anti-bucle ACK — los paquetes ACK/read_receipt no generan respuesta ACK
- * FIX: ACK passthrough por GATT sin reensamblaje especial
- * DUAL GATT CHANGES:
- *    * openChat() guarantees connection GATT Client towards the remote
- *    * sendChatMessage() uses ONLY GATT Client (no broadcast fallback)
- *    * onPayloadReceived accepts source 'gatt_server' and 'gatt_client'
- *    * Auto-reconnect handled by native plugin (not in JS)
- *    * Removed confusing broadcast fallback
- * ES5 syntax compatible with webpack - NO async/await in class methods
+ * BLE Interface v5.0.5-FIX
+ * FIX: openChat() agrega chat-view-active al body en lugar de togglePanel()
+ * FIX: togglePanel() remueve chat-view-active al cerrar
+ * Base: v5.0.4-ACK-ANTI-LOOP-ES5
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -192,7 +185,6 @@ function _safeDispatchEvent(eventName, detail) {
   }
 }
 
-// === LIMPIEZA AUTOMATICA DE CACHE ===
 function _clearStaleCache() {
   try {
     var now = Date.now();
@@ -225,9 +217,6 @@ function _clearStaleCache() {
   }
 }
 
-/* ============================================================
-   FIX v5.0.4: Detectar si contenido es ACK o read_receipt
-   ============================================================ */
 function _isControlPacket(content) {
   if (!content || typeof content !== 'string') return false;
   if (content.indexOf('"type":"ack"') !== -1) return true;
@@ -276,7 +265,7 @@ export class BLEInterface {
     }
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
-    console.log('[BLEInterface] DUAL GATT v5.0.4-ACK-ANTI-LOOP iniciado. MAC maps:', this._uuidToMacMap.size, 'entradas');
+    console.log('[BLEInterface] DUAL GATT v5.0.5-FIX iniciado. MAC maps:', this._uuidToMacMap.size, 'entradas');
   }
 
   _detectMeshType() {
@@ -559,7 +548,6 @@ export class BLEInterface {
         var senderUUID = null;
         var content = data.content || data.data || '';
 
-        /* FIX v5.0.4: Detectar ACK/read_receipt ANTES de reensamblaje */
         var isControl = _isControlPacket(content);
         if (isControl) {
           try {
@@ -711,9 +699,6 @@ export class BLEInterface {
     return processNext(0);
   }
 
-  /* ============================================================
-     FIX v5.0.4: _sendMessageNative con anti-bucle ACK
-     ============================================================ */
   _sendMessageNative(deviceMAC, content, messageId) {
     var self = this;
     self.showToast('[BLE JS] _sendMessageNative: ' + deviceMAC, 'info', 2000);
@@ -732,8 +717,6 @@ export class BLEInterface {
         }
         var targetId = _macWithColons(macNorm);
 
-        /* FIX v5.0.4: Si es ACK/read_receipt, NO agregar senderName ni deviceUUID
-           para evitar que el receptor lo interprete como mensaje normal */
         var isCtrl = _isControlPacket(content);
         var enrichedPayload;
         if (isCtrl) {
@@ -914,6 +897,9 @@ export class BLEInterface {
     }
   }
 
+  /* ============================================================
+     FIX v5.0.5: openChat() muestra chat via chat-view-active
+     ============================================================ */
   openChat(deviceUUID) {
     var self = this;
     self.showToast('[BLE JS] openChat: ' + deviceUUID, 'info', 2000);
@@ -967,8 +953,9 @@ export class BLEInterface {
             transport: 'ble',
             source: 'ble_interface'
           });
+          /* FIX v5.0.5: Mostrar chat en lugar de togglePanel */
+          document.body.classList.add('chat-view-active');
           self.showToast('Chat con ' + displayName + ' listo', 'success');
-          self.togglePanel();
           resolve();
         }
         if (!isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
@@ -1211,6 +1198,9 @@ export class BLEInterface {
     });
   }
 
+  /* ============================================================
+     FIX v5.0.5: togglePanel() cierra chat si esta abierto
+     ============================================================ */
   togglePanel() {
     this.elements.panel.classList.toggle('active');
     this.elements.overlay.classList.toggle('active');
@@ -1218,6 +1208,9 @@ export class BLEInterface {
       this.newDevicesCount = 0;
       this.updateBadge();
       this.renderContactsList();
+    } else {
+      /* FIX v5.0.5: Al cerrar panel, salir del chat tambien */
+      document.body.classList.remove('chat-view-active');
     }
   }
 
@@ -1528,9 +1521,16 @@ export class BLEInterface {
           }
         })
         .catch(function(err) {
-                        self.showToast('Error al desconectar: ' + (err.message || 'desconocido'), 'error');
+          self.showToast('Error al desconectar: ' + (err.message || 'desconocido'), 'error');
         });
     }
+    return Promise.resolve();
+  }
+
+  updateBadge() {
+    var badge = document.getElementById('ble-tab-badge');
+    if (!badge) return;
+    if (this._activeChat
     return Promise.resolve();
   }
 
