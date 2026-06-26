@@ -1,6 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.8-FIX
- * FIX: Back button del chat hace lo mismo que el boton BLE tab
+ * src/main.js - Punto de entrada NEXO v9.9-FIX
+ * FIX: chat-view-active agregado/quitado en body para mostrar messages-container e input-area
  * Build #1605+ compatible. NO toca nativo.
  */
 
@@ -44,7 +44,7 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   try {
-    console.log('[MAIN] NEXO v9.8-FIX iniciando...');
+    console.log('[MAIN] NEXO v9.9-FIX iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -693,9 +693,10 @@ function _enableFallbackMode() {
 }
 
 /* =================================================================
-   FIX v9.8: Back button del chat hace lo mismo que el boton BLE tab
-   - Llama window.bleInterface.togglePanel() exactamente igual
-   - No manipula vault-panel ni dispara eventos de nexo_app
+   FIX v9.9: chat-view-active agregado/quitado en body
+   - Al abrir chat: body.classList.add('chat-view-active')
+   - Al cerrar chat: body.classList.remove('chat-view-active')
+   - Click back: quita chat-view-active y llama togglePanel()
    ================================================================= */
 function _setupBackButton() {
   try {
@@ -704,21 +705,22 @@ function _setupBackButton() {
 
     window.addEventListener('nexo:ble:openChat', function() {
       backBtn.classList.add('visible');
+      document.body.classList.add('chat-view-active');
     });
 
     window.addEventListener('nexo:ble:closeChat', function() {
       backBtn.classList.remove('visible');
+      document.body.classList.remove('chat-view-active');
     });
 
     backBtn.addEventListener('click', function() {
       backBtn.classList.remove('visible');
+      document.body.classList.remove('chat-view-active');
       
-      /* Hace EXACTAMENTE lo mismo que el boton BLE tab */
       if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
         window.bleInterface.togglePanel();
       }
       
-      /* Limpiar estado de chat activo */
       if (window.NEXO.app) {
         window.NEXO.app.activeContact = null;
       }
