@@ -1,15 +1,6 @@
 /**
- * BLE Interface v5.0.4-ACK-ANTI-LOOP-ES5
- * Base: v5.0.3-DUAL-GATT-ES5-CACHE-CLEAR
- * FIX: Anti-bucle ACK — los paquetes ACK/read_receipt no generan respuesta ACK
- * FIX: ACK passthrough por GATT sin reensamblaje especial
- * DUAL GATT CHANGES:
- *    * openChat() guarantees connection GATT Client towards the remote
- *    * sendChatMessage() uses ONLY GATT Client (no broadcast fallback)
- *    * onPayloadReceived accepts source 'gatt_server' and 'gatt_client'
- *    * Auto-reconnect handled by native plugin (not in JS)
- *    * Removed confusing broadcast fallback
- * ES5 syntax compatible with webpack - NO async/await in class methods
+ * BLE Interface v5.0.7-CONTACTOS-ES5
+ * FIXES: (1) Tab siempre visible al salir de chat, (2) BLE→Contactos/👤, (3) EYE auto-reactivar al volver a app
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -192,7 +183,6 @@ function _safeDispatchEvent(eventName, detail) {
   }
 }
 
-// === LIMPIEZA AUTOMATICA DE CACHE ===
 function _clearStaleCache() {
   try {
     var now = Date.now();
@@ -225,9 +215,6 @@ function _clearStaleCache() {
   }
 }
 
-/* ============================================================
-   FIX v5.0.4: Detectar si contenido es ACK o read_receipt
-   ============================================================ */
 function _isControlPacket(content) {
   if (!content || typeof content !== 'string') return false;
   if (content.indexOf('"type":"ack"') !== -1) return true;
@@ -276,7 +263,7 @@ export class BLEInterface {
     }
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
-    console.log('[BLEInterface] DUAL GATT v5.0.4-ACK-ANTI-LOOP iniciado. MAC maps:', this._uuidToMacMap.size, 'entradas');
+    console.log('[BLEInterface] DUAL GATT v5.0.7-CONTACTOS iniciado. MAC maps:', this._uuidToMacMap.size, 'entradas');
   }
 
   _detectMeshType() {
@@ -291,6 +278,7 @@ export class BLEInterface {
     this.createDOM();
     this.injectStyles();
     this.setupEventListeners();
+    this._setupAppStateListener();
     if (!this.nativePlugin) {
       this.nativePlugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
       if (this.nativePlugin) {
@@ -314,6 +302,36 @@ export class BLEInterface {
     }
     console.log('[BLEInterface] UUID local:', this.localDeviceUUID);
     return this;
+  }
+
+  _setupAppStateListener() {
+    var self = this;
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+      var appPlugin = window.Capacitor.Plugins.App;
+      if (_hasNativeMethod(appPlugin, 'addListener')) {
+        appPlugin.addListener('appStateChange', function(state) {
+          try {
+            if (state && state.isActive === true) {
+              console.log('[BLEInterface] App volvio a primer plano');
+              if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
+                self.showToast('[BLE JS] Reanudando EYE...', 'info', 2000);
+                _safeNativeCall(self.nativePlugin, 'startAdvertising', {})
+                  .then(function() {
+                    self.isAdvertising = true;
+                    self.updateVisibilityButton();
+                    self.showToast('[BLE JS] EYE reactivado', 'success', 2000);
+                  })
+                  .catch(function(e) {
+                    console.warn('[BLEInterface] Fallo reactivar EYE:', e.message);
+                  });
+              }
+            }
+          } catch (e) {
+            console.warn('[BLEInterface] Error appStateChange:', e.message);
+          }
+        });
+      }
+    }
   }
 
   _rebuildMacMaps() {
@@ -559,7 +577,6 @@ export class BLEInterface {
         var senderUUID = null;
         var content = data.content || data.data || '';
 
-        /* FIX v5.0.4: Detectar ACK/read_receipt ANTES de reensamblaje */
         var isControl = _isControlPacket(content);
         if (isControl) {
           try {
@@ -711,9 +728,6 @@ export class BLEInterface {
     return processNext(0);
   }
 
-  /* ============================================================
-     FIX v5.0.4: _sendMessageNative con anti-bucle ACK
-     ============================================================ */
   _sendMessageNative(deviceMAC, content, messageId) {
     var self = this;
     self.showToast('[BLE JS] _sendMessageNative: ' + deviceMAC, 'info', 2000);
@@ -731,9 +745,6 @@ export class BLEInterface {
           return;
         }
         var targetId = _macWithColons(macNorm);
-
-        /* FIX v5.0.4: Si es ACK/read_receipt, NO agregar senderName ni deviceUUID
-           para evitar que el receptor lo interprete como mensaje normal */
         var isCtrl = _isControlPacket(content);
         var enrichedPayload;
         if (isCtrl) {
@@ -747,7 +758,6 @@ export class BLEInterface {
             timestamp: Date.now()
           });
         }
-
         if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
           self.showToast('[BLE JS] Llamando sendMessage nativo...', 'info', 2000);
           _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
@@ -769,7 +779,6 @@ export class BLEInterface {
       }
     });
   }
-
   sendChatMessage(deviceUUID, content, messageId) {
     var self = this;
     self.showToast('[BLE JS] sendChatMessage: ' + deviceUUID, 'info', 2000);
@@ -970,7 +979,6 @@ export class BLEInterface {
           self.showToast('Chat con ' + displayName + ' listo', 'success');
           self.elements.panel.classList.remove('active');
           self.elements.overlay.classList.remove('active');
-
           resolve();
         }
         if (!isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
@@ -1161,12 +1169,12 @@ export class BLEInterface {
   createDOM() {
     var tab = document.createElement('div');
     tab.id = 'ble-tab';
-    tab.innerHTML = '<div class="ble-tab-icon">BLE</div><div class="ble-tab-badge" id="ble-tab-badge" style="display:none">0</div>';
+    tab.innerHTML = '<div class="ble-tab-icon">&#128100;</div><div class="ble-tab-badge" id="ble-tab-badge" style="display:none">0</div>';
     document.body.appendChild(tab);
     this.elements.tab = tab;
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
-    panel.innerHTML = '<div class="ble-header"> <button id="ble-back" class="ble-btn-back">&larr;</button> <h3>BLE Mesh</h3> <button id="ble-visibility-btn" class="ble-btn-visibility-round"></button> </div> <div class="ble-status-bar"> <span id="ble-status" class="ble-status-offline">OFFLINE</span> </div> <div id="ble-contacts-list" class="ble-contacts-list"> <div class="ble-empty">No hay contactos. Presiona Descubrir para encontrar dispositivos.</div> </div> <div class="ble-bottom-bar"> <div id="ble-new-device" class="ble-new-device" style="display:none"> <span id="ble-new-device-name"></span> <button id="ble-add-btn" class="ble-btn-add-small">+</button> </div> <button id="ble-scan-btn" class="ble-btn-scan-round"></button> </div>';
+    panel.innerHTML = '<div class="ble-header"> <button id="ble-back" class="ble-btn-back">&larr;</button> <h3>Contactos</h3> <button id="ble-visibility-btn" class="ble-btn-visibility-round"></button> </div> <div class="ble-status-bar"> <span id="ble-status" class="ble-status-offline">OFFLINE</span> </div> <div id="ble-contacts-list" class="ble-contacts-list"> <div class="ble-empty">No hay contactos. Presiona Buscar para encontrar dispositivos.</div> </div> <div class="ble-bottom-bar"> <div id="ble-new-device" class="ble-new-device" style="display:none"> <span id="ble-new-device-name"></span> <button id="ble-add-btn" class="ble-btn-add-small">+</button> </div> <button id="ble-scan-btn" class="ble-btn-scan-round"></button> </div>';
     document.body.appendChild(panel);
     this.elements.panel = panel;
     var overlay = document.createElement('div');
@@ -1201,7 +1209,11 @@ export class BLEInterface {
     this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
     window.addEventListener('nexo:ble:closeChat', function() {
       var tab = document.getElementById('ble-tab');
-      if (tab) tab.style.display = '';
+      if (tab) {
+        tab.style.display = 'flex';
+        tab.style.visibility = 'visible';
+        tab.style.opacity = '1';
+      }
       self._activeChatDeviceId = null;
       self._activeChatMAC = null;
       try { localStorage.removeItem(BLE_ACTIVE_CHAT_MAC_KEY); } catch(e) {}
@@ -1221,7 +1233,6 @@ export class BLEInterface {
       this.updateBadge();
       this.renderContactsList();
     } else {
-      /* FIX v5.0.6: Al cerrar panel, salir del chat y mostrar BLE panel */
       var blePanel = document.getElementById('ble-panel');
       var bleOverlay = document.getElementById('ble-overlay');
       if (blePanel) blePanel.style.display = '';
@@ -1272,14 +1283,14 @@ export class BLEInterface {
                 .then(function() {
                   self.isScanning = true;
                   self.updateScanButton();
-                  self.elements.status.textContent = 'ESCANEANDO...';
+                  self.elements.status.textContent = 'Buscando...';
                   self.elements.status.className = 'ble-status-scanning';
                   self.showToast('[BLE JS] Scan STARTED', 'success', 2000);
                 });
             }
             self.isScanning = true;
             self.updateScanButton();
-            self.elements.status.textContent = 'ESCANEANDO...';
+            self.elements.status.textContent = 'Buscando...';
             self.elements.status.className = 'ble-status-scanning';
             return Promise.resolve();
           }
@@ -1317,13 +1328,13 @@ export class BLEInterface {
           .then(function() {
             self.isScanning = true;
             self.updateScanButton();
-            self.elements.status.textContent = 'ESCANEANDO...';
+            self.elements.status.textContent = 'Buscando...';
             self.elements.status.className = 'ble-status-scanning';
           });
       }
       self.isScanning = true;
       self.updateScanButton();
-      self.elements.status.textContent = 'ESCANEANDO...';
+      self.elements.status.textContent = 'Buscando...';
       self.elements.status.className = 'ble-status-scanning';
     }
     return Promise.resolve();
@@ -1370,7 +1381,7 @@ export class BLEInterface {
     list.innerHTML = '';
     var contacts = _getBLEContacts();
     if (contacts.length === 0) {
-      list.innerHTML = '<div class="ble-empty">No hay contactos. Presiona Descubrir para encontrar dispositivos.</div>';
+      list.innerHTML = '<div class="ble-empty">No hay contactos. Presiona Buscar para encontrar dispositivos.</div>';
       return;
     }
     contacts.forEach(function(contact) {
@@ -1536,7 +1547,7 @@ export class BLEInterface {
           }
         })
         .catch(function(err) {
-                        self.showToast('Error al desconectar: ' + (err.message || 'desconocido'), 'error');
+          self.showToast('Error al desconectar: ' + (err.message || 'desconocido'), 'error');
         });
     }
     return Promise.resolve();
