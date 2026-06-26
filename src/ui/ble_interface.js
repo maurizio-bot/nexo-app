@@ -1199,10 +1199,48 @@ export class BLEInterface {
     document.head.appendChild(style);
   }
 
+  /* =================================================================
+     FIX: Back de Contactos → pantalla principal (no pantalla negra)
+     ================================================================= */
   setupEventListeners() {
     var self = this;
     this.elements.tab.addEventListener('click', function() { self.togglePanel(); });
-    this.elements.backBtn.addEventListener('click', function() { self.togglePanel(); });
+    
+    /* FIX: Back de Contactos maneja dos casos:
+       1. Si hay chat activo → cierra chat, se queda en Contactos
+       2. Si NO hay chat → cierra Contactos, muestra pantalla principal */
+    this.elements.backBtn.addEventListener('click', function() {
+      if (document.body.classList.contains('chat-view-active')) {
+        /* Caso 1: Hay chat activo → cerrar chat, quedarse en Contactos */
+        document.body.classList.remove('chat-view-active');
+        var chatBackBtn = document.getElementById('chat-back-btn');
+        if (chatBackBtn) chatBackBtn.classList.remove('visible');
+        if (window.NEXO.app) {
+          window.NEXO.app.activeContact = null;
+        }
+        if (window.NEXO.app && window.NEXO.app.bleInterface) {
+          window.NEXO.app.bleInterface._activeChatDeviceId = null;
+          window.NEXO.app.bleInterface._activeChatMAC = null;
+        }
+        /* No cerrar el panel, solo cerrar el chat */
+        return;
+      }
+      /* Caso 2: No hay chat → cerrar Contactos, mostrar pantalla principal */
+      self.togglePanel();
+      var stream = document.getElementById('nexo-stream');
+      if (stream) {
+        stream.style.display = '';
+        stream.style.visibility = 'visible';
+        stream.style.opacity = '1';
+      }
+      var tab = document.getElementById('ble-tab');
+      if (tab) {
+        tab.style.display = 'flex';
+        tab.style.visibility = 'visible';
+        tab.style.opacity = '1';
+      }
+    });
+    
     this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
     this.elements.visibilityBtn.addEventListener('click', function() { self.toggleVisibility(); });
     this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
@@ -1615,3 +1653,4 @@ export class BLEInterface {
     }, duration);
   }
 }
+
