@@ -164,6 +164,17 @@
     body.chat-view-active #ble-tab {
       display: none !important;
     }
+  
+    /* Hide rem status bar */
+    .rem-status, #rem-status, .status-bar, #status-bar,
+    [class*="status"][class*="bar"], [id*="status"][id*="bar"] {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      height: 0 !important;
+      pointer-events: none !important;
+    }
+
   </style>
 </head>
 <body>
