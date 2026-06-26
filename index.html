@@ -39,7 +39,7 @@
       margin: 0;
       padding: 0;
     }
-    /* CHAT BACK BUTTON - FIX: azul y posicionado a la izquierda */
+    /* CHAT BACK BUTTON */
     .chat-back-btn {
       background: none;
       border: none;
@@ -62,7 +62,7 @@
       display: flex;
     }
     #chat-header {
-      display: flex;
+      display: none;
       flex-direction: row !important;
       align-items: center;
       justify-content: center;
@@ -112,11 +112,45 @@
       transform: translateY(0);
       pointer-events: auto;
     }
-    /* FIX: Ocultar vista de chat cuando no está activa */
-    #app:not(.chat-view-active) #chat-header,
-    #app:not(.chat-view-active) #nexo-stream,
-    #app:not(.chat-view-active) #input-area,
-    #app:not(.chat-view-active) #jump-to-bottom {
+    /* FIX v9.9: Chat view control via body.chat-view-active */
+    #messages-container {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      padding: 20px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    #input-area {
+      display: none;
+      flex-shrink: 0;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) 16px;
+      background: rgba(0,0,0,0.95);
+      backdrop-filter: blur(10px);
+      gap: 10px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    /* Cuando body tiene chat-view-active: mostrar chat */
+    body.chat-view-active #chat-header {
+      display: flex !important;
+    }
+    body.chat-view-active #messages-container {
+      display: flex !important;
+    }
+    body.chat-view-active #input-area {
+      display: flex !important;
+    }
+    body.chat-view-active #jump-to-bottom {
+      display: flex !important;
+    }
+    /* Cuando chat activo: ocultar stream principal y BLE panel */
+    body.chat-view-active #nexo-stream {
+      display: none !important;
+    }
+    body.chat-view-active #ble-panel {
+      display: none !important;
+    }
+    body.chat-view-active #ble-tab {
       display: none !important;
     }
   </style>
@@ -134,9 +168,9 @@
       <span id="chat-contact-subtitle">OFFLINE</span>
     </div>
 
-    <div id="nexo-stream" class="stream-container">
-      <div id="messages-container"></div>
-    </div>
+    <div id="nexo-stream" class="stream-container"></div>
+
+    <div id="messages-container"></div>
 
     <div id="input-area">
       <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
