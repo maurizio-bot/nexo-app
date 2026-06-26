@@ -340,9 +340,10 @@ function _setupMessageInput() {
     input.focus();
 
     window.addEventListener('resize', function() {
-      var s = document.getElementById('nexo-stream');
+      var s = document.getElementById('messages-container');
       if (s) requestAnimationFrame(function() { s.scrollTop = s.scrollHeight; });
     });
+
 
   } catch (e) {
     console.warn('[MAIN] _setupMessageInput error:', e);
@@ -579,12 +580,13 @@ function _renderMessage(msg, skipSave) {
 
     container.appendChild(div);
 
-    var stream = document.getElementById('nexo-stream');
-    if (stream) {
+    var msgContainer = document.getElementById('messages-container');
+    if (msgContainer) {
       requestAnimationFrame(function() {
-        stream.scrollTop = stream.scrollHeight;
+        msgContainer.scrollTop = msgContainer.scrollHeight;
       });
     }
+
 
     if (!skipSave) {
       _saveMessageToStorage(msg);
