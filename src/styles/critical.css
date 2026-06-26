@@ -119,16 +119,47 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Messages */
-#messages-container {
-  display: flex;
+/* ============================================
+   FIX v9.9: Chat view - mostrar/ocultar
+   ============================================ */
+
+/* Por defecto: chat oculto */
+#messages-container,
+#input-area,
+#chat-header {
+  display: none !important;
+}
+
+/* Cuando body tiene chat-view-active: mostrar chat */
+body.chat-view-active #messages-container {
+  display: flex !important;
   flex-direction: column;
   gap: 6px;
   padding: 20px;
   min-height: 100%;
 }
 
-/* FIX v9.6: Padding reducido a la mitad */
+body.chat-view-active #input-area {
+  display: flex !important;
+}
+
+body.chat-view-active #chat-header {
+  display: flex !important;
+}
+
+/* Cuando chat activo: ocultar stream principal */
+body.chat-view-active #nexo-stream {
+  display: none !important;
+}
+
+/* Cuando vault visible: ocultar chat también */
+body.vault-visible #messages-container,
+body.vault-visible #input-area,
+body.vault-visible #chat-header {
+  display: none !important;
+}
+
+/* Messages */
 .message {
   max-width: 80%;
   padding: 6px 10px;
@@ -144,7 +175,6 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* FIX v9.6: Estados de borde con !important para forzar */
 .message.own {
   align-self: flex-end;
   background: #4169E1;
@@ -168,7 +198,6 @@
   border-color: #2196f3 !important;
 }
 
-/* Mensajes RECIBIDOS */
 .message.other {
   align-self: flex-start;
   background: #191970;
@@ -176,7 +205,6 @@
   border-bottom-left-radius: 4px;
 }
 
-/* FIX v9.6: msg-meta y msg-time más chicos con !important */
 .msg-meta {
   margin-top: 2px;
   font-size: 10px !important;
@@ -190,7 +218,6 @@
   font-size: 10px !important;
 }
 
-/* FIX v9.4: msg-status solo para enviados */
 .msg-status {
   font-size: 10px;
   font-weight: 700;
@@ -316,12 +343,11 @@
   to { transform: translateX(100%); opacity: 0; }
 }
 
-/* FIX VISTAS: Clase de control de visibilidad */
 .hidden {
   display: none !important;
 }
 
-/* CHAT HEADER: Destinatario editable */
+/* CHAT HEADER */
 #chat-header {
   flex-shrink: 0;
   height: 56px;
@@ -362,7 +388,7 @@
   letter-spacing: 1px;
 }
 
-/* FIX v9.4: Jump button */
+/* Jump button */
 #jump-to-bottom {
   position: fixed;
   bottom: 80px;
@@ -389,4 +415,27 @@
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+}
+
+/* Back button del chat */
+#chat-back-btn {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 130, 252, 0.9);
+  color: #fff;
+  border: none;
+  font-size: 20px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 101;
+  cursor: pointer;
+}
+
+#chat-back-btn.visible {
+  display: flex !important;
 }
