@@ -1,7 +1,14 @@
+/* ============================================
+   NEXO v9.0 - Estilos Consolidados
+   Base: build-1631 | Mockup profesional
+   ============================================ */
+
 /* Reset básico */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* Splash Screen */
+/* ============================================
+   SPLASH SCREEN
+   ============================================ */
 #splash-native {
   position: fixed;
   inset: 0;
@@ -35,56 +42,9 @@
   50% { transform: scale(0.95); opacity: 0.8; }
 }
 
-/* Diagnóstico */
-#nexo-diagnostic {
-  display: none;
-  position: fixed;
-  bottom: 100px;
-  right: 20px;
-  width: 300px;
-  max-height: 200px;
-  background: rgba(0,0,0,0.9);
-  color: #4169E1;
-  font-family: monospace;
-  font-size: 11px;
-  overflow-y: auto;
-  z-index: 99998;
-  padding: 10px;
-  border-radius: 8px;
-}
-
-#nexo-diagnostic.visible { display: block; }
-
-/* Error Fatal */
-#fatal-error {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: #000000;
-  z-index: 100000;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 40px;
-  color: #ff4444;
-}
-
-#fatal-error h2 {
-  font-size: 48px;
-  margin-bottom: 10px;
-}
-
-#fatal-code {
-  background: rgba(255,68,68,0.1);
-  padding: 10px 20px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 14px;
-  color: #ff6666;
-}
-
-/* App Principal */
+/* ============================================
+   APP PRINCIPAL
+   ============================================ */
 #app {
   display: flex;
   flex-direction: column;
@@ -94,22 +54,9 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-#status-indicator {
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  z-index: 100;
-  transition: all 0.3s;
-}
-
-#status-indicator.offline { background: #ef4444; color: #e5e7eb; }
-#status-indicator.online { background: #4169E1; color: #e5e7eb; }
-
-/* FIX: nexo-stream es el contenedor scrollable principal */
+/* ============================================
+   STREAM PRINCIPAL (BLE Mesh / Meeting)
+   ============================================ */
 #nexo-stream {
   flex: 1;
   overflow-y: auto;
@@ -120,46 +67,125 @@
 }
 
 /* ============================================
-   FIX v9.9: Chat view - mostrar/ocultar
+   CHAT VIEW CONTROL
    ============================================ */
-
-/* Por defecto: chat oculto */
-#messages-container,
-#input-area,
-#chat-header {
+body.chat-view-active #nexo-stream,
+body.chat-view-active #ble-panel,
+body.chat-view-active #ble-tab {
   display: none !important;
 }
 
-/* Cuando body tiene chat-view-active: mostrar chat */
-body.chat-view-active #messages-container {
-  display: flex !important;
-  flex-direction: column;
-  gap: 6px;
-  padding: 20px;
-  min-height: 100%;
-}
-
-body.chat-view-active #input-area {
+body.chat-view-active #messages-container,
+body.chat-view-active #input-area,
+body.chat-view-active #chat-header,
+body.chat-view-active #jump-to-bottom {
   display: flex !important;
 }
 
-body.chat-view-active #chat-header {
-  display: flex !important;
-}
-
-/* Cuando chat activo: ocultar stream principal */
-body.chat-view-active #nexo-stream {
-  display: none !important;
-}
-
-/* Cuando vault visible: ocultar chat también */
 body.vault-visible #messages-container,
 body.vault-visible #input-area,
 body.vault-visible #chat-header {
   display: none !important;
 }
 
-/* Messages */
+/* ============================================
+   CHAT HEADER - Estilo profesional mockup
+   ============================================ */
+#chat-header {
+  display: none;
+  flex-shrink: 0;
+  height: 56px;
+  background: rgba(0,0,0,0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+  padding: 0 16px;
+}
+
+#chat-back-btn {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 130, 252, 0.9);
+  color: #fff;
+  border: none;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+}
+
+#chat-header-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+#chat-contact-name {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  padding: 0;
+  width: auto;
+}
+
+#chat-contact-subtitle {
+  font-size: 11px;
+  color: #0082FC;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
+
+#chat-eye-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 130, 252, 0.15);
+  border: 2px solid #0082FC;
+  color: #0082FC;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+}
+
+/* ============================================
+   MESSAGES CONTAINER
+   ============================================ */
+#messages-container {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .message {
   max-width: 80%;
   padding: 6px 10px;
@@ -182,21 +208,10 @@ body.vault-visible #chat-header {
   border-bottom-right-radius: 4px;
 }
 
-.message.own.status-pending {
-  border-color: rgba(255,255,255,0.1) !important;
-}
-
-.message.own.status-sent {
-  border-color: #6b7280 !important;
-}
-
-.message.own.status-delivered {
-  border-color: #00d4ff !important;
-}
-
-.message.own.status-read {
-  border-color: #2196f3 !important;
-}
+.message.own.status-pending { border-color: rgba(255,255,255,0.1) !important; }
+.message.own.status-sent { border-color: #6b7280 !important; }
+.message.own.status-delivered { border-color: #00d4ff !important; }
+.message.own.status-read { border-color: #2196f3 !important; }
 
 .message.other {
   align-self: flex-start;
@@ -214,9 +229,7 @@ body.vault-visible #chat-header {
   align-items: center;
 }
 
-.msg-time {
-  font-size: 10px !important;
-}
+.msg-time { font-size: 10px !important; }
 
 .msg-status {
   font-size: 10px;
@@ -229,15 +242,23 @@ body.vault-visible #chat-header {
 .msg-status.status-delivered { color: #00d4ff; }
 .msg-status.status-read { color: #2196f3; }
 
-/* Input Area */
+/* ============================================
+   INPUT AREA - Estilo profesional mockup
+   ============================================ */
 #input-area {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   flex-shrink: 0;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) 16px;
   background: rgba(0,0,0,0.95);
   backdrop-filter: blur(10px);
-  display: flex;
   gap: 10px;
   border-top: 1px solid rgba(255,255,255,0.1);
+  z-index: 10;
+  align-items: center;
 }
 
 #message-input {
@@ -254,22 +275,264 @@ body.vault-visible #chat-header {
 
 #message-input::placeholder { color: #6b7280; }
 
+/* Botón enviar con logo NEXO */
 #send-btn {
   width: 52px;
   height: 52px;
   border-radius: 50%;
   border: none;
-  background: #4169E1;
-  color: #e5e7eb;
+  background: linear-gradient(135deg, #00d4ff 0%, #ff6b6b 50%, #4169E1 100%);
+  color: #fff;
   font-size: 22px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
 }
 
-/* Vault Panel */
+#send-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('../assets/logo-icon.png') center/60% no-repeat;
+}
+
+#send-btn::after {
+  content: '➤';
+  font-size: 20px;
+}
+
+/* ============================================
+   JUMP TO BOTTOM BUTTON
+   ============================================ */
+#jump-to-bottom {
+  position: fixed;
+  bottom: 80px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 132, 255, 0.9);
+  color: #fff;
+  border: none;
+  font-size: 20px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+#jump-to-bottom.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* ============================================
+   BLE PANEL / MESH SCREEN
+   ============================================ */
+#ble-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* Header BLE Mesh */
+#ble-header {
+  flex-shrink: 0;
+  height: 56px;
+  background: rgba(0,0,0,0.95);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+  padding: 0 16px;
+}
+
+#ble-back-btn {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 130, 252, 0.9);
+  color: #fff;
+  border: none;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+#ble-header-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  text-align: center;
+}
+
+#ble-header-subtitle {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #0082FC;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Botón ESCANEAR arcoíris */
+#scan-btn {
+  position: fixed;
+  bottom: 80px;
+  left: 16px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #00d4ff 0%, #ff00ff 50%, #ff6b6b 100%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+  animation: scanPulse 2s infinite;
+}
+
+@keyframes scanPulse {
+  0%, 100% { box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3); }
+  50% { box-shadow: 0 4px 25px rgba(255, 0, 255, 0.5); }
+}
+
+#scan-btn.scanning {
+  animation: scanActive 1s infinite;
+}
+
+@keyframes scanActive {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* ============================================
+   CONTACTOS SCREEN
+   ============================================ */
+#contacts-header {
+  flex-shrink: 0;
+  height: 56px;
+  background: rgba(0,0,0,0.95);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+  padding: 0 16px;
+}
+
+#contacts-back-btn {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 130, 252, 0.9);
+  color: #fff;
+  border: none;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+#contacts-header-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+}
+
+#contacts-eye-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 130, 252, 0.15);
+  border: 2px solid #0082FC;
+  color: #0082FC;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* ============================================
+   STATUS BAR INFERIOR
+   ============================================ */
+#status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background: rgba(0,0,0,0.95);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 11px;
+  font-family: monospace;
+  z-index: 50;
+}
+
+#status-bar .status-label {
+  color: #e5e7eb;
+  font-weight: 600;
+}
+
+#status-bar .status-value {
+  color: #0082FC;
+}
+
+#status-bar .status-ready {
+  color: #00ff88;
+}
+
+#status-bar .status-offline {
+  color: #ff4444;
+}
+
+/* ============================================
+   VAULT PANEL
+   ============================================ */
 #vault-panel {
   position: fixed;
   top: 0;
@@ -299,13 +562,6 @@ body.vault-visible #chat-header {
   color: #e5e7eb;
 }
 
-#current-context {
-  display: flex;
-  gap: 10px;
-  font-size: 12px;
-  color: #4169E1;
-}
-
 #contacts-list {
   flex: 1;
   overflow-y: auto;
@@ -333,7 +589,61 @@ body.vault-visible #chat-header {
   background: rgba(65,105,225,0.1);
 }
 
-/* REM Toasts */
+/* ============================================
+   DIAGNÓSTICO & ERRORES
+   ============================================ */
+#nexo-diagnostic {
+  display: none;
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  width: 300px;
+  max-height: 200px;
+  background: rgba(0,0,0,0.9);
+  color: #4169E1;
+  font-family: monospace;
+  font-size: 11px;
+  overflow-y: auto;
+  z-index: 99998;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+#nexo-diagnostic.visible { display: block; }
+
+#fatal-error {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #000000;
+  z-index: 100000;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px;
+  color: #ff4444;
+}
+
+#fatal-error h2 {
+  font-size: 48px;
+  margin-bottom: 10px;
+}
+
+#fatal-code {
+  background: rgba(255,68,68,0.1);
+  padding: 10px 20px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 14px;
+  color: #ff6666;
+}
+
+/* ============================================
+   UTILIDADES
+   ============================================ */
+.hidden { display: none !important; }
+
 @keyframes slideIn {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
@@ -341,101 +651,4 @@ body.vault-visible #chat-header {
 
 @keyframes slideOut {
   to { transform: translateX(100%); opacity: 0; }
-}
-
-.hidden {
-  display: none !important;
-}
-
-/* CHAT HEADER */
-#chat-header {
-  flex-shrink: 0;
-  height: 56px;
-  background: rgba(0,0,0,0.95);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  position: relative;
-}
-
-#chat-contact-name {
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid transparent;
-  color: #e5e7eb;
-  font-size: 17px;
-  font-weight: 600;
-  text-align: center;
-  width: 80%;
-  outline: none;
-  padding: 2px 8px;
-  transition: border-color 0.2s;
-}
-
-#chat-contact-name:focus {
-  border-bottom-color: #4169E1;
-}
-
-#chat-contact-subtitle {
-  font-size: 11px;
-  color: #4169E1;
-  margin-top: 2px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-/* Jump button */
-#jump-to-bottom {
-  position: fixed;
-  bottom: 80px;
-  right: 16px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: rgba(0, 132, 255, 0.9);
-  color: #fff;
-  border: none;
-  font-size: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.3s, transform 0.3s;
-  pointer-events: none;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-}
-
-#jump-to-bottom.visible {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-/* Back button del chat */
-#chat-back-btn {
-  position: fixed;
-  top: 16px;
-  left: 16px;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(0, 130, 252, 0.9);
-  color: #fff;
-  border: none;
-  font-size: 20px;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 101;
-  cursor: pointer;
-}
-
-#chat-back-btn.visible {
-  display: flex !important;
 }
