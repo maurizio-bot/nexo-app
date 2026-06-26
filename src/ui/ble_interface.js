@@ -283,11 +283,9 @@ export class BLEInterface {
       this.nativePlugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
       if (this.nativePlugin) {
         this.isDummyMode = !this.bleMesh && !this.nativePlugin;
-        this.showToast('[BLE JS] Plugin nativo detectado', 'info', 2000);
       }
     }
     if (this.isDummyMode) {
-      this.showToast('[BLE JS] MODO DUMMY', 'warning', 3000);
       this.updateStatus('OFFLINE (Dummy)');
     } else {
       this.updateStatus();
@@ -314,12 +312,10 @@ export class BLEInterface {
             if (state && state.isActive === true) {
               console.log('[BLEInterface] App volvio a primer plano');
               if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
-                self.showToast('[BLE JS] Reanudando EYE...', 'info', 2000);
                 _safeNativeCall(self.nativePlugin, 'startAdvertising', {})
                   .then(function() {
                     self.isAdvertising = true;
                     self.updateVisibilityButton();
-                    self.showToast('[BLE JS] EYE reactivado', 'success', 2000);
                   })
                   .catch(function(e) {
                     console.warn('[BLEInterface] Fallo reactivar EYE:', e.message);
@@ -350,36 +346,28 @@ export class BLEInterface {
   _autoStartAdvertising() {
     var self = this;
     if (self.isDummyMode || !self.nativePlugin) {
-      self.showToast('[BLE JS] Auto-advertise: dummy/sin plugin', 'warning', 2000);
       return Promise.resolve();
     }
     if (!_hasNativeMethod(self.nativePlugin, 'isBluetoothEnabled')) {
-      self.showToast('[BLE JS] Auto-advertise: sin isBluetoothEnabled', 'warning', 2000);
       return Promise.resolve();
     }
-    self.showToast('[BLE JS] Auto-advertise iniciando...', 'info', 2000);
     return _safeNativeCall(self.nativePlugin, 'isBluetoothEnabled', {})
       .then(function(btState) {
         var canAdv = btState && btState.canAdvertise;
         var serverReady = btState && btState.serverReady;
         if ((canAdv || serverReady) && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
-          self.showToast('[BLE JS] Auto-advertise: iniciando...', 'info', 2000);
           return _safeNativeCall(self.nativePlugin, 'startAdvertising', {})
             .then(function() {
               self.isAdvertising = true;
               self.canAdvertise = true;
               self.updateVisibilityButton();
-              self.showToast('[BLE JS] Auto-advertise OK', 'success', 2000);
             })
             .catch(function(e) {
-              self.showToast('[BLE JS] Auto-advertise fallo: ' + e.message, 'error', 3000);
             });
         } else {
-          self.showToast('[BLE JS] Auto-advertise: no disponible', 'warning', 2000);
         }
       })
       .catch(function(e) {
-        self.showToast('[BLE JS] Auto-advertise fallo: ' + e.message, 'error', 3000);
         console.warn('[BLEInterface] Auto-advertise fallo:', e.message);
       });
   }
@@ -403,7 +391,6 @@ export class BLEInterface {
       try {
         var mac = _normMac(data.deviceId);
         var name = data.name || 'NEXO Device';
-        self.showToast('[BLE JS] onDeviceFound: ' + name + ' (' + mac + ')', 'info', 2000);
         if (!mac) return;
         self.onDeviceFound({ id: mac, address: mac, name: name, rssi: data.rssi });
       } catch (e) {
@@ -414,7 +401,6 @@ export class BLEInterface {
       try {
         self.isScanning = false;
         self.updateScanButton();
-        self.showToast('[BLE JS] Scan FAILED', 'error', 3000);
       } catch (e) {}
     });
   }
@@ -425,7 +411,6 @@ export class BLEInterface {
     var self = this;
     this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', function(data) {
       try {
-        self.showToast('[BLE JS] Server READY', 'success', 2000);
         console.log('[BLEInterface] onServerReady:', data);
       } catch (e) {}
     });
@@ -438,7 +423,6 @@ export class BLEInterface {
     this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', function(data) {
       try {
         var mac = _normMac(data.deviceId);
-        self.showToast('[BLE JS] Device CONNECTED: ' + mac, 'success', 2000);
         if (!mac) return;
         var peerUUID = self._macToUuidMap.get(mac);
         var contact = peerUUID ? _getContactByUUID(peerUUID) : null;
@@ -472,7 +456,6 @@ export class BLEInterface {
     this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', function(data) {
       try {
         var mac = _normMac(data.deviceId);
-        self.showToast('[BLE JS] Device DISCONNECTED: ' + mac, 'warning', 2000);
         if (!mac) return;
         var peerUUID = self._macToUuidMap.get(mac);
         self.connectedDevices.delete(mac);
@@ -488,7 +471,6 @@ export class BLEInterface {
         }
         _safeDispatchEvent('nexo:ble:deviceDisconnected', { deviceId: mac, deviceUUID: peerUUID });
         if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
-          self.showToast('[BLE JS] Reanudando advertising...', 'info', 2000);
           _safeNativeCall(self.nativePlugin, 'startAdvertising', {}).catch(function(e) {});
         }
       } catch (e) {}
@@ -502,7 +484,6 @@ export class BLEInterface {
     this._nativeServicesReadyListener = this.nativePlugin.addListener('onServicesReady', function(data) {
       try {
         var mac = _normMac(data.deviceId);
-        self.showToast('[BLE JS] Services READY: ' + mac, 'info', 2000);
         if (!mac) return;
         self._setDeviceState(mac, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
         var device = self.connectedDevices.get(mac);
@@ -520,7 +501,6 @@ export class BLEInterface {
     this._nativeNotificationsListener = this.nativePlugin.addListener('onNotificationsEnabled', function(data) {
       try {
         var mac = _normMac(data.deviceId);
-        self.showToast('[BLE JS] Notifications ENABLED: ' + mac, 'success', 2000);
         if (!mac) return;
         var ft = self._notificationFallbackTimers.get(mac);
         if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(mac); }
@@ -533,7 +513,6 @@ export class BLEInterface {
     this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', function(data) {
       try {
         var mac = _normMac(data.deviceId);
-        self.showToast('[BLE JS] Connection FAILED: ' + mac + ' reason=' + (data.reason || 'unknown'), 'error', 3000);
         if (!mac) return;
         var ft = self._notificationFallbackTimers.get(mac);
         if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(mac); }
@@ -566,7 +545,6 @@ export class BLEInterface {
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
       try {
         var mac = _normMac(data.deviceId);
-        self.showToast('[BLE JS] Payload recibido de ' + mac, 'info', 2000);
         if (!mac) return;
         var source = data.source || 'unknown';
         if (source !== 'gatt_server' && source !== 'gatt_client' && source !== 'broadcast') {
@@ -659,7 +637,6 @@ export class BLEInterface {
           }
         }
         if (messageId && self._receivedMessageIds.has(messageId)) {
-          self.showToast('Mensaje duplicado ignorado de ' + senderName, 'warning');
           return;
         }
         if (messageId) {
@@ -682,15 +659,12 @@ export class BLEInterface {
         });
         var activeUUID = self._activeChatDeviceId;
         if (activeUUID && activeUUID === senderUUID) {
-          self.showToast('Mensaje recibido de ' + senderName, 'info');
           return;
         }
-        self.showToast('Mensaje nuevo de ' + senderName, 'info');
         self.newDevicesCount++;
         self.updateBadge();
       } catch (e) {
         console.warn('[BLEInterface] Error onPayloadReceived:', e.message);
-        self.showToast('Error al recibir mensaje: ' + (e.message || 'desconocido'), 'error');
       }
     });
   }
@@ -699,7 +673,6 @@ export class BLEInterface {
     var self = this;
     var macNorm = _normMac(deviceMAC);
     if (!macNorm) {
-      this.showToast('Error interno: MAC invalida en cola', 'error');
       return Promise.resolve();
     }
     var queue = this._pendingMessageQueue.get(macNorm);
@@ -709,7 +682,6 @@ export class BLEInterface {
     var processNext = function(idx) {
       if (idx >= queue.length) {
         if (failed > 0) {
-          self.showToast(failed + ' mensaje(s) pendiente(s) no se pudieron enviar', 'error');
         }
         return Promise.resolve();
       }
@@ -730,17 +702,14 @@ export class BLEInterface {
 
   _sendMessageNative(deviceMAC, content, messageId) {
     var self = this;
-    self.showToast('[BLE JS] _sendMessageNative: ' + deviceMAC, 'info', 2000);
     return new Promise(function(resolve, reject) {
       try {
         if (!self.nativePlugin) {
-          self.showToast('[BLE JS] Plugin no disponible', 'error', 2000);
           reject(new Error('Plugin no disponible'));
           return;
         }
         var macNorm = _normMac(deviceMAC);
         if (!macNorm) {
-          self.showToast('MAC invalida', 'error');
           reject(new Error('MAC invalida'));
           return;
         }
@@ -759,39 +728,31 @@ export class BLEInterface {
           });
         }
         if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
-          self.showToast('[BLE JS] Llamando sendMessage nativo...', 'info', 2000);
           _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
             .then(function() {
-              self.showToast('Mensaje enviado por BLE', 'success');
               resolve();
             })
             .catch(function(e) {
-              self.showToast('Fallo al enviar: ' + (e.message || 'Error'), 'error');
               reject(e);
             });
         } else {
-          self.showToast('sendMessage no disponible', 'error');
           reject(new Error('sendMessage no disponible'));
         }
       } catch (e) {
-        self.showToast('Fallo al enviar: ' + (e.message || 'Error'), 'error');
         reject(e);
       }
     });
   }
   sendChatMessage(deviceUUID, content, messageId) {
     var self = this;
-    self.showToast('[BLE JS] sendChatMessage: ' + deviceUUID, 'info', 2000);
     return new Promise(function(resolve, reject) {
       try {
         var uuid = _normId(deviceUUID);
         if (!uuid) {
-          self.showToast('Error: ID vacio', 'error');
           reject(new Error('deviceUUID vacio'));
           return;
         }
         if (!content || typeof content !== 'string' || content.trim() === '') {
-          self.showToast('Error: Mensaje vacio', 'warning');
           reject(new Error('Mensaje vacio'));
           return;
         }
@@ -834,7 +795,6 @@ export class BLEInterface {
         }
         if (!mac) {
           console.error('[BLEInterface] sendChatMessage: No MAC para UUID', uuid);
-          self.showToast('[BLE JS] No MAC para UUID', 'error', 4000);
           reject(new Error('Dispositivo no encontrado'));
           return;
         }
@@ -855,7 +815,6 @@ export class BLEInterface {
           });
         }
         if (!isReady && !isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
-          self.showToast('[BLE JS] Conectando GATT...', 'info', 2000);
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: _macWithColons(mac) })
             .then(function(connResult) {
               if (connResult && (connResult.connected || connResult.alreadyConnected)) {
@@ -888,7 +847,6 @@ export class BLEInterface {
         }
         doSend();
       } catch (fatal) {
-        self.showToast('Error critico: ' + (fatal.message || 'desconocido'), 'error', 4000);
         reject(fatal);
       }
     });
@@ -925,12 +883,10 @@ export class BLEInterface {
 
   openChat(deviceUUID) {
     var self = this;
-    self.showToast('[BLE JS] openChat: ' + deviceUUID, 'info', 2000);
     return new Promise(function(resolve, reject) {
       try {
         var uuid = _normId(deviceUUID);
         if (!uuid) {
-          self.showToast('[BLE JS] openChat: ID invalido', 'warning', 2000);
           reject(new Error('ID invalido'));
           return;
         }
@@ -946,7 +902,6 @@ export class BLEInterface {
         }
         var displayName = (contact && contact.name) || 'NEXO Peer';
         if (!_isValidMAC(mac)) {
-          self.showToast('Dispositivo no disponible', 'warning');
           reject(new Error('MAC invalida'));
           return;
         }
@@ -976,13 +931,11 @@ export class BLEInterface {
             transport: 'ble',
             source: 'ble_interface'
           });
-          self.showToast('Chat con ' + displayName + ' listo', 'success');
           self.elements.panel.classList.remove('active');
           self.elements.overlay.classList.remove('active');
           resolve();
         }
         if (!isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
-          self.showToast('[BLE JS] openChat: conectando GATT...', 'info', 2000);
           if (!isConnecting) {
             _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: _macWithColons(mac) })
               .then(function(connResult) {
@@ -995,7 +948,6 @@ export class BLEInterface {
                 finishOpenChat();
               })
               .catch(function(e) {
-                self.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
                 finishOpenChat();
               });
           } else {
@@ -1004,7 +956,6 @@ export class BLEInterface {
                 finishOpenChat();
               })
               .catch(function(e) {
-                self.showToast('Canal aun no listo. Intente enviar en unos segundos.', 'warning');
                 finishOpenChat();
               });
           }
@@ -1013,7 +964,6 @@ export class BLEInterface {
         }
       } catch (fatalErr) {
         console.error('[BLEInterface] FATAL openChat:', fatalErr);
-        self.showToast('Error al abrir chat: ' + (fatalErr.message || 'desconocido'), 'error');
         reject(fatalErr);
       }
     });
@@ -1050,10 +1000,8 @@ export class BLEInterface {
     if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
     var self = this;
     this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', function() {
-      try { self.isAdvertising = true; self.updateVisibilityButton(); self.showToast('[BLE JS] Advertising STARTED', 'success', 2000); } catch (e) {}
     });
     this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', function() {
-      try { self.isAdvertising = false; self.updateVisibilityButton(); self.showToast('[BLE JS] Advertising FAILED', 'error', 3000); } catch (e) {}
     });
   }
 
@@ -1092,13 +1040,11 @@ export class BLEInterface {
         })
         .then(function() {
           if (!permsReady) {
-            self.showToast('Permisos BLE requeridos', 'warning', 5000);
             return Promise.resolve();
           }
           if (!self.nativePlugin) return Promise.resolve();
           var promise;
           if (self.isAdvertising) {
-            self.showToast('[BLE JS] Stopping advertising...', 'info', 2000);
             if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) {
               promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {});
             } else { promise = Promise.resolve(); }
@@ -1106,12 +1052,10 @@ export class BLEInterface {
               return promise.then(function() {
                 self.isAdvertising = false;
                 self.updateVisibilityButton();
-                self.showToast('[BLE JS] Advertising STOPPED', 'info', 2000);
               });
             }
             self.isAdvertising = false;
           } else {
-            self.showToast('[BLE JS] Starting advertising...', 'info', 2000);
             if (_hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
               promise = _safeNativeCall(self.nativePlugin, 'startAdvertising', {});
             } else { promise = Promise.resolve(); }
@@ -1119,7 +1063,6 @@ export class BLEInterface {
               return promise.then(function() {
                 self.isAdvertising = true;
                 self.updateVisibilityButton();
-                self.showToast('[BLE JS] Advertising STARTED', 'success', 2000);
               });
             }
             self.isAdvertising = true;
@@ -1128,13 +1071,11 @@ export class BLEInterface {
           return Promise.resolve();
         })
         .catch(function(err) {
-          self.showToast('Error: ' + (err.message || 'desconocido'), 'error');
         });
     } else {
       permsReady = true;
     }
     if (!permsReady) {
-      self.showToast('Permisos BLE requeridos', 'warning', 5000);
       return Promise.resolve();
     }
     if (!self.nativePlugin) return Promise.resolve();
@@ -1174,7 +1115,7 @@ export class BLEInterface {
     this.elements.tab = tab;
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
-    panel.innerHTML = '<div class="ble-header"> <button id="ble-back" class="ble-btn-back">&larr;</button> <h3>Contactos</h3> <button id="ble-visibility-btn" class="ble-btn-visibility-round"></button> </div> <div class="ble-status-bar"> <span id="ble-status" class="ble-status-offline">OFFLINE</span> </div> <div id="ble-contacts-list" class="ble-contacts-list"> <div class="ble-empty">No hay contactos. Presiona Buscar para encontrar dispositivos.</div> </div> <div class="ble-bottom-bar"> <div id="ble-new-device" class="ble-new-device" style="display:none"> <span id="ble-new-device-name"></span> <button id="ble-add-btn" class="ble-btn-add-small">+</button> </div> <button id="ble-scan-btn" class="ble-btn-scan-round"></button> </div>';
+    panel.innerHTML = '<div class="ble-header"> <button id="ble-back" class="ble-btn-back">&larr;</button> <h3>Contactos</h3> <button id="ble-visibility-btn" class="ble-btn-visibility-round"></button> </div>  <div id="ble-contacts-list" class="ble-contacts-list"> <div class="ble-empty">No hay contactos. Presiona Buscar para encontrar dispositivos.</div> </div> <div class="ble-bottom-bar"> <div id="ble-new-device" class="ble-new-device" style="display:none"> <span id="ble-new-device-name"></span> <button id="ble-add-btn" class="ble-btn-add-small">+</button> </div> <button id="ble-scan-btn" class="ble-btn-scan-round"></button> </div>';
     document.body.appendChild(panel);
     this.elements.panel = panel;
     var overlay = document.createElement('div');
@@ -1185,7 +1126,7 @@ export class BLEInterface {
     this.elements.visibilityBtn = document.getElementById('ble-visibility-btn');
     this.elements.scanBtn = document.getElementById('ble-scan-btn');
     this.elements.contactsList = document.getElementById('ble-contacts-list');
-    this.elements.status = document.getElementById('ble-status');
+
     this.elements.newDeviceBar = document.getElementById('ble-new-device');
     this.elements.newDeviceName = document.getElementById('ble-new-device-name');
     this.elements.addBtn = document.getElementById('ble-add-btn');
@@ -1195,7 +1136,7 @@ export class BLEInterface {
     if (document.getElementById('ble-styles-v4')) return;
     var style = document.createElement('style');
     style.id = 'ble-styles-v4';
-    style.textContent = "#ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: #0082FC; border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #fff; font-weight: bold; } .ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; } @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } } #ble-panel { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000000; transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; display: flex; flex-direction: column; } #ble-panel.active { transform: translateX(0); } #ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); } #ble-overlay.active { display: block; } .ble-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #333; } .ble-header h3 { margin: 0; font-size: 18px; color: #fff; flex: 1; text-align: center; } .ble-btn-back { background: none; border: none; color: #4169E1; font-size: 24px; cursor: pointer; padding: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; } .ble-btn-visibility-round { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #4169E1; background: rgba(255,255,255,0.1); color: #888; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; } .ble-btn-visibility-round.active { background: #4169E1; color: #000; border-color: #4169E1; box-shadow: 0 0 12px rgba(65,105,225,0.4); } .ble-btn-visibility-round::before { content: 'EYE'; font-size: 10px; font-weight: bold; } .ble-status-bar { padding: 8px 20px; } .ble-status-offline { font-size: 12px; color: #888; } .ble-status-online { font-size: 12px; color: #4169E1; } .ble-status-scanning { font-size: 12px; color: #ffaa00; animation: blink 1s infinite; } @keyframes blink { 0%,50% { opacity: 1; } 51%,100% { opacity: 0.7; } } .ble-contacts-list { flex: 1; overflow-y: auto; padding: 0 20px; } .ble-contact-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 12px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; } .ble-contact-item:hover { background: rgba(65,105,225,0.1); border-color: #4169E1; } .ble-contact-item.online { border-left: 3px solid #4169E1; } .ble-contact-item.offline { border-left: 3px solid #666; } .ble-contact-info { display: flex; flex-direction: column; flex: 1; min-width: 0; } .ble-contact-name { font-weight: 600; font-size: 15px; color: #fff; } .ble-contact-status { font-size: 11px; color: #888; margin-top: 2px; } .ble-contact-actions { display: flex; gap: 8px; } .ble-btn-chat { padding: 8px 16px; background: #4169E1; color: #000; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: bold; } .ble-btn-remove { padding: 8px 12px; background: #ff4444; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; } .ble-empty { text-align: center; color: #666; padding: 40px 20px; font-style: italic; } .ble-bottom-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-top: 1px solid #333; gap: 12px; } .ble-new-device { display: flex; align-items: center; gap: 10px; flex: 1; background: rgba(65,105,225,0.1); border: 1px solid #4169E1; border-radius: 12px; padding: 10px 14px; } .ble-new-device span { color: #fff; font-size: 14px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ble-btn-add-small { width: 36px; height: 36px; border-radius: 50%; background: #4169E1; color: #000; border: none; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; } .ble-btn-scan-round { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #4169E1, #191970); color: #000; border: none; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 15px rgba(65,105,255,0.3); transition: all 0.3s; } .ble-btn-scan-round.scanning { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; animation: pulse-red 1.5s infinite; } .ble-btn-scan-round.scanning::before { content: 'STOP'; } .ble-btn-scan-round::before { content: 'SCAN'; font-size: 10px; } @keyframes pulse-red { 0%,100% { box-shadow: 0 0 0 0 rgba(255,68,68,0.4); } 50% { box-shadow: 0 0 0 10px rgba(255,68,68,0); } } .ble-toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: #fff; font-weight: bold; z-index: 2147483646; animation: fadeInUp 0.3s ease; } .ble-toast.success { background: #4169E1; color: #000; } .ble-toast.error { background: #ff4444; } .ble-toast.warning { background: #ffaa00; color: #000; } .ble-toast.info { background: #444; } @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }";
+    style.textContent = "#ble-tab { position: fixed; left: 0; top: 50%; transform: translateY(-50%); width: 44px; height: 100px; background: #0082FC; border-radius: 0 12px 12px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; z-index: 2147483644; color: #fff; font-weight: bold; } .ble-tab-badge { position: absolute; top: 5px; right: -5px; background: #ff4444; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; animation: pulse 2s infinite; } @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } } #ble-panel { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000000; transform: translateX(-100%); transition: transform 0.3s ease; z-index: 2147483645; color: #fff; display: flex; flex-direction: column; } #ble-panel.active { transform: translateX(0); } #ble-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; z-index: 2147483644; backdrop-filter: blur(4px); } #ble-overlay.active { display: block; } .ble-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #333; } .ble-header h3 { margin: 0; font-size: 18px; color: #fff; flex: 1; text-align: center; } .ble-btn-back { background: none; border: none; color: #4169E1; font-size: 24px; cursor: pointer; padding: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; } .ble-btn-visibility-round { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #4169E1; background: rgba(255,255,255,0.1); color: #888; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; } .ble-btn-visibility-round.active { background: #4169E1; color: #000; border-color: #4169E1; box-shadow: 0 0 12px rgba(65,105,225,0.4); } .ble-btn-visibility-round::before { content: 'EYE'; font-size: 10px; font-weight: bold; } 51%,100% { opacity: 0.7; } } .ble-contacts-list { flex: 1; overflow-y: auto; padding: 0 20px; } .ble-contact-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: rgba(255,255,255,0.05); border: 1px solid #333; border-radius: 12px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; } .ble-contact-item:hover { background: rgba(65,105,225,0.1); border-color: #4169E1; } .ble-contact-item.online { border-left: 3px solid #4169E1; } .ble-contact-item.offline { border-left: 3px solid #666; } .ble-contact-info { display: flex; flex-direction: column; flex: 1; min-width: 0; } .ble-contact-name { font-weight: 600; font-size: 15px; color: #fff; } .ble-contact-status { font-size: 11px; color: #888; margin-top: 2px; } .ble-contact-actions { display: flex; gap: 8px; } .ble-btn-chat { padding: 8px 16px; background: #4169E1; color: #000; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: bold; } .ble-btn-remove { padding: 8px 12px; background: #ff4444; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; } .ble-empty { text-align: center; color: #666; padding: 40px 20px; font-style: italic; } .ble-bottom-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-top: 1px solid #333; gap: 12px; } .ble-new-device { display: flex; align-items: center; gap: 10px; flex: 1; background: rgba(65,105,225,0.1); border: 1px solid #4169E1; border-radius: 12px; padding: 10px 14px; } .ble-new-device span { color: #fff; font-size: 14px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ble-btn-add-small { width: 36px; height: 36px; border-radius: 50%; background: #4169E1; color: #000; border: none; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; } .ble-btn-scan-round { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #4169E1, #191970); color: #000; border: none; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 15px rgba(65,105,255,0.3); transition: all 0.3s; } .ble-btn-scan-round.scanning { background: linear-gradient(135deg, #ff4444, #cc0000); color: #fff; animation: pulse-red 1.5s infinite; } .ble-btn-scan-round.scanning::before { content: 'STOP'; } .ble-btn-scan-round::before { content: 'SCAN'; font-size: 10px; } @keyframes pulse-red { 0%,100% { box-shadow: 0 0 0 0 rgba(255,68,68,0.4); } 50% { box-shadow: 0 0 0 10px rgba(255,68,68,0); } } to { opacity: 1; transform: translateX(-50%) translateY(0); } }";
     document.head.appendChild(style);
   }
 
@@ -1292,18 +1233,15 @@ export class BLEInterface {
         })
         .then(function() {
           if (!permsReady) {
-            self.showToast('Permisos BLE requeridos', 'warning', 5000);
             return Promise.resolve();
           }
           if (self.isScanning) {
-            self.showToast('[BLE JS] Stopping scan...', 'info', 2000);
             if (_hasNativeMethod(self.nativePlugin, 'stopScan')) {
               return _safeNativeCall(self.nativePlugin, 'stopScan', {})
                 .then(function() {
                   self.isScanning = false;
                   self.updateScanButton();
                   self.updateStatus();
-                  self.showToast('[BLE JS] Scan STOPPED', 'info', 2000);
                 });
             }
             self.isScanning = false;
@@ -1311,7 +1249,6 @@ export class BLEInterface {
             self.updateStatus();
             return Promise.resolve();
           } else {
-            self.showToast('[BLE JS] Starting scan...', 'info', 2000);
             self.foundDevices.clear();
             self._renderedDeviceIds.clear();
             self.renderContactsList();
@@ -1321,15 +1258,10 @@ export class BLEInterface {
                 .then(function() {
                   self.isScanning = true;
                   self.updateScanButton();
-                  self.elements.status.textContent = 'Buscando...';
-                  self.elements.status.className = 'ble-status-scanning';
-                  self.showToast('[BLE JS] Scan STARTED', 'success', 2000);
                 });
             }
             self.isScanning = true;
             self.updateScanButton();
-            self.elements.status.textContent = 'Buscando...';
-            self.elements.status.className = 'ble-status-scanning';
             return Promise.resolve();
           }
         })
@@ -1341,7 +1273,6 @@ export class BLEInterface {
       permsReady = true;
     }
     if (!permsReady) {
-      self.showToast('Permisos BLE requeridos', 'warning', 5000);
       return Promise.resolve();
     }
     if (self.isScanning) {
@@ -1366,21 +1297,16 @@ export class BLEInterface {
           .then(function() {
             self.isScanning = true;
             self.updateScanButton();
-            self.elements.status.textContent = 'Buscando...';
-            self.elements.status.className = 'ble-status-scanning';
           });
       }
       self.isScanning = true;
       self.updateScanButton();
-      self.elements.status.textContent = 'Buscando...';
-      self.elements.status.className = 'ble-status-scanning';
     }
     return Promise.resolve();
   }
 
   onDeviceFound(device) {
     var mac = _normMac(device.id || device.address);
-    this.showToast('[BLE JS] onDeviceFound: ' + (device.name || 'Unknown') + ' mac=' + mac, 'info', 2000);
     if (!mac) return;
     if (this.localDeviceAddress && mac === this.localDeviceAddress) return;
     var knownUUID = this._macToUuidMap.get(mac);
@@ -1475,17 +1401,13 @@ export class BLEInterface {
   }
 
   _addNewDevice() {
-    this.showToast('[BLE JS] _addNewDevice iniciado', 'info', 2000);
     var bar = this.elements.newDeviceBar;
     var mac = _normMac(bar.dataset.mac);
-    if (!mac) { this.showToast('[BLE JS] AddNewDevice: MAC invalida', 'error', 2000); return; }
     var device = this.foundDevices.get(mac);
-    if (!device) { this.showToast('[BLE JS] AddNewDevice: device not found', 'error', 2000); return; }
     var name = device.name || 'NEXO Peer';
     var existingUUID = this._macToUuidMap.get(mac);
     var existingContact = existingUUID ? _getContactByUUID(existingUUID) : null;
     if (existingContact) {
-      this.showToast('Contacto ya existe: ' + existingContact.name, 'warning', 2000);
       existingContact.online = true;
       existingContact.lastSeen = Date.now();
       existingContact.macAddress = mac;
@@ -1514,14 +1436,11 @@ export class BLEInterface {
     this.foundDevices.delete(mac);
     this.renderContactsList();
     this.renderNewDeviceBar();
-    this.showToast('Agregado: ' + name, 'success');
   }
 
   _autoConnectGATT(mac, device) {
     var self = this;
-    self.showToast('[BLE JS] AutoConnectGATT: ' + mac, 'info', 2000);
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
-      self.showToast('[BLE JS] AutoConnect: plugin sin connectToDevice', 'error', 2000);
       console.warn('[BLEInterface] Plugin no tiene connectToDevice');
       return Promise.resolve();
     }
@@ -1539,7 +1458,6 @@ export class BLEInterface {
     console.log('[BLEInterface] Auto-connect GATT a', macNorm);
     return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: _macWithColons(macNorm) })
       .then(function(result) {
-        self.showToast('[BLE JS] AutoConnect result: ' + JSON.stringify(result), 'info', 2000);
         console.log('[BLEInterface] Auto-connect resultado:', result);
         if (result && (result.connected || result.alreadyConnected)) {
           return self._waitForReadyToChat(macNorm, 8000)
@@ -1551,7 +1469,6 @@ export class BLEInterface {
         }
       })
       .catch(function(e) {
-        self.showToast('[BLE JS] AutoConnect FAILED: ' + e.message, 'error', 3000);
         console.warn('[BLEInterface] Auto-connect GATT fallo:', e.message);
         self._setDeviceState(macNorm, BLE_STATES.DISCONNECTED);
       });
@@ -1560,11 +1477,9 @@ export class BLEInterface {
   removeContact(deviceUUID) {
     try {
       _removeBLEContact(deviceUUID);
-      this.showToast('Eliminado', 'info');
       this.renderContactsList();
       this.renderNewDeviceBar();
     } catch (e) {
-      this.showToast('Error al eliminar: ' + (e.message || 'desconocido'), 'error');
     }
   }
 
@@ -1585,7 +1500,6 @@ export class BLEInterface {
           }
         })
         .catch(function(err) {
-          self.showToast('Error al desconectar: ' + (err.message || 'desconocido'), 'error');
         });
     }
     return Promise.resolve();
@@ -1608,49 +1522,23 @@ export class BLEInterface {
 
   updateStatus(customStatus) {
     var self = this;
-    if (!self.elements.status) return Promise.resolve();
     if (customStatus) {
-      self.elements.status.textContent = customStatus;
-      self.elements.status.className = 'ble-status-offline';
       return Promise.resolve();
     }
     if (self.isDummyMode) {
-      self.elements.status.textContent = 'OFFLINE (Dummy)';
-      self.elements.status.className = 'ble-status-offline';
       return Promise.resolve();
     }
     if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'isBluetoothEnabled')) {
       return _safeNativeCall(self.nativePlugin, 'isBluetoothEnabled', {})
         .then(function(state) {
           if (state && state.enabled) {
-            self.elements.status.textContent = 'ONLINE';
-            self.elements.status.className = 'ble-status-online';
           } else {
-            self.elements.status.textContent = 'OFFLINE';
-            self.elements.status.className = 'ble-status-offline';
           }
         })
         .catch(function(err) {
           console.error('[BLEInterface] Error consultando estado:', err);
-          self.elements.status.textContent = 'ERROR';
-          self.elements.status.className = 'ble-status-offline';
         });
     }
-    self.elements.status.textContent = 'OFFLINE';
-    self.elements.status.className = 'ble-status-offline';
     return Promise.resolve();
   }
-
-  showToast(message, type, duration) {
-    type = type || 'info';
-    duration = duration || 3000;
-    var toast = document.createElement('div');
-    toast.className = 'ble-toast ' + type;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(function() {
-      if (toast.parentNode) toast.parentNode.removeChild(toast);
-    }, duration);
-  }
 }
-
