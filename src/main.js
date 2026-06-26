@@ -33,7 +33,6 @@ window.NEXO_DIAG = NEXO_DIAG;
 var SAFETY_TIMEOUT = setTimeout(function() {
   try {
     if (NEXO_DIAG && typeof NEXO_DIAG.isSplashVisible === 'function' && NEXO_DIAG.isSplashVisible()) {
-      rem.warn('Timeout de seguridad - forzando continuar', 'INIT_TIMEOUT');
       NEXO_DIAG.hideSplash();
       document.body.classList.add('nexo-force-ready');
     }
@@ -52,7 +51,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     window.NEXO.rem = rem;
     rem.init();
-    rem.info('REM v2.1 NAP 2.0 initialized', 'REM_INIT');
 
     var permissionsGranted = false;
     try {
@@ -62,15 +60,12 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
       permissionsGranted = await Promise.race([permPromise, permTimeout]);
     } catch (permErr) {
-      rem.warn('[Shim] Permisos timeout/error: ' + (permErr.message || 'unknown'), 'SHIM_WARN');
       permissionsGranted = false;
     }
 
     if (permissionsGranted) {
-      rem.success('[Shim] Permisos BLE concedidos', 'SHIM_OK');
       await initializeNexoApp();
     } else {
-      rem.warn('[Shim] Permisos BLE pendientes', 'SHIM_REQUIRED');
       NEXO_DIAG.hideSplash();
       _showPermissionOverlay();
     }
@@ -79,7 +74,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       try {
         if (!window.NEXO.initialized) {
           var source = (e && e.detail && e.detail.source) ? e.detail.source : 'event';
-          rem.success('[Shim] Permisos concedidos via ' + source, 'SHIM_EVENT_OK');
           _hidePermissionOverlay();
           await initializeNexoApp();
         }
@@ -93,7 +87,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     clearTimeout(SAFETY_TIMEOUT);
     try {
       NEXO_DIAG.error('INIT_FATAL', error.message || 'unknown');
-      rem.error('Error fatal: ' + (error.message || 'unknown'), 'INIT_FATAL');
       NEXO_DIAG.hideSplash();
     } catch (diagErr) {}
     _forceHideSplash();
@@ -138,7 +131,6 @@ function _showPermissionOverlay() {
 
     if (btnGrant) {
       btnGrant.addEventListener('click', async function() {
-        rem.info('[Shim] Usuario solicito permisos desde overlay', 'SHIM_USER_REQ');
         try {
           var shim = getPermissionShim();
           var granted = await shim.request();
@@ -146,16 +138,13 @@ function _showPermissionOverlay() {
             _hidePermissionOverlay();
             await initializeNexoApp();
           } else {
-            rem.warn('[Shim] Permisos denegados desde overlay', 'SHIM_USER_DENY');
           }
         } catch (e) {
-          rem.error('[Shim] Error en request: ' + (e.message || 'unknown'), 'SHIM_USER_ERR');
         }
       });
     }
     if (btnSettings) {
       btnSettings.addEventListener('click', function() {
-        rem.info('[Shim] Abriendo ajustes del sistema...', 'SHIM_SETTINGS');
         try {
           if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App && window.Capacitor.Plugins.App.openUrl) {
             window.Capacitor.Plugins.App.openUrl({ url: 'app-settings:' });
@@ -169,7 +158,6 @@ function _showPermissionOverlay() {
     }
     if (btnSkip) {
       btnSkip.addEventListener('click', async function() {
-        rem.warn('[Shim] Usuario continuo sin BLE', 'SHIM_SKIP');
         _hidePermissionOverlay();
         await initializeNexoApp();
       });
@@ -206,11 +194,9 @@ async function initializeNexoApp() {
       },
       onStatusChange: function(mode) {
         console.log('Modo:', mode);
-        rem.updateMode(mode);
       },
       onError: function(err) {
         console.error('App error:', err);
-        rem.error(err.message || 'unknown', 'APP_ERR');
       },
       onVaultStateChange: function(isOpen) { _toggleVaultUI(isOpen); },
       actionCallbacks: {
@@ -220,9 +206,7 @@ async function initializeNexoApp() {
       }
     };
 
-    rem.info('[NEXO] App instance v5.0.10-ARMORED', 'NEXO_INIT');
     window.NEXO.app = new NexoApp(nexoConfig);
-    rem.info('[init] ===== INICIANDO NEXO v5.0.10-ARMORED =====', 'INIT_START');
 
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(_, reject) {
@@ -231,10 +215,7 @@ async function initializeNexoApp() {
 
     try {
       await Promise.race([initPromise, timeoutPromise]);
-      rem.success('==== INICIALIZACION NAP 2.0 COMPLETADA ====', 'INIT_OK');
     } catch (timeoutErr) {
-      rem.warn('Init timeout - continuando con funcionalidad limitada', 'INIT_WARN');
-      rem.info('BLE puede no estar disponible, verifica permisos', 'INIT_FALLBACK');
     }
 
     window.NEXO.initialized = true;
@@ -265,7 +246,6 @@ async function initializeNexoApp() {
 
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
-    rem.success('NEXO ' + window.NEXO.version + ' Listo', 'INIT_OK');
     console.log('NEXO ' + window.NEXO.version + ' Inicializado');
 
     try {
@@ -278,7 +258,6 @@ async function initializeNexoApp() {
     clearTimeout(SAFETY_TIMEOUT);
     try {
       NEXO_DIAG.error('APP_INIT_ERROR', error.message || 'unknown');
-      rem.error('Error al iniciar app: ' + (error.message || 'unknown'), 'APP_ERR');
       NEXO_DIAG.hideSplash();
     } catch (diagErr) {}
     _forceHideSplash();
@@ -318,15 +297,12 @@ function _setupMessageInput() {
 
       try {
         if (!window.NEXO.app) {
-          rem.error('NEXO.app no disponible', 'MSG_ERR');
           return;
         }
         var sent = await window.NEXO.app.sendMessage({ content: text });
         if (!sent) {
-          rem.info('En cola (offline)', 'MSG_QUEUED');
         }
       } catch (e) {
-        rem.error('Error al enviar', 'MSG_ERR');
       }
     };
 
@@ -388,7 +364,6 @@ function _setupChatHeader() {
             if (idx >= 0) {
               contacts[idx].name = newName;
               localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(contacts));
-              rem.info('Contacto renombrado: ' + newName, 'CONTACT_RENAME');
             }
           }
         } catch (e) {}
@@ -510,7 +485,6 @@ function _loadPersistedMessages() {
     var key = _getContactStorageKey();
     var messages = JSON.parse(localStorage.getItem(key) || '[]');
     if (messages.length === 0) return;
-    rem.info('Cargando ' + messages.length + ' mensajes persistidos', 'PERSIST_LOAD');
     messages.forEach(function(msg) {
       _renderMessage(msg, true);
     });
@@ -641,7 +615,6 @@ function _toggleVaultUI(isOpen) {
         vault.style.setProperty('position', 'absolute', 'important');
         vault.style.setProperty('z-index', '-9999', 'important');
       }
-      rem.info(isOpen ? '[VAULT] Abierto' : '[VAULT] Cerrado', 'VAULT_TOGGLE');
     }
     if (stream) {
       stream.style.transform = isOpen ? 'translateX(-20%)' : 'translateX(0)';
