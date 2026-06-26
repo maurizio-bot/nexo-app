@@ -117,7 +117,7 @@ DEBUG.setPhase('INIT');
 try {
 await this._initPhase1_Crypto();
 await this._initPhase2_WebSocket();
-var nativeAvailable = !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
+var nativeAvailable = !!(window.Capacitation || window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
 if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
 if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
 await this._initPhase5_BLEUI();
@@ -208,15 +208,9 @@ if (subtitle) subtitle.textContent = detail.transport === 'ble' ? 'BLUETOOTH' : 
 DEBUG.success('Chat activo: ' + (detail.name || 'NEXO') + ' [' + (detail.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
 self._updateMode('P2P_BLE');
 self.config.onStatusChange('CHAT:' + (detail.name || 'NEXO'));
-if (self.bleInterface && self.bleInterface.showToast) {
-self.bleInterface.showToast('Chat con ' + (detail.name || 'NEXO') + ' listo', 'success');
-}
 } catch (handlerErr) {
 console.error('[NexoApp] Error en _bleChatHandler:', handlerErr);
 DEBUG.error('BLE_UI_001', 'Error en chat handler: ' + (handlerErr.message || 'unknown'));
-if (self.bleInterface && self.bleInterface.showToast) {
-self.bleInterface.showToast('Error al abrir chat: ' + (handlerErr.message || 'desconocido'), 'error');
-}
 }
 };
 window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
@@ -226,9 +220,6 @@ window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
         var detail = e.detail || {};
         self._updateMode('P2P_BLE');
         self.config.onStatusChange('CONECTADO:' + (detail.name || 'NEXO'));
-        if (self.bleInterface && self.bleInterface.showToast) {
-          self.bleInterface.showToast('Dispositivo conectado: ' + (detail.name || 'NEXO'), 'success');
-        }
       } catch (err) {
         console.warn('[NexoApp] Error en _nativeDeviceConnectedHandler:', err);
       }
@@ -238,9 +229,6 @@ window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
       try {
         self._updateMode('OFFLINE');
         self.config.onStatusChange('OFFLINE');
-        if (self.bleInterface && self.bleInterface.showToast) {
-          self.bleInterface.showToast('Dispositivo desconectado', 'warning');
-        }
       } catch (err) {
         console.warn('[NexoApp] Error en _nativeDeviceDisconnectedHandler:', err);
       }
@@ -313,9 +301,6 @@ if (senderUUID && detail.messageId) {
 } catch (handlerErr) {
 console.error('[NexoApp] Error en _bleMessageHandler:', handlerErr);
 DEBUG.error('BLE_UI_002', 'Error en message handler: ' + (handlerErr.message || 'unknown'));
-if (self.bleInterface && self.bleInterface.showToast) {
-self.bleInterface.showToast('Error al recibir mensaje: ' + (handlerErr.message || 'desconocido'), 'error');
-}
 }
 };
 window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
@@ -367,9 +352,6 @@ _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 async sendMessage(msg) {
 if (!this.initialized || this._isDestroyed) {
 DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('Error: App no inicializada', 'error');
-}
 return false;
 }
 try {
@@ -380,9 +362,6 @@ var recipient = isObject ? msg.recipient : null;
 var targetId = recipient || (this.activeContact ? this.activeContact.id : null);
 var targetTransport = this.activeContact ? this.activeContact.transport : null;
 if (!content || (typeof content === 'string' && content.trim() === '')) {
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('Error: Escribe un mensaje', 'warning');
-}
 return false;
 }
 
@@ -408,15 +387,9 @@ console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
 await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
 DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
 this._updateMessageStatus(messageId, 'sent');
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('Mensaje enviado', 'success');
-}
 return true;
 } catch (e) {
 DEBUG.warn('BLE directo fallo: ' + (e.message || 'unknown'), 'MSG_BLE_FAIL');
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('Fallo envio BLE: ' + (e.message || 'Error desconocido'), 'error');
-}
 }
 }
 /* === PASO 7: Intentar Nordic Mesh === */
@@ -462,15 +435,9 @@ return true;
 }
 /* === FALLO: Ningun transporte disponible === */
 DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('No hay dispositivos NEXO disponibles. Mensaje no enviado.', 'warning');
-}
 return false;
 } catch (err) {
 DEBUG.error('APP_008', 'SendMessage critical: ' + (err.message || 'unknown'));
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('Error critico al enviar: ' + (err.message || 'desconocido'), 'error');
-}
 return false;
 }
 }
@@ -522,9 +489,6 @@ if (!enriched._own && this.activeContact && enriched.sender === this.activeConta
 
 } catch (err) {
 DEBUG.error('APP_005', 'Message handler: ' + (err.message || 'unknown'));
-if (this.bleInterface && this.bleInterface.showToast) {
-this.bleInterface.showToast('Error al mostrar mensaje: ' + (err.message || 'desconocido'), 'error');
-}
 }
 }
 async _partialCleanup() {
