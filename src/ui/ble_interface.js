@@ -693,8 +693,8 @@ if (!macNorm) {
 reject(new Error('MAC invalida'));
 return;
 }
-var targetId = *macWithColons(macNorm);
-var isCtrl = *isControlPacket(content);
+var targetId = _macWithColons(macNorm);
+var isCtrl = _isControlPacket(content);
 var enrichedPayload;
 if (isCtrl) {
 enrichedPayload = content;
@@ -703,7 +703,7 @@ enrichedPayload = JSON.stringify({
 deviceUUID: self.localDeviceUUID,
 senderName: self.localDeviceName,
 content: content,
-messageId: messageId || ('msg*' + Date.now() + '*' + Math.random().toString(36).substr(2, 9)),
+messageId: messageId || ('msg' + Date.now() + '*' + Math.random().toString(36).substr(2, 9)),
 timestamp: Date.now()
 });
 }
