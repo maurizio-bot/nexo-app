@@ -311,16 +311,29 @@ export class BLEInterface {
           try {
             if (state && state.isActive === true) {
               console.log('[BLEInterface] App volvio a primer plano');
-              if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
+              // Android detiene advertising en background. Forzar reactivacion.
+              self.isAdvertising = false;
+              self.updateVisibilityButton();
+              if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
                 _safeNativeCall(self.nativePlugin, 'startAdvertising', {})
                   .then(function() {
                     self.isAdvertising = true;
                     self.updateVisibilityButton();
+                    console.log('[BLEInterface] EYE reactivado');
                   })
                   .catch(function(e) {
                     console.warn('[BLEInterface] Fallo reactivar EYE:', e.message);
                   });
               }
+              // Reactivar scan si estaba activo
+              if (self.isScanning && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startScan')) {
+                _safeNativeCall(self.nativePlugin, 'startScan', {}).catch(function(e) {});
+              }
+            } else if (state && state.isActive === false) {
+              console.log('[BLEInterface] App fue a segundo plano');
+              // Android detiene advertising automaticamente
+              self.isAdvertising = false;
+              self.updateVisibilityButton();
             }
           } catch (e) {
             console.warn('[BLEInterface] Error appStateChange:', e.message);
@@ -1542,3 +1555,9 @@ export class BLEInterface {
     return Promise.resolve();
   }
 }
+/*
+- SIGNATURES:
+- (1) Tab siempre visible al salir de chat
+- (2) BLE→Contactos/👤
+- (3) EYE auto-reactivar al volver a app
+*/
