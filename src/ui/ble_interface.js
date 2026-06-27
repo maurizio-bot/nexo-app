@@ -168,7 +168,7 @@ if (typeof plugin[method] !== 'function') { reject(new Error('Metodo ' + method 
 try {
 var result;
 if (args && typeof args === 'object' && !Array.isArray(args)) {
-result = pluginmethod;
+result = plugin[method](args);
 } else {
 var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
 result = plugin[method].apply(plugin, callArgs);
