@@ -200,6 +200,9 @@
    self.activeContact = { id: detail.contactId, name: detail.name, address: detail.address, transport: detail.transport };
    var appContainer = document.getElementById('app');
    if (appContainer) appContainer.classList.remove('hidden');
+   document.body.classList.add('chat-view-active');
+   var backBtn = document.getElementById('chat-back-btn');
+   if (backBtn) backBtn.classList.add('visible');
    var nameInput = document.getElementById('chat-contact-name');
    var subtitle = document.getElementById('chat-contact-subtitle');
    if (nameInput) nameInput.value = detail.name || 'NEXO Device';
@@ -213,6 +216,26 @@
    }
    };
    window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
+   // Handler para back button del chat (vuelve a contactos)
+   this._chatBackHandler = function() {
+   try {
+   document.body.classList.remove('chat-view-active');
+   var backBtn = document.getElementById('chat-back-btn');
+   if (backBtn) backBtn.classList.remove('visible');
+   self.activeContact = null;
+   try { window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} })); } catch(e) {}
+   if (self.bleInterface && self.bleInterface.elements && self.bleInterface.elements.panel) {
+   self.bleInterface.elements.panel.classList.add('active');
+   self.bleInterface.elements.overlay.classList.add('active');
+   self.bleInterface.renderContactsList();
+   self.bleInterface.renderOnlineStrip();
+   }
+   self._updateMode('OFFLINE');
+   self.config.onStatusChange('OFFLINE');
+   } catch (err) { console.warn('[NexoApp] Error en back handler:', err); }
+   };
+   var chatBackBtn = document.getElementById('chat-back-btn');
+   if (chatBackBtn) chatBackBtn.addEventListener('click', this._chatBackHandler);
    // FIX: Escuchar eventos de conexion nativa para actualizar modo
    this._nativeDeviceConnectedHandler = function(e) {
    try {
@@ -507,6 +530,11 @@
    try { window.removeEventListener('nexo:ble:openChat', this._bleChatHandler); } catch(e) {}
    this._bleChatHandler = null;
    }
+   if (this._chatBackHandler) {
+   var chatBackBtn = document.getElementById('chat-back-btn');
+   if (chatBackBtn) chatBackBtn.removeEventListener('click', this._chatBackHandler);
+   this._chatBackHandler = null;
+   }
    if (this._bleMessageHandler) {
    try { window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler); } catch(e) {}
    this._bleMessageHandler = null;
@@ -585,23 +613,23 @@
    if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, newStatus);
    DEBUG.log('ACK recibido: ' + messageId + ' -> ' + newStatus, 'info', 'ACK_RECV');
    }
-   *sendACK(deviceUUID, messageId) {
+   _sendACK(deviceUUID, messageId) {
    if (!deviceUUID || !messageId) return;
    if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
    var payload = JSON.stringify({ type: 'ack', messageId: messageId, ackType: 'delivered', timestamp: Date.now() });
-   this.bleInterface.sendChatMessage(deviceUUID, payload, 'ack*' + messageId).catch(function(e) {});
+   this.bleInterface.sendChatMessage(deviceUUID, payload, messageId).catch(function(e) {});
    }
-   *sendReadReceipt(messageId, recipientId) {
+   _sendReadReceipt(messageId, recipientId) {
    if (!messageId || !recipientId) return;
    if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
    var payload = JSON.stringify({ type: 'read_receipt', messageId: messageId, timestamp: Date.now() });
-   this.bleInterface.sendChatMessage(recipientId, payload, 'rr*' + messageId).catch(function(e) {});
+   this.bleInterface.sendChatMessage(recipientId, payload, messageId).catch(function(e) {});
    }
    }
    export { NexoApp, DEBUG };
    export default NexoApp;
-/*
-Focos de Interés:
+   /*
+   Focos de Interés:
  1. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
  2. Eliminación de la doble pantalla (no appendItems en TheStream)
  3. Envío de ACK automático al recibir mensaje BLE
