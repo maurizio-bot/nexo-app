@@ -13,219 +13,40 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
 
   <title>NEXO v9.0</title>
-
-  <style>
-    #vault-panel {
-      display: none !important;
-      visibility: hidden !important;
-      opacity: 0 !important;
-      pointer-events: none !important;
-      position: absolute !important;
-      z-index: -9999 !important;
-    }
-    #splash-native {
-      position: fixed;
-      inset: 0;
-      background: #0a0a0a;
-      z-index: 999999;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-    body {
-      background: #0a0a0a;
-      overflow: hidden;
-      margin: 0;
-      padding: 0;
-    }
-    #app {
-      display: flex;
-      flex-direction: column;
-      height: 100dvh;
-    }
-    /* CHAT BACK BUTTON */
-    .chat-back-btn {
-      background: none;
-      border: none;
-      color: #0082FC;
-      font-size: 22px;
-      cursor: pointer;
-      padding: 0 8px;
-      width: 40px;
-      height: 40px;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-    }
-    .chat-back-btn.visible {
-      display: flex;
-    }
-    #chat-header {
-      display: none;
-      flex-direction: row !important;
-      align-items: center;
-      justify-content: center;
-      padding: 8px 12px;
-      border-bottom: 1px solid #333;
-      gap: 8px;
-      position: relative;
-      flex-shrink: 0;
-    }
-    #chat-contact-name {
-      background: none;
-      border: none;
-      color: #fff;
-      font-size: 16px;
-      font-weight: 600;
-      flex: 1;
-      outline: none;
-      text-align: center;
-    }
-    #chat-contact-subtitle {
-      font-size: 11px;
-      color: #888;
-    }
-    /* JUMP BUTTON */
-    #jump-to-bottom {
-      position: fixed;
-      bottom: 80px;
-      right: 16px;
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: rgba(0, 132, 255, 0.9);
-      color: #fff;
-      border: none;
-      font-size: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 100;
-      opacity: 0;
-      transform: translateY(10px);
-      transition: opacity 0.3s, transform 0.3s;
-      pointer-events: none;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    }
-    #jump-to-bottom.visible {
-      opacity: 1;
-      transform: translateY(0);
-      pointer-events: auto;
-    }
-    /* FIX v9.9: Chat view control via body.chat-view-active */
-    #messages-container {
-      display: none;
-      flex-direction: column;
-      gap: 6px;
-      padding: 20px 20px 80px 20px;
-      flex: 1;
-      overflow-y: auto;
-    }
-    #input-area {
-      display: none;
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      flex-shrink: 0;
-      padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) 16px;
-      background: rgba(0,0,0,0.95);
-      backdrop-filter: blur(10px);
-      gap: 10px;
-      border-top: 1px solid rgba(255,255,255,0.1);
-      z-index: 10;
-    }
-    /* Cuando body tiene chat-view-active: mostrar chat */
-    body.chat-view-active #chat-header {
-      display: flex !important;
-    }
-    body.chat-view-active #messages-container {
-      display: flex !important;
-    }
-    body.chat-view-active #input-area {
-      display: flex !important;
-    }
-    body.chat-view-active #jump-to-bottom {
-      display: flex !important;
-    }
-    /* Cuando chat activo: ocultar stream principal y BLE panel */
-    body.chat-view-active #nexo-stream {
-      display: none !important;
-    }
-    body.chat-view-active #ble-panel {
-      display: none !important;
-    }
-    body.chat-view-active #ble-tab {
-      display: none !important;
-    }
-  
-    /* NEXO Logo Send Button */
-    .nexo-send-btn {
-      width: 56px;
-      height: 36px;
-      border-radius: 18px;
-      background: #0082FC;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      transition: all 0.2s;
-      box-shadow: 0 2px 8px rgba(0,130,252,0.3);
-    }
-    .nexo-send-btn:active {
-      transform: scale(0.95);
-      box-shadow: 0 1px 4px rgba(0,130,252,0.2);
-    }
-    .nexo-logo-text {
-      color: #fff;
-      font-size: 9px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    }
-    /* Hide rem status bar */
-    .rem-status, #rem-status, .status-bar, #status-bar,
-    [class*="status"][class*="bar"], [id*="status"][id*="bar"] {
-      display: none !important;
-      visibility: hidden !important;
-      opacity: 0 !important;
-      height: 0 !important;
-      pointer-events: none !important;
-    }
-
-  </style>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
+  <!-- Splash -->
   <div id="splash-native">
     <div id="splash-logo"></div>
     <div id="splash-text">NEXO v9.0</div>
   </div>
 
+  <!-- App -->
   <div id="app">
+    <!-- Chat Header -->
     <div id="chat-header">
       <button id="chat-back-btn" class="chat-back-btn">&larr;</button>
       <input type="text" id="chat-contact-name" value="NEXO" autocomplete="off" spellcheck="false">
       <span id="chat-contact-subtitle">OFFLINE</span>
     </div>
 
+    <!-- Stream Principal -->
     <div id="nexo-stream" class="stream-container"></div>
 
+    <!-- Messages -->
     <div id="messages-container"></div>
 
+    <!-- Input -->
     <div id="input-area">
       <input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off">
-      <button id="send-btn" class="nexo-send-btn"><span class="nexo-logo-text">NEXO</span></button>
+      <button id="send-btn">
+        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
     </div>
   </div>
 
+  <!-- Vault Panel -->
   <div id="vault-panel" class="vault-hidden">
     <div class="vault-header">
       <h3>Compartir</h3>
@@ -233,7 +54,11 @@
     <div id="contacts-list"></div>
   </div>
 
-  <button id="jump-to-bottom" class="hidden">↓</button>
+  <!-- Jump Button -->
+  <button id="jump-to-bottom" class="hidden">&darr;</button>
+
+  <!-- BLE Panel (injected por JS) -->
+  <!-- BLE Overlay (injected por JS) -->
 
 </body>
 </html>
