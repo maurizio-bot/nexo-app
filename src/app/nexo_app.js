@@ -206,7 +206,8 @@
    var nameInput = document.getElementById('chat-contact-name');
    var subtitle = document.getElementById('chat-contact-subtitle');
    if (nameInput) nameInput.value = detail.name || 'NEXO Device';
-   if (subtitle) subtitle.textContent = detail.transport === 'ble' ? 'BLUETOOTH' : 'NEXO MESH';
+   /* FIX #1: Subtitle vacío — quita "BLUETOOTH" / "NEXO MESH" */
+   if (subtitle) subtitle.textContent = '';
    DEBUG.success('Chat activo: ' + (detail.name || 'NEXO') + ' [' + (detail.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
    self._updateMode('P2P_BLE');
    self.config.onStatusChange('CHAT:' + (detail.name || 'NEXO'));
