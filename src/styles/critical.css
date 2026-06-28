@@ -121,7 +121,7 @@ position: relative;
 padding: 8px 16px;
 gap: 10px;
 }
-/* FIX #3: Back button = circular como send-btn, flecha invertida */
+/* FIX #3: Back button = circular gradient como send-btn */
 .chat-back-btn {
 background: linear-gradient(135deg, #00c8ff, #a855f7);
 border: none;
