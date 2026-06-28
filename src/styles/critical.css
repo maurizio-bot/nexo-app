@@ -324,15 +324,26 @@ border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 .vault-header h3 { margin: 0 0 10px 0; color: #fff; }
 #contacts-list { flex: 1; overflow-y: auto; padding: 20px; }
-/* REM hide */
+/* ============================================
+FIX #2: Ocultar REM / toasts / logs / debug
+============================================ */
 .rem-status, #rem-status,
-[class*="status"][class*="bar"]:not(.ble-status-bar):not(#status-indicator),
-[id*="status"][id*="bar"]:not(.ble-status-bar):not(#status-indicator) {
+[class*="rem-"], [id*="rem-"],
+[class*="toast"], [id*="toast"],
+[class*="debug"], [id*="debug"],
+[class*="log"], [id*="log"]:not(#contacts-list):not(.ble-contact-log),
+#nexo-diagnostic, #fatal-error,
+.ble-debug-overlay, .ble-log-panel {
 display: none !important;
 visibility: hidden !important;
 opacity: 0 !important;
 height: 0 !important;
+min-height: 0 !important;
+max-height: 0 !important;
+overflow: hidden !important;
 pointer-events: none !important;
+position: absolute !important;
+z-index: -9999 !important;
 }
 /* ============================================
 BLE PANEL - CONTACTOS (Vestido de Gala)
@@ -662,7 +673,7 @@ color: #666;
 flex-shrink: 0;
 }
 .ble-status-bar span { color: #00c8ff; font-weight: 600; }
-/* Diagnostic + Fatal */
+/* Diagnostic + Fatal - ocultos por default */
 #nexo-diagnostic {
 display: none;
 position: fixed;
