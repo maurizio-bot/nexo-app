@@ -74,6 +74,41 @@ width: 100%;
 -webkit-overflow-scrolling: touch;
 }
 /* ============================================
+MAIN HEADER (Pantalla Principal)
+============================================ */
+#main-header {
+flex-shrink: 0;
+height: 56px;
+background: rgba(0,0,0,0.95);
+backdrop-filter: blur(10px);
+-webkit-backdrop-filter: blur(10px);
+display: flex;
+flex-direction: row;
+align-items: center;
+padding: 8px 16px;
+border-bottom: 1px solid rgba(255,255,255,0.08);
+position: relative;
+gap: 10px;
+}
+body.chat-view-active #main-header {
+display: none !important;
+}
+#main-logo {
+width: 32px;
+height: 32px;
+border-radius: 8px;
+object-fit: cover;
+flex-shrink: 0;
+}
+#main-title {
+color: #fff;
+font-size: 16px;
+font-weight: 600;
+flex: 1;
+text-align: center;
+letter-spacing: 1px;
+}
+/* ============================================
 CHAT VIEW CONTROL
 ============================================ */
 #chat-header,
