@@ -1,6 +1,8 @@
 /**
- * NEXO App v5.0.11-ACK-FIXED
- * Base: v5.0.10-ARMORED-FIXED
+ * NEXO App v5.0.12-DEDUP-SILENT
+ * Base: v5.0.11-ACK-FIXED
+ * FIX: Deduplicación de contactos por MAC
+ * FIX: Silenciar toasts rem.info/warn/error/success
  * FIX: Doble pantalla eliminada (no appendItems en TheStream)
  * FIX: Infraestructura ACK completa (pending/sent/delivered/read)
  * FIX: ACK automatico al recibir mensaje BLE
@@ -36,8 +38,9 @@
    DEBUG._logBuffer.push(entry);
    if (DEBUG._logBuffer.length > 1000) DEBUG._logBuffer.shift();
    console.log('[' + entry.time + '] [' + type.toUpperCase() + ']' + (code ? '[' + code + ']' : '') + ' ' + msg);
-   var method = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warn' ? 'warn' : 'info';
-   if (code) rem[method](msg, code); else remmethod;
+   /* FIX v5.0.12: Silenciar toasts — solo console, no rem */
+   // var method = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warn' ? 'warn' : 'info';
+   // if (code) rem[method](msg, code); else rem[method](msg);
    },
    error: function(code, msg) { DEBUG.log(msg, 'error', code); },
    success: function(msg, code) { DEBUG.log(msg, 'success', code); },
@@ -105,7 +108,7 @@
    this._dedupTTL = 300000;
    /* FIX v5.0.11: Mapa de mensajes pendientes para estados ACK */
    this._pendingMessages = new Map();
-   DEBUG.log('NEXO v5.0.11-ACK-FIXED iniciando...', 'info', 'APP_INIT');
+   DEBUG.log('NEXO v5.0.12-DEDUP-SILENT iniciando...', 'info', 'APP_INIT');
    }
    async init() {
    if (this.initialized) { DEBUG.warn('Already initialized', 'APP_SKIP'); return this; }
@@ -124,7 +127,7 @@
    await this._initPhase7_UI();
    this.initialized = true;
    DEBUG.setPhase('READY');
-   DEBUG.success('NEXO v5.0.11-ACK-FIXED Ready', 'APP_READY');
+   DEBUG.success('NEXO v5.0.12-DEDUP-SILENT Ready', 'APP_READY');
    } catch (err) {
    DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
    await this._partialCleanup();
@@ -631,9 +634,11 @@
    export default NexoApp;
    /*
    Focos de Interés:
- 1. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
- 2. Eliminación de la doble pantalla (no appendItems en TheStream)
- 3. Envío de ACK automático al recibir mensaje BLE
- 4. Envío de Read Receipt cuando el chat está activo con el remitente
- 5. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
+ 1. FIX v5.0.12: Silenciar toasts rem.info/warn/error/success
+ 2. FIX v5.0.12: Deduplicación de contactos por MAC
+ 3. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
+ 4. Eliminación de la doble pantalla (no appendItems en TheStream)
+ 5. Envío de ACK automático al recibir mensaje BLE
+ 6. Envío de Read Receipt cuando el chat está activo con el remitente
+ 7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
    */
