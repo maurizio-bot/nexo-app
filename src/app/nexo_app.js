@@ -40,7 +40,7 @@
    console.log('[' + entry.time + '] [' + type.toUpperCase() + ']' + (code ? '[' + code + ']' : '') + ' ' + msg);
    /* FIX v5.0.12: Silenciar toasts — solo console, no rem */
    // var method = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warn' ? 'warn' : 'info';
-   // if (code) rem[method](msg, code); else rem[method](msg);
+   // if (code) rem[method](msg, code); else remmethod;
    },
    error: function(code, msg) { DEBUG.log(msg, 'error', code); },
    success: function(msg, code) { DEBUG.log(msg, 'success', code); },
@@ -370,6 +370,19 @@
    jumpBtn.classList.remove('visible');
    });
    }
+   /* Input chat handlers */
+   var msgInput = document.getElementById('message-input');
+   var sendBtn = document.getElementById('send-btn');
+   if (msgInput && sendBtn) {
+   var selfApp = this;
+   sendBtn.addEventListener('click', function() {
+   var text = msgInput.value.trim();
+   if (text) { selfApp.sendMessage(text); msgInput.value = ''; }
+   });
+   msgInput.addEventListener('keydown', function(e) {
+   if (e.key === 'Enter') { sendBtn.click(); }
+   });
+   }
    }
    _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
    _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
@@ -510,6 +523,14 @@
    _id: Math.random().toString(36).substr(2, 9)
    });
    this.config.onMessage(enriched);
+   /* Auto-scroll al final si chat activo o mensaje propio */
+   var shouldScroll = enriched._own || (self.activeContact && enriched.sender === self.activeContact.id);
+   if (shouldScroll) {
+   var msgContainer = document.getElementById('messages-container');
+   if (msgContainer) {
+   setTimeout(function() { msgContainer.scrollTop = msgContainer.scrollHeight; }, 50);
+   }
+   }
    /* FIX v5.0.11: Enviar read receipt si chat activo con el remitente */
    if (!enriched._own && this.activeContact && enriched.sender === this.activeContact.id && enriched.messageId) {
    var self = this;
