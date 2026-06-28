@@ -147,7 +147,6 @@ Consolidado: inline + main.css + ble_styles
    background: rgba(0,0,0,0.95);
    backdrop-filter: blur(10px);
    -webkit-backdrop-filter: blur(10px);
-   display: flex;
    flex-direction: row;
    align-items: center;
    justify-content: center;
@@ -280,7 +279,6 @@ Consolidado: inline + main.css + ble_styles
    padding: 10px 12px 14px 12px;
    background: #000;
    border-top: 1px solid #111;
-   display: flex;
    align-items: center;
    gap: 8px;
    z-index: 10;
@@ -649,7 +647,8 @@ Consolidado: inline + main.css + ble_styles
    font-weight: bold;
    cursor: pointer;
    display: flex;
-   align-items: center; justify-content: center;
+   align-items: center;
+   justify-content: center;
    flex-shrink: 0;
    box-shadow: 0 4px 15px rgba(0,200,255,0.3);
    transition: all 0.3s;
