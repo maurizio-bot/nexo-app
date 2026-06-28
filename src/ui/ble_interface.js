@@ -1,6 +1,6 @@
 /**
- * BLE Interface v5.1.1-GALA-FIX
- * FIX: Pantalla NEXO al arrancar, no panel de contactos
+ * BLE Interface v5.1.2-GALA-BACK
+ * FIX: Botón back en panel BLE para volver a pantalla NEXO
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -254,7 +254,7 @@ export class BLEInterface {
     }
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
-    console.log('[BLEInterface] GALA v5.1.1-FIX iniciado');
+    console.log('[BLEInterface] GALA v5.1.2-BACK iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -774,9 +774,15 @@ export class BLEInterface {
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML =
-      '<div class="ble-header">' +
-        '<div class="contacts-title">Mensajes</div>' +
-        '<div class="contacts-subtitle">NEXO · Comunicacion P2P cifrada</div>' +
+      /* FIX: Botón back en header del panel BLE */
+      '<div class="ble-header" style="position:relative;display:flex;align-items:center;justify-content:center;padding:10px 20px 14px;">' +
+        '<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);transition:transform 0.15s ease;z-index:2;">' +
+          '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" transform="scale(-1,1) translate(-24,0)"/></svg>' +
+        '</button>' +
+        '<div style="text-align:center;">' +
+          '<div class="contacts-title">Mensajes</div>' +
+          '<div class="contacts-subtitle">NEXO · Comunicacion P2P cifrada</div>' +
+        '</div>' +
       '</div>' +
       '<div class="ble-search-bar">' +
         '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>' +
@@ -850,6 +856,14 @@ export class BLEInterface {
     this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
     this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
     this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
+    /* FIX: Botón back en panel BLE - cerrar panel y volver a NEXO */
+    var backBtn = document.getElementById('ble-panel-back');
+    if (backBtn) {
+      backBtn.addEventListener('click', function() {
+        self.elements.panel.classList.remove('active');
+        self.elements.overlay.classList.remove('active');
+      });
+    }
     var navItems = this.elements.bottomNav.querySelectorAll('.ble-nav-item');
     navItems.forEach(function(item) {
       item.addEventListener('click', function() {
@@ -1124,6 +1138,7 @@ export class BLEInterface {
 }
 /*
 Focos de Interés:
+ * FIX: Botón back en panel BLE para volver a pantalla NEXO
  * FIX: Pantalla NEXO al arrancar, no panel de contactos
  * Mantener la integridad de la estructura de la clase y funciones auxiliares existentes.
  * Garantizar la persistencia y recuperación correcta de los mapas de direcciones (MAC/UUID).
