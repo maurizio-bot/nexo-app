@@ -1,6 +1,7 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
  * FIX: chat-view-active agregado/quitado en body para mostrar messages-container e input-area
+ * FIX v9.9.1: FAB = botón agregar contacto (+) → panel BLE + auto-scan
  * Build #1605+ compatible. NO toca nativo.
  */
 
@@ -241,6 +242,8 @@ async function initializeNexoApp() {
     _setupKeyboardShortcuts();
     _setupJumpButton();
     _setupBackButton();
+    /* FIX v9.9.1: Setup FAB para abrir scan */
+    _setupFABButton();
 
     _loadPersistedMessages();
 
@@ -434,6 +437,37 @@ function _setupJumpButton() {
     });
   } catch (e) {
     console.warn('[MAIN] _setupJumpButton error:', e);
+  }
+}
+
+/* FIX v9.9.1: FAB = botón agregar contacto (+) → panel BLE + auto-scan */
+function _setupFABButton() {
+  try {
+    var fabBtn = document.getElementById('ble-fab-btn');
+    if (!fabBtn) return;
+    
+    /* Cambiar icono a (+) */
+    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+    
+    /* Remover listeners anteriores clonando */
+    var newFab = fabBtn.cloneNode(true);
+    fabBtn.parentNode.replaceChild(newFab, fabBtn);
+    
+    newFab.addEventListener('click', function() {
+      /* Abrir panel BLE (pantalla scan) */
+      if (window.bleInterface && window.bleInterface.elements) {
+        var panel = window.bleInterface.elements.panel;
+        var overlay = window.bleInterface.elements.overlay;
+        if (panel) panel.classList.add('active');
+        if (overlay) overlay.classList.add('active');
+      }
+      /* Iniciar scan automático */
+      if (window.bleInterface && typeof window.bleInterface.toggleScan === 'function') {
+        window.bleInterface.toggleScan();
+      }
+    });
+  } catch (e) {
+    console.warn('[MAIN] _setupFABButton error:', e);
   }
 }
 
@@ -669,9 +703,7 @@ function _enableFallbackMode() {
 
 /* =================================================================
    FIX v9.9: chat-view-active agregado/quitado en body
-   - Al abrir chat: body.classList.add('chat-view-active')
-   - Al cerrar chat: body.classList.remove('chat-view-active')
-   - Click back: quita chat-view-active y llama togglePanel()
+   FIX v9.9.1: back button limpia header correctamente
    ================================================================= */
 function _setupBackButton() {
   try {
@@ -691,6 +723,12 @@ function _setupBackButton() {
     backBtn.addEventListener('click', function() {
       backBtn.classList.remove('visible');
       document.body.classList.remove('chat-view-active');
+      
+      /* FIX v9.9.1: Limpiar header del chat al regresar */
+      var nameInput = document.getElementById('chat-contact-name');
+      var subtitle = document.getElementById('chat-contact-subtitle');
+      if (nameInput) nameInput.value = 'NEXO';
+      if (subtitle) subtitle.textContent = '';
       
       if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
         window.bleInterface.togglePanel();
