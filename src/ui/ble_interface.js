@@ -1,6 +1,6 @@
 /**
- * BLE Interface v5.1.1-GALA
- * FIX: Panel de contactos visible al arrancar (pantalla inicio = contactos)
+ * BLE Interface v5.1.1-GALA-FIX
+ * FIX: Pantalla NEXO al arrancar, no panel de contactos
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -86,7 +86,7 @@ function _normId(id) {
 function _normMac(mac) {
   var m = _normId(mac);
   if (!m) return '';
-  m = m.replace(/[:.-]/g, '');
+  m = m.replace(/[:.\-]/g, '');
   if (!/^[0-9a-f]{12}$/.test(m)) return '';
   return m;
 }
@@ -254,7 +254,7 @@ export class BLEInterface {
     }
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
-    console.log('[BLEInterface] GALA v5.1.1 iniciado');
+    console.log('[BLEInterface] GALA v5.1.1-FIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -285,9 +285,9 @@ export class BLEInterface {
       this._autoStartAdvertising();
     }
     this._setupAppStateListener();
-    /* FIX v5.1.1: Mostrar panel de contactos al arrancar */
-    this.elements.panel.classList.add('active');
-    this.elements.overlay.classList.add('active');
+    /* FIX: Pantalla NEXO al arrancar, NO panel de contactos */
+    this.elements.panel.classList.remove('active');
+    this.elements.overlay.classList.remove('active');
     this.renderContactsList();
     this.renderOnlineStrip();
     console.log('[BLEInterface] UUID local:', this.localDeviceUUID);
@@ -865,7 +865,7 @@ export class BLEInterface {
       self.updateBadge();
       if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
       if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'flex';
-      /* FIX v5.1.1: Al cerrar chat, volver a mostrar panel de contactos */
+      /* FIX: Al cerrar chat, volver a mostrar panel de contactos */
       if (self.elements.panel) self.elements.panel.classList.add('active');
       if (self.elements.overlay) self.elements.overlay.classList.add('active');
       self.renderContactsList(); self.renderOnlineStrip();
@@ -1124,6 +1124,7 @@ export class BLEInterface {
 }
 /*
 Focos de Interés:
+ * FIX: Pantalla NEXO al arrancar, no panel de contactos
  * Mantener la integridad de la estructura de la clase y funciones auxiliares existentes.
  * Garantizar la persistencia y recuperación correcta de los mapas de direcciones (MAC/UUID).
  * Asegurar la compatibilidad con el plugin nativo de Capacitor (NexoBLE).
