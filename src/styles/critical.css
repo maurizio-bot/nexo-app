@@ -185,18 +185,22 @@ Consolidado: inline + main.css + ble_styles
    from { opacity: 0; transform: translateY(10px); }
    to { opacity: 1; transform: translateY(0); }
    }
+   /* ============================================
+   FIX #8: Burbujas con gradientes
+   Enviados: #0082FC -> #6B4EFF
+   Recibidos: #0B3D91 -> #2E1A47
+   Texto: #E5E5E5
+   ============================================ */
    .message.own {
    align-self: flex-end;
-   background: linear-gradient(135deg, #00c8ff22, #a855f733);
-   border: 1px solid #00c8ff44;
-   color: #fff;
+   background: linear-gradient(135deg, #0082FC, #6B4EFF);
+   color: #E5E5E5;
    border-bottom-right-radius: 4px;
    }
    .message.other {
    align-self: flex-start;
-   background: #1a1a1a;
-   color: #e5e5e5;
-   border: 1px solid #222;
+   background: linear-gradient(135deg, #0B3D91, #2E1A47);
+   color: #E5E5E5;
    border-bottom-left-radius: 4px;
    }
    .msg-meta {
