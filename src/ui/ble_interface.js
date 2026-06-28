@@ -1,5 +1,6 @@
 /**
- * BLE Interface v5.1.2-GALA-BACK
+ * BLE Interface v5.1.3-DEDUP
+ * FIX: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
  * FIX: Botón back en panel BLE para volver a pantalla NEXO
  */
 export function initBLEInterface(bleMesh) {
@@ -254,7 +255,7 @@ export class BLEInterface {
     }
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
-    console.log('[BLEInterface] GALA v5.1.2-BACK iniciado');
+    console.log('[BLEInterface] GALA v5.1.3-DEDUP iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -519,11 +520,23 @@ export class BLEInterface {
           var existingUUIDForMac = self._macToUuidMap.get(mac);
           if (existingUUIDForMac && existingUUIDForMac !== senderUUID) {
             var contacts = _getBLEContacts();
+            /* FIX v5.1.3: Eliminar contacto temporal mac-xxx si existe */
+            var tempIdx = contacts.findIndex(function(c) {
+              return _normId(c.deviceUUID) === _normId(existingUUIDForMac) && _normId(c.deviceUUID).indexOf('mac-') === 0;
+            });
+            if (tempIdx >= 0) contacts.splice(tempIdx, 1);
             var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(existingUUIDForMac); });
             if (idx >= 0) { contacts[idx].deviceUUID = senderUUID; contacts[idx].name = senderName; contacts[idx].macAddress = mac; contacts[idx].online = true; contacts[idx].lastSeen = Date.now(); _saveBLEContacts(contacts); }
             self._macToUuidMap.set(mac, senderUUID); self._uuidToMacMap.delete(existingUUIDForMac); self._uuidToMacMap.set(senderUUID, mac);
             _saveMacMaps(self._uuidToMacMap, self._macToUuidMap); self.renderContactsList(); self.renderOnlineStrip();
           } else if (!_isBLEContact(senderUUID)) {
+            /* FIX v5.1.3: Eliminar contacto temporal con esta MAC antes de crear el real */
+            var contacts2 = _getBLEContacts();
+            var tempIdx2 = contacts2.findIndex(function(c) {
+              return _normMac(c.macAddress) === mac && _normId(c.deviceUUID).indexOf('mac-') === 0;
+            });
+            if (tempIdx2 >= 0) contacts2.splice(tempIdx2, 1);
+            if (tempIdx2 >= 0) _saveBLEContacts(contacts2);
             self._macToUuidMap.set(mac, senderUUID); self._uuidToMacMap.set(senderUUID, mac);
             _saveMacMaps(self._uuidToMacMap, self._macToUuidMap); _addBLEContact({ deviceUUID: senderUUID, name: senderName, macAddress: mac });
             self.renderContactsList(); self.renderOnlineStrip();
@@ -977,6 +990,32 @@ export class BLEInterface {
     if (!list) return;
     list.innerHTML = '';
     var contacts = _getBLEContacts();
+    /* FIX v5.1.3: Deduplicar contactos por MAC antes de renderizar */
+    var seenMacs = {};
+    var deduped = [];
+    contacts.forEach(function(c) {
+      var mac = _normMac(c.macAddress);
+      if (!mac) {
+        var uuid = _normId(c.deviceUUID);
+        if (!seenMacs[uuid]) { seenMacs[uuid] = true; deduped.push(c); }
+        return;
+      }
+      if (!seenMacs[mac]) {
+        seenMacs[mac] = true;
+        deduped.push(c);
+      } else {
+        var existing = deduped.find(function(d) { return _normMac(d.macAddress) === mac; });
+        if (existing && (c.lastSeen || 0) > (existing.lastSeen || 0)) {
+          existing.name = c.name || existing.name;
+          existing.lastSeen = c.lastSeen;
+          existing.online = c.online;
+          existing.lastMessage = c.lastMessage || existing.lastMessage;
+          existing.unreadCount = Math.max(existing.unreadCount || 0, c.unreadCount || 0);
+          existing.deviceUUID = c.deviceUUID;
+        }
+      }
+    });
+    contacts = deduped;
     if (contacts.length === 0) { list.innerHTML = '<div class="ble-empty">No hay contactos. Presiona Buscar para encontrar dispositivos.</div>'; this.renderOnlineStrip(); return; }
     var pinned = _getPinnedContacts();
     contacts.sort(function(a, b) {
@@ -1060,13 +1099,27 @@ export class BLEInterface {
     var mac = _normMac(bar.dataset.mac);
     var device = this.foundDevices.get(mac);
     var name = device.name || 'NEXO Peer';
+    /* FIX v5.1.3: Deduplicar por MAC antes de agregar contacto nuevo */
+    var contacts = _getBLEContacts();
+    var existingByMac = contacts.find(function(c) { return _normMac(c.macAddress) === mac; });
+    if (existingByMac) {
+      existingByMac.online = true;
+      existingByMac.lastSeen = Date.now();
+      existingByMac.name = name;
+      _saveBLEContacts(contacts);
+      try { localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac); } catch (e) {}
+      this._autoConnectGATT(mac, device);
+      this.foundDevices.delete(mac);
+      this.renderContactsList(); this.renderNewDeviceBar(); this.renderOnlineStrip();
+      return;
+    }
     var existingUUID = this._macToUuidMap.get(mac);
     var existingContact = existingUUID ? _getContactByUUID(existingUUID) : null;
     if (existingContact) {
       existingContact.online = true; existingContact.lastSeen = Date.now(); existingContact.macAddress = mac;
-      var contacts = _getBLEContacts();
-      var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(existingUUID); });
-      if (idx >= 0) { contacts[idx] = existingContact; _saveBLEContacts(contacts); }
+      var contacts2 = _getBLEContacts();
+      var idx = contacts2.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(existingUUID); });
+      if (idx >= 0) { contacts2[idx] = existingContact; _saveBLEContacts(contacts2); }
       try { localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac); } catch (e) {}
       this._autoConnectGATT(mac, device); this.foundDevices.delete(mac); this.renderContactsList(); this.renderNewDeviceBar(); this.renderOnlineStrip(); return;
     }
@@ -1138,6 +1191,7 @@ export class BLEInterface {
 }
 /*
 Focos de Interés:
+ * FIX v5.1.3: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
  * FIX: Botón back en panel BLE para volver a pantalla NEXO
  * FIX: Pantalla NEXO al arrancar, no panel de contactos
  * Mantener la integridad de la estructura de la clase y funciones auxiliares existentes.
