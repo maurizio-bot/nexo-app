@@ -201,6 +201,11 @@
    var appContainer = document.getElementById('app');
    if (appContainer) appContainer.classList.remove('hidden');
    document.body.classList.add('chat-view-active');
+   /* FIX: Ocultar FAB y bottom-nav al abrir chat */
+   var fabBtn = document.getElementById('ble-fab-btn');
+   if (fabBtn) fabBtn.style.display = 'none';
+   var bottomNav = document.getElementById('ble-bottom-nav');
+   if (bottomNav) bottomNav.style.display = 'none';
    var backBtn = document.getElementById('chat-back-btn');
    if (backBtn) backBtn.classList.add('visible');
    var nameInput = document.getElementById('chat-contact-name');
@@ -223,6 +228,11 @@
    document.body.classList.remove('chat-view-active');
    var backBtn = document.getElementById('chat-back-btn');
    if (backBtn) backBtn.classList.remove('visible');
+   /* FIX: Mostrar FAB y bottom-nav al salir del chat */
+   var fabBtn = document.getElementById('ble-fab-btn');
+   if (fabBtn) fabBtn.style.display = 'flex';
+   var bottomNav = document.getElementById('ble-bottom-nav');
+   if (bottomNav) bottomNav.style.display = 'flex';
    self.activeContact = null;
    try { window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} })); } catch(e) {}
    if (self.bleInterface && self.bleInterface.elements && self.bleInterface.elements.panel) {
