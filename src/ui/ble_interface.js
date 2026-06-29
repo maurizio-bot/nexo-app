@@ -1031,7 +1031,7 @@
    seenMacs[mac] = true;
    deduped.push(c);
    } else {
-   var existing = deduped.find(function(d) { return _normMac(d.macAddress) === mac; });
+   var existing = deduped.find(function(d) { return _normMac(d.d.macAddress) === mac; });
    if (existing && (c.lastSeen || 0) > (existing.lastSeen || 0)) {
    existing.name = c.name || existing.name;
    existing.lastSeen = c.lastSeen;
@@ -1136,7 +1136,7 @@
    var name = device.name || 'NEXO Peer';
    /* FIX v5.1.3: Deduplicar por MAC antes de agregar contacto nuevo */
    var contacts = _getBLEContacts();
-   var existingByMac = contacts.find(function(c) { return _normMac(c.address) === mac || _normMac(c.macAddress) === mac; });
+   var existingByMac = contacts.find(function(c) { return _normMac(c.macAddress) === mac; });
    if (existingByMac) {
    existingByMac.online = true;
    existingByMac.lastSeen = Date.now();
