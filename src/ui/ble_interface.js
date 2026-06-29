@@ -169,7 +169,7 @@
    try {
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
-   result = pluginmethod;
+   result = plugin[method](args);
    } else {
    var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
    result = plugin[method].apply(plugin, callArgs);
@@ -807,7 +807,7 @@
    panel.innerHTML =
    /* FIX: Botón back en header del panel BLE */
    '<div class="ble-header" style="position:relative;display:flex;align-items:center;justify-content:center;padding:10px 20px 14px;">' +
-   '<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);transition:transform 0.15s ease;z-index:2;">' +
+   '<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);transition:transform 0.15s ease;z-index:2;">' +
    '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" transform="scale(-1,1) translate(-24,0)"/></svg>' +
    '</button>' +
    '<div style="text-align:center;">' +
@@ -897,6 +897,8 @@
    /* Mostrar FAB al volver a pantalla principal */
    if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
    });
+   backBtn.addEventListener('touchstart', function(e) { e.preventDefault(); this.style.transform = 'translateY(-50%) scale(0.92)'; }, {passive:false});
+   backBtn.addEventListener('touchend', function(e) { e.preventDefault(); this.style.transform = 'translateY(-50%) scale(1)'; }, {passive:false});
    }
    var navItems = this.elements.bottomNav.querySelectorAll('.ble-nav-item');
    navItems.forEach(function(item) {
@@ -1028,7 +1030,7 @@
    seenMacs[mac] = true;
    deduped.push(c);
    } else {
-   var existing = deduped.find(function(d) { return _normMac(d.macAddress) === mac; });
+   var existing = deduped.find(function(d) { return _normMac(d.d.macAddress) === mac; });
    if (existing && (c.lastSeen || 0) > (existing.lastSeen || 0)) {
    existing.name = c.name || existing.name;
    existing.lastSeen = c.lastSeen;
@@ -1076,8 +1078,10 @@
    var menuBtn = document.createElement('button');
    menuBtn.className = 'ble-btn-menu';
    menuBtn.innerHTML = '⋮';
-   menuBtn.style.cssText = 'width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0;margin-left:8px;';
+   menuBtn.style.cssText = 'width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0;margin-left:8px;';
    menuBtn.addEventListener('click', function(e) { e.stopPropagation(); self._toggleContactMenu(uuid, menuBtn); });
+   menuBtn.addEventListener('touchstart', function(e) { e.stopPropagation(); e.preventDefault(); this.style.transform = 'scale(0.92)'; }, {passive:false});
+   menuBtn.addEventListener('touchend', function(e) { e.stopPropagation(); e.preventDefault(); this.style.transform = 'scale(1)'; }, {passive:false});
    row.appendChild(menuBtn);
    list.appendChild(row);
    if (index < contacts.length - 1) { var divider = document.createElement('div'); divider.className = 'ble-divider'; list.appendChild(divider); }
