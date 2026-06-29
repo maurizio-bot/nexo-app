@@ -1206,6 +1206,16 @@
    return Promise.resolve();
    }
    }
+   updateScanButton() {
+  var btn = this.elements.scanBtn;
+  if (!btn) return;
+  if (this.isScanning) {
+    btn.classList.add('scanning');
+  } else {
+    btn.classList.remove('scanning');
+  }
+}
+
    /*
    Focos de Interés:
  * FIX v5.1.3: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
