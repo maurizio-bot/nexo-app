@@ -754,23 +754,23 @@ Consolidado: inline + main.css + ble_styles
    .ble-btn-scan-round.scanning {
    animation: scan-aura 1.2s infinite;
    }
-/* FIX: Ocultar barra de status BLE al usuario */
-#ble-status-bar, .ble-status-bar { display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0 !important; min-height: 0 !important; padding: 0 !important; border: none !important; overflow: hidden !important; }
-/* Mensaje vacío en pantalla CONTACTOS */
-.contacts-empty-msg {
-text-align: center;
-color: #444;
-font-size: 14px;
-padding: 60px 30px;
-line-height: 1.5;
-}
-/* Ocultar mensaje vacío cuando hay chat activo */
-body.chat-view-active .contacts-empty-msg {
-display: none !important;
-}
-/* FIX: Ocultar FAB en chat */
-body.chat-view-active #ble-fab-btn,
-body.chat-view-active .ble-fab-btn,
-#ble-fab-btn[style*="display: flex"] {
-display: none !important;
-}
+   /* FIX: Ocultar barra de status BLE al usuario */
+   #ble-status-bar, .ble-status-bar { display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0 !important; min-height: 0 !important; padding: 0 !important; border: none !important; overflow: hidden !important; }
+   /* Mensaje vacío en pantalla CONTACTOS */
+   .contacts-empty-msg {
+   text-align: center;
+   color: #444;
+   font-size: 14px;
+   padding: 60px 30px;
+   line-height: 1.5;
+   }
+   /* Ocultar mensaje vacío cuando hay chat activo */
+   body.chat-view-active .contacts-empty-msg {
+   display: none !important;
+   }
+   /* FIX: Ocultar FAB solo en chat */
+   body.chat-view-active #ble-fab-btn,
+   body.chat-view-active .ble-fab-btn {
+   display: none !important;
+   }
+   }
