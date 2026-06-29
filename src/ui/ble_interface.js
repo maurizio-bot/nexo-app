@@ -169,7 +169,7 @@
    try {
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
-   result = pluginmethod;
+   result = plugin[method](args);
    } else {
    var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
    result = plugin[method].apply(plugin, callArgs);
@@ -536,7 +536,7 @@
    return _normMac(c.macAddress) === mac && _normId(c.deviceUUID).indexOf('mac-') === 0;
    });
    if (tempIdx2 >= 0) contacts2.splice(tempIdx2, 1);
-   if (tempIdx2 >= 0) _saveBLEContacts(contacts2);
+   if (tempIdx2 >= 0) _saveBLEBLEContacts(contacts2);
    self._macToUuidMap.set(mac, senderUUID); self._uuidToMacMap.set(senderUUID, mac);
    _saveMacMaps(self._uuidToMacMap, self._macToUuidMap); _addBLEContact({ deviceUUID: senderUUID, name: senderName, macAddress: mac });
    self.renderContactsList(); self.renderOnlineStrip();
@@ -867,7 +867,7 @@
    this.elements.statusText = document.getElementById('ble-status-text');
    var fabBtn = document.createElement('button');
    fabBtn.id = 'ble-fab-btn';
-   fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
+   fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
    fabBtn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483643;box-shadow:0 4px 15px rgba(0,200,255,0.3);transition:transform 0.15s ease;';
    fabBtn.addEventListener('click', function() { self.togglePanel(); self.toggleScan(); });
    fabBtn.addEventListener('mousedown', function() { this.style.transform = 'scale(0.92)'; });
@@ -888,6 +888,8 @@
    backBtn.addEventListener('click', function() {
    self.elements.panel.classList.remove('active');
    self.elements.overlay.classList.remove('active');
+   /* Mostrar FAB al volver a pantalla principal */
+   if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
    });
    }
    var navItems = this.elements.bottomNav.querySelectorAll('.ble-nav-item');
@@ -920,6 +922,11 @@
    this.elements.overlay.classList.toggle('active');
    if (this.elements.panel.classList.contains('active')) {
    this.newDevicesCount = 0; this.updateBadge(); this.renderContactsList(); this.renderOnlineStrip();
+   /* Ocultar FAB cuando se abre el panel BLE */
+   if (this.elements.fabBtn) this.elements.fabBtn.style.display = 'none';
+   } else {
+   /* Mostrar FAB cuando se cierra el panel BLE (volver a pantalla principal) */
+   if (this.elements.fabBtn) this.elements.fabBtn.style.display = 'flex';
    }
    }
    toggleScan() {
@@ -1186,9 +1193,15 @@
    var fabBtn = this.elements.fabBtn;
    if (!fabBtn) return;
    if (this._activeChatDeviceId) { fabBtn.style.display = 'none'; return; }
+   /* Solo mostrar FAB si el panel BLE está cerrado (pantalla principal) */
+   if (this.elements.panel && this.elements.panel.classList.contains('active')) { fabBtn.style.display = 'none'; return; }
    fabBtn.style.display = 'flex';
-   if (this.newDevicesCount > 0) { fabBtn.innerHTML = '<span style="color:#fff;font-size:14px;font-weight:700;">' + this.newDevicesCount + '</span>'; }
-   else { fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>'; }
+   if (this.newDevicesCount > 0) {
+   /* Mostrar badge con contador sobre el + */
+   fabBtn.innerHTML = '<div style="position:relative;width:28px;height:28px;"><svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span style="position:absolute;top:-8px;right:-8px;background:#ff4757;color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:700;">' + this.newDevicesCount + '</span></div>';
+   } else {
+   fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+   }
    }
    updateStatusBar(text) {
    /* FIX: No mostrar status bar al usuario */
@@ -1208,15 +1221,3 @@
    self.updateStatusBar('NEXO BLE');
    return Promise.resolve();
    }
-   }
-   /*
-   Focos de Interés:
- * FIX v5.1.3: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
- * FIX: Botón back en panel BLE para volver a pantalla NEXO
- * FIX: Pantalla NEXO al arrancar, no panel de contactos
- * Mantener la integridad de la estructura de la clase y funciones auxiliares existentes.
- * Garantizar la persistencia y recuperación correcta de los mapas de direcciones (MAC/UUID).
- * Asegurar la compatibilidad con el plugin nativo de Capacitor (NexoBLE).
- * Gestión eficiente de estados de conexión BLE (scanning, advertising, connected).
- * renderizado ligero de UI utilizando elementos del DOM sin canvas.
-   */
