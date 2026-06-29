@@ -1219,5 +1219,3 @@
  * Gestión eficiente de estados de conexión BLE (scanning, advertising, connected).
  * renderizado ligero de UI utilizando elementos del DOM sin canvas.
    */
-
-```
