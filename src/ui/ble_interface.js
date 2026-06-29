@@ -1221,3 +1221,4 @@
    self.updateStatusBar('NEXO BLE');
    return Promise.resolve();
    }
+   }
