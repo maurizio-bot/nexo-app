@@ -747,5 +747,13 @@ Consolidado: inline + main.css + ble_styles
    color: #ff6666;
    }
    .hidden { display: none !important; }
+   @keyframes scan-aura {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,200,255,0.6), 0 0 20px rgba(0,200,255,0.3); }
+  50% { box-shadow: 0 0 0 15px rgba(0,200,255,0), 0 0 40px rgba(0,200,255,0.5); }
+}
+.ble-btn-scan-round.scanning {
+  animation: scan-aura 1.2s infinite;
+}
+
 /* FIX: Ocultar barra de status BLE al usuario */
 #ble-status-bar, .ble-status-bar { display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0 !important; min-height: 0 !important; padding: 0 !important; border: none !important; overflow: hidden !important; }
