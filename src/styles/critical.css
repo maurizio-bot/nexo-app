@@ -747,3 +747,5 @@ Consolidado: inline + main.css + ble_styles
    color: #ff6666;
    }
    .hidden { display: none !important; }
+/* FIX: Ocultar barra de status BLE al usuario */
+#ble-status-bar, .ble-status-bar { display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0 !important; min-height: 0 !important; padding: 0 !important; border: none !important; overflow: hidden !important; }
