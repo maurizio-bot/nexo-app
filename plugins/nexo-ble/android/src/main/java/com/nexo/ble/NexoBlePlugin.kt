@@ -1,3 +1,4 @@
+
 package com.nexo.ble
 
 import android.app.ActivityManager
@@ -928,24 +929,44 @@ class NexoBlePlugin : Plugin() {
         val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
+            remLog("ERROR", "SCAN", "Bluetooth desactivado")
             call.reject("Bluetooth desactivado")
             return
         }
         if (!isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)) {
+            remLog("ERROR", "SCAN", "BLUETOOTH_SCAN no concedido")
             call.reject("BLUETOOTH_SCAN no concedido")
             return
         }
         bluetoothScanner = adapter.bluetoothLeScanner
+        if (bluetoothScanner == null) {
+            remLog("ERROR", "SCAN", "BluetoothLeScanner es null")
+            call.reject("BluetoothLeScanner no disponible")
+            return
+        }
         scanResults.clear()
         scannedDevices.clear()
-        val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID)).build()
-        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
+        val filter = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
+            .build()
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+            .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+            .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
+            .setReportDelay(0L)
+            .build()
         try {
             bluetoothScanner?.startScan(listOf(filter), settings, scanCallback)
             mainHandler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
+            remLog("INFO", "SCAN", "Scan iniciado con UUID filter: ${NexoBleSpec.NEXO_SERVICE_UUID}")
             call.resolve(JSObject().put("started", true))
         } catch (e: SecurityException) {
+            remLog("ERROR", "SCAN", "SecurityException: ${e.message}")
             call.reject("Permiso BLUETOOTH_SCAN no concedido")
+        } catch (e: Exception) {
+            remLog("ERROR", "SCAN", "Error iniciando scan: ${e.message}")
+            call.reject("Error iniciando scan: ${e.message}")
         }
     }
 
@@ -968,19 +989,26 @@ class NexoBlePlugin : Plugin() {
                 val addr = device.address
                 val macNorm = normalizeMac(addr)
                 scannedDevices[macNorm] = device
-                remLog("INFO", "SCAN", "Device found: $name ($addr) - cacheado")
+                remLog("INFO", "SCAN", "Device found: $name ($addr) rssi=${result?.rssi} - cacheado")
                 if (scanResults.none { it.getString("deviceId") == addr }) {
                     val item = JSObject().apply {
                         put("deviceId", addr)
                         put("name", name)
-                        put("rssi", result.rssi)
+                        put("rssi", result?.rssi ?: 0)
+                        put("serviceUUID", NexoBleSpec.NEXO_SERVICE_UUID.toString())
                     }
                     scanResults.add(item)
                     notifyListeners("onDeviceFound", item)
                 }
             }
         }
+        override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+            results?.forEach { result ->
+                onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, result)
+            }
+        }
         override fun onScanFailed(errorCode: Int) {
+            remLog("ERROR", "SCAN", "Scan failed with errorCode=$errorCode")
             notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode))
         }
     }
@@ -1098,3 +1126,11 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 }
+/*
+* [Focos de Interés]
+* 1. Manejo de estados de conexión y desconexión GATT.
+* 2. Reensamblaje de mensajes (JSON) fragmentados.
+* 3. Implementación de keep-alive para estabilidad de conexión.
+* 4. Gestión de permisos y ciclo de vida (Android BLE).
+* 5. Encolado de mensajes para reconexiones automáticas.
+*/
