@@ -169,7 +169,7 @@
    try {
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
-   result = plugin[method](args);
+   result = pluginmethod;
    } else {
    var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
    result = plugin[method].apply(plugin, callArgs);
@@ -1205,17 +1205,7 @@
    self.updateStatusBar('NEXO BLE');
    return Promise.resolve();
    }
-   updateScanButton() {
-   var btn = this.elements.scanBtn;
-   if (!btn) return;
-   if (this.isScanning) {
-   btn.classList.add('scanning');
-   } else {
-   btn.classList.remove('scanning');
    }
-   }
-   }
-
    /*
    Focos de Interés:
  * FIX v5.1.3: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
