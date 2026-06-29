@@ -169,7 +169,7 @@
    try {
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
-   result = pluginmethod;
+   result = plugin[method](args);
    } else {
    var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
    result = plugin[method].apply(plugin, callArgs);
@@ -1205,16 +1205,16 @@
    self.updateStatusBar('NEXO BLE');
    return Promise.resolve();
    }
-   }
    updateScanButton() {
-  var btn = this.elements.scanBtn;
-  if (!btn) return;
-  if (this.isScanning) {
-    btn.classList.add('scanning');
-  } else {
-    btn.classList.remove('scanning');
-  }
-}
+   var btn = this.elements.scanBtn;
+   if (!btn) return;
+   if (this.isScanning) {
+   btn.classList.add('scanning');
+   } else {
+   btn.classList.remove('scanning');
+   }
+   }
+   }
 
    /*
    Focos de Interés:
