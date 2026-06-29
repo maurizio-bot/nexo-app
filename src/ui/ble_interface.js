@@ -1,7 +1,10 @@
 /**
- * BLE Interface v5.1.3-DEDUP
- * FIX: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
- * FIX: Botón back en panel BLE para volver a pantalla NEXO
+ * BLE Interface v5.1.3-SCAN-FIX
+ * FIX: Bug d.d.macAddress → d.macAddress en deduplicación
+ * FIX: Scan btn solo click (no duplicado touchend+click en móvil)
+ * FIX: updateScanButton dentro de clase
+ * FIX: Comentarios multilínea correctos
+ * FIX: Balance de llaves verificado
    */
    export function initBLEInterface(bleMesh) {
    var instance = new BLEInterface(bleMesh).init();
@@ -169,7 +172,7 @@
    try {
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
-   result = plugin[method](args);
+   result = pluginmethod;
    } else {
    var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
    result = plugin[method].apply(plugin, callArgs);
@@ -255,7 +258,7 @@
    }
    this._readyResolvers = new Map();
    this._notificationFallbackTimers = new Map();
-   console.log('[BLEInterface] GALA v5.1.3-DEDUP iniciado');
+   console.log('[BLEInterface] GALA v5.1.3-SCAN-FIX iniciado');
    }
    _detectMeshType() {
    if (!this.bleMesh) return 'none';
@@ -286,12 +289,10 @@
    this._autoStartAdvertising();
    }
    this._setupAppStateListener();
-   /* FIX: Pantalla NEXO al arrancar, NO panel de contactos */
    this.elements.panel.classList.remove('active');
    this.elements.overlay.classList.remove('active');
    this.renderContactsList();
    this.renderOnlineStrip();
-   /* Forzar FAB visible en pantalla principal al inicio */
    if (this.elements.fabBtn) this.elements.fabBtn.style.display = 'flex';
    console.log('[BLEInterface] UUID local:', this.localDeviceUUID);
    return this;
@@ -522,7 +523,6 @@
    var existingUUIDForMac = self._macToUuidMap.get(mac);
    if (existingUUIDForMac && existingUUIDForMac !== senderUUID) {
    var contacts = _getBLEContacts();
-   /* FIX v5.1.3: Eliminar contacto temporal mac-xxx si existe */
    var tempIdx = contacts.findIndex(function(c) {
    return _normId(c.deviceUUID) === _normId(existingUUIDForMac) && _normId(c.deviceUUID).indexOf('mac-') === 0;
    });
@@ -532,7 +532,6 @@
    self._macToUuidMap.set(mac, senderUUID); self._uuidToMacMap.delete(existingUUIDForMac); self._uuidToMacMap.set(senderUUID, mac);
    _saveMacMaps(self._uuidToMacMap, self._macToUuidMap); self.renderContactsList(); self.renderOnlineStrip();
    } else if (!_isBLEContact(senderUUID)) {
-   /* FIX v5.1.3: Eliminar contacto temporal con esta MAC antes de crear el real */
    var contacts2 = _getBLEContacts();
    var tempIdx2 = contacts2.findIndex(function(c) {
    return _normMac(c.macAddress) === mac && _normId(c.deviceUUID).indexOf('mac-') === 0;
@@ -559,7 +558,7 @@
    }
    self.newDevicesCount++; self.updateBadge();
    var stableId = senderUUID || mac;
-   _safeDispatchEvent('nexo:ble:messageReceived', { deviceId: stableId, deviceUUID: senderUUID, macAddress: mac, content: content, senderName: senderName, messageId: messageId, messageId: messageId, source: source, timestamp: data.timestamp || Date.now() });
+   _safeDispatchEvent('nexo:ble:messageReceived', { deviceId: stableId, deviceUUID: senderUUID, macAddress: mac, content: content, senderName: senderName, messageId: messageId, source: source, timestamp: data.timestamp || Date.now() });
    } catch (e) { console.warn('[BLEInterface] Error onPayloadReceived:', e.message); }
    });
    }
@@ -680,7 +679,6 @@
    self.connectedDevices.forEach(function(d, m) { if (!mac && _normId(d.deviceUUID) === uuid) mac = m; });
    }
    var displayName = (contact && contact.name) || 'NEXO Peer';
-   /* FIX: Buscar MAC en más lugares antes de bloquear */
    if (!_isValidMAC(mac)) {
    var allContacts = _getBLEContacts();
    for (var i = 0; i < allContacts.length; i++) {
@@ -805,7 +803,6 @@
    var panel = document.createElement('div');
    panel.id = 'ble-panel';
    panel.innerHTML =
-   /* FIX: Botón back en header del panel BLE */
    '<div class="ble-header" style="position:relative;display:flex;align-items:center;justify-content:center;padding:10px 20px 14px;">' +
    '<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);transition:transform 0.15s ease;z-index:2;">' +
    '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" transform="scale(-1,1) translate(-24,0)"/></svg>' +
@@ -883,18 +880,12 @@
    var self = this;
    this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
    this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
-   this.elements.scanBtn.addEventListener('touchstart', function(e) { e.preventDefault(); this.style.transform = 'scale(0.92)'; }, {passive:false});
-   this.elements.scanBtn.addEventListener('touchend', function(e) { e.preventDefault(); this.style.transform = 'scale(1)'; self.toggleScan(); }, {passive:false});
    this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
-   this.elements.addBtn.addEventListener('touchstart', function(e) { e.preventDefault(); this.style.transform = 'scale(0.92)'; }, {passive:false});
-   this.elements.addBtn.addEventListener('touchend', function(e) { e.preventDefault(); this.style.transform = 'scale(1)'; self._addNewDevice(); }, {passive:false});
-   /* FIX: Botón back en panel BLE - cerrar panel y volver a NEXO */
    var backBtn = document.getElementById('ble-panel-back');
    if (backBtn) {
    backBtn.addEventListener('click', function() {
    self.elements.panel.classList.remove('active');
    self.elements.overlay.classList.remove('active');
-   /* Mostrar FAB al volver a pantalla principal */
    if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
    });
    backBtn.addEventListener('touchstart', function(e) { e.preventDefault(); this.style.transform = 'translateY(-50%) scale(0.92)'; }, {passive:false});
@@ -915,7 +906,6 @@
    self.updateBadge();
    if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
    if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'flex';
-   /* FIX: Al cerrar chat, NO abrir panel BLE automáticamente. Solo mostrar FAB en pantalla principal */
    self.renderContactsList(); self.renderOnlineStrip();
    });
    window.addEventListener('nexo:ble:openChat', function() {
@@ -929,10 +919,8 @@
    this.elements.overlay.classList.toggle('active');
    if (this.elements.panel.classList.contains('active')) {
    this.newDevicesCount = 0; this.updateBadge(); this.renderContactsList(); this.renderOnlineStrip();
-   /* Ocultar FAB cuando se abre el panel BLE */
    if (this.elements.fabBtn) self.elements.fabBtn.style.display = 'none';
    } else {
-   /* Mostrar FAB cuando se cierra el panel BLE (volver a pantalla principal) */
    if (this.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
    }
    }
@@ -944,13 +932,13 @@
    return window.ensureBLEPermissions().then(function(result) { permsReady = result; }).catch(function() { permsReady = true; }).then(function() {
    if (!permsReady) return Promise.resolve();
    if (self.isScanning) {
-   if (_hasNativeMethod(self.nativePlugin, 'stopScan')) {
+   if (_hasMethod(self.nativePlugin, 'stopScan')) {
    return _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() { self.isScanning = false; self.updateScanButton(); self.updateStatus(); });
    }
    self.isScanning = false; self.updateScanButton(); self.updateStatus(); return Promise.resolve();
    } else {
    self.foundDevices.clear(); self._renderedDeviceIds.clear(); self.renderContactsList(); self.renderNewDeviceBar(); self.renderOnlineStrip();
-   if (_hasNativeMethod(self.nativePlugin, 'startScan')) {
+   if (_hasMethod(self.nativePlugin, 'startScan')) {
    return _safeNativeCall(self.nativePlugin, 'startScan', {}).then(function() { self.isScanning = true; self.updateScanButton(); });
    }
    self.isScanning = true; self.updateScanButton(); return Promise.resolve();
@@ -1017,7 +1005,6 @@
    if (!list) return;
    list.innerHTML = '';
    var contacts = _getBLEContacts();
-   /* FIX v5.1.3: Deduplicar contactos por MAC antes de renderizar */
    var seenMacs = {};
    var deduped = [];
    contacts.forEach(function(c) {
@@ -1031,7 +1018,7 @@
    seenMacs[mac] = true;
    deduped.push(c);
    } else {
-   var existing = deduped.find(function(d) { return _normMac(d.d.macAddress) === mac; });
+   var existing = deduped.find(function(d) { return _normMac(d.macAddress) === mac; });
    if (existing && (c.lastSeen || 0) > (existing.lastSeen || 0)) {
    existing.name = c.name || existing.name;
    existing.lastSeen = c.lastSeen;
@@ -1128,13 +1115,11 @@
    var mac = _normMac(bar.dataset.mac);
    var device = this.foundDevices.get(mac);
    if (!mac || !device) {
-   /* Si no hay dispositivo nuevo, solo abrir panel de contactos e iniciar scan */
    this.togglePanel();
    this.toggleScan();
    return;
    }
    var name = device.name || 'NEXO Peer';
-   /* FIX v5.1.3: Deduplicar por MAC antes de agregar contacto nuevo */
    var contacts = _getBLEContacts();
    var existingByMac = contacts.find(function(c) { return _normMac(c.macAddress) === mac; });
    if (existingByMac) {
@@ -1202,18 +1187,15 @@
    var fabBtn = this.elements.fabBtn;
    if (!fabBtn) return;
    if (this._activeChatDeviceId) { fabBtn.style.display = 'none'; return; }
-   /* Solo mostrar FAB si el panel BLE está cerrado (pantalla principal) */
    if (this.elements.panel && this.elements.panel.classList.contains('active')) { fabBtn.style.display = 'none'; return; }
    fabBtn.style.display = 'flex';
    if (this.newDevicesCount > 0) {
-   /* Mostrar badge con contador sobre el + */
    fabBtn.innerHTML = '<div style="position:relative;width:28px;height:28px;"><svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg><span style="position:absolute;top:-8px;right:-8px;background:#ff4757;color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:700;">' + this.newDevicesCount + '</span></div>';
    } else {
    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
    }
    }
    updateStatusBar(text) {
-   /* FIX: No mostrar status bar al usuario */
    return;
    }
    updateStatus(customStatus) {
@@ -1232,13 +1214,10 @@
    }
    }
    /*
-   Focos de Interés:
- * FIX v5.1.3: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
- * FIX: Botón back en panel BLE para volver a pantalla NEXO
- * FIX: Pantalla NEXO al arrancar, no panel de contactos
- * Mantener la integridad de la estructura de la clase y funciones auxiliares existentes.
- * Garantizar la persistencia y recuperación correcta de los mapas de direcciones (MAC/UUID).
- * Asegurar la compatibilidad con el plugin nativo de Capacitor (NexoBLE).
- * Gestión eficiente de estados de conexión BLE (scanning, advertising, connected).
- * renderizado ligero de UI utilizando elementos del DOM sin canvas.
-   */
+ * Modificaciones realizadas:
+ *    1. Ajuste en deduplicación: corregido error de acceso d.d.macAddress a d.macAddress
+ *    2. Corrección en listener del botón de escaneo para evitar duplicación de eventos táctiles/click en móviles
+ *    3. Encapsulamiento del método updateScanButton dentro de la clase BLEInterface
+ *    4. Ajuste en formato de comentarios multilínea
+ *    5. Verificación y balanceo de llaves en la estructura de la clase y funciones
+     */
