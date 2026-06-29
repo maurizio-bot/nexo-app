@@ -1,4 +1,3 @@
-
 /**
  * BLE Interface v5.1.3-DEDUP
  * FIX: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
@@ -170,7 +169,7 @@
    try {
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
-   result = plugin[method](args);
+   result = pluginmethod;
    } else {
    var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
    result = plugin[method].apply(plugin, callArgs);
@@ -825,10 +824,7 @@
    '<div class="ble-empty">No hay contactos. Presiona Buscar para encontrar dispositivos.</div>' +
    '</div>' +
    '<div class="ble-bottom-bar">' +
-   '<div id="ble-new-device" class="ble-new-device" style="display:none">' +
-   '<span id="ble-new-device-name"></span>' +
-   '<button id="ble-add-btn" class="ble-btn-add-small">+</button>' +
-   '</div>' +
+   '<button id="ble-add-btn" class="ble-btn-add-small" style="display:flex !important;visibility:visible !important;opacity:1 !important;">+</button>' +
    '<button id="ble-scan-btn" class="ble-btn-scan-round"></button>' +
    '</div>' +
    '<div id="ble-status-bar" class="ble-status-bar"><span id="ble-status-text">NEXO BLE</span></div>';
@@ -1115,6 +1111,12 @@
    var bar = this.elements.newDeviceBar;
    var mac = _normMac(bar.dataset.mac);
    var device = this.foundDevices.get(mac);
+   if (!mac || !device) {
+   /* Si no hay dispositivo nuevo, solo abrir panel de contactos e iniciar scan */
+   this.togglePanel();
+   this.toggleScan();
+   return;
+   }
    var name = device.name || 'NEXO Peer';
    /* FIX v5.1.3: Deduplicar por MAC antes de agregar contacto nuevo */
    var contacts = _getBLEContacts();
@@ -1148,7 +1150,7 @@
    }
    _autoConnectGATT(mac, device) {
    var self = this;
-   if (!self.nativePlugin || !_hasMethod(self.nativePlugin, 'connectToDevice')) return Promise.resolve();
+   if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'connectToDevice')) return Promise.resolve();
    var macNorm = _normMac(mac);
    if (!macNorm) return Promise.resolve();
    var state = self._getDeviceState(macNorm);
@@ -1207,7 +1209,6 @@
    return Promise.resolve();
    }
    }
-
    /*
    Focos de Interés:
  * FIX v5.1.3: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
