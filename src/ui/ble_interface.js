@@ -826,8 +826,8 @@
    '<div class="ble-empty">No hay contactos. Presiona Buscar para encontrar dispositivos.</div>' +
    '</div>' +
    '<div class="ble-bottom-bar">' +
-   '<button id="ble-add-btn" class="ble-btn-add-small" style="display:flex !important;visibility:visible !important;opacity:1 !important;">+</button>' +
-   '<button id="ble-scan-btn" class="ble-btn-scan-round"></button>' +
+   '<button id="ble-add-btn" class="ble-btn-add-small" type="button" aria-label="Agregar contacto" style="display:flex !important;visibility:visible !important;opacity:1 !important;">+</button>' +
+   '<button id="ble-scan-btn" class="ble-btn-scan-round" type="button" aria-label="Scan"></button>' +
    '</div>' +
    '<div id="ble-status-bar" class="ble-status-bar"><span id="ble-status-text">NEXO BLE</span></div>';
    document.body.appendChild(panel);
@@ -883,7 +883,11 @@
    var self = this;
    this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
    this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
+   this.elements.scanBtn.addEventListener('touchstart', function(e) { e.preventDefault(); this.style.transform = 'scale(0.92)'; }, {passive:false});
+   this.elements.scanBtn.addEventListener('touchend', function(e) { e.preventDefault(); this.style.transform = 'scale(1)'; self.toggleScan(); }, {passive:false});
    this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
+   this.elements.addBtn.addEventListener('touchstart', function(e) { e.preventDefault(); this.style.transform = 'scale(0.92)'; }, {passive:false});
+   this.elements.addBtn.addEventListener('touchend', function(e) { e.preventDefault(); this.style.transform = 'scale(1)'; self._addNewDevice(); }, {passive:false});
    /* FIX: Botón back en panel BLE - cerrar panel y volver a NEXO */
    var backBtn = document.getElementById('ble-panel-back');
    if (backBtn) {
@@ -926,7 +930,7 @@
    if (this.elements.fabBtn) self.elements.fabBtn.style.display = 'none';
    } else {
    /* Mostrar FAB cuando se cierra el panel BLE (volver a pantalla principal) */
-   if (this.elements.fabBtn) this.elements.fabBtn.style.display = 'flex';
+   if (this.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
    }
    }
    toggleScan() {
