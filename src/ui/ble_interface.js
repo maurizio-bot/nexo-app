@@ -932,13 +932,13 @@
    return window.ensureBLEPermissions().then(function(result) { permsReady = result; }).catch(function() { permsReady = true; }).then(function() {
    if (!permsReady) return Promise.resolve();
    if (self.isScanning) {
-   if (_hasMethod(self.nativePlugin, 'stopScan')) {
+   if (_hasNativeMethod(self.nativePlugin, 'stopScan')) {
    return _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() { self.isScanning = false; self.updateScanButton(); self.updateStatus(); });
    }
    self.isScanning = false; self.updateScanButton(); self.updateStatus(); return Promise.resolve();
    } else {
    self.foundDevices.clear(); self._renderedDeviceIds.clear(); self.renderContactsList(); self.renderNewDeviceBar(); self.renderOnlineStrip();
-   if (_hasMethod(self.nativePlugin, 'startScan')) {
+   if (_hasNativeMethod(self.nativePlugin, 'startScan')) {
    return _safeNativeCall(self.nativePlugin, 'startScan', {}).then(function() { self.isScanning = true; self.updateScanButton(); });
    }
    self.isScanning = true; self.updateScanButton(); return Promise.resolve();
