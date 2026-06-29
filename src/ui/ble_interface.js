@@ -1147,7 +1147,7 @@
    }
    _autoConnectGATT(mac, device) {
    var self = this;
-   if (!self.nativePlugin || !_hasMethod(self.nativePlugin, 'connectToDevice')) return Promise.resolve();
+   if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'connectToDevice')) return Promise.resolve();
    var macNorm = _normMac(mac);
    if (!macNorm) return Promise.resolve();
    var state = self._getDeviceState(macNorm);
@@ -1188,7 +1188,8 @@
    else { fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>'; }
    }
    updateStatusBar(text) {
-   if (this.elements.statusText) this.elements.statusText.textContent = text || 'NEXO BLE';
+   /* FIX: No mostrar status bar al usuario */
+   return;
    }
    updateStatus(customStatus) {
    var self = this;
