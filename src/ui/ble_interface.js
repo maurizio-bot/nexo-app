@@ -169,7 +169,7 @@
    try {
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
-   result = plugin[method](args);
+   result = pluginmethod;
    } else {
    var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
    result = plugin[method].apply(plugin, callArgs);
@@ -291,6 +291,8 @@
    this.elements.overlay.classList.remove('active');
    this.renderContactsList();
    this.renderOnlineStrip();
+   /* Forzar FAB visible en pantalla principal al inicio */
+   if (this.elements.fabBtn) this.elements.fabBtn.style.display = 'flex';
    console.log('[BLEInterface] UUID local:', this.localDeviceUUID);
    return this;
    }
@@ -536,7 +538,7 @@
    return _normMac(c.macAddress) === mac && _normId(c.deviceUUID).indexOf('mac-') === 0;
    });
    if (tempIdx2 >= 0) contacts2.splice(tempIdx2, 1);
-   if (tempIdx2 >= 0) _saveBLEBLEContacts(contacts2);
+   if (tempIdx2 >= 0) _saveBLEContacts(contacts2);
    self._macToUuidMap.set(mac, senderUUID); self._uuidToMacMap.set(senderUUID, mac);
    _saveMacMaps(self._uuidToMacMap, self._macToUuidMap); _addBLEContact({ deviceUUID: senderUUID, name: senderName, macAddress: mac });
    self.renderContactsList(); self.renderOnlineStrip();
@@ -557,7 +559,7 @@
    }
    self.newDevicesCount++; self.updateBadge();
    var stableId = senderUUID || mac;
-   _safeDispatchEvent('nexo:ble:messageReceived', { deviceId: stableId, deviceUUID: senderUUID, macAddress: mac, content: content, senderName: senderName, messageId: messageId, source: source, timestamp: data.timestamp || Date.now() });
+   _safeDispatchEvent('nexo:ble:messageReceived', { deviceId: stableId, deviceUUID: senderUUID, macAddress: mac, content: content, senderName: senderName, messageId: messageId, messageId: messageId, source: source, timestamp: data.timestamp || Date.now() });
    } catch (e) { console.warn('[BLEInterface] Error onPayloadReceived:', e.message); }
    });
    }
@@ -907,9 +909,7 @@
    self.updateBadge();
    if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
    if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'flex';
-   /* FIX: Al cerrar chat, volver a mostrar panel de contactos */
-   if (self.elements.panel) self.elements.panel.classList.add('active');
-   if (self.elements.overlay) self.elements.overlay.classList.add('active');
+   /* FIX: Al cerrar chat, NO abrir panel BLE automáticamente. Solo mostrar FAB en pantalla principal */
    self.renderContactsList(); self.renderOnlineStrip();
    });
    window.addEventListener('nexo:ble:openChat', function() {
@@ -923,7 +923,7 @@
    if (this.elements.panel.classList.contains('active')) {
    this.newDevicesCount = 0; this.updateBadge(); this.renderContactsList(); this.renderOnlineStrip();
    /* Ocultar FAB cuando se abre el panel BLE */
-   if (this.elements.fabBtn) this.elements.fabBtn.style.display = 'none';
+   if (this.elements.fabBtn) self.elements.fabBtn.style.display = 'none';
    } else {
    /* Mostrar FAB cuando se cierra el panel BLE (volver a pantalla principal) */
    if (this.elements.fabBtn) this.elements.fabBtn.style.display = 'flex';
@@ -1222,3 +1222,14 @@
    return Promise.resolve();
    }
    }
+   /*
+   Focos de Interés:
+ * FIX v5.1.3: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
+ * FIX: Botón back en panel BLE para volver a pantalla NEXO
+ * FIX: Pantalla NEXO al arrancar, no panel de contactos
+ * Mantener la integridad de la estructura de la clase y funciones auxiliares existentes.
+ * Garantizar la persistencia y recuperación correcta de los mapas de direcciones (MAC/UUID).
+ * Asegurar la compatibilidad con el plugin nativo de Capacitor (NexoBLE).
+ * Gestión eficiente de estados de conexión BLE (scanning, advertising, connected).
+ * renderizado ligero de UI utilizando elementos del DOM sin canvas.
+   */
