@@ -1,7 +1,8 @@
 /**
- * BLE Interface v5.1.3-DEDUP
- * FIX: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
- * FIX: Botón back en panel BLE para volver a pantalla NEXO
+ * BLE Interface v5.1.3-DEDUP-NO-NEXO
+ * FIX: Deduplicación de contactos por MAC
+ * FIX: Botón back en panel BLE
+ * FIX: Quitados todos los fallbacks "NEXO" de nombres
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -113,7 +114,7 @@ function _addBLEContact(contact) {
   var existingIdx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === uuid; });
   var macNorm = _normMac(contact.macAddress);
   if (existingIdx >= 0) {
-    contacts[existingIdx].name = contact.name || contacts[existingIdx].name || 'NEXO Peer';
+    contacts[existingIdx].name = contact.name || contacts[existingIdx].name || '';
     if (macNorm) contacts[existingIdx].macAddress = macNorm;
     contacts[existingIdx].lastSeen = Date.now();
     contacts[existingIdx].online = true;
@@ -121,7 +122,7 @@ function _addBLEContact(contact) {
     return true;
   }
   contacts.push({
-    deviceUUID: uuid, name: contact.name || 'NEXO Peer', macAddress: macNorm || null,
+    deviceUUID: uuid, name: contact.name || '', macAddress: macNorm || null,
     addedAt: Date.now(), lastSeen: Date.now(), online: true, unreadCount: 0, lastMessage: ''
   });
   _saveBLEContacts(contacts);
@@ -229,7 +230,7 @@ export class BLEInterface {
     this.meshType = this._detectMeshType();
     this.isAdvertising = false;
     this.canAdvertise = false;
-    this.localDeviceName = 'NEXO Device';
+    this.localDeviceName = '';
     this.localDeviceAddress = null;
     this.localDeviceUUID = _getDeviceUUID();
     this._activeChatDeviceId = null;
@@ -255,7 +256,7 @@ export class BLEInterface {
     }
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
-    console.log('[BLEInterface] GALA v5.1.3-DEDUP iniciado');
+    console.log('[BLEInterface] GALA v5.1.3-DEDUP-NO-NEXO iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -286,7 +287,6 @@ export class BLEInterface {
       this._autoStartAdvertising();
     }
     this._setupAppStateListener();
-    /* FIX: Pantalla NEXO al arrancar, NO panel de contactos */
     this.elements.panel.classList.remove('active');
     this.elements.overlay.classList.remove('active');
     this.renderContactsList();
@@ -344,7 +344,7 @@ export class BLEInterface {
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'getLocalDeviceInfo')) return Promise.resolve();
     return _safeNativeCall(self.nativePlugin, 'getLocalDeviceInfo', {})
       .then(function(info) {
-        self.localDeviceName = (info && info.deviceName) || 'NEXO Device';
+        self.localDeviceName = (info && info.deviceName) || '';
         self.localDeviceAddress = _normMac((info && info.deviceAddress) || '');
       })
       .catch(function() {});
@@ -356,7 +356,7 @@ export class BLEInterface {
     this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) {
       try {
         var mac = _normMac(data.deviceId);
-        var name = data.name || 'NEXO Device';
+        var name = data.name || '';
         if (!mac) return;
         self.onDeviceFound({ id: mac, address: mac, name: name, rssi: data.rssi });
       } catch (e) {}
@@ -383,7 +383,7 @@ export class BLEInterface {
         if (!mac) return;
         var peerUUID = self._macToUuidMap.get(mac);
         var contact = peerUUID ? _getContactByUUID(peerUUID) : null;
-        var displayName = data.name || (contact ? contact.name : null) || 'NEXO Peer';
+        var displayName = data.name || (contact ? contact.name : null) || '';
         self.connectedDevices.set(mac, {
           id: mac, address: mac, name: displayName,
           direction: data.direction || 'outgoing', role: data.role || 'client',
@@ -494,7 +494,7 @@ export class BLEInterface {
         if (isControl) {
           try {
             var ctrl = JSON.parse(content);
-            messageId = ctrl.messageId; senderUUID = ctrl.deviceUUID || self._macToUuidMap.get(mac); senderName = ctrl.senderName || 'NEXO Peer';
+            messageId = ctrl.messageId; senderUUID = ctrl.deviceUUID || self._macToUuidMap.get(mac); senderName = ctrl.senderName || '';
             _safeDispatchEvent('nexo:ble:messageReceived', { deviceId: mac, deviceUUID: senderUUID, macAddress: mac, content: content, senderName: senderName, messageId: messageId, source: source, timestamp: data.timestamp || Date.now(), isControl: true });
             return;
           } catch (ctrlErr) {}
@@ -511,16 +511,15 @@ export class BLEInterface {
         }
         if (!senderUUID) senderUUID = self._macToUuidMap.get(mac);
         if (senderUUID) { self._macToUuidMap.set(mac, senderUUID); self._uuidToMacMap.set(senderUUID, mac); }
-        if (!senderName || senderName === 'NEXO Peer') {
+        if (!senderName || senderName === '') {
           var contact = _getContactByUUID(senderUUID);
           var cname = contact ? contact.name : null;
-          senderName = cname || (self.connectedDevices.get(mac) && self.connectedDevices.get(mac).name) || (self.foundDevices.get(mac) && self.foundDevices.get(mac).name) || 'NEXO Peer';
+          senderName = cname || (self.connectedDevices.get(mac) && self.connectedDevices.get(mac).name) || (self.foundDevices.get(mac) && self.foundDevices.get(mac).name) || '';
         }
-        if (senderUUID && senderName && senderName !== 'NEXO Peer') {
+        if (senderUUID && senderName && senderName !== '') {
           var existingUUIDForMac = self._macToUuidMap.get(mac);
           if (existingUUIDForMac && existingUUIDForMac !== senderUUID) {
             var contacts = _getBLEContacts();
-            /* FIX v5.1.3: Eliminar contacto temporal mac-xxx si existe */
             var tempIdx = contacts.findIndex(function(c) {
               return _normId(c.deviceUUID) === _normId(existingUUIDForMac) && _normId(c.deviceUUID).indexOf('mac-') === 0;
             });
@@ -530,7 +529,6 @@ export class BLEInterface {
             self._macToUuidMap.set(mac, senderUUID); self._uuidToMacMap.delete(existingUUIDForMac); self._uuidToMacMap.set(senderUUID, mac);
             _saveMacMaps(self._uuidToMacMap, self._macToUuidMap); self.renderContactsList(); self.renderOnlineStrip();
           } else if (!_isBLEContact(senderUUID)) {
-            /* FIX v5.1.3: Eliminar contacto temporal con esta MAC antes de crear el real */
             var contacts2 = _getBLEContacts();
             var tempIdx2 = contacts2.findIndex(function(c) {
               return _normMac(c.macAddress) === mac && _normId(c.deviceUUID).indexOf('mac-') === 0;
@@ -677,7 +675,7 @@ export class BLEInterface {
           self.foundDevices.forEach(function(d, m) { if (!mac && _normId(d.deviceUUID) === uuid) mac = m; });
           self.connectedDevices.forEach(function(d, m) { if (!mac && _normId(d.deviceUUID) === uuid) mac = m; });
         }
-        var displayName = (contact && contact.name) || 'NEXO Peer';
+        var displayName = (contact && contact.name) || '';
         if (!_isValidMAC(mac)) { reject(new Error('MAC invalida')); return; }
         mac = _normMac(mac);
         self._activeChatDeviceId = uuid; self._activeChatMAC = mac;
@@ -787,14 +785,12 @@ export class BLEInterface {
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML =
-      /* FIX: Botón back en header del panel BLE */
       '<div class="ble-header" style="position:relative;display:flex;align-items:center;justify-content:center;padding:10px 20px 14px;">' +
         '<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);transition:transform 0.15s ease;z-index:2;">' +
           '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" transform="scale(-1,1) translate(-24,0)"/></svg>' +
         '</button>' +
         '<div style="text-align:center;">' +
           '<div class="contacts-title">Agregar contactos</div>' +
-          '' +
         '</div>' +
       '</div>' +
       '<div class="ble-search-bar">' +
@@ -814,7 +810,7 @@ export class BLEInterface {
         '</div>' +
         '<button id="ble-scan-btn" class="ble-btn-scan-round"></button>' +
       '</div>' +
-      '<div id="ble-status-bar" class="ble-status-bar"><span id="ble-status-text">NEXO BLE</span></div>';
+      '<div id="ble-status-bar" class="ble-status-bar"><span id="ble-status-text"></span></div>';
     document.body.appendChild(panel);
     this.elements.panel = panel;
     var overlay = document.createElement('div');
@@ -869,7 +865,6 @@ export class BLEInterface {
     this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
     this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
     this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
-    /* FIX: Botón back en panel BLE - cerrar panel y volver a NEXO */
     var backBtn = document.getElementById('ble-panel-back');
     if (backBtn) {
       backBtn.addEventListener('click', function() {
@@ -892,7 +887,6 @@ export class BLEInterface {
       self.updateBadge();
       if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
       if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'flex';
-      /* FIX: Al cerrar chat, volver a mostrar panel de contactos */
       if (self.elements.panel) self.elements.panel.classList.add('active');
       if (self.elements.overlay) self.elements.overlay.classList.add('active');
       self.renderContactsList(); self.renderOnlineStrip();
@@ -979,7 +973,7 @@ export class BLEInterface {
       item.className = 'ble-online-item';
       var initials = _getInitials(contact.name);
       var gradClass = _getGradientForUUID(uuid);
-      item.innerHTML = '<div class="ble-online-avatar ' + gradClass + '">' + initials + '<div class="ble-online-dot"></div></div><span class="ble-online-name">' + (contact.name || 'NEXO') + '</span>';
+      item.innerHTML = '<div class="ble-online-avatar ' + gradClass + '">' + initials + '<div class="ble-online-dot"></div></div><span class="ble-online-name">' + (contact.name || '') + '</span>';
       item.addEventListener('click', function() { self.openChat(uuid); });
       strip.appendChild(item);
     });
@@ -990,7 +984,6 @@ export class BLEInterface {
     if (!list) return;
     list.innerHTML = '';
     var contacts = _getBLEContacts();
-    /* FIX v5.1.3: Deduplicar contactos por MAC antes de renderizar */
     var seenMacs = {};
     var deduped = [];
     contacts.forEach(function(c) {
@@ -1041,7 +1034,7 @@ export class BLEInterface {
       row.appendChild(avatar);
       var info = document.createElement('div');
       info.className = 'ble-contact-info';
-      info.innerHTML = '<div class="ble-contact-name">' + (contact.name || 'NEXO Peer') + '</div><div class="ble-contact-msg">' + lastMsg + '</div>';
+      info.innerHTML = '<div class="ble-contact-name">' + (contact.name || '') + '</div><div class="ble-contact-msg">' + lastMsg + '</div>';
       row.appendChild(info);
       var meta = document.createElement('div');
       meta.className = 'ble-contact-meta';
@@ -1091,15 +1084,14 @@ export class BLEInterface {
       var uuid = device.deviceUUID || this._macToUuidMap.get(mac);
       if (!uuid || !_isBLEContact(uuid)) { newDevice = device; newMac = mac; }
     }.bind(this));
-    if (newDevice && newMac) { nameSpan.textContent = newDevice.name || 'NEXO Device'; bar.style.display = 'flex'; bar.dataset.mac = newMac; }
+    if (newDevice && newMac) { nameSpan.textContent = newDevice.name || ''; bar.style.display = 'flex'; bar.dataset.mac = newMac; }
     else { bar.style.display = 'none'; bar.dataset.mac = ''; }
   }
   _addNewDevice() {
     var bar = this.elements.newDeviceBar;
     var mac = _normMac(bar.dataset.mac);
     var device = this.foundDevices.get(mac);
-    var name = device.name || 'NEXO Peer';
-    /* FIX v5.1.3: Deduplicar por MAC antes de agregar contacto nuevo */
+    var name = device.name || '';
     var contacts = _getBLEContacts();
     var existingByMac = contacts.find(function(c) { return _normMac(c.macAddress) === mac; });
     if (existingByMac) {
@@ -1137,7 +1129,7 @@ export class BLEInterface {
     var state = self._getDeviceState(macNorm);
     if (state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY || state.state === BLE_STATES.CONNECTING) return Promise.resolve();
     self._setDeviceState(macNorm, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
-    self.connectedDevices.set(macNorm, { id: macNorm, address: macNorm, name: (device && device.name) || 'NEXO Peer', direction: 'outgoing', servicesReady: false, deviceUUID: self._macToUuidMap.get(macNorm) });
+    self.connectedDevices.set(macNorm, { id: macNorm, address: macNorm, name: (device && device.name) || '', direction: 'outgoing', servicesReady: false, deviceUUID: self._macToUuidMap.get(macNorm) });
     return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: _macWithColons(macNorm) })
       .then(function(result) { if (result && (result.connected || result.alreadyConnected)) { return self._waitForReadyToChat(macNorm, 8000).then(function() {}); } else { self._setDeviceState(macNorm, BLE_STATES.DISCONNECTED); } })
       .catch(function(e) { self._setDeviceState(macNorm, BLE_STATES.DISCONNECTED); });
@@ -1172,7 +1164,7 @@ export class BLEInterface {
     else { fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>'; }
   }
   updateStatusBar(text) {
-    if (this.elements.statusText) this.elements.statusText.textContent = text || 'NEXO BLE';
+    if (this.elements.statusText) this.elements.statusText.textContent = text || '';
   }
   updateStatus(customStatus) {
     var self = this;
@@ -1183,9 +1175,9 @@ export class BLEInterface {
         .then(function(state) {
           if (state && state.enabled) { var connCount = self.connectedDevices ? self.connectedDevices.size : 0; self.updateStatusBar('BLE ON | ' + connCount + ' conectados'); }
           else { self.updateStatusBar('BLE OFF'); }
-        }).catch(function(err) { self.updateStatusBar('ERROR'); });
+        }).catch(function(err) { self.updateStatusBar(''); });
     }
-    self.updateStatusBar('NEXO BLE');
+    self.updateStatusBar('');
     return Promise.resolve();
   }
 }
