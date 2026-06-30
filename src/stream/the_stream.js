@@ -1,7 +1,7 @@
 /**
  * NEXO v9.0 - TheStream v2.4-NAP-CERTIFIED
- * FIX v2.4: Preview cards usan senderName si existe, evitando MAC cruda o "Unknown".
- *           Fallback a contacto activo o 'NEXO Peer' antes de mostrar deviceId.
+ * FIX v2.5: Preview cards usan senderName si existe, evitando MAC cruda o "Unknown".
+ *           Fallback a contacto activo o vacío (sin "NEXO Peer").
  */
 
 class TheStream {
@@ -40,7 +40,7 @@ class TheStream {
     this._injectStyles();
     this._setupResourceErrorInterceptor();
     
-    console.log('[TheStream] Initialized v2.4-NAP-CERTIFIED');
+    console.log('[TheStream] Initialized v2.5-NAP-CERTIFIED');
   }
 
   appendItems(items, options = {}) {
@@ -240,11 +240,11 @@ class TheStream {
       sanitized.sender = 'Unknown';
     }
 
-    // FIX v2.4: Si senderName es Unknown/vacío/MAC-like, intentar fallback a contacto activo
+    // FIX v2.5: Si senderName es Unknown/vacío/MAC-like, intentar fallback a contacto activo
     if (!sanitized.senderName || sanitized.senderName === 'Unknown' || !sanitized.senderName.trim() || /^[a-f0-9]{2}:/i.test(sanitized.senderName)) {
       // Intentar obtener nombre del contacto activo de NEXO
       const activeName = window.nexoApp?.activeContact?.name;
-      sanitized.senderName = activeName || sanitized.senderName || 'NEXO Peer';
+      sanitized.senderName = activeName || sanitized.senderName || '';
     }
 
     return sanitized;
@@ -281,8 +281,12 @@ class TheStream {
     
     const safeId = this._escapeAttr(String(message.id || ''));
     
-    // FIX v2.4: Usar senderName para el nombre visible, no sender (que puede ser MAC)
-    const displayName = message.senderName || message.sender || 'NEXO Peer';
+    // FIX v2.5: Usar senderName para el nombre visible, no sender (que puede ser MAC)
+    // Si está vacío, no renderizar el nombre
+    const displayName = message.senderName || message.sender || '';
+    const nameHtml = displayName 
+      ? `<div style="font-weight: 600; color: #fff; font-size: 14px; margin-bottom: 4px;">${this._escapeHtml(displayName)}</div>`
+      : '';
     
     bubble.innerHTML = `
       <img 
@@ -290,14 +294,12 @@ class TheStream {
         width="40" 
         height="40" 
         style="border-radius: 12px; flex-shrink: 0;"
-        data-sender="${this._escapeHtml(displayName)}"
+        data-sender="${this._escapeHtml(displayName || 'Peer')}"
         loading="lazy"
         class="stream-avatar"
       >
       <div style="flex: 1; min-width: 0;">
-        <div style="font-weight: 600; color: #fff; font-size: 14px; margin-bottom: 4px;">
-          ${this._escapeHtml(displayName)}
-        </div>
+        ${nameHtml}
         <div style="color: #ddd; line-height: 1.4; word-break: break-word;">
           ${this._escapeHtml(content)}
         </div>
