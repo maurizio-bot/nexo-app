@@ -713,3 +713,37 @@ font-size: 14px;
 color: #ff6666;
 }
 .hidden { display: none !important; }
+/* ============================================
+MAIN HEADER - Pantalla principal
+============================================ */
+#main-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px 8px;
+  background: #000;
+  border-bottom: 1px solid #111;
+  position: relative;
+  height: 48px;
+  flex-shrink: 0;
+}
+#main-logo {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+#main-title {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+/* Ocultar main-header en chat */
+body.chat-view-active #main-header {
+  display: none !important;
+}
+
