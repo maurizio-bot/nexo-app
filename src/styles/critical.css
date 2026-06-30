@@ -727,15 +727,19 @@ Consolidado: inline + main.css + ble_styles
    flex-shrink: 0;
    }
    #main-logo {
-   position: absolute;
-   left: 16px;
-   top: 50%;
-   transform: translateY(-50%);
-   width: 32px;
-   height: 32px;
-   border-radius: 8px;
-   object-fit: contain;
-   }
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: contain;
+  /* DIAGNÓSTICO: borde visible + fondo de respaldo */
+  border: 2px solid #ff0000 !important;
+  background: #ff000033 !important;
+  z-index: 9999 !important;
+  }  
    #main-title {
    color: #fff;
    font-size: 26px;
