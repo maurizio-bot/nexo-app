@@ -5,6 +5,7 @@
  * FIX: Quitados todos los fallbacks "NEXO" de nombres
  * FIX: Contactos en pantalla principal (no en panel BLE)
  * FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
+ * FIX: Al agregar contacto, cerrar panel y volver a principal
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -757,7 +758,7 @@ export class BLEInterface {
         if (!self.nativePlugin) return Promise.resolve();
         var promise;
         if (self.isAdvertising) {
-          if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}); else promise = Promise.resolve();
+          if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise =           _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}); else promise = Promise.resolve();
           if (promise) return promise.then(function() { self.isAdvertising = false; self.updateVisibilityButton(); });
           self.isAdvertising = false;
         } else {
@@ -1103,6 +1104,7 @@ export class BLEInterface {
     else { bar.style.display = 'none'; bar.dataset.mac = ''; }
   }
   _addNewDevice() {
+    var self = this;
     var bar = this.elements.newDeviceBar;
     var mac = _normMac(bar.dataset.mac);
     var device = this.foundDevices.get(mac);
@@ -1117,7 +1119,7 @@ export class BLEInterface {
       try { localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac); } catch (e) {}
       this._autoConnectGATT(mac, device);
       this.foundDevices.delete(mac);
-      this.renderContactsList(); this.renderNewDeviceBar(); this.renderOnlineStrip();
+      this._closePanelAndRefresh();
       return;
     }
     var existingUUID = this._macToUuidMap.get(mac);
@@ -1128,13 +1130,20 @@ export class BLEInterface {
       var idx = contacts2.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(existingUUID); });
       if (idx >= 0) { contacts2[idx] = existingContact; _saveBLEContacts(contacts2); }
       try { localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac); } catch (e) {}
-      this._autoConnectGATT(mac, device); this.foundDevices.delete(mac); this.renderContactsList(); this.renderNewDeviceBar(); this.renderOnlineStrip(); return;
+      this._autoConnectGATT(mac, device); this.foundDevices.delete(mac); this._closePanelAndRefresh(); return;
     }
     var tempUUID = 'mac-' + mac;
     this._macToUuidMap.set(mac, tempUUID); this._uuidToMacMap.set(tempUUID, mac);
     _saveMacMaps(this._uuidToMacMap, this._macToUuidMap); _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
     try { localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac); } catch (e) {}
-    this._autoConnectGATT(mac, device); this.foundDevices.delete(mac); this.renderContactsList(); this.renderNewDeviceBar(); this.renderOnlineStrip();
+    this._autoConnectGATT(mac, device); this.foundDevices.delete(mac); this._closePanelAndRefresh();
+  }
+  _closePanelAndRefresh() {
+    this.elements.panel.classList.remove('active');
+    this.elements.overlay.classList.remove('active');
+    this.renderContactsList();
+    this.renderOnlineStrip();
+    this.renderNewDeviceBar();
   }
   _autoConnectGATT(mac, device) {
     var self = this;
