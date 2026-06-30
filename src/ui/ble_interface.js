@@ -793,8 +793,8 @@ export class BLEInterface {
           '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" transform="scale(-1,1) translate(-24,0)"/></svg>' +
         '</button>' +
         '<div style="text-align:center;">' +
-          '<div class="contacts-title">Mensajes</div>' +
-          '<div class="contacts-subtitle">NEXO · Comunicacion P2P cifrada</div>' +
+          '<div class="contacts-title">Agregar contactos</div>' +
+          '' +
         '</div>' +
       '</div>' +
       '<div class="ble-search-bar">' +
@@ -1189,14 +1189,3 @@ export class BLEInterface {
     return Promise.resolve();
   }
 }
-/*
-Focos de Interés:
- * FIX v5.1.3: Deduplicación de contactos por MAC + elimina contactos temporales mac-xxx al recibir UUID real
- * FIX: Botón back en panel BLE para volver a pantalla NEXO
- * FIX: Pantalla NEXO al arrancar, no panel de contactos
- * Mantener la integridad de la estructura de la clase y funciones auxiliares existentes.
- * Garantizar la persistencia y recuperación correcta de los mapas de direcciones (MAC/UUID).
- * Asegurar la compatibilidad con el plugin nativo de Capacitor (NexoBLE).
- * Gestión eficiente de estados de conexión BLE (scanning, advertising, connected).
- * renderizado ligero de UI utilizando elementos del DOM sin canvas.
- */
