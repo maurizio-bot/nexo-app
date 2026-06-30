@@ -612,7 +612,8 @@ Consolidado: inline + main.css + ble_styles
    font-weight: bold;
    cursor: pointer;
    display: flex;
-   align-items: center; justify-content: center;
+   align-items: center;
+   justify-content: center;
    flex-shrink: 0;
    box-shadow: 0 4px 15px rgba(0,200,255,0.3);
    transition: all 0.3s;
@@ -732,7 +733,9 @@ Consolidado: inline + main.css + ble_styles
    transform: translateY(-50%);
    width: 32px;
    height: 32px;
-   object-fit: contain;
+   background: url('assets/nexo_logo.png') center/contain no-repeat;
+   background-color: #00c8ff;
+   border-radius: 8px;
    }
    #main-title {
    color: #fff;
