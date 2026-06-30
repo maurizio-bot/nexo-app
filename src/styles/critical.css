@@ -750,3 +750,12 @@ Consolidado: inline + main.css + ble_styles
    body.chat-view-active #main-header {
    display: none !important;
    }
+   /* ============================================
+   OCULTAR FAB EN CHAT VIEW
+   ============================================ */
+   body.chat-view-active #ble-fab-btn,
+   body.chat-view-active .ble-fab-btn,
+   body.chat-view-active [id*="fab"],
+   body.chat-view-active .fab {
+   display: none !important;
+   }
