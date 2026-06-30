@@ -24,6 +24,12 @@
 <img id="main-logo" src="assets/nexo_logo.png" alt="NEXO">
 <div id="main-title">Contactos</div>
 </div>
+<!-- Contacts View (pantalla principal) -->
+<div id="contacts-view">
+<div id="main-contacts-online-strip" class="contacts-online-strip"></div>
+<div id="main-contacts-list" class="contacts-list"></div>
+<div id="main-contacts-empty-msg" class="contacts-empty-msg">No hay contactos. Presiona el botón + para encontrar dispositivos.</div>
+</div>
 <!-- Chat Header -->
 <div id="chat-header">
 <button id="chat-back-btn" class="chat-back-btn">
@@ -34,11 +40,17 @@
 <input type="text" id="chat-contact-name" value="" placeholder="Contacto" autocomplete="off" spellcheck="false">
 <span id="chat-contact-subtitle"></span>
 </div>
-<!-- Stream Principal -->
-<div id="nexo-stream" class="stream-container"></div>
 <!-- Messages -->
 <div id="messages-container"></div>
-<!-- Input eliminado de pantalla principal -->
+<!-- Input Area (solo chat) -->
+<div id="input-area">
+<input type="text" id="message-input" placeholder="Mensaje..." autocomplete="off" spellcheck="false">
+<button id="send-btn">
+<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff">
+<path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+</svg>
+</button>
+</div>
 </div>
 <!-- Vault Panel -->
 <div id="vault-panel" class="vault-hidden">
