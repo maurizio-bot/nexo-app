@@ -208,12 +208,12 @@
    if (backBtn) backBtn.classList.add('visible');
    var nameInput = document.getElementById('chat-contact-name');
    var subtitle = document.getElementById('chat-contact-subtitle');
-   if (nameInput) nameInput.value = detail.name || 'NEXO Device';
+   if (nameInput) nameInput.value = detail.name || '';
    /* FIX #1: Subtitle vacio — quita "BLUETOOTH" / "NEXO MESH" */
    if (subtitle) subtitle.textContent = '';
-   DEBUG.success('Chat activo: ' + (detail.name || 'NEXO') + ' [' + (detail.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
+   DEBUG.success('Chat activo: ' + (detail.name || '') + ' [' + (detail.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
    self._updateMode('P2P_BLE');
-   self.config.onStatusChange('CHAT:' + (detail.name || 'NEXO'));
+   self.config.onStatusChange('CHAT:' + (detail.name || ''));
    } catch (handlerErr) {
    console.error('[NexoApp] Error en _bleChatHandler:', handlerErr);
    DEBUG.error('BLE_UI_001', 'Error en chat handler: ' + (handlerErr.message || 'unknown'));
@@ -245,7 +245,7 @@
    try {
    var detail = e.detail || {};
    self._updateMode('P2P_BLE');
-   self.config.onStatusChange('CONECTADO:' + (detail.name || 'NEXO'));
+   self.config.onStatusChange('CONECTADO:' + (detail.name || ''));
    } catch (err) {
    console.warn('[NexoApp] Error en _nativeDeviceConnectedHandler:', err);
    }
@@ -274,13 +274,13 @@
    console.log('[BLE_RECV] Mensaje propio ignorado por MAC');
    return;
    }
-   console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || 'NEXO Peer') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
+   console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
    var resolvedName = detail.senderName;
    if (!resolvedName || resolvedName === 'NEXO Peer') {
    var nid = (detail.deviceId || '').toString().toLowerCase().trim();
    var connDev = self.bleInterface && self.bleInterface.connectedDevices ? self.bleInterface.connectedDevices.get(nid) : null;
    var foundDev = self.bleInterface && self.bleInterface.foundDevices ? self.bleInterface.foundDevices.get(nid) : null;
-   resolvedName = (connDev && connDev.name) || (foundDev && foundDev.name) || detail.senderName || 'NEXO Peer';
+   resolvedName = (connDev && connDev.name) || (foundDev && foundDev.name) || detail.senderName || '';
    }
    /* FIX v5.0.11: Detectar ACK y read receipts antes de procesar como mensaje */
    var messageId = null;
