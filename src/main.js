@@ -2,6 +2,7 @@
  * src/main.js - Punto de entrada NEXO v9.9-FIX
  * FIX: chat-view-active agregado/quitado en body para mostrar messages-container e input-area
  * FIX v9.9.1: FAB = botón agregar contacto (+) → panel BLE + auto-scan
+ * FIX v9.9.2: Logo path corregido al iniciar
  * Build #1605+ compatible. NO toca nativo.
  */
 
@@ -49,6 +50,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
     _ensureDOMStructure();
+
+    /* FIX LOGO: Corregir ruta del logo en header principal */
+    _fixLogoPath();
 
     window.NEXO.rem = rem;
     rem.init();
@@ -283,6 +287,21 @@ function _ensureDOMStructure() {
     }
   } catch (e) {
     console.warn('[MAIN] _ensureDOMStructure error:', e);
+  }
+}
+
+/* FIX LOGO: Corregir ruta del logo en header principal */
+function _fixLogoPath() {
+  try {
+    var logo = document.getElementById('main-logo');
+    if (logo) {
+      logo.style.backgroundImage = 'url("./assets/nexo_logo.png")';
+      logo.style.backgroundSize = 'contain';
+      logo.style.backgroundRepeat = 'no-repeat';
+      logo.style.backgroundPosition = 'center';
+    }
+  } catch (e) {
+    console.warn('[MAIN] _fixLogoPath error:', e);
   }
 }
 
