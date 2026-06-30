@@ -733,7 +733,7 @@ Consolidado: inline + main.css + ble_styles
    transform: translateY(-50%);
    width: 32px;
    height: 32px;
-   background: url('assets/nexo_logo.png') center/contain no-repeat;
+   background: url('../assets/nexo_logo.png') center/contain no-repeat;
    background-color: #00c8ff;
    border-radius: 8px;
    }
