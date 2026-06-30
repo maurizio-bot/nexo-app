@@ -1,8 +1,10 @@
 /**
- * BLE Interface v5.1.3-DEDUP-NO-NEXO
+ * BLE Interface v5.1.3-DEDUP-NO-NEXO-MAIN
  * FIX: Deduplicación de contactos por MAC
  * FIX: Botón back en panel BLE
  * FIX: Quitados todos los fallbacks "NEXO" de nombres
+ * FIX: Contactos en pantalla principal (no en panel BLE)
+ * FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -256,7 +258,7 @@ export class BLEInterface {
     }
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
-    console.log('[BLEInterface] GALA v5.1.3-DEDUP-NO-NEXO iniciado');
+    console.log('[BLEInterface] GALA v5.1.3-DEDUP-NO-NEXO-MAIN iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -848,6 +850,10 @@ export class BLEInterface {
     this.elements.addBtn = document.getElementById('ble-add-btn');
     this.elements.statusBar = document.getElementById('ble-status-bar');
     this.elements.statusText = document.getElementById('ble-status-text');
+    /* FIX: Referencias a contenedores de pantalla principal */
+    this.elements.mainContactsList = document.getElementById('main-contacts-list');
+    this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
+    this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
     var fabBtn = document.createElement('button');
     fabBtn.id = 'ble-fab-btn';
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
@@ -879,6 +885,10 @@ export class BLEInterface {
         item.classList.add('active');
         var tab = item.dataset.tab;
         if (tab === 'people') self.togglePanel();
+        else if (tab === 'chats') {
+          self.elements.panel.classList.remove('active');
+          self.elements.overlay.classList.remove('active');
+        }
       });
     });
     window.addEventListener('nexo:ble:closeChat', function() {
@@ -887,8 +897,7 @@ export class BLEInterface {
       self.updateBadge();
       if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
       if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'flex';
-      if (self.elements.panel) self.elements.panel.classList.add('active');
-      if (self.elements.overlay) self.elements.overlay.classList.add('active');
+      /* FIX: NO reabrir panel BLE — volver a pantalla principal */
       self.renderContactsList(); self.renderOnlineStrip();
     });
     window.addEventListener('nexo:ble:openChat', function() {
@@ -960,7 +969,7 @@ export class BLEInterface {
   }
   renderOnlineStrip() {
     var self = this;
-    var strip = this.elements.onlineStrip;
+    var strip = this.elements.mainOnlineStrip;
     if (!strip) return;
     strip.innerHTML = '';
     var contacts = _getBLEContacts();
@@ -980,7 +989,7 @@ export class BLEInterface {
   }
   renderContactsList() {
     var self = this;
-    var list = this.elements.contactsList;
+    var list = this.elements.mainContactsList;
     if (!list) return;
     list.innerHTML = '';
     var contacts = _getBLEContacts();
@@ -1009,7 +1018,13 @@ export class BLEInterface {
       }
     });
     contacts = deduped;
-    if (contacts.length === 0) { list.innerHTML = '<div class="ble-empty">No hay contactos. Presiona Buscar para encontrar dispositivos.</div>'; this.renderOnlineStrip(); return; }
+    if (contacts.length === 0) {
+      list.innerHTML = '';
+      if (this.elements.mainEmptyMsg) this.elements.mainEmptyMsg.classList.add('visible');
+      this.renderOnlineStrip();
+      return;
+    }
+    if (this.elements.mainEmptyMsg) this.elements.mainEmptyMsg.classList.remove('visible');
     var pinned = _getPinnedContacts();
     contacts.sort(function(a, b) {
       var aPinned = pinned.indexOf(_normId(a.deviceUUID)) >= 0 ? 1 : 0;
