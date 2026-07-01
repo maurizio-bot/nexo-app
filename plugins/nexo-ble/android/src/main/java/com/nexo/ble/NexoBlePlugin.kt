@@ -84,7 +84,7 @@ private var isAdvertisingActive = false
 private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
 private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
 private fun remLog(level: String, tag: String, message: String) {
-Log.i("NEXO_REM", "[$level][$tag] $message")
+Log.i("NEXO_REM", "[$level][tag] $message")
 try {
 notifyListeners("onRemLog", JSObject()
 .put("level", level)
@@ -97,7 +97,7 @@ notifyListeners("onRemLog", JSObject()
 private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
 val macNorm = normalizeMac(deviceId)
 if (chunk.length > 4000) {
-remLog("WARN", "REASSEMBLY", "Chunk demasiado largo de macNorm ({chunk.length}), descartando")
+remLog("WARN", "REASSEMBLY", "Chunk demasiado largo de macNorm (${chunk.length}), descartando")
 messageBuffers.remove(macNorm)
 messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
 return
@@ -217,7 +217,7 @@ keepAliveTimers.clear()
 pendingMessageQueue.clear()
 scannedDevices.clear()
 messageBuffers.clear()
-messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
 }
 @PluginMethod
