@@ -84,7 +84,7 @@ private var isAdvertisingActive = false
 private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
 private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
 private fun remLog(level: String, tag: String, message: String) {
-Log.i("NEXO_REM", "[$level][$tag] $message")
+Log.i("NEXO_REM", "[$level][$tag] message")
 try {
 notifyListeners("onRemLog", JSObject()
 .put("level", level)
@@ -100,7 +100,7 @@ messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
 val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
 buffer.append(chunk)
 val accumulated = buffer.toString()
-remLog("DEBUG", "REASSEMBLY", "Buffer for macNorm: len={accumulated.length}, content=${accumulated.take(60)}...")
+remLog("DEBUG", "REASSEMBLY", "Buffer for $macNorm: len=${accumulated.length}, content={accumulated.take(60)}...")
 val completeMessage = tryExtractCompleteJson(accumulated)
 if (completeMessage != null) {
 remLog("INFO", "REASSEMBLY", "Mensaje completo reensamblado de $macNorm")
@@ -194,10 +194,10 @@ gattClients.clear()
 clientRxCharacteristics.clear()
 clientTxCharacteristics.clear()
 clientConnectionStates.clear()
-reconnectTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+reconnectTimers.forEach { _, runnable -> mainHandler.removeCallbacks(runnable) }
 reconnectTimers.clear()
 reconnectAttempts.clear()
-keepAliveTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+keepAliveTimers.forEach { _, runnable -> mainHandler.removeCallbacks(runnable) }
 keepAliveTimers.clear()
 pendingMessageQueue.clear()
 scannedDevices.clear()
@@ -373,7 +373,7 @@ ctx.startForegroundService(intent)
 ctx.startService(intent)
 }
 } catch (e: Exception) {
-remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: ${e.message}")
+remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: {e.message}")
 }
 }
 }
@@ -604,7 +604,7 @@ if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_
 notifyListeners("onNotificationsEnabled", JSObject().put("deviceId", address).put("notificationsEnabled", true))
 startKeepAlive(macNorm)
 } else if (status != BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
-remLog("ERROR", "GATT_CLIENT_CB", "CCCD write failed status=$status for $address")
+remLog("ERROR", "GATT_CLIENT_CB", "CCCD write failed status=$status for address")
 notifyListeners("onConnectionFailed", JSObject().put("deviceId", address).put("reason", "CCCD write failed: $status"))
 }
 }
@@ -613,7 +613,7 @@ override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: Blueto
 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
 val chunk = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
 val address = gatt.device?.address ?: ""
-remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from address: len={chunk.length}")
+remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from address: len=${chunk.length}")
 processReceivedChunk(address, chunk, "gatt_client")
 }
 }
@@ -1048,3 +1048,9 @@ registerServerReceivers()
 call.resolve(JSObject().put("listening", true))
 }
 }
+// Firmas de modificación:
+// 1. Integración de lógica de reensamblaje de mensajes (Buffer)
+// 2. Implementación de métodos del ciclo de vida para limpieza (GATT DUAL)
+// 3. Gestión de permisos BLE dinámicos (Android S/T/U)
+// 4. Mecanismo de reintento automático de conexión (Auto-Reconnect)
+// 5. Soporte para notificaciones GATT y keep-alive
