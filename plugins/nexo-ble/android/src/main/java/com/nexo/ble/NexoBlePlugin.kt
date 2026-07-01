@@ -187,9 +187,9 @@ try { stopGattServer() } catch (e: Exception) { }
 isAdvertisingActive = false
 try { stopAdvertisingInternal() } catch (e: Exception) { }
 messageBuffers.clear()
-messageBufferTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
-pendingCalls.forEach { (*, call) -> try { call.resolve(JSObject().put("destroyed", true)) } catch(e: Exception) {} }
+pendingCalls.forEach { (_, call) -> try { call.resolve(JSObject().put("destroyed", true)) } catch(e: Exception) {} }
 pendingCalls.clear()
 scannedDevices.clear()
 serverConnectedDevices.clear()
@@ -209,15 +209,15 @@ gattClients.clear()
 clientRxCharacteristics.clear()
 clientTxCharacteristics.clear()
 clientConnectionStates.clear()
-reconnectTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 reconnectTimers.clear()
 reconnectAttempts.clear()
-keepAliveTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 keepAliveTimers.clear()
 pendingMessageQueue.clear()
 scannedDevices.clear()
 messageBuffers.clear()
-messageBufferTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
 }
 @PluginMethod
