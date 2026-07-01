@@ -84,7 +84,7 @@ private var isAdvertisingActive = false
 private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
 private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
 private fun remLog(level: String, tag: String, message: String) {
-Log.i("NEXO_REM", "[$level][$tag] message")
+Log.i("NEXO_REM", "[$level][$tag] $message")
 try {
 notifyListeners("onRemLog", JSObject()
 .put("level", level)
@@ -96,8 +96,18 @@ notifyListeners("onRemLog", JSObject()
 }
 private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
 val macNorm = normalizeMac(deviceId)
+if (chunk.length > 4000) {
+remLog("WARN", "REASSEMBLY", "Chunk demasiado largo de macNorm ({chunk.length}), descartando")
+messageBuffers.remove(macNorm)
+messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+return
+}
 messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
 val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
+if (buffer.length + chunk.length > 50000) {
+remLog("WARN", "REASSEMBLY", "Buffer overflow para macNorm, reiniciando")
+buffer.setLength(0)
+}
 buffer.append(chunk)
 val accumulated = buffer.toString()
 remLog("DEBUG", "REASSEMBLY", "Buffer for $macNorm: len=${accumulated.length}, content={accumulated.take(60)}...")
@@ -177,9 +187,14 @@ try { stopGattServer() } catch (e: Exception) { }
 isAdvertisingActive = false
 try { stopAdvertisingInternal() } catch (e: Exception) { }
 messageBuffers.clear()
-messageBufferTimers.forEach { _, runnable -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
+pendingCalls.forEach { (*, call) -> try { call.resolve(JSObject().put("destroyed", true)) } catch(e: Exception) {} }
+pendingCalls.clear()
+scannedDevices.clear()
+serverConnectedDevices.clear()
 }
+@Synchronized
 private fun cleanupAllConnections() {
 gattClients.forEach { (mac, gatt) ->
 try {
@@ -194,15 +209,15 @@ gattClients.clear()
 clientRxCharacteristics.clear()
 clientTxCharacteristics.clear()
 clientConnectionStates.clear()
-reconnectTimers.forEach { _, runnable -> mainHandler.removeCallbacks(runnable) }
+reconnectTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 reconnectTimers.clear()
 reconnectAttempts.clear()
-keepAliveTimers.forEach { _, runnable -> mainHandler.removeCallbacks(runnable) }
+keepAliveTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 keepAliveTimers.clear()
 pendingMessageQueue.clear()
 scannedDevices.clear()
 messageBuffers.clear()
-messageBufferTimers.forEach { _, runnable -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
 }
 @PluginMethod
@@ -373,7 +388,7 @@ ctx.startForegroundService(intent)
 ctx.startService(intent)
 }
 } catch (e: Exception) {
-remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: {e.message}")
+remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: ${e.message}")
 }
 }
 }
@@ -383,7 +398,14 @@ device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteri
 preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
 ) {
 if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-val chunk = value?.toString(Charset.defaultCharset()) ?: ""
+if (value == null || value.isEmpty()) {
+remLog("WARN", "GATT_SERVER", "RX chunk vacio de ${device.address}")
+if (responseNeeded) {
+bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+}
+return
+}
+val chunk = value.toString(Charset.defaultCharset())
 val mac = device.address
 remLog("INFO", "GATT_SERVER", "RX chunk from mac: len={chunk.length}")
 processReceivedChunk(mac, chunk, "gatt_server")
@@ -440,16 +462,23 @@ val device: BluetoothDevice = scannedDevices[macNorm] ?: run {
 remLog("WARN", "GATT_CLIENT", "Device no en cache, intentando getRemoteDevice para $macNorm")
 val macFormatted = formatMacForAndroid(rawDeviceId)
 if (macFormatted == null) {
+pendingCalls.remove(macNorm)
 call.reject("MAC invalida: $rawDeviceId", "INVALID_MAC")
 return
 }
 try {
 adapter.getRemoteDevice(macFormatted)
 } catch (e: IllegalArgumentException) {
+pendingCalls.remove(macNorm)
 call.reject("MAC invalida para Bluetooth API: $macFormatted", "INVALID_MAC")
 return
 } catch (e: SecurityException) {
+pendingCalls.remove(macNorm)
 call.reject("Permiso BLUETOOTH_CONNECT requerido para conectar", "PERMISSION_DENIED")
+return
+} catch (e: Exception) {
+pendingCalls.remove(macNorm)
+call.reject("Error obteniendo device: ${e.message}", "DEVICE_ERROR")
 return
 }
 }
@@ -506,6 +535,8 @@ pendingCalls.remove(macNorm)
 }
 gattClients.remove(macNorm)
 clientConnectionStates.remove(macNorm)
+clientRxCharacteristics.remove(macNorm)
+clientTxCharacteristics.remove(macNorm)
 try { gatt.close() } catch (e: Exception) { }
 startAutoReconnect(macNorm)
 return
@@ -603,9 +634,6 @@ val address = gatt.device?.address ?: ""
 if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
 notifyListeners("onNotificationsEnabled", JSObject().put("deviceId", address).put("notificationsEnabled", true))
 startKeepAlive(macNorm)
-} else if (status != BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
-remLog("ERROR", "GATT_CLIENT_CB", "CCCD write failed status=$status for address")
-notifyListeners("onConnectionFailed", JSObject().put("deviceId", address).put("reason", "CCCD write failed: $status"))
 }
 }
 @Suppress("DEPRECATION")
@@ -613,7 +641,7 @@ override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: Blueto
 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
 val chunk = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
 val address = gatt.device?.address ?: ""
-remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from address: len=${chunk.length}")
+remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from address: len={chunk.length}")
 processReceivedChunk(address, chunk, "gatt_client")
 }
 }
@@ -755,7 +783,19 @@ val message = call.getString("message") ?: ""
 val macNorm = normalizeMac(rawDeviceId)
 remLog("INFO", "SEND", "sendMessage to=rawDeviceId len={message.length}")
 if (rawDeviceId.isEmpty()) {
-call.reject("deviceId requerido")
+call.reject("deviceId requerido", "INVALID_DEVICE_ID")
+return
+}
+if (message.isEmpty()) {
+call.reject("message no puede estar vacio", "EMPTY_MESSAGE")
+return
+}
+if (message.length > 4000) {
+call.reject("message demasiado largo (max 4000 chars)", "MESSAGE_TOO_LONG")
+return
+}
+if (macNorm.length != 12) {
+call.reject("MAC invalida: $rawDeviceId", "INVALID_MAC")
 return
 }
 var sent = false
@@ -824,14 +864,18 @@ val ctx = activity.applicationContext
 val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
 val adapter = bluetoothManager.adapter
 if (adapter == null || !adapter.isEnabled) {
-call.reject("Bluetooth desactivado")
+call.reject("Bluetooth desactivado", "BLUETOOTH_OFF")
 return
 }
 if (!checkCoreBLEPermissions(ctx)) {
-call.reject("Permisos BLE no concedidos")
+call.reject("Permisos BLE no concedidos", "PERMISSION_DENIED")
 return
 }
 if (bluetoothGattServer == null) startGattServer()
+if (bluetoothGattServer == null) {
+call.reject("No se pudo iniciar GATT Server", "GATT_SERVER_FAIL")
+return
+}
 try {
 val intent = Intent(ctx, BleService::class.java)
 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -887,14 +931,18 @@ val ctx = activity.applicationContext
 val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
 val adapter = bluetoothManager.adapter
 if (adapter == null || !adapter.isEnabled) {
-call.reject("Bluetooth desactivado")
+call.reject("Bluetooth desactivado", "BLUETOOTH_OFF")
 return
 }
 if (!isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)) {
-call.reject("BLUETOOTH_SCAN no concedido")
+call.reject("BLUETOOTH_SCAN no concedido", "PERMISSION_DENIED")
 return
 }
 bluetoothScanner = adapter.bluetoothLeScanner
+if (bluetoothScanner == null) {
+call.reject("BluetoothLeScanner no disponible", "SCANNER_NULL")
+return
+}
 scanResults.clear()
 scannedDevices.clear()
 val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID)).build()
@@ -1048,9 +1096,3 @@ registerServerReceivers()
 call.resolve(JSObject().put("listening", true))
 }
 }
-// Firmas de modificación:
-// 1. Integración de lógica de reensamblaje de mensajes (Buffer)
-// 2. Implementación de métodos del ciclo de vida para limpieza (GATT DUAL)
-// 3. Gestión de permisos BLE dinámicos (Android S/T/U)
-// 4. Mecanismo de reintento automático de conexión (Auto-Reconnect)
-// 5. Soporte para notificaciones GATT y keep-alive
