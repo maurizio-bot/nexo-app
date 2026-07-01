@@ -1,13 +1,11 @@
 /**
- * BLE Interface v5.1.4-FIXED
+ * BLE Interface v5.1.3-DEDUP-NO-NEXO-MAIN-ROBUST
  * FIX: Deduplicación de contactos por MAC
  * FIX: Botón back en panel BLE
  * FIX: Quitados todos los fallbacks "NEXO" de nombres
  * FIX: Contactos en pantalla principal (no en panel BLE)
  * FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
  * FIX: Al agregar contacto, cerrar panel y volver a principal
- * FIX: Dual GATT - reverse connect en incoming server connection
- * FIX: Limpieza estado DISCONNECTED previo al reconectar
    */
    export function initBLEInterface(bleMesh) {
    var instance = new BLEInterface(bleMesh).init();
@@ -176,13 +174,15 @@
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
    result = pluginmethod;
+   } else if (args !== undefined && args !== null) {
+   result = pluginmethod;
    } else {
-   var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
-   result = plugin[method].apply(plugin, callArgs);
+   result = plugin
+   ;
    }
    if (result && typeof result.then === 'function') {
    result.then(resolve).catch(reject);
-   } else { resolve(result); }
+   } else { resolve(result !== undefined ? result : null); }
    } catch (e) { reject(e); }
    });
    }
@@ -261,7 +261,7 @@
    }
    this._readyResolvers = new Map();
    this._notificationFallbackTimers = new Map();
-   console.log('[BLEInterface] v5.1.4-FIXED iniciado');
+   console.log('[BLEInterface] GALA v5.1.3-DEDUP-NO-NEXO-MAIN iniciado');
    }
    _detectMeshType() {
    if (!this.bleMesh) return 'none';
@@ -394,19 +394,9 @@
    direction: data.direction || 'outgoing', role: data.role || 'client',
    servicesReady: data.servicesReady || false, deviceUUID: peerUUID
    });
-   /* FIX #7: Limpiar estado DISCONNECTED previo al reconectar */
-   var prevState = self._deviceStates.get(mac);
-   if (prevState && prevState.state === BLE_STATES.DISCONNECTED) {
-   self._deviceStates.delete(mac);
-   }
    self._setDeviceState(mac, data.role === 'server' ? BLE_STATES.READY_TO_CHAT : BLE_STATES.CONNECTING, {
    direction: data.direction, role: data.role, deviceUUID: peerUUID
    });
-   /* FIX #1: Si el remoto se conecto a MI server, yo me conecto a SU server */
-   if (data.direction === 'incoming' && data.role === 'server' && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
-   console.log('[BLEInterface] FIX#1: Incoming connection from ' + mac + ', initiating reverse GATT connect');
-   self._autoConnectGATT(mac, { name: displayName });
-   }
    if (peerUUID) {
    var contacts = _getBLEContacts();
    var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(peerUUID); });
@@ -596,17 +586,20 @@
    try {
    if (!self.nativePlugin) { reject(new Error('Plugin no disponible')); return; }
    var macNorm = _normMac(deviceMAC);
-   if (!macNorm) { reject(new Error('MAC invalida')); return; }
+   if (!macNorm || macNorm.length !== 12) { reject(new Error('MAC invalida')); return; }
+   if (!content || typeof content !== 'string') { reject(new Error('Contenido invalido')); return; }
    var targetId = _macWithColons(macNorm);
+   if (!targetId || targetId.length !== 17) { reject(new Error('MAC con formato invalido')); return; }
    var isCtrl = _isControlPacket(content);
    var enrichedPayload;
    if (isCtrl) { enrichedPayload = content; }
    else {
    enrichedPayload = JSON.stringify({
-   deviceUUID: self.localDeviceUUID, senderName: self.localDeviceName, content: content,
-   messageId: messageId || ('msg' + Date.now() + '*' + Math.random().toString(36).substr(2, 9)), timestamp: Date.now()
+   deviceUUID: self.localDeviceUUID, senderName: self.localDeviceName || '', content: content,
+   messageId: messageId || ('msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9)), timestamp: Date.now()
    });
    }
+   if (!enrichedPayload || enrichedPayload.length > 4000) { reject(new Error('Payload demasiado largo o vacio')); return; }
    if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
    _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
    .then(function() { resolve(); }).catch(function(e) { reject(e); });
@@ -770,7 +763,7 @@
    if (!self.nativePlugin) return Promise.resolve();
    var promise;
    if (self.isAdvertising) {
-   if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}); else promise = Promise.resolve();
+   if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise =           _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}); else promise = Promise.resolve();
    if (promise) return promise.then(function() { self.isAdvertising = false; self.updateVisibilityButton(); });
    self.isAdvertising = false;
    } else {
@@ -982,6 +975,7 @@
    }
    renderOnlineStrip() {
    var self = this;
+   try {
    var strip = this.elements.mainOnlineStrip;
    if (!strip) return;
    strip.innerHTML = '';
@@ -1002,6 +996,7 @@
    }
    renderContactsList() {
    var self = this;
+   try {
    var list = this.elements.mainContactsList;
    if (!list) return;
    list.innerHTML = '';
@@ -1080,6 +1075,7 @@
    if (index < contacts.length - 1) { var divider = document.createElement('div'); divider.className = 'ble-divider'; list.appendChild(divider); }
    });
    this.renderOnlineStrip();
+   } catch(e) { console.warn('[BLEInterface] Error renderContactsList:', e); }
    }
    _toggleContactMenu(uuid, btn) {
    var self = this;
@@ -1199,6 +1195,27 @@
    if (this.newDevicesCount > 0) { fabBtn.innerHTML = '<span style="color:#fff;font-size:14px;font-weight:700;">' + this.newDevicesCount + '</span>'; }
    else { fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>'; }
    }
+   destroy() {
+   var self = this;
+   try {
+   self._readyResolvers.forEach(function(resolver) { try { clearTimeout(resolver.timer); } catch(e) {} });
+   self._readyResolvers.clear();
+   self._notificationFallbackTimers.forEach(function(timer) { try { clearTimeout(timer); } catch(e) {} });
+   self._notificationFallbackTimers.clear();
+   if (self._nativePayloadListener) { try { self._nativePayloadListener.remove(); } catch(e) {} }
+   if (self._nativeDeviceFoundListener) { try { self._nativeDeviceFoundListener.remove(); } catch(e) {} }
+   if (self._nativeScanFailedListener) { try { self._nativeScanFailedListener.remove(); } catch(e) {} }
+   if (self._nativeDeviceConnectedListener) { try { self._nativeDeviceConnectedListener.remove(); } catch(e) {} }
+   if (self._nativeDeviceDisconnectedListener) { try { self._nativeDeviceDisconnectedListener.remove(); } catch(e) {} }
+   if (self._nativeServicesReadyListener) { try { self._nativeServicesReadyListener.remove(); } catch(e) {} }
+   if (self._nativeNotificationsListener) { try { self._nativeNotificationsListener.remove(); } catch(e) {} }
+   if (self._nativeConnectionFailedListener) { try { self._nativeConnectionFailedListener.remove(); } catch(e) {} }
+   if (self._nativeAdStartedListener) { try { self._nativeAdStartedListener.remove(); } catch(e) {} }
+   if (self._nativeAdFailedListener) { try { self._nativeAdFailedListener.remove(); } catch(e) {} }
+   self._pendingMessageQueue.clear();
+   self._receivedMessageIds.clear();
+   } catch(e) { console.warn('[BLEInterface] Error en destroy:', e); }
+   }
    updateStatusBar(text) {
    if (this.elements.statusText) this.elements.statusText.textContent = text || '';
    }
@@ -1217,12 +1234,3 @@
    return Promise.resolve();
    }
    }
-   // Focos de Interés:
-   // 1. Deduplicación de contactos por MAC en lista principal.
-   // 2. Comportamiento del botón de retorno (back) en panel BLE.
-   // 3. Eliminación de lógica de fallback "NEXO" para nombres.
-   // 4. Integración y renderizado de contactos en la interfaz principal.
-   // 5. Gestión del estado de conexión (evitar reabrir panel al cerrar chat).
-   // 6. Flujo de navegación tras agregar un nuevo contacto.
-   // 7. Gestión de conexiones duales GATT (reverse connect).
-   // 8. Limpieza de estados de conexión (DISCONNECTED) previos a reconexión.
