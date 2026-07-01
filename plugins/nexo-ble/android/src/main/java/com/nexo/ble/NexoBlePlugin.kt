@@ -545,7 +545,6 @@ class NexoBlePlugin : Plugin() {
                 clientConnectionStates[macNorm] = newState
                 val pendingCall = pendingCalls[macNorm]
 
-                // FIX: Manejar errores de conexion (status != 0)
                 if (status != BluetoothGatt.GATT_SUCCESS && newState != BluetoothProfile.STATE_CONNECTED) {
                     remLog("WARN", "GATT_CLIENT_CB", "Error de conexion status=$status, forzando reconexion")
                     pendingCall?.let {
@@ -560,7 +559,6 @@ class NexoBlePlugin : Plugin() {
                 }
 
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    // FIX: Resetear intentos de reconexion al conectar exitosamente
                     reconnectAttempts[macNorm] = 0
                     pendingCall?.let {
                         it.resolve(JSObject().put("connected", true).put("alreadyConnected", false).put("deviceId", address))
@@ -572,7 +570,6 @@ class NexoBlePlugin : Plugin() {
                         .put("role", "client")
                         .put("servicesReady", false)
                     )
-                    // FIX: Prioridad alta para evitar que Android mate la conexion
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
@@ -609,7 +606,6 @@ class NexoBlePlugin : Plugin() {
                     notifyListeners("onConnectionFailed", JSObject().put("deviceId", address).put("reason", "Service discovery failed"))
                     return
                 }
-                // FIX: Request MTU grande para evitar fragmentacion excesiva
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                         gatt.requestMtu(MTU_REQUEST)
@@ -645,11 +641,9 @@ class NexoBlePlugin : Plugin() {
                     }
                 }
                 notifyListeners("onServicesReady", JSObject().put("deviceId", address).put("servicesReady", true))
-                // FIX: Procesar cola de mensajes pendientes
                 processPendingMessages(macNorm)
             }
 
-            // FIX: Callback para MTU cambiado
             override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
                 val address = gatt.device?.address ?: ""
                 remLog("INFO", "GATT_CLIENT_CB", "MTU changed $address mtu=$mtu status=$status")
@@ -659,7 +653,6 @@ class NexoBlePlugin : Plugin() {
                 val address = gatt.device?.address ?: ""
                 if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
                     notifyListeners("onNotificationsEnabled", JSObject().put("deviceId", address).put("notificationsEnabled", true))
-                    // FIX: Iniciar keep-alive tras habilitar notificaciones
                     startKeepAlive(macNorm)
                 }
             }
@@ -685,7 +678,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // FIX: Keep-alive para evitar que Android desconecte por inactividad
     private fun startKeepAlive(macNorm: String) {
         stopKeepAlive(macNorm)
         val runnable = object : Runnable {
@@ -693,7 +685,6 @@ class NexoBlePlugin : Plugin() {
                 val gatt = gattClients[macNorm]
                 val state = clientConnectionStates[macNorm]
                 if (gatt != null && state == BluetoothProfile.STATE_CONNECTED) {
-                    // Enviar ping vacio o leer RSSI para mantener viva la conexion
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             gatt.readRemoteRssi()
@@ -714,7 +705,6 @@ class NexoBlePlugin : Plugin() {
         keepAliveTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
     }
 
-    // FIX: Procesar mensajes encolados cuando la conexion este lista
     private fun processPendingMessages(macNorm: String) {
         val queue = pendingMessageQueue.remove(macNorm) ?: return
         val gatt = gattClients[macNorm]
@@ -749,7 +739,6 @@ class NexoBlePlugin : Plugin() {
         }
         reconnectAttempts[macNorm] = currentAttempts + 1
 
-        // FIX: Limpiar timer anterior si existe para evitar duplicados
         reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
 
         val runnable = Runnable {
@@ -759,12 +748,10 @@ class NexoBlePlugin : Plugin() {
             val adapter = bluetoothManager.adapter
             if (adapter == null || !adapter.isEnabled) return@Runnable
             try {
-                // FIX: Preferir dispositivo cacheado sobre getRemoteDevice
                 val device = scannedDevices[macNorm] ?: run {
                     val macFormatted = macNorm.chunked(2).joinToString(":")
                     adapter.getRemoteDevice(macFormatted)
                 }
-                // FIX: autoConnect=true para reconexion robusta del stack Android
                 val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     device.connectGatt(ctx, true, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
                 } else {
@@ -830,24 +817,66 @@ class NexoBlePlugin : Plugin() {
             call.reject("deviceId requerido")
             return
         }
+
+        var sent = false
+        var mode = ""
+
+        // VIA 1: GATT Client - yo como cliente escribo en RX del server remoto
         val rxChar = clientRxCharacteristics[macNorm]
         val gatt = gattClients[macNorm]
         if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
-            val data = message.toByteArray(Charset.defaultCharset())
-            val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS
-            } else {
-                @Suppress("DEPRECATION")
-                rxChar.value = data
-                @Suppress("DEPRECATION")
-                gatt.writeCharacteristic(rxChar) ?: false
+            try {
+                val data = message.toByteArray(Charset.defaultCharset())
+                val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS
+                } else {
+                    @Suppress("DEPRECATION")
+                    rxChar.value = data
+                    @Suppress("DEPRECATION")
+                    gatt.writeCharacteristic(rxChar) ?: false
+                }
+                remLog("INFO", "SEND", "GATT Client write success=$success")
+                if (success) {
+                    sent = true
+                    mode = "gatt_client"
+                }
+            } catch (e: Exception) {
+                remLog("WARN", "SEND", "GATT Client write exception: ${e.message}")
             }
-            remLog("INFO", "SEND", "GATT Client write success=$success")
-            call.resolve(JSObject().put("sent", success).put("mode", "gatt_client").put("deviceId", rawDeviceId))
+        }
+
+        // VIA 2: GATT Server - el remoto esta conectado a mi server, notifico via TX
+        if (!sent) {
+            val remoteDevice = serverConnectedDevices[macNorm]
+            val srvTx = serverTxCharacteristic
+            val srv = bluetoothGattServer
+            if (remoteDevice != null && srv != null && srvTx != null) {
+                try {
+                    val data = message.toByteArray(Charset.defaultCharset())
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        srv.notifyCharacteristicChanged(remoteDevice, srvTx, false, data)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        srvTx.value = data
+                        @Suppress("DEPRECATION")
+                        srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
+                    }
+                    remLog("INFO", "SEND", "GATT Server notify success to $macNorm")
+                    sent = true
+                    mode = "gatt_server"
+                } catch (e: Exception) {
+                    remLog("WARN", "SEND", "GATT Server notify exception: ${e.message}")
+                }
+            }
+        }
+
+        if (sent) {
+            call.resolve(JSObject().put("sent", true).put("mode", mode).put("deviceId", rawDeviceId))
             return
         }
-        // FIX: Si no esta conectado, encolar mensaje en lugar de perderlo
-        remLog("WARN", "SEND", "No GATT client para $macNorm, encolando mensaje")
+
+        // Si no se pudo enviar por ninguna via, encolar
+        remLog("WARN", "SEND", "No GATT client ni server para $macNorm, encolando mensaje")
         val queue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
         queue.add(message)
         call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
