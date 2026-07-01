@@ -731,6 +731,7 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // FIX 1: autoConnect=false + reconexion solo con objeto cacheado (no reconstruir desde MAC)
     private fun startAutoReconnect(macNorm: String) {
         val currentAttempts = reconnectAttempts[macNorm] ?: 0
         if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -747,15 +748,19 @@ class NexoBlePlugin : Plugin() {
             val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = bluetoothManager.adapter
             if (adapter == null || !adapter.isEnabled) return@Runnable
+
+            // FIX: solo reconectar si tenemos el objeto BluetoothDevice cacheado del scan
+            val device = scannedDevices[macNorm]
+            if (device == null) {
+                remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
+                return@Runnable
+            }
+
             try {
-                val device = scannedDevices[macNorm] ?: run {
-                    val macFormatted = macNorm.chunked(2).joinToString(":")
-                    adapter.getRemoteDevice(macFormatted)
-                }
                 val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    device.connectGatt(ctx, true, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
+                    device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
                 } else {
-                    device.connectGatt(ctx, true, createGattClientCallback(macNorm))
+                    device.connectGatt(ctx, false, createGattClientCallback(macNorm))
                 }
                 if (gatt != null) {
                     gattClients[macNorm] = gatt
@@ -804,6 +809,17 @@ class NexoBlePlugin : Plugin() {
         messageBuffers.remove(macNorm)
         messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         mainHandler.postDelayed({ startAutoReconnect(macNorm) }, 500)
+        call.resolve(JSObject().put("reconnecting", true))
+    }
+
+    // FIX 1: metodo publico para que JS reconecte manualmente cuando recibe onDeviceDisconnected
+    @PluginMethod
+    fun reconnectDevice(call: PluginCall) {
+        val rawDeviceId = call.getString("deviceId") ?: ""
+        val macNorm = normalizeMac(rawDeviceId)
+        remLog("INFO", "GATT_CLIENT", "reconnectDevice manual $rawDeviceId")
+        reconnectAttempts[macNorm] = 0
+        startAutoReconnect(macNorm)
         call.resolve(JSObject().put("reconnecting", true))
     }
 
@@ -966,7 +982,8 @@ class NexoBlePlugin : Plugin() {
         }
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
-        scannedDevices.clear()
+        // FIX 1: NO limpiar scannedDevices — destruye la cache de objetos BluetoothDevice para reconexion
+        // scannedDevices.clear()
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID)).build()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         try {
