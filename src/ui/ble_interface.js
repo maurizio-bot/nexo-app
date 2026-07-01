@@ -6,6 +6,9 @@
  * FIX: Contactos en pantalla principal (no en panel BLE)
  * FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
  * FIX: Al agregar contacto, cerrar panel y volver a principal
+ * FIX: Pre-conexion GATT — conectar al agregar/scanear contacto conocido
+ * FIX: Chat abre instantaneo, conexion en background
+ * FIX: Mensajes se encolan si canal no listo, se envian al conectar
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -634,18 +637,18 @@ export class BLEInterface {
         function doSend() {
           self._sendMessageNative(mac, content, messageId).then(function() { resolve(); }).catch(function(err) { reject(err); });
         }
-        if (!isReady && !isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+        function enqueueMsg() {
+          var queue = self._pendingMessageQueue.get(mac) || [];
+          queue.push({ content: content, messageId: messageId, resolve: resolve, reject: reject });
+          self._pendingMessageQueue.set(mac, queue);
+        }
+        if (isReady) { doSend(); return; }
+        // No esta listo: encolar mensaje e iniciar conexion en background
+        enqueueMsg();
+        if (!isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: _macWithColons(mac) })
-            .then(function(connResult) { if (connResult && (connResult.connected || connResult.alreadyConnected)) { return self._waitForReadyToChat(mac, 12000); } throw new Error('No se pudo conectar'); })
-            .then(function() { doSend(); }).catch(function(err) { reject(err); });
-          return;
+            .catch(function(e) {});
         }
-        if (!isReady && isConnecting) {
-          self._waitForReadyToChat(mac, 12000).then(function() { doSend(); }).catch(function(err) { reject(err); });
-          return;
-        }
-        if (!isReady) { console.warn('[BLEInterface] Canal no listo para ' + mac + ', intentando envio directo'); doSend(); return; }
-        doSend();
       } catch (fatal) { reject(fatal); }
     });
   }
@@ -665,6 +668,7 @@ export class BLEInterface {
     if (!macNorm) return;
     var resolver = this._readyResolvers.get(macNorm);
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(macNorm); }
+    this._processPendingMessages(macNorm);
   }
   openChat(deviceUUID) {
     var self = this;
@@ -701,17 +705,16 @@ export class BLEInterface {
           if (subtitle) subtitle.textContent = '';
           _safeDispatchEvent('nexo:ble:openChat', { contactId: uuid, name: displayName, address: mac, transport: 'ble', source: 'ble_interface' });
           self.elements.panel.classList.remove('active'); self.elements.overlay.classList.remove('active');
-          resolve();
         }
+        // Abrir chat inmediatamente — la conexion se hace en background
+        finishOpenChat();
+        resolve();
         if (!isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           if (!isConnecting) {
             _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: _macWithColons(mac) })
-              .then(function(connResult) { if (connResult && (connResult.connected || connResult.alreadyConnected)) { return self._waitForReadyToChat(mac, 15000); } throw new Error('No se pudo conectar'); })
-              .then(function() { finishOpenChat(); }).catch(function(e) { finishOpenChat(); });
-          } else {
-            self._waitForReadyToChat(mac, 15000).then(function() { finishOpenChat(); }).catch(function(e) { finishOpenChat(); });
+              .catch(function(e) {});
           }
-        } else { finishOpenChat(); }
+        }
       } catch (fatalErr) { console.error('[BLEInterface] FATAL openChat:', fatalErr); reject(fatalErr); }
     });
   }
@@ -958,6 +961,7 @@ export class BLEInterface {
       var contacts = _getBLEContacts();
       var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(knownUUID); });
       if (idx >= 0) { contacts[idx].online = true; contacts[idx].lastSeen = Date.now(); contacts[idx].macAddress = mac; _saveBLEContacts(contacts); }
+      this._autoConnectGATT(mac, device); // PRE-CONEXION: reconectar al ver contacto conocido
       this.renderContactsList(); this.renderOnlineStrip(); return;
     }
     if (this.foundDevices.has(mac)) {
