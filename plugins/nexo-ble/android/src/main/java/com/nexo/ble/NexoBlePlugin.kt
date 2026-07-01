@@ -177,7 +177,7 @@ try { stopGattServer() } catch (e: Exception) { }
 isAdvertisingActive = false
 try { stopAdvertisingInternal() } catch (e: Exception) { }
 messageBuffers.clear()
-messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { _, runnable -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
 }
 private fun cleanupAllConnections() {
@@ -202,7 +202,7 @@ keepAliveTimers.clear()
 pendingMessageQueue.clear()
 scannedDevices.clear()
 messageBuffers.clear()
-messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { _, runnable -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
 }
 @PluginMethod
