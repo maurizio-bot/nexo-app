@@ -1,5 +1,5 @@
 /**
- * BLE Interface v5.1.3-DEDUP-NO-NEXO-MAIN-ROBUST
+ * BLE Interface v5.1.3-DEDUP-NO-NEXO-MAIN-ROBUST-v4
  * FIX: Deduplicación de contactos por MAC
  * FIX: Botón back en panel BLE
  * FIX: Quitados todos los fallbacks "NEXO" de nombres
@@ -174,15 +174,13 @@
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
    result = pluginmethod;
-   } else if (args !== undefined && args !== null) {
-   result = pluginmethod;
    } else {
-   result = plugin
-   ;
+   var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
+   result = plugin[method].apply(plugin, callArgs);
    }
    if (result && typeof result.then === 'function') {
    result.then(resolve).catch(reject);
-   } else { resolve(result !== undefined ? result : null); }
+   } else { resolve(result); }
    } catch (e) { reject(e); }
    });
    }
@@ -596,7 +594,7 @@
    else {
    enrichedPayload = JSON.stringify({
    deviceUUID: self.localDeviceUUID, senderName: self.localDeviceName || '', content: content,
-   messageId: messageId || ('msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9)), timestamp: Date.now()
+   messageId: messageId || ('msg' + Date.now() + '*' + Math.random().toString(36).substr(2, 9)), timestamp: Date.now()
    });
    }
    if (!enrichedPayload || enrichedPayload.length > 4000) { reject(new Error('Payload demasiado largo o vacio')); return; }
@@ -975,7 +973,6 @@
    }
    renderOnlineStrip() {
    var self = this;
-   try {
    var strip = this.elements.mainOnlineStrip;
    if (!strip) return;
    strip.innerHTML = '';
@@ -996,7 +993,6 @@
    }
    renderContactsList() {
    var self = this;
-   try {
    var list = this.elements.mainContactsList;
    if (!list) return;
    list.innerHTML = '';
@@ -1075,7 +1071,6 @@
    if (index < contacts.length - 1) { var divider = document.createElement('div'); divider.className = 'ble-divider'; list.appendChild(divider); }
    });
    this.renderOnlineStrip();
-   } catch(e) { console.warn('[BLEInterface] Error renderContactsList:', e); }
    }
    _toggleContactMenu(uuid, btn) {
    var self = this;
@@ -1234,3 +1229,9 @@
    return Promise.resolve();
    }
    }
+// Focos de Interés:
+// - Deduplicación de contactos por MAC Address.
+// - Manejo de estados de conexión BLE (DISCONNECTED, CONNECTING, READY_TO_CHAT, etc.).
+// - Integración con el plugin nativo NexoBLE a través de Capacitor.
+// - Gestión de la persistencia de datos de contactos en localStorage.
+// - Renderizado del panel de interfaz BLE y navegación entre pestañas.
