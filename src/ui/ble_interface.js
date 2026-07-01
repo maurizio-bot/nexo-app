@@ -1,11 +1,13 @@
 /**
- * BLE Interface v5.1.3-DEDUP-NO-NEXO-MAIN
+ * BLE Interface v5.1.4-FIXED
  * FIX: Deduplicación de contactos por MAC
  * FIX: Botón back en panel BLE
  * FIX: Quitados todos los fallbacks "NEXO" de nombres
  * FIX: Contactos en pantalla principal (no en panel BLE)
  * FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
  * FIX: Al agregar contacto, cerrar panel y volver a principal
+ * FIX: Dual GATT - reverse connect en incoming server connection
+ * FIX: Limpieza estado DISCONNECTED previo al reconectar
    */
    export function initBLEInterface(bleMesh) {
    var instance = new BLEInterface(bleMesh).init();
@@ -259,7 +261,7 @@
    }
    this._readyResolvers = new Map();
    this._notificationFallbackTimers = new Map();
-   console.log('[BLEInterface] ROBUST v5.1.4 iniciado (FIXES: #1 DualGATT, #7 StateCleanup)');
+   console.log('[BLEInterface] v5.1.4-FIXED iniciado');
    }
    _detectMeshType() {
    if (!this.bleMesh) return 'none';
@@ -400,7 +402,7 @@
    self._setDeviceState(mac, data.role === 'server' ? BLE_STATES.READY_TO_CHAT : BLE_STATES.CONNECTING, {
    direction: data.direction, role: data.role, deviceUUID: peerUUID
    });
-   /* FIX #1 CRITICO: Si el remoto se conecto a MI server, yo me conecto a SU server */
+   /* FIX #1: Si el remoto se conecto a MI server, yo me conecto a SU server */
    if (data.direction === 'incoming' && data.role === 'server' && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
    console.log('[BLEInterface] FIX#1: Incoming connection from ' + mac + ', initiating reverse GATT connect');
    self._autoConnectGATT(mac, { name: displayName });
@@ -768,7 +770,7 @@
    if (!self.nativePlugin) return Promise.resolve();
    var promise;
    if (self.isAdvertising) {
-   if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise =           _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}); else promise = Promise.resolve();
+   if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}); else promise = Promise.resolve();
    if (promise) return promise.then(function() { self.isAdvertising = false; self.updateVisibilityButton(); });
    self.isAdvertising = false;
    } else {
@@ -1215,3 +1217,12 @@
    return Promise.resolve();
    }
    }
+   // Focos de Interés:
+   // 1. Deduplicación de contactos por MAC en lista principal.
+   // 2. Comportamiento del botón de retorno (back) en panel BLE.
+   // 3. Eliminación de lógica de fallback "NEXO" para nombres.
+   // 4. Integración y renderizado de contactos en la interfaz principal.
+   // 5. Gestión del estado de conexión (evitar reabrir panel al cerrar chat).
+   // 6. Flujo de navegación tras agregar un nuevo contacto.
+   // 7. Gestión de conexiones duales GATT (reverse connect).
+   // 8. Limpieza de estados de conexión (DISCONNECTED) previos a reconexión.
