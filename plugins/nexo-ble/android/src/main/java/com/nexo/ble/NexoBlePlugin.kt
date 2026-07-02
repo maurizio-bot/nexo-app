@@ -38,6 +38,7 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
+import org.json.JSONArray
 import org.json.JSONObject
 
 @CapacitorPlugin(
@@ -62,6 +63,8 @@ class NexoBlePlugin : Plugin() {
         private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
+        private const val PREFS_NAME = "nexo_ble_prefs"
+        private const val PENDING_QUEUE_KEY = "pending_message_queue_v1"
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
@@ -170,6 +173,7 @@ class NexoBlePlugin : Plugin() {
     override fun load() {
         super.load()
         remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server")
+        loadPendingQueue()
         autoStartGattServerAndAdvertising()
     }
 
@@ -195,6 +199,7 @@ class NexoBlePlugin : Plugin() {
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         remLog("INFO", "LIFECYCLE", "handleOnDestroy - limpiando DUAL GATT")
+        savePendingQueue()
         cleanupAllConnections()
         try { unregisterServerReceivers() } catch (e: Exception) { }
         try { stopScanInternal() } catch (e: Exception) { }
@@ -206,7 +211,48 @@ class NexoBlePlugin : Plugin() {
         messageBufferTimers.clear()
     }
 
-    // TRIGGER 1 & 2: Auto-start GATT server + advertising on load/resume
+    // FIX 3: Guardar cola pendiente en SharedPreferences
+    private fun savePendingQueue() {
+        try {
+            val ctx = activity.applicationContext
+            val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val json = JSONObject()
+            pendingMessageQueue.forEach { (mac, queue) ->
+                val arr = JSONArray()
+                queue.forEach { arr.put(it) }
+                json.put(mac, arr)
+            }
+            prefs.edit().putString(PENDING_QUEUE_KEY, json.toString()).apply()
+            remLog("INFO", "PERSIST", "Cola guardada: ${pendingMessageQueue.size} dispositivos")
+        } catch (e: Exception) {
+            remLog("WARN", "PERSIST", "Error guardando cola: ${e.message}")
+        }
+    }
+
+    // FIX 3: Cargar cola pendiente desde SharedPreferences
+    private fun loadPendingQueue() {
+        try {
+            val ctx = activity.applicationContext
+            val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(PENDING_QUEUE_KEY, null) ?: return
+            val json = JSONObject(raw)
+            json.keys().forEach { mac ->
+                val arr = json.getJSONArray(mac)
+                val queue = mutableListOf<String>()
+                for (i in 0 until arr.length()) {
+                    queue.add(arr.getString(i))
+                }
+                if (queue.isNotEmpty()) {
+                    pendingMessageQueue[mac] = queue
+                }
+            }
+            remLog("INFO", "PERSIST", "Cola cargada: ${pendingMessageQueue.size} dispositivos")
+            prefs.edit().remove(PENDING_QUEUE_KEY).apply()
+        } catch (e: Exception) {
+            remLog("WARN", "PERSIST", "Error cargando cola: ${e.message}")
+        }
+    }
+
     private fun autoStartGattServerAndAdvertising() {
         val ctx = activity.applicationContext
         if (!checkCoreBLEPermissions(ctx)) {
@@ -297,7 +343,7 @@ class NexoBlePlugin : Plugin() {
             call.resolve(JSObject().put("granted", true))
             return
         }
-        ctx.getSharedPreferences("nexo_ble_prefs", Context.MODE_PRIVATE)
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean("ble_permissions_asked", true).apply()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             requestPermissionForAliases(
@@ -743,6 +789,8 @@ class NexoBlePlugin : Plugin() {
 
     private fun processPendingMessages(macNorm: String) {
         val queue = pendingMessageQueue.remove(macNorm) ?: return
+        // FIX 3: Guardar cola inmediatamente después de remover (por si el envío falla)
+        savePendingQueue()
         val gatt = gattClients[macNorm]
         val rxChar = clientRxCharacteristics[macNorm]
         if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
@@ -760,10 +808,17 @@ class NexoBlePlugin : Plugin() {
                     remLog("INFO", "PENDING_QUEUE", "Mensaje encolado enviado a $macNorm")
                 } catch (e: Exception) {
                     remLog("WARN", "PENDING_QUEUE", "Fallo enviando mensaje encolado: ${e.message}")
+                    // FIX 3: Si falla, re-encolar el mensaje
+                    val currentQueue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
+                    currentQueue.add(msg)
                 }
             }
+            savePendingQueue()
         } else {
             remLog("WARN", "PENDING_QUEUE", "No se pudieron enviar ${queue.size} mensajes encolados, conexion no lista")
+            // FIX 3: Re-encolar si la conexion no esta lista
+            pendingMessageQueue[macNorm] = queue
+            savePendingQueue()
         }
     }
 
@@ -826,6 +881,7 @@ class NexoBlePlugin : Plugin() {
         messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         pendingCalls.remove(macNorm)
         pendingMessageQueue.remove(macNorm)
+        savePendingQueue()
         notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
         call.resolve(JSObject().put("disconnected", true))
     }
@@ -925,10 +981,11 @@ class NexoBlePlugin : Plugin() {
         remLog("WARN", "SEND", "No GATT client ni server para $macNorm, encolando mensaje")
         val queue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
         queue.add(message)
+        // FIX 3: Guardar cola inmediatamente al encolar
+        savePendingQueue()
         call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
     }
 
-    // TRIGGER 3 & 4: startScan y startAdvertising ahora auto-inician GATT server + advertising
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
         remLog("INFO", "ADVERTISING", "startAdvertising")
@@ -961,7 +1018,6 @@ class NexoBlePlugin : Plugin() {
             call.reject("BLUETOOTH_SCAN no concedido")
             return
         }
-        // TRIGGER 4: Al escanear, asegurar que estamos advertising para ser descubribles
         autoStartGattServerAndAdvertising()
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
