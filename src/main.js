@@ -670,3 +670,11 @@ console.warn('[MAIN] _setupBackButton error:', e);
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (module && module.hot) module.hot.accept();
+/*
+Focos de Interés:
+ * Inicialización del núcleo NEXO y manejo de errores.
+ * Permisos BLE y superposición de UI.
+ * Gestión de mensajes, persistencia y renderizado.
+ * Interacción de la UI (Vault, Chat, FAB).
+ * Estado global de la aplicación (NEXO window object).
+   */
