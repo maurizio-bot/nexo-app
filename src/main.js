@@ -91,11 +91,11 @@ try {
 if (document.getElementById('nexo-perm-overlay')) return;
 var overlay = document.createElement('div');
 overlay.id = 'nexo-perm-overlay';
-overlay.innerHTML = <div class="perm-overlay-content"> <h2>🔐 Permisos BLE Requeridos</h2> <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p> <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p> <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button> <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button> </div>;
+overlay.innerHTML = `<div class="perm-overlay-content"> <h2>🔐 Permisos BLE Requeridos</h2> <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p> <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p> <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button> <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button> </div>`;
 document.body.appendChild(overlay);
 var style = document.createElement('style');
 style.id = 'perm-overlay-styles';
-style.textContent = #nexo-perm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 2147483647; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); } .perm-overlay-content { background: #0a0a15; border: 1px solid #00d4ff; border-radius: 16px; padding: 32px; max-width: 360px; width: 90%; text-align: center; color: #fff; box-shadow: 0 0 40px rgba(0,212,255,0.15); } .perm-overlay-content h2 { margin: 0 0 12px; font-size: 20px; color: #00d4ff; } .perm-overlay-content p { margin: 0 0 8px; font-size: 14px; color: #ccc; line-height: 1.5; } .perm-sub { font-size: 12px !important; color: #888 !important; font-style: italic; } .perm-btn-primary { display: block; width: 100%; margin: 16px 0 8px; padding: 14px; background: linear-gradient(135deg,#00d4ff,#0099cc); color: #000; border: none; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; } .perm-btn-secondary { display: block; width: 100%; margin: 0 0 8px; padding: 12px; background: transparent; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; } .perm-btn-ghost { display: block; width: 100%; margin: 0; padding: 10px; background: transparent; color: #666; border: none; font-size: 13px; cursor: pointer; } .perm-btn-primary:hover { box-shadow: 0 0 20px rgba(0,212,255,0.3); };
+style.textContent = `#nexo-perm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 2147483647; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); } .perm-overlay-content { background: #0a0a15; border: 1px solid #00d4ff; border-radius: 16px; padding: 32px; max-width: 360px; width: 90%; text-align: center; color: #fff; box-shadow: 0 0 40px rgba(0,212,255,0.15); } .perm-overlay-content h2 { margin: 0 0 12px; font-size: 20px; color: #00d4ff; } .perm-overlay-content p { margin: 0 0 8px; font-size: 14px; color: #ccc; line-height: 1.5; } .perm-sub { font-size: 12px !important; color: #888 !important; font-style: italic; } .perm-btn-primary { display: block; width: 100%; margin: 16px 0 8px; padding: 14px; background: linear-gradient(135deg,#00d4ff,#0099cc); color: #000; border: none; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; } .perm-btn-secondary { display: block; width: 100%; margin: 0 0 8px; padding: 12px; background: transparent; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; } .perm-btn-ghost { display: block; width: 100%; margin: 0; padding: 10px; background: transparent; color: #666; border: none; font-size: 13px; cursor: pointer; } .perm-btn-primary:hover { box-shadow: 0 0 20px rgba(0,212,255,0.3); }`;
 document.head.appendChild(style);
 var btnGrant = document.getElementById('perm-btn-grant');
 var btnSettings = document.getElementById('perm-btn-settings');
@@ -527,7 +527,7 @@ else if (msg.status === 'delivered') { statusClass = 'status-delivered'; statusI
 else if (msg.status === 'read') { statusClass = 'status-read'; statusIcon = '✓✓'; }
 statusHtml = '<span class="msg-status ' + statusClass + '" data-msg-id="' + msgId + '">' + statusIcon + '</span>';
 }
-div.innerHTML = <div class="msg-content">${msg.content || msg.text || ''}</div> <div class="msg-meta"> <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span> ${statusHtml} </div>;
+div.innerHTML = `<div class="msg-content">${msg.content || msg.text || ''}</div> <div class="msg-meta"> <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span> ${statusHtml} </div>`;
 container.appendChild(div);
 var msgContainer = document.getElementById('messages-container');
 if (msgContainer) {
@@ -623,7 +623,7 @@ var body = document.body;
 body.classList.add('nexo-fallback-mode');
 var msg = document.createElement('div');
 msg.className = 'fallback-notice';
-msg.innerHTML = <h3>⚠️ Error de Inicialización</h3> <p>La app no pudo iniciar completamente.</p>;
+msg.innerHTML = `<h3>⚠️ Error de Inicialización</h3> <p>La app no pudo iniciar completamente.</p>`;
 body.appendChild(msg);
 } catch (e) {
 console.error('[MAIN] _enableFallbackMode error:', e);
