@@ -8,6 +8,7 @@
  * FIX: ACK automatico al recibir mensaje BLE
  * FIX: Read receipt cuando chat activo con remitente
  * FIX: Al cerrar chat vuelve a pantalla principal (tab chats activo)
+ * FIX v5.0.13-FIX: window.bleInterface = this.bleInterface expuesto
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
    */
@@ -312,6 +313,7 @@ DEBUG.setPhase('BLE_UI');
 try {
 var meshInstance = this.nordicMesh || this.mesh || null;
 this.bleInterface = initBLEInterface(meshInstance);
+window.bleInterface = this.bleInterface;
 if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
 var self = this;
 this._bleChatHandler = function(e) {
