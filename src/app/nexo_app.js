@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.0.12-DEDUP-SILENT-MAIN
+ * NEXO App v5.0.13-VAULT-MAIN
  * Base: v5.0.11-ACK-FIXED
  * FIX: Deduplicación de contactos por MAC
  * FIX: Silenciar toasts rem.info/warn/error/success
@@ -10,20 +10,135 @@
  * FIX: Al cerrar chat vuelve a pantalla principal (tab chats activo)
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
- */
-import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
-import { CryptoVault } from '../vault/crypto_vault.js';
-import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
-import { NordicMesh } from '../mesh/nordic_mesh.js';
-import { WebSocketClient } from '../net/web_socket_client.js';
-import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
-import { GestureEngine } from '../ui/gesture_engine.js';
-import { TheStream } from '../stream/the_stream.js';
-import { rem } from '../ui/rem.js';
-import { initBLEInterface } from '../ui/ble_interface.js';
+   */
+   import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
+   import { CryptoVault } from '../vault/crypto_vault.js';
+   import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
+   import { NordicMesh } from '../mesh/nordic_mesh.js';
+   import { WebSocketClient } from '../net/web_socket_client.js';
+   import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
+   import { GestureEngine } from '../ui/gesture_engine.js';
+   import { TheStream } from '../stream/the_stream.js';
+   import { rem } from '../ui/rem.js';
+   import { initBLEInterface } from '../ui/ble_interface.js';
+/* ============================================================
+NEXO VAULT v1.0 - Persistencia local de conversaciones
+FIX: Historial de chats persistente en localStorage
+============================================================ */
+var NEXO_VAULT_KEY = 'nexo_chat_vault_v1';
+var NEXO_VAULT_MAX_MSGS = 500;
+var NEXO_VAULT_MAX_CONVS = 50;
+function _normIdLocal(id) {
+return (id || '').toString().toLowerCase().trim();
+}
+function _safeVaultParse(str, fallback) {
+try { return JSON.parse(str); } catch (e) { return fallback; }
+}
+class NexoVault {
+constructor() {
+this.key = NEXO_VAULT_KEY;
+this.data = this._load();
+}
+_load() {
+var raw = localStorage.getItem(this.key);
+if (raw) {
+try {
+var parsed = JSON.parse(raw);
+if (parsed && parsed.conversations) return parsed;
+} catch (e) {}
+}
+return { conversations: {}, lastSync: 0 };
+}
+_save() {
+try {
+var keys = Object.keys(this.data.conversations);
+if (keys.length > NEXO_VAULT_MAX_CONVS) {
+var sorted = keys.sort(function(a, b) {
+var ta = (this.data.conversations[a].lastTimestamp || 0);
+var tb = (this.data.conversations[b].lastTimestamp || 0);
+return ta - tb;
+}.bind(this));
+for (var i = 0; i < sorted.length - NEXO_VAULT_MAX_CONVS; i++) {
+delete this.data.conversations[sorted[i]];
+}
+}
+localStorage.setItem(this.key, JSON.stringify(this.data));
+} catch (e) {
+console.warn('[NexoVault] Error guardando:', e.message);
+}
+}
+getConversation(contactId) {
+var cid = _normIdLocal(contactId);
+return this.data.conversations[cid] || { messages: [], lastMessage: '', lastTimestamp: 0, unreadCount: 0 };
+}
+saveMessage(contactId, msg) {
+var cid = *normIdLocal(contactId);
+if (!cid) return;
+var content = msg.content || '';
+if (typeof content === 'string' && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
+return;
+}
+var conv = this.data.conversations[cid] || { messages: [], lastMessage: '', lastTimestamp: 0, unreadCount: 0 };
+if (msg.messageId) {
+var existingIdx = -1;
+for (var i = 0; i < conv.messages.length; i++) {
+if (conv.messages[i].messageId === msg.messageId) { existingIdx = i; break; }
+}
+if (existingIdx >= 0) {
+if (msg.status) conv.messages[existingIdx].status = msg.status;
+if (msg.timestamp) conv.messages[existingIdx].timestamp = msg.timestamp;
+this.data.conversations[cid] = conv;
+this.*save();
+return;
+}
+}
+conv.messages.push({
+messageId: msg.messageId || ('vault*' + Date.now() + '*' + Math.random().toString(36).substr(2, 5)),
+content: msg.content || '',
+sender: msg.sender || '',
+senderName: msg.senderName || '',
+timestamp: msg.timestamp || Date.now(),
+_own: !!msg._own,
+status: msg.status || 'pending',
+source: msg.source || 'unknown'
+});
+if (conv.messages.length > NEXO_VAULT_MAX_MSGS) {
+conv.messages = conv.messages.slice(conv.messages.length - NEXO_VAULT_MAX_MSGS);
+}
+conv.lastMessage = (typeof msg.content === 'string') ? msg.content.substring(0, 100) : '';
+conv.lastTimestamp = msg.timestamp || Date.now();
+this.data.conversations[cid] = conv;
+this._save();
+}
+updateMessageStatus(contactId, messageId, status) {
+var cid = _normIdLocal(contactId);
+var conv = this.data.conversations[cid];
+if (!conv || !conv.messages) return;
+for (var i = 0; i < conv.messages.length; i++) {
+if (conv.messages[i].messageId === messageId) {
+conv.messages[i].status = status;
+this._save();
+return;
+}
+}
+}
+setUnreadCount(contactId, count) {
+var cid = _normIdLocal(contactId);
+var conv = this.data.conversations[cid];
+if (conv) {
+conv.unreadCount = count;
+this._save();
+}
+}
+clearConversation(contactId) {
+var cid = _normIdLocal(contactId);
+delete this.data.conversations[cid];
+this.*save();
+}
+}
 function withTimeoutNAP(promise, ms, context) {
 var timer;
-var timeoutPromise = new Promise(function(_, reject) {
+var timeoutPromise = new Promise(function(*, reject) {
 timer = setTimeout(function() { reject(new Error('[NAP_TIMEOUT] ' + context)); }, ms);
 });
 return Promise.race([promise, timeoutPromise]).finally(function() { if (timer) clearTimeout(timer); });
@@ -41,7 +156,7 @@ if (DEBUG._logBuffer.length > 1000) DEBUG._logBuffer.shift();
 console.log('[' + entry.time + '] [' + type.toUpperCase() + ']' + (code ? '[' + code + ']' : '') + ' ' + msg);
 /* FIX v5.0.12: Silenciar toasts — solo console, no rem */
 // var method = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warn' ? 'warn' : 'info';
-// if (code) rem[method](msg, code); else rem[method](msg);
+// if (code) rem[method](msg, code); else remmethod;
 },
 error: function(code, msg) { DEBUG.log(msg, 'error', code); },
 success: function(msg, code) { DEBUG.log(msg, 'success', code); },
@@ -109,6 +224,8 @@ this._maxProcessedIds = 1000;
 this._dedupTTL = 300000;
 /* FIX v5.0.11: Mapa de mensajes pendientes para estados ACK */
 this._pendingMessages = new Map();
+/* FIX v5.0.13: Vault de conversaciones */
+this.chatVault = new NexoVault();
 DEBUG.log('NEXO v5.0.12-DEDUP-SILENT-MAIN iniciando...', 'info', 'APP_INIT');
 }
 async init() {
@@ -128,7 +245,7 @@ await this._initPhase6_Bridge();
 await this._initPhase7_UI();
 this.initialized = true;
 DEBUG.setPhase('READY');
-DEBUG.success('NEXO v5.0.12-DEDUP-SILENT-MAIN Ready', 'APP_READY');
+DEBUG.success('NEXO v5.0.13-VAULT-MAIN Ready', 'APP_READY');
 } catch (err) {
 DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
 await this._partialCleanup();
@@ -218,11 +335,15 @@ self.config.onStatusChange('CHAT:' + (detail.name || ''));
 /* FIX: Activar tab 'chats' en bottom-nav */
 var bottomNav = document.getElementById('ble-bottom-nav');
 if (bottomNav) {
-  var navItems = bottomNav.querySelectorAll('.ble-nav-item');
-  navItems.forEach(function(n) { n.classList.remove('active'); });
-  var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
-  if (chatsTab) chatsTab.classList.add('active');
+var navItems = bottomNav.querySelectorAll('.ble-nav-item');
+navItems.forEach(function(n) { n.classList.remove('active'); });
+var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
+if (chatsTab) chatsTab.classList.add('active');
 }
+/* FIX v5.0.13: Cargar historial de chat desde vault */
+setTimeout(function() {
+self._loadAndRenderChatHistory(detail.contactId);
+}, 100);
 } catch (handlerErr) {
 console.error('[NexoApp] Error en _bleChatHandler:', handlerErr);
 DEBUG.error('BLE_UI_001', 'Error en chat handler: ' + (handlerErr.message || 'unknown'));
@@ -240,10 +361,10 @@ try { window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} })
 /* FIX: Activar tab 'chats' al volver a principal */
 var bottomNav = document.getElementById('ble-bottom-nav');
 if (bottomNav) {
-  var navItems = bottomNav.querySelectorAll('.ble-nav-item');
-  navItems.forEach(function(n) { n.classList.remove('active'); });
-  var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
-  if (chatsTab) chatsTab.classList.add('active');
+var navItems = bottomNav.querySelectorAll('.ble-nav-item');
+navItems.forEach(function(n) { n.classList.remove('active'); });
+var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
+if (chatsTab) chatsTab.classList.add('active');
 }
 self._updateMode('OFFLINE');
 self.config.onStatusChange('OFFLINE');
@@ -424,6 +545,18 @@ recipient: targetId,
 source: 'self',
 messageId: messageId
 }, 'self');
+/* FIX v5.0.13: Guardar mensaje propio en vault */
+if (targetId) {
+this.chatVault.saveMessage(targetId, {
+content: typeof content === 'string' ? content : '',
+_own: true,
+timestamp: Date.now(),
+messageId: messageId,
+status: 'pending',
+recipient: targetId,
+source: 'self'
+});
+}
 /* === PASO 3: Intentar BLE directo === */
 if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
 try {
@@ -528,6 +661,14 @@ setTimeout(function() { self._sendReadReceipt(enriched.messageId, enriched.sende
 }
 /* FIX v5.0.11: Eliminado appendItems para evitar doble pantalla */
 // if (this.stream && this.stream.appendItems) this.stream.appendItems([enriched]);
+/* FIX v5.0.13: Guardar mensaje en vault y renderizar en DOM si chat activo */
+var vaultContactId = enriched._own ? (enriched.recipient || (this.activeContact ? this.activeContact.id : null)) : enriched.sender;
+if (vaultContactId && !(enriched.isControl || (enriched.content && typeof enriched.content === 'string' && (enriched.content.indexOf('"type":"ack"') !== -1 || enriched.content.indexOf('"type":"read_receipt"') !== -1)))) {
+this.chatVault.saveMessage(vaultContactId, enriched);
+}
+if (this.activeContact && ((enriched._own && enriched.recipient === this.activeContact.id) || (!enriched._own && enriched.sender === this.activeContact.id))) {
+this._renderMessageToDOM(enriched);
+}
 } catch (err) {
 DEBUG.error('APP_005', 'Message handler: ' + (err.message || 'unknown'));
 }
@@ -565,7 +706,7 @@ this.nordicMesh = null;
 }
 if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
 if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
-if (this.vault) { try { if (this.vault.destroy) await this.vault.destroy(); } catch(e) {} this.vault = null; }
+if (this.vault) { try { this.vault.destroy(); } catch(e) {} this.vault = null; }
 this._resources.timers.forEach(function(t) { clearTimeout(t); });
 /* FIX v5.0.11: Limpiar pending messages */
 this._pendingMessages.clear();
@@ -611,6 +752,11 @@ if (pending.status === 'read') return;
 if (pending.status === 'delivered' && status !== 'read') return;
 pending.status = status;
 this._pendingMessages.set(messageId, pending);
+/* FIX v5.0.13: Actualizar estado en vault y DOM */
+if (this.activeContact && this.activeContact.id) {
+this.chatVault.updateMessageStatus(this.activeContact.id, messageId, status);
+}
+this._updateMessageStatusInDOM(messageId, status);
 if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, status);
 }
 _handleACK(messageId, ackType) {
@@ -625,6 +771,11 @@ if (pending.status === 'read') return;
 if (pending.status === 'delivered' && newStatus !== 'read') return;
 pending.status = newStatus;
 this._pendingMessages.set(messageId, pending);
+/* FIX v5.0.13: Actualizar estado en vault y DOM */
+if (this.activeContact && this.activeContact.id) {
+this.chatVault.updateMessageStatus(this.activeContact.id, messageId, newStatus);
+}
+this._updateMessageStatusInDOM(messageId, newStatus);
 if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, newStatus);
 DEBUG.log('ACK recibido: ' + messageId + ' -> ' + newStatus, 'info', 'ACK_RECV');
 }
@@ -640,18 +791,96 @@ if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
 var payload = JSON.stringify({ type: 'read_receipt', messageId: messageId, timestamp: Date.now() });
 this.bleInterface.sendChatMessage(recipientId, payload, messageId).catch(function(e) {});
 }
+/* ============================================================
+FIX v5.0.13: Métodos de Vault y Renderizado DOM
+============================================================ */
+_renderMessageToDOM(msg) {
+var container = document.getElementById('messages-container');
+if (!container) return;
+if (msg.messageId && container.querySelector('.message[data-message-id="' + msg.messageId + '"]')) {
+if (msg.status) this._updateMessageStatusInDOM(msg.messageId, msg.status);
+return;
+}
+var div = document.createElement('div');
+div.className = 'message ' + (msg._own ? 'own' : 'other');
+div.dataset.messageId = msg.messageId || '';
+var content = msg.content || '';
+if (typeof content === 'object') {
+try { content = content.content || JSON.stringify(content); } catch(e) { content = ''; }
+}
+var time = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+var status = msg.status || 'pending';
+var statusClass = 'status-' + status;
+var statusText = status === 'pending' ? '○' : status === 'sent' ? '✓' : status === 'delivered' ? '✓✓' : '✓✓';
+div.innerHTML = '<div>' + this._escapeHtml(content) + '</div>' +
+'<div class="msg-meta"><span class="msg-time">' + time + '</span><span class="msg-status ' + statusClass + '">' + statusText + '</span></div>';
+container.appendChild(div);
+setTimeout(function() { container.scrollTop = container.scrollHeight; }, 10);
+}
+_escapeHtml(text) {
+var div = document.createElement('div');
+div.textContent = typeof text === 'string' ? text : String(text || '');
+return div.innerHTML;
+}
+_updateMessageStatusInDOM(messageId, status) {
+var container = document.getElementById('messages-container');
+if (!container || !messageId) return;
+var msgEl = container.querySelector('.message[data-message-id="' + messageId + '"]');
+if (!msgEl) return;
+var statusEl = msgEl.querySelector('.msg-status');
+if (!statusEl) return;
+statusEl.className = 'msg-status status-' + status;
+var statusText = status === 'pending' ? '○' : status === 'sent' ? '✓' : status === 'delivered' ? '✓✓' : '✓✓';
+statusEl.textContent = statusText;
+}
+_loadAndRenderChatHistory(contactId) {
+var container = document.getElementById('messages-container');
+if (!container) return;
+container.innerHTML = '';
+var history = this.chatVault.getConversation(contactId);
+if (!history || !history.messages || history.messages.length === 0) {
+this._showP2PBadge();
+return;
+}
+var self = this;
+history.messages.forEach(function(msg) {
+self._renderMessageToDOM(msg);
+});
+this.chatVault.setUnreadCount(contactId, 0);
+try {
+var contactsRaw = localStorage.getItem('nexo_ble_contacts_v2');
+if (contactsRaw) {
+var contacts = JSON.parse(contactsRaw);
+var idx = contacts.findIndex(function(c) { return _normIdLocal(c.deviceUUID) === _normIdLocal(contactId); });
+if (idx >= 0) {
+contacts[idx].unreadCount = 0;
+localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(contacts));
+}
+}
+} catch (e) {}
+}
+_showP2PBadge() {
+var container = document.getElementById('messages-container');
+if (!container) return;
+var existing = container.querySelector('.p2p-badge');
+if (existing) return;
+var badge = document.createElement('div');
+badge.className = 'p2p-badge';
+badge.innerHTML = '<div class="p2p-dot"></div><span>Mensajería P2P cifrada</span>';
+container.appendChild(badge);
+}
 }
 export { NexoApp, DEBUG };
 export default NexoApp;
 /*
 Focos de Interés:
-1. FIX v5.0.12: Silenciar toasts rem.info/warn/error/success
-2. FIX v5.0.12: Deduplicación de contactos por MAC
-3. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
-4. Eliminación de la doble pantalla (no appendItems en TheStream)
-5. Envío de ACK automático al recibir mensaje BLE
-6. Envío de Read Receipt cuando el chat está activo con el remitente
-7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
-8. FIX: Contactos en pantalla principal (no en panel BLE)
-9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
-*/
+ 1. FIX v5.0.12: Silenciar toasts rem.info/warn/error/success
+ 2. FIX v5.0.12: Deduplicación de contactos por MAC
+ 3. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
+ 4. Eliminación de la doble pantalla (no appendItems en TheStream)
+ 5. Envío de ACK automático al recibir mensaje BLE
+ 6. Envío de Read Receipt cuando el chat está activo con el remitente
+ 7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
+ 8. FIX: Contactos en pantalla principal (no en panel BLE)
+ 9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
+   */
