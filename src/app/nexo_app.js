@@ -789,6 +789,7 @@ if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
 var payload = JSON.stringify({ type: 'read_receipt', messageId: messageId, timestamp: Date.now() });
 this.bleInterface.sendChatMessage(recipientId, payload, messageId).catch(function(e) {});
 }
+}
 /* ============================================================
 FIX v5.0.13: Métodos de Vault y Renderizado DOM (ES5)
 ============================================================ */
