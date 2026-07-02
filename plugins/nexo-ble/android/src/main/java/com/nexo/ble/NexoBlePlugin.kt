@@ -167,9 +167,16 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    override fun load() {
+        super.load()
+        remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server")
+        autoStartGattServerAndAdvertising()
+    }
+
     override fun handleOnResume() {
         super.handleOnResume()
         remLog("INFO", "LIFECYCLE", "handleOnResume")
+        autoStartGattServerAndAdvertising()
         val ctx = activity.applicationContext
         val granted = checkCoreBLEPermissions(ctx)
         if (granted) {
@@ -199,6 +206,34 @@ class NexoBlePlugin : Plugin() {
         messageBufferTimers.clear()
     }
 
+    // TRIGGER 1 & 2: Auto-start GATT server + advertising on load/resume
+    private fun autoStartGattServerAndAdvertising() {
+        val ctx = activity.applicationContext
+        if (!checkCoreBLEPermissions(ctx)) {
+            remLog("WARN", "AUTO_START", "Permisos no concedidos, no se puede auto-start")
+            return
+        }
+        if (bluetoothGattServer == null) {
+            startGattServer()
+        }
+        if (!isAdvertisingActive) {
+            try {
+                val intent = Intent(ctx, BleService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ctx.startForegroundService(intent)
+                } else {
+                    ctx.startService(intent)
+                }
+                registerServerReceivers()
+                isAdvertisingActive = true
+                notifyListeners("onAdvertiseStarted", JSObject().put("started", true).put("source", "auto_start"))
+                remLog("INFO", "AUTO_START", "Advertising auto-iniciado")
+            } catch (e: Exception) {
+                remLog("WARN", "AUTO_START", "Fallo auto-start advertising: ${e.message}")
+            }
+        }
+    }
+
     private fun cleanupAllConnections() {
         gattClients.forEach { (mac, gatt) ->
             try {
@@ -219,7 +254,6 @@ class NexoBlePlugin : Plugin() {
         keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         keepAliveTimers.clear()
         pendingMessageQueue.clear()
-        scannedDevices.clear()
         messageBuffers.clear()
         messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         messageBufferTimers.clear()
@@ -258,6 +292,7 @@ class NexoBlePlugin : Plugin() {
         val ctx = activity.applicationContext
         if (checkCoreBLEPermissions(ctx)) {
             startGattServer()
+            autoStartGattServerAndAdvertising()
             notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "permissions_already_granted"))
             call.resolve(JSObject().put("granted", true))
             return
@@ -285,6 +320,7 @@ class NexoBlePlugin : Plugin() {
         val granted = checkCoreBLEPermissions(ctx)
         if (granted) {
             startGattServer()
+            autoStartGattServerAndAdvertising()
             notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "permissions_callback"))
         }
         call.resolve(JSObject().put("granted", granted))
@@ -731,7 +767,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // FIX 1: autoConnect=false + reconexion solo con objeto cacheado (no reconstruir desde MAC)
     private fun startAutoReconnect(macNorm: String) {
         val currentAttempts = reconnectAttempts[macNorm] ?: 0
         if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -749,7 +784,6 @@ class NexoBlePlugin : Plugin() {
             val adapter = bluetoothManager.adapter
             if (adapter == null || !adapter.isEnabled) return@Runnable
 
-            // FIX: solo reconectar si tenemos el objeto BluetoothDevice cacheado del scan
             val device = scannedDevices[macNorm]
             if (device == null) {
                 remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
@@ -812,7 +846,6 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("reconnecting", true))
     }
 
-    // FIX 1: metodo publico para que JS reconecte manualmente cuando recibe onDeviceDisconnected
     @PluginMethod
     fun reconnectDevice(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
@@ -837,7 +870,6 @@ class NexoBlePlugin : Plugin() {
         var sent = false
         var mode = ""
 
-        // VIA 1: GATT Client - yo como cliente escribo en RX del server remoto
         val rxChar = clientRxCharacteristics[macNorm]
         val gatt = gattClients[macNorm]
         if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
@@ -861,7 +893,6 @@ class NexoBlePlugin : Plugin() {
             }
         }
 
-        // VIA 2: GATT Server - el remoto esta conectado a mi server, notifico via TX
         if (!sent) {
             val remoteDevice = serverConnectedDevices[macNorm]
             val srvTx = serverTxCharacteristic
@@ -891,13 +922,13 @@ class NexoBlePlugin : Plugin() {
             return
         }
 
-        // Si no se pudo enviar por ninguna via, encolar
         remLog("WARN", "SEND", "No GATT client ni server para $macNorm, encolando mensaje")
         val queue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
         queue.add(message)
         call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
     }
 
+    // TRIGGER 3 & 4: startScan y startAdvertising ahora auto-inician GATT server + advertising
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
         remLog("INFO", "ADVERTISING", "startAdvertising")
@@ -912,58 +943,8 @@ class NexoBlePlugin : Plugin() {
             call.reject("Permisos BLE no concedidos")
             return
         }
-        if (bluetoothGattServer == null) startGattServer()
-        try {
-            val intent = Intent(ctx, BleService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ctx.startForegroundService(intent)
-            } else {
-                ctx.startService(intent)
-            }
-            registerServerReceivers()
-            isAdvertisingActive = true
-            notifyListeners("onAdvertiseStarted", JSObject().put("started", true))
-            call.resolve(JSObject().put("started", true))
-        } catch (e: Exception) {
-            call.reject("Error: ${e.message}")
-        }
-    }
-
-    @PluginMethod
-    fun stopAdvertising(call: PluginCall) {
-        val ctx = activity.applicationContext
-        try {
-            isAdvertisingActive = false
-            ctx.stopService(Intent(ctx, BleService::class.java))
-            unregisterServerReceivers()
-            call.resolve(JSObject().put("stopped", true))
-        } catch (e: Exception) {
-            call.reject("Error: ${e.message}")
-        }
-    }
-
-    @PluginMethod
-    fun isAdvertising(call: PluginCall) {
-        val ctx = activity.applicationContext
-        val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val running = manager.getRunningServices(Integer.MAX_VALUE).any { it.service.className == BleService::class.java.name }
-        call.resolve(JSObject().put("isAdvertising", running))
-    }
-
-    private fun stopAdvertisingInternal() {
-        isAdvertisingActive = false
-        try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { }
-    }
-
-    private val advertiseCallback = object : android.bluetooth.le.AdvertiseCallback() {
-        override fun onStartSuccess(settingsInEffect: android.bluetooth.le.AdvertiseSettings?) {
-            isAdvertisingActive = true
-            remLog("INFO", "ADVERTISING", "Started")
-        }
-        override fun onStartFailure(errorCode: Int) {
-            isAdvertisingActive = false
-            remLog("ERROR", "ADVERTISING", "Failed: $errorCode")
-        }
+        autoStartGattServerAndAdvertising()
+        call.resolve(JSObject().put("started", true))
     }
 
     @PluginMethod
@@ -980,10 +961,10 @@ class NexoBlePlugin : Plugin() {
             call.reject("BLUETOOTH_SCAN no concedido")
             return
         }
+        // TRIGGER 4: Al escanear, asegurar que estamos advertising para ser descubribles
+        autoStartGattServerAndAdvertising()
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
-        // FIX 1: NO limpiar scannedDevices — destruye la cache de objetos BluetoothDevice para reconexion
-        // scannedDevices.clear()
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID)).build()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         try {
@@ -1130,6 +1111,43 @@ class NexoBlePlugin : Plugin() {
             try { activity.unregisterReceiver(it) } catch (e: Exception) { }
             messageReceiver = null
         }
+    }
+
+    private fun stopAdvertisingInternal() {
+        isAdvertisingActive = false
+        try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { }
+    }
+
+    private val advertiseCallback = object : android.bluetooth.le.AdvertiseCallback() {
+        override fun onStartSuccess(settingsInEffect: android.bluetooth.le.AdvertiseSettings?) {
+            isAdvertisingActive = true
+            remLog("INFO", "ADVERTISING", "Started")
+        }
+        override fun onStartFailure(errorCode: Int) {
+            isAdvertisingActive = false
+            remLog("ERROR", "ADVERTISING", "Failed: $errorCode")
+        }
+    }
+
+    @PluginMethod
+    fun stopAdvertising(call: PluginCall) {
+        val ctx = activity.applicationContext
+        try {
+            isAdvertisingActive = false
+            ctx.stopService(Intent(ctx, BleService::class.java))
+            unregisterServerReceivers()
+            call.resolve(JSObject().put("stopped", true))
+        } catch (e: Exception) {
+            call.reject("Error: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun isAdvertising(call: PluginCall) {
+        val ctx = activity.applicationContext
+        val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val running = manager.getRunningServices(Integer.MAX_VALUE).any { it.service.className == BleService::class.java.name }
+        call.resolve(JSObject().put("isAdvertising", running))
     }
 
     @PluginMethod
