@@ -868,7 +868,6 @@ badge.className = 'p2p-badge';
 badge.innerHTML = '<div class="p2p-dot"></div><span>Mensajería P2P cifrada</span>';
 container.appendChild(badge);
 };
-}
 export { NexoApp, DEBUG };
 export default NexoApp;
 /*
