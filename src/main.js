@@ -429,7 +429,7 @@ try {
 if (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) {
 contactId = window.NEXO.app.activeContact.id;
 } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface._activeChatMAC) {
-contactId = window.NEXO.app.bleInterface.*activeChatMAC;
+contactId = window.NEXO.app.bleInterface._activeChatMAC;
 }
 } catch (e) {}
 return 'nexo_messages*' + contactId;
@@ -480,7 +480,7 @@ try {
 if (!msg) return;
 var container = document.getElementById('messages-container');
 if (!container) return;
-var msgId = msg.messageId || msg.*id || msg.id || '';
+var msgId = msg.messageId || msg._id || msg.id || '';
 if (!msgId) {
 msgId = 'msg*' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
 msg.messageId = msgId;
