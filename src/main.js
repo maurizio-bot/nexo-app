@@ -3,6 +3,7 @@
  * FIX: chat-view-active agregado/quitado en body para mostrar messages-container e input-area
  * FIX v9.9.1: FAB = botón agregar contacto (+) → panel BLE + auto-scan
  * FIX v9.9.2: Logo path corregido al iniciar
+ * FIX v9.9.3: Fallback window.bleInterface → window.NEXO.app.bleInterface
  * Build #1605+ compatible. NO toca nativo.
    */
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -397,6 +398,7 @@ console.warn('[MAIN] _setupJumpButton error:', e);
 }
 }
 /* FIX v9.9.1: FAB = botón agregar contacto (+) → panel BLE + auto-scan */
+/* FIX v9.9.3: Fallback window.bleInterface → window.NEXO.app.bleInterface */
 function _setupFABButton() {
 try {
 var fabBtn = document.getElementById('ble-fab-btn');
@@ -407,16 +409,15 @@ fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff">
 var newFab = fabBtn.cloneNode(true);
 fabBtn.parentNode.replaceChild(newFab, fabBtn);
 newFab.addEventListener('click', function() {
-/* Abrir panel BLE (pantalla scan) */
-if (window.bleInterface && window.bleInterface.elements) {
-var panel = window.bleInterface.elements.panel;
-var overlay = window.bleInterface.elements.overlay;
+var bi = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
+if (bi && bi.elements) {
+var panel = bi.elements.panel;
+var overlay = bi.elements.overlay;
 if (panel) panel.classList.add('active');
 if (overlay) overlay.classList.add('active');
 }
-/* Iniciar scan automático */
-if (window.bleInterface && typeof window.bleInterface.toggleScan === 'function') {
-window.bleInterface.toggleScan();
+if (bi && typeof bi.toggleScan === 'function') {
+bi.toggleScan();
 }
 });
 } catch (e) {
@@ -632,6 +633,7 @@ console.error('[MAIN] _enableFallbackMode error:', e);
 /* =================================================================
 FIX v9.9: chat-view-active agregado/quitado en body
 FIX v9.9.1: back button limpia header correctamente
+FIX v9.9.3: Fallback window.bleInterface → window.NEXO.app.bleInterface
 ================================================================= */
 function _setupBackButton() {
 try {
@@ -653,8 +655,9 @@ var nameInput = document.getElementById('chat-contact-name');
 var subtitle = document.getElementById('chat-contact-subtitle');
 if (nameInput) nameInput.value = 'NEXO';
 if (subtitle) subtitle.textContent = '';
-if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
-window.bleInterface.togglePanel();
+var bi = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
+if (bi && typeof bi.togglePanel === 'function') {
+bi.togglePanel();
 }
 if (window.NEXO.app) {
 window.NEXO.app.activeContact = null;
