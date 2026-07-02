@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.0.13-VAULT-MAIN
+ * NEXO App v5.0.13-VAULT-ES5-MAIN
  * Base: v5.0.11-ACK-FIXED
  * FIX: Deduplicación de contactos por MAC
  * FIX: Silenciar toasts rem.info/warn/error/success
@@ -22,7 +22,7 @@
    import { rem } from '../ui/rem.js';
    import { initBLEInterface } from '../ui/ble_interface.js';
 /* ============================================================
-NEXO VAULT v1.0 - Persistencia local de conversaciones
+NEXO VAULT v1.0 - Persistencia local de conversaciones (ES5)
 FIX: Historial de chats persistente en localStorage
 ============================================================ */
 var NEXO_VAULT_KEY = 'nexo_chat_vault_v1';
@@ -34,12 +34,11 @@ return (id || '').toString().toLowerCase().trim();
 function _safeVaultParse(str, fallback) {
 try { return JSON.parse(str); } catch (e) { return fallback; }
 }
-class NexoVault {
-constructor() {
+function NexoVault() {
 this.key = NEXO_VAULT_KEY;
 this.data = this._load();
 }
-_load() {
+NexoVault.prototype._load = function() {
 var raw = localStorage.getItem(this.key);
 if (raw) {
 try {
@@ -48,16 +47,17 @@ if (parsed && parsed.conversations) return parsed;
 } catch (e) {}
 }
 return { conversations: {}, lastSync: 0 };
-}
-_save() {
+};
+NexoVault.prototype._save = function() {
 try {
 var keys = Object.keys(this.data.conversations);
 if (keys.length > NEXO_VAULT_MAX_CONVS) {
+var self = this;
 var sorted = keys.sort(function(a, b) {
-var ta = (this.data.conversations[a].lastTimestamp || 0);
-var tb = (this.data.conversations[b].lastTimestamp || 0);
+var ta = (self.data.conversations[a].lastTimestamp || 0);
+var tb = (self.data.conversations[b].lastTimestamp || 0);
 return ta - tb;
-}.bind(this));
+});
 for (var i = 0; i < sorted.length - NEXO_VAULT_MAX_CONVS; i++) {
 delete this.data.conversations[sorted[i]];
 }
@@ -66,12 +66,12 @@ localStorage.setItem(this.key, JSON.stringify(this.data));
 } catch (e) {
 console.warn('[NexoVault] Error guardando:', e.message);
 }
-}
-getConversation(contactId) {
+};
+NexoVault.prototype.getConversation = function(contactId) {
 var cid = _normIdLocal(contactId);
 return this.data.conversations[cid] || { messages: [], lastMessage: '', lastTimestamp: 0, unreadCount: 0 };
-}
-saveMessage(contactId, msg) {
+};
+NexoVault.prototype.saveMessage = function(contactId, msg) {
 var cid = *normIdLocal(contactId);
 if (!cid) return;
 var content = msg.content || '';
@@ -109,8 +109,8 @@ conv.lastMessage = (typeof msg.content === 'string') ? msg.content.substring(0, 
 conv.lastTimestamp = msg.timestamp || Date.now();
 this.data.conversations[cid] = conv;
 this._save();
-}
-updateMessageStatus(contactId, messageId, status) {
+};
+NexoVault.prototype.updateMessageStatus = function(contactId, messageId, status) {
 var cid = _normIdLocal(contactId);
 var conv = this.data.conversations[cid];
 if (!conv || !conv.messages) return;
@@ -121,21 +121,20 @@ this._save();
 return;
 }
 }
-}
-setUnreadCount(contactId, count) {
+};
+NexoVault.prototype.setUnreadCount = function(contactId, count) {
 var cid = _normIdLocal(contactId);
 var conv = this.data.conversations[cid];
 if (conv) {
 conv.unreadCount = count;
 this._save();
 }
-}
-clearConversation(contactId) {
+};
+NexoVault.prototype.clearConversation = function(contactId) {
 var cid = _normIdLocal(contactId);
 delete this.data.conversations[cid];
 this.*save();
-}
-}
+};
 function withTimeoutNAP(promise, ms, context) {
 var timer;
 var timeoutPromise = new Promise(function(*, reject) {
@@ -245,7 +244,7 @@ await this._initPhase6_Bridge();
 await this._initPhase7_UI();
 this.initialized = true;
 DEBUG.setPhase('READY');
-DEBUG.success('NEXO v5.0.13-VAULT-MAIN Ready', 'APP_READY');
+DEBUG.success('NEXO v5.0.13-VAULT-ES5-MAIN Ready', 'APP_READY');
 } catch (err) {
 DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
 await this._partialCleanup();
@@ -607,7 +606,6 @@ return true;
 if (this.wsClient && this.wsClient.isConnected && this.wsClient.isConnected()) {
 this.wsClient.send({ content: content });
 DEBUG.success('Sent via WebSocket', 'MSG_WS');
-this._updateMessageStatus(messageId, 'sent');
 return true;
 }
 /* === FALLO: Ningun transporte disponible === */
@@ -706,7 +704,7 @@ this.nordicMesh = null;
 }
 if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
 if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
-if (this.vault) { try { this.vault.destroy(); } catch(e) {} this.vault = null; }
+if (this.vault) { try { if (this.vault.destroy) await this.vault.destroy(); } catch(e) {} this.vault = null; }
 this._resources.timers.forEach(function(t) { clearTimeout(t); });
 /* FIX v5.0.11: Limpiar pending messages */
 this._pendingMessages.clear();
@@ -792,9 +790,9 @@ var payload = JSON.stringify({ type: 'read_receipt', messageId: messageId, times
 this.bleInterface.sendChatMessage(recipientId, payload, messageId).catch(function(e) {});
 }
 /* ============================================================
-FIX v5.0.13: Métodos de Vault y Renderizado DOM
+FIX v5.0.13: Métodos de Vault y Renderizado DOM (ES5)
 ============================================================ */
-_renderMessageToDOM(msg) {
+NexoApp.prototype._renderMessageToDOM = function(msg) {
 var container = document.getElementById('messages-container');
 if (!container) return;
 if (msg.messageId && container.querySelector('.message[data-message-id="' + msg.messageId + '"]')) {
@@ -816,13 +814,13 @@ div.innerHTML = '<div>' + this._escapeHtml(content) + '</div>' +
 '<div class="msg-meta"><span class="msg-time">' + time + '</span><span class="msg-status ' + statusClass + '">' + statusText + '</span></div>';
 container.appendChild(div);
 setTimeout(function() { container.scrollTop = container.scrollHeight; }, 10);
-}
-_escapeHtml(text) {
+};
+NexoApp.prototype._escapeHtml = function(text) {
 var div = document.createElement('div');
 div.textContent = typeof text === 'string' ? text : String(text || '');
 return div.innerHTML;
-}
-_updateMessageStatusInDOM(messageId, status) {
+};
+NexoApp.prototype._updateMessageStatusInDOM = function(messageId, status) {
 var container = document.getElementById('messages-container');
 if (!container || !messageId) return;
 var msgEl = container.querySelector('.message[data-message-id="' + messageId + '"]');
@@ -832,8 +830,8 @@ if (!statusEl) return;
 statusEl.className = 'msg-status status-' + status;
 var statusText = status === 'pending' ? '○' : status === 'sent' ? '✓' : status === 'delivered' ? '✓✓' : '✓✓';
 statusEl.textContent = statusText;
-}
-_loadAndRenderChatHistory(contactId) {
+};
+NexoApp.prototype._loadAndRenderChatHistory = function(contactId) {
 var container = document.getElementById('messages-container');
 if (!container) return;
 container.innerHTML = '';
@@ -858,8 +856,8 @@ localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(contacts));
 }
 }
 } catch (e) {}
-}
-_showP2PBadge() {
+};
+NexoApp.prototype._showP2PBadge = function() {
 var container = document.getElementById('messages-container');
 if (!container) return;
 var existing = container.querySelector('.p2p-badge');
@@ -868,7 +866,7 @@ var badge = document.createElement('div');
 badge.className = 'p2p-badge';
 badge.innerHTML = '<div class="p2p-dot"></div><span>Mensajería P2P cifrada</span>';
 container.appendChild(badge);
-}
+};
 }
 export { NexoApp, DEBUG };
 export default NexoApp;
