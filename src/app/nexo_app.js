@@ -72,7 +72,7 @@ var cid = _normIdLocal(contactId);
 return this.data.conversations[cid] || { messages: [], lastMessage: '', lastTimestamp: 0, unreadCount: 0 };
 };
 NexoVault.prototype.saveMessage = function(contactId, msg) {
-var cid = *normIdLocal(contactId);
+var cid = _normIdLocal(contactId);
 if (!cid) return;
 var content = msg.content || '';
 if (typeof content === 'string' && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
@@ -88,12 +88,12 @@ if (existingIdx >= 0) {
 if (msg.status) conv.messages[existingIdx].status = msg.status;
 if (msg.timestamp) conv.messages[existingIdx].timestamp = msg.timestamp;
 this.data.conversations[cid] = conv;
-this.*save();
+this._save();
 return;
 }
 }
 conv.messages.push({
-messageId: msg.messageId || ('vault*' + Date.now() + '*' + Math.random().toString(36).substr(2, 5)),
+messageId: msg.messageId || ('vault_' + Date.now() + '*' + Math.random().toString(36).substr(2, 5)),
 content: msg.content || '',
 sender: msg.sender || '',
 senderName: msg.senderName || '',
@@ -133,11 +133,11 @@ this._save();
 NexoVault.prototype.clearConversation = function(contactId) {
 var cid = _normIdLocal(contactId);
 delete this.data.conversations[cid];
-this.*save();
+this._save();
 };
 function withTimeoutNAP(promise, ms, context) {
 var timer;
-var timeoutPromise = new Promise(function(*, reject) {
+var timeoutPromise = new Promise(function(_, reject) {
 timer = setTimeout(function() { reject(new Error('[NAP_TIMEOUT] ' + context)); }, ms);
 });
 return Promise.race([promise, timeoutPromise]).finally(function() { if (timer) clearTimeout(timer); });
@@ -155,7 +155,7 @@ if (DEBUG._logBuffer.length > 1000) DEBUG._logBuffer.shift();
 console.log('[' + entry.time + '] [' + type.toUpperCase() + ']' + (code ? '[' + code + ']' : '') + ' ' + msg);
 /* FIX v5.0.12: Silenciar toasts — solo console, no rem */
 // var method = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warn' ? 'warn' : 'info';
-// if (code) rem[method](msg, code); else remmethod;
+// if (code) rem[method](msg, code); else rem[method];
 },
 error: function(code, msg) { DEBUG.log(msg, 'error', code); },
 success: function(msg, code) { DEBUG.log(msg, 'success', code); },
@@ -704,7 +704,7 @@ this.nordicMesh = null;
 }
 if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
 if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
-if (this.vault) { try { if (this.vault.destroy) await this.vault.destroy(); } catch(e) {} this.vault = null; }
+if (this.vault) { try { this.vault.destroy(); } catch(e) {} this.vault = null; }
 this._resources.timers.forEach(function(t) { clearTimeout(t); });
 /* FIX v5.0.11: Limpiar pending messages */
 this._pendingMessages.clear();
