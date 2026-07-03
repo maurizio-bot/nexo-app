@@ -11,6 +11,7 @@
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
  */
+
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
 import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
