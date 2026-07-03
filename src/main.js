@@ -587,23 +587,35 @@ function _renderMessage(msg, skipSave) {
 
     div.dataset.msgId = msgId;
 
-    var statusHtml = '';
+    /* FIX: Crear elementos con createElement/textContent en vez de innerHTML */
+    var contentDiv = document.createElement('div');
+    contentDiv.className = 'msg-content';
+    contentDiv.textContent = msg.content || msg.text || '';
+    div.appendChild(contentDiv);
+
+    var metaDiv = document.createElement('div');
+    metaDiv.className = 'msg-meta';
+
+    var timeSpan = document.createElement('span');
+    timeSpan.className = 'msg-time';
+    timeSpan.textContent = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    metaDiv.appendChild(timeSpan);
+
     if (isOwn) {
       var statusClass = 'status-pending';
       var statusIcon = '○';
       if (msg.status === 'sent') { statusClass = 'status-sent'; statusIcon = '✓'; }
       else if (msg.status === 'delivered') { statusClass = 'status-delivered'; statusIcon = '✓✓'; }
       else if (msg.status === 'read') { statusClass = 'status-read'; statusIcon = '✓✓'; }
-      statusHtml = '<span class="msg-status ' + statusClass + '" data-msg-id="' + msgId + '">' + statusIcon + '</span>';
+      var statusSpan = document.createElement('span');
+      statusSpan.className = 'msg-status ' + statusClass;
+      statusSpan.dataset.msgId = msgId;
+      statusSpan.textContent = statusIcon;
+      metaDiv.appendChild(statusSpan);
     }
 
-    div.innerHTML = `
-      <div class="msg-content">${msg.content || msg.text || ''}</div>
-      <div class="msg-meta">
-        <span class="msg-time">${new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
-        ${statusHtml}
-      </div>
-    `;
+    div.appendChild(metaDiv);
+    /* FIN FIX */
 
     container.appendChild(div);
 
@@ -613,7 +625,6 @@ function _renderMessage(msg, skipSave) {
         msgContainer.scrollTop = msgContainer.scrollHeight;
       });
     }
-
 
     if (!skipSave) {
       _saveMessageToStorage(msg);
