@@ -6,6 +6,7 @@
  * FIX: _stopScanInternal para auto-stop
  * Base: v5.1.3-DEDUP-NO-NEXO-MAIN
    */
+
    export function initBLEInterface(bleMesh) {
    var instance = new BLEInterface(bleMesh).init();
    window.bleInterface = instance;
