@@ -964,7 +964,7 @@
    // Guardar UUID real en foundDevices para evitar duplicados al agregar
    if (this.foundDevices.has(mac)) { var fd = this.foundDevices.get(mac); fd.deviceUUID = knownUUID; this.foundDevices.set(mac, fd); }
    this._autoConnectGATT(mac, device); // PRE-CONEXION: reconectar al ver contacto conocido
-   this.renderContactsList(); self.renderOnlineStrip(); return;
+   this.renderContactsList(); this.renderOnlineStrip(); return;
    }
    if (this.foundDevices.has(mac)) {
    var existing = this.foundDevices.get(mac);
