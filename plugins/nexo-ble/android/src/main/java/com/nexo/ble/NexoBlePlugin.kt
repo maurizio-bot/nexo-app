@@ -947,7 +947,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("started", true))
     }
 
-    @PluginMethod
+    @    @PluginMethod
     fun startScan(call: PluginCall) {
         remLog("INFO", "SCAN", "startScan")
         val ctx = activity.applicationContext
@@ -965,10 +965,12 @@ class NexoBlePlugin : Plugin() {
         autoStartGattServerAndAdvertising()
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
+        scannedDevices.clear()
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID)).build()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         try {
             bluetoothScanner?.startScan(listOf(filter), settings, scanCallback)
+            mainHandler.removeCallbacks(scanTimeoutRunnable)
             mainHandler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
             call.resolve(JSObject().put("started", true))
         } catch (e: SecurityException) {
@@ -982,10 +984,11 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("stopped", true))
     }
 
-    private fun stopScanInternal() {
+        private fun stopScanInternal() {
         mainHandler.removeCallbacks(scanTimeoutRunnable)
         try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
         bluetoothScanner = null
+        scannedDevices.clear()
     }
 
     private val scanCallback = object : ScanCallback() {
