@@ -947,7 +947,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("started", true))
     }
 
-    @    @PluginMethod
+    @PluginMethod
     fun startScan(call: PluginCall) {
         remLog("INFO", "SCAN", "startScan")
         val ctx = activity.applicationContext
