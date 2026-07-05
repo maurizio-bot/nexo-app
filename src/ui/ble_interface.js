@@ -22,6 +22,8 @@ var BLE_MAC_MAP_STORAGE_KEY = 'nexo_ble_mac_map_v2';
 var BLE_UUID_MAP_STORAGE_KEY = 'nexo_ble_uuid_map_v2';
 var BLE_ACTIVE_CHAT_MAC_KEY = 'nexo_active_chat_mac';
 var BLE_PINNED_CONTACTS_KEY = 'nexo_ble_pinned_contacts';
+var BLE_NEXO_ID_STORAGE_KEY = 'nexo_ble_advertising_id';
+var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 
 var GRADIENTS = [
   'ble-gradient-1', 'ble-gradient-2', 'ble-gradient-3', 'ble-gradient-4',
@@ -43,6 +45,73 @@ function _getInitials(name) {
   var parts = name.split(/\s+/);
   if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+function _generateNexoId() {
+  // NX + segundero base36 (2 chars) + UUID truncado (6 chars)
+  var now = new Date();
+  var seconds = now.getSeconds();
+  var secBase36 = seconds.toString(36).toUpperCase().padStart(2, '0');
+  var uuidPart = _generateUUID().replace(/-/g, '').substring(0, 6).toUpperCase();
+  return 'NX' + secBase36 + uuidPart;
+}
+
+function _saveNexoIdToVault(nexoId) {
+  return new Promise(function(resolve) {
+    try {
+      localStorage.setItem(BLE_NEXO_ID_STORAGE_KEY, nexoId);
+    } catch (e) {}
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
+      _safeNativeCall(window.Capacitor.Plugins.NexoBLE, 'saveToFile', {
+        filename: BLE_NEXO_ID_VAULT_FILE,
+        content: JSON.stringify({ nexoId: nexoId, createdAt: Date.now() })
+      }).then(function() { resolve(nexoId); }).catch(function() { resolve(nexoId); });
+    } else {
+      resolve(nexoId);
+    }
+  });
+}
+
+function _loadNexoIdFromVault() {
+  return new Promise(function(resolve) {
+    // Try localStorage first (fast path)
+    var cached = null;
+    try { cached = localStorage.getItem(BLE_NEXO_ID_STORAGE_KEY); } catch (e) {}
+    if (cached && cached.length === 10 && cached.indexOf('NX') === 0) {
+      resolve(cached);
+      return;
+    }
+    // Fallback to Vault
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
+      _safeNativeCall(window.Capacitor.Plugins.NexoBLE, 'loadFromFile', {
+        filename: BLE_NEXO_ID_VAULT_FILE
+      }).then(function(result) {
+        if (result && result.exists && result.content) {
+          try {
+            var data = JSON.parse(result.content);
+            if (data.nexoId && data.nexoId.length === 10 && data.nexoId.indexOf('NX') === 0) {
+              try { localStorage.setItem(BLE_NEXO_ID_STORAGE_KEY, data.nexoId); } catch (e) {}
+              resolve(data.nexoId);
+              return;
+            }
+          } catch (e) {}
+        }
+        resolve(null);
+      }).catch(function() { resolve(null); });
+    } else {
+      resolve(null);
+    }
+  });
+}
+
+function _getOrCreateNexoId() {
+  return new Promise(function(resolve) {
+    _loadNexoIdFromVault().then(function(existingId) {
+      if (existingId) { resolve(existingId); return; }
+      var newId = _generateNexoId();
+      _saveNexoIdToVault(newId).then(function(id) { resolve(id); });
+    });
+  });
 }
 
 function _formatTime(ts) {
@@ -279,6 +348,7 @@ export class BLEInterface {
     this.localDeviceName = '';
     this.localDeviceAddress = null;
     this.localDeviceUUID = _getDeviceUUID();
+    this.localNexoId = null;
     this._activeChatDeviceId = null;
     this._activeChatMAC = null;
     this._deviceStates = new Map();
@@ -332,6 +402,7 @@ export class BLEInterface {
       this._loadLocalDeviceInfo();
       this._rebuildMacMaps();
       this._initVisibility();
+      this._initNexoId();
       this._autoStartAdvertising();
     }
     this._setupAppStateListener();
@@ -341,6 +412,17 @@ export class BLEInterface {
     this.renderOnlineStrip();
     console.log('[BLEInterface] UUID local:', this.localDeviceUUID);
     return this;
+  }
+
+  _initNexoId() {
+    var self = this;
+    _getOrCreateNexoId().then(function(nexoId) {
+      self.localNexoId = nexoId;
+      console.log('[BLEInterface] NEXO ID:', nexoId);
+      if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'setAdvertisingData')) {
+        _safeNativeCall(self.nativePlugin, 'setAdvertisingData', { nexoId: nexoId }).catch(function(e) {});
+      }
+    });
   }
 
   _setupAppStateListener() {
@@ -410,8 +492,9 @@ export class BLEInterface {
       try {
         var mac = _normMac(data.deviceId);
         var name = data.name || '';
+        var nexoId = data.nexoId || '';
         if (!mac) return;
-        self.onDeviceFound({ id: mac, address: mac, name: name, rssi: data.rssi });
+        self.onDeviceFound({ id: mac, address: mac, name: name, rssi: data.rssi, nexoId: nexoId });
       } catch (e) {}
     });
     this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', function(data) {
@@ -1031,6 +1114,39 @@ export class BLEInterface {
     var mac = _normMac(device.id || device.address);
     if (!mac) return;
     if (this.localDeviceAddress && mac === this.localDeviceAddress) return;
+
+    var nexoId = device.nexoId || '';
+    var deviceUUID = nexoId || this._macToUuidMap.get(mac);
+
+    // Si tenemos NEXO ID, usarlo directamente como UUID
+    if (nexoId && nexoId.length === 10 && nexoId.indexOf('NX') === 0) {
+      this._macToUuidMap.set(mac, nexoId);
+      this._uuidToMacMap.set(nexoId, mac);
+      _saveMacMaps(this._uuidToMacMap, this._macToUuidMap);
+
+      if (_isBLEContact(nexoId)) {
+        var contacts = _getBLEContacts();
+        var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(nexoId); });
+        if (idx >= 0) { contacts[idx].online = true; contacts[idx].lastSeen = Date.now(); contacts[idx].macAddress = mac; _saveBLEContacts(contacts); }
+        this._autoConnectGATT(mac, device);
+        this.renderContactsList(); this.renderOnlineStrip(); return;
+      }
+
+      // Nuevo dispositivo con NEXO ID conocido pero no en contactos
+      if (!this.foundDevices.has(mac)) {
+        device.lastSeen = Date.now();
+        device.deviceUUID = nexoId;
+        this.foundDevices.set(mac, device);
+        this.newDevicesCount++; this.updateBadge(); this.renderNewDeviceBar();
+      } else {
+        var existing = this.foundDevices.get(mac);
+        existing.rssi = device.rssi; existing.name = device.name || existing.name; existing.lastSeen = Date.now(); existing.deviceUUID = nexoId;
+        this.foundDevices.set(mac, existing); this.renderNewDeviceBar();
+      }
+      return;
+    }
+
+    // Fallback: comportamiento anterior sin NEXO ID
     var knownUUID = this._macToUuidMap.get(mac);
     if (knownUUID && _isBLEContact(knownUUID)) {
       var contacts = _getBLEContacts();
