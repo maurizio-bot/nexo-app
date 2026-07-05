@@ -1,14 +1,7 @@
 /**
- * BLE Interface v5.1.3-DEDUP-NO-NEXO-MAIN
- * FIX: Deduplicación de contactos por MAC
- * FIX: Botón back en panel BLE
- * FIX: Quitados todos los fallbacks "NEXO" de nombres
- * FIX: Contactos en pantalla principal (no en panel BLE)
- * FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
- * FIX: Al agregar contacto, cerrar panel y volver a principal
- * FIX: Pre-conexion GATT — conectar al agregar/scanear contacto conocido
- * FIX: Chat abre instantaneo, conexion en background
- * FIX: Mensajes se encolan si canal no listo, se envian al conectar
+ * BLE Interface v5.1.4-DEDUP-FIXED
+ * FIX: Sin NEXO ID = ignorar. Nombre = NEXO ID, no device.name vacío.
+ * FIX: Contacto existente no aparece como "Unknown" nuevo.
  */
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
@@ -48,7 +41,6 @@ function _getInitials(name) {
 }
 
 function _generateNexoId() {
-  // NX + segundero base36 (2 chars) + UUID truncado (6 chars)
   var now = new Date();
   var seconds = now.getSeconds();
   var secBase36 = seconds.toString(36).toUpperCase().padStart(2, '0');
@@ -74,14 +66,12 @@ function _saveNexoIdToVault(nexoId) {
 
 function _loadNexoIdFromVault() {
   return new Promise(function(resolve) {
-    // Try localStorage first (fast path)
     var cached = null;
     try { cached = localStorage.getItem(BLE_NEXO_ID_STORAGE_KEY); } catch (e) {}
     if (cached && cached.length === 10 && cached.indexOf('NX') === 0) {
       resolve(cached);
       return;
     }
-    // Fallback to Vault
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
       _safeNativeCall(window.Capacitor.Plugins.NexoBLE, 'loadFromFile', {
         filename: BLE_NEXO_ID_VAULT_FILE
@@ -119,14 +109,12 @@ function _cleanOldMacContacts() {
     var contacts = _getBLEContacts();
     var cleaned = contacts.filter(function(c) {
       var uuid = _normId(c.deviceUUID);
-      // Mantener solo contactos con UUID tipo NEXO (NX...) o UUID estándar (no mac-...)
       return uuid.indexOf('mac-') !== 0;
     });
     if (cleaned.length !== contacts.length) {
       _saveBLEContacts(cleaned);
       console.log('[BLEInterface] Limpiados ' + (contacts.length - cleaned.length) + ' contactos viejos mac-...');
     }
-    // Limpiar MAC maps viejos
     localStorage.removeItem(BLE_MAC_MAP_STORAGE_KEY);
     localStorage.removeItem(BLE_UUID_MAP_STORAGE_KEY);
   } catch (e) {}
@@ -222,7 +210,6 @@ function _addBLEContact(contact) {
   if (!uuid) return false;
   var macNorm = _normMac(contact.macAddress);
 
-  // Buscar por UUID (NEXO ID)
   var existingIdx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === uuid; });
 
   if (existingIdx >= 0) {
@@ -393,7 +380,7 @@ export class BLEInterface {
     }
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
-    console.log('[BLEInterface] GALA v5.1.3-DEDUP-NO-NEXO-MAIN iniciado');
+    console.log('[BLEInterface] GALA v5.1.4-DEDUP-FIXED iniciado');
   }
 
   _detectMeshType() {
@@ -437,7 +424,6 @@ export class BLEInterface {
 
   _initNexoId() {
     var self = this;
-    // Limpiar contactos viejos con UUID tipo mac-... (migración a NEXO ID)
     _cleanOldMacContacts();
     _getOrCreateNexoId().then(function(nexoId) {
       self.localNexoId = nexoId;
@@ -1140,17 +1126,17 @@ export class BLEInterface {
 
     var nexoId = device.nexoId || '';
 
-    // SOLO usar NEXO ID. Sin NEXO ID = dispositivo no es Nexo, ignorar.
+    // SIN NEXO ID = no es dispositivo Nexo, ignorar completamente
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
-      return; // Ignorar dispositivos sin NEXO ID válido
+      return;
     }
 
-    // Guardar mapeo MAC <-> NEXO ID (solo para conexión GATT, no para identidad)
+    // Guardar mapeo MAC <-> NEXO ID
     this._macToUuidMap.set(mac, nexoId);
     this._uuidToMacMap.set(nexoId, mac);
     _saveMacMaps(this._uuidToMacMap, this._macToUuidMap);
 
-    // Si ya es contacto, actualizar online
+    // Si ya es contacto, solo actualizar online y conectar GATT
     if (_isBLEContact(nexoId)) {
       var contacts = _getBLEContacts();
       var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(nexoId); });
@@ -1320,7 +1306,12 @@ export class BLEInterface {
       var uuid = device.deviceUUID || this._macToUuidMap.get(mac);
       if (!uuid || !_isBLEContact(uuid)) { newDevice = device; newMac = mac; }
     }.bind(this));
-    if (newDevice && newMac) { nameSpan.textContent = newDevice.name || ''; bar.style.display = 'flex'; bar.dataset.mac = newMac; }
+    if (newDevice && newMac) {
+           var displayName = newDevice.deviceUUID || 'Nexo Device';
+      nameSpan.textContent = displayName; 
+      bar.style.display = 'flex'; 
+      bar.dataset.mac = newMac; 
+    }
     else { bar.style.display = 'none'; bar.dataset.mac = ''; }
   }
 
@@ -1330,10 +1321,9 @@ export class BLEInterface {
     var mac = _normMac(bar.dataset.mac);
     var device = this.foundDevices.get(mac);
     if (!device) return;
-    var name = device.name || '';
+    var name = device.name || device.deviceUUID || 'Nexo Device';
     var nexoId = device.deviceUUID || '';
 
-    // Solo agregar si tiene NEXO ID válido
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
       console.warn('[BLEInterface] No se puede agregar: dispositivo sin NEXO ID');
       return;
@@ -1419,3 +1409,4 @@ export class BLEInterface {
     return Promise.resolve();
   }
 }
+
