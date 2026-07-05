@@ -18,6 +18,7 @@ import android.os.ParcelUuid
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+
 class BleService : Service() {
 companion object {
 private const val TAG = "NexoBleService"
@@ -27,13 +28,16 @@ private const val MANUFACTURER_ID = 0xFFFF
 private const val NEXO_MAGIC_HIGH: Byte = 0x4E
 private const val NEXO_MAGIC_LOW: Byte = 0x58
 }
+
 private fun showToast(message: String) {
 try {
 Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
 } catch (e: Exception) { }
 }
+
 private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
 private var currentNexoId: String? = null
+
 override fun onCreate() {
 super.onCreate()
 showToast("[BLE Svc] onCreate - Advertising Only")
@@ -56,6 +60,7 @@ Log.e(TAG, "Fatal error in onCreate", e)
 stopSelf()
 }
 }
+
 override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 Log.i(TAG, "onStartCommand action=${intent?.action}")
 val nexoId = intent?.getStringExtra("nexo_advertising_id")
@@ -66,13 +71,16 @@ restartAdvertising()
 }
 return START_STICKY
 }
+
 private fun restartAdvertising() {
 try {
 bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
 } catch (e: Exception) { }
 startAdvertising()
 }
+
 override fun onBind(intent: Intent?): IBinder? = null
+
 private fun startAdvertising() {
 showToast("[BLE Svc] startAdvertising...")
 try {
@@ -90,9 +98,14 @@ val settings = AdvertiseSettings.Builder()
 .setTimeout(0)
 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
 .build()
+
+// FIX: El advertising packet tiene limite de 31 bytes.
+// 128-bit UUID (18 bytes) + device name (~10 bytes) + manufacturer data (14 bytes) + flags (3 bytes) = ~45 bytes.
+// Solucion: solo mandar manufacturer data + flags. JS identifica NEXO por el magic NX.
+// El device name y service UUID no son necesarios para el scan porque usamos emptyList() y leemos manufacturer data.
 val dataBuilder = AdvertiseData.Builder()
-.setIncludeDeviceName(true)
-.addServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
+.setIncludeDeviceName(false)
+
 val nexoId = currentNexoId
 if (nexoId != null && nexoId.length >= 4) {
 val manufacturerData = ByteArray(2 + nexoId.length)
@@ -105,6 +118,7 @@ Log.i(TAG, "Advertising con NEXO ID: $nexoId")
 } else {
 Log.w(TAG, "Advertising SIN NEXO ID (no recibido aun)")
 }
+
 val data = dataBuilder.build()
 bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
 showToast("[BLE Svc] Advertising iniciado")
@@ -113,6 +127,7 @@ showToast("[BLE Svc] Advertising ERROR: ${e.message}")
 Log.e(TAG, "Error starting advertising", e)
 }
 }
+
 private val advertiseCallback = object : AdvertiseCallback() {
 override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
 showToast("[BLE Svc] Advertising STARTED")
@@ -123,6 +138,7 @@ showToast("[BLE Svc] Advertising FAILED: $errorCode")
 Log.e(TAG, "Advertising failed: $errorCode")
 }
 }
+
 private fun createNotification(): Notification {
 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, "NEXO BLE", NotificationManager.IMPORTANCE_LOW)
@@ -140,6 +156,7 @@ return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
 .setOngoing(true)
 .build()
 }
+
 override fun onDestroy() {
 super.onDestroy()
 showToast("[BLE Svc] onDestroy")
