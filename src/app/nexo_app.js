@@ -694,4 +694,4 @@ Focos de Interés:
  6. Envío de Read Receipt cuando el chat está activo con el remitente
  7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
  8. FIX: Contactos en pantalla principal (no en panel BLE)
- 9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE*/
+ 9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE */
