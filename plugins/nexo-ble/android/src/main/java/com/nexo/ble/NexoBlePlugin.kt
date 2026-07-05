@@ -108,7 +108,7 @@ messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
 val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
 buffer.append(chunk)
 val accumulated = buffer.toString()
-remLog("DEBUG", "REASSEMBLY", "Buffer for macNorm: len={accumulated.length}, content=${accumulated.take(60)}...")
+remLog("DEBUG", "REASSEMBLY", "Buffer for $macNorm: len=${accumulated.length}, content=${accumulated.take(60)}...")
 val completeMessage = tryExtractCompleteJson(accumulated)
 if (completeMessage != null) {
 remLog("INFO", "REASSEMBLY", "Mensaje completo reensamblado de $macNorm")
@@ -237,10 +237,10 @@ gattClients.clear()
 clientRxCharacteristics.clear()
 clientTxCharacteristics.clear()
 clientConnectionStates.clear()
-reconnectTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 reconnectTimers.clear()
 reconnectAttempts.clear()
-keepAliveTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 keepAliveTimers.clear()
 pendingMessageQueue.clear()
 messageBuffers.clear()
@@ -429,7 +429,7 @@ preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
 if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
 val chunk = value?.toString(Charset.defaultCharset()) ?: ""
 val mac = device.address
-remLog("INFO", "GATT_SERVER", "RX chunk from mac: len={chunk.length}")
+remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${chunk.length}")
 processReceivedChunk(mac, chunk, "gatt_server")
 if (responseNeeded) {
 bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
@@ -497,7 +497,7 @@ call.reject("Permiso BLUETOOTH_CONNECT requerido para conectar", "PERMISSION_DEN
 return
 }
 }
-remLog("INFO", "GATT_CLIENT", "Usando device: {device.address} (cache={scannedDevices.containsKey(macNorm)})")
+remLog("INFO", "GATT_CLIENT", "Usando device: ${device.address} (cache=${scannedDevices.containsKey(macNorm)})")
 gattClients[macNorm]?.let { oldGatt ->
 try { oldGatt.disconnect(); oldGatt.close() } catch (e: Exception) { }
 }
@@ -654,7 +654,7 @@ override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: Blueto
 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
 val chunk = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
 val address = gatt.device?.address ?: ""
-remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from address: len={chunk.length}")
+remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from $address: len=${chunk.length}")
 processReceivedChunk(address, chunk, "gatt_client")
 }
 }
@@ -662,7 +662,7 @@ override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: Blueto
 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
 val chunk = value.toString(Charset.defaultCharset())
 val address = gatt.device?.address ?: ""
-remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from address: len={chunk.length}")
+remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from $address: len=${chunk.length}")
 processReceivedChunk(address, chunk, "gatt_client")
 }
 }
@@ -804,7 +804,7 @@ fun sendMessage(call: PluginCall) {
 val rawDeviceId = call.getString("deviceId") ?: ""
 val message = call.getString("message") ?: ""
 val macNorm = normalizeMac(rawDeviceId)
-remLog("INFO", "SEND", "sendMessage to=rawDeviceId len={message.length}")
+remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
 if (rawDeviceId.isEmpty()) {
 call.reject("deviceId requerido")
 return
