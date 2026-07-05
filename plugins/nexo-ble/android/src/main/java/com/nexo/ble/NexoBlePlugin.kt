@@ -36,6 +36,11 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
@@ -1163,5 +1168,82 @@ class NexoBlePlugin : Plugin() {
     fun startListeningMessages(call: PluginCall) {
         registerServerReceivers()
         call.resolve(JSObject().put("listening", true))
+    }
+
+    // ============================================================
+    // FILESYSTEM PERSISTENCE — Vault local de conversaciones
+    // ============================================================
+    @PluginMethod
+    fun saveToFile(call: PluginCall) {
+        val filename = call.getString("filename") ?: run {
+            call.reject("filename requerido")
+            return
+        }
+        val content = call.getString("content") ?: run {
+            call.reject("content requerido")
+            return
+        }
+        try {
+            val file = File(activity.filesDir, filename)
+            FileOutputStream(file).use { fos ->
+                OutputStreamWriter(fos, Charsets.UTF_8).use { writer ->
+                    writer.write(content)
+                }
+            }
+            call.resolve(JSObject().put("success", true).put("path", file.absolutePath))
+        } catch (e: Exception) {
+            call.reject("Error guardando archivo: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun loadFromFile(call: PluginCall) {
+        val filename = call.getString("filename") ?: run {
+            call.reject("filename requerido")
+            return
+        }
+        try {
+            val file = File(activity.filesDir, filename)
+            if (!file.exists()) {
+                call.resolve(JSObject().put("exists", false).put("content", ""))
+                return
+            }
+            val content = FileInputStream(file).use { fis ->
+                InputStreamReader(fis, Charsets.UTF_8).use { reader ->
+                    reader.readText()
+                }
+            }
+            call.resolve(JSObject().put("exists", true).put("content", content).put("path", file.absolutePath))
+        } catch (e: Exception) {
+            call.reject("Error leyendo archivo: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun deleteFile(call: PluginCall) {
+        val filename = call.getString("filename") ?: run {
+            call.reject("filename requerido")
+            return
+        }
+        try {
+            val file = File(activity.filesDir, filename)
+            val deleted = file.delete()
+            call.resolve(JSObject().put("deleted", deleted))
+        } catch (e: Exception) {
+            call.reject("Error borrando archivo: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun listFiles(call: PluginCall) {
+        try {
+            val dir = activity.filesDir
+            val files = dir.listFiles()?.map { it.name } ?: emptyList()
+            val arr = JSArray()
+            files.forEach { arr.put(it) }
+            call.resolve(JSObject().put("files", arr))
+        } catch (e: Exception) {
+            call.reject("Error listando archivos: ${e.message}")
+        }
     }
 }
