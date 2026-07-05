@@ -19,12 +19,9 @@ import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 /**
- * BleService v3.0 - ADVERTISING ONLY (Foreground Service)
- * Este servicio SOLO maneja:
- *    1. BLE Advertising (para que otros dispositivos nos encuentren)
- *    2. Foreground notification (para que Android no mate el proceso)
- * El GATT Server ahora se maneja UNICAMENTE en NexoBlePlugin.kt
- * para evitar conflictos de doble GATT Server.
+ * BleService v3.1 - ADVERTISING ONLY (Foreground Service)
+ * FIX: Quitar setIncludeDeviceName para que Manufacturer Data + Service UUID quepan en 31 bytes.
+ * FIX: Siempre reiniciar advertising al recibir nuevo NEXO ID.
    */
    class BleService : Service() {
    companion object {
@@ -66,12 +63,10 @@ import androidx.core.app.NotificationCompat
    }
    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
    Log.i(TAG, "onStartCommand action=${intent?.action}")
-   // Recibir NEXO ID del intent
    val nexoId = intent?.getStringExtra("nexo_advertising_id")
    if (nexoId != null && nexoId != currentNexoId) {
    currentNexoId = nexoId
    Log.i(TAG, "NEXO ID recibido: $nexoId")
-   // Reiniciar advertising con nuevo NEXO ID
    restartAdvertising()
    }
    return START_STICKY
@@ -100,8 +95,9 @@ import androidx.core.app.NotificationCompat
    .setTimeout(0)
    .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
    .build()
+   // FIX: Quitar setIncludeDeviceName(true) para evitar exceder 31 bytes del advertising packet.
+   // El Service UUID + Manufacturer Data deben caber juntos.
    val dataBuilder = AdvertiseData.Builder()
-   .setIncludeDeviceName(true)
    .addServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
    // Agregar NEXO ID en Manufacturer Specific Data
    val nexoId = currentNexoId
