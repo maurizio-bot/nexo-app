@@ -8,6 +8,7 @@
  * FIX: ACK automatico al recibir mensaje BLE
  * FIX: Read receipt cuando chat activo con remitente
  * FIX: Al cerrar chat vuelve a pantalla principal (tab chats activo)
+ * FIX v5.0.13: Persistencia async/await para vault_fs
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
    */
@@ -400,45 +401,43 @@ case 'offline': if ((!this.mesh || !this.mesh.getPeerCount || this.mesh.getPeerC
 }
 _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 /* ============================================================
-FIX: Persistencia de conversaciones en Filesystem (vault_fs)
+FIX v5.0.13: Persistencia de conversaciones en Filesystem (vault_fs)
 ============================================================ */
 async _saveMessageToVault(contactId, message) {
-    var cid = _normId(contactId);
-    if (!cid) return;
-    try {
-        await vaultAppendMessage(cid, {
-            content: message.content,
-            sender: message.sender,
-            senderName: message.senderName,
-            _own: !!message._own,
-            _source: message._source,
-            _ts: message._ts || Date.now(),
-            messageId: message.messageId,
-            deviceUUID: message.deviceUUID,
-            recipient: message.recipient,
-            status: message.status || 'pending'
-        });
-    } catch (e) {
-        console.warn('[NexoApp] Error guardando mensaje:', e.message);
-    }
+var cid = _normId(contactId);
+if (!cid) return;
+try {
+await vaultAppendMessage(cid, {
+content: message.content,
+sender: message.sender,
+senderName: message.senderName,
+_own: !!message._own,
+_source: message._source,
+_ts: message._ts || Date.now(),
+messageId: message.messageId,
+deviceUUID: message.deviceUUID,
+recipient: message.recipient,
+status: message.status || 'pending'
+});
+} catch (e) {
+console.warn('[NexoApp] Error guardando mensaje:', e.message);
 }
-
+}
 async _loadMessagesFromVault(contactId) {
-    try {
-        var cid = _normId(contactId);
-        if (!cid) return [];
-        return await vaultLoadMessages(cid);
-    } catch (e) { return []; }
+try {
+var cid = _normId(contactId);
+if (!cid) return [];
+return await vaultLoadMessages(cid);
+} catch (e) { return []; }
 }
-
 async _updateMessageStatusInVault(contactId, messageId, status) {
-    var cid = _normId(contactId);
-    if (!cid || !messageId) return;
-    try {
-        await vaultUpdateMessageStatus(cid, messageId, status);
-    } catch (e) {
-        console.warn('[NexoApp] Error actualizando estado:', e.message);
-    }
+var cid = _normId(contactId);
+if (!cid || !messageId) return;
+try {
+await vaultUpdateMessageStatus(cid, messageId, status);
+} catch (e) {
+console.warn('[NexoApp] Error actualizando estado:', e.message);
+}
 }
 /* ============================================================
 ENVIO DE MENSAJES: Anti-crash + Render Optimista + ACK States
@@ -569,7 +568,7 @@ _ts: Date.now(),
 _id: Math.random().toString(36).substr(2, 9)
 });
 this.config.onMessage(enriched);
-/* FIX: Guardar mensaje en vault para persistencia */
+/* FIX v5.0.13: Guardar mensaje en vault para persistencia (async) */
 var vaultContactId = enriched._own ? enriched.recipient : (enriched.deviceUUID || enriched.sender);
 if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
 /* FIX v5.0.11: Enviar read receipt si chat activo con el remitente */
@@ -704,4 +703,5 @@ Focos de Interés:
  6. Envío de Read Receipt cuando el chat está activo con el remitente
  7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
  8. FIX: Contactos en pantalla principal (no en panel BLE)
- 9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE */
+ 9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
+ 10. FIX v5.0.13: Persistencia async/await para vault_fs */
