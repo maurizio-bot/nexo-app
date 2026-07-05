@@ -199,7 +199,7 @@ var meshInstance = this.nordicMesh || this.mesh || null;
 this.bleInterface = initBLEInterface(meshInstance);
 if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
 var self = this;
-this._bleChatHandler = function(e) {
+this._bleChatHandler = async function(e) {
 try {
 var detail = e.detail || {};
 self.activeContact = { id: detail.contactId, name: detail.name, address: detail.address, transport: detail.transport };
@@ -695,4 +695,3 @@ Focos de Interés:
  7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
  8. FIX: Contactos en pantalla principal (no en panel BLE)
  9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
-   */
