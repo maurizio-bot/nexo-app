@@ -1167,9 +1167,6 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 
-    // ============================================================
-    // FILESYSTEM PERSISTENCE — Vault local de conversaciones
-    // ============================================================
     @PluginMethod
     fun saveToFile(call: PluginCall) {
         val filename = call.getString("filename") ?: run {
@@ -1182,7 +1179,7 @@ class NexoBlePlugin : Plugin() {
         }
         try {
             val file = File(activity.filesDir, filename)
-            file.parentFile?.mkdirs() // FIX: Crear directorios intermedios
+            file.parentFile?.mkdirs()
             FileOutputStream(file).use { fos ->
                 OutputStreamWriter(fos, Charsets.UTF_8).use { writer ->
                     writer.write(content)
