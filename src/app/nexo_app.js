@@ -402,33 +402,43 @@ _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 /* ============================================================
 FIX: Persistencia de conversaciones en Filesystem (vault_fs)
 ============================================================ */
-_saveMessageToVault(contactId, message) {
-var cid = _normId(contactId);
-if (!cid) return;
-vaultAppendMessage(cid, {
-content: message.content,
-sender: message.sender,
-senderName: message.senderName,
-_own: !!message._own,
-_source: message._source,
-_ts: message._ts || Date.now(),
-messageId: message.messageId,
-deviceUUID: message.deviceUUID,
-recipient: message.recipient,
-status: message.status || 'pending'
-}).catch(function(e) {});
+async _saveMessageToVault(contactId, message) {
+    var cid = _normId(contactId);
+    if (!cid) return;
+    try {
+        await vaultAppendMessage(cid, {
+            content: message.content,
+            sender: message.sender,
+            senderName: message.senderName,
+            _own: !!message._own,
+            _source: message._source,
+            _ts: message._ts || Date.now(),
+            messageId: message.messageId,
+            deviceUUID: message.deviceUUID,
+            recipient: message.recipient,
+            status: message.status || 'pending'
+        });
+    } catch (e) {
+        console.warn('[NexoApp] Error guardando mensaje:', e.message);
+    }
 }
+
 async _loadMessagesFromVault(contactId) {
-try {
-var cid = _normId(contactId);
-if (!cid) return [];
-return await vaultLoadMessages(cid);
-} catch (e) { return []; }
+    try {
+        var cid = _normId(contactId);
+        if (!cid) return [];
+        return await vaultLoadMessages(cid);
+    } catch (e) { return []; }
 }
-_updateMessageStatusInVault(contactId, messageId, status) {
-var cid = _normId(contactId);
-if (!cid || !messageId) return;
-vaultUpdateMessageStatus(cid, messageId, status).catch(function(e) {});
+
+async _updateMessageStatusInVault(contactId, messageId, status) {
+    var cid = _normId(contactId);
+    if (!cid || !messageId) return;
+    try {
+        await vaultUpdateMessageStatus(cid, messageId, status);
+    } catch (e) {
+        console.warn('[NexoApp] Error actualizando estado:', e.message);
+    }
 }
 /* ============================================================
 ENVIO DE MENSAJES: Anti-crash + Render Optimista + ACK States
