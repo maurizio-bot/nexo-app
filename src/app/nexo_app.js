@@ -10,8 +10,7 @@
  * FIX: Al cerrar chat vuelve a pantalla principal (tab chats activo)
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
- */
-
+   */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
 import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
@@ -22,6 +21,7 @@ import { GestureEngine } from '../ui/gesture_engine.js';
 import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
 import { initBLEInterface } from '../ui/ble_interface.js';
+import { vaultLoadMessages, vaultAppendMessage, vaultUpdateMessageStatus } from '../vault/vault_fs.js';
 function withTimeoutNAP(promise, ms, context) {
 var timer;
 var timeoutPromise = new Promise(function(_, reject) {
@@ -42,7 +42,7 @@ if (DEBUG._logBuffer.length > 1000) DEBUG._logBuffer.shift();
 console.log('[' + entry.time + '] [' + type.toUpperCase() + ']' + (code ? '[' + code + ']' : '') + ' ' + msg);
 /* FIX v5.0.12: Silenciar toasts — solo console, no rem */
 // var method = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warn' ? 'warn' : 'info';
-// if (code) rem[method](msg, code); else rem[method](msg);
+// if (code) rem[method](msg, code); else remmethod;
 },
 error: function(code, msg) { DEBUG.log(msg, 'error', code); },
 success: function(msg, code) { DEBUG.log(msg, 'success', code); },
@@ -214,15 +214,21 @@ if (nameInput) nameInput.value = detail.name || '';
 /* FIX #1: Subtitle vacio — quita "BLUETOOTH" / "NEXO MESH" */
 if (subtitle) subtitle.textContent = '';
 DEBUG.success('Chat activo: ' + (detail.name || '') + ' [' + (detail.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
+/* FIX: Cargar mensajes previos del vault al abrir chat */
+try {
+var storedMessages = await self._loadMessagesFromVault(detail.contactId);
+storedMessages.sort(function(a, b) { return (a._ts || 0) - (b._ts || 0); });
+storedMessages.forEach(function(m) { self.config.onMessage(m); });
+} catch (e) {}
 self._updateMode('P2P_BLE');
 self.config.onStatusChange('CHAT:' + (detail.name || ''));
 /* FIX: Activar tab 'chats' en bottom-nav */
 var bottomNav = document.getElementById('ble-bottom-nav');
 if (bottomNav) {
-  var navItems = bottomNav.querySelectorAll('.ble-nav-item');
-  navItems.forEach(function(n) { n.classList.remove('active'); });
-  var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
-  if (chatsTab) chatsTab.classList.add('active');
+var navItems = bottomNav.querySelectorAll('.ble-nav-item');
+navItems.forEach(function(n) { n.classList.remove('active'); });
+var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
+if (chatsTab) chatsTab.classList.add('active');
 }
 } catch (handlerErr) {
 console.error('[NexoApp] Error en _bleChatHandler:', handlerErr);
@@ -241,10 +247,10 @@ try { window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} })
 /* FIX: Activar tab 'chats' al volver a principal */
 var bottomNav = document.getElementById('ble-bottom-nav');
 if (bottomNav) {
-  var navItems = bottomNav.querySelectorAll('.ble-nav-item');
-  navItems.forEach(function(n) { n.classList.remove('active'); });
-  var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
-  if (chatsTab) chatsTab.classList.add('active');
+var navItems = bottomNav.querySelectorAll('.ble-nav-item');
+navItems.forEach(function(n) { n.classList.remove('active'); });
+var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
+if (chatsTab) chatsTab.classList.add('active');
 }
 self._updateMode('OFFLINE');
 self.config.onStatusChange('OFFLINE');
@@ -394,6 +400,37 @@ case 'offline': if ((!this.mesh || !this.mesh.getPeerCount || this.mesh.getPeerC
 }
 _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 /* ============================================================
+FIX: Persistencia de conversaciones en Filesystem (vault_fs)
+============================================================ */
+_saveMessageToVault(contactId, message) {
+var cid = _normId(contactId);
+if (!cid) return;
+vaultAppendMessage(cid, {
+content: message.content,
+sender: message.sender,
+senderName: message.senderName,
+_own: !!message._own,
+_source: message._source,
+_ts: message._ts || Date.now(),
+messageId: message.messageId,
+deviceUUID: message.deviceUUID,
+recipient: message.recipient,
+status: message.status || 'pending'
+}).catch(function(e) {});
+}
+async _loadMessagesFromVault(contactId) {
+try {
+var cid = _normId(contactId);
+if (!cid) return [];
+return await vaultLoadMessages(cid);
+} catch (e) { return []; }
+}
+_updateMessageStatusInVault(contactId, messageId, status) {
+var cid = _normId(contactId);
+if (!cid || !messageId) return;
+vaultUpdateMessageStatus(cid, messageId, status).catch(function(e) {});
+}
+/* ============================================================
 ENVIO DE MENSAJES: Anti-crash + Render Optimista + ACK States
 FIX v5.0.11: Estados enviado/entregado/leído funcionales
 ============================================================ */
@@ -522,6 +559,9 @@ _ts: Date.now(),
 _id: Math.random().toString(36).substr(2, 9)
 });
 this.config.onMessage(enriched);
+/* FIX: Guardar mensaje en vault para persistencia */
+var vaultContactId = enriched._own ? enriched.recipient : (enriched.deviceUUID || enriched.sender);
+if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
 /* FIX v5.0.11: Enviar read receipt si chat activo con el remitente */
 if (!enriched._own && this.activeContact && enriched.sender === this.activeContact.id && enriched.messageId) {
 var self = this;
@@ -646,13 +686,13 @@ export { NexoApp, DEBUG };
 export default NexoApp;
 /*
 Focos de Interés:
-1. FIX v5.0.12: Silenciar toasts rem.info/warn/error/success
-2. FIX v5.0.12: Deduplicación de contactos por MAC
-3. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
-4. Eliminación de la doble pantalla (no appendItems en TheStream)
-5. Envío de ACK automático al recibir mensaje BLE
-6. Envío de Read Receipt cuando el chat está activo con el remitente
-7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
-8. FIX: Contactos en pantalla principal (no en panel BLE)
-9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
-*/
+ 1. FIX v5.0.12: Silenciar toasts rem.info/warn/error/success
+ 2. FIX v5.0.12: Deduplicación de contactos por MAC
+ 3. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
+ 4. Eliminación de la doble pantalla (no appendItems en TheStream)
+ 5. Envío de ACK automático al recibir mensaje BLE
+ 6. Envío de Read Receipt cuando el chat está activo con el remitente
+ 7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
+ 8. FIX: Contactos en pantalla principal (no en panel BLE)
+ 9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
+   */
