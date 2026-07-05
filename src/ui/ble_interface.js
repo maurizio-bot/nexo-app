@@ -114,6 +114,24 @@ function _getOrCreateNexoId() {
   });
 }
 
+function _cleanOldMacContacts() {
+  try {
+    var contacts = _getBLEContacts();
+    var cleaned = contacts.filter(function(c) {
+      var uuid = _normId(c.deviceUUID);
+      // Mantener solo contactos con UUID tipo NEXO (NX...) o UUID estándar (no mac-...)
+      return uuid.indexOf('mac-') !== 0;
+    });
+    if (cleaned.length !== contacts.length) {
+      _saveBLEContacts(cleaned);
+      console.log('[BLEInterface] Limpiados ' + (contacts.length - cleaned.length) + ' contactos viejos mac-...');
+    }
+    // Limpiar MAC maps viejos
+    localStorage.removeItem(BLE_MAC_MAP_STORAGE_KEY);
+    localStorage.removeItem(BLE_UUID_MAP_STORAGE_KEY);
+  } catch (e) {}
+}
+
 function _formatTime(ts) {
   if (!ts) return '';
   var now = Date.now();
@@ -202,8 +220,11 @@ function _addBLEContact(contact) {
   var contacts = _getBLEContacts();
   var uuid = _normId(contact.deviceUUID);
   if (!uuid) return false;
-  var existingIdx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === uuid; });
   var macNorm = _normMac(contact.macAddress);
+
+  // Buscar por UUID (NEXO ID)
+  var existingIdx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === uuid; });
+
   if (existingIdx >= 0) {
     contacts[existingIdx].name = contact.name || contacts[existingIdx].name || '';
     if (macNorm) contacts[existingIdx].macAddress = macNorm;
@@ -416,6 +437,8 @@ export class BLEInterface {
 
   _initNexoId() {
     var self = this;
+    // Limpiar contactos viejos con UUID tipo mac-... (migración a NEXO ID)
+    _cleanOldMacContacts();
     _getOrCreateNexoId().then(function(nexoId) {
       self.localNexoId = nexoId;
       console.log('[BLEInterface] NEXO ID:', nexoId);
@@ -1116,52 +1139,50 @@ export class BLEInterface {
     if (this.localDeviceAddress && mac === this.localDeviceAddress) return;
 
     var nexoId = device.nexoId || '';
-    var deviceUUID = nexoId || this._macToUuidMap.get(mac);
 
-    // Si tenemos NEXO ID, usarlo directamente como UUID
-    if (nexoId && nexoId.length === 10 && nexoId.indexOf('NX') === 0) {
-      this._macToUuidMap.set(mac, nexoId);
-      this._uuidToMacMap.set(nexoId, mac);
-      _saveMacMaps(this._uuidToMacMap, this._macToUuidMap);
+    // SOLO usar NEXO ID. Sin NEXO ID = dispositivo no es Nexo, ignorar.
+    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
+      return; // Ignorar dispositivos sin NEXO ID válido
+    }
 
-      if (_isBLEContact(nexoId)) {
-        var contacts = _getBLEContacts();
-        var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(nexoId); });
-        if (idx >= 0) { contacts[idx].online = true; contacts[idx].lastSeen = Date.now(); contacts[idx].macAddress = mac; _saveBLEContacts(contacts); }
-        this._autoConnectGATT(mac, device);
-        this.renderContactsList(); this.renderOnlineStrip(); return;
+    // Guardar mapeo MAC <-> NEXO ID (solo para conexión GATT, no para identidad)
+    this._macToUuidMap.set(mac, nexoId);
+    this._uuidToMacMap.set(nexoId, mac);
+    _saveMacMaps(this._uuidToMacMap, this._macToUuidMap);
+
+    // Si ya es contacto, actualizar online
+    if (_isBLEContact(nexoId)) {
+      var contacts = _getBLEContacts();
+      var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(nexoId); });
+      if (idx >= 0) { 
+        contacts[idx].online = true; 
+        contacts[idx].lastSeen = Date.now(); 
+        contacts[idx].macAddress = mac; 
+        _saveBLEContacts(contacts); 
       }
-
-      // Nuevo dispositivo con NEXO ID conocido pero no en contactos
-      if (!this.foundDevices.has(mac)) {
-        device.lastSeen = Date.now();
-        device.deviceUUID = nexoId;
-        this.foundDevices.set(mac, device);
-        this.newDevicesCount++; this.updateBadge(); this.renderNewDeviceBar();
-      } else {
-        var existing = this.foundDevices.get(mac);
-        existing.rssi = device.rssi; existing.name = device.name || existing.name; existing.lastSeen = Date.now(); existing.deviceUUID = nexoId;
-        this.foundDevices.set(mac, existing); this.renderNewDeviceBar();
-      }
+      this._autoConnectGATT(mac, device);
+      this.renderContactsList(); 
+      this.renderOnlineStrip(); 
       return;
     }
 
-    // Fallback: comportamiento anterior sin NEXO ID
-    var knownUUID = this._macToUuidMap.get(mac);
-    if (knownUUID && _isBLEContact(knownUUID)) {
-      var contacts = _getBLEContacts();
-      var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(knownUUID); });
-      if (idx >= 0) { contacts[idx].online = true; contacts[idx].lastSeen = Date.now(); contacts[idx].macAddress = mac; _saveBLEContacts(contacts); }
-      this._autoConnectGATT(mac, device);
-      this.renderContactsList(); this.renderOnlineStrip(); return;
-    }
-    if (this.foundDevices.has(mac)) {
+    // Nuevo dispositivo Nexo detectado
+    if (!this.foundDevices.has(mac)) {
+      device.lastSeen = Date.now();
+      device.deviceUUID = nexoId;
+      this.foundDevices.set(mac, device);
+      this.newDevicesCount++; 
+      this.updateBadge(); 
+      this.renderNewDeviceBar();
+    } else {
       var existing = this.foundDevices.get(mac);
-      existing.rssi = device.rssi; existing.name = device.name || existing.name; existing.lastSeen = Date.now();
-      this.foundDevices.set(mac, existing); this.renderNewDeviceBar(); return;
+      existing.rssi = device.rssi; 
+      existing.name = device.name || existing.name; 
+      existing.lastSeen = Date.now(); 
+      existing.deviceUUID = nexoId;
+      this.foundDevices.set(mac, existing); 
+      this.renderNewDeviceBar();
     }
-    device.lastSeen = Date.now(); this.foundDevices.set(mac, device);
-    this.newDevicesCount++; this.updateBadge(); this.renderNewDeviceBar();
   }
 
   renderOnlineStrip() {
@@ -1308,25 +1329,17 @@ export class BLEInterface {
     var bar = this.elements.newDeviceBar;
     var mac = _normMac(bar.dataset.mac);
     var device = this.foundDevices.get(mac);
+    if (!device) return;
     var name = device.name || '';
-    var contacts = _getBLEContacts();
-    var existingByMac = contacts.find(function(c) { return _normMac(c.macAddress) === mac; });
-    if (existingByMac) {
-      existingByMac.online = true;
-      existingByMac.lastSeen = Date.now();
-      if (name) existingByMac.name = name;
-      _saveBLEContacts(contacts);
-      try { localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac); } catch (e) {}
-      this._autoConnectGATT(mac, device);
-      this.foundDevices.delete(mac);
-      this._closePanelAndRefresh();
+    var nexoId = device.deviceUUID || '';
+
+    // Solo agregar si tiene NEXO ID válido
+    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
+      console.warn('[BLEInterface] No se puede agregar: dispositivo sin NEXO ID');
       return;
     }
-    var tempUUID = 'mac-' + mac;
-    this._macToUuidMap.set(mac, tempUUID);
-    this._uuidToMacMap.set(tempUUID, mac);
-    _saveMacMaps(this._uuidToMacMap, this._macToUuidMap);
-    _addBLEContact({ deviceUUID: tempUUID, name: name, macAddress: mac });
+
+    _addBLEContact({ deviceUUID: nexoId, name: name, macAddress: mac });
     try { localStorage.setItem(BLE_ACTIVE_CHAT_MAC_KEY, mac); } catch (e) {}
     this._autoConnectGATT(mac, device);
     this.foundDevices.delete(mac);
