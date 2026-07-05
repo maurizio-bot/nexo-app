@@ -932,6 +932,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
     }
 
+    // TRIGGER 3 & 4: startScan y startAdvertising ahora auto-inician GATT server + advertising
     @PluginMethod
     fun startAdvertising(call: PluginCall) {
         remLog("INFO", "ADVERTISING", "startAdvertising")
@@ -964,6 +965,7 @@ class NexoBlePlugin : Plugin() {
             call.reject("BLUETOOTH_SCAN no concedido")
             return
         }
+        // TRIGGER 4: Al escanear, asegurar que estamos advertising para ser descubribles
         autoStartGattServerAndAdvertising()
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
@@ -986,7 +988,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("stopped", true))
     }
 
-    private fun stopScanInternal() {
+        private fun stopScanInternal() {
         mainHandler.removeCallbacks(scanTimeoutRunnable)
         try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
         bluetoothScanner = null
@@ -1167,6 +1169,9 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 
+    // ============================================================
+    // FILESYSTEM PERSISTENCE — Vault local de conversaciones
+    // ============================================================
     @PluginMethod
     fun saveToFile(call: PluginCall) {
         val filename = call.getString("filename") ?: run {
@@ -1179,7 +1184,7 @@ class NexoBlePlugin : Plugin() {
         }
         try {
             val file = File(activity.filesDir, filename)
-            file.parentFile?.mkdirs()
+            file.parentFile?.mkdirs() // FIX: Crear directorios intermedios
             FileOutputStream(file).use { fos ->
                 OutputStreamWriter(fos, Charsets.UTF_8).use { writer ->
                     writer.write(content)
