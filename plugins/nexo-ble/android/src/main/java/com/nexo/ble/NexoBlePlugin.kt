@@ -67,6 +67,10 @@ class NexoBlePlugin : Plugin() {
         private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
+
+        // NEXO Advertising Manufacturer Specific Data
+        private const val MANUFACTURER_ID = 0xFFFF // Reserved for internal use
+        private const val NEXO_MAGIC = 0x4E58 // "NX" in ASCII
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
@@ -97,6 +101,7 @@ class NexoBlePlugin : Plugin() {
 
     private var messageReceiver: BroadcastReceiver? = null
     private var isAdvertisingActive = false
+    private var nexoAdvertisingId: String? = null
 
     private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
     private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
@@ -223,6 +228,10 @@ class NexoBlePlugin : Plugin() {
         if (!isAdvertisingActive) {
             try {
                 val intent = Intent(ctx, BleService::class.java)
+                // Pass NEXO ID to service if available
+                nexoAdvertisingId?.let { id ->
+                    intent.putExtra("nexo_advertising_id", id)
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     ctx.startForegroundService(intent)
                 } else {
@@ -934,6 +943,17 @@ class NexoBlePlugin : Plugin() {
 
     // TRIGGER 3 & 4: startScan y startAdvertising ahora auto-inician GATT server + advertising
     @PluginMethod
+    fun setAdvertisingData(call: PluginCall) {
+        val nexoId = call.getString("nexoId") ?: run {
+            call.reject("nexoId requerido")
+            return
+        }
+        nexoAdvertisingId = nexoId
+        remLog("INFO", "ADVERTISING", "NEXO ID set: $nexoId")
+        call.resolve(JSObject().put("set", true).put("nexoId", nexoId))
+    }
+
+    @PluginMethod
     fun startAdvertising(call: PluginCall) {
         remLog("INFO", "ADVERTISING", "startAdvertising")
         val ctx = activity.applicationContext
@@ -1002,12 +1022,34 @@ class NexoBlePlugin : Plugin() {
                 val addr = device.address
                 val macNorm = normalizeMac(addr)
                 scannedDevices[macNorm] = device
-                remLog("INFO", "SCAN", "Device found: $name ($addr) - cacheado")
+
+                // Extract NEXO advertising data from Manufacturer Specific Data
+                var nexoId: String? = null
+                val scanRecord = result.scanRecord
+                if (scanRecord != null) {
+                    val manufacturerData = scanRecord.manufacturerSpecificData
+                    if (manufacturerData != null && manufacturerData.size() > 0) {
+                        val key = manufacturerData.keyAt(0)
+                        val data = manufacturerData.get(key)
+                        if (data != null && data.size >= 4) {
+                            // Check magic bytes "NX" (0x4E 0x58)
+                            if (data[0].toInt() == 0x4E && data[1].toInt() == 0x58) {
+                                nexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
+                                remLog("INFO", "SCAN", "NEXO ID found: $nexoId for $addr")
+                            }
+                        }
+                    }
+                }
+
+                remLog("INFO", "SCAN", "Device found: $name ($addr) NEXO=$nexoId - cacheado")
                 if (scanResults.none { it.getString("deviceId") == addr }) {
                     val item = JSObject().apply {
                         put("deviceId", addr)
                         put("name", name)
                         put("rssi", result.rssi)
+                        if (nexoId != null) {
+                            put("nexoId", nexoId)
+                        }
                     }
                     scanResults.add(item)
                     notifyListeners("onDeviceFound", item)
