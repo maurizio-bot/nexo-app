@@ -307,8 +307,14 @@
    if (content.charAt(0) === '{' || (detail.data && detail.data.charAt(0) === '{')) {
    try {
    var json = JSON.parse(detail.data || content || '{}');
+   // Nuevo formato v1
+   if (json.msgId) messageId = json.msgId;
    if (json.messageId) messageId = json.messageId;
+   if (json.payload && json.payload.senderNexoId) senderUUID = json.payload.senderNexoId;
+   if (json.payload && json.payload.text) content = json.payload.text;
+   // Fallback formato antiguo
    if (json.deviceUUID) senderUUID = json.deviceUUID;
+   if (json.from && !senderUUID) senderUUID = json.from;
    } catch (e) {}
    }
    if (messageId && content && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
