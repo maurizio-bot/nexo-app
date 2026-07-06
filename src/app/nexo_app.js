@@ -283,15 +283,10 @@
    try {
    var detail = e.detail || {};
    var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
-   var localNexoId = self.bleInterface && self.bleInterface.localNexoId ? self.bleInterface.localNexoId : '';
    var senderUUID = detail.deviceUUID || '';
    var senderMAC = detail.macAddress || '';
    if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
    console.log('[BLE_RECV] Mensaje propio ignorado por UUID');
-   return;
-   }
-   if (senderUUID && localNexoId && _normId(senderUUID) === _normId(localNexoId)) {
-   console.log('[BLE_RECV] Mensaje propio ignorado por NEXO ID');
    return;
    }
    if (senderMAC && self.bleInterface && self.bleInterface.localDeviceAddress && _normId(senderMAC) === _normId(self.bleInterface.localDeviceAddress)) {
@@ -301,19 +296,10 @@
    console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
    var resolvedName = detail.senderName;
    if (!resolvedName || resolvedName === 'NEXO Peer') {
-   // Buscar en contactos persistidos primero
-   var persistedContacts = self.bleInterface && self.bleInterface.getContacts ? self.bleInterface.getContacts() : [];
-   var senderNexoId = (detail.deviceUUID || detail.deviceId || '').toString().toLowerCase().trim();
-   var persistedContact = persistedContacts.find(function(c) { return _normId(c.deviceUUID) === _normId(senderNexoId); });
-   if (persistedContact && persistedContact.name) {
-   resolvedName = persistedContact.name;
-   } else {
    var nid = (detail.deviceId || '').toString().toLowerCase().trim();
    var connDev = self.bleInterface && self.bleInterface.connectedDevices ? self.bleInterface.connectedDevices.get(nid) : null;
    var foundDev = self.bleInterface && self.bleInterface.foundDevices ? self.bleInterface.foundDevices.get(nid) : null;
    resolvedName = (connDev && connDev.name) || (foundDev && foundDev.name) || detail.senderName || '';
-   }
-   }
    }
    /* FIX v5.0.11: Detectar ACK y read receipts antes de procesar como mensaje */
    var messageId = null;
@@ -505,8 +491,7 @@
    DEBUG.success('Sent via Nordic', 'MSG_NORDIC');
    this._updateMessageStatus(messageId, 'sent');
    return true;
-   }
-   catch (e) {
+   } catch (e) {
    DEBUG.error('NORDIC_009', 'Send failed: ' + (e.message || 'unknown'));
    }
    }
@@ -517,8 +502,7 @@
    DEBUG.success('Sent via Hybrid', 'MSG_HYBRID');
    this._updateMessageStatus(messageId, 'sent');
    return true;
-   }
-   catch (e) {
+   } catch (e) {
    DEBUG.error('MESH_005', 'Broadcast failed: ' + (e.message || 'unknown'));
    }
    }
@@ -584,10 +568,7 @@
    this.config.onMessage(enriched);
    /* FIX v5.0.13: Guardar mensaje en vault para persistencia (async) */
    var vaultContactId = enriched._own ? enriched.recipient : (enriched.deviceUUID || enriched.sender);
-   // Normalizar ID para guardar en vault (usar NEXO ID si está disponible)
-   if (vaultContactId) {
-   this._saveMessageToVault(vaultContactId, enriched);
-   }
+   if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
    /* FIX v5.0.11: Enviar read receipt si chat activo con el remitente */
    if (!enriched._own && this.activeContact && enriched.sender === this.activeContact.id && enriched.messageId) {
    var self = this;
