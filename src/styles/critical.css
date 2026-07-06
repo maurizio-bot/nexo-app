@@ -215,6 +215,10 @@ Consolidado: inline + main.css + ble_styles
    font-size: 13px;
    line-height: 1.45;
    animation: messageIn 0.3s ease;
+   word-break: break-word;
+   overflow-wrap: break-word;
+   white-space: pre-wrap;
+   hyphens: auto;
    }
    @keyframes messageIn {
    from { opacity: 0; transform: translateY(10px); }
@@ -290,11 +294,16 @@ Consolidado: inline + main.css + ble_styles
    background: #1a1a1a;
    border-radius: 22px;
    border: 1px solid #222;
-   padding: 8px 14px;
+   padding: 10px 14px;
    color: #fff;
    font-size: 14px;
    outline: none;
-   height: 40px;
+   min-height: 40px;
+   max-height: 120px;
+   resize: none;
+   overflow-y: auto;
+   field-sizing: content;
+   line-height: 1.4;
    }
    #message-input::placeholder { color: #444; }
    #send-btn {
