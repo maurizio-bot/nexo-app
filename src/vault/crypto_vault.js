@@ -4,21 +4,21 @@
  * FIX v9.7.1-ARCH: No warn VAULT_IDENTITY_FAIL cuando identidad temporal ya existe (constructor)
  * NAP 2.0 Certified - WebCrypto API + IndexedDB
    */
-const PBKDF2_ITERATIONS = 600000;
-const SALT_LENGTH_BYTES = 32;
-const IV_LENGTH_BYTES = 12;
-const AES_KEY_SIZE_BITS = 256;
-const AES_TAG_LENGTH_BITS = 128;
-const INIT_TIMEOUT_MS = 5000;
-const DB_TIMEOUT_MS = 3000;
-const NAP_CODES = {
-VAULT_INIT_TIMEOUT: 'VAULT_INIT_TIMEOUT',
-VAULT_IDENTITY_FAIL: 'VAULT_IDENTITY_FAIL',
-VAULT_MEMORY_FALLBACK: 'VAULT_MEMORY_FALLBACK',
-VAULT_DB_ERROR: 'VAULT_DB_ERROR',
-VAULT_LOCKED: 'VAULT_LOCKED',
-VAULT_DESTROYED: 'VAULT_DESTROYED'
-};
+   const PBKDF2_ITERATIONS = 600000;
+   const SALT_LENGTH_BYTES = 32;
+   const IV_LENGTH_BYTES = 12;
+   const AES_KEY_SIZE_BITS = 256;
+   const AES_TAG_LENGTH_BITS = 128;
+   const INIT_TIMEOUT_MS = 5000;
+   const DB_TIMEOUT_MS = 3000;
+   const NAP_CODES = {
+   VAULT_INIT_TIMEOUT: 'VAULT_INIT_TIMEOUT',
+   VAULT_IDENTITY_FAIL: 'VAULT_IDENTITY_FAIL',
+   VAULT_MEMORY_FALLBACK: 'VAULT_MEMORY_FALLBACK',
+   VAULT_DB_ERROR: 'VAULT_DB_ERROR',
+   VAULT_LOCKED: 'VAULT_LOCKED',
+   VAULT_DESTROYED: 'VAULT_DESTROYED'
+   };
 export class CryptoVault {
 constructor() {
 if (CryptoVault._instance) return CryptoVault._instance;
@@ -266,15 +266,15 @@ this._notifyREM('info', ID temporal: ${id.substring(0, 8)}..., 'VAULT_TEMP_ID');
    getIdentityKey() {
    // FIX: Asegurar identidad existe
    this._ensureMinimalIdentity();
-// Si tenemos identidad real (persistida), retornarla
-if (this.identity?.id) {
-return this.identity.id;
-}
-// Último recurso (no debería llegar aquí por *ensureMinimalIdentity)
-const emergencyId = 'nexo_emergency*' + Date.now();
-this._notifyREM('warn', Usando ID de emergencia, 'VAULT_EMERGENCY_ID');
-return emergencyId;
-}
+   // Si tenemos identidad real (persistida), retornarla
+   if (this.identity?.id) {
+   return this.identity.id;
+   }
+   // Último recurso (no debería llegar aquí por *ensureMinimalIdentity)
+   const emergencyId = 'nexo_emergency*' + Date.now();
+   this._notifyREM('warn', 'Usando ID de emergencia', 'VAULT_EMERGENCY_ID');
+   return emergencyId;
+   }
 /**
  * NUEVO: Verificar si la identidad es real o temporal
  * Útil para NordicMesh para saber si debe usar el ID o generar uno propio
@@ -520,3 +520,10 @@ return false;
 } catch (e) { return false; }
 }
 export default CryptoVault;
+/*
+ * FIRMAS DE MODIFICACIÓN:
+ *    * Implementación de _ensureMinimalIdentity en constructor
+ *    * FIX v9.7.1-ARCH en _loadIdentityQuick para no emitir advertencia de identidad temporal existente
+ *    * Garantía de no fallo en getIdentityKey mediante _ensureMinimalIdentity
+ *    * Inclusión de firmas de modificación al pie del archivo
+     */
