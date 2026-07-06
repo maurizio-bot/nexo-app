@@ -520,10 +520,3 @@ return false;
 } catch (e) { return false; }
 }
 export default CryptoVault;
-/*
- * FIRMAS DE MODIFICACIÓN:
- *    * Implementación de _ensureMinimalIdentity en constructor
- *    * FIX v9.7.1-ARCH en _loadIdentityQuick para no emitir advertencia de identidad temporal existente
- *    * Garantía de no fallo en getIdentityKey mediante _ensureMinimalIdentity
- *    * Inclusión de firmas de modificación al pie del archivo
-     */
