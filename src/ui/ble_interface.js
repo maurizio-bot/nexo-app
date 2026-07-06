@@ -365,6 +365,13 @@ this.elements.panel.classList.remove('active');
 this.elements.overlay.classList.remove('active');
 this.renderContactsList();
 this.renderOnlineStrip();
+/* AUTO-SCAN: Al iniciar app, buscar contactos conocidos cercanos */
+var self = this;
+setTimeout(function() {
+if (!self.isDummyMode && self.nativePlugin) {
+self._autoScanForKnownContacts();
+}
+}, 2000);
 }
 _initNexoId() {
 var self = this;
@@ -861,6 +868,37 @@ self.isAdvertising = true;
 }
 self.updateVisibilityButton(); return Promise.resolve();
 }
+_autoScanForKnownContacts() {
+var self = this;
+if (self.isScanning) return;
+if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
+var contacts = _getBLEContacts();
+if (contacts.length === 0) return;
+console.log('[BLEInterface] Auto-scan iniciado para ' + contacts.length + ' contactos conocidos');
+self.foundDevices.clear();
+_safeNativeCall(self.nativePlugin, 'startScan', {})
+.then(function() {
+self.isScanning = true;
+self.updateScanButton();
+/* Scan silencioso: 8 segundos para encontrar contactos cercanos */
+setTimeout(function() {
+if (self.isScanning && _hasNativeMethod(self.nativePlugin, 'stopScan')) {
+_safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() {
+self.isScanning = false;
+self.updateScanButton();
+console.log('[BLEInterface] Auto-scan completado');
+}).catch(function() {
+self.isScanning = false;
+self.updateScanButton();
+});
+}
+}, 8000);
+})
+.catch(function(e) {
+console.warn('[BLEInterface] Auto-scan fallo:', e.message);
+});
+}
+
 createDOM() {
 var self = this;
 var panel = document.createElement('div');
@@ -1075,6 +1113,25 @@ existing.lastSeen = Date.now();
 existing.deviceUUID = nexoId;
 this.foundDevices.set(mac, existing);
 this.renderNewDeviceBar();
+}
+/* AUTO-RECONNECT: Si es contacto conocido, conectar GATT automaticamente */
+if (_isBLEContact(nexoId)) {
+var contacts = _getBLEContacts();
+var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(nexoId); });
+if (idx >= 0) {
+contacts[idx].online = true;
+contacts[idx].lastSeen = Date.now();
+contacts[idx].macAddress = mac;
+_saveBLEContacts(contacts);
+this.renderContactsList();
+this.renderOnlineStrip();
+/* Solo auto-conectar si no esta ya conectado ni conectando */
+var state = this._getDeviceState(mac);
+if (state.state === BLE_STATES.DISCONNECTED) {
+console.log('[BLEInterface] Auto-reconnect a contacto conocido:', nexoId);
+this._autoConnectGATT(mac, device);
+}
+}
 }
 }
 renderOnlineStrip() {
