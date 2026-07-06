@@ -1,3 +1,4 @@
+
 package com.nexo.ble
 import android.app.ActivityManager
 import android.bluetooth.BluetoothDevice
@@ -42,6 +43,7 @@ import java.io.OutputStreamWriter
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
+
 @CapacitorPlugin(
 name = "NexoBLE",
 permissions = [
@@ -91,6 +93,7 @@ private var isAdvertisingActive = false
 private var nexoAdvertisingId: String? = null
 private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
 private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
+
 private fun remLog(level: String, tag: String, message: String) {
 Log.i("NEXO_REM", "[$level][$tag] $message")
 try {
@@ -102,13 +105,14 @@ notifyListeners("onRemLog", JSObject()
 )
 } catch (e: Exception) { }
 }
+
 private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
 val macNorm = normalizeMac(deviceId)
 messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
 val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
 buffer.append(chunk)
 val accumulated = buffer.toString()
-remLog("DEBUG", "REASSEMBLY", "Buffer for macNorm: len={accumulated.length}, content=${accumulated.take(60)}...")
+remLog("DEBUG", "REASSEMBLY", "Buffer for $macNorm: len=${accumulated.length}, content=${accumulated.take(60)}...")
 val completeMessage = tryExtractCompleteJson(accumulated)
 if (completeMessage != null) {
 remLog("INFO", "REASSEMBLY", "Mensaje completo reensamblado de $macNorm")
@@ -132,6 +136,7 @@ messageBufferTimers[macNorm] = timeoutRunnable
 mainHandler.postDelayed(timeoutRunnable, MESSAGE_REASSEMBLY_TIMEOUT_MS)
 }
 }
+
 private fun tryExtractCompleteJson(buffer: String): String? {
 if (buffer.isBlank()) return null
 var braceCount = 0
@@ -159,11 +164,13 @@ candidate
 null
 }
 }
+
 override fun load() {
 super.load()
 remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server")
 autoStartGattServerAndAdvertising()
 }
+
 override fun handleOnResume() {
 super.handleOnResume()
 remLog("INFO", "LIFECYCLE", "handleOnResume")
@@ -177,10 +184,12 @@ notifyListeners("onPermissionStatusChanged", JSObject()
 )
 }
 }
+
 override fun handleOnPause() {
 super.handleOnPause()
 remLog("INFO", "LIFECYCLE", "handleOnPause")
 }
+
 override fun handleOnDestroy() {
 super.handleOnDestroy()
 remLog("INFO", "LIFECYCLE", "handleOnDestroy - limpiando DUAL GATT")
@@ -194,6 +203,7 @@ messageBuffers.clear()
 messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
 }
+
 private fun autoStartGattServerAndAdvertising() {
 val ctx = activity.applicationContext
 if (!checkCoreBLEPermissions(ctx)) {
@@ -223,6 +233,7 @@ remLog("WARN", "AUTO_START", "Fallo auto-start advertising: ${e.message}")
 }
 }
 }
+
 private fun cleanupAllConnections() {
 gattClients.forEach { (mac, gatt) ->
 try {
@@ -237,16 +248,17 @@ gattClients.clear()
 clientRxCharacteristics.clear()
 clientTxCharacteristics.clear()
 clientConnectionStates.clear()
-reconnectTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 reconnectTimers.clear()
 reconnectAttempts.clear()
-keepAliveTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 keepAliveTimers.clear()
 pendingMessageQueue.clear()
 messageBuffers.clear()
 messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
 }
+
 @PluginMethod
 fun checkBLEStatus(call: PluginCall) {
 remLog("INFO", "PERMISSIONS", "checkBLEStatus")
@@ -273,6 +285,7 @@ result.put("allGranted", allGranted)
 result.put("serverReady", bluetoothGattServer != null)
 call.resolve(result)
 }
+
 @PluginMethod
 fun initializeBLE(call: PluginCall) {
 remLog("INFO", "PERMISSIONS", "initializeBLE")
@@ -300,6 +313,7 @@ call, "permissionsCallback"
 requestPermissionForAliases(arrayOf("location", "postNotifications"), call, "permissionsCallback")
 }
 }
+
 @PermissionCallback
 fun permissionsCallback(call: PluginCall) {
 val ctx = activity.applicationContext
@@ -311,8 +325,10 @@ notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "pe
 }
 call.resolve(JSObject().put("granted", granted))
 }
+
 private fun isGranted(ctx: Context, permission: String): Boolean =
 ContextCompat.checkSelfPermission(ctx, permission) == PackageManager.PERMISSION_GRANTED
+
 private fun checkCoreBLEPermissions(ctx: Context): Boolean {
 return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
 isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN) &&
@@ -325,9 +341,11 @@ isGranted(ctx, android.Manifest.permission.BLUETOOTH_CONNECT) &&
 isGranted(ctx, android.Manifest.permission.BLUETOOTH_ADVERTISE)
 } else isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
 }
+
 private fun normalizeMac(mac: String): String {
 return mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
 }
+
 private fun formatMacForAndroid(mac: String): String? {
 val clean = mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
 if (clean.length != 12 || !clean.all { it in '0'..'9' || it in 'a'..'f' }) {
@@ -335,6 +353,7 @@ return null
 }
 return clean.chunked(2).joinToString(":")
 }
+
 private fun startGattServer() {
 if (bluetoothGattServer != null) {
 remLog("INFO", "GATT_SERVER", "Ya iniciado")
@@ -379,6 +398,7 @@ notifyListeners("onServerReady", JSObject().put("ready", true).put("source", "ga
 remLog("ERROR", "GATT_SERVER", "Error: ${e.message}")
 }
 }
+
 private fun stopGattServer() {
 try {
 bluetoothGattServer?.close()
@@ -389,6 +409,7 @@ remLog("INFO", "GATT_SERVER", "Detenido")
 remLog("WARN", "GATT_SERVER", "Error deteniendo: ${e.message}")
 }
 }
+
 private val gattServerCallback = object : BluetoothGattServerCallback() {
 override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
 val mac = normalizeMac(device.address)
@@ -429,7 +450,7 @@ preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
 if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
 val chunk = value?.toString(Charset.defaultCharset()) ?: ""
 val mac = device.address
-remLog("INFO", "GATT_SERVER", "RX chunk from mac: len={chunk.length}")
+remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${chunk.length}")
 processReceivedChunk(mac, chunk, "gatt_server")
 if (responseNeeded) {
 bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
@@ -449,6 +470,7 @@ remLog("INFO", "GATT_SERVER", "CCCD escrito por ${device.address}")
 }
 }
 }
+
 @PluginMethod
 fun connectToDevice(call: PluginCall) {
 try {
@@ -497,7 +519,7 @@ call.reject("Permiso BLUETOOTH_CONNECT requerido para conectar", "PERMISSION_DEN
 return
 }
 }
-remLog("INFO", "GATT_CLIENT", "Usando device: {device.address} (cache={scannedDevices.containsKey(macNorm)})")
+remLog("INFO", "GATT_CLIENT", "Usando device: ${device.address} (cache=${scannedDevices.containsKey(macNorm)})")
 gattClients[macNorm]?.let { oldGatt ->
 try { oldGatt.disconnect(); oldGatt.close() } catch (e: Exception) { }
 }
@@ -535,6 +557,7 @@ remLog("ERROR", "GATT_CLIENT", "Fatal connectToDevice: ${e.message}")
 call.reject("Error interno: ${e.message}", "INTERNAL_ERROR")
 }
 }
+
 private fun createGattClientCallback(macNorm: String): BluetoothGattCallback {
 return object : BluetoothGattCallback() {
 override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -654,7 +677,7 @@ override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: Blueto
 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
 val chunk = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
 val address = gatt.device?.address ?: ""
-remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from address: len={chunk.length}")
+remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from $address: len=${chunk.length}")
 processReceivedChunk(address, chunk, "gatt_client")
 }
 }
@@ -662,12 +685,13 @@ override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: Blueto
 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
 val chunk = value.toString(Charset.defaultCharset())
 val address = gatt.device?.address ?: ""
-remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from address: len={chunk.length}")
+remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from $address: len=${chunk.length}")
 processReceivedChunk(address, chunk, "gatt_client")
 }
 }
 }
 }
+
 private fun startKeepAlive(macNorm: String) {
 stopKeepAlive(macNorm)
 val runnable = object : Runnable {
@@ -690,28 +714,12 @@ keepAliveTimers[macNorm] = runnable
 mainHandler.postDelayed(runnable, KEEPALIVE_INTERVAL_MS)
 remLog("INFO", "KEEPALIVE", "Iniciado para $macNorm")
 }
+
 private fun stopKeepAlive(macNorm: String) {
 keepAliveTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
 }
-private fun processPendingMessages(macNorm: String) {
-val queue = pendingMessageQueue.remove(macNorm) ?: return
-val gatt = gattClients[macNorm]
-val rxChar = clientRxCharacteristics[macNorm]
-if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
-queue.forEachIndexed { index, msg ->
-mainHandler.postDelayed({
-val result = sendChunkedOrSingle(macNorm, "", msg)
-if (result.sent) {
-remLog("INFO", "PENDING_QUEUE", "Mensaje encolado enviado a $macNorm")
-} else {
-remLog("WARN", "PENDING_QUEUE", "Fallo enviando mensaje encolado a $macNorm")
-}
-}, index * 200L)
-}
-} else {
-remLog("WARN", "PENDING_QUEUE", "No se pudieron enviar ${queue.size} mensajes encolados, conexion no lista")
-}
-}
+
+
 private fun startAutoReconnect(macNorm: String) {
 val currentAttempts = reconnectAttempts[macNorm] ?: 0
 if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -748,6 +756,7 @@ remLog("ERROR", "RECONNECT", "Fallo reconexion $macNorm: ${e.message}")
 reconnectTimers[macNorm] = runnable
 mainHandler.postDelayed(runnable, RECONNECT_DELAY_MS)
 }
+
 @PluginMethod
 fun disconnectDevice(call: PluginCall) {
 val rawDeviceId = call.getString("deviceId") ?: ""
@@ -769,6 +778,7 @@ pendingMessageQueue.remove(macNorm)
 notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
 call.resolve(JSObject().put("disconnected", true))
 }
+
 @PluginMethod
 fun forceReconnect(call: PluginCall) {
 val rawDeviceId = call.getString("deviceId") ?: ""
@@ -784,6 +794,7 @@ messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
 mainHandler.postDelayed({ startAutoReconnect(macNorm) }, 500)
 call.resolve(JSObject().put("reconnecting", true))
 }
+
 @PluginMethod
 fun reconnectDevice(call: PluginCall) {
 val rawDeviceId = call.getString("deviceId") ?: ""
@@ -793,12 +804,38 @@ reconnectAttempts[macNorm] = 0
 startAutoReconnect(macNorm)
 call.resolve(JSObject().put("reconnecting", true))
 }
+
+
+@PluginMethod
+fun setAdvertisingData(call: PluginCall) {
+val nexoId = call.getString("nexoId") ?: run {
+call.reject("nexoId requerido")
+return
+}
+nexoAdvertisingId = nexoId
+remLog("INFO", "ADVERTISING", "NEXO ID set: $nexoId")
+val ctx = activity.applicationContext
+val intent = Intent(ctx, BleService::class.java)
+intent.putExtra("nexo_advertising_id", nexoId)
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+ctx.startForegroundService(intent)
+} else {
+ctx.startService(intent)
+}
+call.resolve(JSObject().put("set", true).put("nexoId", nexoId))
+}
+
+@PluginMethod
+fun startAdvertising(call: PluginCall) {
+remLog("INFO", "ADVERTISING", "startAdvertising")
+val ctx = activity.applicationContext
+val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
 @PluginMethod
 fun sendMessage(call: PluginCall) {
 val rawDeviceId = call.getString("deviceId") ?: ""
 val message = call.getString("message") ?: ""
 val macNorm = normalizeMac(rawDeviceId)
-remLog("INFO", "SEND", "sendMessage to=rawDeviceId len={message.length}")
+remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
 if (rawDeviceId.isEmpty()) {
 call.reject("deviceId requerido")
 return
@@ -813,7 +850,9 @@ val queue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
 queue.add(message)
 call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
 }
+
 private data class SendResult(val sent: Boolean, val mode: String)
+
 private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
 val chunkSize = 120
 if (message.length <= chunkSize) {
@@ -832,6 +871,7 @@ sendSingleChunk(macNorm, rawDeviceId, chunks[i])
 remLog("INFO", "SEND", "Mensaje fragmentado en ${chunks.size} chunks para $macNorm")
 return SendResult(true, firstResult.mode)
 }
+
 private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
 val rxChar = clientRxCharacteristics[macNorm]
 val gatt = gattClients[macNorm]
@@ -846,7 +886,7 @@ rxChar.value = data
 @Suppress("DEPRECATION")
 gatt.writeCharacteristic(rxChar)
 }
-remLog("INFO", "SEND", "GATT Client chunk sent to macNorm len={chunk.length}")
+remLog("INFO", "SEND", "GATT Client chunk sent to $macNorm len=${chunk.length}")
 return SendResult(true, "gatt_client")
 } catch (e: Exception) {
 remLog("WARN", "SEND", "GATT Client write exception: ${e.message}")
@@ -866,7 +906,7 @@ srvTx.value = data
 @Suppress("DEPRECATION")
 srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
 }
-remLog("INFO", "SEND", "GATT Server chunk sent to macNorm len={chunk.length}")
+remLog("INFO", "SEND", "GATT Server chunk sent to $macNorm len=${chunk.length}")
 return SendResult(true, "gatt_server")
 } catch (e: Exception) {
 remLog("WARN", "SEND", "GATT Server notify exception: ${e.message}")
@@ -874,29 +914,26 @@ remLog("WARN", "SEND", "GATT Server notify exception: ${e.message}")
 }
 return SendResult(false, "")
 }
-@PluginMethod
-fun setAdvertisingData(call: PluginCall) {
-val nexoId = call.getString("nexoId") ?: run {
-call.reject("nexoId requerido")
-return
-}
-nexoAdvertisingId = nexoId
-remLog("INFO", "ADVERTISING", "NEXO ID set: $nexoId")
-val ctx = activity.applicationContext
-val intent = Intent(ctx, BleService::class.java)
-intent.putExtra("nexo_advertising_id", nexoId)
-if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-ctx.startForegroundService(intent)
+
+private fun processPendingMessages(macNorm: String) {
+val queue = pendingMessageQueue.remove(macNorm) ?: return
+val gatt = gattClients[macNorm]
+val rxChar = clientRxCharacteristics[macNorm]
+if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
+queue.forEachIndexed { index, msg ->
+mainHandler.postDelayed({
+val result = sendChunkedOrSingle(macNorm, "", msg)
+if (result.sent) {
+remLog("INFO", "PENDING_QUEUE", "Mensaje encolado enviado a $macNorm")
 } else {
-ctx.startService(intent)
+remLog("WARN", "PENDING_QUEUE", "Fallo enviando mensaje encolado a $macNorm")
 }
-call.resolve(JSObject().put("set", true).put("nexoId", nexoId))
+}, index * 200L)
 }
-@PluginMethod
-fun startAdvertising(call: PluginCall) {
-remLog("INFO", "ADVERTISING", "startAdvertising")
-val ctx = activity.applicationContext
-val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+} else {
+remLog("WARN", "PENDING_QUEUE", "No se pudieron enviar ${queue.size} mensajes encolados, conexion no lista")
+}
+}
 val adapter = bluetoothManager.adapter
 if (adapter == null || !adapter.isEnabled) {
 call.reject("Bluetooth desactivado")
@@ -909,6 +946,7 @@ return
 autoStartGattServerAndAdvertising()
 call.resolve(JSObject().put("started", true))
 }
+
 @PluginMethod
 fun startScan(call: PluginCall) {
 remLog("INFO", "SCAN", "startScan")
@@ -937,63 +975,67 @@ call.resolve(JSObject().put("started", true))
 call.reject("Permiso BLUETOOTH_SCAN no concedido")
 }
 }
+
 @PluginMethod
 fun stopScan(call: PluginCall) {
 stopScanInternal()
 call.resolve(JSObject().put("stopped", true))
 }
+
 private fun stopScanInternal() {
 mainHandler.removeCallbacks(scanTimeoutRunnable)
 try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
 bluetoothScanner = null
 scannedDevices.clear()
 }
+
 private val scanCallback = object : ScanCallback() {
-override fun onScanResult(callbackType: Int, result: ScanResult?) {
-result?.device?.let { device ->
-val name = try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
-val addr = device.address
-val macNorm = normalizeMac(addr)
-scannedDevices[macNorm] = device
-var nexoId: String? = null
-val scanRecord = result.scanRecord
-if (scanRecord != null) {
-val manufacturerData = scanRecord.manufacturerSpecificData
-if (manufacturerData != null && manufacturerData.size() > 0) {
-val key = manufacturerData.keyAt(0)
-val data = manufacturerData.get(key)
-if (data != null && data.size >= 4) {
-val b0 = data[0].toInt() and 0xFF
-val b1 = data[1].toInt() and 0xFF
-if (b0 == 0x4E && b1 == 0x58) {
-nexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
-remLog("INFO", "SCAN", "NEXO ID found: $nexoId for $addr")
+    override fun onScanResult(callbackType: Int, result: ScanResult?) {
+        result?.device?.let { device ->
+            val name = try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
+            val addr = device.address
+            val macNorm = normalizeMac(addr)
+            scannedDevices[macNorm] = device
+            var nexoId: String? = null
+            val scanRecord = result.scanRecord
+            if (scanRecord != null) {
+                val manufacturerData = scanRecord.manufacturerSpecificData
+                if (manufacturerData != null && manufacturerData.size() > 0) {
+                    val key = manufacturerData.keyAt(0)
+                    val data = manufacturerData.get(key)
+                    if (data != null && data.size >= 4) {
+                        val b0 = data[0].toInt() and 0xFF
+                        val b1 = data[1].toInt() and 0xFF
+                        if (b0 == 0x4E && b1 == 0x58) {
+                            nexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
+                            remLog("INFO", "SCAN", "NEXO ID found: $nexoId for $addr")
+                        }
+                    }
+                }
+            }
+            remLog("INFO", "SCAN", "Device found: $name ($addr) NEXO=$nexoId - cacheado")
+            val item = JSObject().apply {
+                put("deviceId", addr)
+                put("name", name)
+                put("rssi", result.rssi)
+                if (nexoId != null) {
+                    put("nexoId", nexoId)
+                }
+            }
+            // FIX: Notificar SIEMPRE a JS, sin filtrar duplicados.
+            // JS maneja deduplicacion. Esto asegura que si el primer scan result
+            // no traia NEXO ID pero el segundo si, JS lo reciba.
+            if (scanResults.none { it.getString("deviceId") == addr }) {
+                scanResults.add(item)
+            }
+            notifyListeners("onDeviceFound", item)
+        }
+    }
+    override fun onScanFailed(errorCode: Int) {
+        notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode))
+    }
 }
-}
-}
-}
-remLog("INFO", "SCAN", "Device found: $name ($addr) NEXO=$nexoId - cacheado")
-val item = JSObject().apply {
-put("deviceId", addr)
-put("name", name)
-put("rssi", result.rssi)
-if (nexoId != null) {
-put("nexoId", nexoId)
-}
-}
-// FIX: Notificar SIEMPRE a JS, sin filtrar duplicados.
-// JS maneja deduplicacion. Esto asegura que si el primer scan result
-// no traia NEXO ID pero el segundo si, JS lo reciba.
-if (scanResults.none { it.getString("deviceId") == addr }) {
-scanResults.add(item)
-}
-notifyListeners("onDeviceFound", item)
-}
-}
-override fun onScanFailed(errorCode: Int) {
-notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode))
-}
-}
+
 @PluginMethod
 fun isBluetoothEnabled(call: PluginCall) {
 val ctx = activity.applicationContext
@@ -1006,6 +1048,7 @@ call.resolve(JSObject()
 .put("serverReady", bluetoothGattServer != null)
 )
 }
+
 @PluginMethod
 fun getLocalDeviceInfo(call: PluginCall) {
 val ctx = activity.applicationContext
@@ -1016,6 +1059,7 @@ call.resolve(JSObject()
 .put("deviceAddress", try { adapter?.address ?: "" } catch (e: SecurityException) { "" })
 )
 }
+
 @PluginMethod
 fun getConnectedDevices(call: PluginCall) {
 val devices = JSArray()
@@ -1040,6 +1084,7 @@ devices.put(item)
 }
 call.resolve(JSObject().put("devices", devices))
 }
+
 private fun registerServerReceivers() {
 if (messageReceiver != null) return
 messageReceiver = object : BroadcastReceiver() {
@@ -1084,16 +1129,19 @@ activity.registerReceiver(messageReceiver, filter)
 }
 } catch (e: Exception) { }
 }
+
 private fun unregisterServerReceivers() {
 messageReceiver?.let {
 try { activity.unregisterReceiver(it) } catch (e: Exception) { }
 messageReceiver = null
 }
 }
+
 private fun stopAdvertisingInternal() {
 isAdvertisingActive = false
 try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { }
 }
+
 private val advertiseCallback = object : android.bluetooth.le.AdvertiseCallback() {
 override fun onStartSuccess(settingsInEffect: android.bluetooth.le.AdvertiseSettings?) {
 isAdvertisingActive = true
@@ -1104,6 +1152,7 @@ isAdvertisingActive = false
 remLog("ERROR", "ADVERTISING", "Failed: $errorCode")
 }
 }
+
 @PluginMethod
 fun stopAdvertising(call: PluginCall) {
 val ctx = activity.applicationContext
@@ -1116,6 +1165,7 @@ call.resolve(JSObject().put("stopped", true))
 call.reject("Error: ${e.message}")
 }
 }
+
 @PluginMethod
 fun isAdvertising(call: PluginCall) {
 val ctx = activity.applicationContext
@@ -1123,6 +1173,7 @@ val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
 val running = manager.getRunningServices(Integer.MAX_VALUE).any { it.service.className == BleService::class.java.name }
 call.resolve(JSObject().put("isAdvertising", running))
 }
+
 @PluginMethod
 fun startBLEAdvertising(call: PluginCall) = startAdvertising(call)
 @PluginMethod
@@ -1134,6 +1185,7 @@ fun startListeningMessages(call: PluginCall) {
 registerServerReceivers()
 call.resolve(JSObject().put("listening", true))
 }
+
 @PluginMethod
 fun saveToFile(call: PluginCall) {
 val filename = call.getString("filename") ?: run {
@@ -1157,6 +1209,7 @@ call.resolve(JSObject().put("success", true).put("path", file.absolutePath))
 call.reject("Error guardando archivo: ${e.message}")
 }
 }
+
 @PluginMethod
 fun loadFromFile(call: PluginCall) {
 val filename = call.getString("filename") ?: run {
@@ -1179,6 +1232,7 @@ call.resolve(JSObject().put("exists", true).put("content", content).put("path", 
 call.reject("Error leyendo archivo: ${e.message}")
 }
 }
+
 @PluginMethod
 fun deleteFile(call: PluginCall) {
 val filename = call.getString("filename") ?: run {
@@ -1193,6 +1247,7 @@ call.resolve(JSObject().put("deleted", deleted))
 call.reject("Error borrando archivo: ${e.message}")
 }
 }
+
 @PluginMethod
 fun listFiles(call: PluginCall) {
 try {
