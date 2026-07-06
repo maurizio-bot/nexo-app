@@ -284,15 +284,12 @@
    var detail = e.detail || {};
    var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
    var senderUUID = detail.deviceUUID || '';
-   var senderMAC = detail.macAddress || '';
    if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
    console.log('[BLE_RECV] Mensaje propio ignorado por UUID');
    return;
    }
-   if (senderMAC && self.bleInterface && self.bleInterface.localDeviceAddress && _normId(senderMAC) === _normId(self.bleInterface.localDeviceAddress)) {
-   console.log('[BLE_RECV] Mensaje propio ignorado por MAC');
-   return;
-   }
+   /* MAC check eliminado - identidad por NEXO ID únicamente */
+   /* FIX v5.0.14: No usar MAC para identificar mensajes propios */
    console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
    var resolvedName = detail.senderName;
    if (!resolvedName || resolvedName === 'NEXO Peer') {
@@ -338,7 +335,6 @@
    timestamp: detail.timestamp || Date.now(),
    messageId: detail.messageId,
    deviceUUID: detail.deviceUUID || detail.deviceId,
-   macAddress: detail.macAddress || '',
    _own: false
    }, 'ble_direct');
    /* FIX v5.0.11: Enviar ACK de entrega al remitente */
