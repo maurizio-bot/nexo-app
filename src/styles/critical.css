@@ -207,16 +207,21 @@ Consolidado: inline + main.css + ble_styles
    flex: 1;
    overflow-y: auto;
    scrollbar-width: none;
+   width: 100%;
+   min-width: 0;
+   align-items: flex-start;
    }
    .message {
-   max-width: 75%;
+   width: fit-content;
+   max-width: min(75%, 320px);
+   min-width: 0;
    padding: 9px 13px;
    border-radius: 18px;
    font-size: 13px;
    line-height: 1.45;
    animation: messageIn 0.3s ease;
    word-break: break-word;
-   overflow-wrap: break-word;
+   overflow-wrap: anywhere;
    white-space: pre-wrap;
    hyphens: auto;
    }
