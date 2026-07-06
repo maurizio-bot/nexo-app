@@ -1,3 +1,4 @@
+
 /**
  * BLE Interface v5.1.6-NO-MAC-IDENTITY
  * FIX: Identidad = NEXO ID únicamente. MAC solo para conexión GATT.
@@ -702,8 +703,9 @@ export class BLEInterface {
         var enrichedPayload;
         if (isCtrl) { enrichedPayload = content; }
         else {
+          var senderId = self.localNexoId || self.localDeviceUUID;
           enrichedPayload = JSON.stringify({
-            deviceUUID: self.localDeviceUUID, senderName: self.localDeviceName, content: content,
+            deviceUUID: senderId, senderName: self.localDeviceName, content: content,
             messageId: messageId || ('msg' + Date.now() + '*' + Math.random().toString(36).substr(2, 9)), timestamp: Date.now()
           });
         }
@@ -1366,5 +1368,13 @@ export class BLEInterface {
     }
     self.updateStatusBar('');
     return Promise.resolve();
+  }
+
+  getContacts() {
+    return _getBLEContacts();
+  }
+
+  getContactByUUID(deviceUUID) {
+    return _getContactByUUID(deviceUUID);
   }
 }
