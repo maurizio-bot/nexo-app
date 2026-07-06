@@ -1,3 +1,4 @@
+
 /**
  * BLE Interface v5.1.7-NO-MAC-CLEAN
  * FIX: Identidad = NEXO ID únicamente. deviceId opaco para conexión nativa.
@@ -337,7 +338,7 @@ setTimeout(function() {
 if (!self.isDummyMode && self.nativePlugin) {
 self._autoScanForKnownContacts();
 }
-}, 2000);
+}, 500);
 }
 _initNexoId() {
 var self = this;
@@ -363,6 +364,13 @@ try { localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts)); 
 self.renderContactsList(); self.renderOnlineStrip();
 }
 }).catch(function() {});
+/* SCAN + RE-LINK al volver de background */
+setTimeout(function() {
+if (!self.isDummyMode && self.nativePlugin && !self.isScanning) {
+console.log('[BLEInterface] Re-link scan al volver de background');
+self._autoScanForKnownContacts();
+}
+}, 500);
 if (!self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
 _safeNativeCall(self.nativePlugin, 'startAdvertising', {})
 .then(function() { self.isAdvertising = true; self.updateVisibilityButton(); })
@@ -848,7 +856,7 @@ self.isScanning = false;
 self.updateScanButton();
 });
 }
-}, 8000);
+}, 3000);
 })
 .catch(function(e) {
 console.warn('[BLEInterface] Auto-scan fallo:', e.message);
@@ -979,6 +987,13 @@ this.elements.panel.classList.toggle('active');
 this.elements.overlay.classList.toggle('active');
 if (this.elements.panel.classList.contains('active')) {
 this.newDevicesCount = 0; this.updateBadge(); this.renderContactsList(); this.renderOnlineStrip();
+/* SCAN RAPIDO al abrir panel de contactos */
+var self = this;
+setTimeout(function() {
+if (!self.isDummyMode && self.nativePlugin && !self.isScanning) {
+self._autoScanForKnownContacts();
+}
+}, 300);
 }
 }
 _executeToggleScan() {
