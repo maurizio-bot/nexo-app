@@ -64,15 +64,15 @@
    console.log('[Vault][' + type + '] ' + message);
    }
    }
-   *validateEnvironment() {
+   _validateEnvironment() {
    if (typeof crypto === 'undefined' || !crypto.subtle) {
    throw new Error('WebCrypto API not available');
    }
    }
-   *ensureMinimalIdentity() {
+   _ensureMinimalIdentity() {
    if (!this.identity) {
    const id = crypto.randomUUID ? crypto.randomUUID() :
-   'nexo*' + Date.now() + '*' + Math.random().toString(36).substr(2, 9);
+   'nexo*' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
    this.identity = {
    id: id,
    publicKey: [],
@@ -228,7 +228,7 @@
    _activateMemoryFallback() {
    this._useMemoryFallback = true;
    this._cleanupDB();
-   this.*setupMinimalIdentity();
+   this._setupMinimalIdentity();
    if (typeof window !== 'undefined') {
    window.dispatchEvent(new CustomEvent('nexo:vault:fallback', {
    detail: { mode: 'memory', identity: this.identity?.id }
@@ -251,7 +251,7 @@
    this._notifyREM('info', 'ID temporal: ' + id.substring(0, 8) + '...', 'VAULT_TEMP_ID');
    }
    getIdentityKey() {
-   this.*ensureMinimalIdentity();
+   this._ensureMinimalIdentity();
    if (this.identity?.id) {
    return this.identity.id;
    }
@@ -457,7 +457,7 @@
    } catch (e) { return []; }
    }
    export function vaultAppendMessage(contactNexoId, message) {
-   var storage = *vaultGetStorage();
+   var storage = _vaultGetStorage();
    if (!storage || !contactNexoId) return false;
    try {
    var messages = vaultLoadMessages(contactNexoId);
