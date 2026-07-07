@@ -825,3 +825,57 @@ Consolidado: inline + main.css + ble_styles
    body.chat-view-active .ble-btn-add-small {
    display: none !important;
    }
+   /* ============================================
+   SWIPE BACK ANIMATION - Chat se desliza hacia la derecha
+   ============================================ */
+   /* Container del chat para transformación */
+   #app {
+   position: relative;
+   overflow: hidden;
+   }
+   /* Estado normal del chat */
+   body.chat-view-active #app {
+   transform: translateX(0);
+   transition: none;
+   }
+   /* Durante el swipe: sin transición para seguir el dedo en tiempo real */
+   body.chat-swipe-dragging #app {
+   transition: none !important;
+   }
+   /* Al soltar: transición suave para completar o rebotar */
+   body.chat-swipe-transition #app {
+   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+   }
+   /* Animación de salida completa (chat se va a la derecha) */
+   body.chat-swipe-complete #app {
+   transform: translateX(100vw) !important;
+   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+   }
+   /* Rebote si no se completó el gesto (vuelve a posición 0) */
+   body.chat-swipe-rebound #app {
+   transform: translateX(0) !important;
+   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+   }
+   /* Indicador visual de borde izquierdo (opcional, sutil) */
+   body.chat-swipe-dragging::before {
+   content: '';
+   position: fixed;
+   top: 0;
+   left: 0;
+   width: 4px;
+   height: 100%;
+   background: linear-gradient(180deg, #00c8ff, #a855f7);
+   z-index: 2147483647;
+   opacity: 0.6;
+   transition: opacity 0.2s;
+   }
+   /* Sombra que aparece detrás del chat al arrastrar */
+   body.chat-swipe-dragging #contacts-view {
+   display: flex !important;
+   opacity: 1;
+   transform: translateX(-20%);
+   transition: none;
+   }
+   body.chat-swipe-transition #contacts-view {
+   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+   }
