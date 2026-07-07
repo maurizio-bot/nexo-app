@@ -1,9 +1,6 @@
-
 /**
- * BLE Interface v5.1.7-NO-MAC-CLEAN
- * FIX: Identidad = NEXO ID únicamente. deviceId opaco para conexión nativa.
- * deviceId es string opaco del plugin nativo (puede ser MAC, UUID BT, etc).
- * El JS nunca parsea ni normaliza deviceId.
+ * BLE Interface v5.1.7-NO-MAC-CLEAN-FIX-BACK
+ * FIX: Al cerrar chat, cerrar panel BLE para que se vea pantalla principal de contactos
  */
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
@@ -285,7 +282,7 @@ this._maxMessageIds = 1000;
 this._pendingMessageQueue = new Map();
 this._readyResolvers = new Map();
 this._notificationFallbackTimers = new Map();
-console.log('[BLEInterface] v5.1.7-NO-MAC-CLEAN iniciado');
+console.log('[BLEInterface] v5.1.7-NO-MAC-CLEAN-FIX-BACK iniciado');
 }
 _detectMeshType() {
 if (!this.bleMesh) return 'none';
@@ -970,11 +967,15 @@ self.elements.overlay.classList.remove('active');
 }
 });
 });
+/* FIX-BACK: Al cerrar chat, cerrar panel BLE para ver pantalla principal de contactos */
 window.addEventListener('nexo:ble:closeChat', function() {
 self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
 self.updateBadge();
 if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'flex';
 if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'flex';
+/* FIX: Cerrar panel BLE y overlay */
+if (self.elements.panel) self.elements.panel.classList.remove('active');
+if (self.elements.overlay) self.elements.overlay.classList.remove('active');
 self.renderContactsList(); self.renderOnlineStrip();
 });
 window.addEventListener('nexo:ble:openChat', function() {
