@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.0.16-KEYBOARD-FIX
+ * NEXO App v5.0.16-KEYBOARD-FIX-BACK
  * Base: v5.0.11-ACK-FIXED
  * FIX: Deduplicación de contactos por MAC
  * FIX: Silenciar toasts rem.info/warn/error/success
@@ -8,6 +8,7 @@
  * FIX: ACK automatico al recibir mensaje BLE
  * FIX: Read receipt cuando chat activo con remitente
  * FIX: Al cerrar chat vuelve a pantalla principal (tab chats activo)
+ * FIX: Al cerrar chat cierra panel BLE para evitar pantalla de scan
  * FIX v5.0.13: Persistencia async/await para vault_fs
  * ES5 syntax for webpack compatibility
  * Proper named exports for main.js import
@@ -245,6 +246,11 @@
    if (backBtn) backBtn.classList.remove('visible');
    self.activeContact = null;
    try { window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} })); } catch(e) {}
+   /* FIX-BACK: Cerrar panel BLE y overlay para que se vea pantalla principal */
+   var blePanel = document.getElementById('ble-panel');
+   var bleOverlay = document.getElementById('ble-overlay');
+   if (blePanel) blePanel.classList.remove('active');
+   if (bleOverlay) bleOverlay.classList.remove('active');
    /* FIX: Activar tab 'chats' al volver a principal */
    var bottomNav = document.getElementById('ble-bottom-nav');
    if (bottomNav) {
@@ -796,4 +802,5 @@
  7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
  8. FIX: Contactos en pantalla principal (no en panel BLE)
  9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
- 10. FIX v5.0.13: Persistencia async/await para vault_fs */
+ 10. FIX v5.0.13: Persistencia async/await para vault_fs
+ 11. FIX-BACK: Cerrar panel BLE al hacer back desde chat */
