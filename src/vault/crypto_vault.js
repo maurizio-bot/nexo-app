@@ -4,14 +4,14 @@
  * FIX v9.7.1-ARCH: No warn VAULT_IDENTITY_FAIL cuando identidad temporal ya existe (constructor)
  * NAP 2.0 Certified - WebCrypto API + IndexedDB
    */
-   const PBKDF2_ITERATIONS = 600000;
-   const SALT_LENGTH_BYTES = 32;
-   const IV_LENGTH_BYTES = 12;
-   const AES_KEY_SIZE_BITS = 256;
-   const AES_TAG_LENGTH_BITS = 128;
-   const INIT_TIMEOUT_MS = 5000;
-   const DB_TIMEOUT_MS = 3000;
-   const NAP_CODES = {
+   var PBKDF2_ITERATIONS = 600000;
+   var SALT_LENGTH_BYTES = 32;
+   var IV_LENGTH_BYTES = 12;
+   var AES_KEY_SIZE_BITS = 256;
+   var AES_TAG_LENGTH_BITS = 128;
+   var INIT_TIMEOUT_MS = 5000;
+   var DB_TIMEOUT_MS = 3000;
+   var NAP_CODES = {
    VAULT_INIT_TIMEOUT: 'VAULT_INIT_TIMEOUT',
    VAULT_IDENTITY_FAIL: 'VAULT_IDENTITY_FAIL',
    VAULT_MEMORY_FALLBACK: 'VAULT_MEMORY_FALLBACK',
@@ -37,8 +37,8 @@
    }
    _getREM() {
    if (typeof window === 'undefined') return null;
-   const candidates = [window.NEXO_REM, window.NEXO?.rem, window.NEXO_DIAG];
-   for (const rem of candidates) {
+   var candidates = [window.NEXO_REM, window.NEXO?.rem, window.NEXO_DIAG];
+   for (var rem of candidates) {
    if (rem && typeof rem === 'object' && (typeof rem.info === 'function' || typeof rem.log === 'function')) {
    return rem;
    }
@@ -47,12 +47,12 @@
    }
    _notifyREM(type, message, code = '') {
    try {
-   const rem = this._getREM();
+   var rem = this._getREM();
    if (!rem) {
    console.log('[Vault][' + type + '] ' + message);
    return;
    }
-   const method = type === 'error' ? 'error' : type === 'warn' ? 'warn' : type === 'success' ? 'success' : 'info';
+   var method = type === 'error' ? 'error' : type === 'warn' ? 'warn' : type === 'success' ? 'success' : 'info';
    if (typeof rem[method] === 'function') {
    rem[method]('[Vault] ' + message, code);
    } else if (typeof rem.log === 'function') {
@@ -71,7 +71,7 @@
    }
    _ensureMinimalIdentity() {
    if (!this.identity) {
-   const id = crypto.randomUUID ? crypto.randomUUID() :
+   var id = crypto.randomUUID ? crypto.randomUUID() :
    'nexo*' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
    this.identity = {
    id: id,
@@ -93,8 +93,8 @@
    this._initStartTime = performance.now();
    this._notifyREM('info', 'Iniciando vault...', 'VAULT_INIT_START');
    return new Promise((resolve) => {
-   const timeoutId = setTimeout(() => {
-   const elapsed = Math.round(performance.now() - this._initStartTime);
+   var timeoutId = setTimeout(() => {
+   var elapsed = Math.round(performance.now() - this._initStartTime);
    this._notifyREM('warn', 'Timeout global (' + elapsed + 'ms) - forzando modo memoria', NAP_CODES.VAULT_INIT_TIMEOUT);
    this._activateMemoryFallback();
    resolve(this);
@@ -102,8 +102,8 @@
    this._doInit()
    .then(() => {
    clearTimeout(timeoutId);
-   const elapsed = Math.round(performance.now() - this._initStartTime);
-   const mode = this._useMemoryFallback ? 'memoria' : 'persistente';
+   var elapsed = Math.round(performance.now() - this._initStartTime);
+   var mode = this._useMemoryFallback ? 'memoria' : 'persistente';
    this._notifyREM('success', 'Vault listo en ' + elapsed + 'ms (modo ' + mode + ')', 'VAULT_INIT_SUCCESS');
    resolve(this);
    })
@@ -134,11 +134,11 @@
    }
    _initDBQuick() {
    return new Promise((resolve, reject) => {
-   const timeout = setTimeout(() => reject(new Error('DB timeout')), DB_TIMEOUT_MS);
+   var timeout = setTimeout(() => reject(new Error('DB timeout')), DB_TIMEOUT_MS);
    try {
-   const request = indexedDB.open('nexo_crypto_v9', 1);
+   var request = indexedDB.open('nexo_crypto_v9', 1);
    request.onupgradeneeded = (e) => {
-   const db = e.target.result;
+   var db = e.target.result;
    if (!db.objectStoreNames.contains('keys')) {
    db.createObjectStore('keys', { keyPath: 'id' });
    }
@@ -169,28 +169,28 @@
    }
    _getSaltQuick() {
    return new Promise((resolve, reject) => {
-   const timeout = setTimeout(() => reject(new Error('Salt timeout')), DB_TIMEOUT_MS);
+   var timeout = setTimeout(() => reject(new Error('Salt timeout')), DB_TIMEOUT_MS);
    try {
    if (!this.db) {
    clearTimeout(timeout);
    reject(new Error('DB not available'));
    return;
    }
-   const tx = this.db.transaction(['keys'], 'readonly');
-   const store = tx.objectStore('keys');
-   const request = store.get('master_salt');
+   var tx = this.db.transaction(['keys'], 'readonly');
+   var store = tx.objectStore('keys');
+   var request = store.get('master_salt');
    request.onsuccess = () => {
    clearTimeout(timeout);
    if (request.result?.value?.length === SALT_LENGTH_BYTES) {
    resolve(new Uint8Array(request.result.value));
    } else {
-   const newSalt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
+   var newSalt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
    if (!this.db) {
    resolve(newSalt);
    return;
    }
-   const tx2 = this.db.transaction(['keys'], 'readwrite');
-   const store2 = tx2.objectStore('keys');
+   var tx2 = this.db.transaction(['keys'], 'readwrite');
+   var store2 = tx2.objectStore('keys');
    store2.put({ id: 'master_salt', value: Array.from(newSalt) });
    resolve(newSalt);
    }
@@ -207,7 +207,7 @@
    }
    _loadIdentityQuick() {
    return new Promise((resolve, reject) => {
-   const timeout = setTimeout(() => reject(new Error('Identity timeout')), 2000);
+   var timeout = setTimeout(() => reject(new Error('Identity timeout')), 2000);
    this._getFromStorage('nexo_identity')
    .then((stored) => {
    clearTimeout(timeout);
@@ -236,7 +236,7 @@
    }
    }
    *setupMinimalIdentity() {
-   const id = crypto.randomUUID ? crypto.randomUUID() :
+   var id = crypto.randomUUID ? crypto.randomUUID() :
    'nexo*' + Date.now() + '*' + Math.random().toString(36).substr(2, 9);
    this.identity = {
    id: id,
@@ -255,7 +255,7 @@
    if (this.identity?.id) {
    return this.identity.id;
    }
-   const emergencyId = 'nexo_emergency*' + Date.now();
+   var emergencyId = 'nexo_emergency*' + Date.now();
    this._notifyREM('warn', 'Usando ID de emergencia', 'VAULT_EMERGENCY_ID');
    return emergencyId;
    }
@@ -284,10 +284,10 @@
    if (!this.salt) {
    this.salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES));
    }
-   const encoder = new TextEncoder();
-   const passwordBuffer = encoder.encode(password);
+   var encoder = new TextEncoder();
+   var passwordBuffer = encoder.encode(password);
    try {
-   const keyMaterial = await crypto.subtle.importKey(
+   var keyMaterial = await crypto.subtle.importKey(
    'raw', passwordBuffer, 'PBKDF2', false, ['deriveKey']
    );
    this.masterKey = await crypto.subtle.deriveKey(
@@ -315,11 +315,11 @@
    }
    async encrypt(plaintext) {
    this._assertUnlocked();
-   const data = typeof plaintext === 'string' ?
+   var data = typeof plaintext === 'string' ?
    new TextEncoder().encode(plaintext) :
    new Uint8Array(plaintext);
-   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES));
-   const ciphertext = await crypto.subtle.encrypt(
+   var iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES));
+   var ciphertext = await crypto.subtle.encrypt(
    { name: 'AES-GCM', iv, tagLength: AES_TAG_LENGTH_BITS },
    this.masterKey,
    data
@@ -332,7 +332,7 @@
    }
    async decrypt(packageData) {
    this._assertUnlocked();
-   const plaintext = await crypto.subtle.decrypt(
+   var plaintext = await crypto.subtle.decrypt(
    {
    name: 'AES-GCM',
    iv: new Uint8Array(packageData.iv),
@@ -377,7 +377,7 @@
    }
    async _getFromStorage(key) {
    if (this._useMemoryFallback) {
-   const item = this.*memoryStorage.get(key);
+   var item = this.*memoryStorage.get(key);
    return item ? JSON.parse(item) : null;
    }
    return new Promise((resolve, reject) => {
@@ -386,9 +386,9 @@
    resolve(null);
    return;
    }
-   const tx = this.db.transaction(['keys'], 'readonly');
-   const store = tx.objectStore('keys');
-   const req = store.get(key);
+   var tx = this.db.transaction(['keys'], 'readonly');
+   var store = tx.objectStore('keys');
+   var req = store.get(key);
    req.onsuccess = () => resolve(req.result?.value || null);
    req.onerror = () => reject(req.error);
    } catch (e) {
