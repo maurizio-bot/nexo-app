@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.0.12-DEDUP-SILENT-MAIN
+ * NEXO App v5.0.15-PERSIST-FIX
  * Base: v5.0.11-ACK-FIXED
  * FIX: Deduplicación de contactos por MAC
  * FIX: Silenciar toasts rem.info/warn/error/success
@@ -22,7 +22,7 @@
    import { TheStream } from '../stream/the_stream.js';
    import { rem } from '../ui/rem.js';
    import { initBLEInterface } from '../ui/ble_interface.js';
-   import { vaultLoadMessages, vaultAppendMessage, vaultUpdateMessageStatus } from '../vault/vault_fs.js';
+   import { vaultLoadMessages, vaultAppendMessage, vaultUpdateMessageStatus } from '../vault/crypto_vault.js';
    function withTimeoutNAP(promise, ms, context) {
    var timer;
    var timeoutPromise = new Promise(function(_, reject) {
@@ -408,6 +408,13 @@
    async _saveMessageToVault(contactId, message) {
    var cid = _normId(contactId);
    if (!cid) return;
+   /* FIX PERSIST: Si contactId no es NEXO ID, buscar en contactos */
+   if (cid.indexOf('nx') !== 0 && window.bleInterface && window.bleInterface.getContacts) {
+   var contacts = window.bleInterface.getContacts();
+   var found = contacts.find(function(c) { return _normId(c.deviceId) === cid; });
+   if (found && found.deviceUUID) cid = _normId(found.deviceUUID);
+   }
+   if (!cid) return;
    try {
    await vaultAppendMessage(cid, {
    content: message.content,
@@ -429,7 +436,21 @@
    try {
    var cid = _normId(contactId);
    if (!cid) return [];
-   return await vaultLoadMessages(cid);
+   var raw = await vaultLoadMessages(cid);
+   /* FIX PERSIST: Mapear campos normalizados → campos esperados por render */
+   return raw.map(function(m) {
+   return {
+   content: m.text || m.content || '',
+   sender: m.senderNexoId || m.sender || '',
+   senderName: m.senderName || '',
+   _own: !!m._own,
+   _source: 'vault',
+   _ts: m.timestamp || m._ts || Date.now(),
+   messageId: m.msgId || m.messageId || '',
+   status: m.status || 'pending',
+   deviceUUID: m.senderNexoId || m.sender || ''
+   };
+   });
    } catch (e) { return []; }
    }
    async _updateMessageStatusInVault(contactId, messageId, status) {
@@ -570,6 +591,12 @@
    this.config.onMessage(enriched);
    /* FIX v5.0.13: Guardar mensaje en vault para persistencia (async) */
    var vaultContactId = enriched._own ? enriched.recipient : (enriched.deviceUUID || enriched.sender);
+   /* FIX PERSIST: Fallback a buscar NEXO ID por deviceId nativo */
+   if (!vaultContactId && !enriched._own && enriched.sender && window.bleInterface && window.bleInterface.getContacts) {
+   var contacts = window.bleInterface.getContacts();
+   var found = contacts.find(function(c) { return _normId(c.deviceId) === _normId(enriched.sender); });
+   if (found && found.deviceUUID) vaultContactId = _normId(found.deviceUUID);
+   }
    if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
    /* FIX v5.0.11: Enviar read receipt si chat activo con el remitente */
    if (!enriched._own && this.activeContact && enriched.sender === this.activeContact.id && enriched.messageId) {
