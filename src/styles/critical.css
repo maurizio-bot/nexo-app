@@ -210,6 +210,8 @@ Consolidado: inline + main.css + ble_styles
    width: 100%;
    min-width: 0;
    align-items: flex-start;
+   scroll-padding-bottom: 80px;
+   transition: padding-bottom 0.25s ease;
    }
    .message {
    width: fit-content;
@@ -286,13 +288,22 @@ Consolidado: inline + main.css + ble_styles
    bottom: 0;
    left: 0;
    right: 0;
-   padding: 10px 12px 14px 12px;
+   padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px)) 12px;
    background: #000;
    border-top: 1px solid #111;
    display: none;
    align-items: center;
    gap: 8px;
    z-index: 10;
+   transition: bottom 0.25s ease, padding-bottom 0.25s ease;
+   }
+   /* FIX KEYBOARD: Cuando teclado abierto, input sube */
+   body.keyboard-open #input-area {
+   bottom: env(keyboard-inset-height, 0px);
+   }
+   body.keyboard-open #messages-container {
+   padding-bottom: calc(80px + env(keyboard-inset-height, 0px));
+   scroll-padding-bottom: calc(80px + env(keyboard-inset-height, 0px));
    }
    #message-input {
    flex: 1;
@@ -343,7 +354,7 @@ Consolidado: inline + main.css + ble_styles
    z-index: 100;
    opacity: 0;
    transform: translateY(10px);
-   transition: opacity 0.3s, transform 0.3s;
+   transition: opacity 0.3s, transform 0.3s, bottom 0.25s ease;
    pointer-events: none;
    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
    }
@@ -351,6 +362,10 @@ Consolidado: inline + main.css + ble_styles
    opacity: 1;
    transform: translateY(0);
    pointer-events: auto;
+   }
+   /* FIX KEYBOARD: Jump button sube con teclado */
+   body.keyboard-open #jump-to-bottom {
+   bottom: calc(80px + env(keyboard-inset-height, 0px));
    }
    /* Vault */
    #vault-panel {
