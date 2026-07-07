@@ -1,5 +1,5 @@
 /**
- * NEXO App v5.0.15-PERSIST-FIX
+ * NEXO App v5.0.16-KEYBOARD-FIX
  * Base: v5.0.11-ACK-FIXED
  * FIX: Deduplicación de contactos por MAC
  * FIX: Silenciar toasts rem.info/warn/error/success
@@ -391,8 +391,79 @@
    jumpBtn.classList.remove('visible');
    });
    }
+   /* FIX KEYBOARD v1.0: Scroll ajustado para teclado virtual */
+   self._initKeyboardScrollFix();
    }
-   _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
+ 
+   /* ============================================================
+   FIX KEYBOARD v1.0: Ajuste de scroll cuando aparece teclado virtual
+   ============================================================ */
+   _initKeyboardScrollFix() {
+   var self = this;
+   var container = document.getElementById('messages-container');
+   var input = document.getElementById('message-input');
+   if (!container || !input) return;
+
+   // Método 1: Visual Viewport API (preciso, moderno)
+   if (window.visualViewport) {
+   window.visualViewport.addEventListener('resize', function() {
+   var vv = window.visualViewport;
+   var layoutH = window.innerHeight;
+   var visibleH = vv.height;
+   var kbHeight = Math.max(0, layoutH - visibleH);
+
+   if (kbHeight > 100) {
+   document.body.classList.add('keyboard-open');
+   // Scroll al último mensaje
+   setTimeout(function() {
+   container.scrollTop = container.scrollHeight;
+   }, 100);
+   } else {
+   document.body.classList.remove('keyboard-open');
+   }
+   });
+   }
+
+   // Método 2: Capacitor Keyboard plugin (nativo, mejor)
+   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Keyboard) {
+   var Keyboard = window.Capacitor.Plugins.Keyboard;
+   Keyboard.addListener('keyboardWillShow', function(info) {
+   document.body.classList.add('keyboard-open');
+   setTimeout(function() {
+   container.scrollTop = container.scrollHeight;
+   input.scrollIntoView({ behavior: 'smooth', block: 'end' });
+   }, 50);
+   });
+   Keyboard.addListener('keyboardWillHide', function() {
+   document.body.classList.remove('keyboard-open');
+   });
+   }
+
+   // Método 3: Fallback window resize (navegadores antiguos)
+   else if (!window.visualViewport) {
+   var originalHeight = window.innerHeight;
+   window.addEventListener('resize', function() {
+   var newHeight = window.innerHeight;
+   if (newHeight < originalHeight - 100) {
+   document.body.classList.add('keyboard-open');
+   setTimeout(function() {
+   container.scrollTop = container.scrollHeight;
+   }, 100);
+   } else {
+   document.body.classList.remove('keyboard-open');
+   }
+   });
+   }
+
+   // Al hacer focus en input, asegurar scroll al final
+   input.addEventListener('focus', function() {
+   setTimeout(function() {
+   container.scrollTop = container.scrollHeight;
+   input.scrollIntoView({ behavior: 'smooth', block: 'end' });
+   }, 300);
+   });
+   }
+  _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
    _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
    _handleNordicMessage(msg) { if (!msg || !msg.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
    _updateModeFromNordic(state) {
@@ -732,3 +803,5 @@
  8. FIX: Contactos en pantalla principal (no en panel BLE)
  9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
  10. FIX v5.0.13: Persistencia async/await para vault_fs */
+
+```
