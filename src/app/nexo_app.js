@@ -394,7 +394,6 @@
    /* FIX KEYBOARD v1.0: Scroll ajustado para teclado virtual */
    self._initKeyboardScrollFix();
    }
- 
    /* ============================================================
    FIX KEYBOARD v1.0: Ajuste de scroll cuando aparece teclado virtual
    ============================================================ */
@@ -403,7 +402,6 @@
    var container = document.getElementById('messages-container');
    var input = document.getElementById('message-input');
    if (!container || !input) return;
-
    // Método 1: Visual Viewport API (preciso, moderno)
    if (window.visualViewport) {
    window.visualViewport.addEventListener('resize', function() {
@@ -411,7 +409,6 @@
    var layoutH = window.innerHeight;
    var visibleH = vv.height;
    var kbHeight = Math.max(0, layoutH - visibleH);
-
    if (kbHeight > 100) {
    document.body.classList.add('keyboard-open');
    // Scroll al último mensaje
@@ -423,7 +420,6 @@
    }
    });
    }
-
    // Método 2: Capacitor Keyboard plugin (nativo, mejor)
    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Keyboard) {
    var Keyboard = window.Capacitor.Plugins.Keyboard;
@@ -438,7 +434,6 @@
    document.body.classList.remove('keyboard-open');
    });
    }
-
    // Método 3: Fallback window resize (navegadores antiguos)
    else if (!window.visualViewport) {
    var originalHeight = window.innerHeight;
@@ -454,7 +449,6 @@
    }
    });
    }
-
    // Al hacer focus en input, asegurar scroll al final
    input.addEventListener('focus', function() {
    setTimeout(function() {
@@ -463,7 +457,7 @@
    }, 300);
    });
    }
-  _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
+   _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
    _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
    _handleNordicMessage(msg) { if (!msg || !msg.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
    _updateModeFromNordic(state) {
@@ -803,5 +797,3 @@
  8. FIX: Contactos en pantalla principal (no en panel BLE)
  9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
  10. FIX v5.0.13: Persistencia async/await para vault_fs */
-
-```
