@@ -237,10 +237,10 @@ gattClients.clear()
 clientRxCharacteristics.clear()
 clientTxCharacteristics.clear()
 clientConnectionStates.clear()
-reconnectTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 reconnectTimers.clear()
 reconnectAttempts.clear()
-keepAliveTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 keepAliveTimers.clear()
 pendingMessageQueue.clear()
 messageBuffers.clear()
@@ -981,9 +981,6 @@ if (nexoId != null) {
 put("nexoId", nexoId)
 }
 }
-// FIX: Notificar SIEMPRE a JS, sin filtrar duplicados.
-// JS maneja deduplicacion. Esto asegura que si el primer scan result
-// no traia NEXO ID pero el segundo si, JS lo reciba.
 if (scanResults.none { it.getString("deviceId") == addr }) {
 scanResults.add(item)
 }
