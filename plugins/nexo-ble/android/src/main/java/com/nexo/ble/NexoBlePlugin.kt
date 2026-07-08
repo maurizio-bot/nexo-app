@@ -116,7 +116,7 @@ messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
 val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
 buffer.append(chunk)
 val accumulated = buffer.toString()
-remLog("DEBUG", "REASSEMBLY", "Buffer for macNorm: len=${accumulated.length}, content={accumulated.take(60)}...")
+remLog("DEBUG", "REASSEMBLY", "Buffer for macNorm: len=${accumulated.length}, content=${accumulated.take(60)}...")
 val completeMessage = tryExtractCompleteJson(accumulated)
 if (completeMessage != null) {
 remLog("INFO", "REASSEMBLY", "Mensaje completo reensamblado de $macNorm")
@@ -155,8 +155,9 @@ val pathList = mutableListOf<String>()
 for (i in 0 until pathArr.length()) {
 pathList.add(pathArr.getString(i))
 }
-if (localNexoId != null && !pathList.contains(localNexoId)) {
-pathList.add(localNexoId)
+val localId = localNexoId
+if (localId != null && !pathList.contains(localId)) {
+    pathList.add(localId)
 }
 while (pathList.size > JUMP_MAX_PATH) pathList.removeAt(0)
 val newPath = org.json.JSONArray()
@@ -167,7 +168,7 @@ json.put("jump", newJump)
 val relayPayload = json.toString()
 val relayed = relayToAllExcept(macNorm, relayPayload)
 if (relayed) {
-remLog("INFO", "JUMP", "Mensaje msgId reenviado, ttl={ttl-1}, hops=${hops+1}")
+remLog("INFO", "JUMP", "Mensaje msgId reenviado, ttl=${ttl-1}, hops=${hops+1}")
 }
 // No notificar a JS si fue reenviado (el destinatario final lo verá)
 if (to != localNexoId) {
@@ -353,9 +354,9 @@ try { stopGattServer() } catch (e: Exception) { }
 isAdvertisingActive = false
 try { stopAdvertisingInternal() } catch (e: Exception) { }
 messageBuffers.clear()
-messageBufferTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
-heartbeatTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+heartbeatTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 heartbeatTimers.clear()
 seenMessageIds.clear()
 }
@@ -402,16 +403,16 @@ gattClients.clear()
 clientRxCharacteristics.clear()
 clientTxCharacteristics.clear()
 clientConnectionStates.clear()
-reconnectTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 reconnectTimers.clear()
 reconnectAttempts.clear()
-keepAliveTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 keepAliveTimers.clear()
-heartbeatTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+heartbeatTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 heartbeatTimers.clear()
 pendingMessageQueue.clear()
 messageBuffers.clear()
-messageBufferTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
 }
 @PluginMethod
@@ -585,7 +586,7 @@ ctx.startForegroundService(intent)
 ctx.startService(intent)
 }
 } catch (e: Exception) {
-remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: {e.message}")
+remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: ${e.message}")
 }
 }
 }
@@ -597,7 +598,7 @@ preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
 if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
 val chunk = value?.toString(Charset.defaultCharset()) ?: ""
 val mac = device.address
-remLog("INFO", "GATT_SERVER", "RX chunk from mac: len={chunk.length}")
+remLog("INFO", "GATT_SERVER", "RX chunk from mac: len=${chunk.length}")
 processReceivedChunk(mac, chunk, "gatt_server")
 if (responseNeeded) {
 bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
@@ -665,7 +666,7 @@ call.reject("Permiso BLUETOOTH_CONNECT requerido para conectar", "PERMISSION_DEN
 return
 }
 }
-remLog("INFO", "GATT_CLIENT", "Usando device: {device.address} (cache={scannedDevices.containsKey(macNorm)})")
+remLog("INFO", "GATT_CLIENT", "Usando device: ${device.address} (cache=${scannedDevices.containsKey(macNorm)})")
 gattClients[macNorm]?.let { oldGatt ->
 try { oldGatt.disconnect(); oldGatt.close() } catch (e: Exception) { }
 }
@@ -832,7 +833,7 @@ override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: Blueto
 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
 val chunk = value.toString(Charset.defaultCharset())
 val address = gatt.device?.address ?: ""
-remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from address: len={chunk.length}")
+remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from address: len=${chunk.length}")
 processReceivedChunk(address, chunk, "gatt_client")
 }
 }
@@ -996,7 +997,7 @@ fun sendMessage(call: PluginCall) {
 val rawDeviceId = call.getString("deviceId") ?: ""
 val message = call.getString("message") ?: ""
 val macNorm = normalizeMac(rawDeviceId)
-remLog("INFO", "SEND", "sendMessage to=rawDeviceId len={message.length}")
+remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
 if (rawDeviceId.isEmpty()) {
 call.reject("deviceId requerido")
 return
@@ -1044,7 +1045,7 @@ rxChar.value = data
 @Suppress("DEPRECATION")
 gatt.writeCharacteristic(rxChar)
 }
-remLog("INFO", "SEND", "GATT Client chunk sent to macNorm len={chunk.length}")
+remLog("INFO", "SEND", "GATT Client chunk sent to macNorm len=${chunk.length}")
 return SendResult(true, "gatt_client")
 } catch (e: Exception) {
 remLog("WARN", "SEND", "GATT Client write exception: ${e.message}")
@@ -1064,7 +1065,7 @@ srvTx.value = data
 @Suppress("DEPRECATION")
 srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
 }
-remLog("INFO", "SEND", "GATT Server chunk sent to macNorm len={chunk.length}")
+remLog("INFO", "SEND", "GATT Server chunk sent to macNorm len=${chunk.length}")
 return SendResult(true, "gatt_server")
 } catch (e: Exception) {
 remLog("WARN", "SEND", "GATT Server notify exception: ${e.message}")
