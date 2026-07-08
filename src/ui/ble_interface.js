@@ -1403,6 +1403,7 @@ removeContact(deviceUUID) {
 try { _removeBLEContact(deviceUUID); this.renderContactsList(); this.renderNewDeviceBar(); this.renderOnlineStrip(); } catch (e) {}
 }
 disconnect(deviceId) {
+var disconnect(deviceId) {
 var self = this;
 if (self.isDummyMode) return Promise.resolve();
 if (!deviceId) return Promise.resolve();
@@ -1417,26 +1418,66 @@ self.updateBadge();
 }
 return Promise.resolve();
 }
+
+/* === NUEVO: Heartbeat === */
+_startHeartbeat() {
+var self = this;
+self._stopHeartbeat();
+self._heartbeatInterval = setInterval(function() {
+if (!self.nativePlugin || !self.connectedDevices || self.connectedDevices.size === 0) return;
+self.connectedDevices.forEach(function(device, deviceId) {
+var state = self._getDeviceState(deviceId);
+if (state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY) {
+var hbPayload = JSON.stringify({ v: 2, type: 'heartbeat', from: self.localNexoId || self.localDeviceUUID, ts: Date.now() });
+if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
+_safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: deviceId, message: hbPayload }).catch(function(e) {});
+}
+}
+});
+}, self._heartbeatMs);
+}
+
+_stopHeartbeat() {
+if (this._heartbeatInterval) { clearInterval(this._heartbeatInterval); this._heartbeatInterval = null; }
+}
+
+_handleHeartbeat(deviceId, content) {
+this._lastHeartbeatResponse.set(deviceId, Date.now());
+console.log('[BLEInterface] Heartbeat recibido de:', deviceId);
+}
+
+/* === NUEVO: Scan Fallback === */
+_startScanFallback() {
+var self = this;
+self._stopScanFallback();
+self._scanFallbackInterval = setInterval(function() {
+if (self._activeChatDeviceId) return;
+if (self.isScanning) return;
+if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
+self._autoScanForKnownContacts();
+}, self._scanFallbackMs);
+}
+
+_stopScanFallback() {
+if (this._scanFallbackInterval) { clearInterval(this._scanFallbackInterval); this._scanFallbackInterval = null; }
+}
+
 updateBadge() {
 var fabBtn = this.elements.fabBtn;
 if (!fabBtn) return;
 if (this._activeChatDeviceId) { fabBtn.style.display = 'none'; return; }
 fabBtn.style.display = 'flex';
-if (this.newDevicesCount > 0) { fabBtn.innerHTML = 'if (!deviceId) return Promise.resolve();
-if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) {
-return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: deviceId })
-.then(function() {
-if (self._activeChatDeviceId) {
-self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
-self.updateBadge();
+if (this.newDevicesCount > 0) {
+fabBtn.innerHTML = '<span style="position:absolute;top:-4px;right:-4px;width:20px;height:20px;border-radius:50%;background:#FF5252;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">' + this.newDevicesCount + '</span><svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
+} else {
+fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
 }
-}).catch(function(err) {});
 }
-return Promise.resolve();
-}
+
 updateStatusBar(text) {
 if (this.elements.statusText) this.elements.statusText.textContent = text || '';
 }
+
 updateStatus(customStatus) {
 var self = this;
 if (customStatus) { self.updateStatusBar(customStatus); return Promise.resolve(); }
@@ -1451,9 +1492,11 @@ else { self.updateStatusBar('BLE OFF'); }
 self.updateStatusBar('');
 return Promise.resolve();
 }
+
 getContacts() {
 return _getBLEContacts();
 }
+
 getContactByUUID(deviceUUID) {
 return _getContactByUUID(deviceUUID);
 }
