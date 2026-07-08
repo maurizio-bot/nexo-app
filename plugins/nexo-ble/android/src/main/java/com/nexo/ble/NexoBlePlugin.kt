@@ -42,7 +42,6 @@ import java.io.OutputStreamWriter
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
-
 @CapacitorPlugin(
 name = "NexoBLE",
 permissions = [
@@ -101,7 +100,7 @@ private val seenMessageIds = ConcurrentHashMap<String, Long>()
 private val seenMessageTTL = 60000L
 private var localNexoId: String? = null
 private fun remLog(level: String, tag: String, message: String) {
-Log.i("NEXO_REM", "[$level][$tag] $message")
+Log.i("NEXO_REM", "[$level][tag] $message")
 try {
 notifyListeners("onRemLog", JSObject()
 .put("level", level)
@@ -117,13 +116,12 @@ messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
 val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
 buffer.append(chunk)
 val accumulated = buffer.toString()
-remLog("DEBUG", "REASSEMBLY", "Buffer for macNorm: len=${accumulated.length}, content=${accumulated.take(60)}...")
+remLog("DEBUG", "REASSEMBLY", "Buffer for macNorm: len=${accumulated.length}, content={accumulated.take(60)}...")
 val completeMessage = tryExtractCompleteJson(accumulated)
 if (completeMessage != null) {
 remLog("INFO", "REASSEMBLY", "Mensaje completo reensamblado de $macNorm")
 messageBuffers.remove(macNorm)
 messageBufferTimers.remove(macNorm)
-
 // === JUMP ROUTING + DEDUP ===
 try {
 val json = JSONObject(completeMessage)
@@ -133,7 +131,6 @@ val to = json.optString("to", "")
 val jumpObj = json.optJSONObject("jump")
 val hops = jumpObj?.optInt("hops", 0) ?: 0
 val ttl = jumpObj?.optInt("ttl", JUMP_MAX_HOPS) ?: JUMP_MAX_HOPS
-
 // Deduplicación: si ya vimos este msgId, ignorar
 if (msgId.isNotEmpty()) {
 val now = System.currentTimeMillis()
@@ -144,12 +141,10 @@ return
 }
 seenMessageIds[msgId] = now
 }
-
 // ACK automático: si es msg y no es ACK, enviar ACK delivered
 if (type == "msg" && msgId.isNotEmpty()) {
 sendACK(macNorm, msgId, "delivered")
 }
-
 // JUMP: si el destino no soy yo y TTL > 0, reenviar
 if (to.isNotEmpty() && to != localNexoId && ttl > 0 && hops < JUMP_MAX_HOPS) {
 val newJump = JSONObject()
@@ -168,12 +163,11 @@ val newPath = org.json.JSONArray()
 pathList.forEach { newPath.put(it) }
 newJump.put("path", newPath)
 json.put("jump", newJump)
-
 // Reenviar a todos los peers conectados excepto el que lo envió
 val relayPayload = json.toString()
 val relayed = relayToAllExcept(macNorm, relayPayload)
 if (relayed) {
-remLog("INFO", "JUMP", "Mensaje $msgId reenviado, ttl=${ttl-1}, hops=${hops+1}")
+remLog("INFO", "JUMP", "Mensaje msgId reenviado, ttl={ttl-1}, hops=${hops+1}")
 }
 // No notificar a JS si fue reenviado (el destinatario final lo verá)
 if (to != localNexoId) {
@@ -183,7 +177,6 @@ return
 } catch (e: Exception) {
 remLog("WARN", "JUMP", "Error procesando jump: ${e.message}")
 }
-
 notifyListeners("onPayloadReceived", JSObject()
 .put("deviceId", deviceId)
 .put("content", completeMessage)
@@ -360,9 +353,9 @@ try { stopGattServer() } catch (e: Exception) { }
 isAdvertisingActive = false
 try { stopAdvertisingInternal() } catch (e: Exception) { }
 messageBuffers.clear()
-messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
-heartbeatTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+heartbeatTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 heartbeatTimers.clear()
 seenMessageIds.clear()
 }
@@ -394,6 +387,7 @@ remLog("INFO", "AUTO_START", "Advertising auto-iniciado")
 remLog("WARN", "AUTO_START", "Fallo auto-start advertising: ${e.message}")
 }
 }
+}
 private fun cleanupAllConnections() {
 gattClients.forEach { (mac, gatt) ->
 try {
@@ -408,16 +402,16 @@ gattClients.clear()
 clientRxCharacteristics.clear()
 clientTxCharacteristics.clear()
 clientConnectionStates.clear()
-reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+reconnectTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 reconnectTimers.clear()
 reconnectAttempts.clear()
-keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+keepAliveTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 keepAliveTimers.clear()
-heartbeatTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+heartbeatTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 heartbeatTimers.clear()
 pendingMessageQueue.clear()
 messageBuffers.clear()
-messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+messageBufferTimers.forEach { (*, runnable) -> mainHandler.removeCallbacks(runnable) }
 messageBufferTimers.clear()
 }
 @PluginMethod
@@ -591,7 +585,7 @@ ctx.startForegroundService(intent)
 ctx.startService(intent)
 }
 } catch (e: Exception) {
-remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: ${e.message}")
+remLog("WARN", "GATT_SERVER", "No se pudo reanudar advertising: {e.message}")
 }
 }
 }
@@ -603,7 +597,7 @@ preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
 if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
 val chunk = value?.toString(Charset.defaultCharset()) ?: ""
 val mac = device.address
-remLog("INFO", "GATT_SERVER", "RX chunk from mac: len=${chunk.length}")
+remLog("INFO", "GATT_SERVER", "RX chunk from mac: len={chunk.length}")
 processReceivedChunk(mac, chunk, "gatt_server")
 if (responseNeeded) {
 bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
@@ -671,7 +665,7 @@ call.reject("Permiso BLUETOOTH_CONNECT requerido para conectar", "PERMISSION_DEN
 return
 }
 }
-remLog("INFO", "GATT_CLIENT", "Usando device: ${device.address} (cache=${scannedDevices.containsKey(macNorm)})")
+remLog("INFO", "GATT_CLIENT", "Usando device: {device.address} (cache={scannedDevices.containsKey(macNorm)})")
 gattClients[macNorm]?.let { oldGatt ->
 try { oldGatt.disconnect(); oldGatt.close() } catch (e: Exception) { }
 }
@@ -815,7 +809,7 @@ processPendingMessages(macNorm)
 }
 override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
 val address = gatt.device?.address ?: ""
-remLog("INFO", "GATT_CLIENT_CB", "MTU changed $address mtu=$mtu status=$status")
+remLog("INFO", "GATT_CLIENT_CB", "MTU changed $address mtu=mtu status=$status")
 }
 override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
 val address = gatt.device?.address ?: ""
@@ -838,8 +832,21 @@ override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: Blueto
 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
 val chunk = value.toString(Charset.defaultCharset())
 val address = gatt.device?.address ?: ""
-remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from address: len=${chunk.length}")
+remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from address: len={chunk.length}")
 processReceivedChunk(address, chunk, "gatt_client")
+}
+}
+@Suppress("DEPRECATION")
+override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+val address = gatt.device?.address ?: ""
+if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
+val value = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
+remLog("DEBUG", "HEARTBEAT", "Heartbeat recibido de $address: $value")
+notifyListeners("onHeartbeatReceived", JSObject()
+.put("deviceId", address)
+.put("alive", true)
+.put("timestamp", System.currentTimeMillis())
+)
 }
 }
 }
@@ -900,19 +907,6 @@ remLog("INFO", "HEARTBEAT", "Iniciado para $macNorm")
 }
 private fun stopHeartbeat(macNorm: String) {
 heartbeatTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-}
-@Suppress("DEPRECATION")
-override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-val address = gatt.device?.address ?: ""
-if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-val value = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
-remLog("DEBUG", "HEARTBEAT", "Heartbeat recibido de $address: $value")
-notifyListeners("onHeartbeatReceived", JSObject()
-.put("deviceId", address)
-.put("alive", true)
-.put("timestamp", System.currentTimeMillis())
-)
-}
 }
 private fun startAutoReconnect(macNorm: String) {
 val currentAttempts = reconnectAttempts[macNorm] ?: 0
@@ -1002,7 +996,7 @@ fun sendMessage(call: PluginCall) {
 val rawDeviceId = call.getString("deviceId") ?: ""
 val message = call.getString("message") ?: ""
 val macNorm = normalizeMac(rawDeviceId)
-remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
+remLog("INFO", "SEND", "sendMessage to=rawDeviceId len={message.length}")
 if (rawDeviceId.isEmpty()) {
 call.reject("deviceId requerido")
 return
@@ -1050,7 +1044,7 @@ rxChar.value = data
 @Suppress("DEPRECATION")
 gatt.writeCharacteristic(rxChar)
 }
-remLog("INFO", "SEND", "GATT Client chunk sent to $macNorm len=${chunk.length}")
+remLog("INFO", "SEND", "GATT Client chunk sent to macNorm len={chunk.length}")
 return SendResult(true, "gatt_client")
 } catch (e: Exception) {
 remLog("WARN", "SEND", "GATT Client write exception: ${e.message}")
@@ -1070,7 +1064,7 @@ srvTx.value = data
 @Suppress("DEPRECATION")
 srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
 }
-remLog("INFO", "SEND", "GATT Server chunk sent to $macNorm len=${chunk.length}")
+remLog("INFO", "SEND", "GATT Server chunk sent to macNorm len={chunk.length}")
 return SendResult(true, "gatt_server")
 } catch (e: Exception) {
 remLog("WARN", "SEND", "GATT Server notify exception: ${e.message}")
