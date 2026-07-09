@@ -744,7 +744,7 @@ return new Promise(function(resolve, reject) {
 try {
 if (!self.nativePlugin) { reject(new Error('Plugin no disponible')); return; }
 if (!deviceId) { reject(new Error('deviceId invalido')); return; }
-var isCtrl = *isControlPacket(content);
+var isCtrl = _isControlPacket(content);
 var enrichedPayload;
 if (isCtrl) { enrichedPayload = content; }
 else {
