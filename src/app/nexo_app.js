@@ -5,6 +5,7 @@
  * FIX: _ackMaxRetries definido en constructor
  * FIX: sendMessage usa timeout correcto para ACK
  */
+
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
 import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
