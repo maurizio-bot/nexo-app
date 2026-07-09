@@ -1,5 +1,5 @@
 /**
- * BLE Interface v5.2.0-ACK-JUMP-HEARTBEAT
+ * BLE Interface v5.2.1-ACK-JUMP-HEARTBEAT-FIXED
  * FIX: Identidad = NEXO ID únicamente. deviceId opaco para conexión nativa.
  * ACK real con confirmación de entrega. Jump routing mesh BLE. Heartbeat GATT 5s.
  * Scan 6s fallback por acciones.
@@ -229,7 +229,7 @@
    try {
    var result;
    if (args && typeof args === 'object' && !Array.isArray(args)) {
-   result = pluginmethod;
+   result = plugin[method](args);
    } else {
    var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
    result = plugin[method].apply(plugin, callArgs);
@@ -841,9 +841,7 @@ if (pending) {
 if (pending.retries < 2) {
 pending.retries++;
 console.log('[BLEInterface] Reintentando mensaje:', msgId, 'intento', pending.retries);
-self._sendMessageNative(deviceId, content, msgId).then(function() {
-pending.timer = setTimeout(arguments.callee, timeoutMs);
-}).catch(function() {
+self._sendMessageNative(deviceId, content, msgId).then(function retryACK() { pending.timer = setTimeout(retryACK, timeoutMs); }).catch(function() {
 self._pendingACKs.delete(msgId);
 _safeDispatchEvent('nexo:ble:messageFailed', { msgId: msgId, deviceId: deviceId, reason: 'timeout' });
 });
@@ -1399,7 +1397,8 @@ else if (action === 'profile') { _safeDispatchEvent('nexo:ble:goToProfile', { de
 menu.remove();
 });
 setTimeout(function() {
-document.addEventListener('click', function closeMenu(e) { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeMenu); } });
+document.addEventListener('click', function closeMenu(e) {
+if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeMenu); } });
 }, 10);
 }
 renderNewDeviceBar() {
