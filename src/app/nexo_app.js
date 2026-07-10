@@ -791,15 +791,9 @@ this.bleInterface.sendChatMessage(recipientId, payload, messageId).catch(functio
 export { NexoApp, DEBUG };
 export default NexoApp;
 /*
- * Firmas:
- *    * Constructor: inicialización de _ackTimeoutBase, _ackTimeoutPerHop, _ackMaxRetries.
- *    * init(): Logs actualizados a versión v5.0.18-ACK-JUMP-HEARTBEAT-FIXED.
- *    * sendMessage(): Integración de _startACKTimeout y _updateMessageStatus.
- *    * _handleMessage(): Deduplicación y lógica de recepción de ACK/Read Receipt.
- *    * _updateMessageStatus(): Gestión de estados de entrega y lectura.
- *    * _handleACK(): Lógica de recepción y procesamiento de paquetes ACK.
- *    * _startACKTimeout(): Lógica de reintento basada en _ackMaxRetries.
- *    * _retryMessage(): Implementación de reintento de envío.
- *    * _sendACK(): Envío de confirmación de entrega.
- *    * _sendReadReceipt(): Envío de confirmación de lectura.
-     */
+Firma de cambios:
+ * Inicialización de _ackTimeoutBase, _ackTimeoutPerHop y _ackMaxRetries en constructor.
+ * Implementación de _startACKTimeout, _retryMessage, _sendACK y _sendReadReceipt.
+ * Actualización de _handleACK y lógica de ACK en _bleMessageHandler.
+ * Ajuste en sendMessage para uso de timeout de ACK.
+   */
