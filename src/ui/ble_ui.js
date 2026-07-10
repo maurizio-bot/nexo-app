@@ -414,3 +414,5 @@ var instance = new BLEInterface(bleMesh).init();
 window.bleInterface = instance;
 return instance;
 }
+// Firmas de modificación:
+// - Ninguna aplicada.
