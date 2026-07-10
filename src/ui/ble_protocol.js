@@ -1,7 +1,6 @@
 /**
  * BLE Protocol — Mensajes v2, ACK, Heartbeat, Deduplicación
- * v5.2.1-split-protocol
- * Importa: ble_base.js
+ * v5.2.2-split-protocol  (FIXED: import from ble_base.js)
  */
 import { BLEInterface } from './ble_base.js';
 
