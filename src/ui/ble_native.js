@@ -1,9 +1,8 @@
 /**
  * BLE Native — Scan, Conexión, Advertising, Listeners nativos
- * v5.2.1-split-native
- * Importa: ble_protocol.js
+ * v5.2.2-split-native  (FIXED: import from ble_base.js, not ble_protocol.js)
    */
-   import { BLEInterface } from './ble_protocol.js';
+   import { BLEInterface } from './ble_base.js';
 Object.assign(BLEInterface.prototype, {
 _loadContactsAndInit() {
 var self = this;
