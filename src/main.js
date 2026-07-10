@@ -450,22 +450,22 @@ function _setupFABButton() {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
     
+    // FIX: No clonar, solo reemplazar innerHTML y agregar UN listener
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
     
+    // Eliminar listeners viejos reemplazando el nodo (una sola vez)
     var newFab = fabBtn.cloneNode(true);
     fabBtn.parentNode.replaceChild(newFab, fabBtn);
     
     newFab.addEventListener('click', function() {
-      // Usar togglePanel() en lugar de manipular clases directamente
       if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
         window.bleInterface.togglePanel();
+        setTimeout(function() {
+          if (window.bleInterface && typeof window.bleInterface.triggerScanByAction === 'function') {
+            window.bleInterface.triggerScanByAction();
+          }
+        }, 300);
       }
-      // Trigger scan después de abrir panel
-      setTimeout(function() {
-        if (window.bleInterface && typeof window.bleInterface.triggerScanByAction === 'function') {
-          window.bleInterface.triggerScanByAction();
-        }
-      }, 300);
     });
   } catch (e) {
     console.warn('[MAIN] _setupFABButton error:', e);
