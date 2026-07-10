@@ -1,17 +1,76 @@
 /**
  * BLE UI — DOM, Render, Event Listeners, Panel
- * v5.2.1-split-ui
- * Importa: ble_native.js
+ * v5.2.2-split-ui  (FIXED: import from ble_base.js, panel CSS, button wiring)
    */
-   import { BLEInterface } from './ble_native.js';
+   import { BLEInterface } from './ble_base.js';
 Object.assign(BLEInterface.prototype, {
 createDOM() {
 var self = this;
+// Create panel styles if not present
+if (!document.getElementById('ble-panel-styles')) {
+var style = document.createElement('style');
+style.id = 'ble-panel-styles';
+style.textContent =
+'#ble-panel{position:fixed;top:0;left:0;width:100%;height:100%;background:#0a0a0a;z-index:2147483640;transform:translateY(100%);transition:transform 0.35s cubic-bezier(0.32,0.72,0,1);display:flex;flex-direction:column;}' +
+'#ble-panel.active{transform:translateY(0);}' +
+'#ble-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2147483639;opacity:0;pointer-events:none;transition:opacity 0.3s ease;}' +
+'#ble-overlay.active{opacity:1;pointer-events:auto;}' +
+'.ble-header{position:relative;display:flex;align-items:center;justify-content:center;padding:16px 20px 14px;border-bottom:1px solid rgba(255,255,255,0.08);}' +
+'.contacts-title{font-size:20px;font-weight:700;color:#fff;}' +
+'.ble-search-bar{display:flex;align-items:center;padding:12px 16px;margin:12px 16px;background:rgba(255,255,255,0.06);border-radius:12px;color:rgba(255,255,255,0.5);font-size:15px;}' +
+'.ble-search-bar svg{width:20px;height:20px;margin-right:10px;fill:rgba(255,255,255,0.5);}' +
+'.ble-section-label{padding:16px 20px 8px;font-size:13px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;}' +
+'.ble-online-strip{display:flex;gap:16px;padding:0 20px 12px;overflow-x:auto;}' +
+'.ble-online-item{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:64px;}' +
+'.ble-online-avatar{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;position:relative;}' +
+'.ble-online-dot{position:absolute;bottom:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#4CAF50;border:2px solid #0a0a0a;}' +
+'.ble-online-name{font-size:12px;color:rgba(255,255,255,0.7);max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+'.ble-contacts-list{flex:1;overflow-y:auto;padding:0 16px;}' +
+'.ble-contact-row{display:flex;align-items:center;padding:12px 4px;cursor:pointer;}' +
+'.ble-contact-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;margin-right:12px;flex-shrink:0;}' +
+'.ble-contact-info{flex:1;min-width:0;}' +
+'.ble-contact-name{font-size:16px;font-weight:600;color:#fff;margin-bottom:2px;}' +
+'.ble-contact-msg{font-size:14px;color:rgba(255,255,255,0.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+'.ble-contact-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}' +
+'.ble-contact-time{font-size:12px;color:rgba(255,255,255,0.4);}' +
+'.ble-unread-badge{min-width:20px;height:20px;border-radius:10px;background:#0082FC;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px;}' +
+'.ble-bottom-bar{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;z-index:10;}' +
+'.ble-btn-scan-round{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(0,200,255,0.3);}' +
+'.ble-btn-scan-round::after{content:"";width:20px;height:20px;border:2px solid #fff;border-radius:50%;border-top-color:transparent;animation:none;}' +
+'.ble-btn-scan-round.scanning::after{animation:ble-spin 1s linear infinite;}' +
+'@keyframes ble-spin{to{transform:rotate(360deg);}}' +
+'.ble-new-device{display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(255,255,255,0.08);border-radius:20px;}' +
+'.ble-new-device span{color:#fff;font-size:14px;}' +
+'.ble-btn-add-small{width:32px;height:32px;border-radius:50%;background:#0082FC;border:none;color:#fff;font-size:18px;cursor:pointer;}' +
+'.ble-status-bar{padding:8px 20px;text-align:center;font-size:12px;color:rgba(255,255,255,0.5);}' +
+'.ble-empty{text-align:center;padding:40px 20px;color:rgba(255,255,255,0.4);font-size:15px;}' +
+'.ble-divider{height:1px;background:rgba(255,255,255,0.06);margin:0 4px;}' +
+'#ble-fab-btn{position:fixed;bottom:80px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483643;box-shadow:0 4px 15px rgba(0,200,255,0.3);transition:transform 0.15s ease;}' +
+'#ble-fab-btn:active{transform:scale(0.92);}' +
+'#ble-bottom-nav{position:fixed;bottom:0;left:0;width:100%;height:64px;background:rgba(10,10,10,0.95);backdrop-filter:blur(20px);border-top:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-around;align-items:center;z-index:2147483642;}' +
+'.ble-nav-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 16px;color:rgba(255,255,255,0.4);cursor:pointer;transition:color 0.2s;}' +
+'.ble-nav-item.active{color:#0082FC;}' +
+'.ble-nav-item svg{width:22px;height:22px;fill:currentColor;}' +
+'.ble-nav-item span{font-size:11px;}' +
+'.ble-gradient-1{background:linear-gradient(135deg,#0082FC,#6B4EFF);}' +
+'.ble-gradient-2{background:linear-gradient(135deg,#FF6B6B,#EE5A6F);}' +
+'.ble-gradient-3{background:linear-gradient(135deg,#4ECDC4,#44A08D);}' +
+'.ble-gradient-4{background:linear-gradient(135deg,#A8EDEA,#FED6E3);}' +
+'.ble-gradient-5{background:linear-gradient(135deg,#D299C2,#FEF9D7);}' +
+'.ble-gradient-6{background:linear-gradient(135deg,#89F7FE,#66A6FF);}' +
+'.ble-gradient-7{background:linear-gradient(135deg,#FDCB6E,#E17055);}' +
+'.ble-gradient-8{background:linear-gradient(135deg,#FD79A8,#FDCB6E);}' +
+'.ble-contact-menu{position:absolute;background:#1a1a1a;border-radius:12px;padding:8px 0;min-width:160px;box-shadow:0 8px 32px rgba(0,0,0,0.4);z-index:2147483646;}' +
+'.ble-menu-item{padding:10px 16px;font-size:14px;color:#fff;cursor:pointer;}' +
+'.ble-menu-item:hover{background:rgba(255,255,255,0.06);}' +
+'.ble-menu-delete{color:#FF5252;}';
+document.head.appendChild(style);
+}
 var panel = document.createElement('div');
 panel.id = 'ble-panel';
 panel.innerHTML =
-'<div class="ble-header" style="position:relative;display:flex;align-items:center;justify-content:center;padding:10px 20px 14px;">' +
-'<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);transition:transform 0.15s ease;z-index:2;">' +
+'<div class="ble-header">' +
+'<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);z-index:2;">' +
 '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" transform="scale(-1,1) translate(-24,0)"/></svg>' +
 '</button>' +
 '<div style="text-align:center;">' +
@@ -44,7 +103,6 @@ document.body.appendChild(overlay);
 this.elements.overlay = overlay;
 var bottomNav = document.createElement('div');
 bottomNav.id = 'ble-bottom-nav';
-bottomNav.className = 'ble-bottom-nav';
 bottomNav.innerHTML =
 '<div class="ble-nav-item active" data-tab="chats">' +
 '<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>' +
@@ -79,20 +137,22 @@ this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
 var fabBtn = document.createElement('button');
 fabBtn.id = 'ble-fab-btn';
 fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
-fabBtn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483643;box-shadow:0 4px 15px rgba(0,200,255,0.3);transition:transform 0.15s ease;';
-fabBtn.addEventListener('click', function() { self.togglePanel(); });
-fabBtn.addEventListener('mousedown', function() { this.style.transform = 'scale(0.92)'; });
-fabBtn.addEventListener('mouseup', function() { this.style.transform = 'scale(1)'; });
-fabBtn.addEventListener('touchstart', function() { this.style.transform = 'scale(0.92)'; });
-fabBtn.addEventListener('touchend', function() { this.style.transform = 'scale(1)'; });
 document.body.appendChild(fabBtn);
 this.elements.fabBtn = fabBtn;
 },
 setupEventListeners() {
 var self = this;
+// Overlay click closes panel
 this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
+// Scan button inside panel
+if (this.elements.scanBtn) {
 this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
+}
+// Add button inside panel
+if (this.elements.addBtn) {
 this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
+}
+// Back button inside panel
 var backBtn = document.getElementById('ble-panel-back');
 if (backBtn) {
 backBtn.addEventListener('click', function() {
@@ -100,6 +160,7 @@ self.elements.panel.classList.remove('active');
 self.elements.overlay.classList.remove('active');
 });
 }
+// Bottom nav tabs
 var navItems = this.elements.bottomNav.querySelectorAll('.ble-nav-item');
 navItems.forEach(function(item) {
 item.addEventListener('click', function() {
@@ -113,6 +174,13 @@ self.elements.overlay.classList.remove('active');
 }
 });
 });
+// FAB button opens scan panel
+if (this.elements.fabBtn) {
+this.elements.fabBtn.addEventListener('click', function() {
+self.togglePanel();
+});
+}
+// Close chat event
 window.addEventListener('nexo:ble:closeChat', function() {
 self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
 self.updateBadge();
@@ -121,6 +189,7 @@ if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'flex';
 self.renderContactsList(); self.renderOnlineStrip();
 self._scheduleScanFallback();
 });
+// Open chat event
 window.addEventListener('nexo:ble:openChat', function() {
 if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'none';
 if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'none';
@@ -128,10 +197,20 @@ self._cancelScanFallback();
 });
 },
 togglePanel() {
-this.elements.panel.classList.toggle('active');
-this.elements.overlay.classList.toggle('active');
-if (this.elements.panel.classList.contains('active')) {
-this.newDevicesCount = 0; this.updateBadge(); this.renderContactsList(); this.renderOnlineStrip();
+var panel = this.elements.panel;
+var overlay = this.elements.overlay;
+if (!panel || !overlay) return;
+var isActive = panel.classList.contains('active');
+if (isActive) {
+panel.classList.remove('active');
+overlay.classList.remove('active');
+} else {
+panel.classList.add('active');
+overlay.classList.add('active');
+this.newDevicesCount = 0;
+this.updateBadge();
+this.renderContactsList();
+this.renderOnlineStrip();
 this.triggerScanByAction();
 }
 },
@@ -259,6 +338,7 @@ if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('cli
 renderNewDeviceBar() {
 var bar = this.elements.newDeviceBar;
 var nameSpan = this.elements.newDeviceName;
+if (!bar || !nameSpan) return;
 var newDevice = null, newDeviceId = null;
 this.foundDevices.forEach(function(device, deviceId) {
 var uuid = device.deviceUUID;
@@ -275,6 +355,7 @@ else { bar.style.display = 'none'; bar.dataset.deviceId = ''; }
 _addNewDevice() {
 var self = this;
 var bar = this.elements.newDeviceBar;
+if (!bar) return;
 var deviceId = bar.dataset.deviceId || '';
 var device = this.foundDevices.get(deviceId);
 if (!device) return;
@@ -415,4 +496,4 @@ window.bleInterface = instance;
 return instance;
 }
 // Firmas de modificación:
-// - Ninguna aplicada.
+// - v5.2.2: Fixed imports (all from ble_base.js), added inline CSS for panel animation, fixed FAB wiring.
