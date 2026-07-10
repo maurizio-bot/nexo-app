@@ -1,6 +1,6 @@
 /**
  * BLE UI — DOM, Render, Event Listeners, Panel
- * v5.2.2-split-ui  (FIXED: import from ble_base.js, panel CSS, button wiring)
+ * v5.2.2-split-ui-FIXED  (Botón BLE en HTML estático, scan auto al pulsar)
    */
    import { BLEInterface } from './ble_base.js';
 Object.assign(BLEInterface.prototype, {
@@ -45,8 +45,6 @@ style.textContent =
 '.ble-status-bar{padding:8px 20px;text-align:center;font-size:12px;color:rgba(255,255,255,0.5);}' +
 '.ble-empty{text-align:center;padding:40px 20px;color:rgba(255,255,255,0.4);font-size:15px;}' +
 '.ble-divider{height:1px;background:rgba(255,255,255,0.06);margin:0 4px;}' +
-'#ble-fab-btn{position:fixed;bottom:80px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483643;box-shadow:0 4px 15px rgba(0,200,255,0.3);transition:transform 0.15s ease;}' +
-'#ble-fab-btn:active{transform:scale(0.92);}' +
 '#ble-bottom-nav{position:fixed;bottom:0;left:0;width:100%;height:64px;background:rgba(10,10,10,0.95);backdrop-filter:blur(20px);border-top:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-around;align-items:center;z-index:2147483642;}' +
 '.ble-nav-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 16px;color:rgba(255,255,255,0.4);cursor:pointer;transition:color 0.2s;}' +
 '.ble-nav-item.active{color:#0082FC;}' +
@@ -134,11 +132,18 @@ this.elements.statusText = document.getElementById('ble-status-text');
 this.elements.mainContactsList = document.getElementById('main-contacts-list');
 this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
 this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
-var fabBtn = document.createElement('button');
-fabBtn.id = 'ble-fab-btn';
-fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
-document.body.appendChild(fabBtn);
+// REFERENCIAR FAB existente en HTML (NO crearlo dinámicamente)
+var fabBtn = document.getElementById('ble-fab-btn');
+if (fabBtn) {
 this.elements.fabBtn = fabBtn;
+} else {
+// Fallback: crearlo si no existe (no debería pasar con HTML actualizado)
+var fallbackFab = document.createElement('button');
+fallbackFab.id = 'ble-fab-btn';
+fallbackFab.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M17.71 9.29l-5-5a1 1 0 00-1.42 0l-5 5a1 1 0 001.42 1.42L11 7.41V19a1 1 0 002 0V7.41l3.29 3.3a1 1 0 001.42 0 1 1 0 000-1.42z"/></svg>';
+document.body.appendChild(fallbackFab);
+this.elements.fabBtn = fallbackFab;
+}
 },
 setupEventListeners() {
 var self = this;
@@ -174,10 +179,16 @@ self.elements.overlay.classList.remove('active');
 }
 });
 });
-// FAB button opens scan panel
+// FAB button: arranca scan automático + abre panel
 if (this.elements.fabBtn) {
 this.elements.fabBtn.addEventListener('click', function() {
 self.togglePanel();
+// Arrancar scan automático al abrir panel
+setTimeout(function() {
+if (!self.isScanning) {
+self.triggerScanByAction();
+}
+}, 300);
 });
 }
 // Close chat event
@@ -211,7 +222,6 @@ this.newDevicesCount = 0;
 this.updateBadge();
 this.renderContactsList();
 this.renderOnlineStrip();
-this.triggerScanByAction();
 }
 },
 renderOnlineStrip() {
@@ -428,9 +438,23 @@ updateBadge() {
 var fabBtn = this.elements.fabBtn;
 if (!fabBtn) return;
 if (this._activeChatDeviceId) { fabBtn.style.display = 'none'; return; }
+// Siempre visible en pantalla principal
 fabBtn.style.display = 'flex';
-if (this.newDevicesCount > 0) { fabBtn.innerHTML = '<span style="color:#fff;font-size:14px;font-weight:700;">' + this.newDevicesCount + '</span>'; }
-else { fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>'; }
+if (this.newDevicesCount > 0) {
+// Mostrar badge con número de dispositivos nuevos
+var existingBadge = fabBtn.querySelector('.fab-badge');
+if (!existingBadge) {
+existingBadge = document.createElement('span');
+existingBadge.className = 'fab-badge';
+fabBtn.appendChild(existingBadge);
+}
+existingBadge.textContent = this.newDevicesCount;
+existingBadge.style.display = 'flex';
+} else {
+// Ocultar badge si no hay dispositivos nuevos
+var existingBadge = fabBtn.querySelector('.fab-badge');
+if (existingBadge) existingBadge.style.display = 'none';
+}
 },
 getContacts() {
 return _getBLEContacts();
@@ -496,4 +520,4 @@ window.bleInterface = instance;
 return instance;
 }
 // Firmas de modificación:
-// - v5.2.2: Fixed imports (all from ble_base.js), added inline CSS for panel animation, fixed FAB wiring.
+// - v5.2.2-FIXED: FAB referenciado desde HTML estático, scan auto al pulsar, badge en FAB.
