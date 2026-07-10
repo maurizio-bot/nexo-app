@@ -414,10 +414,3 @@ var instance = new BLEInterface(bleMesh).init();
 window.bleInterface = instance;
 return instance;
 }
-/*
- * Firmas:
- *    * Implementación de estructura básica de UI (BLEInterface prototype)
- *    * Métodos de renderizado para contactos, lista en línea y barra de dispositivos
- *    * Lógica de manejo de eventos para interacción con panel y dispositivos
- *    * Gestión de estados de conexión y limpieza de recursos (destroy)
-     */
