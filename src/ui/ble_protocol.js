@@ -384,3 +384,5 @@ Object.assign(BLEInterface.prototype, {
   }
 
 });
+
+export { BLEInterface };
