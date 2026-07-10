@@ -1,9 +1,9 @@
 /**
  * BLE UI — DOM, Render, Event Listeners, Panel
- * v5.2.2-split-ui-FIXED-OVERLAY
- * FIX: No inyectar CSS de #ble-panel/#ble-overlay/#ble-bottom-nav — critical.css los controla
- * FIX: Panel usa translateX como define critical.css, no translateY
- * FIX: _setupFABButton en main.js usa togglePanel()
+ * v5.2.2-split-ui-FIXED-FAB
+ * FIX: Clonar FAB para eliminar event listeners duplicados del HTML
+ * FIX: Quitar bloque DEFENSIVE duplicado de createDOM
+ * FIX: var self = this en renderNewDeviceBar
  */
 import { BLEInterface } from './ble_base.js';
 
@@ -12,7 +12,6 @@ Object.assign(BLEInterface.prototype, {
   createDOM() {
     var self = this;
     // Solo inyectar estilos que NO están en critical.css
-    // NO tocar #ble-panel, #ble-overlay, #ble-bottom-nav — esos los maneja critical.css
     if (!document.getElementById('ble-ui-styles')) {
       var style = document.createElement('style');
       style.id = 'ble-ui-styles';
@@ -77,7 +76,6 @@ Object.assign(BLEInterface.prototype, {
     }
 
     // Crear panel BLE — SIN style inline para transform/position/z-index
-    // critical.css controla: position, top, left, width, height, background, transform, transition, z-index, display
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML =
@@ -152,33 +150,17 @@ Object.assign(BLEInterface.prototype, {
     this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
     this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
 
+    // FAB: buscar existente o crear fallback
     var fabBtn = document.getElementById('ble-fab-btn');
     if (fabBtn) {
       this.elements.fabBtn = fabBtn;
     } else {
       var fallbackFab = document.createElement('button');
       fallbackFab.id = 'ble-fab-btn';
-      fallbackFab.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M17.71 9.29l-5-5a1 1 0 00-1.42 0l-5 5a1 1 0 001.42 1.42L11 7.41V19a1 1 0 002 0V7.41l3.29 3.3a1 1 0 001.42 0 1 1 0 000-1.42z"/></svg>';
+      fallbackFab.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
       fallbackFab.style.cssText = 'position:fixed;bottom:80px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(0,200,255,0.3);z-index:2147483641;';
       document.body.appendChild(fallbackFab);
       this.elements.fabBtn = fallbackFab;
-    }
-
-    // DEFENSIVE: attach critical listeners immediately after DOM creation
-    var scanBtnEl = document.getElementById('ble-scan-btn');
-    if (scanBtnEl) {
-      scanBtnEl.addEventListener('click', function() { self.toggleScan(); });
-    }
-    var addBtnEl = document.getElementById('ble-add-btn');
-    if (addBtnEl) {
-      addBtnEl.addEventListener('click', function() { self._addNewDevice(); });
-    }
-    var backBtnEl = document.getElementById('ble-panel-back');
-    if (backBtnEl) {
-      backBtnEl.addEventListener('click', function() {
-        self.elements.panel.classList.remove('active');
-        self.elements.overlay.classList.remove('active');
-      });
     }
   },
 
@@ -211,16 +193,23 @@ Object.assign(BLEInterface.prototype, {
         }
       });
     });
+
+    // FIX: Clonar FAB para eliminar event listeners duplicados del HTML
     if (this.elements.fabBtn) {
+      var oldFab = this.elements.fabBtn;
+      var newFab = oldFab.cloneNode(true);
+      oldFab.parentNode.replaceChild(newFab, oldFab);
+      this.elements.fabBtn = newFab;
       this.elements.fabBtn.addEventListener('click', function() {
         self.togglePanel();
         setTimeout(function() {
-          if (!self.isScanning) {
+          if (!self.isScanning && typeof self.triggerScanByAction === 'function') {
             self.triggerScanByAction();
           }
         }, 300);
       });
     }
+
     window.addEventListener('nexo:ble:closeChat', function() {
       self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
       self.updateBadge();
@@ -379,6 +368,7 @@ Object.assign(BLEInterface.prototype, {
   },
 
   renderNewDeviceBar() {
+    var self = this;
     var bar = this.elements.newDeviceBar;
     var nameSpan = this.elements.newDeviceName;
     var addBtn = this.elements.addBtn;
