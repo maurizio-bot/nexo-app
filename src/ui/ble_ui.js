@@ -1,9 +1,9 @@
 /**
  * BLE UI — DOM, Render, Event Listeners, Panel
- * v5.2.2-split-ui-FIXED-FAB
- * FIX: Clonar FAB para eliminar event listeners duplicados del HTML
- * FIX: Quitar bloque DEFENSIVE duplicado de createDOM
- * FIX: var self = this en renderNewDeviceBar
+ * v5.2.2-split-ui-FIXED-PANEL-DISPLAY
+ * FIX: Panel inicial display:none para no interceptar clicks
+ * FIX: togglePanel usa setProperty con !important
+ * FIX: Reemplazar FAB completamente en setupEventListeners
  */
 import { BLEInterface } from './ble_base.js';
 
@@ -11,7 +11,6 @@ Object.assign(BLEInterface.prototype, {
 
   createDOM() {
     var self = this;
-    // Solo inyectar estilos que NO están en critical.css
     if (!document.getElementById('ble-ui-styles')) {
       var style = document.createElement('style');
       style.id = 'ble-ui-styles';
@@ -65,7 +64,6 @@ Object.assign(BLEInterface.prototype, {
       document.head.appendChild(style);
     }
 
-    // Eliminar paneles duplicados si existen
     if (document.getElementById('ble-panel')) {
       var existingPanel = document.getElementById('ble-panel');
       var existingOverlay = document.getElementById('ble-overlay');
@@ -75,9 +73,10 @@ Object.assign(BLEInterface.prototype, {
       if (existingNav) existingNav.remove();
     }
 
-    // Crear panel BLE — SIN style inline para transform/position/z-index
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
+    // FIX CRÍTICO: display:none inicial para no interceptar clicks
+    panel.style.setProperty('display', 'none', 'important');
     panel.innerHTML =
       '<div class="ble-header">' +
         '<button id="ble-panel-back" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,200,255,0.3);z-index:2;">' +
@@ -108,13 +107,11 @@ Object.assign(BLEInterface.prototype, {
     document.body.appendChild(panel);
     this.elements.panel = panel;
 
-    // Crear overlay — SIN style inline, critical.css controla todo
     var overlay = document.createElement('div');
     overlay.id = 'ble-overlay';
     document.body.appendChild(overlay);
     this.elements.overlay = overlay;
 
-    // Crear bottom nav — SIN style inline, critical.css controla todo
     var bottomNav = document.createElement('div');
     bottomNav.id = 'ble-bottom-nav';
     bottomNav.innerHTML =
@@ -150,7 +147,6 @@ Object.assign(BLEInterface.prototype, {
     this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
     this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
 
-    // FAB: buscar existente o crear fallback
     var fabBtn = document.getElementById('ble-fab-btn');
     if (fabBtn) {
       this.elements.fabBtn = fabBtn;
@@ -166,6 +162,31 @@ Object.assign(BLEInterface.prototype, {
 
   setupEventListeners() {
     var self = this;
+    
+    // FIX CRÍTICO: Reemplazar FAB completamente para eliminar listeners duplicados
+    var oldFab = this.elements.fabBtn;
+    if (oldFab && oldFab.parentNode) {
+      var parent = oldFab.parentNode;
+      parent.removeChild(oldFab);
+      var newFab = document.createElement('button');
+      newFab.id = 'ble-fab-btn';
+      newFab.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
+      newFab.style.cssText = 'position:fixed;bottom:80px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(0,200,255,0.3);z-index:2147483641;';
+      parent.appendChild(newFab);
+      this.elements.fabBtn = newFab;
+    }
+    
+    if (this.elements.fabBtn) {
+      this.elements.fabBtn.addEventListener('click', function() {
+        self.togglePanel();
+        setTimeout(function() {
+          if (!self.isScanning && typeof self.triggerScanByAction === 'function') {
+            self.triggerScanByAction();
+          }
+        }, 300);
+      });
+    }
+
     this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
     if (this.elements.scanBtn) {
       this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
@@ -178,6 +199,7 @@ Object.assign(BLEInterface.prototype, {
       backBtn.addEventListener('click', function() {
         self.elements.panel.classList.remove('active');
         self.elements.overlay.classList.remove('active');
+        self.elements.panel.style.setProperty('display', 'none', 'important');
       });
     }
     var navItems = this.elements.bottomNav.querySelectorAll('.ble-nav-item');
@@ -190,26 +212,10 @@ Object.assign(BLEInterface.prototype, {
         else if (tab === 'chats') {
           self.elements.panel.classList.remove('active');
           self.elements.overlay.classList.remove('active');
+          self.elements.panel.style.setProperty('display', 'none', 'important');
         }
       });
     });
-
-    // FIX: Clonar FAB para eliminar event listeners duplicados del HTML
-    if (this.elements.fabBtn) {
-      var oldFab = this.elements.fabBtn;
-      var newFab = oldFab.cloneNode(true);
-      oldFab.parentNode.replaceChild(newFab, oldFab);
-      this.elements.fabBtn = newFab;
-      this.elements.fabBtn.addEventListener('click', function() {
-        self.togglePanel();
-        setTimeout(function() {
-          if (!self.isScanning && typeof self.triggerScanByAction === 'function') {
-            self.triggerScanByAction();
-          }
-        }, 300);
-      });
-    }
-
     window.addEventListener('nexo:ble:closeChat', function() {
       self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
       self.updateBadge();
@@ -233,7 +239,11 @@ Object.assign(BLEInterface.prototype, {
     if (isActive) {
       panel.classList.remove('active');
       overlay.classList.remove('active');
+      panel.style.setProperty('display', 'none', 'important');
     } else {
+      panel.style.setProperty('display', 'flex', 'important');
+      panel.style.setProperty('flex-direction', 'column', 'important');
+      void panel.offsetWidth;
       panel.classList.add('active');
       overlay.classList.add('active');
       this.newDevicesCount = 0;
@@ -407,7 +417,6 @@ Object.assign(BLEInterface.prototype, {
     if (deviceId) {
       device = this.foundDevices.get(deviceId);
     }
-    // Fallback: buscar primer dispositivo no-contacto si dataset falla
     if (!device) {
       this.foundDevices.forEach(function(d, id) {
         if (!device && d.deviceUUID && !_isBLEContact(d.deviceUUID)) {
@@ -442,6 +451,7 @@ Object.assign(BLEInterface.prototype, {
   _closePanelAndRefresh() {
     this.elements.panel.classList.remove('active');
     this.elements.overlay.classList.remove('active');
+    this.elements.panel.style.setProperty('display', 'none', 'important');
     this.renderContactsList();
     this.renderOnlineStrip();
     this.renderNewDeviceBar();
@@ -479,7 +489,9 @@ Object.assign(BLEInterface.prototype, {
           if (nameInput) nameInput.value = displayName;
           if (subtitle) subtitle.textContent = '';
           _safeDispatchEvent('nexo:ble:openChat', { contactId: uuid, name: displayName, deviceId: deviceId, transport: 'ble', source: 'ble_interface' });
-          self.elements.panel.classList.remove('active'); self.elements.overlay.classList.remove('active');
+          self.elements.panel.classList.remove('active');
+          self.elements.overlay.classList.remove('active');
+          self.elements.panel.style.setProperty('display', 'none', 'important');
         }
         finishOpenChat();
         resolve();
