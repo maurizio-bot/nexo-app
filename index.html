@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -13,6 +14,52 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
 <title>NEXO v9.0</title>
 <link rel="stylesheet" href="./styles.css">
+<style>
+/* Botón BLE principal - siempre visible en pantalla de contactos */
+#ble-fab-btn {
+  position: fixed;
+  bottom: 80px;
+  right: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0082FC, #6B4EFF);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2147483643;
+  box-shadow: 0 4px 20px rgba(0, 130, 252, 0.4);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+#ble-fab-btn:active {
+  transform: scale(0.92);
+  box-shadow: 0 2px 10px rgba(0, 130, 252, 0.3);
+}
+#ble-fab-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: #fff;
+}
+#ble-fab-btn .fab-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: #FF5252;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  box-shadow: 0 2px 6px rgba(255, 82, 82, 0.4);
+}
+</style>
 </head>
 <body>
 <!-- Splash -->
@@ -61,6 +108,10 @@
 </div>
 <!-- Jump Button -->
 <button id="jump-to-bottom" class="hidden">↓</button>
+<!-- Botón BLE principal - siempre visible en pantalla de contactos -->
+<button id="ble-fab-btn">
+<svg viewBox="0 0 24 24"><path d="M17.71 9.29l-5-5a1 1 0 00-1.42 0l-5 5a1 1 0 001.42 1.42L11 7.41V19a1 1 0 002 0V7.41l3.29 3.3a1 1 0 001.42 0 1 1 0 000-1.42z"/></svg>
+</button>
 <!-- BLE Panel (injected por JS) -->
 <!-- BLE Overlay (injected por JS) -->
 </body>
