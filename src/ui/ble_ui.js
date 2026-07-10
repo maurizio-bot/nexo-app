@@ -1,12 +1,11 @@
 /**
  * BLE UI — DOM, Render, Event Listeners, Panel
- * v5.2.2-split-ui-FIXED  (Botón BLE en HTML estático, scan auto al pulsar)
-   */
-   import { BLEInterface } from './ble_base.js';
+ * v5.2.2-split-ui-FIXED-ADD  (FIX: botón agregar contactos funcional)
+ */
+import { BLEInterface } from './ble_base.js';
 Object.assign(BLEInterface.prototype, {
 createDOM() {
 var self = this;
-// Create panel styles if not present
 if (!document.getElementById('ble-panel-styles')) {
 var style = document.createElement('style');
 style.id = 'ble-panel-styles';
@@ -132,12 +131,10 @@ this.elements.statusText = document.getElementById('ble-status-text');
 this.elements.mainContactsList = document.getElementById('main-contacts-list');
 this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
 this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
-// REFERENCIAR FAB existente en HTML (NO crearlo dinámicamente)
 var fabBtn = document.getElementById('ble-fab-btn');
 if (fabBtn) {
 this.elements.fabBtn = fabBtn;
 } else {
-// Fallback: crearlo si no existe (no debería pasar con HTML actualizado)
 var fallbackFab = document.createElement('button');
 fallbackFab.id = 'ble-fab-btn';
 fallbackFab.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M17.71 9.29l-5-5a1 1 0 00-1.42 0l-5 5a1 1 0 001.42 1.42L11 7.41V19a1 1 0 002 0V7.41l3.29 3.3a1 1 0 001.42 0 1 1 0 000-1.42z"/></svg>';
@@ -147,17 +144,13 @@ this.elements.fabBtn = fallbackFab;
 },
 setupEventListeners() {
 var self = this;
-// Overlay click closes panel
 this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
-// Scan button inside panel
 if (this.elements.scanBtn) {
 this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
 }
-// Add button inside panel
 if (this.elements.addBtn) {
 this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
 }
-// Back button inside panel
 var backBtn = document.getElementById('ble-panel-back');
 if (backBtn) {
 backBtn.addEventListener('click', function() {
@@ -165,7 +158,6 @@ self.elements.panel.classList.remove('active');
 self.elements.overlay.classList.remove('active');
 });
 }
-// Bottom nav tabs
 var navItems = this.elements.bottomNav.querySelectorAll('.ble-nav-item');
 navItems.forEach(function(item) {
 item.addEventListener('click', function() {
@@ -179,11 +171,9 @@ self.elements.overlay.classList.remove('active');
 }
 });
 });
-// FAB button: arranca scan automático + abre panel
 if (this.elements.fabBtn) {
 this.elements.fabBtn.addEventListener('click', function() {
 self.togglePanel();
-// Arrancar scan automático al abrir panel
 setTimeout(function() {
 if (!self.isScanning) {
 self.triggerScanByAction();
@@ -191,7 +181,6 @@ self.triggerScanByAction();
 }, 300);
 });
 }
-// Close chat event
 window.addEventListener('nexo:ble:closeChat', function() {
 self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
 self.updateBadge();
@@ -200,7 +189,6 @@ if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'flex';
 self.renderContactsList(); self.renderOnlineStrip();
 self._scheduleScanFallback();
 });
-// Open chat event
 window.addEventListener('nexo:ble:openChat', function() {
 if (self.elements.fabBtn) self.elements.fabBtn.style.display = 'none';
 if (self.elements.bottomNav) self.elements.bottomNav.style.display = 'none';
@@ -355,7 +343,7 @@ var uuid = device.deviceUUID;
 if (!uuid || !_isBLEContact(uuid)) { newDevice = device; newDeviceId = deviceId; }
 });
 if (newDevice && newDeviceId) {
-var displayName = newDevice.deviceUUID || 'Nexo Device';
+var displayName = newDevice.name || newDevice.deviceUUID || 'Nexo Device';
 nameSpan.textContent = displayName;
 bar.style.display = 'flex';
 bar.dataset.deviceId = newDeviceId;
@@ -368,17 +356,23 @@ var bar = this.elements.newDeviceBar;
 if (!bar) return;
 var deviceId = bar.dataset.deviceId || '';
 var device = this.foundDevices.get(deviceId);
-if (!device) return;
-var name = device.deviceUUID || 'Nexo Device';
-var nexoId = device.deviceUUID || '';
-if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
-console.warn('[BLEInterface] No se puede agregar: dispositivo sin NEXO ID');
+if (!device) {
+console.warn('[BLEInterface] _addNewDevice: No hay dispositivo en foundDevices para deviceId=' + deviceId);
+_showToast('No hay dispositivo para agregar. Intenta escanear de nuevo.', 'warn');
 return;
+}
+var name = device.name || device.deviceUUID || 'Nexo Device';
+var nexoId = device.deviceUUID || '';
+if (!nexoId) {
+console.warn('[BLEInterface] _addNewDevice: Dispositivo sin UUID, usando deviceId temporal');
+nexoId = 'NX' + deviceId.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase();
+if (nexoId.length < 10) nexoId = nexoId + 'X'.repeat(10 - nexoId.length);
 }
 _addBLEContact({ deviceUUID: nexoId, name: name, deviceId: deviceId });
 this._autoConnectGATT(deviceId, device);
 this.foundDevices.delete(deviceId);
 this._closePanelAndRefresh();
+_showToast('Contacto agregado: ' + name, 'success');
 },
 _closePanelAndRefresh() {
 this.elements.panel.classList.remove('active');
@@ -438,10 +432,8 @@ updateBadge() {
 var fabBtn = this.elements.fabBtn;
 if (!fabBtn) return;
 if (this._activeChatDeviceId) { fabBtn.style.display = 'none'; return; }
-// Siempre visible en pantalla principal
 fabBtn.style.display = 'flex';
 if (this.newDevicesCount > 0) {
-// Mostrar badge con número de dispositivos nuevos
 var existingBadge = fabBtn.querySelector('.fab-badge');
 if (!existingBadge) {
 existingBadge = document.createElement('span');
@@ -451,7 +443,6 @@ fabBtn.appendChild(existingBadge);
 existingBadge.textContent = this.newDevicesCount;
 existingBadge.style.display = 'flex';
 } else {
-// Ocultar badge si no hay dispositivos nuevos
 var existingBadge = fabBtn.querySelector('.fab-badge');
 if (existingBadge) existingBadge.style.display = 'none';
 }
@@ -519,5 +510,3 @@ var instance = new BLEInterface(bleMesh).init();
 window.bleInterface = instance;
 return instance;
 }
-// Firmas de modificación:
-// - v5.2.2-FIXED: FAB referenciado desde HTML estático, scan auto al pulsar, badge en FAB.
