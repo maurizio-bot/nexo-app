@@ -456,21 +456,21 @@ function _setupFABButton() {
     fabBtn.parentNode.replaceChild(newFab, fabBtn);
     
     newFab.addEventListener('click', function() {
-      if (window.bleInterface && window.bleInterface.elements) {
-        var panel = window.bleInterface.elements.panel;
-        var overlay = window.bleInterface.elements.overlay;
-        if (panel) panel.classList.add('active');
-        if (overlay) overlay.classList.add('active');
+      // Usar togglePanel() en lugar de manipular clases directamente
+      if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
+        window.bleInterface.togglePanel();
       }
-      if (window.bleInterface && typeof window.bleInterface.toggleScan === 'function') {
-        window.bleInterface.toggleScan();
-      }
+      // Trigger scan después de abrir panel
+      setTimeout(function() {
+        if (window.bleInterface && typeof window.bleInterface.triggerScanByAction === 'function') {
+          window.bleInterface.triggerScanByAction();
+        }
+      }, 300);
     });
   } catch (e) {
     console.warn('[MAIN] _setupFABButton error:', e);
   }
 }
-
 function _getContactStorageKey() {
   var contactId = 'default';
   try {
