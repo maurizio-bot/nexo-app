@@ -1,6 +1,6 @@
 /**
  * BLE Base — Helpers, constantes y clase BLEInterface (constructor)
- * v5.2.1-split-base
+ * v5.2.2-split-base  (FIXED: no circular deps)
  */
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
@@ -320,7 +320,7 @@ export class BLEInterface {
     this._scanFallbackTimer = null;
     this._scanActionPending = false;
     this._cleanupSeenMsgsTimer = null;
-    console.log('[BLEInterface] v5.2.1-split iniciado');
+    console.log('[BLEInterface] v5.2.2-split-base iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
