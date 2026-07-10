@@ -40,7 +40,7 @@ style.textContent =
 '@keyframes ble-spin{to{transform:rotate(360deg);}}' +
 '.ble-new-device{display:flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(255,255,255,0.08);border-radius:20px;}' +
 '.ble-new-device span{color:#fff;font-size:14px;}' +
-'.ble-btn-add-small{width:32px;height:32px;border-radius:50%;background:#0082FC;border:none;color:#fff;font-size:18px;cursor:pointer;}' +
+'.ble-btn-add-small{width:32px;height:32px;border-radius:50%;background:#0082FC;border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;}' +
 '.ble-status-bar{padding:8px 20px;text-align:center;font-size:12px;color:rgba(255,255,255,0.5);}' +
 '.ble-empty{text-align:center;padding:40px 20px;color:rgba(255,255,255,0.4);font-size:15px;}' +
 '.ble-divider{height:1px;background:rgba(255,255,255,0.06);margin:0 4px;}' +
@@ -62,6 +62,14 @@ style.textContent =
 '.ble-menu-item:hover{background:rgba(255,255,255,0.06);}' +
 '.ble-menu-delete{color:#FF5252;}';
 document.head.appendChild(style);
+}
+if (document.getElementById('ble-panel')) {
+var existingPanel = document.getElementById('ble-panel');
+var existingOverlay = document.getElementById('ble-overlay');
+var existingNav = document.getElementById('ble-bottom-nav');
+if (existingPanel) existingPanel.remove();
+if (existingOverlay) existingOverlay.remove();
+if (existingNav) existingNav.remove();
 }
 var panel = document.createElement('div');
 panel.id = 'ble-panel';
@@ -138,8 +146,25 @@ this.elements.fabBtn = fabBtn;
 var fallbackFab = document.createElement('button');
 fallbackFab.id = 'ble-fab-btn';
 fallbackFab.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M17.71 9.29l-5-5a1 1 0 00-1.42 0l-5 5a1 1 0 001.42 1.42L11 7.41V19a1 1 0 002 0V7.41l3.29 3.3a1 1 0 001.42 0 1 1 0 000-1.42z"/></svg>';
+fallbackFab.style.cssText = 'position:fixed;bottom:80px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(0,200,255,0.3);z-index:2147483641;';
 document.body.appendChild(fallbackFab);
 this.elements.fabBtn = fallbackFab;
+}
+// DEFENSIVE: attach critical listeners immediately after DOM creation
+var scanBtnEl = document.getElementById('ble-scan-btn');
+if (scanBtnEl) {
+scanBtnEl.addEventListener('click', function() { self.toggleScan(); });
+}
+var addBtnEl = document.getElementById('ble-add-btn');
+if (addBtnEl) {
+addBtnEl.addEventListener('click', function() { self._addNewDevice(); });
+}
+var backBtnEl = document.getElementById('ble-panel-back');
+if (backBtnEl) {
+backBtnEl.addEventListener('click', function() {
+self.elements.panel.classList.remove('active');
+self.elements.overlay.classList.remove('active');
+});
 }
 },
 setupEventListeners() {
@@ -336,6 +361,7 @@ if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('cli
 renderNewDeviceBar() {
 var bar = this.elements.newDeviceBar;
 var nameSpan = this.elements.newDeviceName;
+var addBtn = this.elements.addBtn;
 if (!bar || !nameSpan) return;
 var newDevice = null, newDeviceId = null;
 this.foundDevices.forEach(function(device, deviceId) {
@@ -347,26 +373,53 @@ var displayName = newDevice.name || newDevice.deviceUUID || 'Nexo Device';
 nameSpan.textContent = displayName;
 bar.style.display = 'flex';
 bar.dataset.deviceId = newDeviceId;
+if (addBtn) {
+addBtn.style.display = 'flex';
+addBtn.onclick = function() { self._addNewDevice(); };
 }
-else { bar.style.display = 'none'; bar.dataset.deviceId = ''; }
+}
+else {
+bar.style.display = 'none';
+bar.dataset.deviceId = '';
+if (addBtn) addBtn.style.display = 'none';
+}
 },
 _addNewDevice() {
 var self = this;
 var bar = this.elements.newDeviceBar;
-if (!bar) return;
+if (!bar) {
+_showToast('Error: barra no disponible', 'error');
+return;
+}
 var deviceId = bar.dataset.deviceId || '';
-var device = this.foundDevices.get(deviceId);
+var device = null;
+if (deviceId) {
+device = this.foundDevices.get(deviceId);
+}
+// Fallback: buscar primer dispositivo no-contacto si dataset falla
 if (!device) {
-console.warn('[BLEInterface] _addNewDevice: No hay dispositivo en foundDevices para deviceId=' + deviceId);
+this.foundDevices.forEach(function(d, id) {
+if (!device && d.deviceUUID && !_isBLEContact(d.deviceUUID)) {
+device = d;
+deviceId = id;
+}
+});
+}
+if (!device) {
+console.warn('[BLEInterface] _addNewDevice: No hay dispositivo en foundDevices');
 _showToast('No hay dispositivo para agregar. Intenta escanear de nuevo.', 'warn');
 return;
 }
 var name = device.name || device.deviceUUID || 'Nexo Device';
 var nexoId = device.deviceUUID || '';
 if (!nexoId) {
-console.warn('[BLEInterface] _addNewDevice: Dispositivo sin UUID, usando deviceId temporal');
+console.warn('[BLEInterface] _addNewDevice: Dispositivo sin UUID, generando temporal');
 nexoId = 'NX' + deviceId.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase();
-if (nexoId.length < 10) nexoId = nexoId + 'X'.repeat(10 - nexoId.length);
+if (nexoId.length < 10) {
+var pad = '';
+for (var i = 0; i < 10 - nexoId.length; i++) pad += 'X';
+nexoId += pad;
+}
 }
 _addBLEContact({ deviceUUID: nexoId, name: name, deviceId: deviceId });
 this._autoConnectGATT(deviceId, device);
@@ -438,6 +491,7 @@ var existingBadge = fabBtn.querySelector('.fab-badge');
 if (!existingBadge) {
 existingBadge = document.createElement('span');
 existingBadge.className = 'fab-badge';
+existingBadge.style.cssText = 'position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;background:#FF5252;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px;';
 fabBtn.appendChild(existingBadge);
 }
 existingBadge.textContent = this.newDevicesCount;
