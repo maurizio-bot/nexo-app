@@ -1,9 +1,8 @@
 /**
  * BLE UI — DOM, Render, Event Listeners, Panel
- * v5.2.2-split-ui-FIXED-PANEL-DISPLAY
- * FIX: Panel inicial display:none para no interceptar clicks
- * FIX: togglePanel usa setProperty con !important
- * FIX: Reemplazar FAB completamente en setupEventListeners
+ * v5.2.2-split-ui-FIXED-NO-FAB
+ * FIX: FAB controlado 100% por main.js, ble_ui.js NO toca el FAB
+ * FIX: Panel display:none inicial, togglePanel limpio
  */
 import { BLEInterface } from './ble_base.js';
 
@@ -75,7 +74,6 @@ Object.assign(BLEInterface.prototype, {
 
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
-    // FIX CRÍTICO: display:none inicial para no interceptar clicks
     panel.style.setProperty('display', 'none', 'important');
     panel.innerHTML =
       '<div class="ble-header">' +
@@ -146,47 +144,14 @@ Object.assign(BLEInterface.prototype, {
     this.elements.mainContactsList = document.getElementById('main-contacts-list');
     this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
     this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
-
-    var fabBtn = document.getElementById('ble-fab-btn');
-    if (fabBtn) {
-      this.elements.fabBtn = fabBtn;
-    } else {
-      var fallbackFab = document.createElement('button');
-      fallbackFab.id = 'ble-fab-btn';
-      fallbackFab.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
-      fallbackFab.style.cssText = 'position:fixed;bottom:80px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(0,200,255,0.3);z-index:2147483641;';
-      document.body.appendChild(fallbackFab);
-      this.elements.fabBtn = fallbackFab;
-    }
+    // NO tocar el FAB - main.js lo controla
+    this.elements.fabBtn = document.getElementById('ble-fab-btn');
   },
 
   setupEventListeners() {
     var self = this;
+    // NO tocar el FAB aquí - main.js lo controla 100%
     
-    // FIX CRÍTICO: Reemplazar FAB completamente para eliminar listeners duplicados
-    var oldFab = this.elements.fabBtn;
-    if (oldFab && oldFab.parentNode) {
-      var parent = oldFab.parentNode;
-      parent.removeChild(oldFab);
-      var newFab = document.createElement('button');
-      newFab.id = 'ble-fab-btn';
-      newFab.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
-      newFab.style.cssText = 'position:fixed;bottom:80px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(0,200,255,0.3);z-index:2147483641;';
-      parent.appendChild(newFab);
-      this.elements.fabBtn = newFab;
-    }
-    
-    if (this.elements.fabBtn) {
-      this.elements.fabBtn.addEventListener('click', function() {
-        self.togglePanel();
-        setTimeout(function() {
-          if (!self.isScanning && typeof self.triggerScanByAction === 'function') {
-            self.triggerScanByAction();
-          }
-        }, 300);
-      });
-    }
-
     this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
     if (this.elements.scanBtn) {
       this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
@@ -197,9 +162,7 @@ Object.assign(BLEInterface.prototype, {
     var backBtn = document.getElementById('ble-panel-back');
     if (backBtn) {
       backBtn.addEventListener('click', function() {
-        self.elements.panel.classList.remove('active');
-        self.elements.overlay.classList.remove('active');
-        self.elements.panel.style.setProperty('display', 'none', 'important');
+        self.togglePanel();
       });
     }
     var navItems = this.elements.bottomNav.querySelectorAll('.ble-nav-item');
@@ -210,9 +173,7 @@ Object.assign(BLEInterface.prototype, {
         var tab = item.dataset.tab;
         if (tab === 'people') self.togglePanel();
         else if (tab === 'chats') {
-          self.elements.panel.classList.remove('active');
-          self.elements.overlay.classList.remove('active');
-          self.elements.panel.style.setProperty('display', 'none', 'important');
+          self.togglePanel();
         }
       });
     });
