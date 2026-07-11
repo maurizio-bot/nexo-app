@@ -1,6 +1,6 @@
 /**
  * BLE Protocol — Mensajes v2, ACK, Heartbeat, Deduplicación
- * v5.2.2-split-protocol  (FIXED: import from ble_base.js)
+ * v5.2.2-split-protocol  (FIXED: safe init, import from ble_base.js)
  */
 import { BLEInterface } from './ble_base.js';
 
@@ -8,8 +8,8 @@ Object.assign(BLEInterface.prototype, {
 
   init() {
     var self = this;
-    this.createDOM();
-    this.setupEventListeners();
+    if (typeof this.createDOM === 'function') this.createDOM();
+    if (typeof this.setupEventListeners === 'function') this.setupEventListeners();
     if (!this.nativePlugin) {
       this.nativePlugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
       if (this.nativePlugin) this.isDummyMode = !this.bleMesh && !this.nativePlugin;
