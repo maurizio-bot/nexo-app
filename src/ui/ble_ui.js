@@ -1,6 +1,7 @@
 /**
  * ble_ui.js - UI del panel BLE y renderizado de contactos
  * FIX: FAB eliminado — main.js lo crea y controla 100%
+ * FIX: Export renombrado a initBLEInterface para coincidir con nexo_app.js
  * Usa funciones globales de ble_base.js (_getBLEContacts, etc.)
  */
 
@@ -21,7 +22,6 @@ export class BLEUI {
   createDOM() {
     var self = this;
 
-    /* Panel BLE (pantalla scan/agregar contactos) */
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML =
@@ -54,13 +54,11 @@ export class BLEUI {
     document.body.appendChild(panel);
     this.elements.panel = panel;
 
-    /* Overlay oscuro */
     var overlay = document.createElement('div');
     overlay.id = 'ble-overlay';
     document.body.appendChild(overlay);
     this.elements.overlay = overlay;
 
-    /* Bottom nav */
     var bottomNav = document.createElement('div');
     bottomNav.id = 'ble-bottom-nav';
     bottomNav.className = 'ble-bottom-nav';
@@ -84,7 +82,6 @@ export class BLEUI {
     document.body.appendChild(bottomNav);
     this.elements.bottomNav = bottomNav;
 
-    /* Referencias */
     this.elements.scanBtn = document.getElementById('ble-scan-btn');
     this.elements.contactsList = document.getElementById('ble-contacts-list');
     this.elements.onlineStrip = document.getElementById('ble-online-strip');
@@ -427,6 +424,7 @@ export class BLEUI {
   }
 }
 
-export function initBLEUI(bleInterface) {
+/* FIX: Export renombrado para coincidir con nexo_app.js */
+export function initBLEInterface(bleInterface) {
   return new BLEUI(bleInterface).init();
 }
