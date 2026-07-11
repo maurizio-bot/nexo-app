@@ -3,7 +3,6 @@
  * FIX: chat-view-active agregado/quitado en body para mostrar messages-container e input-area
  * FIX v9.9.1: FAB = botón agregar contacto (+) → panel BLE + auto-scan
  * FIX v9.9.2: Logo path corregido al iniciar
- * FIX v10.0: Swipe back con animación desde borde izquierdo
  * Build #1605+ compatible. NO toca nativo.
  */
 
@@ -107,7 +106,7 @@ function _showPermissionOverlay() {
     overlay.id = 'nexo-perm-overlay';
     overlay.innerHTML = `
       <div class="perm-overlay-content">
-        <h2>🔐 Permisos BLE Requeridos</h2>
+        <h2>🔐#128272; Permisos BLE Requeridos</h2>
         <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p>
         <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p>
         <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>
@@ -143,8 +142,10 @@ function _showPermissionOverlay() {
           if (granted) {
             _hidePermissionOverlay();
             await initializeNexoApp();
+          } else {
           }
-        } catch (e) {}
+        } catch (e) {
+        }
       });
     }
     if (btnSettings) {
@@ -219,7 +220,8 @@ async function initializeNexoApp() {
 
     try {
       await Promise.race([initPromise, timeoutPromise]);
-    } catch (timeoutErr) {}
+    } catch (timeoutErr) {
+    }
 
     window.NEXO.initialized = true;
     clearTimeout(SAFETY_TIMEOUT);
@@ -229,7 +231,10 @@ async function initializeNexoApp() {
         var bi = window.NEXO.app.bleInterface;
         console.log('[MAIN] BLE Interface estado:', {
           localUUID: bi.localDeviceUUID,
+          localMAC: bi.localDeviceAddress,
+          activeChatMAC: bi._activeChatMAC,
           activeChatId: bi._activeChatDeviceId,
+          mapSize: bi._uuidToMacMap ? bi._uuidToMacMap.size : 0,
           contacts: bi._getBLEContacts ? bi._getBLEContacts().length : 0
         });
       }
@@ -241,6 +246,7 @@ async function initializeNexoApp() {
     _setupKeyboardShortcuts();
     _setupJumpButton();
     _setupBackButton();
+    /* FIX v9.9.1: Setup FAB para abrir scan */
     _setupFABButton();
 
     _loadPersistedMessages();
@@ -284,6 +290,7 @@ function _ensureDOMStructure() {
   }
 }
 
+/* FIX LOGO: Corregir ruta del logo en header principal */
 function _fixLogoPath() {
   try {
     var logo = document.getElementById('main-logo');
@@ -311,9 +318,14 @@ function _setupMessageInput() {
       input.focus();
 
       try {
-        if (!window.NEXO.app) return;
+        if (!window.NEXO.app) {
+          return;
+        }
         var sent = await window.NEXO.app.sendMessage({ content: text });
-      } catch (e) {}
+        if (!sent) {
+        }
+      } catch (e) {
+      }
     };
 
     btn.addEventListener('click', send);
@@ -330,11 +342,13 @@ function _setupMessageInput() {
       if (s) requestAnimationFrame(function() { s.scrollTop = s.scrollHeight; });
     });
 
+
   } catch (e) {
     console.warn('[MAIN] _setupMessageInput error:', e);
   }
 }
 
+/* FIX: vault-panel oculto al inicio - pantalla principal es la default */
 function _setupVaultToggle() {
   try {
     var vault = document.getElementById('vault-panel');
@@ -445,39 +459,62 @@ function _setupJumpButton() {
   }
 }
 
+/* FIX DEFINITIVO v9.9.3: FAB creado garantizado por main.js, ble_ui.js NUNCA lo toca */
 function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
-    if (!fabBtn) return;
     
-    // FIX: No clonar, solo reemplazar innerHTML y agregar UN listener
+    /* Si no existe (ble_ui.js no lo crea), lo creamos aquí */
+    if (!fabBtn) {
+      fabBtn = document.createElement('button');
+      fabBtn.id = 'ble-fab-btn';
+      fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+      fabBtn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483643;box-shadow:0 4px 15px rgba(0,200,255,0.3);transition:transform 0.15s ease;';
+      document.body.appendChild(fabBtn);
+    }
+    
+    /* Icono (+) garantizado */
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
     
-    // Eliminar listeners viejos reemplazando el nodo (una sola vez)
+    /* Remover listeners anteriores clonando */
     var newFab = fabBtn.cloneNode(true);
     fabBtn.parentNode.replaceChild(newFab, fabBtn);
+    fabBtn = newFab;
     
-    newFab.addEventListener('click', function() {
-      if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
-        window.bleInterface.togglePanel();
-        setTimeout(function() {
-          if (window.bleInterface && typeof window.bleInterface.triggerScanByAction === 'function') {
-            window.bleInterface.triggerScanByAction();
-          }
-        }, 300);
+    /* Listener único */
+    fabBtn.addEventListener('click', function() {
+      if (window.bleInterface && window.bleInterface.elements) {
+        var panel = window.bleInterface.elements.panel;
+        var overlay = window.bleInterface.elements.overlay;
+        if (panel) panel.classList.add('active');
+        if (overlay) overlay.classList.add('active');
+      }
+      if (window.bleInterface && typeof window.bleInterface.toggleScan === 'function') {
+        window.bleInterface.toggleScan();
       }
     });
+    
+    /* Efectos táctiles */
+    fabBtn.addEventListener('mousedown', function() { this.style.transform = 'scale(0.92)'; });
+    fabBtn.addEventListener('mouseup', function() { this.style.transform = 'scale(1)'; });
+    fabBtn.addEventListener('touchstart', function() { this.style.transform = 'scale(0.92)'; });
+    fabBtn.addEventListener('touchend', function() { this.style.transform = 'scale(1)'; });
+    
+    /* Guardar referencia global para badge */
+    window._nexoFabBtn = fabBtn;
+    
   } catch (e) {
     console.warn('[MAIN] _setupFABButton error:', e);
   }
 }
+
 function _getContactStorageKey() {
   var contactId = 'default';
   try {
     if (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) {
       contactId = window.NEXO.app.activeContact.id;
-    } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface._activeChatDeviceId) {
-      contactId = window.NEXO.app.bleInterface._activeChatDeviceId;
+    } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface._activeChatMAC) {
+      contactId = window.NEXO.app.bleInterface._activeChatMAC;
     }
   } catch (e) {}
   return 'nexo_messages_' + contactId;
@@ -568,6 +605,7 @@ function _renderMessage(msg, skipSave) {
 
     div.dataset.msgId = msgId;
 
+    /* FIX: Crear elementos con createElement/textContent en vez de innerHTML */
     var contentDiv = document.createElement('div');
     contentDiv.className = 'msg-content';
     contentDiv.textContent = msg.content || msg.text || '';
@@ -595,6 +633,7 @@ function _renderMessage(msg, skipSave) {
     }
 
     div.appendChild(metaDiv);
+    /* FIN FIX */
 
     container.appendChild(div);
 
@@ -635,6 +674,7 @@ function _updateMessageStatus(messageId, status) {
   }
 }
 
+/* FIX: setProperty con !important para sobreescribir CSS inline del HTML */
 function _toggleVaultUI(isOpen) {
   try {
     var vault = document.getElementById('vault-panel');
@@ -709,6 +749,10 @@ function _enableFallbackMode() {
   }
 }
 
+/* =================================================================
+   FIX v9.9: chat-view-active agregado/quitado en body
+   FIX v9.9.1: back button limpia header correctamente
+   ================================================================= */
 function _setupBackButton() {
   try {
     var backBtn = document.getElementById('chat-back-btn');
@@ -725,184 +769,29 @@ function _setupBackButton() {
     });
 
     backBtn.addEventListener('click', function() {
-      _doChatBack();
+      backBtn.classList.remove('visible');
+      document.body.classList.remove('chat-view-active');
+      
+      /* FIX v9.9.1: Limpiar header del chat al regresar */
+      var nameInput = document.getElementById('chat-contact-name');
+      var subtitle = document.getElementById('chat-contact-subtitle');
+      if (nameInput) nameInput.value = 'NEXO';
+      if (subtitle) subtitle.textContent = '';
+      
+      if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
+        window.bleInterface.togglePanel();
+      }
+      
+      if (window.NEXO.app) {
+        window.NEXO.app.activeContact = null;
+      }
+      if (window.NEXO.app && window.NEXO.app.bleInterface) {
+        window.NEXO.app.bleInterface._activeChatDeviceId = null;
+        window.NEXO.app.bleInterface._activeChatMAC = null;
+      }
     });
-
-    _setupSwipeBack();
-
   } catch (e) {
     console.warn('[MAIN] _setupBackButton error:', e);
-  }
-}
-
-function _setupSwipeBack() {
-  try {
-    var SWIPE_EDGE_WIDTH = 40;
-    var SWIPE_THRESHOLD = 0.30;
-    var startX = 0;
-    var startY = 0;
-    var currentX = 0;
-    var isDragging = false;
-    var isHorizontal = false;
-    var winWidth = window.innerWidth;
-
-    var app = document.getElementById('app');
-    if (!app) return;
-
-    function onTouchStart(e) {
-      if (!document.body.classList.contains('chat-view-active')) return;
-      var touch = e.touches[0];
-      if (touch.clientX > SWIPE_EDGE_WIDTH) return;
-      startX = touch.clientX;
-      startY = touch.clientY;
-      currentX = startX;
-      isDragging = true;
-      isHorizontal = false;
-      winWidth = window.innerWidth;
-    }
-
-    function onTouchMove(e) {
-      if (!isDragging) return;
-      var touch = e.touches[0];
-      currentX = touch.clientX;
-      var deltaX = currentX - startX;
-      var deltaY = touch.clientY - startY;
-
-      if (!isHorizontal) {
-        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 10) {
-          isHorizontal = true;
-          document.body.classList.add('chat-swipe-dragging');
-          e.preventDefault();
-        } else if (Math.abs(deltaY) > 10) {
-          isDragging = false;
-          return;
-        }
-      }
-
-      if (!isHorizontal) return;
-
-      var translateX = Math.max(0, Math.min(deltaX, winWidth));
-      var progress = translateX / winWidth;
-      
-      if (progress > 0.5) {
-        translateX = winWidth * 0.5 + (translateX - winWidth * 0.5) * 0.4;
-      }
-
-      app.style.transform = 'translateX(' + translateX + 'px)';
-      app.style.opacity = Math.max(0.4, 1 - (progress * 0.5));
-      
-      var contactsView = document.getElementById('contacts-view');
-      if (contactsView) {
-        contactsView.style.display = 'flex';
-        contactsView.style.opacity = Math.min(1, progress * 2);
-        contactsView.style.transform = 'translateX(' + (-20 + progress * 20) + '%)';
-      }
-
-      e.preventDefault();
-    }
-
-    function onTouchEnd(e) {
-      if (!isDragging || !isHorizontal) {
-        isDragging = false;
-        isHorizontal = false;
-        return;
-      }
-
-      var deltaX = currentX - startX;
-      var progress = deltaX / winWidth;
-      var threshold = winWidth * SWIPE_THRESHOLD;
-
-      document.body.classList.remove('chat-swipe-dragging');
-
-      if (deltaX > threshold) {
-        document.body.classList.add('chat-swipe-complete');
-        document.body.classList.add('chat-swipe-transition');
-        
-        setTimeout(function() {
-          _doChatBack();
-          app.style.transform = '';
-          app.style.opacity = '';
-          document.body.classList.remove('chat-swipe-complete');
-          document.body.classList.remove('chat-swipe-transition');
-          var contactsView = document.getElementById('contacts-view');
-          if (contactsView) {
-            contactsView.style.transform = '';
-            contactsView.style.opacity = '';
-          }
-        }, 350);
-      } else {
-        document.body.classList.add('chat-swipe-rebound');
-        document.body.classList.add('chat-swipe-transition');
-        
-        setTimeout(function() {
-          document.body.classList.remove('chat-swipe-rebound');
-          document.body.classList.remove('chat-swipe-transition');
-          app.style.transform = '';
-          app.style.opacity = '';
-          var contactsView = document.getElementById('contacts-view');
-          if (contactsView) {
-            contactsView.style.transform = '';
-            contactsView.style.opacity = '';
-          }
-        }, 250);
-      }
-
-      isDragging = false;
-      isHorizontal = false;
-    }
-
-    function onTouchCancel(e) {
-      if (!isDragging) return;
-      isDragging = false;
-      isHorizontal = false;
-      document.body.classList.remove('chat-swipe-dragging');
-      app.style.transform = '';
-      app.style.opacity = '';
-      var contactsView = document.getElementById('contacts-view');
-      if (contactsView) {
-        contactsView.style.transform = '';
-        contactsView.style.opacity = '';
-      }
-    }
-
-    document.addEventListener('touchstart', onTouchStart, { passive: true });
-    document.addEventListener('touchmove', onTouchMove, { passive: false });
-    document.addEventListener('touchend', onTouchEnd, { passive: true });
-    document.addEventListener('touchcancel', onTouchCancel, { passive: true });
-
-  } catch (e) {
-    console.warn('[MAIN] _setupSwipeBack error:', e);
-  }
-}
-
-function _doChatBack() {
-  try {
-    var backBtn = document.getElementById('chat-back-btn');
-    if (backBtn) backBtn.classList.remove('visible');
-    document.body.classList.remove('chat-view-active');
-    
-    var nameInput = document.getElementById('chat-contact-name');
-    var subtitle = document.getElementById('chat-contact-subtitle');
-    if (nameInput) nameInput.value = 'NEXO';
-    if (subtitle) subtitle.textContent = '';
-    
-    var blePanel = document.getElementById('ble-panel');
-    var bleOverlay = document.getElementById('ble-overlay');
-    if (blePanel) blePanel.classList.remove('active');
-    if (bleOverlay) bleOverlay.classList.remove('active');
-    
-    try {
-      window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }));
-    } catch(e) {}
-    
-    if (window.NEXO.app) {
-      window.NEXO.app.activeContact = null;
-    }
-    if (window.NEXO.app && window.NEXO.app.bleInterface) {
-      window.NEXO.app.bleInterface._activeChatDeviceId = null;
-    }
-  } catch (e) {
-    console.warn('[MAIN] _doChatBack error:', e);
   }
 }
 
