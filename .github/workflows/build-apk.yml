@@ -2,7 +2,7 @@ name: NEXO APK
 
 on:
   push:
-    branches: [base-1767]
+    branches: [BASE1900]
   workflow_dispatch:
 
 jobs:
