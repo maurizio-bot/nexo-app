@@ -485,6 +485,20 @@ self.updateBadge();
 }
 return Promise.resolve();
 },
+updateBadge() {
+var fabBtn = window._nexoFabBtn;
+if (!fabBtn) return;
+if (this._activeChatDeviceId) {
+fabBtn.style.display = 'none';
+return;
+}
+fabBtn.style.display = 'flex';
+if (this.newDevicesCount > 0) {
+fabBtn.innerHTML = '<span style="color:#fff;font-size:14px;font-weight:700;">' + this.newDevicesCount + '</span>';
+} else {
+fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
+}
+},
 updateStatusBar(text) {
 if (this.elements.statusText) this.elements.statusText.textContent = text || '';
 },
