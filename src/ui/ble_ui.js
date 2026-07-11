@@ -1,3 +1,5 @@
+import { BLEInterface } from './ble_base.js';
+
 /**
  * ble_ui.js - UI del panel BLE y renderizado de contactos
  * FIX: initBLEInterface ahora llama bleInterface.init() para activar listeners nativos
