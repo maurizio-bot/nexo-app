@@ -2,6 +2,7 @@
  * ble_ui.js - UI del panel BLE y renderizado de contactos
  * FIX: initBLEInterface ahora llama bleInterface.init() para activar listeners nativos
  * FIX: scanBtn con .catch() y updateScanButton sincronizado
+ * FIX: newDevicesCount unificado a bleInterface, openChat/removeContact via eventos
  * Usa funciones globales de ble_base.js (_getBLEContacts, etc.)
  */
 
@@ -9,7 +10,6 @@ export class BLEUI {
   constructor(bleInterface) {
     this.ble = bleInterface;
     this.elements = {};
-    this.newDevicesCount = 0;
     this.isVisible = false;
   }
 
@@ -158,7 +158,7 @@ export class BLEUI {
     this.elements.panel.classList.toggle('active');
     this.elements.overlay.classList.toggle('active');
     if (this.elements.panel.classList.contains('active')) {
-      this.newDevicesCount = 0;
+      if (this.ble) this.ble.newDevicesCount = 0;
       this.updateBadge();
       this.renderContactsList();
       this.renderOnlineStrip();
@@ -187,9 +187,7 @@ export class BLEUI {
       var gradClass = _getGradientForUUID(uuid);
       item.innerHTML = '<div class="ble-online-avatar ' + gradClass + '">' + initials + '<div class="ble-online-dot"></div></div><span class="ble-online-name">' + (contact.name || '') + '</span>';
       item.addEventListener('click', function() {
-        if (self.ble && typeof self.ble.openChat === 'function') {
-          self.ble.openChat(uuid);
-        }
+        _safeDispatchEvent('nexo:ble:openChat', { deviceUUID: uuid });
       });
       strip.appendChild(item);
     });
@@ -255,9 +253,7 @@ export class BLEUI {
       row.className = 'ble-contact-row';
       row.addEventListener('click', function(e) {
         if (e.target.closest('.ble-contact-menu') || e.target.closest('.ble-btn-menu')) return;
-        if (self.ble && typeof self.ble.openChat === 'function') {
-          self.ble.openChat(uuid);
-        }
+        _safeDispatchEvent('nexo:ble:openChat', { deviceUUID: uuid });
       });
 
       var avatar = document.createElement('div');
@@ -320,9 +316,9 @@ export class BLEUI {
         _togglePinnedContact(uuid);
         self.renderContactsList();
       } else if (action === 'delete') {
-        if (self.ble && typeof self.ble.removeContact === 'function') {
-          self.ble.removeContact(uuid);
-        }
+        _removeBLEContact(uuid);
+        self.renderContactsList();
+        self.renderOnlineStrip();
       } else if (action === 'profile') {
         _safeDispatchEvent('nexo:ble:goToProfile', { deviceUUID: uuid });
       }
@@ -402,8 +398,9 @@ export class BLEUI {
       return;
     }
     fabBtn.style.display = 'flex';
-    if (this.newDevicesCount > 0) {
-      fabBtn.innerHTML = '<span style="color:#fff;font-size:14px;font-weight:700;">' + this.newDevicesCount + '</span>';
+    var count = (this.ble && this.ble.newDevicesCount) || 0;
+    if (count > 0) {
+      fabBtn.innerHTML = '<span style="color:#fff;font-size:14px;font-weight:700;">' + count + '</span>';
     } else {
       fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
     }
