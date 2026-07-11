@@ -4,6 +4,7 @@
  * FIX: _ackTimeoutBase y _ackTimeoutPerHop definidos en constructor
  * FIX: _ackMaxRetries definido en constructor
  * FIX: sendMessage usa timeout correcto para ACK
+ * FIX: window.bleInterface expuesto para main.js
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -202,6 +203,10 @@ class NexoApp {
     try {
       var meshInstance = this.nordicMesh || this.mesh || null;
       this.bleInterface = initBLEInterface(meshInstance);
+      /* FIX: Exponer a window para que main.js pueda usarlo */
+      if (this.bleInterface) {
+        window.bleInterface = this.bleInterface;
+      }
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
       var self = this;
       this._bleChatHandler = async function(e) {
@@ -685,6 +690,7 @@ class NexoApp {
     if (this.bleInterface) {
       try { this.bleInterface.destroy(); } catch(e) {}
       this.bleInterface = null;
+      window.bleInterface = null;
     }
     if (this.nordicMesh) {
       this._resources.handlers.forEach(function(unsub) { try { unsub(); } catch(e) {} });
