@@ -3,6 +3,7 @@
  * FIX: chat-view-active agregado/quitado en body para mostrar messages-container e input-area
  * FIX v9.9.1: FAB = botón agregar contacto (+) → panel BLE + auto-scan
  * FIX v9.9.2: Logo path corregido al iniciar
+ * FIX v9.9.4: module.hot con typeof check
  * Build #1605+ compatible. NO toca nativo.
  */
 
@@ -106,7 +107,7 @@ function _showPermissionOverlay() {
     overlay.id = 'nexo-perm-overlay';
     overlay.innerHTML = `
       <div class="perm-overlay-content">
-        <h2>🔐#128272; Permisos BLE Requeridos</h2>
+        <h2>🔐 Permisos BLE Requeridos</h2>
         <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p>
         <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p>
         <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>
@@ -797,4 +798,5 @@ function _setupBackButton() {
 
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 
-if (module && module.hot) module.hot.accept();
+/* FIX v9.9.4: typeof check para evitar crash en Capacitor */
+if (typeof module !== 'undefined' && module.hot) module.hot.accept();
