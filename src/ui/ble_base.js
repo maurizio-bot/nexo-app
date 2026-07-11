@@ -329,3 +329,19 @@ export class BLEInterface {
     return 'unknown';
   }
 }
+
+// FIX: Exportar helpers a window para que otros módulos puedan usarlos sin import
+if (typeof window !== 'undefined') {
+  Object.assign(window, {
+    BLE_CONTACTS_STORAGE_KEY, BLE_UUID_STORAGE_KEY, BLE_PINNED_CONTACTS_KEY,
+    BLE_NEXO_ID_STORAGE_KEY, BLE_NEXO_ID_VAULT_FILE, BLE_CONTACTS_VAULT_FILE,
+    GRADIENTS, _getGradientForUUID, _getInitials, _generateNexoId,
+    _saveNexoIdToVault, _loadNexoIdFromVault, _getOrCreateNexoId,
+    _saveContactsToVault, _loadContactsFromVault, _formatTime,
+    _generateUUID, _getDeviceUUID, _normId, _getBLEContacts,
+    _saveBLEContacts, _addBLEContact, _removeBLEContact, _isBLEContact,
+    _getContactByUUID, _getContactByDeviceId, _getPinnedContacts,
+    _togglePinnedContact, _isPinned, BLE_STATES, _hasNativeMethod,
+    _safeNativeCall, _safeDispatchEvent, _showToast, _isControlPacket
+  });
+}
