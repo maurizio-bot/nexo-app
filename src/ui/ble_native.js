@@ -1,8 +1,8 @@
 /**
  * BLE Native — Scan, Conexión, Advertising, Listeners nativos
- * v5.2.2-split-native  (FIXED: import from ble_base.js, not ble_protocol.js)
-   */
-   import { BLEInterface } from './ble_base.js';
+ * v5.2.2-split-native  (FIXED: safe UI calls, import from ble_base.js)
+ */
+import { BLEInterface } from './ble_base.js';
 Object.assign(BLEInterface.prototype, {
 _loadContactsAndInit() {
 var self = this;
@@ -29,8 +29,8 @@ this._initNexoId();
 this._autoStartAdvertising();
 }
 this._setupAppStateListener();
-this.elements.panel.classList.remove('active');
-this.elements.overlay.classList.remove('active');
+if (this.elements && this.elements.panel) this.elements.panel.classList.remove('active');
+if (this.elements && this.elements.overlay) this.elements.overlay.classList.remove('active');
 this.renderContactsList();
 this.renderOnlineStrip();
 var self = this;
@@ -358,7 +358,10 @@ return _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() { self
 }
 self.isScanning = false; self.updateScanButton(); self.updateStatus(); return Promise.resolve();
 } else {
-self.foundDevices.clear(); self.renderContactsList(); self.renderNewDeviceBar(); self.renderOnlineStrip();
+self.foundDevices.clear();
+if (typeof self.renderContactsList === 'function') self.renderContactsList();
+if (typeof self.renderNewDeviceBar === 'function') self.renderNewDeviceBar();
+if (typeof self.renderOnlineStrip === 'function') self.renderOnlineStrip();
 if (_hasNativeMethod(self.nativePlugin, 'startScan')) {
 return _safeNativeCall(self.nativePlugin, 'startScan', {}).then(function() { self.isScanning = true; self.updateScanButton(); });
 }
