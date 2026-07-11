@@ -201,14 +201,17 @@ Object.assign(BLEInterface.prototype, {
         if (senderUUID && senderName && senderName !== '') {
           if (!_isBLEContact(senderUUID)) {
             _addBLEContact({ deviceUUID: senderUUID, name: senderName, deviceId: deviceId });
-            self.renderContactsList(); self.renderOnlineStrip();
+            if (typeof self.renderContactsList === 'function') self.renderContactsList();
+            if (typeof self.renderOnlineStrip === 'function') self.renderOnlineStrip();
           } else {
             var contacts2 = _getBLEContacts();
             var idx2 = contacts2.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(senderUUID); });
             if (idx2 >= 0) {
               contacts2[idx2].online = true; contacts2[idx2].lastSeen = Date.now(); contacts2[idx2].deviceId = deviceId;
               if (text && !isControl) contacts2[idx2].lastMessage = text.substring(0, 50);
-              _saveBLEContacts(contacts2); self.renderContactsList(); self.renderOnlineStrip();
+              _saveBLEContacts(contacts2);
+              if (typeof self.renderContactsList === 'function') self.renderContactsList();
+              if (typeof self.renderOnlineStrip === 'function') self.renderOnlineStrip();
             }
           }
         }
@@ -229,10 +232,12 @@ Object.assign(BLEInterface.prototype, {
             contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1;
             contacts3[idx3].lastMessage = text.substring(0, 50);
             contacts3[idx3].lastSeen = Date.now();
-            _saveBLEContacts(contacts3); self.renderContactsList(); self.renderOnlineStrip();
+            _saveBLEContacts(contacts3);
+            if (typeof self.renderContactsList === 'function') self.renderContactsList();
+            if (typeof self.renderOnlineStrip === 'function') self.renderOnlineStrip();
           }
         }
-        self.newDevicesCount++; self.updateBadge();
+        self.newDevicesCount++; if (typeof self.updateBadge === 'function') self.updateBadge();
         var stableId = senderUUID || deviceId;
         _safeDispatchEvent('nexo:ble:messageReceived', {
           deviceId: stableId, deviceUUID: senderUUID, content: text,
