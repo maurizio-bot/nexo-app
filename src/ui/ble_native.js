@@ -31,8 +31,8 @@ this._autoStartAdvertising();
 this._setupAppStateListener();
 if (this.elements && this.elements.panel) this.elements.panel.classList.remove('active');
 if (this.elements && this.elements.overlay) this.elements.overlay.classList.remove('active');
-if (typeof this.renderContactsList === 'function') this.renderContactsList();
-if (typeof this.renderOnlineStrip === 'function') this.renderOnlineStrip();
+this.renderContactsList();
+this.renderOnlineStrip();
 var self = this;
 setTimeout(function() {
 if (!self.isDummyMode && self.nativePlugin) {
@@ -61,13 +61,12 @@ if (state && state.isActive === true) {
 _loadContactsFromVault().then(function(contacts) {
 if (contacts && contacts.length > 0) {
 try { localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts)); } catch (e) {}
-if (typeof self.renderContactsList === 'function') self.renderContactsList();
-if (typeof self.renderOnlineStrip === 'function') self.renderOnlineStrip();
+self.renderContactsList(); self.renderOnlineStrip();
 }
 }).catch(function() {});
 if (!self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
 _safeNativeCall(self.nativePlugin, 'startAdvertising', {})
-.then(function() { self.isAdvertising = true; if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); })
+.then(function() { self.isAdvertising = true; self.updateVisibilityButton(); })
 .catch(function(e) {});
 }
 }
@@ -86,7 +85,7 @@ var canAdv = btState && btState.canAdvertise;
 var serverReady = btState && btState.serverReady;
 if ((canAdv || serverReady) && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
 return _safeNativeCall(self.nativePlugin, 'startAdvertising', {})
-.then(function() { self.isAdvertising = true; self.canAdvertise = true; if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); })
+.then(function() { self.isAdvertising = true; self.canAdvertise = true; self.updateVisibilityButton(); })
 .catch(function(e) {});
 }
 })
@@ -115,7 +114,7 @@ self.onDeviceFound({ id: deviceId, name: name, rssi: data.rssi, nexoId: nexoId }
 } catch (e) {}
 });
 this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', function(data) {
-try { self.isScanning = false; if (typeof self.updateScanButton === 'function') self.updateScanButton(); } catch (e) {}
+try { self.isScanning = false; self.updateScanButton(); } catch (e) {}
 });
 },
 _setupNativeServerReadyListener() {
@@ -151,9 +150,7 @@ var contacts = _getBLEContacts();
 var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(peerUUID); });
 if (idx >= 0) {
 contacts[idx].online = true; contacts[idx].lastSeen = Date.now(); contacts[idx].deviceId = deviceId;
-_saveBLEContacts(contacts);
-if (typeof self.renderContactsList === 'function') self.renderContactsList();
-if (typeof self.renderOnlineStrip === 'function') self.renderOnlineStrip();
+_saveBLEContacts(contacts); self.renderContactsList(); self.renderOnlineStrip();
 }
 }
 self._startHeartbeat(deviceId);
@@ -173,7 +170,7 @@ self._stopHeartbeat(deviceId);
 if (peerUUID) {
 var contacts = _getBLEContacts();
 var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(peerUUID); });
-if (idx >= 0) { contacts[idx].online = false; _saveBLEContacts(contacts); if (typeof self.renderContactsList === 'function') self.renderContactsList(); if (typeof self.renderOnlineStrip === 'function') self.renderOnlineStrip(); }
+if (idx >= 0) { contacts[idx].online = false; _saveBLEContacts(contacts); self.renderContactsList(); self.renderOnlineStrip(); }
 }
 _safeDispatchEvent('nexo:ble:deviceDisconnected', { deviceId: deviceId, deviceUUID: peerUUID });
 if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
@@ -247,9 +244,9 @@ return _safeNativeCall(self.nativePlugin, 'isBluetoothEnabled', {})
 self.canAdvertise = (btState && btState.canAdvertise) || false;
 if (_hasNativeMethod(self.nativePlugin, 'isAdvertising')) {
 return _safeNativeCall(self.nativePlugin, 'isAdvertising', {}).then(function(adState) {
-self.isAdvertising = adState && adState.isAdvertising === true; if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); self._setupNativeAdvertisingListeners();
+self.isAdvertising = adState && adState.isAdvertising === true; self.updateVisibilityButton(); self._setupNativeAdvertisingListeners();
 });
-} else { if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); self._setupNativeAdvertisingListeners(); }
+} else { self.updateVisibilityButton(); self._setupNativeAdvertisingListeners(); }
 })
 .catch(function(err) { console.error('[BLEInterface] Error consultando estado:', err); });
 }
@@ -283,14 +280,14 @@ if (!self.nativePlugin) return Promise.resolve();
 var promise;
 if (self.isAdvertising) {
 if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}); else promise = Promise.resolve();
-if (promise) return promise.then(function() { self.isAdvertising = false; if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); });
+if (promise) return promise.then(function() { self.isAdvertising = false; self.updateVisibilityButton(); });
 self.isAdvertising = false;
 } else {
 if (_hasNativeMethod(self.nativePlugin, 'startAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'startAdvertising', {}); else promise = Promise.resolve();
-if (promise) return promise.then(function() { self.isAdvertising = true; if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); });
+if (promise) return promise.then(function() { self.isAdvertising = true; self.updateVisibilityButton(); });
 self.isAdvertising = true;
 }
-if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); return Promise.resolve();
+self.updateVisibilityButton(); return Promise.resolve();
 }).catch(function(err) {});
 } else { permsReady = true; }
 if (!permsReady) return Promise.resolve();
@@ -298,14 +295,14 @@ if (!self.nativePlugin) return Promise.resolve();
 var promise;
 if (self.isAdvertising) {
 if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {});
-if (promise) return promise.then(function() { self.isAdvertising = false; if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); });
+if (promise) return promise.then(function() { self.isAdvertising = false; self.updateVisibilityButton(); });
 self.isAdvertising = false;
 } else {
 if (_hasNativeMethod(self.nativePlugin, 'startAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'startAdvertising', {});
-if (promise) return promise.then(function() { self.isAdvertising = true; if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); });
+if (promise) return promise.then(function() { self.isAdvertising = true; self.updateVisibilityButton(); });
 self.isAdvertising = true;
 }
-if (typeof self.updateVisibilityButton === 'function') self.updateVisibilityButton(); return Promise.resolve();
+self.updateVisibilityButton(); return Promise.resolve();
 },
 _autoScanForKnownContacts() {
 var self = this;
@@ -315,22 +312,19 @@ var contacts = _getBLEContacts();
 if (contacts.length === 0) return;
 console.log('[BLEInterface] Auto-scan iniciado para ' + contacts.length + ' contactos conocidos');
 self.foundDevices.clear();
-if (typeof self.renderContactsList === 'function') self.renderContactsList();
-if (typeof self.renderNewDeviceBar === 'function') self.renderNewDeviceBar();
-if (typeof self.renderOnlineStrip === 'function') self.renderOnlineStrip();
 _safeNativeCall(self.nativePlugin, 'startScan', {})
 .then(function() {
 self.isScanning = true;
-if (typeof self.updateScanButton === 'function') self.updateScanButton();
+self.updateScanButton();
 setTimeout(function() {
 if (self.isScanning && _hasNativeMethod(self.nativePlugin, 'stopScan')) {
 _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() {
 self.isScanning = false;
-if (typeof self.updateScanButton === 'function') self.updateScanButton();
+self.updateScanButton();
 console.log('[BLEInterface] Auto-scan completado');
 }).catch(function() {
 self.isScanning = false;
-if (typeof self.updateScanButton === 'function') self.updateScanButton();
+self.updateScanButton();
 });
 }
 }, 6000);
@@ -360,18 +354,18 @@ _executeToggleScan() {
 var self = this;
 if (self.isScanning) {
 if (_hasNativeMethod(self.nativePlugin, 'stopScan')) {
-return _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() { self.isScanning = false; if (typeof self.updateScanButton === 'function') self.updateScanButton(); self.updateStatus(); });
+return _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() { self.isScanning = false; self.updateScanButton(); self.updateStatus(); });
 }
-self.isScanning = false; if (typeof self.updateScanButton === 'function') self.updateScanButton(); self.updateStatus(); return Promise.resolve();
+self.isScanning = false; self.updateScanButton(); self.updateStatus(); return Promise.resolve();
 } else {
 self.foundDevices.clear();
 if (typeof self.renderContactsList === 'function') self.renderContactsList();
 if (typeof self.renderNewDeviceBar === 'function') self.renderNewDeviceBar();
 if (typeof self.renderOnlineStrip === 'function') self.renderOnlineStrip();
 if (_hasNativeMethod(self.nativePlugin, 'startScan')) {
-return _safeNativeCall(self.nativePlugin, 'startScan', {}).then(function() { self.isScanning = true; if (typeof self.updateScanButton === 'function') self.updateScanButton(); });
+return _safeNativeCall(self.nativePlugin, 'startScan', {}).then(function() { self.isScanning = true; self.updateScanButton(); });
 }
-self.isScanning = true; if (typeof self.updateScanButton === 'function') self.updateScanButton(); return Promise.resolve();
+self.isScanning = true; self.updateScanButton(); return Promise.resolve();
 }
 },
 _doToggleScan() {
@@ -381,7 +375,7 @@ if (window.ensureBLEPermissions) {
 return window.ensureBLEPermissions().then(function(result) { permsReady = result; }).catch(function() { permsReady = true; }).then(function() {
 if (!permsReady) return Promise.resolve();
 return self._executeToggleScan();
-}).catch(function(err) { self.isScanning = false; if (typeof self.updateScanButton === 'function') self.updateScanButton(); });
+}).catch(function(err) { self.isScanning = false; self.updateScanButton(); });
 } else { permsReady = true; }
 if (!permsReady) return Promise.resolve();
 return self._executeToggleScan();
@@ -394,7 +388,7 @@ return _safeNativeCall(self.nativePlugin, 'isBluetoothEnabled', {})
 .then(function(btState) {
 if (!btState || !btState.enabled) {
 _showToast('Bluetooth apagado. Actívalo para buscar contactos.', 'warn');
-if (typeof self.updateStatusBar === 'function') self.updateStatusBar('BLE OFF — Activa Bluetooth');
+self.updateStatusBar('BLE OFF — Activa Bluetooth');
 return Promise.resolve();
 }
 return self._doToggleScan();
@@ -420,8 +414,8 @@ contacts[idx].deviceId = deviceId;
 _saveBLEContacts(contacts);
 }
 this._autoConnectGATT(deviceId, device);
-if (typeof this.renderContactsList === 'function') this.renderContactsList();
-if (typeof this.renderOnlineStrip === 'function') this.renderOnlineStrip();
+this.renderContactsList();
+this.renderOnlineStrip();
 return;
 }
 if (!this.foundDevices.has(deviceId)) {
@@ -429,15 +423,15 @@ device.lastSeen = Date.now();
 device.deviceUUID = nexoId;
 this.foundDevices.set(deviceId, device);
 this.newDevicesCount++;
-if (typeof this.updateBadge === 'function') this.updateBadge();
-if (typeof this.renderNewDeviceBar === 'function') this.renderNewDeviceBar();
+this.updateBadge();
+this.renderNewDeviceBar();
 } else {
 var existing = this.foundDevices.get(deviceId);
 existing.rssi = device.rssi;
 existing.lastSeen = Date.now();
 existing.deviceUUID = nexoId;
 this.foundDevices.set(deviceId, existing);
-if (typeof this.renderNewDeviceBar === 'function') this.renderNewDeviceBar();
+this.renderNewDeviceBar();
 }
 if (_isBLEContact(nexoId)) {
 var contacts = _getBLEContacts();
@@ -447,8 +441,8 @@ contacts[idx].online = true;
 contacts[idx].lastSeen = Date.now();
 contacts[idx].deviceId = deviceId;
 _saveBLEContacts(contacts);
-if (typeof this.renderContactsList === 'function') this.renderContactsList();
-if (typeof this.renderOnlineStrip === 'function') this.renderOnlineStrip();
+this.renderContactsList();
+this.renderOnlineStrip();
 var state = this._getDeviceState(deviceId);
 if (state.state === BLE_STATES.DISCONNECTED) {
 console.log('[BLEInterface] Auto-reconnect a contacto conocido:', nexoId);
@@ -485,7 +479,7 @@ return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: device
 .then(function() {
 if (self._activeChatDeviceId) {
 self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
-if (typeof self.updateBadge === 'function') self.updateBadge();
+self.updateBadge();
 }
 }).catch(function(err) {});
 }
