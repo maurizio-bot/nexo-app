@@ -3,6 +3,7 @@
  * FIX: initBLEInterface ahora llama bleInterface.init() para activar listeners nativos
  * FIX: scanBtn con .catch() y updateScanButton sincronizado
  * FIX: newDevicesCount unificado a bleInterface, openChat/removeContact via eventos
+ * FIX: Proxies inyectados en BLEInterface.prototype para métodos UI
  * Usa funciones globales de ble_base.js (_getBLEContacts, etc.)
  */
 
@@ -426,10 +427,26 @@ export class BLEUI {
   }
 }
 
+/* FIX: Proxies inyectados en BLEInterface.prototype para que ble_native.js y ble_protocol.js puedan llamar métodos UI */
+Object.assign(BLEInterface.prototype, {
+  createDOM: function() { if (this.bleUI) this.bleUI.createDOM(); },
+  setupEventListeners: function() { if (this.bleUI) this.bleUI.setupEventListeners(); },
+  renderContactsList: function() { if (this.bleUI) this.bleUI.renderContactsList(); },
+  renderOnlineStrip: function() { if (this.bleUI) this.bleUI.renderOnlineStrip(); },
+  renderNewDeviceBar: function() { if (this.bleUI) this.bleUI.renderNewDeviceBar(); },
+  updateBadge: function() { if (this.bleUI) this.bleUI.updateBadge(); },
+  updateVisibilityButton: function() { if (this.bleUI) this.bleUI.updateVisibilityButton(); },
+  updateScanButton: function() { if (this.bleUI) this.bleUI.updateScanButton(); },
+  updateStatusBar: function(text) { if (this.bleUI) this.bleUI.updateStatusBar(text); },
+  togglePanel: function() { if (this.bleUI) this.bleUI.togglePanel(); },
+  openChat: function(uuid) { _safeDispatchEvent('nexo:ble:openChat', { deviceUUID: uuid }); }
+});
+
 /* FIX: initBLEInterface ahora inicializa BLEInterface primero para activar listeners nativos */
 export function initBLEInterface(bleInterface) {
   if (bleInterface && typeof bleInterface.init === 'function') {
     bleInterface.init();
   }
-  return new BLEUI(bleInterface).init();
+  bleInterface.bleUI = new BLEUI(bleInterface).init();
+  return bleInterface.bleUI;
 }
