@@ -1,7 +1,7 @@
 /**
  * ble_ui.js - UI del panel BLE y renderizado de contactos
- * FIX: FAB eliminado — main.js lo crea y controla 100%
- * FIX: Export renombrado a initBLEInterface para coincidir con nexo_app.js
+ * FIX: initBLEInterface ahora llama bleInterface.init() para activar listeners nativos
+ * FIX: scanBtn con .catch() y updateScanButton sincronizado
  * Usa funciones globales de ble_base.js (_getBLEContacts, etc.)
  */
 
@@ -104,7 +104,12 @@ export class BLEUI {
 
     this.elements.scanBtn.addEventListener('click', function() {
       if (self.ble && typeof self.ble.toggleScan === 'function') {
-        self.ble.toggleScan();
+        self.ble.toggleScan().then(function() {
+          self.updateScanButton();
+        }).catch(function(err) {
+          console.warn('[BLEUI] toggleScan error:', err);
+          self.updateScanButton();
+        });
       }
     });
 
@@ -424,7 +429,10 @@ export class BLEUI {
   }
 }
 
-/* FIX: Export renombrado para coincidir con nexo_app.js */
+/* FIX: initBLEInterface ahora inicializa BLEInterface primero para activar listeners nativos */
 export function initBLEInterface(bleInterface) {
+  if (bleInterface && typeof bleInterface.init === 'function') {
+    bleInterface.init();
+  }
   return new BLEUI(bleInterface).init();
 }
