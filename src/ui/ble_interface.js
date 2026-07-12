@@ -221,21 +221,15 @@
    return plugin && typeof plugin[method] === 'function';
    }
    function _safeNativeCall(plugin, method, args) {
-   return new Promise(function(resolve, reject) {
-   if (!plugin) { reject(new Error('Plugin nativo no disponible')); return; }
-   if (typeof plugin[method] !== 'function') { reject(new Error('Metodo ' + method + ' no disponible')); return; }
-   try {
-   var result;
-   if (args && typeof args === 'object' && !Array.isArray(args)) {
-   result = pluginmethod;
-   } else {
-   var callArgs = Array.isArray(args) ? args : (args ? [args] : []);
-   result = plugin[method].apply(plugin, callArgs);
-   }
-   if (result && typeof result.then === 'function') {
-   result.then(resolve).catch(reject);
-   } else { resolve(result); }
-   } catch (e) { reject(e); }
+  return new Promise(function(resolve, reject) {
+    if (!plugin) { reject(new Error('Plugin nativo no disponible')); return; }
+    if (typeof plugin[method] !== 'function') { reject(new Error('Metodo ' + method + ' no disponible')); return; }
+    try {
+      var result = plugin[method](args);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else { resolve(result); }
+    } catch (e) { reject(e); }
    });
    }
    function _safeDispatchEvent(eventName, detail) {
