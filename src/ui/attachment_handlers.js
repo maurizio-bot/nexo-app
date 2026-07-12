@@ -58,8 +58,23 @@
     }
   }
 
+  function _toggleAttachMenu() {
+    const menu = document.getElementById('attach-menu');
+    if (menu) {
+      menu.classList.toggle('hidden');
+    }
+  }
+
+  function _closeAttachMenu() {
+    const menu = document.getElementById('attach-menu');
+    if (menu) {
+      menu.classList.add('hidden');
+    }
+  }
+
   // --- FOTO ---
   async function handlePhoto() {
+    _closeAttachMenu();
     if (!Camera) {
       _showToast('Plugin Camera no disponible');
       return;
@@ -87,6 +102,7 @@
 
   // --- VIDEO ---
   async function handleVideo() {
+    _closeAttachMenu();
     if (!Camera) {
       _showToast('Plugin Camera no disponible');
       return;
@@ -116,6 +132,7 @@
 
   // --- ARCHIVO ---
   function handleFile() {
+    _closeAttachMenu();
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '*/*';
@@ -142,6 +159,7 @@
 
   // --- UBICACION ---
   async function handleLocation() {
+    _closeAttachMenu();
     if (!Geolocation) {
       _showToast('Plugin Geolocation no disponible');
       return;
@@ -206,51 +224,48 @@
   }
 
   function _updateMicIcon(recording) {
-    const micBtn = document.getElementById('chat-mic-btn');
+    const micBtn = document.getElementById('send-btn');
     if (micBtn) {
       micBtn.style.color = recording ? '#FF3B30' : '';
-      micBtn.textContent = recording ? '⏹' : '🎤';
-    }
-  }
-
-  // --- CAMARA RAPIDA ---
-  async function handleQuickCamera() {
-    if (!Camera) {
-      _showToast('Plugin Camera no disponible');
-      return;
-    }
-    try {
-      const photo = await Camera.getPhoto({
-        quality: 80,
-        allowEditing: false,
-        resultType: 'base64',
-        source: 'camera',
-        saveToGallery: false
-      });
-      if (photo.base64String) {
-        _sendAttachment('image', photo.base64String, { format: photo.format || 'jpeg' });
-        _showToast('Foto enviada');
-      }
-    } catch (err) {
-      _log('QUICK_CAM', 'Cancelado o error: ' + err.message);
     }
   }
 
   // --- Bindings ---
   function bindAttachmentMenu() {
-    const btnPhoto = document.getElementById('attach-photo');
-    const btnVideo = document.getElementById('attach-video');
-    const btnFile = document.getElementById('attach-file');
-    const btnLocation = document.getElementById('attach-location');
-    const btnMic = document.getElementById('chat-mic-btn');
-    const btnCamera = document.getElementById('chat-camera-btn');
+    const attachBtn = document.getElementById('attach-btn');
+    const menuItems = document.querySelectorAll('.attach-menu-item');
+    const sendBtn = document.getElementById('send-btn');
 
-    if (btnPhoto) btnPhoto.addEventListener('click', handlePhoto);
-    if (btnVideo) btnVideo.addEventListener('click', handleVideo);
-    if (btnFile) btnFile.addEventListener('click', handleFile);
-    if (btnLocation) btnLocation.addEventListener('click', handleLocation);
-    if (btnMic) btnMic.addEventListener('click', handleVoiceToggle);
-    if (btnCamera) btnCamera.addEventListener('click', handleQuickCamera);
+    if (attachBtn) {
+      attachBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        _toggleAttachMenu();
+      });
+    }
+
+    menuItems.forEach(function(item) {
+      item.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const type = item.getAttribute('data-type');
+        if (type === 'photo') handlePhoto();
+        else if (type === 'video') handleVideo();
+        else if (type === 'file') handleFile();
+        else if (type === 'location') handleLocation();
+      });
+    });
+
+    if (sendBtn) {
+      sendBtn.addEventListener('click', function(e) {
+        const input = document.getElementById('message-input');
+        if (sendBtn.classList.contains('mic-mode') && (!input || !input.value.trim())) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleVoiceToggle();
+        }
+      });
+    }
 
     _log('INIT', 'Handlers vinculados');
   }
@@ -267,8 +282,7 @@
     video: handleVideo,
     file: handleFile,
     location: handleLocation,
-    voice: handleVoiceToggle,
-    quickCamera: handleQuickCamera
+    voice: handleVoiceToggle
   };
 
 })();
