@@ -1,35 +1,32 @@
 /**
  * Attachment Handlers — Menú (+) input bar v2
  * APIs web nativas, sin plugins adicionales.
- * Se integra con cualquier función de envío global disponible.
    */
 (function() {
 'use strict';
-// ── Config ──
 const CONFIG = {
 maxFileSizeMB: 5,
 geoTimeout: 10000,
 geoHighAccuracy: true
 };
-// ── Init ──
 function init() {
-const menu = document.getElementById('attachMenu');
+const menu = document.getElementById('attach-menu');
 if (!menu) {
-console.warn('[Attach] #attachMenu no encontrado');
+console.warn('[Attach] #attach-menu no encontrado');
 return;
 }
-menu.querySelectorAll('.attach-btn').forEach(btn => {
-btn.addEventListener('click', onAttachBtnClick);
+menu.querySelectorAll('.attach-menu-item').forEach(item => {
+item.addEventListener('click', onAttachItemClick);
 });
-console.log('[Attach] Handlers activos');
+console.log('[Attach] Handlers activos para', menu.querySelectorAll('.attach-menu-item').length, 'items');
 }
-function onAttachBtnClick(e) {
-const btn = e.currentTarget;
-const type = btn.dataset.type || btn.getAttribute('data-type');
+function onAttachItemClick(e) {
+const item = e.currentTarget;
+const type = item.dataset.type || item.getAttribute('data-type');
 if (!type) return;
 // Cerrar menú
-const menu = document.getElementById('attachMenu');
-if (menu) menu.classList.remove('active');
+const menu = document.getElementById('attach-menu');
+if (menu) menu.classList.add('hidden');
 switch (type) {
 case 'photo':  pickMedia({ accept: 'image/*', capture: 'environment', label: '📷 Foto' }); break;
 case 'video':  pickMedia({ accept: 'video/*', capture: 'camcorder',   label: '🎥 Video' }); break;
@@ -38,7 +35,6 @@ case 'location': shareLocation(); break;
 default: console.warn('[Attach] Tipo desconocido:', type);
 }
 }
-// ── Media picker (foto/video/archivo) ──
 function pickMedia(opts) {
 const input = document.createElement('input');
 input.type = 'file';
@@ -57,13 +53,10 @@ processFile(file, opts.label);
 }
 document.body.removeChild(input);
 });
-// iOS/Capacitor necesita timeout para click programático
 setTimeout(() => input.click(), 50);
 }
 function processFile(file, label) {
 const meta = label + ' ' + file.name + ' (' + formatBytes(file.size) + ')';
-// Por ahora: enviar metadata como mensaje de texto.
-// Transferencia real de binarios requiere Turbo File Transfer v2 (BLE MTU limitado).
 dispatchMessage(meta, 'file');
 }
 function formatBytes(bytes) {
@@ -73,7 +66,6 @@ const sizes = ['B','KB','MB','GB'];
 const i = Math.floor(Math.log(bytes) / Math.log(k));
 return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
-// ── Location ──
 function shareLocation() {
 if (!navigator.geolocation) {
 alert('Geolocalización no disponible en este dispositivo.');
@@ -97,9 +89,7 @@ alert(msg);
 { enableHighAccuracy: CONFIG.geoHighAccuracy, timeout: CONFIG.geoTimeout, maximumAge: 0 }
 );
 }
-// ── Dispatch message (integración con app existente) ──
 function dispatchMessage(text, type) {
-// Orden de preferencia: app global → BLEInterface → UI local
 if (window.app && typeof window.app.sendMessage === 'function') {
 window.app.sendMessage(text);
 return;
@@ -112,14 +102,12 @@ if (window.nexoApp && typeof window.nexoApp.sendMessage === 'function') {
 window.nexoApp.sendMessage(text);
 return;
 }
-// Fallback: render local solo en UI
 if (window.appendMessageToUI && typeof window.appendMessageToUI === 'function') {
 window.appendMessageToUI({ text: text, own: true, type: type || 'text' });
 } else {
 console.log('[Attach] No dispatch disponible. Msg:', text);
 }
 }
-// ── Bootstrap ──
 if (document.readyState === 'loading') {
 document.addEventListener('DOMContentLoaded', init);
 } else {
