@@ -28,9 +28,6 @@ jobs:
       - name: Install Dependencies
         run: npm ci
       
-      - name: Ensure Camera Plugin Installed
-        run: npm install @capacitor/camera --save
-      
       - name: Build Web Only
         run: npm run build:web
       
@@ -48,12 +45,10 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
       
-      - name: Verify Camera Plugin Registration
+      - name: Verify Camera Plugin
         run: |
-          echo "=== Verificando plugins registrados ==="
-          grep -i "capacitor-camera" android/capacitor.build.gradle || echo "ADVERTENCIA: capacitor-camera no encontrado"
-          echo "=== Plugins en capacitor.build.gradle ==="
-          grep "implementation project" android/capacitor.build.gradle || true
+          echo "=== Verificando plugins ==="
+          grep "capacitor-camera" android/capacitor.build.gradle || echo "ADVERTENCIA: camera no registrado"
       
       - name: Emergency AndroidX Override (Post-Sync)
         working-directory: ./android
