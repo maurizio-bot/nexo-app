@@ -1,9 +1,10 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
  * FIX: chat-view-active agregado/quitado en body para mostrar messages-container e input-area
- * FIX v9.9.1: FAB = botón agregar contacto (+) → panel BLE + auto-scan
+ * FIX v9.9.1: FAB = boton agregar contacto (+) → panel BLE + auto-scan
  * FIX v9.9.2: Logo path corregido al iniciar
- * FIX v10.0: Swipe back con animación desde borde izquierdo
+ * FIX v10.0: Swipe back con animacion desde borde izquierdo
+ * FIX v10.1: Attachment handlers registrados inmediatamente en DOMContentLoaded
  * Build #1605+ compatible. NO toca nativo.
  */
 
@@ -44,7 +45,210 @@ var SAFETY_TIMEOUT = setTimeout(function() {
   }
 }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE ? NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE : 3000) + 12000);
 
+// === ATTACHMENT HANDLERS GLOBALES (registran inmediatamente) ===
+var _mediaRecorder = null;
+var _audioChunks = [];
+var _isRecording = false;
+
+function _getAttachmentPlugins() {
+  var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
+  return {
+    Camera: Plugins ? Plugins.Camera : null,
+    Filesystem: Plugins ? Plugins.Filesystem : null,
+    Geolocation: Plugins ? Plugins.Geolocation : null
+  };
+}
+
+function _showAttachmentToast(msg) {
+  if (window.NexoApp && window.NexoApp.showToast) {
+    window.NexoApp.showToast(msg);
+  } else {
+    alert(msg);
+  }
+}
+
+function _getCurrentContactId() {
+  if (window.NEXO.app && window.NEXO.app.activeContact) {
+    return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
+  }
+  return null;
+}
+
+function _sendAttachment(type, payload, meta) {
+  var contactId = _getCurrentContactId();
+  if (!contactId) {
+    _showAttachmentToast('No hay contacto seleccionado');
+    return;
+  }
+  if (window.bleInterface && window.bleInterface.sendChatMessage) {
+    window.bleInterface.sendChatMessage(contactId, JSON.stringify({
+      type: 'attachment',
+      attachmentType: type,
+      payload: payload,
+      meta: meta,
+      timestamp: Date.now()
+    }));
+  } else if (window.NEXO.app && window.NEXO.app.sendMessage) {
+    window.NEXO.app.sendMessage({ content: JSON.stringify({ type: 'attachment', attachmentType: type, payload: payload, meta: meta }) });
+  } else {
+    _showAttachmentToast('Sistema de mensajes no disponible');
+  }
+}
+
+function _toggleAttachMenu() {
+  var menu = document.getElementById('attach-menu');
+  if (menu) menu.classList.toggle('hidden');
+}
+
+function _closeAttachMenu() {
+  var menu = document.getElementById('attach-menu');
+  if (menu) menu.classList.add('hidden');
+}
+
+async function _handlePhoto() {
+  _closeAttachMenu();
+  var plugins = _getAttachmentPlugins();
+  if (!plugins.Camera) { _showAttachmentToast('Plugin Camera no disponible'); return; }
+  try {
+    var photo = await plugins.Camera.getPhoto({ quality: 85, allowEditing: false, resultType: 'base64', source: 'prompt', saveToGallery: false });
+    if (photo.base64String) {
+      _sendAttachment('image', photo.base64String, { format: photo.format || 'jpeg', width: photo.width, height: photo.height });
+      _showAttachmentToast('Foto preparada');
+    }
+  } catch (err) { console.log('[ATTACH:PHOTO]', err.message); }
+}
+
+async function _handleVideo() {
+  _closeAttachMenu();
+  var plugins = _getAttachmentPlugins();
+  if (!plugins.Camera) { _showAttachmentToast('Plugin Camera no disponible'); return; }
+  try {
+    var video = await plugins.Camera.getPhoto({ quality: 80, allowEditing: false, resultType: 'uri', source: 'prompt', saveToGallery: false });
+    if (video.path || video.webPath) {
+      var uri = video.path || video.webPath;
+      if (plugins.Filesystem) {
+        var file = await plugins.Filesystem.readFile({ path: uri });
+        _sendAttachment('video', file.data, { format: 'mp4', uri: uri });
+      } else {
+        _sendAttachment('video', uri, { format: 'mp4', uri: uri });
+      }
+      _showAttachmentToast('Video preparado');
+    }
+  } catch (err) { console.log('[ATTACH:VIDEO]', err.message); }
+}
+
+function _handleFile() {
+  _closeAttachMenu();
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '*/*';
+  input.style.display = 'none';
+  input.onchange = function(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(evt) {
+      var base64 = evt.target.result.split(',')[1];
+      _sendAttachment('file', base64, { name: file.name, size: file.size, type: file.type });
+      _showAttachmentToast('Archivo: ' + file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+  document.body.appendChild(input);
+  input.click();
+  setTimeout(function() { input.remove(); }, 1000);
+}
+
+async function _handleLocation() {
+  _closeAttachMenu();
+  var plugins = _getAttachmentPlugins();
+  if (!plugins.Geolocation) { _showAttachmentToast('Plugin Geolocation no disponible'); return; }
+  try {
+    var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+    var payload = JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+    _sendAttachment('location', payload, { lat: pos.coords.latitude, lng: pos.coords.longitude });
+    _showAttachmentToast('Ubicacion enviada');
+  } catch (err) { console.log('[ATTACH:LOCATION]', err.message); _showAttachmentToast('No se pudo obtener ubicacion'); }
+}
+
+async function _handleVoiceToggle() {
+  if (!_isRecording) {
+    try {
+      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      _mediaRecorder = new MediaRecorder(stream);
+      _audioChunks = [];
+      _mediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) _audioChunks.push(e.data); };
+      _mediaRecorder.onstop = function() {
+        var blob = new Blob(_audioChunks, { type: 'audio/webm' });
+        var reader = new FileReader();
+        reader.onloadend = function() {
+          var base64 = reader.result.split(',')[1];
+          _sendAttachment('audio', base64, { format: 'webm', duration: 0 });
+          _showAttachmentToast('Audio enviado');
+        };
+        reader.readAsDataURL(blob);
+        stream.getTracks().forEach(function(t) { t.stop(); });
+      };
+      _mediaRecorder.start();
+      _isRecording = true;
+      _updateMicIcon(true);
+      _showAttachmentToast('Grabando...');
+    } catch (err) { console.log('[ATTACH:VOICE]', err.message); _showAttachmentToast('Permiso de microfono denegado'); }
+  } else {
+    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
+    _isRecording = false;
+    _updateMicIcon(false);
+  }
+}
+
+function _updateMicIcon(recording) {
+  var micBtn = document.getElementById('send-btn');
+  if (micBtn) micBtn.style.color = recording ? '#FF3B30' : '';
+}
+
+function _bindAttachmentHandlers() {
+  var attachBtn = document.getElementById('attach-btn');
+  var sendBtn = document.getElementById('send-btn');
+  var menuItems = document.querySelectorAll('.attach-menu-item');
+  var input = document.getElementById('message-input');
+
+  if (attachBtn) {
+    attachBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      _toggleAttachMenu();
+    });
+  }
+
+  menuItems.forEach(function(item) {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var type = item.getAttribute('data-type');
+      if (type === 'photo') _handlePhoto();
+      else if (type === 'video') _handleVideo();
+      else if (type === 'file') _handleFile();
+      else if (type === 'location') _handleLocation();
+    });
+  });
+
+  if (sendBtn) {
+    sendBtn.addEventListener('click', function(e) {
+      var text = input ? input.value.trim() : '';
+      if (!text && sendBtn.classList.contains('mic-mode')) {
+        e.preventDefault();
+        e.stopPropagation();
+        _handleVoiceToggle();
+      }
+    });
+  }
+}
+// === FIN ATTACHMENT HANDLERS ===
+
 document.addEventListener('DOMContentLoaded', async function() {
+  // Bind attachment handlers INMEDIATAMENTE, no esperar a initializeNexoApp
+  _bindAttachmentHandlers();
+
   try {
     console.log('[MAIN] NEXO v9.9-FIX iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
@@ -304,19 +508,29 @@ function _setupMessageInput() {
     var btn = document.getElementById('send-btn');
     if (!input || !btn || !window.NEXO.app) return;
 
+    // Send text message
     var send = async function() {
       var text = input.value.trim();
       if (!text) return;
       input.value = '';
       input.focus();
-
       try {
         if (!window.NEXO.app) return;
         var sent = await window.NEXO.app.sendMessage({ content: text });
       } catch (e) {}
     };
 
-    btn.addEventListener('click', send);
+    btn.addEventListener('click', function(e) {
+      var text = input.value.trim();
+      if (!text && btn.classList.contains('mic-mode')) {
+        e.preventDefault();
+        e.stopPropagation();
+        _handleVoiceToggle();
+      } else {
+        send();
+      }
+    });
+
     input.addEventListener('keypress', function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();

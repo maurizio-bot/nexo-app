@@ -1,17 +1,8 @@
 /**
- * NEXO App v5.0.16-KEYBOARD-FIX-BACK
- * Base: v5.0.11-ACK-FIXED
- * FIX: Deduplicación de contactos por MAC
- * FIX: Silenciar toasts rem.info/warn/error/success
- * FIX: Doble pantalla eliminada (no appendItems en TheStream)
- * FIX: Infraestructura ACK completa (pending/sent/delivered/read)
- * FIX: ACK automatico al recibir mensaje BLE
- * FIX: Read receipt cuando chat activo con remitente
- * FIX: Al cerrar chat vuelve a pantalla principal (tab chats activo)
- * FIX: Al cerrar chat cierra panel BLE para evitar pantalla de scan
- * FIX v5.0.13: Persistencia async/await para vault_fs
- * ES5 syntax for webpack compatibility
- * Proper named exports for main.js import
+ * NEXO App v5.0.17-ATTACH-FIX
+ * Base: v5.0.16-KEYBOARD-FIX-BACK
+ * FIX: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
+ * FIX: Eliminado attachment_handlers.js externo, todo integrado en _initInputBarV2
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -115,7 +106,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.12-DEDUP-SILENT-MAIN iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.17-ATTACH-FIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -135,7 +126,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.12-DEDUP-SILENT-MAIN Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.17-ATTACH-FIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -399,7 +390,7 @@ class NexoApp {
       });
     }
     self._initKeyboardScrollFix();
-    /* === INPUT BAR v2 — Attach menu + Send/Mic toggle === */
+    /* === INPUT BAR v2 — Attach menu + Send/Mic toggle + Attach handlers === */
     self._initInputBarV2();
   }
 
@@ -451,28 +442,98 @@ class NexoApp {
         }
       });
 
-      // Items del menú
+      // === ATTACH HANDLERS REALES ===
       var menuItems = attachMenu.querySelectorAll('.attach-menu-item');
       menuItems.forEach(function(item) {
         item.addEventListener('click', function() {
           var type = item.getAttribute('data-type');
-          console.log('[NEXO] Attach seleccionado:', type);
-          // TODO: implementar handlers de foto/video/archivo/ubicación
-          // Por ahora solo cierra el menú
           attachMenu.classList.remove('visible');
           attachMenu.classList.add('hidden');
           attachBtn.classList.remove('active');
+
+          // Helpers burbuja
+          function getMessagesContainer() {
+            return document.getElementById('messages-container');
+          }
+          function scrollToBottom() {
+            var c = getMessagesContainer();
+            if (c) c.scrollTop = c.scrollHeight;
+          }
+          function renderOwnBubble(htmlContent, typeLabel) {
+            var container = getMessagesContainer();
+            if (!container) { console.error('[Attach] No contenedor'); return; }
+            var bubble = document.createElement('div');
+            bubble.className = 'message own message-attachment';
+            bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
+            bubble.innerHTML = htmlContent + '<div style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + typeLabel + '</div>';
+            container.appendChild(bubble);
+            scrollToBottom();
+          }
+
+          if (type === 'photo') {
+            if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.Camera) {
+              alert('Plugin Camera no disponible'); return;
+            }
+            var Camera = window.Capacitor.Plugins.Camera;
+            Camera.getPhoto({
+              quality: 90, allowEditing: false,
+              resultType: Camera.CameraResultType.Base64,
+              source: Camera.CameraSource.Prompt, saveToGallery: false
+            }).then(function(image) {
+              if (image && image.base64String) {
+                var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
+                var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>';
+                renderOwnBubble(html, '📷 Foto');
+                window._lastAttachmentPayload = { type: 'image', data: dataUrl, width: image.width, height: image.height };
+              }
+            }).catch(function(err) {
+              console.error('[FOTO] Error:', err);
+              if (err.message && err.message.indexOf('cancelled') === -1) alert('Error foto: ' + err.message);
+            });
+          } else if (type === 'video') {
+            var inputVid = document.createElement('input');
+            inputVid.type = 'file'; inputVid.accept = 'video/*'; inputVid.style.display = 'none';
+            inputVid.onchange = function(ev) {
+              var file = ev.target.files[0]; if (!file) return;
+              var url = URL.createObjectURL(file);
+              var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + url + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
+              renderOwnBubble(html, '🎬 Video');
+              window._lastAttachmentPayload = { type: 'video', file: file, url: url };
+            };
+            document.body.appendChild(inputVid); inputVid.click();
+            setTimeout(function() { inputVid.remove(); }, 5000);
+          } else if (type === 'file') {
+            var inputFile = document.createElement('input');
+            inputFile.type = 'file'; inputFile.style.display = 'none';
+            inputFile.onchange = function(ev) {
+              var file = ev.target.files[0]; if (!file) return;
+              var sizeStr = file.size > 1024*1024 ? (file.size/(1024*1024)).toFixed(1) + ' MB' : (file.size/1024).toFixed(0) + ' KB';
+              var html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + file.name + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
+              renderOwnBubble(html, '📎 Archivo');
+              window._lastAttachmentPayload = { type: 'file', file: file };
+            };
+            document.body.appendChild(inputFile); inputFile.click();
+            setTimeout(function() { inputFile.remove(); }, 5000);
+          } else if (type === 'location') {
+            if (!navigator.geolocation) { alert('Geolocalización no disponible'); return; }
+            navigator.geolocation.getCurrentPosition(function(pos) {
+              var lat = pos.coords.latitude, lng = pos.coords.longitude;
+              var mapsUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+              var html = '<a href="' + mapsUrl + '" target="_blank" style="text-decoration:none;color:inherit;"><div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:10px;display:flex;align-items:center;gap:10px;"><div style="font-size:28px;">📍</div><div><div style="font-weight:600;">Mi ubicación</div><div style="font-size:11px;opacity:0.8;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</div></div></div></a>';
+              renderOwnBubble(html, '🌍 Ubicación');
+              window._lastAttachmentPayload = { type: 'location', lat: lat, lng: lng };
+            }, function(err) { alert('Error ubicación: ' + err.message); }, { enableHighAccuracy: true, timeout: 10000 });
+          }
         });
       });
     }
 
     // Mic button placeholder
     sendBtn.addEventListener('click', function(e) {
-            if (sendBtn.classList.contains('mic-mode')) {
+      if (sendBtn.classList.contains('mic-mode')) {
         e.preventDefault();
         e.stopPropagation();
         console.log('[NEXO] Mic presionado — placeholder');
-        // TODO: implementar grabación de voz
         return;
       }
       // Si es modo send, el handler original de sendMessage ya existe
@@ -864,4 +925,5 @@ Focos de Interés:
 10. FIX v5.0.13: Persistencia async/await para vault_fs
 11. FIX-BACK: Cerrar panel BLE al hacer back desde chat
 12. INPUT BAR v2: Attach menu + Send/Mic toggle
+13. FIX v5.0.17: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
 */
