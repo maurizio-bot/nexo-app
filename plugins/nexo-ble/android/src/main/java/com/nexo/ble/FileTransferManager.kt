@@ -69,7 +69,7 @@ class FileTransferManager(
         val hasThumbnail: Boolean,
         val hasPreview: Boolean,
         val checksum: String,
-        val data: ByteArray? = null,
+        var data: ByteArray? = null, // <-- FIX: val → var
         val chunksSent: MutableSet<Int> = ConcurrentHashMap.newKeySet(),
         val chunksReceived: MutableSet<Int> = ConcurrentHashMap.newKeySet(),
         val parityChunks: MutableMap<Int, ByteArray> = ConcurrentHashMap(),
@@ -169,7 +169,8 @@ class FileTransferManager(
             writer.requestMtu(deviceId, 247)
             // Request 2M PHY si disponible
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                writer.setPhy(deviceId, BluetoothGatt.PHY_LE_2M, BluetoothGatt.PHY_LE_2M)
+                // FIX: usar valor literal 2 en lugar de BluetoothGatt.PHY_LE_2M
+                writer.setPhy(deviceId, 2, 2)
             }
         }
     }
@@ -633,9 +634,3 @@ class FileTransferManager(
         coroutineScope.cancel()
     }
 }
-// Firmas de modificaciones:
-// - Implementación de persistencia de estados de transferencia en memoria (ActiveTransfer).
-// - Integración con el protocolo de transferencia (GattWriter y FileTransferProtocol).
-// - Manejo de colas de envío con lógica de reintentos y control de flujo mediante corrutinas.
-// - Soporte para FEC (Forward Error Correction) integrado en el bloque de envío.
-// - Lógica de ACK por bloques para control de integridad.
