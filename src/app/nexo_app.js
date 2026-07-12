@@ -399,6 +399,84 @@ class NexoApp {
       });
     }
     self._initKeyboardScrollFix();
+    /* === INPUT BAR v2 — Attach menu + Send/Mic toggle === */
+    self._initInputBarV2();
+  }
+
+  _initInputBarV2() {
+    var self = this;
+    var input = document.getElementById('message-input');
+    var sendBtn = document.getElementById('send-btn');
+    var attachBtn = document.getElementById('attach-btn');
+    var attachMenu = document.getElementById('attach-menu');
+
+    if (!input || !sendBtn) return;
+
+    // Toggle Send / Mic según contenido
+    function updateSendButton() {
+      var text = (input.value || '').trim();
+      if (text.length > 0) {
+        sendBtn.classList.remove('mic-mode');
+      } else {
+        sendBtn.classList.add('mic-mode');
+      }
+    }
+    input.addEventListener('input', updateSendButton);
+    updateSendButton(); // estado inicial
+
+    // Attach menu toggle
+    if (attachBtn && attachMenu) {
+      attachBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var isVisible = attachMenu.classList.contains('visible');
+        if (isVisible) {
+          attachMenu.classList.remove('visible');
+          attachMenu.classList.add('hidden');
+          attachBtn.classList.remove('active');
+        } else {
+          attachMenu.classList.remove('hidden');
+          // Force reflow
+          void attachMenu.offsetWidth;
+          attachMenu.classList.add('visible');
+          attachBtn.classList.add('active');
+        }
+      });
+
+      // Cerrar menú al tocar fuera
+      document.addEventListener('click', function(e) {
+        if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
+          attachMenu.classList.remove('visible');
+          attachMenu.classList.add('hidden');
+          attachBtn.classList.remove('active');
+        }
+      });
+
+      // Items del menú
+      var menuItems = attachMenu.querySelectorAll('.attach-menu-item');
+      menuItems.forEach(function(item) {
+        item.addEventListener('click', function() {
+          var type = item.getAttribute('data-type');
+          console.log('[NEXO] Attach seleccionado:', type);
+          // TODO: implementar handlers de foto/video/archivo/ubicación
+          // Por ahora solo cierra el menú
+          attachMenu.classList.remove('visible');
+          attachMenu.classList.add('hidden');
+          attachBtn.classList.remove('active');
+        });
+      });
+    }
+
+    // Mic button placeholder
+    sendBtn.addEventListener('click', function(e) {
+            if (sendBtn.classList.contains('mic-mode')) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[NEXO] Mic presionado — placeholder');
+        // TODO: implementar grabación de voz
+        return;
+      }
+      // Si es modo send, el handler original de sendMessage ya existe
+    });
   }
 
   _initKeyboardScrollFix() {
@@ -785,4 +863,5 @@ Focos de Interés:
 9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
 10. FIX v5.0.13: Persistencia async/await para vault_fs
 11. FIX-BACK: Cerrar panel BLE al hacer back desde chat
+12. INPUT BAR v2: Attach menu + Send/Mic toggle
 */
