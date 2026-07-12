@@ -1,56 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="[http://schemas.android.com/apk/res/android](http://schemas.android.com/apk/res/android)"
 xmlns:tools="[http://schemas.android.com/tools](http://schemas.android.com/tools)">
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- PERMISOS BLE CRÍTICOS (Android 14 compatible)              -->
-<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- BLE PERMISSIONS -->
 <uses-permission android:name="android.permission.BLUETOOTH" />
 <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-<!-- CRÍTICO: neverForLocation evita depender del GPS -->
 <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
 android:usesPermissionFlags="neverForLocation" />
 <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-<!-- FOREGROUND SERVICE (Android 14 requiere esto explícito) -->
+<!-- FOREGROUND SERVICE -->
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- PERMISOS UBICACIÓN (BLE compatibilidad + Geolocation nativa) -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- Legacy: BLE scan en Android <= 11 -->
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" 
-android:maxSdkVersion="30" />
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-android:maxSdkVersion="30" />
-<!-- Android 12+ : Geolocation nativa para attachments -->
+<!-- LOCATION (BLE legacy + Geolocation native) -->
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- PERMISOS CÁMARA / FOTOS / VIDEO / ARCHIVOS (Attachments)   -->
-<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CAMERA / PHOTOS / VIDEO / FILES -->
 <uses-permission android:name="android.permission.CAMERA" />
-<!-- Android 13+ (API 33+) media permissions -->
 <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-<!-- Legacy Android <= 12 (API 32) -->
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
 android:maxSdkVersion="32" />
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
 android:maxSdkVersion="29" />
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- PERMISOS RED (Nearby / WiFi)                               -->
-<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- NETWORK -->
 <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-<!-- Permiso específico Nearby -->
 <uses-permission android:name="com.google.android.gms.permission.NEARBY_CONNECTIONS" />
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- FEATURES HARDWARE                                          -->
-<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- HARDWARE FEATURES -->
 <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 <uses-feature android:name="android.hardware.camera" android:required="false" />
 <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -73,13 +53,11 @@ android:exported="true">
 <category android:name="android.intent.category.LAUNCHER" />
 </intent-filter>
 </activity>
-<!-- SERVICIO BLE FOREGROUND (NAP-BLE v5.0.0-ARCH) -->
 <service
 android:name="com.nexo.ble.BleService"
 android:enabled="true"
 android:exported="false"
 android:foregroundServiceType="connectedDevice" />
-<!-- SERVICIO NORDIC MESH (Obligatorio para Android 14 foreground) -->
 <service
 android:name=".mesh.NordicMeshService"
 android:enabled="true"
