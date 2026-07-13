@@ -6,6 +6,7 @@
  * FIX v10.0: Swipe back con animacion desde borde izquierdo
  * FIX v10.1: Attachment handlers registrados inmediatamente en DOMContentLoaded
  * FIX v10.2: _sendAttachment renderiza localmente + _renderMessage soporta imagenes
+ * FIX v10.3: Quitar toasts grises de attachment handlers
  * Build #1605+ compatible. NO toca nativo.
    */
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -68,7 +69,7 @@ return null;
 function _sendAttachment(type, payload, meta) {
 var contactId = _getCurrentContactId();
 if (!contactId) {
-_showAttachmentToast('No hay contacto seleccionado');
+console.log('[ATTACH] No hay contacto seleccionado');
 return;
 }
 var attachmentData = {
@@ -98,7 +99,7 @@ window.bleInterface.sendChatMessage(contactId, payloadStr);
 } else if (window.NEXO.app && window.NEXO.app.sendMessage) {
 window.NEXO.app.sendMessage({ content: payloadStr });
 } else {
-_showAttachmentToast('Sistema de mensajes no disponible');
+console.log('[ATTACH] Sistema de mensajes no disponible');
 }
 }
 function _toggleAttachMenu() {
@@ -112,19 +113,19 @@ if (menu) menu.classList.add('hidden');
 async function _handleCamera() {
 _closeAttachMenu();
 var plugins = _getAttachmentPlugins();
-if (!plugins.Camera) { _showAttachmentToast('Plugin Camera no disponible'); return; }
+if (!plugins.Camera) { console.log('[ATTACH] Plugin Camera no disponible'); return; }
 try {
 var photo = await plugins.Camera.getPhoto({ quality: 85, allowEditing: false, resultType: 'base64', source: 'CAMERA', saveToGallery: false });
 if (photo.base64String) {
 _sendAttachment('image', photo.base64String, { format: photo.format || 'jpeg', width: photo.width, height: photo.height });
-_showAttachmentToast('Foto preparada');
+console.log('[ATTACH] Foto preparada');
 }
 } catch (err) { console.log('[ATTACH:CAMERA]', err.message); }
 }
 async function _handleGallery() {
 _closeAttachMenu();
 var plugins = _getAttachmentPlugins();
-if (!plugins.Camera) { _showAttachmentToast('Plugin Camera no disponible'); return; }
+if (!plugins.Camera) { console.log('[ATTACH] Plugin Camera no disponible'); return; }
 try {
 // Intentar pickImages (v5) primero, fallback a getPhoto
 var photos;
@@ -136,7 +137,7 @@ var photo = photos.photos[0];
 if (plugins.Filesystem && photo.path) {
 var file = await plugins.Filesystem.readFile({ path: photo.path });
 _sendAttachment('image', file.data, { format: 'jpeg', width: photo.width, height: photo.height });
-_showAttachmentToast('Foto preparada');
+console.log('[ATTACH] Foto preparada');
 }
 }
 } else {
@@ -144,7 +145,7 @@ _showAttachmentToast('Foto preparada');
 var photo = await plugins.Camera.getPhoto({ quality: 85, allowEditing: false, resultType: 'base64', source: 'PHOTOS', saveToGallery: false });
 if (photo.base64String) {
 _sendAttachment('image', photo.base64String, { format: photo.format || 'jpeg', width: photo.width, height: photo.height });
-_showAttachmentToast('Foto preparada');
+console.log('[ATTACH] Foto preparada');
 }
 }
 } catch (err) { console.log('[ATTACH:GALLERY]', err.message); }
@@ -152,7 +153,7 @@ _showAttachmentToast('Foto preparada');
 async function _handleVideo() {
 _closeAttachMenu();
 var plugins = _getAttachmentPlugins();
-if (!plugins.Camera) { _showAttachmentToast('Plugin Camera no disponible'); return; }
+if (!plugins.Camera) { console.log('[ATTACH] Plugin Camera no disponible'); return; }
 try {
 // Usar CAMERA directo para evitar letrero blanco de prompt
 var video = await plugins.Camera.getPhoto({ quality: 80, allowEditing: false, resultType: 'uri', source: 'CAMERA', saveToGallery: false });
@@ -164,7 +165,7 @@ _sendAttachment('video', file.data, { format: 'mp4', uri: uri });
 } else {
 _sendAttachment('video', uri, { format: 'mp4', uri: uri });
 }
-_showAttachmentToast('Video preparado');
+console.log('[ATTACH] Video preparado');
 }
 } catch (err) { console.log('[ATTACH:VIDEO]', err.message); }
 }
@@ -181,7 +182,7 @@ var reader = new FileReader();
 reader.onload = function(evt) {
 var base64 = evt.target.result.split(',')[1];
 _sendAttachment('file', base64, { name: file.name, size: file.size, type: file.type });
-_showAttachmentToast('Archivo: ' + file.name);
+console.log('[ATTACH] Archivo:', file.name);
 };
 reader.readAsDataURL(file);
 };
@@ -192,13 +193,13 @@ setTimeout(function() { input.remove(); }, 1000);
 async function _handleLocation() {
 _closeAttachMenu();
 var plugins = _getAttachmentPlugins();
-if (!plugins.Geolocation) { _showAttachmentToast('Plugin Geolocation no disponible'); return; }
+if (!plugins.Geolocation) { console.log('[ATTACH] Plugin Geolocation no disponible'); return; }
 try {
 var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
 var payload = JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
 _sendAttachment('location', payload, { lat: pos.coords.latitude, lng: pos.coords.longitude });
-_showAttachmentToast('Ubicacion enviada');
-} catch (err) { console.log('[ATTACH:LOCATION]', err.message); _showAttachmentToast('No se pudo obtener ubicacion'); }
+console.log('[ATTACH] Ubicacion enviada');
+} catch (err) { console.log('[ATTACH:LOCATION]', err.message); console.log('[ATTACH] No se pudo obtener ubicacion'); }
 }
 async function _handleVoiceToggle() {
 if (!_isRecording) {
@@ -213,7 +214,7 @@ var reader = new FileReader();
 reader.onloadend = function() {
 var base64 = reader.result.split(',')[1];
 _sendAttachment('audio', base64, { format: 'webm', duration: 0 });
-_showAttachmentToast('Audio enviado');
+console.log('[ATTACH] Audio enviado');
 };
 reader.readAsDataURL(blob);
 stream.getTracks().forEach(function(t) { t.stop(); });
@@ -221,8 +222,8 @@ stream.getTracks().forEach(function(t) { t.stop(); });
 _mediaRecorder.start();
 _isRecording = true;
 _updateMicIcon(true);
-_showAttachmentToast('Grabando...');
-} catch (err) { console.log('[ATTACH:VOICE]', err.message); _showAttachmentToast('Permiso de microfono denegado'); }
+console.log('[ATTACH] Grabando...');
+} catch (err) { console.log('[ATTACH:VOICE]', err.message); console.log('[ATTACH] Permiso de microfono denegado'); }
 } else {
 if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
 _isRecording = false;
