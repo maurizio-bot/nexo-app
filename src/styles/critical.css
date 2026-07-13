@@ -245,6 +245,11 @@ Consolidado: inline + main.css + ble_styles
    border: 1px solid #1a3a6e;
    border-bottom-left-radius: 4px;
    }
+   /* FIX: padding reducido para attachments (imagen/video) */
+   .message:has(.msg-content img),
+   .message:has(.msg-content video) {
+   padding: 3px 3px 6px 3px;
+   }
    .msg-meta {
    margin-top: 3px;
    font-size: 10px;
