@@ -5,6 +5,7 @@
  * FIX v9.9.2: Logo path corregido al iniciar
  * FIX v10.0: Swipe back con animacion desde borde izquierdo
  * FIX v10.1: Attachment handlers registrados inmediatamente en DOMContentLoaded
+ * FIX v10.2: _sendAttachment renderiza localmente + _renderMessage soporta imagenes
  * Build #1605+ compatible. NO toca nativo.
  */
 
@@ -80,16 +81,36 @@ function _sendAttachment(type, payload, meta) {
     _showAttachmentToast('No hay contacto seleccionado');
     return;
   }
+
+  var attachmentData = {
+    type: 'attachment',
+    attachmentType: type,
+    payload: payload,
+    meta: meta,
+    timestamp: Date.now()
+  };
+
+  var msgId = 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  var localMsg = {
+    messageId: msgId,
+    content: JSON.stringify(attachmentData),
+    _own: true,
+    status: 'pending',
+    timestamp: Date.now(),
+    attachmentType: type,
+    attachmentPayload: payload,
+    attachmentMeta: meta
+  };
+
+  // Renderizar localmente INMEDIATAMENTE
+  _renderMessage(localMsg);
+
+  // Enviar via BLE
+  var payloadStr = JSON.stringify(attachmentData);
   if (window.bleInterface && window.bleInterface.sendChatMessage) {
-    window.bleInterface.sendChatMessage(contactId, JSON.stringify({
-      type: 'attachment',
-      attachmentType: type,
-      payload: payload,
-      meta: meta,
-      timestamp: Date.now()
-    }));
+    window.bleInterface.sendChatMessage(contactId, payloadStr);
   } else if (window.NEXO.app && window.NEXO.app.sendMessage) {
-    window.NEXO.app.sendMessage({ content: JSON.stringify({ type: 'attachment', attachmentType: type, payload: payload, meta: meta }) });
+    window.NEXO.app.sendMessage({ content: payloadStr });
   } else {
     _showAttachmentToast('Sistema de mensajes no disponible');
   }
@@ -663,12 +684,12 @@ function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
-    
+
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
-    
+
     var newFab = fabBtn.cloneNode(true);
     fabBtn.parentNode.replaceChild(newFab, fabBtn);
-    
+
     newFab.addEventListener('click', function() {
       if (window.bleInterface && window.bleInterface.elements) {
         var panel = window.bleInterface.elements.panel;
@@ -762,7 +783,28 @@ function _renderMessage(msg, skipSave) {
       return;
     }
 
-    if (!msg._own && msg.content) {
+    // Detectar attachment en msg directo o en content JSON
+    var attachment = null;
+    if (msg.attachmentType && msg.attachmentPayload) {
+      attachment = {
+        type: msg.attachmentType,
+        payload: msg.attachmentPayload,
+        meta: msg.attachmentMeta || {}
+      };
+    } else if (msg.content && msg.content.indexOf('"attachmentType"') > -1) {
+      try {
+        var parsed = JSON.parse(msg.content);
+        if (parsed && parsed.type === 'attachment' && parsed.attachmentType) {
+          attachment = {
+            type: parsed.attachmentType,
+            payload: parsed.payload,
+            meta: parsed.meta || {}
+          };
+        }
+      } catch (e) {}
+    }
+
+    if (!msg._own && msg.content && !attachment) {
       var recentMessages = container.querySelectorAll('.message.other');
       for (var i = recentMessages.length - 1; i >= Math.max(0, recentMessages.length - 5); i--) {
         var existingContent = recentMessages[i].querySelector('.msg-content');
@@ -775,16 +817,41 @@ function _renderMessage(msg, skipSave) {
     var div = document.createElement('div');
     var isOwn = !!msg._own;
     div.className = 'message ' + (isOwn ? 'own' : 'other');
-
-    if (isOwn) {
-      div.classList.add('status-' + (msg.status || 'pending'));
-    }
-
+    if (isOwn) div.classList.add('status-' + (msg.status || 'pending'));
     div.dataset.msgId = msgId;
 
     var contentDiv = document.createElement('div');
     contentDiv.className = 'msg-content';
-    contentDiv.textContent = msg.content || msg.text || '';
+
+    if (attachment) {
+      // Renderizar attachment
+      if (attachment.type === 'image') {
+        var img = document.createElement('img');
+        img.src = 'data:image/' + (attachment.meta.format || 'jpeg') + ';base64,' + attachment.payload;
+        img.style.maxWidth = '220px';
+        img.style.maxHeight = '280px';
+        img.style.borderRadius = '12px';
+        img.style.display = 'block';
+        img.onload = function() {
+          var mc = document.getElementById('messages-container');
+          if (mc) mc.scrollTop = mc.scrollHeight;
+        };
+        contentDiv.appendChild(img);
+      } else if (attachment.type === 'video') {
+        contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">🎬 <b>Video</b><br><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'video.mp4') + '</span></div>';
+      } else if (attachment.type === 'file') {
+        contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b><br><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
+      } else if (attachment.type === 'location') {
+        var loc = attachment.meta;
+        contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📍 <b>Ubicación</b><br><span style="font-size:12px;opacity:0.7;">' + (loc.lat ? loc.lat.toFixed(4) : '?') + ', ' + (loc.lng ? loc.lng.toFixed(4) : '?') + '</span></div>';
+      } else if (attachment.type === 'audio') {
+        contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">🎤 <b>Audio</b></div>';
+      } else {
+        contentDiv.textContent = msg.content || msg.text || '';
+      }
+    } else {
+      contentDiv.textContent = msg.content || msg.text || '';
+    }
     div.appendChild(contentDiv);
 
     var metaDiv = document.createElement('div');
@@ -809,7 +876,6 @@ function _renderMessage(msg, skipSave) {
     }
 
     div.appendChild(metaDiv);
-
     container.appendChild(div);
 
     var msgContainer = document.getElementById('messages-container');
@@ -819,9 +885,7 @@ function _renderMessage(msg, skipSave) {
       });
     }
 
-    if (!skipSave) {
-      _saveMessageToStorage(msg);
-    }
+    if (!skipSave) _saveMessageToStorage(msg);
   } catch (e) {
     console.warn('[MAIN] _renderMessage error:', e);
   }
@@ -997,14 +1061,14 @@ function _setupSwipeBack() {
 
       var translateX = Math.max(0, Math.min(deltaX, winWidth));
       var progress = translateX / winWidth;
-      
+
       if (progress > 0.5) {
         translateX = winWidth * 0.5 + (translateX - winWidth * 0.5) * 0.4;
       }
 
       app.style.transform = 'translateX(' + translateX + 'px)';
       app.style.opacity = Math.max(0.4, 1 - (progress * 0.5));
-      
+
       var contactsView = document.getElementById('contacts-view');
       if (contactsView) {
         contactsView.style.display = 'flex';
@@ -1031,7 +1095,7 @@ function _setupSwipeBack() {
       if (deltaX > threshold) {
         document.body.classList.add('chat-swipe-complete');
         document.body.classList.add('chat-swipe-transition');
-        
+
         setTimeout(function() {
           _doChatBack();
           app.style.transform = '';
@@ -1047,7 +1111,7 @@ function _setupSwipeBack() {
       } else {
         document.body.classList.add('chat-swipe-rebound');
         document.body.classList.add('chat-swipe-transition');
-        
+
         setTimeout(function() {
           document.body.classList.remove('chat-swipe-rebound');
           document.body.classList.remove('chat-swipe-transition');
@@ -1094,21 +1158,21 @@ function _doChatBack() {
     var backBtn = document.getElementById('chat-back-btn');
     if (backBtn) backBtn.classList.remove('visible');
     document.body.classList.remove('chat-view-active');
-    
+
     var nameInput = document.getElementById('chat-contact-name');
     var subtitle = document.getElementById('chat-contact-subtitle');
     if (nameInput) nameInput.value = 'NEXO';
     if (subtitle) subtitle.textContent = '';
-    
+
     var blePanel = document.getElementById('ble-panel');
     var bleOverlay = document.getElementById('ble-overlay');
     if (blePanel) blePanel.classList.remove('active');
     if (bleOverlay) bleOverlay.classList.remove('active');
-    
+
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }));
     } catch(e) {}
-    
+
     if (window.NEXO.app) {
       window.NEXO.app.activeContact = null;
     }
