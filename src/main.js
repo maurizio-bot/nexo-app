@@ -325,7 +325,7 @@ try {
 if (document.getElementById('nexo-perm-overlay')) return;
 var overlay = document.createElement('div');
 overlay.id = 'nexo-perm-overlay';
-overlay.innerHTML = <div class="perm-overlay-content"> <h2>🔐 Permisos BLE Requeridos</h2> <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p> <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p> <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button> <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button> </div>;
+overlay.innerHTML = <div class="perm-overlay-content"> <h2>Permisos BLE Requeridos</h2> <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicación P2P.</p> <p class="perm-sub">Si ya los concediste en Ajustes, la app continuará automáticamente.</p> <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button> <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button> </div>;
 document.body.appendChild(overlay);
 var style = document.createElement('style');
 style.id = 'perm-overlay-styles';
@@ -1068,11 +1068,8 @@ console.warn('[MAIN] _doChatBack error:', e);
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (module && module.hot) module.hot.accept();
 /*
-Firmas de modificaciones:
- * Adición de chat-view-active
- * Adición de FAB botón y lógica BLE
- * Corrección de path de logo
- * Implementación de Swipe Back con animación
- * Registro inmediato de attachment handlers
- * Renderizado local de attachments y soporte de imágenes
-   */
+ * Focos de Interés:
+ *    1. Mantenimiento del flujo de inicialización (DOM, BLE, Config).
+ *    2. Estabilidad del renderizado de mensajes e interfaces (Vault, Chat).
+ *    3. Gestión de estados de conexión y persistencia.
+     */
