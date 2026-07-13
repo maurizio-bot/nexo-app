@@ -9,6 +9,7 @@
  * FIX v10.3: Quitar toasts grises de attachment handlers
  * FIX v10.4: Camera preview overlay para foto/video con controles propios
  * FIX v10.5: Galeria con input[type=file] nativo (foto + video)
+ * FIX v10.6: Video abre directamente en modo video (sin crash)
  * Build #1605+ compatible. NO toca nativo.
    */
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -323,13 +324,13 @@ input.click();
 setTimeout(function() { input.remove(); }, 1000);
 }
 async function _handleVideo() {
-_handleCamera();
-setTimeout(function() {
+_closeAttachMenu();
 _cameraPreviewMode = 'video';
+_cameraPreviewRecording = false;
+_cameraPreviewVideoChunks = [];
+_showCameraPreviewOverlay();
 _updateCameraPreviewUI();
-_stopCameraPreview();
 _startCameraPreview();
-}, 300);
 }
 function _handleFile() {
 _closeAttachMenu();
