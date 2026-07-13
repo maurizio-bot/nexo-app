@@ -247,7 +247,8 @@ Consolidado: inline + main.css + ble_styles
    }
    /* FIX: padding reducido para attachments (imagen/video) */
    .message:has(.msg-content img),
-   .message:has(.msg-content video) {
+   .message:has(.msg-content video),
+   .message:has(.msg-content .video-attachment) {
    padding: 3px 3px 6px 3px;
    }
    .msg-meta {
