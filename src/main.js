@@ -7,6 +7,8 @@
  * FIX v10.1: Attachment handlers registrados inmediatamente en DOMContentLoaded
  * FIX v10.2: _sendAttachment renderiza localmente + _renderMessage soporta imagenes
  * FIX v10.3: Quitar toasts grises de attachment handlers
+ * FIX v10.4: Camera preview overlay para foto/video con controles propios
+ * FIX v10.5: Galeria con input[type=file] nativo (foto + video)
  * Build #1605+ compatible. NO toca nativo.
    */
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -45,6 +47,11 @@ console.warn('[MAIN] Safety timeout error:', e);
 var _mediaRecorder = null;
 var _audioChunks = [];
 var _isRecording = false;
+// === CAMERA PREVIEW OVERLAY STATE ===
+var _cameraPreviewMode = 'photo';
+var _cameraPreviewRecording = false;
+var _cameraPreviewMediaRecorder = null;
+var _cameraPreviewVideoChunks = [];
 function _getAttachmentPlugins() {
 var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
 return {
@@ -110,64 +117,219 @@ function _closeAttachMenu() {
 var menu = document.getElementById('attach-menu');
 if (menu) menu.classList.add('hidden');
 }
+// === CAMERA PREVIEW OVERLAY FUNCTIONS ===
+function _showCameraPreviewOverlay() {
+var overlay = document.getElementById('camera-preview-overlay');
+if (!overlay) return;
+overlay.classList.remove('hidden');
+_cameraPreviewMode = 'photo';
+_cameraPreviewRecording = false;
+_cameraPreviewVideoChunks = [];
+_updateCameraPreviewUI();
+}
+function _hideCameraPreviewOverlay() {
+var overlay = document.getElementById('camera-preview-overlay');
+if (overlay) overlay.classList.add('hidden');
+_stopCameraPreview();
+}
+function _updateCameraPreviewUI() {
+var captureBtn = document.getElementById('camera-btn-capture');
+var status = document.getElementById('camera-preview-status');
+var modeBtn = document.getElementById('camera-btn-mode');
+if (!captureBtn) return;
+if (_cameraPreviewMode === 'video') {
+captureBtn.classList.add('recording');
+if (status) status.textContent = _cameraPreviewRecording ? 'Grabando... toca para detener' : 'Toca para grabar video';
+if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+} else {
+captureBtn.classList.remove('recording');
+if (status) status.textContent = '';
+if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
+}
+}
+function _startCameraPreview() {
+var container = document.getElementById('camera-preview-container');
+if (!container) return;
+navigator.mediaDevices.getUserMedia({
+video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+audio: _cameraPreviewMode === 'video'
+}).then(function(stream) {
+var video = document.createElement('video');
+video.autoplay = true;
+video.playsInline = true;
+video.muted = true;
+video.style.width = '100%';
+video.style.height = '100%';
+video.style.objectFit = 'cover';
+video.srcObject = stream;
+container.innerHTML = '';
+container.appendChild(video);
+video.play();
+container.dataset.stream = 'active';
+container.dataset.streamObj = stream;
+if (_cameraPreviewMode === 'video') {
+_cameraPreviewMediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
+_cameraPreviewVideoChunks = [];
+_cameraPreviewMediaRecorder.ondataavailable = function(e) {
+if (e.data.size > 0) _cameraPreviewVideoChunks.push(e.data);
+};
+_cameraPreviewMediaRecorder.onstop = function() {
+var blob = new Blob(_cameraPreviewVideoChunks, { type: 'video/webm' });
+var reader = new FileReader();
+reader.onloadend = function() {
+var base64 = reader.result.split(',')[1];
+_sendAttachment('video', base64, { format: 'webm', duration: 0 });
+_hideCameraPreviewOverlay();
+};
+reader.readAsDataURL(blob);
+};
+}
+}).catch(function(err) {
+console.log('[CAMERA] Error getUserMedia:', err.message);
+_hideCameraPreviewOverlay();
+});
+}
+function _stopCameraPreview() {
+var container = document.getElementById('camera-preview-container');
+if (container) container.innerHTML = '';
+if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state !== 'inactive') {
+try { _cameraPreviewMediaRecorder.stop(); } catch (e) {}
+}
+_cameraPreviewRecording = false;
+_cameraPreviewVideoChunks = [];
+_cameraPreviewMediaRecorder = null;
+}
+function _flipCamera() {
+var container = document.getElementById('camera-preview-container');
+if (!container) return;
+var currentFacing = container.dataset.facing || 'environment';
+var newFacing = currentFacing === 'environment' ? 'user' : 'environment';
+container.dataset.facing = newFacing;
+_stopCameraPreview();
+navigator.mediaDevices.getUserMedia({
+video: { facingMode: newFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+audio: _cameraPreviewMode === 'video'
+}).then(function(stream) {
+var video = document.createElement('video');
+video.autoplay = true;
+video.playsInline = true;
+video.muted = true;
+video.style.width = '100%';
+video.style.height = '100%';
+video.style.objectFit = 'cover';
+video.srcObject = stream;
+container.innerHTML = '';
+container.appendChild(video);
+video.play();
+container.dataset.stream = 'active';
+if (_cameraPreviewMode === 'video') {
+_cameraPreviewMediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
+_cameraPreviewVideoChunks = [];
+_cameraPreviewMediaRecorder.ondataavailable = function(e) {
+if (e.data.size > 0) _cameraPreviewVideoChunks.push(e.data);
+};
+_cameraPreviewMediaRecorder.onstop = function() {
+var blob = new Blob(_cameraPreviewVideoChunks, { type: 'video/webm' });
+var reader = new FileReader();
+reader.onloadend = function() {
+var base64 = reader.result.split(',')[1];
+_sendAttachment('video', base64, { format: 'webm', duration: 0 });
+_hideCameraPreviewOverlay();
+};
+reader.readAsDataURL(blob);
+};
+}
+}).catch(function(err) {
+console.log('[CAMERA] Error flip:', err.message);
+});
+}
+function _toggleCameraMode() {
+_cameraPreviewMode = _cameraPreviewMode === 'photo' ? 'video' : 'photo';
+_updateCameraPreviewUI();
+_stopCameraPreview();
+_startCameraPreview();
+}
+function _capturePhoto() {
+var container = document.getElementById('camera-preview-container');
+if (!container) return;
+var video = container.querySelector('video');
+if (!video) return;
+var canvas = document.createElement('canvas');
+canvas.width = video.videoWidth || 1280;
+canvas.height = video.videoHeight || 720;
+var ctx = canvas.getContext('2d');
+ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+var base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+_sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
+_hideCameraPreviewOverlay();
+}
+function _handleCameraCapture() {
+if (_cameraPreviewMode === 'photo') {
+_capturePhoto();
+} else {
+if (!_cameraPreviewRecording) {
+if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'inactive') {
+_cameraPreviewMediaRecorder.start();
+_cameraPreviewRecording = true;
+_updateCameraPreviewUI();
+}
+} else {
+if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
+_cameraPreviewMediaRecorder.stop();
+_cameraPreviewRecording = false;
+}
+}
+}
+}
+function _bindCameraPreviewHandlers() {
+var closeBtn = document.getElementById('camera-btn-close');
+var flipBtn = document.getElementById('camera-btn-flip');
+var captureBtn = document.getElementById('camera-btn-capture');
+var modeBtn = document.getElementById('camera-btn-mode');
+if (closeBtn) closeBtn.addEventListener('click', _hideCameraPreviewOverlay);
+if (flipBtn) flipBtn.addEventListener('click', _flipCamera);
+if (captureBtn) captureBtn.addEventListener('click', _handleCameraCapture);
+if (modeBtn) modeBtn.addEventListener('click', _toggleCameraMode);
+}
+// === REEMPLAZO HANDLERS ORIGINALES ===
 async function _handleCamera() {
 _closeAttachMenu();
-var plugins = _getAttachmentPlugins();
-if (!plugins.Camera) { console.log('[ATTACH] Plugin Camera no disponible'); return; }
-try {
-var photo = await plugins.Camera.getPhoto({ quality: 85, allowEditing: false, resultType: 'base64', source: 'CAMERA', saveToGallery: false });
-if (photo.base64String) {
-_sendAttachment('image', photo.base64String, { format: photo.format || 'jpeg', width: photo.width, height: photo.height });
-console.log('[ATTACH] Foto preparada');
-}
-} catch (err) { console.log('[ATTACH:CAMERA]', err.message); }
+_showCameraPreviewOverlay();
+_startCameraPreview();
 }
 async function _handleGallery() {
 _closeAttachMenu();
-var plugins = _getAttachmentPlugins();
-if (!plugins.Camera) { console.log('[ATTACH] Plugin Camera no disponible'); return; }
-try {
-// Intentar pickImages (v5) primero, fallback a getPhoto
-var photos;
-if (plugins.Camera.pickImages) {
-photos = await plugins.Camera.pickImages({ quality: 85, limit: 1 });
-if (photos && photos.photos && photos.photos.length > 0) {
-var photo = photos.photos[0];
-// pickImages devuelve Uri, necesitamos leer con Filesystem
-if (plugins.Filesystem && photo.path) {
-var file = await plugins.Filesystem.readFile({ path: photo.path });
-_sendAttachment('image', file.data, { format: 'jpeg', width: photo.width, height: photo.height });
-console.log('[ATTACH] Foto preparada');
-}
-}
+var input = document.createElement('input');
+input.type = 'file';
+input.accept = 'image/*,video/*';
+input.style.display = 'none';
+input.onchange = function(e) {
+var file = e.target.files[0];
+if (!file) return;
+var isVideo = file.type.indexOf('video') === 0;
+var reader = new FileReader();
+reader.onload = function(evt) {
+var base64 = evt.target.result.split(',')[1];
+if (isVideo) {
+_sendAttachment('video', base64, { name: file.name, size: file.size, type: file.type });
 } else {
-// Fallback a getPhoto con PHOTOS
-var photo = await plugins.Camera.getPhoto({ quality: 85, allowEditing: false, resultType: 'base64', source: 'PHOTOS', saveToGallery: false });
-if (photo.base64String) {
-_sendAttachment('image', photo.base64String, { format: photo.format || 'jpeg', width: photo.width, height: photo.height });
-console.log('[ATTACH] Foto preparada');
+_sendAttachment('image', base64, { name: file.name, size: file.size, type: file.type, format: file.type.split('/')[1] || 'jpeg' });
 }
-}
-} catch (err) { console.log('[ATTACH:GALLERY]', err.message); }
+};
+reader.readAsDataURL(file);
+};
+document.body.appendChild(input);
+input.click();
+setTimeout(function() { input.remove(); }, 1000);
 }
 async function _handleVideo() {
-_closeAttachMenu();
-var plugins = _getAttachmentPlugins();
-if (!plugins.Camera) { console.log('[ATTACH] Plugin Camera no disponible'); return; }
-try {
-// Usar CAMERA directo para evitar letrero blanco de prompt
-var video = await plugins.Camera.getPhoto({ quality: 80, allowEditing: false, resultType: 'uri', source: 'CAMERA', saveToGallery: false });
-if (video.path || video.webPath) {
-var uri = video.path || video.webPath;
-if (plugins.Filesystem) {
-var file = await plugins.Filesystem.readFile({ path: uri });
-_sendAttachment('video', file.data, { format: 'mp4', uri: uri });
-} else {
-_sendAttachment('video', uri, { format: 'mp4', uri: uri });
-}
-console.log('[ATTACH] Video preparado');
-}
-} catch (err) { console.log('[ATTACH:VIDEO]', err.message); }
+_handleCamera();
+setTimeout(function() {
+_cameraPreviewMode = 'video';
+_updateCameraPreviewUI();
+_stopCameraPreview();
+_startCameraPreview();
+}, 300);
 }
 function _handleFile() {
 _closeAttachMenu();
@@ -235,6 +397,7 @@ var micBtn = document.getElementById('send-btn');
 if (micBtn) micBtn.style.color = recording ? '#FF3B30' : '';
 }
 function _bindAttachmentHandlers() {
+_bindCameraPreviewHandlers();
 var attachBtn = document.getElementById('attach-btn');
 var sendBtn = document.getElementById('send-btn');
 var menuItems = document.querySelectorAll('.attach-menu-item');
