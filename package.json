@@ -31,5 +31,42 @@
     "style-loader": "^3.3.4",
     "webpack": "^5.90.0",
     "webpack-cli": "^5.1.4"
+  },
+  {
+  "name": "nexo-v9",
+  "version": "9.0.0",
+  "description": "Arquitectura Soberana",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "build": "npm run build:web && npm run build:android",
+    "build:web": "webpack --mode production",
+    "build:android": "capacitor sync android && cd android && ./gradlew assembleDebug",
+    "dev": "webpack serve --mode development",
+    "sync": "capacitor sync",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@capacitor-community/camera-preview": "^6.0.0",
+    "@capacitor/android": "^5.0.0",
+    "@capacitor/camera": "^5.0.10",
+    "@capacitor/core": "^5.0.0",
+    "@capacitor/filesystem": "^5.1.4",
+    "@capacitor/geolocation": "^5.0.6",
+    "nexo-ble": "file:./plugins/nexo-ble"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^5.7.8",
+    "ajv": "^6.12.6",
+    "copy-webpack-plugin": "^11.0.0",
+    "css-loader": "^6.10.0",
+    "html-webpack-plugin": "^5.6.0",
+    "minimatch": "^10.2.5",
+    "sass-loader": "^13.3.0",
+    "style-loader": "^3.3.4",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.4"
   }
+}
+
 }
