@@ -126,17 +126,30 @@ function _closeAttachMenu() {
   if (menu) menu.classList.add('hidden');
 }
 
-async function _handlePhoto() {
+async function _handleCamera() {
   _closeAttachMenu();
   var plugins = _getAttachmentPlugins();
   if (!plugins.Camera) { _showAttachmentToast('Plugin Camera no disponible'); return; }
   try {
-    var photo = await plugins.Camera.getPhoto({ quality: 85, allowEditing: false, resultType: 'base64', source: 'prompt', saveToGallery: false });
+    var photo = await plugins.Camera.getPhoto({ quality: 85, allowEditing: false, resultType: 'base64', source: 'CAMERA', saveToGallery: false });
     if (photo.base64String) {
       _sendAttachment('image', photo.base64String, { format: photo.format || 'jpeg', width: photo.width, height: photo.height });
       _showAttachmentToast('Foto preparada');
     }
-  } catch (err) { console.log('[ATTACH:PHOTO]', err.message); }
+  } catch (err) { console.log('[ATTACH:CAMERA]', err.message); }
+}
+
+async function _handleGallery() {
+  _closeAttachMenu();
+  var plugins = _getAttachmentPlugins();
+  if (!plugins.Camera) { _showAttachmentToast('Plugin Camera no disponible'); return; }
+  try {
+    var photo = await plugins.Camera.getPhoto({ quality: 85, allowEditing: false, resultType: 'base64', source: 'PHOTOS', saveToGallery: false });
+    if (photo.base64String) {
+      _sendAttachment('image', photo.base64String, { format: photo.format || 'jpeg', width: photo.width, height: photo.height });
+      _showAttachmentToast('Foto preparada');
+    }
+  } catch (err) { console.log('[ATTACH:GALLERY]', err.message); }
 }
 
 async function _handleVideo() {
@@ -246,7 +259,8 @@ function _bindAttachmentHandlers() {
       e.preventDefault();
       e.stopPropagation();
       var type = item.getAttribute('data-type');
-      if (type === 'photo') _handlePhoto();
+      if (type === 'camera') _handleCamera();
+      else if (type === 'gallery') _handleGallery();
       else if (type === 'video') _handleVideo();
       else if (type === 'file') _handleFile();
       else if (type === 'location') _handleLocation();
