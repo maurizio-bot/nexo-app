@@ -260,6 +260,17 @@ Consolidado: inline + main.css + ble_styles
    .msg-status.status-sent { color: #6b7280; }
    .msg-status.status-delivered { color: #00c8ff; }
    .msg-status.status-read { color: #a855f7; }
+   /* FIX v10.2: Imagenes en mensajes */
+   .msg-content img {
+   max-width: 220px;
+   max-height: 280px;
+   border-radius: 12px;
+   display: block;
+   object-fit: cover;
+   }
+   .msg-content img[src=""] {
+   display: none;
+   }
    /* System msg + P2P badge */
    .system-msg {
    text-align: center;
@@ -879,173 +890,149 @@ Consolidado: inline + main.css + ble_styles
    body.chat-swipe-transition #contacts-view {
    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
    }
-
 /* ============================================
 INPUT BAR v2 — Attach + Toggle Send/Mic
 ============================================ */
-
 /* Botón attach (+) */
 .input-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border: none;
-  padding: 0;
+width: 36px;
+height: 36px;
+border-radius: 50%;
+display: flex;
+align-items: center;
+justify-content: center;
+flex-shrink: 0;
+cursor: pointer;
+transition: all 0.15s ease;
+border: none;
+padding: 0;
 }
-
 .input-btn:active {
-  transform: scale(0.92);
+transform: scale(0.92);
 }
-
 .attach-btn {
-  background: #1a1a1a;
-  border: 1px solid #222;
-  color: #666;
+background: #1a1a1a;
+border: 1px solid #222;
+color: #666;
 }
-
 .attach-btn.active {
-  color: #00c8ff;
-  border-color: #00c8ff44;
-  background: #00c8ff11;
+color: #00c8ff;
+border-color: #00c8ff44;
+background: #00c8ff11;
 }
-
 .attach-btn svg {
-  width: 18px;
-  height: 18px;
-  fill: currentColor;
+width: 18px;
+height: 18px;
+fill: currentColor;
 }
-
 /* Wrapper del textarea */
 .input-wrapper {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
+flex: 1;
+min-width: 0;
+display: flex;
+align-items: center;
 }
-
 /* Textarea ajustada */
 #message-input {
-  width: 100%;
-  background: #1a1a1a;
-  border-radius: 22px;
-  border: 1px solid #222;
-  padding: 10px 14px;
-  color: #fff;
-  font-size: 14px;
-  outline: none;
-  min-height: 40px;
-  max-height: 120px;
-  resize: none;
-  overflow-y: auto;
-  field-sizing: content;
-  line-height: 1.4;
-  font-family: inherit;
+width: 100%;
+background: #1a1a1a;
+border-radius: 22px;
+border: 1px solid #222;
+padding: 10px 14px;
+color: #fff;
+font-size: 14px;
+outline: none;
+min-height: 40px;
+max-height: 120px;
+resize: none;
+overflow-y: auto;
+field-sizing: content;
+line-height: 1.4;
+font-family: inherit;
 }
-
 #message-input::placeholder {
-  color: #444;
+color: #444;
 }
-
 /* Send / Mic toggle */
 .send-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #00c8ff, #a855f7);
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: all 0.2s ease;
+width: 38px;
+height: 38px;
+border-radius: 50%;
+background: linear-gradient(135deg, #00c8ff, #a855f7);
+border: none;
+display: flex;
+align-items: center;
+justify-content: center;
+flex-shrink: 0;
+cursor: pointer;
+transition: all 0.2s ease;
 }
-
 .send-btn.mic-mode {
-  background: #1a1a1a;
-  border: 1px solid #222;
+background: #1a1a1a;
+border: 1px solid #222;
 }
-
 .send-btn.mic-mode .send-icon {
-  display: none;
+display: none;
 }
-
 .send-btn.mic-mode .mic-icon {
-  display: block;
+display: block;
 }
-
 .send-btn:not(.mic-mode) .send-icon {
-  display: block;
+display: block;
 }
-
 .send-btn:not(.mic-mode) .mic-icon {
-  display: none;
+display: none;
 }
-
 .send-btn svg {
-  flex-shrink: 0;
+flex-shrink: 0;
 }
-
 /* Attach Menu desplegable */
 .attach-menu {
-  position: fixed;
-  bottom: 70px;
-  left: 12px;
-  background: #1a1a1a;
-  border: 1px solid #222;
-  border-radius: 16px;
-  padding: 8px 0;
-  min-width: 180px;
-  z-index: 200;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-  opacity: 0;
-  transform: translateY(10px) scale(0.95);
-  pointer-events: none;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+position: fixed;
+bottom: 70px;
+left: 12px;
+background: #1a1a1a;
+border: 1px solid #222;
+border-radius: 16px;
+padding: 8px 0;
+min-width: 180px;
+z-index: 200;
+box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+opacity: 0;
+transform: translateY(10px) scale(0.95);
+pointer-events: none;
+transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
-
 .attach-menu.visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
+opacity: 1;
+transform: translateY(0) scale(1);
+pointer-events: auto;
 }
-
 .attach-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  color: #fff;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.15s;
+display: flex;
+align-items: center;
+gap: 12px;
+padding: 12px 16px;
+color: #fff;
+font-size: 14px;
+cursor: pointer;
+transition: background 0.15s;
 }
-
 .attach-menu-item:active {
-  background: rgba(0,200,255,0.1);
+background: rgba(0,200,255,0.1);
 }
-
 .attach-menu-item svg {
-  flex-shrink: 0;
+flex-shrink: 0;
 }
-
 /* Divider entre items */
 .attach-menu-item:not(:last-child) {
-  border-bottom: 1px solid #222;
+border-bottom: 1px solid #222;
 }
-
 /* Ocultar menú */
 .attach-menu.hidden {
-  display: none !important;
+display: none !important;
 }
-
 /* FIX: asegurar que input-area siga oculto en principal y visible en chat */
 body.chat-view-active #input-area {
-  display: flex !important;
+display: flex !important;
 }
