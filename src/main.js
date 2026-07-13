@@ -14,6 +14,7 @@
  * FIX v10.8: facingMode sin 'exact' para evitar crash en selfie
  * FIX v10.9: Video overlay con boton play visible + playsInline true
  * FIX v10.10: Burbuja fina para archivos en CSS (regla :has)
+ * FIX v10.11: Video preview sin audio constraint (fix Permission denied), burbujas video/archivo con borde fino igual que foto, fullscreen click en archivo tipo imagen/video
  * Build #1605+ compatible. NO toca nativo.
    */
    import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -214,10 +215,11 @@
    var container = document.getElementById('camera-preview-container');
    if (!container) return;
    var facing = container.dataset.facing || 'environment';
-   // FIX v10.8: sin 'exact' para evitar crash en dispositivos que no soportan facingMode exact
+   // FIX v10.11: audio: false para evitar Permission denied en video preview
+   // El audio se captura via MediaRecorder cuando empieza la grabacion
    var constraints = {
    video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
-   audio: _cameraPreviewMode === 'video'
+   audio: false
    };
    navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
    _cameraActiveStream = stream;
@@ -271,10 +273,10 @@
    var newFacing = currentFacing === 'environment' ? 'user' : 'environment';
    container.dataset.facing = newFacing;
    _stopCameraPreview();
-   // FIX v10.8: sin 'exact'
+   // FIX v10.11: audio: false para evitar Permission denied
    var constraints = {
    video: { facingMode: newFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
-   audio: _cameraPreviewMode === 'video'
+   audio: false
    };
    navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
    _cameraActiveStream = stream;
@@ -970,6 +972,9 @@
    div.dataset.msgId = msgId;
    var contentDiv = document.createElement('div');
    contentDiv.className = 'msg-content';
+   // FIX v10.11: border-radius en contentDiv para que el gradiente de la burbuja envuelva el contenido fino
+   contentDiv.style.borderRadius = '12px';
+   contentDiv.style.overflow = 'hidden';
    if (attachment) {
    // Renderizar attachment
    if (attachment.type === 'image') {
@@ -977,7 +982,6 @@
    img.src = 'data:image/' + (attachment.meta.format || 'jpeg') + ';base64,' + attachment.payload;
    img.style.maxWidth = '220px';
    img.style.maxHeight = '280px';
-   img.style.borderRadius = '12px';
    img.style.display = 'block';
    img.style.cursor = 'pointer';
    img.dataset.fullscreenSrc = img.src;
@@ -992,13 +996,13 @@
    };
    contentDiv.appendChild(img);
    } else if (attachment.type === 'video') {
-   // FIX v10.9: Video con overlay de play visible
+   // FIX v10.11: Video con borde fino igual que foto
    var videoWrapper = document.createElement('div');
    videoWrapper.className = 'video-attachment';
-   videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;border-radius:12px;overflow:hidden;background:#000;cursor:pointer;';
+   videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
    var video = document.createElement('video');
    video.src = 'data:video/' + (attachment.meta.format || 'webm') + ';base64,' + attachment.payload;
-   video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;border-radius:12px;';
+   video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
    video.playsInline = true;
    video.muted = true;
    video.preload = 'metadata';
@@ -1016,7 +1020,45 @@
    };
    contentDiv.appendChild(videoWrapper);
    } else if (attachment.type === 'file') {
+   // FIX v10.11: Archivo con wrapper consistente y fullscreen si es imagen/video
+   var fileType = (attachment.meta.type || '').toLowerCase();
+   var isImageFile = fileType.indexOf('image') === 0;
+   var isVideoFile = fileType.indexOf('video') === 0;
+   if (isImageFile || isVideoFile) {
+   var mediaWrapper = document.createElement('div');
+   mediaWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
+   if (isImageFile) {
+   var fimg = document.createElement('img');
+   fimg.src = 'data:' + attachment.meta.type + ';base64,' + attachment.payload;
+   fimg.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
+   fimg.dataset.fullscreenSrc = fimg.src;
+   fimg.dataset.fullscreenType = 'image';
+   mediaWrapper.appendChild(fimg);
+   } else {
+   var fvideo = document.createElement('video');
+   fvideo.src = 'data:' + attachment.meta.type + ';base64,' + attachment.payload;
+   fvideo.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
+   fvideo.playsInline = true;
+   fvideo.muted = true;
+   fvideo.preload = 'metadata';
+   fvideo.dataset.fullscreenSrc = fvideo.src;
+   fvideo.dataset.fullscreenType = 'video';
+   var fplayOverlay = document.createElement('div');
+   fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
+   fplayOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
+   mediaWrapper.appendChild(fvideo);
+   mediaWrapper.appendChild(fplayOverlay);
+   }
+   mediaWrapper.onclick = function(e) {
+   e.stopPropagation();
+   var src = isImageFile ? fimg.dataset.fullscreenSrc : fvideo.dataset.fullscreenSrc;
+   var type = isImageFile ? 'image' : 'video';
+   _openFullscreenMedia(src, type);
+   };
+   contentDiv.appendChild(mediaWrapper);
+   } else {
    contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">&#128206; <b>Archivo</b><br><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
+   }
    } else if (attachment.type === 'location') {
    var loc = attachment.meta;
    contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">&#128205; <b>Ubicacion</b><br><span style="font-size:12px;opacity:0.7;">' + (loc.lat ? loc.lat.toFixed(4) : '?') + ', ' + (loc.lng ? loc.lng.toFixed(4) : '?') + '</span></div>';
