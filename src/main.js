@@ -1511,7 +1511,6 @@ document.addEventListener('touchcancel', onTouchCancel, { passive: true });
 console.warn('[MAIN] _setupSwipeBack error:', e);
 }
 }
-}
 function _doChatBack() {
 try {
 var backBtn = document.getElementById('chat-back-btn');
