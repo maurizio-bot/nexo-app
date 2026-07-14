@@ -1,3 +1,4 @@
+
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
  * FIX v10.26: Camera selfie facingMode ideal + fallback
@@ -1288,8 +1289,8 @@ var mapUrl = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',
 var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
 var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
 var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
-locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display='none'">';
-locHtml += '<div style="padding:8px 12px;">📍 <b>Ubicacion</b><br><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
+locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display=none">';
+locHtml += '<div style="padding:8px 12px;"> <b>Ubicacion</b><br><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
 locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
 locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
 locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
