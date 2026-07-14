@@ -33,7 +33,7 @@ echo "=== CONTENIDO DE dist/ ==="
 ls -la dist/
 echo "=== BUSCANDO main.js ==="
 find dist/ -name "*.js" -type f
-- name: Pre-configure AndroidX (Pre-Sync)
+- name: Pre-configure AndroidX
 run: |
 mkdir -p android
 rm -f android/gradle.properties
@@ -46,13 +46,13 @@ run: npx cap sync android
 - name: Verify web assets copied
 run: |
 echo "=== CONTENIDO DE assets/public/ ==="
-ls -la android/app/src/main/assets/public/ || echo "public/ no existe"
-echo "=== BUSCANDO JS en assets ==="
-find android/app/src/main/assets/public/ -name "*.js" -type f 2>/dev/null || echo "No hay archivos JS"
-- name: Emergency AndroidX Override (Post-Sync)
+ls -la android/app/src/main/assets/public/ || echo "public no existe"
+echo "=== BUSCANDO JS ==="
+find android/app/src/main/assets/public/ -name "*.js" -type f 2>/dev/null || echo "No JS files"
+- name: Emergency AndroidX Override
 working-directory: ./android
 env:
-JAVA_HOME: ${{ env.JAVA_HOME }}
+JAVA_HOME: {{ env.JAVA_HOME }}
 run: |
 rm -f gradle.properties
 echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" > gradle.properties
@@ -68,7 +68,7 @@ run: ./gradlew clean assembleDebug --stacktrace
 if: success()
 uses: softprops/action-gh-release@v1
 with:
-tag_name: nightly-{{ github.run_number }}-{{ github.sha }}
+tag_name: nightly-${{ github.run_number }}-{{ github.sha }}
 name: "NEXO Nightly Build #${{ github.run_number }}"
 prerelease: true
 files: android/app/build/outputs/apk/debug/app-debug.apk
