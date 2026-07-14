@@ -35,6 +35,12 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     
+    <!-- FIX VIDEO: Permisos de almacenamiento para grabar video persistente -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" android:minSdkVersion="33" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" android:minSdkVersion="33" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
@@ -70,6 +76,17 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- FIX VIDEO: Photo Picker service para compatibilidad galería en Android 11+ -->
+        <service android:name="com.google.android.gms.metadata.ModuleDependencies"
+            android:enabled="false"
+            android:exported="false"
+            tools:ignore="MissingClass">
+            <intent-filter>
+                <action android:name="com.google.android.gms.metadata.MODULE_DEPENDENCIES" />
+            </intent-filter>
+            <meta-data android:name="photopicker_activity:0:required" android:value="" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"
