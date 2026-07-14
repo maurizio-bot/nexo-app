@@ -15,14 +15,13 @@
     <!-- FOREGROUND SERVICE (Android 14 requiere esto explícito) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     
-    <!-- Ubicación: solo para compatibilidad SDK ≤ 30, neverForLocation en BLE_SCAN arriba evita necesidad en Android 12+ -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" 
-        android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="30" />
+    <!-- UBICACIÓN: FINE sin maxSdkVersion (requerido por Capacitor Geolocation en Android 12+) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     
-    <!-- Red para canal WiFi de Nearby -->
+    <!-- RED para canal WiFi de Nearby -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -34,6 +33,7 @@
     <!-- CÁMARA Y AUDIO PARA ATTACHMENTS -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     
     <!-- Almacenamiento para grabar video persistente -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
