@@ -1,8 +1,10 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
- * FIX v10.12: Video graba 0s — requestData() antes de stop() + duracion real
- * FIX v10.13: Galeria cierra overlay de camara antes de abrir input file
- * FIX v10.14: Comentarios limpios, solo ultimos 3 fixes visibles
+ * FIX v10.15: Video graba con audio, requestData+stop robusto
+ * FIX v10.16: Galeria cierra overlay completo, muestra chat
+ * FIX v10.17: Ubicacion fallback sin plugin, sin alert
+ * FIX v10.18: Voz graba con timer visible, sin depender de mic-mode
+ * FIX v10.19: module.hot con typeof check
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -171,7 +173,7 @@ if (status) status.textContent = '';
 if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
 }
 }
-// FIX v10.12: requestData() antes de stop() + duracion real
+// FIX v10.15: Video con audio, setup robusto
 function _setupVideoRecorder(stream) {
 var mimeType = 'video/webm;codecs=vp9,opus';
 if (!MediaRecorder.isTypeSupported(mimeType)) {
@@ -194,7 +196,8 @@ var duration = 0;
 if (_cameraVideoStartTime > 0) {
 duration = Math.round((Date.now() - _cameraVideoStartTime) / 1000);
 }
-var blob = new Blob(_cameraPreviewVideoChunks, { type: mimeType.split(';')[0] || 'video/webm' });
+var blobType = mimeType.split(';')[0] || 'video/webm';
+var blob = new Blob(_cameraPreviewVideoChunks, { type: blobType });
 if (blob.size === 0) {
 console.log('[CAMERA] Video blob vacio, grabacion fallo');
 var status = document.getElementById('camera-preview-status');
@@ -204,7 +207,7 @@ return;
 var reader = new FileReader();
 reader.onloadend = function() {
 var base64 = reader.result.split(',')[1];
-_sendAttachment('video', base64, { format: (mimeType.split(';')[0] || 'video/webm').split('/')[1] || 'webm', duration: duration });
+_sendAttachment('video', base64, { format: blobType.split('/')[1] || 'webm', duration: duration });
 _hideCameraPreviewOverlay();
 };
 reader.readAsDataURL(blob);
@@ -220,9 +223,10 @@ function _startCameraPreview() {
 var container = document.getElementById('camera-preview-container');
 if (!container) return;
 var facing = container.dataset.facing || 'environment';
+var needAudio = _cameraPreviewMode === 'video';
 var constraints = {
 video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
-audio: false
+audio: needAudio
 };
 navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
 _cameraActiveStream = stream;
@@ -277,9 +281,10 @@ var currentFacing = container.dataset.facing || 'environment';
 var newFacing = currentFacing === 'environment' ? 'user' : 'environment';
 container.dataset.facing = newFacing;
 _stopCameraPreview();
+var needAudio = _cameraPreviewMode === 'video';
 var constraints = {
 video: { facingMode: newFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
-audio: false
+audio: needAudio
 };
 navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
 _cameraActiveStream = stream;
@@ -324,7 +329,7 @@ var base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
 _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
 _hideCameraPreviewOverlay();
 }
-// FIX v10.12: requestData() + startTime para duracion real
+// FIX v10.15: Video graba con audio, stop robusto con requestData
 function _handleCameraCapture() {
 if (_cameraPreviewMode === 'photo') {
 _capturePhoto();
@@ -333,17 +338,30 @@ if (!_cameraPreviewRecording) {
 if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'inactive') {
 _cameraPreviewVideoChunks = [];
 _cameraVideoStartTime = Date.now();
+try {
 _cameraPreviewMediaRecorder.start(100);
 _cameraPreviewRecording = true;
 _updateCameraPreviewUI();
+console.log('[CAMERA] Grabacion iniciada');
+} catch (startErr) {
+console.log('[CAMERA] Error al iniciar grabacion:', startErr.message);
+_cameraPreviewRecording = false;
+}
 }
 } else {
 if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
+try {
 _cameraPreviewMediaRecorder.requestData();
+} catch (e) {}
 setTimeout(function() {
-try { _cameraPreviewMediaRecorder.stop(); } catch(e) {}
-}, 500);
+try {
+if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
+_cameraPreviewMediaRecorder.stop();
+}
+} catch(e) {}
 _cameraPreviewRecording = false;
+_updateCameraPreviewUI();
+}, 600);
 }
 }
 }
@@ -358,7 +376,7 @@ if (flipBtn) flipBtn.addEventListener('click', _flipCamera);
 if (captureBtn) captureBtn.addEventListener('click', _handleCameraCapture);
 if (modeBtn) modeBtn.addEventListener('click', _toggleCameraMode);
 }
-// FIX v10.13: Galeria cierra overlay de camara antes de abrir input
+// FIX v10.16: Galeria cierra overlay y muestra chat
 async function _handleCamera() {
 _closeAttachMenu();
 _showCameraPreviewOverlay();
@@ -421,34 +439,34 @@ document.body.appendChild(input);
 input.click();
 setTimeout(function() { input.remove(); }, 1000);
 }
+// FIX v10.17: Ubicacion directa sin plugin, sin alert de error
 async function _handleLocation() {
 _closeAttachMenu();
+// Intentar plugin Capacitor primero
 var plugins = _getAttachmentPlugins();
-if (!plugins.Geolocation) {
-console.log('[ATTACH] Plugin Geolocation no disponible, intentando fallback web');
-_handleLocationFallback();
-return;
-}
+if (plugins.Geolocation) {
 try {
 var perm = await plugins.Geolocation.checkPermissions();
 if (perm.location !== 'granted') {
 var req = await plugins.Geolocation.requestPermissions();
 if (req.location !== 'granted') {
-console.log('[ATTACH] Permiso de ubicacion denegado');
-_handleLocationFallback();
-return;
+throw new Error('Permiso denegado');
 }
 }
 var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 });
-var lat = pos.coords.latitude;
-var lng = pos.coords.longitude;
-var payload = JSON.stringify({ lat: lat, lng: lng, accuracy: pos.coords.accuracy });
-_sendAttachment('location', payload, { lat: lat, lng: lng, accuracy: pos.coords.accuracy });
-console.log('[ATTACH] Ubicacion enviada');
-} catch (err) {
-console.log('[ATTACH:LOCATION] Error plugin:', err.message);
+_sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+return;
+} catch (pluginErr) {
+console.log('[ATTACH:LOCATION] Plugin fallo:', pluginErr.message);
+}
+}
+// Fallback directo a navigator.geolocation
 _handleLocationFallback();
 }
+function _sendLocation(lat, lng, accuracy) {
+var payload = JSON.stringify({ lat: lat, lng: lng, accuracy: accuracy || 0 });
+_sendAttachment('location', payload, { lat: lat, lng: lng, accuracy: accuracy || 0 });
+console.log('[ATTACH] Ubicacion enviada');
 }
 function _handleLocationFallback() {
 try {
@@ -457,25 +475,28 @@ console.log('[ATTACH] Geolocation API no disponible');
 return;
 }
 navigator.geolocation.getCurrentPosition(function(pos) {
-var lat = pos.coords.latitude;
-var lng = pos.coords.longitude;
-var payload = JSON.stringify({ lat: lat, lng: lng, accuracy: pos.coords.accuracy });
-_sendAttachment('location', payload, { lat: lat, lng: lng, accuracy: pos.coords.accuracy });
-console.log('[ATTACH] Ubicacion enviada via fallback');
+_sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
 }, function(err) {
-console.log('[ATTACH:LOCATION] Fallback error:', err.message);
-}, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+console.log('[ATTACH:LOCATION] Fallback error:', err.code, err.message);
+}, { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 });
 } catch (e) {
 console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
 }
 }
+// FIX v10.18: Voz con timer visible, long-press en mic button
 async function _handleVoiceToggle() {
 if (!_isRecording) {
 try {
 var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-_mediaRecorder = new MediaRecorder(stream);
+_mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
 _audioChunks = [];
 _voiceStartTime = Date.now();
+// Mostrar timer
+var timerEl = document.getElementById('voice-timer');
+if (timerEl) {
+timerEl.style.display = 'block';
+timerEl.textContent = '00:00';
+}
 _voiceTimerInterval = setInterval(function() {
 var elapsed = Math.round((Date.now() - _voiceStartTime) / 1000);
 var timerEl = document.getElementById('voice-timer');
@@ -486,6 +507,8 @@ if (e.data && e.data.size > 0) _audioChunks.push(e.data);
 };
 _mediaRecorder.onstop = function() {
 if (_voiceTimerInterval) { clearInterval(_voiceTimerInterval); _voiceTimerInterval = null; }
+var timerEl = document.getElementById('voice-timer');
+if (timerEl) timerEl.style.display = 'none';
 var duration = 0;
 if (_voiceStartTime > 0) duration = Math.round((Date.now() - _voiceStartTime) / 1000);
 var blob = new Blob(_audioChunks, { type: 'audio/webm' });
@@ -497,26 +520,51 @@ var reader = new FileReader();
 reader.onloadend = function() {
 var base64 = reader.result.split(',')[1];
 _sendAttachment('audio', base64, { format: 'webm', duration: duration });
-console.log('[ATTACH] Audio enviado');
+console.log('[ATTACH] Audio enviado, duracion:', duration);
 };
 reader.readAsDataURL(blob);
 stream.getTracks().forEach(function(t) { t.stop(); });
 };
+_mediaRecorder.onerror = function(e) {
+console.log('[ATTACH:VOICE] MediaRecorder error:', e.message);
+_isRecording = false;
+_updateMicIcon(false);
+};
 _mediaRecorder.start(100);
 _isRecording = true;
 _updateMicIcon(true);
-console.log('[ATTACH] Grabando...');
-} catch (err) { console.log('[ATTACH:VOICE]', err.message); console.log('[ATTACH] Permiso de microfono denegado'); }
-} else {
-if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
+console.log('[ATTACH] Grabando voz...');
+} catch (err) {
+console.log('[ATTACH:VOICE] Error:', err.message);
 _isRecording = false;
 _updateMicIcon(false);
+}
+} else {
+if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+try { _mediaRecorder.stop(); } catch (e) {}
+}
+_isRecording = false;
+_updateMicIcon(false);
+if (_voiceTimerInterval) {
+clearInterval(_voiceTimerInterval);
+_voiceTimerInterval = null;
+}
+var timerEl = document.getElementById('voice-timer');
+if (timerEl) timerEl.style.display = 'none';
 }
 }
 function _updateMicIcon(recording) {
 var micBtn = document.getElementById('send-btn');
-if (micBtn) micBtn.style.color = recording ? '#FF3B30' : '';
+if (micBtn) {
+micBtn.style.color = recording ? '#FF3B30' : '';
+if (recording) {
+micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#FF3B30"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>';
+} else {
+micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>';
 }
+}
+}
+// FIX v10.18: Voz por long-press en boton de adjuntar (paperclip) + click en send para texto
 function _bindAttachmentHandlers() {
 _bindCameraPreviewHandlers();
 var attachBtn = document.getElementById('attach-btn');
@@ -528,6 +576,31 @@ attachBtn.addEventListener('click', function(e) {
 e.preventDefault();
 e.stopPropagation();
 _toggleAttachMenu();
+});
+// Long press para voz
+var longPressTimer = null;
+var isLongPress = false;
+attachBtn.addEventListener('touchstart', function(e) {
+isLongPress = false;
+longPressTimer = setTimeout(function() {
+isLongPress = true;
+attachBtn.classList.add('voice-active');
+_handleVoiceToggle();
+}, 800);
+});
+attachBtn.addEventListener('touchend', function(e) {
+clearTimeout(longPressTimer);
+if (isLongPress && _isRecording) {
+_handleVoiceToggle(); // detener
+attachBtn.classList.remove('voice-active');
+}
+});
+attachBtn.addEventListener('touchcancel', function(e) {
+clearTimeout(longPressTimer);
+if (_isRecording) {
+_handleVoiceToggle();
+attachBtn.classList.remove('voice-active');
+}
 });
 }
 menuItems.forEach(function(item) {
@@ -545,7 +618,18 @@ else if (type === 'location') _handleLocation();
 if (sendBtn) {
 sendBtn.addEventListener('click', function(e) {
 var text = input ? input.value.trim() : '';
-if (!text && sendBtn.classList.contains('mic-mode')) {
+if (text) {
+// Enviar texto
+e.preventDefault();
+e.stopPropagation();
+var contactId = _getCurrentContactId();
+if (contactId && window.NEXO.app && window.NEXO.app.sendMessage) {
+window.NEXO.app.sendMessage({ content: text });
+input.value = '';
+input.focus();
+}
+} else {
+// Si no hay texto, toggle voz (fallback)
 e.preventDefault();
 e.stopPropagation();
 _handleVoiceToggle();
@@ -779,12 +863,13 @@ var sent = await window.NEXO.app.sendMessage({ content: text });
 };
 btn.addEventListener('click', function(e) {
 var text = input.value.trim();
-if (!text && btn.classList.contains('mic-mode')) {
+if (text) {
+send();
+} else {
+// Sin texto: toggle voz
 e.preventDefault();
 e.stopPropagation();
 _handleVoiceToggle();
-} else {
-send();
 }
 });
 input.addEventListener('keypress', function(e) {
@@ -1453,4 +1538,5 @@ console.warn('[MAIN] _doChatBack error:', e);
 }
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
-if (module && module.hot) module.hot.accept();
+// FIX v10.19: typeof check para module.hot
+if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
