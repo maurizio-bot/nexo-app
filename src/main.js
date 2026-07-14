@@ -40,6 +40,8 @@ console.warn('[MAIN] Safety timeout error:', e);
 var _mediaRecorder = null;
 var _audioChunks = [];
 var _isRecording = false;
+var _voiceStartTime = 0;
+var _voiceTimerInterval = null;
 // Camera preview state
 var _cameraPreviewMode = 'photo';
 var _cameraPreviewRecording = false;
@@ -47,6 +49,11 @@ var _cameraPreviewMediaRecorder = null;
 var _cameraPreviewVideoChunks = [];
 var _cameraActiveStream = null;
 var _cameraVideoStartTime = 0;
+function _fmtTime(sec) {
+var m = Math.floor(sec / 60);
+var s = sec % 60;
+return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
 function _getAttachmentPlugins() {
 var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
 return {
@@ -419,8 +426,10 @@ var plugins = _getAttachmentPlugins();
 if (!plugins.Geolocation) { console.log('[ATTACH] Plugin Geolocation no disponible'); return; }
 try {
 var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
-var payload = JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
-_sendAttachment('location', payload, { lat: pos.coords.latitude, lng: pos.coords.longitude });
+var lat = pos.coords.latitude;
+var lng = pos.coords.longitude;
+var payload = JSON.stringify({ lat: lat, lng: lng, accuracy: pos.coords.accuracy });
+_sendAttachment('location', payload, { lat: lat, lng: lng, accuracy: pos.coords.accuracy });
 console.log('[ATTACH] Ubicacion enviada');
 } catch (err) { console.log('[ATTACH:LOCATION]', err.message); console.log('[ATTACH] No se pudo obtener ubicacion'); }
 }
@@ -430,13 +439,22 @@ try {
 var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 _mediaRecorder = new MediaRecorder(stream);
 _audioChunks = [];
+_voiceStartTime = Date.now();
+_voiceTimerInterval = setInterval(function() {
+var elapsed = Math.round((Date.now() - _voiceStartTime) / 1000);
+var timerEl = document.getElementById('voice-timer');
+if (timerEl) timerEl.textContent = _fmtTime(elapsed);
+}, 1000);
 _mediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) _audioChunks.push(e.data); };
 _mediaRecorder.onstop = function() {
+if (_voiceTimerInterval) { clearInterval(_voiceTimerInterval); _voiceTimerInterval = null; }
+var duration = 0;
+if (_voiceStartTime > 0) duration = Math.round((Date.now() - _voiceStartTime) / 1000);
 var blob = new Blob(_audioChunks, { type: 'audio/webm' });
 var reader = new FileReader();
 reader.onloadend = function() {
 var base64 = reader.result.split(',')[1];
-_sendAttachment('audio', base64, { format: 'webm', duration: 0 });
+_sendAttachment('audio', base64, { format: 'webm', duration: duration });
 console.log('[ATTACH] Audio enviado');
 };
 reader.readAsDataURL(blob);
@@ -1054,12 +1072,55 @@ contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);
 }
 } else if (attachment.type === 'location') {
 var loc = attachment.meta;
-contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">&#128205; <b>Ubicacion</b><br><span style="font-size:12px;opacity:0.7;">' + (loc.lat ? loc.lat.toFixed(4) : '?') + ', ' + (loc.lng ? loc.lng.toFixed(4) : '?') + '</span></div>';
+var lat = loc.lat || 0;
+var lng = loc.lng || 0;
+var mapUrl = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',' + lng + '&zoom=15&size=300x150&maptype=roadmap&markers=color:red%7C' + lat + ',' + lng;
+var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
+var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
+var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
+locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display=\'none\'">';
+locHtml += '<div style="padding:8px 12px;">&#128205; <b>Ubicacion</b><br><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
+locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
+locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
+locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
+locHtml += '</div></div>';
+contentDiv.innerHTML = locHtml;
 } else if (attachment.type === 'audio') {
-contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">&#127908; <b>Audio</b></div>';
-} else {
-contentDiv.textContent = msg.content || msg.text || '';
+var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
+var durStr = _fmtTime(dur);
+var audioId = 'audio_' + msgId;
+var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
+audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;">&#9654;</button>';
+audioHtml += '<div style="flex:1;">';
+audioHtml += '<div style="height:20px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;">';
+for (var w = 0; w < 20; w++) {
+var h = 4 + Math.random() * 14;
+audioHtml += '<div style="width:3px;height:' + h + 'px;background:#fff;border-radius:1px;flex-shrink:0;"></div>';
 }
+audioHtml += '</div>';
+audioHtml += '<div style="font-size:11px;color:#aaa;margin-top:2px;">' + durStr + '</div>';
+audioHtml += '</div></div>';
+contentDiv.innerHTML = audioHtml;
+(function(aid, payload, fmt) {
+var btn = document.getElementById(aid + '_play');
+if (!btn) return;
+var playing = false;
+var audioEl = null;
+btn.onclick = function(e) {
+e.stopPropagation();
+if (!playing) {
+audioEl = new Audio('data:audio/' + (fmt || 'webm') + ';base64,' + payload);
+audioEl.play().catch(function(){});
+btn.innerHTML = '&#9208;';
+playing = true;
+audioEl.onended = function() { btn.innerHTML = '&#9654;'; playing = false; };
+} else {
+if (audioEl) { audioEl.pause(); audioEl = null; }
+btn.innerHTML = '&#9654;';
+playing = false;
+}
+};
+})(audioId, attachment.payload, (attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm');
 } else {
 contentDiv.textContent = msg.content || msg.text || '';
 }
