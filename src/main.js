@@ -1,10 +1,13 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
- * FIX v10.15: Video graba con audio, requestData+stop robusto
- * FIX v10.16: Galeria cierra overlay completo, muestra chat
- * FIX v10.17: Ubicacion fallback sin plugin, sin alert
- * FIX v10.18: Voz graba con timer visible, sin depender de mic-mode
- * FIX v10.19: module.hot con typeof check
+ * FIX v10.26: Camera selfie facingMode ideal + fallback
+ * FIX v10.27: Video recorder robusto con delay + sin race condition
+ * FIX v10.28: Gallery input off-screen + cleanup
+ * FIX v10.29: Location plugin check robusto + fallback
+ * FIX v10.30: Voice timer dinámico + long-press fix
+ * FIX v10.31: Stop camera preview sin limpiar chunks prematuro
+ * FIX v10.32: Attach menu cerrar al tocar fuera
+ * FIX v10.33: MediaRecorder timeslice fallback
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -173,7 +176,7 @@ if (status) status.textContent = '';
 if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
 }
 }
-// FIX v10.15: Video con audio, setup robusto
+// FIX v10.27: Video recorder robusto con delay
 function _setupVideoRecorder(stream) {
 var mimeType = 'video/webm;codecs=vp9,opus';
 if (!MediaRecorder.isTypeSupported(mimeType)) {
@@ -192,6 +195,7 @@ _cameraPreviewMediaRecorder.ondataavailable = function(e) {
 if (e.data && e.data.size > 0) _cameraPreviewVideoChunks.push(e.data);
 };
 _cameraPreviewMediaRecorder.onstop = function() {
+setTimeout(function() {
 var duration = 0;
 if (_cameraVideoStartTime > 0) {
 duration = Math.round((Date.now() - _cameraVideoStartTime) / 1000);
@@ -211,24 +215,32 @@ _sendAttachment('video', base64, { format: blobType.split('/')[1] || 'webm', dur
 _hideCameraPreviewOverlay();
 };
 reader.readAsDataURL(blob);
+}, 400);
 };
 _cameraPreviewMediaRecorder.onerror = function(e) {
 console.log('[CAMERA] MediaRecorder error:', e.message);
+_cameraPreviewRecording = false;
+_updateCameraPreviewUI();
 };
 } catch (recErr) {
 console.log('[CAMERA] MediaRecorder init error:', recErr.message);
 }
 }
+// FIX v10.26: Camera preview con facingMode ideal + fallback
 function _startCameraPreview() {
 var container = document.getElementById('camera-preview-container');
 if (!container) return;
+var overlay = document.getElementById('camera-preview-overlay');
+if (overlay && overlay.classList.contains('hidden')) {
+overlay.classList.remove('hidden');
+}
 var facing = container.dataset.facing || 'environment';
 var needAudio = _cameraPreviewMode === 'video';
 var constraints = {
-video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
 audio: needAudio
 };
-navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+function _onStreamSuccess(stream) {
 _cameraActiveStream = stream;
 var video = document.createElement('video');
 video.autoplay = true;
@@ -245,13 +257,30 @@ container.dataset.stream = 'active';
 if (_cameraPreviewMode === 'video') {
 _setupVideoRecorder(stream);
 }
-}).catch(function(err) {
+}
+function _onStreamError(err) {
 console.log('[CAMERA] Error getUserMedia:', err.name, err.message);
+var fallbackConstraints = {
+video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+audio: needAudio
+};
+navigator.mediaDevices.getUserMedia(fallbackConstraints)
+.then(_onStreamSuccess)
+.catch(function(err2) {
+console.log('[CAMERA] Fallback error:', err2.name, err2.message);
 var status = document.getElementById('camera-preview-status');
-if (status) status.textContent = 'Error camara: ' + err.message;
+if (status) status.textContent = 'Error camara: ' + err2.message;
 });
 }
+navigator.mediaDevices.getUserMedia(constraints)
+.then(_onStreamSuccess)
+.catch(_onStreamError);
+}
+// FIX v10.31: Stop camera preview sin limpiar chunks prematuro
 function _stopCameraPreview() {
+if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
+try { _cameraPreviewMediaRecorder.stop(); } catch (e) {}
+}
 var container = document.getElementById('camera-preview-container');
 if (container) {
 var oldVideo = container.querySelector('video');
@@ -266,14 +295,11 @@ var tracks = _cameraActiveStream.getTracks();
 tracks.forEach(function(t) { t.stop(); });
 _cameraActiveStream = null;
 }
-if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state !== 'inactive') {
-try { _cameraPreviewMediaRecorder.stop(); } catch (e) {}
-}
 _cameraPreviewRecording = false;
-_cameraPreviewVideoChunks = [];
 _cameraPreviewMediaRecorder = null;
 _cameraVideoStartTime = 0;
 }
+// FIX v10.26: Flip camera con ideal + fallback + delay
 function _flipCamera() {
 var container = document.getElementById('camera-preview-container');
 if (!container) return;
@@ -283,10 +309,10 @@ container.dataset.facing = newFacing;
 _stopCameraPreview();
 var needAudio = _cameraPreviewMode === 'video';
 var constraints = {
-video: { facingMode: newFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+video: { facingMode: { ideal: newFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
 audio: needAudio
 };
-navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+function _onStreamSuccess(stream) {
 _cameraActiveStream = stream;
 var video = document.createElement('video');
 video.autoplay = true;
@@ -303,11 +329,26 @@ container.dataset.stream = 'active';
 if (_cameraPreviewMode === 'video') {
 _setupVideoRecorder(stream);
 }
-}).catch(function(err) {
-console.log('[CAMERA] Error flip:', err.name, err.message);
+}
+function _onStreamError(err) {
+console.log('[CAMERA] Error flip ideal:', err.name, err.message);
+var fallbackConstraints = {
+video: { facingMode: newFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+audio: needAudio
+};
+navigator.mediaDevices.getUserMedia(fallbackConstraints)
+.then(_onStreamSuccess)
+.catch(function(err2) {
+console.log('[CAMERA] Error flip fallback:', err2.name, err2.message);
 var status = document.getElementById('camera-preview-status');
-if (status) status.textContent = 'Error camara: ' + err.message;
+if (status) status.textContent = 'Error camara: ' + err2.message;
 });
+}
+setTimeout(function() {
+navigator.mediaDevices.getUserMedia(constraints)
+.then(_onStreamSuccess)
+.catch(_onStreamError);
+}, 150);
 }
 function _toggleCameraMode() {
 _cameraPreviewMode = _cameraPreviewMode === 'photo' ? 'video' : 'photo';
@@ -329,7 +370,7 @@ var base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
 _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
 _hideCameraPreviewOverlay();
 }
-// FIX v10.15: Video graba con audio, stop robusto con requestData
+// FIX v10.27 + v10.33: Video capture con timeslice fallback y delay robusto
 function _handleCameraCapture() {
 if (_cameraPreviewMode === 'photo') {
 _capturePhoto();
@@ -339,7 +380,12 @@ if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'inacti
 _cameraPreviewVideoChunks = [];
 _cameraVideoStartTime = Date.now();
 try {
+try {
 _cameraPreviewMediaRecorder.start(100);
+} catch (tsErr) {
+console.log('[CAMERA] Timeslice no soportado, usando sin timeslice');
+_cameraPreviewMediaRecorder.start();
+}
 _cameraPreviewRecording = true;
 _updateCameraPreviewUI();
 console.log('[CAMERA] Grabacion iniciada');
@@ -350,9 +396,7 @@ _cameraPreviewRecording = false;
 }
 } else {
 if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
-try {
-_cameraPreviewMediaRecorder.requestData();
-} catch (e) {}
+try { _cameraPreviewMediaRecorder.requestData(); } catch (e) {}
 setTimeout(function() {
 try {
 if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
@@ -361,7 +405,7 @@ _cameraPreviewMediaRecorder.stop();
 } catch(e) {}
 _cameraPreviewRecording = false;
 _updateCameraPreviewUI();
-}, 600);
+}, 1500);
 }
 }
 }
@@ -376,7 +420,7 @@ if (flipBtn) flipBtn.addEventListener('click', _flipCamera);
 if (captureBtn) captureBtn.addEventListener('click', _handleCameraCapture);
 if (modeBtn) modeBtn.addEventListener('click', _toggleCameraMode);
 }
-// FIX v10.16: Galeria cierra overlay y muestra chat
+// FIX v10.28: Gallery input off-screen + cleanup
 async function _handleCamera() {
 _closeAttachMenu();
 _showCameraPreviewOverlay();
@@ -386,13 +430,14 @@ async function _handleGallery() {
 _closeAttachMenu();
 _hideCameraPreviewOverlay();
 _stopCameraPreview();
+await new Promise(function(r) { setTimeout(r, 150); });
 var input = document.createElement('input');
 input.type = 'file';
 input.accept = 'image/*,video/*';
-input.style.display = 'none';
+input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
 input.onchange = function(e) {
 var file = e.target.files[0];
-if (!file) return;
+if (!file) { input.remove(); return; }
 var isVideo = file.type.indexOf('video') === 0;
 var reader = new FileReader();
 reader.onload = function(evt) {
@@ -402,12 +447,17 @@ _sendAttachment('video', base64, { name: file.name, size: file.size, type: file.
 } else {
 _sendAttachment('image', base64, { name: file.name, size: file.size, type: file.type, format: file.type.split('/')[1] || 'jpeg' });
 }
+input.remove();
+};
+reader.onerror = function() {
+console.log('[ATTACH] Error leyendo archivo');
+input.remove();
 };
 reader.readAsDataURL(file);
 };
 document.body.appendChild(input);
 input.click();
-setTimeout(function() { input.remove(); }, 1000);
+setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
 }
 async function _handleVideo() {
 _closeAttachMenu();
@@ -423,45 +473,52 @@ _closeAttachMenu();
 var input = document.createElement('input');
 input.type = 'file';
 input.accept = '*/*';
-input.style.display = 'none';
+input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
 input.onchange = function(e) {
 var file = e.target.files[0];
-if (!file) return;
+if (!file) { input.remove(); return; }
 var reader = new FileReader();
 reader.onload = function(evt) {
 var base64 = evt.target.result.split(',')[1];
 _sendAttachment('file', base64, { name: file.name, size: file.size, type: file.type });
 console.log('[ATTACH] Archivo:', file.name);
+input.remove();
+};
+reader.onerror = function() {
+console.log('[ATTACH] Error leyendo archivo');
+input.remove();
 };
 reader.readAsDataURL(file);
 };
 document.body.appendChild(input);
 input.click();
-setTimeout(function() { input.remove(); }, 1000);
+setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
 }
-// FIX v10.17: Ubicacion directa sin plugin, sin alert de error
+// FIX v10.29: Location plugin check robusto + fallback
 async function _handleLocation() {
 _closeAttachMenu();
-// Intentar plugin Capacitor primero
 var plugins = _getAttachmentPlugins();
-if (plugins.Geolocation) {
+var pluginWorked = false;
+if (plugins.Geolocation &&
+typeof plugins.Geolocation.checkPermissions === 'function' &&
+typeof plugins.Geolocation.requestPermissions === 'function' &&
+typeof plugins.Geolocation.getCurrentPosition === 'function') {
 try {
 var perm = await plugins.Geolocation.checkPermissions();
 if (perm.location !== 'granted') {
 var req = await plugins.Geolocation.requestPermissions();
-if (req.location !== 'granted') {
-throw new Error('Permiso denegado');
-}
+if (req.location !== 'granted') throw new Error('Permiso denegado');
 }
 var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 });
 _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-return;
+pluginWorked = true;
 } catch (pluginErr) {
 console.log('[ATTACH:LOCATION] Plugin fallo:', pluginErr.message);
 }
 }
-// Fallback directo a navigator.geolocation
+if (!pluginWorked) {
 _handleLocationFallback();
+}
 }
 function _sendLocation(lat, lng, accuracy) {
 var payload = JSON.stringify({ lat: lat, lng: lng, accuracy: accuracy || 0 });
@@ -474,41 +531,46 @@ if (!navigator.geolocation) {
 console.log('[ATTACH] Geolocation API no disponible');
 return;
 }
-navigator.geolocation.getCurrentPosition(function(pos) {
+navigator.geolocation.getCurrentPosition(
+function(pos) {
 _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-}, function(err) {
+},
+function(err) {
 console.log('[ATTACH:LOCATION] Fallback error:', err.code, err.message);
-}, { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 });
+},
+{ enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 }
+);
 } catch (e) {
 console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
 }
 }
-// FIX v10.18: Voz con timer visible, long-press en mic button
+// FIX v10.30: Voice timer dinámico + long-press fix
 async function _handleVoiceToggle() {
+var timerEl = document.getElementById('voice-timer');
+if (!timerEl) {
+timerEl = document.createElement('div');
+timerEl.id = 'voice-timer';
+timerEl.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:rgba(255,59,48,0.9);color:#fff;padding:6px 16px;border-radius:20px;font-size:14px;font-weight:600;z-index:300;display:none;pointer-events:none;backdrop-filter:blur(4px);';
+document.body.appendChild(timerEl);
+}
 if (!_isRecording) {
 try {
 var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 _mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
 _audioChunks = [];
 _voiceStartTime = Date.now();
-// Mostrar timer
-var timerEl = document.getElementById('voice-timer');
-if (timerEl) {
 timerEl.style.display = 'block';
 timerEl.textContent = '00:00';
-}
 _voiceTimerInterval = setInterval(function() {
 var elapsed = Math.round((Date.now() - _voiceStartTime) / 1000);
-var timerEl = document.getElementById('voice-timer');
-if (timerEl) timerEl.textContent = _fmtTime(elapsed);
+timerEl.textContent = _fmtTime(elapsed);
 }, 1000);
 _mediaRecorder.ondataavailable = function(e) {
 if (e.data && e.data.size > 0) _audioChunks.push(e.data);
 };
 _mediaRecorder.onstop = function() {
 if (_voiceTimerInterval) { clearInterval(_voiceTimerInterval); _voiceTimerInterval = null; }
-var timerEl = document.getElementById('voice-timer');
-if (timerEl) timerEl.style.display = 'none';
+timerEl.style.display = 'none';
 var duration = 0;
 if (_voiceStartTime > 0) duration = Math.round((Date.now() - _voiceStartTime) / 1000);
 var blob = new Blob(_audioChunks, { type: 'audio/webm' });
@@ -529,8 +591,13 @@ _mediaRecorder.onerror = function(e) {
 console.log('[ATTACH:VOICE] MediaRecorder error:', e.message);
 _isRecording = false;
 _updateMicIcon(false);
+timerEl.style.display = 'none';
 };
+try {
 _mediaRecorder.start(100);
+} catch (tsErr) {
+_mediaRecorder.start();
+}
 _isRecording = true;
 _updateMicIcon(true);
 console.log('[ATTACH] Grabando voz...');
@@ -538,6 +605,7 @@ console.log('[ATTACH] Grabando voz...');
 console.log('[ATTACH:VOICE] Error:', err.message);
 _isRecording = false;
 _updateMicIcon(false);
+timerEl.style.display = 'none';
 }
 } else {
 if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
@@ -549,8 +617,7 @@ if (_voiceTimerInterval) {
 clearInterval(_voiceTimerInterval);
 _voiceTimerInterval = null;
 }
-var timerEl = document.getElementById('voice-timer');
-if (timerEl) timerEl.style.display = 'none';
+timerEl.style.display = 'none';
 }
 }
 function _updateMicIcon(recording) {
@@ -564,7 +631,7 @@ micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="curren
 }
 }
 }
-// FIX v10.18: Voz por long-press en boton de adjuntar (paperclip) + click en send para texto
+// FIX v10.30 + v10.32: Attach handlers con long-press fix y cerrar menú al tocar fuera
 function _bindAttachmentHandlers() {
 _bindCameraPreviewHandlers();
 var attachBtn = document.getElementById('attach-btn');
@@ -575,9 +642,13 @@ if (attachBtn) {
 attachBtn.addEventListener('click', function(e) {
 e.preventDefault();
 e.stopPropagation();
+if (_isRecording) {
+_handleVoiceToggle();
+attachBtn.classList.remove('voice-active');
+} else {
 _toggleAttachMenu();
+}
 });
-// Long press para voz
 var longPressTimer = null;
 var isLongPress = false;
 attachBtn.addEventListener('touchstart', function(e) {
@@ -587,12 +658,14 @@ isLongPress = true;
 attachBtn.classList.add('voice-active');
 _handleVoiceToggle();
 }, 800);
-});
+}, { passive: true });
 attachBtn.addEventListener('touchend', function(e) {
 clearTimeout(longPressTimer);
 if (isLongPress && _isRecording) {
-_handleVoiceToggle(); // detener
+setTimeout(function() {
+_handleVoiceToggle();
 attachBtn.classList.remove('voice-active');
+}, 50);
 }
 });
 attachBtn.addEventListener('touchcancel', function(e) {
@@ -619,7 +692,6 @@ if (sendBtn) {
 sendBtn.addEventListener('click', function(e) {
 var text = input ? input.value.trim() : '';
 if (text) {
-// Enviar texto
 e.preventDefault();
 e.stopPropagation();
 var contactId = _getCurrentContactId();
@@ -629,14 +701,25 @@ input.value = '';
 input.focus();
 }
 } else {
-// Si no hay texto, toggle voz (fallback)
 e.preventDefault();
 e.stopPropagation();
 _handleVoiceToggle();
 }
 });
 }
+// FIX v10.32: Cerrar menú al tocar fuera
+document.addEventListener('click', function(e) {
+var menu = document.getElementById('attach-menu');
+var attachBtn = document.getElementById('attach-btn');
+if (menu && !menu.classList.contains('hidden') &&
+!menu.contains(e.target) &&
+e.target !== attachBtn &&
+!attachBtn.contains(e.target)) {
+_closeAttachMenu();
 }
+});
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
@@ -796,8 +879,8 @@ _setupVaultToggle();
 _setupChatHeader();
 _setupKeyboardShortcuts();
 _setupJumpButton();
-_setupBackButton();
 _setupFABButton();
+_setupBackButton();
 _loadPersistedMessages();
 NEXO_DIAG.hideSplash();
 _forceHideSplash();
@@ -866,7 +949,6 @@ var text = input.value.trim();
 if (text) {
 send();
 } else {
-// Sin texto: toggle voz
 e.preventDefault();
 e.stopPropagation();
 _handleVoiceToggle();
@@ -1062,6 +1144,7 @@ _renderMessage(msg, true);
 console.warn('[MAIN] _loadPersistedMessages error:', e);
 }
 }
+
 function _renderMessage(msg, skipSave) {
 try {
 if (!msg) return;
@@ -1195,7 +1278,7 @@ _openFullscreenMedia(src, type);
 };
 contentDiv.appendChild(mediaWrapper);
 } else {
-contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">&#128206; <b>Archivo</b><br><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
+contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b><br><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
 }
 } else if (attachment.type === 'location') {
 var loc = attachment.meta;
@@ -1205,8 +1288,8 @@ var mapUrl = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',
 var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
 var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
 var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
-locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display=\'none\'">';
-locHtml += '<div style="padding:8px 12px;">&#128205; <b>Ubicacion</b><br><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
+locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display='none'">';
+locHtml += '<div style="padding:8px 12px;">📍 <b>Ubicacion</b><br><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
 locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
 locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
 locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
@@ -1217,7 +1300,7 @@ var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.durati
 var durStr = _fmtTime(dur);
 var audioId = 'audio_' + msgId;
 var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
-audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;">&#9654;</button>';
+audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;">▶</button>';
 audioHtml += '<div style="flex:1;">';
 audioHtml += '<div style="height:20px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;">';
 for (var w = 0; w < 20; w++) {
@@ -1238,12 +1321,12 @@ e.stopPropagation();
 if (!playing) {
 audioEl = new Audio('data:audio/' + ((attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm') + ';base64,' + attachment.payload);
 audioEl.play().catch(function(err) { console.log('[AUDIO] Play error:', err.message); });
-btn.innerHTML = '&#9208;';
+btn.innerHTML = '⏸';
 playing = true;
-audioEl.onended = function() { btn.innerHTML = '&#9654;'; playing = false; audioEl = null; };
+audioEl.onended = function() { btn.innerHTML = '▶'; playing = false; audioEl = null; };
 } else {
 if (audioEl) { audioEl.pause(); audioEl = null; }
-btn.innerHTML = '&#9654;';
+btn.innerHTML = '▶';
 playing = false;
 }
 };
@@ -1263,10 +1346,10 @@ timeSpan.textContent = new Date(msg.timestamp || Date.now()).toLocaleTimeString(
 metaDiv.appendChild(timeSpan);
 if (isOwn) {
 var statusClass = 'status-pending';
-var statusIcon = '&#9675;';
-if (msg.status === 'sent') { statusClass = 'status-sent'; statusIcon = '&#10003;'; }
-else if (msg.status === 'delivered') { statusClass = 'status-delivered'; statusIcon = '&#10003;&#10003;'; }
-else if (msg.status === 'read') { statusClass = 'status-read'; statusIcon = '&#10003;&#10003;'; }
+var statusIcon = '○';
+if (msg.status === 'sent') { statusClass = 'status-sent'; statusIcon = '✓'; }
+else if (msg.status === 'delivered') { statusClass = 'status-delivered'; statusIcon = '✓✓'; }
+else if (msg.status === 'read') { statusClass = 'status-read'; statusIcon = '✓✓'; }
 var statusSpan = document.createElement('span');
 statusSpan.className = 'msg-status ' + statusClass;
 statusSpan.dataset.msgId = msgId;
@@ -1293,9 +1376,9 @@ var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + 
 if (!statusEl) return;
 statusEl.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
 statusEl.classList.add('status-' + status);
-if (status === 'sent') statusEl.textContent = '&#10003;';
-else if (status === 'delivered') statusEl.textContent = '&#10003;&#10003;';
-else if (status === 'read') statusEl.textContent = '&#10003;&#10003;';
+if (status === 'sent') statusEl.textContent = '✓';
+else if (status === 'delivered') statusEl.textContent = '✓✓';
+else if (status === 'read') statusEl.textContent = '✓✓';
 var msgDiv = statusEl.closest('.message');
 if (msgDiv) {
 msgDiv.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
@@ -1366,7 +1449,7 @@ var body = document.body;
 body.classList.add('nexo-fallback-mode');
 var msg = document.createElement('div');
 msg.className = 'fallback-notice';
-msg.innerHTML = '<h3>&#9888; Error de Inicializacion</h3> <p>La app no pudo iniciar completamente.</p>';
+msg.innerHTML = '<h3>⚠ Error de Inicializacion</h3> <p>La app no pudo iniciar completamente.</p>';
 body.appendChild(msg);
 } catch (e) {
 console.error('[MAIN] _enableFallbackMode error:', e);
@@ -1538,5 +1621,4 @@ console.warn('[MAIN] _doChatBack error:', e);
 }
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
-// FIX v10.19: typeof check para module.hot
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
