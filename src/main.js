@@ -1,4 +1,3 @@
-
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
  * FIX v10.26: Camera selfie facingMode ideal + fallback
@@ -9,493 +8,527 @@
  * FIX v10.31: Stop camera preview sin limpiar chunks prematuro
  * FIX v10.32: Attach menu cerrar al tocar fuera
  * FIX v10.33: MediaRecorder timeslice fallback
- */
-import { NEXO_CONFIG } from './core/nexo_config.js';
-import './styles/critical.css';
-import { NEXO_DIAG } from './core/nap.js';
-import { NexoApp, DEBUG } from './app/nexo_app.js';
-import { rem } from './ui/rem.js';
-import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
-try {
-NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
-NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe estar importado');
-NEXO_CONFIG.assert(typeof rem !== 'undefined', 'rem debe estar importado');
-} catch (assertErr) {
-console.error('[MAIN] Assert de arranque fallo:', assertErr);
-}
-window.NEXO = {
-app: null,
-rem: null,
-diag: null,
-version: (NEXO_CONFIG && NEXO_CONFIG.VERSION) ? NEXO_CONFIG.VERSION.toString() : 'unknown',
-initialized: false
-};
-window.NEXO_REM = rem;
-window.NEXO_DIAG = NEXO_DIAG;
-var SAFETY_TIMEOUT = setTimeout(function() {
-try {
-if (NEXO_DIAG && typeof NEXO_DIAG.isSplashVisible === 'function' && NEXO_DIAG.isSplashVisible()) {
-NEXO_DIAG.hideSplash();
-document.body.classList.add('nexo-force-ready');
-}
-} catch (e) {
-console.warn('[MAIN] Safety timeout error:', e);
-}
-}, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE ? NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE : 3000) + 12000);
-// === ATTACHMENT HANDLERS GLOBALES ===
-var _mediaRecorder = null;
-var _audioChunks = [];
-var _isRecording = false;
-var _voiceStartTime = 0;
-var _voiceTimerInterval = null;
-// Camera preview state
-var _cameraPreviewMode = 'photo';
-var _cameraPreviewRecording = false;
-var _cameraPreviewMediaRecorder = null;
-var _cameraPreviewVideoChunks = [];
-var _cameraActiveStream = null;
-var _cameraVideoStartTime = 0;
-function _fmtTime(sec) {
-var m = Math.floor(sec / 60);
-var s = sec % 60;
-return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
-}
-function _getAttachmentPlugins() {
-var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
-return {
-Camera: Plugins ? Plugins.Camera : null,
-Filesystem: Plugins ? Plugins.Filesystem : null,
-Geolocation: Plugins ? Plugins.Geolocation : null
-};
-}
-function _getCurrentContactId() {
-if (window.NEXO.app && window.NEXO.app.activeContact) {
-return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
-}
-return null;
-}
-function _sendAttachment(type, payload, meta) {
-var contactId = _getCurrentContactId();
-if (!contactId) {
-console.log('[ATTACH] No hay contacto seleccionado');
-return;
-}
-var attachmentData = {
-type: 'attachment',
-attachmentType: type,
-payload: payload,
-meta: meta,
-timestamp: Date.now()
-};
-var msgId = 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-var localMsg = {
-messageId: msgId,
-content: JSON.stringify(attachmentData),
-_own: true,
-status: 'pending',
-timestamp: Date.now(),
-attachmentType: type,
-attachmentPayload: payload,
-attachmentMeta: meta
-};
-_renderMessage(localMsg);
-var payloadStr = JSON.stringify(attachmentData);
-if (window.bleInterface && window.bleInterface.sendChatMessage) {
-window.bleInterface.sendChatMessage(contactId, payloadStr);
-} else if (window.NEXO.app && window.NEXO.app.sendMessage) {
-window.NEXO.app.sendMessage({ content: payloadStr });
-} else {
-console.log('[ATTACH] Sistema de mensajes no disponible');
-}
-}
-function _toggleAttachMenu() {
-var menu = document.getElementById('attach-menu');
-if (menu) menu.classList.toggle('hidden');
-}
-function _closeAttachMenu() {
-var menu = document.getElementById('attach-menu');
-if (menu) menu.classList.add('hidden');
-}
-// Camera overlay
-function _showCameraPreviewOverlay() {
-var overlay = document.getElementById('camera-preview-overlay');
-if (!overlay) return;
-overlay.classList.remove('hidden');
-_cameraPreviewMode = 'photo';
-_cameraPreviewRecording = false;
-_cameraPreviewVideoChunks = [];
-_cameraVideoStartTime = 0;
-_updateCameraPreviewUI();
-}
-function _hideCameraPreviewOverlay() {
-var overlay = document.getElementById('camera-preview-overlay');
-if (overlay) overlay.classList.add('hidden');
-_stopCameraPreview();
-}
-function _openFullscreenMedia(src, type) {
-var existing = document.getElementById('fullscreen-media-overlay');
-if (existing) existing.remove();
-var overlay = document.createElement('div');
-overlay.id = 'fullscreen-media-overlay';
-overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:5000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
-var closeBtn = document.createElement('button');
-closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
-closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
-closeBtn.onclick = function() { overlay.remove(); };
-overlay.appendChild(closeBtn);
-if (type === 'image') {
-var img = document.createElement('img');
-img.src = src;
-img.style.cssText = 'max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px;';
-overlay.appendChild(img);
-} else if (type === 'video') {
-var video = document.createElement('video');
-video.src = src;
-video.controls = true;
-video.autoplay = true;
-video.playsInline = true;
-video.style.cssText = 'max-width:95vw;max-height:85vh;border-radius:8px;background:#000;';
-overlay.appendChild(video);
-}
-overlay.addEventListener('click', function(e) {
-if (e.target === overlay) overlay.remove();
-});
-document.body.appendChild(overlay);
-}
-function _updateCameraPreviewUI() {
-var captureBtn = document.getElementById('camera-btn-capture');
-var status = document.getElementById('camera-preview-status');
-var modeBtn = document.getElementById('camera-btn-mode');
-if (!captureBtn) return;
-if (_cameraPreviewMode === 'video') {
-captureBtn.classList.add('recording');
-if (status) status.textContent = _cameraPreviewRecording ? 'Grabando... toca para detener' : 'Toca para grabar video';
-if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
-} else {
-captureBtn.classList.remove('recording');
-if (status) status.textContent = '';
-if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
-}
-}
-// FIX v10.27: Video recorder robusto con delay
-function _setupVideoRecorder(stream) {
-var mimeType = 'video/webm;codecs=vp9,opus';
-if (!MediaRecorder.isTypeSupported(mimeType)) {
-mimeType = 'video/webm;codecs=vp8,opus';
-if (!MediaRecorder.isTypeSupported(mimeType)) {
-mimeType = 'video/webm';
-if (!MediaRecorder.isTypeSupported(mimeType)) {
-mimeType = 'video/mp4';
-}
-}
-}
-try {
-_cameraPreviewMediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
-_cameraPreviewVideoChunks = [];
-_cameraPreviewMediaRecorder.ondataavailable = function(e) {
-if (e.data && e.data.size > 0) _cameraPreviewVideoChunks.push(e.data);
-};
-_cameraPreviewMediaRecorder.onstop = function() {
-setTimeout(function() {
-var duration = 0;
-if (_cameraVideoStartTime > 0) {
-duration = Math.round((Date.now() - _cameraVideoStartTime) / 1000);
-}
-var blobType = mimeType.split(';')[0] || 'video/webm';
-var blob = new Blob(_cameraPreviewVideoChunks, { type: blobType });
-if (blob.size === 0) {
-console.log('[CAMERA] Video blob vacio, grabacion fallo');
-var status = document.getElementById('camera-preview-status');
-if (status) status.textContent = 'Error: video vacio';
-return;
-}
-var reader = new FileReader();
-reader.onloadend = function() {
-var base64 = reader.result.split(',')[1];
-_sendAttachment('video', base64, { format: blobType.split('/')[1] || 'webm', duration: duration });
-_hideCameraPreviewOverlay();
-};
-reader.readAsDataURL(blob);
-}, 400);
-};
-_cameraPreviewMediaRecorder.onerror = function(e) {
-console.log('[CAMERA] MediaRecorder error:', e.message);
-_cameraPreviewRecording = false;
-_updateCameraPreviewUI();
-};
-} catch (recErr) {
-console.log('[CAMERA] MediaRecorder init error:', recErr.message);
-}
-}
-// FIX v10.26: Camera preview con facingMode ideal + fallback
-function _startCameraPreview() {
-var container = document.getElementById('camera-preview-container');
-if (!container) return;
-var overlay = document.getElementById('camera-preview-overlay');
-if (overlay && overlay.classList.contains('hidden')) {
-overlay.classList.remove('hidden');
-}
-var facing = container.dataset.facing || 'environment';
-var needAudio = _cameraPreviewMode === 'video';
-var constraints = {
-video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
-audio: needAudio
-};
-function _onStreamSuccess(stream) {
-_cameraActiveStream = stream;
-var video = document.createElement('video');
-video.autoplay = true;
-video.playsInline = true;
-video.muted = true;
-video.style.width = '100%';
-video.style.height = '100%';
-video.style.objectFit = 'cover';
-video.srcObject = stream;
-container.innerHTML = '';
-container.appendChild(video);
-video.play().catch(function(e) { console.log('[CAMERA] play error:', e.message); });
-container.dataset.stream = 'active';
-if (_cameraPreviewMode === 'video') {
-_setupVideoRecorder(stream);
-}
-}
-function _onStreamError(err) {
-console.log('[CAMERA] Error getUserMedia:', err.name, err.message);
-var fallbackConstraints = {
-video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
-audio: needAudio
-};
-navigator.mediaDevices.getUserMedia(fallbackConstraints)
-.then(_onStreamSuccess)
-.catch(function(err2) {
-console.log('[CAMERA] Fallback error:', err2.name, err2.message);
-var status = document.getElementById('camera-preview-status');
-if (status) status.textContent = 'Error camara: ' + err2.message;
-});
-}
-navigator.mediaDevices.getUserMedia(constraints)
-.then(_onStreamSuccess)
-.catch(_onStreamError);
-}
-// FIX v10.31: Stop camera preview sin limpiar chunks prematuro
-function _stopCameraPreview() {
-if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
-try { _cameraPreviewMediaRecorder.stop(); } catch (e) {}
-}
-var container = document.getElementById('camera-preview-container');
-if (container) {
-var oldVideo = container.querySelector('video');
-if (oldVideo && oldVideo.srcObject) {
-var tracks = oldVideo.srcObject.getTracks();
-tracks.forEach(function(t) { t.stop(); });
-}
-container.innerHTML = '';
-}
-if (_cameraActiveStream) {
-var tracks = _cameraActiveStream.getTracks();
-tracks.forEach(function(t) { t.stop(); });
-_cameraActiveStream = null;
-}
-_cameraPreviewRecording = false;
-_cameraPreviewMediaRecorder = null;
-_cameraVideoStartTime = 0;
-}
-// FIX v10.26: Flip camera con ideal + fallback + delay
-function _flipCamera() {
-var container = document.getElementById('camera-preview-container');
-if (!container) return;
-var currentFacing = container.dataset.facing || 'environment';
-var newFacing = currentFacing === 'environment' ? 'user' : 'environment';
-container.dataset.facing = newFacing;
-_stopCameraPreview();
-var needAudio = _cameraPreviewMode === 'video';
-var constraints = {
-video: { facingMode: { ideal: newFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
-audio: needAudio
-};
-function _onStreamSuccess(stream) {
-_cameraActiveStream = stream;
-var video = document.createElement('video');
-video.autoplay = true;
-video.playsInline = true;
-video.muted = true;
-video.style.width = '100%';
-video.style.height = '100%';
-video.style.objectFit = 'cover';
-video.srcObject = stream;
-container.innerHTML = '';
-container.appendChild(video);
-video.play().catch(function(e) { console.log('[CAMERA] play error:', e.message); });
-container.dataset.stream = 'active';
-if (_cameraPreviewMode === 'video') {
-_setupVideoRecorder(stream);
-}
-}
-function _onStreamError(err) {
-console.log('[CAMERA] Error flip ideal:', err.name, err.message);
-var fallbackConstraints = {
-video: { facingMode: newFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
-audio: needAudio
-};
-navigator.mediaDevices.getUserMedia(fallbackConstraints)
-.then(_onStreamSuccess)
-.catch(function(err2) {
-console.log('[CAMERA] Error flip fallback:', err2.name, err2.message);
-var status = document.getElementById('camera-preview-status');
-if (status) status.textContent = 'Error camara: ' + err2.message;
-});
-}
-setTimeout(function() {
-navigator.mediaDevices.getUserMedia(constraints)
-.then(_onStreamSuccess)
-.catch(_onStreamError);
-}, 150);
-}
-function _toggleCameraMode() {
-_cameraPreviewMode = _cameraPreviewMode === 'photo' ? 'video' : 'photo';
-_updateCameraPreviewUI();
-_stopCameraPreview();
-_startCameraPreview();
-}
-function _capturePhoto() {
-var container = document.getElementById('camera-preview-container');
-if (!container) return;
-var video = container.querySelector('video');
-if (!video) return;
-var canvas = document.createElement('canvas');
-canvas.width = video.videoWidth || 1280;
-canvas.height = video.videoHeight || 720;
-var ctx = canvas.getContext('2d');
-ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-var base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-_sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
-_hideCameraPreviewOverlay();
-}
-// FIX v10.27 + v10.33: Video capture con timeslice fallback y delay robusto
-function _handleCameraCapture() {
-if (_cameraPreviewMode === 'photo') {
-_capturePhoto();
-} else {
-if (!_cameraPreviewRecording) {
-if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'inactive') {
-_cameraPreviewVideoChunks = [];
-_cameraVideoStartTime = Date.now();
-try {
-try {
-_cameraPreviewMediaRecorder.start(100);
-} catch (tsErr) {
-console.log('[CAMERA] Timeslice no soportado, usando sin timeslice');
-_cameraPreviewMediaRecorder.start();
-}
-_cameraPreviewRecording = true;
-_updateCameraPreviewUI();
-console.log('[CAMERA] Grabacion iniciada');
-} catch (startErr) {
-console.log('[CAMERA] Error al iniciar grabacion:', startErr.message);
-_cameraPreviewRecording = false;
-}
-}
-} else {
-if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
-try { _cameraPreviewMediaRecorder.requestData(); } catch (e) {}
-setTimeout(function() {
-try {
-if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
-_cameraPreviewMediaRecorder.stop();
-}
-} catch(e) {}
-_cameraPreviewRecording = false;
-_updateCameraPreviewUI();
-}, 1500);
-}
-}
-}
-}
-function _bindCameraPreviewHandlers() {
-var closeBtn = document.getElementById('camera-btn-close');
-var flipBtn = document.getElementById('camera-btn-flip');
-var captureBtn = document.getElementById('camera-btn-capture');
-var modeBtn = document.getElementById('camera-btn-mode');
-if (closeBtn) closeBtn.addEventListener('click', _hideCameraPreviewOverlay);
-if (flipBtn) flipBtn.addEventListener('click', _flipCamera);
-if (captureBtn) captureBtn.addEventListener('click', _handleCameraCapture);
-if (modeBtn) modeBtn.addEventListener('click', _toggleCameraMode);
-}
-// FIX v10.28: Gallery input off-screen + cleanup
-async function _handleCamera() {
-_closeAttachMenu();
-_showCameraPreviewOverlay();
-_startCameraPreview();
-}
-async function _handleGallery() {
-_closeAttachMenu();
-_hideCameraPreviewOverlay();
-_stopCameraPreview();
-await new Promise(function(r) { setTimeout(r, 150); });
-var input = document.createElement('input');
-input.type = 'file';
-input.accept = 'image/*,video/*';
-input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
-input.onchange = function(e) {
-var file = e.target.files[0];
-if (!file) { input.remove(); return; }
-var isVideo = file.type.indexOf('video') === 0;
-var reader = new FileReader();
-reader.onload = function(evt) {
-var base64 = evt.target.result.split(',')[1];
-if (isVideo) {
-_sendAttachment('video', base64, { name: file.name, size: file.size, type: file.type });
-} else {
-_sendAttachment('image', base64, { name: file.name, size: file.size, type: file.type, format: file.type.split('/')[1] || 'jpeg' });
-}
-input.remove();
-};
-reader.onerror = function() {
-console.log('[ATTACH] Error leyendo archivo');
-input.remove();
-};
-reader.readAsDataURL(file);
-};
-document.body.appendChild(input);
-input.click();
-setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
-}
-async function _handleVideo() {
-_closeAttachMenu();
-_cameraPreviewMode = 'video';
-_cameraPreviewRecording = false;
-_cameraPreviewVideoChunks = [];
-_showCameraPreviewOverlay();
-_updateCameraPreviewUI();
-_startCameraPreview();
-}
-function _handleFile() {
-_closeAttachMenu();
-var input = document.createElement('input');
-input.type = 'file';
-input.accept = '*/*';
-input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
-input.onchange = function(e) {
-var file = e.target.files[0];
-if (!file) { input.remove(); return; }
-var reader = new FileReader();
-reader.onload = function(evt) {
-var base64 = evt.target.result.split(',')[1];
-_sendAttachment('file', base64, { name: file.name, size: file.size, type: file.type });
-console.log('[ATTACH] Archivo:', file.name);
-input.remove();
-};
-reader.onerror = function() {
-console.log('[ATTACH] Error leyendo archivo');
-input.remove();
-};
-reader.readAsDataURL(file);
-};
-document.body.appendChild(input);
-input.click();
-setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
-}
-// FIX v10.29: Location plugin check robusto + fallback
+ * FIX v10.34: Camera preview sin constraints de resolucion para front camera
+ * FIX v10.35: Flip camera sin constraints de resolucion para front
+ * FIX v10.36: Video recorder - overlay se cierra DESPUES de blob listo
+ * FIX v10.37: Video capture - blob listo antes de cerrar overlay
+ * FIX v10.38: Location con manejo de NotAllowedError
+ * FIX v10.39: Voice con manejo de NotAllowedError
+   */
+   import { NEXO_CONFIG } from './core/nexo_config.js';
+   import './styles/critical.css';
+   import { NEXO_DIAG } from './core/nap.js';
+   import { NexoApp, DEBUG } from './app/nexo_app.js';
+   import { rem } from './ui/rem.js';
+   import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
+   try {
+   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
+   NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe estar importado');
+   NEXO_CONFIG.assert(typeof rem !== 'undefined', 'rem debe estar importado');
+   } catch (assertErr) {
+   console.error('[MAIN] Assert de arranque fallo:', assertErr);
+   }
+   window.NEXO = {
+   app: null,
+   rem: null,
+   diag: null,
+   version: (NEXO_CONFIG && NEXO_CONFIG.VERSION) ? NEXO_CONFIG.VERSION.toString() : 'unknown',
+   initialized: false
+   };
+   window.NEXO_REM = rem;
+   window.NEXO_DIAG = NEXO_DIAG;
+   var SAFETY_TIMEOUT = setTimeout(function() {
+   try {
+   if (NEXO_DIAG && typeof NEXO_DIAG.isSplashVisible === 'function' && NEXO_DIAG.isSplashVisible()) {
+   NEXO_DIAG.hideSplash();
+   document.body.classList.add('nexo-force-ready');
+   }
+   } catch (e) {
+   console.warn('[MAIN] Safety timeout error:', e);
+   }
+   }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE ? NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE : 3000) + 12000);
+   // === ATTACHMENT HANDLERS GLOBALES ===
+   var _mediaRecorder = null;
+   var _audioChunks = [];
+   var _isRecording = false;
+   var _voiceStartTime = 0;
+   var _voiceTimerInterval = null;
+   // Camera preview state
+   var _cameraPreviewMode = 'photo';
+   var _cameraPreviewRecording = false;
+   var _cameraPreviewMediaRecorder = null;
+   var _cameraPreviewVideoChunks = [];
+   var _cameraActiveStream = null;
+   var _cameraVideoStartTime = 0;
+   function _fmtTime(sec) {
+   var m = Math.floor(sec / 60);
+   var s = sec % 60;
+   return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+   }
+   function _getAttachmentPlugins() {
+   var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
+   return {
+   Camera: Plugins ? Plugins.Camera : null,
+   Filesystem: Plugins ? Plugins.Filesystem : null,
+   Geolocation: Plugins ? Plugins.Geolocation : null
+   };
+   }
+   function _getCurrentContactId() {
+   if (window.NEXO.app && window.NEXO.app.activeContact) {
+   return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
+   }
+   return null;
+   }
+   function *sendAttachment(type, payload, meta) {
+   var contactId = *getCurrentContactId();
+   if (!contactId) {
+   console.log('[ATTACH] No hay contacto seleccionado');
+   return;
+   }
+   var attachmentData = {
+   type: 'attachment',
+   attachmentType: type,
+   payload: payload,
+   meta: meta,
+   timestamp: Date.now()
+   };
+   var msgId = 'att*' + Date.now() + '*' + Math.random().toString(36).substr(2, 6);
+   var localMsg = {
+   messageId: msgId,
+   content: JSON.stringify(attachmentData),
+   _own: true,
+   status: 'pending',
+   timestamp: Date.now(),
+   attachmentType: type,
+   attachmentPayload: payload,
+   attachmentMeta: meta
+   };
+   _renderMessage(localMsg);
+   var payloadStr = JSON.stringify(attachmentData);
+   if (window.bleInterface && window.bleInterface.sendChatMessage) {
+   window.bleInterface.sendChatMessage(contactId, payloadStr);
+   } else if (window.NEXO.app && window.NEXO.app.sendMessage) {
+   window.NEXO.app.sendMessage({ content: payloadStr });
+   } else {
+   console.log('[ATTACH] Sistema de mensajes no disponible');
+   }
+   }
+   function _toggleAttachMenu() {
+   var menu = document.getElementById('attach-menu');
+   if (menu) menu.classList.toggle('hidden');
+   }
+   function _closeAttachMenu() {
+   var menu = document.getElementById('attach-menu');
+   if (menu) menu.classList.add('hidden');
+   }
+   // Camera overlay
+   function _showCameraPreviewOverlay() {
+   var overlay = document.getElementById('camera-preview-overlay');
+   if (!overlay) return;
+   overlay.classList.remove('hidden');
+   _cameraPreviewMode = 'photo';
+   _cameraPreviewRecording = false;
+   _cameraPreviewVideoChunks = [];
+   _cameraVideoStartTime = 0;
+   _updateCameraPreviewUI();
+   }
+   function _hideCameraPreviewOverlay() {
+   var overlay = document.getElementById('camera-preview-overlay');
+   if (overlay) overlay.classList.add('hidden');
+   _stopCameraPreview();
+   }
+   function _openFullscreenMedia(src, type) {
+   var existing = document.getElementById('fullscreen-media-overlay');
+   if (existing) existing.remove();
+   var overlay = document.createElement('div');
+   overlay.id = 'fullscreen-media-overlay';
+   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:5000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
+   var closeBtn = document.createElement('button');
+   closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+   closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
+   closeBtn.onclick = function() { overlay.remove(); };
+   overlay.appendChild(closeBtn);
+   if (type === 'image') {
+   var img = document.createElement('img');
+   img.src = src;
+   img.style.cssText = 'max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px;';
+   overlay.appendChild(img);
+   } else if (type === 'video') {
+   var video = document.createElement('video');
+   video.src = src;
+   video.controls = true;
+   video.autoplay = true;
+   video.playsInline = true;
+   video.style.cssText = 'max-width:95vw;max-height:85vh;border-radius:8px;background:#000;';
+   overlay.appendChild(video);
+   }
+   overlay.addEventListener('click', function(e) {
+   if (e.target === overlay) overlay.remove();
+   });
+   document.body.appendChild(overlay);
+   }
+   function _updateCameraPreviewUI() {
+   var captureBtn = document.getElementById('camera-btn-capture');
+   var status = document.getElementById('camera-preview-status');
+   var modeBtn = document.getElementById('camera-btn-mode');
+   if (!captureBtn) return;
+   if (_cameraPreviewMode === 'video') {
+   captureBtn.classList.add('recording');
+   if (status) status.textContent = _cameraPreviewRecording ? 'Grabando... toca para detener' : 'Toca para grabar video';
+   if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+   } else {
+   captureBtn.classList.remove('recording');
+   if (status) status.textContent = '';
+   if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
+   }
+   }
+   // FIX v10.36: Video recorder - overlay se cierra DESPUES de blob listo
+   function _setupVideoRecorder(stream) {
+   var mimeType = 'video/webm;codecs=vp9,opus';
+   if (!MediaRecorder.isTypeSupported(mimeType)) {
+   mimeType = 'video/webm;codecs=vp8,opus';
+   if (!MediaRecorder.isTypeSupported(mimeType)) {
+   mimeType = 'video/webm';
+   if (!MediaRecorder.isTypeSupported(mimeType)) {
+   mimeType = 'video/mp4';
+   }
+   }
+   }
+   try {
+   _cameraPreviewMediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+   _cameraPreviewVideoChunks = [];
+   _cameraPreviewMediaRecorder.ondataavailable = function(e) {
+   if (e.data && e.data.size > 0) _cameraPreviewVideoChunks.push(e.data);
+   };
+   _cameraPreviewMediaRecorder.onstop = function() {
+   // FIX: No cerrar overlay aqui. Esperar a que blob este listo.
+   // El cierre se maneja en _handleCameraCapture despues del delay
+   console.log('[CAMERA] Grabacion detenida, procesando...');
+   };
+   _cameraPreviewMediaRecorder.onerror = function(e) {
+   console.log('[CAMERA] MediaRecorder error:', e.message);
+   _cameraPreviewRecording = false;
+   _updateCameraPreviewUI();
+   };
+   } catch (recErr) {
+   console.log('[CAMERA] MediaRecorder init error:', recErr.message);
+   }
+   }
+   // FIX v10.34: Camera preview sin constraints de resolucion para front camera
+   function _startCameraPreview() {
+   var container = document.getElementById('camera-preview-container');
+   if (!container) return;
+   var overlay = document.getElementById('camera-preview-overlay');
+   if (overlay && overlay.classList.contains('hidden')) {
+   overlay.classList.remove('hidden');
+   }
+   var facing = container.dataset.facing || 'environment';
+   var needAudio = _cameraPreviewMode === 'video';
+   // FIX: Para camara frontal, NO usar constraints de width/height - causan OverconstrainedError en Samsung
+   var isFront = facing === 'user';
+   var constraints = {
+   video: isFront ? { facingMode: { exact: 'user' } } : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+   audio: needAudio
+   };
+   function _onStreamSuccess(stream) {
+   _cameraActiveStream = stream;
+   var video = document.createElement('video');
+   video.autoplay = true;
+   video.playsInline = true;
+   video.muted = true;
+   video.style.width = '100%';
+   video.style.height = '100%';
+   video.style.objectFit = 'cover';
+   video.srcObject = stream;
+   container.innerHTML = '';
+   container.appendChild(video);
+   video.play().catch(function(e) { console.log('[CAMERA] play error:', e.message); });
+   container.dataset.stream = 'active';
+   if (_cameraPreviewMode === 'video') {
+   _setupVideoRecorder(stream);
+   }
+   }
+   function _onStreamError(err) {
+   console.log('[CAMERA] Error getUserMedia:', err.name, err.message);
+   // FIX: Fallback sin constraints de resolucion para front camera
+   var fallbackConstraints = {
+   video: isFront ? { facingMode: 'user' } : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+   audio: needAudio
+   };
+   navigator.mediaDevices.getUserMedia(fallbackConstraints)
+   .then(_onStreamSuccess)
+   .catch(function(err2) {
+   console.log('[CAMERA] Fallback error:', err2.name, err2.message);
+   var status = document.getElementById('camera-preview-status');
+   if (status) status.textContent = 'Error camara: ' + err2.message;
+   });
+   }
+   navigator.mediaDevices.getUserMedia(constraints)
+   .then(_onStreamSuccess)
+   .catch(_onStreamError);
+   }
+   // FIX v10.31: Stop camera preview sin limpiar chunks prematuro
+   function _stopCameraPreview() {
+   if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
+   try { _cameraPreviewMediaRecorder.stop(); } catch (e) {}
+   }
+   var container = document.getElementById('camera-preview-container');
+   if (container) {
+   var oldVideo = container.querySelector('video');
+   if (oldVideo && oldVideo.srcObject) {
+   var tracks = oldVideo.srcObject.getTracks();
+   tracks.forEach(function(t) { t.stop(); });
+   }
+   container.innerHTML = '';
+   }
+   if (_cameraActiveStream) {
+   var tracks = _cameraActiveStream.getTracks();
+   tracks.forEach(function(t) { t.stop(); });
+   _cameraActiveStream = null;
+   }
+   _cameraPreviewRecording = false;
+   _cameraPreviewMediaRecorder = null;
+   _cameraVideoStartTime = 0;
+   }
+   // FIX v10.35: Flip camera sin constraints de resolucion para front
+   function _flipCamera() {
+   var container = document.getElementById('camera-preview-container');
+   if (!container) return;
+   var currentFacing = container.dataset.facing || 'environment';
+   var newFacing = currentFacing === 'environment' ? 'user' : 'environment';
+   container.dataset.facing = newFacing;
+   _stopCameraPreview();
+   var needAudio = _cameraPreviewMode === 'video';
+   var isFront = newFacing === 'user';
+   var constraints = {
+   video: isFront ? { facingMode: { exact: 'user' } } : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+   audio: needAudio
+   };
+   function _onStreamSuccess(stream) {
+   _cameraActiveStream = stream;
+   var video = document.createElement('video');
+   video.autoplay = true;
+   video.playsInline = true;
+   video.muted = true;
+   video.style.width = '100%';
+   video.style.height = '100%';
+   video.style.objectFit = 'cover';
+   video.srcObject = stream;
+   container.innerHTML = '';
+   container.appendChild(video);
+   video.play().catch(function(e) { console.log('[CAMERA] play error:', e.message); });
+   container.dataset.stream = 'active';
+   if (_cameraPreviewMode === 'video') {
+   _setupVideoRecorder(stream);
+   }
+   }
+   function _onStreamError(err) {
+   console.log('[CAMERA] Error flip ideal:', err.name, err.message);
+   var fallbackConstraints = {
+   video: isFront ? { facingMode: 'user' } : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+   audio: needAudio
+   };
+   navigator.mediaDevices.getUserMedia(fallbackConstraints)
+   .then(_onStreamSuccess)
+   .catch(function(err2) {
+   console.log('[CAMERA] Error flip fallback:', err2.name, err2.message);
+   var status = document.getElementById('camera-preview-status');
+   if (status) status.textContent = 'Error camara: ' + err2.message;
+   });
+   }
+   // FIX: Delay aumentado a 300ms para liberar camara en Android
+   setTimeout(function() {
+   navigator.mediaDevices.getUserMedia(constraints)
+   .then(_onStreamSuccess)
+   .catch(_onStreamError);
+   }, 300);
+   }
+   function _toggleCameraMode() {
+   _cameraPreviewMode = _cameraPreviewMode === 'photo' ? 'video' : 'photo';
+   _updateCameraPreviewUI();
+   _stopCameraPreview();
+   _startCameraPreview();
+   }
+   function _capturePhoto() {
+   var container = document.getElementById('camera-preview-container');
+   if (!container) return;
+   var video = container.querySelector('video');
+   if (!video) return;
+   var canvas = document.createElement('canvas');
+   canvas.width = video.videoWidth || 1280;
+   canvas.height = video.videoHeight || 720;
+   var ctx = canvas.getContext('2d');
+   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+   var base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+   _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
+   _hideCameraPreviewOverlay();
+   }
+   // FIX v10.37: Video capture - blob listo antes de cerrar overlay
+   function _handleCameraCapture() {
+   if (_cameraPreviewMode === 'photo') {
+   _capturePhoto();
+   } else {
+   if (!_cameraPreviewRecording) {
+   if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'inactive') {
+   _cameraPreviewVideoChunks = [];
+   _cameraVideoStartTime = Date.now();
+   try {
+   try {
+   _cameraPreviewMediaRecorder.start(100);
+   } catch (tsErr) {
+   console.log('[CAMERA] Timeslice no soportado, usando sin timeslice');
+   _cameraPreviewMediaRecorder.start();
+   }
+   _cameraPreviewRecording = true;
+   _updateCameraPreviewUI();
+   console.log('[CAMERA] Grabacion iniciada');
+   } catch (startErr) {
+   console.log('[CAMERA] Error al iniciar grabacion:', startErr.message);
+   _cameraPreviewRecording = false;
+   }
+   }
+   } else {
+   if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
+   try { _cameraPreviewMediaRecorder.requestData(); } catch (e) {}
+   setTimeout(function() {
+   try {
+   if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
+   _cameraPreviewMediaRecorder.stop();
+   }
+   } catch(e) {}
+   // FIX: Esperar 1200ms para que blob este listo, LUEGO cerrar overlay
+   setTimeout(function() {
+   var duration = 0;
+   if (_cameraVideoStartTime > 0) {
+   duration = Math.round((Date.now() - _cameraVideoStartTime) / 1000);
+   }
+   var mimeType = 'video/webm';
+   var blob = new Blob(_cameraPreviewVideoChunks, { type: mimeType });
+   if (blob.size === 0) {
+   console.log('[CAMERA] Video blob vacio, grabacion fallo');
+   var status = document.getElementById('camera-preview-status');
+   if (status) status.textContent = 'Error: video vacio';
+   _cameraPreviewRecording = false;
+   _updateCameraPreviewUI();
+   return;
+   }
+   var reader = new FileReader();
+   reader.onloadend = function() {
+   var base64 = reader.result.split(',')[1];
+   _sendAttachment('video', base64, { format: 'webm', duration: duration });
+   _hideCameraPreviewOverlay();
+   };
+   reader.onerror = function() {
+   console.log('[CAMERA] Error leyendo video');
+   _cameraPreviewRecording = false;
+   _updateCameraPreviewUI();
+   };
+   reader.readAsDataURL(blob);
+   }, 1200);
+   _cameraPreviewRecording = false;
+   _updateCameraPreviewUI();
+   }, 1500);
+   }
+   }
+   }
+   }
+   function _bindCameraPreviewHandlers() {
+   var closeBtn = document.getElementById('camera-btn-close');
+   var flipBtn = document.getElementById('camera-btn-flip');
+   var captureBtn = document.getElementById('camera-btn-capture');
+   var modeBtn = document.getElementById('camera-btn-mode');
+   if (closeBtn) closeBtn.addEventListener('click', _hideCameraPreviewOverlay);
+   if (flipBtn) flipBtn.addEventListener('click', _flipCamera);
+   if (captureBtn) captureBtn.addEventListener('click', _handleCameraCapture);
+   if (modeBtn) modeBtn.addEventListener('click', _toggleCameraMode);
+   }
+   // FIX v10.28: Gallery input off-screen + cleanup
+   async function _handleCamera() {
+   _closeAttachMenu();
+   _showCameraPreviewOverlay();
+   _startCameraPreview();
+   }
+   async function _handleGallery() {
+   _closeAttachMenu();
+   _hideCameraPreviewOverlay();
+   _stopCameraPreview();
+   await new Promise(function(r) { setTimeout(r, 150); });
+   var input = document.createElement('input');
+   input.type = 'file';
+   input.accept = 'image/*,video/*';
+   input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
+   input.onchange = function(e) {
+   var file = e.target.files[0];
+   if (!file) { input.remove(); return; }
+   var isVideo = file.type.indexOf('video') === 0;
+   var reader = new FileReader();
+   reader.onload = function(evt) {
+   var base64 = evt.target.result.split(',')[1];
+   if (isVideo) {
+   _sendAttachment('video', base64, { name: file.name, size: file.size, type: file.type });
+   } else {
+   _sendAttachment('image', base64, { name: file.name, size: file.size, type: file.type, format: file.type.split('/')[1] || 'jpeg' });
+   }
+   input.remove();
+   };
+   reader.onerror = function() {
+   console.log('[ATTACH] Error leyendo archivo');
+   input.remove();
+   };
+   reader.readAsDataURL(file);
+   };
+   document.body.appendChild(input);
+   input.click();
+   setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
+   }
+   async function _handleVideo() {
+   _closeAttachMenu();
+   _cameraPreviewMode = 'video';
+   _cameraPreviewRecording = false;
+   _cameraPreviewVideoChunks = [];
+   _showCameraPreviewOverlay();
+   _updateCameraPreviewUI();
+   _startCameraPreview();
+   }
+   function _handleFile() {
+   _closeAttachMenu();
+   var input = document.createElement('input');
+   input.type = 'file';
+   input.accept = '*/*';
+   input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
+   input.onchange = function(e) {
+   var file = e.target.files[0];
+   if (!file) { input.remove(); return; }
+   var reader = new FileReader();
+   reader.onload = function(evt) {
+   var base64 = evt.target.result.split(',')[1];
+   _sendAttachment('file', base64, { name: file.name, size: file.size, type: file.type });
+   console.log('[ATTACH] Archivo:', file.name);
+   input.remove();
+   };
+   reader.onerror = function() {
+   console.log('[ATTACH] Error leyendo archivo');
+   input.remove();
+   };
+   reader.readAsDataURL(file);
+   };
+   document.body.appendChild(input);
+   input.click();
+   setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
+   }
+   // FIX v10.40: Helper para mostrar error de permisos al usuario
+   function _showPermissionError(permName) {
+   var existing = document.getElementById('perm-error-toast');
+   if (existing) existing.remove();
+   var toast = document.createElement('div');
+   toast.id = 'perm-error-toast';
+   toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(255,59,48,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;backdrop-filter:blur(4px);box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
+   toast.innerHTML = 'Permiso de ' + permName + ' denegado.
+   <span style="font-size:11px;opacity:0.8;font-weight:400;">Ve a Ajustes > Aplicaciones > NEXO > Permisos</span>';
+   document.body.appendChild(toast);
+   setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(function() { toast.remove(); }, 500); }, 4000);
+   }
+// FIX v10.38: Location con manejo de NotAllowedError
 async function _handleLocation() {
 _closeAttachMenu();
 var plugins = _getAttachmentPlugins();
@@ -515,6 +548,10 @@ _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
 pluginWorked = true;
 } catch (pluginErr) {
 console.log('[ATTACH:LOCATION] Plugin fallo:', pluginErr.message);
+if (pluginErr.message && pluginErr.message.indexOf('denied') > -1) {
+_showPermissionError('Ubicacion');
+return;
+}
 }
 }
 if (!pluginWorked) {
@@ -530,6 +567,7 @@ function _handleLocationFallback() {
 try {
 if (!navigator.geolocation) {
 console.log('[ATTACH] Geolocation API no disponible');
+_showPermissionError('Ubicacion');
 return;
 }
 navigator.geolocation.getCurrentPosition(
@@ -538,6 +576,10 @@ _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
 },
 function(err) {
 console.log('[ATTACH:LOCATION] Fallback error:', err.code, err.message);
+// FIX: Si permiso denegado, mostrar mensaje al usuario
+if (err.code === 1) {
+_showPermissionError('Ubicacion');
+}
 },
 { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 }
 );
@@ -545,7 +587,7 @@ console.log('[ATTACH:LOCATION] Fallback error:', err.code, err.message);
 console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
 }
 }
-// FIX v10.30: Voice timer dinámico + long-press fix
+// FIX v10.39: Voice con manejo de NotAllowedError
 async function _handleVoiceToggle() {
 var timerEl = document.getElementById('voice-timer');
 if (!timerEl) {
@@ -603,7 +645,13 @@ _isRecording = true;
 _updateMicIcon(true);
 console.log('[ATTACH] Grabando voz...');
 } catch (err) {
-console.log('[ATTACH:VOICE] Error:', err.message);
+console.log('[ATTACH:VOICE] Error:', err.name, err.message);
+// FIX: Manejar NotAllowedError - permiso de microfono denegado
+if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+_showPermissionError('Microfono');
+} else if (err.name === 'NotFoundError') {
+_showPermissionError('Microfono no encontrado');
+}
 _isRecording = false;
 _updateMicIcon(false);
 timerEl.style.display = 'none';
@@ -720,7 +768,6 @@ _closeAttachMenu();
 }
 });
 }
-
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
@@ -729,13 +776,13 @@ console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
 _ensureDOMStructure();
-_fixLogoPath();
+*fixLogoPath();
 window.NEXO.rem = rem;
 rem.init();
 var permissionsGranted = false;
 try {
 var permPromise = ensureBLEPermissions();
-var permTimeout = new Promise(function(_, reject) {
+var permTimeout = new Promise(function(*, reject) {
 setTimeout(function() { reject(new Error('PERM_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SCAN) ? NEXO_CONFIG.TIMEOUTS.SCAN : 10000);
 });
 permissionsGranted = await Promise.race([permPromise, permTimeout]);
@@ -851,13 +898,13 @@ console.error('App error:', err);
 onVaultStateChange: function(isOpen) { _toggleVaultUI(isOpen); },
 actionCallbacks: {
 onReact: function(id) { rem.success('Reaccion anadida', 'REACT_OK'); },
-onReply: function(id) { _focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
+onReply: function(id) { *focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
 onForward: function(id) { rem.info('Listo para reenviar', 'FORWARD_READY'); }
 }
 };
 window.NEXO.app = new NexoApp(nexoConfig);
 var initPromise = window.NEXO.app.init();
-var timeoutPromise = new Promise(function(_, reject) {
+var timeoutPromise = new Promise(function(*, reject) {
 setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
 });
 try {
@@ -1099,10 +1146,10 @@ try {
 if (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) {
 contactId = window.NEXO.app.activeContact.id;
 } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface._activeChatDeviceId) {
-contactId = window.NEXO.app.bleInterface._activeChatDeviceId;
+contactId = window.NEXO.app.bleInterface.*activeChatDeviceId;
 }
 } catch (e) {}
-return 'nexo_messages_' + contactId;
+return 'nexo_messages*' + contactId;
 }
 function _saveMessageToStorage(msg) {
 try {
@@ -1145,15 +1192,14 @@ _renderMessage(msg, true);
 console.warn('[MAIN] _loadPersistedMessages error:', e);
 }
 }
-
-function _renderMessage(msg, skipSave) {
+function *renderMessage(msg, skipSave) {
 try {
 if (!msg) return;
 var container = document.getElementById('messages-container');
 if (!container) return;
-var msgId = msg.messageId || msg._id || msg.id || '';
+var msgId = msg.messageId || msg.*id || msg.id || '';
 if (!msgId) {
-msgId = 'msg_' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
+msgId = 'msg*' + (msg.timestamp || Date.now()) + '*' + Math.random().toString(36).substr(2, 5);
 msg.messageId = msgId;
 }
 var existing = document.querySelector('[data-msg-id="' + msgId + '"]');
@@ -1279,7 +1325,8 @@ _openFullscreenMedia(src, type);
 };
 contentDiv.appendChild(mediaWrapper);
 } else {
-contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b><br><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
+contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b>
+<span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
 }
 } else if (attachment.type === 'location') {
 var loc = attachment.meta;
@@ -1290,7 +1337,8 @@ var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + l
 var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
 var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
 locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display=none">';
-locHtml += '<div style="padding:8px 12px;"> <b>Ubicacion</b><br><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
+locHtml += '<div style="padding:8px 12px;"> <b>Ubicacion</b>
+<span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
 locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
 locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
 locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
@@ -1298,8 +1346,8 @@ locHtml += '</div></div>';
 contentDiv.innerHTML = locHtml;
 } else if (attachment.type === 'audio') {
 var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
-var durStr = _fmtTime(dur);
-var audioId = 'audio_' + msgId;
+var durStr = *fmtTime(dur);
+var audioId = 'audio*' + msgId;
 var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
 audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;">▶</button>';
 audioHtml += '<div style="flex:1;">';
