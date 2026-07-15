@@ -1324,7 +1324,7 @@ _openFullscreenMedia(src, type);
 };
 contentDiv.appendChild(mediaWrapper);
 } else {
-contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b>
+contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">&#128206; <b>Archivo</b>
 <span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
 }
 } else if (attachment.type === 'location') {
