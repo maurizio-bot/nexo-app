@@ -1,23 +1,10 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
- * FIX v10.26: Camera selfie facingMode ideal + fallback
- * FIX v10.27: Video recorder robusto con delay + sin race condition
- * FIX v10.28: Gallery input off-screen + cleanup
- * FIX v10.29: Location plugin check robusto + fallback
- * FIX v10.30: Voice timer dinámico + long-press fix
- * FIX v10.31: Stop camera preview sin limpiar chunks prematuro
- * FIX v10.32: Attach menu cerrar al tocar fuera
- * FIX v10.33: MediaRecorder timeslice fallback
- * FIX v10.34: Camera preview sin constraints de resolucion para front camera
- * FIX v10.35: Flip camera sin constraints de resolucion para front
- * FIX v10.36: Video recorder - overlay se cierra DESPUES de blob listo
- * FIX v10.37: Video capture - blob listo antes de cerrar overlay
- * FIX v10.38: Location con manejo de NotAllowedError
- * FIX v10.39: Voice con manejo de NotAllowedError
- * FIX v10.41: Video recorder mimeType universal + fallback sin mimeType
- * FIX v10.42: Stop camera preview — NO limpiar MediaRecorder si grabacion activa
- * FIX v10.43: Video handler con delay para evitar race condition
- * FIX v10.44: Flip camera bug sintaxis deltaX = currentX - startX
+ * FIX 2026-07-15:
+ * 1. Audio cronómetro: limpieza SIEMPRE al detener, incluso si MediaRecorder falló
+ * 2. Audio reproducción: sanitizar DOM ID + manejo error en play()
+ * 3. Ubicación preview: corregir onerror + fallback si mapa no carga
+ * 4. Video MIME type: usar mimeType real del MediaRecorder en blob y data URI
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -186,7 +173,6 @@ if (status) status.textContent = '';
 if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
 }
 }
-// FIX v10.41: Video recorder mimeType universal + fallback sin mimeType
 function _setupVideoRecorder(stream) {
 var mimeType = '';
 var candidates = [
@@ -225,7 +211,6 @@ var status = document.getElementById('camera-preview-status');
 if (status) status.textContent = 'Error: grabacion no soportada';
 }
 }
-// FIX v10.34: Camera preview sin constraints de resolucion para front camera
 function _startCameraPreview() {
 var container = document.getElementById('camera-preview-container');
 if (!container) return;
@@ -276,7 +261,6 @@ navigator.mediaDevices.getUserMedia(constraints)
 .then(_onStreamSuccess)
 .catch(_onStreamError);
 }
-// FIX v10.42: Stop camera preview — NO limpiar MediaRecorder si grabacion activa
 function _stopCameraPreview() {
 var wasRecording = _cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording';
 if (wasRecording) {
@@ -302,7 +286,6 @@ _cameraPreviewMediaRecorder = null;
 _cameraPreviewVideoChunks = [];
 _cameraVideoStartTime = 0;
 }
-// FIX v10.35: Flip camera sin constraints de resolucion para front
 function _flipCamera() {
 var container = document.getElementById('camera-preview-container');
 if (!container) return;
@@ -374,7 +357,6 @@ var base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
 _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
 _hideCameraPreviewOverlay();
 }
-// FIX v10.37: Video capture - blob listo antes de cerrar overlay
 function _handleCameraCapture() {
 if (_cameraPreviewMode === 'photo') {
 _capturePhoto();
@@ -412,7 +394,8 @@ var duration = 0;
 if (_cameraVideoStartTime > 0) {
 duration = Math.round((Date.now() - _cameraVideoStartTime) / 1000);
 }
-var mimeType = 'video/webm';
+// FIX: Usar mimeType real del MediaRecorder
+var mimeType = (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.mimeType) ? _cameraPreviewMediaRecorder.mimeType : 'video/webm';
 var blob = new Blob(_cameraPreviewVideoChunks, { type: mimeType });
 if (blob.size === 0) {
 console.log('[CAMERA] Video blob vacio, grabacion fallo');
@@ -425,7 +408,7 @@ return;
 var reader = new FileReader();
 reader.onloadend = function() {
 var base64 = reader.result.split(',')[1];
-_sendAttachment('video', base64, { format: 'webm', duration: duration });
+_sendAttachment('video', base64, { format: mimeType.split('/')[1] || 'webm', duration: duration, mimeType: mimeType });
 _hideCameraPreviewOverlay();
 };
 reader.onerror = function() {
@@ -452,7 +435,6 @@ if (flipBtn) flipBtn.addEventListener('click', _flipCamera);
 if (captureBtn) captureBtn.addEventListener('click', _handleCameraCapture);
 if (modeBtn) modeBtn.addEventListener('click', _toggleCameraMode);
 }
-// FIX v10.28: Gallery input off-screen + cleanup
 async function _handleCamera() {
 _closeAttachMenu();
 _showCameraPreviewOverlay();
@@ -491,7 +473,6 @@ document.body.appendChild(input);
 input.click();
 setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
 }
-// FIX v10.43: Video handler con delay para evitar race condition
 async function _handleVideo() {
 _closeAttachMenu();
 _cameraPreviewMode = 'video';
@@ -527,7 +508,6 @@ document.body.appendChild(input);
 input.click();
 setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
 }
-// FIX v10.40: Helper para mostrar error de permisos al usuario
 function _showPermissionError(permName) {
 var existing = document.getElementById('perm-error-toast');
 if (existing) existing.remove();
@@ -538,7 +518,6 @@ toast.innerHTML = 'Permiso de ' + permName + ' denegado.<br><span style="font-si
 document.body.appendChild(toast);
 setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(function() { toast.remove(); }, 500); }, 4000);
 }
-// FIX v10.38: Location con manejo de NotAllowedError
 async function _handleLocation() {
 _closeAttachMenu();
 var plugins = _getAttachmentPlugins();
@@ -596,7 +575,6 @@ _showPermissionError('Ubicacion');
 console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
 }
 }
-// FIX v10.39: Voice con manejo de NotAllowedError
 async function _handleVoiceToggle() {
 var timerEl = document.getElementById('voice-timer');
 if (!timerEl) {
@@ -665,16 +643,18 @@ _updateMicIcon(false);
 timerEl.style.display = 'none';
 }
 } else {
-if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
-try { _mediaRecorder.stop(); } catch (e) {}
-}
-_isRecording = false;
-_updateMicIcon(false);
-if (_voiceTimerInterval) {
-clearInterval(_voiceTimerInterval);
-_voiceTimerInterval = null;
-}
-timerEl.style.display = 'none';
+    // FIX: Limpiar timer y estado SIEMPRE, incluso si MediaRecorder falló
+    _isRecording = false;
+    _updateMicIcon(false);
+    if (_voiceTimerInterval) {
+        clearInterval(_voiceTimerInterval);
+        _voiceTimerInterval = null;
+    }
+    timerEl.style.display = 'none';
+    _voiceStartTime = 0;
+    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+        try { _mediaRecorder.stop(); } catch (e) {}
+    }
 }
 }
 function _updateMicIcon(recording) {
@@ -688,7 +668,6 @@ micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="curren
 }
 }
 }
-// FIX v10.30 + v10.32: Attach handlers con long-press fix y cerrar menú al tocar fuera
 function _bindAttachmentHandlers() {
 _bindCameraPreviewHandlers();
 var attachBtn = document.getElementById('attach-btn');
@@ -764,7 +743,6 @@ _handleVoiceToggle();
 }
 });
 }
-// FIX v10.32: Cerrar menú al tocar fuera
 document.addEventListener('click', function(e) {
 var menu = document.getElementById('attach-menu');
 var attachBtn = document.getElementById('attach-btn');
@@ -1279,7 +1257,8 @@ var videoWrapper = document.createElement('div');
 videoWrapper.className = 'video-attachment';
 videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
 var video = document.createElement('video');
-video.src = 'data:video/' + (attachment.meta.format || 'webm') + ';base64,' + attachment.payload;
+var videoMime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('video/' + (attachment.meta.format || 'webm'));
+video.src = 'data:' + videoMime + ';base64,' + attachment.payload;
 video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
 video.playsInline = true;
 video.muted = true;
@@ -1343,7 +1322,8 @@ var mapUrl = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',
 var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
 var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
 var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
-locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display=none">';
+locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">';
+locHtml += '<div style="display:none;align-items:center;justify-content:center;height:120px;background:#1a1a2e;color:#888;font-size:12px;"><span>Mapa no disponible</span></div>';
 locHtml += '<div style="padding:8px 12px;"> <b>Ubicacion</b><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
 locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
 locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
@@ -1353,7 +1333,9 @@ contentDiv.innerHTML = locHtml;
 } else if (attachment.type === 'audio') {
 var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
 var durStr = _fmtTime(dur);
-var audioId = 'audio_' + msgId;
+// FIX: Sanitizar ID para DOM
+var safeMsgId = (msgId || '').replace(/[^a-zA-Z0-9]/g, '_');
+var audioId = 'audio_' + safeMsgId;
 var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
 audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;">▶</button>';
 audioHtml += '<div style="flex:1;">';
@@ -1375,7 +1357,12 @@ btn.onclick = function(e) {
 e.stopPropagation();
 if (!playing) {
 audioEl = new Audio('data:audio/' + ((attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm') + ';base64,' + attachment.payload);
-audioEl.play().catch(function(err) { console.log('[AUDIO] Play error:', err.message); });
+audioEl.play().catch(function(err) { 
+    console.log('[AUDIO] Play error:', err.message);
+    btn.innerHTML = '▶';
+    playing = false;
+    audioEl = null;
+});
 btn.innerHTML = '⏸';
 playing = true;
 audioEl.onended = function() { btn.innerHTML = '▶'; playing = false; audioEl = null; };
