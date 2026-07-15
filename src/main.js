@@ -79,8 +79,8 @@
    }
    return null;
    }
-   function *sendAttachment(type, payload, meta) {
-   var contactId = *getCurrentContactId();
+   function _sendAttachment(type, payload, meta) {
+   var contactId = _getCurrentContactId();
    if (!contactId) {
    console.log('[ATTACH] No hay contacto seleccionado');
    return;
@@ -92,7 +92,7 @@
    meta: meta,
    timestamp: Date.now()
    };
-   var msgId = 'att*' + Date.now() + '*' + Math.random().toString(36).substr(2, 6);
+   var msgId = 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
    var localMsg = {
    messageId: msgId,
    content: JSON.stringify(attachmentData),
@@ -523,8 +523,7 @@
    var toast = document.createElement('div');
    toast.id = 'perm-error-toast';
    toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(255,59,48,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;backdrop-filter:blur(4px);box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
-   toast.innerHTML = 'Permiso de ' + permName + ' denegado.
-   <span style="font-size:11px;opacity:0.8;font-weight:400;">Ve a Ajustes > Aplicaciones > NEXO > Permisos</span>';
+   toast.innerHTML = 'Permiso de ' + permName + ' denegado.<br><span style="font-size:11px;opacity:0.8;font-weight:400;">Ve a Ajustes > Aplicaciones > NEXO > Permisos</span>';
    document.body.appendChild(toast);
    setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(function() { toast.remove(); }, 500); }, 4000);
    }
@@ -776,13 +775,13 @@ console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
 _ensureDOMStructure();
-*fixLogoPath();
+_fixLogoPath();
 window.NEXO.rem = rem;
 rem.init();
 var permissionsGranted = false;
 try {
 var permPromise = ensureBLEPermissions();
-var permTimeout = new Promise(function(*, reject) {
+var permTimeout = new Promise(function(_, reject) {
 setTimeout(function() { reject(new Error('PERM_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SCAN) ? NEXO_CONFIG.TIMEOUTS.SCAN : 10000);
 });
 permissionsGranted = await Promise.race([permPromise, permTimeout]);
@@ -898,13 +897,13 @@ console.error('App error:', err);
 onVaultStateChange: function(isOpen) { _toggleVaultUI(isOpen); },
 actionCallbacks: {
 onReact: function(id) { rem.success('Reaccion anadida', 'REACT_OK'); },
-onReply: function(id) { *focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
+onReply: function(id) { _focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
 onForward: function(id) { rem.info('Listo para reenviar', 'FORWARD_READY'); }
 }
 };
 window.NEXO.app = new NexoApp(nexoConfig);
 var initPromise = window.NEXO.app.init();
-var timeoutPromise = new Promise(function(*, reject) {
+var timeoutPromise = new Promise(function(_, reject) {
 setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
 });
 try {
@@ -1146,10 +1145,10 @@ try {
 if (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) {
 contactId = window.NEXO.app.activeContact.id;
 } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface._activeChatDeviceId) {
-contactId = window.NEXO.app.bleInterface.*activeChatDeviceId;
+contactId = window.NEXO.app.bleInterface._activeChatDeviceId;
 }
 } catch (e) {}
-return 'nexo_messages*' + contactId;
+return 'nexo_messages_' + contactId;
 }
 function _saveMessageToStorage(msg) {
 try {
@@ -1192,14 +1191,14 @@ _renderMessage(msg, true);
 console.warn('[MAIN] _loadPersistedMessages error:', e);
 }
 }
-function *renderMessage(msg, skipSave) {
+function _renderMessage(msg, skipSave) {
 try {
 if (!msg) return;
 var container = document.getElementById('messages-container');
 if (!container) return;
-var msgId = msg.messageId || msg.*id || msg.id || '';
+var msgId = msg.messageId || msg._id || msg.id || '';
 if (!msgId) {
-msgId = 'msg*' + (msg.timestamp || Date.now()) + '*' + Math.random().toString(36).substr(2, 5);
+msgId = 'msg_' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
 msg.messageId = msgId;
 }
 var existing = document.querySelector('[data-msg-id="' + msgId + '"]');
@@ -1346,8 +1345,8 @@ locHtml += '</div></div>';
 contentDiv.innerHTML = locHtml;
 } else if (attachment.type === 'audio') {
 var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
-var durStr = *fmtTime(dur);
-var audioId = 'audio*' + msgId;
+var durStr = _fmtTime(dur);
+var audioId = 'audio_' + msgId;
 var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
 audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;">▶</button>';
 audioHtml += '<div style="flex:1;">';
