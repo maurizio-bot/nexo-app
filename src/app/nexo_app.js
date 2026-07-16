@@ -4,6 +4,7 @@
  * FIX: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
  * FIX: Eliminado attachment_handlers.js externo, todo integrado en _initInputBarV2
  */
+
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
 import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
