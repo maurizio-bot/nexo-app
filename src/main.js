@@ -1,10 +1,9 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
- * FIX 2026-07-15:
- * 1. Audio: pulsar graba, soltar detiene y envia
- * 2. Video: grabar, enviar, reproducir (mismo flujo que foto)
- * 3. Quitar boton video del menu adjuntar
- * 4. SwipeBack duplicado eliminado
+ * FIX 2026-07-16:
+ * 1. Ubicación: evitar doble envío, solo burbuja con mapa
+ * 2. Audio: fix timer reinicio, fix mimeType, fix reproducción
+ * 3. Quitar boton video del menu adjuntar (HTML)
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -51,6 +50,8 @@ var _cameraPreviewMediaRecorder = null;
 var _cameraPreviewVideoChunks = [];
 var _cameraActiveStream = null;
 var _cameraVideoStartTime = 0;
+// FIX: flag para prevenir click después de long-press de voz
+var _voiceLongPressHandled = false;
 function _fmtTime(sec) {
 var m = Math.floor(sec / 60);
 var s = sec % 60;
@@ -478,7 +479,6 @@ document.body.appendChild(input);
 input.click();
 setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
 }
-// ELIMINADO: _handleVideo() — ya no existe boton de video en menu
 function _handleFile() {
 _closeAttachMenu();
 var input = document.createElement('input');
@@ -515,6 +515,7 @@ toast.innerHTML = 'Permiso de ' + permName + ' denegado.<br><span style="font-si
 document.body.appendChild(toast);
 setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(function() { toast.remove(); }, 500); }, 4000);
 }
+// FIX: Ubicación - evitar doble envío y doble mensaje
 async function _handleLocation() {
 _closeAttachMenu();
 var plugins = _getAttachmentPlugins();
@@ -532,15 +533,20 @@ if (req.location !== 'granted') throw new Error('Permiso denegado');
 var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 });
 _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
 pluginWorked = true;
+return;
 } catch (pluginErr) {
 console.log('[ATTACH:LOCATION] Plugin fallo:', pluginErr.message);
 if (pluginErr.message && pluginErr.message.indexOf('denied') > -1) {
 _showPermissionError('Ubicacion');
 return;
 }
+// Si es otro error (timeout, etc), NO intentar fallback para evitar doble envío
+_showPermissionError('Ubicacion: ' + pluginErr.message);
+return;
 }
 }
-if (!pluginWorked) {
+// Solo usar fallback si el plugin NO está disponible (no si falló)
+if (!pluginWorked && !plugins.Geolocation) {
 _handleLocationFallback();
 }
 }
@@ -572,7 +578,7 @@ _showPermissionError('Ubicacion');
 console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
 }
 }
-// FIX: Audio — pulsar graba, soltar detiene y envia
+// FIX: Audio - pulsar graba, soltar detiene y envia. Timer funcional. Reproducción funcional.
 async function _handleVoiceToggle() {
 var timerEl = document.getElementById('voice-timer');
 if (!timerEl) {
@@ -584,8 +590,18 @@ document.body.appendChild(timerEl);
 if (!_isRecording) {
 // INICIAR grabacion
 try {
+// FIX: detectar mejor formato de audio soportado
+var mimeType = 'audio/webm';
+var audioCandidates = ['audio/mp4', 'audio/aac', 'audio/webm;codecs=opus', 'audio/webm'];
+for (var i = 0; i < audioCandidates.length; i++) {
+if (MediaRecorder.isTypeSupported(audioCandidates[i])) {
+mimeType = audioCandidates[i];
+console.log('[VOICE] Usando mimeType:', mimeType);
+break;
+}
+}
 var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-_mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+_mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
 _audioChunks = [];
 _voiceStartTime = Date.now();
 timerEl.style.display = 'block';
@@ -604,13 +620,13 @@ clearInterval(_voiceTimerInterval);
 _voiceTimerInterval = null;
 }
 timerEl.style.display = 'none';
-// Calcular duracion
+// Calcular duracion final
 var duration = 0;
 if (_voiceStartTime > 0) {
 duration = Math.round((Date.now() - _voiceStartTime) / 1000);
 }
 // Crear blob y enviar
-var blob = new Blob(_audioChunks, { type: 'audio/webm' });
+var blob = new Blob(_audioChunks, { type: mimeType });
 if (blob.size === 0) {
 console.log('[ATTACH] Audio blob vacio');
 _isRecording = false;
@@ -620,8 +636,9 @@ return;
 var reader = new FileReader();
 reader.onloadend = function() {
 var base64 = reader.result.split(',')[1];
-_sendAttachment('audio', base64, { format: 'webm', duration: duration });
-console.log('[ATTACH] Audio enviado, duracion:', duration);
+// FIX: guardar mimeType real para reproducción correcta
+_sendAttachment('audio', base64, { format: mimeType.split('/')[1] || 'webm', mimeType: mimeType, duration: duration });
+console.log('[ATTACH] Audio enviado, duracion:', duration, 'format:', mimeType);
 _isRecording = false;
 _updateMicIcon(false);
 };
@@ -678,12 +695,13 @@ var micBtn = document.getElementById('send-btn');
 if (micBtn) {
 micBtn.style.color = recording ? '#FF3B30' : '';
 if (recording) {
-micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#FF3B30"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>';
+micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#FF3B30"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21c0 .55.45 1 1 1s1-.45 1-1v-2.45c3.2-.5 5.92-3.05 6.41-6.36.09-.6-.39-1.14-1-1.14z"/></svg>';
 } else {
-micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>';
+micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21c0 .55.45 1 1 1s1-.45 1-1v-2.45c3.2-.5 5.92-3.05 6.41-6.36.09-.6-.39-1.14-1-1.14z"/></svg>';
 }
 }
 }
+// FIX: eventos de voz con flag para prevenir doble disparo
 function _bindAttachmentHandlers() {
 _bindCameraPreviewHandlers();
 var attachBtn = document.getElementById('attach-btn');
@@ -694,6 +712,11 @@ if (attachBtn) {
 attachBtn.addEventListener('click', function(e) {
 e.preventDefault();
 e.stopPropagation();
+// FIX: si el long-press ya manejó el evento, ignorar click
+if (_voiceLongPressHandled) {
+_voiceLongPressHandled = false;
+return;
+}
 if (_isRecording) {
 _handleVoiceToggle();
 attachBtn.classList.remove('voice-active');
@@ -705,8 +728,10 @@ var longPressTimer = null;
 var isLongPress = false;
 attachBtn.addEventListener('touchstart', function(e) {
 isLongPress = false;
+_voiceLongPressHandled = false;
 longPressTimer = setTimeout(function() {
 isLongPress = true;
+_voiceLongPressHandled = true;
 attachBtn.classList.add('voice-active');
 _handleVoiceToggle();
 }, 800);
@@ -1347,10 +1372,13 @@ locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:c
 locHtml += '</div></div>';
 contentDiv.innerHTML = locHtml;
 } else if (attachment.type === 'audio') {
+// FIX: Audio playback con mimeType correcto y manejo de error
 var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
 var durStr = _fmtTime(dur);
 var safeMsgId = (msgId || '').replace(/[^a-zA-Z0-9]/g, '_');
 var audioId = 'audio_' + safeMsgId;
+// FIX: usar mimeType completo si existe
+var audioMime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('audio/' + (attachment.meta.format || 'webm'));
 var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
 audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;">▶</button>';
 audioHtml += '<div style="flex:1;">';
@@ -1371,12 +1399,30 @@ var audioEl = null;
 btn.onclick = function(e) {
 e.stopPropagation();
 if (!playing) {
-audioEl = new Audio('data:audio/' + ((attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm') + ';base64,' + attachment.payload);
-audioEl.play().catch(function(err) { 
-    console.log('[AUDIO] Play error:', err.message);
-    btn.innerHTML = '▶';
-    playing = false;
-    audioEl = null;
+// FIX: crear audio element con mimeType correcto
+audioEl = new Audio('data:' + audioMime + ';base64,' + attachment.payload);
+audioEl.play().catch(function(err) {
+console.log('[AUDIO] Play error:', err.message);
+// FIX: retry con format genérico si falla
+if (audioMime.indexOf('webm') > -1) {
+var retryEl = new Audio('data:audio/wav;base64,' + attachment.payload);
+retryEl.play().catch(function(err2) {
+console.log('[AUDIO] Retry fallo:', err2.message);
+btn.innerHTML = '▶';
+playing = false;
+audioEl = null;
+});
+if (retryEl) {
+audioEl = retryEl;
+btn.innerHTML = '⏸';
+playing = true;
+audioEl.onended = function() { btn.innerHTML = '▶'; playing = false; audioEl = null; };
+return;
+}
+}
+btn.innerHTML = '▶';
+playing = false;
+audioEl = null;
 });
 btn.innerHTML = '⏸';
 playing = true;
@@ -1389,9 +1435,11 @@ playing = false;
 };
 }, 0);
 } else {
+// FIX: attachment desconocido - mostrar como texto plano
 contentDiv.textContent = msg.content || msg.text || '';
 }
 } else {
+// FIX: mensaje sin attachment - mostrar como texto plano
 contentDiv.textContent = msg.content || msg.text || '';
 }
 div.appendChild(contentDiv);
@@ -1568,114 +1616,4 @@ document.body.classList.add('chat-swipe-dragging');
 e.preventDefault();
 } else if (Math.abs(deltaY) > 10) {
 isDragging = false;
-return;
-}
-}
-if (!isHorizontal) return;
-var translateX = Math.max(0, Math.min(deltaX, winWidth));
-var progress = translateX / winWidth;
-if (progress > 0.5) {
-translateX = winWidth * 0.5 + (translateX - winWidth * 0.5) * 0.4;
-}
-app.style.transform = 'translateX(' + translateX + 'px)';
-app.style.opacity = Math.max(0.4, 1 - (progress * 0.5));
-var contactsView = document.getElementById('contacts-view');
-if (contactsView) {
-contactsView.style.display = 'flex';
-contactsView.style.opacity = Math.min(1, progress * 2);
-contactsView.style.transform = 'translateX(' + (-20 + progress * 20) + '%)';
-}
-e.preventDefault();
-}
-function onTouchEnd(e) {
-if (!isDragging || !isHorizontal) {
-isDragging = false;
-isHorizontal = false;
-return;
-}
-var deltaX = currentX - startX;
-var progress = deltaX / winWidth;
-var threshold = winWidth * SWIPE_THRESHOLD;
-document.body.classList.remove('chat-swipe-dragging');
-if (deltaX > threshold) {
-document.body.classList.add('chat-swipe-complete');
-document.body.classList.add('chat-swipe-transition');
-setTimeout(function() {
-_doChatBack();
-app.style.transform = '';
-app.style.opacity = '';
-document.body.classList.remove('chat-swipe-complete');
-document.body.classList.remove('chat-swipe-transition');
-var contactsView = document.getElementById('contacts-view');
-if (contactsView) {
-contactsView.style.transform = '';
-contactsView.style.opacity = '';
-}
-}, 350);
-} else {
-document.body.classList.add('chat-swipe-rebound');
-document.body.classList.add('chat-swipe-transition');
-setTimeout(function() {
-document.body.classList.remove('chat-swipe-rebound');
-document.body.classList.remove('chat-swipe-transition');
-app.style.transform = '';
-app.style.opacity = '';
-var contactsView = document.getElementById('contacts-view');
-if (contactsView) {
-contactsView.style.transform = '';
-contactsView.style.opacity = '';
-}
-}, 250);
-}
-isDragging = false;
-isHorizontal = false;
-}
-function onTouchCancel(e) {
-if (!isDragging) return;
-isDragging = false;
-isHorizontal = false;
-document.body.classList.remove('chat-swipe-dragging');
-app.style.transform = '';
-app.style.opacity = '';
-var contactsView = document.getElementById('contacts-view');
-if (contactsView) {
-contactsView.style.transform = '';
-contactsView.style.opacity = '';
-}
-}
-document.addEventListener('touchstart', onTouchStart, { passive: true });
-document.addEventListener('touchmove', onTouchMove, { passive: false });
-document.addEventListener('touchend', onTouchEnd, { passive: true });
-document.addEventListener('touchcancel', onTouchCancel, { passive: true });
-} catch (e) {
-console.warn('[MAIN] _setupSwipeBack error:', e);
-}
-}
-function _doChatBack() {
-try {
-var backBtn = document.getElementById('chat-back-btn');
-if (backBtn) backBtn.classList.remove('visible');
-document.body.classList.remove('chat-view-active');
-var nameInput = document.getElementById('chat-contact-name');
-var subtitle = document.getElementById('chat-contact-subtitle');
-if (nameInput) nameInput.value = 'NEXO';
-if (subtitle) subtitle.textContent = '';
-var blePanel = document.getElementById('ble-panel');
-var bleOverlay = document.getElementById('ble-overlay');
-if (blePanel) blePanel.classList.remove('active');
-if (bleOverlay) bleOverlay.classList.remove('active');
-try {
-window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }));
-} catch(e) {}
-if (window.NEXO.app) {
-window.NEXO.app.activeContact = null;
-}
-if (window.NEXO.app && window.NEXO.app.bleInterface) {
-window.NEXO.app.bleInterface._activeChatDeviceId = null;
-}
-} catch (e) {
-console.warn('[MAIN] _doChatBack error:', e);
-}
-}
-window.NEXO_updateMessageStatus = _updateMessageStatus;
-if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
+return
