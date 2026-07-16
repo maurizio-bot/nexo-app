@@ -515,10 +515,10 @@ toast.innerHTML = 'Permiso de ' + permName + ' denegado.<br><span style="font-si
 document.body.appendChild(toast);
 setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(function() { toast.remove(); }, 500); }, 4000);
 }
+// FIX: Si el plugin existe, usarlo. Si falla, NO hacer fallback (evita doble envio)
 async function _handleLocation() {
 _closeAttachMenu();
 var plugins = _getAttachmentPlugins();
-var pluginWorked = false;
 if (plugins.Geolocation &&
 typeof plugins.Geolocation.checkPermissions === 'function' &&
 typeof plugins.Geolocation.requestPermissions === 'function' &&
@@ -531,18 +531,18 @@ if (req.location !== 'granted') throw new Error('Permiso denegado');
 }
 var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 });
 _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-pluginWorked = true;
+return;
 } catch (pluginErr) {
 console.log('[ATTACH:LOCATION] Plugin fallo:', pluginErr.message);
 if (pluginErr.message && pluginErr.message.indexOf('denied') > -1) {
 _showPermissionError('Ubicacion');
 return;
 }
+_showPermissionError('Ubicacion: ' + (pluginErr.message || 'timeout'));
+return;
 }
 }
-if (!pluginWorked) {
 _handleLocationFallback();
-}
 }
 function _sendLocation(lat, lng, accuracy) {
 var payload = JSON.stringify({ lat: lat, lng: lng, accuracy: accuracy || 0 });
@@ -735,7 +735,6 @@ e.stopPropagation();
 var type = item.getAttribute('data-type');
 if (type === 'camera') _handleCamera();
 else if (type === 'gallery') _handleGallery();
-// FIX: eliminado 'video' del menu
 else if (type === 'file') _handleFile();
 else if (type === 'location') _handleLocation();
 });
@@ -1334,7 +1333,8 @@ contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);
 var loc = attachment.meta;
 var lat = (loc && loc.lat) ? loc.lat : 0;
 var lng = (loc && loc.lng) ? loc.lng : 0;
-var mapUrl = 'https://staticmap.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng + '&zoom=15&size=300x150&maptype=map&markers=' + lat + ',' + lng + ',red-pushpin';
+// FIX: URL de mapa estático cambiada a Google Maps (funciona sin API key con watermark)
+var mapUrl = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',' + lng + '&zoom=15&size=300x150&markers=color:red%7C' + lat + ',' + lng;
 var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
 var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
 var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
