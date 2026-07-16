@@ -1617,3 +1617,58 @@ e.preventDefault();
 } else if (Math.abs(deltaY) > 10) {
 isDragging = false;
 return
+}
+}
+if (isHorizontal) {
+var progress = Math.min(deltaX / winWidth, 1);
+if (app) {
+app.style.transform = 'translateX(' + (progress * 100) + '%)';
+app.style.transition = 'none';
+}
+}
+}
+function onTouchEnd(e) {
+if (!isDragging) return;
+isDragging = false;
+document.body.classList.remove('chat-swipe-dragging');
+var deltaX = currentX - startX;
+if (isHorizontal && deltaX > winWidth * SWIPE_THRESHOLD) {
+_doChatBack();
+}
+if (app) {
+app.style.transform = '';
+app.style.transition = 'transform 0.3s ease';
+}
+}
+app.addEventListener('touchstart', onTouchStart, { passive: false });
+app.addEventListener('touchmove', onTouchMove, { passive: false });
+app.addEventListener('touchend', onTouchEnd, { passive: true });
+app.addEventListener('touchcancel', onTouchEnd, { passive: true });
+} catch (e) {
+console.warn('[MAIN] _setupSwipeBack error:', e);
+}
+}
+
+function _doChatBack() {
+var backBtn = document.getElementById('chat-back-btn');
+if (backBtn) backBtn.classList.remove('visible');
+document.body.classList.remove('chat-view-active');
+var nameInput = document.getElementById('chat-contact-name');
+var subtitle = document.getElementById('chat-contact-subtitle');
+if (nameInput) nameInput.value = 'NEXO';
+if (subtitle) subtitle.textContent = '';
+if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
+window.bleInterface.togglePanel();
+}
+if (window.NEXO.app) {
+window.NEXO.app.activeContact = null;
+}
+if (window.NEXO.app && window.NEXO.app.bleInterface) {
+window.NEXO.app.bleInterface._activeChatDeviceId = null;
+window.NEXO.app.bleInterface._activeChatMAC = null;
+}
+}
+
+window.NEXO_updateMessageStatus = _updateMessageStatus;
+
+if (module && module.hot) module.hot.accept();
