@@ -4,13 +4,10 @@
 (function() {
   'use strict';
 
-  // IDs correctos según tu index.html
   var attachBtn = document.getElementById('attach-btn');
   var attachMenu = document.getElementById('attach-menu');
 
-  // ── Helpers para renderizar burbuja ──
   function getMessagesContainer() {
-    // Tu contenedor real es #messages-container
     return document.getElementById('messages-container');
   }
 
@@ -43,13 +40,11 @@
         attachMenu.classList.remove('visible');
         attachMenu.classList.add('hidden');
       }
-
       try {
         if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.Camera) {
           alert('Plugin Camera no disponible');
           return;
         }
-
         var Camera = window.Capacitor.Plugins.Camera;
         var image = await Camera.getPhoto({
           quality: 90,
@@ -58,7 +53,6 @@
           source: Camera.CameraSource.Prompt,
           saveToGallery: false
         });
-
         if (image && image.base64String) {
           var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
           var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>';
@@ -84,7 +78,6 @@
         attachMenu.classList.remove('visible');
         attachMenu.classList.add('hidden');
       }
-
       var input = document.createElement('input');
       input.type = 'file';
       input.accept = 'video/*';
@@ -113,7 +106,6 @@
         attachMenu.classList.remove('visible');
         attachMenu.classList.add('hidden');
       }
-
       var input = document.createElement('input');
       input.type = 'file';
       input.style.display = 'none';
@@ -133,33 +125,7 @@
     });
   }
 
-  // ── 4. UBICACIÓN ──
-  var btnUbicacion = document.querySelector('[data-type="location"]');
-  if (btnUbicacion) {
-    btnUbicacion.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (attachMenu) {
-        attachMenu.classList.remove('visible');
-        attachMenu.classList.add('hidden');
-      }
-
-      if (!navigator.geolocation) {
-        alert('Geolocalización no disponible');
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(function(pos) {
-        var lat = pos.coords.latitude;
-        var lng = pos.coords.longitude;
-        var mapsUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng;
-        var html = '<a href="' + mapsUrl + '" target="_blank" style="text-decoration:none;color:inherit;"><div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:10px;display:flex;align-items:center;gap:10px;"><div style="font-size:28px;">📍</div><div><div style="font-weight:600;">Mi ubicación</div><div style="font-size:11px;opacity:0.8;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</div></div></div></a>';
-        renderOwnBubble(html, '🌍 Ubicación');
-        window._lastAttachmentPayload = { type: 'location', lat: lat, lng: lng };
-      }, function(err) {
-        alert('Error ubicación: ' + err.message);
-      }, { enableHighAccuracy: true, timeout: 10000 });
-    });
-  }
+  // ── 4. UBICACIÓN — ELIMINADO: manejado por main.js (_handleLocation) ──
 
   console.log('[attachment_handlers] Cargado — render local activo');
 })();
