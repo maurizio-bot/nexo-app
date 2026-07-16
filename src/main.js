@@ -1,9 +1,9 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
  * FIX 2026-07-15:
- * 1. Audio cronómetro: limpieza SIEMPRE al detener, incluso si MediaRecorder falló
- * 2. Audio reproducción: sanitizar DOM ID + manejo error en play()
- * 3. Ubicación preview: corregir onerror + fallback si mapa no carga
+ * 1. Audio cronometro: limpieza SIEMPRE al detener, incluso si MediaRecorder fallo
+ * 2. Audio reproduccion: sanitizar DOM ID + manejo error en play()
+ * 3. Ubicacion preview: OpenStreetMap estático (sin API key) + corregir onerror
  * 4. Video MIME type: usar mimeType real del MediaRecorder en blob y data URI
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -394,7 +394,6 @@ var duration = 0;
 if (_cameraVideoStartTime > 0) {
 duration = Math.round((Date.now() - _cameraVideoStartTime) / 1000);
 }
-// FIX: Usar mimeType real del MediaRecorder
 var mimeType = (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.mimeType) ? _cameraPreviewMediaRecorder.mimeType : 'video/webm';
 var blob = new Blob(_cameraPreviewVideoChunks, { type: mimeType });
 if (blob.size === 0) {
@@ -643,7 +642,6 @@ _updateMicIcon(false);
 timerEl.style.display = 'none';
 }
 } else {
-    // FIX: Limpiar timer y estado SIEMPRE, incluso si MediaRecorder falló
     _isRecording = false;
     _updateMicIcon(false);
     if (_voiceTimerInterval) {
@@ -1318,7 +1316,8 @@ contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);
 var loc = attachment.meta;
 var lat = (loc && loc.lat) ? loc.lat : 0;
 var lng = (loc && loc.lng) ? loc.lng : 0;
-var mapUrl = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',' + lng + '&zoom=15&size=300x150&maptype=roadmap&markers=color:red%7C' + lat + ',' + lng;
+// FIX: OpenStreetMap estático — no requiere API key
+var mapUrl = 'https://staticmap.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng + '&zoom=15&size=300x150&maptype=map&markers=' + lat + ',' + lng + ',red-pushpin';
 var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
 var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
 var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
@@ -1333,7 +1332,6 @@ contentDiv.innerHTML = locHtml;
 } else if (attachment.type === 'audio') {
 var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
 var durStr = _fmtTime(dur);
-// FIX: Sanitizar ID para DOM
 var safeMsgId = (msgId || '').replace(/[^a-zA-Z0-9]/g, '_');
 var audioId = 'audio_' + safeMsgId;
 var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
@@ -1616,6 +1614,22 @@ isDragging = false;
 isHorizontal = false;
 }
 function onTouchCancel(e) {
+if (!isDragging) return;
+isDragging = false;
+isHorizontal = false;
+document.body.classList.remove('chat-swipe-dragging');
+app.style.transform = '';
+app.style.opacity = '';
+var contactsView = document.getElementById('contacts-view');
+if (contactsView) {
+contactsView.style.transform = '';
+contactsView.style.opacity = '';
+}
+}
+document.addEventListener('touchstart', onTouchStart, { passive: true });
+document.addEventListener('touchmove', onTouchMove, { passive: false });
+document.addEventListener('touchend', onTouchEnd, { passive: true });
+document.addEventchCancel(e) {
 if (!isDragging) return;
 isDragging = false;
 isHorizontal = false;
