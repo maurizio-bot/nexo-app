@@ -1,10 +1,10 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
  * FIX 2026-07-15:
- * 1. Audio cronometro: limpieza SIEMPRE al detener, incluso si MediaRecorder fallo
- * 2. Audio reproduccion: sanitizar DOM ID + manejo error en play()
- * 3. Ubicacion preview: OpenStreetMap estático (sin API key) + corregir onerror
- * 4. Video MIME type: usar mimeType real del MediaRecorder en blob y data URI
+ * 1. Audio: pulsar graba, soltar detiene y envia
+ * 2. Video: grabar, enviar, reproducir (mismo flujo que foto)
+ * 3. Quitar boton video del menu adjuntar
+ * 4. SwipeBack duplicado eliminado
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -357,19 +357,25 @@ var base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
 _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
 _hideCameraPreviewOverlay();
 }
+// FIX: Video grabar -> detener -> enviar (mismo flujo que foto)
 function _handleCameraCapture() {
 if (_cameraPreviewMode === 'photo') {
 _capturePhoto();
-} else {
+return;
+}
+// Modo video
 if (!_cameraPreviewRecording) {
-if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'inactive') {
+// INICIAR grabacion
+if (!_cameraPreviewMediaRecorder || _cameraPreviewMediaRecorder.state !== 'inactive') {
+console.log('[CAMERA] MediaRecorder no listo');
+return;
+}
 _cameraPreviewVideoChunks = [];
 _cameraVideoStartTime = Date.now();
 try {
 try {
 _cameraPreviewMediaRecorder.start(100);
 } catch (tsErr) {
-console.log('[CAMERA] Timeslice no soportado, usando sin timeslice');
 _cameraPreviewMediaRecorder.start();
 }
 _cameraPreviewRecording = true;
@@ -379,8 +385,8 @@ console.log('[CAMERA] Grabacion iniciada');
 console.log('[CAMERA] Error al iniciar grabacion:', startErr.message);
 _cameraPreviewRecording = false;
 }
-}
 } else {
+// DETENER grabacion
 if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
 try { _cameraPreviewMediaRecorder.requestData(); } catch (e) {}
 setTimeout(function() {
@@ -389,7 +395,12 @@ if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'record
 _cameraPreviewMediaRecorder.stop();
 }
 } catch(e) {}
-setTimeout(function() {
+}, 200);
+}
+}
+}
+// FIX: onstop del MediaRecorder procesa y envia el video
+function _processAndSendVideo() {
 var duration = 0;
 if (_cameraVideoStartTime > 0) {
 duration = Math.round((Date.now() - _cameraVideoStartTime) / 1000);
@@ -416,13 +427,8 @@ _cameraPreviewRecording = false;
 _updateCameraPreviewUI();
 };
 reader.readAsDataURL(blob);
-}, 1200);
 _cameraPreviewRecording = false;
 _updateCameraPreviewUI();
-}, 1500);
-}
-}
-}
 }
 function _bindCameraPreviewHandlers() {
 var closeBtn = document.getElementById('camera-btn-close');
@@ -472,15 +478,7 @@ document.body.appendChild(input);
 input.click();
 setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
 }
-async function _handleVideo() {
-_closeAttachMenu();
-_cameraPreviewMode = 'video';
-_cameraPreviewRecording = false;
-_cameraPreviewVideoChunks = [];
-_showCameraPreviewOverlay();
-_updateCameraPreviewUI();
-setTimeout(function() { _startCameraPreview(); }, 200);
-}
+// ELIMINADO: _handleVideo() — ya no existe boton de video en menu
 function _handleFile() {
 _closeAttachMenu();
 var input = document.createElement('input');
@@ -574,6 +572,7 @@ _showPermissionError('Ubicacion');
 console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
 }
 }
+// FIX: Audio — pulsar graba, soltar detiene y envia
 async function _handleVoiceToggle() {
 var timerEl = document.getElementById('voice-timer');
 if (!timerEl) {
@@ -583,6 +582,7 @@ timerEl.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translate
 document.body.appendChild(timerEl);
 }
 if (!_isRecording) {
+// INICIAR grabacion
 try {
 var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 _mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
@@ -598,13 +598,23 @@ _mediaRecorder.ondataavailable = function(e) {
 if (e.data && e.data.size > 0) _audioChunks.push(e.data);
 };
 _mediaRecorder.onstop = function() {
-if (_voiceTimerInterval) { clearInterval(_voiceTimerInterval); _voiceTimerInterval = null; }
+// Limpiar timer
+if (_voiceTimerInterval) {
+clearInterval(_voiceTimerInterval);
+_voiceTimerInterval = null;
+}
 timerEl.style.display = 'none';
+// Calcular duracion
 var duration = 0;
-if (_voiceStartTime > 0) duration = Math.round((Date.now() - _voiceStartTime) / 1000);
+if (_voiceStartTime > 0) {
+duration = Math.round((Date.now() - _voiceStartTime) / 1000);
+}
+// Crear blob y enviar
 var blob = new Blob(_audioChunks, { type: 'audio/webm' });
 if (blob.size === 0) {
 console.log('[ATTACH] Audio blob vacio');
+_isRecording = false;
+_updateMicIcon(false);
 return;
 }
 var reader = new FileReader();
@@ -612,8 +622,11 @@ reader.onloadend = function() {
 var base64 = reader.result.split(',')[1];
 _sendAttachment('audio', base64, { format: 'webm', duration: duration });
 console.log('[ATTACH] Audio enviado, duracion:', duration);
+_isRecording = false;
+_updateMicIcon(false);
 };
 reader.readAsDataURL(blob);
+// Detener tracks
 stream.getTracks().forEach(function(t) { t.stop(); });
 };
 _mediaRecorder.onerror = function(e) {
@@ -621,6 +634,10 @@ console.log('[ATTACH:VOICE] MediaRecorder error:', e.message);
 _isRecording = false;
 _updateMicIcon(false);
 timerEl.style.display = 'none';
+if (_voiceTimerInterval) {
+clearInterval(_voiceTimerInterval);
+_voiceTimerInterval = null;
+}
 };
 try {
 _mediaRecorder.start(100);
@@ -642,17 +659,18 @@ _updateMicIcon(false);
 timerEl.style.display = 'none';
 }
 } else {
-    _isRecording = false;
-    _updateMicIcon(false);
-    if (_voiceTimerInterval) {
-        clearInterval(_voiceTimerInterval);
-        _voiceTimerInterval = null;
-    }
-    timerEl.style.display = 'none';
-    _voiceStartTime = 0;
-    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
-        try { _mediaRecorder.stop(); } catch (e) {}
-    }
+// DETENER grabacion
+_isRecording = false;
+_updateMicIcon(false);
+if (_voiceTimerInterval) {
+clearInterval(_voiceTimerInterval);
+_voiceTimerInterval = null;
+}
+timerEl.style.display = 'none';
+_voiceStartTime = 0;
+if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+try { _mediaRecorder.stop(); } catch (e) {}
+}
 }
 }
 function _updateMicIcon(recording) {
@@ -717,7 +735,7 @@ e.stopPropagation();
 var type = item.getAttribute('data-type');
 if (type === 'camera') _handleCamera();
 else if (type === 'gallery') _handleGallery();
-else if (type === 'video') _handleVideo();
+// FIX: eliminado 'video' del menu
 else if (type === 'file') _handleFile();
 else if (type === 'location') _handleLocation();
 });
@@ -1316,7 +1334,6 @@ contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);
 var loc = attachment.meta;
 var lat = (loc && loc.lat) ? loc.lat : 0;
 var lng = (loc && loc.lng) ? loc.lng : 0;
-// FIX: OpenStreetMap estático — no requiere API key
 var mapUrl = 'https://staticmap.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng + '&zoom=15&size=300x150&maptype=map&markers=' + lat + ',' + lng + ',red-pushpin';
 var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
 var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
@@ -1629,126 +1646,7 @@ contactsView.style.opacity = '';
 document.addEventListener('touchstart', onTouchStart, { passive: true });
 document.addEventListener('touchmove', onTouchMove, { passive: false });
 document.addEventListener('touchend', onTouchEnd, { passive: true });
-function _setupSwipeBack() {
-try {
-var SWIPE_EDGE_WIDTH = 40;
-var SWIPE_THRESHOLD = 0.30;
-var startX = 0;
-var startY = 0;
-var currentX = 0;
-var isDragging = false;
-var isHorizontal = false;
-var winWidth = window.innerWidth;
-var app = document.getElementById('app');
-if (!app) return;
-function onTouchStart(e) {
-if (!document.body.classList.contains('chat-view-active')) return;
-var touch = e.touches[0];
-if (touch.clientX > SWIPE_EDGE_WIDTH) return;
-startX = touch.clientX;
-startY = touch.clientY;
-currentX = startX;
-isDragging = true;
-isHorizontal = false;
-winWidth = window.innerWidth;
-}
-function onTouchMove(e) {
-if (!isDragging) return;
-var touch = e.touches[0];
-currentX = touch.clientX;
-var deltaX = currentX - startX;
-var deltaY = touch.clientY - startY;
-if (!isHorizontal) {
-if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 10) {
-isHorizontal = true;
-document.body.classList.add('chat-swipe-dragging');
-e.preventDefault();
-} else if (Math.abs(deltaY) > 10) {
-isDragging = false;
-return;
-}
-}
-if (!isHorizontal) return;
-var translateX = Math.max(0, Math.min(deltaX, winWidth));
-var progress = translateX / winWidth;
-if (progress > 0.5) {
-translateX = winWidth * 0.5 + (translateX - winWidth * 0.5) * 0.4;
-}
-app.style.transform = 'translateX(' + translateX + 'px)';
-app.style.opacity = Math.max(0.4, 1 - (progress * 0.5));
-var contactsView = document.getElementById('contacts-view');
-if (contactsView) {
-contactsView.style.display = 'flex';
-contactsView.style.opacity = Math.min(1, progress * 2);
-contactsView.style.transform = 'translateX(' + (-20 + progress * 20) + '%)';
-}
-e.preventDefault();
-}
-function onTouchEnd(e) {
-if (!isDragging || !isHorizontal) {
-isDragging = false;
-isHorizontal = false;
-return;
-}
-var deltaX = currentX - startX;
-var progress = deltaX / winWidth;
-var threshold = winWidth * SWIPE_THRESHOLD;
-document.body.classList.remove('chat-swipe-dragging');
-if (deltaX > threshold) {
-document.body.classList.add('chat-swipe-complete');
-document.body.classList.add('chat-swipe-transition');
-setTimeout(function() {
-_doChatBack();
-app.style.transform = '';
-app.style.opacity = '';
-document.body.classList.remove('chat-swipe-complete');
-document.body.classList.remove('chat-swipe-transition');
-var contactsView = document.getElementById('contacts-view');
-if (contactsView) {
-contactsView.style.transform = '';
-contactsView.style.opacity = '';
-}
-}, 350);
-} else {
-document.body.classList.add('chat-swipe-rebound');
-document.body.classList.add('chat-swipe-transition');
-setTimeout(function() {
-document.body.classList.remove('chat-swipe-rebound');
-document.body.classList.remove('chat-swipe-transition');
-app.style.transform = '';
-app.style.opacity = '';
-var contactsView = document.getElementById('contacts-view');
-if (contactsView) {
-contactsView.style.transform = '';
-contactsView.style.opacity = '';
-}
-}, 250);
-}
-isDragging = false;
-isHorizontal = false;
-}
-function onTouchCancel(e) {
-if (!isDragging) return;
-isDragging = false;
-isHorizontal = false;
-document.body.classList.remove('chat-swipe-dragging');
-app.style.transform = '';
-app.style.opacity = '';
-var contactsView = document.getElementById('contacts-view');
-if (contactsView) {
-contactsView.style.transform = '';
-contactsView.style.opacity = '';
-}
-}
-document.addEventListener('touchstart', onTouchStart, { passive: true });
-document.addEventListener('touchmove', onTouchMove, { passive: false });
-document.addEventListener('touchend', onTouchEnd, { passive: true });
 document.addEventListener('touchcancel', onTouchCancel, { passive: true });
-} catch (e) {
-console.warn('[MAIN] _setupSwipeBack error:', e);
-}
-}
-
 } catch (e) {
 console.warn('[MAIN] _setupSwipeBack error:', e);
 }
