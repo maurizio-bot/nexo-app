@@ -1,10 +1,8 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
- * FIX 2026-07-15:
- * 1. Audio: pulsar graba, soltar detiene y envia
- * 2. Video: grabar, enviar, reproducir (mismo flujo que foto)
- * 3. Quitar boton video del menu adjuntar
- * 4. SwipeBack duplicado eliminado
+ * FIX 2026-07-17:
+ * 1. Video: burbuja visible con play icon + duracion
+ * 2. Ubicacion: preview mapa Yandex + fallback visual + botones Maps/Waze
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -1269,21 +1267,24 @@ if (mc) mc.scrollTop = mc.scrollHeight;
 };
 contentDiv.appendChild(img);
 } else if (attachment.type === 'video') {
+// FIX v10.30: Video burbuja siempre visible con play icon + duracion
 var videoWrapper = document.createElement('div');
 videoWrapper.className = 'video-attachment';
-videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
+videoWrapper.style.cssText = 'position:relative;width:220px;min-height:140px;overflow:hidden;background:#1a1a2e;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;';
 var video = document.createElement('video');
 var videoMime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('video/' + (attachment.meta.format || 'webm'));
 video.src = 'data:' + videoMime + ';base64,' + attachment.payload;
-video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
+video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;';
 video.playsInline = true;
 video.muted = true;
 video.preload = 'metadata';
 video.dataset.fullscreenSrc = video.src;
 video.dataset.fullscreenType = 'video';
 var playOverlay = document.createElement('div');
-playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
-playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
+playOverlay.style.cssText = 'position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;pointer-events:none;';
+var durText = (attachment.meta && attachment.meta.duration) ? _fmtTime(attachment.meta.duration) : '';
+playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="48" height="48" fill="#fff" style="opacity:0.95;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,0.4)"/><path d="M9 7l10 5-10 5z"/></svg>' + 
+  (durText ? '<span style="color:#fff;font-size:12px;font-weight:600;background:rgba(0,0,0,0.5);padding:2px 8px;border-radius:4px;">' + durText + '</span>' : '');
 videoWrapper.appendChild(video);
 videoWrapper.appendChild(playOverlay);
 videoWrapper.onclick = function(e) {
@@ -1331,22 +1332,44 @@ contentDiv.appendChild(mediaWrapper);
 contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">&#128206; <b>Archivo</b><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
 }
 } else if (attachment.type === 'location') {
+// FIX v10.31: Preview mapa Yandex + fallback visual + botones Maps/Waze
 var loc = attachment.meta;
 var lat = (loc && loc.lat) ? loc.lat : 0;
 var lng = (loc && loc.lng) ? loc.lng : 0;
-// FIX: URL de mapa estático cambiada a Google Maps (funciona sin API key con watermark)
-var mapUrl = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',' + lng + '&zoom=15&size=300x150&markers=color:red%7C' + lat + ',' + lng;
 var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
 var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
-var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
-locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">';
-locHtml += '<div style="display:none;align-items:center;justify-content:center;height:120px;background:#1a1a2e;color:#888;font-size:12px;"><span>Mapa no disponible</span></div>';
-locHtml += '<div style="padding:8px 12px;"> <b>Ubicacion</b><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
-locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
-locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
-locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
-locHtml += '</div></div>';
-contentDiv.innerHTML = locHtml;
+var locWrapper = document.createElement('div');
+locWrapper.className = 'location-attachment';
+locWrapper.style.cssText = 'max-width:220px;border-radius:12px;overflow:hidden;background:linear-gradient(135deg,#1a2a3a,#0d1a1a);border:1px solid rgba(0,200,255,0.3);display:block;';
+var mapContainer = document.createElement('div');
+mapContainer.style.cssText = 'position:relative;width:100%;height:120px;overflow:hidden;';
+var mapImg = document.createElement('img');
+mapImg.src = 'https://static-maps.yandex.ru/1.x/?ll=' + lng + ',' + lat + '&z=15&l=map&size=300,150&pt=' + lng + ',' + lat + ',pm2rdl';
+mapImg.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+mapImg.onerror = function() {
+  this.style.display = 'none';
+  var fb = this.parentNode.querySelector('.loc-fallback');
+  if (fb) fb.style.display = 'flex';
+};
+var mapFallback = document.createElement('div');
+mapFallback.className = 'loc-fallback';
+mapFallback.style.cssText = 'display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a2a3a,#0d1a1a);gap:6px;';
+mapFallback.innerHTML = '<svg viewBox="0 0 24 24" width="36" height="36" fill="#ff6b35"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg><span style="font-size:11px;color:#888;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
+mapContainer.appendChild(mapImg);
+mapContainer.appendChild(mapFallback);
+var locInfo = document.createElement('div');
+locInfo.className = 'location-info';
+locInfo.style.cssText = 'padding:8px 12px;';
+locInfo.innerHTML = '<div style="font-weight:600;font-size:13px;color:#fff;">Ubicación</div><div style="font-size:11px;color:#888;">' + lat.toFixed(5) + ', ' + lng.toFixed(5) + '</div>';
+var locActions = document.createElement('div');
+locActions.className = 'location-actions';
+locActions.style.cssText = 'display:flex;gap:8px;padding:0 12px 10px;';
+locActions.innerHTML = '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:8px;background:rgba(0,130,252,0.2);border-radius:8px;color:#fff;text-decoration:none;font-size:12px;font-weight:500;border:1px solid rgba(0,130,252,0.3);">Google Maps</a>' +
+  '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:8px;background:rgba(107,78,255,0.2);border-radius:8px;color:#fff;text-decoration:none;font-size:12px;font-weight:500;border:1px solid rgba(107,78,255,0.3);">Waze</a>';
+locWrapper.appendChild(mapContainer);
+locWrapper.appendChild(locInfo);
+locWrapper.appendChild(locActions);
+contentDiv.appendChild(locWrapper);
 } else if (attachment.type === 'audio') {
 var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
 var durStr = _fmtTime(dur);
@@ -1680,3 +1703,4 @@ console.warn('[MAIN] _doChatBack error:', e);
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
+
