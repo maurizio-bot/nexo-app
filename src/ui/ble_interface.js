@@ -2,6 +2,7 @@
  * BLE Interface v5.1.7-NO-MAC-CLEAN-FIX-BACK
  * FIX: Al cerrar chat, cerrar panel BLE para que se vea pantalla principal de contactos
    */
+
    var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
    var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
    var BLE_PINNED_CONTACTS_KEY = 'nexo_ble_pinned_contacts';
