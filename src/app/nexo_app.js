@@ -1,9 +1,7 @@
 /**
  * NEXO App v5.0.17-ATTACH-FIX
  * Base: v5.0.16-KEYBOARD-FIX-BACK
- * FIX: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
- * FIX: Botón Enviar visible correctamente
- * FIX: Video attachment mejorado
+ * FIX: Attach handlers + Botón Enviar visible + Video mejorado
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -396,96 +394,41 @@ class NexoApp {
   }
 
   _initInputBarV2() {
-  var self = this;
-  var input = document.getElementById('message-input');
-  var sendBtn = document.getElementById('send-btn');
-  var attachBtn = document.getElementById('attach-btn');
-  var attachMenu = document.getElementById('attach-menu');
+    var self = this;
+    var input = document.getElementById('message-input');
+    var sendBtn = document.getElementById('send-btn');
+    var attachBtn = document.getElementById('attach-btn');
+    var attachMenu = document.getElementById('attach-menu');
 
-  if (!input || !sendBtn) return;
+    if (!input || !sendBtn) return;
 
-  function updateSendButton() {
-    var text = (input.value || '').trim();
-    var hasAttachment = !!(window._lastAttachmentPayload);
-    if (text.length > 0 || hasAttachment) {
-      sendBtn.classList.remove('mic-mode');
-      sendBtn.classList.add('send-mode');
-    } else {
-      sendBtn.classList.add('mic-mode');
-      sendBtn.classList.remove('send-mode');
-    }
-  }
-
-  input.addEventListener('input', updateSendButton);
-  input.addEventListener('focus', updateSendButton);
-  input.addEventListener('blur', updateSendButton);
-  setTimeout(updateSendButton, 300);
-
-  if (attachBtn && attachMenu) {
-    attachBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      attachMenu.classList.toggle('visible');
-      attachBtn.classList.toggle('active');
-    });
-
-    document.addEventListener('click', function(e) {
-      if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
-        attachMenu.classList.remove('visible');
-        attachBtn.classList.remove('active');
+    function updateSendButton() {
+      var text = (input.value || '').trim();
+      var hasAttachment = !!(window._lastAttachmentPayload);
+      if (text.length > 0 || hasAttachment) {
+        sendBtn.classList.remove('mic-mode');
+        sendBtn.classList.add('send-mode');
+      } else {
+        sendBtn.classList.add('mic-mode');
+        sendBtn.classList.remove('send-mode');
       }
-    });
+    }
 
-    // Attach handlers (mantengo tu código original)
-    var menuItems = attachMenu.querySelectorAll('.attach-menu-item');
-    menuItems.forEach(function(item) {
-      item.addEventListener('click', function() {
-        // ... tu código de photo, video, file, location ...
+    input.addEventListener('input', updateSendButton);
+    input.addEventListener('focus', updateSendButton);
+    input.addEventListener('blur', updateSendButton);
+    setTimeout(updateSendButton, 300);
+
+    if (attachBtn && attachMenu) {
+      attachBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        attachMenu.classList.toggle('visible');
+        attachBtn.classList.toggle('active');
       });
-    });
-  }
-
-  sendBtn.addEventListener('click', function() {
-    if (sendBtn.classList.contains('mic-mode')) {
-      console.log('[NEXO] Mic presionado');
-      return;
-    }
-    if (input.value.trim() || window._lastAttachmentPayload) {
-      self.sendMessage({ content: input.value.trim() });
-      input.value = '';
-      window._lastAttachmentPayload = null;
-      updateSendButton();
-    }
-  });
-}
-    document.addEventListener('click', function(e) {
-      if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
-        attachMenu.classList.remove('visible');
-        attachBtn.classList.remove('active');
-      }
-    });
-
-    // ... (mantén el resto del attach menu igual)
-  }
-
-  // Click en botón
-  sendBtn.addEventListener('click', function() {
-    if (sendBtn.classList.contains('mic-mode')) {
-      console.log('[NEXO] Mic presionado');
-      return;
-    }
-    if (input.value.trim() || window._lastAttachmentPayload) {
-      self.sendMessage({ content: input.value.trim() });
-      input.value = '';
-      window._lastAttachmentPayload = null;
-      updateSendButton();
-    }
-  });
-  }
 
       document.addEventListener('click', function(e) {
         if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
           attachMenu.classList.remove('visible');
-          attachMenu.classList.add('hidden');
           attachBtn.classList.remove('active');
         }
       });
@@ -495,64 +438,52 @@ class NexoApp {
         item.addEventListener('click', function() {
           var type = item.getAttribute('data-type');
           attachMenu.classList.remove('visible');
-          attachMenu.classList.add('hidden');
           attachBtn.classList.remove('active');
 
-          function getMessagesContainer() {
-            return document.getElementById('messages-container');
-          }
-          function scrollToBottom() {
-            var c = getMessagesContainer();
-            if (c) c.scrollTop = c.scrollHeight;
-          }
           function renderOwnBubble(htmlContent, typeLabel) {
-            var container = getMessagesContainer();
+            var container = document.getElementById('messages-container');
             if (!container) return;
             var bubble = document.createElement('div');
             bubble.className = 'message own message-attachment';
             bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
             bubble.innerHTML = htmlContent + '<div style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + typeLabel + '</div>';
             container.appendChild(bubble);
-            scrollToBottom();
+            container.scrollTop = container.scrollHeight;
           }
 
           if (type === 'photo') {
-            if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.Camera) {
-              alert('Plugin Camera no disponible'); return;
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Camera) {
+              var Camera = window.Capacitor.Plugins.Camera;
+              Camera.getPhoto({
+                quality: 90, allowEditing: false,
+                resultType: Camera.CameraResultType.Base64,
+                source: Camera.CameraSource.Prompt
+              }).then(function(image) {
+                if (image && image.base64String) {
+                  var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
+                  renderOwnBubble('<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>', '📷 Foto');
+                  window._lastAttachmentPayload = { type: 'image', data: dataUrl };
+                }
+              }).catch(function(err) {
+                console.error(err);
+              });
             }
-            var Camera = window.Capacitor.Plugins.Camera;
-            Camera.getPhoto({
-              quality: 90, allowEditing: false,
-              resultType: Camera.CameraResultType.Base64,
-              source: Camera.CameraSource.Prompt, saveToGallery: false
-            }).then(function(image) {
-              if (image && image.base64String) {
-                var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
-                var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>';
-                renderOwnBubble(html, '📷 Foto');
-                window._lastAttachmentPayload = { type: 'image', data: dataUrl, width: image.width, height: image.height };
-              }
-            }).catch(function(err) {
-              console.error('[FOTO] Error:', err);
-              if (err.message && err.message.indexOf('cancelled') === -1) alert('Error foto: ' + err.message);
-            });
           } else if (type === 'video') {
             var inputVid = document.createElement('input');
-            inputVid.type = 'file'; 
-            inputVid.accept = 'video/*'; 
+            inputVid.type = 'file';
+            inputVid.accept = 'video/*';
             inputVid.capture = 'environment';
             inputVid.style.display = 'none';
             inputVid.onchange = function(ev) {
-              var file = ev.target.files[0]; 
+              var file = ev.target.files[0];
               if (!file) return;
               var url = URL.createObjectURL(file);
-              var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + url + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
-              renderOwnBubble(html, '🎬 Video');
+              renderOwnBubble('<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + url + '" controls style="max-width:240px;max-height:200px;width:100%;display:block;"></video></div>', '🎬 Video');
               window._lastAttachmentPayload = { type: 'video', file: file, url: url };
             };
-            document.body.appendChild(inputVid); 
+            document.body.appendChild(inputVid);
             inputVid.click();
-            setTimeout(function() { inputVid.remove(); }, 6000);
+            setTimeout(() => inputVid.remove(), 6000);
           } else if (type === 'file') {
             var inputFile = document.createElement('input');
             inputFile.type = 'file'; inputFile.style.display = 'none';
@@ -579,14 +510,11 @@ class NexoApp {
       });
     }
 
-    sendBtn.addEventListener('click', function(e) {
+    sendBtn.addEventListener('click', function() {
       if (sendBtn.classList.contains('mic-mode')) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('[NEXO] Mic presionado — placeholder');
+        console.log('[NEXO] Mic presionado');
         return;
       }
-      // Modo enviar
       if (input.value.trim() || window._lastAttachmentPayload) {
         self.sendMessage({ content: input.value.trim() });
         input.value = '';
