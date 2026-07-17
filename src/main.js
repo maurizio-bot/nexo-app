@@ -197,8 +197,10 @@ _cameraPreviewVideoChunks = [];
 _cameraPreviewMediaRecorder.ondataavailable = function(e) {
 if (e.data && e.data.size > 0) _cameraPreviewVideoChunks.push(e.data);
 };
+// FIX: onstop procesa y envia el video automaticamente
 _cameraPreviewMediaRecorder.onstop = function() {
 console.log('[CAMERA] Grabacion detenida, procesando...');
+_processAndSendVideo();
 };
 _cameraPreviewMediaRecorder.onerror = function(e) {
 console.log('[CAMERA] MediaRecorder error:', e.message);
@@ -386,16 +388,15 @@ console.log('[CAMERA] Error al iniciar grabacion:', startErr.message);
 _cameraPreviewRecording = false;
 }
 } else {
-// DETENER grabacion
+// DETENER grabacion — FIX: solo stop(), onstop se encarga del resto
 if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
-try { _cameraPreviewMediaRecorder.requestData(); } catch (e) {}
-setTimeout(function() {
 try {
-if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
 _cameraPreviewMediaRecorder.stop();
+} catch (e) {
+console.log('[CAMERA] Error al detener grabacion:', e.message);
+_cameraPreviewRecording = false;
+_updateCameraPreviewUI();
 }
-} catch(e) {}
-}, 200);
 }
 }
 }
