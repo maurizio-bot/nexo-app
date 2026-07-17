@@ -2,7 +2,8 @@
  * NEXO App v5.0.17-ATTACH-FIX
  * Base: v5.0.16-KEYBOARD-FIX-BACK
  * FIX: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
- * FIX: Eliminado attachment_handlers.js externo, todo integrado en _initInputBarV2
+ * FIX: Botón Enviar visible correctamente
+ * FIX: Video attachment mejorado
  */
 
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
@@ -391,7 +392,6 @@ class NexoApp {
       });
     }
     self._initKeyboardScrollFix();
-    /* === INPUT BAR v2 — Attach menu + Send/Mic toggle + Attach handlers === */
     self._initInputBarV2();
   }
 
@@ -404,19 +404,23 @@ class NexoApp {
 
     if (!input || !sendBtn) return;
 
-    // Toggle Send / Mic según contenido
     function updateSendButton() {
       var text = (input.value || '').trim();
-      if (text.length > 0) {
+      var hasAttachment = !!(window._lastAttachmentPayload);
+      if (text.length > 0 || hasAttachment) {
         sendBtn.classList.remove('mic-mode');
+        sendBtn.classList.add('send-mode');
       } else {
         sendBtn.classList.add('mic-mode');
+        sendBtn.classList.remove('send-mode');
       }
     }
-    input.addEventListener('input', updateSendButton);
-    updateSendButton(); // estado inicial
 
-    // Attach menu toggle
+    input.addEventListener('input', updateSendButton);
+    input.addEventListener('focus', updateSendButton);
+    input.addEventListener('blur', updateSendButton);
+    setTimeout(updateSendButton, 300);
+
     if (attachBtn && attachMenu) {
       attachBtn.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -427,14 +431,12 @@ class NexoApp {
           attachBtn.classList.remove('active');
         } else {
           attachMenu.classList.remove('hidden');
-          // Force reflow
           void attachMenu.offsetWidth;
           attachMenu.classList.add('visible');
           attachBtn.classList.add('active');
         }
       });
 
-      // Cerrar menú al tocar fuera
       document.addEventListener('click', function(e) {
         if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
           attachMenu.classList.remove('visible');
@@ -443,7 +445,6 @@ class NexoApp {
         }
       });
 
-      // === ATTACH HANDLERS REALES ===
       var menuItems = attachMenu.querySelectorAll('.attach-menu-item');
       menuItems.forEach(function(item) {
         item.addEventListener('click', function() {
@@ -452,7 +453,6 @@ class NexoApp {
           attachMenu.classList.add('hidden');
           attachBtn.classList.remove('active');
 
-          // Helpers burbuja
           function getMessagesContainer() {
             return document.getElementById('messages-container');
           }
@@ -462,7 +462,7 @@ class NexoApp {
           }
           function renderOwnBubble(htmlContent, typeLabel) {
             var container = getMessagesContainer();
-            if (!container) { console.error('[Attach] No contenedor'); return; }
+            if (!container) return;
             var bubble = document.createElement('div');
             bubble.className = 'message own message-attachment';
             bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
@@ -493,16 +493,21 @@ class NexoApp {
             });
           } else if (type === 'video') {
             var inputVid = document.createElement('input');
-            inputVid.type = 'file'; inputVid.accept = 'video/*'; inputVid.style.display = 'none';
+            inputVid.type = 'file'; 
+            inputVid.accept = 'video/*'; 
+            inputVid.capture = 'environment';
+            inputVid.style.display = 'none';
             inputVid.onchange = function(ev) {
-              var file = ev.target.files[0]; if (!file) return;
+              var file = ev.target.files[0]; 
+              if (!file) return;
               var url = URL.createObjectURL(file);
               var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + url + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
               renderOwnBubble(html, '🎬 Video');
               window._lastAttachmentPayload = { type: 'video', file: file, url: url };
             };
-            document.body.appendChild(inputVid); inputVid.click();
-            setTimeout(function() { inputVid.remove(); }, 5000);
+            document.body.appendChild(inputVid); 
+            inputVid.click();
+            setTimeout(function() { inputVid.remove(); }, 6000);
           } else if (type === 'file') {
             var inputFile = document.createElement('input');
             inputFile.type = 'file'; inputFile.style.display = 'none';
@@ -529,7 +534,6 @@ class NexoApp {
       });
     }
 
-    // Mic button placeholder
     sendBtn.addEventListener('click', function(e) {
       if (sendBtn.classList.contains('mic-mode')) {
         e.preventDefault();
@@ -537,7 +541,13 @@ class NexoApp {
         console.log('[NEXO] Mic presionado — placeholder');
         return;
       }
-      // Si es modo send, el handler original de sendMessage ya existe
+      // Modo enviar
+      if (input.value.trim() || window._lastAttachmentPayload) {
+        self.sendMessage({ content: input.value.trim() });
+        input.value = '';
+        window._lastAttachmentPayload = null;
+        updateSendButton();
+      }
     });
   }
 
@@ -911,20 +921,3 @@ class NexoApp {
 
 export { NexoApp, DEBUG };
 export default NexoApp;
-
-/*
-Focos de Interés:
-1. FIX v5.0.12: Silenciar toasts rem.info/warn/error/success
-2. FIX v5.0.12: Deduplicación de contactos por MAC
-3. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
-4. Eliminación de la doble pantalla (no appendItems en TheStream)
-5. Envío de ACK automático al recibir mensaje BLE
-6. Envío de Read Receipt cuando el chat está activo con el remitente
-7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
-8. FIX: Contactos en pantalla principal (no en panel BLE)
-9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
-10. FIX v5.0.13: Persistencia async/await para vault_fs
-11. FIX-BACK: Cerrar panel BLE al hacer back desde chat
-12. INPUT BAR v2: Attach menu + Send/Mic toggle
-13. FIX v5.0.17: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
-*/
