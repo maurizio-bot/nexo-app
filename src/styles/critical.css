@@ -1361,3 +1361,50 @@ font-size: 10px;
 color: #888;
 white-space: nowrap;
 }
+/* Todos los botones redondos, mismo tamaño, mismo color */
+.chat-back-btn,
+.chat-header-btn,
+.input-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0082FC, #6B4EFF);
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* Alineación vertical centrada en input-area */
+#input-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+/* Alineación horizontal en chat-header */
+#chat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+#chat-contact-name {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+#chat-contact-subtitle {
+  display: none; /* o posicionarlo debajo del nombre si lo necesitas */
+}
