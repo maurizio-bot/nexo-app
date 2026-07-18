@@ -104,7 +104,7 @@ val settings = AdvertiseSettings.Builder()
 // Solucion: solo mandar manufacturer data + flags. JS identifica NEXO por el magic NX.
 // El device name y service UUID no son necesarios para el scan porque usamos emptyList() y leemos manufacturer data.
 val dataBuilder = AdvertiseData.Builder()
-.setIncludeDeviceName(false)
+.setIncludeDeviceName(true)
 
 val nexoId = currentNexoId
 if (nexoId != null && nexoId.length >= 4) {
