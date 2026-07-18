@@ -3,6 +3,7 @@
  * FIX 2026-07-17:
  * 1. Video: burbuja visible con play icon + duracion
  * 2. Ubicacion: preview mapa Yandex + fallback visual + botones Maps/Waze
+ * FIX 2026-07-18: Panel adjuntos inferior horizontal + icono compartir contacto
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -102,13 +103,21 @@ window.NEXO.app.sendMessage({ content: payloadStr });
 console.log('[ATTACH] Sistema de mensajes no disponible');
 }
 }
+// FIX 2026-07-18: Panel adjuntos inferior horizontal
 function _toggleAttachMenu() {
 var menu = document.getElementById('attach-menu');
-if (menu) menu.classList.toggle('hidden');
+var input = document.getElementById('message-input');
+if (!menu) return;
+if (menu.classList.contains('visible')) {
+menu.classList.remove('visible');
+} else {
+if (input) input.blur();
+menu.classList.add('visible');
+}
 }
 function _closeAttachMenu() {
 var menu = document.getElementById('attach-menu');
-if (menu) menu.classList.add('hidden');
+if (menu) menu.classList.remove('visible');
 }
 // Camera overlay
 function _showCameraPreviewOverlay() {
@@ -571,6 +580,11 @@ _showPermissionError('Ubicacion');
 console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
 }
 }
+// FIX 2026-07-18: Compartir contacto
+function _handleContactShare() {
+_closeAttachMenu();
+console.log('[ATTACH] Compartir contacto - pendiente implementacion');
+}
 // FIX: Audio — pulsar graba, soltar detiene y envia
 async function _handleVoiceToggle() {
 var timerEl = document.getElementById('voice-timer');
@@ -727,6 +741,7 @@ attachBtn.classList.remove('voice-active');
 }
 });
 }
+// FIX 2026-07-18: menuItems incluye contacto
 menuItems.forEach(function(item) {
 item.addEventListener('click', function(e) {
 e.preventDefault();
@@ -736,6 +751,7 @@ if (type === 'camera') _handleCamera();
 else if (type === 'gallery') _handleGallery();
 else if (type === 'file') _handleFile();
 else if (type === 'location') _handleLocation();
+else if (type === 'contact') _handleContactShare();
 });
 });
 if (sendBtn) {
@@ -757,10 +773,11 @@ _handleVoiceToggle();
 }
 });
 }
+// FIX 2026-07-18: Cierre panel adjuntos con click fuera
 document.addEventListener('click', function(e) {
 var menu = document.getElementById('attach-menu');
 var attachBtn = document.getElementById('attach-btn');
-if (menu && !menu.classList.contains('hidden') &&
+if (menu && menu.classList.contains('visible') &&
 !menu.contains(e.target) &&
 e.target !== attachBtn &&
 !attachBtn.contains(e.target)) {
@@ -1703,4 +1720,3 @@ console.warn('[MAIN] _doChatBack error:', e);
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
-
