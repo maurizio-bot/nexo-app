@@ -110,9 +110,11 @@ var input = document.getElementById('message-input');
 if (!menu) return;
 if (menu.classList.contains('visible')) {
 menu.classList.remove('visible');
+menu.style.display = '';
 } else {
 if (input) input.blur();
 menu.classList.add('visible');
+menu.style.display = 'flex';
 }
 }
 function _closeAttachMenu() {
