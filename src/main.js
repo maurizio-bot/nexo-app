@@ -124,7 +124,10 @@ menu.style.pointerEvents = 'auto';
 }
 function _closeAttachMenu() {
 var menu = document.getElementById('attach-menu');
-if (menu) menu.classList.remove('visible');
+if (menu) {
+menu.classList.remove('visible');
+menu.style.display = '';
+}
 }
 // Camera overlay
 function _showCameraPreviewOverlay() {
@@ -692,6 +695,7 @@ clearInterval(_voiceTimerInterval);
 _voiceTimerInterval = null;
 }
 timerEl.style.display = 'none';
+_voiceStartTime = 0;
 if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
 try { _mediaRecorder.stop(); } catch (e) {}
 }
@@ -715,44 +719,14 @@ var sendBtn = document.getElementById('send-btn');
 var menuItems = document.querySelectorAll('.attach-menu-item');
 var input = document.getElementById('message-input');
 if (attachBtn) {
+// FIX: attach-btn SOLO abre menu, NUNCA graba voz
 attachBtn.addEventListener('click', function(e) {
 e.preventDefault();
 e.stopPropagation();
-if (isLongPress) {
-isLongPress = false;
-return;
-}
 if (_isRecording) {
 _handleVoiceToggle();
-attachBtn.classList.remove('voice-active');
 } else {
 _toggleAttachMenu();
-}
-});
-var longPressTimer = null;
-var isLongPress = false;
-attachBtn.addEventListener('touchstart', function(e) {
-isLongPress = false;
-longPressTimer = setTimeout(function() {
-isLongPress = true;
-attachBtn.classList.add('voice-active');
-_handleVoiceToggle();
-}, 1000);
-}, { passive: true });
-attachBtn.addEventListener('touchend', function(e) {
-clearTimeout(longPressTimer);
-if (isLongPress && _isRecording) {
-setTimeout(function() {
-_handleVoiceToggle();
-attachBtn.classList.remove('voice-active');
-}, 50);
-}
-});
-attachBtn.addEventListener('touchcancel', function(e) {
-clearTimeout(longPressTimer);
-if (_isRecording) {
-_handleVoiceToggle();
-attachBtn.classList.remove('voice-active');
 }
 });
 }
@@ -770,6 +744,21 @@ else if (type === 'contact') _handleContactShare();
 });
 });
 if (sendBtn) {
+// FIX: Switch mic/enviar segun contenido del input
+function _updateSendBtnMode() {
+var text = input ? input.value.trim() : '';
+if (text) {
+sendBtn.classList.remove('mic-mode');
+} else {
+sendBtn.classList.add('mic-mode');
+}
+}
+// Inicializar en modo mic
+sendBtn.classList.add('mic-mode');
+// Escuchar cambios en input
+if (input) {
+input.addEventListener('input', _updateSendBtnMode);
+}
 // Click simple: enviar si hay texto, nada si vacio
 sendBtn.addEventListener('click', function(e) {
 var text = input ? input.value.trim() : '';
@@ -781,6 +770,7 @@ if (contactId && window.NEXO.app && window.NEXO.app.sendMessage) {
 window.NEXO.app.sendMessage({ content: text });
 input.value = '';
 input.focus();
+_updateSendBtnMode();
 }
 } else {
 e.preventDefault();
@@ -788,7 +778,7 @@ e.stopPropagation();
 // Click simple con input vacio: no hacer nada
 }
 });
-// Long-press (>1s) en send-btn: activar microfono si input vacio
+// Long-press (>1s) en send-btn: activar microfono SOLO si input vacio
 var sendLongPressTimer = null;
 var sendIsLongPress = false;
 sendBtn.addEventListener('touchstart', function(e) {
