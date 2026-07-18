@@ -105,29 +105,33 @@ console.log('[ATTACH] Sistema de mensajes no disponible');
 }
 // FIX 2026-07-18: Panel adjuntos inferior horizontal
 function _toggleAttachMenu() {
-var menu = document.getElementById('attach-menu');
-var input = document.getElementById('message-input');
-if (!menu) return;
-if (menu.classList.contains('visible')) {
-menu.classList.remove('visible');
-menu.style.opacity = '';
-menu.style.visibility = '';
-menu.style.pointerEvents = '';
-} else {
-if (input) input.blur();
-menu.classList.add('visible');
-menu.style.display = 'flex';
-menu.style.opacity = '1';
-menu.style.visibility = 'visible';
-menu.style.pointerEvents = 'auto';
-}
+    var menu = document.getElementById('attach-menu');
+    var input = document.getElementById('message-input');
+    if (!menu) return;
+    if (menu.classList.contains('visible')) {
+        menu.classList.remove('visible');
+        menu.style.display = '';
+        menu.style.opacity = '';
+        menu.style.visibility = '';
+        menu.style.pointerEvents = '';
+    } else {
+        if (input) input.blur();
+        menu.classList.add('visible');
+        menu.style.display = 'flex';
+        menu.style.opacity = '1';
+        menu.style.visibility = 'visible';
+        menu.style.pointerEvents = 'auto';
+    }
 }
 function _closeAttachMenu() {
-var menu = document.getElementById('attach-menu');
-if (menu) {
-menu.classList.remove('visible');
-menu.style.display = '';
-}
+    var menu = document.getElementById('attach-menu');
+    if (menu) {
+        menu.classList.remove('visible');
+        menu.style.display = '';
+        menu.style.opacity = '';
+        menu.style.visibility = '';
+        menu.style.pointerEvents = '';
+    }
 }
 // Camera overlay
 function _showCameraPreviewOverlay() {
