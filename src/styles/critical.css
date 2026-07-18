@@ -1014,6 +1014,8 @@ display: none;
 }
 .send-btn svg {
 flex-shrink: 0;
+}
+
 /* ============================================
 ATTACH PANEL - Bottom sheet horizontal
 ============================================ */
@@ -1060,6 +1062,9 @@ ATTACH PANEL - Bottom sheet horizontal
   width: 28px;
   height: 28px;
   flex-shrink: 0;
+}
+.attach-menu.hidden {
+  display: none !important;
 }
 /* Divider entre items */
 .attach-menu-item:not(:last-child) {
