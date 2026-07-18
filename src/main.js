@@ -110,11 +110,16 @@ var input = document.getElementById('message-input');
 if (!menu) return;
 if (menu.classList.contains('visible')) {
 menu.classList.remove('visible');
-menu.style.display = '';
+menu.style.opacity = '';
+menu.style.visibility = '';
+menu.style.pointerEvents = '';
 } else {
 if (input) input.blur();
 menu.classList.add('visible');
 menu.style.display = 'flex';
+menu.style.opacity = '1';
+menu.style.visibility = 'visible';
+menu.style.pointerEvents = 'auto';
 }
 }
 function _closeAttachMenu() {
@@ -589,6 +594,11 @@ console.log('[ATTACH] Compartir contacto - pendiente implementacion');
 }
 // FIX: Audio — pulsar graba, soltar detiene y envia
 async function _handleVoiceToggle() {
+var contactId = _getCurrentContactId();
+if (!contactId) {
+console.log('[ATTACH:VOICE] No hay contacto activo');
+return;
+}
 var timerEl = document.getElementById('voice-timer');
 if (!timerEl) {
 timerEl = document.createElement('div');
@@ -724,7 +734,7 @@ longPressTimer = setTimeout(function() {
 isLongPress = true;
 attachBtn.classList.add('voice-active');
 _handleVoiceToggle();
-}, 800);
+}, 1000);
 }, { passive: true });
 attachBtn.addEventListener('touchend', function(e) {
 clearTimeout(longPressTimer);
@@ -757,6 +767,7 @@ else if (type === 'contact') _handleContactShare();
 });
 });
 if (sendBtn) {
+// Click simple: enviar si hay texto, nada si vacio
 sendBtn.addEventListener('click', function(e) {
 var text = input ? input.value.trim() : '';
 if (text) {
@@ -771,6 +782,32 @@ input.focus();
 } else {
 e.preventDefault();
 e.stopPropagation();
+// Click simple con input vacio: no hacer nada
+}
+});
+// Long-press (>1s) en send-btn: activar microfono si input vacio
+var sendLongPressTimer = null;
+var sendIsLongPress = false;
+sendBtn.addEventListener('touchstart', function(e) {
+var text = input ? input.value.trim() : '';
+if (text) return;
+sendIsLongPress = false;
+sendLongPressTimer = setTimeout(function() {
+sendIsLongPress = true;
+_handleVoiceToggle();
+}, 1000);
+}, { passive: true });
+sendBtn.addEventListener('touchend', function(e) {
+clearTimeout(sendLongPressTimer);
+if (sendIsLongPress && _isRecording) {
+setTimeout(function() {
+_handleVoiceToggle();
+}, 50);
+}
+});
+sendBtn.addEventListener('touchcancel', function(e) {
+clearTimeout(sendLongPressTimer);
+if (_isRecording) {
 _handleVoiceToggle();
 }
 });
