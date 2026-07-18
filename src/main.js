@@ -692,7 +692,6 @@ clearInterval(_voiceTimerInterval);
 _voiceTimerInterval = null;
 }
 timerEl.style.display = 'none';
-_voiceStartTime = 0;
 if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
 try { _mediaRecorder.stop(); } catch (e) {}
 }
@@ -719,6 +718,10 @@ if (attachBtn) {
 attachBtn.addEventListener('click', function(e) {
 e.preventDefault();
 e.stopPropagation();
+if (isLongPress) {
+isLongPress = false;
+return;
+}
 if (_isRecording) {
 _handleVoiceToggle();
 attachBtn.classList.remove('voice-active');
