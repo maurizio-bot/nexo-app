@@ -158,12 +158,12 @@ Consolidado: inline + main.css + ble_styles
    }
    /* FIX #3: Back button = circular gradient como send-btn */
    .chat-back-btn {
-   background: linear-gradient(135deg, #00c8ff, #a855f7);
-   border: none;
-   color: #fff;
-   width: 38px;
-   height: 38px;
+   width: 44px;
+   height: 44px;
    border-radius: 50%;
+   border: none;
+   background: linear-gradient(135deg, #0082FC, #6B4EFF);
+   color: #fff;
    cursor: pointer;
    display: none;
    align-items: center;
@@ -362,21 +362,7 @@ Consolidado: inline + main.css + ble_styles
    line-height: 1.4;
    }
    #message-input::placeholder { color: #444; }
-   #send-btn {
-   width: 38px;
-   height: 38px;
-   border-radius: 50%;
-   background: linear-gradient(135deg, #00c8ff, #a855f7);
-   border: none;
-   cursor: pointer;
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   flex-shrink: 0;
-   transition: transform 0.15s ease;
-   }
-   #send-btn:active { transform: scale(0.92); }
-   #send-btn svg { width: 16px; height: 16px; fill: #fff; }
+   /* #send-btn -> unificado en .input-btn */
    /* Jump */
    #jump-to-bottom {
    position: fixed;
@@ -923,9 +909,12 @@ Consolidado: inline + main.css + ble_styles
    INPUT BAR v2 — Attach + Toggle Send/Mic
    ============================================ */
    /* Botón attach (+) */
-   .input-btn {
-   width: 36px;
-   height: 36px;
+   /* Botones input: attach + send unificados 44px */
+   .input-btn,
+   #send-btn,
+   .send-btn {
+   width: 44px;
+   height: 44px;
    border-radius: 50%;
    display: flex;
    align-items: center;
@@ -935,14 +924,26 @@ Consolidado: inline + main.css + ble_styles
    transition: all 0.15s ease;
    border: none;
    padding: 0;
+   overflow: hidden;
    }
-   .input-btn:active {
+   .input-btn:active,
+   #send-btn:active,
+   .send-btn:active {
    transform: scale(0.92);
    }
+   .input-btn svg,
+   #send-btn svg,
+   .send-btn svg {
+   width: 20px;
+   height: 20px;
+   fill: #fff;
+   pointer-events: none;
+   }
+   /* Attach: fondo oscuro */
    .attach-btn {
    background: #1a1a1a;
    border: 1px solid #222;
-   color: #666;
+   color: #fff;
    }
    .attach-btn.active {
    color: #00c8ff;
@@ -950,10 +951,27 @@ Consolidado: inline + main.css + ble_styles
    background: #00c8ff11;
    }
    .attach-btn svg {
-   width: 18px;
-   height: 18px;
-   fill: currentColor;
+   fill: #fff;
    }
+   /* Send: gradiente por defecto (modo enviar) */
+   #send-btn,
+   .send-btn {
+   background: linear-gradient(135deg, #00c8ff, #a855f7);
+   }
+   /* Send modo mic: fondo oscuro */
+   .send-btn.mic-mode,
+   #send-btn.mic-mode {
+   background: #1a1a1a;
+   border: 1px solid #222;
+   }
+   .send-btn.mic-mode .send-icon,
+   #send-btn.mic-mode .send-icon { display: none; }
+   .send-btn.mic-mode .mic-icon,
+   #send-btn.mic-mode .mic-icon { display: block; }
+   .send-btn:not(.mic-mode) .send-icon,
+   #send-btn:not(.mic-mode) .send-icon { display: block; }
+   .send-btn:not(.mic-mode) .mic-icon,
+   #send-btn:not(.mic-mode) .mic-icon { display: none; }
    /* Wrapper del textarea */
    .input-wrapper {
    flex: 1;
@@ -982,39 +1000,7 @@ Consolidado: inline + main.css + ble_styles
    #message-input::placeholder {
    color: #444;
    }
-   /* Send / Mic toggle */
-   .send-btn {
-   width: 38px;
-   height: 38px;
-   border-radius: 50%;
-   background: linear-gradient(135deg, #00c8ff, #a855f7);
-   border: none;
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   flex-shrink: 0;
-   cursor: pointer;
-   transition: all 0.2s ease;
-   }
-   .send-btn.mic-mode {
-   background: #1a1a1a;
-   border: 1px solid #222;
-   }
-   .send-btn.mic-mode .send-icon {
-   display: none;
-   }
-   .send-btn.mic-mode .mic-icon {
-   display: block;
-   }
-   .send-btn:not(.mic-mode) .send-icon {
-   display: block;
-   }
-   .send-btn:not(.mic-mode) .mic-icon {
-   display: none;
-   }
-   .send-btn svg {
-   flex-shrink: 0;
-   }
+   /* .send-btn -> unificado en .input-btn */
    /* ============================================
    ATTACH PANEL - Bottom sheet horizontal
    ============================================ */
@@ -1361,58 +1347,3 @@ Consolidado: inline + main.css + ble_styles
    color: #888;
    white-space: nowrap;
    }
-   /* Todos los botones redondos, mismo tamaño, mismo color */
-   .chat-back-btn,
-   .chat-header-btn,
-   .input-btn,
-   #send-btn,
-   .send-btn {
-   width: 44px;
-   height: 44px;
-   border-radius: 50%;
-   border: none;
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   background: linear-gradient(135deg, #0082FC, #6B4EFF);
-   color: #fff;
-   cursor: pointer;
-   padding: 0;
-   flex-shrink: 0;
-   }
-/* SVGs de todos los botones redondos */
-.chat-back-btn svg,
-.chat-header-btn svg,
-.input-btn svg,
-#send-btn svg,
-.send-btn svg {
-width: 20px;
-height: 20px;
-fill: #fff;
-}
-/* Alineación vertical centrada en input-area */
-#input-area {
-display: flex;
-align-items: center;
-gap: 8px;
-padding: 8px 12px;
-}
-/* Alineación horizontal en chat-header */
-#chat-header {
-display: flex;
-align-items: center;
-gap: 8px;
-padding: 8px 12px;
-}
-#chat-contact-name {
-flex: 1;
-background: transparent;
-border: none;
-color: #fff;
-font-size: 16px;
-font-weight: 600;
-text-align: center;
-}
-#chat-contact-subtitle {
-display: none; /* o posicionarlo debajo del nombre si lo necesitas */
-}
