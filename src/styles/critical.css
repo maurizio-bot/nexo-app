@@ -1015,396 +1015,404 @@ Consolidado: inline + main.css + ble_styles
    .send-btn svg {
    flex-shrink: 0;
    }
-/* ============================================
-ATTACH PANEL - Bottom sheet horizontal
-============================================ */
-.attach-menu {
-position: fixed;
-bottom: 0;
-left: 0;
-right: 0;
-background: #0a0a0a;
-border-top: 1px solid #1a1a1a;
-border-radius: 20px 20px 0 0;
-padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px;
-z-index: 9999;
-display: flex;
-flex-direction: row;
-justify-content: space-around;
-align-items: flex-start;
-gap: 4px;
-transform: translateY(100%);
-opacity: 0;
-visibility: hidden;
-pointer-events: none;
-transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
-will-change: transform, opacity;
+   /* ============================================
+   ATTACH PANEL - Bottom sheet horizontal
+   ============================================ */
+   .attach-menu {
+   position: fixed;
+   bottom: 0;
+   left: 0;
+   right: 0;
+   background: #0a0a0a;
+   border-top: 1px solid #1a1a1a;
+   border-radius: 20px 20px 0 0;
+   padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px;
+   z-index: 9999;
+   display: flex;
+   flex-direction: row;
+   justify-content: space-around;
+   align-items: flex-start;
+   gap: 4px;
+   transform: translateY(100%);
+   opacity: 0;
+   visibility: hidden;
+   pointer-events: none;
+   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+   will-change: transform, opacity;
+   }
+   .attach-menu.visible {
+   transform: translateY(0);
+   opacity: 1;
+   visibility: visible;
+   pointer-events: auto;
+   }
+   .attach-menu-item {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 6px;
+   padding: 12px 4px;
+   color: #aaa;
+   font-size: 11px;
+   cursor: pointer;
+   transition: all 0.15s;
+   flex: 1;
+   min-width: 0;
+   border-radius: 12px;
+   }
+   .attach-menu-item:active {
+   transform: scale(0.9);
+   background: rgba(255,255,255,0.05);
+   }
+   .attach-menu-item svg {
+   width: 28px;
+   height: 28px;
+   flex-shrink: 0;
+   }
+   /* FIX: asegurar que input-area siga oculto en principal y visible en chat */
+   body.chat-view-active #input-area {
+   display: flex !important;
+   }
+   /* ============================================
+   CAMERA PREVIEW OVERLAY
+   ============================================ */
+   .camera-preview-overlay {
+   position: fixed;
+   inset: 0;
+   background: #000;
+   z-index: 3000;
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   justify-content: center;
+   }
+   .camera-preview-overlay.hidden {
+   display: none !important;
+   }
+   .camera-preview-container {
+   position: absolute;
+   inset: 0;
+   z-index: 1;
+   }
+   .camera-preview-container video,
+   .camera-preview-container img {
+   width: 100%;
+   height: 100%;
+   object-fit: cover;
+   }
+   .camera-preview-controls {
+   position: absolute;
+   bottom: 40px;
+   left: 0;
+   right: 0;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 40px;
+   z-index: 2;
+   padding: 0 20px;
+   }
+   .camera-btn {
+   width: 48px;
+   height: 48px;
+   border-radius: 50%;
+   background: rgba(255,255,255,0.15);
+   border: 1px solid rgba(255,255,255,0.3);
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   cursor: pointer;
+   transition: all 0.15s ease;
+   backdrop-filter: blur(4px);
+   }
+   .camera-btn:active {
+   transform: scale(0.92);
+   background: rgba(255,255,255,0.25);
+   }
+   .camera-btn-capture {
+   width: 72px;
+   height: 72px;
+   border-radius: 50%;
+   border: 4px solid #fff;
+   background: #fff;
+   cursor: pointer;
+   transition: all 0.15s ease;
+   position: relative;
+   }
+   .camera-btn-capture::after {
+   content: '';
+   position: absolute;
+   inset: -6px;
+   border-radius: 50%;
+   border: 2px solid rgba(255,255,255,0.5);
+   }
+   .camera-btn-capture:active {
+   transform: scale(0.92);
+   background: #eee;
+   }
+   .camera-btn-capture.recording {
+   background: #ff3b30;
+   border-color: #ff3b30;
+   border-radius: 8px;
+   width: 48px;
+   height: 48px;
+   }
+   .camera-btn-capture.recording::after {
+   display: none;
+   }
+   .camera-preview-status {
+   position: absolute;
+   top: 20px;
+   left: 0;
+   right: 0;
+   text-align: center;
+   color: #fff;
+   font-size: 12px;
+   z-index: 2;
+   text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+   pointer-events: none;
+   }
+   /* ============================================
+   FULLSCREEN MEDIA OVERLAY
+   ============================================ */
+   .fullscreen-media-overlay {
+   position: fixed;
+   inset: 0;
+   background: rgba(0,0,0,0.95);
+   z-index: 4000;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   flex-direction: column;
+   }
+   .fullscreen-media-overlay.hidden {
+   display: none !important;
+   }
+   .fullscreen-media-container {
+   width: 100%;
+   height: 100%;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   }
+   .fullscreen-media-container img,
+   .fullscreen-media-container video {
+   max-width: 100%;
+   max-height: 100%;
+   object-fit: contain;
+   }
+   .fullscreen-media-close {
+   position: absolute;
+   top: 20px;
+   right: 20px;
+   width: 44px;
+   height: 44px;
+   border-radius: 50%;
+   background: rgba(255,255,255,0.1);
+   border: 1px solid rgba(255,255,255,0.2);
+   color: #fff;
+   font-size: 24px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   cursor: pointer;
+   z-index: 4001;
+   backdrop-filter: blur(4px);
+   }
+   .fullscreen-media-close:active {
+   transform: scale(0.92);
+   background: rgba(255,255,255,0.2);
+   }
+   /* ============================================
+   FIX v10.20: Timer de voz visible
+   ============================================ */
+   #voice-timer {
+   position: fixed;
+   bottom: 70px;
+   left: 50%;
+   transform: translateX(-50%);
+   background: rgba(255, 59, 48, 0.9);
+   color: #fff;
+   padding: 6px 16px;
+   border-radius: 20px;
+   font-size: 14px;
+   font-weight: 600;
+   z-index: 300;
+   display: none;
+   pointer-events: none;
+   backdrop-filter: blur(4px);
+   }
+   /* ============================================
+   FIX v10.21: Attach btn voice-active (long-press)
+   ============================================ */
+   .attach-btn.voice-active {
+   background: rgba(255, 59, 48, 0.2) !important;
+   border-color: #FF3B30 !important;
+   animation: pulse-red-btn 0.8s infinite;
+   }
+   @keyframes pulse-red-btn {
+   0%, 100% { transform: scale(1); }
+   50% { transform: scale(1.1); }
+   }
+   /* ============================================
+   FIX v10.22: Camera preview overlay - chat visible atrás
+   ============================================ */
+   .camera-preview-overlay {
+   position: fixed;
+   inset: 0;
+   background: #000;
+   z-index: 3000;
+   display: flex;
+   flex-direction: column;
+   }
+   .camera-preview-overlay.hidden {
+   display: none !important;
+   }
+   /* ============================================
+   FIX v10.23: Video attachment - marco fino uniforme
+   ============================================ */
+   .msg-content .video-attachment,
+   .msg-content video {
+   max-width: 220px;
+   max-height: 280px;
+   border-radius: 12px;
+   display: block;
+   object-fit: cover;
+   border: 1px solid rgba(0, 200, 255, 0.3);
+   }
+   /* ============================================
+   FIX v10.24b: Location attachment - marco FINO
+   ============================================ */
+   .msg-content .location-attachment {
+   max-width: 220px;
+   border-radius: 12px;
+   overflow: hidden;
+   background: rgba(0, 0, 0, 0.3);
+   border: 1px solid rgba(0, 200, 255, 0.3);
+   }
+   .msg-content .location-attachment img {
+   width: 100%;
+   height: 120px;
+   object-fit: cover;
+   display: block;
+   }
+   .msg-content .location-info {
+   padding: 6px 10px;
+   font-size: 12px;
+   color: #ccc;
+   }
+   .msg-content .location-actions {
+   display: flex;
+   gap: 6px;
+   padding: 0 10px 8px;
+   }
+   .msg-content .location-actions a {
+   flex: 1;
+   text-align: center;
+   padding: 5px;
+   background: rgba(0, 130, 252, 0.2);
+   border-radius: 6px;
+   color: #fff;
+   text-decoration: none;
+   font-size: 11px;
+   border: 1px solid rgba(0, 130, 252, 0.3);
+   }
+   /* ============================================
+   FIX v10.25b: Audio attachment - tamaño ajustado
+   ============================================ */
+   .msg-content .audio-attachment {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   padding: 6px 10px;
+   min-width: 160px;
+   max-width: 220px;
+   }
+   .msg-content .audio-attachment button {
+   width: 32px;
+   height: 32px;
+   border-radius: 50%;
+   background: rgba(255, 255, 255, 0.15);
+   border: 1px solid rgba(255, 255, 255, 0.2);
+   color: #fff;
+   cursor: pointer;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   font-size: 12px;
+   flex-shrink: 0;
+   }
+   .msg-content .audio-waveform {
+   height: 24px;
+   display: flex;
+   align-items: flex-end;
+   gap: 2px;
+   opacity: 0.7;
+   flex: 1;
+   }
+   .msg-content .audio-waveform div {
+   width: 3px;
+   background: #fff;
+   border-radius: 1px;
+   flex-shrink: 0;
+   }
+   .msg-content .audio-duration {
+   font-size: 10px;
+   color: #888;
+   white-space: nowrap;
+   }
+   /* Todos los botones redondos, mismo tamaño, mismo color */
+   .chat-back-btn,
+   .chat-header-btn,
+   .input-btn,
+   #send-btn,
+   .send-btn {
+   width: 44px;
+   height: 44px;
+   border-radius: 50%;
+   border: none;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   background: linear-gradient(135deg, #0082FC, #6B4EFF);
+   color: #fff;
+   cursor: pointer;
+   padding: 0;
+   flex-shrink: 0;
+   }
+/* SVGs de todos los botones redondos */
+.chat-back-btn svg,
+.chat-header-btn svg,
+.input-btn svg,
+#send-btn svg,
+.send-btn svg {
+width: 20px;
+height: 20px;
+fill: #fff;
 }
-.attach-menu.visible {
-transform: translateY(0);
-opacity: 1;
-visibility: visible;
-pointer-events: auto;
-}
-.attach-menu-item {
-display: flex;
-flex-direction: column;
-align-items: center;
-gap: 6px;
-padding: 12px 4px;
-color: #aaa;
-font-size: 11px;
-cursor: pointer;
-transition: all 0.15s;
-flex: 1;
-min-width: 0;
-border-radius: 12px;
-}
-.attach-menu-item:active {
-transform: scale(0.9);
-background: rgba(255,255,255,0.05);
-}
-.attach-menu-item svg {
-width: 28px;
-height: 28px;
-flex-shrink: 0;
-}
-/* FIX: asegurar que input-area siga oculto en principal y visible en chat */
-body.chat-view-active #input-area {
-display: flex !important;
-}
-/* ============================================
-CAMERA PREVIEW OVERLAY
-============================================ */
-.camera-preview-overlay {
-position: fixed;
-inset: 0;
-background: #000;
-z-index: 3000;
-display: flex;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-}
-.camera-preview-overlay.hidden {
-display: none !important;
-}
-.camera-preview-container {
-position: absolute;
-inset: 0;
-z-index: 1;
-}
-.camera-preview-container video,
-.camera-preview-container img {
-width: 100%;
-height: 100%;
-object-fit: cover;
-}
-.camera-preview-controls {
-position: absolute;
-bottom: 40px;
-left: 0;
-right: 0;
-display: flex;
-align-items: center;
-justify-content: center;
-gap: 40px;
-z-index: 2;
-padding: 0 20px;
-}
-.camera-btn {
-width: 48px;
-height: 48px;
-border-radius: 50%;
-background: rgba(255,255,255,0.15);
-border: 1px solid rgba(255,255,255,0.3);
-display: flex;
-align-items: center;
-justify-content: center;
-cursor: pointer;
-transition: all 0.15s ease;
-backdrop-filter: blur(4px);
-}
-.camera-btn:active {
-transform: scale(0.92);
-background: rgba(255,255,255,0.25);
-}
-.camera-btn-capture {
-width: 72px;
-height: 72px;
-border-radius: 50%;
-border: 4px solid #fff;
-background: #fff;
-cursor: pointer;
-transition: all 0.15s ease;
-position: relative;
-}
-.camera-btn-capture::after {
-content: '';
-position: absolute;
-inset: -6px;
-border-radius: 50%;
-border: 2px solid rgba(255,255,255,0.5);
-}
-.camera-btn-capture:active {
-transform: scale(0.92);
-background: #eee;
-}
-.camera-btn-capture.recording {
-background: #ff3b30;
-border-color: #ff3b30;
-border-radius: 8px;
-width: 48px;
-height: 48px;
-}
-.camera-btn-capture.recording::after {
-display: none;
-}
-.camera-preview-status {
-position: absolute;
-top: 20px;
-left: 0;
-right: 0;
-text-align: center;
-color: #fff;
-font-size: 12px;
-z-index: 2;
-text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-pointer-events: none;
-}
-/* ============================================
-FULLSCREEN MEDIA OVERLAY
-============================================ */
-.fullscreen-media-overlay {
-position: fixed;
-inset: 0;
-background: rgba(0,0,0,0.95);
-z-index: 4000;
-display: flex;
-align-items: center;
-justify-content: center;
-flex-direction: column;
-}
-.fullscreen-media-overlay.hidden {
-display: none !important;
-}
-.fullscreen-media-container {
-width: 100%;
-height: 100%;
-display: flex;
-align-items: center;
-justify-content: center;
-}
-.fullscreen-media-container img,
-.fullscreen-media-container video {
-max-width: 100%;
-max-height: 100%;
-object-fit: contain;
-}
-.fullscreen-media-close {
-position: absolute;
-top: 20px;
-right: 20px;
-width: 44px;
-height: 44px;
-border-radius: 50%;
-background: rgba(255,255,255,0.1);
-border: 1px solid rgba(255,255,255,0.2);
-color: #fff;
-font-size: 24px;
-display: flex;
-align-items: center;
-justify-content: center;
-cursor: pointer;
-z-index: 4001;
-backdrop-filter: blur(4px);
-}
-.fullscreen-media-close:active {
-transform: scale(0.92);
-background: rgba(255,255,255,0.2);
-}
-/* ============================================
-FIX v10.20: Timer de voz visible
-============================================ */
-#voice-timer {
-position: fixed;
-bottom: 70px;
-left: 50%;
-transform: translateX(-50%);
-background: rgba(255, 59, 48, 0.9);
-color: #fff;
-padding: 6px 16px;
-border-radius: 20px;
-font-size: 14px;
-font-weight: 600;
-z-index: 300;
-display: none;
-pointer-events: none;
-backdrop-filter: blur(4px);
-}
-/* ============================================
-FIX v10.21: Attach btn voice-active (long-press)
-============================================ */
-.attach-btn.voice-active {
-background: rgba(255, 59, 48, 0.2) !important;
-border-color: #FF3B30 !important;
-animation: pulse-red-btn 0.8s infinite;
-}
-@keyframes pulse-red-btn {
-0%, 100% { transform: scale(1); }
-50% { transform: scale(1.1); }
-}
-/* ============================================
-FIX v10.22: Camera preview overlay - chat visible atrás
-============================================ */
-.camera-preview-overlay {
-position: fixed;
-inset: 0;
-background: #000;
-z-index: 3000;
-display: flex;
-flex-direction: column;
-}
-.camera-preview-overlay.hidden {
-display: none !important;
-}
-/* ============================================
-FIX v10.23: Video attachment - marco fino uniforme
-============================================ */
-.msg-content .video-attachment,
-.msg-content video {
-max-width: 220px;
-max-height: 280px;
-border-radius: 12px;
-display: block;
-object-fit: cover;
-border: 1px solid rgba(0, 200, 255, 0.3);
-}
-/* ============================================
-FIX v10.24b: Location attachment - marco FINO
-============================================ */
-.msg-content .location-attachment {
-max-width: 220px;
-border-radius: 12px;
-overflow: hidden;
-background: rgba(0, 0, 0, 0.3);
-border: 1px solid rgba(0, 200, 255, 0.3);
-}
-.msg-content .location-attachment img {
-width: 100%;
-height: 120px;
-object-fit: cover;
-display: block;
-}
-.msg-content .location-info {
-padding: 6px 10px;
-font-size: 12px;
-color: #ccc;
-}
-.msg-content .location-actions {
-display: flex;
-gap: 6px;
-padding: 0 10px 8px;
-}
-.msg-content .location-actions a {
-flex: 1;
-text-align: center;
-padding: 5px;
-background: rgba(0, 130, 252, 0.2);
-border-radius: 6px;
-color: #fff;
-text-decoration: none;
-font-size: 11px;
-border: 1px solid rgba(0, 130, 252, 0.3);
-}
-/* ============================================
-FIX v10.25b: Audio attachment - tamaño ajustado
-============================================ */
-.msg-content .audio-attachment {
+/* Alineación vertical centrada en input-area */
+#input-area {
 display: flex;
 align-items: center;
 gap: 8px;
-padding: 6px 10px;
-min-width: 160px;
-max-width: 220px;
+padding: 8px 12px;
 }
-.msg-content .audio-attachment button {
-width: 32px;
-height: 32px;
-border-radius: 50%;
-background: rgba(255, 255, 255, 0.15);
-border: 1px solid rgba(255, 255, 255, 0.2);
-color: #fff;
-cursor: pointer;
-display: flex;
-align-items: center;
-justify-content: center;
-font-size: 12px;
-flex-shrink: 0;
-}
-.msg-content .audio-waveform {
-height: 24px;
-display: flex;
-align-items: flex-end;
-gap: 2px;
-opacity: 0.7;
-flex: 1;
-}
-.msg-content .audio-waveform div {
-width: 3px;
-background: #fff;
-border-radius: 1px;
-flex-shrink: 0;
-}
-.msg-content .audio-duration {
-font-size: 10px;
-color: #888;
-white-space: nowrap;
-}
-/* Todos los botones redondos, mismo tamaño, mismo color */
-.chat-back-btn,
-.chat-header-btn,
-.input-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #0082FC, #6B4EFF);
-  color: #fff;
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-/* Alineación vertical centrada en input-area */
-#input-area {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-}
-
 /* Alineación horizontal en chat-header */
 #chat-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+display: flex;
+align-items: center;
+gap: 8px;
+padding: 8px 12px;
 }
-
 #chat-contact-name {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 600;
-  text-align: center;
+flex: 1;
+background: transparent;
+border: none;
+color: #fff;
+font-size: 16px;
+font-weight: 600;
+text-align: center;
 }
-
 #chat-contact-subtitle {
-  display: none; /* o posicionarlo debajo del nombre si lo necesitas */
+display: none; /* o posicionarlo debajo del nombre si lo necesitas */
 }
