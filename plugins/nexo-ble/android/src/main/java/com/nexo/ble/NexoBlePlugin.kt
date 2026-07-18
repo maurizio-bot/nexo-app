@@ -951,7 +951,7 @@ scannedDevices.clear()
 private val scanCallback = object : ScanCallback() {
 override fun onScanResult(callbackType: Int, result: ScanResult?) {
 result?.device?.let { device ->
-val name = try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
+val name = result.scanRecord?.deviceName ?: try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
 val addr = device.address
 val macNorm = normalizeMac(addr)
 scannedDevices[macNorm] = device
