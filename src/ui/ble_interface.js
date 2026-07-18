@@ -962,7 +962,7 @@
    }
    });
    });
-   /* FIX-BACK: Al cerrar chat, cerrar panel BLE para ver pantalla principal de contactos */
+   /* FIX-BACK: Al cerrar chat, cerrar panel BLE para que se vea pantalla principal de contactos */
    window.addEventListener('nexo:ble:closeChat', function() {
    self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
    self.updateBadge();
@@ -1240,7 +1240,7 @@
    newDevices.forEach(function(item) {
    var device = item.device;
    var deviceId = item.deviceId;
-   var displayName = device.deviceUUID || 'Nexo Device';
+   var displayName = device.name || device.deviceUUID || 'Nexo Device';
    var row = document.createElement('div');
    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px 20px;border:2px solid #00c8ff;border-radius:16px;background:rgba(0,20,40,0.9);box-sizing:border-box;';
    var nameSpan = document.createElement('span');
@@ -1266,7 +1266,7 @@
    }
    var device = this.foundDevices.get(deviceId);
    if (!device) return;
-   var name = device.deviceUUID || 'Nexo Device';
+   var name = device.name || device.deviceUUID || 'Nexo Device';
    var nexoId = device.deviceUUID || '';
    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
    console.warn('[BLEInterface] No se puede agregar: dispositivo sin NEXO ID');
