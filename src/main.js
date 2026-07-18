@@ -106,15 +106,20 @@ console.log('[ATTACH] Sistema de mensajes no disponible');
 // FIX 2026-07-18: Panel adjuntos inferior horizontal
 function _toggleAttachMenu() {
     var menu = document.getElementById('attach-menu');
-    var input = document.getElementById('message-input');
-    if (!menu) return;
-    if (menu.classList.contains('visible')) {
+    if (!menu) {
+        console.error('[ATTACH] No se encontro #attach-menu');
+        return;
+    }
+    var isVisible = menu.classList.contains('visible');
+    if (isVisible) {
         menu.classList.remove('visible');
         menu.style.display = '';
         menu.style.opacity = '';
         menu.style.visibility = '';
         menu.style.pointerEvents = '';
+        menu.style.transform = '';
     } else {
+        var input = document.getElementById('message-input');
         if (input) input.blur();
         menu.classList.add('visible');
         menu.style.display = 'flex';
@@ -131,6 +136,7 @@ function _closeAttachMenu() {
         menu.style.opacity = '';
         menu.style.visibility = '';
         menu.style.pointerEvents = '';
+        menu.style.transform = '';
     }
 }
 // Camera overlay
@@ -218,7 +224,6 @@ _cameraPreviewVideoChunks = [];
 _cameraPreviewMediaRecorder.ondataavailable = function(e) {
 if (e.data && e.data.size > 0) _cameraPreviewVideoChunks.push(e.data);
 };
-// FIX: onstop procesa y envia el video automaticamente
 _cameraPreviewMediaRecorder.onstop = function() {
 console.log('[CAMERA] Grabacion detenida, procesando...');
 _processAndSendVideo();
@@ -380,15 +385,12 @@ var base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
 _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
 _hideCameraPreviewOverlay();
 }
-// FIX: Video grabar -> detener -> enviar (mismo flujo que foto)
 function _handleCameraCapture() {
 if (_cameraPreviewMode === 'photo') {
 _capturePhoto();
 return;
 }
-// Modo video
 if (!_cameraPreviewRecording) {
-// INICIAR grabacion
 if (!_cameraPreviewMediaRecorder || _cameraPreviewMediaRecorder.state !== 'inactive') {
 console.log('[CAMERA] MediaRecorder no listo');
 return;
@@ -409,7 +411,6 @@ console.log('[CAMERA] Error al iniciar grabacion:', startErr.message);
 _cameraPreviewRecording = false;
 }
 } else {
-// DETENER grabacion — FIX: solo stop(), onstop se encarga del resto
 if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
 try {
 _cameraPreviewMediaRecorder.stop();
@@ -421,7 +422,6 @@ _updateCameraPreviewUI();
 }
 }
 }
-// FIX: onstop del MediaRecorder procesa y envia el video
 function _processAndSendVideo() {
 var duration = 0;
 if (_cameraVideoStartTime > 0) {
@@ -500,7 +500,6 @@ document.body.appendChild(input);
 input.click();
 setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
 }
-// ELIMINADO: _handleVideo() — ya no existe boton de video en menu
 function _handleFile() {
 _closeAttachMenu();
 var input = document.createElement('input');
@@ -537,7 +536,6 @@ toast.innerHTML = 'Permiso de ' + permName + ' denegado.<br><span style="font-si
 document.body.appendChild(toast);
 setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(function() { toast.remove(); }, 500); }, 4000);
 }
-// FIX: Si el plugin existe, usarlo. Si falla, NO hacer fallback (evita doble envio)
 async function _handleLocation() {
 _closeAttachMenu();
 var plugins = _getAttachmentPlugins();
@@ -594,12 +592,10 @@ _showPermissionError('Ubicacion');
 console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
 }
 }
-// FIX 2026-07-18: Compartir contacto
 function _handleContactShare() {
 _closeAttachMenu();
 console.log('[ATTACH] Compartir contacto - pendiente implementacion');
 }
-// FIX: Audio — pulsar graba, soltar detiene y envia
 async function _handleVoiceToggle() {
 var contactId = _getCurrentContactId();
 if (!contactId) {
@@ -614,7 +610,6 @@ timerEl.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translate
 document.body.appendChild(timerEl);
 }
 if (!_isRecording) {
-// INICIAR grabacion
 try {
 var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 _mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
@@ -630,18 +625,15 @@ _mediaRecorder.ondataavailable = function(e) {
 if (e.data && e.data.size > 0) _audioChunks.push(e.data);
 };
 _mediaRecorder.onstop = function() {
-// Limpiar timer
 if (_voiceTimerInterval) {
 clearInterval(_voiceTimerInterval);
 _voiceTimerInterval = null;
 }
 timerEl.style.display = 'none';
-// Calcular duracion
 var duration = 0;
 if (_voiceStartTime > 0) {
 duration = Math.round((Date.now() - _voiceStartTime) / 1000);
 }
-// Crear blob y enviar
 var blob = new Blob(_audioChunks, { type: 'audio/webm' });
 if (blob.size === 0) {
 console.log('[ATTACH] Audio blob vacio');
@@ -658,7 +650,6 @@ _isRecording = false;
 _updateMicIcon(false);
 };
 reader.readAsDataURL(blob);
-// Detener tracks
 stream.getTracks().forEach(function(t) { t.stop(); });
 };
 _mediaRecorder.onerror = function(e) {
@@ -691,7 +682,6 @@ _updateMicIcon(false);
 timerEl.style.display = 'none';
 }
 } else {
-// DETENER grabacion
 _isRecording = false;
 _updateMicIcon(false);
 if (_voiceTimerInterval) {
@@ -722,19 +712,31 @@ var attachBtn = document.getElementById('attach-btn');
 var sendBtn = document.getElementById('send-btn');
 var menuItems = document.querySelectorAll('.attach-menu-item');
 var input = document.getElementById('message-input');
+
+// === DEBUG ATTACH MENU ===
+console.log('[DEBUG] Attach menu encontrado:', !!document.getElementById('attach-menu'));
+console.log('[DEBUG] Attach button encontrado:', !!document.getElementById('attach-btn'));
+
+// Click de prueba
+setTimeout(function() {
+    var btn = document.getElementById('attach-btn');
+    if (btn) {
+        btn.style.border = '3px solid red';
+        console.log('[DEBUG] Boton + marcado en rojo para verificar visibilidad');
+    }
+}, 1500);
+
 if (attachBtn) {
-// FIX: attach-btn SOLO abre menu, NUNCA graba voz
-attachBtn.addEventListener('click', function(e) {
-e.preventDefault();
-e.stopPropagation();
-if (_isRecording) {
-_handleVoiceToggle();
-} else {
-_toggleAttachMenu();
+    attachBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (_isRecording) {
+            _handleVoiceToggle();
+        } else {
+            _toggleAttachMenu();
+        }
+    });
 }
-});
-}
-// FIX 2026-07-18: menuItems incluye contacto
 menuItems.forEach(function(item) {
 item.addEventListener('click', function(e) {
 e.preventDefault();
@@ -748,7 +750,6 @@ else if (type === 'contact') _handleContactShare();
 });
 });
 if (sendBtn) {
-// FIX: Switch mic/enviar segun contenido del input
 function _updateSendBtnMode() {
 var text = input ? input.value.trim() : '';
 if (text) {
@@ -757,13 +758,10 @@ sendBtn.classList.remove('mic-mode');
 sendBtn.classList.add('mic-mode');
 }
 }
-// Inicializar en modo mic
 sendBtn.classList.add('mic-mode');
-// Escuchar cambios en input
 if (input) {
 input.addEventListener('input', _updateSendBtnMode);
 }
-// Click simple: enviar si hay texto, nada si vacio
 sendBtn.addEventListener('click', function(e) {
 var text = input ? input.value.trim() : '';
 if (text) {
@@ -779,10 +777,8 @@ _updateSendBtnMode();
 } else {
 e.preventDefault();
 e.stopPropagation();
-// Click simple con input vacio: no hacer nada
 }
 });
-// Long-press (>1s) en send-btn: activar microfono SOLO si input vacio
 var sendLongPressTimer = null;
 var sendIsLongPress = false;
 sendBtn.addEventListener('touchstart', function(e) {
@@ -809,7 +805,6 @@ _handleVoiceToggle();
 }
 });
 }
-// FIX 2026-07-18: Cierre panel adjuntos con click fuera
 document.addEventListener('click', function(e) {
 var menu = document.getElementById('attach-menu');
 var attachBtn = document.getElementById('attach-btn');
@@ -1080,6 +1075,8 @@ vault.style.setProperty('display', 'none', 'important');
 vault.style.setProperty('visibility', 'hidden', 'important');
 vault.style.setProperty('opacity', '0', 'important');
 vault.style.setProperty('pointer-events', 'none', 'important');
+vault.style.setProperty('position', 'absolute', 'important');
+vault.style.setProperty('z-index', '-9999', 'important');
 }
 } catch (e) {}
 }
@@ -1320,7 +1317,6 @@ if (mc) mc.scrollTop = mc.scrollHeight;
 };
 contentDiv.appendChild(img);
 } else if (attachment.type === 'video') {
-// FIX v10.30: Video burbuja siempre visible con play icon + duracion
 var videoWrapper = document.createElement('div');
 videoWrapper.className = 'video-attachment';
 videoWrapper.style.cssText = 'position:relative;width:220px;min-height:140px;overflow:hidden;background:#1a1a2e;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;';
@@ -1385,7 +1381,6 @@ contentDiv.appendChild(mediaWrapper);
 contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">&#128206; <b>Archivo</b><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
 }
 } else if (attachment.type === 'location') {
-// FIX v10.31: Preview mapa Yandex + fallback visual + botones Maps/Waze
 var loc = attachment.meta;
 var lat = (loc && loc.lat) ? loc.lat : 0;
 var lng = (loc && loc.lng) ? loc.lng : 0;
@@ -1413,7 +1408,7 @@ mapContainer.appendChild(mapFallback);
 var locInfo = document.createElement('div');
 locInfo.className = 'location-info';
 locInfo.style.cssText = 'padding:8px 12px;';
-locInfo.innerHTML = '<div style="font-weight:600;font-size:13px;color:#fff;">Ubicación</div><div style="font-size:11px;color:#888;">' + lat.toFixed(5) + ', ' + lng.toFixed(5) + '</div>';
+locInfo.innerHTML = '<div style="font-weight:600;font-size:13px;color:#fff;">Ubicacion</div><div style="font-size:11px;color:#888;">' + lat.toFixed(5) + ', ' + lng.toFixed(5) + '</div>';
 var locActions = document.createElement('div');
 locActions.className = 'location-actions';
 locActions.style.cssText = 'display:flex;gap:8px;padding:0 12px 10px;';
