@@ -908,7 +908,6 @@ Consolidado: inline + main.css + ble_styles
    /* ============================================
    INPUT BAR v2 — Attach + Toggle Send/Mic
    ============================================ */
-   /* Botón attach (+) */
    /* Botones input: attach + send unificados 44px */
    .input-btn,
    #send-btn,
@@ -1348,7 +1347,8 @@ Consolidado: inline + main.css + ble_styles
    color: #888;
    white-space: nowrap;
    }
+
 /* FIX: attach-menu.visible gana sobre .hidden */
 .attach-menu.visible {
-display: flex !important;
+   display: flex !important;
 }
