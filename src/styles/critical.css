@@ -1013,7 +1013,7 @@ Consolidado: inline + main.css + ble_styles
    border-top: 1px solid #1a1a1a;
    border-radius: 20px 20px 0 0;
    padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px)) 16px;
-   z-index: 9999;
+   z-index: 99999 !important;
    display: flex;
    flex-direction: row;
    justify-content: space-around;
@@ -1025,12 +1025,13 @@ Consolidado: inline + main.css + ble_styles
    pointer-events: none;
    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
    will-change: transform, opacity;
+   box-shadow: 0 -4px 30px rgba(0,0,0,0.6);
    }
    .attach-menu.visible {
-   transform: translateY(0);
-   opacity: 1;
-   visibility: visible;
-   pointer-events: auto;
+   transform: translateY(0) !important;
+   opacity: 1 !important;
+   visibility: visible !important;
+   pointer-events: auto !important;
    }
    .attach-menu-item {
    display: flex;
