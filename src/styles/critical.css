@@ -912,7 +912,8 @@ Consolidado: inline + main.css + ble_styles
    /* Botones input: attach + send unificados 44px */
    .input-btn,
    #send-btn,
-   .send-btn {
+   .send-btn,
+   .attach-btn {
    width: 44px;
    height: 44px;
    border-radius: 50%;
@@ -928,27 +929,26 @@ Consolidado: inline + main.css + ble_styles
    }
    .input-btn:active,
    #send-btn:active,
-   .send-btn:active {
+   .send-btn:active,
+   .attach-btn:active {
    transform: scale(0.92);
    }
    .input-btn svg,
    #send-btn svg,
-   .send-btn svg {
+   .send-btn svg,
+   .attach-btn svg {
    width: 20px;
    height: 20px;
    fill: #fff;
    pointer-events: none;
    }
-   /* Attach: fondo oscuro */
+   /* Attach: gradiente unificado */
    .attach-btn {
-   background: #1a1a1a;
-   border: 1px solid #222;
+   background: linear-gradient(135deg, #0082FC, #6B4EFF);
    color: #fff;
    }
    .attach-btn.active {
-   color: #00c8ff;
-   border-color: #00c8ff44;
-   background: #00c8ff11;
+   background: linear-gradient(135deg, #0082FC, #6B4EFF);
    }
    .attach-btn svg {
    fill: #fff;
@@ -1348,3 +1348,7 @@ Consolidado: inline + main.css + ble_styles
    color: #888;
    white-space: nowrap;
    }
+/* FIX: attach-menu.visible gana sobre .hidden */
+.attach-menu.visible {
+display: flex !important;
+}
