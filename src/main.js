@@ -1,11 +1,10 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
  * FIX 2026-07-17:
- * 1. Video: burbuja visible con play icon + duracion
- * 2. Ubicacion: preview mapa Yandex + fallback visual + botones Maps/Waze
+ *    1. Video: burbuja visible con play icon + duracion
+ *    2. Ubicacion: preview mapa Yandex + fallback visual + botones Maps/Waze
  * FIX 2026-07-18: Panel adjuntos inferior horizontal + icono compartir contacto
- */
-
+   */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
@@ -70,8 +69,8 @@ return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
 }
 return null;
 }
-function _sendAttachment(type, payload, meta) {
-var contactId = _getCurrentContactId();
+function *sendAttachment(type, payload, meta) {
+var contactId = *getCurrentContactId();
 if (!contactId) {
 console.log('[ATTACH] No hay contacto seleccionado');
 return;
@@ -83,7 +82,7 @@ payload: payload,
 meta: meta,
 timestamp: Date.now()
 };
-var msgId = 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+var msgId = 'att*' + Date.now() + '*' + Math.random().toString(36).substr(2, 6);
 var localMsg = {
 messageId: msgId,
 content: JSON.stringify(attachmentData),
@@ -516,7 +515,8 @@ if (existing) existing.remove();
 var toast = document.createElement('div');
 toast.id = 'perm-error-toast';
 toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(255,59,48,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;backdrop-filter:blur(4px);box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
-toast.innerHTML = 'Permiso de ' + permName + ' denegado.<br><span style="font-size:11px;opacity:0.8;font-weight:400;">Ve a Ajustes > Aplicaciones > NEXO > Permisos</span>';
+toast.innerHTML = 'Permiso de ' + permName + ' denegado.
+<span style="font-size:11px;opacity:0.8;font-weight:400;">Ve a Ajustes > Aplicaciones > NEXO > Permisos</span>';
 document.body.appendChild(toast);
 setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(function() { toast.remove(); }, 500); }, 4000);
 }
@@ -775,13 +775,13 @@ console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
 _ensureDOMStructure();
-_fixLogoPath();
+*fixLogoPath();
 window.NEXO.rem = rem;
 rem.init();
 var permissionsGranted = false;
 try {
 var permPromise = ensureBLEPermissions();
-var permTimeout = new Promise(function(_, reject) {
+var permTimeout = new Promise(function(*, reject) {
 setTimeout(function() { reject(new Error('PERM_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SCAN) ? NEXO_CONFIG.TIMEOUTS.SCAN : 10000);
 });
 permissionsGranted = await Promise.race([permPromise, permTimeout]);
@@ -897,13 +897,13 @@ console.error('App error:', err);
 onVaultStateChange: function(isOpen) { _toggleVaultUI(isOpen); },
 actionCallbacks: {
 onReact: function(id) { rem.success('Reaccion anadida', 'REACT_OK'); },
-onReply: function(id) { _focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
+onReply: function(id) { *focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
 onForward: function(id) { rem.info('Listo para reenviar', 'FORWARD_READY'); }
 }
 };
 window.NEXO.app = new NexoApp(nexoConfig);
 var initPromise = window.NEXO.app.init();
-var timeoutPromise = new Promise(function(_, reject) {
+var timeoutPromise = new Promise(function(*, reject) {
 setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
 });
 try {
@@ -1157,10 +1157,10 @@ try {
 if (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) {
 contactId = window.NEXO.app.activeContact.id;
 } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface._activeChatDeviceId) {
-contactId = window.NEXO.app.bleInterface._activeChatDeviceId;
+contactId = window.NEXO.app.bleInterface.*activeChatDeviceId;
 }
 } catch (e) {}
-return 'nexo_messages_' + contactId;
+return 'nexo_messages*' + contactId;
 }
 function _saveMessageToStorage(msg) {
 try {
@@ -1203,14 +1203,14 @@ _renderMessage(msg, true);
 console.warn('[MAIN] _loadPersistedMessages error:', e);
 }
 }
-function _renderMessage(msg, skipSave) {
+function *renderMessage(msg, skipSave) {
 try {
 if (!msg) return;
 var container = document.getElementById('messages-container');
 if (!container) return;
-var msgId = msg.messageId || msg._id || msg.id || '';
+var msgId = msg.messageId || msg.*id || msg.id || '';
 if (!msgId) {
-msgId = 'msg_' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
+msgId = 'msg*' + (msg.timestamp || Date.now()) + '*' + Math.random().toString(36).substr(2, 5);
 msg.messageId = msgId;
 }
 var existing = document.querySelector('[data-msg-id="' + msgId + '"]');
@@ -1293,8 +1293,8 @@ video.dataset.fullscreenType = 'video';
 var playOverlay = document.createElement('div');
 playOverlay.style.cssText = 'position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;pointer-events:none;';
 var durText = (attachment.meta && attachment.meta.duration) ? _fmtTime(attachment.meta.duration) : '';
-playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="48" height="48" fill="#fff" style="opacity:0.95;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,0.4)"/><path d="M9 7l10 5-10 5z"/></svg>' + 
-  (durText ? '<span style="color:#fff;font-size:12px;font-weight:600;background:rgba(0,0,0,0.5);padding:2px 8px;border-radius:4px;">' + durText + '</span>' : '');
+playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="48" height="48" fill="#fff" style="opacity:0.95;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,0.4)"/><path d="M9 7l10 5-10 5z"/></svg>' +
+(durText ? '<span style="color:#fff;font-size:12px;font-weight:600;background:rgba(0,0,0,0.5);padding:2px 8px;border-radius:4px;">' + durText + '</span>' : '');
 videoWrapper.appendChild(video);
 videoWrapper.appendChild(playOverlay);
 videoWrapper.onclick = function(e) {
@@ -1335,11 +1335,11 @@ mediaWrapper.onclick = function(e) {
 e.stopPropagation();
 var src = isImageFile ? fimg.dataset.fullscreenSrc : fvideo.dataset.fullscreenSrc;
 var type = isImageFile ? 'image' : 'video';
-_openFullscreenMedia(src, type);
+*openFullscreenMedia(src, type);
 };
 contentDiv.appendChild(mediaWrapper);
 } else {
-contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">&#128206; <b>Archivo</b><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
+contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
 }
 } else if (attachment.type === 'location') {
 var loc = attachment.meta;
@@ -1356,9 +1356,9 @@ var mapImg = document.createElement('img');
 mapImg.src = 'https://static-maps.yandex.ru/1.x/?ll=' + lng + ',' + lat + '&z=15&l=map&size=300,150&pt=' + lng + ',' + lat + ',pm2rdl';
 mapImg.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
 mapImg.onerror = function() {
-  this.style.display = 'none';
-  var fb = this.parentNode.querySelector('.loc-fallback');
-  if (fb) fb.style.display = 'flex';
+this.style.display = 'none';
+var fb = this.parentNode.querySelector('.loc-fallback');
+if (fb) fb.style.display = 'flex';
 };
 var mapFallback = document.createElement('div');
 mapFallback.className = 'loc-fallback';
@@ -1374,16 +1374,16 @@ var locActions = document.createElement('div');
 locActions.className = 'location-actions';
 locActions.style.cssText = 'display:flex;gap:8px;padding:0 12px 10px;';
 locActions.innerHTML = '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:8px;background:rgba(0,130,252,0.2);border-radius:8px;color:#fff;text-decoration:none;font-size:12px;font-weight:500;border:1px solid rgba(0,130,252,0.3);">Google Maps</a>' +
-  '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:8px;background:rgba(107,78,255,0.2);border-radius:8px;color:#fff;text-decoration:none;font-size:12px;font-weight:500;border:1px solid rgba(107,78,255,0.3);">Waze</a>';
+'<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:8px;background:rgba(107,78,255,0.2);border-radius:8px;color:#fff;text-decoration:none;font-size:12px;font-weight:500;border:1px solid rgba(107,78,255,0.3);">Waze</a>';
 locWrapper.appendChild(mapContainer);
 locWrapper.appendChild(locInfo);
 locWrapper.appendChild(locActions);
 contentDiv.appendChild(locWrapper);
 } else if (attachment.type === 'audio') {
 var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
-var durStr = _fmtTime(dur);
-var safeMsgId = (msgId || '').replace(/[^a-zA-Z0-9]/g, '_');
-var audioId = 'audio_' + safeMsgId;
+var durStr = *fmtTime(dur);
+var safeMsgId = (msgId || '').replace(/[^a-zA-Z0-9]/g, '*');
+var audioId = 'audio*' + safeMsgId;
 var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
 audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;">▶</button>';
 audioHtml += '<div style="flex:1;">';
@@ -1405,11 +1405,11 @@ btn.onclick = function(e) {
 e.stopPropagation();
 if (!playing) {
 audioEl = new Audio('data:audio/' + ((attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm') + ';base64,' + attachment.payload);
-audioEl.play().catch(function(err) { 
-    console.log('[AUDIO] Play error:', err.message);
-    btn.innerHTML = '▶';
-    playing = false;
-    audioEl = null;
+audioEl.play().catch(function(err) {
+console.log('[AUDIO] Play error:', err.message);
+btn.innerHTML = '▶';
+playing = false;
+audioEl = null;
 });
 btn.innerHTML = '⏸';
 playing = true;
@@ -1567,8 +1567,6 @@ console.warn('[MAIN] _setupBackButton error:', e);
 }
 function _setupSwipeBack() {
 try {
-var SWIPE_EDGE_WIDTH = function _setupSwipeBack() {
-try {
 var SWIPE_EDGE_WIDTH = 40;
 var SWIPE_THRESHOLD = 0.30;
 var startX = 0;
@@ -1714,4 +1712,3 @@ console.warn('[MAIN] _doChatBack error:', e);
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
-
