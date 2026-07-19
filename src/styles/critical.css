@@ -49,6 +49,8 @@ Consolidado: inline + main.css + ble_styles
    flex-direction: column;
    height: 100dvh;
    background: #000;
+   position: relative;
+   overflow: hidden;
    }
    /* Status indicator */
    #status-indicator {
@@ -347,6 +349,7 @@ Consolidado: inline + main.css + ble_styles
    }
    #message-input {
    flex: 1;
+   width: 100%;
    background: #1a1a1a;
    border-radius: 22px;
    border: 1px solid #222;
@@ -855,10 +858,6 @@ Consolidado: inline + main.css + ble_styles
    SWIPE BACK ANIMATION - Chat se desliza hacia la derecha
    ============================================ */
    /* Container del chat para transformación */
-   #app {
-   position: relative;
-   overflow: hidden;
-   }
    /* Estado normal del chat */
    body.chat-view-active #app {
    transform: translateX(0);
@@ -943,6 +942,18 @@ Consolidado: inline + main.css + ble_styles
    }
    /* Attach: gradiente unificado */
    .attach-btn {
+   width: 44px;
+   height: 44px;
+   border-radius: 50%;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   flex-shrink: 0;
+   cursor: pointer;
+   transition: all 0.15s ease;
+   border: none;
+   padding: 0;
+   overflow: hidden;
    background: linear-gradient(135deg, #0082FC, #6B4EFF);
    color: #fff;
    }
@@ -1243,17 +1254,6 @@ Consolidado: inline + main.css + ble_styles
    /* ============================================
    FIX v10.22: Camera preview overlay - chat visible atrás
    ============================================ */
-   .camera-preview-overlay {
-   position: fixed;
-   inset: 0;
-   background: #000;
-   z-index: 3000;
-   display: flex;
-   flex-direction: column;
-   }
-   .camera-preview-overlay.hidden {
-   display: none !important;
-   }
    /* ============================================
    FIX v10.23: Video attachment - marco fino uniforme
    ============================================ */
