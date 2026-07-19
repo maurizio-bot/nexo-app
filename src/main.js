@@ -719,6 +719,8 @@ else if (type === 'file') _handleFile();
 else if (type === 'location') _handleLocation();
 });
 });
+// FIX: Eliminado listener duplicado del send-btn. El unico listener de click
+// para enviar mensaje de texto y voice-toggle ahora vive en _setupMessageInput().
 if (sendBtn) {
 sendBtn.addEventListener('click', function(e) {
 var text = input ? input.value.trim() : '';
@@ -730,6 +732,8 @@ if (contactId && window.NEXO.app && window.NEXO.app.sendMessage) {
 window.NEXO.app.sendMessage({ content: text });
 input.value = '';
 input.focus();
+// Al enviar, volver a modo mic
+sendBtn.classList.add('mic-mode');
 }
 } else {
 e.preventDefault();
@@ -973,15 +977,28 @@ try {
 if (!window.NEXO.app) return;
 var sent = await window.NEXO.app.sendMessage({ content: text });
 } catch (e) {}
+// Al enviar, volver a modo mic (input vacio)
+btn.classList.add('mic-mode');
 };
 btn.addEventListener('click', function(e) {
 var text = input.value.trim();
 if (text) {
+e.preventDefault();
+e.stopPropagation();
 send();
 } else {
 e.preventDefault();
 e.stopPropagation();
 _handleVoiceToggle();
+}
+});
+// FIX: Switcheo automatico entre mic y flecha segun contenido del input
+input.addEventListener('input', function() {
+var text = input.value.trim();
+if (text) {
+btn.classList.remove('mic-mode');
+} else {
+btn.classList.add('mic-mode');
 }
 });
 input.addEventListener('keypress', function(e) {
