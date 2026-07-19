@@ -99,10 +99,6 @@ val settings = AdvertiseSettings.Builder()
 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
 .build()
 
-// FIX: El advertising packet tiene limite de 31 bytes.
-// 128-bit UUID (18 bytes) + device name (~10 bytes) + manufacturer data (14 bytes) + flags (3 bytes) = ~45 bytes.
-// Solucion: solo mandar manufacturer data + flags. JS identifica NEXO por el magic NX.
-// El device name y service UUID no son necesarios para el scan porque usamos emptyList() y leemos manufacturer data.
 val dataBuilder = AdvertiseData.Builder()
 .setIncludeDeviceName(false)
 
@@ -120,7 +116,12 @@ Log.w(TAG, "Advertising SIN NEXO ID (no recibido aun)")
 }
 
 val data = dataBuilder.build()
-bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
+
+val scanResponse = AdvertiseData.Builder()
+.setIncludeDeviceName(true)
+.build()
+
+bluetoothLeAdvertiser?.startAdvertising(settings, data, scanResponse, advertiseCallback)
 showToast("[BLE Svc] Advertising iniciado")
 } catch (e: Exception) {
 showToast("[BLE Svc] Advertising ERROR: ${e.message}")
