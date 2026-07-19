@@ -1013,51 +1013,50 @@ display: none;
 .send-btn svg {
 flex-shrink: 0;
 }
-/* Attach Menu desplegable */
+/* Attach Menu desplegable — solo iconos, fila horizontal */
 .attach-menu {
-position: fixed;
-bottom: 70px;
-left: 12px;
-background: #1a1a1a;
-border: 1px solid #222;
-border-radius: 16px;
-padding: 8px 0;
-min-width: 180px;
-z-index: 200;
-box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-opacity: 0;
-transform: translateY(10px) scale(0.95);
-pointer-events: none;
-transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: fixed;
+  bottom: 70px;
+  left: 12px;
+  background: #1a1a1a;
+  border: 1px solid #222;
+  border-radius: 16px;
+  padding: 8px;
+  z-index: 200;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+  pointer-events: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  min-width: auto;
 }
 .attach-menu.visible {
-opacity: 1;
-transform: translateY(0) scale(1);
-pointer-events: auto;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
 }
 .attach-menu-item {
-display: flex;
-align-items: center;
-gap: 12px;
-padding: 12px 16px;
-color: #fff;
-font-size: 14px;
-cursor: pointer;
-transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius: 12px;
 }
 .attach-menu-item:active {
-background: rgba(0,200,255,0.1);
+  background: rgba(0,200,255,0.1);
 }
 .attach-menu-item svg {
-flex-shrink: 0;
-}
-/* Divider entre items */
-.attach-menu-item:not(:last-child) {
-border-bottom: 1px solid #222;
+  flex-shrink: 0;
 }
 /* Ocultar menú */
 .attach-menu.hidden {
-display: none !important;
+  display: none !important;
 }
 /* FIX: asegurar que input-area siga oculto en principal y visible en chat */
 body.chat-view-active #input-area {
