@@ -69,8 +69,8 @@ return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
 }
 return null;
 }
-function *sendAttachment(type, payload, meta) {
-var contactId = *getCurrentContactId();
+function _sendAttachment(type, payload, meta) {
+var contactId = _getCurrentContactId();
 if (!contactId) {
 console.log('[ATTACH] No hay contacto seleccionado');
 return;
@@ -775,7 +775,7 @@ console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
 _ensureDOMStructure();
-*fixLogoPath();
+_fixLogoPath();
 window.NEXO.rem = rem;
 rem.init();
 var permissionsGranted = false;
@@ -897,7 +897,7 @@ console.error('App error:', err);
 onVaultStateChange: function(isOpen) { _toggleVaultUI(isOpen); },
 actionCallbacks: {
 onReact: function(id) { rem.success('Reaccion anadida', 'REACT_OK'); },
-onReply: function(id) { *focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
+onReply: function(id) { _focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
 onForward: function(id) { rem.info('Listo para reenviar', 'FORWARD_READY'); }
 }
 };
@@ -1157,7 +1157,7 @@ try {
 if (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) {
 contactId = window.NEXO.app.activeContact.id;
 } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface._activeChatDeviceId) {
-contactId = window.NEXO.app.bleInterface.*activeChatDeviceId;
+contactId = window.NEXO.app.bleInterface._activeChatDeviceId;
 }
 } catch (e) {}
 return 'nexo_messages*' + contactId;
@@ -1203,12 +1203,12 @@ _renderMessage(msg, true);
 console.warn('[MAIN] _loadPersistedMessages error:', e);
 }
 }
-function *renderMessage(msg, skipSave) {
+function _renderMessage(msg, skipSave) {
 try {
 if (!msg) return;
 var container = document.getElementById('messages-container');
 if (!container) return;
-var msgId = msg.messageId || msg.*id || msg.id || '';
+var msgId = msg.messageId || msg._id || msg.id || '';
 if (!msgId) {
 msgId = 'msg*' + (msg.timestamp || Date.now()) + '*' + Math.random().toString(36).substr(2, 5);
 msg.messageId = msgId;
@@ -1335,7 +1335,7 @@ mediaWrapper.onclick = function(e) {
 e.stopPropagation();
 var src = isImageFile ? fimg.dataset.fullscreenSrc : fvideo.dataset.fullscreenSrc;
 var type = isImageFile ? 'image' : 'video';
-*openFullscreenMedia(src, type);
+_openFullscreenMedia(src, type);
 };
 contentDiv.appendChild(mediaWrapper);
 } else {
@@ -1381,7 +1381,7 @@ locWrapper.appendChild(locActions);
 contentDiv.appendChild(locWrapper);
 } else if (attachment.type === 'audio') {
 var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
-var durStr = *fmtTime(dur);
+var durStr = _fmtTime(dur);
 var safeMsgId = (msgId || '').replace(/[^a-zA-Z0-9]/g, '*');
 var audioId = 'audio*' + safeMsgId;
 var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
