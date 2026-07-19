@@ -693,19 +693,24 @@ _handleVoiceToggle();
 }, { passive: true });
 attachBtn.addEventListener('touchend', function(e) {
 clearTimeout(longPressTimer);
-if (isLongPress && _isRecording) {
+if (isLongPress) {
 setTimeout(function() {
+if (_isRecording) {
 _handleVoiceToggle();
+}
 attachBtn.classList.remove('voice-active');
 }, 50);
+} else {
+attachBtn.classList.remove('voice-active');
 }
 });
 attachBtn.addEventListener('touchcancel', function(e) {
 clearTimeout(longPressTimer);
 if (_isRecording) {
 _handleVoiceToggle();
-attachBtn.classList.remove('voice-active');
 }
+attachBtn.classList.remove('voice-active');
+isLongPress = false;
 });
 }
 menuItems.forEach(function(item) {
@@ -719,29 +724,6 @@ else if (type === 'file') _handleFile();
 else if (type === 'location') _handleLocation();
 });
 });
-// FIX: Eliminado listener duplicado del send-btn. El unico listener de click
-// para enviar mensaje de texto y voice-toggle ahora vive en _setupMessageInput().
-if (sendBtn) {
-sendBtn.addEventListener('click', function(e) {
-var text = input ? input.value.trim() : '';
-if (text) {
-e.preventDefault();
-e.stopPropagation();
-var contactId = _getCurrentContactId();
-if (contactId && window.NEXO.app && window.NEXO.app.sendMessage) {
-window.NEXO.app.sendMessage({ content: text });
-input.value = '';
-input.focus();
-// Al enviar, volver a modo mic
-sendBtn.classList.add('mic-mode');
-}
-} else {
-e.preventDefault();
-e.stopPropagation();
-_handleVoiceToggle();
-}
-});
-}
 // FIX v10.32: Cerrar menú al tocar fuera
 document.addEventListener('click', function(e) {
 var menu = document.getElementById('attach-menu');
@@ -762,13 +744,13 @@ console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
 _ensureDOMStructure();
-_fixLogoPath();
+*fixLogoPath();
 window.NEXO.rem = rem;
 rem.init();
 var permissionsGranted = false;
 try {
 var permPromise = ensureBLEPermissions();
-var permTimeout = new Promise(function(_, reject) {
+var permTimeout = new Promise(function(*, reject) {
 setTimeout(function() { reject(new Error('PERM_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SCAN) ? NEXO_CONFIG.TIMEOUTS.SCAN : 10000);
 });
 permissionsGranted = await Promise.race([permPromise, permTimeout]);
@@ -884,13 +866,13 @@ console.error('App error:', err);
 onVaultStateChange: function(isOpen) { _toggleVaultUI(isOpen); },
 actionCallbacks: {
 onReact: function(id) { rem.success('Reaccion anadida', 'REACT_OK'); },
-onReply: function(id) { _focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
+onReply: function(id) { *focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
 onForward: function(id) { rem.info('Listo para reenviar', 'FORWARD_READY'); }
 }
 };
 window.NEXO.app = new NexoApp(nexoConfig);
 var initPromise = window.NEXO.app.init();
-var timeoutPromise = new Promise(function(_, reject) {
+var timeoutPromise = new Promise(function(*, reject) {
 setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
 });
 try {
@@ -968,6 +950,8 @@ try {
 var input = document.getElementById('message-input');
 var btn = document.getElementById('send-btn');
 if (!input || !btn || !window.NEXO.app) return;
+// Inicializar en modo mic
+btn.classList.add('mic-mode');
 var send = async function() {
 var text = input.value.trim();
 if (!text) return;
@@ -992,14 +976,10 @@ e.stopPropagation();
 _handleVoiceToggle();
 }
 });
-// FIX: Switcheo automatico entre mic y flecha segun contenido del input
+// FIX: Switcheo robusto entre mic y flecha segun contenido del input
 input.addEventListener('input', function() {
 var text = input.value.trim();
-if (text) {
-btn.classList.remove('mic-mode');
-} else {
-btn.classList.add('mic-mode');
-}
+btn.classList.toggle('mic-mode', !text);
 });
 input.addEventListener('keypress', function(e) {
 if (e.key === 'Enter') {
