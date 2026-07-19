@@ -1,23 +1,8 @@
 /**
  * src/main.js - Punto de entrada NEXO v9.9-FIX
- * FIX v10.26: Camera selfie facingMode ideal + fallback
- * FIX v10.27: Video recorder robusto con delay + sin race condition
- * FIX v10.28: Gallery input off-screen + cleanup
- * FIX v10.29: Location plugin check robusto + fallback
- * FIX v10.30: Voice timer dinámico + long-press fix
- * FIX v10.31: Stop camera preview sin limpiar chunks prematuro
- * FIX v10.32: Attach menu cerrar al tocar fuera
- * FIX v10.33: MediaRecorder timeslice fallback
- * FIX v10.34: Camera preview sin constraints de resolucion para front camera
- * FIX v10.35: Flip camera sin constraints de resolucion para front
- * FIX v10.36: Video recorder - overlay se cierra DESPUES de blob listo
- * FIX v10.37: Video capture - blob listo antes de cerrar overlay
- * FIX v10.38: Location con manejo de NotAllowedError
- * FIX v10.39: Voice con manejo de NotAllowedError
- * FIX v10.41: Video recorder mimeType universal + fallback sin mimeType
- * FIX v10.42: Stop camera preview — NO limpiar MediaRecorder si grabacion activa
  * FIX v10.43: Video handler con delay para evitar race condition
  * FIX v10.44: Flip camera bug sintaxis deltaX = currentX - startX
+ * FIX v10.45: Eliminado boton Video del menu clip (unificado en Galeria)
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -491,16 +476,6 @@ document.body.appendChild(input);
 input.click();
 setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
 }
-// FIX v10.43: Video handler con delay para evitar race condition
-async function _handleVideo() {
-_closeAttachMenu();
-_cameraPreviewMode = 'video';
-_cameraPreviewRecording = false;
-_cameraPreviewVideoChunks = [];
-_showCameraPreviewOverlay();
-_updateCameraPreviewUI();
-setTimeout(function() { _startCameraPreview(); }, 200);
-}
 function _handleFile() {
 _closeAttachMenu();
 var input = document.createElement('input');
@@ -740,7 +715,6 @@ e.stopPropagation();
 var type = item.getAttribute('data-type');
 if (type === 'camera') _handleCamera();
 else if (type === 'gallery') _handleGallery();
-else if (type === 'video') _handleVideo();
 else if (type === 'file') _handleFile();
 else if (type === 'location') _handleLocation();
 });
