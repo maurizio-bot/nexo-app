@@ -42,6 +42,7 @@ var _audioChunks = [];
 var _isRecording = false;
 var _voiceStartTime = 0;
 var _voiceTimerInterval = null;
+var _isGettingLocation = false;
 // Camera preview state
 var _cameraPreviewMode = 'photo';
 var _cameraPreviewRecording = false;
@@ -515,6 +516,8 @@ function _showPermissionError(permName) {
 }
 // FIX v10.38: Location con manejo de NotAllowedError
 async function _handleLocation() {
+  if (_isGettingLocation) return;
+  _isGettingLocation = true;
   _closeAttachMenu();
   var plugins = _getAttachmentPlugins();
   var pluginWorked = false;
@@ -535,6 +538,7 @@ async function _handleLocation() {
       console.log('[ATTACH:LOCATION] Plugin fallo:', pluginErr.message);
       if (pluginErr.message && pluginErr.message.indexOf('denied') > -1) {
         _showPermissionError('Ubicacion');
+        _isGettingLocation = false;
         return;
       }
     }
@@ -542,6 +546,7 @@ async function _handleLocation() {
   if (!pluginWorked) {
     _handleLocationFallback();
   }
+  _isGettingLocation = false;
 }
 function _sendLocation(lat, lng, accuracy) {
   var payload = JSON.stringify({ lat: lat, lng: lng, accuracy: accuracy || 0 });
@@ -1342,11 +1347,16 @@ function _renderMessage(msg, skipSave) {
         var loc = attachment.meta;
         var lat = (loc && loc.lat) ? loc.lat : 0;
         var lng = (loc && loc.lng) ? loc.lng : 0;
-        var mapUrl = 'https://maps.googleapis.com/maps/api/staticmap?center=' + lat + ',' + lng + '&zoom=15&size=300x150&maptype=roadmap&markers=color:red%7C' + lat + ',' + lng;
         var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
         var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
+        var osmUrl = 'https://static-maps.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng + '&zoom=15&size=300x150&markers=' + lat + ',' + lng + ',red-pushpin';
         var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
-        locHtml += '<img src="' + mapUrl + '" style="width:100%;height:120px;object-fit:cover;display:block;background:#1a1a2e;" onerror="this.style.display=none">';
+        locHtml += '<div style="position:relative;width:100%;height:120px;background:linear-gradient(135deg,#1a1a2e,#0f3460);overflow:hidden;">';
+        locHtml += '<img src="' + osmUrl + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1;" onerror="this.style.display=\'none\'">';
+        locHtml += '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;z-index:0;">';
+        locHtml += '<svg viewBox="0 0 24 24" width="32" height="32" fill="#FF3B30"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
+        locHtml += '<span style="font-size:11px;color:#aaa;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
+        locHtml += '</div></div>';
         locHtml += '<div style="padding:8px 12px;"> <b>Ubicacion</b><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
         locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
         locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
