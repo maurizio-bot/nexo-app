@@ -1391,6 +1391,51 @@ function _renderMessage(msg, skipSave) {
               bars[b].style.height = nh + 'px';
             }
           }
+          function _pausePlayback() {
+            playing = false;
+            btn.innerHTML = '▶';
+            if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
+            if (animInterval) { clearInterval(animInterval); animInterval = null; }
+            if (audioEl) {
+              audioEl.pause();
+            }
+            if (waveEl) {
+              var bars = waveEl.querySelectorAll('.wave-bar');
+              for (var b = 0; b < bars.length; b++) {
+                bars[b].style.height = (4 + Math.random() * 8) + 'px';
+              }
+            }
+          }
+          function _stopPlayback() {
+            _pausePlayback();
+            if (audioEl) {
+              audioEl.currentTime = 0;
+            }
+            _updateTime();
+          }
+          audioEl.onended = function() { _stopPlayback(); };
+          audioEl.onerror = function(e) {
+            console.log('[AUDIO] Error reproduciendo:', e);
+            _stopPlayback();
+            if (timeEl) timeEl.textContent = 'Error';
+          };
+          btn.onclick = function(e) {
+            e.stopPropagation();
+            if (!playing) {
+              audioEl.play().catch(function(err) {
+                console.log('[AUDIO] Play error:', err.message);
+                _stopPlayback();
+              });
+              btn.innerHTML = '⏸';
+              playing = true;
+              progressInterval = setInterval(_updateTime, 500);
+              animInterval = setInterval(_animateWave, 200);
+            } else {
+              _pausePlayback();
+            }
+          };
+        }, 0);
+
           function _stopPlayback() {
             playing = false;
             btn.innerHTML = '▶';
