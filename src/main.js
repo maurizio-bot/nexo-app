@@ -596,103 +596,21 @@ async function _handleVoiceToggle() {
   if (!timerEl) {
     timerEl = document.createElement('div');
     timerEl.id = 'voice-timer';
-    timerEl.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:rgba(255,59,48,0.9);color:#fff;padding:6px 16px;border-radius:20px;font-size:14px;font-weight:600;z-index:300;display:none;pointer-events:none;backdrop-filter:blur(4px);';
-    document.body.appendChild(timerEl);
-  }
-  if (!_isRecording) {
-    try {
-      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      var audioMimeType = '';
-      var audioCandidates = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
-        'audio/ogg;codecs=opus',
-        'audio/wav'
-      ];
-      for (var ai = 0; ai < audioCandidates.length; ai++) {
-        if (MediaRecorder.isTypeSupported(audioCandidates[ai])) {
-          audioMimeType = audioCandidates[ai];
-          console.log('[VOICE] MimeType seleccionado:', audioMimeType);
-          break;
-        }
-      }
-      var audioOptions = audioMimeType ? { mimeType: audioMimeType } : {};
-      _mediaRecorder = new MediaRecorder(stream, audioOptions);
-      _audioChunks = [];
-      _voiceStartTime = Date.now();
-      timerEl.style.display = 'block';
-      timerEl.textContent = '00:00';
-      _voiceTimerInterval = setInterval(function() {
-        var elapsed = Math.round((Date.now() - _voiceStartTime) / 1000);
-        timerEl.textContent = _fmtTime(elapsed);
-      }, 1000);
-      _mediaRecorder.ondataavailable = function(e) {
-        if (e.data && e.data.size > 0) _audioChunks.push(e.data);
-      };
-      _mediaRecorder.onstop = function() {
-        if (_voiceTimerInterval) { clearInterval(_voiceTimerInterval); _voiceTimerInterval = null; }
-        timerEl.style.display = 'none';
-        var duration = 0;
-        if (_voiceStartTime > 0) duration = Math.round((Date.now() - _voiceStartTime) / 1000);
-        var blobType = audioMimeType || 'audio/webm';
-        var blob = new Blob(_audioChunks, { type: blobType });
-        if (blob.size === 0) {
-          console.log('[ATTACH] Audio blob vacio');
-          return;
-        }
-        var reader = new FileReader();
-        reader.onloadend = function() {
-          var base64 = reader.result.split(',')[1];
-          var fmt = (audioMimeType || 'webm').split('/')[1];
-          if (fmt.indexOf(';') > -1) fmt = fmt.split(';')[0];
-          _sendAttachment('audio', base64, { format: fmt, duration: duration, mimeType: audioMimeType || 'audio/webm' });
-          console.log('[ATTACH] Audio enviado, duracion:', duration);
-        };
-        reader.readAsDataURL(blob);
-        stream.getTracks().forEach(function(t) { t.stop(); });
-      };
-      _mediaRecorder.onerror = function(e) {
-        console.log('[ATTACH:VOICE] MediaRecorder error:', e.message);
-        _isRecording = false;
-        _updateMicIcon(false);
-        timerEl.style.display = 'none';
-      };
-      try {
-        _mediaRecorder.start(100);
-      } catch (tsErr) {
-        _mediaRecorder.start();
-      }
-      _isRecording = true;
-      _updateMicIcon(true);
-      console.log('[ATTACH] Grabando voz...');
-    } catch (err) {
-      console.log('[ATTACH:VOICE] Error:', err.name, err.message);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        _showPermissionError('Microfono');
-      } else if (err.name === 'NotFoundError') {
-        _showPermissionError('Microfono no encontrado');
-      }
-      _isRecording = false;
-      _updateMicIcon(false);
-      timerEl.style.display = 'none';
-    }
-  } else {
-        if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
-      try { _mediaRecorder.requestData(); } catch (e) {}
-      setTimeout(function() {
-        try { _mediaRecorder.stop(); } catch (e) {}
-      }, 300);
-    }
-    _isRecording = false;
-    _updateMicIcon(false);
-    if (_voiceTimerInterval) {
-      clearInterval(_voiceTimerInterval);
-      _voiceTimerInterval = null;
-    }
-    timerEl.style.display = 'none';
-  }
+    timerEl.style.cssText = 'position:fixed;bottom:70px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 59, 48, 0.9);
+  color: #fff;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 300;
+  display: none;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
 }
+
 function _updateMicIcon(recording) {
   var micBtn = document.getElementById('send-btn');
   if (!micBtn) return;
@@ -722,10 +640,7 @@ function _bindAttachmentHandlers() {
       else if (type === 'gallery') _handleGallery();
       else if (type === 'file') _handleFile();
       else if (type === 'location') _handleLocation();
-      else if (type === 'contact') {
-        console.log('[ATTACH] Compartir contacto - pendiente');
-        _closeAttachMenu();
-      }
+      else if (type === 'contact') _showContactPicker();
     });
   });
   document.addEventListener('click', function(e) {
@@ -739,6 +654,64 @@ function _bindAttachmentHandlers() {
     }
   });
 }
+
+function _showContactPicker() {
+  _closeAttachMenu();
+  var contactId = _getCurrentContactId();
+  if (!contactId) {
+    console.log('[ATTACH] No hay contacto activo');
+    return;
+  }
+  var overlay = document.createElement('div');
+  overlay.id = 'contact-picker-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:4000;display:flex;flex-direction:column;align-items:center;padding:20px;padding-top:60px;';
+  var closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+  closeBtn.onclick = function() { overlay.remove(); };
+  overlay.appendChild(closeBtn);
+  var title = document.createElement('h3');
+  title.textContent = 'Compartir contacto';
+  title.style.cssText = 'color:#fff;margin-bottom:20px;font-size:18px;font-weight:600;';
+  overlay.appendChild(title);
+  var list = document.createElement('div');
+  list.style.cssText = 'width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;padding-bottom:20px;';
+  var contacts = [];
+  try {
+    var stored = localStorage.getItem('nexo_ble_contacts_v2');
+    if (stored) contacts = JSON.parse(stored);
+  } catch(e) {}
+  if (contacts.length === 0) {
+    var empty = document.createElement('div');
+    empty.textContent = 'No hay contactos para compartir';
+    empty.style.cssText = 'color:#666;text-align:center;padding:40px 20px;font-size:14px;';
+    list.appendChild(empty);
+  } else {
+    contacts.forEach(function(c) {
+      var item = document.createElement('div');
+      item.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 14px;background:#1a1a1a;border-radius:12px;cursor:pointer;transition:background 0.15s;';
+      item.onmouseover = function() { item.style.background = '#222'; };
+      item.onmouseout = function() { item.style.background = '#1a1a1a'; };
+      var avatar = document.createElement('div');
+      avatar.style.cssText = 'width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ff6b35);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0;';
+      avatar.textContent = (c.name || 'C').charAt(0).toUpperCase();
+      var info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0;';
+      info.innerHTML = '<div style="font-weight:600;color:#fff;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (c.name || 'Contacto') + '</div><div style="font-size:11px;color:#888;word-break:break-all;">' + (c.deviceUUID || c.id || c.address || '') + '</div>';
+      item.appendChild(avatar);
+      item.appendChild(info);
+      item.onclick = function() {
+        var payload = JSON.stringify({ name: c.name || 'Contacto', nexoId: c.deviceUUID || c.id || c.address || '', sharedAt: Date.now() });
+        _sendAttachment('contact', payload, { name: c.name || 'Contacto', nexoId: c.deviceUUID || c.id || c.address || '' });
+        overlay.remove();
+      };
+      list.appendChild(item);
+    });
+  }
+  overlay.appendChild(list);
+  document.body.appendChild(overlay);
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
@@ -847,8 +820,7 @@ function _hidePermissionOverlay() {
     var styles = document.getElementById('perm-overlay-styles');
     if (styles) styles.remove();
   } catch (e) {}
-}
-async function initializeNexoApp() {
+}async function initializeNexoApp() {
   try {
     NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase valida');
     var nexoConfig = {
@@ -959,16 +931,13 @@ function _setupMessageInput() {
     var _isLongPress = false;
     var LONG_PRESS_MS = 600;
 
-    // Función central: lee valor actual y aplica clase correcta
     function _updateBtnState() {
       var hasText = input.value.trim().length > 0;
       btn.classList.toggle('mic-mode', !hasText);
     }
 
-    // Inicializar en modo correcto
     _updateBtnState();
 
-    // Enviar mensaje
     var _doSend = async function() {
       var text = input.value.trim();
       if (!text) return;
@@ -980,20 +949,17 @@ function _setupMessageInput() {
       } catch (e) {}
     };
 
-    // Switcheo robusto: múltiples eventos para cubrir todos los casos
     input.addEventListener('input', _updateBtnState);
     input.addEventListener('keyup', _updateBtnState);
     input.addEventListener('paste', function() { requestAnimationFrame(_updateBtnState); });
     input.addEventListener('cut', function() { requestAnimationFrame(_updateBtnState); });
 
-    // Composición (teclados predictivos/sugerencias en Android)
     input.addEventListener('compositionstart', function() { _isComposing = true; });
     input.addEventListener('compositionend', function() {
       _isComposing = false;
       _updateBtnState();
     });
 
-    // Enter para enviar (solo si no está componiendo)
     input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !_isComposing) {
         e.preventDefault();
@@ -1001,7 +967,6 @@ function _setupMessageInput() {
       }
     });
 
-    // Click del botón
     btn.addEventListener('click', function(e) {
       if (_isLongPress) {
         _isLongPress = false;
@@ -1019,7 +984,6 @@ function _setupMessageInput() {
       }
     });
 
-    // Long-press para voz (solo en modo mic)
     btn.addEventListener('touchstart', function(e) {
       if (!btn.classList.contains('mic-mode')) return;
       _isLongPress = false;
@@ -1036,7 +1000,6 @@ function _setupMessageInput() {
       if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
     });
 
-    // Scroll al resize
     window.addEventListener('resize', function() {
       var s = document.getElementById('messages-container');
       if (s) requestAnimationFrame(function() { s.scrollTop = s.scrollHeight; });
@@ -1383,7 +1346,7 @@ function _renderMessage(msg, skipSave) {
         var audioId = 'audio_' + msgId;
         var fmt = (attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm';
         var mime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('audio/' + fmt);
-                var byteChars = atob(attachment.payload);
+        var byteChars = atob(attachment.payload);
         var byteNums = new Array(byteChars.length);
         for (var i = 0; i < byteChars.length; i++) {
           byteNums[i] = byteChars.charCodeAt(i);
@@ -1455,7 +1418,7 @@ function _renderMessage(msg, skipSave) {
           };
           btn.onclick = function(e) {
             e.stopPropagation();
-                        if (!playing) {
+            if (!playing) {
               audioEl.play().then(function() {
                 btn.innerHTML = '⏸';
                 playing = true;
@@ -1466,12 +1429,25 @@ function _renderMessage(msg, skipSave) {
                 _stopPlayback();
               });
             } else {
-            _pausePlayback();
+              _pausePlayback();
             }
           };
         }, 0);
-        }
+      } else if (attachment.type === 'contact') {
+        var cname = (attachment.meta && attachment.meta.name) ? attachment.meta.name : 'Contacto';
+        var cnexoId = (attachment.meta && attachment.meta.nexoId) ? attachment.meta.nexoId : '';
+        var cinitial = cname.charAt(0).toUpperCase() || '👤';
+        var contactHtml = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,0.05);border-radius:12px;border:1px solid rgba(255,255,255,0.1);min-width:180px;max-width:260px;">';
+        contactHtml += '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ff6b35);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0;">' + cinitial + '</div>';
+        contactHtml += '<div style="flex:1;min-width:0;">';
+        contactHtml += '<div style="font-weight:600;font-size:13px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cname + '</div>';
+        if (cnexoId) contactHtml += '<div style="font-size:11px;color:#888;word-break:break-all;">' + cnexoId + '</div>';
+        contactHtml += '</div></div>';
+        contentDiv.innerHTML = contactHtml;
       } else {
+        contentDiv.textContent = msg.content || msg.text || '';
+      }
+    } else {
       contentDiv.textContent = msg.content || msg.text || '';
     }
     div.appendChild(contentDiv);
