@@ -654,65 +654,51 @@ async function _handleVoiceToggle() {
 }
 function _updateMicIcon(recording) {
   var micBtn = document.getElementById('send-btn');
-  if (micBtn) {
-    micBtn.style.color = recording ? '#FF3B30' : '';
-    if (recording) {
-      micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#FF3B30"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>';
-    } else {
-      micBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>';
-    }
+  if (!micBtn) return;
+  var visibleSvg = micBtn.querySelector('.mic-icon') || micBtn.querySelector('.send-icon') || micBtn.querySelector('svg');
+  if (visibleSvg) {
+    visibleSvg.setAttribute('fill', recording ? '#FF3B30' : '#fff');
   }
+}
 }
 // FIX v10.30 + v10.32: Attach handlers con long-press fix y cerrar menu al tocar fuera
 function _bindAttachmentHandlers() {
   _bindCameraPreviewHandlers();
   var attachBtn = document.getElementById('attach-btn');
-  var sendBtn = document.getElementById('send-btn');
   var menuItems = document.querySelectorAll('.attach-menu-item');
-  var input = document.getElementById('message-input');
   if (attachBtn) {
     attachBtn.addEventListener('click', function(e) {
       e.preventDefault();
       e.stopPropagation();
-      if (_isRecording) {
-        _handleVoiceToggle();
-        attachBtn.classList.remove('voice-active');
-      } else {
-        _toggleAttachMenu();
-      }
-    });
-    var longPressTimer = null;
-    var isLongPress = false;
-    attachBtn.addEventListener('touchstart', function(e) {
-      isLongPress = false;
-      longPressTimer = setTimeout(function() {
-        isLongPress = true;
-        attachBtn.classList.add('voice-active');
-        _handleVoiceToggle();
-      }, 800);
-    }, { passive: true });
-    attachBtn.addEventListener('touchend', function(e) {
-      clearTimeout(longPressTimer);
-      if (isLongPress) {
-        setTimeout(function() {
-          if (_isRecording) {
-            _handleVoiceToggle();
-          }
-          attachBtn.classList.remove('voice-active');
-        }, 50);
-      } else {
-        attachBtn.classList.remove('voice-active');
-      }
-    });
-    attachBtn.addEventListener('touchcancel', function(e) {
-      clearTimeout(longPressTimer);
-      if (_isRecording) {
-        _handleVoiceToggle();
-      }
-      attachBtn.classList.remove('voice-active');
-      isLongPress = false;
+      _toggleAttachMenu();
     });
   }
+  menuItems.forEach(function(item) {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var type = item.getAttribute('data-type');
+      if (type === 'camera') _handleCamera();
+      else if (type === 'gallery') _handleGallery();
+      else if (type === 'file') _handleFile();
+      else if (type === 'location') _handleLocation();
+      else if (type === 'contact') {
+        console.log('[ATTACH] Compartir contacto - pendiente');
+        _closeAttachMenu();
+      }
+    });
+  });
+  document.addEventListener('click', function(e) {
+    var menu = document.getElementById('attach-menu');
+    var attachBtn = document.getElementById('attach-btn');
+    if (menu && !menu.classList.contains('hidden') &&
+        !menu.contains(e.target) &&
+        e.target !== attachBtn &&
+        !attachBtn.contains(e.target)) {
+      _closeAttachMenu();
+    }
+  });
+}
   menuItems.forEach(function(item) {
     item.addEventListener('click', function(e) {
       e.preventDefault();
