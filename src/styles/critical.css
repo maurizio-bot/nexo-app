@@ -360,21 +360,6 @@ Consolidado: inline + main.css + ble_styles
    line-height: 1.4;
    }
    #message-input::placeholder { color: #444; }
-   #send-btn {
-   width: 38px;
-   height: 38px;
-   border-radius: 50%;
-   background: linear-gradient(135deg, #00c8ff, #a855f7);
-   border: none;
-   cursor: pointer;
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   flex-shrink: 0;
-   transition: transform 0.15s ease;
-   }
-   #send-btn:active { transform: scale(0.92); }
-   #send-btn svg { width: 16px; height: 16px; fill: #fff; }
    /* Jump */
    #jump-to-bottom {
    position: fixed;
@@ -770,157 +755,11 @@ Consolidado: inline + main.css + ble_styles
    padding: 8px 20px;
    border-top: 1px solid #222;
    background: rgba(0,0,0,0.8);
-   font-size: 11px;
-   color: #666;
-   flex-shrink: 0;
-   }
-   .ble-status-bar span { color: #00c8ff; font-weight: 600; }
-   /* Diagnostic + Fatal - ocultos por default */
-   #nexo-diagnostic {
-   display: none;
-   position: fixed;
-   bottom: 100px; right: 20px;
-   width: 300px; max-height: 200px;
-   background: rgba(0,0,0,0.9);
-   color: #00c8ff;
-   font-family: monospace;
-   font-size: 11px;
-   overflow-y: auto;
-   z-index: 99998;
-   padding: 10px;
-   border-radius: 8px;
-   }
-   #nexo-diagnostic.visible { display: block; }
-   #fatal-error {
-   display: none;
-   position: fixed;
-   inset: 0;
-   background: #000;
-   z-index: 100000;
-   flex-direction: column;
-   align-items: center;
-   justify-content: center;
-   text-align: center;
-   padding: 40px;
-   color: #ff4444;
-   }
-   #fatal-error h2 { font-size: 48px; margin-bottom: 10px; }
-   #fatal-code {
-   background: rgba(255,68,68,0.1);
-   padding: 10px 20px;
-   border-radius: 4px;
-   font-family: monospace;
-   font-size: 14px;
-   color: #ff6666;
-   }
-   .hidden { display: none !important; }
-   /* ============================================
-   MAIN HEADER - Pantalla principal
-   ============================================ */
-   #main-header {
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   padding: 10px 16px 8px;
-   background: #000;
-   border-bottom: 1px solid #111;
-   position: relative;
-   height: 48px;
-   flex-shrink: 0;
-   }
-   #main-logo {
-   position: absolute;
-   left: 16px;
-   top: 50%;
-   transform: translateY(-50%);
-   width: 32px;
-   height: 32px;
-   border-radius: 8px;
-   object-fit: contain;
-   border: 2px solid #ff0000 !important;
-   background: #ff000033 !important;
-   z-index: 9999 !important;
-   }
-   #main-title {
-   color: #fff;
-   font-size: 26px;
-   font-weight: 700;
-   letter-spacing: -0.5px;
-   }
-   /* Ocultar main-header en chat */
-   body.chat-view-active #main-header {
-   display: none !important;
-   }
-   /* ============================================
-   OCULTAR FAB Y BOTÓN + EN CHAT VIEW
-   ============================================ */
-   body.chat-view-active #ble-fab-btn,
-   body.chat-view-active .ble-fab-btn,
-   body.chat-view-active [id*="fab"],
-   body.chat-view-active .fab,
-   body.chat-view-active #ble-new-device,
-   body.chat-view-active .ble-new-device,
-   body.chat-view-active .ble-btn-add-small {
-   display: none !important;
-   }
-   /* ============================================
-   SWIPE BACK ANIMATION - Chat se desliza hacia la derecha
-   ============================================ */
-   /* Container del chat para transformación */
-   #app {
-   position: relative;
-   overflow: hidden;
-   }
-   /* Estado normal del chat */
-   body.chat-view-active #app {
-   transform: translateX(0);
-   transition: none;
-   }
-   /* Durante el swipe: sin transición para seguir el dedo en tiempo real */
-   body.chat-swipe-dragging #app {
-   transition: none !important;
-   }
-   /* Al soltar: transición suave para completar o rebotar */
-   body.chat-swipe-transition #app {
-   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-   }
-   /* Animación de salida completa (chat se va a la derecha) */
-   body.chat-swipe-complete #app {
-   transform: translateX(100vw) !important;
-   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
-   }
-   /* Rebote si no se completó el gesto (vuelve a posición 0) */
-   body.chat-swipe-rebound #app {
-   transform: translateX(0) !important;
-   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-   }
-   /* Indicador visual de borde izquierdo (opcional, sutil) */
-   body.chat-swipe-dragging::before {
-   content: '';
-   position: fixed;
-   top: 0;
-   left: 0;
-   width: 4px;
-   height: 100%;
-   background: linear-gradient(180deg, #00c8ff, #a855f7);
-   z-index: 2147483647;
-   opacity: 0.6;
-   transition: opacity 0.2s;
-   }
-   /* Sombra que aparece detrás del chat al arrastrar */
-   body.chat-swipe-dragging #contacts-view {
-   display: flex !important;
-   opacity: 1;
-   transform: translateX(-20%);
-   transition: none;
-   }
-   body.chat-swipe-transition #contacts-view {
-   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
-   }
+   font-size: 11
 /* ============================================
 INPUT BAR v2 — Attach + Toggle Send/Mic
 ============================================ */
-/* Botón attach (+) — MISMO ESTILO QUE LOS DEMÁS BOTONES */
+/* Botón attach (+) — FONDO OSCURO como los demás */
 .input-btn {
 width: 38px;
 height: 38px;
@@ -938,10 +777,10 @@ padding: 0;
 transform: scale(0.92);
 }
 .attach-btn {
-background: linear-gradient(135deg, #00c8ff, #a855f7);
-border: none;
+background: #1a1a1a;
+border: 1px solid #222;
 color: #fff;
-box-shadow: 0 2px 8px rgba(0,200,255,0.3);
+box-shadow: none;
 }
 .attach-btn svg {
 width: 18px;
@@ -1229,20 +1068,7 @@ FIX v10.20: Timer de voz visible
 }
 
 /* ============================================
-FIX v10.21: Attach btn voice-active (long-press)
-============================================ */
-.attach-btn.voice-active {
-  background: rgba(255, 59, 48, 0.2) !important;
-  border-color: #FF3B30 !important;
-  animation: pulse-red-btn 0.8s infinite;
-}
-@keyframes pulse-red-btn {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-}
-
-/* ============================================
-FIX v10.22: Camera preview overlay - chat visible atrás
+FIX v10.22: Camera preview overlay - chat visible atras
 ============================================ */
 .camera-preview-overlay {
   position: fixed;
