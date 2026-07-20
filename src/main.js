@@ -583,7 +583,23 @@ async function _handleVoiceToggle() {
   if (!_isRecording) {
     try {
       var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      _mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      var audioMimeType = '';
+      var audioCandidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+        'audio/wav'
+      ];
+      for (var ai = 0; ai < audioCandidates.length; ai++) {
+        if (MediaRecorder.isTypeSupported(audioCandidates[ai])) {
+          audioMimeType = audioCandidates[ai];
+          console.log('[VOICE] MimeType seleccionado:', audioMimeType);
+          break;
+        }
+      }
+      var audioOptions = audioMimeType ? { mimeType: audioMimeType } : {};
+      _mediaRecorder = new MediaRecorder(stream, audioOptions);
       _audioChunks = [];
       _voiceStartTime = Date.now();
       timerEl.style.display = 'block';
@@ -600,7 +616,8 @@ async function _handleVoiceToggle() {
         timerEl.style.display = 'none';
         var duration = 0;
         if (_voiceStartTime > 0) duration = Math.round((Date.now() - _voiceStartTime) / 1000);
-        var blob = new Blob(_audioChunks, { type: 'audio/webm' });
+        var blobType = audioMimeType || 'audio/webm';
+        var blob = new Blob(_audioChunks, { type: blobType });
         if (blob.size === 0) {
           console.log('[ATTACH] Audio blob vacio');
           return;
@@ -608,7 +625,9 @@ async function _handleVoiceToggle() {
         var reader = new FileReader();
         reader.onloadend = function() {
           var base64 = reader.result.split(',')[1];
-          _sendAttachment('audio', base64, { format: 'webm', duration: duration });
+          var fmt = (audioMimeType || 'webm').split('/')[1];
+          if (fmt.indexOf(';') > -1) fmt = fmt.split(';')[0];
+          _sendAttachment('audio', base64, { format: fmt, duration: duration, mimeType: audioMimeType || 'audio/webm' });
           console.log('[ATTACH] Audio enviado, duracion:', duration);
         };
         reader.readAsDataURL(blob);
@@ -1335,35 +1354,79 @@ function _renderMessage(msg, skipSave) {
         var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
         var durStr = _fmtTime(dur);
         var audioId = 'audio_' + msgId;
-        var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:180px;">';
-        audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;">▶</button>';
-        audioHtml += '<div style="flex:1;">';
-        audioHtml += '<div style="height:20px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;">';
-        for (var w = 0; w < 20; w++) {
-          var h = 4 + Math.random() * 14;
-          audioHtml += '<div style="width:3px;height:' + h + 'px;background:#fff;border-radius:1px;flex-shrink:0;"></div>';
+        var fmt = (attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm';
+        var mime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('audio/' + fmt);
+        var audioSrc = 'data:' + mime + ';base64,' + attachment.payload;
+        var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
+        audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
+        audioHtml += '<div style="flex:1;min-width:0;">';
+        audioHtml += '<div id="' + audioId + '_wave" style="height:24px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;">';
+        for (var w = 0; w < 24; w++) {
+          var h = 4 + Math.random() * 16;
+          audioHtml += '<div class="wave-bar" data-idx="' + w + '" style="width:3px;height:' + h + 'px;background:#fff;border-radius:1px;flex-shrink:0;transition:height 0.15s ease;"></div>';
         }
         audioHtml += '</div>';
-        audioHtml += '<div style="font-size:11px;color:#aaa;margin-top:2px;">' + durStr + '</div>';
+        audioHtml += '<div id="' + audioId + '_time" style="font-size:11px;color:#aaa;margin-top:3px;">00:00 / ' + durStr + '</div>';
         audioHtml += '</div></div>';
         contentDiv.innerHTML = audioHtml;
         setTimeout(function() {
           var btn = document.getElementById(audioId + '_play');
+          var timeEl = document.getElementById(audioId + '_time');
+          var waveEl = document.getElementById(audioId + '_wave');
           if (!btn) return;
+          var audioEl = new Audio(audioSrc);
           var playing = false;
-          var audioEl = null;
+          var progressInterval = null;
+          var animInterval = null;
+          function _updateTime() {
+            if (!timeEl || !audioEl) return;
+            var cur = Math.floor(audioEl.currentTime || 0);
+            timeEl.textContent = _fmtTime(cur) + ' / ' + durStr;
+          }
+          function _animateWave() {
+            if (!waveEl) return;
+            var bars = waveEl.querySelectorAll('.wave-bar');
+            for (var b = 0; b < bars.length; b++) {
+              var nh = 4 + Math.random() * 16;
+              bars[b].style.height = nh + 'px';
+            }
+          }
+          function _stopPlayback() {
+            playing = false;
+            btn.innerHTML = '▶';
+            if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
+            if (animInterval) { clearInterval(animInterval); animInterval = null; }
+            if (audioEl) {
+              audioEl.pause();
+              audioEl.currentTime = 0;
+            }
+            _updateTime();
+            if (waveEl) {
+              var bars = waveEl.querySelectorAll('.wave-bar');
+              for (var b = 0; b < bars.length; b++) {
+                bars[b].style.height = (4 + Math.random() * 8) + 'px';
+              }
+            }
+          }
+          audioEl.onended = function() { _stopPlayback(); };
+          audioEl.onerror = function(e) {
+            console.log('[AUDIO] Error reproduciendo:', e);
+            _stopPlayback();
+            if (timeEl) timeEl.textContent = 'Error';
+          };
           btn.onclick = function(e) {
             e.stopPropagation();
             if (!playing) {
-              audioEl = new Audio('data:audio/' + ((attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm') + ';base64,' + attachment.payload);
-              audioEl.play().catch(function(err) { console.log('[AUDIO] Play error:', err.message); });
+              audioEl.play().catch(function(err) {
+                console.log('[AUDIO] Play error:', err.message);
+                _stopPlayback();
+              });
               btn.innerHTML = '⏸';
               playing = true;
-              audioEl.onended = function() { btn.innerHTML = '▶'; playing = false; audioEl = null; };
+              progressInterval = setInterval(_updateTime, 500);
+              animInterval = setInterval(_animateWave, 200);
             } else {
-              if (audioEl) { audioEl.pause(); audioEl = null; }
-              btn.innerHTML = '▶';
-              playing = false;
+              _stopPlayback();
             }
           };
         }, 0);
