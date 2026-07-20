@@ -1435,6 +1435,7 @@ function _renderMessage(msg, skipSave) {
             }
           };
         }, 0);
+        }
       } else {
       contentDiv.textContent = msg.content || msg.text || '';
     }
