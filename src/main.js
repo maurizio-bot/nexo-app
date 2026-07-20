@@ -596,8 +596,7 @@ async function _handleVoiceToggle() {
   if (!timerEl) {
     timerEl = document.createElement('div');
     timerEl.id = 'voice-timer';
-    timerEl.style.cssText = 'position:fixed;bottom:70px;
-  left: 50%;
+    timerEl.style.cssText = 'position:fixed;bottom:70px; left: 50%;
   transform: translateX(-50%);
   background: rgba(255, 59, 48, 0.9);
   color: #fff;
