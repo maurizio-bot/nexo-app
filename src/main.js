@@ -912,48 +912,96 @@ function _setupMessageInput() {
     var input = document.getElementById('message-input');
     var btn = document.getElementById('send-btn');
     if (!input || !btn || !window.NEXO.app) return;
-    // Inicializar en modo mic
-    btn.classList.add('mic-mode');
-    var send = async function() {
+
+    var _isComposing = false;
+    var _longPressTimer = null;
+    var _isLongPress = false;
+    var LONG_PRESS_MS = 600;
+
+    // Función central: lee valor actual y aplica clase correcta
+    function _updateBtnState() {
+      var hasText = input.value.trim().length > 0;
+      btn.classList.toggle('mic-mode', !hasText);
+    }
+
+    // Inicializar en modo correcto
+    _updateBtnState();
+
+    // Enviar mensaje
+    var _doSend = async function() {
       var text = input.value.trim();
       if (!text) return;
       input.value = '';
+      _updateBtnState();
       input.focus();
       try {
-        if (!window.NEXO.app) return;
-        var sent = await window.NEXO.app.sendMessage({ content: text });
+        await window.NEXO.app.sendMessage({ content: text });
       } catch (e) {}
-      // Al enviar, volver a modo mic (input vacio)
-      btn.classList.add('mic-mode');
     };
+
+    // Switcheo robusto: múltiples eventos para cubrir todos los casos
+    input.addEventListener('input', _updateBtnState);
+    input.addEventListener('keyup', _updateBtnState);
+    input.addEventListener('paste', function() { requestAnimationFrame(_updateBtnState); });
+    input.addEventListener('cut', function() { requestAnimationFrame(_updateBtnState); });
+
+    // Composición (teclados predictivos/sugerencias en Android)
+    input.addEventListener('compositionstart', function() { _isComposing = true; });
+    input.addEventListener('compositionend', function() {
+      _isComposing = false;
+      _updateBtnState();
+    });
+
+    // Enter para enviar (solo si no está componiendo)
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !_isComposing) {
+        e.preventDefault();
+        _doSend();
+      }
+    });
+
+    // Click del botón
     btn.addEventListener('click', function(e) {
+      if (_isLongPress) {
+        _isLongPress = false;
+        return;
+      }
       var text = input.value.trim();
       if (text) {
         e.preventDefault();
         e.stopPropagation();
-        send();
+        _doSend();
       } else {
         e.preventDefault();
         e.stopPropagation();
         _handleVoiceToggle();
       }
     });
-    // FIX: Switcheo robusto entre mic y flecha segun contenido del input
-    input.addEventListener('input', function() {
-      var text = input.value.trim();
-      btn.classList.toggle('mic-mode', !text);
+
+    // Long-press para voz (solo en modo mic)
+    btn.addEventListener('touchstart', function(e) {
+      if (!btn.classList.contains('mic-mode')) return;
+      _isLongPress = false;
+      _longPressTimer = setTimeout(function() {
+        _isLongPress = true;
+        _handleVoiceToggle();
+      }, LONG_PRESS_MS);
+    }, { passive: true });
+
+    btn.addEventListener('touchend', function() {
+      if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
     });
-    input.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        send();
-      }
+    btn.addEventListener('touchcancel', function() {
+      if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
     });
-    input.focus();
+
+    // Scroll al resize
     window.addEventListener('resize', function() {
       var s = document.getElementById('messages-container');
       if (s) requestAnimationFrame(function() { s.scrollTop = s.scrollHeight; });
     });
+
+    input.focus();
   } catch (e) {
     console.warn('[MAIN] _setupMessageInput error:', e);
   }
