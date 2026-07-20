@@ -141,7 +141,7 @@ function _openFullscreenMedia(src, type) {
   var closeBtn = document.createElement('button');
   closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff">' +
       '<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>' +
-      '</svg>'';
+      '</svg>';
   closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px' +
     ';border-radius:50%;background:rgba(255,255,255,0.15)' +
     ';border:none;cursor:pointer;display:flex;align-items:center' +
@@ -177,13 +177,13 @@ function _updateCameraPreviewUI() {
     if (status) status.textContent = _cameraPreviewRecording ? 'Grabando... toca para detener' : 'Toca para grabar video';
     if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff">' +
       '<path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>' +
-      '</svg>'';
+      '</svg>';
   } else {
     captureBtn.classList.remove('recording');
     if (status) status.textContent = '';
     if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff">' +
       '<path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>' +
-      '</svg>'';
+      '</svg>';
   }
 }
 // FIX v10.41: Video recorder mimeType universal + fallback sin mimeType
@@ -774,7 +774,7 @@ function _showContactPicker() {
   var closeBtn = document.createElement('button');
   closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff">' +
       '<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>' +
-      '</svg>'';
+      '</svg>';
   closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px' +
     ';border-radius:50%;background:rgba(255,255,255,0.1)' +
     ';border:none;cursor:pointer;display:flex;align-items:center' +
@@ -891,7 +891,7 @@ function _showPermissionOverlay() {
       ' <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>' +
       ' <button id="perm-btn-settings" class="perm-btn-secondary">' +
       'Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">' +
-      'Continuar sin BLE</button> </div>'';
+      'Continuar sin BLE</button> </div>';
     document.body.appendChild(overlay);
     var style = document.createElement('style');
     style.id = 'perm-overlay-styles';
@@ -915,7 +915,7 @@ function _showPermissionOverlay() {
       ' } .perm-btn-ghost { display: block; width: 100%; margin: 0; padding: 10px;' +
       ' background: transparent; color: #666; border: none; font-size: 13px;' +
       ' cursor: pointer;' +
-      ' } .perm-btn-primary:hover { box-shadow: 0 0 20px rgba(0,212,255,0.3); }'';
+      ' } .perm-btn-primary:hover { box-shadow: 0 0 20px rgba(0,212,255,0.3); }';
     document.head.appendChild(style);
     var btnGrant = document.getElementById('perm-btn-grant');
     var btnSettings = document.getElementById('perm-btn-settings');
@@ -941,7 +941,7 @@ function _showPermissionOverlay() {
             window.location.href = 'app-settings:';
           }
         } catch (e) {
-          alert('Ve a Configuracion > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
+          alert('Ve a Configuracion > Aplicaciones > NEXO > Permisos\nActiva \"Dispositivos cercanos\" y \"Bluetooth\"');
         }
       });
     }
@@ -1057,7 +1057,7 @@ function _fixLogoPath() {
   try {
     var logo = document.getElementById('main-logo');
     if (logo) {
-      logo.style.backgroundImage = 'url("./assets/nexo_logo.png")';
+      logo.style.backgroundImage = 'url(\"./assets/nexo_logo.png\")';
       logo.style.backgroundSize = 'contain';
       logo.style.backgroundRepeat = 'no-repeat';
       logo.style.backgroundPosition = 'center';
@@ -1271,7 +1271,7 @@ function _setupFABButton() {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff">' +
-      '<path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>'';
+      '<path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
     var newFab = fabBtn.cloneNode(true);
     fabBtn.parentNode.replaceChild(newFab, fabBtn);
     newFab.addEventListener('click', function() {
@@ -1433,7 +1433,7 @@ function _renderMessage(msg, skipSave) {
     ';justify-content:center;background:rgba(0,0,0,0.3)' +
     ';pointer-events:none';
         playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;' +
-      '"><path d="M8 5v14l11-7z"/></svg>'';
+      '"><path d="M8 5v14l11-7z"/></svg>';
         videoWrapper.appendChild(video);
         videoWrapper.appendChild(playOverlay);
         videoWrapper.onclick = function(e) {
@@ -1470,7 +1470,7 @@ function _renderMessage(msg, skipSave) {
     ';justify-content:center;background:rgba(0,0,0,0.3)' +
     ';pointer-events:none';
             fplayOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;' +
-      '"><path d="M8 5v14l11-7z"/></svg>'';
+      '"><path d="M8 5v14l11-7z"/></svg>';
             mediaWrapper.appendChild(fvideo);
             mediaWrapper.appendChild(fplayOverlay);
           }
@@ -1604,7 +1604,7 @@ function _renderMessage(msg, skipSave) {
         var cinitial = cname.charAt(0).toUpperCase() || '👤';
         var contactHtml = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;' +
       'background:rgba(255,255,255,0.05);border-radius:12px;' +
-      'border:1px solid rgba(255,255,255,0.1);min-width:180px;max-width:260px;">'';
+      'border:1px solid rgba(255,255,255,0.1);min-width:180px;max-width:260px;">';
         contactHtml += '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ff6b35);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0;">' + cinitial + '</div>';
         contactHtml += '<div style="flex:1;min-width:0;">';
         contactHtml += '<div style="font-weight:600;font-size:13px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cname + '</div>';
