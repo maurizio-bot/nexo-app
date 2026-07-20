@@ -660,7 +660,6 @@ function _updateMicIcon(recording) {
     visibleSvg.setAttribute('fill', recording ? '#FF3B30' : '#fff');
   }
 }
-}
 // FIX v10.30 + v10.32: Attach handlers con long-press fix y cerrar menu al tocar fuera
 function _bindAttachmentHandlers() {
   _bindCameraPreviewHandlers();
@@ -688,29 +687,6 @@ function _bindAttachmentHandlers() {
       }
     });
   });
-  document.addEventListener('click', function(e) {
-    var menu = document.getElementById('attach-menu');
-    var attachBtn = document.getElementById('attach-btn');
-    if (menu && !menu.classList.contains('hidden') &&
-        !menu.contains(e.target) &&
-        e.target !== attachBtn &&
-        !attachBtn.contains(e.target)) {
-      _closeAttachMenu();
-    }
-  });
-}
-  menuItems.forEach(function(item) {
-    item.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      var type = item.getAttribute('data-type');
-      if (type === 'camera') _handleCamera();
-      else if (type === 'gallery') _handleGallery();
-      else if (type === 'file') _handleFile();
-      else if (type === 'location') _handleLocation();
-    });
-  });
-  // FIX v10.32: Cerrar menu al tocar fuera
   document.addEventListener('click', function(e) {
     var menu = document.getElementById('attach-menu');
     var attachBtn = document.getElementById('attach-btn');
