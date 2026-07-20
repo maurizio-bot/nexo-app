@@ -4,6 +4,7 @@
  * FIX v10.44: Flip camera bug sintaxis deltaX = currentX - startX
  * FIX v10.45: Eliminado boton Video del menu clip (unificado en Galeria)
  */
+
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
@@ -134,10 +135,17 @@ function _openFullscreenMedia(src, type) {
   if (existing) existing.remove();
   var overlay = document.createElement('div');
   overlay.id = 'fullscreen-media-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:5000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95)' +
+    ';z-index:5000;display:flex;align-items:center' +
+    ';justify-content:center;flex-direction:column;gap:16px';
   var closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
-  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
+  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff">' +
+      '<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>' +
+      '</svg>'';
+  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px' +
+    ';border-radius:50%;background:rgba(255,255,255,0.15)' +
+    ';border:none;cursor:pointer;display:flex;align-items:center' +
+    ';justify-content:center;z-index:5001';
   closeBtn.onclick = function() { overlay.remove(); };
   overlay.appendChild(closeBtn);
   if (type === 'image') {
@@ -167,11 +175,15 @@ function _updateCameraPreviewUI() {
   if (_cameraPreviewMode === 'video') {
     captureBtn.classList.add('recording');
     if (status) status.textContent = _cameraPreviewRecording ? 'Grabando... toca para detener' : 'Toca para grabar video';
-    if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+    if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff">' +
+      '<path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>' +
+      '</svg>'';
   } else {
     captureBtn.classList.remove('recording');
     if (status) status.textContent = '';
-    if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
+    if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff">' +
+      '<path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>' +
+      '</svg>'';
   }
 }
 // FIX v10.41: Video recorder mimeType universal + fallback sin mimeType
@@ -454,7 +466,8 @@ async function _handleGallery() {
   var input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*,video/*';
-  input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
+  input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0' +
+    ';pointer-events:none;width:1px;height:1px';
   input.onchange = function(e) {
     var file = e.target.files[0];
     if (!file) { input.remove(); return; }
@@ -484,7 +497,8 @@ function _handleFile() {
   var input = document.createElement('input');
   input.type = 'file';
   input.accept = '*/*';
-  input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
+  input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0' +
+    ';pointer-events:none;width:1px;height:1px';
   input.onchange = function(e) {
     var file = e.target.files[0];
     if (!file) { input.remove(); return; }
@@ -511,7 +525,12 @@ function _showPermissionError(permName) {
   if (existing) existing.remove();
   var toast = document.createElement('div');
   toast.id = 'perm-error-toast';
-  toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(255,59,48,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;backdrop-filter:blur(4px);box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
+  toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%)' +
+    ';background:rgba(255,59,48,0.95);color:#fff;padding:12px 20px' +
+    ';border-radius:12px;font-size:13px;font-weight:600' +
+    ';z-index:10000;backdrop-filter:blur(4px)' +
+    ';box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw' +
+    ';text-align:center';
   toast.innerHTML = 'Permiso de ' + permName + ' denegado.<br><span style="font-size:11px;opacity:0.8;font-weight:400;">Ve a Ajustes > Aplicaciones > NEXO > Permisos</span>';
   document.body.appendChild(toast);
   setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(function() { toast.remove(); }, 500); }, 4000);
@@ -596,20 +615,107 @@ async function _handleVoiceToggle() {
   if (!timerEl) {
     timerEl = document.createElement('div');
     timerEl.id = 'voice-timer';
-    timerEl.style.cssText = 'position:fixed;bottom:70px; left: 50%;
-  transform: translateX(-50%);
-  background: rgba(255, 59, 48, 0.9);
-  color: #fff;
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 600;
-  z-index: 300;
-  display: none;
-  pointer-events: none;
-  backdrop-filter: blur(4px);
+    timerEl.style.cssText = 'position:fixed;bottom:70px;left:50%' +
+    ';transform:translateX(-50%);background:rgba(255,59,48,0.9)' +
+    ';color:#fff;padding:6px 16px;border-radius:20px' +
+    ';font-size:14px;font-weight:600;z-index:300;display:none' +
+    ';pointer-events:none;backdrop-filter:blur(4px)';
+    document.body.appendChild(timerEl);
+  }
+  if (!_isRecording) {
+    try {
+      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      var audioMimeType = '';
+      var audioCandidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+        'audio/wav'
+      ];
+      for (var ai = 0; ai < audioCandidates.length; ai++) {
+        if (MediaRecorder.isTypeSupported(audioCandidates[ai])) {
+          audioMimeType = audioCandidates[ai];
+          console.log('[VOICE] MimeType seleccionado:', audioMimeType);
+          break;
+        }
+      }
+      var audioOptions = audioMimeType ? { mimeType: audioMimeType } : {};
+      _mediaRecorder = new MediaRecorder(stream, audioOptions);
+      _audioChunks = [];
+      _voiceStartTime = Date.now();
+      timerEl.style.display = 'block';
+      timerEl.textContent = '00:00';
+      _voiceTimerInterval = setInterval(function() {
+        var elapsed = Math.round((Date.now() - _voiceStartTime) / 1000);
+        timerEl.textContent = _fmtTime(elapsed);
+      }, 1000);
+      _mediaRecorder.ondataavailable = function(e) {
+        if (e.data && e.data.size > 0) _audioChunks.push(e.data);
+      };
+      _mediaRecorder.onstop = function() {
+        if (_voiceTimerInterval) { clearInterval(_voiceTimerInterval); _voiceTimerInterval = null; }
+        timerEl.style.display = 'none';
+        var duration = 0;
+        if (_voiceStartTime > 0) duration = Math.round((Date.now() - _voiceStartTime) / 1000);
+        var blobType = audioMimeType || 'audio/webm';
+        var blob = new Blob(_audioChunks, { type: blobType });
+        if (blob.size === 0) {
+          console.log('[ATTACH] Audio blob vacio');
+          return;
+        }
+        var reader = new FileReader();
+        reader.onloadend = function() {
+          var base64 = reader.result.split(',')[1];
+          var fmt = (audioMimeType || 'webm').split('/')[1];
+          if (fmt.indexOf(';') > -1) fmt = fmt.split(';')[0];
+          _sendAttachment('audio', base64, { format: fmt, duration: duration, mimeType: audioMimeType || 'audio/webm' });
+          console.log('[ATTACH] Audio enviado, duracion:', duration);
+        };
+        reader.readAsDataURL(blob);
+        stream.getTracks().forEach(function(t) { t.stop(); });
+      };
+      _mediaRecorder.onerror = function(e) {
+        console.log('[ATTACH:VOICE] MediaRecorder error:', e.message);
+        _isRecording = false;
+        _updateMicIcon(false);
+        timerEl.style.display = 'none';
+      };
+      try {
+        _mediaRecorder.start(100);
+      } catch (tsErr) {
+        _mediaRecorder.start();
+      }
+      _isRecording = true;
+      _updateMicIcon(true);
+      console.log('[ATTACH] Grabando voz...');
+    } catch (err) {
+      console.log('[ATTACH:VOICE] Error:', err.name, err.message);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        _showPermissionError('Microfono');
+      } else if (err.name === 'NotFoundError') {
+        _showPermissionError('Microfono no encontrado');
+      }
+      _isRecording = false;
+      _updateMicIcon(false);
+      timerEl.style.display = 'none';
+    }
+  } else {
+        if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+      try { _mediaRecorder.requestData(); } catch (e) {}
+      setTimeout(function() {
+        try { _mediaRecorder.stop(); } catch (e) {}
+      }, 300);
+    }
+    _isRecording = false;
+    _updateMicIcon(false);
+    if (_voiceTimerInterval) {
+      clearInterval(_voiceTimerInterval);
+      _voiceTimerInterval = null;
+    }
+    timerEl.style.display = 'none';
+  }
 }
-
 function _updateMicIcon(recording) {
   var micBtn = document.getElementById('send-btn');
   if (!micBtn) return;
@@ -653,7 +759,6 @@ function _bindAttachmentHandlers() {
     }
   });
 }
-
 function _showContactPicker() {
   _closeAttachMenu();
   var contactId = _getCurrentContactId();
@@ -663,10 +768,17 @@ function _showContactPicker() {
   }
   var overlay = document.createElement('div');
   overlay.id = 'contact-picker-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:4000;display:flex;flex-direction:column;align-items:center;padding:20px;padding-top:60px;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92)' +
+    ';z-index:4000;display:flex;flex-direction:column' +
+    ';align-items:center;padding:20px;padding-top:60px';
   var closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
-  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff">' +
+      '<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>' +
+      '</svg>'';
+  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px' +
+    ';border-radius:50%;background:rgba(255,255,255,0.1)' +
+    ';border:none;cursor:pointer;display:flex;align-items:center' +
+    ';justify-content:center';
   closeBtn.onclick = function() { overlay.remove(); };
   overlay.appendChild(closeBtn);
   var title = document.createElement('h3');
@@ -674,7 +786,9 @@ function _showContactPicker() {
   title.style.cssText = 'color:#fff;margin-bottom:20px;font-size:18px;font-weight:600;';
   overlay.appendChild(title);
   var list = document.createElement('div');
-  list.style.cssText = 'width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;padding-bottom:20px;';
+  list.style.cssText = 'width:100%;max-width:340px;display:flex' +
+    ';flex-direction:column;gap:10px;overflow-y:auto;flex:1' +
+    ';padding-bottom:20px';
   var contacts = [];
   try {
     var stored = localStorage.getItem('nexo_ble_contacts_v2');
@@ -688,11 +802,16 @@ function _showContactPicker() {
   } else {
     contacts.forEach(function(c) {
       var item = document.createElement('div');
-      item.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 14px;background:#1a1a1a;border-radius:12px;cursor:pointer;transition:background 0.15s;';
+      item.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 14px' +
+    ';background:#1a1a1a;border-radius:12px;cursor:pointer' +
+    ';transition:background 0.15s';
       item.onmouseover = function() { item.style.background = '#222'; };
       item.onmouseout = function() { item.style.background = '#1a1a1a'; };
       var avatar = document.createElement('div');
-      avatar.style.cssText = 'width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ff6b35);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0;';
+      avatar.style.cssText = 'width:44px;height:44px;border-radius:50%' +
+    ';background:linear-gradient(135deg,#f59e0b,#ff6b35)' +
+    ';display:flex;align-items:center;justify-content:center' +
+    ';font-size:16px;font-weight:700;color:#fff;flex-shrink:0';
       avatar.textContent = (c.name || 'C').charAt(0).toUpperCase();
       var info = document.createElement('div');
       info.style.cssText = 'flex:1;min-width:0;';
@@ -765,11 +884,38 @@ function _showPermissionOverlay() {
     if (document.getElementById('nexo-perm-overlay')) return;
     var overlay = document.createElement('div');
     overlay.id = 'nexo-perm-overlay';
-    overlay.innerHTML = '<div class="perm-overlay-content"> <h2>Permisos BLE Requeridos</h2> <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicacion P2P.</p> <p class="perm-sub">Si ya los concediste en Ajustes, la app continuara automaticamente.</p> <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button> <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button> </div>';
+    overlay.innerHTML = '<div class="perm-overlay-content"> <h2>Permisos BLE Requeridos</h2> <p>' +
+      'NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicacion P2P.</p>' +
+      ' <p class="perm-sub">' +
+      'Si ya los concediste en Ajustes, la app continuara automaticamente.</p>' +
+      ' <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button>' +
+      ' <button id="perm-btn-settings" class="perm-btn-secondary">' +
+      'Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">' +
+      'Continuar sin BLE</button> </div>'';
     document.body.appendChild(overlay);
     var style = document.createElement('style');
     style.id = 'perm-overlay-styles';
-    style.textContent = '#nexo-perm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 2147483647; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); } .perm-overlay-content { background: #0a0a15; border: 1px solid #00d4ff; border-radius: 16px; padding: 32px; max-width: 360px; width: 90%; text-align: center; color: #fff; box-shadow: 0 0 40px rgba(0,212,255,0.15); } .perm-overlay-content h2 { margin: 0 0 12px; font-size: 20px; color: #00d4ff; } .perm-overlay-content p { margin: 0 0 8px; font-size: 14px; color: #ccc; line-height: 1.5; } .perm-sub { font-size: 12px !important; color: #888 !important; font-style: italic; } .perm-btn-primary { display: block; width: 100%; margin: 16px 0 8px; padding: 14px; background: linear-gradient(135deg,#00d4ff,#0099cc); color: #000; border: none; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; } .perm-btn-secondary { display: block; width: 100%; margin: 0 0 8px; padding: 12px; background: transparent; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; } .perm-btn-ghost { display: block; width: 100%; margin: 0; padding: 10px; background: transparent; color: #666; border: none; font-size: 13px; cursor: pointer; } .perm-btn-primary:hover { box-shadow: 0 0 20px rgba(0,212,255,0.3); }';
+    style.textContent = '#nexo-perm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.92);' +
+      ' z-index: 2147483647; display: flex; align-items: center;' +
+      ' justify-content: center; backdrop-filter: blur(8px);' +
+      ' } .perm-overlay-content { background: #0a0a15; border: 1px solid #00d4ff;' +
+      ' border-radius: 16px; padding: 32px; max-width: 360px; width: 90%;' +
+      ' text-align: center; color: #fff; box-shadow: 0 0 40px rgba(0,212,255,0.15);' +
+      ' } .perm-overlay-content h2 { margin: 0 0 12px; font-size: 20px; color: #00d4ff;' +
+      ' } .perm-overlay-content p { margin: 0 0 8px; font-size: 14px; color: #ccc;' +
+      ' line-height: 1.5; } .perm-sub { font-size: 12px !important;' +
+      ' color: #888 !important; font-style: italic;' +
+      ' } .perm-btn-primary { display: block; width: 100%; margin: 16px 0 8px;' +
+      ' padding: 14px; background: linear-gradient(135deg,#00d4ff,#0099cc);' +
+      ' color: #000; border: none; border-radius: 10px; font-weight: 700;' +
+      ' font-size: 15px; cursor: pointer; } .perm-btn-secondary { display: block;' +
+      ' width: 100%; margin: 0 0 8px; padding: 12px; background: transparent;' +
+      ' color: #00d4ff; border: 1px solid #00d4ff; border-radius: 10px;' +
+      ' font-weight: 600; font-size: 14px; cursor: pointer;' +
+      ' } .perm-btn-ghost { display: block; width: 100%; margin: 0; padding: 10px;' +
+      ' background: transparent; color: #666; border: none; font-size: 13px;' +
+      ' cursor: pointer;' +
+      ' } .perm-btn-primary:hover { box-shadow: 0 0 20px rgba(0,212,255,0.3); }'';
     document.head.appendChild(style);
     var btnGrant = document.getElementById('perm-btn-grant');
     var btnSettings = document.getElementById('perm-btn-settings');
@@ -819,7 +965,8 @@ function _hidePermissionOverlay() {
     var styles = document.getElementById('perm-overlay-styles');
     if (styles) styles.remove();
   } catch (e) {}
-}async function initializeNexoApp() {
+}
+async function initializeNexoApp() {
   try {
     NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase valida');
     var nexoConfig = {
@@ -930,13 +1077,16 @@ function _setupMessageInput() {
     var _isLongPress = false;
     var LONG_PRESS_MS = 600;
 
+    // Función central: lee valor actual y aplica clase correcta
     function _updateBtnState() {
       var hasText = input.value.trim().length > 0;
       btn.classList.toggle('mic-mode', !hasText);
     }
 
+    // Inicializar en modo correcto
     _updateBtnState();
 
+    // Enviar mensaje
     var _doSend = async function() {
       var text = input.value.trim();
       if (!text) return;
@@ -948,17 +1098,20 @@ function _setupMessageInput() {
       } catch (e) {}
     };
 
+    // Switcheo robusto: múltiples eventos para cubrir todos los casos
     input.addEventListener('input', _updateBtnState);
     input.addEventListener('keyup', _updateBtnState);
     input.addEventListener('paste', function() { requestAnimationFrame(_updateBtnState); });
     input.addEventListener('cut', function() { requestAnimationFrame(_updateBtnState); });
 
+    // Composición (teclados predictivos/sugerencias en Android)
     input.addEventListener('compositionstart', function() { _isComposing = true; });
     input.addEventListener('compositionend', function() {
       _isComposing = false;
       _updateBtnState();
     });
 
+    // Enter para enviar (solo si no está componiendo)
     input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !_isComposing) {
         e.preventDefault();
@@ -966,6 +1119,7 @@ function _setupMessageInput() {
       }
     });
 
+    // Click del botón
     btn.addEventListener('click', function(e) {
       if (_isLongPress) {
         _isLongPress = false;
@@ -983,6 +1137,7 @@ function _setupMessageInput() {
       }
     });
 
+    // Long-press para voz (solo en modo mic)
     btn.addEventListener('touchstart', function(e) {
       if (!btn.classList.contains('mic-mode')) return;
       _isLongPress = false;
@@ -999,6 +1154,7 @@ function _setupMessageInput() {
       if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
     });
 
+    // Scroll al resize
     window.addEventListener('resize', function() {
       var s = document.getElementById('messages-container');
       if (s) requestAnimationFrame(function() { s.scrollTop = s.scrollHeight; });
@@ -1114,7 +1270,8 @@ function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
-    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff">' +
+      '<path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>'';
     var newFab = fabBtn.cloneNode(true);
     fabBtn.parentNode.replaceChild(newFab, fabBtn);
     newFab.addEventListener('click', function() {
@@ -1261,7 +1418,8 @@ function _renderMessage(msg, skipSave) {
       } else if (attachment.type === 'video') {
         var videoWrapper = document.createElement('div');
         videoWrapper.className = 'video-attachment';
-        videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
+        videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px' +
+    ';overflow:hidden;background:#000;cursor:pointer';
         var video = document.createElement('video');
         video.src = 'data:video/' + (attachment.meta.format || 'webm') + ';base64,' + attachment.payload;
         video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
@@ -1271,8 +1429,11 @@ function _renderMessage(msg, skipSave) {
         video.dataset.fullscreenSrc = video.src;
         video.dataset.fullscreenType = 'video';
         var playOverlay = document.createElement('div');
-        playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
-        playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
+        playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center' +
+    ';justify-content:center;background:rgba(0,0,0,0.3)' +
+    ';pointer-events:none';
+        playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;' +
+      '"><path d="M8 5v14l11-7z"/></svg>'';
         videoWrapper.appendChild(video);
         videoWrapper.appendChild(playOverlay);
         videoWrapper.onclick = function(e) {
@@ -1286,7 +1447,8 @@ function _renderMessage(msg, skipSave) {
         var isVideoFile = fileType.indexOf('video') === 0;
         if (isImageFile || isVideoFile) {
           var mediaWrapper = document.createElement('div');
-          mediaWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
+          mediaWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px' +
+    ';overflow:hidden;background:#000;cursor:pointer';
           if (isImageFile) {
             var fimg = document.createElement('img');
             fimg.src = 'data:' + attachment.meta.type + ';base64,' + attachment.payload;
@@ -1304,8 +1466,11 @@ function _renderMessage(msg, skipSave) {
             fvideo.dataset.fullscreenSrc = fvideo.src;
             fvideo.dataset.fullscreenType = 'video';
             var fplayOverlay = document.createElement('div');
-            fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
-            fplayOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
+            fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center' +
+    ';justify-content:center;background:rgba(0,0,0,0.3)' +
+    ';pointer-events:none';
+            fplayOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;' +
+      '"><path d="M8 5v14l11-7z"/></svg>'';
             mediaWrapper.appendChild(fvideo);
             mediaWrapper.appendChild(fplayOverlay);
           }
@@ -1345,7 +1510,7 @@ function _renderMessage(msg, skipSave) {
         var audioId = 'audio_' + msgId;
         var fmt = (attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm';
         var mime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('audio/' + fmt);
-        var byteChars = atob(attachment.payload);
+                var byteChars = atob(attachment.payload);
         var byteNums = new Array(byteChars.length);
         for (var i = 0; i < byteChars.length; i++) {
           byteNums[i] = byteChars.charCodeAt(i);
@@ -1417,7 +1582,7 @@ function _renderMessage(msg, skipSave) {
           };
           btn.onclick = function(e) {
             e.stopPropagation();
-            if (!playing) {
+                        if (!playing) {
               audioEl.play().then(function() {
                 btn.innerHTML = '⏸';
                 playing = true;
@@ -1428,15 +1593,18 @@ function _renderMessage(msg, skipSave) {
                 _stopPlayback();
               });
             } else {
-              _pausePlayback();
+            _pausePlayback();
             }
           };
         }, 0);
-      } else if (attachment.type === 'contact') {
+        }
+            } else if (attachment.type === 'contact') {
         var cname = (attachment.meta && attachment.meta.name) ? attachment.meta.name : 'Contacto';
         var cnexoId = (attachment.meta && attachment.meta.nexoId) ? attachment.meta.nexoId : '';
         var cinitial = cname.charAt(0).toUpperCase() || '👤';
-        var contactHtml = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,0.05);border-radius:12px;border:1px solid rgba(255,255,255,0.1);min-width:180px;max-width:260px;">';
+        var contactHtml = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;' +
+      'background:rgba(255,255,255,0.05);border-radius:12px;' +
+      'border:1px solid rgba(255,255,255,0.1);min-width:180px;max-width:260px;">'';
         contactHtml += '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ff6b35);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0;">' + cinitial + '</div>';
         contactHtml += '<div style="flex:1;min-width:0;">';
         contactHtml += '<div style="font-weight:600;font-size:13px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cname + '</div>';
@@ -1444,9 +1612,6 @@ function _renderMessage(msg, skipSave) {
         contactHtml += '</div></div>';
         contentDiv.innerHTML = contactHtml;
       } else {
-        contentDiv.textContent = msg.content || msg.text || '';
-      }
-    } else {
       contentDiv.textContent = msg.content || msg.text || '';
     }
     div.appendChild(contentDiv);
