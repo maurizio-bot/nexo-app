@@ -659,8 +659,11 @@ async function _handleVoiceToggle() {
       timerEl.style.display = 'none';
     }
   } else {
-    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
-      try { _mediaRecorder.stop(); } catch (e) {}
+        if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+      try { _mediaRecorder.requestData(); } catch (e) {}
+      setTimeout(function() {
+        try { _mediaRecorder.stop(); } catch (e) {}
+      }, 300);
     }
     _isRecording = false;
     _updateMicIcon(false);
@@ -1356,7 +1359,14 @@ function _renderMessage(msg, skipSave) {
         var audioId = 'audio_' + msgId;
         var fmt = (attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm';
         var mime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('audio/' + fmt);
-        var audioSrc = 'data:' + mime + ';base64,' + attachment.payload;
+                var byteChars = atob(attachment.payload);
+        var byteNums = new Array(byteChars.length);
+        for (var i = 0; i < byteChars.length; i++) {
+          byteNums[i] = byteChars.charCodeAt(i);
+        }
+        var byteArray = new Uint8Array(byteNums);
+        var audioBlob = new Blob([byteArray], { type: mime });
+        var audioSrc = URL.createObjectURL(audioBlob);
         var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
         audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
         audioHtml += '<div style="flex:1;min-width:0;">';
@@ -1421,15 +1431,16 @@ function _renderMessage(msg, skipSave) {
           };
           btn.onclick = function(e) {
             e.stopPropagation();
-            if (!playing) {
-              audioEl.play().catch(function(err) {
+                        if (!playing) {
+              audioEl.play().then(function() {
+                btn.innerHTML = '⏸';
+                playing = true;
+                progressInterval = setInterval(_updateTime, 500);
+                animInterval = setInterval(_animateWave, 200);
+              }).catch(function(err) {
                 console.log('[AUDIO] Play error:', err.message);
                 _stopPlayback();
               });
-              btn.innerHTML = '⏸';
-              playing = true;
-              progressInterval = setInterval(_updateTime, 500);
-              animInterval = setInterval(_animateWave, 200);
             } else {
             _pausePlayback();
             }
