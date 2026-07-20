@@ -38,6 +38,8 @@ var SAFETY_TIMEOUT = setTimeout(function() {
 }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE ? NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE : 3000) + 12000);
 // === ATTACHMENT HANDLERS GLOBALES ===
 var _mediaRecorder = null;
+var _lastLocationSent = 0;
+var _LOCATION_DEBOUNCE_MS = 3000;
 var _audioChunks = [];
 var _isRecording = false;
 var _voiceStartTime = 0;
@@ -520,35 +522,47 @@ async function _handleLocation() {
   _isGettingLocation = true;
   _closeAttachMenu();
   var plugins = _getAttachmentPlugins();
-  var pluginWorked = false;
-  if (plugins.Geolocation &&
-      typeof plugins.Geolocation.checkPermissions === 'function' &&
-      typeof plugins.Geolocation.requestPermissions === 'function' &&
-      typeof plugins.Geolocation.getCurrentPosition === 'function') {
-    try {
-      var perm = await plugins.Geolocation.checkPermissions();
-      if (perm.location !== 'granted') {
-        var req = await plugins.Geolocation.requestPermissions();
-        if (req.location !== 'granted') throw new Error('Permiso denegado');
-      }
-      var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 });
-      _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-      pluginWorked = true;
-    } catch (pluginErr) {
-      console.log('[ATTACH:LOCATION] Plugin fallo:', pluginErr.message);
-      if (pluginErr.message && pluginErr.message.indexOf('denied') > -1) {
-        _showPermissionError('Ubicacion');
-        _isGettingLocation = false;
-        return;
+  var sent = false;
+  var safetyTimer = setTimeout(function() {
+    _isGettingLocation = false;
+  }, 25000);
+  try {
+    if (plugins.Geolocation &&
+        typeof plugins.Geolocation.checkPermissions === 'function' &&
+        typeof plugins.Geolocation.requestPermissions === 'function' &&
+        typeof plugins.Geolocation.getCurrentPosition === 'function') {
+      try {
+        var perm = await plugins.Geolocation.checkPermissions();
+        if (perm.location !== 'granted') {
+          var req = await plugins.Geolocation.requestPermissions();
+          if (req.location !== 'granted') throw new Error('Permiso denegado');
+        }
+        var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 });
+        _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+        sent = true;
+      } catch (pluginErr) {
+        console.log('[ATTACH:LOCATION] Plugin fallo:', pluginErr.message);
+        if (pluginErr.message && pluginErr.message.indexOf('denied') > -1) {
+          _showPermissionError('Ubicacion');
+          return;
+        }
       }
     }
+    if (!sent) {
+      _handleLocationFallback();
+    }
+  } finally {
+    clearTimeout(safetyTimer);
+    _isGettingLocation = false;
   }
-  if (!pluginWorked) {
-    _handleLocationFallback();
-  }
-  _isGettingLocation = false;
 }
 function _sendLocation(lat, lng, accuracy) {
+  var now = Date.now();
+  if (now - _lastLocationSent < _LOCATION_DEBOUNCE_MS) {
+    console.log('[ATTACH:LOCATION] Ignorado por debounce');
+    return;
+  }
+  _lastLocationSent = now;
   var payload = JSON.stringify({ lat: lat, lng: lng, accuracy: accuracy || 0 });
   _sendAttachment('location', payload, { lat: lat, lng: lng, accuracy: accuracy || 0 });
   console.log('[ATTACH] Ubicacion enviada');
