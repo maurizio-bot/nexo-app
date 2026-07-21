@@ -1281,8 +1281,16 @@ function _setupFABButton() {
         if (panel) panel.classList.add('active');
         if (overlay) overlay.classList.add('active');
       }
-      if (window.bleInterface && typeof window.bleInterface.toggleScan === 'function') {
-        window.bleInterface.toggleScan();
+      if (window.bleInterface) {
+        if (typeof window.bleInterface._autoScanForKnownContacts === 'function') {
+          window.bleInterface._autoScanForKnownContacts();
+        }
+        if (typeof window.bleInterface.renderContactsList === 'function') {
+          window.bleInterface.renderContactsList();
+        }
+        if (typeof window.bleInterface.renderNewDeviceBar === 'function') {
+          window.bleInterface.renderNewDeviceBar();
+        }
       }
     });
   } catch (e) {
