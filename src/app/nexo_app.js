@@ -514,15 +514,6 @@ class NexoApp {
             };
             document.body.appendChild(inputFile); inputFile.click();
             setTimeout(function() { inputFile.remove(); }, 5000);
-          } else if (type === 'location') {
-            if (!navigator.geolocation) { alert('Geolocalización no disponible'); return; }
-            navigator.geolocation.getCurrentPosition(function(pos) {
-              var lat = pos.coords.latitude, lng = pos.coords.longitude;
-              var mapsUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng;
-              var html = '<a href="' + mapsUrl + '" target="_blank" style="text-decoration:none;color:inherit;"><div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:10px;display:flex;align-items:center;gap:10px;"><div style="font-size:28px;">📍</div><div><div style="font-weight:600;">Mi ubicación</div><div style="font-size:11px;opacity:0.8;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</div></div></div></a>';
-              renderOwnBubble(html, '🌍 Ubicación');
-              window._lastAttachmentPayload = { type: 'location', lat: lat, lng: lng };
-            }, function(err) { alert('Error ubicación: ' + err.message); }, { enableHighAccuracy: true, timeout: 10000 });
           }
         });
       });
@@ -539,7 +530,6 @@ class NexoApp {
       // Si es modo send, el handler original de sendMessage ya existe
     });
   }
-
   _initKeyboardScrollFix() {
     var self = this;
     var container = document.getElementById('messages-container');
