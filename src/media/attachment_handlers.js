@@ -133,33 +133,5 @@
     });
   }
 
-  // ── 4. UBICACIÓN ──
-  var btnUbicacion = document.querySelector('[data-type="location"]');
-  if (btnUbicacion) {
-    btnUbicacion.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (attachMenu) {
-        attachMenu.classList.remove('visible');
-        attachMenu.classList.add('hidden');
-      }
-
-      if (!navigator.geolocation) {
-        alert('Geolocalización no disponible');
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(function(pos) {
-        var lat = pos.coords.latitude;
-        var lng = pos.coords.longitude;
-        var mapsUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng;
-        var html = '<a href="' + mapsUrl + '" target="_blank" style="text-decoration:none;color:inherit;"><div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:10px;display:flex;align-items:center;gap:10px;"><div style="font-size:28px;">📍</div><div><div style="font-weight:600;">Mi ubicación</div><div style="font-size:11px;opacity:0.8;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</div></div></div></a>';
-        renderOwnBubble(html, '🌍 Ubicación');
-        window._lastAttachmentPayload = { type: 'location', lat: lat, lng: lng };
-      }, function(err) {
-        alert('Error ubicación: ' + err.message);
-      }, { enableHighAccuracy: true, timeout: 10000 });
-    });
-  }
-
   console.log('[attachment_handlers] Cargado — render local activo');
 })();
