@@ -245,11 +245,13 @@ Consolidado: inline + main.css + ble_styles
    border: 1px solid #1a3a6e;
    border-bottom-left-radius: 4px;
    }
-   /* FIX: padding reducido para attachments (imagen/video/file) */
+   /* FIX: padding reducido para TODOS los attachments */
    .message:has(.msg-content img),
    .message:has(.msg-content video),
    .message:has(.msg-content .video-attachment),
-   .message:has(.msg-content .file-attachment) {
+   .message:has(.msg-content .file-attachment),
+   .message:has(.msg-content .location-attachment),
+   .message:has(.msg-content .audio-attachment) {
    padding: 3px 3px 6px 3px;
    }
    .msg-meta {
@@ -760,7 +762,7 @@ Consolidado: inline + main.css + ble_styles
 /* ============================================
 INPUT BAR v2 — Attach + Toggle Send/Mic
 ============================================ */
-/* Botón attach (+) — FONDO OSCURO como los demás */
+/* Boton attach (+) — FONDO OSCURO como los demas */
 .input-btn {
 width: 38px;
 height: 38px;
@@ -890,7 +892,7 @@ flex-shrink: 0;
 .attach-menu-item svg {
   flex-shrink: 0;
 }
-/* Ocultar menú */
+/* Ocultar menu */
 .attach-menu.hidden {
   display: none !important;
 }
@@ -1079,6 +1081,7 @@ FIX v10.22: Camera preview overlay - chat visible atras
   display: flex;
   flex-direction: column;
 }
+
 .camera-preview-overlay.hidden {
   display: none !important;
 }
@@ -1100,10 +1103,11 @@ FIX v10.23: Video attachment - marco fino uniforme
 FIX v10.24: Location attachment - mapa visible
 ============================================ */
 .msg-content .location-attachment {
-  max-width: 260px;
+  max-width: 220px;
   border-radius: 12px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(0, 200, 255, 0.3);
 }
 .msg-content .location-attachment img {
   width: 100%;
@@ -1139,6 +1143,9 @@ FIX v10.25: Audio attachment - reproductor
   gap: 10px;
   padding: 8px 12px;
   min-width: 180px;
+  max-width: 220px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 200, 255, 0.3);
 }
 .msg-content .audio-attachment button {
   width: 36px;
