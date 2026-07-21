@@ -1733,26 +1733,66 @@ function _setupSwipeBack() {
 }
 function _doChatBack() {
   try {
+    var app = document.getElementById('app');
+    var contactsView = document.getElementById('contacts-view');
     var backBtn = document.getElementById('chat-back-btn');
-    if (backBtn) backBtn.classList.remove('visible');
-    document.body.classList.remove('chat-view-active');
-    var nameInput = document.getElementById('chat-contact-name');
-    var subtitle = document.getElementById('chat-contact-subtitle');
-    if (nameInput) nameInput.value = 'NEXO';
-    if (subtitle) subtitle.textContent = '';
-    var blePanel = document.getElementById('ble-panel');
-    var bleOverlay = document.getElementById('ble-overlay');
-    if (blePanel) blePanel.classList.remove('active');
-    if (bleOverlay) bleOverlay.classList.remove('active');
-    try {
-      window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }));
-    } catch(e) {}
-    if (window.NEXO.app) {
-      window.NEXO.app.activeContact = null;
+    
+    // Animacion de salida del chat (slide-out a derecha + fade)
+    if (app) {
+      app.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+      app.style.transform = 'translateX(100%)';
+      app.style.opacity = '0';
     }
-    if (window.NEXO.app && window.NEXO.app.bleInterface) {
-      window.NEXO.app.bleInterface._activeChatDeviceId = null;
+    
+    // Mostrar lista de contactos con fade-in desde la izquierda
+    if (contactsView) {
+      contactsView.style.display = 'flex';
+      contactsView.style.opacity = '0';
+      contactsView.style.transform = 'translateX(-20%)';
+      contactsView.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      void contactsView.offsetWidth; // forzar reflow
+      contactsView.style.opacity = '1';
+      contactsView.style.transform = 'translateX(0)';
     }
+    
+    setTimeout(function() {
+      if (backBtn) backBtn.classList.remove('visible');
+      document.body.classList.remove('chat-view-active');
+      
+      var nameInput = document.getElementById('chat-contact-name');
+      var subtitle = document.getElementById('chat-contact-subtitle');
+      if (nameInput) nameInput.value = 'NEXO';
+      if (subtitle) subtitle.textContent = '';
+      
+      var blePanel = document.getElementById('ble-panel');
+      var bleOverlay = document.getElementById('ble-overlay');
+      if (blePanel) blePanel.classList.remove('active');
+      if (bleOverlay) bleOverlay.classList.remove('active');
+      
+      try {
+        window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }));
+      } catch(e) {}
+      
+      if (window.NEXO.app) {
+        window.NEXO.app.activeContact = null;
+      }
+      if (window.NEXO.app && window.NEXO.app.bleInterface) {
+        window.NEXO.app.bleInterface._activeChatDeviceId = null;
+      }
+      
+      // Resetear estilos de animacion
+      if (app) {
+        app.style.transition = '';
+        app.style.transform = '';
+        app.style.opacity = '';
+      }
+      if (contactsView) {
+        contactsView.style.transition = '';
+        contactsView.style.transform = '';
+        contactsView.style.opacity = '';
+      }
+    }, 300);
+    
   } catch (e) {
     console.warn('[MAIN] _doChatBack error:', e);
   }
