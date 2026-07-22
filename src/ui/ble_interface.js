@@ -589,9 +589,7 @@
    if (messageId && self._receivedMessageIds.has(messageId)) return;
    if (messageId) { self._receivedMessageIds.add(messageId); if (self._receivedMessageIds.size > self._maxMessageIds) { var first = self._receivedMessageIds.values().next().value; self._receivedMessageIds.delete(first); } }
    var activeUUID = self._activeChatDeviceId;
-   if (activeUUID && activeUUID === senderUUID) {
-  // No sumar unread, pero SÍ disparar el evento para que el chat lo muestre
-   }
+   if (activeUUID && activeUUID === senderUUID) return;
    if (senderUUID && !isControl) {
    var contacts3 = _getBLEContacts();
    var idx3 = contacts3.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(senderUUID); });
