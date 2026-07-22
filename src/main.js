@@ -1301,12 +1301,22 @@ function _renderMessage(msg, skipSave) {
         videoWrapper.className = 'video-attachment';
         videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
         var video = document.createElement('video');
-        video.src = 'data:video/' + (attachment.meta.format || 'webm') + ';base64,' + attachment.payload;
+        var vFmt = attachment.meta.format || 'webm';
+        var vMime = 'video/' + vFmt;
+        var vByteChars = atob(attachment.payload);
+        var vByteNums = new Array(vByteChars.length);
+        for (var vi = 0; vi < vByteChars.length; vi++) {
+          vByteNums[vi] = vByteChars.charCodeAt(vi);
+        }
+        var vByteArray = new Uint8Array(vByteNums);
+        var vBlob = new Blob([vByteArray], { type: vMime });
+        var vSrc = URL.createObjectURL(vBlob);
+        video.src = vSrc;
         video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
         video.playsInline = true;
         video.muted = true;
         video.preload = 'metadata';
-        video.dataset.fullscreenSrc = video.src;
+        video.dataset.fullscreenSrc = vSrc;
         video.dataset.fullscreenType = 'video';
         var playOverlay = document.createElement('div');
         playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
@@ -1334,12 +1344,20 @@ function _renderMessage(msg, skipSave) {
             mediaWrapper.appendChild(fimg);
           } else {
             var fvideo = document.createElement('video');
-            fvideo.src = 'data:' + attachment.meta.type + ';base64,' + attachment.payload;
+            var fvByteChars = atob(attachment.payload);
+            var fvByteNums = new Array(fvByteChars.length);
+            for (var fvi = 0; fvi < fvByteChars.length; fvi++) {
+              fvByteNums[fvi] = fvByteChars.charCodeAt(fvi);
+            }
+            var fvByteArray = new Uint8Array(fvByteNums);
+            var fvBlob = new Blob([fvByteArray], { type: attachment.meta.type });
+            var fvSrc = URL.createObjectURL(fvBlob);
+            fvideo.src = fvSrc;
             fvideo.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
             fvideo.playsInline = true;
             fvideo.muted = true;
             fvideo.preload = 'metadata';
-            fvideo.dataset.fullscreenSrc = fvideo.src;
+            fvideo.dataset.fullscreenSrc = fvSrc;
             fvideo.dataset.fullscreenType = 'video';
             var fplayOverlay = document.createElement('div');
             fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
@@ -1425,7 +1443,7 @@ function _renderMessage(msg, skipSave) {
               bars[b].style.height = nh + 'px';
             }
           }
-          function _pausePlayback() {
+                    function _pausePlayback() {
             playing = false;
             btn.innerHTML = '▶';
             if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
@@ -1816,3 +1834,4 @@ if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
  *    * Implementacion de _updateMessageStatus y _toggleVaultUI.
  *    * Implementacion de gestion de permisos en el arranque.
  */
+
