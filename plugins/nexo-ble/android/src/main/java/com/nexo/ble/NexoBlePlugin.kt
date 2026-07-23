@@ -57,7 +57,7 @@ Permission(strings = [android.Manifest.permission.FOREGROUND_SERVICE_CONNECTED_D
 class NexoBlePlugin : Plugin() {
 companion object {
 private const val TAG = "NexoBlePlugin"
-private const val SCAN_TIMEOUT_MS = 15000L
+private const val SCAN_TIMEOUT_MS = 6500L
 private const val RECONNECT_DELAY_MS = 3000L
 private const val MAX_RECONNECT_ATTEMPTS = 10
 private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
