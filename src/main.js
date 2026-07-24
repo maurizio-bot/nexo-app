@@ -3,6 +3,7 @@
  * FIX v10.43: Video handler con delay para evitar race condition
  * FIX v10.44: Flip camera bug sintaxis deltaX = currentX - startX
  * FIX v10.45: Eliminado boton Video del menu clip (unificado en Galeria)
+ * FIX v10.46: Notificaciones push - listener apertura desde notificacion
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -848,6 +849,43 @@ function _hidePermissionOverlay() {
     if (styles) styles.remove();
   } catch (e) {}
 }
+// NUEVO: Abrir chat desde notificacion push
+function _openChatFromNotification(deviceId) {
+  try {
+    if (!window.NEXO.app) return;
+    var contacts = [];
+    try {
+      contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v2') || '[]');
+    } catch (e) {}
+    var contact = null;
+    for (var i = 0; i < contacts.length; i++) {
+      var c = contacts[i];
+      if (c.id === deviceId || c.deviceUUID === deviceId || c.address === deviceId || c.nexoId === deviceId) {
+        contact = c;
+        break;
+      }
+    }
+    if (!contact) {
+      contact = { id: deviceId, name: 'NEXO', deviceUUID: deviceId, address: deviceId, nexoId: deviceId };
+      contacts.push(contact);
+      localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(contacts));
+    }
+    window.NEXO.app.activeContact = contact;
+    if (window.NEXO.app.bleInterface) {
+      window.NEXO.app.bleInterface._activeChatDeviceId = deviceId;
+    }
+    window.dispatchEvent(new CustomEvent('nexo:ble:openChat', { detail: { contact: contact } }));
+    document.body.classList.add('chat-view-active');
+    var backBtn = document.getElementById('chat-back-btn');
+    if (backBtn) backBtn.classList.add('visible');
+    var nameInput = document.getElementById('chat-contact-name');
+    if (nameInput) nameInput.value = contact.name || 'NEXO';
+    _loadPersistedMessages();
+    console.log('[MAIN] Chat abierto desde notificacion:', deviceId);
+  } catch (e) {
+    console.warn('[MAIN] _openChatFromNotification error:', e);
+  }
+}
 async function initializeNexoApp() {
   try {
     NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase valida');
@@ -874,6 +912,20 @@ async function initializeNexoApp() {
       }
     };
     window.NEXO.app = new NexoApp(nexoConfig);
+    // NUEVO: Listener para apertura desde notificacion push
+    try {
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
+        window.Capacitor.Plugins.NexoBLE.addListener('onNotificationOpened', function(event) {
+          if (event && event.deviceId) {
+            setTimeout(function() {
+              _openChatFromNotification(event.deviceId);
+            }, 500);
+          }
+        });
+      }
+    } catch (notifErr) {
+      console.log('[MAIN] Notificacion listener no disponible:', notifErr);
+    }
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(_, reject) {
       setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
@@ -1410,7 +1462,7 @@ function _renderMessage(msg, skipSave) {
         var audioBlob = new Blob([byteArray], { type: mime });
         var audioSrc = URL.createObjectURL(audioBlob);
         var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
-        audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
+        audioHtml += '<button id="' + audioId + audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
         audioHtml += '<div style="flex:1;min-width:0;">';
         audioHtml += '<div id="' + audioId + '_wave" style="height:24px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;">';
         for (var w = 0; w < 24; w++) {
@@ -1833,5 +1885,6 @@ if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
  *    * Implementacion de _renderMessage para renderizado de mensajes con adjuntos.
  *    * Implementacion de _updateMessageStatus y _toggleVaultUI.
  *    * Implementacion de gestion de permisos en el arranque.
+ *    * FIX v10.46: Notificaciones push - _openChatFromNotification + onNotificationOpened listener.
  */
 
