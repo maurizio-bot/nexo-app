@@ -102,6 +102,21 @@ notifyListeners("onRemLog", JSObject()
 )
 } catch (e: Exception) { }
 }
+private fun checkNotificationIntent() {
+try {
+val intent = activity.intent
+if (intent != null) {
+val deviceId = intent.getStringExtra("nexo_chat_device_id")
+if (deviceId != null) {
+notifyListeners("onNotificationOpened", JSObject()
+.put("deviceId", deviceId)
+.put("source", "notification")
+)
+intent.removeExtra("nexo_chat_device_id")
+}
+}
+} catch (e: Exception) { }
+}
 private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
 val macNorm = normalizeMac(deviceId)
 messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
@@ -122,6 +137,12 @@ notifyListeners("onPayloadReceived", JSObject()
 .put("timestamp", System.currentTimeMillis())
 .put("reassembled", true)
 )
+        val ctx = activity.applicationContext
+        val broadcastIntent = Intent(NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED).apply {
+            putExtra("deviceId", deviceId)
+            putExtra("content", completeMessage)
+        }
+        ctx.sendBroadcast(broadcastIntent)
 } else {
 val timeoutRunnable = Runnable {
 remLog("WARN", "REASSEMBLY", "Timeout reensamblaje para $macNorm, descartando buffer")
@@ -161,11 +182,13 @@ null
 }
 override fun load() {
 super.load()
+checkNotificationIntent()
 remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server")
 autoStartGattServerAndAdvertising()
 }
 override fun handleOnResume() {
 super.handleOnResume()
+checkNotificationIntent()
 remLog("INFO", "LIFECYCLE", "handleOnResume")
 autoStartGattServerAndAdvertising()
 val ctx = activity.applicationContext
