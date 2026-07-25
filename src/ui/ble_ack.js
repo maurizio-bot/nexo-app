@@ -1,6 +1,6 @@
 /**
  * ble_ack.js — Sistema ACK real + fragmentación para NEXO
- * v1.0
+ * v1.0.1-FIX: receivedAcks ahora se usa para deduplicación real de ACKs entrantes
  */
 export class BleAckSystem {
   constructor(bleInterface) {
@@ -77,6 +77,13 @@ export class BleAckSystem {
     try {
       var ack = JSON.parse(content);
       if (ack.type !== 'ack' || !ack.msgId) return false;
+      // FIX v1.0.1: deduplicar ACKs entrantes para no procesar el mismo ACK múltiples veces
+      if (this.receivedAcks.has(ack.msgId)) return true;
+      this.receivedAcks.add(ack.msgId);
+      if (this.receivedAcks.size > this.maxReceivedAcks) {
+        var first = this.receivedAcks.values().next().value;
+        this.receivedAcks.delete(first);
+      }
       var entry = this.pendingAcks.get(ack.msgId);
       if (entry) {
         clearTimeout(entry.timer);
