@@ -1,10 +1,10 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9-FIX
- * FIX v10.43: Video handler con delay para evitar race condition
- * FIX v10.44: Flip camera bug sintaxis deltaX = currentX - startX
- * FIX v10.45: Eliminado boton Video del menu clip (unificado en Galeria)
- * FIX v10.46: Notificaciones push - listener apertura desde notificacion
- * INTEGRACION: BleAckSystem vinculado post-inicializacion
+ * src/main.js - Punto de entrada NEXO v9.9.1-FIX
+ * FIX: _cameraActiveStream declarado explícitamente
+ * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
+ * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
+ * FIX: ObjectURLs revocados al cerrar fullscreen
+ * FIX: _getContactStorageKey usa nexoId cuando está disponible
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -39,6 +39,7 @@ var SAFETY_TIMEOUT = setTimeout(function() {
     console.warn('[MAIN] Safety timeout error:', e);
   }
 }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE ? NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE : 3000) + 12000);
+
 // === ATTACHMENT HANDLERS GLOBALES ===
 var _mediaRecorder = null;
 var _lastLocationSent = 0;
@@ -48,12 +49,14 @@ var _isRecording = false;
 var _voiceStartTime = 0;
 var _voiceTimerInterval = null;
 var _isGettingLocation = false;
-// Camera preview state
+var _cameraActiveStream = null; // FIX: declarado explícitamente
 var _cameraPreviewMode = 'photo';
 var _cameraPreviewRecording = false;
 var _cameraPreviewMediaRecorder = null;
 var _cameraPreviewVideoChunks = [];
 var _cameraVideoStartTime = 0;
+var _objectURLRegistry = []; // FIX: registro para revocar ObjectURLs
+
 function _fmtTime(sec) {
   var m = Math.floor(sec / 60);
   var s = sec % 60;
@@ -115,7 +118,6 @@ function _closeAttachMenu() {
   var menu = document.getElementById('attach-menu');
   if (menu) menu.classList.add('hidden');
 }
-// Camera overlay
 function _showCameraPreviewOverlay() {
   var overlay = document.getElementById('camera-preview-overlay');
   if (!overlay) return;
@@ -140,7 +142,13 @@ function _openFullscreenMedia(src, type) {
   var closeBtn = document.createElement('button');
   closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
   closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
-  closeBtn.onclick = function() { overlay.remove(); };
+  closeBtn.onclick = function() {
+    // FIX: revocar ObjectURL al cerrar
+    if (src && src.indexOf('blob:') === 0) {
+      try { URL.revokeObjectURL(src); } catch(e) {}
+    }
+    overlay.remove();
+  };
   overlay.appendChild(closeBtn);
   if (type === 'image') {
     var img = document.createElement('img');
@@ -157,7 +165,12 @@ function _openFullscreenMedia(src, type) {
     overlay.appendChild(video);
   }
   overlay.addEventListener('click', function(e) {
-    if (e.target === overlay) overlay.remove();
+    if (e.target === overlay) {
+      if (src && src.indexOf('blob:') === 0) {
+        try { URL.revokeObjectURL(src); } catch(e) {}
+      }
+      overlay.remove();
+    }
   });
   document.body.appendChild(overlay);
 }
@@ -176,7 +189,6 @@ function _updateCameraPreviewUI() {
     if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
   }
 }
-// FIX v10.41: Video recorder mimeType universal + fallback sin mimeType
 function _setupVideoRecorder(stream) {
   var mimeType = '';
   var candidates = [
@@ -215,7 +227,6 @@ function _setupVideoRecorder(stream) {
     if (status) status.textContent = 'Error: grabacion no soportada';
   }
 }
-// FIX v10.34: Camera preview sin constraints de resolucion para front camera
 function _startCameraPreview() {
   var container = document.getElementById('camera-preview-container');
   if (!container) return;
@@ -266,12 +277,12 @@ function _startCameraPreview() {
     .then(_onStreamSuccess)
     .catch(_onStreamError);
 }
-// FIX v10.42: Stop camera preview — NO limpiar MediaRecorder si grabacion activa
+// FIX v9.9.1: Limpia tracks SIEMPRE, incluso si estaba grabando
 function _stopCameraPreview() {
   var wasRecording = _cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording';
   if (wasRecording) {
     try { _cameraPreviewMediaRecorder.stop(); } catch (e) {}
-    return;
+    // FIX: no retornar prematuramente, limpiar stream después
   }
   var container = document.getElementById('camera-preview-container');
   if (container) {
@@ -292,7 +303,6 @@ function _stopCameraPreview() {
   _cameraPreviewVideoChunks = [];
   _cameraVideoStartTime = 0;
 }
-// FIX v10.35: Flip camera sin constraints de resolucion para front
 function _flipCamera() {
   var container = document.getElementById('camera-preview-container');
   if (!container) return;
@@ -364,7 +374,6 @@ function _capturePhoto() {
   _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
   _hideCameraPreviewOverlay();
 }
-// FIX v10.37: Video capture - blob listo antes de cerrar overlay
 function _handleCameraCapture() {
   if (_cameraPreviewMode === 'photo') {
     _capturePhoto();
@@ -442,7 +451,6 @@ function _bindCameraPreviewHandlers() {
   if (captureBtn) captureBtn.addEventListener('click', _handleCameraCapture);
   if (modeBtn) modeBtn.addEventListener('click', _toggleCameraMode);
 }
-// FIX v10.28: Gallery input off-screen + cleanup
 async function _handleCamera() {
   _closeAttachMenu();
   _showCameraPreviewOverlay();
@@ -507,7 +515,6 @@ function _handleFile() {
   input.click();
   setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
 }
-// FIX v10.40: Helper para mostrar error de permisos al usuario
 function _showPermissionError(permName) {
   var existing = document.getElementById('perm-error-toast');
   if (existing) existing.remove();
@@ -518,7 +525,6 @@ function _showPermissionError(permName) {
   document.body.appendChild(toast);
   setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(function() { toast.remove(); }, 500); }, 4000);
 }
-// FIX v10.38: Location con manejo de NotAllowedError
 async function _handleLocation() {
   if (_isGettingLocation) return;
   _isGettingLocation = true;
@@ -592,7 +598,6 @@ function _handleLocationFallback() {
     console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
   }
 }
-// FIX v10.39: Voice con manejo de NotAllowedError
 async function _handleVoiceToggle() {
   var timerEl = document.getElementById('voice-timer');
   if (!timerEl) {
@@ -646,6 +651,21 @@ async function _handleVoiceToggle() {
         var reader = new FileReader();
         reader.onloadend = function() {
           var base64 = reader.result.split(',')[1];
+          var fmt = (audioMimeType || 'webm').split
+              _mediaRecorder.onstop = function() {
+        if (_voiceTimerInterval) { clearInterval(_voiceTimerInterval); _voiceTimerInterval = null; }
+        timerEl.style.display = 'none';
+        var duration = 0;
+        if (_voiceStartTime > 0) duration = Math.round((Date.now() - _voiceStartTime) / 1000);
+        var blobType = audioMimeType || 'audio/webm';
+        var blob = new Blob(_audioChunks, { type: blobType });
+        if (blob.size === 0) {
+          console.log('[ATTACH] Audio blob vacio');
+          return;
+        }
+        var reader = new FileReader();
+        reader.onloadend = function() {
+          var base64 = reader.result.split(',')[1];
           var fmt = (audioMimeType || 'webm').split('/')[1];
           if (fmt.indexOf(';') > -1) fmt = fmt.split(';')[0];
           _sendAttachment('audio', base64, { format: fmt, duration: duration, mimeType: audioMimeType || 'audio/webm' });
@@ -680,7 +700,7 @@ async function _handleVoiceToggle() {
       timerEl.style.display = 'none';
     }
   } else {
-        if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
+    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') {
       try { _mediaRecorder.requestData(); } catch (e) {}
       setTimeout(function() {
         try { _mediaRecorder.stop(); } catch (e) {}
@@ -703,7 +723,6 @@ function _updateMicIcon(recording) {
     visibleSvg.setAttribute('fill', recording ? '#FF3B30' : '#fff');
   }
 }
-// FIX v10.30 + v10.32: Attach handlers con long-press fix y cerrar menu al tocar fuera
 function _bindAttachmentHandlers() {
   _bindCameraPreviewHandlers();
   var attachBtn = document.getElementById('attach-btn');
@@ -744,7 +763,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9-FIX iniciando...');
+    console.log('[MAIN] NEXO v9.9.1-FIX iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -850,7 +869,6 @@ function _hidePermissionOverlay() {
     if (styles) styles.remove();
   } catch (e) {}
 }
-// NUEVO: Abrir chat desde notificacion push
 function _openChatFromNotification(deviceId) {
   try {
     if (!window.NEXO.app) return;
@@ -913,7 +931,6 @@ async function initializeNexoApp() {
       }
     };
     window.NEXO.app = new NexoApp(nexoConfig);
-    // NUEVO: Listener para apertura desde notificacion push
     try {
       if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
         window.Capacitor.Plugins.NexoBLE.addListener('onNotificationOpened', function(event) {
@@ -942,11 +959,10 @@ async function initializeNexoApp() {
         console.log('[MAIN] BLE Interface estado:', {
           localUUID: bi.localDeviceUUID,
           activeChatId: bi._activeChatDeviceId,
-          contacts: bi._getBLEContacts ? bi._getBLEContacts().length : 0
+          contacts: bi.getBLEContacts ? bi.getBLEContacts().length : 0
         });
       }
     } catch (logErr) { console.warn('[MAIN] Log BLE error:', logErr); }
-    // === INTEGRACION ACK SYSTEM ===
     try {
       if (window.NEXO.app && window.NEXO.app.bleInterface) {
         var ack = createAckSystem(window.NEXO.app.bleInterface);
@@ -1022,16 +1038,13 @@ function _setupMessageInput() {
     var _isLongPress = false;
     var LONG_PRESS_MS = 600;
 
-    // Función central: lee valor actual y aplica clase correcta
     function _updateBtnState() {
       var hasText = input.value.trim().length > 0;
       btn.classList.toggle('mic-mode', !hasText);
     }
 
-    // Inicializar en modo correcto
     _updateBtnState();
 
-    // Enviar mensaje
     var _doSend = async function() {
       var text = input.value.trim();
       if (!text) return;
@@ -1043,20 +1056,17 @@ function _setupMessageInput() {
       } catch (e) {}
     };
 
-    // Switcheo robusto: múltiples eventos para cubrir todos los casos
     input.addEventListener('input', _updateBtnState);
     input.addEventListener('keyup', _updateBtnState);
     input.addEventListener('paste', function() { requestAnimationFrame(_updateBtnState); });
     input.addEventListener('cut', function() { requestAnimationFrame(_updateBtnState); });
 
-    // Composición (teclados predictivos/sugerencias en Android)
     input.addEventListener('compositionstart', function() { _isComposing = true; });
     input.addEventListener('compositionend', function() {
       _isComposing = false;
       _updateBtnState();
     });
 
-    // Enter para enviar (solo si no está componiendo)
     input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !_isComposing) {
         e.preventDefault();
@@ -1064,7 +1074,6 @@ function _setupMessageInput() {
       }
     });
 
-    // Click del botón
     btn.addEventListener('click', function(e) {
       if (_isLongPress) {
         _isLongPress = false;
@@ -1082,7 +1091,6 @@ function _setupMessageInput() {
       }
     });
 
-    // Long-press para voz (solo en modo mic)
     btn.addEventListener('touchstart', function(e) {
       if (!btn.classList.contains('mic-mode')) return;
       _isLongPress = false;
@@ -1099,7 +1107,6 @@ function _setupMessageInput() {
       if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
     });
 
-    // Scroll al resize
     window.addEventListener('resize', function() {
       var s = document.getElementById('messages-container');
       if (s) requestAnimationFrame(function() { s.scrollTop = s.scrollHeight; });
@@ -1211,33 +1218,32 @@ function _setupJumpButton() {
     console.warn('[MAIN] _setupJumpButton error:', e);
   }
 }
+// FIX v9.9.1: NO clonar nodo, reutilizar listener existente del FAB
 function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
+    // Solo actualizar icono, no clonar (preserva listeners de ble_interface.js)
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
-    var newFab = fabBtn.cloneNode(true);
-    fabBtn.parentNode.replaceChild(newFab, fabBtn);
-    newFab.addEventListener('click', function() {
-      if (window.bleInterface && window.bleInterface.elements) {
-        var panel = window.bleInterface.elements.panel;
-        var overlay = window.bleInterface.elements.overlay;
-        if (panel) panel.classList.add('active');
-        if (overlay) overlay.classList.add('active');
-      }
-      if (window.bleInterface && typeof window.bleInterface.toggleScan === 'function') {
-        window.bleInterface.toggleScan();
-      }
-    });
+    // Si no hay listener, agregar uno que delegue a bleInterface
+    if (!fabBtn._nexoFabBound) {
+      fabBtn.addEventListener('click', function() {
+        if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
+          window.bleInterface.togglePanel();
+        }
+      });
+      fabBtn._nexoFabBound = true;
+    }
   } catch (e) {
     console.warn('[MAIN] _setupFABButton error:', e);
   }
 }
+// FIX v9.9.1: Usar nexoId para key de storage cuando está disponible
 function _getContactStorageKey() {
   var contactId = 'default';
   try {
-    if (window.NEXO.app && window.NEXO.app.activeContact && window.NEXO.app.activeContact.id) {
-      contactId = window.NEXO.app.activeContact.id;
+    if (window.NEXO.app && window.NEXO.app.activeContact) {
+      contactId = window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id || 'default';
     } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface._activeChatDeviceId) {
       contactId = window.NEXO.app.bleInterface._activeChatDeviceId;
     }
@@ -1374,6 +1380,7 @@ function _renderMessage(msg, skipSave) {
         var vByteArray = new Uint8Array(vByteNums);
         var vBlob = new Blob([vByteArray], { type: vMime });
         var vSrc = URL.createObjectURL(vBlob);
+        _objectURLRegistry.push(vSrc); // FIX: trackear para cleanup
         video.src = vSrc;
         video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
         video.playsInline = true;
@@ -1415,6 +1422,7 @@ function _renderMessage(msg, skipSave) {
             var fvByteArray = new Uint8Array(fvByteNums);
             var fvBlob = new Blob([fvByteArray], { type: attachment.meta.type });
             var fvSrc = URL.createObjectURL(fvBlob);
+            _objectURLRegistry.push(fvSrc); // FIX: trackear para cleanup
             fvideo.src = fvSrc;
             fvideo.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
             fvideo.playsInline = true;
@@ -1464,7 +1472,7 @@ function _renderMessage(msg, skipSave) {
         var audioId = 'audio_' + msgId;
         var fmt = (attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm';
         var mime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('audio/' + fmt);
-                var byteChars = atob(attachment.payload);
+        var byteChars = atob(attachment.payload);
         var byteNums = new Array(byteChars.length);
         for (var i = 0; i < byteChars.length; i++) {
           byteNums[i] = byteChars.charCodeAt(i);
@@ -1472,6 +1480,7 @@ function _renderMessage(msg, skipSave) {
         var byteArray = new Uint8Array(byteNums);
         var audioBlob = new Blob([byteArray], { type: mime });
         var audioSrc = URL.createObjectURL(audioBlob);
+        _objectURLRegistry.push(audioSrc); // FIX: trackear para cleanup
         var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
         audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
         audioHtml += '<div style="flex:1;min-width:0;">';
@@ -1506,7 +1515,7 @@ function _renderMessage(msg, skipSave) {
               bars[b].style.height = nh + 'px';
             }
           }
-                    function _pausePlayback() {
+          function _pausePlayback() {
             playing = false;
             btn.innerHTML = '▶';
             if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
@@ -1536,7 +1545,7 @@ function _renderMessage(msg, skipSave) {
           };
           btn.onclick = function(e) {
             e.stopPropagation();
-                        if (!playing) {
+            if (!playing) {
               audioEl.play().then(function() {
                 btn.innerHTML = '⏸';
                 playing = true;
@@ -1547,12 +1556,12 @@ function _renderMessage(msg, skipSave) {
                 _stopPlayback();
               });
             } else {
-            _pausePlayback();
+              _pausePlayback();
             }
           };
         }, 0);
-        }
-      } else {
+      }
+    } else {
       contentDiv.textContent = msg.content || msg.text || '';
     }
     div.appendChild(contentDiv);
@@ -1818,20 +1827,18 @@ function _doChatBack() {
     var contactsView = document.getElementById('contacts-view');
     var backBtn = document.getElementById('chat-back-btn');
     
-    // Animacion de salida del chat (slide-out a derecha + fade)
     if (app) {
       app.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
       app.style.transform = 'translateX(100%)';
       app.style.opacity = '0';
     }
     
-    // Mostrar lista de contactos con fade-in desde la izquierda
     if (contactsView) {
       contactsView.style.display = 'flex';
       contactsView.style.opacity = '0';
       contactsView.style.transform = 'translateX(-20%)';
       contactsView.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-      void contactsView.offsetWidth; // forzar reflow
+      void contactsView.offsetWidth;
       contactsView.style.opacity = '1';
       contactsView.style.transform = 'translateX(0)';
     }
@@ -1861,7 +1868,6 @@ function _doChatBack() {
         window.NEXO.app.bleInterface._activeChatDeviceId = null;
       }
       
-      // Resetear estilos de animacion
       if (app) {
         app.style.transition = '';
         app.style.transform = '';
@@ -1880,22 +1886,3 @@ function _doChatBack() {
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
-/*
- * Firmas de modificacion:
- *    * Implementacion de _fmtTime para formato de tiempo.
- *    * Implementacion de _getAttachmentPlugins para plugins de Capacitor.
- *    * Implementacion de _getCurrentContactId para gestion de contactos.
- *    * Implementacion de _sendAttachment para envio de adjuntos.
- *    * Correccion en _handleCameraCapture para captura de video.
- *    * Implementacion de _setupVideoRecorder para MediaRecorder.
- *    * Implementacion de _startCameraPreview y _stopCameraPreview.
- *    * Implementacion de _handleLocation y _handleLocationFallback.
- *    * Implementacion de _handleVoiceToggle.
- *    * Implementacion de _bindAttachmentHandlers con soporte para long-press.
- *    * Implementacion de logica de persistencia de mensajes (localStorage).
- *    * Implementacion de _renderMessage para renderizado de mensajes con adjuntos.
- *    * Implementacion de _updateMessageStatus y _toggleVaultUI.
- *    * Implementacion de gestion de permisos en el arranque.
- *    * FIX v10.46: Notificaciones push - _openChatFromNotification + onNotificationOpened listener.
- *    * INTEGRACION: BleAckSystem vinculado post-inicializacion.
- */
