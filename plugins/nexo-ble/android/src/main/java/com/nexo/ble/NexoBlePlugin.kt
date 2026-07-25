@@ -1244,8 +1244,6 @@ class NexoBlePlugin : Plugin() {
 
     private fun unregisterServerReceivers() {
         messageReceiver?.let {
-            try { activity.unregister    private fun unregisterServerReceivers() {
-        messageReceiver?.let {
             try { activity.unregisterReceiver(it) } catch (e: Exception) { }
             messageReceiver = null
         }
@@ -1364,6 +1362,7 @@ class NexoBlePlugin : Plugin() {
             call.reject("Error borrando archivo: ${e.message}")
         }
     }
+
     @PluginMethod
     fun listFiles(call: PluginCall) {
         try {
@@ -1377,4 +1376,3 @@ class NexoBlePlugin : Plugin() {
         }
     }
 }
-
