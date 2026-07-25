@@ -1,3 +1,4 @@
+
 package com.nexo.ble
 
 import android.app.ActivityManager
