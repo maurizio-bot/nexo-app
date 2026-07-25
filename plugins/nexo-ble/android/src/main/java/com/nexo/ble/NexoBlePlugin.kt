@@ -64,6 +64,7 @@ class NexoBlePlugin : Plugin() {
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 6500L
         private const val RECONNECT_DELAY_MS = 3000L
+        private const val MAX_RECONNECT_DELAY_MS = 30000L
         private const val MAX_RECONNECT_ATTEMPTS = 10
         private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
         private const val KEEPALIVE_INTERVAL_MS = 10000L
@@ -91,6 +92,7 @@ class NexoBlePlugin : Plugin() {
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private val reconnectTimers = ConcurrentHashMap<String, Runnable>()
     private val reconnectAttempts = ConcurrentHashMap<String, Int>()
+    private val reconnectDelays = ConcurrentHashMap<String, Long>()
     private val keepAliveTimers = ConcurrentHashMap<String, Runnable>()
     private val pendingMessageQueue = ConcurrentHashMap<String, MutableList<String>>()
     private val pendingCalls = ConcurrentHashMap<String, PluginCall>()
@@ -207,7 +209,6 @@ class NexoBlePlugin : Plugin() {
         super.handleOnResume()
         checkNotificationIntent()
         remLog("INFO", "LIFECYCLE", "handleOnResume")
-        autoStartGattServerAndAdvertising()
         val ctx = activity.applicationContext
         val granted = checkCoreBLEPermissions(ctx)
         if (granted) {
@@ -215,12 +216,19 @@ class NexoBlePlugin : Plugin() {
                 .put("granted", true)
                 .put("source", "onResume")
             )
+            autoStartGattServerAndAdvertising()
+            mainHandler.postDelayed({
+                reconnectKnownDevices()
+            }, 800)
         }
     }
 
     override fun handleOnPause() {
         super.handleOnPause()
         remLog("INFO", "LIFECYCLE", "handleOnPause")
+        if (isScanning()) {
+            stopScanInternal()
+        }
     }
 
     override fun handleOnDestroy() {
@@ -237,6 +245,26 @@ class NexoBlePlugin : Plugin() {
         messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         messageBufferTimers.clear()
         lastScanNotifyTime.clear()
+    }
+
+    private fun isScanning(): Boolean {
+        return bluetoothScanner != null
+    }
+
+    private fun reconnectKnownDevices() {
+        val ctx = activity.applicationContext
+        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+        if (adapter == null || !adapter.isEnabled) return
+        gattClients.forEach { (macNorm, gatt) ->
+            val state = clientConnectionStates[macNorm] ?: BluetoothProfile.STATE_DISCONNECTED
+            if (state != BluetoothProfile.STATE_CONNECTED && state != BluetoothProfile.STATE_CONNECTING) {
+                remLog("INFO", "FOREGROUND", "Auto-reconnect a $macNorm al volver de background")
+                reconnectAttempts[macNorm] = 0
+                reconnectDelays.remove(macNorm)
+                startAutoReconnect(macNorm)
+            }
+        }
     }
 
     private fun registerBluetoothStateReceiver() {
@@ -339,6 +367,7 @@ class NexoBlePlugin : Plugin() {
         reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         reconnectTimers.clear()
         reconnectAttempts.clear()
+        reconnectDelays.clear()
         keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         keepAliveTimers.clear()
         pendingMessageQueue.clear()
@@ -573,7 +602,17 @@ class NexoBlePlugin : Plugin() {
             }
             val macNorm = normalizeMac(rawDeviceId)
             remLog("INFO", "GATT_CLIENT", "connectToDevice norm='$macNorm'")
-            if (gattClients.containsKey(macNorm) && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
+
+            val existingState = clientConnectionStates[macNorm]
+            if (existingState == BluetoothProfile.STATE_CONNECTING) {
+                remLog("WARN", "GATT_CLIENT", "Conexion ya en progreso para $macNorm, cancelando anterior")
+                gattClients[macNorm]?.let { old ->
+                    try { old.disconnect(); old.close() } catch (e: Exception) { }
+                }
+                pendingCalls.remove(macNorm)
+                reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+            }
+            if (gattClients.containsKey(macNorm) && existingState == BluetoothProfile.STATE_CONNECTED) {
                 remLog("INFO", "GATT_CLIENT", "Ya conectado a $macNorm")
                 call.resolve(JSObject()
                     .put("connected", true)
@@ -582,6 +621,7 @@ class NexoBlePlugin : Plugin() {
                 )
                 return
             }
+
             val ctx = activity.applicationContext
             val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = bluetoothManager.adapter
@@ -611,6 +651,7 @@ class NexoBlePlugin : Plugin() {
                 }
             }
             remLog("INFO", "GATT_CLIENT", "Usando device: ${device.address} (cache=${scannedDevices.containsKey(macNorm)})")
+
             gattClients[macNorm]?.let { oldGatt ->
                 try { oldGatt.disconnect(); oldGatt.close() } catch (e: Exception) { }
             }
@@ -628,6 +669,8 @@ class NexoBlePlugin : Plugin() {
             }
             gattClients[macNorm] = gatt
             clientConnectionStates[macNorm] = BluetoothProfile.STATE_CONNECTING
+            reconnectAttempts[macNorm] = 0
+            reconnectDelays.remove(macNorm)
             remLog("INFO", "GATT_CLIENT", "Conexion iniciada a $macNorm")
             mainHandler.postDelayed({
                 if (pendingCalls.containsKey(macNorm)) {
@@ -670,6 +713,7 @@ class NexoBlePlugin : Plugin() {
                 }
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     reconnectAttempts[macNorm] = 0
+                    reconnectDelays.remove(macNorm)
                     pendingCall?.let {
                         it.resolve(JSObject().put("connected", true).put("alreadyConnected", false).put("deviceId", address))
                         pendingCalls.remove(macNorm)
@@ -801,6 +845,8 @@ class NexoBlePlugin : Plugin() {
                         }
                     } catch (e: Exception) {
                         remLog("WARN", "KEEPALIVE", "Error keep-alive $macNorm: ${e.message}")
+                        stopKeepAlive(macNorm)
+                        return
                     }
                     mainHandler.postDelayed(this, KEEPALIVE_INTERVAL_MS)
                 }
@@ -815,6 +861,12 @@ class NexoBlePlugin : Plugin() {
         keepAliveTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
     }
 
+    private fun getReconnectDelay(macNorm: String): Long {
+        val attempts = reconnectAttempts[macNorm] ?: 0
+        val delay = RECONNECT_DELAY_MS * (1L shl attempts.coerceAtMost(4))
+        return delay.coerceAtMost(MAX_RECONNECT_DELAY_MS)
+    }
+
     private fun startAutoReconnect(macNorm: String) {
         val currentAttempts = reconnectAttempts[macNorm] ?: 0
         if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -822,9 +874,11 @@ class NexoBlePlugin : Plugin() {
             return
         }
         reconnectAttempts[macNorm] = currentAttempts + 1
+        val delayMs = getReconnectDelay(macNorm)
+        reconnectDelays[macNorm] = delayMs
         reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         val runnable = Runnable {
-            remLog("INFO", "RECONNECT", "Intentando reconectar a $macNorm (intento ${reconnectAttempts[macNorm]})")
+            remLog("INFO", "RECONNECT", "Intentando reconectar a $macNorm (intento ${reconnectAttempts[macNorm]}, delay=${delayMs}ms)")
             val ctx = activity.applicationContext
             val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = bluetoothManager.adapter
@@ -835,6 +889,9 @@ class NexoBlePlugin : Plugin() {
                 return@Runnable
             }
             try {
+                gattClients[macNorm]?.let { old ->
+                    try { old.disconnect(); old.close() } catch (e: Exception) { }
+                }
                 val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
                 } else {
@@ -849,7 +906,7 @@ class NexoBlePlugin : Plugin() {
             }
         }
         reconnectTimers[macNorm] = runnable
-        mainHandler.postDelayed(runnable, RECONNECT_DELAY_MS)
+        mainHandler.postDelayed(runnable, delayMs)
     }
 
     @PluginMethod
@@ -857,9 +914,10 @@ class NexoBlePlugin : Plugin() {
         val rawDeviceId = call.getString("deviceId") ?: ""
         val macNorm = normalizeMac(rawDeviceId)
         remLog("INFO", "GATT_CLIENT", "disconnectDevice $rawDeviceId")
-        reconnectTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
+        reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         reconnectTimers.remove(macNorm)
         reconnectAttempts.remove(macNorm)
+        reconnectDelays.remove(macNorm)
         stopKeepAlive(macNorm)
         gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
         gattClients.remove(macNorm)
@@ -880,6 +938,7 @@ class NexoBlePlugin : Plugin() {
         val macNorm = normalizeMac(rawDeviceId)
         remLog("INFO", "GATT_CLIENT", "forceReconnect $rawDeviceId")
         reconnectAttempts[macNorm] = 0
+        reconnectDelays.remove(macNorm)
         stopKeepAlive(macNorm)
         gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
         gattClients.remove(macNorm)
@@ -896,6 +955,7 @@ class NexoBlePlugin : Plugin() {
         val macNorm = normalizeMac(rawDeviceId)
         remLog("INFO", "GATT_CLIENT", "reconnectDevice manual $rawDeviceId")
         reconnectAttempts[macNorm] = 0
+        reconnectDelays.remove(macNorm)
         startAutoReconnect(macNorm)
         call.resolve(JSObject().put("reconnecting", true))
     }
@@ -1002,6 +1062,10 @@ class NexoBlePlugin : Plugin() {
             }
         } else {
             remLog("WARN", "PENDING_QUEUE", "No se pudieron enviar ${queue.size} mensajes encolados, conexion no lista")
+            queue.forEach { msg ->
+                val q = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
+                q.add(msg)
+            }
         }
     }
 
