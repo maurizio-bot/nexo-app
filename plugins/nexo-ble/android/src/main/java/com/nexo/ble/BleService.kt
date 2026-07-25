@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
@@ -18,7 +19,6 @@ import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.os.ParcelUuid
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -34,7 +34,6 @@ class BleService : Service() {
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
         private const val NEXO_MAGIC_LOW: Byte = 0x58
 
-        // NUEVO: Constantes para notificaciones de mensajes
         private const val MESSAGE_CHANNEL_ID = "nexo_messages"
         private const val MESSAGE_NOTIFICATION_ID_START = 2001
         private const val ACTION_MESSAGE_RECEIVED = "com.nexo.ble.MESSAGE_RECEIVED"
@@ -44,6 +43,7 @@ class BleService : Service() {
     private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
     private var currentNexoId: String? = null
     private var messageReceiver: BroadcastReceiver? = null
+    private var bluetoothStateReceiver: BroadcastReceiver? = null
 
     private fun showToast(message: String) {
         try {
@@ -58,6 +58,7 @@ class BleService : Service() {
         try {
             createMessageNotificationChannel()
             registerMessageReceiver()
+            registerBluetoothStateReceiver()
             val notification = createNotification()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
@@ -88,6 +89,23 @@ class BleService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.i(TAG, "onTaskRemoved - re-lanzando service")
+        val restartIntent = Intent(applicationContext, BleService::class.java).apply {
+            putExtra("nexo_advertising_id", currentNexoId)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(restartIntent)
+            } else {
+                startService(restartIntent)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error re-lanzando service", e)
+        }
+    }
 
     private fun restartAdvertising() {
         try {
@@ -173,7 +191,6 @@ class BleService : Service() {
             .build()
     }
 
-    // NUEVO: Canal de notificaciones de mensajes (IMPORTANCE_HIGH)
     private fun createMessageNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -190,11 +207,11 @@ class BleService : Service() {
         }
     }
 
-    // NUEVO: Registra receiver para escuchar mensajes del plugin
     private fun registerMessageReceiver() {
         if (messageReceiver != null) return
         messageReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action != ACTION_MESSAGE_RECEIVED) return
                 if (isAppInForeground()) {
                     Log.i(TAG, "App en foreground, notificación suprimida")
                     return
@@ -217,7 +234,40 @@ class BleService : Service() {
         }
     }
 
-    // NUEVO: Verifica si la app está en foreground para no spammear
+    private fun registerBluetoothStateReceiver() {
+        if (bluetoothStateReceiver != null) return
+        bluetoothStateReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+                val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                when (state) {
+                    BluetoothAdapter.STATE_OFF -> {
+                        Log.w(TAG, "Bluetooth apagado, deteniendo advertising")
+                        try {
+                            bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+                        } catch (e: Exception) { }
+                        bluetoothLeAdvertiser = null
+                    }
+                    BluetoothAdapter.STATE_ON -> {
+                        Log.i(TAG, "Bluetooth encendido, reanudando advertising")
+                        startAdvertising()
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(bluetoothStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(bluetoothStateReceiver, filter)
+            }
+            Log.i(TAG, "BluetoothStateReceiver registrado")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error registrando BluetoothStateReceiver", e)
+        }
+    }
+
     private fun isAppInForeground(): Boolean {
         val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val runningProcesses = am.runningAppProcesses
@@ -230,7 +280,6 @@ class BleService : Service() {
         return false
     }
 
-    // NUEVO: Muestra notificación de mensaje recibido
     private fun showMessageNotification(deviceId: String, content: String) {
         try {
             val notificationId = MESSAGE_NOTIFICATION_ID_START + (deviceId.hashCode() and 0xFFFF)
@@ -290,6 +339,9 @@ class BleService : Service() {
         showToast("[BLE Svc] onDestroy")
         try {
             messageReceiver?.let { unregisterReceiver(it) }
+        } catch (e: Exception) { }
+        try {
+            bluetoothStateReceiver?.let { unregisterReceiver(it) }
         } catch (e: Exception) { }
         try {
             bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
