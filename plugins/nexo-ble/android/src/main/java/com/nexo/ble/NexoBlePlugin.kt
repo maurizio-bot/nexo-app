@@ -503,7 +503,7 @@ class NexoBlePlugin : Plugin() {
                 NexoBleSpec.NEXO_SERVICE_UUID,
                 android.bluetooth.BluetoothGattService.SERVICE_TYPE_PRIMARY
             )
-            serverTxCharacteristic =             BluetoothGattCharacteristic(
+            serverTxCharacteristic = BluetoothGattCharacteristic(
                 NexoBleSpec.TX_CHARACTERISTIC_UUID,
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ
@@ -576,8 +576,13 @@ class NexoBlePlugin : Plugin() {
         }
 
         override fun onCharacteristicWriteRequest(
-            device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteristic,
-            preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
+            device: BluetoothDevice,
+            requestId: Int,
+            characteristic: BluetoothGattCharacteristic,
+            preparedWrite: Boolean,
+            responseNeeded: Boolean,
+            offset: Int,
+            value: ByteArray?
         ) {
             if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
                 val chunk = value?.toString(Charset.defaultCharset()) ?: ""
@@ -585,25 +590,41 @@ class NexoBlePlugin : Plugin() {
                 remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${chunk.length}")
                 processReceivedChunk(mac, chunk, "gatt_server")
                 if (responseNeeded) {
-                    bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset offset, value)
+                    bluetoothGattServer?.sendResponse(
+                        device,
+                        requestId,
+                        BluetoothGatt.GATT_SUCCESS,
+                        offset,
+                        value
+                    )
                 }
             }
         }
 
         override fun onDescriptorWriteRequest(
-            device: BluetoothDevice, requestId: Int, descriptor: BluetoothGattDescriptor,
-            preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?
+            device: BluetoothDevice,
+            requestId: Int,
+            descriptor: BluetoothGattDescriptor,
+            preparedWrite: Boolean,
+            responseNeeded: Boolean,
+            offset: Int,
+            value: ByteArray?
         ) {
             if (descriptor.uuid == NexoBleSpec.CCCD_UUID) {
                 descriptor.value = value
                 if (responseNeeded) {
-                    bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                    bluetoothGattServer?.sendResponse(
+                        device,
+                        requestId,
+                        BluetoothGatt.GATT_SUCCESS,
+                        offset,
+                        value
+                    )
                 }
                 remLog("INFO", "GATT_SERVER", "CCCD escrito por ${device.address}")
             }
         }
     }
-
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         try {
@@ -979,7 +1000,6 @@ class NexoBlePlugin : Plugin() {
         startAutoReconnect(macNorm)
         call.resolve(JSObject().put("reconnecting", true))
     }
-
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
@@ -1327,7 +1347,6 @@ class NexoBlePlugin : Plugin() {
         }
         call.resolve(JSObject().put("devices", devices))
     }
-
     private fun registerServerReceivers() {
         if (messageReceiver != null) return
         messageReceiver = object : BroadcastReceiver() {
@@ -1507,4 +1526,3 @@ class NexoBlePlugin : Plugin() {
         }
     }
 }
-
