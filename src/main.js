@@ -4,6 +4,7 @@
  * FIX v10.44: Flip camera bug sintaxis deltaX = currentX - startX
  * FIX v10.45: Eliminado boton Video del menu clip (unificado en Galeria)
  * FIX v10.46: Notificaciones push - listener apertura desde notificacion
+ * INTEGRACION: BleAckSystem vinculado post-inicializacion
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -11,6 +12,7 @@ import { NEXO_DIAG } from './core/nap.js';
 import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
 import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
+import { createAckSystem } from './ui/ble_ack.js';
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
   NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe estar importado');
@@ -51,7 +53,6 @@ var _cameraPreviewMode = 'photo';
 var _cameraPreviewRecording = false;
 var _cameraPreviewMediaRecorder = null;
 var _cameraPreviewVideoChunks = [];
-var _cameraActiveStream = null;
 var _cameraVideoStartTime = 0;
 function _fmtTime(sec) {
   var m = Math.floor(sec / 60);
@@ -945,6 +946,16 @@ async function initializeNexoApp() {
         });
       }
     } catch (logErr) { console.warn('[MAIN] Log BLE error:', logErr); }
+    // === INTEGRACION ACK SYSTEM ===
+    try {
+      if (window.NEXO.app && window.NEXO.app.bleInterface) {
+        var ack = createAckSystem(window.NEXO.app.bleInterface);
+        window.NEXO.app.bleInterface.setAckSystem(ack);
+        console.log('[MAIN] BleAckSystem vinculado OK');
+      }
+    } catch (ackErr) {
+      console.warn('[MAIN] AckSystem no vinculado:', ackErr);
+    }
     _setupMessageInput();
     _setupVaultToggle();
     _setupChatHeader();
@@ -1886,5 +1897,5 @@ if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
  *    * Implementacion de _updateMessageStatus y _toggleVaultUI.
  *    * Implementacion de gestion de permisos en el arranque.
  *    * FIX v10.46: Notificaciones push - _openChatFromNotification + onNotificationOpened listener.
+ *    * INTEGRACION: BleAckSystem vinculado post-inicializacion.
  */
-
