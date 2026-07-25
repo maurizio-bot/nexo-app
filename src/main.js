@@ -652,20 +652,6 @@ async function _handleVoiceToggle() {
         reader.onloadend = function() {
           var base64 = reader.result.split(',')[1];
           var fmt = (audioMimeType || 'webm').split
-              _mediaRecorder.onstop = function() {
-        if (_voiceTimerInterval) { clearInterval(_voiceTimerInterval); _voiceTimerInterval = null; }
-        timerEl.style.display = 'none';
-        var duration = 0;
-        if (_voiceStartTime > 0) duration = Math.round((Date.now() - _voiceStartTime) / 1000);
-        var blobType = audioMimeType || 'audio/webm';
-        var blob = new Blob(_audioChunks, { type: blobType });
-        if (blob.size === 0) {
-          console.log('[ATTACH] Audio blob vacio');
-          return;
-        }
-        var reader = new FileReader();
-        reader.onloadend = function() {
-          var base64 = reader.result.split(',')[1];
           var fmt = (audioMimeType || 'webm').split('/')[1];
           if (fmt.indexOf(';') > -1) fmt = fmt.split(';')[0];
           _sendAttachment('audio', base64, { format: fmt, duration: duration, mimeType: audioMimeType || 'audio/webm' });
