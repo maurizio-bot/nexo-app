@@ -69,6 +69,8 @@ class NexoBlePlugin : Plugin() {
         private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
+        private const val MAX_QUEUE_SIZE = 50
+        private const val WRITE_DELAY_MS = 20L
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
         private const val NEXO_MAGIC_LOW: Byte = 0x58
@@ -103,6 +105,11 @@ class NexoBlePlugin : Plugin() {
     private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
     private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
     private val lastScanNotifyTime = ConcurrentHashMap<String, Long>()
+    private val negotiatedMtu = ConcurrentHashMap<String, Int>()
+    private val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
+    private val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
+
+    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
 
     private fun remLog(level: String, tag: String, message: String) {
         Log.i("NEXO_REM", "[$level][$tag] $message")
@@ -245,6 +252,9 @@ class NexoBlePlugin : Plugin() {
         messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         messageBufferTimers.clear()
         lastScanNotifyTime.clear()
+        writeQueues.clear()
+        writeQueueProcessing.clear()
+        negotiatedMtu.clear()
     }
 
     private fun isScanning(): Boolean {
@@ -375,6 +385,9 @@ class NexoBlePlugin : Plugin() {
         messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         messageBufferTimers.clear()
         lastScanNotifyTime.clear()
+        writeQueues.clear()
+        writeQueueProcessing.clear()
+        negotiatedMtu.clear()
     }
 
     @PluginMethod
@@ -490,7 +503,7 @@ class NexoBlePlugin : Plugin() {
                 NexoBleSpec.NEXO_SERVICE_UUID,
                 android.bluetooth.BluetoothGattService.SERVICE_TYPE_PRIMARY
             )
-            serverTxCharacteristic = BluetoothGattCharacteristic(
+            serverTxCharacteristic =             BluetoothGattCharacteristic(
                 NexoBleSpec.TX_CHARACTERISTIC_UUID,
                 BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
                 BluetoothGattCharacteristic.PERMISSION_READ
@@ -572,7 +585,7 @@ class NexoBlePlugin : Plugin() {
                 remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${chunk.length}")
                 processReceivedChunk(mac, chunk, "gatt_server")
                 if (responseNeeded) {
-                    bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                    bluetoothGattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset offset, value)
                 }
             }
         }
@@ -800,7 +813,9 @@ class NexoBlePlugin : Plugin() {
 
             override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
                 val address = gatt.device?.address ?: ""
-                remLog("INFO", "GATT_CLIENT_CB", "MTU changed $address mtu=$mtu status=$status")
+                val effectiveMtu = if (status == BluetoothGatt.GATT_SUCCESS && mtu > 23) mtu else 23
+                negotiatedMtu[macNorm] = effectiveMtu
+                remLog("INFO", "GATT_CLIENT_CB", "MTU changed $address mtu=$effectiveMtu status=$status")
             }
 
             override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
@@ -928,6 +943,9 @@ class NexoBlePlugin : Plugin() {
         messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         pendingCalls.remove(macNorm)
         pendingMessageQueue.remove(macNorm)
+        writeQueues.remove(macNorm)
+        writeQueueProcessing.remove(macNorm)
+        negotiatedMtu.remove(macNorm)
         notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
         call.resolve(JSObject().put("disconnected", true))
     }
@@ -945,6 +963,8 @@ class NexoBlePlugin : Plugin() {
         clientConnectionStates.remove(macNorm)
         messageBuffers.remove(macNorm)
         messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+        writeQueues.remove(macNorm)
+        writeQueueProcessing.remove(macNorm)
         mainHandler.postDelayed({ startAutoReconnect(macNorm) }, 500)
         call.resolve(JSObject().put("reconnecting", true))
     }
@@ -983,23 +1003,68 @@ class NexoBlePlugin : Plugin() {
 
     private data class SendResult(val sent: Boolean, val mode: String)
 
+    private fun getChunkSize(macNorm: String): Int {
+        val mtu = negotiatedMtu[macNorm] ?: 23
+        val overhead = 3
+        val chunkSize = mtu - overhead
+        return chunkSize.coerceAtLeast(20)
+    }
+
     private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
-        val chunkSize = 120
+        val chunkSize = getChunkSize(macNorm)
         if (message.length <= chunkSize) {
-            return sendSingleChunk(macNorm, rawDeviceId, message)
+            return enqueueWrite(macNorm, rawDeviceId, message)
         }
         val chunks = message.chunked(chunkSize)
-        val firstResult = sendSingleChunk(macNorm, rawDeviceId, chunks[0])
+        val firstResult = enqueueWrite(macNorm, rawDeviceId, chunks[0])
         if (!firstResult.sent) {
             return SendResult(false, "")
         }
         for (i in 1 until chunks.size) {
-            mainHandler.postDelayed({
-                sendSingleChunk(macNorm, rawDeviceId, chunks[i])
-            }, i * 80L)
+            val item = WriteQueueItem(macNorm, rawDeviceId, chunks[i])
+            val queue = writeQueues.getOrPut(macNorm) { mutableListOf() }
+            if (queue.size >= MAX_QUEUE_SIZE) {
+                remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk $i")
+                continue
+            }
+            queue.add(item)
         }
-        remLog("INFO", "SEND", "Mensaje fragmentado en ${chunks.size} chunks para $macNorm")
+        remLog("INFO", "SEND", "Mensaje fragmentado en ${chunks.size} chunks (size=$chunkSize) para $macNorm")
+        processWriteQueue(macNorm)
         return SendResult(true, firstResult.mode)
+    }
+
+    private fun enqueueWrite(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
+        val item = WriteQueueItem(macNorm, rawDeviceId, chunk)
+        val queue = writeQueues.getOrPut(macNorm) { mutableListOf() }
+        if (queue.size >= MAX_QUEUE_SIZE) {
+            remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk")
+            return SendResult(false, "")
+        }
+        queue.add(item)
+        processWriteQueue(macNorm)
+        return SendResult(true, "queued")
+    }
+
+    private fun processWriteQueue(macNorm: String) {
+        if (writeQueueProcessing[macNorm] == true) return
+        val queue = writeQueues[macNorm] ?: return
+        if (queue.isEmpty()) {
+            writeQueueProcessing.remove(macNorm)
+            return
+        }
+        writeQueueProcessing[macNorm] = true
+        val item = queue.removeAt(0)
+        val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
+        if (!result.sent) {
+            queue.add(0, item)
+            writeQueueProcessing.remove(macNorm)
+            return
+        }
+        mainHandler.postDelayed({
+            writeQueueProcessing.remove(macNorm)
+            processWriteQueue(macNorm)
+        }, WRITE_DELAY_MS)
     }
 
     private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
@@ -1009,10 +1074,12 @@ class NexoBlePlugin : Plugin() {
             try {
                 val data = chunk.toByteArray(Charset.defaultCharset())
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                    gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
                 } else {
                     @Suppress("DEPRECATION")
                     rxChar.value = data
+                    @Suppress("DEPRECATION")
+                    rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
                     @Suppress("DEPRECATION")
                     gatt.writeCharacteristic(rxChar)
                 }
@@ -1440,3 +1507,4 @@ class NexoBlePlugin : Plugin() {
         }
     }
 }
+
