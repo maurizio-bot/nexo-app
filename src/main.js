@@ -651,7 +651,6 @@ async function _handleVoiceToggle() {
         var reader = new FileReader();
         reader.onloadend = function() {
           var base64 = reader.result.split(',')[1];
-          var fmt = (audioMimeType || 'webm').split
           var fmt = (audioMimeType || 'webm').split('/')[1];
           if (fmt.indexOf(';') > -1) fmt = fmt.split(';')[0];
           _sendAttachment('audio', base64, { format: fmt, duration: duration, mimeType: audioMimeType || 'audio/webm' });
