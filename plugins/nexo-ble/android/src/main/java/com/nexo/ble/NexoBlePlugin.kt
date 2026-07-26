@@ -62,7 +62,7 @@ class NexoBlePlugin : Plugin() {
 
     companion object {
         private const val TAG = "NexoBlePlugin"
-        private const val SCAN_TIMEOUT_MS = 6500L
+        private const val SCAN_TIMEOUT_MS = 15000L
         private const val RECONNECT_DELAY_MS = 3000L
         private const val MAX_RECONNECT_DELAY_MS = 30000L
         private const val MAX_RECONNECT_ATTEMPTS = 10
@@ -74,8 +74,8 @@ class NexoBlePlugin : Plugin() {
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
         private const val NEXO_MAGIC_LOW: Byte = 0x58
-        private const val SCAN_DEBOUNCE_MS = 2000L
-        private const val MIN_RSSI = -90
+        private const val SCAN_DEBOUNCE_MS = 1000L
+        private const val MIN_RSSI = -95
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
@@ -224,18 +224,12 @@ class NexoBlePlugin : Plugin() {
                 .put("source", "onResume")
             )
             autoStartGattServerAndAdvertising()
-            mainHandler.postDelayed({
-                reconnectKnownDevices()
-            }, 800)
         }
     }
 
     override fun handleOnPause() {
         super.handleOnPause()
         remLog("INFO", "LIFECYCLE", "handleOnPause")
-        if (isScanning()) {
-            stopScanInternal()
-        }
     }
 
     override fun handleOnDestroy() {
@@ -484,8 +478,8 @@ class NexoBlePlugin : Plugin() {
         }
         return clean.chunked(2).joinToString(":")
     }
-    
-        private fun startGattServer() {
+
+    private fun startGattServer() {
         if (bluetoothGattServer != null) {
             remLog("INFO", "GATT_SERVER", "Ya iniciado")
             return
@@ -640,12 +634,9 @@ class NexoBlePlugin : Plugin() {
 
             val existingState = clientConnectionStates[macNorm]
             if (existingState == BluetoothProfile.STATE_CONNECTING) {
-                remLog("WARN", "GATT_CLIENT", "Conexion ya en progreso para $macNorm, cancelando anterior")
-                gattClients[macNorm]?.let { old ->
-                    try { old.disconnect(); old.close() } catch (e: Exception) { }
-                }
-                pendingCalls.remove(macNorm)
-                reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+                remLog("WARN", "GATT_CLIENT", "Conexion ya en progreso para $macNorm")
+                call.resolve(JSObject().put("connected", false).put("error", "Connection already in progress").put("deviceId", rawDeviceId))
+                return
             }
             if (gattClients.containsKey(macNorm) && existingState == BluetoothProfile.STATE_CONNECTED) {
                 remLog("INFO", "GATT_CLIENT", "Ya conectado a $macNorm")
@@ -731,7 +722,8 @@ class NexoBlePlugin : Plugin() {
         return object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 val address = gatt.device?.address ?: ""
-                remLog("INFO", "GATT_CLIENT_CB", "onConnectionStateChange $address status=$status newState=$newState")
+                remLog
+                ("INFO", "GATT_CLIENT_CB", "onConnectionStateChange $address status=$status newState=$newState")
                 clientConnectionStates[macNorm] = newState
                 val pendingCall = pendingCalls[macNorm]
                 if (status != BluetoothGatt.GATT_SUCCESS && newState != BluetoothProfile.STATE_CONNECTED) {
@@ -853,6 +845,7 @@ class NexoBlePlugin : Plugin() {
                 val address = gatt.device?.address ?: ""
                 val macNormLocal = normalizeMac(address)
                 if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
+                    writeQueueTimeouts.remove(macNormLocal)?.let { mainHandler.removeCallbacks(it) }
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         remLog("INFO", "GATT_CLIENT_CB", "onCharacteristicWrite SUCCESS $address")
                     } else {
@@ -869,6 +862,7 @@ class NexoBlePlugin : Plugin() {
                 val address = gatt.device?.address ?: ""
                 val macNormLocal = normalizeMac(address)
                 if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
+                    writeQueueTimeouts.remove(macNormLocal)?.let { mainHandler.removeCallbacks(it) }
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         remLog("INFO", "GATT_CLIENT_CB", "onCharacteristicWrite SUCCESS (API33+) $address")
                     } else {
@@ -901,6 +895,7 @@ class NexoBlePlugin : Plugin() {
             }
         }
     }
+
     private fun startKeepAlive(macNorm: String) {
         stopKeepAlive(macNorm)
         val runnable = object : Runnable {
@@ -977,6 +972,7 @@ class NexoBlePlugin : Plugin() {
         reconnectTimers[macNorm] = runnable
         mainHandler.postDelayed(runnable, delayMs)
     }
+
     @PluginMethod
     fun disconnectDevice(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
@@ -997,6 +993,7 @@ class NexoBlePlugin : Plugin() {
         pendingMessageQueue.remove(macNorm)
         writeQueues.remove(macNorm)
         writeQueueProcessing.remove(macNorm)
+        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         negotiatedMtu.remove(macNorm)
         notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
         call.resolve(JSObject().put("disconnected", true))
@@ -1017,6 +1014,8 @@ class NexoBlePlugin : Plugin() {
         messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         writeQueues.remove(macNorm)
         writeQueueProcessing.remove(macNorm)
+        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+        negotiatedMtu.remove(macNorm)
         mainHandler.postDelayed({ startAutoReconnect(macNorm) }, 500)
         call.resolve(JSObject().put("reconnecting", true))
     }
@@ -1057,9 +1056,8 @@ class NexoBlePlugin : Plugin() {
 
     private fun getChunkSize(macNorm: String): Int {
         val mtu = negotiatedMtu[macNorm] ?: 23
-        val overhead = 3
-        val chunkSize = mtu - overhead
-        return chunkSize.coerceAtLeast(20)
+        if (mtu <= 23) return 100
+        return (mtu - 3).coerceAtLeast(100)
     }
 
     private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
@@ -1108,21 +1106,18 @@ class NexoBlePlugin : Plugin() {
         val item = queue.removeAt(0)
         val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
         if (!result.sent) {
-            queue.add(0, item)
-            remLog("WARN", "SEND", "Write no iniciado para $macNorm, reintentando en 500ms")
-            mainHandler.postDelayed({
-                writeQueueProcessing.remove(macNorm)
-                processWriteQueue(macNorm)
-            }, 500)
+            remLog("WARN", "SEND", "Write fallo para $macNorm, descartando chunk y avanzando")
+            writeQueueProcessing.remove(macNorm)
+            mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
             return
         }
         if (result.mode == "gatt_server") {
-            mainHandler.postDelayed({
-                writeQueueProcessing.remove(macNorm)
-                processWriteQueue(macNorm)
-            }, WRITE_DELAY_MS)
+            writeQueueProcessing.remove(macNorm)
+            mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
         }
     }
+
+    private val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
 
     private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
         val rxChar = clientRxCharacteristics[macNorm]
@@ -1165,6 +1160,13 @@ class NexoBlePlugin : Plugin() {
                     }
                 }
                 if (writeInitiated) {
+                    val timeoutRunnable = Runnable {
+                        remLog("WARN", "SEND", "Timeout cola $macNorm, forzando avance")
+                        writeQueueProcessing.remove(macNorm)
+                        processWriteQueue(macNorm)
+                    }
+                    writeQueueTimeouts[macNorm] = timeoutRunnable
+                    mainHandler.postDelayed(timeoutRunnable, 200)
                     return SendResult(true, "gatt_client")
                 }
             } catch (e: Exception) {
