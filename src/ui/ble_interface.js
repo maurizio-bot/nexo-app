@@ -891,9 +891,7 @@ export class BLEInterface {
     var self = this;
     if (self.isScanning) return;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
-    var contacts = _getBLEContacts();
-    if (contacts.length === 0) return;
-    console.log('[BLEInterface] Auto-scan iniciado para ' + contacts.length + ' contactos conocidos');
+    console.log('[BLEInterface] Auto-scan iniciado');
     self.foundDevices.clear();
     _safeNativeCall(self.nativePlugin, 'startScan', {})
       .then(function() {
@@ -910,7 +908,7 @@ export class BLEInterface {
               self.updateScanButton();
             });
           }
-        }, 3000);
+        }, 6000);
       })
       .catch(function(e) {
         console.warn('[BLEInterface] Auto-scan fallo:', e.message);
