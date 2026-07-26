@@ -720,11 +720,11 @@ class NexoBlePlugin : Plugin() {
 
     private fun createGattClientCallback(macNorm: String): BluetoothGattCallback {
         return object : BluetoothGattCallback() {
-            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 val address = gatt.device?.address ?: ""
-                remLog
-                ("INFO", "GATT_CLIENT_CB", "onConnectionStateChange $address status=$status newState=$newState")
+                remLog("INFO", "GATT_CLIENT_CB", "onConnectionStateChange $address status=$status newState=$newState")
                 clientConnectionStates[macNorm] = newState
+
                 val pendingCall = pendingCalls[macNorm]
                 if (status != BluetoothGatt.GATT_SUCCESS && newState != BluetoothProfile.STATE_CONNECTED) {
                     remLog("WARN", "GATT_CLIENT_CB", "Error de conexion status=$status, forzando reconexion")
