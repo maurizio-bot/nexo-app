@@ -726,6 +726,7 @@ class NexoBlePlugin : Plugin() {
             call.reject("Error interno: ${e.message}", "INTERNAL_ERROR")
         }
     }
+
     private fun createGattClientCallback(macNorm: String): BluetoothGattCallback {
         return object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -847,12 +848,11 @@ class NexoBlePlugin : Plugin() {
                 }
             }
 
-            // FIX #1: onCharacteristicWrite legacy — avanza la cola realmente
             @Suppress("DEPRECATION")
-            override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int)
-                val address = gatt.device?.address ?: ""
+            override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+                val address = gatt?.device?.address ?: ""
                 val macNormLocal = normalizeMac(address)
-                if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
+                if (characteristic?.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         remLog("INFO", "GATT_CLIENT_CB", "onCharacteristicWrite SUCCESS $address")
                     } else {
@@ -865,7 +865,6 @@ class NexoBlePlugin : Plugin() {
                 }
             }
 
-            // FIX #1: onCharacteristicWrite API 33+ — avanza la cola realmente
             override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
                 val address = gatt.device?.address ?: ""
                 val macNormLocal = normalizeMac(address)
@@ -902,7 +901,6 @@ class NexoBlePlugin : Plugin() {
             }
         }
     }
-
     private fun startKeepAlive(macNorm: String) {
         stopKeepAlive(macNorm)
         val runnable = object : Runnable {
@@ -948,9 +946,39 @@ class NexoBlePlugin : Plugin() {
         val delayMs = getReconnectDelay(macNorm)
         reconnectDelays[macNorm] = delayMs
         reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-           }
+        val runnable = Runnable {
+            remLog("INFO", "RECONNECT", "Intentando reconectar a $macNorm (intento ${reconnectAttempts[macNorm]}, delay=${delayMs}ms)")
+            val ctx = activity.applicationContext
+            val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            val adapter = bluetoothManager.adapter
+            if (adapter == null || !adapter.isEnabled) return@Runnable
+            val device = scannedDevices[macNorm]
+            if (device == null) {
+                remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
+                return@Runnable
+            }
+            try {
+                gattClients[macNorm]?.let { old ->
+                    try { old.disconnect(); old.close() } catch (e: Exception) { }
+                }
+                val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
+                } else {
+                    device.connectGatt(ctx, false, createGattClientCallback(macNorm))
+                }
+                if (gatt != null) {
+                    gattClients[macNorm] = gatt
+                    clientConnectionStates[macNorm] = BluetoothProfile.STATE_CONNECTING
+                }
+            } catch (e: Exception) {
+                remLog("ERROR", "RECONNECT", "Fallo reconexion $macNorm: ${e.message}")
+            }
+        }
+        reconnectTimers[macNorm] = runnable
+        mainHandler.postDelayed(runnable, delayMs)
+    }
 
-        @PluginMethod
+    @PluginMethod
     fun disconnectDevice(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
         val macNorm = normalizeMac(rawDeviceId)
@@ -1569,5 +1597,3 @@ class NexoBlePlugin : Plugin() {
         }
     }
 }
-
-    
