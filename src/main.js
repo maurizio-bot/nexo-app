@@ -1204,14 +1204,17 @@ function _setupJumpButton() {
     console.warn('[MAIN] _setupJumpButton error:', e);
   }
 }
-// FIX v9.9.1: NO clonar nodo, reutilizar listener existente del FAB
+// FIX: No interferir con ble_interface.js que ya maneja el FAB.
+// Agregar listener extra causaba doble toggle: abria y cerraba el panel.
 function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
-    // Solo actualizar icono, no clonar (preserva listeners de ble_interface.js)
+    var hasBLE = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
+    if (hasBLE) {
+      return;
+    }
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
-    // Si no hay listener, agregar uno que delegue a bleInterface
     if (!fabBtn._nexoFabBound) {
       fabBtn.addEventListener('click', function() {
         if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
