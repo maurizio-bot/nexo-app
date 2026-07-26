@@ -108,6 +108,7 @@ class NexoBlePlugin : Plugin() {
     private val negotiatedMtu = ConcurrentHashMap<String, Int>()
     private val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
     private val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
+    private val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
 
     private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
 
@@ -248,6 +249,8 @@ class NexoBlePlugin : Plugin() {
         lastScanNotifyTime.clear()
         writeQueues.clear()
         writeQueueProcessing.clear()
+        writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+        writeQueueTimeouts.clear()
         negotiatedMtu.clear()
     }
 
@@ -381,6 +384,8 @@ class NexoBlePlugin : Plugin() {
         lastScanNotifyTime.clear()
         writeQueues.clear()
         writeQueueProcessing.clear()
+        writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+        writeQueueTimeouts.clear()
         negotiatedMtu.clear()
     }
 
@@ -717,14 +722,12 @@ class NexoBlePlugin : Plugin() {
             call.reject("Error interno: ${e.message}", "INTERNAL_ERROR")
         }
     }
-
     private fun createGattClientCallback(macNorm: String): BluetoothGattCallback {
         return object : BluetoothGattCallback() {
-                override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 val address = gatt.device?.address ?: ""
                 remLog("INFO", "GATT_CLIENT_CB", "onConnectionStateChange $address status=$status newState=$newState")
                 clientConnectionStates[macNorm] = newState
-
                 val pendingCall = pendingCalls[macNorm]
                 if (status != BluetoothGatt.GATT_SUCCESS && newState != BluetoothProfile.STATE_CONNECTED) {
                     remLog("WARN", "GATT_CLIENT_CB", "Error de conexion status=$status, forzando reconexion")
@@ -858,38 +861,12 @@ class NexoBlePlugin : Plugin() {
                 }
             }
 
-            override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
-                val address = gatt.device?.address ?: ""
-                val macNormLocal = normalizeMac(address)
-                if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-                    writeQueueTimeouts.remove(macNormLocal)?.let { mainHandler.removeCallbacks(it) }
-                    if (status == BluetoothGatt.GATT_SUCCESS) {
-                        remLog("INFO", "GATT_CLIENT_CB", "onCharacteristicWrite SUCCESS (API33+) $address")
-                    } else {
-                        remLog("WARN", "GATT_CLIENT_CB", "onCharacteristicWrite FAILED (API33+) $address status=$status")
-                    }
-                    mainHandler.postDelayed({
-                        writeQueueProcessing.remove(macNormLocal)
-                        processWriteQueue(macNormLocal)
-                    }, WRITE_DELAY_MS)
-                }
-            }
-
             @Suppress("DEPRECATION")
             override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
                 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
                     val chunk = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
                     val address = gatt.device?.address ?: ""
                     remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from $address: len=${chunk.length}")
-                    processReceivedChunk(address, chunk, "gatt_client")
-                }
-            }
-
-            override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
-                if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
-                    val chunk = value.toString(Charset.defaultCharset())
-                    val address = gatt.device?.address ?: ""
-                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API33+) from $address: len=${chunk.length}")
                     processReceivedChunk(address, chunk, "gatt_client")
                 }
             }
@@ -1116,8 +1093,6 @@ class NexoBlePlugin : Plugin() {
             mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
         }
     }
-
-    private val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
 
     private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
         val rxChar = clientRxCharacteristics[macNorm]
