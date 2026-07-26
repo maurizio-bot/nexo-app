@@ -849,7 +849,7 @@ class NexoBlePlugin : Plugin() {
 
             // FIX #1: onCharacteristicWrite legacy — avanza la cola realmente
             @Suppress("DEPRECATION")
-            override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int)
                 val address = gatt.device?.address ?: ""
                 val macNormLocal = normalizeMac(address)
                 if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
