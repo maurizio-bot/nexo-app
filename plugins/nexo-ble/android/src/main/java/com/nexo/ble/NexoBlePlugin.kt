@@ -625,6 +625,7 @@ class NexoBlePlugin : Plugin() {
             }
         }
     }
+
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         try {
@@ -725,7 +726,6 @@ class NexoBlePlugin : Plugin() {
             call.reject("Error interno: ${e.message}", "INTERNAL_ERROR")
         }
     }
-
     private fun createGattClientCallback(macNorm: String): BluetoothGattCallback {
         return object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -847,6 +847,41 @@ class NexoBlePlugin : Plugin() {
                 }
             }
 
+            // FIX #1: onCharacteristicWrite legacy — avanza la cola realmente
+            @Suppress("DEPRECATION")
+            override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+                val address = gatt.device?.address ?: ""
+                val macNormLocal = normalizeMac(address)
+                if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        remLog("INFO", "GATT_CLIENT_CB", "onCharacteristicWrite SUCCESS $address")
+                    } else {
+                        remLog("WARN", "GATT_CLIENT_CB", "onCharacteristicWrite FAILED $address status=$status")
+                    }
+                    mainHandler.postDelayed({
+                        writeQueueProcessing.remove(macNormLocal)
+                        processWriteQueue(macNormLocal)
+                    }, WRITE_DELAY_MS)
+                }
+            }
+
+            // FIX #1: onCharacteristicWrite API 33+ — avanza la cola realmente
+            override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
+                val address = gatt.device?.address ?: ""
+                val macNormLocal = normalizeMac(address)
+                if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        remLog("INFO", "GATT_CLIENT_CB", "onCharacteristicWrite SUCCESS (API33+) $address")
+                    } else {
+                        remLog("WARN", "GATT_CLIENT_CB", "onCharacteristicWrite FAILED (API33+) $address status=$status")
+                    }
+                    mainHandler.postDelayed({
+                        writeQueueProcessing.remove(macNormLocal)
+                        processWriteQueue(macNormLocal)
+                    }, WRITE_DELAY_MS)
+                }
+            }
+
             @Suppress("DEPRECATION")
             override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
                 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
@@ -913,37 +948,7 @@ class NexoBlePlugin : Plugin() {
         val delayMs = getReconnectDelay(macNorm)
         reconnectDelays[macNorm] = delayMs
         reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        val runnable = Runnable {
-            remLog("INFO", "RECONNECT", "Intentando reconectar a $macNorm (intento ${reconnectAttempts[macNorm]}, delay=${delayMs}ms)")
-            val ctx = activity.applicationContext
-            val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            val adapter = bluetoothManager.adapter
-            if (adapter == null || !adapter.isEnabled) return@Runnable
-            val device = scannedDevices[macNorm]
-            if (device == null) {
-                remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
-                return@Runnable
-            }
-            try {
-                gattClients[macNorm]?.let { old ->
-                    try { old.disconnect(); old.close() } catch (e: Exception) { }
-                }
-                val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
-                } else {
-                    device.connectGatt(ctx, false, createGattClientCallback(macNorm))
-                }
-                if (gatt != null) {
-                    gattClients[macNorm] = gatt
-                    clientConnectionStates[macNorm] = BluetoothProfile.STATE_CONNECTING
-                }
-            } catch (e: Exception) {
-                remLog("ERROR", "RECONNECT", "Fallo reconexion $macNorm: ${e.message}")
-            }
-        }
-        reconnectTimers[macNorm] = runnable
-        mainHandler.postDelayed(runnable, delayMs)
-    }
+           }
 
     @PluginMethod
     fun disconnectDevice(call: PluginCall) {
@@ -951,7 +956,6 @@ class NexoBlePlugin : Plugin() {
         val macNorm = normalizeMac(rawDeviceId)
         remLog("INFO", "GATT_CLIENT", "disconnectDevice $rawDeviceId")
         reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        reconnectTimers.remove(macNorm)
         reconnectAttempts.remove(macNorm)
         reconnectDelays.remove(macNorm)
         stopKeepAlive(macNorm)
@@ -1000,6 +1004,7 @@ class NexoBlePlugin : Plugin() {
         startAutoReconnect(macNorm)
         call.resolve(JSObject().put("reconnecting", true))
     }
+
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
@@ -1050,7 +1055,6 @@ class NexoBlePlugin : Plugin() {
             queue.add(item)
         }
         remLog("INFO", "SEND", "Mensaje fragmentado en ${chunks.size} chunks (size=$chunkSize) para $macNorm")
-        processWriteQueue(macNorm)
         return SendResult(true, firstResult.mode)
     }
 
@@ -1066,6 +1070,8 @@ class NexoBlePlugin : Plugin() {
         return SendResult(true, "queued")
     }
 
+    // FIX #3: Cola no se atasca. Reintento con delay si falla al iniciar.
+    // FIX: Server path avanza manualmente porque no hay onCharacteristicWrite para notify.
     private fun processWriteQueue(macNorm: String) {
         if (writeQueueProcessing[macNorm] == true) return
         val queue = writeQueues[macNorm] ?: return
@@ -1078,33 +1084,65 @@ class NexoBlePlugin : Plugin() {
         val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
         if (!result.sent) {
             queue.add(0, item)
-            writeQueueProcessing.remove(macNorm)
+            remLog("WARN", "SEND", "Write no iniciado para $macNorm, reintentando en 500ms")
+            mainHandler.postDelayed({
+                writeQueueProcessing.remove(macNorm)
+                processWriteQueue(macNorm)
+            }, 500)
             return
         }
-        mainHandler.postDelayed({
-            writeQueueProcessing.remove(macNorm)
-            processWriteQueue(macNorm)
-        }, WRITE_DELAY_MS)
+        if (result.mode == "gatt_server") {
+            mainHandler.postDelayed({
+                writeQueueProcessing.remove(macNorm)
+                processWriteQueue(macNorm)
+            }, WRITE_DELAY_MS)
+        }
     }
 
+    // FIX #2: Fallback WRITE_TYPE_NO_RESPONSE -> WRITE_TYPE_DEFAULT
     private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
         val rxChar = clientRxCharacteristics[macNorm]
         val gatt = gattClients[macNorm]
         if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
             try {
                 val data = chunk.toByteArray(Charset.defaultCharset())
+                var writeInitiated = false
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+                    val status = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        writeInitiated = true
+                        remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE) to $macNorm len=${chunk.length}")
+                    } else {
+                        remLog("WARN", "SEND", "NO_RESPONSE fallo status=$status, intentando DEFAULT para $macNorm")
+                        val fallbackStatus = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                        if (fallbackStatus == BluetoothGatt.GATT_SUCCESS) {
+                            writeInitiated = true
+                            remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback) to $macNorm len=${chunk.length}")
+                        }
+                    }
                 } else {
                     @Suppress("DEPRECATION")
                     rxChar.value = data
                     @Suppress("DEPRECATION")
                     rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
                     @Suppress("DEPRECATION")
-                    gatt.writeCharacteristic(rxChar)
+                    writeInitiated = gatt.writeCharacteristic(rxChar)
+                    if (!writeInitiated) {
+                        remLog("WARN", "SEND", "NO_RESPONSE fallo (legacy), intentando DEFAULT para $macNorm")
+                        @Suppress("DEPRECATION")
+                        rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                        @Suppress("DEPRECATION")
+                        writeInitiated = gatt.writeCharacteristic(rxChar)
+                        if (writeInitiated) {
+                            remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback legacy) to $macNorm len=${chunk.length}")
+                        }
+                    } else {
+                        remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE legacy) to $macNorm len=${chunk.length}")
+                    }
                 }
-                remLog("INFO", "SEND", "GATT Client chunk sent to $macNorm len=${chunk.length}")
-                return SendResult(true, "gatt_client")
+                if (writeInitiated) {
+                    return SendResult(true, "gatt_client")
+                }
             } catch (e: Exception) {
                 remLog("WARN", "SEND", "GATT Client write exception: ${e.message}")
             }
@@ -1347,6 +1385,7 @@ class NexoBlePlugin : Plugin() {
         }
         call.resolve(JSObject().put("devices", devices))
     }
+
     private fun registerServerReceivers() {
         if (messageReceiver != null) return
         messageReceiver = object : BroadcastReceiver() {
