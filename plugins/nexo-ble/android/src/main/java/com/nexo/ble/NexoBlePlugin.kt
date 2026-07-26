@@ -1,3 +1,7 @@
+## Focos de Interés
+ * **Capacitor Android BLE Plugin Architecture:** The codebase uses @CapacitorPlugin for Android Bluetooth Low Energy, handling dual GATT roles (client and server), foreground services, automatic reconnection, and message reassembly.
+ * **Dual Roles (Server and Client):** Implementation includes both a BluetoothGattServer for incoming connections/advertising and BluetoothGatt client connectivity for outgoing connections and scanning.
+ * **Robust Reconnection and Buffer Management:** Features custom backoff delay timers, message chunk reassembly logic with JSON validation, write queues, and state recovery callbacks.
 package com.nexo.ble
 
 import android.app.ActivityManager
@@ -787,7 +791,6 @@ class NexoBlePlugin : Plugin() {
                     startAutoReconnect(macNorm)
                 }
             }
-
             override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
                 val address = gatt.device?.address ?: ""
                 remLog("INFO", "GATT_CLIENT_CB", "onServicesDiscovered $address status=$status")
@@ -849,10 +852,10 @@ class NexoBlePlugin : Plugin() {
             }
 
             @Suppress("DEPRECATION")
-            override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
-                val address = gatt?.device?.address ?: ""
+            override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+                val address = gatt.device?.address ?: ""
                 val macNormLocal = normalizeMac(address)
-                if (characteristic?.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
+                if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
                     if (status == BluetoothGatt.GATT_SUCCESS) {
                         remLog("INFO", "GATT_CLIENT_CB", "onCharacteristicWrite SUCCESS $address")
                     } else {
@@ -1595,5 +1598,4 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) {
             call.reject("Error listando archivos: ${e.message}")
         }
-    }
-}
+ }            
