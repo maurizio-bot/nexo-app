@@ -1,7 +1,3 @@
-## Focos de Interés
- * **Capacitor Android BLE Plugin Architecture:** The codebase uses @CapacitorPlugin for Android Bluetooth Low Energy, handling dual GATT roles (client and server), foreground services, automatic reconnection, and message reassembly.
- * **Dual Roles (Server and Client):** Implementation includes both a BluetoothGattServer for incoming connections/advertising and BluetoothGatt client connectivity for outgoing connections and scanning.
- * **Robust Reconnection and Buffer Management:** Features custom backoff delay timers, message chunk reassembly logic with JSON validation, write queues, and state recovery callbacks.
 package com.nexo.ble
 
 import android.app.ActivityManager
@@ -488,8 +484,8 @@ class NexoBlePlugin : Plugin() {
         }
         return clean.chunked(2).joinToString(":")
     }
-
-    private fun startGattServer() {
+    
+        private fun startGattServer() {
         if (bluetoothGattServer != null) {
             remLog("INFO", "GATT_SERVER", "Ya iniciado")
             return
@@ -791,6 +787,7 @@ class NexoBlePlugin : Plugin() {
                     startAutoReconnect(macNorm)
                 }
             }
+
             override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
                 val address = gatt.device?.address ?: ""
                 remLog("INFO", "GATT_CLIENT_CB", "onServicesDiscovered $address status=$status")
@@ -980,7 +977,6 @@ class NexoBlePlugin : Plugin() {
         reconnectTimers[macNorm] = runnable
         mainHandler.postDelayed(runnable, delayMs)
     }
-
     @PluginMethod
     fun disconnectDevice(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
@@ -1598,4 +1594,5 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) {
             call.reject("Error listando archivos: ${e.message}")
         }
- }            
+    }
+}
