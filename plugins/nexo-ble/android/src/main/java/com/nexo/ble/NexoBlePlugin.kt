@@ -950,7 +950,7 @@ class NexoBlePlugin : Plugin() {
         reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
            }
 
-    @PluginMethod
+        @PluginMethod
     fun disconnectDevice(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
         val macNorm = normalizeMac(rawDeviceId)
@@ -1070,8 +1070,6 @@ class NexoBlePlugin : Plugin() {
         return SendResult(true, "queued")
     }
 
-    // FIX #3: Cola no se atasca. Reintento con delay si falla al iniciar.
-    // FIX: Server path avanza manualmente porque no hay onCharacteristicWrite para notify.
     private fun processWriteQueue(macNorm: String) {
         if (writeQueueProcessing[macNorm] == true) return
         val queue = writeQueues[macNorm] ?: return
@@ -1099,7 +1097,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    // FIX #2: Fallback WRITE_TYPE_NO_RESPONSE -> WRITE_TYPE_DEFAULT
     private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
         val rxChar = clientRxCharacteristics[macNorm]
         val gatt = gattClients[macNorm]
@@ -1555,13 +1552,22 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun listFiles(call: PluginCall) {
         try {
-            val dir = activity.filesDir
-            val files = dir.listFiles()?.map { it.name } ?: emptyList()
+            val dir: File = activity.filesDir
+            val fileArray: Array<File>? = dir.listFiles()
+            val fileNames: List<String> = if (fileArray != null) {
+                fileArray.map { file: File -> file.name }
+            } else {
+                emptyList<String>()
+            }
             val arr = JSArray()
-            files.forEach { arr.put(it) }
+            for (name in fileNames) {
+                arr.put(name)
+            }
             call.resolve(JSObject().put("files", arr))
         } catch (e: Exception) {
             call.reject("Error listando archivos: ${e.message}")
         }
     }
 }
+
+    
