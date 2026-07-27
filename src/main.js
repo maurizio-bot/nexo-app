@@ -7,6 +7,7 @@
  * FIX: _getContactStorageKey usa nexoId cuando está disponible
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  */
+
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
