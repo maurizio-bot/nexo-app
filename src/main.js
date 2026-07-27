@@ -1478,7 +1478,7 @@ function _renderMessage(msg, skipSave) {
             fvideo.dataset.fullscreenSrc = fvSrc;
             fvideo.dataset.fullscreenType = 'video';
             var fplayOverlay = document.createElement('div');
-            fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;
+            fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
             fplayOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
             mediaWrapper.appendChild(fvideo);
             mediaWrapper.appendChild(fplayOverlay);
