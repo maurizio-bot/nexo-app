@@ -813,6 +813,11 @@ export class BLEInterface {
             if (_normId(allContacts[i].deviceUUID) === uuid && allContacts[i].deviceId) { deviceId = allContacts[i].deviceId; break; }
           }
         }
+        if (!deviceId) {
+          // FIX 2: fallback por id directo si uuid es un deviceId conocido
+          if (self.foundDevices.has(uuid)) deviceId = uuid;
+          if (!deviceId && self.connectedDevices.has(uuid)) deviceId = uuid;
+        }
         if (!deviceId) { console.error('[BLEInterface] sendChatMessage: No deviceId para UUID', uuid); reject(new Error('Dispositivo no encontrado')); return; }
         if (contact && !contact.deviceId) { contact.deviceId = deviceId; _saveBLEContacts(_getBLEContacts()); }
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
@@ -878,7 +883,11 @@ export class BLEInterface {
           self.foundDevices.forEach(function(d) { if (!deviceId && _normId(d.deviceUUID) === uuid) deviceId = d.id; });
           self.connectedDevices.forEach(function(d) { if (!deviceId && _normId(d.deviceUUID) === uuid) deviceId = d.id; });
         }
-        var displayName = (contact && contact.name) || '';
+        if (!deviceId) {
+          // FIX 2: fallback por id directo
+          if (self.foundDevices.has(uuid)) deviceId = uuid;
+          if (!deviceId && self.connectedDevices.has(uuid)) deviceId = uuid;
+        }
         if (!deviceId) { reject(new Error('Dispositivo no conectado')); return; }
         self._activeChatDeviceId = uuid; self._activeChatDeviceIdNative = deviceId;
         self.newDevicesCount = 0; self.updateBadge();
@@ -1195,8 +1204,9 @@ export class BLEInterface {
     var deviceId = device.id || '';
     if (!deviceId) return;
     var nexoId = device.nexoId || '';
+    // FIX 3: si no hay nexoId valido, usar deviceId como fallback temporal
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
-      return;
+      nexoId = deviceId;
     }
     var isContact = _isBLEContact(nexoId);
     if (isContact) {
@@ -1322,6 +1332,7 @@ export class BLEInterface {
       var menuBtn = document.createElement('button');
       menuBtn.className = 'ble-btn-menu';
       menuBtn.innerHTML = '&#x22EE;';
+      menuBtn.style.cssText = 'width:36px;height:36
       menuBtn.style.cssText = 'width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0;margin-left:8px;';
       menuBtn.addEventListener('click', function(e) { e.stopPropagation(); self._toggleContactMenu(uuid, menuBtn); });
       row.appendChild(menuBtn);
@@ -1404,8 +1415,9 @@ export class BLEInterface {
     if (!device) return;
     var name = device.name || device.deviceUUID || 'Nexo Device';
     var nexoId = device.deviceUUID || '';
-    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
-      console.warn('[BLEInterface] No se puede agregar: dispositivo sin NEXO ID');
+    // FIX 3: permitir fallback deviceId como identificador temporal
+    if (!nexoId) {
+      console.warn('[BLEInterface] No se puede agregar: dispositivo sin ID');
       return;
     }
     _addBLEContact({ deviceUUID: nexoId, name: name, deviceId: deviceId });
@@ -1488,4 +1500,3 @@ export function initBLEInterface(bleMesh) {
   window.bleInterface = instance;
   return instance;
 }
-
