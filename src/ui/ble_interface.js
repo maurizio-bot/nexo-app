@@ -1332,7 +1332,6 @@ export class BLEInterface {
       var menuBtn = document.createElement('button');
       menuBtn.className = 'ble-btn-menu';
       menuBtn.innerHTML = '&#x22EE;';
-      menuBtn.style.cssText = 'width:36px;height:36
       menuBtn.style.cssText = 'width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0;margin-left:8px;';
       menuBtn.addEventListener('click', function(e) { e.stopPropagation(); self._toggleContactMenu(uuid, menuBtn); });
       row.appendChild(menuBtn);
