@@ -1,10 +1,11 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.1-FIX
+ * src/main.js - Punto de entrada NEXO v9.9.2-FASE4
  * FIX: _cameraActiveStream declarado explícitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
  * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
  * FIX: ObjectURLs revocados al cerrar fullscreen
  * FIX: _getContactStorageKey usa nexoId cuando está disponible
+ * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -13,6 +14,8 @@ import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
 import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
 import { createAckSystem } from './ui/ble_ack.js';
+import { vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessage, vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId } from './vault/vault_manager.js';
+import { createAutoScan } from './ui/autoscan.js';
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
   NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe estar importado');
@@ -56,6 +59,7 @@ var _cameraPreviewMediaRecorder = null;
 var _cameraPreviewVideoChunks = [];
 var _cameraVideoStartTime = 0;
 var _objectURLRegistry = []; // FIX: registro para revocar ObjectURLs
+var _autoScan = null; // Fase 4: AutoScanManager
 
 function _fmtTime(sec) {
   var m = Math.floor(sec / 60);
@@ -748,7 +752,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.1-FIX iniciando...');
+    console.log('[MAIN] NEXO v9.9.2-FASE4 iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -857,23 +861,12 @@ function _hidePermissionOverlay() {
 function _openChatFromNotification(deviceId) {
   try {
     if (!window.NEXO.app) return;
-    var contacts = [];
-    try {
-      contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v2') || '[]');
-    } catch (e) {}
-    var contact = null;
-    for (var i = 0; i < contacts.length; i++) {
-      var c = contacts[i];
-      if (c.id === deviceId || c.deviceUUID === deviceId || c.address === deviceId || c.nexoId === deviceId) {
-        contact = c;
-        break;
-      }
-    }
+    var contact = vaultFindContactByNexoId(deviceId);
     if (!contact) {
-      contact = { id: deviceId, name: 'NEXO', deviceUUID: deviceId, address: deviceId, nexoId: deviceId };
-      contacts.push(contact);
-      localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(contacts));
+      contact = { nexoId: deviceId, displayName: 'NEXO' };
+      vaultSaveContact(contact);
     }
+    if (!contact.name) contact.name = contact.displayName || 'NEXO';
     window.NEXO.app.activeContact = contact;
     if (window.NEXO.app.bleInterface) {
       window.NEXO.app.bleInterface._activeChatDeviceId = deviceId;
@@ -900,6 +893,9 @@ async function initializeNexoApp() {
       enableMesh: true,
       onMessage: function(msg) {
         console.log('Mensaje:', msg);
+        if (msg && msg.senderNexoId) {
+          vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
+        }
         _renderMessage(msg);
       },
       onStatusChange: function(mode) {
@@ -965,6 +961,31 @@ async function initializeNexoApp() {
     _setupFABButton();
     _setupBackButton();
     _loadPersistedMessages();
+    try {
+      _autoScan = createAutoScan(window.NEXO.app.bleInterface);
+      window.addEventListener('nexo:ble:deviceConnected', function(e) {
+        if (e && e.detail && e.detail.deviceId) {
+          _autoScan.unregisterDevice(e.detail.deviceId);
+        }
+      });
+      window.addEventListener('nexo:ble:deviceDisconnected', function(e) {
+        if (e && e.detail && e.detail.deviceId) {
+          var nid = e.detail.nexoId || e.detail.deviceId;
+          _autoScan.registerKnownDevice(e.detail.deviceId, nid);
+          _autoScan.start();
+        }
+      });
+      window.addEventListener('nexo:vault:messagesLoaded', function(e) {
+        if (e && e.detail && Array.isArray(e.detail.messages)) {
+          e.detail.messages.forEach(function(msg) {
+            _renderMessage(msg, true);
+          });
+        }
+      });
+      console.log('[MAIN] Fase 4 hooks OK');
+    } catch (f4Err) {
+      console.warn('[MAIN] Fase 4 init warn:', f4Err);
+    }
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
     console.log('NEXO ' + window.NEXO.version + ' Inicializado');
@@ -1128,15 +1149,16 @@ function _setupChatHeader() {
         }
         if (window.NEXO.app && window.NEXO.app.activeContact) {
           window.NEXO.app.activeContact.name = newName;
+          window.NEXO.app.activeContact.displayName = newName;
         }
         try {
-          var contacts = JSON.parse(localStorage.getItem('nexo_ble_contacts_v2') || '[]');
-          var activeId = window.NEXO.app && window.NEXO.app.activeContact ? window.NEXO.app.activeContact.id : null;
+          var activeId = window.NEXO.app && window.NEXO.app.activeContact ? window.NEXO.app.activeContact.nexoId : null;
           if (activeId) {
-            var idx = contacts.findIndex(function(c) { return (c.deviceUUID || c.id || c.address) === activeId; });
-            if (idx >= 0) {
-              contacts[idx].name = newName;
-              localStorage.setItem('nexo_ble_contacts_v2', JSON.stringify(contacts));
+            var c = vaultFindContactByNexoId(activeId);
+            if (c) {
+              c.displayName = newName;
+              c.name = newName;
+              vaultSaveContact(c);
             }
           }
         } catch (e) {}
@@ -1241,6 +1263,10 @@ function _getContactStorageKey() {
 function _saveMessageToStorage(msg) {
   try {
     if (!msg || !msg.messageId) return;
+    var contactId = _getCurrentContactId();
+    if (contactId) {
+      vaultAppendMessage(contactId, msg);
+    }
     var key = _getContactStorageKey();
     var messages = JSON.parse(localStorage.getItem(key) || '[]');
     var exists = messages.some(function(m) { return m.messageId === msg.messageId; });
@@ -1256,6 +1282,10 @@ function _saveMessageToStorage(msg) {
 function _updateMessageStorageStatus(messageId, status) {
   try {
     if (!messageId) return;
+    var contactId = _getCurrentContactId();
+    if (contactId) {
+      vaultUpdateMessageStatus(contactId, messageId, status);
+    }
     var key = _getContactStorageKey();
     var messages = JSON.parse(localStorage.getItem(key) || '[]');
     var idx = messages.findIndex(function(m) { return m.messageId === messageId; });
@@ -1269,6 +1299,15 @@ function _updateMessageStorageStatus(messageId, status) {
 }
 function _loadPersistedMessages() {
   try {
+    var contactId = _getCurrentContactId();
+    if (!contactId) return;
+    var vaultMessages = vaultLoadMessages(contactId);
+    if (vaultMessages && vaultMessages.length > 0) {
+      vaultMessages.forEach(function(msg) {
+        _renderMessage(msg, true);
+      });
+      return;
+    }
     var key = _getContactStorageKey();
     var messages = JSON.parse(localStorage.getItem(key) || '[]');
     if (messages.length === 0) return;
@@ -1449,6 +1488,7 @@ function _renderMessage(msg, skipSave) {
         locHtml += '<span style="font-size:11px;color:#aaa;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
         locHtml += '</div></div>';
         locHtml += '<div style="padding:8px 12px;"> <b>Ubicacion</b><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
+        locHtml += '<div style="display:flex;gap:
         locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
         locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
         locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
