@@ -32,6 +32,14 @@ window.NEXO = {
 };
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
+window.vaultLoadContacts = vaultLoadContacts;
+window.vaultSaveContact = vaultSaveContact;
+window.vaultLoadMessages = vaultLoadMessages;
+window.vaultSaveMessage = vaultSaveMessage;
+window.vaultAppendMessage = vaultAppendMessage;
+window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;
+window.vaultGetOrCreateContact = vaultGetOrCreateContact;
+window.vaultFindContactByNexoId = vaultFindContactByNexoId;
 var SAFETY_TIMEOUT = setTimeout(function() {
   try {
     if (NEXO_DIAG && typeof NEXO_DIAG.isSplashVisible === 'function' && NEXO_DIAG.isSplashVisible()) {
@@ -982,6 +990,18 @@ async function initializeNexoApp() {
           });
         }
       });
+      window.addEventListener('nexo:ble:messageReceived', function(e) {
+        if (e && e.detail) {
+          var msg = e.detail;
+          if (msg.senderNexoId) {
+            vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
+          }
+          _renderMessage(msg);
+          if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
+            try { window.NEXO.app.onMessage(msg); } catch(omErr) {}
+          }
+        }
+      });
       console.log('[MAIN] Fase 4 hooks OK');
     } catch (f4Err) {
       console.warn('[MAIN] Fase 4 init warn:', f4Err);
@@ -1458,7 +1478,7 @@ function _renderMessage(msg, skipSave) {
             fvideo.dataset.fullscreenSrc = fvSrc;
             fvideo.dataset.fullscreenType = 'video';
             var fplayOverlay = document.createElement('div');
-            fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
+            fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;
             fplayOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
             mediaWrapper.appendChild(fvideo);
             mediaWrapper.appendChild(fplayOverlay);
