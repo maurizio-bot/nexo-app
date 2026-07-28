@@ -1,8 +1,7 @@
 /**
- * BLE Interface v5.2.0-FASE4
- * FIX: stableId declarado antes de uso en onPayloadReceived
- * FIX: getBLEContacts expuesto como metodo de clase
- * FIX: Eliminado bloque duplicado auto-connect en onDeviceFound
+ * BLE Interface v5.2.1-FASE4-FIXED
+ * FIX: Revertido FIX 3 — onDeviceFound ignora dispositivos sin nexoId valido
+ * FIX: Revertido FIX 2 — eliminado fallback por id directo en sendChatMessage/openChat
  * FASE4: Hooks vault contactos + mensajes, autoscan conectar/desconectar
  */
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
@@ -357,7 +356,7 @@ export class BLEInterface {
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
     this.ackSystem = null;
-    console.log('[BLEInterface] v5.2.0-FASE4 iniciado');
+    console.log('[BLEInterface] v5.2.1-FASE4-FIXED iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -813,11 +812,6 @@ export class BLEInterface {
             if (_normId(allContacts[i].deviceUUID) === uuid && allContacts[i].deviceId) { deviceId = allContacts[i].deviceId; break; }
           }
         }
-        if (!deviceId) {
-          // FIX 2: fallback por id directo si uuid es un deviceId conocido
-          if (self.foundDevices.has(uuid)) deviceId = uuid;
-          if (!deviceId && self.connectedDevices.has(uuid)) deviceId = uuid;
-        }
         if (!deviceId) { console.error('[BLEInterface] sendChatMessage: No deviceId para UUID', uuid); reject(new Error('Dispositivo no encontrado')); return; }
         if (contact && !contact.deviceId) { contact.deviceId = deviceId; _saveBLEContacts(_getBLEContacts()); }
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
@@ -882,11 +876,6 @@ export class BLEInterface {
         if (!deviceId && contact) {
           self.foundDevices.forEach(function(d) { if (!deviceId && _normId(d.deviceUUID) === uuid) deviceId = d.id; });
           self.connectedDevices.forEach(function(d) { if (!deviceId && _normId(d.deviceUUID) === uuid) deviceId = d.id; });
-        }
-        if (!deviceId) {
-          // FIX 2: fallback por id directo
-          if (self.foundDevices.has(uuid)) deviceId = uuid;
-          if (!deviceId && self.connectedDevices.has(uuid)) deviceId = uuid;
         }
         if (!deviceId) { reject(new Error('Dispositivo no conectado')); return; }
         self._activeChatDeviceId = uuid; self._activeChatDeviceIdNative = deviceId;
@@ -1205,9 +1194,8 @@ export class BLEInterface {
     var deviceId = device.id || '';
     if (!deviceId) return;
     var nexoId = device.nexoId || '';
-    // FIX 3: si no hay nexoId valido, usar deviceId como fallback temporal
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
-      nexoId = deviceId;
+      return;
     }
     var isContact = _isBLEContact(nexoId);
     if (isContact) {
@@ -1321,7 +1309,7 @@ export class BLEInterface {
       avatar.textContent = initials;
       row.appendChild(avatar);
       var info = document.createElement('div');
-      info.className = 'ble-contact-info';
+      info.className = 'ble      info.className = 'ble-contact-info';
       info.innerHTML = '<div class="ble-contact-name">' + (contact.name || '') + '</div><div class="ble-contact-msg">' + lastMsg + '</div>';
       row.appendChild(info);
       var meta = document.createElement('div');
@@ -1415,9 +1403,8 @@ export class BLEInterface {
     if (!device) return;
     var name = device.name || device.deviceUUID || 'Nexo Device';
     var nexoId = device.deviceUUID || '';
-    // FIX 3: permitir fallback deviceId como identificador temporal
-    if (!nexoId) {
-      console.warn('[BLEInterface] No se puede agregar: dispositivo sin ID');
+    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
+      console.warn('[BLEInterface] No se puede agregar: dispositivo sin NEXO ID');
       return;
     }
     _addBLEContact({ deviceUUID: nexoId, name: name, deviceId: deviceId });
@@ -1500,3 +1487,4 @@ export function initBLEInterface(bleMesh) {
   window.bleInterface = instance;
   return instance;
 }
+
