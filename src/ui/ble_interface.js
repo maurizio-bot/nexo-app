@@ -904,6 +904,7 @@ export class BLEInterface {
           if (appContainer) appContainer.classList.remove('hidden');
           var nameInput = document.getElementById('chat-contact-name');
           var subtitle = document.getElementById('chat-contact-subtitle');
+          var displayName = (contact && contact.name) || 'NEXO';
           if (nameInput) nameInput.value = displayName;
           if (subtitle) subtitle.textContent = '';
           _safeDispatchEvent('nexo:ble:openChat', { contactId: uuid, name: displayName, deviceId: deviceId, transport: 'ble', source: 'ble_interface' });
