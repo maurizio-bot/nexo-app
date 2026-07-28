@@ -15,7 +15,7 @@ import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
 import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
 import { createAckSystem } from './ui/ble_ack.js';
-import { vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessage, vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId } from './vault/vault_manager.js';
+import { vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages, vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId } from './vault/vault_manager.js';
 import { createAutoScan } from './ui/autoscan.js';
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
@@ -36,7 +36,7 @@ window.NEXO_DIAG = NEXO_DIAG;
 window.vaultLoadContacts = vaultLoadContacts;
 window.vaultSaveContact = vaultSaveContact;
 window.vaultLoadMessages = vaultLoadMessages;
-window.vaultSaveMessage = vaultSaveMessage;
+window.vaultSaveMessages = vaultSaveMessages;
 window.vaultAppendMessage = vaultAppendMessage;
 window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;
 window.vaultGetOrCreateContact = vaultGetOrCreateContact;
