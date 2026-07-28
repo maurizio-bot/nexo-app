@@ -36,7 +36,7 @@ window.NEXO_DIAG = NEXO_DIAG;
 window.vaultLoadContacts = vaultLoadContacts;
 window.vaultSaveContact = vaultSaveContact;
 window.vaultLoadMessages = vaultLoadMessages;
-window.vaultSaveMessages = vaultSaveMessages;
+window.vaultSaveMessage = vaultSaveMessage;
 window.vaultAppendMessage = vaultAppendMessage;
 window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;
 window.vaultGetOrCreateContact = vaultGetOrCreateContact;
@@ -1344,7 +1344,7 @@ function _renderMessage(msg, skipSave) {
     if (!msg) return;
     var container = document.getElementById('messages-container');
     if (!container) return;
-    var msgId = msg.messageId || msg._id || msg.id || '';
+        var msgId = msg.messageId || msg._id || msg.id || '';
     if (!msgId) {
       msgId = 'msg_' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
       msg.messageId = msgId;
@@ -1428,7 +1428,7 @@ function _renderMessage(msg, skipSave) {
         var vByteArray = new Uint8Array(vByteNums);
         var vBlob = new Blob([vByteArray], { type: vMime });
         var vSrc = URL.createObjectURL(vBlob);
-        _objectURLRegistry.push(vSrc); // FIX: trackear para cleanup
+        _objectURLRegistry.push(vSrc);
         video.src = vSrc;
         video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
         video.playsInline = true;
@@ -1470,7 +1470,7 @@ function _renderMessage(msg, skipSave) {
             var fvByteArray = new Uint8Array(fvByteNums);
             var fvBlob = new Blob([fvByteArray], { type: attachment.meta.type });
             var fvSrc = URL.createObjectURL(fvBlob);
-            _objectURLRegistry.push(fvSrc); // FIX: trackear para cleanup
+            _objectURLRegistry.push(fvSrc);
             fvideo.src = fvSrc;
             fvideo.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
             fvideo.playsInline = true;
@@ -1528,7 +1528,7 @@ function _renderMessage(msg, skipSave) {
         var byteArray = new Uint8Array(byteNums);
         var audioBlob = new Blob([byteArray], { type: mime });
         var audioSrc = URL.createObjectURL(audioBlob);
-        _objectURLRegistry.push(audioSrc); // FIX: trackear para cleanup
+        _objectURLRegistry.push(audioSrc);
         var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
         audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
         audioHtml += '<div style="flex:1;min-width:0;">';
@@ -1934,3 +1934,4 @@ function _doChatBack() {
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
+
