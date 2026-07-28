@@ -1309,7 +1309,7 @@ export class BLEInterface {
       avatar.textContent = initials;
       row.appendChild(avatar);
       var info = document.createElement('div');
-      info.className = 'ble      info.className = 'ble-contact-info';
+      info.className = 'ble-contact-info';
       info.innerHTML = '<div class="ble-contact-name">' + (contact.name || '') + '</div><div class="ble-contact-msg">' + lastMsg + '</div>';
       row.appendChild(info);
       var meta = document.createElement('div');
@@ -1487,4 +1487,3 @@ export function initBLEInterface(bleMesh) {
   window.bleInterface = instance;
   return instance;
 }
-
