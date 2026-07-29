@@ -1002,7 +1002,7 @@ async function initializeNexoApp() {
           }
         }
       });
-      window.addEventListener('nexo:ble:ackStatus', function(e) {
+        window.addEventListener('nexo:ble:ackStatus', function(e) {
         if (e && e.detail && e.detail.msgId) {
           _updateMessageStatus(e.detail.msgId, e.detail.status);
           var contactId = _getCurrentContactId();
@@ -1011,6 +1011,7 @@ async function initializeNexoApp() {
           }
         }
       });
+      
       console.log('[MAIN] Fase 4 hooks OK');
     } catch (f4Err) {
       console.warn('[MAIN] Fase 4 init warn:', f4Err);
@@ -1352,7 +1353,7 @@ function _renderMessage(msg, skipSave) {
     if (!msg) return;
     var container = document.getElementById('messages-container');
     if (!container) return;
-    var msgId = msg.messageId || msg._id || msg.id || '';
+        var msgId = msg.messageId || msg._id || msg.id || '';
     if (!msgId) {
       msgId = 'msg_' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
       msg.messageId = msgId;
@@ -1473,8 +1474,7 @@ function _renderMessage(msg, skipSave) {
             var fvByteChars = atob(attachment.payload);
             var fvByteNums = new Array(fvByteChars.length);
             for (var fvi = 0; fvi < fvByteChars.length; fvi++) {
-              fvByteNums[fvi] = fvByteChars.charCodeAt(fvi);
-            }
+              fvByteNums[fvi] = fv            }
             var fvByteArray = new Uint8Array(fvByteNums);
             var fvBlob = new Blob([fvByteArray], { type: attachment.meta.type });
             var fvSrc = URL.createObjectURL(fvBlob);
@@ -1942,5 +1942,3 @@ function _doChatBack() {
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
-
-
