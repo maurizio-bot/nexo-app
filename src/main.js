@@ -1003,6 +1003,16 @@ async function initializeNexoApp() {
           }
         }
       });
+        window.addEventListener('nexo:ble:ackStatus', function(e) {
+        if (e && e.detail && e.detail.msgId) {
+          _updateMessageStatus(e.detail.msgId, e.detail.status);
+          var contactId = _getCurrentContactId();
+          if (contactId && window.vaultUpdateMessageStatus) {
+            window.vaultUpdateMessageStatus(contactId, e.detail.msgId, e.detail.status);
+          }
+        }
+      });
+      
       console.log('[MAIN] Fase 4 hooks OK');
     } catch (f4Err) {
       console.warn('[MAIN] Fase 4 init warn:', f4Err);
