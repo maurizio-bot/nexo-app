@@ -1442,7 +1442,7 @@ function _renderMessage(msg, skipSave) {
         video.playsInline = true;
         video.muted = true;
         video.preload = 'metadata';
-        video.dataset.full        screenSrc = vSrc;
+        video.dataset.fullscreenSrc = vSrc;
         video.dataset.fullscreenType = 'video';
         var playOverlay = document.createElement('div');
         playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
