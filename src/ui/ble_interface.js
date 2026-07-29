@@ -249,8 +249,10 @@ function _showToast(message, type) {
 }
 function _isControlPacket(content) {
   if (!content || typeof content !== 'string') return false;
-  if (content.indexOf('"type":"ack"') !== -1) return true;
-  if (content.indexOf('"type":"read_receipt"') !== -1) return true;
+  try {
+    var json = JSON.parse(content);
+    if (json && (json.type === 'ack' || json.type === 'read_receipt')) return true;
+  } catch (e) {}
   return false;
 }
 
@@ -629,6 +631,16 @@ export class BLEInterface {
     if (!deviceId) return;
     var stateObj = Object.assign({}, meta, { state: state, timestamp: Date.now() });
     this._deviceStates.set(deviceId, stateObj);
+    if (state === BLE_STATES.DISCONNECTED || state === BLE_STATES.ERROR) {
+      var queue = this._pendingMessageQueue.get(deviceId);
+      if (queue && queue.length > 0) {
+        this._pendingMessageQueue.delete(deviceId);
+        queue.forEach(function(item) {
+          if (item.timeoutId) clearTimeout(item.timeoutId);
+          if (item.reject) item.reject(new Error('Dispositivo desconectado'));
+        });
+      }
+    }
   }
   _getDeviceState(deviceId) {
     if (!deviceId) return { state: BLE_STATES.DISCONNECTED };
@@ -756,6 +768,7 @@ export class BLEInterface {
     var processNext = function(idx) {
       if (idx >= queue.length) return Promise.resolve();
       var item = queue[idx];
+      if (item.timeoutId) clearTimeout(item.timeoutId);
       if (self.ackSystem) {
         return self.ackSystem.sendWithRetry(deviceId, item.content, item.messageId)
           .then(function() { item.resolve(); return processNext(idx + 1); })
@@ -848,7 +861,16 @@ export class BLEInterface {
         }
         function enqueueMsg() {
           var queue = self._pendingMessageQueue.get(deviceId) || [];
-          queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject });
+          var timeoutId = setTimeout(function() {
+            var q = self._pendingMessageQueue.get(deviceId) || [];
+            var idx = q.findIndex(function(item) { return item.messageId === msgId; });
+            if (idx >= 0) {
+              q.splice(idx, 1);
+              self._pendingMessageQueue.set(deviceId, q);
+            }
+            reject(new Error('Timeout: mensaje no enviado en 10s'));
+          }, 10000);
+          queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject, timeoutId: timeoutId });
           self._pendingMessageQueue.set(deviceId, queue);
         }
         if (isReady) { doSend(); return; }
@@ -1327,6 +1349,7 @@ export class BLEInterface {
       row.appendChild(avatar);
       var info = document.createElement('div');
       info.className = 'ble-contact-info';
+      info.innerHTML = '<div class="ble-contact-name">' + (contact.name || '') + '</div><div class="ble-contact-msg">'
       info.innerHTML = '<div class="ble-contact-name">' + (contact.name || '') + '</div><div class="ble-contact-msg">' + lastMsg + '</div>';
       row.appendChild(info);
       var meta = document.createElement('div');
@@ -1504,4 +1527,3 @@ export function initBLEInterface(bleMesh) {
   window.bleInterface = instance;
   return instance;
 }
-
