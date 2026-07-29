@@ -1,8 +1,9 @@
 /**
- * BLE Interface v5.2.1-FASE4-FIXED
+ * BLE Interface v5.2.1-FASE4-FIXED-B5
  * FIX: Revertido FIX 3 — onDeviceFound ignora dispositivos sin nexoId valido
  * FIX: Revertido FIX 2 — eliminado fallback por id directo en sendChatMessage/openChat
  * FASE4: Hooks vault contactos + mensajes, autoscan conectar/desconectar
+ * BLOQUE5: Scan ciclico, stopScanCycle, boundsJSON, debounce adv restart
  */
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
@@ -356,7 +357,11 @@ export class BLEInterface {
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
     this.ackSystem = null;
-    console.log('[BLEInterface] v5.2.1-FASE4-FIXED iniciado');
+    this._scanCycleTimer = null;
+    this._scanCycleInterval = 30000;
+    this._scanCycleDuration = 6000;
+    this._advRestartTimer = null;
+    console.log('[BLEInterface] v5.2.1-FASE4-FIXED-B5 iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -436,6 +441,7 @@ export class BLEInterface {
         appPlugin.addListener('appStateChange', function(state) {
           try {
             if (state && state.isActive === true) {
+              self._stopScanCycle();
               _loadContactsFromVault().then(function(contacts) {
                 if (contacts && contacts.length > 0) {
                   try { localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts)); } catch (e) {}
@@ -452,6 +458,12 @@ export class BLEInterface {
                 _safeNativeCall(self.nativePlugin, 'startAdvertising', {})
                 .then(function() { self.isAdvertising = true; self.updateVisibilityButton(); })
                 .catch(function(e) {});
+              }
+            } else {
+              self._stopScanCycle();
+              if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'stopAdvertising')) {
+                _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}).catch(function(){});
+                self.isAdvertising = false;
               }
             }
           } catch (e) {}
@@ -559,7 +571,10 @@ export class BLEInterface {
         }
         _safeDispatchEvent('nexo:ble:deviceDisconnected', { deviceId: deviceId, deviceUUID: peerUUID });
         if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
-          _safeNativeCall(self.nativePlugin, 'startAdvertising', {}).catch(function(e) {});
+          if (self._advRestartTimer) clearTimeout(self._advRestartTimer);
+          self._advRestartTimer = setTimeout(function() {
+            _safeNativeCall(self.nativePlugin, 'startAdvertising', {}).catch(function(e) {});
+          }, 2000);
         }
       } catch (e) {}
     });
@@ -639,12 +654,14 @@ export class BLEInterface {
         }
         var isControl = _isControlPacket(content);
         if (isControl && self.ackSystem) {
-        self.ackSystem.processIncomingAck(content);
-        return;
+          self.ackSystem.processIncomingAck(content);
+          return;
         }
-          if (content.charAt(0) === '{' || (data.data && data.data.charAt(0) === '{')) {
+        var payloadStr = data.data || content || '';
+        if (payloadStr.length > 50000) { console.warn('[BLEInterface] Payload muy grande, ignorado'); return; }
+        if (payloadStr.charAt(0) === '{') {
           try {
-            var json = JSON.parse(data.data || content || '{}');
+            var json = JSON.parse(payloadStr);
             if (json.msgId) messageId = json.msgId;
             if (json.messageId) messageId = json.messageId;
             if (json.payload) {
@@ -859,6 +876,7 @@ export class BLEInterface {
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(deviceId); }
     this._processPendingMessages(deviceId);
   }
+}
   openChat(deviceUUID) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -980,30 +998,36 @@ export class BLEInterface {
   }
   _autoScanForKnownContacts() {
     var self = this;
-    if (self.isScanning) return;
+    self._stopScanCycle();
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
-    console.log('[BLEInterface] Auto-scan iniciado');
-    self.foundDevices.clear();
-    _safeNativeCall(self.nativePlugin, 'startScan', {})
-      .then(function() {
-        self.isScanning = true;
-        self.updateScanButton();
-        setTimeout(function() {
-          if (self.isScanning && _hasNativeMethod(self.nativePlugin, 'stopScan')) {
-            _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() {
-              self.isScanning = false;
-              self.updateScanButton();
-              console.log('[BLEInterface] Auto-scan completado');
-            }).catch(function() {
-              self.isScanning = false;
-              self.updateScanButton();
-            });
-          }
-        }, 6000);
-      })
-      .catch(function(e) {
-        console.warn('[BLEInterface] Auto-scan fallo:', e.message);
-      });
+    function doCycle() {
+      if (self.isScanning) return;
+      self.foundDevices.clear();
+      _safeNativeCall(self.nativePlugin, 'startScan', {})
+        .then(function() {
+          self.isScanning = true;
+          self.updateScanButton();
+          self._scanCycleTimer = setTimeout(function() {
+            if (self.isScanning && _hasNativeMethod(self.nativePlugin, 'stopScan')) {
+              _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() {
+                self.isScanning = false;
+                self.updateScanButton();
+              }).catch(function() { self.isScanning = false; self.updateScanButton(); });
+            } else { self.isScanning = false; self.updateScanButton(); }
+            self._scanCycleTimer = setTimeout(doCycle, self._scanCycleInterval);
+          }, self._scanCycleDuration);
+        })
+        .catch(function(e) { self._scanCycleTimer = setTimeout(doCycle, self._scanCycleInterval); });
+    }
+    doCycle();
+  }
+  _stopScanCycle() {
+    if (this._scanCycleTimer) { clearTimeout(this._scanCycleTimer); this._scanCycleTimer = null; }
+    if (this.isScanning && this.nativePlugin && _hasNativeMethod(this.nativePlugin, 'stopScan')) {
+      _safeNativeCall(this.nativePlugin, 'stopScan', {}).catch(function(){});
+    }
+    this.isScanning = false;
+    this.updateScanButton();
   }
   createDOM() {
     var self = this;
@@ -1481,3 +1505,5 @@ export function initBLEInterface(bleMesh) {
   window.bleInterface = instance;
   return instance;
 }
+
+
