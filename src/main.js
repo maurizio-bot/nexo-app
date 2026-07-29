@@ -905,7 +905,6 @@ async function initializeNexoApp() {
         if (msg && msg.senderNexoId) {
           vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
         }
-        _renderMessage(msg);
       },
       onStatusChange: function(mode) {
         console.log('Modo:', mode);
@@ -1003,7 +1002,7 @@ async function initializeNexoApp() {
           }
         }
       });
-        window.addEventListener('nexo:ble:ackStatus', function(e) {
+      window.addEventListener('nexo:ble:ackStatus', function(e) {
         if (e && e.detail && e.detail.msgId) {
           _updateMessageStatus(e.detail.msgId, e.detail.status);
           var contactId = _getCurrentContactId();
@@ -1012,7 +1011,6 @@ async function initializeNexoApp() {
           }
         }
       });
-      
       console.log('[MAIN] Fase 4 hooks OK');
     } catch (f4Err) {
       console.warn('[MAIN] Fase 4 init warn:', f4Err);
@@ -1354,7 +1352,7 @@ function _renderMessage(msg, skipSave) {
     if (!msg) return;
     var container = document.getElementById('messages-container');
     if (!container) return;
-        var msgId = msg.messageId || msg._id || msg.id || '';
+    var msgId = msg.messageId || msg._id || msg.id || '';
     if (!msgId) {
       msgId = 'msg_' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
       msg.messageId = msgId;
@@ -1444,7 +1442,7 @@ function _renderMessage(msg, skipSave) {
         video.playsInline = true;
         video.muted = true;
         video.preload = 'metadata';
-        video.dataset.fullscreenSrc = vSrc;
+        video.dataset.full        screenSrc = vSrc;
         video.dataset.fullscreenType = 'video';
         var playOverlay = document.createElement('div');
         playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
@@ -1944,4 +1942,5 @@ function _doChatBack() {
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
+
 
