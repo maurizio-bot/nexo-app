@@ -876,7 +876,6 @@ export class BLEInterface {
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(deviceId); }
     this._processPendingMessages(deviceId);
   }
-}
   openChat(deviceUUID) {
     var self = this;
     return new Promise(function(resolve, reject) {
