@@ -639,16 +639,10 @@ export class BLEInterface {
         }
         var isControl = _isControlPacket(content);
         if (isControl && self.ackSystem) {
-          if (self.ackSystem.processIncomingAck(content)) {
-            _safeDispatchEvent('nexo:ble:messageReceived', {
-              deviceId: deviceId, deviceUUID: senderUUID, content: content,
-              senderName: senderName, messageId: messageId, source: source,
-              timestamp: data.timestamp || Date.now(), isControl: true
-            });
-            return;
-          }
+        self.ackSystem.processIncomingAck(content);
+        return;
         }
-        if (content.charAt(0) === '{' || (data.data && data.data.charAt(0) === '{')) {
+          if (content.charAt(0) === '{' || (data.data && data.data.charAt(0) === '{')) {
           try {
             var json = JSON.parse(data.data || content || '{}');
             if (json.msgId) messageId = json.msgId;
