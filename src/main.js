@@ -1,11 +1,16 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.2-FASE4
+ * src/main.js - Punto de entrada NEXO v9.9.3-FASE4-FIXED
  * FIX: _cameraActiveStream declarado explícitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
  * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
  * FIX: ObjectURLs revocados al cerrar fullscreen
  * FIX: _getContactStorageKey usa nexoId cuando está disponible
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
+ * FIX v9.9.3: _doSend render local + messageId + error handling
+ * FIX v9.9.3: messageReceived fallback deviceUUID/deviceId
+ * FIX v9.9.3: openChat listener mapea contacto desde vault
+ * FIX v9.9.3: _openChatFromNotification busca por deviceId nativo fallback
+ * FIX v9.9.3: onMessage config fallback senderId
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -761,7 +766,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.2-FASE4 iniciando...');
+    console.log('[MAIN] NEXO v9.9.3-FASE4-FIXED iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -871,8 +876,19 @@ function _openChatFromNotification(deviceId) {
   try {
     if (!window.NEXO.app) return;
     var contact = vaultFindContactByNexoId(deviceId);
+    if (!contact && window.vaultLoadContacts) {
+      var allContacts = window.vaultLoadContacts();
+      if (Array.isArray(allContacts)) {
+        for (var ci = 0; ci < allContacts.length; ci++) {
+          if (allContacts[ci].deviceId === deviceId || allContacts[ci].nativeDeviceId === deviceId) {
+            contact = allContacts[ci];
+            break;
+          }
+        }
+      }
+    }
     if (!contact) {
-      contact = { nexoId: deviceId, displayName: 'NEXO' };
+      contact = { nexoId: deviceId, displayName: 'NEXO', deviceId: deviceId };
       vaultSaveContact(contact);
     }
     if (!contact.name) contact.name = contact.displayName || 'NEXO';
@@ -902,8 +918,9 @@ async function initializeNexoApp() {
       enableMesh: true,
       onMessage: function(msg) {
         console.log('Mensaje:', msg);
-        if (msg && msg.senderNexoId) {
-          vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
+        var senderId = msg && (msg.senderNexoId || msg.deviceUUID || msg.deviceId);
+        if (senderId) {
+          vaultGetOrCreateContact(senderId, msg.senderName || 'NEXO');
         }
       },
       onStatusChange: function(mode) {
@@ -993,8 +1010,10 @@ async function initializeNexoApp() {
       window.addEventListener('nexo:ble:messageReceived', function(e) {
         if (e && e.detail) {
           var msg = e.detail;
-          if (msg.senderNexoId) {
-            vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
+          var senderId = msg.senderNexoId || msg.deviceUUID || msg.deviceId || null;
+          if (senderId) {
+            vaultGetOrCreateContact(senderId, msg.senderName || 'NEXO');
+            msg.senderNexoId = senderId;
           }
           _renderMessage(msg);
           if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
@@ -1002,7 +1021,27 @@ async function initializeNexoApp() {
           }
         }
       });
-        window.addEventListener('nexo:ble:ackStatus', function(e) {
+      window.addEventListener('nexo:ble:openChat', function(e) {
+        if (e && e.detail && e.detail.contact) {
+          var contact = e.detail.contact;
+          if (contact.nexoId) {
+            var vaultContact = vaultFindContactByNexoId(contact.nexoId);
+            if (vaultContact) {
+              contact = vaultContact;
+            } else {
+              vaultSaveContact(contact);
+            }
+          }
+          if (window.NEXO.app) {
+            window.NEXO.app.activeContact = contact;
+          }
+          if (window.NEXO.app && window.NEXO.app.bleInterface) {
+            window.NEXO.app.bleInterface._activeChatDeviceId = contact.deviceId || contact.nexoId || null;
+          }
+          _loadPersistedMessages();
+        }
+      });
+      window.addEventListener('nexo:ble:ackStatus', function(e) {
         if (e && e.detail && e.detail.msgId) {
           _updateMessageStatus(e.detail.msgId, e.detail.status);
           var contactId = _getCurrentContactId();
@@ -1087,9 +1126,28 @@ function _setupMessageInput() {
       input.value = '';
       _updateBtnState();
       input.focus();
+      var msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      var contactId = _getCurrentContactId();
+      var localMsg = {
+        messageId: msgId,
+        content: text,
+        _own: true,
+        status: 'pending',
+        timestamp: Date.now()
+      };
+      _renderMessage(localMsg);
+      if (contactId && window.vaultAppendMessage) {
+        try { window.vaultAppendMessage(contactId, localMsg); } catch(e) {}
+      }
       try {
-        await window.NEXO.app.sendMessage({ content: text });
-      } catch (e) {}
+        await window.NEXO.app.sendMessage({ content: text, messageId: msgId });
+      } catch (e) {
+        _updateMessageStatus(msgId, 'error');
+        if (contactId && window.vaultUpdateMessageStatus) {
+          try { window.vaultUpdateMessageStatus(contactId, msgId, 'error'); } catch(e2) {}
+        }
+        console.warn('[MAIN] _doSend error:', e);
+      }
     };
 
     input.addEventListener('input', _updateBtnState);
@@ -1474,7 +1532,8 @@ function _renderMessage(msg, skipSave) {
             var fvByteChars = atob(attachment.payload);
             var fvByteNums = new Array(fvByteChars.length);
             for (var fvi = 0; fvi < fvByteChars.length; fvi++) {
-              fvByteNums[fvi] = fv            }
+              fvByteNums[fvi] = fvByteChars.charCodeAt(fvi);
+            }
             var fvByteArray = new Uint8Array(fvByteNums);
             var fvBlob = new Blob([fvByteArray], { type: attachment.meta.type });
             var fvSrc = URL.createObjectURL(fvBlob);
