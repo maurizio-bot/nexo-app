@@ -1,8 +1,12 @@
 /**
- * NEXO App v5.0.17-ATTACH-FIX
- * Base: v5.0.16-KEYBOARD-FIX-BACK
- * FIX: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
- * FIX: Eliminado attachment_handlers.js externo, todo integrado en _initInputBarV2
+ * NEXO App v5.0.18-FASE4-ROBUSTO
+ * FIX: Merge contacto vault + metadata BLE en openChat
+ * FIX: sendMessage marca error cuando no hay transporte
+ * FIX: _bleMessageHandler extrae senderNexoId del payload JSON
+ * FIX: Sincroniza _activeChatDeviceId/_activeChatDeviceIdNative en interface
+ * FIX: _handleMessage usa senderNexoId fallback para vault
+ * FIX: vaultGetOrCreateContact al recibir mensaje nuevo
+ * Base: v5.0.17-ATTACH-FIX
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -106,7 +110,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.17-ATTACH-FIX iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.18-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -126,7 +130,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.17-ATTACH-FIX Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.18-FASE4-ROBUSTO Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -201,10 +205,31 @@ class NexoApp {
       this.bleInterface = initBLEInterface(meshInstance);
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
       var self = this;
+      
+      // FIX: _bleChatHandler mergea contacto vault + metadata BLE y preserva transport/deviceId
       this._bleChatHandler = async function(e) {
         try {
           var detail = e.detail || {};
-          self.activeContact = { id: detail.contactId, name: detail.name, address: detail.address, transport: detail.transport };
+          var contact = detail.contact || {};
+          if (!contact.id && detail.contactId) contact.id = detail.contactId;
+          if (!contact.name && detail.name) contact.name = detail.name;
+          if (!contact.nexoId && detail.contactId) contact.nexoId = detail.contactId;
+          if (!contact.deviceId && detail.deviceId) contact.deviceId = detail.deviceId;
+          if (!contact.transport && detail.transport) contact.transport = detail.transport;
+          
+          // Merge con vault si existe nexoId
+          if (contact.id && window.vaultFindContactByNexoId) {
+            try {
+              var vaultContact = window.vaultFindContactByNexoId(contact.id);
+              if (vaultContact) {
+                contact = Object.assign({}, vaultContact, contact);
+              } else if (window.vaultSaveContact) {
+                window.vaultSaveContact(contact);
+              }
+            } catch(vcErr) {}
+          }
+          
+          self.activeContact = contact;
           var appContainer = document.getElementById('app');
           if (appContainer) appContainer.classList.remove('hidden');
           document.body.classList.add('chat-view-active');
@@ -212,22 +237,28 @@ class NexoApp {
           if (backBtn) backBtn.classList.add('visible');
           var nameInput = document.getElementById('chat-contact-name');
           var subtitle = document.getElementById('chat-contact-subtitle');
-          if (nameInput) nameInput.value = detail.name || '';
+          if (nameInput) nameInput.value = contact.name || contact.displayName || '';
           if (subtitle) subtitle.textContent = '';
-          DEBUG.success('Chat activo: ' + (detail.name || '') + ' [' + (detail.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
+          DEBUG.success('Chat activo: ' + (contact.name || '') + ' [' + (contact.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
           try {
-            var storedMessages = await self._loadMessagesFromVault(detail.contactId);
+            var loadId = contact.nexoId || contact.id || contact.deviceId;
+            var storedMessages = await self._loadMessagesFromVault(loadId);
             storedMessages.sort(function(a, b) { return (a._ts || 0) - (b._ts || 0); });
             storedMessages.forEach(function(m) { self.config.onMessage(m); });
           } catch (e) {}
           self._updateMode('P2P_BLE');
-          self.config.onStatusChange('CHAT:' + (detail.name || ''));
+          self.config.onStatusChange('CHAT:' + (contact.name || ''));
           var bottomNav = document.getElementById('ble-bottom-nav');
           if (bottomNav) {
             var navItems = bottomNav.querySelectorAll('.ble-nav-item');
             navItems.forEach(function(n) { n.classList.remove('active'); });
             var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
             if (chatsTab) chatsTab.classList.add('active');
+          }
+          // FIX: Sincronizar activeChatDeviceId en bleInterface
+          if (self.bleInterface) {
+            self.bleInterface._activeChatDeviceId = contact.id || contact.nexoId || contact.deviceId || null;
+            self.bleInterface._activeChatDeviceIdNative = contact.deviceId || null;
           }
         } catch (handlerErr) {
           console.error('[NexoApp] Error en _bleChatHandler:', handlerErr);
@@ -282,23 +313,18 @@ class NexoApp {
       };
       window.addEventListener('nexo:ble:deviceDisconnected', this._nativeDeviceDisconnectedHandler);
 
+      // FIX: _bleMessageHandler extrae senderNexoId del payload JSON y crea contacto en vault
       this._bleMessageHandler = function(e) {
         try {
           var detail = e.detail || {};
           var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
-          var senderUUID = detail.deviceUUID || '';
+          var senderUUID = detail.senderNexoId || detail.deviceUUID || '';
           if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
             console.log('[BLE_RECV] Mensaje propio ignorado por UUID');
             return;
           }
           console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
           var resolvedName = detail.senderName;
-          if (!resolvedName || resolvedName === 'NEXO Peer') {
-            var nid = (detail.deviceId || '').toString().toLowerCase().trim();
-            var connDev = self.bleInterface && self.bleInterface.connectedDevices ? self.bleInterface.connectedDevices.get(nid) : null;
-            var foundDev = self.bleInterface && self.bleInterface.foundDevices ? self.bleInterface.foundDevices.get(nid) : null;
-            resolvedName = (connDev && connDev.name) || (foundDev && foundDev.name) || detail.senderName || '';
-          }
           var messageId = null;
           var content = detail.content || detail.data || '';
           if (content.charAt(0) === '{' || (detail.data && detail.data.charAt(0) === '{')) {
@@ -308,9 +334,16 @@ class NexoApp {
               if (json.messageId) messageId = json.messageId;
               if (json.payload && json.payload.senderNexoId) senderUUID = json.payload.senderNexoId;
               if (json.payload && json.payload.text) content = json.payload.text;
+              if (json.payload && json.payload.senderName) resolvedName = json.payload.senderName;
               if (json.deviceUUID) senderUUID = json.deviceUUID;
               if (json.from && !senderUUID) senderUUID = json.from;
             } catch (e) {}
+          }
+          if (!resolvedName || resolvedName === 'NEXO Peer') {
+            var nid = (senderUUID || detail.deviceId || '').toString().toLowerCase().trim();
+            var connDev = self.bleInterface && self.bleInterface.connectedDevices ? self.bleInterface.connectedDevices.get(nid) : null;
+            var foundDev = self.bleInterface && self.bleInterface.foundDevices ? self.bleInterface.foundDevices.get(nid) : null;
+            resolvedName = (connDev && connDev.name) || (foundDev && foundDev.name) || detail.senderName || '';
           }
           if (messageId && content && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
             try {
@@ -325,18 +358,23 @@ class NexoApp {
               }
             } catch (ackErr) {}
           }
+          // FIX: Crear/actualizar contacto en vault al recibir mensaje
+          if (senderUUID && window.vaultGetOrCreateContact) {
+            try { window.vaultGetOrCreateContact(senderUUID, resolvedName || 'NEXO'); } catch(vcErr) {}
+          }
           self._handleMessage({
-            content: detail.content,
-            sender: detail.deviceId,
+            content: content,
+            sender: senderUUID || detail.deviceId,
             senderName: resolvedName,
             source: detail.source || 'ble_direct',
             timestamp: detail.timestamp || Date.now(),
-            messageId: detail.messageId,
-            deviceUUID: detail.deviceUUID || detail.deviceId,
+            messageId: detail.messageId || messageId,
+            deviceUUID: senderUUID || detail.deviceUUID || detail.deviceId,
+            senderNexoId: senderUUID,
             _own: false
           }, 'ble_direct');
-          if (senderUUID && detail.messageId) {
-            setTimeout(function() { self._sendACK(senderUUID, detail.messageId); }, 100);
+          if (senderUUID && (detail.messageId || messageId)) {
+            setTimeout(function() { self._sendACK(senderUUID, detail.messageId || messageId); }, 100);
           }
         } catch (handlerErr) {
           console.error('[NexoApp] Error en _bleMessageHandler:', handlerErr);
@@ -390,7 +428,6 @@ class NexoApp {
       });
     }
     self._initKeyboardScrollFix();
-    /* === INPUT BAR v2 — Attach menu + Send/Mic toggle + Attach handlers === */
     self._initInputBarV2();
   }
 
@@ -403,7 +440,6 @@ class NexoApp {
 
     if (!input || !sendBtn) return;
 
-    // Toggle Send / Mic según contenido
     function updateSendButton() {
       var text = (input.value || '').trim();
       if (text.length > 0) {
@@ -413,9 +449,8 @@ class NexoApp {
       }
     }
     input.addEventListener('input', updateSendButton);
-    updateSendButton(); // estado inicial
+    updateSendButton();
 
-    // Attach menu toggle
     if (attachBtn && attachMenu) {
       attachBtn.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -426,14 +461,12 @@ class NexoApp {
           attachBtn.classList.remove('active');
         } else {
           attachMenu.classList.remove('hidden');
-          // Force reflow
           void attachMenu.offsetWidth;
           attachMenu.classList.add('visible');
           attachBtn.classList.add('active');
         }
       });
 
-      // Cerrar menú al tocar fuera
       document.addEventListener('click', function(e) {
         if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
           attachMenu.classList.remove('visible');
@@ -442,7 +475,6 @@ class NexoApp {
         }
       });
 
-      // === ATTACH HANDLERS REALES ===
       var menuItems = attachMenu.querySelectorAll('.attach-menu-item');
       menuItems.forEach(function(item) {
         item.addEventListener('click', function() {
@@ -451,7 +483,6 @@ class NexoApp {
           attachMenu.classList.add('hidden');
           attachBtn.classList.remove('active');
 
-          // Helpers burbuja
           function getMessagesContainer() {
             return document.getElementById('messages-container');
           }
@@ -478,8 +509,7 @@ class NexoApp {
             Camera.getPhoto({
               quality: 90, allowEditing: false,
               resultType: Camera.CameraResultType.Base64,
-              source: Camera.CameraSource.Prompt, saveToGallery: false
-            }).then(function(image) {
+              source: Camera.CameraSource.Prompt            }).then(function(image) {
               if (image && image.base64String) {
                 var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
                 var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>';
@@ -519,7 +549,6 @@ class NexoApp {
       });
     }
 
-    // Mic button placeholder
     sendBtn.addEventListener('click', function(e) {
       if (sendBtn.classList.contains('mic-mode')) {
         e.preventDefault();
@@ -527,9 +556,9 @@ class NexoApp {
         console.log('[NEXO] Mic presionado — placeholder');
         return;
       }
-      // Si es modo send, el handler original de sendMessage ya existe
     });
   }
+
   _initKeyboardScrollFix() {
     var self = this;
     var container = document.getElementById('messages-container');
@@ -664,7 +693,8 @@ class NexoApp {
       var isObject = msg && typeof msg === 'object';
       var content = isObject ? (msg.content || msg) : msg;
       var recipient = isObject ? msg.recipient : null;
-      var targetId = recipient || (this.activeContact ? this.activeContact.id : null);
+      // FIX: Fallback de IDs activos (nexoId > id > deviceId)
+      var targetId = recipient || (this.activeContact ? (this.activeContact.nexoId || this.activeContact.id || this.activeContact.deviceId) : null);
       var targetTransport = this.activeContact ? this.activeContact.transport : null;
       if (!content || (typeof content === 'string' && content.trim() === '')) {
         return false;
@@ -726,10 +756,13 @@ class NexoApp {
         this._updateMessageStatus(messageId, 'sent');
         return true;
       }
+      // FIX: Marcar error cuando no hay ningun transporte disponible
       DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
+      this._updateMessageStatus(messageId, 'error');
       return false;
     } catch (err) {
       DEBUG.error('APP_008', 'SendMessage critical: ' + (err.message || 'unknown'));
+      this._updateMessageStatus(messageId, 'error');
       return false;
     }
   }
@@ -769,14 +802,15 @@ class NexoApp {
         _id: Math.random().toString(36).substr(2, 9)
       });
       this.config.onMessage(enriched);
-      var vaultContactId = enriched._own ? enriched.recipient : (enriched.deviceUUID || enriched.sender);
+      // FIX: Usar senderNexoId > deviceUUID > sender como identificador de contacto vault
+      var vaultContactId = enriched._own ? enriched.recipient : (enriched.senderNexoId || enriched.deviceUUID || enriched.sender);
       if (!vaultContactId && !enriched._own && enriched.sender && window.bleInterface && window.bleInterface.getContacts) {
         var contacts = window.bleInterface.getContacts();
         var found = contacts.find(function(c) { return _normId(c.deviceId) === _normId(enriched.sender); });
         if (found && found.deviceUUID) vaultContactId = _normId(found.deviceUUID);
       }
       if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
-      if (!enriched._own && this.activeContact && enriched.sender === this.activeContact.id && enriched.messageId) {
+      if (!enriched._own && this.activeContact && (enriched.sender === this.activeContact.id || enriched.sender === this.activeContact.nexoId || enriched.sender === this.activeContact.deviceId) && enriched.messageId) {
         var self = this;
         setTimeout(function() { self._sendReadReceipt(enriched.messageId, enriched.sender); }, 800);
       }
@@ -902,18 +936,13 @@ export { NexoApp, DEBUG };
 export default NexoApp;
 
 /*
-Focos de Interés:
-1. FIX v5.0.12: Silenciar toasts rem.info/warn/error/success
-2. FIX v5.0.12: Deduplicación de contactos por MAC
-3. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
-4. Eliminación de la doble pantalla (no appendItems en TheStream)
-5. Envío de ACK automático al recibir mensaje BLE
-6. Envío de Read Receipt cuando el chat está activo con el remitente
-7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
-8. FIX: Contactos en pantalla principal (no en panel BLE)
-9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
-10. FIX v5.0.13: Persistencia async/await para vault_fs
-11. FIX-BACK: Cerrar panel BLE al hacer back desde chat
-12. INPUT BAR v2: Attach menu + Send/Mic toggle
-13. FIX v5.0.17: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
+Focos de Interés v5.0.18:
+1. FIX: Merge contacto vault + metadata BLE en openChat (preserva transport/deviceId)
+2. FIX: sendMessage marca status:'error' cuando no hay transporte disponible
+3. FIX: _bleMessageHandler extrae senderNexoId/senderName del payload JSON anidado
+4. FIX: Sincroniza _activeChatDeviceId y _activeChatDeviceIdNative en bleInterface
+5. FIX: _handleMessage usa senderNexoId > deviceUUID > sender como fallback vault
+6. FIX: vaultGetOrCreateContact al recibir mensaje nuevo por BLE
+7. FIX: sendMessage fallback de IDs (nexoId > id > deviceId)
 */
+
