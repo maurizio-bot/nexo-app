@@ -1,10 +1,8 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.3-FASE4-FIXED
- * FIX: _cameraActiveStream declarado explícitamente
- * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
- * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
- * FIX: ObjectURLs revocados al cerrar fullscreen
- * FIX: _getContactStorageKey usa nexoId cuando está disponible
+ * src/main.js - Punto de entrada NEXO v9.9.4-FASE4-FIXED-ROBUSTO
+ * FIX: Preservar transport:ble y deviceId en activeContact al abrir chat
+ * FIX: _doSend detecta sendMessage=false y marca error
+ * FIX: openChat listener merge contact vault + metadata BLE
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  * FIX v9.9.3: _doSend render local + messageId + error handling
  * FIX v9.9.3: messageReceived fallback deviceUUID/deviceId
@@ -66,14 +64,14 @@ var _isRecording = false;
 var _voiceStartTime = 0;
 var _voiceTimerInterval = null;
 var _isGettingLocation = false;
-var _cameraActiveStream = null; // FIX: declarado explícitamente
+var _cameraActiveStream = null;
 var _cameraPreviewMode = 'photo';
 var _cameraPreviewRecording = false;
 var _cameraPreviewMediaRecorder = null;
 var _cameraPreviewVideoChunks = [];
 var _cameraVideoStartTime = 0;
-var _objectURLRegistry = []; // FIX: registro para revocar ObjectURLs
-var _autoScan = null; // Fase 4: AutoScanManager
+var _objectURLRegistry = [];
+var _autoScan = null;
 
 function _fmtTime(sec) {
   var m = Math.floor(sec / 60);
@@ -161,7 +159,6 @@ function _openFullscreenMedia(src, type) {
   closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
   closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
   closeBtn.onclick = function() {
-    // FIX: revocar ObjectURL al cerrar
     if (src && src.indexOf('blob:') === 0) {
       try { URL.revokeObjectURL(src); } catch(e) {}
     }
@@ -295,12 +292,10 @@ function _startCameraPreview() {
     .then(_onStreamSuccess)
     .catch(_onStreamError);
 }
-// FIX v9.9.1: Limpia tracks SIEMPRE, incluso si estaba grabando
 function _stopCameraPreview() {
   var wasRecording = _cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording';
   if (wasRecording) {
     try { _cameraPreviewMediaRecorder.stop(); } catch (e) {}
-    // FIX: no retornar prematuramente, limpiar stream después
   }
   var container = document.getElementById('camera-preview-container');
   if (container) {
@@ -766,7 +761,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.3-FASE4-FIXED iniciando...');
+    console.log('[MAIN] NEXO v9.9.4-FASE4-FIXED-ROBUSTO iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -1021,13 +1016,19 @@ async function initializeNexoApp() {
           }
         }
       });
+      // FIX v9.9.4: Preservar transport:ble y deviceId al abrir chat desde BLE
       window.addEventListener('nexo:ble:openChat', function(e) {
-        if (e && e.detail && e.detail.contact) {
-          var contact = e.detail.contact;
+        if (e && e.detail) {
+          var detail = e.detail;
+          var contact = detail.contact || {};
+          // Preservar metadata BLE que el vault no tiene
+          if (detail.transport) contact.transport = detail.transport;
+          if (detail.deviceId) contact.deviceId = detail.deviceId;
           if (contact.nexoId) {
             var vaultContact = vaultFindContactByNexoId(contact.nexoId);
             if (vaultContact) {
-              contact = vaultContact;
+              // Merge: datos vault + metadata BLE (deviceId puede haber cambiado)
+              contact = Object.assign({}, vaultContact, contact);
             } else {
               vaultSaveContact(contact);
             }
@@ -1140,7 +1141,11 @@ function _setupMessageInput() {
         try { window.vaultAppendMessage(contactId, localMsg); } catch(e) {}
       }
       try {
-        await window.NEXO.app.sendMessage({ content: text, messageId: msgId });
+        // FIX v9.9.4: Detectar cuando sendMessage devuelve false (sin transporte BLE)
+        var sent = await window.NEXO.app.sendMessage({ content: text, messageId: msgId });
+        if (sent === false) {
+          throw new Error('Send returned false');
+        }
       } catch (e) {
         _updateMessageStatus(msgId, 'error');
         if (contactId && window.vaultUpdateMessageStatus) {
@@ -1313,8 +1318,6 @@ function _setupJumpButton() {
     console.warn('[MAIN] _setupJumpButton error:', e);
   }
 }
-// FIX: No interferir con ble_interface.js que ya maneja el FAB.
-// Agregar listener extra causaba doble toggle: abria y cerraba el panel.
 function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
@@ -1336,7 +1339,6 @@ function _setupFABButton() {
     console.warn('[MAIN] _setupFABButton error:', e);
   }
 }
-// FIX v9.9.1: Usar nexoId para key de storage cuando está disponible
 function _getContactStorageKey() {
   var contactId = 'default';
   try {
@@ -1411,7 +1413,7 @@ function _renderMessage(msg, skipSave) {
     if (!msg) return;
     var container = document.getElementById('messages-container');
     if (!container) return;
-        var msgId = msg.messageId || msg._id || msg.id || '';
+    var msgId = msg.messageId || msg._id || msg.id || '';
     if (!msgId) {
       msgId = 'msg_' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
       msg.messageId = msgId;
