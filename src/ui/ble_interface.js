@@ -781,6 +781,257 @@ export class BLEInterface {
             timestamp: data.timestamp || Date.now(),
             senderName: senderName
           };
+// ═══════════════════════════════════════════════════════════════════════════════
+// PARTE 8: LISTENERS NATIVOS - Scan, Conexión, Estado y Payload
+// Escucha onDeviceFound, onDeviceConnected, onServicesReady, onPayloadReceived
+// ═══════════════════════════════════════════════════════════════════════════════
+
+  _setupNativeScanListeners() {
+    if (!this.nativePlugin) return;
+    if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
+    var self = this;
+    this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) {
+      try {
+        var deviceId = data.deviceId || '';
+        var name = data.name || '';
+        var nexoId = data.nexoId || '';
+        if (!deviceId) return;
+        self.onDeviceFound({ id: deviceId, name: name, rssi: data.rssi, nexoId: nexoId });
+      } catch (e) {}
+    });
+    this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', function(data) {
+      try { self.isScanning = false; self.updateScanButton(); } catch (e) {}
+    });
+  }
+  _setupNativeServerReadyListener() {
+    if (!this.nativePlugin) return;
+    if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
+    var self = this;
+    this._nativeServerReadyListener = this.nativePlugin.addListener('onServerReady', function(data) {
+      try { console.log('[BLEInterface] onServerReady:', data); } catch (e) {}
+    });
+  }
+  _setupNativeConnectionListeners() {
+    if (!this.nativePlugin) return;
+    if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
+    var self = this;
+    this._nativeDeviceConnectedListener = this.nativePlugin.addListener('onDeviceConnected', function(data) {
+      try {
+        var deviceId = data.deviceId || '';
+        if (!deviceId) return;
+        var peerUUID = null;
+        var contact = _getContactByDeviceId(deviceId);
+        if (contact) peerUUID = contact.deviceUUID;
+        var displayName = data.name || (contact ? contact.name : null) || '';
+        self.connectedDevices.set(deviceId, {
+          id: deviceId, name: displayName,
+          direction: data.direction || 'outgoing', role: data.role || 'client',
+          servicesReady: data.servicesReady || false, deviceUUID: peerUUID
+        });
+        self._setDeviceState(deviceId, data.role === 'server' ? BLE_STATES.READY_TO_CHAT : BLE_STATES.CONNECTING, {
+          direction: data.direction, role: data.role, deviceUUID: peerUUID
+        });
+        if (peerUUID) {
+          var contacts = _getBLEContacts();
+          var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(peerUUID); });
+          if (idx >= 0) {
+            contacts[idx].online = true; contacts[idx].lastSeen = Date.now(); contacts[idx].deviceId = deviceId;
+            _saveBLEContacts(contacts); self.renderContactsList(); self.renderOnlineStrip();
+          }
+          _autoScanUnregister(peerUUID);
+        }
+        _safeDispatchEvent('nexo:ble:deviceConnected', { deviceId: deviceId, deviceUUID: peerUUID, name: displayName });
+      } catch (e) {}
+    });
+    this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', function(data) {
+      try {
+        var deviceId = data.deviceId || '';
+        if (!deviceId) return;
+        var peerUUID = null;
+        var contact = _getContactByDeviceId(deviceId);
+        if (contact) peerUUID = contact.deviceUUID;
+        self.connectedDevices.delete(deviceId);
+        self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
+        if (peerUUID) {
+          var contacts = _getBLEContacts();
+          var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(peerUUID); });
+          if (idx >= 0) { contacts[idx].online = false; _saveBLEContacts(contacts); self.renderContactsList(); self.renderOnlineStrip(); }
+          _autoScanRegister(peerUUID);
+          _autoScanStart();
+        }
+        _safeDispatchEvent('nexo:ble:deviceDisconnected', { deviceId: deviceId, deviceUUID: peerUUID });
+        if (self.isAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
+          if (self._advRestartTimer) clearTimeout(self._advRestartTimer);
+          self._advRestartTimer = setTimeout(function() {
+            _safeNativeCall(self.nativePlugin, 'startAdvertising', {}).catch(function(e) {});
+          }, 2000);
+        }
+      } catch (e) {}
+    });
+  }
+  _setupNativeStateListeners() {
+    if (!this.nativePlugin) return;
+    if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
+    var self = this;
+    this._nativeServicesReadyListener = this.nativePlugin.addListener('onServicesReady', function(data) {
+      try {
+        var deviceId = data.deviceId || '';
+        if (!deviceId) return;
+        self._setDeviceState(deviceId, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
+        var device = self.connectedDevices.get(deviceId);
+        if (device) { device.servicesReady = true; self.connectedDevices.set(deviceId, device); }
+        var fallbackTimer = setTimeout(function() {
+          var st = self._getDeviceState(deviceId);
+          if (st.state === BLE_STATES.DISCOVERING_SERVICES) {
+            self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT);
+            self._resolveReadyToChat(deviceId);
+          }
+        }, 3000);
+        self._notificationFallbackTimers.set(deviceId, fallbackTimer);
+      } catch (e) {}
+    });
+    this._nativeNotificationsListener = this.nativePlugin.addListener('onNotificationsEnabled', function(data) {
+      try {
+        var deviceId = data.deviceId || '';
+        if (!deviceId) return;
+        var ft = self._notificationFallbackTimers.get(deviceId);
+        if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(deviceId); }
+        var peerUUID = null;
+        var contact = _getContactByDeviceId(deviceId);
+        if (contact) peerUUID = contact.deviceUUID;
+        self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: peerUUID });
+        self._resolveReadyToChat(deviceId);
+        self._processPendingMessages(deviceId);
+      } catch (e) {}
+    });
+    this._nativeConnectionFailedListener = this.nativePlugin.addListener('onConnectionFailed', function(data) {
+      try {
+        var deviceId = data.deviceId || '';
+        if (!deviceId) return;
+        var ft = self._notificationFallbackTimers.get(deviceId);
+        if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(deviceId); }
+        self._setDeviceState(deviceId, BLE_STATES.ERROR, { lastError: data.reason });
+      } catch (e) {}
+    });
+  }
+  _setDeviceState(deviceId, state, meta) {
+    meta = meta || {};
+    if (!deviceId) return;
+    var stateObj = Object.assign({}, meta, { state: state, timestamp: Date.now() });
+    this._deviceStates.set(deviceId, stateObj);
+    if (state === BLE_STATES.DISCONNECTED || state === BLE_STATES.ERROR) {
+      var queue = this._pendingMessageQueue.get(deviceId);
+      if (queue && queue.length > 0) {
+        this._pendingMessageQueue.delete(deviceId);
+        queue.forEach(function(item) {
+          if (item.timeoutId) clearTimeout(item.timeoutId);
+          if (item.reject) item.reject(new Error('Dispositivo desconectado'));
+        });
+      }
+    }
+  }
+  _getDeviceState(deviceId) {
+    if (!deviceId) return { state: BLE_STATES.DISCONNECTED };
+    return this._deviceStates.get(deviceId) || { state: BLE_STATES.DISCONNECTED };
+  }
+  _setupNativePayloadListener() {
+    if (!this.nativePlugin) return;
+    if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
+    if (this._nativePayloadListener) { try { this._nativePayloadListener.remove(); } catch (e) {} }
+    var self = this;
+    this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
+      try {
+        var deviceId = data.deviceId || '';
+        if (!deviceId) return;
+        var source = data.source || 'unknown';
+        if (source !== 'gatt_server' && source !== 'gatt_client' && source !== 'broadcast') source = 'gatt_client';
+        var messageId = null, senderName = null, senderUUID = null;
+        var rawContent = data.content || data.data || '';
+        var content = rawContent;
+        var stableId = null;
+        if (self.ackSystem && self.ackSystem.processIncomingFragment) {
+          var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: rawContent });
+          if (fragmentHandled) return;
+        }
+        var isControl = _isControlPacket(rawContent);
+        if (isControl) {
+          if (self.ackSystem && self.ackSystem.processIncomingAck) {
+            self.ackSystem.processIncomingAck(rawContent);
+          }
+          return;
+        }
+        var payloadStr = data.data || rawContent || '';
+        if (payloadStr.length > 50000) { console.warn('[BLEInterface] Payload muy grande, ignorado'); return; }
+        if (payloadStr.charAt(0) === '{') {
+          try {
+            var json = JSON.parse(payloadStr);
+            if (json.msgId) messageId = json.msgId;
+            if (json.messageId) messageId = json.messageId;
+            if (json.payload) {
+              if (json.payload.senderName) senderName = json.payload.senderName;
+              if (json.payload.text) content = json.payload.text;
+              if (json.payload.senderNexoId) senderUUID = json.payload.senderNexoId;
+            }
+            if (json.senderName) senderName = json.senderName;
+            if (json.deviceName) senderName = json.deviceName;
+            if (json.deviceUUID) senderUUID = json.deviceUUID;
+            if (json.content) content = json.content;
+            if (json.from && !senderUUID) senderUUID = json.from;
+          } catch (e) {}
+        }
+        if (!senderUUID) {
+          var contactByDevice = _getContactByDeviceId(deviceId);
+          if (contactByDevice) senderUUID = contactByDevice.deviceUUID;
+        }
+        if (!senderName || senderName === '') {
+          var contact = _getContactByUUID(senderUUID);
+          var cname = contact ? contact.name : null;
+          senderName = cname || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name) || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name) || '';
+        }
+        if (senderUUID && senderName && senderName !== '') {
+          if (!_isBLEContact(senderUUID)) {
+            _addBLEContact({ deviceUUID: senderUUID, name: senderName, deviceId: deviceId });
+          } else {
+            var contacts = _getBLEContacts();
+            var idx = contacts.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(senderUUID); });
+            if (idx >= 0) {
+              contacts[idx].online = true;
+              contacts[idx].lastSeen = Date.now();
+              contacts[idx].deviceId = deviceId;
+              if (content && typeof content === 'string') contacts[idx].lastMessage = content.substring(0, 50);
+              _saveBLEContacts(contacts);
+            }
+          }
+          _vaultGetOrCreateContact(senderUUID, senderName, self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name);
+          self.renderContactsList();
+          self.renderOnlineStrip();
+        }
+        if (messageId && self._receivedMessageIds.has(messageId)) {
+          if (self.ackSystem && self.ackSystem.sendAck) {
+            self.ackSystem.sendAck(deviceId, messageId);
+          }
+          return;
+        }
+        if (messageId) {
+          self._receivedMessageIds.add(messageId);
+          if (self._receivedMessageIds.size > self._maxMessageIds) {
+            var first = self._receivedMessageIds.values().next().value;
+            self._receivedMessageIds.delete(first);
+          }
+        }
+        if (messageId && self.ackSystem && self.ackSystem.sendAck) {
+          self.ackSystem.sendAck(deviceId, messageId);
+        }
+        stableId = senderUUID || deviceId;
+        if (senderUUID) {
+          var vaultMsg = {
+            messageId: messageId || ('recv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)),
+            content: content,
+            _own: false,
+            status: 'delivered',
+            timestamp: data.timestamp || Date.now(),
+            senderName: senderName
+          };
           _vaultAppendMessage(senderUUID, vaultMsg, false);
         }
         var activeUUID = self._activeChatDeviceId;
@@ -793,10 +1044,17 @@ export class BLEInterface {
           });
           return;
         }
-        if (senderUUID && !isControl) {
-          var contacts3 = _getBLEContacts();
-          var idx3 = contacts3.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(senderUUID); });
-          if (idx3 >= 0) { contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1; contacts3[idx3].lastMessage = content.substring(0, 50); contacts3[idx3].lastSeen = Date.now(); _saveBLEContacts(contacts3); self.renderContactsList(); self.renderOnlineStrip(); }
+        if (senderUUID) {
+          var contactsUnread = _getBLEContacts();
+          var idxUnread = contactsUnread.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(senderUUID); });
+          if (idxUnread >= 0) {
+            contactsUnread[idxUnread].unreadCount = (contactsUnread[idxUnread].unreadCount || 0) + 1;
+            if (content && typeof content === 'string') contactsUnread[idxUnread].lastMessage = content.substring(0, 50);
+            contactsUnread[idxUnread].lastSeen = Date.now();
+            _saveBLEContacts(contactsUnread);
+            self.renderContactsList();
+            self.renderOnlineStrip();
+          }
         }
         self.newDevicesCount++; self.updateBadge();
         _safeDispatchEvent('nexo:ble:messageReceived', {
@@ -809,11 +1067,6 @@ export class BLEInterface {
     });
   }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// FIN DE LA PARTE 1 - CONTINÚA EN PARTE 2 (línea siguiente = PARTE 9)
-// ═══════════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════════
-// INICIO DE LA PARTE 2 - CONTINUACIÓN DE BLEInterface
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 9: ENVÍO DE MENSAJES - Native, Chat, Cola y ACK
 // sendChatMessage, _sendMessageNative, cola pendiente, _processPendingMessages
