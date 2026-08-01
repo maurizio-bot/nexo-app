@@ -1043,7 +1043,6 @@ export class BLEInterface {
     this._processPendingMessages(deviceId);
   }
 
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 10: APERTURA DE CHAT Y VISIBILIDAD BLE
 // openChat, _initVisibility, toggleVisibility, advertising listeners
@@ -1126,8 +1125,14 @@ export class BLEInterface {
     if (!this.nativePlugin) return;
     if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
     var self = this;
-    this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', function() {});
-    this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', function() {});
+    this._nativeAdStartedListener = this.nativePlugin.addListener('onAdvertiseStarted', function() {
+      self.isAdvertising = true;
+      self.updateVisibilityButton();
+    });
+    this._nativeAdFailedListener = this.nativePlugin.addListener('onAdvertiseFailed', function() {
+      self.isAdvertising = false;
+      self.updateVisibilityButton();
+    });
   }
   updateVisibilityButton() {
     var btn = this.elements.visibilityBtn;
@@ -1142,37 +1147,45 @@ export class BLEInterface {
   toggleVisibility() {
     var self = this;
     if (self.isDummyMode) return Promise.resolve();
-    var permsReady = false;
-    if (window.ensureBLEPermissions) {
-      return window.ensureBLEPermissions().then(function(result) { permsReady = result; }).catch(function() { permsReady = true; }).then(function() {
-        if (!permsReady) return Promise.resolve();
-        if (!self.nativePlugin) return Promise.resolve();
-        var promise;
-        if (self.isAdvertising) {
-          if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}); else promise = Promise.resolve();
-          if (promise) return promise.then(function() { self.isAdvertising = false; self.updateVisibilityButton(); });
-          self.isAdvertising = false;
-        } else {
-          if (_hasNativeMethod(self.nativePlugin, 'startAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'startAdvertising', {}); else promise = Promise.resolve();
-          if (promise) return promise.then(function() { self.isAdvertising = true; self.updateVisibilityButton(); });
-          self.isAdvertising = true;
+    function doToggle() {
+      if (!self.nativePlugin) return Promise.resolve();
+      var promise = null;
+      if (self.isAdvertising) {
+        if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) {
+          promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {});
         }
-        self.updateVisibilityButton(); return Promise.resolve();
-      }).catch(function(err) {});
-    } else { permsReady = true; }
-    if (!permsReady) return Promise.resolve();
-    if (!self.nativePlugin) return Promise.resolve();
-    var promise;
-    if (self.isAdvertising) {
-      if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {});
-      if (promise) return promise.then(function() { self.isAdvertising = false; self.updateVisibilityButton(); });
-      self.isAdvertising = false;
-    } else {
-      if (_hasNativeMethod(self.nativePlugin, 'startAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'startAdvertising', {});
-      if (promise) return promise.then(function() { self.isAdvertising = true; self.updateVisibilityButton(); });
-      self.isAdvertising = true;
+      } else {
+        if (_hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
+          promise = _safeNativeCall(self.nativePlugin, 'startAdvertising', {});
+        }
+      }
+      if (promise && typeof promise.then === 'function') {
+        return promise.then(function() {
+          self.isAdvertising = !self.isAdvertising;
+          self.updateVisibilityButton();
+        }).catch(function(err) {
+          console.error('[BLEInterface] toggleVisibility nativo error:', err);
+          if (_hasNativeMethod(self.nativePlugin, 'isAdvertising')) {
+            return _safeNativeCall(self.nativePlugin, 'isAdvertising', {}).then(function(adState) {
+              self.isAdvertising = !!(adState && adState.isAdvertising);
+              self.updateVisibilityButton();
+            }).catch(function() {});
+          }
+        });
+      }
+      self.isAdvertising = !self.isAdvertising;
+      self.updateVisibilityButton();
+      return Promise.resolve();
     }
-    self.updateVisibilityButton(); return Promise.resolve();
+    if (window.ensureBLEPermissions) {
+      return window.ensureBLEPermissions().then(function(result) {
+        if (!result) return Promise.resolve();
+        return doToggle();
+      }).catch(function() {
+        return doToggle();
+      });
+    }
+    return doToggle();
   }
   _autoScanForKnownContacts() {
     var self = this;
@@ -1195,7 +1208,11 @@ export class BLEInterface {
             self._scanCycleTimer = setTimeout(doCycle, self._scanCycleInterval);
           }, self._scanCycleDuration);
         })
-        .catch(function(e) { self._scanCycleTimer = setTimeout(doCycle, self._scanCycleInterval); });
+        .catch(function(e) {
+          self.isScanning = false;
+          self.updateScanButton();
+          self._scanCycleTimer = setTimeout(doCycle, self._scanCycleInterval);
+        });
     }
     doCycle();
   }
