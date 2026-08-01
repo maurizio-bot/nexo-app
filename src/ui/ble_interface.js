@@ -543,6 +543,7 @@ export class BLEInterface {
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 8: LISTENERS NATIVOS - Scan, Conexión, Estado y Payload
 // Escucha onDeviceFound, onDeviceConnected, onServicesReady, onPayloadReceived
+// FIXES: timer cleanup onServicesReady, deviceId adoption, connectionFailed delete
 // ═══════════════════════════════════════════════════════════════════════════════
 
   _setupNativeScanListeners() {
@@ -636,6 +637,8 @@ export class BLEInterface {
       try {
         var deviceId = data.deviceId || '';
         if (!deviceId) return;
+        var existingTimer = self._notificationFallbackTimers.get(deviceId);
+        if (existingTimer) clearTimeout(existingTimer);
         self._setDeviceState(deviceId, BLE_STATES.DISCOVERING_SERVICES, { servicesReady: true });
         var device = self.connectedDevices.get(deviceId);
         if (device) { device.servicesReady = true; self.connectedDevices.set(deviceId, device); }
@@ -669,6 +672,7 @@ export class BLEInterface {
         if (!deviceId) return;
         var ft = self._notificationFallbackTimers.get(deviceId);
         if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(deviceId); }
+        self.connectedDevices.delete(deviceId);
         self._setDeviceState(deviceId, BLE_STATES.ERROR, { lastError: data.reason });
       } catch (e) {}
     });
@@ -746,6 +750,15 @@ export class BLEInterface {
           var contact = _getContactByUUID(senderUUID);
           var cname = contact ? contact.name : null;
           senderName = cname || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name) || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name) || '';
+        }
+        // Adoptar deviceId en contacto existente que no lo tenga (primer mensaje tras conexión)
+        if (senderUUID && deviceId) {
+          var contactsAdopt = _getBLEContacts();
+          var idxAdopt = contactsAdopt.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(senderUUID); });
+          if (idxAdopt >= 0 && !contactsAdopt[idxAdopt].deviceId) {
+            contactsAdopt[idxAdopt].deviceId = deviceId;
+            _saveBLEContacts(contactsAdopt);
+          }
         }
         if (senderUUID && senderName && senderName !== '') {
           if (!_isBLEContact(senderUUID)) {
