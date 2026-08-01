@@ -1683,6 +1683,7 @@ export class BLEInterface {
   }
   _toggleContactMenu(uuid, btn) {
     var self = this;
+    if (!uuid || !btn) return;
     var existing = document.querySelector('.ble-contact-menu');
     if (existing) { existing.remove(); return; }
     var menu = document.createElement('div');
@@ -1693,15 +1694,20 @@ export class BLEInterface {
     menu.style.top = (rect.bottom + 4) + 'px';
     menu.style.right = (window.innerWidth - rect.right) + 'px';
     document.body.appendChild(menu);
+    var closeMenu = function(e) {
+      if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeMenu); }
+    };
     menu.addEventListener('click', function(e) {
-      var action = e.target.dataset.action;
+      var target = e.target.closest ? e.target.closest('[data-action]') : e.target;
+      var action = target ? target.dataset.action : null;
       if (action === 'pin') { _togglePinnedContact(uuid); self.renderContactsList(); }
       else if (action === 'delete') { self.removeContact(uuid); }
       else if (action === 'profile') { _safeDispatchEvent('nexo:ble:goToProfile', { deviceUUID: uuid }); }
       menu.remove();
+      document.removeEventListener('click', closeMenu);
     });
     setTimeout(function() {
-      document.addEventListener('click', function closeMenu(e) { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeMenu); } });
+      document.addEventListener('click', closeMenu);
     }, 10);
   }
   renderNewDeviceBar() {
