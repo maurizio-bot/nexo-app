@@ -1232,6 +1232,16 @@ export class BLEInterface {
 
   createDOM() {
     var self = this;
+    var existingPanel = document.getElementById('ble-panel');
+    if (existingPanel) {
+      existingPanel.remove();
+      var existingOverlay = document.getElementById('ble-overlay');
+      if (existingOverlay) existingOverlay.remove();
+      var existingNav = document.getElementById('ble-bottom-nav');
+      if (existingNav) existingNav.remove();
+      var existingFab = document.getElementById('ble-fab-btn');
+      if (existingFab) existingFab.remove();
+    }
     var panel = document.createElement('div');
     panel.id = 'ble-panel';
     panel.innerHTML =
@@ -1262,11 +1272,9 @@ export class BLEInterface {
       '</div>' +
       '<div id="ble-status-bar" class="ble-status-bar"><span id="ble-status-text"></span></div>';
     document.body.appendChild(panel);
-    this.elements.panel = panel;
     var overlay = document.createElement('div');
     overlay.id = 'ble-overlay';
     document.body.appendChild(overlay);
-    this.elements.overlay = overlay;
     var bottomNav = document.createElement('div');
     bottomNav.id = 'ble-bottom-nav';
     bottomNav.className = 'ble-bottom-nav';
@@ -1288,19 +1296,6 @@ export class BLEInterface {
       '<span>Perfil</span>' +
       '</div>';
     document.body.appendChild(bottomNav);
-    this.elements.bottomNav = bottomNav;
-    this.elements.visibilityBtn = document.getElementById('ble-visibility-btn');
-    this.elements.scanBtn = document.getElementById('ble-scan-btn');
-    this.elements.contactsList = document.getElementById('ble-contacts-list');
-    this.elements.onlineStrip = document.getElementById('ble-online-strip');
-    this.elements.newDeviceBar = document.getElementById('ble-new-device');
-    this.elements.newDeviceName = document.getElementById('ble-new-device-name');
-    this.elements.addBtn = document.getElementById('ble-add-btn');
-    this.elements.statusBar = document.getElementById('ble-status-bar');
-    this.elements.statusText = document.getElementById('ble-status-text');
-    this.elements.mainContactsList = document.getElementById('main-contacts-list');
-    this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
-    this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
     var fabBtn = document.createElement('button');
     fabBtn.id = 'ble-fab-btn';
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
@@ -1311,7 +1306,22 @@ export class BLEInterface {
     fabBtn.addEventListener('touchstart', function() { this.style.transform = 'scale(0.92)'; });
     fabBtn.addEventListener('touchend', function() { this.style.transform = 'scale(1)'; });
     document.body.appendChild(fabBtn);
-    this.elements.fabBtn = fabBtn;
+    this.elements.panel = document.getElementById('ble-panel');
+    this.elements.overlay = document.getElementById('ble-overlay');
+    this.elements.bottomNav = document.getElementById('ble-bottom-nav');
+    this.elements.fabBtn = document.getElementById('ble-fab-btn');
+    this.elements.scanBtn = document.getElementById('ble-scan-btn');
+    this.elements.contactsList = document.getElementById('ble-contacts-list');
+    this.elements.onlineStrip = document.getElementById('ble-online-strip');
+    this.elements.newDeviceBar = document.getElementById('ble-new-device');
+    this.elements.newDeviceName = document.getElementById('ble-new-device-name');
+    this.elements.addBtn = document.getElementById('ble-add-btn');
+    this.elements.statusBar = document.getElementById('ble-status-bar');
+    this.elements.statusText = document.getElementById('ble-status-text');
+    this.elements.visibilityBtn = document.getElementById('ble-visibility-btn');
+    this.elements.mainContactsList = document.getElementById('main-contacts-list');
+    this.elements.mainOnlineStrip = document.getElementById('main-contacts-online-strip');
+    this.elements.mainEmptyMsg = document.getElementById('main-contacts-empty-msg');
   }
 
 // ═══════════════════════════════════════════════════════════════════════════════
