@@ -1331,29 +1331,37 @@ export class BLEInterface {
 
   setupEventListeners() {
     var self = this;
-    this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
-    this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
-    this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
+    if (self.elements.overlay) {
+      self.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
+    }
+    if (self.elements.scanBtn) {
+      self.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
+    }
+    if (self.elements.addBtn) {
+      self.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
+    }
     var backBtn = document.getElementById('ble-panel-back');
     if (backBtn) {
       backBtn.addEventListener('click', function() {
-        self.elements.panel.classList.remove('active');
-        self.elements.overlay.classList.remove('active');
+        if (self.elements.panel) self.elements.panel.classList.remove('active');
+        if (self.elements.overlay) self.elements.overlay.classList.remove('active');
       });
     }
-    var navItems = this.elements.bottomNav.querySelectorAll('.ble-nav-item');
-    navItems.forEach(function(item) {
-      item.addEventListener('click', function() {
-        navItems.forEach(function(n) { n.classList.remove('active'); });
-        item.classList.add('active');
-        var tab = item.dataset.tab;
-        if (tab === 'people') self.togglePanel();
-        else if (tab === 'chats') {
-          self.elements.panel.classList.remove('active');
-          self.elements.overlay.classList.remove('active');
-        }
+    if (self.elements.bottomNav) {
+      var navItems = self.elements.bottomNav.querySelectorAll('.ble-nav-item');
+      navItems.forEach(function(item) {
+        item.addEventListener('click', function() {
+          navItems.forEach(function(n) { n.classList.remove('active'); });
+          item.classList.add('active');
+          var tab = item.dataset.tab;
+          if (tab === 'people') self.togglePanel();
+          else if (tab === 'chats') {
+            if (self.elements.panel) self.elements.panel.classList.remove('active');
+            if (self.elements.overlay) self.elements.overlay.classList.remove('active');
+          }
+        });
       });
-    });
+    }
     window.addEventListener('nexo:ble:closeChat', function() {
       self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
       self.updateBadge();
@@ -1369,6 +1377,7 @@ export class BLEInterface {
     });
   }
   togglePanel() {
+    if (!this.elements.panel || !this.elements.overlay) return;
     this.elements.panel.classList.toggle('active');
     this.elements.overlay.classList.toggle('active');
     if (this.elements.panel.classList.contains('active')) {
@@ -1385,28 +1394,39 @@ export class BLEInterface {
     var self = this;
     if (self.isScanning) {
       if (_hasNativeMethod(self.nativePlugin, 'stopScan')) {
-        return _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() { self.isScanning = false; self.updateScanButton(); self.updateStatus(); });
+        return _safeNativeCall(self.nativePlugin, 'stopScan', {})
+          .then(function() { self.isScanning = false; self.updateScanButton(); self.updateStatus(); })
+          .catch(function(e) { self.isScanning = false; self.updateScanButton(); self.updateStatus(); });
       }
-      self.isScanning = false; self.updateScanButton(); self.updateStatus(); return Promise.resolve();
+      self.isScanning = false; self.updateScanButton(); self.updateStatus();
+      return Promise.resolve();
     } else {
       self.foundDevices.clear(); self.renderContactsList(); self.renderNewDeviceBar(); self.renderOnlineStrip();
       if (_hasNativeMethod(self.nativePlugin, 'startScan')) {
-        return _safeNativeCall(self.nativePlugin, 'startScan', {}).then(function() { self.isScanning = true; self.updateScanButton(); });
+        return _safeNativeCall(self.nativePlugin, 'startScan', {})
+          .then(function() { self.isScanning = true; self.updateScanButton(); })
+          .catch(function(e) { self.isScanning = false; self.updateScanButton(); });
       }
-      self.isScanning = true; self.updateScanButton(); return Promise.resolve();
+      return Promise.resolve();
     }
   }
-    _doToggleScan() {
+  _doToggleScan() {
     var self = this;
     var permsReady = false;
     if (window.ensureBLEPermissions) {
-      return window.ensureBLEPermissions().then(function(result) { permsReady = result; }).catch(function() { permsReady = true; }).then(function() {
-        if (!permsReady) return Promise.resolve();
-        return self._executeToggleScan();
-      }).catch(function(err) { self.isScanning = false; self.updateScanButton(); });
+      return window.ensureBLEPermissions()
+        .then(function(result) { permsReady = result; })
+        .catch(function() { permsReady = true; })
+        .then(function() {
+          if (!permsReady) return Promise.resolve();
+          return self._executeToggleScan();
+        })
+        .catch(function(err) { self.isScanning = false; self.updateScanButton(); });
     } else { permsReady = true; }
     if (!permsReady) return Promise.resolve();
-    return self._executeToggleScan();
+    return self._executeToggleScan().catch(function(err) {
+      self.isScanning = false; self.updateScanButton();
+    });
   }
   toggleScan() {
     var self = this;
@@ -1421,9 +1441,12 @@ export class BLEInterface {
           }
           return self._doToggleScan();
         })
-        .catch(function() { return self._doToggleScan(); });
+        .catch(function() { return self._doToggleScan(); })
+        .catch(function(err) { self.isScanning = false; self.updateScanButton(); });
     }
-    return self._doToggleScan();
+    return self._doToggleScan().catch(function(err) {
+      self.isScanning = false; self.updateScanButton();
+    });
   }
 
 // ═══════════════════════════════════════════════════════════════════════════════
