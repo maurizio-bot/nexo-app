@@ -1517,8 +1517,8 @@ export class BLEInterface {
     this._closePanelAndRefresh();
   }
   _closePanelAndRefresh() {
-    this.elements.panel.classList.remove('active');
-    this.elements.overlay.classList.remove('active');
+    if (this.elements.panel) this.elements.panel.classList.remove('active');
+    if (this.elements.overlay) this.elements.overlay.classList.remove('active');
     this.renderContactsList();
     this.renderOnlineStrip();
     this.renderNewDeviceBar();
@@ -1532,16 +1532,39 @@ export class BLEInterface {
     self._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
     self.connectedDevices.set(deviceId, { id: deviceId, name: (device && device.name) || '', direction: 'outgoing', servicesReady: false, deviceUUID: device && device.deviceUUID });
     return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId })
-      .then(function(result) { if (result && (result.connected || result.alreadyConnected)) { return self._waitForReadyToChat(deviceId, 8000).then(function() {}); } else { self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED); } })
-      .catch(function(e) { self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED); });
+      .then(function(result) {
+        if (result && (result.connected || result.alreadyConnected)) {
+          return self._waitForReadyToChat(deviceId, 8000).then(function() {});
+        } else {
+          self.connectedDevices.delete(deviceId);
+          self._deviceStates.delete(deviceId);
+          self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
+          return Promise.resolve();
+        }
+      })
+      .catch(function(e) {
+        self.connectedDevices.delete(deviceId);
+        self._deviceStates.delete(deviceId);
+        self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
+        return Promise.reject(e);
+      });
   }
   removeContact(deviceUUID) {
-    try { _removeBLEContact(deviceUUID); this.renderContactsList(); this.renderNewDeviceBar(); this.renderOnlineStrip(); } catch (e) {}
+    try {
+      _removeBLEContact(deviceUUID);
+      this.renderContactsList();
+      this.renderNewDeviceBar();
+      this.renderOnlineStrip();
+    } catch (e) {
+      console.warn('[BLEInterface] removeContact error:', e);
+    }
   }
   disconnect(deviceId) {
     var self = this;
     if (self.isDummyMode) return Promise.resolve();
     if (!deviceId) return Promise.resolve();
+    self.connectedDevices.delete(deviceId);
+    self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
     if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) {
       return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: deviceId })
         .then(function() {
@@ -1549,7 +1572,9 @@ export class BLEInterface {
             self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
             self.updateBadge();
           }
-        }).catch(function(err) {});
+        }).catch(function(err) {
+          console.warn('[BLEInterface] disconnect nativo error:', err);
+        });
     }
     return Promise.resolve();
   }
