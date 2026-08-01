@@ -1303,16 +1303,11 @@ export class BLEInterface {
       self.isScanning = true; self.updateScanButton(); return Promise.resolve();
     }
   }
-  _doToggleScan() {
+    _doToggleScan() {
     var self = this;
     var permsReady = false;
     if (window.ensureBLEPermissions) {
       return window.ensureBLEPermissions().then(function(result) { permsReady = result; }).catch(function() { permsReady = true; }).then(function() {
-        if (!permsReady) return Promise.resolve();
-        return self._executeToggleScan();
-      }).catch(function(err) { self.isScanning = false; self.updateScanButton(); });
-    } else { permsReady = true; }
-    if (!permsReady) return
         if (!permsReady) return Promise.resolve();
         return self._executeToggleScan();
       }).catch(function(err) { self.isScanning = false; self.updateScanButton(); });
