@@ -1789,8 +1789,15 @@ export class BLEInterface {
     return _getContactByUUID(deviceUUID);
   }
 }
+
 export function initBLEInterface(bleMesh) {
-  var instance = new BLEInterface(bleMesh).init();
-  window.bleInterface = instance;
-  return instance;
+  try {
+    var instance = new BLEInterface(bleMesh).init();
+    if (typeof window !== 'undefined') window.bleInterface = instance;
+    return instance;
+  } catch (e) {
+    console.error('[BLEInterface] initBLEInterface fatal:', e);
+    return null;
+  }
 }
+
