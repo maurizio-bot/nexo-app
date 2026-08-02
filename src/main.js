@@ -749,12 +749,8 @@ function _bindAttachmentHandlers() {
         _closeAttachMenu();
       }
     });
-  }
-                    
-  //---------------------------------------------------------------------
-  //Parte 3 (líneas 750-809): DOMContentLoaded
-  //----------------------------------------------------------------------
-  
+  });
+
   document.addEventListener('click', function(e) {
     var menu = document.getElementById('attach-menu');
     var attachBtn = document.getElementById('attach-btn');
@@ -765,6 +761,12 @@ function _bindAttachmentHandlers() {
       _closeAttachMenu();
     }
   });
+}
+
+//---------------------------------------------------------------------
+//Parte 3 (líneas 750-809): DOMContentLoaded
+//----------------------------------------------------------------------
+
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
@@ -814,7 +816,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     _enableFallbackMode();
   }
 });
-
 //-----------------------------------------------------------------------
 //Parte 4 (Overlays y notificaciones, líneas 810-905)
 //------------------------------------------------------------------------
@@ -1028,21 +1029,17 @@ async function initializeNexoApp() {
             msg.senderNexoId = senderId;
           }
           _renderMessage(msg);
-          // FIX: eliminado doble onMessage — NexoApp ya escucha este evento internamente
         }
       });
-      // FIX v9.9.4: Preservar transport:ble y deviceId al abrir chat desde BLE
       window.addEventListener('nexo:ble:openChat', function(e) {
         if (e && e.detail) {
           var detail = e.detail;
           var contact = detail.contact || {};
-          // Preservar metadata BLE que el vault no tiene
           if (detail.transport) contact.transport = detail.transport;
           if (detail.deviceId) contact.deviceId = detail.deviceId;
           if (contact.nexoId) {
             var vaultContact = vaultFindContactByNexoId(contact.nexoId);
             if (vaultContact) {
-              // Merge: datos vault + metadata BLE (deviceId puede haber cambiado)
               contact = Object.assign({}, vaultContact, contact);
             } else {
               vaultSaveContact(contact);
@@ -1161,12 +1158,10 @@ function _setupMessageInput() {
         try { window.vaultAppendMessage(contactId, localMsg); } catch(e) {}
       }
       try {
-        // FIX v9.9.4: Detectar cuando sendMessage devuelve false (sin transporte BLE)
         var sent = await window.NEXO.app.sendMessage({ content: text, messageId: msgId });
         if (sent === false) {
           throw new Error('Send returned false');
         }
-        // FIX: marcar 'sent' cuando el envío tuvo éxito
         _updateMessageStatus(msgId, 'sent');
         if (contactId && window.vaultUpdateMessageStatus) {
           try { window.vaultUpdateMessageStatus(contactId, msgId, 'sent'); } catch(e2) {}
@@ -1413,7 +1408,6 @@ function _updateMessageStorageStatus(messageId, status) {
   }
 }
 
-
 //---------------‐----------------------------------‐--------------------
 //Parte 7 (líneas 1418-1741): _renderMessage
 //-----------------------------------------------------------------------
@@ -1474,7 +1468,6 @@ function _renderMessage(msg, skipSave) {
     contentDiv.style.borderRadius = '12px';
     contentDiv.style.overflow = 'hidden';
 
-    // FIX: Helper seguro base64→Blob con try-catch + límite registry
     function _safeBase64ToBlob(base64Str, mimeType) {
       try {
         var byteChars = atob(base64Str);
@@ -1485,14 +1478,13 @@ function _renderMessage(msg, skipSave) {
         var byteArray = new Uint8Array(byteNums);
         return new Blob([byteArray], { type: mimeType });
       } catch (e) {
-        console.warn('[RENDER] base64 inválido:', e.message);
+        console.warn('[RENDER] base64 invalido:', e.message);
         return null;
       }
     }
     function _registerObjectURL(url) {
       if (!url) return;
       _objectURLRegistry.push(url);
-      // FIX: límite memory leak, revocar los más viejos
       if (_objectURLRegistry.length > 50) {
         var old = _objectURLRegistry.shift();
         try { URL.revokeObjectURL(old); } catch(e) {}
@@ -2030,3 +2022,4 @@ function _doChatBack() {
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
+
