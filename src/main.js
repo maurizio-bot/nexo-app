@@ -1737,6 +1737,20 @@ function _updateMessageStatus(messageId, status) {
     if (!messageId) return;
     var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
     if (!statusEl) return;
+
+    // FIX: no degradar estado (read > delivered > sent > pending > error)
+    var priority = { 'error': 0, 'pending': 1, 'sent': 2, 'delivered': 3, 'read': 4 };
+    var currentStatus = 'pending';
+    if (statusEl.classList.contains('status-read')) currentStatus = 'read';
+    else if (statusEl.classList.contains('status-delivered')) currentStatus = 'delivered';
+    else if (statusEl.classList.contains('status-sent')) currentStatus = 'sent';
+    else if (statusEl.classList.contains('status-error')) currentStatus = 'error';
+
+    if ((priority[status] || 0) < (priority[currentStatus] || 0)) {
+      console.log('[MAIN] Ignorando degradacion de estado:', currentStatus, '->', status);
+      return;
+    }
+
     statusEl.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
     statusEl.classList.add('status-' + status);
     if (status === 'sent') statusEl.textContent = '✓';
@@ -1751,6 +1765,7 @@ function _updateMessageStatus(messageId, status) {
     console.warn('[MAIN] _updateMessageStatus error:', e);
   }
 }
+
 function _toggleVaultUI(isOpen) {
   try {
     var vault = document.getElementById('vault-panel');
