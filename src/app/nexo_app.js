@@ -1,7 +1,8 @@
 /**
- * NEXO App v5.0.19-FASE4-ROBUSTO
- * FIX: self declarado correctamente en _initPhase7_UI
- * FIX: IDs consistentes en _bleMessageHandler
+ * NEXO App v5.0.20-FASE4-ROBUSTO
+ * FIX: Vault unificado a window.vaultXxx (vault_manager.js, clave _v2)
+ * FIX: Eliminado doble listener de attach-menu-item (main.js lo maneja)
+ * FIX: NXID estricto, sin fallback a deviceId nativo en nexo_app.js
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -13,7 +14,6 @@ import { GestureEngine } from '../ui/gesture_engine.js';
 import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
 import { initBLEInterface } from '../ui/ble_interface.js';
-import { vaultLoadMessages, vaultAppendMessage, vaultUpdateMessageStatus } from '../vault/crypto_vault.js';
 
 function withTimeoutNAP(promise, ms, context) {
   if (!ms || ms <= 0) ms = 5000;
@@ -100,7 +100,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.19-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.20-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -120,7 +120,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.19-FASE4-ROBUSTO Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.20-FASE4-ROBUSTO Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -203,7 +203,6 @@ class NexoApp {
           if (!contact.id && detail.contactId) contact.id = detail.contactId;
           if (!contact.name && detail.name) contact.name = detail.name;
           if (!contact.nexoId && detail.contactId) contact.nexoId = detail.contactId;
-          if (!contact.deviceId && detail.deviceId) contact.deviceId = detail.deviceId;
           if (!contact.transport && detail.transport) contact.transport = detail.transport;
 
           if (contact.nexoId && window.vaultFindContactByNexoId) {
@@ -229,7 +228,7 @@ class NexoApp {
           if (subtitle) subtitle.textContent = '';
           DEBUG.success('Chat activo: ' + (contact.name || '') + ' [' + (contact.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
           try {
-            var loadId = contact.nexoId || contact.id || contact.deviceId;
+            var loadId = contact.nexoId || contact.id;
             var storedMessages = await self._loadMessagesFromVault(loadId);
             storedMessages.sort(function(a, b) { return (a._ts || 0) - (b._ts || 0); });
             storedMessages.forEach(function(m) { self.config.onMessage(m); });
@@ -244,8 +243,8 @@ class NexoApp {
             if (chatsTab) chatsTab.classList.add('active');
           }
           if (self.bleInterface) {
-            self.bleInterface._activeChatDeviceId = contact.nexoId || contact.id || contact.deviceId || null;
-            self.bleInterface._activeChatDeviceIdNative = contact.deviceId || null;
+            self.bleInterface._activeChatDeviceId = contact.nexoId || contact.id || null;
+            // FIX: deviceId nativo NUNCA sale de nexo_app.js
           }
         } catch (handlerErr) {
           console.error('[NexoApp] Error en _bleChatHandler:', handlerErr);
@@ -357,12 +356,12 @@ class NexoApp {
           }
           self._handleMessage({
             content: content,
-            sender: senderUUID || detail.deviceId,
+            sender: senderUUID,
             senderName: resolvedName,
             source: detail.source || 'ble_direct',
             timestamp: detail.timestamp || Date.now(),
             messageId: detail.messageId || messageId,
-            deviceUUID: senderUUID || detail.deviceUUID,
+            deviceUUID: senderUUID,
             senderNexoId: senderUUID,
             _own: false
           }, 'ble_direct');
@@ -443,106 +442,8 @@ class NexoApp {
    input.addEventListener('input', updateSendButton);
    updateSendButton();
 
-   if (attachBtn && attachMenu) {
-     attachBtn.addEventListener('click', function(e) {
-       e.stopPropagation();
-       var isVisible = attachMenu.classList.contains('visible');
-       if (isVisible) {
-         attachMenu.classList.remove('visible');
-         attachMenu.classList.add('hidden');
-         attachBtn.classList.remove('active');
-       } else {
-         attachMenu.classList.remove('hidden');
-         void attachMenu.offsetWidth;
-         attachMenu.classList.add('visible');
-         attachBtn.classList.add('active');
-       }
-     });
-
-     document.addEventListener('click', function(e) {
-       if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
-         attachMenu.classList.remove('visible');
-         attachMenu.classList.add('hidden');
-         attachBtn.classList.remove('active');
-       }
-     });
-
-     var menuItems = attachMenu.querySelectorAll('.attach-menu-item');
-     menuItems.forEach(function(item) {
-       item.addEventListener('click', function() {
-         var type = item.getAttribute('data-type');
-         attachMenu.classList.remove('visible');
-         attachMenu.classList.add('hidden');
-         attachBtn.classList.remove('active');
-
-         function getMessagesContainer() {
-           return document.getElementById('messages-container');
-         }
-         function scrollToBottom() {
-           var c = getMessagesContainer();
-           if (c) c.scrollTop = c.scrollHeight;
-         }
-         function renderOwnBubble(htmlContent, typeLabel) {
-           var container = getMessagesContainer();
-           if (!container) { console.error('[Attach] No contenedor'); return; }
-           var bubble = document.createElement('div');
-           bubble.className = 'message own message-attachment';
-           bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
-           bubble.innerHTML = htmlContent + '<div style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + typeLabel + '</div>';
-           container.appendChild(bubble);
-           scrollToBottom();
-         }
-
-         if (type === 'photo') {
-           if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.Camera) {
-             alert('Plugin Camera no disponible'); return;
-           }
-           var Camera = window.Capacitor.Plugins.Camera;
-           Camera.getPhoto({
-             quality: 90, allowEditing: false,
-             resultType: Camera.CameraResultType.Base64,
-             source: Camera.CameraSource.Prompt
-           }).then(function(image) {
-             if (image && image.base64String) {
-               var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
-               var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>';
-               renderOwnBubble(html, '📷 Foto');
-               window._lastAttachmentPayload = { type: 'image', data: dataUrl, width: image.width, height: image.height };
-             }
-           }).catch(function(err) {
-             console.error('[FOTO] Error:', err);
-             if (err.message && err.message.indexOf('cancelled') === -1) {
-               alert('Error foto: ' + err.message);
-             }
-           });
-         } else if (type === 'video') {
-           var inputVid = document.createElement('input');
-           inputVid.type = 'file'; inputVid.accept = 'video/*'; inputVid.style.display = 'none';
-           inputVid.onchange = function(ev) {
-             var file = ev.target.files[0]; if (!file) return;
-             var url = URL.createObjectURL(file);
-             var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + url + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
-             renderOwnBubble(html, '🎬 Video');
-             window._lastAttachmentPayload = { type: 'video', file: file, url: url };
-           };
-           document.body.appendChild(inputVid); inputVid.click();
-           setTimeout(function() { inputVid.remove(); }, 5000);
-         } else if (type === 'file') {
-           var inputFile = document.createElement('input');
-           inputFile.type = 'file'; inputFile.style.display = 'none';
-           inputFile.onchange = function(ev) {
-             var file = ev.target.files[0]; if (!file) return;
-             var sizeStr = file.size > 1024*1024 ? (file.size/(1024*1024)).toFixed(1) + ' MB' : (file.size/1024).toFixed(0) + ' KB';
-             var html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + file.name + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
-             renderOwnBubble(html, '📎 Archivo');
-             window._lastAttachmentPayload = { type: 'file', file: file };
-           };
-           document.body.appendChild(inputFile); inputFile.click();
-           setTimeout(function() { inputFile.remove(); }, 5000);
-         }
-       });
-     });
-   }
+   // FIX: Menu clip y adjuntos lo maneja main.js (_bindAttachmentHandlers)
+   // No registramos listeners duplicados aqui
 
    sendBtn.addEventListener('click', function(e) {
      if (sendBtn.classList.contains('mic-mode')) {
@@ -624,18 +525,20 @@ class NexoApp {
    var cid = _normId(contactId);
    if (!cid) return;
    try {
-     await vaultAppendMessage(cid, {
-       content: message.content,
-       sender: message.sender,
-       senderName: message.senderName,
-       _own: !!message._own,
-       _source: message._source,
-       _ts: message._ts || Date.now(),
-       messageId: message.messageId,
-       deviceUUID: message.deviceUUID,
-       recipient: message.recipient,
-       status: message.status || 'pending'
-     });
+     if (window.vaultAppendMessage && typeof window.vaultAppendMessage === 'function') {
+       await window.vaultAppendMessage(cid, {
+         content: message.content,
+         sender: message.sender,
+         senderName: message.senderName,
+         _own: !!message._own,
+         _source: message._source,
+         _ts: message._ts || Date.now(),
+         messageId: message.messageId,
+         deviceUUID: message.deviceUUID,
+         recipient: message.recipient,
+         status: message.status || 'pending'
+       });
+     }
    } catch (e) {
      console.warn('[NexoApp] Error guardando mensaje:', e.message);
    }
@@ -645,7 +548,10 @@ class NexoApp {
    try {
      var cid = _normId(contactId);
      if (!cid) return [];
-     var raw = await vaultLoadMessages(cid);
+     var raw = [];
+     if (window.vaultLoadMessages && typeof window.vaultLoadMessages === 'function') {
+       raw = await window.vaultLoadMessages(cid);
+     }
      return raw.map(function(m) {
        return {
          content: m.text || m.content || '',
@@ -666,12 +572,13 @@ class NexoApp {
    var cid = _normId(contactId);
    if (!cid || !messageId) return;
    try {
-     await vaultUpdateMessageStatus(cid, messageId, status);
+     if (window.vaultUpdateMessageStatus && typeof window.vaultUpdateMessageStatus === 'function') {
+       await window.vaultUpdateMessageStatus(cid, messageId, status);
+     }
    } catch (e) {
      console.warn('[NexoApp] Error actualizando estado:', e.message);
    }
  }
-
  async sendMessage(msg) {
    if (!this.initialized || this._isDestroyed) {
      DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
@@ -682,7 +589,8 @@ class NexoApp {
      var isObject = msg && typeof msg === 'object';
      var content = isObject ? (msg.content || msg) : msg;
      var recipient = isObject ? msg.recipient : null;
-     var targetId = recipient || (this.activeContact ? (this.activeContact.nexoId || this.activeContact.id || this.activeContact.deviceId) : null);
+     // FIX: NXID estricto. Sin fallback a deviceId nativo.
+     var targetId = recipient || (this.activeContact ? (this.activeContact.nexoId || this.activeContact.id) : null);
      var targetTransport = this.activeContact ? this.activeContact.transport : null;
      if (!content || (typeof content === 'string' && content.trim() === '')) {
        return false;
@@ -795,7 +703,7 @@ class NexoApp {
      this.config.onMessage(enriched);
      var vaultContactId = enriched._own ? enriched.recipient : (enriched.senderNexoId || enriched.deviceUUID || enriched.sender);
      if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
-     if (!enriched._own && this.activeContact && (enriched.sender === this.activeContact.id || enriched.sender === this.activeContact.nexoId || enriched.sender === this.activeContact.deviceId) && enriched.messageId) {
+     if (!enriched._own && this.activeContact && (enriched.sender === this.activeContact.id || enriched.sender === this.activeContact.nexoId) && enriched.messageId) {
        var self = this;
        setTimeout(function() { self._sendReadReceipt(enriched.messageId, enriched.sender); }, 800);
      }
