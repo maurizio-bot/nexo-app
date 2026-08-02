@@ -914,6 +914,21 @@ export class BLEInterface {
         else {
           var senderId = self.localNexoId || self.localDeviceUUID;
           var msgId = messageId || ('msg' + Date.now() + '*' + Math.random().toString(36).substr(2, 9));
+          var payloadObj = {
+            text: content,
+            senderNexoId: senderId,
+            senderName: self.localDeviceName || 'Nexo Device',
+            timestamp: Date.now()
+          };
+          // FIX: evitar doble encoding cuando content ya es JSON de attachment
+          if (content && content.charAt(0) === '{') {
+            try {
+              var parsedContent = JSON.parse(content);
+              if (parsedContent && parsedContent.type === 'attachment') {
+                payloadObj.attachment = parsedContent;
+              }
+            } catch (e) {}
+          }
           enrichedPayload = JSON.stringify({
             v: 1,
             type: 'chat',
@@ -921,12 +936,7 @@ export class BLEInterface {
             to: '',
             ts: Date.now(),
             msgId: msgId,
-            payload: {
-              text: content,
-              senderNexoId: senderId,
-              senderName: self.localDeviceName || 'Nexo Device',
-              timestamp: Date.now()
-            },
+            payload: payloadObj,
             jump: { ttl: 5, hops: 0, path: [] }
           });
         }
