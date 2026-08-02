@@ -122,7 +122,7 @@ function _sendAttachment(type, payload, meta) {
   _renderMessage(localMsg);
   var payloadStr = JSON.stringify(attachmentData);
   if (window.bleInterface && window.bleInterface.sendChatMessage) {
-    window.bleInterface.sendChatMessage(contactId, payloadStr);
+    window.bleInterface.sendChatMessage(contactId, payloadStr, msgId);
   } else if (window.NEXO.app && window.NEXO.app.sendMessage) {
     window.NEXO.app.sendMessage({ content: payloadStr, messageId: msgId });
   } else {
@@ -749,8 +749,7 @@ function _bindAttachmentHandlers() {
         _closeAttachMenu();
       }
     });
-  });
-  
+  }
   //---------------------------------------------------------------------
   //Parte 3 (líneas 750-809): DOMContentLoaded
   //----------------------------------------------------------------------
@@ -1029,9 +1028,7 @@ async function initializeNexoApp() {
             msg.senderNexoId = senderId;
           }
           _renderMessage(msg);
-          if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
-            try { window.NEXO.app.onMessage(msg); } catch(omErr) {}
-          }
+          // FIX: eliminado doble onMessage — NexoApp ya escucha este evento internamente
         }
       });
       // FIX v9.9.4: Preservar transport:ble y deviceId al abrir chat desde BLE
@@ -1074,7 +1071,7 @@ async function initializeNexoApp() {
     } catch (f4Err) {
       console.warn('[MAIN] Fase 4 init warn:', f4Err);
     }
-    
+  
 //---------------------------------------------------------------------
 //Parte 6 (UI Setup, líneas 1077-1410)
 //---------------------------------------------------------------------
@@ -1168,6 +1165,11 @@ function _setupMessageInput() {
         var sent = await window.NEXO.app.sendMessage({ content: text, messageId: msgId });
         if (sent === false) {
           throw new Error('Send returned false');
+        }
+        // FIX: marcar 'sent' cuando el envío tuvo éxito
+        _updateMessageStatus(msgId, 'sent');
+        if (contactId && window.vaultUpdateMessageStatus) {
+          try { window.vaultUpdateMessageStatus(contactId, msgId, 'sent'); } catch(e2) {}
         }
       } catch (e) {
         _updateMessageStatus(msgId, 'error');
@@ -1410,6 +1412,7 @@ function _updateMessageStorageStatus(messageId, status) {
     console.warn('[MAIN] _updateMessageStorageStatus error:', e);
   }
 }
+
 
 //---------------‐----------------------------------‐--------------------
 //Parte 7 (líneas 1418-1741): _renderMessage
