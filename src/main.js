@@ -750,6 +750,7 @@ function _bindAttachmentHandlers() {
       }
     });
   }
+                    
   //---------------------------------------------------------------------
   //Parte 3 (líneas 750-809): DOMContentLoaded
   //----------------------------------------------------------------------
@@ -764,7 +765,6 @@ function _bindAttachmentHandlers() {
       _closeAttachMenu();
     }
   });
-}
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
