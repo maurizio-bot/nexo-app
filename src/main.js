@@ -72,6 +72,10 @@ var _cameraVideoStartTime = 0;
 var _objectURLRegistry = [];
 var _autoScan = null;
 
+//-------------------------------------------------------------------------
+//Parte 2 (líneas 76-749): Attachment Handlers
+//-------------------------------------------------------------------------
+
 function _fmtTime(sec) {
   var m = Math.floor(sec / 60);
   var s = sec % 60;
@@ -747,6 +751,11 @@ function _bindAttachmentHandlers() {
       }
     });
   });
+  
+  //---------------------------------------------------------------------
+  //Parte 3 (líneas 750-809): DOMContentLoaded
+  //----------------------------------------------------------------------
+  
   document.addEventListener('click', function(e) {
     var menu = document.getElementById('attach-menu');
     var attachBtn = document.getElementById('attach-btn');
@@ -807,6 +816,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     _enableFallbackMode();
   }
 });
+
+//-----------------------------------------------------------------------
+//Parte 4 (Overlays y notificaciones, líneas 810-905)
+//------------------------------------------------------------------------
+
 function _showPermissionOverlay() {
   try {
     if (document.getElementById('nexo-perm-overlay')) return;
@@ -903,6 +917,11 @@ function _openChatFromNotification(deviceId) {
     console.warn('[MAIN] _openChatFromNotification error:', e);
   }
 }
+
+//-------------------------------------------------‐-‐--------------------
+//Parte 5 (líneas 906-1076): initializeNexoApp
+//-----------------------------------------------------------------------
+
 async function initializeNexoApp() {
   try {
     NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase valida');
@@ -1056,6 +1075,11 @@ async function initializeNexoApp() {
     } catch (f4Err) {
       console.warn('[MAIN] Fase 4 init warn:', f4Err);
     }
+    
+    //---------------------------------------------------------------------
+    //Parte 6 (UI Setup, líneas 1077-1410)
+    //---------------------------------------------------------------------
+    
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
     console.log('NEXO ' + window.NEXO.version + ' Inicializado');
