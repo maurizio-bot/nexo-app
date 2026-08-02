@@ -54,7 +54,6 @@ var SAFETY_TIMEOUT = setTimeout(function() {
     console.warn('[MAIN] Safety timeout error:', e);
   }
 }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE ? NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE : 3000) + 12000);
-
 // === ATTACHMENT HANDLERS GLOBALES ===
 var _mediaRecorder = null;
 var _lastLocationSent = 0;
@@ -98,14 +97,15 @@ function _sendAttachment(type, payload, meta) {
     console.log('[ATTACH] No hay contacto seleccionado');
     return;
   }
+  var msgId = 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
   var attachmentData = {
     type: 'attachment',
     attachmentType: type,
     payload: payload,
     meta: meta,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    messageId: msgId
   };
-  var msgId = 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
   var localMsg = {
     messageId: msgId,
     content: JSON.stringify(attachmentData),
@@ -121,7 +121,7 @@ function _sendAttachment(type, payload, meta) {
   if (window.bleInterface && window.bleInterface.sendChatMessage) {
     window.bleInterface.sendChatMessage(contactId, payloadStr);
   } else if (window.NEXO.app && window.NEXO.app.sendMessage) {
-    window.NEXO.app.sendMessage({ content: payloadStr });
+    window.NEXO.app.sendMessage({ content: payloadStr, messageId: msgId });
   } else {
     console.log('[ATTACH] Sistema de mensajes no disponible');
   }
