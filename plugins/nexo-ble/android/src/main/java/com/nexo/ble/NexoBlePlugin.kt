@@ -678,28 +678,12 @@ class NexoBlePlugin : Plugin() {
                 call.reject("deviceId requerido", "INVALID_DEVICE_ID")
                 return
             }
-
-            // === RESOLVER NXID A MAC SI ES NECESARIO ===
             val targetMacNorm = resolveMacNorm(rawDeviceId)
-            val rawMacForConnect = if (targetMacNorm.isEmpty() && isNexoId(rawDeviceId)) {
-                remLog("WARN", "GATT_CLIENT", "NXID $rawDeviceId no resuelto aun, intentando scan+connect")
-                // Intentar scan rapido para resolver
-                quickScanForNexoId(rawDeviceId) { resolvedMac ->
-                    if (resolvedMac.isNotEmpty()) {
-                        doConnectToDevice(resolvedMac, call)
-                    } else {
-                        call.reject("No se pudo resolver NXID a MAC: $rawDeviceId", "NXID_UNRESOLVED")
-                    }
-                }
+            if (targetMacNorm.isEmpty()) {
+                call.reject("MAC/NXID invalido: $rawDeviceId", "INVALID_ID")
                 return
-            } else if (targetMacNorm.isEmpty()) {
-                call.reject("MAC invalida: $rawDeviceId", "INVALID_MAC")
-                return
-            } else {
-                targetMacNorm
             }
-
-            doConnectToDevice(rawMacForConnect, call)
+            doConnectToDevice(targetMacNorm, call)
         } catch (e: Exception) {
             remLog("ERROR", "GATT_CLIENT", "Fatal connectToDevice: ${e.message}")
             call.reject("Error interno: ${e.message}", "INTERNAL_ERROR")
@@ -860,6 +844,58 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    @PluginMethod
+    fun sendMessage(call: PluginCall) {
+        val rawDeviceId = call.getString("deviceId") ?: ""
+        val message = call.getString("message") ?: ""
+        remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
+
+        if (rawDeviceId.isEmpty()) {
+            call.reject("deviceId requerido")
+            return
+        }
+
+        val macNorm = resolveMacNorm(rawDeviceId)
+        val isNexo = isNexoId(rawDeviceId)
+
+        if (macNorm.isEmpty() && isNexo) {
+            remLog("INFO", "SEND", "NXID $rawDeviceId no resuelto, encolando y lanzando scan+connect")
+            val queue = pendingNexoIdMessages.getOrPut(rawDeviceId) { mutableListOf() }
+            queue.add(message)
+            quickScanForNexoId(rawDeviceId) { resolvedMac ->
+                if (resolvedMac.isNotEmpty()) {
+                    remLog("INFO", "SEND", "NXID $rawDeviceId resuelto a $resolvedMac, conectando...")
+                    val msgs = pendingNexoIdMessages.remove(rawDeviceId) ?: mutableListOf()
+                    if (msgs.isNotEmpty()) {
+                        pendingMessageQueue[resolvedMac] = msgs.toMutableList()
+                    }
+                    startAutoReconnect(resolvedMac)
+                } else {
+                    remLog("WARN", "SEND", "No se pudo resolver NXID $rawDeviceId, mensajes descartados")
+                    pendingNexoIdMessages.remove(rawDeviceId)
+                }
+            }
+            call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "nxid_pending").put("deviceId", rawDeviceId))
+            return
+        }
+
+        if (macNorm.isEmpty()) {
+            call.reject("MAC invalida: $rawDeviceId", "INVALID_MAC")
+            return
+        }
+
+        val result = sendChunkedOrSingle(macNorm, rawDeviceId, message)
+        if (result.sent) {
+            call.resolve(JSObject().put("sent", true).put("mode", result.mode).put("deviceId", rawDeviceId))
+            return
+        }
+
+        remLog("WARN", "SEND", "No GATT client ni server para $macNorm, encolando mensaje")
+        val queue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
+        queue.add(message)
+        call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
+    }
+
     private fun createGattClientCallback(macNorm: String): BluetoothGattCallback {
         return object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -1010,208 +1046,6 @@ class NexoBlePlugin : Plugin() {
             }
         }
     }
-
-    private fun startKeepAlive(macNorm: String) {
-        stopKeepAlive(macNorm)
-        val runnable = object : Runnable {
-            override fun run() {
-                val gatt = gattClients[macNorm]
-                val state = clientConnectionStates[macNorm]
-                if (gatt != null && state == BluetoothProfile.STATE_CONNECTED) {
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                            gatt.readRemoteRssi()
-                        }
-                    } catch (e: Exception) {
-                        remLog("WARN", "KEEPALIVE", "Error keep-alive $macNorm: ${e.message}")
-                        stopKeepAlive(macNorm)
-                        return
-                    }
-                    mainHandler.postDelayed(this, KEEPALIVE_INTERVAL_MS)
-                }
-            }
-        }
-        keepAliveTimers[macNorm] = runnable
-        mainHandler.postDelayed(runnable, KEEPALIVE_INTERVAL_MS)
-        remLog("INFO", "KEEPALIVE", "Iniciado para $macNorm")
-    }
-
-    private fun stopKeepAlive(macNorm: String) {
-        keepAliveTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-    }
-
-    private fun getReconnectDelay(macNorm: String): Long {
-        val attempts = reconnectAttempts[macNorm] ?: 0
-        val delay = RECONNECT_DELAY_MS * (1L shl attempts.coerceAtMost(4))
-        return delay.coerceAtMost(MAX_RECONNECT_DELAY_MS)
-    }
-
-    private fun startAutoReconnect(macNorm: String) {
-        val currentAttempts = reconnectAttempts[macNorm] ?: 0
-        if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            remLog("WARN", "RECONNECT", "Max reintentos alcanzado para $macNorm")
-            return
-        }
-        reconnectAttempts[macNorm] = currentAttempts + 1
-        val delayMs = getReconnectDelay(macNorm)
-        reconnectDelays[macNorm] = delayMs
-        reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        val runnable = Runnable {
-            remLog("INFO", "RECONNECT", "Intentando reconectar a $macNorm (intento ${reconnectAttempts[macNorm]}, delay=${delayMs}ms)")
-            val ctx = activity.applicationContext
-            val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            val adapter = bluetoothManager.adapter
-            if (adapter == null || !adapter.isEnabled) return@Runnable
-            val device = scannedDevices[macNorm]
-            if (device == null) {
-                remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
-                return@Runnable
-            }
-            try {
-                gattClients[macNorm]?.let { old ->
-                    try { old.disconnect(); old.close() } catch (e: Exception) { }
-                }
-                val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
-                } else {
-                    device.connectGatt(ctx, false, createGattClientCallback(macNorm))
-                }
-                if (gatt != null) {
-                    gattClients[macNorm] = gatt
-                    clientConnectionStates[macNorm] = BluetoothProfile.STATE_CONNECTING
-                }
-            } catch (e: Exception) {
-                remLog("ERROR", "RECONNECT", "Fallo reconexion $macNorm: ${e.message}")
-            }
-        }
-        reconnectTimers[macNorm] = runnable
-        mainHandler.postDelayed(runnable, delayMs)
-    }
-
-    @PluginMethod
-    fun disconnectDevice(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
-        val macNorm = resolveMacNorm(rawDeviceId)
-        remLog("INFO", "GATT_CLIENT", "disconnectDevice $rawDeviceId (resolved=$macNorm)")
-        reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        reconnectAttempts.remove(macNorm)
-        reconnectDelays.remove(macNorm)
-        stopKeepAlive(macNorm)
-        gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
-        gattClients.remove(macNorm)
-        clientRxCharacteristics.remove(macNorm)
-        clientTxCharacteristics.remove(macNorm)
-        clientConnectionStates.remove(macNorm)
-        messageBuffers.remove(macNorm)
-        messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        pendingCalls.remove(macNorm)
-        pendingMessageQueue.remove(macNorm)
-        writeQueues.remove(macNorm)
-        writeQueueProcessing.remove(macNorm)
-        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        negotiatedMtu.remove(macNorm)
-        notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
-        call.resolve(JSObject().put("disconnected", true))
-    }
-
-    @PluginMethod
-    fun forceReconnect(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
-        val macNorm = resolveMacNorm(rawDeviceId)
-        remLog("INFO", "GATT_CLIENT", "forceReconnect $rawDeviceId (resolved=$macNorm)")
-        reconnectAttempts[macNorm] = 0
-        reconnectDelays.remove(macNorm)
-        stopKeepAlive(macNorm)
-        gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
-        gattClients.remove(macNorm)
-        clientConnectionStates.remove(macNorm)
-        messageBuffers.remove(macNorm)
-        messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        writeQueues.remove(macNorm)
-        writeQueueProcessing.remove(macNorm)
-        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
-        negotiatedMtu.remove(macNorm)
-        mainHandler.postDelayed({ startAutoReconnect(macNorm) }, 500)
-        call.resolve(JSObject().put("reconnecting", true))
-    }
-
-    @PluginMethod
-    fun reconnectDevice(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
-        val macNorm = resolveMacNorm(rawDeviceId)
-        remLog("INFO", "GATT_CLIENT", "reconnectDevice manual $rawDeviceId (resolved=$macNorm)")
-        reconnectAttempts[macNorm] = 0
-        reconnectDelays.remove(macNorm)
-        startAutoReconnect(macNorm)
-        call.resolve(JSObject().put("reconnecting", true))
-    }
-
-    @PluginMethod
-    fun sendMessage(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
-        val message = call.getString("message") ?: ""
-        remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
-
-        if (rawDeviceId.isEmpty()) {
-            call.reject("deviceId requerido")
-            return
-        }
-
-        // === RESOLVER NXID A MAC ===
-        val macNorm = resolveMacNorm(rawDeviceId)
-        val isNexo = isNexoId(rawDeviceId)
-
-        if (macNorm.isEmpty() && isNexo) {
-            // NXID no resuelto: encolar mensaje y lanzar scan+connect
-            remLog("INFO", "SEND", "NXID $rawDeviceId no resuelto, encolando y lanzando scan+connect")
-            val queue = pendingNexoIdMessages.getOrPut(rawDeviceId) { mutableListOf() }
-            queue.add(message)
-            quickScanForNexoId(rawDeviceId) { resolvedMac ->
-                if (resolvedMac.isNotEmpty()) {
-                    remLog("INFO", "SEND", "NXID $rawDeviceId resuelto a $resolvedMac, conectando...")
-                    doConnectToDevice(resolvedMac, object : PluginCall() {
-                        override fun resolve(data: JSObject?) {
-                            remLog("INFO", "SEND", "Auto-connect OK para $rawDeviceId, enviando encolados")
-                            val pending = pendingNexoIdMessages.remove(rawDeviceId) ?: mutableListOf()
-                            pending.forEach { msg ->
-                                val result = sendChunkedOrSingle(resolvedMac, resolvedMac.chunked(2).joinToString(":"), msg)
-                                if (!result.sent) {
-                                    val fallbackQueue = pendingMessageQueue.getOrPut(resolvedMac) { mutableListOf() }
-                                    fallbackQueue.add(msg)
-                                }
-                            }
-                        }
-                        override fun reject(msg: String?, code: String?, ex: Exception?) {
-                            remLog("WARN", "SEND", "Auto-connect fallo para $rawDeviceId: $msg")
-                        }
-                        override fun setKeepAlive(keepAlive: Boolean) {}
-                    })
-                } else {
-                    remLog("WARN", "SEND", "No se pudo resolver NXID $rawDeviceId, mensajes descartados")
-                    pendingNexoIdMessages.remove(rawDeviceId)
-                }
-            }
-            call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "nxid_pending").put("deviceId", rawDeviceId))
-            return
-        }
-
-        if (macNorm.isEmpty()) {
-            call.reject("MAC invalida: $rawDeviceId", "INVALID_MAC")
-            return
-        }
-
-        val result = sendChunkedOrSingle(macNorm, rawDeviceId, message)
-        if (result.sent) {
-            call.resolve(JSObject().put("sent", true).put("mode", result.mode).put("deviceId", rawDeviceId))
-            return
-        }
-
-        remLog("WARN", "SEND", "No GATT client ni server para $macNorm, encolando mensaje")
-        val queue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
-        queue.add(message)
-        call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
-    }
-
     private data class SendResult(val sent: Boolean, val mode: String)
 
     private fun getChunkSize(macNorm: String): Int {
@@ -1377,6 +1211,142 @@ class NexoBlePlugin : Plugin() {
             }
         }
     }
+
+    private fun startKeepAlive(macNorm: String) {
+        stopKeepAlive(macNorm)
+        val runnable = object : Runnable {
+            override fun run() {
+                val gatt = gattClients[macNorm]
+                val state = clientConnectionStates[macNorm]
+                if (gatt != null && state == BluetoothProfile.STATE_CONNECTED) {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            gatt.readRemoteRssi()
+                        }
+                    } catch (e: Exception) {
+                        remLog("WARN", "KEEPALIVE", "Error keep-alive $macNorm: ${e.message}")
+                        stopKeepAlive(macNorm)
+                        return
+                    }
+                    mainHandler.postDelayed(this, KEEPALIVE_INTERVAL_MS)
+                }
+            }
+        }
+        keepAliveTimers[macNorm] = runnable
+        mainHandler.postDelayed(runnable, KEEPALIVE_INTERVAL_MS)
+        remLog("INFO", "KEEPALIVE", "Iniciado para $macNorm")
+    }
+
+    private fun stopKeepAlive(macNorm: String) {
+        keepAliveTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+    }
+
+    private fun getReconnectDelay(macNorm: String): Long {
+        val attempts = reconnectAttempts[macNorm] ?: 0
+        val delay = RECONNECT_DELAY_MS * (1L shl attempts.coerceAtMost(4))
+        return delay.coerceAtMost(MAX_RECONNECT_DELAY_MS)
+    }
+
+    private fun startAutoReconnect(macNorm: String) {
+        val currentAttempts = reconnectAttempts[macNorm] ?: 0
+        if (currentAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            remLog("WARN", "RECONNECT", "Max reintentos alcanzado para $macNorm")
+            return
+        }
+        reconnectAttempts[macNorm] = currentAttempts + 1
+        val delayMs = getReconnectDelay(macNorm)
+        reconnectDelays[macNorm] = delayMs
+        reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            remLog("INFO", "RECONNECT", "Intentando reconectar a $macNorm (intento ${reconnectAttempts[macNorm]}, delay=${delayMs}ms)")
+            val ctx = activity.applicationContext
+            val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            val adapter = bluetoothManager.adapter
+            if (adapter == null || !adapter.isEnabled) return@Runnable
+            val device = scannedDevices[macNorm]
+            if (device == null) {
+                remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
+                return@Runnable
+            }
+            try {
+                gattClients[macNorm]?.let { old ->
+                    try { old.disconnect(); old.close() } catch (e: Exception) { }
+                }
+                val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
+                } else {
+                    device.connectGatt(ctx, false, createGattClientCallback(macNorm))
+                }
+                if (gatt != null) {
+                    gattClients[macNorm] = gatt
+                    clientConnectionStates[macNorm] = BluetoothProfile.STATE_CONNECTING
+                }
+            } catch (e: Exception) {
+                remLog("ERROR", "RECONNECT", "Fallo reconexion $macNorm: ${e.message}")
+            }
+        }
+        reconnectTimers[macNorm] = runnable
+        mainHandler.postDelayed(runnable, delayMs)
+    }
+
+    @PluginMethod
+    fun disconnectDevice(call: PluginCall) {
+        val rawDeviceId = call.getString("deviceId") ?: ""
+        val macNorm = resolveMacNorm(rawDeviceId)
+        remLog("INFO", "GATT_CLIENT", "disconnectDevice $rawDeviceId (resolved=$macNorm)")
+        reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+        reconnectAttempts.remove(macNorm)
+        reconnectDelays.remove(macNorm)
+        stopKeepAlive(macNorm)
+        gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
+        gattClients.remove(macNorm)
+        clientRxCharacteristics.remove(macNorm)
+        clientTxCharacteristics.remove(macNorm)
+        clientConnectionStates.remove(macNorm)
+        messageBuffers.remove(macNorm)
+        messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+        pendingCalls.remove(macNorm)
+        pendingMessageQueue.remove(macNorm)
+        writeQueues.remove(macNorm)
+        writeQueueProcessing.remove(macNorm)
+        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+        negotiatedMtu.remove(macNorm)
+        notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
+        call.resolve(JSObject().put("disconnected", true))
+    }
+
+    @PluginMethod
+    fun forceReconnect(call: PluginCall) {
+        val rawDeviceId = call.getString("deviceId") ?: ""
+        val macNorm = resolveMacNorm(rawDeviceId)
+        remLog("INFO", "GATT_CLIENT", "forceReconnect $rawDeviceId (resolved=$macNorm)")
+        reconnectAttempts[macNorm] = 0
+        reconnectDelays.remove(macNorm)
+        stopKeepAlive(macNorm)
+        gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
+        gattClients.remove(macNorm)
+        clientConnectionStates.remove(macNorm)
+        messageBuffers.remove(macNorm)
+        messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+        writeQueues.remove(macNorm)
+        writeQueueProcessing.remove(macNorm)
+        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+        negotiatedMtu.remove(macNorm)
+        mainHandler.postDelayed({ startAutoReconnect(macNorm) }, 500)
+        call.resolve(JSObject().put("reconnecting", true))
+    }
+
+    @PluginMethod
+    fun reconnectDevice(call: PluginCall) {
+        val rawDeviceId = call.getString("deviceId") ?: ""
+        val macNorm = resolveMacNorm(rawDeviceId)
+        remLog("INFO", "GATT_CLIENT", "reconnectDevice manual $rawDeviceId (resolved=$macNorm)")
+        reconnectAttempts[macNorm] = 0
+        reconnectDelays.remove(macNorm)
+        startAutoReconnect(macNorm)
+        call.resolve(JSObject().put("reconnecting", true))
+    }
+
     @PluginMethod
     fun setAdvertisingData(call: PluginCall) {
         val nexoId = call.getString("nexoId") ?: run {
@@ -1599,7 +1569,7 @@ class NexoBlePlugin : Plugin() {
                             .put("timestamp", System.currentTimeMillis())
                         )
                     }
-                    NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
+                                        NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
                         val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
                         notifyListeners("onDeviceConnected", JSObject()
                             .put("deviceId", addr)
@@ -1769,3 +1739,4 @@ class NexoBlePlugin : Plugin() {
         }
     }
 }
+
