@@ -1,14 +1,13 @@
+//---------‐-------------------------------------------------------------
+//Parte1 (lineas: 1-73): Imports hattachments holders globales 
+//-----‐-----------------------------------------------------------------
+
 /**
  * src/main.js - Punto de entrada NEXO v9.9.4-FASE4-FIXED-ROBUSTO
  * FIX: Preservar transport:ble y deviceId en activeContact al abrir chat
  * FIX: _doSend detecta sendMessage=false y marca error
  * FIX: openChat listener merge contact vault + metadata BLE
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
- * FIX v9.9.3: _doSend render local + messageId + error handling
- * FIX v9.9.3: messageReceived fallback deviceUUID/deviceId
- * FIX v9.9.3: openChat listener mapea contacto desde vault
- * FIX v9.9.3: _openChatFromNotification busca por deviceId nativo fallback
- * FIX v9.9.3: onMessage config fallback senderId
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -1076,9 +1075,9 @@ async function initializeNexoApp() {
       console.warn('[MAIN] Fase 4 init warn:', f4Err);
     }
     
-    //---------------------------------------------------------------------
-    //Parte 6 (UI Setup, líneas 1077-1410)
-    //---------------------------------------------------------------------
+//---------------------------------------------------------------------
+//Parte 6 (UI Setup, líneas 1077-1410)
+//---------------------------------------------------------------------
     
     NEXO_DIAG.hideSplash();
     _forceHideSplash();
@@ -1411,27 +1410,11 @@ function _updateMessageStorageStatus(messageId, status) {
     console.warn('[MAIN] _updateMessageStorageStatus error:', e);
   }
 }
-function _loadPersistedMessages() {
-  try {
-    var contactId = _getCurrentContactId();
-    if (!contactId) return;
-    var vaultMessages = vaultLoadMessages(contactId);
-    if (vaultMessages && vaultMessages.length > 0) {
-      vaultMessages.forEach(function(msg) {
-        _renderMessage(msg, true);
-      });
-      return;
-    }
-    var key = _getContactStorageKey();
-    var messages = JSON.parse(localStorage.getItem(key) || '[]');
-    if (messages.length === 0) return;
-    messages.forEach(function(msg) {
-      _renderMessage(msg, true);
-    });
-  } catch (e) {
-    console.warn('[MAIN] _loadPersistedMessages error:', e);
-  }
-}
+
+//---------------‐----------------------------------‐--------------------
+//Parte 7 (líneas 1418-1741): _renderMessage
+//-----------------------------------------------------------------------
+
 function _renderMessage(msg, skipSave) {
   try {
     if (!msg) return;
@@ -1487,10 +1470,38 @@ function _renderMessage(msg, skipSave) {
     contentDiv.className = 'msg-content';
     contentDiv.style.borderRadius = '12px';
     contentDiv.style.overflow = 'hidden';
+
+    // FIX: Helper seguro base64→Blob con try-catch + límite registry
+    function _safeBase64ToBlob(base64Str, mimeType) {
+      try {
+        var byteChars = atob(base64Str);
+        var byteNums = new Array(byteChars.length);
+        for (var bi = 0; bi < byteChars.length; bi++) {
+          byteNums[bi] = byteChars.charCodeAt(bi);
+        }
+        var byteArray = new Uint8Array(byteNums);
+        return new Blob([byteArray], { type: mimeType });
+      } catch (e) {
+        console.warn('[RENDER] base64 inválido:', e.message);
+        return null;
+      }
+    }
+    function _registerObjectURL(url) {
+      if (!url) return;
+      _objectURLRegistry.push(url);
+      // FIX: límite memory leak, revocar los más viejos
+      if (_objectURLRegistry.length > 50) {
+        var old = _objectURLRegistry.shift();
+        try { URL.revokeObjectURL(old); } catch(e) {}
+      }
+    }
+
     if (attachment) {
+      var meta = attachment.meta || {};
       if (attachment.type === 'image') {
         var img = document.createElement('img');
-        img.src = 'data:image/' + (attachment.meta.format || 'jpeg') + ';base64,' + attachment.payload;
+        var imgFmt = (meta && meta.format) ? meta.format : 'jpeg';
+        img.src = 'data:image/' + imgFmt + ';base64,' + attachment.payload;
         img.style.maxWidth = '220px';
         img.style.maxHeight = '280px';
         img.style.display = 'block';
@@ -1511,17 +1522,11 @@ function _renderMessage(msg, skipSave) {
         videoWrapper.className = 'video-attachment';
         videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
         var video = document.createElement('video');
-        var vFmt = attachment.meta.format || 'webm';
+        var vFmt = (meta && meta.format) ? meta.format : 'webm';
         var vMime = 'video/' + vFmt;
-        var vByteChars = atob(attachment.payload);
-        var vByteNums = new Array(vByteChars.length);
-        for (var vi = 0; vi < vByteChars.length; vi++) {
-          vByteNums[vi] = vByteChars.charCodeAt(vi);
-        }
-        var vByteArray = new Uint8Array(vByteNums);
-        var vBlob = new Blob([vByteArray], { type: vMime });
-        var vSrc = URL.createObjectURL(vBlob);
-        _objectURLRegistry.push(vSrc);
+        var vBlob = _safeBase64ToBlob(attachment.payload, vMime);
+        var vSrc = vBlob ? URL.createObjectURL(vBlob) : '';
+        if (vSrc) _registerObjectURL(vSrc);
         video.src = vSrc;
         video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
         video.playsInline = true;
@@ -1540,7 +1545,7 @@ function _renderMessage(msg, skipSave) {
         };
         contentDiv.appendChild(videoWrapper);
       } else if (attachment.type === 'file') {
-        var fileType = (attachment.meta.type || '').toLowerCase();
+        var fileType = (meta && meta.type) ? meta.type.toLowerCase() : '';
         var isImageFile = fileType.indexOf('image') === 0;
         var isVideoFile = fileType.indexOf('video') === 0;
         if (isImageFile || isVideoFile) {
@@ -1548,22 +1553,16 @@ function _renderMessage(msg, skipSave) {
           mediaWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
           if (isImageFile) {
             var fimg = document.createElement('img');
-            fimg.src = 'data:' + attachment.meta.type + ';base64,' + attachment.payload;
+            fimg.src = 'data:' + fileType + ';base64,' + attachment.payload;
             fimg.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
             fimg.dataset.fullscreenSrc = fimg.src;
             fimg.dataset.fullscreenType = 'image';
             mediaWrapper.appendChild(fimg);
           } else {
             var fvideo = document.createElement('video');
-            var fvByteChars = atob(attachment.payload);
-            var fvByteNums = new Array(fvByteChars.length);
-            for (var fvi = 0; fvi < fvByteChars.length; fvi++) {
-              fvByteNums[fvi] = fvByteChars.charCodeAt(fvi);
-            }
-            var fvByteArray = new Uint8Array(fvByteNums);
-            var fvBlob = new Blob([fvByteArray], { type: attachment.meta.type });
-            var fvSrc = URL.createObjectURL(fvBlob);
-            _objectURLRegistry.push(fvSrc);
+            var fvBlob = _safeBase64ToBlob(attachment.payload, fileType);
+            var fvSrc = fvBlob ? URL.createObjectURL(fvBlob) : '';
+            if (fvSrc) _registerObjectURL(fvSrc);
             fvideo.src = fvSrc;
             fvideo.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
             fvideo.playsInline = true;
@@ -1585,12 +1584,14 @@ function _renderMessage(msg, skipSave) {
           };
           contentDiv.appendChild(mediaWrapper);
         } else {
-          contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
+          var fileName = (meta && meta.name) ? meta.name : 'archivo';
+          contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b><span style="font-size:12px;opacity:0.7;">' + fileName + '</span></div>';
         }
       } else if (attachment.type === 'location') {
-        var loc = attachment.meta;
-        var lat = (loc && loc.lat) ? loc.lat : 0;
-        var lng = (loc && loc.lng) ? loc.lng : 0;
+        var loc = meta || {};
+        var lat = (loc && typeof loc.lat === 'number') ? loc.lat : 0;
+        var lng = (loc && typeof loc.lng === 'number') ? loc.lng : 0;
+        var accuracy = (loc && typeof loc.accuracy === 'number') ? loc.accuracy : 0;
         var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
         var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
         var osmUrl = 'https://static-maps.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng + '&zoom=15&size=300x150&markers=' + lat + ',' + lng + ',red-pushpin';
@@ -1608,20 +1609,14 @@ function _renderMessage(msg, skipSave) {
         locHtml += '</div></div>';
         contentDiv.innerHTML = locHtml;
       } else if (attachment.type === 'audio') {
-        var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
+        var dur = (meta && typeof meta.duration === 'number') ? meta.duration : 0;
         var durStr = _fmtTime(dur);
         var audioId = 'audio_' + msgId;
-        var fmt = (attachment.meta && attachment.meta.format) ? attachment.meta.format : 'webm';
-        var mime = (attachment.meta && attachment.meta.mimeType) ? attachment.meta.mimeType : ('audio/' + fmt);
-        var byteChars = atob(attachment.payload);
-        var byteNums = new Array(byteChars.length);
-        for (var i = 0; i < byteChars.length; i++) {
-          byteNums[i] = byteChars.charCodeAt(i);
-        }
-        var byteArray = new Uint8Array(byteNums);
-        var audioBlob = new Blob([byteArray], { type: mime });
-        var audioSrc = URL.createObjectURL(audioBlob);
-        _objectURLRegistry.push(audioSrc);
+        var fmt = (meta && meta.format) ? meta.format : 'webm';
+        var mime = (meta && meta.mimeType) ? meta.mimeType : ('audio/' + fmt);
+        var audioBlob = _safeBase64ToBlob(attachment.payload, mime);
+        var audioSrc = audioBlob ? URL.createObjectURL(audioBlob) : '';
+        if (audioSrc) _registerObjectURL(audioSrc);
         var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
         audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
         audioHtml += '<div style="flex:1;min-width:0;">';
@@ -1638,7 +1633,7 @@ function _renderMessage(msg, skipSave) {
           var btn = document.getElementById(audioId + '_play');
           var timeEl = document.getElementById(audioId + '_time');
           var waveEl = document.getElementById(audioId + '_wave');
-          if (!btn) return;
+          if (!btn || !audioSrc) return;
           var audioEl = new Audio(audioSrc);
           var playing = false;
           var progressInterval = null;
@@ -1737,6 +1732,11 @@ function _renderMessage(msg, skipSave) {
     console.warn('[MAIN] _renderMessage error:', e);
   }
 }
+
+//------‐-------------------------------------------------------------------------------‐--------------------------
+//Parte 8 (Status + Back + Swipe + Footer, líneas 1735-2005)
+//----------------------------------------------------------------------------------------------------------------
+
 function _updateMessageStatus(messageId, status) {
   try {
     if (!messageId) return;
