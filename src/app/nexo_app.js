@@ -1,12 +1,7 @@
 /**
- * NEXO App v5.0.18-FASE4-ROBUSTO
- * FIX: Merge contacto vault + metadata BLE en openChat
- * FIX: sendMessage marca error cuando no hay transporte
- * FIX: _bleMessageHandler extrae senderNexoId del payload JSON
- * FIX: Sincroniza _activeChatDeviceId/_activeChatDeviceIdNative en interface
- * FIX: _handleMessage usa senderNexoId fallback para vault
- * FIX: vaultGetOrCreateContact al recibir mensaje nuevo
- * Base: v5.0.17-ATTACH-FIX
+ * NEXO App v5.0.19-FASE4-ROBUSTO
+ * FIX: self declarado correctamente en _initPhase7_UI
+ * FIX: IDs consistentes en _bleMessageHandler
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -21,6 +16,7 @@ import { initBLEInterface } from '../ui/ble_interface.js';
 import { vaultLoadMessages, vaultAppendMessage, vaultUpdateMessageStatus } from '../vault/crypto_vault.js';
 
 function withTimeoutNAP(promise, ms, context) {
+  if (!ms || ms <= 0) ms = 5000;
   var timer;
   var timeoutPromise = new Promise(function(_, reject) {
     timer = setTimeout(function() { reject(new Error('[NAP_TIMEOUT] ' + context)); }, ms);
@@ -83,12 +79,6 @@ class NexoApp {
       onStatusChange: typeof config.onStatusChange === 'function' ? config.onStatusChange : function() {},
       onError: typeof config.onError === 'function' ? config.onError : function(e) { console.error(e); },
     };
-    if (config.relayUrls) this.config.relayUrls = config.relayUrls;
-    if (config.enableGestures !== undefined) this.config.enableGestures = config.enableGestures;
-    if (config.enableMesh !== undefined) this.config.enableMesh = config.enableMesh;
-    if (config.onMessage) this.config.onMessage = config.onMessage;
-    if (config.onStatusChange) this.config.onStatusChange = config.onStatusChange;
-    if (config.onError) this.config.onError = config.onError;
     this._resources = { timers: new Set(), listeners: new Set(), handlers: new Set() };
     this._isInitializing = false;
     this._isDestroyed = false;
@@ -110,7 +100,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.18-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.19-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -130,7 +120,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.18-FASE4-ROBUSTO Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.19-FASE4-ROBUSTO Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -205,8 +195,7 @@ class NexoApp {
       this.bleInterface = initBLEInterface(meshInstance);
       if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
       var self = this;
-      
-      // FIX: _bleChatHandler mergea contacto vault + metadata BLE y preserva transport/deviceId
+
       this._bleChatHandler = async function(e) {
         try {
           var detail = e.detail || {};
@@ -216,11 +205,10 @@ class NexoApp {
           if (!contact.nexoId && detail.contactId) contact.nexoId = detail.contactId;
           if (!contact.deviceId && detail.deviceId) contact.deviceId = detail.deviceId;
           if (!contact.transport && detail.transport) contact.transport = detail.transport;
-          
-          // Merge con vault si existe nexoId
-          if (contact.id && window.vaultFindContactByNexoId) {
+
+          if (contact.nexoId && window.vaultFindContactByNexoId) {
             try {
-              var vaultContact = window.vaultFindContactByNexoId(contact.id);
+              var vaultContact = window.vaultFindContactByNexoId(contact.nexoId);
               if (vaultContact) {
                 contact = Object.assign({}, vaultContact, contact);
               } else if (window.vaultSaveContact) {
@@ -228,7 +216,7 @@ class NexoApp {
               }
             } catch(vcErr) {}
           }
-          
+
           self.activeContact = contact;
           var appContainer = document.getElementById('app');
           if (appContainer) appContainer.classList.remove('hidden');
@@ -255,9 +243,8 @@ class NexoApp {
             var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
             if (chatsTab) chatsTab.classList.add('active');
           }
-          // FIX: Sincronizar activeChatDeviceId en bleInterface
           if (self.bleInterface) {
-            self.bleInterface._activeChatDeviceId = contact.id || contact.nexoId || contact.deviceId || null;
+            self.bleInterface._activeChatDeviceId = contact.nexoId || contact.id || contact.deviceId || null;
             self.bleInterface._activeChatDeviceIdNative = contact.deviceId || null;
           }
         } catch (handlerErr) {
@@ -266,6 +253,7 @@ class NexoApp {
         }
       };
       window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
+      this._resources.listeners.add({ target: window, event: 'nexo:ble:openChat', handler: this._bleChatHandler });
 
       this._chatBackHandler = function() {
         try {
@@ -291,6 +279,7 @@ class NexoApp {
       };
       var chatBackBtn = document.getElementById('chat-back-btn');
       if (chatBackBtn) chatBackBtn.addEventListener('click', this._chatBackHandler);
+      this._resources.listeners.add({ target: chatBackBtn, event: 'click', handler: this._chatBackHandler });
 
       this._nativeDeviceConnectedHandler = function(e) {
         try {
@@ -302,6 +291,7 @@ class NexoApp {
         }
       };
       window.addEventListener('nexo:ble:deviceConnected', this._nativeDeviceConnectedHandler);
+      this._resources.listeners.add({ target: window, event: 'nexo:ble:deviceConnected', handler: this._nativeDeviceConnectedHandler });
 
       this._nativeDeviceDisconnectedHandler = function(e) {
         try {
@@ -312,8 +302,8 @@ class NexoApp {
         }
       };
       window.addEventListener('nexo:ble:deviceDisconnected', this._nativeDeviceDisconnectedHandler);
+      this._resources.listeners.add({ target: window, event: 'nexo:ble:deviceDisconnected', handler: this._nativeDeviceDisconnectedHandler });
 
-      // FIX: _bleMessageHandler extrae senderNexoId del payload JSON y crea contacto en vault
       this._bleMessageHandler = function(e) {
         try {
           var detail = e.detail || {};
@@ -327,27 +317,31 @@ class NexoApp {
           var resolvedName = detail.senderName;
           var messageId = null;
           var content = detail.content || detail.data || '';
-          if (content.charAt(0) === '{' || (detail.data && detail.data.charAt(0) === '{')) {
+          var parsedPayload = null;
+          if (content.charAt(0) === '{') {
             try {
-              var json = JSON.parse(detail.data || content || '{}');
-              if (json.msgId) messageId = json.msgId;
-              if (json.messageId) messageId = json.messageId;
-              if (json.payload && json.payload.senderNexoId) senderUUID = json.payload.senderNexoId;
-              if (json.payload && json.payload.text) content = json.payload.text;
-              if (json.payload && json.payload.senderName) resolvedName = json.payload.senderName;
-              if (json.deviceUUID) senderUUID = json.deviceUUID;
-              if (json.from && !senderUUID) senderUUID = json.from;
+              parsedPayload = JSON.parse(content);
+              if (parsedPayload.msgId) messageId = parsedPayload.msgId;
+              if (parsedPayload.messageId) messageId = parsedPayload.messageId;
+              if (parsedPayload.payload) {
+                if (parsedPayload.payload.senderName) resolvedName = parsedPayload.payload.senderName;
+                if (parsedPayload.payload.text) content = parsedPayload.payload.text;
+                if (parsedPayload.payload.senderNexoId) senderUUID = parsedPayload.payload.senderNexoId;
+              }
+              if (parsedPayload.senderName) resolvedName = parsedPayload.senderName;
+              if (parsedPayload.deviceName) resolvedName = parsedPayload.deviceName;
+              if (parsedPayload.deviceUUID) senderUUID = parsedPayload.deviceUUID;
+              if (parsedPayload.content) content = parsedPayload.content;
+              if (parsedPayload.from && !senderUUID) senderUUID = parsedPayload.from;
             } catch (e) {}
           }
           if (!resolvedName || resolvedName === 'NEXO Peer') {
-            var nid = (senderUUID || detail.deviceId || '').toString().toLowerCase().trim();
-            var connDev = self.bleInterface && self.bleInterface.connectedDevices ? self.bleInterface.connectedDevices.get(nid) : null;
-            var foundDev = self.bleInterface && self.bleInterface.foundDevices ? self.bleInterface.foundDevices.get(nid) : null;
-            resolvedName = (connDev && connDev.name) || (foundDev && foundDev.name) || detail.senderName || '';
+            var contactByUUID = window.bleInterface && window.bleInterface.getContactByUUID ? window.bleInterface.getContactByUUID(senderUUID) : null;
+            resolvedName = (contactByUUID && contactByUUID.name) || detail.senderName || '';
           }
           if (messageId && content && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
             try {
-              var ctrl = JSON.parse(detail.content || detail.data || content);
+              var ctrl = parsedPayload || JSON.parse(content);
               if (ctrl.type === 'ack') {
                 self._handleACK(ctrl.messageId, ctrl.ackType || 'delivered');
                 return;
@@ -358,7 +352,6 @@ class NexoApp {
               }
             } catch (ackErr) {}
           }
-          // FIX: Crear/actualizar contacto en vault al recibir mensaje
           if (senderUUID && window.vaultGetOrCreateContact) {
             try { window.vaultGetOrCreateContact(senderUUID, resolvedName || 'NEXO'); } catch(vcErr) {}
           }
@@ -369,7 +362,7 @@ class NexoApp {
             source: detail.source || 'ble_direct',
             timestamp: detail.timestamp || Date.now(),
             messageId: detail.messageId || messageId,
-            deviceUUID: senderUUID || detail.deviceUUID || detail.deviceId,
+            deviceUUID: senderUUID || detail.deviceUUID,
             senderNexoId: senderUUID,
             _own: false
           }, 'ble_direct');
@@ -382,6 +375,7 @@ class NexoApp {
         }
       };
       window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
+      this._resources.listeners.add({ target: window, event: 'nexo:ble:messageReceived', handler: this._bleMessageHandler });
     } catch (err) { DEBUG.error('UI_004', 'BLE UI init failed: ' + (err.message || 'unknown')); this.bleInterface = null; }
   }
 
@@ -403,546 +397,518 @@ class NexoApp {
       DEBUG.success('Bridge ready', 'BRIDGE_002');
     } catch (err) { DEBUG.warn('Bridge init failed: ' + (err.message || 'unknown'), 'BRIDGE_003'); this.bridge = null; }
   }
+ async _initPhase7_UI() {
+   DEBUG.setPhase('GESTURES');
+   var self = this;
+   if (this.config.enableGestures) { try { this.gestures = new GestureEngine({}); this.gestures.init(); } catch (e) {} }
+   DEBUG.setPhase('VAULT_SLIDER');
+   var streamEl = document.getElementById('nexo-stream');
+   var vaultEl = document.getElementById('nexo-vault');
+   if (streamEl && vaultEl) { try { this.vaultSlider = new CoreGestureEngine(streamEl, vaultEl); } catch (e) {} }
+   DEBUG.setPhase('STREAM');
+   var container = document.getElementById('messages-container');
+   if (container) { try { this.stream = new TheStream(container, {}); } catch (e) {} }
+   var jumpBtn = document.getElementById('jump-to-bottom');
+   if (jumpBtn && container) {
+     container.addEventListener('scroll', function() {
+       var nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+       if (nearBottom) jumpBtn.classList.remove('visible');
+       else jumpBtn.classList.add('visible');
+     });
+     jumpBtn.addEventListener('click', function() {
+       container.scrollTop = container.scrollHeight;
+       jumpBtn.classList.remove('visible');
+     });
+   }
+   self._initKeyboardScrollFix();
+   self._initInputBarV2();
+ }
 
-  async _initPhase7_UI() {
-    DEBUG.setPhase('GESTURES');
-    if (this.config.enableGestures) { try { this.gestures = new GestureEngine({}); this.gestures.init(); } catch (e) {} }
-    DEBUG.setPhase('VAULT_SLIDER');
-    var streamEl = document.getElementById('nexo-stream');
-    var vaultEl = document.getElementById('nexo-vault');
-    if (streamEl && vaultEl) { try { this.vaultSlider = new CoreGestureEngine(streamEl, vaultEl); } catch (e) {} }
-    DEBUG.setPhase('STREAM');
-    var container = document.getElementById('messages-container');
-    if (container) { try { this.stream = new TheStream(container, {}); } catch (e) {} }
-    var jumpBtn = document.getElementById('jump-to-bottom');
-    if (jumpBtn && container) {
-      var self = this;
-      container.addEventListener('scroll', function() {
-        var nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-        if (nearBottom) jumpBtn.classList.remove('visible');
-        else jumpBtn.classList.add('visible');
-      });
-      jumpBtn.addEventListener('click', function() {
-        container.scrollTop = container.scrollHeight;
-        jumpBtn.classList.remove('visible');
-      });
-    }
-    self._initKeyboardScrollFix();
-    self._initInputBarV2();
-  }
+ _initInputBarV2() {
+   var self = this;
+   var input = document.getElementById('message-input');
+   var sendBtn = document.getElementById('send-btn');
+   var attachBtn = document.getElementById('attach-menu');
 
-  _initInputBarV2() {
-    var self = this;
-    var input = document.getElementById('message-input');
-    var sendBtn = document.getElementById('send-btn');
-    var attachBtn = document.getElementById('attach-btn');
-    var attachMenu = document.getElementById('attach-menu');
+   if (!input || !sendBtn) return;
 
-    if (!input || !sendBtn) return;
+   function updateSendButton() {
+     var text = (input.value || '').trim();
+     if (text.length > 0) {
+       sendBtn.classList.remove('mic-mode');
+     } else {
+       sendBtn.classList.add('mic-mode');
+     }
+   }
+   input.addEventListener('input', updateSendButton);
+   updateSendButton();
 
-    function updateSendButton() {
-      var text = (input.value || '').trim();
-      if (text.length > 0) {
-        sendBtn.classList.remove('mic-mode');
-      } else {
-        sendBtn.classList.add('mic-mode');
-      }
-    }
-    input.addEventListener('input', updateSendButton);
-    updateSendButton();
+   if (attachBtn && attachMenu) {
+     attachBtn.addEventListener('click', function(e) {
+       e.stopPropagation();
+       var isVisible = attachMenu.classList.contains('visible');
+       if (isVisible) {
+         attachMenu.classList.remove('visible');
+         attachMenu.classList.add('hidden');
+         attachBtn.classList.remove('active');
+       } else {
+         attachMenu.classList.remove('hidden');
+         void attachMenu.offsetWidth;
+         attachMenu.classList.add('visible');
+         attachBtn.classList.add('active');
+       }
+     });
 
-    if (attachBtn && attachMenu) {
-      attachBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var isVisible = attachMenu.classList.contains('visible');
-        if (isVisible) {
-          attachMenu.classList.remove('visible');
-          attachMenu.classList.add('hidden');
-          attachBtn.classList.remove('active');
-        } else {
-          attachMenu.classList.remove('hidden');
-          void attachMenu.offsetWidth;
-          attachMenu.classList.add('visible');
-          attachBtn.classList.add('active');
-        }
-      });
+     document.addEventListener('click', function(e) {
+       if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
+         attachMenu.classList.remove('visible');
+         attachMenu.classList.add('hidden');
+         attachBtn.classList.remove('active');
+       }
+     });
 
-      document.addEventListener('click', function(e) {
-        if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
-          attachMenu.classList.remove('visible');
-          attachMenu.classList.add('hidden');
-          attachBtn.classList.remove('active');
-        }
-      });
+     var menuItems = attachMenu.querySelectorAll('.attach-menu-item');
+     menuItems.forEach(function(item) {
+       item.addEventListener('click', function() {
+         var type = item.getAttribute('data-type');
+         attachMenu.classList.remove('visible');
+         attachMenu.classList.add('hidden');
+         attachBtn.classList.remove('active');
 
-      var menuItems = attachMenu.querySelectorAll('.attach-menu-item');
-      menuItems.forEach(function(item) {
-        item.addEventListener('click', function() {
-          var type = item.getAttribute('data-type');
-          attachMenu.classList.remove('visible');
-          attachMenu.classList.add('hidden');
-          attachBtn.classList.remove('active');
+         function getMessagesContainer() {
+           return document.getElementById('messages-container');
+         }
+         function scrollToBottom() {
+           var c = getMessagesContainer();
+           if (c) c.scrollTop = c.scrollHeight;
+         }
+         function renderOwnBubble(htmlContent, typeLabel) {
+           var container = getMessagesContainer();
+           if (!container) { console.error('[Attach] No contenedor'); return; }
+           var bubble = document.createElement('div');
+           bubble.className = 'message own message-attachment';
+           bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
+           bubble.innerHTML = htmlContent + '<div style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + typeLabel + '</div>';
+           container.appendChild(bubble);
+           scrollToBottom();
+         }
 
-          function getMessagesContainer() {
-            return document.getElementById('messages-container');
-          }
-          function scrollToBottom() {
-            var c = getMessagesContainer();
-            if (c) c.scrollTop = c.scrollHeight;
-          }
-          function renderOwnBubble(htmlContent, typeLabel) {
-            var container = getMessagesContainer();
-            if (!container) { console.error('[Attach] No contenedor'); return; }
-            var bubble = document.createElement('div');
-            bubble.className = 'message own message-attachment';
-            bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
-            bubble.innerHTML = htmlContent + '<div style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + typeLabel + '</div>';
-            container.appendChild(bubble);
-            scrollToBottom();
-          }
+         if (type === 'photo') {
+           if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.Camera) {
+             alert('Plugin Camera no disponible'); return;
+           }
+           var Camera = window.Capacitor.Plugins.Camera;
+           Camera.getPhoto({
+             quality: 90, allowEditing: false,
+             resultType: Camera.CameraResultType.Base64,
+             source: Camera.CameraSource.Prompt
+           }).then(function(image) {
+             if (image && image.base64String) {
+               var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
+               var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>';
+               renderOwnBubble(html, '📷 Foto');
+               window._lastAttachmentPayload = { type: 'image', data: dataUrl, width: image.width, height: image.height };
+             }
+           }).catch(function(err) {
+             console.error('[FOTO] Error:', err);
+             if (err.message && err.message.indexOf('cancelled') === -1) {
+               alert('Error foto: ' + err.message);
+             }
+           });
+         } else if (type === 'video') {
+           var inputVid = document.createElement('input');
+           inputVid.type = 'file'; inputVid.accept = 'video/*'; inputVid.style.display = 'none';
+           inputVid.onchange = function(ev) {
+             var file = ev.target.files[0]; if (!file) return;
+             var url = URL.createObjectURL(file);
+             var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + url + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
+             renderOwnBubble(html, '🎬 Video');
+             window._lastAttachmentPayload = { type: 'video', file: file, url: url };
+           };
+           document.body.appendChild(inputVid); inputVid.click();
+           setTimeout(function() { inputVid.remove(); }, 5000);
+         } else if (type === 'file') {
+           var inputFile = document.createElement('input');
+           inputFile.type = 'file'; inputFile.style.display = 'none';
+           inputFile.onchange = function(ev) {
+             var file = ev.target.files[0]; if (!file) return;
+             var sizeStr = file.size > 1024*1024 ? (file.size/(1024*1024)).toFixed(1) + ' MB' : (file.size/1024).toFixed(0) + ' KB';
+             var html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + file.name + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
+             renderOwnBubble(html, '📎 Archivo');
+             window._lastAttachmentPayload = { type: 'file', file: file };
+           };
+           document.body.appendChild(inputFile); inputFile.click();
+           setTimeout(function() { inputFile.remove(); }, 5000);
+         }
+       });
+     });
+   }
 
-          if (type === 'photo') {
-            if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.Camera) {
-              alert('Plugin Camera no disponible'); return;
-            }
-            var Camera = window.Capacitor.Plugins.Camera;
-            Camera.getPhoto({
-              quality: 90, allowEditing: false,
-              resultType: Camera.CameraResultType.Base64,
-              source: Camera.CameraSource.Prompt            }).then(function(image) {
-              if (image && image.base64String) {
-                var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
-                var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>';
-                renderOwnBubble(html, '📷 Foto');
-                window._lastAttachmentPayload = { type: 'image', data: dataUrl, width: image.width, height: image.height };
-              }
-            }).catch(function(err) {
-              console.error('[FOTO] Error:', err);
-              if (err.message && err.message.indexOf('cancelled') === -1) alert('Error foto: ' + err.message);
-            });
-          } else if (type === 'video') {
-            var inputVid = document.createElement('input');
-            inputVid.type = 'file'; inputVid.accept = 'video/*'; inputVid.style.display = 'none';
-            inputVid.onchange = function(ev) {
-              var file = ev.target.files[0]; if (!file) return;
-              var url = URL.createObjectURL(file);
-              var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + url + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
-              renderOwnBubble(html, '🎬 Video');
-              window._lastAttachmentPayload = { type: 'video', file: file, url: url };
-            };
-            document.body.appendChild(inputVid); inputVid.click();
-            setTimeout(function() { inputVid.remove(); }, 5000);
-          } else if (type === 'file') {
-            var inputFile = document.createElement('input');
-            inputFile.type = 'file'; inputFile.style.display = 'none';
-            inputFile.onchange = function(ev) {
-              var file = ev.target.files[0]; if (!file) return;
-              var sizeStr = file.size > 1024*1024 ? (file.size/(1024*1024)).toFixed(1) + ' MB' : (file.size/1024).toFixed(0) + ' KB';
-              var html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + file.name + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
-              renderOwnBubble(html, '📎 Archivo');
-              window._lastAttachmentPayload = { type: 'file', file: file };
-            };
-            document.body.appendChild(inputFile); inputFile.click();
-            setTimeout(function() { inputFile.remove(); }, 5000);
-          }
-        });
-      });
-    }
+   sendBtn.addEventListener('click', function(e) {
+     if (sendBtn.classList.contains('mic-mode')) {
+       e.preventDefault();
+       e.stopPropagation();
+       console.log('[NEXO] Mic presionado — placeholder');
+       return;
+     }
+   });
+ }
 
-    sendBtn.addEventListener('click', function(e) {
-      if (sendBtn.classList.contains('mic-mode')) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('[NEXO] Mic presionado — placeholder');
-        return;
-      }
-    });
-  }
+ _initKeyboardScrollFix() {
+   var self = this;
+   var container = document.getElementById('messages-container');
+   var input = document.getElementById('message-input');
+   if (!container || !input) return;
+   if (window.visualViewport) {
+     window.visualViewport.addEventListener('resize', function() {
+       var vv = window.visualViewport;
+       var layoutH = window.innerHeight;
+       var visibleH = vv.height;
+       var kbHeight = Math.max(0, layoutH - visibleH);
+       if (kbHeight > 100) {
+         document.body.classList.add('keyboard-open');
+         setTimeout(function() {
+           container.scrollTop = container.scrollHeight;
+         }, 100);
+       } else {
+         document.body.classList.remove('keyboard-open');
+       }
+     });
+   }
+   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Keyboard) {
+     var Keyboard = window.Capacitor.Plugins.Keyboard;
+     Keyboard.addListener('keyboardWillShow', function(info) {
+       document.body.classList.add('keyboard-open');
+       setTimeout(function() {
+         container.scrollTop = container.scrollHeight;
+         input.scrollIntoView({ behavior: 'smooth', block: 'end' });
+       }, 50);
+     });
+     Keyboard.addListener('keyboardWillHide', function() {
+       document.body.classList.remove('keyboard-open');
+     });
+   } else if (!window.visualViewport) {
+     var originalHeight = window.innerHeight;
+     window.addEventListener('resize', function() {
+       var newHeight = window.innerHeight;
+       if (newHeight < originalHeight - 100) {
+         document.body.classList.add('keyboard-open');
+         setTimeout(function() {
+           container.scrollTop = container.scrollHeight;
+         }, 100);
+       } else {
+         document.body.classList.remove('keyboard-open');
+       }
+     });
+   }
+   input.addEventListener('focus', function() {
+     setTimeout(function() {
+       container.scrollTop = container.scrollHeight;
+       input.scrollIntoView({ behavior: 'smooth', block: 'end' });
+     }, 300);
+   });
+ }
 
-  _initKeyboardScrollFix() {
-    var self = this;
-    var container = document.getElementById('messages-container');
-    var input = document.getElementById('message-input');
-    if (!container || !input) return;
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', function() {
-        var vv = window.visualViewport;
-        var layoutH = window.innerHeight;
-        var visibleH = vv.height;
-        var kbHeight = Math.max(0, layoutH - visibleH);
-        if (kbHeight > 100) {
-          document.body.classList.add('keyboard-open');
-          setTimeout(function() {
-            container.scrollTop = container.scrollHeight;
-          }, 100);
-        } else {
-          document.body.classList.remove('keyboard-open');
-        }
-      });
-    }
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Keyboard) {
-      var Keyboard = window.Capacitor.Plugins.Keyboard;
-      Keyboard.addListener('keyboardWillShow', function(info) {
-        document.body.classList.add('keyboard-open');
-        setTimeout(function() {
-          container.scrollTop = container.scrollHeight;
-          input.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }, 50);
-      });
-      Keyboard.addListener('keyboardWillHide', function() {
-        document.body.classList.remove('keyboard-open');
-      });
-    } else if (!window.visualViewport) {
-      var originalHeight = window.innerHeight;
-      window.addEventListener('resize', function() {
-        var newHeight = window.innerHeight;
-        if (newHeight < originalHeight - 100) {
-          document.body.classList.add('keyboard-open');
-          setTimeout(function() {
-            container.scrollTop = container.scrollHeight;
-          }, 100);
-        } else {
-          document.body.classList.remove('keyboard-open');
-        }
-      });
-    }
-    input.addEventListener('focus', function() {
-      setTimeout(function() {
-        container.scrollTop = container.scrollHeight;
-        input.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }, 300);
-    });
-  }
+ _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
+ _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
+ _handleNordicMessage(msg) { if (!msg || !msg.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
+ _updateModeFromNordic(state) {
+   switch(state) {
+     case 'messaging': case 'connected': this._updateMode('P2P_BLE'); break;
+     case 'offline': if ((!this.mesh || !this.mesh.getPeerCount || this.mesh.getPeerCount() === 0) && (!this.wsClient || !this.wsClient.isConnected || !this.wsClient.isConnected())) this._updateMode('OFFLINE'); break;
+   }
+ }
+ _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 
-  _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
-  _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
-  _handleNordicMessage(msg) { if (!msg || !msg.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
-  _updateModeFromNordic(state) {
-    switch(state) {
-      case 'messaging': case 'connected': this._updateMode('P2P_BLE'); break;
-      case 'offline': if ((!this.mesh || !this.mesh.getPeerCount || this.mesh.getPeerCount() === 0) && (!this.wsClient || !this.wsClient.isConnected || !this.wsClient.isConnected())) this._updateMode('OFFLINE'); break;
-    }
-  }
-  _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
+ async _saveMessageToVault(contactId, message) {
+   var cid = _normId(contactId);
+   if (!cid) return;
+   try {
+     await vaultAppendMessage(cid, {
+       content: message.content,
+       sender: message.sender,
+       senderName: message.senderName,
+       _own: !!message._own,
+       _source: message._source,
+       _ts: message._ts || Date.now(),
+       messageId: message.messageId,
+       deviceUUID: message.deviceUUID,
+       recipient: message.recipient,
+       status: message.status || 'pending'
+     });
+   } catch (e) {
+     console.warn('[NexoApp] Error guardando mensaje:', e.message);
+   }
+ }
 
-  async _saveMessageToVault(contactId, message) {
-    var cid = _normId(contactId);
-    if (!cid) return;
-    if (cid.indexOf('nx') !== 0 && window.bleInterface && window.bleInterface.getContacts) {
-      var contacts = window.bleInterface.getContacts();
-      var found = contacts.find(function(c) { return _normId(c.deviceId) === cid; });
-      if (found && found.deviceUUID) cid = _normId(found.deviceUUID);
-    }
-    if (!cid) return;
-    try {
-      await vaultAppendMessage(cid, {
-        content: message.content,
-        sender: message.sender,
-        senderName: message.senderName,
-        _own: !!message._own,
-        _source: message._source,
-        _ts: message._ts || Date.now(),
-        messageId: message.messageId,
-        deviceUUID: message.deviceUUID,
-        recipient: message.recipient,
-        status: message.status || 'pending'
-      });
-    } catch (e) {
-      console.warn('[NexoApp] Error guardando mensaje:', e.message);
-    }
-  }
+ async _loadMessagesFromVault(contactId) {
+   try {
+     var cid = _normId(contactId);
+     if (!cid) return [];
+     var raw = await vaultLoadMessages(cid);
+     return raw.map(function(m) {
+       return {
+         content: m.text || m.content || '',
+         sender: m.senderNexoId || m.sender || '',
+         senderName: m.senderName || '',
+         _own: !!m._own,
+         _source: 'vault',
+         _ts: m.timestamp || m._ts || Date.now(),
+         messageId: m.msgId || m.messageId || '',
+         status: m.status || 'pending',
+         deviceUUID: m.senderNexoId || m.sender || ''
+       };
+     });
+   } catch (e) { return []; }
+ }
 
-  async _loadMessagesFromVault(contactId) {
-    try {
-      var cid = _normId(contactId);
-      if (!cid) return [];
-      var raw = await vaultLoadMessages(cid);
-      return raw.map(function(m) {
-        return {
-          content: m.text || m.content || '',
-          sender: m.senderNexoId || m.sender || '',
-          senderName: m.senderName || '',
-          _own: !!m._own,
-          _source: 'vault',
-          _ts: m.timestamp || m._ts || Date.now(),
-          messageId: m.msgId || m.messageId || '',
-          status: m.status || 'pending',
-          deviceUUID: m.senderNexoId || m.sender || ''
-        };
-      });
-    } catch (e) { return []; }
-  }
+ async _updateMessageStatusInVault(contactId, messageId, status) {
+   var cid = _normId(contactId);
+   if (!cid || !messageId) return;
+   try {
+     await vaultUpdateMessageStatus(cid, messageId, status);
+   } catch (e) {
+     console.warn('[NexoApp] Error actualizando estado:', e.message);
+   }
+ }
 
-  async _updateMessageStatusInVault(contactId, messageId, status) {
-    var cid = _normId(contactId);
-    if (!cid || !messageId) return;
-    try {
-      await vaultUpdateMessageStatus(cid, messageId, status);
-    } catch (e) {
-      console.warn('[NexoApp] Error actualizando estado:', e.message);
-    }
-  }
+ async sendMessage(msg) {
+   if (!this.initialized || this._isDestroyed) {
+     DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
+     return false;
+   }
+   try {
+     var messageId = msg.messageId || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+     var isObject = msg && typeof msg === 'object';
+     var content = isObject ? (msg.content || msg) : msg;
+     var recipient = isObject ? msg.recipient : null;
+     var targetId = recipient || (this.activeContact ? (this.activeContact.nexoId || this.activeContact.id || this.activeContact.deviceId) : null);
+     var targetTransport = this.activeContact ? this.activeContact.transport : null;
+     if (!content || (typeof content === 'string' && content.trim() === '')) {
+       return false;
+     }
+     this._cleanupPendingMessages();
+     this._pendingMessages.set(messageId, { status: 'pending', timestamp: Date.now(), recipient: targetId, retries: 0 });
+     this._handleMessage({
+       content: content,
+       _own: true,
+       timestamp: Date.now(),
+       pending: true,
+       recipient: targetId,
+       source: 'self',
+       messageId: messageId
+     }, 'self');
+     if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
+       try {
+         console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
+         await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
+         DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
+         this._updateMessageStatus(messageId, 'sent');
+         return true;
+       } catch (e) {
+         DEBUG.warn('BLE directo fallo: ' + (e.message || 'unknown'), 'MSG_BLE_FAIL');
+       }
+     }
+     var nordicPeers = this.nordicMesh && this.nordicMesh.getPeers ? this.nordicMesh.getPeers() : [];
+     if (nordicPeers.length > 0) {
+       try {
+         await this.nordicMesh.sendMessage(nordicPeers[0].id, content);
+         DEBUG.success('Sent via Nordic', 'MSG_NORDIC');
+         this._updateMessageStatus(messageId, 'sent');
+         return true;
+       } catch (e) {
+         DEBUG.error('NORDIC_009', 'Send failed: ' + (e.message || 'unknown'));
+       }
+     }
+     if (this.mesh && this.mesh.getPeerCount && this.mesh.getPeerCount() > 0) {
+       try {
+         await this.mesh.broadcast({ content: content });
+         DEBUG.success('Sent via Hybrid', 'MSG_HYBRID');
+         this._updateMessageStatus(messageId, 'sent');
+         return true;
+       } catch (e) {
+         DEBUG.error('MESH_005', 'Broadcast failed: ' + (e.message || 'unknown'));
+       }
+     }
+     if (this.bridge) {
+       var result = await this.bridge.send({ content: content });
+       if (result) {
+         DEBUG.success('Sent via Bridge', 'MSG_BRIDGE');
+         this._updateMessageStatus(messageId, 'sent');
+         return true;
+       }
+     }
+     if (this.wsClient && this.wsClient.isConnected && this.wsClient.isConnected()) {
+       this.wsClient.send({ content: content });
+       DEBUG.success('Sent via WebSocket', 'MSG_WS');
+       this._updateMessageStatus(messageId, 'sent');
+       return true;
+     }
+     DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
+     this._updateMessageStatus(messageId, 'error');
+     return false;
+   } catch (err) {
+     DEBUG.error('APP_008', 'SendMessage critical: ' + (err.message || 'unknown'));
+     this._updateMessageStatus(messageId, 'error');
+     return false;
+   }
+ }
 
-  async sendMessage(msg) {
-    if (!this.initialized || this._isDestroyed) {
-      DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
-      return false;
-    }
-    try {
-      var messageId = msg.messageId || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
-      var isObject = msg && typeof msg === 'object';
-      var content = isObject ? (msg.content || msg) : msg;
-      var recipient = isObject ? msg.recipient : null;
-      // FIX: Fallback de IDs activos (nexoId > id > deviceId)
-      var targetId = recipient || (this.activeContact ? (this.activeContact.nexoId || this.activeContact.id || this.activeContact.deviceId) : null);
-      var targetTransport = this.activeContact ? this.activeContact.transport : null;
-      if (!content || (typeof content === 'string' && content.trim() === '')) {
-        return false;
-      }
-      this._cleanupPendingMessages();
-      this._pendingMessages.set(messageId, { status: 'pending', timestamp: Date.now(), recipient: targetId, retries: 0 });
-      this._handleMessage({
-        content: content,
-        _own: true,
-        timestamp: Date.now(),
-        pending: true,
-        recipient: targetId,
-        source: 'self',
-        messageId: messageId
-      }, 'self');
-      if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
-        try {
-          console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
-          await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
-          DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        } catch (e) {
-          DEBUG.warn('BLE directo fallo: ' + (e.message || 'unknown'), 'MSG_BLE_FAIL');
-        }
-      }
-      var nordicPeers = this.nordicMesh && this.nordicMesh.getPeers ? this.nordicMesh.getPeers() : [];
-      if (nordicPeers.length > 0) {
-        try {
-          await this.nordicMesh.sendMessage(nordicPeers[0].id, content);
-          DEBUG.success('Sent via Nordic', 'MSG_NORDIC');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        } catch (e) {
-          DEBUG.error('NORDIC_009', 'Send failed: ' + (e.message || 'unknown'));
-        }
-      }
-      if (this.mesh && this.mesh.getPeerCount && this.mesh.getPeerCount() > 0) {
-        try {
-          await this.mesh.broadcast({ content: content });
-          DEBUG.success('Sent via Hybrid', 'MSG_HYBRID');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        } catch (e) {
-          DEBUG.error('MESH_005', 'Broadcast failed: ' + (e.message || 'unknown'));
-        }
-      }
-      if (this.bridge) {
-        var result = await this.bridge.send({ content: content });
-        if (result) {
-          DEBUG.success('Sent via Bridge', 'MSG_BRIDGE');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        }
-      }
-      if (this.wsClient && this.wsClient.isConnected && this.wsClient.isConnected()) {
-        this.wsClient.send({ content: content });
-        DEBUG.success('Sent via WebSocket', 'MSG_WS');
-        this._updateMessageStatus(messageId, 'sent');
-        return true;
-      }
-      // FIX: Marcar error cuando no hay ningun transporte disponible
-      DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
-      this._updateMessageStatus(messageId, 'error');
-      return false;
-    } catch (err) {
-      DEBUG.error('APP_008', 'SendMessage critical: ' + (err.message || 'unknown'));
-      this._updateMessageStatus(messageId, 'error');
-      return false;
-    }
-  }
+ _handleMessage(msg, source) {
+   if (this._isDestroyed) return;
+   try {
+     if (msg.messageId) {
+       var now = Date.now();
+       if (this._messageDedupMap.has(msg.messageId)) {
+         if (source !== 'self') {
+           DEBUG.log('Deduplicado ' + (msg.messageId ? msg.messageId.substring(0, 8) : '') + ' de ' + source, 'debug', 'DEDUP');
+         }
+         return;
+       }
+       this._messageDedupMap.set(msg.messageId, now);
+       if (this._messageDedupMap.size > this._maxProcessedIds) {
+         var oldestKey = null;
+         var oldestTime = Infinity;
+         var entries = Array.from(this._messageDedupMap.entries());
+         for (var i = 0; i < entries.length; i++) {
+           if (entries[i][1] < oldestTime) {
+             oldestTime = entries[i][1];
+             oldestKey = entries[i][0];
+           }
+         }
+         if (oldestKey) this._messageDedupMap.delete(oldestKey);
+       }
+       var keysToDelete = [];
+       this._messageDedupMap.forEach(function(v, k) {
+         if (now - v > this._dedupTTL) keysToDelete.push(k);
+       }.bind(this));
+       for (var i = 0; i < keysToDelete.length; i++) {
+         this._messageDedupMap.delete(keysToDelete[i]);
+       }
+     }
+     var enriched = Object.assign({}, msg, {
+       _own: !!msg._own,
+       _source: source,
+       _ts: Date.now(),
+       _id: Math.random().toString(36).substr(2, 9)
+     });
+     this.config.onMessage(enriched);
+     var vaultContactId = enriched._own ? enriched.recipient : (enriched.senderNexoId || enriched.deviceUUID || enriched.sender);
+     if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
+     if (!enriched._own && this.activeContact && (enriched.sender === this.activeContact.id || enriched.sender === this.activeContact.nexoId || enriched.sender === this.activeContact.deviceId) && enriched.messageId) {
+       var self = this;
+       setTimeout(function() { self._sendReadReceipt(enriched.messageId, enriched.sender); }, 800);
+     }
+   } catch (err) {
+     DEBUG.error('APP_005', 'Message handler: ' + (err.message || 'unknown'));
+   }
+ }
 
-  _handleMessage(msg, source) {
-    if (this._isDestroyed) return;
-    try {
-      if (msg.messageId) {
-        var now = Date.now();
-        if (this._messageDedupMap.has(msg.messageId)) {
-          if (source !== 'self') {
-            DEBUG.log('Deduplicado ' + (msg.messageId ? msg.messageId.substring(0, 8) : '') + ' de ' + source, 'debug', 'DEDUP');
-          }
-          return;
-        }
-        this._messageDedupMap.set(msg.messageId, now);
-        if (this._messageDedupMap.size > this._maxProcessedIds) {
-          var oldestKey = null;
-          var oldestTime = Infinity;
-          this._messageDedupMap.forEach(function(v, k) {
-            if (v < oldestTime) { oldestTime = v; oldestKey = k; }
-          });
-          if (oldestKey) this._messageDedupMap.delete(oldestKey);
-        }
-        var keysToDelete = [];
-        this._messageDedupMap.forEach(function(v, k) {
-          if (now - v > this._dedupTTL) keysToDelete.push(k);
-        }.bind(this));
-        for (var i = 0; i < keysToDelete.length; i++) {
-          this._messageDedupMap.delete(keysToDelete[i]);
-        }
-      }
-      var enriched = Object.assign({}, msg, {
-        _own: !!msg._own,
-        _source: source,
-        _ts: Date.now(),
-        _id: Math.random().toString(36).substr(2, 9)
-      });
-      this.config.onMessage(enriched);
-      // FIX: Usar senderNexoId > deviceUUID > sender como identificador de contacto vault
-      var vaultContactId = enriched._own ? enriched.recipient : (enriched.senderNexoId || enriched.deviceUUID || enriched.sender);
-      if (!vaultContactId && !enriched._own && enriched.sender && window.bleInterface && window.bleInterface.getContacts) {
-        var contacts = window.bleInterface.getContacts();
-        var found = contacts.find(function(c) { return _normId(c.deviceId) === _normId(enriched.sender); });
-        if (found && found.deviceUUID) vaultContactId = _normId(found.deviceUUID);
-      }
-      if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
-      if (!enriched._own && this.activeContact && (enriched.sender === this.activeContact.id || enriched.sender === this.activeContact.nexoId || enriched.sender === this.activeContact.deviceId) && enriched.messageId) {
-        var self = this;
-        setTimeout(function() { self._sendReadReceipt(enriched.messageId, enriched.sender); }, 800);
-      }
-    } catch (err) {
-      DEBUG.error('APP_005', 'Message handler: ' + (err.message || 'unknown'));
-    }
-  }
+ async _partialCleanup() {
+   if (this.nordicMesh) { try { if (this.nordicMesh.destroy) await this.nordicMesh.destroy(); } catch(e) {} this.nordicMesh = null; }
+   if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
+   if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
+ }
 
-  async _partialCleanup() {
-    if (this.nordicMesh) { try { if (this.nordicMesh.destroy) await this.nordicMesh.destroy(); } catch(e) {} this.nordicMesh = null; }
-    if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
-    if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
-  }
+ async destroy() {
+   if (this._isDestroyed) return;
+   this._isDestroyed = true;
+   DEBUG.log('Cleanup...', 'info', 'DESTROY');
 
-  async destroy() {
-    if (this._isDestroyed) return;
-    this._isDestroyed = true;
-    DEBUG.log('Cleanup...', 'info', 'DESTROY');
-    if (this._bleChatHandler) {
-      try { window.removeEventListener('nexo:ble:openChat', this._bleChatHandler); } catch(e) {}
-      this._bleChatHandler = null;
-    }
-    if (this._chatBackHandler) {
-      var chatBackBtn = document.getElementById('chat-back-btn');
-      if (chatBackBtn) chatBackBtn.removeEventListener('click', this._chatBackHandler);
-      this._chatBackHandler = null;
-    }
-    if (this._bleMessageHandler) {
-      try { window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler); } catch(e) {}
-      this._bleMessageHandler = null;
-    }
-    if (this.bleInterface) {
-      try { this.bleInterface.destroy(); } catch(e) {}
-      this.bleInterface = null;
-    }
-    if (this.nordicMesh) {
-      this._resources.handlers.forEach(function(unsub) { try { unsub(); } catch(e) {} });
-      try { if (this.nordicMesh.destroy) await this.nordicMesh.destroy(); } catch(e) {}
-      this.nordicMesh = null;
-    }
-    if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
-    if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
-    if (this.vault) { try { if (this.vault.destroy) await this.vault.destroy(); } catch(e) {} this.vault = null; }
-    this._resources.timers.forEach(function(t) { clearTimeout(t); });
-    this._pendingMessages.clear();
-    DEBUG.success('Cleanup complete', 'DESTROY_OK');
-  }
+   this._resources.handlers.forEach(function(unsub) { try { unsub(); } catch(e) {} });
+   this._resources.listeners.forEach(function(item) {
+     try {
+       if (item.target && item.target.removeEventListener) {
+         item.target.removeEventListener(item.event, item.handler);
+       }
+     } catch(e) {}
+   });
+   this._resources.timers.forEach(function(t) { clearTimeout(t); });
 
-  getStatus() {
-    var mode = 'offline';
-    if (this.mesh && this.mesh.getStatus) {
-      mode = this.mesh.getStatus().mode;
-    } else if (this.nordicMesh && this.nordicMesh.getState && this.nordicMesh.getState() === 'messaging') {
-      mode = 'p2p_ble';
-    } else if (this.bleInterface && this.bleInterface.nativePlugin && this.bleInterface.connectedDevices && this.bleInterface.connectedDevices.size > 0) {
-      mode = 'P2P_BLE';
-    }
-    return {
-      initialized: this.initialized,
-      mode: mode,
-      hasBLEInterface: !!this.bleInterface,
-      activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
-    };
-  }
+   if (this._bleChatHandler) { this._bleChatHandler = null; }
+   if (this._chatBackHandler) { this._chatBackHandler = null; }
+   if (this._bleMessageHandler) { this._bleMessageHandler = null; }
+   if (this.bleInterface) { try { this.bleInterface.destroy(); } catch(e) {} this.bleInterface = null; }
+   if (this.nordicMesh) { try { if (this.nordicMesh.destroy) await this.nordicMesh.destroy(); } catch(e) {} this.nordicMesh = null; }
+   if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
+   if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
+   if (this.vault) { try { if (this.vault.destroy) await this.vault.destroy(); } catch(e) {} this.vault = null; }
+   this._pendingMessages.clear();
+   DEBUG.success('Cleanup complete', 'DESTROY_OK');
+ }
 
-  _cleanupPendingMessages() {
-    var now = Date.now();
-    var keysToDelete = [];
-    this._pendingMessages.forEach(function(v, k) {
-      if (now - v.timestamp > 300000) keysToDelete.push(k);
-    });
-    for (var i = 0; i < keysToDelete.length; i++) {
-      this._pendingMessages.delete(keysToDelete[i]);
-    }
-  }
+ getStatus() {
+   var mode = 'offline';
+   if (this.mesh && this.mesh.getStatus) {
+     mode = this.mesh.getStatus().mode;
+   } else if (this.nordicMesh && this.nordicMesh.getState && this.nordicMesh.getState() === 'messaging') {
+     mode = 'p2p_ble';
+   } else if (this.bleInterface && this.bleInterface.nativePlugin && this.bleInterface.connectedDevices && this.bleInterface.connectedDevices.size > 0) {
+     mode = 'P2P_BLE';
+   }
+   return {
+     initialized: this.initialized,
+     mode: mode,
+     hasBLEInterface: !!this.bleInterface,
+     activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
+   };
+ }
 
-  _updateMessageStatus(messageId, status) {
-    if (!messageId) return;
-    var pending = this._pendingMessages.get(messageId);
-    if (!pending) {
-      if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, status);
-      return;
-    }
-    if (pending.status === 'read') return;
-    if (pending.status === 'delivered' && status !== 'read') return;
-    pending.status = status;
-    this._pendingMessages.set(messageId, pending);
-    if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, status);
-  }
+ _cleanupPendingMessages() {
+   var now = Date.now();
+   var keysToDelete = [];
+   this._pendingMessages.forEach(function(v, k) {
+     if (now - v.timestamp > 300000) keysToDelete.push(k);
+   });
+   for (var i = 0; i < keysToDelete.length; i++) {
+     this._pendingMessages.delete(keysToDelete[i]);
+   }
+ }
 
-  _handleACK(messageId, ackType) {
-    if (!messageId) return;
-    var pending = this._pendingMessages.get(messageId);
-    if (!pending) {
-      DEBUG.log('ACK recibido pero mensaje no en pending: ' + messageId, 'warn', 'ACK_WARN');
-      return;
-    }
-    var newStatus = ackType === 'read' ? 'read' : (ackType === 'delivered' ? 'delivered' : 'sent');
-    if (pending.status === 'read') return;
-    if (pending.status === 'delivered' && newStatus !== 'read') return;
-    pending.status = newStatus;
-    this._pendingMessages.set(messageId, pending);
-    if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, newStatus);
-    DEBUG.log('ACK recibido: ' + messageId + ' -> ' + newStatus, 'info', 'ACK_RECV');
-  }
+ _updateMessageStatus(messageId, status) {
+   if (!messageId) return;
+   var pending = this._pendingMessages.get(messageId);
+   if (!pending) {
+     if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, status);
+     return;
+   }
+   if (pending.status === 'read') return;
+   if (pending.status === 'delivered' && status !== 'read') return;
+   pending.status = status;
+   this._pendingMessages.set(messageId, pending);
+   if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, status);
+ }
 
-  _sendACK(deviceUUID, messageId) {
-    if (!deviceUUID || !messageId) return;
-    if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
-    var payload = JSON.stringify({ type: 'ack', messageId: messageId, ackType: 'delivered', timestamp: Date.now() });
-    this.bleInterface.sendChatMessage(deviceUUID, payload, messageId).catch(function(e) {});
-  }
+ _handleACK(messageId, ackType) {
+   if (!messageId) return;
+   var pending = this._pendingMessages.get(messageId);
+   if (!pending) {
+     DEBUG.log('ACK recibido pero mensaje no en pending: ' + messageId, 'warn', 'ACK_WARN');
+     return;
+   }
+   var newStatus = ackType === 'read' ? 'read' : (ackType === 'delivered' ? 'delivered' : 'sent');
+   if (pending.status === 'read') return;
+   if (pending.status === 'delivered' && newStatus !== 'read') return;
+   pending.status = newStatus;
+   this._pendingMessages.set(messageId, pending);
+   if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, newStatus);
+   DEBUG.log('ACK recibido: ' + messageId + ' -> ' + newStatus, 'info', 'ACK_RECV');
+ }
 
-  _sendReadReceipt(messageId, recipientId) {
-    if (!messageId || !recipientId) return;
-    if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
-    var payload = JSON.stringify({ type: 'read_receipt', messageId: messageId, timestamp: Date.now() });
-    this.bleInterface.sendChatMessage(recipientId, payload, messageId).catch(function(e) {});
-  }
+ _sendACK(deviceUUID, messageId) {
+   if (!deviceUUID || !messageId) return;
+   if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
+   var payload = JSON.stringify({ type: 'ack', messageId: messageId, ackType: 'delivered', timestamp: Date.now() });
+   this.bleInterface.sendChatMessage(deviceUUID, payload, messageId).catch(function(e) {});
+ }
+
+ _sendReadReceipt(messageId, recipientId) {
+   if (!messageId || !recipientId) return;
+   if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
+   var payload = JSON.stringify({ type: 'read_receipt', messageId: messageId, timestamp: Date.now() });
+   this.bleInterface.sendChatMessage(recipientId, payload, messageId).catch(function(e) {});
+ }
 }
 
 export { NexoApp, DEBUG };
 export default NexoApp;
-
-/*
-Focos de Interés v5.0.18:
-1. FIX: Merge contacto vault + metadata BLE en openChat (preserva transport/deviceId)
-2. FIX: sendMessage marca status:'error' cuando no hay transporte disponible
-3. FIX: _bleMessageHandler extrae senderNexoId/senderName del payload JSON anidado
-4. FIX: Sincroniza _activeChatDeviceId y _activeChatDeviceIdNative en bleInterface
-5. FIX: _handleMessage usa senderNexoId > deviceUUID > sender como fallback vault
-6. FIX: vaultGetOrCreateContact al recibir mensaje nuevo por BLE
-7. FIX: sendMessage fallback de IDs (nexoId > id > deviceId)
-*/
-
