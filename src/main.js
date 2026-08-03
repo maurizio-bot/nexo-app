@@ -1076,6 +1076,15 @@ async function initializeNexoApp() {
         }
       });
       console.log('[MAIN] Fase 4 hooks OK');
+    } catch (hooksErr) {
+      console.warn('[MAIN] Fase 4 hooks error:', hooksErr);
+    }
+  } catch (initErr) {
+    console.error('[MAIN] initializeNexoApp error:', initErr);
+    window.NEXO.initialized = false;
+  }
+}
+
   
 //---------------------------------------------------------------------
 //Parte 6 (UI Setup, líneas 1077-1410)
