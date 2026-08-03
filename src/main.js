@@ -1075,7 +1075,7 @@ async function initializeNexoApp() {
           }
         }
       });
-      console.log('[MAIN] Fase 4 hooks OK');
+            console.log('[MAIN] Fase 4 hooks OK');
     } catch (hooksErr) {
       console.warn('[MAIN] Fase 4 hooks error:', hooksErr);
     }
@@ -1086,15 +1086,13 @@ async function initializeNexoApp() {
 }
 
 //---------------------------------------------------------------------
-//Parte 6 (UI Setup, líneas 1077-1410)
+//Parte 6 (UI Setup)
 //---------------------------------------------------------------------
-    
-    NEXO_DIAG.hideSplash();
-    _forceHideSplash();
-    console.log('NEXO ' + window.NEXO.version + ' Inicializado');
-    try {
-      var status = window.NEXO.app.getStatus ? window.NEXO.app.getStatus() : null;
-      if (status) console.log('[NEXO STATUS]', status);
+
+function _ensureDOMStructure() {
+  try {
+    var stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
+    if (status) console.log('[NEXO STATUS]', status);
     } catch (statusErr) {}
   } catch (error) {
     console.error('Error en NexoApp:', error);
