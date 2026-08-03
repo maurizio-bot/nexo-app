@@ -7,7 +7,7 @@
  * FIX: Preservar transport:ble y deviceId en activeContact al abrir chat
  * FIX: _doSend detecta sendMessage=false y marca error
  * FIX: openChat listener merge contact vault + metadata BLE
- * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
+ * FASE4: Vault persistencia contactos + mensajes + AutoScan hook
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
