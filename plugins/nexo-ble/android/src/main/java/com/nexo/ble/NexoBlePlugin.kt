@@ -165,7 +165,7 @@ class NexoBlePlugin : Plugin() {
                 .put("timestamp", System.currentTimeMillis())
                 .put("reassembled", true)
             )
-            // === GUARDAR MAPEO.  INVERSO DESDE PAYLOAD ===
+            // === GUARDAR MAPEO INVERSO DESDE PAYLOAD ===
             val senderNexoId = extractNexoIdFromPayload(completeMessage)
             if (senderNexoId != null && senderNexoId.isNotEmpty()) {
                 nexoIdToMacMap[senderNexoId] = macNorm
@@ -1448,7 +1448,6 @@ class NexoBlePlugin : Plugin() {
         bluetoothScanner = null
         scannedDevices.clear()
     }
-
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result?.device?.let { device ->
@@ -1679,13 +1678,6 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 
-    @PluginMethod
-    fun saveToFile(call: PluginCall) {
-        val filename = call.getString("filename") ?: run {
-            call.reject("filename requerido")
-            return
-        }
-        val content =
     @PluginMethod
     fun saveToFile(call: PluginCall) {
         val filename = call.getString("filename") ?: run {
