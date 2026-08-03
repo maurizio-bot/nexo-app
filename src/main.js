@@ -1118,6 +1118,9 @@ async function initializeNexoApp() {
     } catch (hooksErr) {
       console.warn('[MAIN] Fase 4 hooks error:', hooksErr);
     }
+    NEXO_DIAG.hideSplash();
+    _forceHideSplash();
+    console.log('NEXO ' + window.NEXO.version + ' Inicializado');
   } catch (initErr) {
     console.error('[MAIN] initializeNexoApp error:', initErr);
     window.NEXO.initialized = false;
