@@ -1369,6 +1369,297 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("reconnecting", true))
     }
     @PluginMethod
+    fun setAdvertisingData(call: PluginCall) {
+        val nexoId = call.getString("nexoId") ?: run {
+            call.reject("nexoId requerido")
+            return
+        }
+        nexoAdvertisingId = nexoId
+        remLog("INFO", "ADVERTISING", "NEXO ID set: $nexoId")
+        val ctx = activity.applicationContext
+        val intent = Intent(ctx, BleService::class.java)
+        intent.putExtra("nexo_advertising_id", nexoId)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ctx.startForegroundService(intent)
+        } else {
+            ctx.startService(intent)
+        }
+        call.resolve(JSObject().put("set", true).put("nexoId", nexoId))
+    }
+
+    @PluginMethod
+    fun startAdvertising(call: PluginCall) {
+        remLog("INFO", "ADVERTISING", "startAdvertising")
+        val ctx = activity.applicationContext
+        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+        if (adapter == null || !adapter.isEnabled) {
+            call.reject("Bluetooth desactivado")
+            return
+        }
+        if (!checkCoreBLEPermissions(ctx)) {
+            call.reject("Permisos BLE no concedidos")
+            return
+        }
+        autoStartGattServerAndAdvertising()
+        call.resolve(JSObject().put("started", true))
+    }
+
+    @PluginMethod
+    fun startScan(call: PluginCall) {
+        remLog("INFO", "SCAN", "startScan")
+        val ctx = activity.applicationContext
+        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+        if (adapter == null || !adapter.isEnabled) {
+            call.reject("Bluetooth desactivado")
+            return
+        }
+        if (!isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)) {
+            call.reject("BLUETOOTH_SCAN no concedido")
+            return
+        }
+        autoStartGattServerAndAdvertising()
+        bluetoothScanner = adapter.bluetoothLeScanner
+        scanResults.clear()
+        scannedDevices.clear()
+        lastScanNotifyTime.clear()
+        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
+        try {
+            bluetoothScanner?.startScan(emptyList(), settings, scanCallback)
+            mainHandler.removeCallbacks(scanTimeoutRunnable)
+            mainHandler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
+            call.resolve(JSObject().put("started", true))
+        } catch (e: SecurityException) {
+            call.reject("Permiso BLUETOOTH_SCAN no concedido")
+        }
+    }
+
+    @PluginMethod
+    fun stopScan(call: PluginCall) {
+        stopScanInternal()
+        call.resolve(JSObject().put("stopped", true))
+    }
+
+    private fun stopScanInternal() {
+        mainHandler.removeCallbacks(scanTimeoutRunnable)
+        try { bluetoothScanner?.stopScan(scanCallback) } catch (e: Exception) { }
+        bluetoothScanner = null
+        scannedDevices.clear()
+    }
+
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult?) {
+            result?.device?.let { device ->
+                val name = result.scanRecord?.deviceName ?: try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
+                val addr = device.address
+                val macNorm = normalizeMac(addr)
+                val rssi = result.rssi
+
+                if (rssi < MIN_RSSI) {
+                    return@let
+                }
+
+                scannedDevices[macNorm] = device
+
+                var nexoId: String? = null
+                val scanRecord = result.scanRecord
+                if (scanRecord != null) {
+                    val manufacturerData = scanRecord.manufacturerSpecificData
+                    if (manufacturerData != null && manufacturerData.size() > 0) {
+                        val key = manufacturerData.keyAt(0)
+                        val data = manufacturerData.get(key)
+                        if (data != null && data.size >= 4) {
+                            val b0 = data[0].toInt() and 0xFF
+                            val b1 = data[1].toInt() and 0xFF
+                            if (b0 == 0x4E && b1 == 0x58) {
+                                nexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
+                                remLog("INFO", "SCAN", "NEXO ID found: $nexoId for $addr")
+                            }
+                        }
+                    }
+                }
+
+                // === POBLAR MAPAS NXID <-> MAC ===
+                if (nexoId != null && nexoId.isNotEmpty()) {
+                    nexoIdToMacMap[nexoId] = macNorm
+                    macToNexoIdMap[macNorm] = nexoId
+                }
+
+                remLog("INFO", "SCAN", "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado")
+
+                val item = JSObject().apply {
+                    put("deviceId", addr)
+                    put("name", name)
+                    put("rssi", rssi)
+                    if (nexoId != null) {
+                        put("nexoId", nexoId)
+                    }
+                }
+
+                synchronized(scanResults) {
+                    if (scanResults.none { normalizeMac(it.getString("deviceId") ?: "") == macNorm }) {
+                        scanResults.add(item)
+                    }
+                }
+
+                val now = System.currentTimeMillis()
+                val lastNotify = lastScanNotifyTime[macNorm]
+                if (lastNotify == null || (now - lastNotify) >= SCAN_DEBOUNCE_MS) {
+                    lastScanNotifyTime[macNorm] = now
+                    notifyListeners("onDeviceFound", item)
+                }
+            }
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode))
+        }
+    }
+
+    @PluginMethod
+    fun isBluetoothEnabled(call: PluginCall) {
+        val ctx = activity.applicationContext
+        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+        val enabled = adapter != null && adapter.isEnabled
+        call.resolve(JSObject()
+            .put("enabled", enabled)
+            .put("canAdvertise", enabled && isAdvertisingActive)
+            .put("serverReady", bluetoothGattServer != null)
+        )
+    }
+
+    @PluginMethod
+    fun getLocalDeviceInfo(call: PluginCall) {
+        val ctx = activity.applicationContext
+        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+        call.resolve(JSObject()
+            .put("deviceName", adapter?.name ?: "NEXO Device")
+            .put("deviceAddress", try { adapter?.address ?: "" } catch (e: SecurityException) { "" })
+        )
+    }
+
+    @PluginMethod
+    fun getConnectedDevices(call: PluginCall) {
+        val devices = JSArray()
+        gattClients.forEach { (mac, gatt) ->
+            val state = clientConnectionStates[mac] ?: BluetoothProfile.STATE_DISCONNECTED
+            if (state == BluetoothProfile.STATE_CONNECTED) {
+                val device = JSObject()
+                    .put("id", mac.chunked(2).joinToString(":"))
+                    .put("address", mac.chunked(2).joinToString(":"))
+                    .put("name", gatt.device?.name ?: "NEXO Peer")
+                    .put("direction", "outgoing")
+                val nxid = macToNexoIdMap[mac]
+                if (nxid != null) {
+                    device.put("nexoId", nxid)
+                }
+                devices.put(device)
+            }
+        }
+        serverConnectedDevices.forEach { (mac, device) ->
+            val item = JSObject()
+                .put("id", device.address)
+                .put("address", device.address)
+                .put("name", device.name ?: "NEXO Peer")
+                .put("direction", "incoming")
+            val nxid = macToNexoIdMap[mac]
+            if (nxid != null) {
+                item.put("nexoId", nxid)
+            }
+            devices.put(item)
+        }
+        call.resolve(JSObject().put("devices", devices))
+    }
+
+    private fun registerServerReceivers() {
+        if (messageReceiver != null) return
+        messageReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED -> {
+                        val msg = intent.getStringExtra(NexoBleSpec.EXTRA_MESSAGE_DATA) ?: ""
+                        val device = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
+                        notifyListeners("onPayloadReceived", JSObject()
+                            .put("deviceId", device)
+                            .put("content", msg)
+                            .put("data", msg)
+                            .put("source", "broadcast")
+                            .put("timestamp", System.currentTimeMillis())
+                        )
+                    }
+                    NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
+                        val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
+                        notifyListeners("onDeviceConnected", JSObject()
+                            .put("deviceId", addr)
+                            .put("direction", "incoming")
+                            .put("role", "server")
+                        )
+                    }
+                    NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED -> {
+                        val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
+                        notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", addr))
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED)
+            addAction(NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED)
+            addAction(NexoBleSpec.ACTION_BLE_DEVICE_DISCONNECTED)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                activity.registerReceiver(messageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                activity.registerReceiver(messageReceiver, filter)
+            }
+        } catch (e: Exception) { }
+    }
+
+    private fun unregisterServerReceivers() {
+        messageReceiver?.let {
+            try { activity.unregisterReceiver(it) } catch (e: Exception) { }
+            messageReceiver = null
+        }
+    }
+
+    private fun stopAdvertisingInternal() {
+        isAdvertisingActive = false
+        try { bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (e: Exception) { }
+    }
+
+    private val advertiseCallback = object : android.bluetooth.le.AdvertiseCallback() {
+        override fun onStartSuccess(settingsInEffect: android.bluetooth.le.AdvertiseSettings?) {
+            isAdvertisingActive = true
+            remLog("INFO", "ADVERTISING", "Started")
+        }
+        override fun onStartFailure(errorCode: Int) {
+            isAdvertisingActive = false
+            remLog("ERROR", "ADVERTISING", "Failed: $errorCode")
+        }
+    }
+
+    @PluginMethod
+    fun stopAdvertising(call: PluginCall) {
+        val ctx = activity.applicationContext
+        try {
+            isAdvertisingActive = false
+            ctx.stopService(Intent(ctx, BleService::class.java))
+            unregisterServerReceivers()
+            call.resolve(JSObject().put("stopped", true))
+        } catch (e: Exception) {
+            call.reject("Error: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun isAdvertising(call: PluginCall) {
+        val ctx = activity.applicationContext
+        val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    @PluginMethod
     fun isAdvertising(call: PluginCall) {
         val ctx = activity.applicationContext
         val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
