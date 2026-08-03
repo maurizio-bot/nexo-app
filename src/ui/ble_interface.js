@@ -567,9 +567,11 @@ export class BLEInterface {
       try {
         var deviceId = data.deviceId || '';
         if (!deviceId) return;
-        var peerUUID = null;
-        var contact = _getContactByDeviceId(deviceId);
-        if (contact) peerUUID = contact.deviceUUID;
+        var peerUUID = data.nexoId || null;
+        if (!peerUUID) {
+          var contact = _getContactByDeviceId(deviceId);
+          if (contact) peerUUID = contact.deviceUUID;
+        }
         var displayName = data.name || (contact ? contact.name : null) || '';
         self.connectedDevices.set(deviceId, {
           id: deviceId, name: displayName,
@@ -627,8 +629,11 @@ export class BLEInterface {
       try {
         var deviceId = data.deviceId || '';
         if (!deviceId) return;
-        var contact = _getContactByDeviceId(deviceId);
-        var peerUUID = contact ? contact.deviceUUID : null;
+        var peerUUID = data.nexoId || null;
+        if (!peerUUID) {
+          var contact = _getContactByDeviceId(deviceId);
+          if (contact) peerUUID = contact.deviceUUID;
+        }
         var stateKey = peerUUID || deviceId;
         var existingTimer = self._notificationFallbackTimers.get(stateKey);
         if (existingTimer) clearTimeout(existingTimer);
@@ -649,8 +654,11 @@ export class BLEInterface {
       try {
         var deviceId = data.deviceId || '';
         if (!deviceId) return;
-        var contact = _getContactByDeviceId(deviceId);
-        var peerUUID = contact ? contact.deviceUUID : null;
+        var peerUUID = data.nexoId || null;
+        if (!peerUUID) {
+          var contact = _getContactByDeviceId(deviceId);
+          if (contact) peerUUID = contact.deviceUUID;
+        }
         var stateKey = peerUUID || deviceId;
         var ft = self._notificationFallbackTimers.get(stateKey);
         if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(stateKey); }
@@ -663,8 +671,11 @@ export class BLEInterface {
       try {
         var deviceId = data.deviceId || '';
         if (!deviceId) return;
-        var contact = _getContactByDeviceId(deviceId);
-        var peerUUID = contact ? contact.deviceUUID : null;
+        var peerUUID = data.nexoId || null;
+        if (!peerUUID) {
+          var contact = _getContactByDeviceId(deviceId);
+          if (contact) peerUUID = contact.deviceUUID;
+        }
         var stateKey = peerUUID || deviceId;
         var ft = self._notificationFallbackTimers.get(stateKey);
         if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(stateKey); }
