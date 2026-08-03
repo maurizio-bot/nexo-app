@@ -930,15 +930,18 @@ async function initializeNexoApp() {
       enableGestures: true,
       enableMesh: true,
       onMessage: function(msg) {
-        console.log('Mensaje:', msg);
-        var senderId = msg && (msg.senderNexoId || msg.deviceUUID || msg.deviceId);
-        if (senderId) {
-          vaultGetOrCreateContact(senderId, msg.senderName || 'NEXO');
-        }
-      },
-      onStatusChange: function(mode) {
-        console.log('Modo:', mode);
-      },
+      console.log('Mensaje:', msg);
+      var senderId = msg && (msg.senderNexoId || msg.deviceUUID || msg.deviceId);
+      if (senderId) {
+      vaultGetOrCreateContact(senderId, msg.senderName || 'NEXO');
+      }
+      if (msg && !msg._own) {
+      _renderMessage(msg);
+      }
+    },
+    onStatusChange: function(mode) {
+    console.log('Modo:', mode);
+    },
       onError: function(err) {
         console.error('App error:', err);
       },
@@ -1054,7 +1057,7 @@ async function initializeNexoApp() {
           _loadPersistedMessages();
         }
       });
-      window.addEventListener('nexo:ble:ackStatus', function(e) {
+            window.addEventListener('nexo:ble:ackStatus', function(e) {
         if (e && e.detail && e.detail.msgId) {
           _updateMessageStatus(e.detail.msgId, e.detail.status);
           var contactId = _getCurrentContactId();
@@ -1063,11 +1066,16 @@ async function initializeNexoApp() {
           }
         }
       });
-      
+      window.addEventListener('nexo:ble:messageSent', function(e) {
+        if (e && e.detail && e.detail.messageId) {
+          _updateMessageStatus(e.detail.messageId, e.detail.status || 'sent');
+          var contactId = _getCurrentContactId();
+          if (contactId && window.vaultUpdateMessageStatus) {
+            window.vaultUpdateMessageStatus(contactId, e.detail.messageId, e.detail.status || 'sent');
+          }
+        }
+      });
       console.log('[MAIN] Fase 4 hooks OK');
-    } catch (f4Err) {
-      console.warn('[MAIN] Fase 4 init warn:', f4Err);
-    }
   
 //---------------------------------------------------------------------
 //Parte 6 (UI Setup, líneas 1077-1410)
