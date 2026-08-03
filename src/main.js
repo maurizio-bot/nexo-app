@@ -1118,19 +1118,6 @@ function _fixLogoPath() {
     console.warn('[MAIN] _fixLogoPath error:', e);
   }
 }
-function _fixLogoPath() {
-  try {
-    var logo = document.getElementById('main-logo');
-    if (logo) {
-      logo.style.backgroundImage = 'url("./assets/nexo_logo.png")';
-      logo.style.backgroundSize = 'contain';
-      logo.style.backgroundRepeat = 'no-repeat';
-      logo.style.backgroundPosition = 'center';
-    }
-  } catch (e) {
-    console.warn('[MAIN] _fixLogoPath error:', e);
-  }
-}
 function _setupMessageInput() {
   try {
     var input = document.getElementById('message-input');
