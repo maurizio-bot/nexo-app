@@ -165,7 +165,7 @@ class NexoBlePlugin : Plugin() {
                 .put("timestamp", System.currentTimeMillis())
                 .put("reassembled", true)
             )
-            // === GUARDAR MAPEO INVERSO DESDE PAYLOAD ===
+            // === GUARDAR MAPEO.  INVERSO DESDE PAYLOAD ===
             val senderNexoId = extractNexoIdFromPayload(completeMessage)
             if (senderNexoId != null && senderNexoId.isNotEmpty()) {
                 nexoIdToMacMap[senderNexoId] = macNorm
@@ -1368,6 +1368,7 @@ class NexoBlePlugin : Plugin() {
         startAutoReconnect(macNorm)
         call.resolve(JSObject().put("reconnecting", true))
     }
+
     @PluginMethod
     fun setAdvertisingData(call: PluginCall) {
         val nexoId = call.getString("nexoId") ?: run {
@@ -1659,10 +1660,6 @@ class NexoBlePlugin : Plugin() {
     fun isAdvertising(call: PluginCall) {
         val ctx = activity.applicationContext
         val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-    @PluginMethod
-    fun isAdvertising(call: PluginCall) {
-        val ctx = activity.applicationContext
-        val manager = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val running = manager.getRunningServices(Integer.MAX_VALUE).any { it.service.className == BleService::class.java.name }
         call.resolve(JSObject().put("isAdvertising", running))
     }
@@ -1682,6 +1679,13 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 
+    @PluginMethod
+    fun saveToFile(call: PluginCall) {
+        val filename = call.getString("filename") ?: run {
+            call.reject("filename requerido")
+            return
+        }
+        val content =
     @PluginMethod
     fun saveToFile(call: PluginCall) {
         val filename = call.getString("filename") ?: run {
