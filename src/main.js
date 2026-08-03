@@ -1066,7 +1066,7 @@ async function initializeNexoApp() {
           }
         }
       });
-      window.addEventListener('nexo:ble:messageSent', function(e) {
+          window.addEventListener('nexo:ble:messageSent', function(e) {
         if (e && e.detail && e.detail.messageId) {
           _updateMessageStatus(e.detail.messageId, e.detail.status || 'sent');
           var contactId = _getCurrentContactId();
@@ -1085,7 +1085,6 @@ async function initializeNexoApp() {
   }
 }
 
-  
 //---------------------------------------------------------------------
 //Parte 6 (UI Setup, líneas 1077-1410)
 //---------------------------------------------------------------------
