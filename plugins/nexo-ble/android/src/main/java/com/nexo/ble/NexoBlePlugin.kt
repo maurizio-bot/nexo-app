@@ -679,6 +679,23 @@ class NexoBlePlugin : Plugin() {
                 return
             }
             val targetMacNorm = resolveMacNorm(rawDeviceId)
+            val isNexo = isNexoId(rawDeviceId)
+
+            // === FIX: Si es NXID sin mapeo, scanear primero ===
+            if (targetMacNorm.isEmpty() && isNexo) {
+                remLog("INFO", "GATT_CLIENT", "NXID $rawDeviceId no resuelto, lanzando scan+connect")
+                quickScanForNexoId(rawDeviceId) { resolvedMac ->
+                    if (resolvedMac.isNotEmpty()) {
+                        remLog("INFO", "GATT_CLIENT", "NXID $rawDeviceId resuelto a $resolvedMac, conectando...")
+                        doConnectToDevice(resolvedMac, call)
+                    } else {
+                        remLog("WARN", "GATT_CLIENT", "No se pudo resolver NXID $rawDeviceId")
+                        call.reject("No se encontro dispositivo con NXID: $rawDeviceId", "DEVICE_NOT_FOUND")
+                    }
+                }
+                return
+            }
+
             if (targetMacNorm.isEmpty()) {
                 call.reject("MAC/NXID invalido: $rawDeviceId", "INVALID_ID")
                 return
@@ -843,7 +860,6 @@ class NexoBlePlugin : Plugin() {
             callback("")
         }
     }
-
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
@@ -1084,7 +1100,7 @@ class NexoBlePlugin : Plugin() {
             remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk")
             return SendResult(false, "")
         }
-        queue.add(item)
+                queue.add(item)
         processWriteQueue(macNorm)
         return SendResult(true, "queued")
     }
@@ -1569,7 +1585,7 @@ class NexoBlePlugin : Plugin() {
                             .put("timestamp", System.currentTimeMillis())
                         )
                     }
-                                        NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
+                    NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
                         val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
                         notifyListeners("onDeviceConnected", JSObject()
                             .put("deviceId", addr)
