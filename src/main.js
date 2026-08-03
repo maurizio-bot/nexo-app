@@ -917,9 +917,28 @@ function _openChatFromNotification(deviceId) {
   }
 }
 
-//-------------------------------------------------‐-‐--------------------
-//Parte 5 (líneas 906-1076): initializeNexoApp
-//-----------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------
+
+// PARTE 5
+//-----------------------------------------------------------------------------------------------------------------------
+
+
+function _loadPersistedMessages() {
+  try {
+    var contactId = _getCurrentContactId();
+    if (!contactId) return;
+    if (window.vaultLoadMessages) {
+      window.vaultLoadMessages(contactId).then(function(msgs) {
+        if (msgs && msgs.length) {
+          msgs.sort(function(a, b) { return (a._ts || a.timestamp || 0) - (b._ts || b.timestamp || 0); });
+          msgs.forEach(function(m) { _renderMessage(m, true); });
+        }
+      }).catch(function(e) {});
+    }
+  } catch (e) {
+    console.warn('[MAIN] _loadPersistedMessages error:', e);
+  }
+}
 
 async function initializeNexoApp() {
   try {
@@ -1340,10 +1359,7 @@ function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
-    var hasBLE = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
-    if (hasBLE) {
-      return;
-    }
+    // FIX: Eliminado if (hasBLE) return; — eso mataba el listener cuando BLE existe
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
     if (!fabBtn._nexoFabBound) {
       fabBtn.addEventListener('click', function() {
