@@ -768,6 +768,26 @@ function _bindAttachmentHandlers() {
 //----------------------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', async function() {
+  // FIX: Resetear estado CSS corrupto de sesiones anteriores
+  try {
+    document.body.classList.remove('chat-view-active', 'vault-visible', 'chat-swipe-dragging', 'chat-swipe-transition', 'chat-swipe-complete', 'chat-swipe-rebound');
+    var appEl = document.getElementById('app');
+    if (appEl) {
+      appEl.style.transition = '';
+      appEl.style.transform = '';
+      appEl.style.opacity = '';
+      appEl.classList.remove('hidden');
+    }
+    var cv = document.getElementById('contacts-view');
+    if (cv) {
+      cv.style.display = '';
+      cv.style.opacity = '';
+      cv.style.transform = '';
+      cv.style.transition = '';
+    }
+    var backBtn = document.getElementById('chat-back-btn');
+    if (backBtn) backBtn.classList.remove('visible');
+  } catch (e) {}
   _bindAttachmentHandlers();
   try {
     console.log('[MAIN] NEXO v9.9.4-FASE4-FIXED-ROBUSTO iniciando...');
