@@ -1359,8 +1359,13 @@ function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
-    // FIX: Eliminado if (hasBLE) return; — eso mataba el listener cuando BLE existe
-    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+    // FIX: ble_interface.js ya crea el FAB con listener en createDOM().
+    // Listener duplicado = togglePanel() x2 = abre y cierra = boton muerto.
+    var hasBLE = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
+    if (hasBLE) {
+      return; // Ya tiene listener nativo, no tocar
+    }
+    // Fallback solo si no hay BLE (no deberia pasar)
     if (!fabBtn._nexoFabBound) {
       fabBtn.addEventListener('click', function() {
         if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
