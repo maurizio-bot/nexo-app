@@ -1461,9 +1461,60 @@ export class BLEInterface {
   }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PARTE 14: RENDERIZADO DE CONTACTOS, MENÚS Y BADGE
+// PARTE 14: RENDERIZADO DE CONTACTOS, MENÚS, BADGE Y TOGGLES
+// FIX: Agregados togglePanel() y toggleScan() que faltaban
 // ═══════════════════════════════════════════════════════════════════════════════
 
+  togglePanel() {
+    if (!this.elements.panel || !this.elements.overlay) return;
+    var isActive = this.elements.panel.classList.contains('active');
+    if (isActive) {
+      this.elements.panel.classList.remove('active');
+      this.elements.overlay.classList.remove('active');
+    } else {
+      this.elements.panel.classList.add('active');
+      this.elements.overlay.classList.add('active');
+      this.renderContactsList();
+      this.renderOnlineStrip();
+    }
+  }
+  toggleScan() {
+    var self = this;
+    if (self.isScanning) {
+      self._stopScanCycle();
+      if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'stopScan')) {
+        _safeNativeCall(self.nativePlugin, 'stopScan', {}).catch(function(){});
+      }
+      self.isScanning = false;
+      self.updateScanButton();
+    } else {
+      if (self.isDummyMode) {
+        _showToast('Modo offline - scan no disponible', 'warn');
+        return;
+      }
+      self.foundDevices.clear();
+      self.newDevicesCount = 0;
+      self.updateBadge();
+      self.renderNewDeviceBar();
+      if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startScan')) {
+        _safeNativeCall(self.nativePlugin, 'startScan', {})
+          .then(function() {
+            self.isScanning = true;
+            self.updateScanButton();
+            self._scanCycleTimer = setTimeout(function() {
+              self._stopScanCycle();
+            }, self._scanCycleDuration);
+          })
+          .catch(function(e) {
+            console.warn('[BLEInterface] startScan error:', e);
+            self.isScanning = false;
+            self.updateScanButton();
+          });
+      } else {
+        _showToast('Scan no disponible', 'warn');
+      }
+    }
+  }
   renderOnlineStrip() {
     var self = this;
     var strip = this.elements.mainOnlineStrip;
@@ -1656,6 +1707,7 @@ export class BLEInterface {
     self.updateStatusBar('');
     return Promise.resolve();
   }
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 15: GETTERS Y EXPORT
