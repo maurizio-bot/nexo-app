@@ -321,10 +321,11 @@ class NexoBlePlugin : Plugin() {
         writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         writeQueueTimeouts.clear()
         negotiatedMtu.clear()
+        saveNexoIdMaps()
         nexoIdToMacMap.clear()
         macToNexoIdMap.clear()
         pendingNexoIdMessages.clear()
-        saveNexoIdMaps() 
+
     }
 
     private fun isScanning(): Boolean {
