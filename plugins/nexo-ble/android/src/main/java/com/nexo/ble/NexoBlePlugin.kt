@@ -114,6 +114,45 @@ class NexoBlePlugin : Plugin() {
     private val nexoIdToMacMap = ConcurrentHashMap<String, String>()
     private val macToNexoIdMap = ConcurrentHashMap<String, String>()
     private val pendingNexoIdMessages = ConcurrentHashMap<String, MutableList<String>>()
+    private val PREFS_NAME = "nexo_ble_maps"
+    private val PREFS_KEY_NXID_TO_MAC = "nxid_to_mac"
+    private val PREFS_KEY_MAC_TO_NXID = "mac_to_nxid"
+
+    private fun saveNexoIdMaps() {
+        try {
+            val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val nxidToMacJson = JSONObject()
+            nexoIdToMacMap.forEach { (k, v) -> nxidToMacJson.put(k, v) }
+            val macToNxidJson = JSONObject()
+            macToNexoIdMap.forEach { (k, v) -> macToNxidJson.put(k, v) }
+            prefs.edit()
+                .putString(PREFS_KEY_NXID_TO_MAC, nxidToMacJson.toString())
+                .putString(PREFS_KEY_MAC_TO_NXID, macToNxidJson.toString())
+                .apply()
+            remLog("INFO", "MAPS", "Mapas NXID persistidos: ${nexoIdToMacMap.size} entradas")
+        } catch (e: Exception) {
+            remLog("WARN", "MAPS", "Error guardando mapas: ${e.message}")
+        }
+    }
+
+    private fun loadNexoIdMaps() {
+        try {
+            val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val nxidToMacStr = prefs.getString(PREFS_KEY_NXID_TO_MAC, "{}") ?: "{}"
+            val macToNxidStr = prefs.getString(PREFS_KEY_MAC_TO_NXID, "{}") ?: "{}"
+            val nxidToMacJson = JSONObject(nxidToMacStr)
+            val macToNxidJson = JSONObject(macToNxidStr)
+            nxidToMacJson.keys().forEach { key ->
+                nexoIdToMacMap[key] = nxidToMacJson.getString(key)
+            }
+            macToNxidJson.keys().forEach { key ->
+                macToNexoIdMap[key] = macToNxidJson.getString(key)
+            }
+            remLog("INFO", "MAPS", "Mapas NXID cargados: ${nexoIdToMacMap.size} entradas")
+        } catch (e: Exception) {
+            remLog("WARN", "MAPS", "Error cargando mapas: ${e.message}")
+        }
+    }
 
     private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
 
@@ -170,6 +209,7 @@ class NexoBlePlugin : Plugin() {
             if (senderNexoId != null && senderNexoId.isNotEmpty()) {
                 nexoIdToMacMap[senderNexoId] = macNorm
                 macToNexoIdMap[macNorm] = senderNexoId
+                saveNexoIdMaps() 
             }
             val ctx = activity.applicationContext
             val broadcastIntent = Intent("com.nexo.ble.MESSAGE_RECEIVED").apply {
@@ -233,13 +273,13 @@ class NexoBlePlugin : Plugin() {
             null
         } catch (e: Exception) { null }
     }
-
-    override fun load() {
+        override fun load() {
         super.load()
         checkNotificationIntent()
         remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server")
         registerBluetoothStateReceiver()
         autoStartGattServerAndAdvertising()
+        loadNexoIdMaps()
     }
 
     override fun handleOnResume() {
@@ -284,6 +324,7 @@ class NexoBlePlugin : Plugin() {
         nexoIdToMacMap.clear()
         macToNexoIdMap.clear()
         pendingNexoIdMessages.clear()
+        saveNexoIdMaps() 
     }
 
     private fun isScanning(): Boolean {
@@ -1453,9 +1494,8 @@ class NexoBlePlugin : Plugin() {
             result?.device?.let { device ->
                 val name = result.scanRecord?.deviceName ?: try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
                 val addr = device.address
-                val macNorm = normalizeMac(addr)
+                val macNorm = normalizeMac(addr)              
                 val rssi = result.rssi
-
                 if (rssi < MIN_RSSI) {
                     return@let
                 }
@@ -1484,6 +1524,7 @@ class NexoBlePlugin : Plugin() {
                 if (nexoId != null && nexoId.isNotEmpty()) {
                     nexoIdToMacMap[nexoId] = macNorm
                     macToNexoIdMap[macNorm] = nexoId
+                    saveNexoIdMaps() 
                 }
 
                 remLog("INFO", "SCAN", "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado")
