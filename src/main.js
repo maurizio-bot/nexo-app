@@ -1092,6 +1092,156 @@ async function initializeNexoApp() {
           }
           if (window.NEXO.app && window.NEXO.app.bleInterface) {
             window.NEXO.app.bleInterface._activeChatDeviceId = contact.deviceId || contact.nexoId || null;
+function _loadPersistedMessages() {
+  try {
+    var contactId = _getCurrentContactId();
+    if (!contactId) return;
+    if (window.vaultLoadMessages) {
+      window.vaultLoadMessages(contactId).then(function(msgs) {
+        if (msgs && msgs.length) {
+          msgs.sort(function(a, b) { return (a._ts || a.timestamp || 0) - (b._ts || b.timestamp || 0); });
+          msgs.forEach(function(m) { _renderMessage(m, true); });
+        }
+      }).catch(function(e) {});
+    }
+  } catch (e) {
+    console.warn('[MAIN] _loadPersistedMessages error:', e);
+  }
+}
+
+async function initializeNexoApp() {
+  try {
+    NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase valida');
+    var nexoConfig = {
+      relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
+      bleTimeout: (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.BLE) ? NEXO_CONFIG.TIMEOUTS.BLE : 30000,
+      enableGestures: true,
+      enableMesh: true,
+      // FIX 11: _renderMessage se maneja en listener nexo:ble:messageReceived
+      // No renderizar aqui para evitar doble render
+      onMessage: function(msg) {
+        console.log('Mensaje:', msg);
+        var senderId = msg && (msg.senderNexoId || msg.deviceUUID || msg.deviceId);
+        if (senderId) {
+          vaultGetOrCreateContact(senderId, msg.senderName || 'NEXO');
+        }
+      },
+      onStatusChange: function(mode) {
+        console.log('Modo:', mode);
+      },
+      onError: function(err) {
+        console.error('App error:', err);
+      },
+      onVaultStateChange: function(isOpen) { _toggleVaultUI(isOpen); },
+      actionCallbacks: {
+        onReact: function(id) { rem.success('Reaccion anadida', 'REACT_OK'); },
+        onReply: function(id) { _focusInput(id ? ('@' + id.substr(0,8) + ' ') : ''); },
+        onForward: function(id) { rem.info('Listo para reenviar', 'FORWARD_READY'); }
+      }
+    };
+    window.NEXO.app = new NexoApp(nexoConfig);
+    try {
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
+        window.Capacitor.Plugins.NexoBLE.addListener('onNotificationOpened', function(event) {
+          if (event && event.deviceId) {
+            setTimeout(function() {
+              _openChatFromNotification(event.deviceId);
+            }, 500);
+          }
+        });
+      }
+    } catch (notifErr) {
+      console.log('[MAIN] Notificacion listener no disponible:', notifErr);
+    }
+    var initPromise = window.NEXO.app.init();
+    var timeoutPromise = new Promise(function(_, reject) {
+      setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
+    });
+    try {
+      await Promise.race([initPromise, timeoutPromise]);
+    } catch (timeoutErr) {}
+    window.NEXO.initialized = true;
+    clearTimeout(SAFETY_TIMEOUT);
+    try {
+      if (window.NEXO.app && window.NEXO.app.bleInterface) {
+        var bi = window.NEXO.app.bleInterface;
+        console.log('[MAIN] BLE Interface estado:', {
+          localUUID: bi.localDeviceUUID,
+          activeChatId: bi._activeChatDeviceId,
+          contacts: bi.getBLEContacts ? bi.getBLEContacts().length : 0
+        });
+      }
+    } catch (logErr) { console.warn('[MAIN] Log BLE error:', logErr); }
+    try {
+      if (window.NEXO.app && window.NEXO.app.bleInterface) {
+        var ack = createAckSystem(window.NEXO.app.bleInterface);
+        window.NEXO.app.bleInterface.setAckSystem(ack);
+        console.log('[MAIN] BleAckSystem vinculado OK');
+      }
+    } catch (ackErr) {
+      console.warn('[MAIN] AckSystem no vinculado:', ackErr);
+    }
+    _setupMessageInput();
+    _setupVaultToggle();
+    _setupChatHeader();
+    _setupKeyboardShortcuts();
+    _setupJumpButton();
+    _setupFABButton();
+    _setupBackButton();
+    _loadPersistedMessages();
+    try {
+      _autoScan = createAutoScan(window.NEXO.app.bleInterface);
+      window.addEventListener('nexo:ble:deviceConnected', function(e) {
+        if (e && e.detail && e.detail.deviceId) {
+          _autoScan.unregisterDevice(e.detail.deviceId);
+        }
+      });
+      window.addEventListener('nexo:ble:deviceDisconnected', function(e) {
+        if (e && e.detail && e.detail.deviceId) {
+          var nid = e.detail.nexoId || e.detail.deviceId;
+          _autoScan.registerKnownDevice(e.detail.deviceId, nid);
+          _autoScan.start();
+        }
+      });
+      window.addEventListener('nexo:vault:messagesLoaded', function(e) {
+        if (e && e.detail && Array.isArray(e.detail.messages)) {
+          e.detail.messages.forEach(function(msg) {
+            _renderMessage(msg, true);
+          });
+        }
+      });
+      window.addEventListener('nexo:ble:messageReceived', function(e) {
+        if (e && e.detail) {
+          var msg = e.detail;
+          var senderId = msg.senderNexoId || msg.deviceUUID || msg.deviceId || null;
+          if (senderId) {
+            vaultGetOrCreateContact(senderId, msg.senderName || 'NEXO');
+            msg.senderNexoId = senderId;
+          }
+          _renderMessage(msg);
+        }
+      });
+      // FIX 7: Listener ya recibe detail.contact correctamente desde ble_interface.js v5.2.3
+      window.addEventListener('nexo:ble:openChat', function(e) {
+        if (e && e.detail) {
+          var detail = e.detail;
+          var contact = detail.contact || {};
+          if (detail.transport) contact.transport = detail.transport;
+          if (detail.deviceId) contact.deviceId = detail.deviceId;
+          if (contact.nexoId) {
+            var vaultContact = vaultFindContactByNexoId(contact.nexoId);
+            if (vaultContact) {
+              contact = Object.assign({}, vaultContact, contact);
+            } else {
+              vaultSaveContact(contact);
+            }
+          }
+          if (window.NEXO.app) {
+            window.NEXO.app.activeContact = contact;
+          }
+          // FIX 12: Usar contact.nexoId (NXID puro), no deviceId nativo
+          if (window.NEXO.app && window.NEXO.app.bleInterface) {
+            window.NEXO.app.bleInterface._activeChatDeviceId = contact.nexoId || null;
           }
           _loadPersistedMessages();
         }
@@ -1127,10 +1277,10 @@ async function initializeNexoApp() {
   }
 }
 
+
 //---------------------------------------------------------------------
 //Parte 6 (UI Setup, líneas 1077-1410)
 //---------------------------------------------------------------------
-
 function _ensureDOMStructure() {
   try {
     var stream = document.getElementById('nexo-stream') || document.querySelector('.stream-container');
@@ -1178,6 +1328,8 @@ function _setupMessageInput() {
 
     _updateBtnState();
 
+    // FIX 8: _doSend llama directamente a bleInterface.sendChatMessage con NXID
+    // No usa window.NEXO.app.sendMessage (no existe / no auditado)
     var _doSend = async function() {
       var text = input.value.trim();
       if (!text) return;
@@ -1198,13 +1350,15 @@ function _setupMessageInput() {
         try { window.vaultAppendMessage(contactId, localMsg); } catch(e) {}
       }
       try {
-        var sent = await window.NEXO.app.sendMessage({ content: text, messageId: msgId });
-        if (sent === false) {
-          throw new Error('Send returned false');
-        }
-        _updateMessageStatus(msgId, 'sent');
-        if (contactId && window.vaultUpdateMessageStatus) {
-          try { window.vaultUpdateMessageStatus(contactId, msgId, 'sent'); } catch(e2) {}
+        var bi = window.NEXO.app && window.NEXO.app.bleInterface;
+        if (bi && typeof bi.sendChatMessage === 'function') {
+          await bi.sendChatMessage(contactId, text, msgId);
+          _updateMessageStatus(msgId, 'sent');
+          if (contactId && window.vaultUpdateMessageStatus) {
+            try { window.vaultUpdateMessageStatus(contactId, msgId, 'sent'); } catch(e2) {}
+          }
+        } else {
+          throw new Error('BLE interface no disponible');
         }
       } catch (e) {
         _updateMessageStatus(msgId, 'error');
@@ -1382,13 +1536,10 @@ function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
-    // FIX: ble_interface.js ya crea el FAB con listener en createDOM().
-    // Listener duplicado = togglePanel() x2 = abre y cierra = boton muerto.
     var hasBLE = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
     if (hasBLE) {
-      return; // Ya tiene listener nativo, no tocar
+      return;
     }
-    // Fallback solo si no hay BLE (no deberia pasar)
     if (!fabBtn._nexoFabBound) {
       fabBtn.addEventListener('click', function() {
         if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
