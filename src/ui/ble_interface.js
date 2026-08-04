@@ -973,6 +973,118 @@ export class BLEInterface {
           status: 'pending',
           timestamp: Date.now()
         };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PARTE 9: ENVÍO DE MENSAJES - Native, Chat, Cola y ACK
+// FIX: NXID directo al plugin. Sin busqueda de MAC en JS.
+// FIX 4: attachments van en campo attachment, NO dentro de text.
+// FIX 14: incluir to: deviceId en payload JSON.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+  _processPendingMessages(deviceId) {
+    var self = this;
+    if (!deviceId) return Promise.resolve();
+    var queue = this._pendingMessageQueue.get(deviceId);
+    if (!queue || queue.length === 0) return Promise.resolve();
+    this._pendingMessageQueue.delete(deviceId);
+    var processNext = function(idx) {
+      if (idx >= queue.length) return Promise.resolve();
+      var item = queue[idx];
+      if (item.timeoutId) clearTimeout(item.timeoutId);
+      if (self.ackSystem) {
+        return self.ackSystem.sendWithRetry(deviceId, item.content, item.messageId)
+          .then(function() {
+            _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: item.deviceUUID, messageId: item.messageId, status: 'sent', deviceId: deviceId });
+            item.resolve();
+            return processNext(idx + 1);
+          })
+          .catch(function(e) {
+            _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: item.deviceUUID, messageId: item.messageId, status: 'error', deviceId: deviceId });
+            item.reject(e);
+            return processNext(idx + 1);
+          });
+      } else {
+        return self._sendMessageNative(deviceId, item.content, item.messageId)
+          .then(function() {
+            _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: item.deviceUUID, messageId: item.messageId, status: 'sent', deviceId: deviceId });
+            item.resolve();
+            return processNext(idx + 1);
+          })
+          .catch(function(e) {
+            _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: item.deviceUUID, messageId: item.messageId, status: 'error', deviceId: deviceId });
+            item.reject(e);
+            return processNext(idx + 1);
+          });
+      }
+    };
+    return processNext(0);
+  }
+  _sendMessageNative(deviceId, content, messageId) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      try {
+        if (!self.nativePlugin) { reject(new Error('Plugin no disponible')); return; }
+        if (!deviceId) { reject(new Error('deviceId invalido')); return; }
+        var isCtrl = _isControlPacket(content);
+        var enrichedPayload;
+        if (isCtrl) { enrichedPayload = content; }
+        else {
+          var senderId = self.localNexoId || self.localDeviceUUID;
+          var msgId = messageId || ('msg' + Date.now() + '*' + Math.random().toString(36).substr(2, 9));
+          var payloadObj = {
+            senderNexoId: senderId,
+            senderName: self.localDeviceName || 'Nexo Device',
+            timestamp: Date.now()
+          };
+          if (content && content.charAt(0) === '{') {
+            try {
+              var parsedContent = JSON.parse(content);
+              if (parsedContent && parsedContent.type === 'attachment') {
+                payloadObj.attachment = parsedContent;
+                payloadObj.text = parsedContent.caption || '[Archivo]';
+              } else {
+                payloadObj.text = content;
+              }
+            } catch (e) {
+              payloadObj.text = content;
+            }
+          } else {
+            payloadObj.text = content;
+          }
+          enrichedPayload = JSON.stringify({
+            v: 1,
+            type: 'chat',
+            from: senderId,
+            to: deviceId || '',
+            ts: Date.now(),
+            msgId: msgId,
+            payload: payloadObj,
+            jump: { ttl: 5, hops: 0, path: [] }
+          });
+        }
+        if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
+          _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: deviceId, message: enrichedPayload })
+            .then(function() { resolve(); }).catch(function(e) { reject(e); });
+        } else { reject(new Error('sendMessage no disponible')); }
+      } catch (e) { reject(e); }
+    });
+  }
+  sendChatMessage(deviceUUID, content, messageId) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      try {
+        var uuid = _normId(deviceUUID);
+        if (!uuid) { reject(new Error('deviceUUID vacio')); return; }
+        if (!content || typeof content !== 'string' || content.trim() === '') { reject(new Error('Mensaje vacio')); return; }
+        var deviceId = uuid;
+        var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+        var ownMsg = {
+          messageId: msgId,
+          content: content,
+          _own: true,
+          status: 'pending',
+          timestamp: Date.now()
+        };
         _vaultAppendMessage(uuid, ownMsg, true);
         var state = self._getDeviceState(deviceId);
         var isReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
@@ -1043,9 +1155,11 @@ export class BLEInterface {
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(deviceId); }
     this._processPendingMessages(deviceId);
   }
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 10: APERTURA DE CHAT Y VISIBILIDAD BLE
 // FIX: NXID directo. Sin busqueda de MAC. Sin _activeChatDeviceIdNative.
+// FIX 7: alinear evento openChat con main.js (e.detail.contact).
 // ═══════════════════════════════════════════════════════════════════════════════
 
   openChat(deviceUUID) {
@@ -1073,7 +1187,11 @@ export class BLEInterface {
           var displayName = (contact && contact.name) || 'NEXO';
           if (nameInput) nameInput.value = displayName;
           if (subtitle) subtitle.textContent = '';
-          _safeDispatchEvent('nexo:ble:openChat', { contactId: uuid, name: displayName, transport: 'ble', source: 'ble_interface' });
+          _safeDispatchEvent('nexo:ble:openChat', {
+            contact: { id: uuid, name: displayName, deviceUUID: uuid },
+            transport: 'ble',
+            source: 'ble_interface'
+          });
           self.elements.panel.classList.remove('active'); self.elements.overlay.classList.remove('active');
         }
         finishOpenChat();
