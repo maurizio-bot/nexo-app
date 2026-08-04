@@ -758,12 +758,37 @@ export class BLEInterface {
           var cname = contact ? contact.name : null;
           senderName = cname || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name) || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name) || '';
         }
-        if (senderUUID && deviceId) {
+                // === MIGRACION DE ESTADO BLE: MAC -> NXID ===
+        if (senderUUID && deviceId && senderUUID !== deviceId) {
+          // Migrar estado de conexion de MAC a NXID
+          var macState = self._deviceStates.get(deviceId);
+          if (macState && !self._deviceStates.has(senderUUID)) {
+            self._deviceStates.set(senderUUID, macState);
+          }
+          // Migrar cola de mensajes pendientes
+          var macQueue = self._pendingMessageQueue.get(deviceId);
+          if (macQueue && macQueue.length > 0 && !self._pendingMessageQueue.has(senderUUID)) {
+            self._pendingMessageQueue.set(senderUUID, macQueue);
+          }
+          // Migrar resolvers de ready
+          var macResolver = self._readyResolvers.get(deviceId);
+          if (macResolver && !self._readyResolvers.has(senderUUID)) {
+            self._readyResolvers.set(senderUUID, macResolver);
+          }
+          // Actualizar contacto con MAC
           var contactsAdopt = _getBLEContacts();
           var idxAdopt = contactsAdopt.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(senderUUID); });
-          if (idxAdopt >= 0 && !contactsAdopt[idxAdopt].deviceId) {
+          if (idxAdopt >= 0) {
             contactsAdopt[idxAdopt].deviceId = deviceId;
+            contactsAdopt[idxAdopt].online = true;
+            contactsAdopt[idxAdopt].lastSeen = Date.now();
             _saveBLEContacts(contactsAdopt);
+          }
+          // Actualizar connectedDevices: la entrada MAC ahora apunta al NXID
+          var connDev = self.connectedDevices.get(deviceId);
+          if (connDev && !self.connectedDevices.has(senderUUID)) {
+            connDev.deviceUUID = senderUUID;
+            self.connectedDevices.set(senderUUID, connDev);
           }
         }
         if (senderUUID && senderName && senderName !== '') {
