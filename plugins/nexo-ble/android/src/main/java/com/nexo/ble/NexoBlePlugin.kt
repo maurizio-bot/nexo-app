@@ -114,9 +114,25 @@ class NexoBlePlugin : Plugin() {
     private val nexoIdToMacMap = ConcurrentHashMap<String, String>()
     private val macToNexoIdMap = ConcurrentHashMap<String, String>()
     private val pendingNexoIdMessages = ConcurrentHashMap<String, MutableList<String>>()
+    // === FIX 13: calls pendientes por NXID para resolver cuando scan termine ===
+    private val pendingNexoIdCalls = ConcurrentHashMap<String, PluginCall>()
     private val PREFS_NAME = "nexo_ble_maps"
     private val PREFS_KEY_NXID_TO_MAC = "nxid_to_mac"
     private val PREFS_KEY_MAC_TO_NXID = "mac_to_nxid"
+
+    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
+
+    private fun remLog(level: String, tag: String, message: String) {
+        Log.i("NEXO_REM", "[$level][$tag] $message")
+        try {
+            notifyListeners("onRemLog", JSObject()
+                .put("level", level)
+                .put("tag", tag)
+                .put("message", message)
+                .put("timestamp", System.currentTimeMillis())
+            )
+        } catch (e: Exception) { }
+    }
 
     private fun saveNexoIdMaps() {
         try {
@@ -154,20 +170,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
-
-    private fun remLog(level: String, tag: String, message: String) {
-        Log.i("NEXO_REM", "[$level][$tag] $message")
-        try {
-            notifyListeners("onRemLog", JSObject()
-                .put("level", level)
-                .put("tag", tag)
-                .put("message", message)
-                .put("timestamp", System.currentTimeMillis())
-            )
-        } catch (e: Exception) { }
-    }
-
     private fun checkNotificationIntent() {
         try {
             val intent = activity.intent
@@ -184,76 +186,29 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { }
     }
 
-    private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
-        val macNorm = normalizeMac(deviceId)
-        messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
-        val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
-        buffer.append(chunk)
-        val accumulated = buffer.toString()
-        remLog("DEBUG", "REASSEMBLY", "Buffer for $macNorm: len=${accumulated.length}, content=${accumulated.take(60)}...")
-        val completeMessage = tryExtractCompleteJson(accumulated)
-        if (completeMessage != null) {
-            remLog("INFO", "REASSEMBLY", "Mensaje completo reensamblado de $macNorm")
-            messageBuffers.remove(macNorm)
-            messageBufferTimers.remove(macNorm)
-            notifyListeners("onPayloadReceived", JSObject()
-                .put("deviceId", deviceId)
-                .put("content", completeMessage)
-                .put("data", completeMessage)
-                .put("source", source)
-                .put("timestamp", System.currentTimeMillis())
-                .put("reassembled", true)
-            )
-            // === GUARDAR MAPEO INVERSO DESDE PAYLOAD ===
-            val senderNexoId = extractNexoIdFromPayload(completeMessage)
-            if (senderNexoId != null && senderNexoId.isNotEmpty()) {
-                nexoIdToMacMap[senderNexoId] = macNorm
-                macToNexoIdMap[macNorm] = senderNexoId
-                saveNexoIdMaps() 
-            }
-            val ctx = activity.applicationContext
-            val broadcastIntent = Intent("com.nexo.ble.MESSAGE_RECEIVED").apply {
-                putExtra("deviceId", deviceId)
-                putExtra("content", completeMessage)
-            }
-            ctx.sendBroadcast(broadcastIntent)
+    // === HELPERS NXID ===
+    private fun isNexoId(id: String): Boolean {
+        return id.length == 10 && id.startsWith("NX")
+    }
+
+    private fun resolveMacNorm(id: String): String {
+        return if (isNexoId(id)) {
+            nexoIdToMacMap[id] ?: ""
         } else {
-            val timeoutRunnable = Runnable {
-                remLog("WARN", "REASSEMBLY", "Timeout reensamblaje para $macNorm, descartando buffer")
-                messageBuffers.remove(macNorm)
-                messageBufferTimers.remove(macNorm)
-            }
-            messageBufferTimers[macNorm] = timeoutRunnable
-            mainHandler.postDelayed(timeoutRunnable, MESSAGE_REASSEMBLY_TIMEOUT_MS)
+            normalizeMac(id)
         }
     }
 
-    private fun tryExtractCompleteJson(buffer: String): String? {
-        if (buffer.isBlank()) return null
-        var braceCount = 0
-        var startIdx = -1
-        var endIdx = -1
-        for (i in buffer.indices) {
-            val c = buffer[i]
-            if (c == '{') {
-                if (braceCount == 0) startIdx = i
-                braceCount++
-            } else if (c == '}') {
-                braceCount--
-                if (braceCount == 0 && startIdx >= 0) {
-                    endIdx = i
-                    break
-                }
-            }
+    private fun normalizeMac(mac: String): String {
+        return mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
+    }
+
+    private fun formatMacForAndroid(mac: String): String? {
+        val clean = mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
+        if (clean.length != 12 || !clean.all { it in '0'..'9' || it in 'a'..'f' }) {
+            return null
         }
-        if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) return null
-        val candidate = buffer.substring(startIdx, endIdx + 1)
-        return try {
-            JSONObject(candidate)
-            candidate
-        } catch (e: Exception) {
-            null
-        }
+        return clean.chunked(2).joinToString(":")
     }
 
     private fun extractNexoIdFromPayload(payload: String): String? {
@@ -273,13 +228,40 @@ class NexoBlePlugin : Plugin() {
             null
         } catch (e: Exception) { null }
     }
-        override fun load() {
+
+    // === FIX 1: revisar si hay conexion GATT activa para un NXID ===
+    private fun findActiveMacForNexoId(nexoId: String): String? {
+        // 1. Mapa directo
+        nexoIdToMacMap[nexoId]?.let { if (it.isNotEmpty()) return it }
+        // 2. Revisar conexiones server activas por MAC mapeada
+        macToNexoIdMap.forEach { (mac, nxid) ->
+            if (nxid == nexoId) {
+                if (serverConnectedDevices.containsKey(mac) ||
+                    (gattClients.containsKey(mac) && clientConnectionStates[mac] == BluetoothProfile.STATE_CONNECTED)) {
+                    return mac
+                }
+            }
+        }
+        // 3. Revisar conexiones server sin mapeo (direccion inversa)
+        serverConnectedDevices.keys.forEach { mac ->
+            if (macToNexoIdMap[mac] == nexoId) return mac
+        }
+        // 4. Revisar clientes conectados
+        gattClients.keys.forEach { mac ->
+            if (clientConnectionStates[mac] == BluetoothProfile.STATE_CONNECTED && macToNexoIdMap[mac] == nexoId) {
+                return mac
+            }
+        }
+        return null
+    }
+
+    override fun load() {
         super.load()
         checkNotificationIntent()
         remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server")
         registerBluetoothStateReceiver()
-        autoStartGattServerAndAdvertising()
         loadNexoIdMaps()
+        autoStartGattServerAndAdvertising()
     }
 
     override fun handleOnResume() {
@@ -322,30 +304,47 @@ class NexoBlePlugin : Plugin() {
         writeQueueTimeouts.clear()
         negotiatedMtu.clear()
         saveNexoIdMaps()
-        nexoIdToMacMap.clear()
-        macToNexoIdMap.clear()
-        pendingNexoIdMessages.clear()
-
     }
 
     private fun isScanning(): Boolean {
         return bluetoothScanner != null
     }
 
-    private fun reconnectKnownDevices() {
-        val ctx = activity.applicationContext
-        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter
-        if (adapter == null || !adapter.isEnabled) return
-        gattClients.forEach { (macNorm, gatt) ->
-            val state = clientConnectionStates[macNorm] ?: BluetoothProfile.STATE_DISCONNECTED
-            if (state != BluetoothProfile.STATE_CONNECTED && state != BluetoothProfile.STATE_CONNECTING) {
-                remLog("INFO", "FOREGROUND", "Auto-reconnect a $macNorm al volver de background")
-                reconnectAttempts[macNorm] = 0
-                reconnectDelays.remove(macNorm)
-                startAutoReconnect(macNorm)
+    private fun cleanupAllConnections() {
+        gattClients.forEach { (mac, gatt) ->
+            try {
+                gatt.disconnect()
+                gatt.close()
+                remLog("INFO", "CLEANUP", "GATT client cerrado: $mac")
+            } catch (e: Exception) {
+                remLog("WARN", "CLEANUP", "Error cerrando GATT client $mac: ${e.message}")
             }
         }
+        gattClients.clear()
+        clientRxCharacteristics.clear()
+        clientTxCharacteristics.clear()
+        clientConnectionStates.clear()
+        reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+        reconnectTimers.clear()
+        reconnectAttempts.clear()
+        reconnectDelays.clear()
+        keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+        keepAliveTimers.clear()
+        pendingMessageQueue.clear()
+        pendingNexoIdMessages.clear()
+        pendingNexoIdCalls.forEach { (_, call) ->
+            try { call.reject("Plugin destruido", "PLUGIN_DESTROYED") } catch (e: Exception) { }
+        }
+        pendingNexoIdCalls.clear()
+        messageBuffers.clear()
+        messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+        messageBufferTimers.clear()
+        lastScanNotifyTime.clear()
+        writeQueues.clear()
+        writeQueueProcessing.clear()
+        writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
+        writeQueueTimeouts.clear()
+        negotiatedMtu.clear()
     }
 
     private fun registerBluetoothStateReceiver() {
@@ -431,38 +430,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
-    private fun cleanupAllConnections() {
-        gattClients.forEach { (mac, gatt) ->
-            try {
-                gatt.disconnect()
-                gatt.close()
-                remLog("INFO", "CLEANUP", "GATT client cerrado: $mac")
-            } catch (e: Exception) {
-                remLog("WARN", "CLEANUP", "Error cerrando GATT client $mac: ${e.message}")
-            }
-        }
-        gattClients.clear()
-        clientRxCharacteristics.clear()
-        clientTxCharacteristics.clear()
-        clientConnectionStates.clear()
-        reconnectTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
-        reconnectTimers.clear()
-        reconnectAttempts.clear()
-        reconnectDelays.clear()
-        keepAliveTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
-        keepAliveTimers.clear()
-        pendingMessageQueue.clear()
-        messageBuffers.clear()
-        messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
-        messageBufferTimers.clear()
-        lastScanNotifyTime.clear()
-        writeQueues.clear()
-        writeQueueProcessing.clear()
-        writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
-        writeQueueTimeouts.clear()
-        negotiatedMtu.clear()
-    }
-
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
         remLog("INFO", "PERMISSIONS", "checkBLEStatus")
@@ -545,32 +512,7 @@ class NexoBlePlugin : Plugin() {
             isGranted(ctx, android.Manifest.permission.BLUETOOTH_ADVERTISE)
         } else isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
     }
-
-    private fun normalizeMac(mac: String): String {
-        return mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
-    }
-
-    private fun formatMacForAndroid(mac: String): String? {
-        val clean = mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
-        if (clean.length != 12 || !clean.all { it in '0'..'9' || it in 'a'..'f' }) {
-            return null
-        }
-        return clean.chunked(2).joinToString(":")
-    }
-
-    // === HELPERS NXID (ROBUSTO) ===
-    private fun isNexoId(id: String): Boolean {
-        return id.length == 10 && id.startsWith("NX")
-    }
-
-    private fun resolveMacNorm(id: String): String {
-        return if (isNexoId(id)) {
-            nexoIdToMacMap[id] ?: ""
-        } else {
-            normalizeMac(id)
-        }
-    }
-
+    // ========== GATT SERVER ==========
     private fun startGattServer() {
         if (bluetoothGattServer != null) {
             remLog("INFO", "GATT_SERVER", "Ya iniciado")
@@ -634,12 +576,13 @@ class NexoBlePlugin : Plugin() {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 serverConnectedDevices[mac] = device
                 val nxid = macToNexoIdMap[mac] ?: ""
+                // FIX 15: servicesReady = false para server, JS espera onServicesReady despues
                 notifyListeners("onDeviceConnected", JSObject()
                     .put("deviceId", device.address)
                     .put("nexoId", nxid)
                     .put("direction", "incoming")
                     .put("role", "server")
-                    .put("servicesReady", true)
+                    .put("servicesReady", false)
                 )
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 serverConnectedDevices.remove(mac)
@@ -674,9 +617,9 @@ class NexoBlePlugin : Plugin() {
         ) {
             if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
                 val chunk = value?.toString(Charset.defaultCharset()) ?: ""
-                val mac = device.address
-                remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${chunk.length}")
-                processReceivedChunk(mac, chunk, "gatt_server")
+                val mac = normalizeMac(device.address)
+                remLog("INFO", "GATT_SERVER", "RX chunk from ${device.address}: len=${chunk.length}")
+                processReceivedChunk(device.address, chunk, "gatt_server")
                 if (responseNeeded) {
                     bluetoothGattServer?.sendResponse(
                         device,
@@ -709,10 +652,24 @@ class NexoBlePlugin : Plugin() {
                         value
                     )
                 }
-                remLog("INFO", "GATT_SERVER", "CCCD escrito por ${device.address}")
+                val mac = normalizeMac(device.address)
+                val nxid = macToNexoIdMap[mac] ?: ""
+                remLog("INFO", "GATT_SERVER", "CCCD escrito por ${device.address} NXID=$nxid")
+                // FIX 15: Notificar onServicesReady y onNotificationsEnabled cuando central escribe CCCD
+                notifyListeners("onServicesReady", JSObject()
+                    .put("deviceId", device.address)
+                    .put("nexoId", nxid)
+                    .put("servicesReady", true)
+                )
+                notifyListeners("onNotificationsEnabled", JSObject()
+                    .put("deviceId", device.address)
+                    .put("nexoId", nxid)
+                    .put("notificationsEnabled", true)
+                )
             }
         }
     }
+    // ========== CONNECT TO DEVICE ==========
     @PluginMethod
     fun connectToDevice(call: PluginCall) {
         try {
@@ -725,8 +682,29 @@ class NexoBlePlugin : Plugin() {
             val targetMacNorm = resolveMacNorm(rawDeviceId)
             val isNexo = isNexoId(rawDeviceId)
 
-            // === FIX: Si es NXID sin mapeo, scanear primero ===
+            // FIX 3: Si es NXID sin mapeo, intentar MAC directa de scannedDevices o mapas persistentes primero
             if (targetMacNorm.isEmpty() && isNexo) {
+                // 3a. Buscar en scannedDevices por nxid
+                var foundMac = ""
+                scannedDevices.keys.forEach { mac ->
+                    if (macToNexoIdMap[mac] == rawDeviceId) {
+                        foundMac = mac
+                    }
+                }
+                // 3b. Buscar en mapas persistentes cargados
+                if (foundMac.isEmpty()) {
+                    foundMac = nexoIdToMacMap[rawDeviceId] ?: ""
+                }
+                // 3c. Buscar conexion activa
+                if (foundMac.isEmpty()) {
+                    findActiveMacForNexoId(rawDeviceId)?.let { foundMac = it }
+                }
+                if (foundMac.isNotEmpty()) {
+                    remLog("INFO", "GATT_CLIENT", "NXID $rawDeviceId resuelto a $foundMac sin scan (cache/maps/activa)")
+                    doConnectToDevice(foundMac, call)
+                    return
+                }
+                // Solo si no hay nada, lanzar scan
                 remLog("INFO", "GATT_CLIENT", "NXID $rawDeviceId no resuelto, lanzando scan+connect")
                 quickScanForNexoId(rawDeviceId) { resolvedMac ->
                     if (resolvedMac.isNotEmpty()) {
@@ -882,6 +860,7 @@ class NexoBlePlugin : Plugin() {
                         nexoIdToMacMap[nexoId] = macNorm
                         macToNexoIdMap[macNorm] = nexoId
                         scannedDevices[macNorm] = device
+                        saveNexoIdMaps()
                         try { scanner.stopScan(this) } catch (e: Exception) { }
                         callback(macNorm)
                     }
@@ -904,6 +883,7 @@ class NexoBlePlugin : Plugin() {
             callback("")
         }
     }
+    // ========== SEND MESSAGE (FIXES 1 y 13) ==========
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
@@ -918,24 +898,43 @@ class NexoBlePlugin : Plugin() {
         val macNorm = resolveMacNorm(rawDeviceId)
         val isNexo = isNexoId(rawDeviceId)
 
+        // FIX 1: Si es NXID sin mapeo, revisar primero conexiones GATT activas
+        if (macNorm.isEmpty() && isNexo) {
+            val activeMac = findActiveMacForNexoId(rawDeviceId)
+            if (activeMac != null && activeMac.isNotEmpty()) {
+                remLog("INFO", "SEND", "FIX1: NXID $rawDeviceId tiene conexion activa en $activeMac, enviando directo")
+                val result = sendChunkedOrSingle(activeMac, rawDeviceId, message)
+                if (result.sent) {
+                    call.resolve(JSObject().put("sent", true).put("mode", result.mode).put("deviceId", rawDeviceId))
+                    return
+                }
+            }
+        }
+
         if (macNorm.isEmpty() && isNexo) {
             remLog("INFO", "SEND", "NXID $rawDeviceId no resuelto, encolando y lanzando scan+connect")
             val queue = pendingNexoIdMessages.getOrPut(rawDeviceId) { mutableListOf() }
             queue.add(message)
+            // FIX 13: Guardar call para resolver cuando scan termine
+            pendingNexoIdCalls[rawDeviceId] = call
+            call.setKeepAlive(true)
             quickScanForNexoId(rawDeviceId) { resolvedMac ->
+                val pendingCall = pendingNexoIdCalls.remove(rawDeviceId)
                 if (resolvedMac.isNotEmpty()) {
                     remLog("INFO", "SEND", "NXID $rawDeviceId resuelto a $resolvedMac, conectando...")
                     val msgs = pendingNexoIdMessages.remove(rawDeviceId) ?: mutableListOf()
                     if (msgs.isNotEmpty()) {
                         pendingMessageQueue[resolvedMac] = msgs.toMutableList()
                     }
+                    // Resolver el call original con sent=true si se pudo encolar
+                    pendingCall?.resolve(JSObject().put("sent", true).put("queued", false).put("mode", "nxid_resolved").put("deviceId", rawDeviceId))
                     startAutoReconnect(resolvedMac)
                 } else {
                     remLog("WARN", "SEND", "No se pudo resolver NXID $rawDeviceId, mensajes descartados")
                     pendingNexoIdMessages.remove(rawDeviceId)
+                    pendingCall?.reject("No se encontro dispositivo con NXID: $rawDeviceId", "DEVICE_NOT_FOUND")
                 }
             }
-            call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "nxid_pending").put("deviceId", rawDeviceId))
             return
         }
 
@@ -956,6 +955,148 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
     }
 
+    private data class SendResult(val sent: Boolean, val mode: String)
+
+    private fun getChunkSize(macNorm: String): Int {
+        val mtu = negotiatedMtu[macNorm] ?: 23
+        if (mtu <= 23) return 100
+        return (mtu - 3).coerceAtLeast(100)
+    }
+
+    private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
+        val chunkSize = getChunkSize(macNorm)
+        if (message.length <= chunkSize) {
+            return enqueueWrite(macNorm, rawDeviceId, message)
+        }
+        val chunks = message.chunked(chunkSize)
+        val firstResult = enqueueWrite(macNorm, rawDeviceId, chunks[0])
+        if (!firstResult.sent) {
+            return SendResult(false, "")
+        }
+        for (i in 1 until chunks.size) {
+            val item = WriteQueueItem(macNorm, rawDeviceId, chunks[i])
+            val queue = writeQueues.getOrPut(macNorm) { mutableListOf() }
+            if (queue.size >= MAX_QUEUE_SIZE) {
+                remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk $i")
+                continue
+            }
+            queue.add(item)
+        }
+        remLog("INFO", "SEND", "Mensaje fragmentado en ${chunks.size} chunks (size=$chunkSize) para $macNorm")
+        return SendResult(true, firstResult.mode)
+    }
+
+    private fun enqueueWrite(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
+        val item = WriteQueueItem(macNorm, rawDeviceId, chunk)
+        val queue = writeQueues.getOrPut(macNorm) { mutableListOf() }
+        if (queue.size >= MAX_QUEUE_SIZE) {
+            remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk")
+            return SendResult(false, "")
+        }
+        queue.add(item)
+        processWriteQueue(macNorm)
+        return SendResult(true, "queued")
+    }
+
+    private fun processWriteQueue(macNorm: String) {
+        if (writeQueueProcessing[macNorm] == true) return
+        val queue = writeQueues[macNorm] ?: return
+        if (queue.isEmpty()) {
+            writeQueueProcessing.remove(macNorm)
+            return
+        }
+        writeQueueProcessing[macNorm] = true
+        val item = queue.removeAt(0)
+        val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
+        if (!result.sent) {
+            remLog("WARN", "SEND", "Write fallo para $macNorm, descartando chunk y avanzando")
+            writeQueueProcessing.remove(macNorm)
+            mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
+            return
+        }
+        if (result.mode == "gatt_server") {
+            writeQueueProcessing.remove(macNorm)
+            mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
+        }
+    }
+
+    private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
+        val rxChar = clientRxCharacteristics[macNorm]
+        val gatt = gattClients[macNorm]
+        if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
+            try {
+                val data = chunk.toByteArray(Charset.defaultCharset())
+                var writeInitiated = false
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val status = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        writeInitiated = true
+                        remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE) to $macNorm len=${chunk.length}")
+                    } else {
+                        remLog("WARN", "SEND", "NO_RESPONSE fallo status=$status, intentando DEFAULT para $macNorm")
+                        val fallbackStatus = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                        if (fallbackStatus == BluetoothGatt.GATT_SUCCESS) {
+                            writeInitiated = true
+                            remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback) to $macNorm len=${chunk.length}")
+                        }
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    rxChar.value = data
+                    @Suppress("DEPRECATION")
+                    rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                    @Suppress("DEPRECATION")
+                    writeInitiated = gatt.writeCharacteristic(rxChar)
+                    if (!writeInitiated) {
+                        remLog("WARN", "SEND", "NO_RESPONSE fallo (legacy), intentando DEFAULT para $macNorm")
+                        @Suppress("DEPRECATION")
+                        rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                        @Suppress("DEPRECATION")
+                        writeInitiated = gatt.writeCharacteristic(rxChar)
+                        if (writeInitiated) {
+                            remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback legacy) to $macNorm len=${chunk.length}")
+                        }
+                    } else {
+                        remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE legacy) to $macNorm len=${chunk.length}")
+                    }
+                }
+                if (writeInitiated) {
+                    val timeoutRunnable = Runnable {
+                        remLog("WARN", "SEND", "Timeout cola $macNorm, forzando avance")
+                        writeQueueProcessing.remove(macNorm)
+                        processWriteQueue(macNorm)
+                    }
+                    writeQueueTimeouts[macNorm] = timeoutRunnable
+                    mainHandler.postDelayed(timeoutRunnable, 200)
+                    return SendResult(true, "gatt_client")
+                }
+            } catch (e: Exception) {
+                remLog("WARN", "SEND", "GATT Client write exception: ${e.message}")
+            }
+        }
+        val remoteDevice = serverConnectedDevices[macNorm]
+        val srvTx = serverTxCharacteristic
+        val srv = bluetoothGattServer
+        if (remoteDevice != null && srv != null && srvTx != null) {
+            try {
+                val data = chunk.toByteArray(Charset.defaultCharset())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false, data)
+                } else {
+                    @Suppress("DEPRECATION")
+                    srvTx.value = data
+                    @Suppress("DEPRECATION")
+                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
+                }
+                remLog("INFO", "SEND", "GATT Server chunk sent to $macNorm len=${chunk.length}")
+                return SendResult(true, "gatt_server")
+            } catch (e: Exception) {
+                remLog("WARN", "SEND", "GATT Server notify exception: ${e.message}")
+            }
+        }
+        return SendResult(false, "")
+    }
+    // ========== GATT CLIENT CALLBACK ==========
     private fun createGattClientCallback(macNorm: String): BluetoothGattCallback {
         return object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -1110,148 +1251,7 @@ class NexoBlePlugin : Plugin() {
             }
         }
     }
-    private data class SendResult(val sent: Boolean, val mode: String)
-
-    private fun getChunkSize(macNorm: String): Int {
-        val mtu = negotiatedMtu[macNorm] ?: 23
-        if (mtu <= 23) return 100
-        return (mtu - 3).coerceAtLeast(100)
-    }
-
-    private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
-        val chunkSize = getChunkSize(macNorm)
-        if (message.length <= chunkSize) {
-            return enqueueWrite(macNorm, rawDeviceId, message)
-        }
-        val chunks = message.chunked(chunkSize)
-        val firstResult = enqueueWrite(macNorm, rawDeviceId, chunks[0])
-        if (!firstResult.sent) {
-            return SendResult(false, "")
-        }
-        for (i in 1 until chunks.size) {
-            val item = WriteQueueItem(macNorm, rawDeviceId, chunks[i])
-            val queue = writeQueues.getOrPut(macNorm) { mutableListOf() }
-            if (queue.size >= MAX_QUEUE_SIZE) {
-                remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk $i")
-                continue
-            }
-            queue.add(item)
-        }
-        remLog("INFO", "SEND", "Mensaje fragmentado en ${chunks.size} chunks (size=$chunkSize) para $macNorm")
-        return SendResult(true, firstResult.mode)
-    }
-
-    private fun enqueueWrite(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
-        val item = WriteQueueItem(macNorm, rawDeviceId, chunk)
-        val queue = writeQueues.getOrPut(macNorm) { mutableListOf() }
-        if (queue.size >= MAX_QUEUE_SIZE) {
-            remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk")
-            return SendResult(false, "")
-        }
-                queue.add(item)
-        processWriteQueue(macNorm)
-        return SendResult(true, "queued")
-    }
-
-    private fun processWriteQueue(macNorm: String) {
-        if (writeQueueProcessing[macNorm] == true) return
-        val queue = writeQueues[macNorm] ?: return
-        if (queue.isEmpty()) {
-            writeQueueProcessing.remove(macNorm)
-            return
-        }
-        writeQueueProcessing[macNorm] = true
-        val item = queue.removeAt(0)
-        val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
-        if (!result.sent) {
-            remLog("WARN", "SEND", "Write fallo para $macNorm, descartando chunk y avanzando")
-            writeQueueProcessing.remove(macNorm)
-            mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
-            return
-        }
-        if (result.mode == "gatt_server") {
-            writeQueueProcessing.remove(macNorm)
-            mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
-        }
-    }
-
-    private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
-        val rxChar = clientRxCharacteristics[macNorm]
-        val gatt = gattClients[macNorm]
-        if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
-            try {
-                val data = chunk.toByteArray(Charset.defaultCharset())
-                var writeInitiated = false
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val status = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
-                    if (status == BluetoothGatt.GATT_SUCCESS) {
-                        writeInitiated = true
-                        remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE) to $macNorm len=${chunk.length}")
-                    } else {
-                        remLog("WARN", "SEND", "NO_RESPONSE fallo status=$status, intentando DEFAULT para $macNorm")
-                        val fallbackStatus = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                        if (fallbackStatus == BluetoothGatt.GATT_SUCCESS) {
-                            writeInitiated = true
-                            remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback) to $macNorm len=${chunk.length}")
-                        }
-                    }
-                } else {
-                    @Suppress("DEPRECATION")
-                    rxChar.value = data
-                    @Suppress("DEPRECATION")
-                    rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                    @Suppress("DEPRECATION")
-                    writeInitiated = gatt.writeCharacteristic(rxChar)
-                    if (!writeInitiated) {
-                        remLog("WARN", "SEND", "NO_RESPONSE fallo (legacy), intentando DEFAULT para $macNorm")
-                        @Suppress("DEPRECATION")
-                        rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                        @Suppress("DEPRECATION")
-                        writeInitiated = gatt.writeCharacteristic(rxChar)
-                        if (writeInitiated) {
-                            remLog("INFO", "SEND", "GATT Client chunk sent (DEFAULT fallback legacy) to $macNorm len=${chunk.length}")
-                        }
-                    } else {
-                        remLog("INFO", "SEND", "GATT Client chunk sent (NO_RESPONSE legacy) to $macNorm len=${chunk.length}")
-                    }
-                }
-                if (writeInitiated) {
-                    val timeoutRunnable = Runnable {
-                        remLog("WARN", "SEND", "Timeout cola $macNorm, forzando avance")
-                        writeQueueProcessing.remove(macNorm)
-                        processWriteQueue(macNorm)
-                    }
-                    writeQueueTimeouts[macNorm] = timeoutRunnable
-                    mainHandler.postDelayed(timeoutRunnable, 200)
-                    return SendResult(true, "gatt_client")
-                }
-            } catch (e: Exception) {
-                remLog("WARN", "SEND", "GATT Client write exception: ${e.message}")
-            }
-        }
-        val remoteDevice = serverConnectedDevices[macNorm]
-        val srvTx = serverTxCharacteristic
-        val srv = bluetoothGattServer
-        if (remoteDevice != null && srv != null && srvTx != null) {
-            try {
-                val data = chunk.toByteArray(Charset.defaultCharset())
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false, data)
-                } else {
-                    @Suppress("DEPRECATION")
-                    srvTx.value = data
-                    @Suppress("DEPRECATION")
-                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
-                }
-                remLog("INFO", "SEND", "GATT Server chunk sent to $macNorm len=${chunk.length}")
-                return SendResult(true, "gatt_server")
-            } catch (e: Exception) {
-                remLog("WARN", "SEND", "GATT Server notify exception: ${e.message}")
-            }
-        }
-        return SendResult(false, "")
-    }
-
+    // ========== PENDING MESSAGES / KEEPALIVE / RECONNECT ==========
     private fun processPendingMessages(macNorm: String) {
         val queue = pendingMessageQueue.remove(macNorm) ?: return
         val gatt = gattClients[macNorm]
@@ -1352,7 +1352,7 @@ class NexoBlePlugin : Plugin() {
         reconnectTimers[macNorm] = runnable
         mainHandler.postDelayed(runnable, delayMs)
     }
-
+    // ========== DISCONNECT / RECONNECT / ADVERTISING / SCAN ==========
     @PluginMethod
     fun disconnectDevice(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
@@ -1490,12 +1490,13 @@ class NexoBlePlugin : Plugin() {
         bluetoothScanner = null
         scannedDevices.clear()
     }
+
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result?.device?.let { device ->
                 val name = result.scanRecord?.deviceName ?: try { device.name } catch (e: SecurityException) { null } ?: "Unknown"
                 val addr = device.address
-                val macNorm = normalizeMac(addr)              
+                val macNorm = normalizeMac(addr)
                 val rssi = result.rssi
                 if (rssi < MIN_RSSI) {
                     return@let
@@ -1521,11 +1522,11 @@ class NexoBlePlugin : Plugin() {
                     }
                 }
 
-                // === POBLAR MAPAS NXID <-> MAC ===
+                // POBLAR MAPAS NXID <-> MAC
                 if (nexoId != null && nexoId.isNotEmpty()) {
                     nexoIdToMacMap[nexoId] = macNorm
                     macToNexoIdMap[macNorm] = nexoId
-                    saveNexoIdMaps() 
+                    saveNexoIdMaps()
                 }
 
                 remLog("INFO", "SCAN", "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado")
@@ -1556,6 +1557,92 @@ class NexoBlePlugin : Plugin() {
 
         override fun onScanFailed(errorCode: Int) {
             notifyListeners("onScanFailed", JSObject().put("errorCode", errorCode))
+        }
+    }
+    // ========== MESSAGE REASSEMBLY (FIX 2: extraer NXID del primer payload) ==========
+    private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
+        val macNorm = normalizeMac(deviceId)
+        messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
+        val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
+        buffer.append(chunk)
+        val accumulated = buffer.toString()
+        remLog("DEBUG", "REASSEMBLY", "Buffer for $macNorm: len=${accumulated.length}, content=${accumulated.take(60)}...")
+        val completeMessage = tryExtractCompleteJson(accumulated)
+        if (completeMessage != null) {
+            remLog("INFO", "REASSEMBLY", "Mensaje completo reensamblado de $macNorm")
+            messageBuffers.remove(macNorm)
+            messageBufferTimers.remove(macNorm)
+
+            // === FIX 2: extraer senderNexoId del payload y actualizar mapas ===
+            val senderNexoId = extractNexoIdFromPayload(completeMessage)
+            if (senderNexoId != null && senderNexoId.isNotEmpty()) {
+                val hadNxidBefore = (macToNexoIdMap[macNorm] ?: "").isNotEmpty()
+                nexoIdToMacMap[senderNexoId] = macNorm
+                macToNexoIdMap[macNorm] = senderNexoId
+                saveNexoIdMaps()
+                // Si no teniamos nxid para este MAC, re-notificar onDeviceConnected con nxid real
+                if (!hadNxidBefore && serverConnectedDevices.containsKey(macNorm)) {
+                    remLog("INFO", "REASSEMBLY", "Re-notificando onDeviceConnected con nexoId=$senderNexoId para $macNorm")
+                    notifyListeners("onDeviceConnected", JSObject()
+                        .put("deviceId", deviceId)
+                        .put("nexoId", senderNexoId)
+                        .put("direction", "incoming")
+                        .put("role", "server")
+                        .put("servicesReady", true)
+                    )
+                }
+            }
+
+            notifyListeners("onPayloadReceived", JSObject()
+                .put("deviceId", deviceId)
+                .put("content", completeMessage)
+                .put("data", completeMessage)
+                .put("source", source)
+                .put("timestamp", System.currentTimeMillis())
+                .put("reassembled", true)
+            )
+            val ctx = activity.applicationContext
+            val broadcastIntent = Intent("com.nexo.ble.MESSAGE_RECEIVED").apply {
+                putExtra("deviceId", deviceId)
+                putExtra("content", completeMessage)
+            }
+            ctx.sendBroadcast(broadcastIntent)
+        } else {
+            val timeoutRunnable = Runnable {
+                remLog("WARN", "REASSEMBLY", "Timeout reensamblaje para $macNorm, descartando buffer")
+                messageBuffers.remove(macNorm)
+                messageBufferTimers.remove(macNorm)
+            }
+            messageBufferTimers[macNorm] = timeoutRunnable
+            mainHandler.postDelayed(timeoutRunnable, MESSAGE_REASSEMBLY_TIMEOUT_MS)
+        }
+    }
+
+    private fun tryExtractCompleteJson(buffer: String): String? {
+        if (buffer.isBlank()) return null
+        var braceCount = 0
+        var startIdx = -1
+        var endIdx = -1
+        for (i in buffer.indices) {
+            val c = buffer[i]
+            if (c == '{') {
+                if (braceCount == 0) startIdx = i
+                braceCount++
+            } else if (c == '}') {
+                braceCount--
+                if (braceCount == 0 && startIdx >= 0) {
+                    endIdx = i
+                    break
+                }
+            }
+        }
+        if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) return null
+        val candidate = buffer.substring(startIdx, endIdx + 1)
+        return try {
+            JSONObject(candidate)
+            candidate
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -1720,6 +1807,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 
+    // ========== FILE OPERATIONS ==========
     @PluginMethod
     fun saveToFile(call: PluginCall) {
         val filename = call.getString("filename") ?: run {
