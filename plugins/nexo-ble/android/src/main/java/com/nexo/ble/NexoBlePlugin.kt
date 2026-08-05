@@ -957,10 +957,11 @@ class NexoBlePlugin : Plugin() {
 
     private data class SendResult(val sent: Boolean, val mode: String)
 
+    // === FIX P1: getChunkSize retorna 20 (no 100) cuando MTU no se negocia ===
     private fun getChunkSize(macNorm: String): Int {
         val mtu = negotiatedMtu[macNorm] ?: 23
-        if (mtu <= 23) return 100
-        return (mtu - 3).coerceAtLeast(100)
+        if (mtu <= 23) return 20
+        return (mtu - 3).coerceAtLeast(20)
     }
 
     private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
@@ -1330,7 +1331,7 @@ class NexoBlePlugin : Plugin() {
             val device = scannedDevices[macNorm]
             if (device == null) {
                 remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
-                return@Runnable
+                               return@Runnable
             }
             try {
                 gattClients[macNorm]?.let { old ->
@@ -1890,3 +1891,4 @@ class NexoBlePlugin : Plugin() {
         }
     }
 }
+
