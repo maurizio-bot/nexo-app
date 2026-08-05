@@ -3,10 +3,9 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * BLE Interface v5.2.3-NXID-PURO
- * FIX: NXID directo al plugin nativo. El plugin resuelve MAC actual.
- * FIX: _deviceStates indexado por NXID. Sin busqueda de MAC en JS.
- * FIX: Eliminado _activeChatDeviceIdNative.
+ * BLE Interface v5.2.4-NXID-PURO
+ * FIX 6: Mapeo MAC <-> NXID robusto en _deviceStates, _pendingMessageQueue, _readyResolvers.
+ * FIX 13: Timeout encolado 10s -> 30s.
  */
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
@@ -393,7 +392,9 @@ export class BLEInterface {
     this._scanCycleInterval = 30000;
     this._scanCycleDuration = 6000;
     this._advRestartTimer = null;
-    console.log('[BLEInterface] v5.2.3-NXID-PURO iniciado');
+    this._macToNexoId = new Map();
+    this._nexoIdToMac = new Map();
+    console.log('[BLEInterface] v5.2.4-NXID-PURO iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -531,7 +532,8 @@ export class BLEInterface {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 8: LISTENERS NATIVOS - Scan, Conexión, Estado y Payload
-// FIX: _deviceStates indexado por NXID (stateKey). MAC solo como referencia (mac).
+// FIX 6: _deviceStates indexado por NXID (stateKey). MAC solo como referencia (mac).
+// FIX 6: Mapeo MAC <-> NXID sincronizado en todos los listeners de conexión.
 // ═══════════════════════════════════════════════════════════════════════════════
 
   _setupNativeScanListeners() {
@@ -571,6 +573,10 @@ export class BLEInterface {
         if (!peerUUID) {
           var contact = _getContactByDeviceId(deviceId);
           if (contact) peerUUID = contact.deviceUUID;
+        }
+        if (peerUUID && deviceId) {
+          self._macToNexoId.set(deviceId, peerUUID);
+          self._nexoIdToMac.set(peerUUID, deviceId);
         }
         var displayName = data.name || (contact ? contact.name : null) || '';
         self.connectedDevices.set(deviceId, {
@@ -634,6 +640,10 @@ export class BLEInterface {
           var contact = _getContactByDeviceId(deviceId);
           if (contact) peerUUID = contact.deviceUUID;
         }
+        if (peerUUID && deviceId) {
+          self._macToNexoId.set(deviceId, peerUUID);
+          self._nexoIdToMac.set(peerUUID, deviceId);
+        }
         var stateKey = peerUUID || deviceId;
         var existingTimer = self._notificationFallbackTimers.get(stateKey);
         if (existingTimer) clearTimeout(existingTimer);
@@ -659,6 +669,10 @@ export class BLEInterface {
           var contact = _getContactByDeviceId(deviceId);
           if (contact) peerUUID = contact.deviceUUID;
         }
+        if (peerUUID && deviceId) {
+          self._macToNexoId.set(deviceId, peerUUID);
+          self._nexoIdToMac.set(peerUUID, deviceId);
+        }
         var stateKey = peerUUID || deviceId;
         var ft = self._notificationFallbackTimers.get(stateKey);
         if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(stateKey); }
@@ -676,6 +690,10 @@ export class BLEInterface {
           var contact = _getContactByDeviceId(deviceId);
           if (contact) peerUUID = contact.deviceUUID;
         }
+        if (peerUUID && deviceId) {
+          self._macToNexoId.set(deviceId, peerUUID);
+          self._nexoIdToMac.set(peerUUID, deviceId);
+        }
         var stateKey = peerUUID || deviceId;
         var ft = self._notificationFallbackTimers.get(stateKey);
         if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(stateKey); }
@@ -689,6 +707,10 @@ export class BLEInterface {
     if (!deviceId) return;
     var stateObj = Object.assign({}, meta, { state: state, timestamp: Date.now() });
     this._deviceStates.set(deviceId, stateObj);
+    var mappedMac = this._nexoIdToMac.get(deviceId);
+    if (mappedMac) this._deviceStates.set(mappedMac, stateObj);
+    var mappedNexoId = this._macToNexoId.get(deviceId);
+    if (mappedNexoId) this._deviceStates.set(mappedNexoId, stateObj);
     if (state === BLE_STATES.DISCONNECTED || state === BLE_STATES.ERROR) {
       var queue = this._pendingMessageQueue.get(deviceId);
       if (queue && queue.length > 0) {
@@ -698,11 +720,29 @@ export class BLEInterface {
           if (item.reject) item.reject(new Error('Dispositivo desconectado'));
         });
       }
+      var mappedQ = this._nexoIdToMac.get(deviceId) || this._macToNexoId.get(deviceId);
+      if (mappedQ) {
+        var q2 = this._pendingMessageQueue.get(mappedQ);
+        if (q2 && q2.length > 0) {
+          this._pendingMessageQueue.delete(mappedQ);
+          q2.forEach(function(item) {
+            if (item.timeoutId) clearTimeout(item.timeoutId);
+            if (item.reject) item.reject(new Error('Dispositivo desconectado'));
+          });
+        }
+      }
     }
   }
   _getDeviceState(deviceId) {
     if (!deviceId) return { state: BLE_STATES.DISCONNECTED };
-    return this._deviceStates.get(deviceId) || { state: BLE_STATES.DISCONNECTED };
+    var state = this._deviceStates.get(deviceId);
+    if (state) return state;
+    var mappedMac = this._nexoIdToMac.get(deviceId);
+    if (mappedMac) {
+      var macState = this._deviceStates.get(mappedMac);
+      if (macState) return macState;
+    }
+    return { state: BLE_STATES.DISCONNECTED };
   }
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
@@ -758,24 +798,19 @@ export class BLEInterface {
           var cname = contact ? contact.name : null;
           senderName = cname || (self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name) || (self.foundDevices.get(deviceId) && self.foundDevices.get(deviceId).name) || '';
         }
-                // === MIGRACION DE ESTADO BLE: MAC -> NXID ===
         if (senderUUID && deviceId && senderUUID !== deviceId) {
-          // Migrar estado de conexion de MAC a NXID
           var macState = self._deviceStates.get(deviceId);
           if (macState && !self._deviceStates.has(senderUUID)) {
             self._deviceStates.set(senderUUID, macState);
           }
-          // Migrar cola de mensajes pendientes
           var macQueue = self._pendingMessageQueue.get(deviceId);
           if (macQueue && macQueue.length > 0 && !self._pendingMessageQueue.has(senderUUID)) {
             self._pendingMessageQueue.set(senderUUID, macQueue);
           }
-          // Migrar resolvers de ready
           var macResolver = self._readyResolvers.get(deviceId);
           if (macResolver && !self._readyResolvers.has(senderUUID)) {
             self._readyResolvers.set(senderUUID, macResolver);
           }
-          // Actualizar contacto con MAC
           var contactsAdopt = _getBLEContacts();
           var idxAdopt = contactsAdopt.findIndex(function(c) { return _normId(c.deviceUUID) === _normId(senderUUID); });
           if (idxAdopt >= 0) {
@@ -784,7 +819,6 @@ export class BLEInterface {
             contactsAdopt[idxAdopt].lastSeen = Date.now();
             _saveBLEContacts(contactsAdopt);
           }
-          // Actualizar connectedDevices: la entrada MAC ahora apunta al NXID
           var connDev = self.connectedDevices.get(deviceId);
           if (connDev && !self.connectedDevices.has(senderUUID)) {
             connDev.deviceUUID = senderUUID;
@@ -869,12 +903,12 @@ export class BLEInterface {
       } catch (e) { console.warn('[BLEInterface] Error onPayloadReceived:', e.message); }
     });
   }
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 9: ENVÍO DE MENSAJES - Native, Chat, Cola y ACK
 // FIX: NXID directo al plugin. Sin busqueda de MAC en JS.
 // FIX 4: attachments van en campo attachment, NO dentro de text.
 // FIX 14: incluir to: deviceId en payload JSON.
+// FIX 13: timeout encolado 10s -> 30s.
 // ═══════════════════════════════════════════════════════════════════════════════
 
   _processPendingMessages(deviceId) {
@@ -1019,8 +1053,8 @@ export class BLEInterface {
               self._pendingMessageQueue.set(deviceId, q);
             }
             _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: uuid, messageId: msgId, status: 'error', deviceId: deviceId });
-            reject(new Error('Timeout: mensaje no enviado en 10s'));
-          }, 10000);
+            reject(new Error('Timeout: mensaje no enviado en 30s'));
+          }, 30000);
           queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject, timeoutId: timeoutId, deviceUUID: uuid });
           self._pendingMessageQueue.set(deviceId, queue);
         }
@@ -1048,8 +1082,14 @@ export class BLEInterface {
   _resolveReadyToChat(deviceId) {
     if (!deviceId) return;
     var resolver = this._readyResolvers.get(deviceId);
+    if (!resolver) {
+      var mapped = this._macToNexoId.get(deviceId) || this._nexoIdToMac.get(deviceId);
+      if (mapped) resolver = this._readyResolvers.get(mapped);
+    }
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(deviceId); }
     this._processPendingMessages(deviceId);
+    var mappedId = this._macToNexoId.get(deviceId) || this._nexoIdToMac.get(deviceId);
+    if (mappedId) this._processPendingMessages(mappedId);
   }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1379,7 +1419,7 @@ export class BLEInterface {
  
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 13: DISCOVERY Y GESTIÓN DE DISPOSITIVOS
-// FIX: _autoConnectGATT recibe NXID, pasa NXID al plugin, guarda MAC solo en cache interno
+// FIX: _autoConnectGATT recibe NXID, pasa NXID al plugin, guarda MAC solo en cache interna
 // ═══════════════════════════════════════════════════════════════════════════════
 
   onDeviceFound(device) {
@@ -1757,7 +1797,6 @@ export class BLEInterface {
     self.updateStatusBar('');
     return Promise.resolve();
   }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 15: GETTERS Y EXPORT
