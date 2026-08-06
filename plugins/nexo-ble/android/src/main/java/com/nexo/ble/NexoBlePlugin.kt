@@ -915,24 +915,20 @@ class NexoBlePlugin : Plugin() {
             remLog("INFO", "SEND", "NXID $rawDeviceId no resuelto, encolando y lanzando scan+connect")
             val queue = pendingNexoIdMessages.getOrPut(rawDeviceId) { mutableListOf() }
             queue.add(message)
-            // FIX 13: Guardar call para resolver cuando scan termine
-            pendingNexoIdCalls[rawDeviceId] = call
-            call.setKeepAlive(true)
+            // FIX 1: Resolver inmediatamente con queued=true, no mentir sent=true ni dejar call colgado
+            call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "nxid_pending").put("deviceId", rawDeviceId))
             quickScanForNexoId(rawDeviceId) { resolvedMac ->
-                val pendingCall = pendingNexoIdCalls.remove(rawDeviceId)
                 if (resolvedMac.isNotEmpty()) {
                     remLog("INFO", "SEND", "NXID $rawDeviceId resuelto a $resolvedMac, conectando...")
                     val msgs = pendingNexoIdMessages.remove(rawDeviceId) ?: mutableListOf()
                     if (msgs.isNotEmpty()) {
                         pendingMessageQueue[resolvedMac] = msgs.toMutableList()
                     }
-                    // Resolver el call original con sent=true si se pudo encolar
-                    pendingCall?.resolve(JSObject().put("sent", true).put("queued", false).put("mode", "nxid_resolved").put("deviceId", rawDeviceId))
+                    // FIX 2: Iniciar reconexion al resolver NXID
                     startAutoReconnect(resolvedMac)
                 } else {
                     remLog("WARN", "SEND", "No se pudo resolver NXID $rawDeviceId, mensajes descartados")
                     pendingNexoIdMessages.remove(rawDeviceId)
-                    pendingCall?.reject("No se encontro dispositivo con NXID: $rawDeviceId", "DEVICE_NOT_FOUND")
                 }
             }
             return
@@ -952,6 +948,8 @@ class NexoBlePlugin : Plugin() {
         remLog("WARN", "SEND", "No GATT client ni server para $macNorm, encolando mensaje")
         val queue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
         queue.add(message)
+        // FIX 2: Iniciar reconexion al encolar mensaje sin conexion
+        startAutoReconnect(macNorm)
         call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
     }
 
@@ -1264,7 +1262,10 @@ class NexoBlePlugin : Plugin() {
                     if (result.sent) {
                         remLog("INFO", "PENDING_QUEUE", "Mensaje encolado enviado a $macNorm")
                     } else {
-                        remLog("WARN", "PENDING_QUEUE", "Fallo enviando mensaje encolado a $macNorm")
+                        remLog("WARN", "PENDING_QUEUE", "Fallo enviando mensaje encolado a $macNorm, re-encolando")
+                        // FIX 4: Re-encolar si falla el envio
+                        val q = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
+                        q.add(msg)
                     }
                 }, index * 200L)
             }
@@ -1328,10 +1329,19 @@ class NexoBlePlugin : Plugin() {
             val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = bluetoothManager.adapter
             if (adapter == null || !adapter.isEnabled) return@Runnable
-            val device = scannedDevices[macNorm]
+            // FIX 3: Fallback a getRemoteDevice si no hay en cache
+            val device = scannedDevices[macNorm] ?: run {
+                val macFormatted = macNorm.chunked(2).joinToString(":")
+                try {
+                    adapter.getRemoteDevice(macFormatted)
+                } catch (e: Exception) {
+                    remLog("WARN", "RECONNECT", "getRemoteDevice fallo para $macNorm: ${e.message}")
+                    null
+                }
+            }
             if (device == null) {
-                remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm, no se puede reconectar")
-                               return@Runnable
+                remLog("WARN", "RECONNECT", "No se pudo obtener device para $macNorm")
+                return@Runnable
             }
             try {
                 gattClients[macNorm]?.let { old ->
@@ -1892,3 +1902,16 @@ class NexoBlePlugin : Plugin() {
     }
 }
 
+// ========== NexoBleSpec ==========
+object NexoBleSpec {
+    val NEXO_SERVICE_UUID: java.util.UUID = java.util.UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+    val TX_CHARACTERISTIC_UUID: java.util.UUID = java.util.UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
+    val RX_CHARACTERISTIC_UUID: java.util.UUID = java.util.UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
+    val CCCD_UUID: java.util.UUID = java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+    
+    const val ACTION_BLE_MESSAGE_RECEIVED = "com.nexo.ble.MESSAGE_RECEIVED"
+    const val ACTION_BLE_DEVICE_CONNECTED = "com.nexo.ble.DEVICE_CONNECTED"
+    const val ACTION_BLE_DEVICE_DISCONNECTED = "com.nexo.ble.DEVICE_DISCONNECTED"
+    const val EXTRA_MESSAGE_DATA = "com.nexo.ble.EXTRA_MESSAGE_DATA"
+    const val EXTRA_DEVICE_ADDRESS = "com.nexo.ble.EXTRA_DEVICE_ADDRESS"
+}
