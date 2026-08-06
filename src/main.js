@@ -1012,7 +1012,7 @@ openChatFromNotification(event.deviceId);
 console.log('[MAIN] Notificacion listener no disponible:', notifErr);
 }
 var initPromise = window.NEXO.app.init();
-var timeoutPromise = new Promise(function(, reject) {
+var timeoutPromise = new Promise(function(_, reject) {
 setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
 });
 try {
