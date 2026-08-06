@@ -794,7 +794,7 @@ rem.init();
 var permissionsGranted = false;
 try {
 var permPromise = ensureBLEPermissions();
-var permTimeout = new Promise(function(, reject) {
+var permTimeout = new Promise(function(_, reject) {
 setTimeout(function() { reject(new Error('PERM_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SCAN) ? NEXO_CONFIG.TIMEOUTS.SCAN : 10000);
 });
 permissionsGranted = await Promise.race([permPromise, permTimeout]);
