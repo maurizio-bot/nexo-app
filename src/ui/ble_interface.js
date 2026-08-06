@@ -251,7 +251,7 @@ return new Promise(function(resolve, reject) {
 if (!plugin) { reject(new Error('Plugin nativo no disponible')); return; }
 if (typeof plugin[method] !== 'function') { reject(new Error('Metodo ' + method + ' no disponible')); return; }
 try {
-var result = pluginmethod;
+var result = plugin[method](args);
 if (result && typeof result.then === 'function') {
 result.then(resolve).catch(reject);
 } else { resolve(result); }
@@ -851,7 +851,6 @@ contacts[idx].deviceId = deviceId;
 if (content && typeof content === 'string') contacts[idx].lastMessage = content.substring(0, 50);
 _saveBLEContacts(contacts);
 }
-}
 _vaultGetOrCreateContact(senderUUID, senderName, self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name);
 self.renderContactsList();
 self.renderOnlineStrip();
@@ -865,8 +864,8 @@ return;
 if (messageId) {
 self._receivedMessageIds.add(messageId);
 if (self._receivedMessageIds.size > self._maxMessageIds) {
-var first = self.receivedMessageIds.values().next().value;
-self.receivedMessageIds.delete(first);
+var first = self._receivedMessageIds.values().next().value;
+self._receivedMessageIds.delete(first);
 }
 }
 if (messageId && self.ackSystem && self.ackSystem.sendAck) {
@@ -1005,7 +1004,7 @@ jump: { ttl: 5, hops: 0, path: [] }
 });
 }
 if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
-safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: deviceId, message: enrichedPayload })
+_safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: deviceId, message: enrichedPayload })
 .then(function() { resolve(); }).catch(function(e) { reject(e); });
 } else { reject(new Error('sendMessage no disponible')); }
 } catch (e) { reject(e); }
@@ -1015,7 +1014,7 @@ sendChatMessage(deviceUUID, content, messageId) {
 var self = this;
 return new Promise(function(resolve, reject) {
 try {
-var uuid = normId(deviceUUID);
+var uuid = _normId(deviceUUID);
 if (!uuid) { reject(new Error('deviceUUID vacio')); return; }
 if (!content || typeof content !== 'string' || content.trim() === '') { reject(new Error('Mensaje vacio')); return; }
 var deviceId = uuid;
