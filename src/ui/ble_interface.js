@@ -780,29 +780,6 @@ var isControl = _isControlPacket(rawContent);
 if (isControl) {
 if (self.ackSystem && self.ackSystem.processIncomingAck) {
 self.ackSystem.processIncomingAck(rawContent);
-_setupNativePayloadListener() {
-if (!this.nativePlugin) return;
-if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
-if (this._nativePayloadListener) { try { this._nativePayloadListener.remove(); } catch (e) {} }
-var self = this;
-this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
-try {
-var deviceId = data.deviceId || '';
-if (!deviceId) return;
-var source = data.source || 'unknown';
-if (source !== 'gatt_server' && source !== 'gatt_client' && source !== 'broadcast') source = 'gatt_client';
-var messageId = null, senderName = null, senderUUID = null;
-var rawContent = data.content || data.data || '';
-var content = rawContent;
-var stableId = null;
-if (self.ackSystem && self.ackSystem.processIncomingFragment) {
-var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: rawContent });
-if (fragmentHandled) return;
-}
-var isControl = _isControlPacket(rawContent);
-if (isControl) {
-if (self.ackSystem && self.ackSystem.processIncomingAck) {
-self.ackSystem.processIncomingAck(rawContent);
 }
 return;
 }
@@ -939,6 +916,7 @@ senderNexoId: senderUUID
 } catch (e) { console.warn('[BLEInterface] Error onPayloadReceived:', e.message); }
 });
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 9: ENVÍO DE MENSAJES - Native, Chat, Cola y ACK
