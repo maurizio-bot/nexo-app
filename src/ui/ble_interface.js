@@ -6,6 +6,7 @@
  * FIX 6: Mapeo MAC <-> NXID robusto en _deviceStates, _pendingMessageQueue, _readyResolvers.
  * FIX 13: Timeout encolado 10s -> 30s.
    */
+
    var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
    var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
    var BLE_PINNED_CONTACTS_KEY = 'nexo_ble_pinned_contacts';
