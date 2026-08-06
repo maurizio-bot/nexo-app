@@ -1901,17 +1901,3 @@ class NexoBlePlugin : Plugin() {
         }
     }
 }
-
-// ========== NexoBleSpec ==========
-object NexoBleSpec {
-    val NEXO_SERVICE_UUID: java.util.UUID = java.util.UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
-    val TX_CHARACTERISTIC_UUID: java.util.UUID = java.util.UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
-    val RX_CHARACTERISTIC_UUID: java.util.UUID = java.util.UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
-    val CCCD_UUID: java.util.UUID = java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-    
-    const val ACTION_BLE_MESSAGE_RECEIVED = "com.nexo.ble.MESSAGE_RECEIVED"
-    const val ACTION_BLE_DEVICE_CONNECTED = "com.nexo.ble.DEVICE_CONNECTED"
-    const val ACTION_BLE_DEVICE_DISCONNECTED = "com.nexo.ble.DEVICE_DISCONNECTED"
-    const val EXTRA_MESSAGE_DATA = "com.nexo.ble.EXTRA_MESSAGE_DATA"
-    const val EXTRA_DEVICE_ADDRESS = "com.nexo.ble.EXTRA_DEVICE_ADDRESS"
-}
