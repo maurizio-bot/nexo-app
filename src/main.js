@@ -90,8 +90,8 @@ return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
 }
 return null;
 }
-function sendAttachment(type, payload, meta) {
-var contactId = getCurrentContactId();
+function _sendAttachment(type, payload, meta) {
+var contactId = _getCurrentContactId();
 if (!contactId) {
 console.log('[ATTACH] No hay contacto seleccionado');
 return;
@@ -788,7 +788,7 @@ console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
 _ensureDOMStructure();
-fixLogoPath();
+_fixLogoPath();
 window.NEXO.rem = rem;
 rem.init();
 var permissionsGranted = false;
@@ -1003,7 +1003,7 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Nex
 window.Capacitor.Plugins.NexoBLE.addListener('onNotificationOpened', function(event) {
 if (event && event.deviceId) {
 setTimeout(function() {
-openChatFromNotification(event.deviceId);
+_openChatFromNotification(event.deviceId);
 }, 500);
 }
 });
@@ -1182,11 +1182,11 @@ btn.classList.toggle('mic-mode', !hasText);
 _updateBtnState();
 // FIX 8: _doSend llama directamente a bleInterface.sendChatMessage con NXID
 // No usa window.NEXO.app.sendMessage (no existe / no auditado)
-var doSend = async function() {
+var _doSend = async function() {
 var text = input.value.trim();
 if (!text) return;
 input.value = '';
-updateBtnState();
+_updateBtnState();
 input.focus();
 var msgId = 'msg' + Date.now() + '' + Math.random().toString(36).substr(2, 6);
 var contactId = _getCurrentContactId();
@@ -1447,7 +1447,7 @@ console.warn('[MAIN] _updateMessageStorageStatus error:', e);
 //---------------‐----------------------------------‐--------------------
 //Parte 7 (líneas 1418-1741): _renderMessage
 //-----------------------------------------------------------------------
-function renderMessage(msg, skipSave) {
+function _renderMessage(msg, skipSave) {
 try {
 if (!msg) return;
 var container = document.getElementById('messages-container');
@@ -1638,7 +1638,7 @@ locHtml += '</div></div>';
 contentDiv.innerHTML = locHtml;
 } else if (attachment.type === 'audio') {
 var dur = (meta && typeof meta.duration === 'number') ? meta.duration : 0;
-var durStr = fmtTime(dur);
+var durStr = _fmtTime(dur);
 var audioId = 'audio' + msgId;
 var fmt = (meta && meta.format) ? meta.format : 'webm';
 var mime = (meta && meta.mimeType) ? meta.mimeType : ('audio/' + fmt);
