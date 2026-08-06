@@ -1044,7 +1044,6 @@ _setupVaultToggle();
 _setupChatHeader();
 _setupKeyboardShortcuts();
 _setupJumpButton();
-// FIX: FAB button siempre se configura, no retorna si bleInterface existe
 _setupFABButton();
 _loadPersistedMessages();
 try {
@@ -1381,18 +1380,18 @@ jumpBtn.classList.remove('visible');
 console.warn('[MAIN] _setupJumpButton error:', e);
 }
 }
-// FIX: FAB button siempre vincula listener, usa la interfaz disponible en click
 function _setupFABButton() {
 try {
 var fabBtn = document.getElementById('ble-fab-btn');
 if (!fabBtn) return;
+var hasBLE = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
+if (hasBLE) {
+return;
+}
 if (!fabBtn._nexoFabBound) {
 fabBtn.addEventListener('click', function() {
-var iface = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
-if (iface && typeof iface.togglePanel === 'function') {
-iface.togglePanel();
-} else {
-console.warn('[MAIN] BLE interface no disponible para togglePanel');
+if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
+window.bleInterface.togglePanel();
 }
 });
 fabBtn._nexoFabBound = true;
