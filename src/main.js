@@ -1347,10 +1347,11 @@ function _setupFABButton() {
       return;
     }
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
-    if (!fabBtn._nexoFabBound) {
+        if (!fabBtn._nexoFabBound) {
       fabBtn.addEventListener('click', function() {
-        if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
-          window.bleInterface.togglePanel();
+        var bi = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
+        if (bi && typeof bi.togglePanel === 'function') {
+          bi.togglePanel();
         }
       });
       fabBtn._nexoFabBound = true;
