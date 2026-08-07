@@ -1095,7 +1095,7 @@ export class BLEInterface {
           var displayName = (contact && contact.name) || 'NEXO';
           if (nameInput) nameInput.value = displayName;
           if (subtitle) subtitle.textContent = '';
-          _safeDispatchEvent('nexo:ble:openChat', { contactId: uuid, name: displayName, deviceId: deviceId, transport: 'ble', source: 'ble_interface' });
+          _safeDispatchEvent('nexo:ble:openChat', { contact: { id: uuid, name: displayName, deviceUUID: uuid, deviceId: deviceId }, transport: 'ble', source: 'ble_interface' });
           self.elements.panel.classList.remove('active'); self.elements.overlay.classList.remove('active');
         }
         finishOpenChat();
