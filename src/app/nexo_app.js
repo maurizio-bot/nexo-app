@@ -1,8 +1,7 @@
 /**
- * NEXO App v5.0.20-FASE4-ROBUSTO
- * FIX: Vault unificado a window.vaultXxx (vault_manager.js, clave _v2)
- * FIX: Eliminado doble listener de attach-menu-item (main.js lo maneja)
- * FIX: NXID estricto, sin fallback a deviceId nativo en nexo_app.js
+ * NEXO App v5.0.21-FASE4-ROBUSTO
+ * FIX: _bleMessageHandler maneja payload como objeto nativo (plugin puede pasar objeto, no string)
+ * FIX: Filtro mensaje propio usa localNexoId en vez de localDeviceUUID
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -100,7 +99,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.20-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.21-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -120,7 +119,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.20-FASE4-ROBUSTO Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.21-FASE4-ROBUSTO Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -244,7 +243,6 @@ class NexoApp {
           }
           if (self.bleInterface) {
             self.bleInterface._activeChatDeviceId = contact.nexoId || contact.id || null;
-            // FIX: deviceId nativo NUNCA sale de nexo_app.js
           }
         } catch (handlerErr) {
           console.error('[NexoApp] Error en _bleChatHandler:', handlerErr);
@@ -306,18 +304,34 @@ class NexoApp {
       this._bleMessageHandler = function(e) {
         try {
           var detail = e.detail || {};
-          var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
+          // FIX: Usar localNexoId en vez de localDeviceUUID para filtrar mensajes propios
+          var localUUID = self.bleInterface && self.bleInterface.localNexoId ? self.bleInterface.localNexoId : '';
           var senderUUID = detail.senderNexoId || detail.deviceUUID || '';
           if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
-            console.log('[BLE_RECV] Mensaje propio ignorado por UUID');
+            console.log('[BLE_RECV] Mensaje propio ignorado por NXID');
             return;
           }
-          console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
+          console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? (typeof detail.content === 'string' ? detail.content.substring(0, 30) : '[obj]') : '') + '...');
           var resolvedName = detail.senderName;
           var messageId = null;
+          // FIX: Manejar content como string o objeto nativo
           var content = detail.content || detail.data || '';
           var parsedPayload = null;
-          if (content.charAt(0) === '{') {
+          if (typeof content === 'object' && content !== null) {
+            parsedPayload = content;
+            if (content.msgId) messageId = content.msgId;
+            if (content.messageId) messageId = content.messageId;
+            if (content.payload) {
+              if (content.payload.senderName) resolvedName = content.payload.senderName;
+              if (content.payload.text) content = content.payload.text;
+              if (content.payload.senderNexoId) senderUUID = content.payload.senderNexoId;
+            }
+            if (content.senderName) resolvedName = content.senderName;
+            if (content.deviceName) resolvedName = content.deviceName;
+            if (content.deviceUUID) senderUUID = content.deviceUUID;
+            if (content.content) content = content.content;
+            if (content.from && !senderUUID) senderUUID = content.from;
+          } else if (typeof content === 'string' && content.charAt(0) === '{') {
             try {
               parsedPayload = JSON.parse(content);
               if (parsedPayload.msgId) messageId = parsedPayload.msgId;
@@ -338,7 +352,7 @@ class NexoApp {
             var contactByUUID = window.bleInterface && window.bleInterface.getContactByUUID ? window.bleInterface.getContactByUUID(senderUUID) : null;
             resolvedName = (contactByUUID && contactByUUID.name) || detail.senderName || '';
           }
-          if (messageId && content && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
+          if (messageId && content && typeof content === 'string' && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
             try {
               var ctrl = parsedPayload || JSON.parse(content);
               if (ctrl.type === 'ack') {
@@ -377,7 +391,6 @@ class NexoApp {
       this._resources.listeners.add({ target: window, event: 'nexo:ble:messageReceived', handler: this._bleMessageHandler });
     } catch (err) { DEBUG.error('UI_004', 'BLE UI init failed: ' + (err.message || 'unknown')); this.bleInterface = null; }
   }
-
   async _initPhase6_Bridge() {
     DEBUG.setPhase('BRIDGE');
     try {
