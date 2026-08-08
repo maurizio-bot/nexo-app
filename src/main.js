@@ -1,11 +1,11 @@
 //---------‐-------------------------------------------------------------
-//Parte1 (lineas: 1-73): Imports hattachments holders globales 
+//Parte1 (lineas: 1-73): Imports, attachments holders globales 
 //-----‐-----------------------------------------------------------------
 
 /**
- * src/main.js - Punto de entrada NEXO v9.9.5-FASE4-FIXED-ROBUSTO
- * FIX: _setupFABButton siempre agrega listener (no retorna antes)
- * FIX: _openChatFromNotification usa vaultLoadContactsSync (no Promise)
+ * src/main.js - Punto de entrada NEXO v9.9.6-FASE4-FIXED-ROBUSTO
+ * FIX: _loadPersistedMessages definida (función huérfana que rompía init)
+ * FIX: _updateMessageStatus permite degradación pending -> error
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  */
 
@@ -72,7 +72,7 @@ var _autoScan = null;
 
 //-------------------------------------------------------------------------
 //Parte 2 (líneas 76-749): Attachment Handlers
-//-------------------------------------------------------------------------
+//------------------------------------------------------------------------
 
 function _fmtTime(sec) {
   var m = Math.floor(sec / 60);
@@ -764,7 +764,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.5-FASE4-FIXED-ROBUSTO iniciando...');
+    console.log('[MAIN] NEXO v9.9.6-FASE4-FIXED-ROBUSTO iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -878,7 +878,6 @@ function _hidePermissionOverlay() {
 function _openChatFromNotification(deviceId) {
   try {
     if (!window.NEXO.app) return;
-    // FIX: Usar vaultLoadContactsSync (sincrono) en vez de vaultLoadContacts (Promise)
     var contact = null;
     if (window.vaultFindContactByNexoId) {
       contact = window.vaultFindContactByNexoId(deviceId);
@@ -1341,7 +1340,6 @@ function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
-    // FIX: Siempre agregar listener. Si no hay BLE, mostrar toast informativo.
     if (!fabBtn._nexoFabBound) {
       fabBtn.addEventListener('click', function() {
         var bi = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
@@ -1349,7 +1347,6 @@ function _setupFABButton() {
           bi.togglePanel();
         } else {
           console.warn('[MAIN] BLE Interface no disponible para togglePanel');
-          // Opcional: mostrar toast al usuario
           var toast = document.createElement('div');
           toast.textContent = 'BLE no disponible';
           toast.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);padding:12px 20px;border-radius:10px;background:#FF5252;color:#fff;font-size:14px;font-weight:600;z-index:2147483647;box-shadow:0 4px 16px rgba(0,0,0,0.4);opacity:0;transition:opacity 0.3s ease;pointer-events:none;max-width:80%;text-align:center;';
@@ -1414,8 +1411,29 @@ function _updateMessageStorageStatus(messageId, status) {
 }
 
 //---------------‐----------------------------------‐--------------------
-//Parte 7 (líneas 1418-1741): _renderMessage
+// FIX NUEVO: _loadPersistedMessages (función huérfana que rompía init)
 //-----------------------------------------------------------------------
+function _loadPersistedMessages() {
+  try {
+    var contactId = _getCurrentContactId();
+    if (!contactId) return;
+    if (window.vaultLoadMessages) {
+      window.vaultLoadMessages(contactId).then(function(messages) {
+        if (messages && messages.length > 0) {
+          messages.forEach(function(msg) {
+            _renderMessage(msg, true);
+          });
+        }
+      }).catch(function(e) {});
+    }
+  } catch (e) {
+    console.warn('[MAIN] _loadPersistedMessages error:', e);
+  }
+}
+
+//------‐-------------------------------------------------------------------------------‐--------------------------
+//Parte 7 (líneas 1418-1741): _renderMessage
+//----------------------------------------------------------------------------------------------------------------
 
 function _renderMessage(msg, skipSave) {
   try {
@@ -1743,7 +1761,7 @@ function _updateMessageStatus(messageId, status) {
     var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
     if (!statusEl) return;
 
-    // FIX: no degradar estado (read > delivered > sent > pending > error)
+    // FIX: Permitir degradación de pending a error
     var priority = { 'error': 0, 'pending': 1, 'sent': 2, 'delivered': 3, 'read': 4 };
     var currentStatus = 'pending';
     if (statusEl.classList.contains('status-read')) currentStatus = 'read';
@@ -1752,8 +1770,11 @@ function _updateMessageStatus(messageId, status) {
     else if (statusEl.classList.contains('status-error')) currentStatus = 'error';
 
     if ((priority[status] || 0) < (priority[currentStatus] || 0)) {
-      console.log('[MAIN] Ignorando degradacion de estado:', currentStatus, '->', status);
-      return;
+      // FIX: Siempre permitir pending -> error
+      if (!(currentStatus === 'pending' && status === 'error')) {
+        console.log('[MAIN] Ignorando degradacion de estado:', currentStatus, '->', status);
+        return;
+      }
     }
 
     statusEl.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
