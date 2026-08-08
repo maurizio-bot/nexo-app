@@ -927,7 +927,7 @@ export class BLEInterface {
           }
           _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: uuid, messageId: msgId, status: 'error' });
           reject(new Error('Timeout: mensaje no enviado en 10s'));
-        }, 10000);
+        }, 20000);
         existingQueue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject, timeoutId: timeoutId, deviceUUID: uuid });
         self._pendingMessageQueue.set(uuid, existingQueue);
         // FIX: Lanzar conexión si no está conectando, con cooldown
@@ -1395,19 +1395,7 @@ export class BLEInterface {
       }
       this.renderContactsList();
       this.renderOnlineStrip();
-      var state = this._getDeviceState(nexoId);
-      if (state.state === BLE_STATES.DISCONNECTED) {
-        // FIX: Solo conectar si no hay otra conexión en progreso
-        var hasPendingConnection = false;
-        this._deviceStates.forEach(function(v) {
-          if (v.state === BLE_STATES.CONNECTING || v.state === BLE_STATES.DISCOVERING_SERVICES) hasPendingConnection = true;
-        });
-        if (!hasPendingConnection) {
-          console.log('[BLEInterface] Auto-reconnect a contacto conocido:', nexoId);
-          this._stopScanCycle();
-          this._autoConnectGATT(nexoId, device);
-        }
-      }
+      console.log('[BLEInterface] Contacto conocido en scan:', nexoId, '- online=true, sin auto-connect');
       return;
     }
     if (!this.foundDevices.has(deviceId)) {
@@ -1474,7 +1462,7 @@ export class BLEInterface {
     return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetId })
       .then(function(result) {
         if (result && (result.connected || result.alreadyConnected)) {
-          return self._waitForReadyToChat(normNexo, 8000).then(function() {});
+          return self._waitForReadyToChat(normNexo, 15000).then(function() {});
         } else {
           self.connectedDevices.delete(device.id || normNexo);
           self._deviceStates.delete(normNexo);
