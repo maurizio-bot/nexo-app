@@ -2,6 +2,7 @@
  * vault_manager.js - Persistencia unificada NEXO
  * Items 9 (contactos) + 10 (conversaciones)
  * Reemplaza funciones duplicadas de crypto_vault.js y vault_fs.js
+ * FIX: Agregar deviceId nativo al schema (campo opcional, NXID sigue siendo key primaria)
  */
 var VAULT_CONTACTS_KEY = 'nexo_vault_contacts_v2';
 var VAULT_MESSAGES_PREFIX = 'nexo_vault_msgs_v2_';
@@ -60,6 +61,7 @@ export function vaultSaveContact(contact) {
       displayName: contact.displayName || contact.name || contact.deviceName || 'Desconocido',
       avatarColor: contact.avatarColor || _generateColor(contact.nexoId),
       deviceName: contact.deviceName || contact.displayName || '',
+      deviceId: contact.deviceId || contact.nativeDeviceId || null,  // MAC nativo (volatil, opcional)
       createdAt: contact.createdAt || now,
       lastSeen: now,
       isGuardian: !!contact.isGuardian,
@@ -84,21 +86,30 @@ export function vaultFindContactByNexoId(nexoId) {
   var contacts = vaultLoadContactsSync();
   return contacts.find(function(c) { return c.nexoId === nexoId; }) || null;
 }
+export function vaultFindContactByDeviceId(deviceId) {
+  if (!deviceId) return null;
+  var contacts = vaultLoadContactsSync();
+  return contacts.find(function(c) { return c.deviceId === deviceId; }) || null;
+}
 export function vaultUpdateContactLastSeen(nexoId) {
   var c = vaultFindContactByNexoId(nexoId);
   if (c) { c.lastSeen = Date.now(); vaultSaveContact(c); }
 }
-export function vaultGetOrCreateContact(nexoId, deviceName) {
+export function vaultGetOrCreateContact(nexoId, deviceName, deviceId) {
   var c = vaultFindContactByNexoId(nexoId);
   if (!c) {
     c = {
       nexoId: nexoId,
       displayName: deviceName || nexoId.substring(0, 8),
-      deviceName: deviceName || ''
+      deviceName: deviceName || '',
+      deviceId: deviceId || null
     };
     vaultSaveContact(c);
   } else if (deviceName && !c.deviceName) {
     c.deviceName = deviceName;
+    vaultSaveContact(c);
+  } else if (deviceId && !c.deviceId) {
+    c.deviceId = deviceId;
     vaultSaveContact(c);
   }
   return c;
@@ -135,7 +146,7 @@ export function vaultSaveMessages(contactNexoId, messages) {
 }
 export function vaultAppendMessage(contactNexoId, message) {
   if (!contactNexoId || !message) return Promise.resolve(false);
-  return _enqueueMsg(contactNexoId, function() {   // FIX: era enqueueMsg sin _
+  return _enqueueMsg(contactNexoId, function() {
     var messages = vaultLoadMessagesSync(contactNexoId);
     var msgId = message.msgId || message.messageId || ('msg' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
     var normalized = {
@@ -179,6 +190,7 @@ if (typeof window !== 'undefined') {
   window.vaultLoadContacts = vaultLoadContacts;
   window.vaultSaveContact = vaultSaveContact;
   window.vaultFindContactByNexoId = vaultFindContactByNexoId;
+  window.vaultFindContactByDeviceId = vaultFindContactByDeviceId;
   window.vaultUpdateContactLastSeen = vaultUpdateContactLastSeen;
   window.vaultGetOrCreateContact = vaultGetOrCreateContact;
   window.vaultLoadMessages = vaultLoadMessages;
