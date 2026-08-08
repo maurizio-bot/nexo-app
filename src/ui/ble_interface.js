@@ -865,7 +865,14 @@ export class BLEInterface {
         }
         if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
           _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
-            .then(function() { resolve(); }).catch(function(e) { reject(e); });
+  .       then(function(result) {
+        if (result && (result.sent === true || result.queued === true)) {
+        resolve();
+        } else {
+        reject(new Error('Plugin no envio: ' + (result ? JSON.stringify(result) : 'null')));
+        }
+      }).catch(function(e) { reject(e); });
+
         } else { reject(new Error('sendMessage no disponible')); }
       } catch (e) { reject(e); }
     });
