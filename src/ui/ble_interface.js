@@ -1172,7 +1172,6 @@ export class BLEInterface {
     fabBtn.id = 'ble-fab-btn';
     fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
     fabBtn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2147483643;box-shadow:0 4px 15px rgba(0,200,255,0.3);transition:transform 0.15s ease;';
-    fabBtn.addEventListener('click', function() { self.togglePanel(); });
     fabBtn.addEventListener('mousedown', function() { this.style.transform = 'scale(0.92)'; });
     fabBtn.addEventListener('mouseup', function() { this.style.transform = 'scale(1)'; });
     fabBtn.addEventListener('touchstart', function() { this.style.transform = 'scale(0.92)'; });
