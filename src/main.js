@@ -3,10 +3,9 @@
 //-----‐-----------------------------------------------------------------
 
 /**
- * src/main.js - Punto de entrada NEXO v9.9.4-FASE4-FIXED-ROBUSTO
- * FIX: Preservar transport:ble y deviceId en activeContact al abrir chat
- * FIX: _doSend detecta sendMessage=false y marca error
- * FIX: openChat listener merge contact vault + metadata BLE
+ * src/main.js - Punto de entrada NEXO v9.9.5-FASE4-FIXED-ROBUSTO
+ * FIX: _setupFABButton siempre agrega listener (no retorna antes)
+ * FIX: _openChatFromNotification usa vaultLoadContactsSync (no Promise)
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  */
 
@@ -762,15 +761,10 @@ function _bindAttachmentHandlers() {
     }
   });
 }
-
-//---------------------------------------------------------------------
-//Parte 3 (líneas 750-809): DOMContentLoaded
-//----------------------------------------------------------------------
-
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.4-FASE4-FIXED-ROBUSTO iniciando...');
+    console.log('[MAIN] NEXO v9.9.5-FASE4-FIXED-ROBUSTO iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -816,6 +810,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     _enableFallbackMode();
   }
 });
+
 //-----------------------------------------------------------------------
 //Parte 4 (Overlays y notificaciones, líneas 810-905)
 //------------------------------------------------------------------------
@@ -883,12 +878,16 @@ function _hidePermissionOverlay() {
 function _openChatFromNotification(deviceId) {
   try {
     if (!window.NEXO.app) return;
-    var contact = vaultFindContactByNexoId(deviceId);
-    if (!contact && window.vaultLoadContacts) {
-      var allContacts = window.vaultLoadContacts();
+    // FIX: Usar vaultLoadContactsSync (sincrono) en vez de vaultLoadContacts (Promise)
+    var contact = null;
+    if (window.vaultFindContactByNexoId) {
+      contact = window.vaultFindContactByNexoId(deviceId);
+    }
+    if (!contact && window.vaultLoadContactsSync) {
+      var allContacts = window.vaultLoadContactsSync();
       if (Array.isArray(allContacts)) {
         for (var ci = 0; ci < allContacts.length; ci++) {
-          if (allContacts[ci].deviceId === deviceId || allContacts[ci].nativeDeviceId === deviceId) {
+          if (allContacts[ci].deviceId === deviceId) {
             contact = allContacts[ci];
             break;
           }
@@ -897,7 +896,7 @@ function _openChatFromNotification(deviceId) {
     }
     if (!contact) {
       contact = { nexoId: deviceId, displayName: 'NEXO', deviceId: deviceId };
-      vaultSaveContact(contact);
+      if (window.vaultSaveContact) window.vaultSaveContact(contact);
     }
     if (!contact.name) contact.name = contact.displayName || 'NEXO';
     window.NEXO.app.activeContact = contact;
@@ -1342,16 +1341,21 @@ function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
-    var hasBLE = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
-    if (hasBLE) {
-      return;
-    }
-    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
-        if (!fabBtn._nexoFabBound) {
+    // FIX: Siempre agregar listener. Si no hay BLE, mostrar toast informativo.
+    if (!fabBtn._nexoFabBound) {
       fabBtn.addEventListener('click', function() {
         var bi = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
         if (bi && typeof bi.togglePanel === 'function') {
           bi.togglePanel();
+        } else {
+          console.warn('[MAIN] BLE Interface no disponible para togglePanel');
+          // Opcional: mostrar toast al usuario
+          var toast = document.createElement('div');
+          toast.textContent = 'BLE no disponible';
+          toast.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);padding:12px 20px;border-radius:10px;background:#FF5252;color:#fff;font-size:14px;font-weight:600;z-index:2147483647;box-shadow:0 4px 16px rgba(0,0,0,0.4);opacity:0;transition:opacity 0.3s ease;pointer-events:none;max-width:80%;text-align:center;';
+          document.body.appendChild(toast);
+          requestAnimationFrame(function() { toast.style.opacity = '1'; });
+          setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { toast.remove(); }, 300); }, 2500);
         }
       });
       fabBtn._nexoFabBound = true;
@@ -2038,4 +2042,3 @@ function _doChatBack() {
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
-
