@@ -1,4 +1,4 @@
-/**ñ
+/**
  * NEXO App v5.0.22-FASE4-FIXED
  * FIX: _bleMessageHandler maneja payload como objeto nativo (plugin puede pasar objeto, no string)
  * FIX: Filtro mensaje propio usa localNexoId en vez de localDeviceUUID
