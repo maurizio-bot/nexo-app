@@ -16,7 +16,6 @@
  * FIX: onNotificationsEnabled resuelve MAC→NXID vía contactos
  * FIX: onDeviceFound refresca mapeo para contactos conocidos
  * FIX: _waitForReadyToChat timeout 15s
- * FIX: .then() sintaxis corregida
  */
 
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
