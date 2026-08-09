@@ -3,6 +3,7 @@
 //-----‐-----------------------------------------------------------------
 
 /**
+
  * src/main.js - Punto de entrada NEXO v9.9.7-FASE4-FIXED-ROBUSTO
  * FIX: _loadPersistedMessages definida (función huérfana que rompía init)
  * FIX: _updateMessageStatus permite degradación pending -> error
