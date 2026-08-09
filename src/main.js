@@ -1013,7 +1013,14 @@ async function initializeNexoApp() {
       });
       window.addEventListener('nexo:vault:messagesLoaded', function(e) {
         if (e && e.detail && Array.isArray(e.detail.messages)) {
+          var contactId = e.detail.contactId;
+          var activeId = _getCurrentContactId();
+          if (contactId && activeId && _normIdMain(contactId) !== _normIdMain(activeId)) {
+            console.log('[MAIN] Ignorando vault de contacto inactivo:', contactId);
+            return;
+          }
           e.detail.messages.forEach(function(msg) {
+            if (_isAckMessage(msg)) return;
             _renderMessage(msg, true);
           });
         }
@@ -1021,7 +1028,13 @@ async function initializeNexoApp() {
       window.addEventListener('nexo:ble:messageReceived', function(e) {
         if (e && e.detail) {
           var msg = e.detail;
+          if (_isAckMessage(msg)) return;
           var senderId = msg.senderNexoId || msg.deviceUUID || msg.deviceId || null;
+          var activeId = _getCurrentContactId();
+          if (activeId && senderId && _normIdMain(activeId) === _normIdMain(senderId)) {
+            if (senderId) vaultGetOrCreateContact(senderId, msg.senderName || 'NEXO');
+            msg.senderNexoId = senderId;
+          }
           if (senderId) {
             vaultGetOrCreateContact(senderId, msg.senderName || 'NEXO');
             msg.senderNexoId = senderId;
@@ -1410,6 +1423,20 @@ function _updateMessageStorageStatus(messageId, status) {
   }
 }
 
+function _isAckMessage(msg) {
+  if (!msg) return false;
+  var content = msg.content || msg.text || '';
+  if (typeof content === 'string') {
+    if (content.indexOf('"type":"ack"') !== -1) return true;
+    if (content.indexOf('"type":"read_receipt"') !== -1) return true;
+  }
+  if (msg.type === 'ack' || msg.type === 'read_receipt') return true;
+  return false;
+}
+function _normIdMain(id) {
+  return (id || '').toString().toLowerCase().trim();
+}
+
 //---------------‐----------------------------------‐--------------------
 // FIX NUEVO: _loadPersistedMessages (función huérfana que rompía init)
 //-----------------------------------------------------------------------
@@ -1417,10 +1444,13 @@ function _loadPersistedMessages() {
   try {
     var contactId = _getCurrentContactId();
     if (!contactId) return;
+    var container = document.getElementById('messages-container');
+    if (container) container.innerHTML = '';
     if (window.vaultLoadMessages) {
       window.vaultLoadMessages(contactId).then(function(messages) {
         if (messages && messages.length > 0) {
           messages.forEach(function(msg) {
+            if (_isAckMessage(msg)) return;
             _renderMessage(msg, true);
           });
         }
@@ -1430,7 +1460,6 @@ function _loadPersistedMessages() {
     console.warn('[MAIN] _loadPersistedMessages error:', e);
   }
 }
-
 //------‐-------------------------------------------------------------------------------‐--------------------------
 //Parte 7 (líneas 1418-1741): _renderMessage
 //----------------------------------------------------------------------------------------------------------------
@@ -1438,6 +1467,7 @@ function _loadPersistedMessages() {
 function _renderMessage(msg, skipSave) {
   try {
     if (!msg) return;
+    if (_isAckMessage(msg)) return;
     var container = document.getElementById('messages-container');
     if (!container) return;
     var msgId = msg.messageId || msg._id || msg.id || '';
