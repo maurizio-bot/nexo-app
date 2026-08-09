@@ -1,8 +1,8 @@
-/**
+/**ñ
  * NEXO App v5.0.22-FASE4-FIXED
  * FIX: _bleMessageHandler maneja payload como objeto nativo (plugin puede pasar objeto, no string)
  * FIX: Filtro mensaje propio usa localNexoId en vez de localDeviceUUID
- * FIX: Timeout sendChatMessage 15s -> 25s
+ * FIX: Timeout sendChatMessage  15s -> 25s
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
