@@ -1,23 +1,19 @@
-// ═══════════════════════════════════════════════════════════════════════════════
+here6// ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 1: CONSTANTES, STORAGE KEYS Y HELPERS BASE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * BLE Interface v5.2.7-NXID-PURO-VAULT-UNIFICADO-FIXED
- * FIX: Mapeo bidireccional MAC↔NXID en _deviceStates
- * FIX: _getDeviceState / _setDeviceState normalizan a NXID + fallback por contactos
+ * BLE Interface v5.2.7-NXID-PURO-IDENTIDAD-PRIMARIA
+ * FIX: NXID es identidad primaria. MAC solo para llamadas al plugin nativo.
+ * FIX: _setDeviceState / _getDeviceState / _resolveReadyToChat normalizan a NXID.
  * FIX: Conexión única a la vez + cooldown 5s
  * FIX: Detener scan antes de conectar
  * FIX: Listeners nativos con guardia anti-duplicados
  * FIX: Promesas encoladas nunca quedan colgadas
  * FIX: NXID en mayúsculas para plugin nativo
- * FIX: _resolveReadyToChat busca por MAC/NXID cruzado
- * FIX: onDeviceConnected busca NXID por MAC si plugin no lo envía
- * FIX: onNotificationsEnabled resuelve MAC→NXID vía contactos
- * FIX: onDeviceFound refresca mapeo para contactos conocidos
  * FIX: _waitForReadyToChat timeout 15s
+ * FIX: .then() sintaxis corregida
  */
-
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
 var BLE_PINNED_CONTACTS_KEY = 'nexo_ble_pinned_contacts';
 var BLE_NEXO_ID_STORAGE_KEY = 'nexo_ble_advertising_id';
@@ -323,7 +319,7 @@ export class BLEInterface {
     this._nexoIdToMac = new Map();
     // FIX: Cooldown entre intentos de conexión
     this._connectCooldowns = new Map();
-    console.log('[BLEInterface] v5.2.7-NXID-PURO-VAULT-UNIFICADO-FIXED iniciado');
+    console.log('[BLEInterface] v5.2.7-NXID-PURO-IDENTIDAD-PRIMARIA iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -601,18 +597,18 @@ export class BLEInterface {
         if (!deviceId) return;
         var ft = self._notificationFallbackTimers.get(deviceId);
         if (ft) { clearTimeout(ft); self._notificationFallbackTimers.delete(deviceId); }
-        var stateKey = self._macToNexoId.get(deviceId) || deviceId;
-        // FIX: Si no hay mapeo, buscar contacto por MAC para obtener NXID
-        if (stateKey === deviceId) {
+        // FIX: Resolver MAC→NXID inmediatamente. NXID es identidad primaria.
+        var nxid = self._macToNexoId.get(deviceId);
+        if (!nxid) {
           var c = _getContactByDeviceId(deviceId);
           if (c) {
-            stateKey = _normId(c.nexoId || c.deviceUUID);
-            self._macToNexoId.set(deviceId, stateKey);
-            self._nexoIdToMac.set(stateKey, deviceId);
+            nxid = _normId(c.nexoId || c.deviceUUID);
+            self._macToNexoId.set(deviceId, nxid);
+            self._nexoIdToMac.set(nxid, deviceId);
           }
         }
-        var peerUUID = self._macToNexoId.get(deviceId);
-        self._setDeviceState(stateKey, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: peerUUID });
+        var stateKey = nxid || deviceId;
+        self._setDeviceState(stateKey, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: nxid });
         self._resolveReadyToChat(stateKey);
         self._processPendingMessages(stateKey);
       } catch (e) {}
@@ -632,15 +628,19 @@ export class BLEInterface {
   _setDeviceState(key, state, meta) {
     meta = meta || {};
     if (!key) return;
-    // FIX: Normalizar key a NXID si existe mapeo
-    var normalizedKey = _normId(this._macToNexoId.get(key) || key);
+    // FIX: NXID es identidad primaria. Resolver MAC→NXID si es necesario.
+    var nxid = this._macToNexoId.get(key);
+    if (!nxid) {
+      var c = _getContactByDeviceId(key);
+      if (c) {
+        nxid = _normId(c.nexoId || c.deviceUUID);
+        this._macToNexoId.set(key, nxid);
+        this._nexoIdToMac.set(nxid, key);
+      }
+    }
+    var normalizedKey = nxid || _normId(key);
     var stateObj = Object.assign({}, meta, { state: state, timestamp: Date.now() });
     this._deviceStates.set(normalizedKey, stateObj);
-    // FIX: Guardar también con MAC si conocemos el mapeo
-    var mappedMac = this._nexoIdToMac.get(normalizedKey);
-    if (mappedMac) this._deviceStates.set(_normId(mappedMac), stateObj);
-    var mappedNxid = this._macToNexoId.get(normalizedKey);
-    if (mappedNxid) this._deviceStates.set(_normId(mappedNxid), stateObj);
     if (state === BLE_STATES.DISCONNECTED || state === BLE_STATES.ERROR) {
       var queue = this._pendingMessageQueue.get(normalizedKey);
       if (queue && queue.length > 0) {
@@ -654,24 +654,19 @@ export class BLEInterface {
   }
   _getDeviceState(key) {
     if (!key) return { state: BLE_STATES.DISCONNECTED };
-    var normalizedKey = _normId(this._macToNexoId.get(key) || key);
+    // FIX: NXID es identidad primaria. Resolver MAC→NXID si es necesario.
+    var nxid = this._macToNexoId.get(key);
+    if (!nxid) {
+      var c = _getContactByDeviceId(key);
+      if (c) {
+        nxid = _normId(c.nexoId || c.deviceUUID);
+        this._macToNexoId.set(key, nxid);
+        this._nexoIdToMac.set(nxid, key);
+      }
+    }
+    var normalizedKey = nxid || _normId(key);
     var direct = this._deviceStates.get(normalizedKey);
     if (direct) return direct;
-    // Fallback: buscar por MAC directo
-    var byMac = this._deviceStates.get(key);
-    if (byMac) return byMac;
-    // FIX: Si key es NXID, buscar estado por MAC del contacto
-    var contact = _getContactByUUID(key);
-    if (contact && contact.deviceId) {
-      var byContactMac = this._deviceStates.get(_normId(contact.deviceId));
-      if (byContactMac) return byContactMac;
-    }
-    // FIX: Si key es MAC, buscar estado por NXID del contacto
-    var contactByMac = _getContactByDeviceId(key);
-    if (contactByMac) {
-      var byContactNxid = this._deviceStates.get(_normId(contactByMac.nexoId || contactByMac.deviceUUID));
-      if (byContactNxid) return byContactNxid;
-    }
     return { state: BLE_STATES.DISCONNECTED };
   }
   _setupNativePayloadListener() {
@@ -1003,31 +998,40 @@ export class BLEInterface {
     var self = this;
     return new Promise(function(resolve, reject) {
       if (!deviceId) { reject(new Error('deviceId invalido')); return; }
-      var state = self._getDeviceState(deviceId);
+      // FIX: Normalizar a NXID para el resolver
+      var nxid = self._macToNexoId.get(deviceId);
+      if (!nxid) {
+        var c = _getContactByDeviceId(deviceId);
+        if (c) {
+          nxid = _normId(c.nexoId || c.deviceUUID);
+          self._macToNexoId.set(deviceId, nxid);
+          self._nexoIdToMac.set(nxid, deviceId);
+        }
+      }
+      var key = nxid || _normId(deviceId);
+      var state = self._getDeviceState(key);
       if (state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY) { resolve(); return; }
-      var existing = self._readyResolvers.get(deviceId);
+      var existing = self._readyResolvers.get(key);
       if (existing) { clearTimeout(existing.timer); }
-      var timer = setTimeout(function() { self._readyResolvers.delete(deviceId); reject(new Error('Timeout esperando READY_TO_CHAT')); }, timeoutMs || 15000);
-      self._readyResolvers.set(deviceId, { resolve: resolve, timer: timer });
+      var timer = setTimeout(function() { self._readyResolvers.delete(key); reject(new Error('Timeout esperando READY_TO_CHAT')); }, timeoutMs || 15000);
+      self._readyResolvers.set(key, { resolve: resolve, timer: timer });
     });
   }
   _resolveReadyToChat(deviceId) {
     if (!deviceId) return;
-    var normalizedId = _normId(deviceId);
+    // FIX: NXID es identidad primaria. Resolver MAC→NXID si es necesario.
+    var nxid = this._macToNexoId.get(deviceId);
+    if (!nxid) {
+      var c = _getContactByDeviceId(deviceId);
+      if (c) {
+        nxid = _normId(c.nexoId || c.deviceUUID);
+        this._macToNexoId.set(deviceId, nxid);
+        this._nexoIdToMac.set(nxid, deviceId);
+      }
+    }
+    var normalizedId = nxid || _normId(deviceId);
     var resolver = this._readyResolvers.get(normalizedId);
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(normalizedId); }
-    // FIX: Buscar resolver por MAC cruzada
-    var mac = this._nexoIdToMac.get(normalizedId);
-    if (mac) {
-      resolver = this._readyResolvers.get(_normId(mac));
-      if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(_normId(mac)); }
-    }
-    // FIX: Buscar resolver por NXID cruzado
-    var nxid = this._macToNexoId.get(deviceId);
-    if (nxid) {
-      resolver = this._readyResolvers.get(_normId(nxid));
-      if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(_normId(nxid)); }
-    }
     this._processPendingMessages(normalizedId);
   }
 // ═══════════════════════════════════════════════════════════════════════════════
