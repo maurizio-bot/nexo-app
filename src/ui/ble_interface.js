@@ -680,6 +680,17 @@ export class BLEInterface {
             if (json.from && !senderUUID) senderUUID = json.from;
           } catch (e) {}
         }
+        if (typeof content === 'string' && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
+          try {
+            var ackPayload = JSON.parse(content);
+            if (ackPayload.type === 'ack' || ackPayload.type === 'read_receipt') {
+              if (self.ackSystem && self.ackSystem.processIncomingAck) {
+                self.ackSystem.processIncomingAck(content);
+              }
+              return;
+            }
+          } catch (e) {}
+        }
         if (!senderUUID) {
           var contactByDevice = _getContactByDeviceId(deviceId);
           if (contactByDevice) senderUUID = _normId(contactByDevice.nexoId || contactByDevice.deviceUUID);
@@ -779,7 +790,6 @@ export class BLEInterface {
       } catch (e) { console.warn('[BLEInterface] Error onPayloadReceived:', e.message); }
     });
   }
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 9: ENVÍO DE MENSAJES - Native, Chat, Cola y ACK
 // FIX: _sendMessageNative pasa NXID en mayúsculas al plugin
@@ -998,8 +1008,11 @@ export class BLEInterface {
         var displayName = (contact && contact.displayName) || (contact && contact.name) || 'NEXO';
         if (nameInput) nameInput.value = displayName;
         if (subtitle) subtitle.textContent = '';
+        self.elements.panel.classList.remove('active');
+        self.elements.overlay.classList.remove('active');
+        var msgContainer = document.getElementById('messages-container');
+        if (msgContainer) msgContainer.innerHTML = '';
         _safeDispatchEvent('nexo:ble:openChat', { contact: { id: uuid, name: displayName, deviceUUID: uuid, deviceId: contact ? contact.deviceId : null }, transport: 'ble', source: 'ble_interface' });
-        self.elements.panel.classList.remove('active'); self.elements.overlay.classList.remove('active');
         if (window.vaultLoadMessages) {
           window.vaultLoadMessages(uuid).then(function(messages) {
             if (messages && messages.length > 0) {
