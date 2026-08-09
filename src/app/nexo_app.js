@@ -352,9 +352,9 @@ class NexoApp {
             var contactByUUID = window.bleInterface && window.bleInterface.getContactByUUID ? window.bleInterface.getContactByUUID(senderUUID) : null;
             resolvedName = (contactByUUID && contactByUUID.name) || detail.senderName || '';
           }
-          if (messageId && content && typeof content === 'string' && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
+          if (content && typeof content === 'string' && content.charAt(0) === '{') {
             try {
-              var ctrl = parsedPayload || JSON.parse(content);
+              var ctrl = JSON.parse(content);
               if (ctrl.type === 'ack') {
                 self._handleACK(ctrl.messageId, ctrl.ackType || 'delivered');
                 return;
