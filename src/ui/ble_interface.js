@@ -1455,16 +1455,43 @@ export class BLEInterface {
 // FIX: Solo una conexión a la vez
 // ═══════════════════════════════════════════════════════════════════════════════
 
-  onDeviceFound(device) {
+    onDeviceFound(device) {
     var self = this;
     var deviceId = device.id || '';
     if (!deviceId) return;
     var nexoId = device.nexoId || '';
+    var normMac = _normMac(deviceId);
+    
+    // Si no hay nexoId válido, solo actualizar RSSI de existente, NO crear nuevo ni borrar UUID
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
+      if (this.foundDevices.has(normMac)) {
+        var existingNoNexo = this.foundDevices.get(normMac);
+        existingNoNexo.rssi = device.rssi;
+        existingNoNexo.lastSeen = Date.now();
+        // NO tocar deviceUUID
+        this.foundDevices.set(normMac, existingNoNexo);
+      }
+      // Si es contacto conocido, marcar online
+      var knownContact = _getContactByDeviceId(deviceId);
+      if (knownContact) {
+        var knownUUID = _normId(knownContact.nexoId || knownContact.deviceUUID);
+        var contacts = _getBLEContacts();
+        var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === knownUUID; });
+        if (idx >= 0) {
+          contacts[idx].online = true;
+          contacts[idx].lastSeen = Date.now();
+          contacts[idx].deviceId = normMac;
+          _saveBLEContacts(contacts);
+        }
+        self._macToNexoId.set(normMac, knownUUID);
+        self._nexoIdToMac.set(knownUUID, normMac);
+        this.renderContactsList();
+        this.renderOnlineStrip();
+      }
       return;
     }
+    
     nexoId = _normId(nexoId);
-    var normMac = _normMac(deviceId);
     var isContact = _isBLEContact(nexoId);
     if (isContact) {
       var contacts = _getBLEContacts();
@@ -1493,7 +1520,8 @@ export class BLEInterface {
       var existing = this.foundDevices.get(normMac);
       existing.rssi = device.rssi;
       existing.lastSeen = Date.now();
-      existing.deviceUUID = nexoId;
+      // FIX: Solo actualizar deviceUUID si el nuevo scan trae nexoId valido
+      if (nexoId) existing.deviceUUID = nexoId;
       this.foundDevices.set(normMac, existing);
       this.renderNewDeviceBar();
     }
