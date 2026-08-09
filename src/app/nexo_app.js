@@ -303,14 +303,14 @@ class NexoApp {
       this._resources.listeners.add({ target: window, event: 'nexo:ble:deviceDisconnected', handler: this._nativeDeviceDisconnectedHandler });
 
       this._bleMessageHandler = function(e) {
-        try {
-          var detail = e.detail || {};
-          // FIX: Usar localNexoId en vez de localDeviceUUID para filtrar mensajes propios
-          var localUUID = self.bleInterface && self.bleInterface.localNexoId ? self.bleInterface.localNexoId : '';
-          var senderUUID = detail.senderNexoId || detail.deviceUUID || '';
-          if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
-            console.log('[BLE_RECV] Mensaje propio ignorado por NXID');
-            return;
+  try {
+    var detail = e.detail || {};
+    var localUUID = self.bleInterface && self.bleInterface.localNexoId ? self.bleInterface.localNexoId : '';
+    var senderUUID = detail.senderNexoId || detail.deviceUUID || '';
+    if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
+      console.log('[BLE_RECV] Mensaje propio ignorado por NXID');
+      return;
+    }
           }
           console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? (typeof detail.content === 'string' ? detail.content.substring(0, 30) : '[obj]') : '') + '...');
           var resolvedName = detail.senderName;
