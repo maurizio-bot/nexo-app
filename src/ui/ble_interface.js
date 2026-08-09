@@ -135,10 +135,6 @@ function _getBLEContacts() {
   catch (e) { return []; }
 }
 function _saveBLEContacts(contacts) {
-  if (window.vaultSaveContact && typeof window.vaultSaveContact === 'function') {
-    try { localStorage.setItem('nexo_vault_contacts_v2', JSON.stringify(contacts)); } catch (e) {}
-    return;
-  }
   try { localStorage.setItem('nexo_vault_contacts_v2', JSON.stringify(contacts)); } catch (e) {}
 }
 function _addBLEContact(contact) {
@@ -154,7 +150,7 @@ function _addBLEContact(contact) {
     _saveBLEContacts(contacts);
     return true;
   }
-  contacts.push({
+  var newContact = {
     nexoId: uuid,
     displayName: contact.name || contact.displayName || '',
     deviceId: contact.deviceId ? _normMac(contact.deviceId) : null,
@@ -164,8 +160,12 @@ function _addBLEContact(contact) {
     unreadCount: 0,
     lastMessage: '',
     avatarColor: contact.avatarColor || ''
-  });
+  };
+  contacts.push(newContact);
   _saveBLEContacts(contacts);
+  if (window.vaultSaveContact && typeof window.vaultSaveContact === 'function') {
+    try { window.vaultSaveContact(newContact); } catch (e) {}
+  }
   return true;
 }
 function _removeBLEContact(deviceUUID) {
@@ -1040,7 +1040,6 @@ export class BLEInterface {
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(normalizedId); }
     this._processPendingMessages(normalizedId);
   }
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 10: APERTURA DE CHAT Y VISIBILIDAD BLE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1505,8 +1504,22 @@ export class BLEInterface {
       var bar = this.elements.newDeviceBar;
       if (bar && bar.dataset) deviceId = bar.dataset.deviceId || '';
     }
+    if (!deviceId && this.elements.newDeviceBar) {
+      var firstRow = this.elements.newDeviceBar.querySelector('[data-device-id]');
+      if (firstRow) deviceId = firstRow.dataset.deviceId || '';
+    }
     var device = this.foundDevices.get(_normMac(deviceId));
-    if (!device) return;
+    if (!device) {
+      this.foundDevices.forEach(function(d) {
+        if (!device && (d.deviceUUID === deviceId || _normId(d.deviceUUID) === _normId(deviceId))) {
+          device = d;
+        }
+      });
+    }
+    if (!device) {
+      console.error('[BLEInterface] _addNewDevice: device no encontrado para ID:', deviceId);
+      return;
+    }
     var name = device.name || device.deviceUUID || 'Nexo Device';
     var nexoId = device.deviceUUID || '';
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
@@ -1755,6 +1768,8 @@ export class BLEInterface {
       var addBtn = document.createElement('button');
       addBtn.textContent = '+';
       addBtn.style.cssText = 'width:40px;height:40px;border-radius:50%;background:#00c8ff;border:none;color:#fff;font-size:20px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
+      addBtn.dataset.deviceId = deviceId;
+      row.dataset.deviceId = deviceId;
       addBtn.addEventListener('click', function(e) {
         e.stopPropagation();
         self._addNewDevice(deviceId);
