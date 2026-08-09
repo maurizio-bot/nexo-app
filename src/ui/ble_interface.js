@@ -1,4 +1,4 @@
-here6// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 1: CONSTANTES, STORAGE KEYS Y HELPERS BASE
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -502,10 +502,15 @@ export class BLEInterface {
           self._macToNexoId.set(deviceId, nexoId);
           self._nexoIdToMac.set(nexoId, deviceId);
         }
+        // FIX: Buscar contacto SIEMPRE para obtener displayName correcto
         var peerUUID = nexoId ? _normId(nexoId) : null;
+        var contactByDevice = null;
         if (!peerUUID && deviceId) {
-          var contactByDevice = _getContactByDeviceId(deviceId);
+          contactByDevice = _getContactByDeviceId(deviceId);
           if (contactByDevice) peerUUID = _normId(contactByDevice.nexoId || contactByDevice.deviceUUID);
+        }
+        if (!contactByDevice && deviceId) {
+          contactByDevice = _getContactByDeviceId(deviceId);
         }
         var displayName = data.name || (contactByDevice ? contactByDevice.displayName : null) || '';
         self.connectedDevices.set(deviceId, {
@@ -714,6 +719,8 @@ export class BLEInterface {
             if (json.from && !senderUUID) senderUUID = json.from;
           } catch (e) {}
         }
+        // FIX ROBUSTO: normalizar el NXID del remitente en cuanto se extrae del payload.
+        if (senderUUID) senderUUID = _normId(senderUUID);
         if (typeof content === 'string' && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
           try {
             var ackPayload = JSON.parse(content);
@@ -741,6 +748,11 @@ export class BLEInterface {
             contactsAdopt[idxAdopt].deviceId = deviceId;
             _saveBLEContacts(contactsAdopt);
           }
+        }
+        // FIX: Mantener actualizado el mapeo MAC<->NXID tambien al recibir payload
+        if (senderUUID && deviceId) {
+          self._macToNexoId.set(deviceId, senderUUID);
+          self._nexoIdToMac.set(senderUUID, deviceId);
         }
         if (senderUUID && senderName && senderName !== '') {
           if (!_isBLEContact(senderUUID)) {
@@ -814,7 +826,8 @@ export class BLEInterface {
             self.renderOnlineStrip();
           }
         }
-        self.newDevicesCount++; self.updateBadge();
+        // FIX: El badge del FAB es para dispositivos NUEVOS en scan, NO para mensajes entrantes
+        // self.newDevicesCount++; self.updateBadge();  <-- ELIMINADO
         _safeDispatchEvent('nexo:ble:messageReceived', {
           deviceId: stableId, deviceUUID: senderUUID, content: content,
           senderName: senderName, messageId: messageId, source: source,
@@ -1225,6 +1238,7 @@ export class BLEInterface {
   }
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 11: UI / DOM - Creación de interfaz
+// FIX: Agregado ble-visibility-btn en el header para que updateVisibilityButton funcione
 // ═══════════════════════════════════════════════════════════════════════════════
 
   createDOM() {
@@ -1249,6 +1263,7 @@ export class BLEInterface {
       '<div style="text-align:center;">' +
       '<div class="contacts-title">Agregar contactos</div>' +
       '</div>' +
+      '<button id="ble-visibility-btn" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);border:2px solid #00c8ff;color:#00c8ff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;z-index:2;">&#x1F4E1;</button>' +
       '</div>' +
       '<div class="ble-search-bar">' +
       '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>' +
@@ -1451,12 +1466,14 @@ export class BLEInterface {
 // ═══════════════════════════════════════════════════════════════════════════════
 
   onDeviceFound(device) {
+    var self = this;
     var deviceId = device.id || '';
     if (!deviceId) return;
     var nexoId = device.nexoId || '';
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
       return;
     }
+    nexoId = _normId(nexoId);
     var isContact = _isBLEContact(nexoId);
     if (isContact) {
       var contacts = _getBLEContacts();
@@ -1586,6 +1603,7 @@ export class BLEInterface {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 14: RENDERIZADO DE CONTACTOS, MENÚS Y BADGE
+// FIX: Deduplicación copia deviceId del contacto más reciente
 // ═══════════════════════════════════════════════════════════════════════════════
 
   renderOnlineStrip() {
@@ -1631,7 +1649,7 @@ export class BLEInterface {
           existing.online = c.online;
           existing.lastMessage = c.lastMessage || existing.lastMessage;
           existing.unreadCount = Math.max(existing.unreadCount || 0, c.unreadCount || 0);
-          existing.deviceId = c.deviceId || existing.deviceId;
+          existing.deviceId = c.deviceId || existing.deviceId; // FIX: preservar MAC más reciente
         }
       }
     });
