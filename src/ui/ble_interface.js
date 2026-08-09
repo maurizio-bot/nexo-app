@@ -18,6 +18,7 @@
  * FIX: _waitForReadyToChat timeout 15s
  * FIX: .then() sintaxis corregida
  */
+
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
 var BLE_PINNED_CONTACTS_KEY = 'nexo_ble_pinned_contacts';
 var BLE_NEXO_ID_STORAGE_KEY = 'nexo_ble_advertising_id';
