@@ -3,7 +3,7 @@
 //-----‐-----------------------------------------------------------------
 
 /**
- * src/main.js - Punto de entrada NEXO v9.9.6-FASE4-FIXED-ROBUSTO
+ * src/main.js - Punto de entrada NEXO v9.9.7-FASE4-FIXED-ROBUSTO
  * FIX: _loadPersistedMessages definida (función huérfana que rompía init)
  * FIX: _updateMessageStatus permite degradación pending -> error
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
@@ -764,7 +764,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.6-FASE4-FIXED-ROBUSTO iniciando...');
+    console.log('[MAIN] NEXO v9.9.7-FASE4-FIXED-ROBUSTO iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -1079,7 +1079,6 @@ async function initializeNexoApp() {
     } catch (f4Err) {
       console.warn('[MAIN] Fase 4 init warn:', f4Err);
     }
-  
 //---------------------------------------------------------------------
 //Parte 6 (UI Setup, líneas 1077-1410)
 //---------------------------------------------------------------------
