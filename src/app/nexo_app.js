@@ -1,7 +1,8 @@
 /**
- * NEXO App v5.0.21-FASE4-ROBUSTO
+ * NEXO App v5.0.22-FASE4-FIXED
  * FIX: _bleMessageHandler maneja payload como objeto nativo (plugin puede pasar objeto, no string)
  * FIX: Filtro mensaje propio usa localNexoId en vez de localDeviceUUID
+ * FIX: Timeout sendChatMessage 15s -> 25s
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -99,7 +100,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.21-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.22-FASE4-FIXED iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -119,7 +120,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.21-FASE4-ROBUSTO Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.22-FASE4-FIXED Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -622,7 +623,8 @@ class NexoApp {
      if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
        try {
          console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
-         await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
+         // FIX: Timeout 25s para dar tiempo a conexion BLE + cola
+         await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 25000, 'BLE.sendChatMessage');
          DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
          this._updateMessageStatus(messageId, 'sent');
          return true;
