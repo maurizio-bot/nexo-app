@@ -204,8 +204,8 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun formatMacForAndroid(mac: String): String? {
-        val clean = mac.replace(":", "").replace("-", "").replace(".", "").lowercase()
-        if (clean.length != 12 || !clean.all { it in '0'..'9' || it in 'a'..'f' }) {
+        val clean = mac.replace(":", "").replace("-", "").replace(".", "").uppercase()
+        if (clean.length != 12 || !clean.all { it in '0'..'9' || it in 'A'..'F' }) {
             return null
         }
         return clean.chunked(2).joinToString(":")
@@ -730,7 +730,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun doConnectToDevice(macNorm: String, call: PluginCall) {
-        val rawDeviceId = macNorm.chunked(2).joinToString(":")
+        val rawDeviceId = macNorm.uppercase().chunked(2).joinToString(":")
         remLog("INFO", "GATT_CLIENT", "doConnectToDevice norm='$macNorm'")
 
         val existingState = clientConnectionStates[macNorm]
@@ -1340,7 +1340,7 @@ class NexoBlePlugin : Plugin() {
                 }
             }
             if (device == null) {
-                remLog("WARN", "RECONNECT", "No se pudo obtener device para $macNorm")
+                remLog("WARN", "RECONNECT", "No hay device cacheado para $macNorm")
                 return@Runnable
             }
             try {
