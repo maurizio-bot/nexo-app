@@ -849,43 +849,17 @@ export class BLEInterface {
 // FIX: sendChatMessage normaliza NXID, resuelve promesas encoladas, cooldown
 // ═══════════════════════════════════════════════════════════════════════════════
 
-  _processPendingMessages(deviceId) {
-    var self = this;
-    if (!deviceId) return Promise.resolve();
-    var queue = this._pendingMessageQueue.get(deviceId);
-    if (!queue || queue.length === 0) return Promise.resolve();
-    this._pendingMessageQueue.delete(deviceId);
-    var processNext = function(idx) {
-      if (idx >= queue.length) return Promise.resolve();
-      var item = queue[idx];
-      if (item.timeoutId) clearTimeout(item.timeoutId);
-      if (self.ackSystem) {
-        return self.ackSystem.sendWithRetry(deviceId, item.content, item.messageId)
-          .then(function() {
-            _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: item.deviceUUID, messageId: item.messageId, status: 'sent', deviceId: deviceId });
-            item.resolve();
-            return processNext(idx + 1);
-          })
-          .catch(function(e) {
-            _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: item.deviceUUID, messageId: item.messageId, status: 'error', deviceId: deviceId });
-            item.reject(e);
-            return processNext(idx + 1);
-          });
-      } else {
-        return self._sendMessageNative(deviceId, item.content, item.messageId)
-          .then(function() {
-            _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: item.deviceUUID, messageId: item.messageId, status: 'sent', deviceId: deviceId });
-            item.resolve();
-            return processNext(idx + 1);
-          })
-          .catch(function(e) {
-            _safeDispatchEvent('nexo:ble:messageSent', { deviceUUID: item.deviceUUID, messageId: item.messageId, status: 'error', deviceId: deviceId });
-            item.reject(e);
-            return processNext(idx + 1);
-          });
-      }
-    };
-    return processNext(0);
+  _resolveMacForGATT(nexoId) {
+    if (!nexoId) return null;
+    var normNexo = _normId(nexoId);
+    // 1. Mapeo activo de conexion actual
+    var mappedMac = this._nexoIdToMac.get(normNexo);
+    if (mappedMac) return mappedMac;
+    // 2. MAC guardada en contacto (ultimo scan/conexion)
+    var contact = _getContactByUUID(normNexo);
+    if (contact && contact.deviceId) return contact.deviceId;
+    // 3. No hay MAC disponible
+    return null;
   }
   _sendMessageNative(deviceId, content, messageId) {
     var self = this;
@@ -893,8 +867,12 @@ export class BLEInterface {
       try {
         if (!self.nativePlugin) { reject(new Error('Plugin no disponible')); return; }
         if (!deviceId) { reject(new Error('deviceId invalido')); return; }
-        // FIX: Pasar NXID en mayúsculas al plugin nativo
-        var targetId = _normId(deviceId).toUpperCase();
+        // FIX GATT-MAC: Resolver NXID → MAC para plugin nativo
+        var targetId = self._resolveMacForGATT(deviceId);
+        if (!targetId) {
+          reject(new Error('No se pudo resolver MAC para NXID: ' + deviceId));
+          return;
+        }
         var isCtrl = _isControlPacket(content);
         var enrichedPayload;
         if (isCtrl) { enrichedPayload = content; }
@@ -1000,14 +978,16 @@ export class BLEInterface {
         }, 20000);
         existingQueue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject, timeoutId: timeoutId, deviceUUID: uuid });
         self._pendingMessageQueue.set(uuid, existingQueue);
-        // FIX: Lanzar conexión si no está conectando, con cooldown
+        // FIX GATT-MAC: Lanzar conexión con MAC resuelta, no NXID
         if (!isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           var lastAttempt = self._connectCooldowns.get(uuid) || 0;
           if (Date.now() - lastAttempt >= 5000) {
             self._connectCooldowns.set(uuid, Date.now());
-            var targetId = uuid.toUpperCase();
-            _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetId })
-              .catch(function(e) {});
+            var targetMac = self._resolveMacForGATT(uuid);
+            if (targetMac) {
+              _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetMac })
+                .catch(function(e) {});
+            }
           }
         }
       } catch (fatal) { reject(fatal); }
@@ -1078,9 +1058,11 @@ export class BLEInterface {
             var lastAttempt = self._connectCooldowns.get(uuid) || 0;
             if (Date.now() - lastAttempt >= 5000) {
               self._connectCooldowns.set(uuid, Date.now());
-              var targetId = uuid.toUpperCase();
-              _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetId })
-                .catch(function(e) {});
+              var targetMac = self._resolveMacForGATT(uuid);
+              if (targetMac) {
+                _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetMac })
+                  .catch(function(e) {});
+              }
             }
           }
         }
@@ -1459,12 +1441,17 @@ export class BLEInterface {
       if (idx >= 0) {
         contacts[idx].online = true;
         contacts[idx].lastSeen = Date.now();
+        // FIX GATT-MAC: Siempre actualizar MAC del contacto al scanear
         contacts[idx].deviceId = deviceId;
         _saveBLEContacts(contacts);
+        // Actualizar mapeo MAC↔NXID
+        var normNexo = _normId(nexoId);
+        this._macToNexoId.set(deviceId, normNexo);
+        this._nexoIdToMac.set(normNexo, deviceId);
       }
       this.renderContactsList();
       this.renderOnlineStrip();
-      console.log('[BLEInterface] Contacto conocido en scan:', nexoId, '- online=true, sin auto-connect');
+      console.log('[BLEInterface] Contacto conocido en scan:', nexoId, '- online=true, MAC actualizada');
       return;
     }
     if (!this.foundDevices.has(deviceId)) {
@@ -1563,7 +1550,8 @@ export class BLEInterface {
     self.connectedDevices.delete(deviceId);
     self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
     if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) {
-      return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: deviceId })
+      var targetMac = self._resolveMacForGATT(deviceId) || deviceId;
+      return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: targetMac })
         .then(function() {
           if (self._activeChatDeviceId) {
             self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
