@@ -849,17 +849,13 @@ export class BLEInterface {
 // FIX: sendChatMessage normaliza NXID, resuelve promesas encoladas, cooldown
 // ═══════════════════════════════════════════════════════════════════════════════
 
-  _resolveMacForGATT(nexoId) {
+    _resolveMacForGATT(nexoId) {
     if (!nexoId) return null;
     var normNexo = _normId(nexoId);
     var mappedMac = this._nexoIdToMac.get(normNexo);
-    console.log('[BLEInterface] resolveMAC: NXID=' + nexoId + ' mappedMac=' + (mappedMac || 'null'));
-    if (mappedMac) return mappedMac;
+    if (mappedMac) return mappedMac.replace(/[:-]/g, '').toUpperCase();
     var contact = _getContactByUUID(normNexo);
-    var contactMac = contact ? contact.deviceId : null;
-    console.log('[BLEInterface] resolveMAC: contactMac=' + (contactMac || 'null'));
-    if (contactMac) return contactMac;
-    console.log('[BLEInterface] resolveMAC: FALLBACK - no hay MAC para ' + nexoId);
+    if (contact && contact.deviceId) return contact.deviceId.replace(/[:-]/g, '').toUpperCase();
     return null;
   }
   _sendMessageNative(deviceId, content, messageId) {
