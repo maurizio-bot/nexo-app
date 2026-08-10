@@ -852,13 +852,14 @@ export class BLEInterface {
   _resolveMacForGATT(nexoId) {
     if (!nexoId) return null;
     var normNexo = _normId(nexoId);
-    // 1. Mapeo activo de conexion actual
     var mappedMac = this._nexoIdToMac.get(normNexo);
+    console.log('[BLEInterface] resolveMAC: NXID=' + nexoId + ' mappedMac=' + (mappedMac || 'null'));
     if (mappedMac) return mappedMac;
-    // 2. MAC guardada en contacto (ultimo scan/conexion)
     var contact = _getContactByUUID(normNexo);
-    if (contact && contact.deviceId) return contact.deviceId;
-    // 3. No hay MAC disponible
+    var contactMac = contact ? contact.deviceId : null;
+    console.log('[BLEInterface] resolveMAC: contactMac=' + (contactMac || 'null'));
+    if (contactMac) return contactMac;
+    console.log('[BLEInterface] resolveMAC: FALLBACK - no hay MAC para ' + nexoId);
     return null;
   }
   _sendMessageNative(deviceId, content, messageId) {
@@ -984,7 +985,9 @@ export class BLEInterface {
           if (Date.now() - lastAttempt >= 5000) {
             self._connectCooldowns.set(uuid, Date.now());
             var targetMac = self._resolveMacForGATT(uuid);
+            console.log('[BLEInterface] connectToDevice sendChatMessage MAC=' + targetMac);
             if (targetMac) {
+
               _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetMac })
                 .catch(function(e) {});
             }
@@ -1059,7 +1062,9 @@ export class BLEInterface {
             if (Date.now() - lastAttempt >= 5000) {
               self._connectCooldowns.set(uuid, Date.now());
               var targetMac = self._resolveMacForGATT(uuid);
+              console.log('[BLEInterface] connectToDevice openChat MAC=' + targetMac);
               if (targetMac) {
+
                 _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetMac })
                   .catch(function(e) {});
               }
