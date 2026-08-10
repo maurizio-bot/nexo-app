@@ -842,7 +842,6 @@ export class BLEInterface {
       } catch (e) { console.warn('[BLEInterface] Error onPayloadReceived:', e.message); }
     });
   }
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 9: ENVÍO DE MENSAJES - Native, Chat, Cola y ACK
 // FIX: _sendMessageNative pasa NXID en mayúsculas al plugin
@@ -855,16 +854,15 @@ export class BLEInterface {
     var mappedMac = this._nexoIdToMac.get(normNexo);
     var rawMac = mappedMac || (_getContactByUUID(normNexo) || {}).deviceId;
     if (!rawMac) return null;
-    // Normalizar a formato XX:XX:XX:XX:XX:XX mayúsculas (formato Android BLE)
-    var clean = rawMac.replace(/[:-]/g, '').toUpperCase();
+    var clean = rawMac.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
     if (clean.length !== 12) return null;
-    return clean.match(/.{1,2}/g).join(':');
+    return clean;
   }
   _sendMessageNative(deviceId, content, messageId) {
     var self = this;
     return new Promise(function(resolve, reject) {
       try {
-        if (!self.nativePlugin) { reject(new Error('Plugin no disponible')); return; }
+        if (!self.nativePlugin) { reject(new Error('Plugin nativo no disponible')); return; }
         if (!deviceId) { reject(new Error('deviceId invalido')); return; }
         // FIX GATT-MAC: Resolver NXID → MAC para plugin nativo
         var targetId = self._resolveMacForGATT(deviceId);
