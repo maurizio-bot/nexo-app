@@ -1405,7 +1405,7 @@ export class BLEInterface {
     if (self.isScanning) self._stopScanCycle();
     self._setDeviceState(normNexo, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
     self.connectedDevices.set(device.id || normNexo, { id: device.id || normNexo, name: (device && device.name) || '', direction: 'outgoing', servicesReady: false, deviceUUID: normNexo });
-    var targetId = normNexo.toUpperCase();
+    var targetId = device.id || self._resolveMacForGATT(normNexo);
     return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetId })
       .then(function(result) {
         if (result && (result.connected || result.alreadyConnected)) {
