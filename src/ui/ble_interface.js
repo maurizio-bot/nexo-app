@@ -1453,25 +1453,23 @@ export class BLEInterface {
 // PARTE 13: DISCOVERY Y GESTIÓN DE DISPOSITIVOS
 // FIX: onDeviceFound guarda MAC normalizada en contacto
 // FIX: Solo una conexión a la vez
+// FIX: Scan cíclico NO borra deviceUUID de foundDevices
 // ═══════════════════════════════════════════════════════════════════════════════
 
-    onDeviceFound(device) {
+  onDeviceFound(device) {
     var self = this;
     var deviceId = device.id || '';
     if (!deviceId) return;
     var nexoId = device.nexoId || '';
     var normMac = _normMac(deviceId);
     
-    // Si no hay nexoId válido, solo actualizar RSSI de existente, NO crear nuevo ni borrar UUID
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
       if (this.foundDevices.has(normMac)) {
         var existingNoNexo = this.foundDevices.get(normMac);
         existingNoNexo.rssi = device.rssi;
         existingNoNexo.lastSeen = Date.now();
-        // NO tocar deviceUUID
         this.foundDevices.set(normMac, existingNoNexo);
       }
-      // Si es contacto conocido, marcar online
       var knownContact = _getContactByDeviceId(deviceId);
       if (knownContact) {
         var knownUUID = _normId(knownContact.nexoId || knownContact.deviceUUID);
@@ -1520,7 +1518,6 @@ export class BLEInterface {
       var existing = this.foundDevices.get(normMac);
       existing.rssi = device.rssi;
       existing.lastSeen = Date.now();
-      // FIX: Solo actualizar deviceUUID si el nuevo scan trae nexoId valido
       if (nexoId) existing.deviceUUID = nexoId;
       this.foundDevices.set(normMac, existing);
       this.renderNewDeviceBar();
