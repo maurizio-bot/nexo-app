@@ -849,14 +849,16 @@ export class BLEInterface {
 // FIX: sendChatMessage normaliza NXID, resuelve promesas encoladas, cooldown
 // ═══════════════════════════════════════════════════════════════════════════════
 
-    _resolveMacForGATT(nexoId) {
+      _resolveMacForGATT(nexoId) {
     if (!nexoId) return null;
     var normNexo = _normId(nexoId);
     var mappedMac = this._nexoIdToMac.get(normNexo);
-    if (mappedMac) return mappedMac.replace(/[:-]/g, '').toUpperCase();
-    var contact = _getContactByUUID(normNexo);
-    if (contact && contact.deviceId) return contact.deviceId.replace(/[:-]/g, '').toUpperCase();
-    return null;
+    var rawMac = mappedMac || (_getContactByUUID(normNexo) || {}).deviceId;
+    if (!rawMac) return null;
+    // Normalizar a formato XX:XX:XX:XX:XX:XX mayúsculas (formato Android BLE)
+    var clean = rawMac.replace(/[:-]/g, '').toUpperCase();
+    if (clean.length !== 12) return null;
+    return clean.match(/.{1,2}/g).join(':');
   }
   _sendMessageNative(deviceId, content, messageId) {
     var self = this;
