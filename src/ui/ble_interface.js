@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════════════════
+ // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 1: CONSTANTES, STORAGE KEYS Y HELPERS BASE
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -488,7 +488,7 @@ export class BLEInterface {
     if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
     if (this._nativePayloadListener) { try { this._nativePayloadListener.remove(); } catch (e) {} }
     var self = this;
-    this._nativePayloadListener = this.nativePlugin.addListener('onMessageReceived', function(data) {
+    this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
       try {
         var deviceId = data.deviceId || '';
         var rawMessage = data.message || '';
@@ -747,6 +747,13 @@ export class BLEInterface {
       var byMappedMac = this._deviceStates.get(mappedMac);
       if (byMappedMac) return byMappedMac;
     }
+    // FIX: Fallback por contact.deviceId en vault
+    var contact = _getContactByUUID(key);
+    if (contact && contact.deviceId) {
+      var contactMac = contact.deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+      var byContactMac = this._deviceStates.get(contactMac);
+      if (byContactMac) return byContactMac;
+    }
     return { state: BLE_STATES.DISCONNECTED };
   }
   _migrateDeviceState(fromMac, toNexoId) {
@@ -799,6 +806,14 @@ export class BLEInterface {
           queue = this._pendingMessageQueue.get(mappedNexo);
           usedKey = mappedNexo;
         }
+      }
+    }
+    if (!queue || queue.length === 0) {
+      var contact = _getContactByUUID(normNexo);
+      if (contact && contact.deviceId) {
+        var contactMac = contact.deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+        queue = this._pendingMessageQueue.get(contactMac);
+        usedKey = contactMac;
       }
     }
     if (!queue || queue.length === 0) return;
@@ -995,6 +1010,14 @@ export class BLEInterface {
           resolver = this._readyResolvers.get(mappedNexo);
           if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(mappedNexo); }
         }
+      }
+    }
+    if (!resolver) {
+      var contact = _getContactByUUID(normalizedId);
+      if (contact && contact.deviceId) {
+        var contactMac = contact.deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+        resolver = this._readyResolvers.get(contactMac);
+        if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(contactMac); }
       }
     }
     this._processPendingMessages(normalizedId);
