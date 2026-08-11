@@ -1,4 +1,4 @@
- // ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 1: CONSTANTES, STORAGE KEYS Y HELPERS BASE
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -349,7 +349,29 @@ export class BLEInterface {
   }
   _loadContactsAndInit() {
     var self = this;
+    self._hydrateMacNexoMaps();
     self._continueInit();
+  }
+  _hydrateMacNexoMaps() {
+    if (!window.vaultLoadContactsSync) return;
+    try {
+      var contacts = window.vaultLoadContactsSync();
+      if (Array.isArray(contacts)) {
+        contacts.forEach(function(c) {
+          if (c.nexoId && c.deviceId) {
+            var normNexo = _normId(c.nexoId);
+            var normMac = c.deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+            if (normMac.length === 12) {
+              this._nexoIdToMac.set(normNexo, normMac);
+              this._macToNexoId.set(normMac, normNexo);
+            }
+          }
+        }.bind(this));
+        console.log('[BLEInterface] Mapas hidratados desde vault:', this._nexoIdToMac.size, 'contactos');
+      }
+    } catch (e) {
+      console.error('[BLEInterface] Error hidratando mapas:', e);
+    }
   }
   _continueInit() {
     if (this.isDummyMode) {
@@ -446,7 +468,6 @@ export class BLEInterface {
     })
     .catch(function() {});
   }
-  
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 8: LISTENERS NATIVOS - Scan, Conexión, Estado, Payload y ServerReady
 // FIX: _setupNativePayloadListener agregado (función faltante que rompía init)
@@ -491,7 +512,7 @@ export class BLEInterface {
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
       try {
         var deviceId = data.deviceId || '';
-        var rawMessage = data.message || '';
+        var rawMessage = data.content || data.data || '';  // FIX: Kotlin envia content/data, no message
         if (!rawMessage) return;
         self._handleIncomingPayload(deviceId, rawMessage);
       } catch (e) {}
@@ -500,6 +521,11 @@ export class BLEInterface {
   // FIX: Procesa payload entrante, resuelve MAC→NXID, guarda vault, despacha evento
   _handleIncomingPayload(deviceId, rawMessage) {
     try {
+      // FIX: Ignorar payloads vacios
+      if (!rawMessage || rawMessage.trim() === '') {
+        console.warn('[BLE] Payload vacio, ignorado');
+        return;
+      }
       var normMac = deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
       var peerUUID = this._macToNexoId.get(normMac);
       if (!peerUUID) {
@@ -510,6 +536,15 @@ export class BLEInterface {
           this._nexoIdToMac.set(peerUUID, normMac);
         }
       }
+      // FIX: Detectar y filtrar paquetes de control (ACK, read_receipt)
+      try {
+        var parsedCtrl = JSON.parse(rawMessage);
+        if (parsedCtrl && (parsedCtrl.type === 'ack' || parsedCtrl.type === 'read_receipt')) {
+          console.log('[BLE] Paquete de control recibido:', parsedCtrl.type);
+          _safeDispatchEvent('nexo:ble:ackStatus', { msgId: parsedCtrl.msgId, status: parsedCtrl.type });
+          return;
+        }
+      } catch (e) {}
       var parsed = null;
       var text = rawMessage;
       var senderId = peerUUID || normMac;
@@ -542,6 +577,13 @@ export class BLEInterface {
         messageId: msgId,
         raw: rawMessage
       };
+      // FIX: Enviar ACK de vuelta al emisor
+      if (peerUUID && this.nativePlugin && _hasNativeMethod(this.nativePlugin, 'sendMessage')) {
+        try {
+          var ackPayload = JSON.stringify({ type: 'ack', msgId: msgId, ts: Date.now() });
+          _safeNativeCall(this.nativePlugin, 'sendMessage', { deviceId: peerUUID, message: ackPayload }).catch(function(){});
+        } catch (e) {}
+      }
       if (peerUUID && window.vaultAppendMessage) {
         window.vaultAppendMessage(peerUUID, {
           messageId: msgObj.messageId,
@@ -832,7 +874,6 @@ export class BLEInterface {
         });
     });
   }
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 9: ENVÍO DE MENSAJES - Native, Chat, Cola y ACK
 // FIX: _sendMessageNative pasa NXID en mayúsculas al plugin
@@ -855,9 +896,9 @@ export class BLEInterface {
       try {
         if (!self.nativePlugin) { reject(new Error('Plugin nativo no disponible')); return; }
         if (!deviceId) { reject(new Error('deviceId invalido')); return; }
-        var targetId = self._resolveMacForGATT(deviceId);
+        var targetId = deviceId; // FIX: pasar NXID directo, nativo resuelve MAC
         if (!targetId) {
-          reject(new Error('No se pudo resolver MAC para NXID: ' + deviceId));
+          reject(new Error('deviceId invalido'));
           return;
         }
         var isCtrl = _isControlPacket(content);
@@ -966,10 +1007,10 @@ export class BLEInterface {
           var lastAttempt = self._connectCooldowns.get(uuid) || 0;
           if (Date.now() - lastAttempt >= 5000) {
             self._connectCooldowns.set(uuid, Date.now());
-            var targetMac = self._resolveMacForGATT(uuid);
-            console.log('[BLEInterface] connectToDevice sendChatMessage MAC=' + targetMac);
-            if (targetMac) {
-              _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetMac })
+            var targetNexoId = uuid; // FIX: pasar NXID directo, nativo resuelve MAC
+            console.log('[BLEInterface] connectToDevice sendChatMessage NXID=' + targetNexoId);
+            if (targetNexoId) {
+              _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetNexoId })
                 .catch(function(e) {});
             }
           }
@@ -1068,10 +1109,10 @@ export class BLEInterface {
             var lastAttempt = self._connectCooldowns.get(uuid) || 0;
             if (Date.now() - lastAttempt >= 5000) {
               self._connectCooldowns.set(uuid, Date.now());
-              var targetMac = self._resolveMacForGATT(uuid);
-              console.log('[BLEInterface] connectToDevice openChat MAC=' + targetMac);
-              if (targetMac) {
-                _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetMac })
+              var targetNexoId = uuid; // FIX: pasar NXID directo, nativo resuelve MAC
+              console.log('[BLEInterface] connectToDevice openChat NXID=' + targetNexoId);
+              if (targetNexoId) {
+                _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetNexoId })
                   .catch(function(e) {});
               }
             }
@@ -1566,8 +1607,8 @@ export class BLEInterface {
     self.connectedDevices.delete(deviceId);
     self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
     if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) {
-      var targetMac = self._resolveMacForGATT(deviceId) || deviceId;
-      return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: targetMac })
+      var targetNexoId = deviceId; // FIX: pasar NXID directo, nativo resuelve MAC
+      return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: targetNexoId })
         .then(function() {
           if (self._activeChatDeviceId) {
             self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
@@ -1579,7 +1620,6 @@ export class BLEInterface {
     }
     return Promise.resolve();
   }
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 14: RENDERIZADO DE CONTACTOS, MENÚS Y BADGE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1690,7 +1730,7 @@ export class BLEInterface {
     var menu = document.createElement('div');
     menu.className = 'ble-contact-menu';
     var isPinned = _isPinned(uuid);
-    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
+    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fx2605; Fijar') + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
     var rect = btn.getBoundingClientRect();
     menu.style.top = (rect.bottom + 4) + 'px';
     menu.style.right = (window.innerWidth - rect.right) + 'px';
