@@ -28,6 +28,7 @@ function vaultLoadContactsSync() {
   } catch (e) { return []; }
 }
 function vaultLoadMessagesSync(contactNexoId) {
+  contactNexoId = _normId(contactNexoId);  // FIX: normalizar
   if (!contactNexoId) return [];
   if (_msgCache.has(contactNexoId)) return _msgCache.get(contactNexoId).slice();
   try {
@@ -38,6 +39,7 @@ function vaultLoadMessagesSync(contactNexoId) {
   } catch (e) { return []; }
 }
 function vaultSaveMessagesSync(contactNexoId, messages) {
+  contactNexoId = _normId(contactNexoId);  // FIX: normalizar
   if (!contactNexoId) return false;
   try {
     var toSave = messages.slice(-2000);
@@ -61,7 +63,7 @@ export function vaultSaveContact(contact) {
       displayName: contact.displayName || contact.name || contact.deviceName || 'Desconocido',
       avatarColor: contact.avatarColor || _generateColor(contact.nexoId),
       deviceName: contact.deviceName || contact.displayName || '',
-      deviceId: contact.deviceId || contact.nativeDeviceId || null,  // MAC nativo (volatil, opcional)
+      deviceId: contact.deviceId || contact.nativeDeviceId || null,
       createdAt: contact.createdAt || now,
       lastSeen: now,
       isGuardian: !!contact.isGuardian,
@@ -145,6 +147,7 @@ export function vaultSaveMessages(contactNexoId, messages) {
   return Promise.resolve(vaultSaveMessagesSync(contactNexoId, messages));
 }
 export function vaultAppendMessage(contactNexoId, message) {
+  contactNexoId = _normId(contactNexoId);  // FIX: normalizar
   if (!contactNexoId || !message) return Promise.resolve(false);
   return _enqueueMsg(contactNexoId, function() {
     var messages = vaultLoadMessagesSync(contactNexoId);
@@ -170,6 +173,7 @@ export function vaultAppendMessage(contactNexoId, message) {
   });
 }
 export function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
+  contactNexoId = _normId(contactNexoId);  // FIX: normalizar
   if (!contactNexoId || !msgId) return Promise.resolve(false);
   return _enqueueMsg(contactNexoId, function() {
     var messages = vaultLoadMessagesSync(contactNexoId);
