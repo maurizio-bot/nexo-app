@@ -1,6 +1,7 @@
 /**
  * autoscan.js - Re-scan cíclico para re-encontrar dispositivos tras desconexión
  * Item 13 de Fase 4
+ * FIX: Usa _autoScanForKnownContacts() en vez de métodos inexistentes startScan/stopScan
  */
 export class AutoScanManager {
   constructor(bleInterface) {
@@ -34,14 +35,9 @@ export class AutoScanManager {
   _tick() {
     var self = this;
     if (!self.isRunning) return;
-    if (self.ble && typeof self.ble.startScan === 'function') {
+    if (self.ble && typeof self.ble._autoScanForKnownContacts === 'function') {
       try {
-        self.ble.startScan();
-        setTimeout(function() {
-          if (self.ble && typeof self.ble.stopScan === 'function') {
-            self.ble.stopScan();
-          }
-        }, self.scanDurationMs);
+        self.ble._autoScanForKnownContacts();
       } catch (e) { console.warn('[AutoScan] scan error:', e); }
     }
     self.timer = setTimeout(function() { self._tick(); }, self.intervalMs);
