@@ -524,17 +524,38 @@ export class BLEInterface {
       if (!rawMessage || rawMessage.trim() === '') {
         console.warn('[BLE] Payload vacio, ignorado');
         return;
+      }    var normMac = deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+    var peerUUID = this._macToNexoId.get(normMac);
+    
+    // === FIX P4: Extraer NXID del payload y establecer mapeo MAC↔NXID ===
+    var extractedNexoId = null;
+    try {
+      var parsedForNxid = JSON.parse(rawMessage);
+      if (parsedForNxid) {
+        extractedNexoId = parsedForNxid.from || parsedForNxid.senderNexoId || (parsedForNxid.payload && parsedForNxid.payload.senderNexoId);
       }
-      var normMac = deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
-      var peerUUID = this._macToNexoId.get(normMac);
-      if (!peerUUID) {
-        var contact = _getContactByDeviceId(normMac);
-        if (contact) {
-          peerUUID = _normId(contact.nexoId || contact.deviceUUID);
-          this._macToNexoId.set(normMac, peerUUID);
-          this._nexoIdToMac.set(peerUUID, normMac);
-        }
+    } catch (e) {}
+    if (extractedNexoId && extractedNexoId.toString().length >= 10) {
+      var normExtracted = _normId(extractedNexoId);
+      if (!this._macToNexoId.has(normMac)) {
+        this._macToNexoId.set(normMac, normExtracted);
+        this._nexoIdToMac.set(normExtracted, normMac);
+        console.log('[BLEInterface] Mapeo MAC↔NXID establecido por payload:', normMac, '->', normExtracted);
       }
+      // Migrar estado y cola de MAC a NXID
+      this._migrateDeviceState(normMac, normExtracted);
+      if (!peerUUID) peerUUID = normExtracted;
+    }
+    // === FIN FIX P4 ===
+    
+    if (!peerUUID) {
+      var contact = _getContactByDeviceId(normMac);
+      if (contact) {
+        peerUUID = _normId(contact.nexoId || contact.deviceUUID);
+        this._macToNexoId.set(normMac, peerUUID);
+        this._nexoIdToMac.set(peerUUID, normMac);
+      }
+    }
       // Filtrar paquetes de control (ACK, read_receipt)
       try {
         var parsedCtrl = JSON.parse(rawMessage);
