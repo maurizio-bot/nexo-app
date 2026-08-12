@@ -848,34 +848,40 @@ export class BLEInterface {
     }
   }
   // FIX CRÍTICO: Procesar cola buscando por NXID y por MAC cruzada
-  _processPendingMessages(nexoId) {
+    _processPendingMessages(nexoId) {
     if (!nexoId) return;
     var normNexo = _normId(nexoId);
-    var queue = this._pendingMessageQueue.get(normNexo);
-    var usedKey = normNexo;
-    if (!queue || queue.length === 0) {
+    var queue = null;
+    var usedKey = null;
+    // 1. Buscar directo por la key recibida
+    queue = this._pendingMessageQueue.get(normNexo);
+    if (queue && queue.length > 0) { usedKey = normNexo; }
+    // 2. Si no hay, y recibimos NXID → buscar por MAC mapeada
+    if (!queue) {
       var mappedMac = this._nexoIdToMac.get(normNexo);
       if (mappedMac) {
         queue = this._pendingMessageQueue.get(mappedMac);
-        usedKey = mappedMac;
+        if (queue && queue.length > 0) { usedKey = mappedMac; }
       }
     }
-    if (!queue || queue.length === 0) {
+    // 3. Si no hay, y recibimos MAC → buscar por NXID mapeado
+    if (!queue) {
       var isMac = /^[0-9A-F]{12}$/i.test(normNexo);
       if (isMac) {
         var mappedNexo = this._macToNexoId.get(normNexo);
         if (mappedNexo) {
           queue = this._pendingMessageQueue.get(mappedNexo);
-          usedKey = mappedNexo;
+          if (queue && queue.length > 0) { usedKey = mappedNexo; }
         }
       }
     }
-    if (!queue || queue.length === 0) {
+    // 4. Fallback por contacto en vault
+    if (!queue) {
       var contact = _getContactByUUID(normNexo);
       if (contact && contact.deviceId) {
         var contactMac = contact.deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
         queue = this._pendingMessageQueue.get(contactMac);
-        usedKey = contactMac;
+        if (queue && queue.length > 0) { usedKey = contactMac; }
       }
     }
     if (!queue || queue.length === 0) return;
@@ -894,21 +900,57 @@ export class BLEInterface {
         });
     });
   }
+  
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 9: ENVÍO DE MENSAJES - Native, Chat, Cola y ACK
 // FIX: _sendMessageNative pasa NXID en mayúsculas al plugin
 // FIX: sendChatMessage normaliza NXID, resuelve promesas encoladas, cooldown
 // ═══════════════════════════════════════════════════════════════════════════════
 
-      _resolveMacForGATT(nexoId) {
-    if (!nexoId) return null;
-    var normNexo = _normId(nexoId);
-    var mappedMac = this._nexoIdToMac.get(normNexo);
-    var rawMac = mappedMac || (_getContactByUUID(normNexo) || {}).deviceId;
-    if (!rawMac) return null;
-    var clean = rawMac.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
-    if (clean.length !== 12) return null;
-    return clean;
+        _resolveReadyToChat(deviceId) {
+    if (!deviceId) return;
+    var normalizedId = _normId(deviceId);
+    var resolver = null;
+    // 1. Buscar directo
+    resolver = this._readyResolvers.get(normalizedId);
+    if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(normalizedId); }
+    // 2. Si recibimos NXID → buscar resolver por MAC mapeada
+    if (!resolver) {
+      var mappedMac = this._nexoIdToMac.get(normalizedId);
+      if (mappedMac) {
+        resolver = this._readyResolvers.get(mappedMac);
+        if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(mappedMac); }
+      }
+    }
+    // 3. Si recibimos MAC → buscar resolver por NXID mapeado
+    if (!resolver) {
+      var isMac = /^[0-9A-F]{12}$/i.test(deviceId);
+      if (isMac) {
+        var mappedNexo = this._macToNexoId.get(normalizedId);
+        if (mappedNexo) {
+          resolver = this._readyResolvers.get(mappedNexo);
+          if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(mappedNexo); }
+        }
+      }
+    }
+    // 4. Fallback por contacto
+    if (!resolver) {
+      var contact = _getContactByUUID(normalizedId);
+      if (contact && contact.deviceId) {
+        var contactMac = contact.deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+        resolver = this._readyResolvers.get(contactMac);
+        if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(contactMac); }
+      }
+    }
+    // Procesar cola con la key original Y con la key cruzada
+    this._processPendingMessages(normalizedId);
+    var mappedMac2 = this._nexoIdToMac.get(normalizedId);
+    if (mappedMac2) this._processPendingMessages(mappedMac2);
+    var isMac2 = /^[0-9A-F]{12}$/i.test(deviceId);
+    if (isMac2) {
+      var mappedNexo2 = this._macToNexoId.get(normalizedId);
+      if (mappedNexo2) this._processPendingMessages(mappedNexo2);
+    }
   }
   _sendMessageNative(deviceId, content, messageId) {
     var self = this;
