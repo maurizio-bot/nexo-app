@@ -1472,18 +1472,16 @@ class NexoBlePlugin : Plugin() {
         if (adapter == null || !adapter.isEnabled) {
             call.reject("Bluetooth desactivado")
             return
-        }// ANTES (roto en Android < 12):
-// if (!isGranted(ctx, BLUETOOTH_SCAN)) { ... }
-
-// DESPUES:
-val hasScanPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-    isGranted(ctx, BLUETOOTH_SCAN)
-} else {
-    isGranted(ctx, ACCESS_FINE_LOCATION)
-}
-if (!hasScanPermission) {
-    // pedir permiso correspondiente
-}
+        }
+        // FIX: Chequear permisos correctos segun version de Android
+        val hasScanPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            isGranted(ctx, android.Manifest.permission.BLUETOOTH_SCAN)
+        } else {
+            isGranted(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (!hasScanPermission) {
+            call.reject("Permiso de scan no concedido")
+            return
         }
         autoStartGattServerAndAdvertising()
         bluetoothScanner = adapter.bluetoothLeScanner
