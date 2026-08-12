@@ -85,34 +85,71 @@ export function vaultSaveContact(contact) {
 }
 export function vaultFindContactByNexoId(nexoId) {
   if (!nexoId) return null;
+  var norm = _normId(nexoId);
   var contacts = vaultLoadContactsSync();
-  return contacts.find(function(c) { return c.nexoId === nexoId; }) || null;
+  return contacts.find(function(c) { return _normId(c.nexoId) === norm; }) || null;
 }
+
+export function vaultSaveContact(contact) {
+  try {
+    var contacts = vaultLoadContactsSync();
+    var normNexo = _normId(contact.nexoId);
+    var idx = contacts.findIndex(function(c) { return _normId(c.nexoId) === normNexo; });
+    var now = Date.now();
+    var normalized = {
+      nexoId: normNexo,
+      displayName: contact.displayName || contact.name || contact.deviceName || 'Desconocido',
+      avatarColor: contact.avatarColor || _generateColor(normNexo),
+      deviceName: contact.deviceName || contact.displayName || '',
+      deviceId: contact.deviceId || contact.nativeDeviceId || null,
+      createdAt: contact.createdAt || now,
+      lastSeen: now,
+      isGuardian: !!contact.isGuardian,
+      trustScore: contact.trustScore || 0,
+      verifiedInPerson: !!contact.verifiedInPerson,
+      messageFrequency: contact.messageFrequency || 0,
+      proximityScore: contact.proximityScore || 0,
+      publicKey: contact.publicKey || ''
+    };
+    if (idx >= 0) {
+      var existing = contacts[idx];
+      contacts[idx] = Object.assign({}, existing, normalized, { createdAt: existing.createdAt || now });
+    } else {
+      contacts.push(normalized);
+    }
+    localStorage.setItem(VAULT_CONTACTS_KEY, JSON.stringify(contacts));
+    return Promise.resolve(true);
+  } catch (e) { console.error('[VaultManager] saveContact:', e); return Promise.resolve(false); }
+}
+
 export function vaultFindContactByDeviceId(deviceId) {
   if (!deviceId) return null;
+  var normDev = deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
   var contacts = vaultLoadContactsSync();
-  return contacts.find(function(c) { return c.deviceId === deviceId; }) || null;
-}
-export function vaultUpdateContactLastSeen(nexoId) {
-  var c = vaultFindContactByNexoId(nexoId);
-  if (c) { c.lastSeen = Date.now(); vaultSaveContact(c); }
+  return contacts.find(function(c) {
+    if (!c.deviceId) return false;
+    return c.deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase() === normDev;
+  }) || null;
 }
 export function vaultGetOrCreateContact(nexoId, deviceName, deviceId) {
-  var c = vaultFindContactByNexoId(nexoId);
+  var normNexo = _normId(nexoId);
+  var c = vaultFindContactByNexoId(normNexo);
   if (!c) {
     c = {
-      nexoId: nexoId,
-      displayName: deviceName || nexoId.substring(0, 8),
+      nexoId: normNexo,
+      displayName: deviceName || normNexo.substring(0, 8),
       deviceName: deviceName || '',
       deviceId: deviceId || null
     };
     vaultSaveContact(c);
-  } else if (deviceName && !c.deviceName) {
-    c.deviceName = deviceName;
-    vaultSaveContact(c);
-  } else if (deviceId && !c.deviceId) {
-    c.deviceId = deviceId;
-    vaultSaveContact(c);
+  } else {
+    if (deviceName && !c.deviceName) {
+      c.deviceName = deviceName;
+      vaultSaveContact(c);
+    } else if (deviceId && !c.deviceId) {
+      c.deviceId = deviceId;
+      vaultSaveContact(c);
+    }
   }
   return c;
 }
