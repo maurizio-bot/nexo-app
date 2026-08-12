@@ -899,21 +899,31 @@ function _openChatFromNotification(deviceId) {
     }
     if (!contact.name) contact.name = contact.displayName || 'NEXO';
     window.NEXO.app.activeContact = contact;
-    if (window.NEXO.app.bleInterface) {
-      window.NEXO.app.bleInterface._activeChatDeviceId = deviceId;
-    }
-    window.dispatchEvent(new CustomEvent('nexo:ble:openChat', { detail: { contact: contact } }));
-    document.body.classList.add('chat-view-active');
-    var backBtn = document.getElementById('chat-back-btn');
-    if (backBtn) backBtn.classList.add('visible');
-    var nameInput = document.getElementById('chat-contact-name');
-    if (nameInput) nameInput.value = contact.name || 'NEXO';
-    _loadPersistedMessages();
+    
+    // FIX DEFINITIVO: al abrir desde notificacion, forzar conexion BLE igual que al tocar un contacto
+    if (window.NEXO.app.bleInterface && typeof window.NEXO.app.bleInterface.openChat === 'function') {
+      window.NEXO.app.bleInterface.openChat(deviceId).catch(function(e) {
+        console.warn('[MAIN] openChat desde notificacion error:', e);
+      });
+    } else {
+      // Fallback si bleInterface no esta listo (no deberia pasar)
+      if (window.NEXO.app.bleInterface) {
+        window.NEXO.app.bleInterface._activeChatDeviceId = deviceId;
+      }
+      window.dispatchEvent(new CustomEvent('nexo:ble:openChat', { detail: { contact: contact } }));
+      document.body.classList.add('chat-view-active');
+      var backBtn = document.getElementById('chat-back-btn');
+      if (backBtn) backBtn.classList.add('visible');
+      var nameInput = document.getElementById('chat-contact-name');
+      if (nameInput) nameInput.value = contact.name || 'NEXO';
+      _loadPersistedMessages();
+    } 
     console.log('[MAIN] Chat abierto desde notificacion:', deviceId);
   } catch (e) {
     console.warn('[MAIN] _openChatFromNotification error:', e);
   }
 }
+
 
 //-------------------------------------------------‐-‐--------------------
 //Parte 5 (líneas 906-1076): initializeNexoApp
