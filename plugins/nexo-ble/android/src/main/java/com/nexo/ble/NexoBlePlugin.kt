@@ -186,6 +186,11 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { }
     }
 
+    // === FIX: normalizeNexoId unificado ===
+    private fun normalizeNexoId(id: String?): String {
+        return (id ?: "").lowercase().trim()
+    }
+
     // === HELPERS NXID / MAC (ROBUSTOS) ===
     /**
      * Clasifica cualquier identificador que venga del JS.
@@ -244,28 +249,28 @@ class NexoBlePlugin : Plugin() {
         return try {
             val json = JSONObject(payload)
             val from = json.optString("from", "")
-            if (from.isNotEmpty()) return from
+            if (from.isNotEmpty()) return normalizeNexoId(from)
             val payloadObj = json.optJSONObject("payload")
             if (payloadObj != null) {
                 val senderNexoId = payloadObj.optString("senderNexoId", "")
-                if (senderNexoId.isNotEmpty()) return senderNexoId
+                if (senderNexoId.isNotEmpty()) return normalizeNexoId(senderNexoId)
             }
             val senderNexoId = json.optString("senderNexoId", "")
-            if (senderNexoId.isNotEmpty()) return senderNexoId
+            if (senderNexoId.isNotEmpty()) return normalizeNexoId(senderNexoId)
             val deviceUUID = json.optString("deviceUUID", "")
-            if (deviceUUID.isNotEmpty()) return deviceUUID
+            if (deviceUUID.isNotEmpty()) return normalizeNexoId(deviceUUID)
             null
         } catch (e: Exception) { null }
     }
 
     // === FIX 1: revisar si hay conexion GATT activa para un NXID ===
     private fun findActiveMacForNexoId(nexoId: String): String? {
-        val nxidNorm = nexoId.lowercase()
+        val nxidNorm = normalizeNexoId(nexoId)
         // 1. Mapa directo
         nexoIdToMacMap[nxidNorm]?.let { if (it.isNotEmpty()) return it }
         // 2. Revisar conexiones server activas por MAC mapeada
         macToNexoIdMap.forEach { (mac, nxid) ->
-            if (nxid.lowercase() == nxidNorm) {
+            if (normalizeNexoId(nxid) == nxidNorm) {
                 if (serverConnectedDevices.containsKey(mac) ||
                     (gattClients.containsKey(mac) && clientConnectionStates[mac] == BluetoothProfile.STATE_CONNECTED)) {
                     return mac
@@ -274,12 +279,12 @@ class NexoBlePlugin : Plugin() {
         }
         // 3. Revisar conexiones server sin mapeo (direccion inversa)
         serverConnectedDevices.keys.forEach { mac ->
-            if ((macToNexoIdMap[mac] ?: "").lowercase() == nxidNorm) return mac
+            if (normalizeNexoId(macToNexoIdMap[mac] ?: "") == nxidNorm) return mac
         }
         // 4. Revisar clientes conectados
         gattClients.keys.forEach { mac ->
             if (clientConnectionStates[mac] == BluetoothProfile.STATE_CONNECTED &&
-                (macToNexoIdMap[mac] ?: "").lowercase() == nxidNorm) {
+                normalizeNexoId(macToNexoIdMap[mac] ?: "") == nxidNorm) {
                 return mac
             }
         }
@@ -606,7 +611,7 @@ class NexoBlePlugin : Plugin() {
             remLog("INFO", "GATT_SERVER", "Connection $mac status=$status newState=$newState")
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 serverConnectedDevices[mac] = device
-                val nxid = macToNexoIdMap[mac] ?: ""
+                val nxid = normalizeNexoId(macToNexoIdMap[mac] ?: "")
                 // FIX 15: servicesReady = false para server, JS espera onServicesReady despues
                 notifyListeners("onDeviceConnected", JSObject()
                     .put("deviceId", device.address)
@@ -684,7 +689,7 @@ class NexoBlePlugin : Plugin() {
                     )
                 }
                 val mac = normalizeMac(device.address)
-                val nxid = macToNexoIdMap[mac] ?: ""
+                val nxid = normalizeNexoId(macToNexoIdMap[mac] ?: "")
                 remLog("INFO", "GATT_SERVER", "CCCD escrito por ${device.address} NXID=$nxid")
                 // FIX 15: Notificar onServicesReady y onNotificationsEnabled cuando central escribe CCCD
                 notifyListeners("onServicesReady", JSObject()
@@ -726,7 +731,7 @@ class NexoBlePlugin : Plugin() {
 
             // FIX 3: Si es NXID sin mapeo, intentar MAC directa de scannedDevices o mapas persistentes primero
             if (targetMacNorm.isEmpty() && isNexo) {
-                val nxid = rawDeviceId.lowercase()
+                val nxid = normalizeNexoId(rawDeviceId)
                 // 3a. Buscar en scannedDevices por nxid
                 var foundMac = ""
                 scannedDevices.keys.forEach { mac ->
@@ -861,6 +866,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun quickScanForNexoId(nexoId: String, callback: (String) -> Unit) {
+        val normNexoId = normalizeNexoId(nexoId)
         val ctx = activity.applicationContext
         val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
@@ -900,10 +906,10 @@ class NexoBlePlugin : Plugin() {
                             }
                         }
                     }
-                    if (foundNexoId == nexoId) {
+                    if (normalizeNexoId(foundNexoId ?: "") == normNexoId) {
                         resolved = true
-                        nexoIdToMacMap[nexoId] = macNorm
-                        macToNexoIdMap[macNorm] = nexoId
+                        nexoIdToMacMap[normNexoId] = macNorm
+                        macToNexoIdMap[macNorm] = normNexoId
                         scannedDevices[macNorm] = device
                         saveNexoIdMaps()
                         try { scanner.stopScan(this) } catch (e: Exception) { }
@@ -931,7 +937,7 @@ class NexoBlePlugin : Plugin() {
     // ========== SEND MESSAGE (FIXES 1 y 13) ==========
     @PluginMethod
     fun sendMessage(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
+        val rawDeviceId = normalizeNexoId(call.getString("deviceId"))
         val message = call.getString("message") ?: ""
         remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
 
@@ -1177,7 +1183,7 @@ class NexoBlePlugin : Plugin() {
                     reconnectAttempts[macNorm] = 0
                     reconnectDelays.remove(macNorm)
                     // NO resolver pendingCall aqui. Esperar a onDescriptorWrite (notificaciones listas)
-                    val nxid = macToNexoIdMap[macNorm] ?: ""
+                    val nxid = normalizeNexoId(macToNexoIdMap[macNorm] ?: "")
                     notifyListeners("onDeviceConnected", JSObject()
                         .put("deviceId", address)
                         .put("nexoId", nxid)
@@ -1255,7 +1261,7 @@ class NexoBlePlugin : Plugin() {
                         remLog("ERROR", "GATT_CLIENT_CB", "SecurityException notifications: ${e.message}")
                     }
                 }
-                val nxid = macToNexoIdMap[macNorm] ?: ""
+                val nxid = normalizeNexoId(macToNexoIdMap[macNorm] ?: "")
                 notifyListeners("onServicesReady", JSObject().put("deviceId", address).put("nexoId", nxid).put("servicesReady", true))
                 processPendingMessages(macNorm)
             }
@@ -1270,7 +1276,7 @@ class NexoBlePlugin : Plugin() {
             override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
                 val address = gatt.device?.address ?: ""
                 if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
-                    val nxid = macToNexoIdMap[macNorm] ?: ""
+                    val nxid = normalizeNexoId(macToNexoIdMap[macNorm] ?: "")
                     notifyListeners("onNotificationsEnabled", JSObject().put("deviceId", address).put("nexoId", nxid).put("notificationsEnabled", true))
                     // === CONFIRMACION: conexion 100% lista para enviar/recibir ===
                     pendingCalls[macNorm]?.let {
@@ -1426,7 +1432,7 @@ class NexoBlePlugin : Plugin() {
     // ========== DISCONNECT / RECONNECT / ADVERTISING / SCAN ==========
     @PluginMethod
     fun disconnectDevice(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
+        val rawDeviceId = normalizeNexoId(call.getString("deviceId"))
         val macNorm = resolveMacNorm(rawDeviceId)
         remLog("INFO", "GATT_CLIENT", "disconnectDevice $rawDeviceId (resolved=$macNorm)")
         reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
@@ -1452,7 +1458,7 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun forceReconnect(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
+        val rawDeviceId = normalizeNexoId(call.getString("deviceId"))
         val macNorm = resolveMacNorm(rawDeviceId)
         remLog("INFO", "GATT_CLIENT", "forceReconnect $rawDeviceId (resolved=$macNorm)")
         reconnectAttempts[macNorm] = 0
@@ -1473,7 +1479,7 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun reconnectDevice(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
+        val rawDeviceId = normalizeNexoId(call.getString("deviceId"))
         val macNorm = resolveMacNorm(rawDeviceId)
         remLog("INFO", "GATT_CLIENT", "reconnectDevice manual $rawDeviceId (resolved=$macNorm)")
         reconnectAttempts[macNorm] = 0
@@ -1484,7 +1490,8 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun setAdvertisingData(call: PluginCall) {
-        val nexoId = call.getString("nexoId") ?: run {
+        val nexoId = normalizeNexoId(call.getString("nexoId"))
+        if (nexoId.isEmpty()) {
             call.reject("nexoId requerido")
             return
         }
@@ -1542,7 +1549,13 @@ class NexoBlePlugin : Plugin() {
         autoStartGattServerAndAdvertising()
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
-        scannedDevices.clear()
+        // FIX: No limpiar scannedDevices completamente. Solo purgar dispositivos no mapeados a contactos.
+        val knownMacs = macToNexoIdMap.keys.toSet()
+        scannedDevices.keys.toList().forEach { mac ->
+            if (!knownMacs.contains(mac)) {
+                scannedDevices.remove(mac)
+            }
+        }
         lastScanNotifyTime.clear()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         try {
@@ -1601,8 +1614,9 @@ class NexoBlePlugin : Plugin() {
 
                 // POBLAR MAPAS NXID <-> MAC
                 if (nexoId != null && nexoId.isNotEmpty()) {
-                    nexoIdToMacMap[nexoId] = macNorm
-                    macToNexoIdMap[macNorm] = nexoId
+                    val normNexoId = normalizeNexoId(nexoId)
+                    nexoIdToMacMap[normNexoId] = macNorm
+                    macToNexoIdMap[macNorm] = normNexoId
                     saveNexoIdMaps()
                 }
 
@@ -1653,16 +1667,17 @@ class NexoBlePlugin : Plugin() {
             // === FIX 2: extraer senderNexoId del payload y actualizar mapas ===
             val senderNexoId = extractNexoIdFromPayload(completeMessage)
             if (senderNexoId != null && senderNexoId.isNotEmpty()) {
+                val normSender = normalizeNexoId(senderNexoId)
                 val hadNxidBefore = (macToNexoIdMap[macNorm] ?: "").isNotEmpty()
-                nexoIdToMacMap[senderNexoId] = macNorm
-                macToNexoIdMap[macNorm] = senderNexoId
+                nexoIdToMacMap[normSender] = macNorm
+                macToNexoIdMap[macNorm] = normSender
                 saveNexoIdMaps()
                 // Si no teniamos nxid para este MAC, re-notificar onDeviceConnected con nxid real
                 if (!hadNxidBefore && serverConnectedDevices.containsKey(macNorm)) {
-                    remLog("INFO", "REASSEMBLY", "Re-notificando onDeviceConnected con nexoId=$senderNexoId para $macNorm")
+                    remLog("INFO", "REASSEMBLY", "Re-notificando onDeviceConnected con nexoId=$normSender para $macNorm")
                     notifyListeners("onDeviceConnected", JSObject()
                         .put("deviceId", deviceId)
-                        .put("nexoId", senderNexoId)
+                        .put("nexoId", normSender)
                         .put("direction", "incoming")
                         .put("role", "server")
                         .put("servicesReady", true)
@@ -1758,7 +1773,7 @@ class NexoBlePlugin : Plugin() {
                     .put("address", mac.chunked(2).joinToString(":"))
                     .put("name", gatt.device?.name ?: "NEXO Peer")
                     .put("direction", "outgoing")
-                val nxid = macToNexoIdMap[mac]
+                val nxid = macToNexoIdMap[mac]?.let { normalizeNexoId(it) }
                 if (nxid != null) {
                     device.put("nexoId", nxid)
                 }
@@ -1771,7 +1786,7 @@ class NexoBlePlugin : Plugin() {
                 .put("address", device.address)
                 .put("name", device.name ?: "NEXO Peer")
                 .put("direction", "incoming")
-            val nxid = macToNexoIdMap[mac]
+            val nxid = macToNexoIdMap[mac]?.let { normalizeNexoId(it) }
             if (nxid != null) {
                 item.put("nexoId", nxid)
             }
