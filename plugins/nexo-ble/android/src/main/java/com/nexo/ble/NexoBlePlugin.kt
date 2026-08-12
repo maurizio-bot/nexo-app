@@ -186,16 +186,45 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { }
     }
 
-    // === HELPERS NXID ===
+    // === HELPERS NXID / MAC (ROBUSTOS) ===
+    /**
+     * Clasifica cualquier identificador que venga del JS.
+     * Nunca crashea. Siempre devuelve un tipo conocido.
+     */
+    private fun classifyDeviceId(id: String?): DeviceIdType {
+        val raw = id?.trim() ?: ""
+        if (raw.isEmpty()) return DeviceIdType.Empty
+
+        // MAC: XX:XX:XX:XX:XX:XX o XX-XX-XX-XX-XX-XX o XXXXXXXXXXXX
+        val macClean = raw.replace(":", "").replace("-", "").replace(".", "").uppercase()
+        if (macClean.length == 12 && macClean.all { it in '0'..'9' || it in 'A'..'F' }) {
+            return DeviceIdType.Mac(macClean)
+        }
+
+        // NXID: empieza con nx/NX, longitud 10+, alfanumérico
+        if (raw.length >= 10 && raw.startsWith("nx", ignoreCase = true)) {
+            return DeviceIdType.NexoId(raw.lowercase())
+        }
+
+        return DeviceIdType.Invalid(raw)
+    }
+
+    private sealed class DeviceIdType {
+        data class Mac(val norm: String) : DeviceIdType()
+        data class NexoId(val id: String) : DeviceIdType()
+        object Empty : DeviceIdType()
+        data class Invalid(val raw: String) : DeviceIdType()
+    }
+
     private fun isNexoId(id: String): Boolean {
-        return id.length == 10 && id.startsWith("NX")
+        return id.length >= 10 && id.startsWith("nx", ignoreCase = true)
     }
 
     private fun resolveMacNorm(id: String): String {
-        return if (isNexoId(id)) {
-            nexoIdToMacMap[id] ?: ""
-        } else {
-            normalizeMac(id)
+        return when (val type = classifyDeviceId(id)) {
+            is DeviceIdType.Mac -> type.norm
+            is DeviceIdType.NexoId -> nexoIdToMacMap[type.id] ?: ""
+            else -> ""
         }
     }
 
@@ -231,11 +260,12 @@ class NexoBlePlugin : Plugin() {
 
     // === FIX 1: revisar si hay conexion GATT activa para un NXID ===
     private fun findActiveMacForNexoId(nexoId: String): String? {
+        val nxidNorm = nexoId.lowercase()
         // 1. Mapa directo
-        nexoIdToMacMap[nexoId]?.let { if (it.isNotEmpty()) return it }
+        nexoIdToMacMap[nxidNorm]?.let { if (it.isNotEmpty()) return it }
         // 2. Revisar conexiones server activas por MAC mapeada
         macToNexoIdMap.forEach { (mac, nxid) ->
-            if (nxid == nexoId) {
+            if (nxid.lowercase() == nxidNorm) {
                 if (serverConnectedDevices.containsKey(mac) ||
                     (gattClients.containsKey(mac) && clientConnectionStates[mac] == BluetoothProfile.STATE_CONNECTED)) {
                     return mac
@@ -244,11 +274,12 @@ class NexoBlePlugin : Plugin() {
         }
         // 3. Revisar conexiones server sin mapeo (direccion inversa)
         serverConnectedDevices.keys.forEach { mac ->
-            if (macToNexoIdMap[mac] == nexoId) return mac
+            if ((macToNexoIdMap[mac] ?: "").lowercase() == nxidNorm) return mac
         }
         // 4. Revisar clientes conectados
         gattClients.keys.forEach { mac ->
-            if (clientConnectionStates[mac] == BluetoothProfile.STATE_CONNECTED && macToNexoIdMap[mac] == nexoId) {
+            if (clientConnectionStates[mac] == BluetoothProfile.STATE_CONNECTED &&
+                (macToNexoIdMap[mac] ?: "").lowercase() == nxidNorm) {
                 return mac
             }
         }
@@ -675,44 +706,56 @@ class NexoBlePlugin : Plugin() {
         try {
             val rawDeviceId = call.getString("deviceId") ?: call.getString("address") ?: ""
             remLog("INFO", "GATT_CLIENT", "connectToDevice raw='$rawDeviceId'")
-            if (rawDeviceId.isEmpty()) {
-                call.reject("deviceId requerido", "INVALID_DEVICE_ID")
-                return
+
+            // === VALIDACIÓN ROBUSTA DE IDENTIFICADOR ===
+            when (val idType = classifyDeviceId(rawDeviceId)) {
+                is DeviceIdType.Empty -> {
+                    call.reject("deviceId requerido", "INVALID_DEVICE_ID")
+                    return
+                }
+                is DeviceIdType.Invalid -> {
+                    remLog("ERROR", "GATT_CLIENT", "ID inválido recibido: '${idType.raw}'")
+                    call.reject("MAC/NXID inválido: ${idType.raw}", "INVALID_ID")
+                    return
+                }
+                else -> { /* continuar */ }
             }
+
             val targetMacNorm = resolveMacNorm(rawDeviceId)
             val isNexo = isNexoId(rawDeviceId)
 
             // FIX 3: Si es NXID sin mapeo, intentar MAC directa de scannedDevices o mapas persistentes primero
             if (targetMacNorm.isEmpty() && isNexo) {
+                val nxid = rawDeviceId.lowercase()
                 // 3a. Buscar en scannedDevices por nxid
                 var foundMac = ""
                 scannedDevices.keys.forEach { mac ->
-                    if (macToNexoIdMap[mac] == rawDeviceId) {
+                    if (macToNexoIdMap[mac] == nxid) {
                         foundMac = mac
                     }
                 }
                 // 3b. Buscar en mapas persistentes cargados
                 if (foundMac.isEmpty()) {
-                    foundMac = nexoIdToMacMap[rawDeviceId] ?: ""
+                    foundMac = nexoIdToMacMap[nxid] ?: ""
                 }
                 // 3c. Buscar conexion activa
                 if (foundMac.isEmpty()) {
-                    findActiveMacForNexoId(rawDeviceId)?.let { foundMac = it }
+                    findActiveMacForNexoId(nxid)?.let { foundMac = it }
                 }
                 if (foundMac.isNotEmpty()) {
-                    remLog("INFO", "GATT_CLIENT", "NXID $rawDeviceId resuelto a $foundMac sin scan (cache/maps/activa)")
+                    remLog("INFO", "GATT_CLIENT", "NXID $nxid resuelto a $foundMac sin scan (cache/maps/activa)")
                     doConnectToDevice(foundMac, call)
                     return
                 }
                 // Solo si no hay nada, lanzar scan
-                remLog("INFO", "GATT_CLIENT", "NXID $rawDeviceId no resuelto, lanzando scan+connect")
-                quickScanForNexoId(rawDeviceId) { resolvedMac ->
+                remLog("INFO", "GATT_CLIENT", "NXID $nxid no resuelto, lanzando scan+connect")
+                quickScanForNexoId(nxid) { resolvedMac ->
                     if (resolvedMac.isNotEmpty()) {
-                        remLog("INFO", "GATT_CLIENT", "NXID $rawDeviceId resuelto a $resolvedMac, conectando...")
+                        remLog("INFO", "GATT_CLIENT", "NXID $nxid resuelto a $resolvedMac, conectando...")
                         doConnectToDevice(resolvedMac, call)
                     } else {
-                        remLog("WARN", "GATT_CLIENT", "No se pudo resolver NXID $rawDeviceId")
-                        call.reject("No se encontro dispositivo con NXID: $rawDeviceId", "DEVICE_NOT_FOUND")
+                        remLog("WARN", "GATT_CLIENT", "No se pudo resolver NXID $nxid")
+                        call.reject("No se encontro dispositivo con NXID: $nxid", "DEVICE_NOT_FOUND")
                     }
                 }
                 return
@@ -730,6 +773,12 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun doConnectToDevice(macNorm: String, call: PluginCall) {
+        // === GUARDA: macNorm DEBE ser una MAC normalizada (12 hex chars) ===
+        if (macNorm.length != 12 || !macNorm.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) {
+            remLog("ERROR", "GATT_CLIENT", "doConnectToDevice rechazado: macNorm='$macNorm' no es MAC válida")
+            call.reject("MAC normalizada inválida: $macNorm", "INVALID_MAC_NORM")
+            return
+        }
         val rawDeviceId = macNorm.uppercase().chunked(2).joinToString(":")
         remLog("INFO", "GATT_CLIENT", "doConnectToDevice norm='$macNorm'")
 
@@ -890,9 +939,18 @@ class NexoBlePlugin : Plugin() {
         val message = call.getString("message") ?: ""
         remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
 
-        if (rawDeviceId.isEmpty()) {
-            call.reject("deviceId requerido")
-            return
+        // === VALIDACIÓN ROBUSTA DE IDENTIFICADOR ===
+        when (val idType = classifyDeviceId(rawDeviceId)) {
+            is DeviceIdType.Empty -> {
+                call.reject("deviceId requerido")
+                return
+            }
+            is DeviceIdType.Invalid -> {
+                remLog("ERROR", "SEND", "ID inválido recibido: '${idType.raw}'")
+                call.reject("MAC/NXID inválido: ${idType.raw}", "INVALID_ID")
+                return
+            }
+            else -> { /* continuar */ }
         }
 
         val macNorm = resolveMacNorm(rawDeviceId)
