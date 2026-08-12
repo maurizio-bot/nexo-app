@@ -850,18 +850,14 @@ class NexoBlePlugin : Plugin() {
         remLog("INFO", "GATT_CLIENT", "Conexion iniciada a $macNorm")
         mainHandler.postDelayed({
             if (pendingCalls.containsKey(macNorm)) {
-                remLog("WARN", "GATT_CLIENT", "Timeout conectando a $macNorm")
+                remLog("WARN", "GATT_CLIENT", "Timeout conectando a $macNorm (notificaciones no habilitadas)")
                 pendingCalls.remove(macNorm)
                 gattClients[macNorm]?.let { g -> try { g.disconnect(); g.close() } catch (e: Exception) { } }
                 gattClients.remove(macNorm)
                 clientConnectionStates.remove(macNorm)
-                notifyListeners("onConnectionFailed", JSObject()
-                    .put("deviceId", rawDeviceId)
-                    .put("reason", "Connection timeout")
-                    .put("recoverable", true)
-                )
+                call.reject("Timeout: notificaciones BLE no habilitadas", "CONNECTION_TIMEOUT")
             }
-        }, 15000)
+        }, 10000)
     }
 
     private fun quickScanForNexoId(nexoId: String, callback: (String) -> Unit) {
@@ -1180,10 +1176,7 @@ class NexoBlePlugin : Plugin() {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     reconnectAttempts[macNorm] = 0
                     reconnectDelays.remove(macNorm)
-                    pendingCall?.let {
-                        it.resolve(JSObject().put("connected", true).put("alreadyConnected", false).put("deviceId", address))
-                        pendingCalls.remove(macNorm)
-                    }
+                    // NO resolver pendingCall aqui. Esperar a onDescriptorWrite (notificaciones listas)
                     val nxid = macToNexoIdMap[macNorm] ?: ""
                     notifyListeners("onDeviceConnected", JSObject()
                         .put("deviceId", address)
@@ -1279,6 +1272,11 @@ class NexoBlePlugin : Plugin() {
                 if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
                     val nxid = macToNexoIdMap[macNorm] ?: ""
                     notifyListeners("onNotificationsEnabled", JSObject().put("deviceId", address).put("nexoId", nxid).put("notificationsEnabled", true))
+                    // === CONFIRMACION: conexion 100% lista para enviar/recibir ===
+                    pendingCalls[macNorm]?.let {
+                        it.resolve(JSObject().put("connected", true).put("alreadyConnected", false).put("deviceId", address).put("notificationsReady", true))
+                        pendingCalls.remove(macNorm)
+                    }
                     startKeepAlive(macNorm)
                 }
             }
