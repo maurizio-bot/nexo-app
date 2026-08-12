@@ -630,9 +630,6 @@ export class BLEInterface {
       _safeDispatchEvent('nexo:ble:messageReceived', msgObj);
     } catch (e) {}
   }
-      _safeDispatchEvent('nexo:ble:messageReceived', msgObj);
-    } catch (e) {}
-  }
   _setupNativeConnectionListeners() {
     if (!this.nativePlugin) return;
     if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
