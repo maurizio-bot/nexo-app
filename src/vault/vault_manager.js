@@ -1,9 +1,7 @@
 /**
  * vault_manager.js - Persistencia unificada NEXO v6.0-FINAL
- * Items 9 (contactos) + 10 (conversaciones)
- * FIX: Normalizacion estricta de nexoId en TODAS las funciones de contacto
- * FIX: Eliminado duplicado de vaultSaveContact (solo queda la version normalizada)
- * FIX: vaultFindContactByDeviceId con normalizacion MAC robusta
+ * FIX: Normalizacion estricta de nexoId en TODAS las funciones
+ * FIX: Eliminado duplicado de vaultSaveContact
  */
 var VAULT_CONTACTS_KEY = 'nexo_vault_contacts_v2';
 var VAULT_MESSAGES_PREFIX = 'nexo_vault_msgs_v2_';
@@ -21,7 +19,6 @@ function _generateColor(str) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-// ========== SYNC HELPERS (para uso interno y ble_interface) ==========
 function vaultLoadContactsSync() {
   try {
     var raw = localStorage.getItem(VAULT_CONTACTS_KEY);
@@ -54,7 +51,6 @@ function vaultSaveMessagesSync(contactNexoId, messages) {
   } catch (e) { return false; }
 }
 
-// ========== CONTACTOS (Item 9) - Promise API ==========
 export function vaultLoadContacts() {
   return Promise.resolve(vaultLoadContactsSync());
 }
@@ -137,7 +133,6 @@ export function vaultGetOrCreateContact(nexoId, deviceName, deviceId) {
   return c;
 }
 
-// ========== MENSAJES (Item 10) - Promise API ==========
 function _enqueueMsg(contactId, fn) {
   var cid = _normId(contactId);
   if (!cid) return Promise.resolve(null);
@@ -212,7 +207,6 @@ export function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
   });
 }
 
-// ========== EXPONER GLOBALMENTE para nexo_app.js y ble_interface.js ==========
 if (typeof window !== 'undefined') {
   window.vaultLoadContactsSync = vaultLoadContactsSync;
   window.vaultLoadMessagesSync = vaultLoadMessagesSync;
