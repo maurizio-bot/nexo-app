@@ -892,17 +892,14 @@ class NexoBlePlugin : Plugin() {
                     val macNorm = normalizeMac(addr)
                     val scanRecord = result.scanRecord
                     var foundNexoId: String? = null
+                    // FIX: Buscar específicamente MANUFACTURER_ID en vez de keyAt(0)
                     if (scanRecord != null) {
-                        val manufacturerData = scanRecord.manufacturerSpecificData
-                        if (manufacturerData != null && manufacturerData.size() > 0) {
-                            val key = manufacturerData.keyAt(0)
-                            val data = manufacturerData.get(key)
-                            if (data != null && data.size >= 4) {
-                                val b0 = data[0].toInt() and 0xFF
-                                val b1 = data[1].toInt() and 0xFF
-                                if (b0 == 0x4E && b1 == 0x58) {
-                                    foundNexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
-                                }
+                        val data = scanRecord.getManufacturerSpecificData(MANUFACTURER_ID)
+                        if (data != null && data.size >= 4) {
+                            val b0 = data[0].toInt() and 0xFF
+                            val b1 = data[1].toInt() and 0xFF
+                            if (b0 == 0x4E && b1 == 0x58) {
+                                foundNexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
                             }
                         }
                     }
@@ -1596,18 +1593,15 @@ class NexoBlePlugin : Plugin() {
 
                 var nexoId: String? = null
                 val scanRecord = result.scanRecord
+                // FIX: Buscar específicamente MANUFACTURER_ID en vez de keyAt(0)
                 if (scanRecord != null) {
-                    val manufacturerData = scanRecord.manufacturerSpecificData
-                    if (manufacturerData != null && manufacturerData.size() > 0) {
-                        val key = manufacturerData.keyAt(0)
-                        val data = manufacturerData.get(key)
-                        if (data != null && data.size >= 4) {
-                            val b0 = data[0].toInt() and 0xFF
-                            val b1 = data[1].toInt() and 0xFF
-                            if (b0 == 0x4E && b1 == 0x58) {
-                                nexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
-                                remLog("INFO", "SCAN", "NEXO ID found: $nexoId for $addr")
-                            }
+                    val data = scanRecord.getManufacturerSpecificData(MANUFACTURER_ID)
+                    if (data != null && data.size >= 4) {
+                        val b0 = data[0].toInt() and 0xFF
+                        val b1 = data[1].toInt() and 0xFF
+                        if (b0 == 0x4E && b1 == 0x58) {
+                            nexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
+                            remLog("INFO", "SCAN", "NEXO ID found: $nexoId for $addr")
                         }
                     }
                 }
