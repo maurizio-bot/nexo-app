@@ -1,4 +1,3 @@
-
 package com.nexo.ble
 
 import android.app.ActivityManager
@@ -70,7 +69,9 @@ class BleService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-            startAdvertising()
+            // FIX: No iniciar advertising aqui si no tenemos nexoId todavia.
+            // Esperamos a onStartCommand para recibirlo.
+            Log.i(TAG, "onCreate: esperando nexoId via onStartCommand")
         } catch (e: Exception) {
             showToast("[BLE Svc] FATAL onCreate: ${e.message}")
             Log.e(TAG, "Fatal error in onCreate", e)
@@ -81,10 +82,12 @@ class BleService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand action=${intent?.action}")
         val nexoId = intent?.getStringExtra("nexo_advertising_id")
-        if (nexoId != null && nexoId != currentNexoId) {
+        if (nexoId != null) {
             currentNexoId = nexoId
             Log.i(TAG, "NEXO ID recibido: $nexoId")
             restartAdvertising()
+        } else if (currentNexoId == null) {
+            Log.w(TAG, "onStartCommand sin nexoId y sin currentNexoId - advertising no iniciado")
         }
         return START_STICKY
     }
@@ -144,9 +147,11 @@ class BleService : Service() {
                 val idBytes = nexoId.toByteArray(Charsets.UTF_8)
                 System.arraycopy(idBytes, 0, manufacturerData, 2, idBytes.size)
                 dataBuilder.addManufacturerData(MANUFACTURER_ID, manufacturerData)
-                Log.i(TAG, "Advertising con NEXO ID: $nexoId")
+                Log.i(TAG, "Advertising con NEXO ID: $nexoId (manufacturerData ${manufacturerData.size} bytes)")
             } else {
                 Log.w(TAG, "Advertising SIN NEXO ID (no recibido aun)")
+                showToast("[BLE Svc] SIN NEXO ID - esperando...")
+                return  // FIX: No anunciar sin nexoId
             }
 
             val data = dataBuilder.build()
@@ -156,6 +161,7 @@ class BleService : Service() {
                 .build()
 
             bluetoothLeAdvertiser?.startAdvertising(settings, data, scanResponse, advertiseCallback)
+            Log.i(TAG, "Advertising iniciado con TX_POWER_HIGH, MODE_LOW_LATENCY")
             showToast("[BLE Svc] Advertising iniciado")
         } catch (e: Exception) {
             showToast("[BLE Svc] Advertising ERROR: ${e.message}")
@@ -173,7 +179,6 @@ class BleService : Service() {
             Log.e(TAG, "Advertising failed: $errorCode")
         }
     }
-
     private fun createNotification(): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, "NEXO BLE", NotificationManager.IMPORTANCE_LOW)
