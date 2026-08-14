@@ -625,17 +625,6 @@ export class BLEInterface {
           _safeNativeCall(this.nativePlugin, 'sendMessage', { deviceId: peerUUID, message: ackPayload }).catch(function(){});
         } catch (e) {}
       }
-      if (peerUUID && window.vaultAppendMessage) {
-        window.vaultAppendMessage(peerUUID, {
-          messageId: msgObj.messageId,
-          content: msgObj.content,
-          senderNexoId: msgObj.senderNexoId,
-          senderName: msgObj.senderName,
-          timestamp: msgObj.timestamp,
-          status: 'received',
-          _own: false
-        });
-      }
       if (peerUUID) {
         var contacts = _getBLEContacts();
         var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === peerUUID; });
@@ -1112,39 +1101,6 @@ export class BLEInterface {
       var timer = setTimeout(function() { self._readyResolvers.delete(deviceId); reject(new Error('Timeout esperando READY_TO_CHAT')); }, timeoutMs || 3000);
       self._readyResolvers.set(deviceId, { resolve: resolve, timer: timer });
     });
-  }
-  // FIX CRÍTICO: Resolver ready resolvers por NXID o por MAC cruzada
-  _resolveReadyToChat(deviceId) {
-    if (!deviceId) return;
-    var normalizedId = _normId(deviceId);
-    var resolver = this._readyResolvers.get(normalizedId);
-    if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(normalizedId); }
-    if (!resolver) {
-      var mappedMac = this._nexoIdToMac.get(normalizedId);
-      if (mappedMac) {
-        resolver = this._readyResolvers.get(mappedMac);
-        if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(mappedMac); }
-      }
-    }
-    if (!resolver) {
-      var isMac = /^[0-9A-F]{12}$/i.test(deviceId);
-      if (isMac) {
-        var mappedNexo = this._macToNexoId.get(normalizedId);
-        if (mappedNexo) {
-          resolver = this._readyResolvers.get(mappedNexo);
-          if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(mappedNexo); }
-        }
-      }
-    }
-    if (!resolver) {
-      var contact = _getContactByUUID(normalizedId);
-      if (contact && contact.deviceId) {
-        var contactMac = contact.deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
-        resolver = this._readyResolvers.get(contactMac);
-        if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(contactMac); }
-      }
-    }
-    this._processPendingMessages(normalizedId);
   }
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 10: APERTURA DE CHAT Y VISIBILIDAD BLE
