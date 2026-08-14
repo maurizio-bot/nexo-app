@@ -1036,6 +1036,8 @@ async function initializeNexoApp() {
             vaultGetOrCreateContact(senderId, msg.senderName || 'NEXO');
             msg.senderNexoId = senderId;
           }
+          msg.status = 'received';
+          msg._own = false;
           _renderMessage(msg);
         }
       });
