@@ -1,16 +1,14 @@
 /**
- * NEXO App v5.0.21-FASE4-ROBUSTO
- * FIX: _bleMessageHandler maneja payload como objeto nativo (plugin puede pasar objeto, no string)
+ * NEXO App v5.0.22-FASE4-ROBUSTO
+ * FIX: _bleMessageHandler maneja payload como objeto nativo
  * FIX: Filtro mensaje propio usa localNexoId en vez de localDeviceUUID
+ * FIX: Eliminado dead code TheStream y GestureEngine
  */
-import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
 import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
 import { NordicMesh } from '../mesh/nordic_mesh.js';
 import { WebSocketClient } from '../net/web_socket_client.js';
 import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
-import { GestureEngine } from '../ui/gesture_engine.js';
-import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
 import { initBLEInterface } from '../ui/ble_interface.js';
 
@@ -99,7 +97,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.21-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.22-FASE4-ROBUSTO iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -119,7 +117,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.21-FASE4-ROBUSTO Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.22-FASE4-ROBUSTO Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -304,7 +302,6 @@ class NexoApp {
       this._bleMessageHandler = function(e) {
         try {
           var detail = e.detail || {};
-          // FIX: Usar localNexoId en vez de localDeviceUUID para filtrar mensajes propios
           var localUUID = self.bleInterface && self.bleInterface.localNexoId ? self.bleInterface.localNexoId : '';
           var senderUUID = detail.senderNexoId || detail.deviceUUID || '';
           if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
@@ -314,7 +311,6 @@ class NexoApp {
           console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? (typeof detail.content === 'string' ? detail.content.substring(0, 30) : '[obj]') : '') + '...');
           var resolvedName = detail.senderName;
           var messageId = null;
-          // FIX: Manejar content como string o objeto nativo
           var content = detail.content || detail.data || '';
           var parsedPayload = null;
           if (typeof content === 'object' && content !== null) {
@@ -411,15 +407,9 @@ class NexoApp {
   }
  async _initPhase7_UI() {
    DEBUG.setPhase('GESTURES');
-   var self = this;
-   if (this.config.enableGestures) { try { this.gestures = new GestureEngine({}); this.gestures.init(); } catch (e) {} }
-   DEBUG.setPhase('VAULT_SLIDER');
-   var streamEl = document.getElementById('nexo-stream');
-   var vaultEl = document.getElementById('nexo-vault');
-   if (streamEl && vaultEl) { try { this.vaultSlider = new CoreGestureEngine(streamEl, vaultEl); } catch (e) {} }
+   // FIX: Eliminado dead code TheStream y GestureEngine
    DEBUG.setPhase('STREAM');
    var container = document.getElementById('messages-container');
-   if (container) { try { this.stream = new TheStream(container, {}); } catch (e) {} }
    var jumpBtn = document.getElementById('jump-to-bottom');
    if (jumpBtn && container) {
      container.addEventListener('scroll', function() {
@@ -432,15 +422,14 @@ class NexoApp {
        jumpBtn.classList.remove('visible');
      });
    }
-   self._initKeyboardScrollFix();
-   self._initInputBarV2();
+   this._initKeyboardScrollFix();
+   this._initInputBarV2();
  }
 
  _initInputBarV2() {
    var self = this;
    var input = document.getElementById('message-input');
    var sendBtn = document.getElementById('send-btn');
-   var attachBtn = document.getElementById('attach-menu');
 
    if (!input || !sendBtn) return;
 
@@ -454,9 +443,6 @@ class NexoApp {
    }
    input.addEventListener('input', updateSendButton);
    updateSendButton();
-
-   // FIX: Menu clip y adjuntos lo maneja main.js (_bindAttachmentHandlers)
-   // No registramos listeners duplicados aqui
 
    sendBtn.addEventListener('click', function(e) {
      if (sendBtn.classList.contains('mic-mode')) {
@@ -602,7 +588,6 @@ class NexoApp {
      var isObject = msg && typeof msg === 'object';
      var content = isObject ? (msg.content || msg) : msg;
      var recipient = isObject ? msg.recipient : null;
-     // FIX: NXID estricto. Sin fallback a deviceId nativo.
      var targetId = recipient || (this.activeContact ? (this.activeContact.nexoId || this.activeContact.id) : null);
      var targetTransport = this.activeContact ? this.activeContact.transport : null;
      if (!content || (typeof content === 'string' && content.trim() === '')) {
