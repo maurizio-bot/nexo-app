@@ -37,6 +37,10 @@ class BleService : Service() {
         private const val MESSAGE_NOTIFICATION_ID_START = 2001
         private const val ACTION_MESSAGE_RECEIVED = "com.nexo.ble.MESSAGE_RECEIVED"
         private const val EXTRA_NEXO_CHAT_DEVICE_ID = "nexo_chat_device_id"
+
+        // FIX: Persistencia del nexoId para recuperación tras recreación del servicio
+        private const val PREFS_NAME = "nexo_ble_service"
+        private const val PREF_NEXO_ID = "current_nexo_id"
     }
 
     private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
@@ -61,6 +65,16 @@ class BleService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+
+            // FIX: Recuperar nexoId persistido si el sistema recreó el servicio
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val persistedNexoId = prefs.getString(PREF_NEXO_ID, null)
+            if (persistedNexoId != null) {
+                currentNexoId = persistedNexoId
+                Log.i(TAG, "NEXO ID recuperado de prefs: $persistedNexoId")
+                restartAdvertising()
+            }
+
             Log.i(TAG, "onCreate: esperando nexoId via onStartCommand")
         } catch (e: Exception) {
             Log.e(TAG, "Fatal error in onCreate", e)
@@ -73,7 +87,10 @@ class BleService : Service() {
         val nexoId = intent?.getStringExtra("nexo_advertising_id")
         if (nexoId != null) {
             currentNexoId = nexoId
-            Log.i(TAG, "NEXO ID recibido: $nexoId")
+            // FIX: Persistir nexoId para recuperación tras recreación
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putString(PREF_NEXO_ID, nexoId).apply()
+            Log.i(TAG, "NEXO ID recibido y persistido: $nexoId")
             restartAdvertising()
         } else if (currentNexoId == null) {
             Log.w(TAG, "onStartCommand sin nexoId y sin currentNexoId - advertising no iniciado")
@@ -86,6 +103,11 @@ class BleService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         Log.i(TAG, "onTaskRemoved - re-lanzando service")
+        // FIX: Persistir antes de re-lanzar
+        currentNexoId?.let { id ->
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putString(PREF_NEXO_ID, id).apply()
+        }
         val restartIntent = Intent(applicationContext, BleService::class.java).apply {
             putExtra("nexo_advertising_id", currentNexoId)
         }
