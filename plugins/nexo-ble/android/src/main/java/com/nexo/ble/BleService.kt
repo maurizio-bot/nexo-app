@@ -20,7 +20,6 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 
@@ -45,16 +44,9 @@ class BleService : Service() {
     private var messageReceiver: BroadcastReceiver? = null
     private var bluetoothStateReceiver: BroadcastReceiver? = null
 
-    private fun showToast(message: String) {
-        try {
-            Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) { }
-    }
-
     override fun onCreate() {
         super.onCreate()
-        showToast("[BLE Svc] onCreate - Advertising Only")
-        Log.i(TAG, "onCreate - Advertising Only Service")
+        Log.i(TAG, "[BLE Svc] onCreate - Advertising Only Service")
         try {
             createMessageNotificationChannel()
             registerMessageReceiver()
@@ -69,11 +61,8 @@ class BleService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-            // FIX: No iniciar advertising aqui si no tenemos nexoId todavia.
-            // Esperamos a onStartCommand para recibirlo.
             Log.i(TAG, "onCreate: esperando nexoId via onStartCommand")
         } catch (e: Exception) {
-            showToast("[BLE Svc] FATAL onCreate: ${e.message}")
             Log.e(TAG, "Fatal error in onCreate", e)
             stopSelf()
         }
@@ -119,13 +108,12 @@ class BleService : Service() {
     }
 
     private fun startAdvertising() {
-        showToast("[BLE Svc] startAdvertising...")
+        Log.i(TAG, "startAdvertising...")
         try {
             val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter = bluetoothManager.adapter
             if (adapter == null || !adapter.isEnabled) {
                 Log.e(TAG, "Bluetooth adapter not available")
-                showToast("[BLE Svc] Bluetooth no disponible")
                 return
             }
             bluetoothLeAdvertiser = adapter.bluetoothLeAdvertiser
@@ -150,8 +138,7 @@ class BleService : Service() {
                 Log.i(TAG, "Advertising con NEXO ID: $nexoId (manufacturerData ${manufacturerData.size} bytes)")
             } else {
                 Log.w(TAG, "Advertising SIN NEXO ID (no recibido aun)")
-                showToast("[BLE Svc] SIN NEXO ID - esperando...")
-                return  // FIX: No anunciar sin nexoId
+                return
             }
 
             val data = dataBuilder.build()
@@ -162,23 +149,20 @@ class BleService : Service() {
 
             bluetoothLeAdvertiser?.startAdvertising(settings, data, scanResponse, advertiseCallback)
             Log.i(TAG, "Advertising iniciado con TX_POWER_HIGH, MODE_LOW_LATENCY")
-            showToast("[BLE Svc] Advertising iniciado")
         } catch (e: Exception) {
-            showToast("[BLE Svc] Advertising ERROR: ${e.message}")
             Log.e(TAG, "Error starting advertising", e)
         }
     }
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            showToast("[BLE Svc] Advertising STARTED")
-            Log.i(TAG, "Advertising started")
+            Log.i(TAG, "Advertising STARTED")
         }
         override fun onStartFailure(errorCode: Int) {
-            showToast("[BLE Svc] Advertising FAILED: $errorCode")
-            Log.e(TAG, "Advertising failed: $errorCode")
+            Log.e(TAG, "Advertising FAILED: $errorCode")
         }
     }
+
     private fun createNotification(): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, "NEXO BLE", NotificationManager.IMPORTANCE_LOW)
@@ -342,7 +326,7 @@ class BleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        showToast("[BLE Svc] onDestroy")
+        Log.i(TAG, "[BLE Svc] onDestroy")
         try {
             messageReceiver?.let { unregisterReceiver(it) }
         } catch (e: Exception) { }
