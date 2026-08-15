@@ -1,7 +1,9 @@
 /**
- * vault_manager.js - Persistencia unificada NEXO v6.0-FINAL
+ * vault_manager.js - Persistencia unificada NEXO v6.1-FINAL-FIXED
  * FIX: Normalizacion estricta de nexoId en TODAS las funciones
- * FIX: Eliminado duplicado de vaultSaveContact
+ * FIX: Preserva campos existentes (online, unreadCount, lastMessage, deviceId)
+ * FIX: Maneja QuotaExceededError con purge de emergencia
+ * FIX: Agregado vaultRemoveContact
  */
 var VAULT_CONTACTS_KEY = 'nexo_vault_contacts_v2';
 var VAULT_MESSAGES_PREFIX = 'nexo_vault_msgs_v2_';
@@ -17,6 +19,23 @@ function _generateColor(str) {
   var hash = 0;
   for (var i = 0; i < (str || '').length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i);
   return colors[Math.abs(hash) % colors.length];
+}
+
+function _emergencyPurge() {
+  try {
+    var keys = Object.keys(localStorage);
+    var msgKeys = keys.filter(function(k) { return k.indexOf(VAULT_MESSAGES_PREFIX) === 0; });
+    msgKeys.sort();
+    var toDelete = Math.max(1, Math.ceil(msgKeys.length / 2));
+    for (var i = 0; i < toDelete && i < msgKeys.length; i++) {
+      localStorage.removeItem(msgKeys[i]);
+      var cid = msgKeys[i].substring(VAULT_MESSAGES_PREFIX.length);
+      _msgCache.delete(cid);
+    }
+    console.warn('[VaultManager] Emergency purge: eliminados ' + toDelete + ' hilos de mensajes');
+  } catch (e) {
+    console.error('[VaultManager] Emergency purge error:', e);
+  }
 }
 
 function vaultLoadContactsSync() {
@@ -45,10 +64,24 @@ function vaultSaveMessagesSync(contactNexoId, messages) {
   if (!contactNexoId) return false;
   try {
     var toSave = messages.slice(-2000);
-    localStorage.setItem(VAULT_MESSAGES_PREFIX + contactNexoId, JSON.stringify(toSave));
+    var key = VAULT_MESSAGES_PREFIX + contactNexoId;
+    var json = JSON.stringify(toSave);
+    try {
+      localStorage.setItem(key, json);
+    } catch (quotaErr) {
+      if (quotaErr.name === 'QuotaExceededError' || quotaErr.code === 22 || quotaErr.code === 1014) {
+        _emergencyPurge();
+        localStorage.setItem(key, json);
+      } else {
+        throw quotaErr;
+      }
+    }
     _msgCache.set(contactNexoId, toSave.slice());
     return true;
-  } catch (e) { return false; }
+  } catch (e) {
+    console.error('[VaultManager] Error guardando mensajes:', e);
+    return false;
+  }
 }
 
 export function vaultLoadContacts() {
@@ -69,7 +102,7 @@ export function vaultSaveContact(contact) {
       deviceName: contact.deviceName || contact.displayName || '',
       deviceId: contact.deviceId || contact.nativeDeviceId || null,
       createdAt: contact.createdAt || now,
-      lastSeen: now,
+      lastSeen: contact.lastSeen || now,
       isGuardian: !!contact.isGuardian,
       trustScore: contact.trustScore || 0,
       verifiedInPerson: !!contact.verifiedInPerson,
@@ -79,13 +112,37 @@ export function vaultSaveContact(contact) {
     };
     if (idx >= 0) {
       var existing = contacts[idx];
-      contacts[idx] = Object.assign({}, existing, normalized, { createdAt: existing.createdAt || now });
+      // FIX: preservar campos existentes que no vienen en el nuevo contacto
+      contacts[idx] = Object.assign({}, existing, normalized, {
+        createdAt: existing.createdAt || now,
+        online: (typeof contact.online !== 'undefined') ? contact.online : (existing.online || false),
+        unreadCount: (typeof contact.unreadCount !== 'undefined') ? contact.unreadCount : (existing.unreadCount || 0),
+        lastMessage: contact.lastMessage || existing.lastMessage || '',
+        deviceId: normalized.deviceId || existing.deviceId || null,
+        lastSeen: normalized.lastSeen || existing.lastSeen || now
+      });
     } else {
-      contacts.push(normalized);
+      contacts.push(Object.assign({}, normalized, {
+        online: false,
+        unreadCount: 0,
+        lastMessage: ''
+      }));
     }
     localStorage.setItem(VAULT_CONTACTS_KEY, JSON.stringify(contacts));
     return Promise.resolve(true);
   } catch (e) { console.error('[VaultManager] saveContact:', e); return Promise.resolve(false); }
+}
+
+export function vaultRemoveContact(nexoId) {
+  try {
+    var norm = _normId(nexoId);
+    if (!norm) return Promise.resolve(false);
+    var contacts = vaultLoadContactsSync();
+    var filtered = contacts.filter(function(c) { return _normId(c.nexoId) !== norm; });
+    if (filtered.length === contacts.length) return Promise.resolve(false);
+    localStorage.setItem(VAULT_CONTACTS_KEY, JSON.stringify(filtered));
+    return Promise.resolve(true);
+  } catch (e) { console.error('[VaultManager] removeContact:', e); return Promise.resolve(false); }
 }
 
 export function vaultFindContactByNexoId(nexoId) {
@@ -212,6 +269,7 @@ if (typeof window !== 'undefined') {
   window.vaultLoadMessagesSync = vaultLoadMessagesSync;
   window.vaultLoadContacts = vaultLoadContacts;
   window.vaultSaveContact = vaultSaveContact;
+  window.vaultRemoveContact = vaultRemoveContact;
   window.vaultFindContactByNexoId = vaultFindContactByNexoId;
   window.vaultFindContactByDeviceId = vaultFindContactByDeviceId;
   window.vaultUpdateContactLastSeen = vaultUpdateContactLastSeen;
