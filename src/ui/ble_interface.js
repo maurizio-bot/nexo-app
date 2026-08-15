@@ -3,14 +3,11 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * BLE Interface v5.2.8-FIXES-9-ROBUSTO
- * FIX: _setupNativePayloadListener agregado (función faltante)
- * FIX: _handleIncomingPayload parsea mensajes entrantes del plugin nativo
- * FIX: _processPendingMessages busca cola por NXID y por MAC cruzada
- * FIX: _resolveReadyToChat resuelve por NXID o MAC cruzada
- * FIX: onNotificationsEnabled procesa cola por NXID primero, MAC fallback
- * FIX: onDeviceFound normaliza MAC antes de mapeo
- * FIX: _addNewDevice y _autoConnectGATT establecen mapeo MAC↔NXID inmediato
+ * BLE Interface v5.2.9-FIXES-10-ROBUSTO
+ * FIX: _addBLEContact delega a vault_manager (sin doble escritura localStorage)
+ * FIX: _saveBLEContacts sincroniza con vaultSaveContact
+ * FIX: _removeBLEContact usa vaultRemoveContact
+ * FIX: _getBLEContacts lee exclusivamente desde vault
  */
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
 var BLE_PINNED_CONTACTS_KEY = 'nexo_ble_pinned_contacts';
@@ -133,52 +130,81 @@ function _getBLEContacts() {
   try { var raw = localStorage.getItem('nexo_vault_contacts_v2'); return raw ? JSON.parse(raw) : []; }
   catch (e) { return []; }
 }
+
 function _saveBLEContacts(contacts) {
-  if (window.vaultSaveContact && typeof window.vaultSaveContact === 'function') {
-    try { localStorage.setItem('nexo_vault_contacts_v2', JSON.stringify(contacts)); } catch (e) {}
-    return;
+  if (!Array.isArray(contacts)) return;
+  if (window.vaultSaveContact) {
+    contacts.forEach(function(c) {
+      try { window.vaultSaveContact(c); } catch(e) {}
+    });
   }
   try { localStorage.setItem('nexo_vault_contacts_v2', JSON.stringify(contacts)); } catch (e) {}
 }
+
 function _addBLEContact(contact) {
-  var contacts = _getBLEContacts();
   var uuid = _normId(contact.deviceUUID || contact.nexoId);
   if (!uuid) return false;
-  var existingIdx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === uuid; });
-  if (existingIdx >= 0) {
-    contacts[existingIdx].displayName = contact.name || contact.displayName || contacts[existingIdx].displayName || '';
-    contacts[existingIdx].lastSeen = Date.now();
-    contacts[existingIdx].online = true;
-    if (contact.deviceId) contacts[existingIdx].deviceId = contact.deviceId;
-    _saveBLEContacts(contacts);
-    return true;
+  if (window.vaultGetOrCreateContact) {
+    window.vaultGetOrCreateContact(uuid, contact.name || contact.displayName || '', contact.deviceId || null);
   }
-  contacts.push({
-    nexoId: uuid,
-    displayName: contact.name || contact.displayName || '',
-    deviceId: contact.deviceId || null,
-    createdAt: Date.now(),
-    lastSeen: Date.now(),
-    online: true,
-    unreadCount: 0,
-    lastMessage: '',
-    avatarColor: contact.avatarColor || ''
-  });
-  _saveBLEContacts(contacts);
+  if (window.vaultLoadContactsSync && window.vaultSaveContact) {
+    var contacts = window.vaultLoadContactsSync();
+    var idx = contacts.findIndex(function(c) { return _normId(c.nexoId) === uuid; });
+    if (idx >= 0) {
+      var existing = contacts[idx];
+      var needsUpdate = false;
+      if (contact.name || contact.displayName) {
+        existing.displayName = contact.name || contact.displayName || existing.displayName;
+        needsUpdate = true;
+      }
+      if (contact.deviceId && !existing.deviceId) {
+        existing.deviceId = contact.deviceId;
+        needsUpdate = true;
+      }
+      if (contact.lastSeen) {
+        existing.lastSeen = contact.lastSeen;
+        needsUpdate = true;
+      }
+      if (typeof contact.online !== 'undefined') {
+        existing.online = contact.online;
+        needsUpdate = true;
+      }
+      if (contact.lastMessage) {
+        existing.lastMessage = contact.lastMessage;
+        needsUpdate = true;
+      }
+      if (typeof contact.unreadCount !== 'undefined') {
+        existing.unreadCount = contact.unreadCount;
+        needsUpdate = true;
+      }
+      if (needsUpdate) {
+        window.vaultSaveContact(existing);
+      }
+    }
+  }
   return true;
 }
+
 function _removeBLEContact(deviceUUID) {
   var uuid = _normId(deviceUUID);
-  var contacts = _getBLEContacts().filter(function(c) { return _normId(c.nexoId || c.deviceUUID) !== uuid; });
-  _saveBLEContacts(contacts);
+  if (window.vaultRemoveContact) {
+    try { window.vaultRemoveContact(uuid); } catch(e) {}
+  }
+  try {
+    var contacts = _getBLEContacts().filter(function(c) { return _normId(c.nexoId || c.deviceUUID) !== uuid; });
+    localStorage.setItem('nexo_vault_contacts_v2', JSON.stringify(contacts));
+  } catch (e) {}
 }
+
 function _isBLEContact(deviceUUID) {
   return _getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(deviceUUID); });
 }
+
 function _getContactByUUID(deviceUUID) {
   var uuid = _normId(deviceUUID);
   return _getBLEContacts().find(function(c) { return _normId(c.nexoId || c.deviceUUID) === uuid; });
 }
+
 function _getContactByDeviceId(deviceId) {
   if (!deviceId) return null;
   var normDeviceId = deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
@@ -189,10 +215,12 @@ function _getContactByDeviceId(deviceId) {
     return cNorm === normDeviceId;
   });
 }
+
 function _getPinnedContacts() {
   try { var raw = localStorage.getItem(BLE_PINNED_CONTACTS_KEY); return raw ? JSON.parse(raw) : []; }
   catch (e) { return []; }
 }
+
 function _togglePinnedContact(deviceUUID) {
   var uuid = _normId(deviceUUID);
   var pinned = _getPinnedContacts();
@@ -201,6 +229,7 @@ function _togglePinnedContact(deviceUUID) {
   try { localStorage.setItem(BLE_PINNED_CONTACTS_KEY, JSON.stringify(pinned)); } catch (e) {}
   return idx < 0;
 }
+
 function _isPinned(deviceUUID) {
   return _getPinnedContacts().indexOf(_normId(deviceUUID)) >= 0;
 }
@@ -321,7 +350,7 @@ export class BLEInterface {
     this._macToNexoId = new Map();
     this._nexoIdToMac = new Map();
     this._connectCooldowns = new Map();
-    console.log('[BLEInterface] v5.2.8-FIXES-9-ROBUSTO iniciado');
+    console.log('[BLEInterface] v5.2.9-FIXES-10-ROBUSTO iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -468,11 +497,9 @@ export class BLEInterface {
     })
     .catch(function() {});
   }
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// PARTE 8: LISTENERS NATIVOS - Scan, Conexión, Estado, Payload y ServerReady
-// FIX: _setupNativePayloadListener agregado (función faltante que rompía init)
-// FIX: Mapeo bidireccional MAC↔NXID en onDeviceConnected
-// FIX: _getContactByDeviceId normaliza MAC para match robusto
+// PARTE 8: LISTENERS NATIVOS
 // ═══════════════════════════════════════════════════════════════════════════════
 
   _setupNativeScanListeners() {
@@ -503,7 +530,6 @@ export class BLEInterface {
       try { console.log('[BLEInterface] onServerReady:', data); } catch (e) {}
     });
   }
-  // FIX: Nuevo listener para mensajes entrantes del plugin nativo
   _setupNativePayloadListener() {
     if (!this.nativePlugin) return;
     if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
@@ -512,51 +538,45 @@ export class BLEInterface {
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
       try {
         var deviceId = data.deviceId || '';
-        var rawMessage = data.content || data.data || '';  // FIX: Kotlin envia content/data, no message
+        var rawMessage = data.content || data.data || '';
         if (!rawMessage) return;
         self._handleIncomingPayload(deviceId, rawMessage);
       } catch (e) {}
     });
   }
-  // FIX: Procesa payload entrante, resuelve MAC→NXID, guarda vault, despacha evento
-    _handleIncomingPayload(deviceId, rawMessage) {
+  _handleIncomingPayload(deviceId, rawMessage) {
     try {
       if (!rawMessage || rawMessage.trim() === '') {
         console.warn('[BLE] Payload vacio, ignorado');
         return;
-      }    var normMac = deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
-    var peerUUID = this._macToNexoId.get(normMac);
-    
-    // === FIX P4: Extraer NXID del payload y establecer mapeo MAC↔NXID ===
-    var extractedNexoId = null;
-    try {
-      var parsedForNxid = JSON.parse(rawMessage);
-      if (parsedForNxid) {
-        extractedNexoId = parsedForNxid.from || parsedForNxid.senderNexoId || (parsedForNxid.payload && parsedForNxid.payload.senderNexoId);
       }
-    } catch (e) {}
-    if (extractedNexoId && extractedNexoId.toString().length >= 10) {
-      var normExtracted = _normId(extractedNexoId);
-      if (!this._macToNexoId.has(normMac)) {
-        this._macToNexoId.set(normMac, normExtracted);
-        this._nexoIdToMac.set(normExtracted, normMac);
-        console.log('[BLEInterface] Mapeo MAC↔NXID establecido por payload:', normMac, '->', normExtracted);
+      var normMac = deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+      var peerUUID = this._macToNexoId.get(normMac);
+      var extractedNexoId = null;
+      try {
+        var parsedForNxid = JSON.parse(rawMessage);
+        if (parsedForNxid) {
+          extractedNexoId = parsedForNxid.from || parsedForNxid.senderNexoId || (parsedForNxid.payload && parsedForNxid.payload.senderNexoId);
+        }
+      } catch (e) {}
+      if (extractedNexoId && extractedNexoId.toString().length >= 10) {
+        var normExtracted = _normId(extractedNexoId);
+        if (!this._macToNexoId.has(normMac)) {
+          this._macToNexoId.set(normMac, normExtracted);
+          this._nexoIdToMac.set(normExtracted, normMac);
+          console.log('[BLEInterface] Mapeo MAC↔NXID establecido por payload:', normMac, '->', normExtracted);
+        }
+        this._migrateDeviceState(normMac, normExtracted);
+        if (!peerUUID) peerUUID = normExtracted;
       }
-      // Migrar estado y cola de MAC a NXID
-      this._migrateDeviceState(normMac, normExtracted);
-      if (!peerUUID) peerUUID = normExtracted;
-    }
-    // === FIN FIX P4 ===
-    
-    if (!peerUUID) {
-      var contact = _getContactByDeviceId(normMac);
-      if (contact) {
-        peerUUID = _normId(contact.nexoId || contact.deviceUUID);
-        this._macToNexoId.set(normMac, peerUUID);
-        this._nexoIdToMac.set(peerUUID, normMac);
+      if (!peerUUID) {
+        var contact = _getContactByDeviceId(normMac);
+        if (contact) {
+          peerUUID = _normId(contact.nexoId || contact.deviceUUID);
+          this._macToNexoId.set(normMac, peerUUID);
+          this._nexoIdToMac.set(peerUUID, normMac);
+        }
       }
-    }
-      // Filtrar paquetes de control (ACK, read_receipt)
       try {
         var parsedCtrl = JSON.parse(rawMessage);
         if (parsedCtrl && (parsedCtrl.type === 'ack' || parsedCtrl.type === 'read_receipt')) {
@@ -565,7 +585,6 @@ export class BLEInterface {
           return;
         }
       } catch (e) {}
-      
       var parsed = null;
       var text = rawMessage;
       var senderId = peerUUID || normMac;
@@ -588,8 +607,6 @@ export class BLEInterface {
           ts = parsed.timestamp || parsed.ts || ts;
         }
       } catch (e) {}
-      
-      // FIX: Deduplicar mensajes entrantes por msgId
       var dedupId = msgId || (senderId + '_' + ts);
       if (this._receivedMessageIds.has(dedupId)) {
         console.log('[BLE] Mensaje duplicado ignorado:', dedupId);
@@ -600,8 +617,6 @@ export class BLEInterface {
         var first = this._receivedMessageIds.values().next().value;
         this._receivedMessageIds.delete(first);
       }
-      
-      // FIX: Filtrar mensajes propios (eco del plugin nativo)
       var localId = _normId(this.localNexoId || this.localDeviceUUID);
       if (localId && _normId(senderId) === localId) {
         console.log('[BLE] Mensaje propio ignorado (eco)');
@@ -617,8 +632,6 @@ export class BLEInterface {
         messageId: msgId,
         raw: rawMessage
       };
-      
-      // Enviar ACK de vuelta al emisor
       if (peerUUID && this.nativePlugin && _hasNativeMethod(this.nativePlugin, 'sendMessage')) {
         try {
           var ackPayload = JSON.stringify({ type: 'ack', msgId: msgId, ts: Date.now() });
@@ -768,7 +781,6 @@ export class BLEInterface {
         var stateKey = self._macToNexoId.get(normMac) || normMac;
         var peerUUID = self._macToNexoId.get(normMac);
         self._setDeviceState(stateKey, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: peerUUID });
-        // FIX CRÍTICO: Resolver y procesar por NXID primero, luego MAC fallback
         var resolveKey = peerUUID || stateKey;
         self._resolveReadyToChat(resolveKey);
         self._processPendingMessages(resolveKey);
@@ -819,7 +831,6 @@ export class BLEInterface {
       var byMappedMac = this._deviceStates.get(mappedMac);
       if (byMappedMac) return byMappedMac;
     }
-    // FIX: Fallback por contact.deviceId en vault
     var contact = _getContactByUUID(key);
     if (contact && contact.deviceId) {
       var contactMac = contact.deviceId.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
@@ -857,16 +868,13 @@ export class BLEInterface {
       this._notificationFallbackTimers.delete(normMac);
     }
   }
-  // FIX CRÍTICO: Procesar cola buscando por NXID y por MAC cruzada
-    _processPendingMessages(nexoId) {
+  _processPendingMessages(nexoId) {
     if (!nexoId) return;
     var normNexo = _normId(nexoId);
     var queue = null;
     var usedKey = null;
-    // 1. Buscar directo por la key recibida
     queue = this._pendingMessageQueue.get(normNexo);
     if (queue && queue.length > 0) { usedKey = normNexo; }
-    // 2. Si no hay, y recibimos NXID → buscar por MAC mapeada
     if (!queue) {
       var mappedMac = this._nexoIdToMac.get(normNexo);
       if (mappedMac) {
@@ -874,7 +882,6 @@ export class BLEInterface {
         if (queue && queue.length > 0) { usedKey = mappedMac; }
       }
     }
-    // 3. Si no hay, y recibimos MAC → buscar por NXID mapeado
     if (!queue) {
       var isMac = /^[0-9A-F]{12}$/i.test(normNexo);
       if (isMac) {
@@ -885,7 +892,6 @@ export class BLEInterface {
         }
       }
     }
-    // 4. Fallback por contacto en vault
     if (!queue) {
       var contact = _getContactByUUID(normNexo);
       if (contact && contact.deviceId) {
@@ -910,21 +916,12 @@ export class BLEInterface {
         });
     });
   }
-  
-// ═══════════════════════════════════════════════════════════════════════════════
-// PARTE 9: ENVÍO DE MENSAJES - Native, Chat, Cola y ACK
-// FIX: _sendMessageNative pasa NXID en mayúsculas al plugin
-// FIX: sendChatMessage normaliza NXID, resuelve promesas encoladas, cooldown
-// ═══════════════════════════════════════════════════════════════════════════════
-
-        _resolveReadyToChat(deviceId) {
+  _resolveReadyToChat(deviceId) {
     if (!deviceId) return;
     var normalizedId = _normId(deviceId);
     var resolver = null;
-    // 1. Buscar directo
     resolver = this._readyResolvers.get(normalizedId);
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(normalizedId); }
-    // 2. Si recibimos NXID → buscar resolver por MAC mapeada
     if (!resolver) {
       var mappedMac = this._nexoIdToMac.get(normalizedId);
       if (mappedMac) {
@@ -932,7 +929,6 @@ export class BLEInterface {
         if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(mappedMac); }
       }
     }
-    // 3. Si recibimos MAC → buscar resolver por NXID mapeado
     if (!resolver) {
       var isMac = /^[0-9A-F]{12}$/i.test(deviceId);
       if (isMac) {
@@ -943,7 +939,6 @@ export class BLEInterface {
         }
       }
     }
-    // 4. Fallback por contacto
     if (!resolver) {
       var contact = _getContactByUUID(normalizedId);
       if (contact && contact.deviceId) {
@@ -952,7 +947,6 @@ export class BLEInterface {
         if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(contactMac); }
       }
     }
-    // Procesar cola con la key original Y con la key cruzada
     this._processPendingMessages(normalizedId);
     var mappedMac2 = this._nexoIdToMac.get(normalizedId);
     if (mappedMac2) this._processPendingMessages(mappedMac2);
@@ -968,11 +962,7 @@ export class BLEInterface {
       try {
         if (!self.nativePlugin) { reject(new Error('Plugin nativo no disponible')); return; }
         if (!deviceId) { reject(new Error('deviceId invalido')); return; }
-        var targetId = deviceId; // FIX: pasar NXID directo, nativo resuelve MAC
-        if (!targetId) {
-          reject(new Error('deviceId invalido'));
-          return;
-        }
+        var targetId = deviceId;
         var isCtrl = _isControlPacket(content);
         var enrichedPayload;
         if (isCtrl) { enrichedPayload = content; }
@@ -1079,7 +1069,6 @@ export class BLEInterface {
           var lastAttempt = self._connectCooldowns.get(uuid) || 0;
           if (Date.now() - lastAttempt >= 5000) {
             self._connectCooldowns.set(uuid, Date.now());
-            // FIX 4: JS resuelve MAC localmente antes de delegar al nativo
             var knownMac = self._nexoIdToMac.get(uuid);
             var targetId = knownMac || uuid;
             var mode = knownMac ? 'MAC' : 'NXID';
@@ -1105,10 +1094,9 @@ export class BLEInterface {
       self._readyResolvers.set(deviceId, { resolve: resolve, timer: timer });
     });
   }
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 10: APERTURA DE CHAT Y VISIBILIDAD BLE
-// FIX: openChat pasa NXID en mayúsculas a connectToDevice
-// FIX: _autoScanForKnownContacts conecta solo si no hay conexión activa
 // ═══════════════════════════════════════════════════════════════════════════════
 
   openChat(deviceUUID) {
@@ -1151,7 +1139,6 @@ export class BLEInterface {
             var lastAttempt = self._connectCooldowns.get(uuid) || 0;
             if (Date.now() - lastAttempt >= 5000) {
               self._connectCooldowns.set(uuid, Date.now());
-              // FIX 4: JS resuelve MAC localmente antes de delegar al nativo
               var knownMac = self._nexoIdToMac.get(uuid);
               var targetId = knownMac || uuid;
               var mode = knownMac ? 'MAC' : 'NXID';
@@ -1296,6 +1283,7 @@ export class BLEInterface {
     this.isScanning = false;
     this.updateScanButton();
   }
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 11: UI / DOM - Creación de interfaz
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1519,8 +1507,6 @@ export class BLEInterface {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 13: DISCOVERY Y GESTIÓN DE DISPOSITIVOS
-// FIX: onDeviceFound detiene scan antes de conectar
-// FIX: Solo una conexión a la vez
 // ═══════════════════════════════════════════════════════════════════════════════
 
   onDeviceFound(device) {
@@ -1598,7 +1584,7 @@ export class BLEInterface {
     this.renderOnlineStrip();
     this.renderNewDeviceBar();
   }
-    _autoConnectGATT(nexoId, device) {
+  _autoConnectGATT(nexoId, device) {
     var self = this;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'connectToDevice')) return Promise.resolve();
     if (!nexoId) return Promise.resolve();
@@ -1610,7 +1596,6 @@ export class BLEInterface {
     self._connectCooldowns.set(normNexo, Date.now());
     if (self.isScanning) self._stopScanCycle();
     self._setDeviceState(normNexo, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
-    // FIX DEFINITIVO: siempre pasar NXID al nativo. El nativo resuelve MAC internamente.
     var targetId = normNexo;
     if (device && device.id) {
       var devMac = device.id.toString().replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
@@ -1618,7 +1603,6 @@ export class BLEInterface {
       self._nexoIdToMac.set(normNexo, devMac);
     }
     self.connectedDevices.set(targetId, { id: targetId, name: (device && device.name) || '', direction: 'outgoing', servicesReady: false, deviceUUID: normNexo });
-    // FIX 4: Si tenemos MAC conocido, pasar MAC directo (modo rápido). Si no, NXID (modo búsqueda).
     var knownMac = self._nexoIdToMac.get(normNexo);
     var connectId = knownMac || targetId;
     var connectMode = knownMac ? 'MAC' : 'NXID';
@@ -1644,7 +1628,6 @@ export class BLEInterface {
   removeContact(deviceUUID) {
     try {
       var uuid = _normId(deviceUUID);
-      // FIX 6: Limpiar mapas NXID<->MAC al borrar contacto
       var knownMac = this._nexoIdToMac.get(uuid);
       if (knownMac) {
         this._macToNexoId.delete(knownMac);
@@ -1666,7 +1649,7 @@ export class BLEInterface {
     self.connectedDevices.delete(deviceId);
     self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
     if (_hasNativeMethod(self.nativePlugin, 'disconnectDevice')) {
-      var targetNexoId = deviceId; // FIX: pasar NXID directo, nativo resuelve MAC
+      var targetNexoId = deviceId;
       return _safeNativeCall(self.nativePlugin, 'disconnectDevice', { deviceId: targetNexoId })
         .then(function() {
           if (self._activeChatDeviceId) {
@@ -1679,6 +1662,7 @@ export class BLEInterface {
     }
     return Promise.resolve();
   }
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARTE 14: RENDERIZADO DE CONTACTOS, MENÚS Y BADGE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1789,7 +1773,7 @@ export class BLEInterface {
     var menu = document.createElement('div');
     menu.className = 'ble-contact-menu';
     var isPinned = _isPinned(uuid);
-    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fx2605; Fijar') + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
+    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
     var rect = btn.getBoundingClientRect();
     menu.style.top = (rect.bottom + 4) + 'px';
     menu.style.right = (window.innerWidth - rect.right) + 'px';
