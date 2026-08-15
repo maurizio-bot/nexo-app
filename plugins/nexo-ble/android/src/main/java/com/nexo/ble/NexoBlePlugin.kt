@@ -75,7 +75,7 @@ class NexoBlePlugin : Plugin() {
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
         private const val NEXO_MAGIC_LOW: Byte = 0x58
         private const val SCAN_DEBOUNCE_MS = 1000L
-        private const val MIN_RSSI = -95
+        private const val MIN_RSSI = -85
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
@@ -90,6 +90,7 @@ class NexoBlePlugin : Plugin() {
     private var bluetoothScanner: BluetoothLeScanner? = null
     private val scanResults = Collections.synchronizedList(mutableListOf<JSObject>())
     private val scannedDevices = ConcurrentHashMap<String, BluetoothDevice>()
+    private val scannedDevicesLastSeen = ConcurrentHashMap<String, Long>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private val reconnectTimers = ConcurrentHashMap<String, Runnable>()
@@ -119,6 +120,14 @@ class NexoBlePlugin : Plugin() {
     private val PREFS_NAME = "nexo_ble_maps"
     private val PREFS_KEY_NXID_TO_MAC = "nxid_to_mac"
     private val PREFS_KEY_MAC_TO_NXID = "mac_to_nxid"
+    // FIX 7: Batch saveNexoIdMaps - solo guardar cuando hay cambios reales
+    private var mapsDirty = false
+    private val saveMapsRunnable = Runnable {
+        if (mapsDirty) {
+            mapsDirty = false
+            saveNexoIdMapsInternal()
+        }
+    }
 
     private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
 
@@ -134,7 +143,7 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { }
     }
 
-    private fun saveNexoIdMaps() {
+    private fun saveNexoIdMapsInternal() {
         try {
             val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val nxidToMacJson = JSONObject()
@@ -149,6 +158,11 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) {
             remLog("WARN", "MAPS", "Error guardando mapas: ${e.message}")
         }
+    }
+    private fun saveNexoIdMaps() {
+        mapsDirty = true
+        mainHandler.removeCallbacks(saveMapsRunnable)
+        mainHandler.postDelayed(saveMapsRunnable, 5000)
     }
 
     private fun loadNexoIdMaps() {
@@ -263,6 +277,24 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { null }
     }
 
+    // FIX 2: Iterar TODOS los manufacturer IDs del scan record, no solo 0xFFFF
+    private fun extractNexoIdFromScanRecord(scanRecord: android.bluetooth.le.ScanRecord?): String? {
+        if (scanRecord == null) return null
+        val manufacturerData = scanRecord.manufacturerSpecificData
+        for (i in 0 until manufacturerData.size()) {
+            val id = manufacturerData.keyAt(i)
+            val data = manufacturerData.valueAt(i)
+            if (data != null && data.size >= 4) {
+                val b0 = data[0].toInt() and 0xFF
+                val b1 = data[1].toInt() and 0xFF
+                if (b0 == 0x4E && b1 == 0x58) {
+                    return String(data, 2, data.size - 2, Charsets.UTF_8)
+                }
+            }
+        }
+        return null
+    }
+
     // === FIX 1: revisar si hay conexion GATT activa para un NXID ===
     private fun findActiveMacForNexoId(nexoId: String): String? {
         val nxidNorm = normalizeNexoId(nexoId)
@@ -339,7 +371,7 @@ class NexoBlePlugin : Plugin() {
         writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         writeQueueTimeouts.clear()
         negotiatedMtu.clear()
-        saveNexoIdMaps()
+        saveNexoIdMapsInternal()
     }
 
     private fun isScanning(): Boolean {
@@ -445,24 +477,25 @@ class NexoBlePlugin : Plugin() {
         if (bluetoothGattServer == null) {
             startGattServer()
         }
-        if (!isAdvertisingActive) {
-            try {
-                val intent = Intent(ctx, BleService::class.java)
-                nexoAdvertisingId?.let { id ->
-                    intent.putExtra("nexo_advertising_id", id)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    ctx.startForegroundService(intent)
-                } else {
-                    ctx.startService(intent)
-                }
+        // FIX 1: Siempre reenviar intent al service con nexoId, aunque ya esté corriendo
+        try {
+            val intent = Intent(ctx, BleService::class.java)
+            nexoAdvertisingId?.let { id ->
+                intent.putExtra("nexo_advertising_id", id)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(intent)
+            } else {
+                ctx.startService(intent)
+            }
+            if (!isAdvertisingActive) {
                 registerServerReceivers()
                 isAdvertisingActive = true
                 notifyListeners("onAdvertiseStarted", JSObject().put("started", true).put("source", "auto_start"))
-                remLog("INFO", "AUTO_START", "Advertising auto-iniciado")
-            } catch (e: Exception) {
-                remLog("WARN", "AUTO_START", "Fallo auto-start advertising: ${e.message}")
             }
+            remLog("INFO", "AUTO_START", "Advertising auto-iniciado (nexoId=${nexoAdvertisingId})")
+        } catch (e: Exception) {
+            remLog("WARN", "AUTO_START", "Fallo auto-start advertising: ${e.message}")
         }
     }
 
@@ -891,23 +924,14 @@ class NexoBlePlugin : Plugin() {
                     val addr = device.address
                     val macNorm = normalizeMac(addr)
                     val scanRecord = result.scanRecord
-                    var foundNexoId: String? = null
-                    // FIX: Buscar específicamente MANUFACTURER_ID en vez de keyAt(0)
-                    if (scanRecord != null) {
-                        val data = scanRecord.getManufacturerSpecificData(MANUFACTURER_ID)
-                        if (data != null && data.size >= 4) {
-                            val b0 = data[0].toInt() and 0xFF
-                            val b1 = data[1].toInt() and 0xFF
-                            if (b0 == 0x4E && b1 == 0x58) {
-                                foundNexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
-                            }
-                        }
-                    }
+                    // FIX 2: Iterar todos los manufacturer IDs
+                    val foundNexoId = extractNexoIdFromScanRecord(scanRecord)
                     if (normalizeNexoId(foundNexoId ?: "") == normNexoId) {
                         resolved = true
                         nexoIdToMacMap[normNexoId] = macNorm
                         macToNexoIdMap[macNorm] = normNexoId
                         scannedDevices[macNorm] = device
+                        scannedDevicesLastSeen[macNorm] = System.currentTimeMillis()
                         saveNexoIdMaps()
                         try { scanner.stopScan(this) } catch (e: Exception) { }
                         callback(macNorm)
@@ -926,7 +950,7 @@ class NexoBlePlugin : Plugin() {
                     try { scanner.stopScan(tempCallback) } catch (e: Exception) { }
                     callback("")
                 }
-            }, 8000)
+            }, 4000)
         } catch (e: Exception) {
             callback("")
         }
@@ -1449,6 +1473,14 @@ class NexoBlePlugin : Plugin() {
         writeQueueProcessing.remove(macNorm)
         writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         negotiatedMtu.remove(macNorm)
+        // FIX 6: Limpiar mapas NXID<->MAC al desconectar/borrar contacto
+        val nxid = macToNexoIdMap[macNorm]
+        if (nxid != null) {
+            nexoIdToMacMap.remove(nxid)
+            macToNexoIdMap.remove(macNorm)
+            saveNexoIdMapsInternal()
+            remLog("INFO", "MAPS", "Mapas limpiados para $macNorm / $nxid")
+        }
         notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", rawDeviceId))
         call.resolve(JSObject().put("disconnected", true))
     }
@@ -1546,11 +1578,13 @@ class NexoBlePlugin : Plugin() {
         autoStartGattServerAndAdvertising()
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
-        // FIX: No limpiar scannedDevices completamente. Solo purgar dispositivos no mapeados a contactos.
-        val knownMacs = macToNexoIdMap.keys.toSet()
-        scannedDevices.keys.toList().forEach { mac ->
-            if (!knownMacs.contains(mac)) {
+        // FIX 9: Purgar dispositivos no vistos en los últimos 60 segundos
+        val now = System.currentTimeMillis()
+        scannedDevicesLastSeen.keys.toList().forEach { mac ->
+            val lastSeen = scannedDevicesLastSeen[mac] ?: 0
+            if (now - lastSeen > 60000) {
                 scannedDevices.remove(mac)
+                scannedDevicesLastSeen.remove(mac)
             }
         }
         lastScanNotifyTime.clear()
@@ -1590,20 +1624,12 @@ class NexoBlePlugin : Plugin() {
                 }
 
                 scannedDevices[macNorm] = device
+                scannedDevicesLastSeen[macNorm] = System.currentTimeMillis()
 
-                var nexoId: String? = null
-                val scanRecord = result.scanRecord
-                // FIX: Buscar específicamente MANUFACTURER_ID en vez de keyAt(0)
-                if (scanRecord != null) {
-                    val data = scanRecord.getManufacturerSpecificData(MANUFACTURER_ID)
-                    if (data != null && data.size >= 4) {
-                        val b0 = data[0].toInt() and 0xFF
-                        val b1 = data[1].toInt() and 0xFF
-                        if (b0 == 0x4E && b1 == 0x58) {
-                            nexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
-                            remLog("INFO", "SCAN", "NEXO ID found: $nexoId for $addr")
-                        }
-                    }
+                // FIX 2: Iterar todos los manufacturer IDs, no solo 0xFFFF
+                val nexoId = extractNexoIdFromScanRecord(result.scanRecord)
+                if (nexoId != null) {
+                    remLog("INFO", "SCAN", "NEXO ID found: $nexoId for $addr")
                 }
 
                 // POBLAR MAPAS NXID <-> MAC
