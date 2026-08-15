@@ -114,12 +114,14 @@ class NexoBlePlugin : Plugin() {
     // === MAPAS NXID <-> MAC (ROBUSTO) ===
     private val nexoIdToMacMap = ConcurrentHashMap<String, String>()
     private val macToNexoIdMap = ConcurrentHashMap<String, String>()
+    private val mapTimestamps = ConcurrentHashMap<String, Long>()  // FIX B: TTL para mapas
     private val pendingNexoIdMessages = ConcurrentHashMap<String, MutableList<String>>()
     // === FIX 13: calls pendientes por NXID para resolver cuando scan termine ===
     private val pendingNexoIdCalls = ConcurrentHashMap<String, PluginCall>()
-    private val PREFS_NAME = "nexo_ble_maps"
-    private val PREFS_KEY_NXID_TO_MAC = "nxid_to_mac"
-    private val PREFS_KEY_MAC_TO_NXID = "mac_to_nxid"
+    private val PREFS_NAME = "nexo_ble_maps_v2"
+    private val PREFS_KEY_NXID_TO_MAC = "nxid_to_mac_v2"
+    private val PREFS_KEY_MAC_TO_NXID = "mac_to_nxid_v2"
+    private const val MAP_TTL_MS = 86400000L  // 24 horas
     // FIX 7: Batch saveNexoIdMaps - solo guardar cuando hay cambios reales
     private var mapsDirty = false
     private val saveMapsRunnable = Runnable {
@@ -146,10 +148,21 @@ class NexoBlePlugin : Plugin() {
     private fun saveNexoIdMapsInternal() {
         try {
             val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
             val nxidToMacJson = JSONObject()
-            nexoIdToMacMap.forEach { (k, v) -> nxidToMacJson.put(k, v) }
+            nexoIdToMacMap.forEach { (k, v) ->
+                val entry = JSONObject()
+                entry.put("mac", v)
+                entry.put("ts", mapTimestamps[k] ?: now)
+                nxidToMacJson.put(k, entry)
+            }
             val macToNxidJson = JSONObject()
-            macToNexoIdMap.forEach { (k, v) -> macToNxidJson.put(k, v) }
+            macToNexoIdMap.forEach { (k, v) ->
+                val entry = JSONObject()
+                entry.put("nxid", v)
+                entry.put("ts", mapTimestamps[k] ?: now)
+                macToNxidJson.put(k, entry)
+            }
             prefs.edit()
                 .putString(PREFS_KEY_NXID_TO_MAC, nxidToMacJson.toString())
                 .putString(PREFS_KEY_MAC_TO_NXID, macToNxidJson.toString())
@@ -168,17 +181,62 @@ class NexoBlePlugin : Plugin() {
     private fun loadNexoIdMaps() {
         try {
             val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
+            var purgedCount = 0
+            
+            // FIX B: Intentar cargar formato v2 (con timestamps)
             val nxidToMacStr = prefs.getString(PREFS_KEY_NXID_TO_MAC, "{}") ?: "{}"
             val macToNxidStr = prefs.getString(PREFS_KEY_MAC_TO_NXID, "{}") ?: "{}"
             val nxidToMacJson = JSONObject(nxidToMacStr)
             val macToNxidJson = JSONObject(macToNxidStr)
+            
             nxidToMacJson.keys().forEach { key ->
-                nexoIdToMacMap[key] = nxidToMacJson.getString(key)
+                try {
+                    val value = nxidToMacJson.get(key)
+                    if (value is JSONObject) {
+                        // Formato v2
+                        val mac = value.getString("mac")
+                        val ts = value.optLong("ts", now)
+                        if (now - ts < MAP_TTL_MS) {
+                            nexoIdToMacMap[key] = mac
+                            mapTimestamps[key] = ts
+                        } else {
+                            purgedCount++
+                        }
+                    } else {
+                        // Formato v1 (legacy) - migrar
+                        val mac = value.toString()
+                        nexoIdToMacMap[key] = mac
+                        mapTimestamps[key] = now
+                    }
+                } catch (e: Exception) { }
             }
             macToNxidJson.keys().forEach { key ->
-                macToNexoIdMap[key] = macToNxidJson.getString(key)
+                try {
+                    val value = macToNxidJson.get(key)
+                    if (value is JSONObject) {
+                        // Formato v2
+                        val nxid = value.getString("nxid")
+                        val ts = value.optLong("ts", now)
+                        if (now - ts < MAP_TTL_MS) {
+                            macToNexoIdMap[key] = nxid
+                            mapTimestamps[key] = ts
+                        } else {
+                            purgedCount++
+                        }
+                    } else {
+                        // Formato v1 (legacy) - migrar
+                        val nxid = value.toString()
+                        macToNexoIdMap[key] = nxid
+                        mapTimestamps[key] = now
+                    }
+                } catch (e: Exception) { }
             }
-            remLog("INFO", "MAPS", "Mapas NXID cargados: ${nexoIdToMacMap.size} entradas")
+            remLog("INFO", "MAPS", "Mapas NXID cargados: ${nexoIdToMacMap.size} entradas (purged=$purgedCount)")
+            // Guardar inmediatamente en formato v2 si había datos v1
+            if (purgedCount > 0 || nxidToMacJson.length() > 0) {
+                saveNexoIdMapsInternal()
+            }
         } catch (e: Exception) {
             remLog("WARN", "MAPS", "Error cargando mapas: ${e.message}")
         }
@@ -242,7 +300,25 @@ class NexoBlePlugin : Plugin() {
     private fun resolveMacNorm(id: String): String {
         return when (val type = classifyDeviceId(id)) {
             is DeviceIdType.Mac -> type.norm
-            is DeviceIdType.NexoId -> nexoIdToMacMap[type.id] ?: ""
+            is DeviceIdType.NexoId -> {
+                val mappedMac = nexoIdToMacMap[type.id]
+                if (mappedMac != null) {
+                    // FIX B: Verificar TTL antes de usar mapeo
+                    val ts = mapTimestamps[type.id] ?: 0
+                    val now = System.currentTimeMillis()
+                    if (now - ts < MAP_TTL_MS) {
+                        mappedMac
+                    } else {
+                        remLog("WARN", "MAPS", "Mapeo expirado para ${type.id} -> $mappedMac, purgando")
+                        nexoIdToMacMap.remove(type.id)
+                        macToNexoIdMap.remove(mappedMac)
+                        mapTimestamps.remove(type.id)
+                        mapTimestamps.remove(mappedMac)
+                        saveNexoIdMaps()
+                        ""
+                    }
+                } else ""
+            }
             else -> ""
         }
     }
@@ -298,8 +374,13 @@ class NexoBlePlugin : Plugin() {
     // === FIX 1: revisar si hay conexion GATT activa para un NXID ===
     private fun findActiveMacForNexoId(nexoId: String): String? {
         val nxidNorm = normalizeNexoId(nexoId)
-        // 1. Mapa directo
-        nexoIdToMacMap[nxidNorm]?.let { if (it.isNotEmpty()) return it }
+        // 1. Mapa directo (con verificación TTL)
+        nexoIdToMacMap[nxidNorm]?.let { mac ->
+            if (mac.isNotEmpty()) {
+                val ts = mapTimestamps[nxidNorm] ?: 0
+                if (System.currentTimeMillis() - ts < MAP_TTL_MS) return mac
+            }
+        }
         // 2. Revisar conexiones server activas por MAC mapeada
         macToNexoIdMap.forEach { (mac, nxid) ->
             if (normalizeNexoId(nxid) == nxidNorm) {
@@ -925,13 +1006,17 @@ class NexoBlePlugin : Plugin() {
                     val macNorm = normalizeMac(addr)
                     val scanRecord = result.scanRecord
                     // FIX 2: Iterar todos los manufacturer IDs
-                    val foundNexoId = extractNexoIdFromScanRecord(scanRecord)
-                    if (normalizeNexoId(foundNexoId ?: "") == normNexoId) {
+                    val rawFoundNexoId = extractNexoIdFromScanRecord(scanRecord)
+                    val foundNexoId = if (rawFoundNexoId != null && rawFoundNexoId.length >= 10 && rawFoundNexoId.startsWith("nx", ignoreCase = true)) rawFoundNexoId else null
+                    if (foundNexoId != null && normalizeNexoId(foundNexoId) == normNexoId) {
                         resolved = true
+                        val now = System.currentTimeMillis()
                         nexoIdToMacMap[normNexoId] = macNorm
                         macToNexoIdMap[macNorm] = normNexoId
+                        mapTimestamps[normNexoId] = now
+                        mapTimestamps[macNorm] = now
                         scannedDevices[macNorm] = device
-                        scannedDevicesLastSeen[macNorm] = System.currentTimeMillis()
+                        scannedDevicesLastSeen[macNorm] = now
                         saveNexoIdMaps()
                         try { scanner.stopScan(this) } catch (e: Exception) { }
                         callback(macNorm)
@@ -1478,6 +1563,8 @@ class NexoBlePlugin : Plugin() {
         if (nxid != null) {
             nexoIdToMacMap.remove(nxid)
             macToNexoIdMap.remove(macNorm)
+            mapTimestamps.remove(nxid)
+            mapTimestamps.remove(macNorm)
             saveNexoIdMapsInternal()
             remLog("INFO", "MAPS", "Mapas limpiados para $macNorm / $nxid")
         }
@@ -1627,16 +1714,23 @@ class NexoBlePlugin : Plugin() {
                 scannedDevicesLastSeen[macNorm] = System.currentTimeMillis()
 
                 // FIX 2: Iterar todos los manufacturer IDs, no solo 0xFFFF
-                val nexoId = extractNexoIdFromScanRecord(result.scanRecord)
-                if (nexoId != null) {
-                    remLog("INFO", "SCAN", "NEXO ID found: $nexoId for $addr")
+                val rawNexoId = extractNexoIdFromScanRecord(result.scanRecord)
+                val nexoId = if (rawNexoId != null && rawNexoId.length >= 10 && rawNexoId.startsWith("nx", ignoreCase = true)) {
+                    remLog("INFO", "SCAN", "NEXO ID found: $rawNexoId for $addr")
+                    rawNexoId
+                } else {
+                    if (rawNexoId != null) remLog("WARN", "SCAN", "NEXO ID invalido descartado: '$rawNexoId' for $addr")
+                    null
                 }
 
                 // POBLAR MAPAS NXID <-> MAC
                 if (nexoId != null && nexoId.isNotEmpty()) {
                     val normNexoId = normalizeNexoId(nexoId)
+                    val now = System.currentTimeMillis()
                     nexoIdToMacMap[normNexoId] = macNorm
                     macToNexoIdMap[macNorm] = normNexoId
+                    mapTimestamps[normNexoId] = now
+                    mapTimestamps[macNorm] = now
                     saveNexoIdMaps()
                 }
 
@@ -1689,8 +1783,11 @@ class NexoBlePlugin : Plugin() {
             if (senderNexoId != null && senderNexoId.isNotEmpty()) {
                 val normSender = normalizeNexoId(senderNexoId)
                 val hadNxidBefore = (macToNexoIdMap[macNorm] ?: "").isNotEmpty()
+                val now = System.currentTimeMillis()
                 nexoIdToMacMap[normSender] = macNorm
                 macToNexoIdMap[macNorm] = normSender
+                mapTimestamps[normSender] = now
+                mapTimestamps[macNorm] = now
                 saveNexoIdMaps()
                 // Si no teniamos nxid para este MAC, re-notificar onDeviceConnected con nxid real
                 if (!hadNxidBefore && serverConnectedDevices.containsKey(macNorm)) {
