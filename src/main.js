@@ -3,9 +3,11 @@
 //-----‐-----------------------------------------------------------------
 
 /**
- * src/main.js - Punto de entrada NEXO v9.9.6-FASE4-FIXED-ROBUSTO
- * FIX: _loadPersistedMessages definida (función huérfana que rompía init)
+ * src/main.js - Punto de entrada NEXO v9.9.7-FASE4-FIXED-ROBUSTO
+ * FIX: _loadPersistedMessages definida
  * FIX: _updateMessageStatus permite degradación pending -> error
+ * FIX: _openChatFromNotification sin vaultLoadContactsSync (eliminado dead code)
+ * FIX: Cleanup de audio elements en _doChatBack
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  */
 
@@ -764,7 +766,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.6-FASE4-FIXED-ROBUSTO iniciando...');
+    console.log('[MAIN] NEXO v9.9.7-FASE4-FIXED-ROBUSTO iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -882,17 +884,6 @@ function _openChatFromNotification(deviceId) {
     if (window.vaultFindContactByNexoId) {
       contact = window.vaultFindContactByNexoId(deviceId);
     }
-    if (!contact && window.vaultLoadContactsSync) {
-      var allContacts = window.vaultLoadContactsSync();
-      if (Array.isArray(allContacts)) {
-        for (var ci = 0; ci < allContacts.length; ci++) {
-          if (allContacts[ci].deviceId === deviceId) {
-            contact = allContacts[ci];
-            break;
-          }
-        }
-      }
-    }
     if (!contact) {
       contact = { nexoId: deviceId, displayName: 'NEXO', deviceId: deviceId };
       if (window.vaultSaveContact) window.vaultSaveContact(contact);
@@ -900,13 +891,11 @@ function _openChatFromNotification(deviceId) {
     if (!contact.name) contact.name = contact.displayName || 'NEXO';
     window.NEXO.app.activeContact = contact;
     
-    // FIX DEFINITIVO: al abrir desde notificacion, forzar conexion BLE igual que al tocar un contacto
     if (window.NEXO.app.bleInterface && typeof window.NEXO.app.bleInterface.openChat === 'function') {
       window.NEXO.app.bleInterface.openChat(deviceId).catch(function(e) {
         console.warn('[MAIN] openChat desde notificacion error:', e);
       });
     } else {
-      // Fallback si bleInterface no esta listo (no deberia pasar)
       if (window.NEXO.app.bleInterface) {
         window.NEXO.app.bleInterface._activeChatDeviceId = deviceId;
       }
@@ -1256,6 +1245,8 @@ function _setupVaultToggle() {
       vault.style.setProperty('visibility', 'hidden', 'important');
       vault.style.setProperty('opacity', '0', 'important');
       vault.style.setProperty('pointer-events', 'none', 'important');
+      vault.style.setProperty('position', 'absolute', 'important');
+      vault.style.setProperty('z-index', '-9999', 'important');
     }
   } catch (e) {}
 }
@@ -1423,7 +1414,7 @@ function _updateMessageStorageStatus(messageId, status) {
 }
 
 //---------------‐----------------------------------‐--------------------
-// FIX NUEVO: _loadPersistedMessages (función huérfana que rompía init)
+// FIX NUEVO: _loadPersistedMessages
 //-----------------------------------------------------------------------
 function _loadPersistedMessages() {
   try {
@@ -1664,7 +1655,11 @@ function _renderMessage(msg, skipSave) {
           var timeEl = document.getElementById(audioId + '_time');
           var waveEl = document.getElementById(audioId + '_wave');
           if (!btn || !audioSrc) return;
-          var audioEl = new Audio(audioSrc);
+          // FIX: usar elemento audio en DOM en vez de new Audio() para permitir cleanup
+          var audioEl = document.createElement('audio');
+          audioEl.src = audioSrc;
+          audioEl.style.display = 'none';
+          contentDiv.appendChild(audioEl);
           var playing = false;
           var progressInterval = null;
           var animInterval = null;
@@ -1773,7 +1768,6 @@ function _updateMessageStatus(messageId, status) {
     var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
     if (!statusEl) return;
 
-    // FIX: Permitir degradación de pending a error
     var priority = { 'error': 0, 'pending': 1, 'sent': 2, 'delivered': 3, 'read': 4 };
     var currentStatus = 'pending';
     if (statusEl.classList.contains('status-read')) currentStatus = 'read';
@@ -1782,7 +1776,6 @@ function _updateMessageStatus(messageId, status) {
     else if (statusEl.classList.contains('status-error')) currentStatus = 'error';
 
     if ((priority[status] || 0) < (priority[currentStatus] || 0)) {
-      // FIX: Siempre permitir pending -> error
       if (!(currentStatus === 'pending' && status === 'error')) {
         console.log('[MAIN] Ignorando degradacion de estado:', currentStatus, '->', status);
         return;
@@ -2012,6 +2005,12 @@ function _setupSwipeBack() {
 }
 function _doChatBack() {
   try {
+    // FIX: Cleanup audio elements para prevenir acumulacion de memoria
+    try {
+      var audios = document.querySelectorAll('audio');
+      audios.forEach(function(a) { a.pause(); a.src = ''; });
+    } catch(ae) {}
+    
     var app = document.getElementById('app');
     var contactsView = document.getElementById('contacts-view');
     var backBtn = document.getElementById('chat-back-btn');
