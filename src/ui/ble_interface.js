@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * BLE Interface v5.2.7-NXID-PURO-VAULT-UNIFICADO-FIXMAC
+ * BLE Interface v5.2.8-FIXES-9-ROBUSTO
  * FIX: _setupNativePayloadListener agregado (función faltante)
  * FIX: _handleIncomingPayload parsea mensajes entrantes del plugin nativo
  * FIX: _processPendingMessages busca cola por NXID y por MAC cruzada
@@ -315,13 +315,13 @@ export class BLEInterface {
     this._notificationFallbackTimers = new Map();
     this.ackSystem = null;
     this._scanCycleTimer = null;
-    this._scanCycleInterval = 30000;
+    this._scanCycleInterval = 15000;
     this._scanCycleDuration = 6000;
     this._advRestartTimer = null;
     this._macToNexoId = new Map();
     this._nexoIdToMac = new Map();
     this._connectCooldowns = new Map();
-    console.log('[BLEInterface] v5.2.7-NXID-PURO-VAULT-UNIFICADO-FIXMAC iniciado');
+    console.log('[BLEInterface] v5.2.8-FIXES-9-ROBUSTO iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -1079,10 +1079,13 @@ export class BLEInterface {
           var lastAttempt = self._connectCooldowns.get(uuid) || 0;
           if (Date.now() - lastAttempt >= 5000) {
             self._connectCooldowns.set(uuid, Date.now());
-            var targetNexoId = uuid; // FIX: pasar NXID directo, nativo resuelve MAC
-            console.log('[BLEInterface] connectToDevice sendChatMessage NXID=' + targetNexoId);
-            if (targetNexoId) {
-              _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetNexoId })
+            // FIX 4: JS resuelve MAC localmente antes de delegar al nativo
+            var knownMac = self._nexoIdToMac.get(uuid);
+            var targetId = knownMac || uuid;
+            var mode = knownMac ? 'MAC' : 'NXID';
+            console.log('[BLEInterface] connectToDevice sendChatMessage ' + mode + '=' + targetId);
+            if (targetId) {
+              _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetId })
                 .catch(function(e) {});
             }
           }
@@ -1148,10 +1151,13 @@ export class BLEInterface {
             var lastAttempt = self._connectCooldowns.get(uuid) || 0;
             if (Date.now() - lastAttempt >= 5000) {
               self._connectCooldowns.set(uuid, Date.now());
-              var targetNexoId = uuid; // FIX: pasar NXID directo, nativo resuelve MAC
-              console.log('[BLEInterface] connectToDevice openChat NXID=' + targetNexoId);
-              if (targetNexoId) {
-                _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetNexoId })
+              // FIX 4: JS resuelve MAC localmente antes de delegar al nativo
+              var knownMac = self._nexoIdToMac.get(uuid);
+              var targetId = knownMac || uuid;
+              var mode = knownMac ? 'MAC' : 'NXID';
+              console.log('[BLEInterface] connectToDevice openChat ' + mode + '=' + targetId);
+              if (targetId) {
+                _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetId })
                   .catch(function(e) {});
               }
             }
@@ -1612,7 +1618,12 @@ export class BLEInterface {
       self._nexoIdToMac.set(normNexo, devMac);
     }
     self.connectedDevices.set(targetId, { id: targetId, name: (device && device.name) || '', direction: 'outgoing', servicesReady: false, deviceUUID: normNexo });
-    return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: targetId })
+    // FIX 4: Si tenemos MAC conocido, pasar MAC directo (modo rápido). Si no, NXID (modo búsqueda).
+    var knownMac = self._nexoIdToMac.get(normNexo);
+    var connectId = knownMac || targetId;
+    var connectMode = knownMac ? 'MAC' : 'NXID';
+    console.log('[BLEInterface] _autoConnectGATT ' + connectMode + '=' + connectId);
+    return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: connectId })
       .then(function(result) {
         if (result && (result.connected || result.alreadyConnected)) {
           return self._waitForReadyToChat(normNexo, 15000).then(function() {});
@@ -1632,6 +1643,14 @@ export class BLEInterface {
   }
   removeContact(deviceUUID) {
     try {
+      var uuid = _normId(deviceUUID);
+      // FIX 6: Limpiar mapas NXID<->MAC al borrar contacto
+      var knownMac = this._nexoIdToMac.get(uuid);
+      if (knownMac) {
+        this._macToNexoId.delete(knownMac);
+        this._nexoIdToMac.delete(uuid);
+        console.log('[BLEInterface] Mapas limpiados para contacto borrado:', uuid, '->', knownMac);
+      }
       _removeBLEContact(deviceUUID);
       this.renderContactsList();
       this.renderNewDeviceBar();
