@@ -121,7 +121,7 @@ class NexoBlePlugin : Plugin() {
     private val PREFS_NAME = "nexo_ble_maps_v2"
     private val PREFS_KEY_NXID_TO_MAC = "nxid_to_mac_v2"
     private val PREFS_KEY_MAC_TO_NXID = "mac_to_nxid_v2"
-    private const val MAP_TTL_MS = 86400000L  // 24 horas
+    private val MAP_TTL_MS = 86400000L  // 24 horas
     // FIX 7: Batch saveNexoIdMaps - solo guardar cuando hay cambios reales
     private var mapsDirty = false
     private val saveMapsRunnable = Runnable {
