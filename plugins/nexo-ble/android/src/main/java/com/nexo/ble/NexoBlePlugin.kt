@@ -75,7 +75,11 @@ class NexoBlePlugin : Plugin() {
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
         private const val NEXO_MAGIC_LOW: Byte = 0x58
         private const val SCAN_DEBOUNCE_MS = 1000L
-        private const val MIN_RSSI = -85
+        private const val MIN_RSSI = -95
+
+        // FIX: Persistencia del propio nexoId en el plugin
+        private const val PREFS_PLUGIN_NAME = "nexo_plugin_prefs"
+        private const val PREFS_KEY_ADVERTISING_ID = "my_nexo_advertising_id"
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
@@ -169,7 +173,7 @@ class NexoBlePlugin : Plugin() {
 
     private fun saveNexoIdMaps() {
         mapsDirty = true
-        mainHandler.removeCallbacks(saveMapsRunnable) // FIX: evitar acumulacion de runnables
+        mainHandler.removeCallbacks(saveMapsRunnable)
         mainHandler.postDelayed(saveMapsRunnable, 5000)
     }
 
@@ -383,6 +387,12 @@ class NexoBlePlugin : Plugin() {
         remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server")
         registerBluetoothStateReceiver()
         loadNexoIdMaps()
+        // FIX: Recuperar mi propio nexoId para advertising
+        val pluginPrefs = activity.getSharedPreferences(PREFS_PLUGIN_NAME, Context.MODE_PRIVATE)
+        nexoAdvertisingId = pluginPrefs.getString(PREFS_KEY_ADVERTISING_ID, null)
+        if (nexoAdvertisingId != null) {
+            remLog("INFO", "LIFECYCLE", "NexoId recuperado de prefs: $nexoAdvertisingId")
+        }
         autoStartGattServerAndAdvertising()
     }
 
@@ -398,6 +408,20 @@ class NexoBlePlugin : Plugin() {
                 .put("source", "onResume")
             )
             autoStartGattServerAndAdvertising()
+            // FIX: Reenviar nexoId al servicio si lo tenemos
+            nexoAdvertisingId?.let { id ->
+                val intent = Intent(ctx, BleService::class.java)
+                intent.putExtra("nexo_advertising_id", id)
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        ctx.startForegroundService(intent)
+                    } else {
+                        ctx.startService(intent)
+                    }
+                } catch (e: Exception) {
+                    remLog("WARN", "LIFECYCLE", "No se pudo reenviar nexoId al servicio: ${e.message}")
+                }
+            }
         }
     }
 
@@ -534,13 +558,13 @@ class NexoBlePlugin : Plugin() {
             } else {
                 ctx.startService(intent)
             }
-            if (!isAdvertisingActive) {
+            if (nexoAdvertisingId != null && !isAdvertisingActive) {
                 isAdvertisingActive = true
-                notifyListeners("onAdvertiseStarted", JSObject().put("started", true).put("source", "auto_start"))
+                notifyListeners("onAdvertiseStarted", JSObject().put("started", true).put("source", "auto_start").put("nexoId", nexoAdvertisingId))
             }
-            remLog("INFO", "AUTO_START", "Advertising auto-iniciado (nexoId=${nexoAdvertisingId})")
+            remLog("INFO", "AUTO_START", "Servicio BleService iniciado (nexoId=${nexoAdvertisingId})")
         } catch (e: Exception) {
-            remLog("WARN", "AUTO_START", "Fallo auto-start advertising: ${e.message}")
+            remLog("WARN", "AUTO_START", "Fallo auto-start servicio: ${e.message}")
         }
     }
 
@@ -1027,7 +1051,6 @@ class NexoBlePlugin : Plugin() {
                     return
                 }
             }
-            // FIX: No encolar en nativo. Rechazar para que JS maneje cola y reintento.
             remLog("WARN", "SEND", "NXID $rawDeviceId no resuelto y sin conexión activa")
             call.reject("Dispositivo no conectado: $rawDeviceId", "DEVICE_NOT_CONNECTED")
             return
@@ -1044,7 +1067,6 @@ class NexoBlePlugin : Plugin() {
             return
         }
 
-        // FIX: No encolar en nativo. Rechazar para que JS maneje cola.
         remLog("WARN", "SEND", "No GATT client ni server para $macNorm")
         call.reject("Dispositivo no conectado: $macNorm", "DEVICE_NOT_CONNECTED")
     }
@@ -1165,7 +1187,7 @@ class NexoBlePlugin : Plugin() {
                         processWriteQueue(macNorm)
                     }
                     writeQueueTimeouts[macNorm] = timeoutRunnable
-                    mainHandler.postDelayed(timeoutRunnable, 3000) // FIX: 200ms -> 3000ms
+                    mainHandler.postDelayed(timeoutRunnable, 3000)
                     return SendResult(true, "gatt_client")
                 }
             } catch (e: Exception) {
@@ -1297,7 +1319,6 @@ class NexoBlePlugin : Plugin() {
                 }
                 val nxid = normalizeNexoId(macToNexoIdMap[macNorm] ?: "")
                 notifyListeners("onServicesReady", JSObject().put("deviceId", address).put("nexoId", nxid).put("servicesReady", true))
-                // FIX: Cola nativa eliminada. JS maneja reenvio.
             }
 
             override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
@@ -1509,16 +1530,29 @@ class NexoBlePlugin : Plugin() {
             return
         }
         nexoAdvertisingId = nexoId
+        // FIX: Persistir nexoId para recuperación tras recreación
+        try {
+            activity.getSharedPreferences(PREFS_PLUGIN_NAME, Context.MODE_PRIVATE)
+                .edit().putString(PREFS_KEY_ADVERTISING_ID, nexoId).apply()
+        } catch (e: Exception) {
+            remLog("WARN", "ADVERTISING", "No se pudo persistir nexoId: ${e.message}")
+        }
+        
         remLog("INFO", "ADVERTISING", "NEXO ID set: $nexoId")
         val ctx = activity.applicationContext
         val intent = Intent(ctx, BleService::class.java)
         intent.putExtra("nexo_advertising_id", nexoId)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ctx.startForegroundService(intent)
-        } else {
-            ctx.startService(intent)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(intent)
+            } else {
+                ctx.startService(intent)
+            }
+            call.resolve(JSObject().put("set", true).put("nexoId", nexoId))
+        } catch (e: Exception) {
+            remLog("ERROR", "ADVERTISING", "Fallo startForegroundService: ${e.message}")
+            call.reject("No se pudo iniciar advertising: ${e.message}", "SERVICE_START_FAILED")
         }
-        call.resolve(JSObject().put("set", true).put("nexoId", nexoId))
     }
 
     @PluginMethod
@@ -1542,6 +1576,14 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun startScan(call: PluginCall) {
         remLog("INFO", "SCAN", "startScan")
+        
+        // FIX: Proteger contra doble scan
+        if (bluetoothScanner != null) {
+            remLog("WARN", "SCAN", "Scan ya en progreso, ignorando")
+            call.resolve(JSObject().put("started", true).put("warning", "already scanning"))
+            return
+        }
+        
         val ctx = activity.applicationContext
         val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
