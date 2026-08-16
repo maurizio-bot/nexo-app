@@ -751,18 +751,46 @@ export class BLEInterface {
     };
     return processNext(0);
   }
-  _sendMessageNative(deviceId, content, messageId) {
+    _sendMessageNative(deviceId, content, messageId) {
     var self = this;
     return new Promise(function(resolve, reject) {
       try {
-        if (!self.nativePlugin) { reject(new Error('Plugin no disponible')); return; }
+        if (!self.nativePlugin) { reject(new Error('Plugin nativo no disponible')); return; }
         if (!deviceId) { reject(new Error('deviceId invalido')); return; }
+        // FIX: Resolver MAC si tenemos NXID antes de pasar al nativo
+        var targetId = deviceId;
+        var normDev = _normId(deviceId);
+        var knownMac = self._nexoIdToMac.get(normDev);
+        if (knownMac) {
+          targetId = knownMac;
+          console.log('[BLEInterface] _sendMessageNative: NXID->MAC resolved', normDev, '->', knownMac);
+        } else {
+          // Si deviceId parece MAC (12 hex chars), usarlo directo
+          var looksLikeMac = /^[0-9A-Fa-f]{12}$/.test(normDev);
+          if (!looksLikeMac) {
+            console.warn('[BLEInterface] _sendMessageNative: No MAC mapping for', normDev, '- passing as-is (may fail)');
+          }
+        }
         var isCtrl = _isControlPacket(content);
         var enrichedPayload;
         if (isCtrl) { enrichedPayload = content; }
         else {
           var senderId = self.localNexoId || self.localDeviceUUID;
           var msgId = messageId || ('msg' + Date.now() + '*' + Math.random().toString(36).substr(2, 9));
+          var payloadObj = {
+            text: content,
+            senderNexoId: senderId,
+            senderName: self.localDeviceName || 'Nexo Device',
+            timestamp: Date.now()
+          };
+          if (content && content.charAt(0) === '{') {
+            try {
+              var parsedContent = JSON.parse(content);
+              if (parsedContent && parsedContent.type === 'attachment') {
+                payloadObj.attachment = parsedContent;
+              }
+            } catch (e) {}
+          }
           enrichedPayload = JSON.stringify({
             v: 1,
             type: 'chat',
@@ -770,17 +798,12 @@ export class BLEInterface {
             to: '',
             ts: Date.now(),
             msgId: msgId,
-            payload: {
-              text: content,
-              senderNexoId: senderId,
-              senderName: self.localDeviceName,
-              timestamp: Date.now()
-            },
+            payload: payloadObj,
             jump: { ttl: 5, hops: 0, path: [] }
           });
         }
         if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
-          _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: deviceId, message: enrichedPayload })
+          _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
             .then(function() { resolve(); }).catch(function(e) { reject(e); });
         } else { reject(new Error('sendMessage no disponible')); }
       } catch (e) { reject(e); }
