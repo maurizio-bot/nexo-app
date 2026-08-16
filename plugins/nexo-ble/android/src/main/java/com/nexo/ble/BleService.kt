@@ -40,7 +40,6 @@ class BleService : Service() {
         private const val ACTION_MESSAGE_RECEIVED = "com.nexo.ble.MESSAGE_RECEIVED"
         private const val EXTRA_NEXO_CHAT_DEVICE_ID = "nexo_chat_device_id"
 
-        // FIX: Persistencia del nexoId para recuperación tras recreación del servicio
         private const val PREFS_NAME = "nexo_ble_service"
         private const val PREF_NEXO_ID = "current_nexo_id"
     }
@@ -50,7 +49,6 @@ class BleService : Service() {
     private var messageReceiver: BroadcastReceiver? = null
     private var bluetoothStateReceiver: BroadcastReceiver? = null
 
-    // FIX: Debounce para evitar race condition de doble onStartCommand
     private val serviceHandler = Handler(Looper.getMainLooper())
     private var isAdvertisingActive = false
     private var pendingRestartRunnable: Runnable? = null
@@ -73,7 +71,6 @@ class BleService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
 
-            // FIX: Recuperar nexoId persistido si el sistema recreó el servicio
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val persistedNexoId = prefs.getString(PREF_NEXO_ID, null)
             if (persistedNexoId != null) {
@@ -93,13 +90,11 @@ class BleService : Service() {
         Log.i(TAG, "onStartCommand action=${intent?.action} startId=$startId")
         val nexoId = intent?.getStringExtra("nexo_advertising_id")
         if (nexoId != null) {
-            // FIX: No reiniciar si mismo ID y advertising ya activo
             if (currentNexoId == nexoId && isAdvertisingActive) {
                 Log.i(TAG, "NEXO ID igual ($nexoId) y advertising activo, ignorando duplicado")
                 return START_STICKY
             }
             currentNexoId = nexoId
-            // FIX: Persistir nexoId para recuperación tras recreación
             getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit().putString(PREF_NEXO_ID, nexoId).apply()
             Log.i(TAG, "NEXO ID recibido y persistido: $nexoId")
@@ -115,7 +110,6 @@ class BleService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         Log.i(TAG, "onTaskRemoved - re-lanzando service")
-        // FIX: Persistir antes de re-lanzar
         currentNexoId?.let { id ->
             getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit().putString(PREF_NEXO_ID, id).apply()
@@ -134,7 +128,6 @@ class BleService : Service() {
         }
     }
 
-    // FIX: Debounce para evitar race condition de doble restart
     private fun restartAdvertising() {
         pendingRestartRunnable?.let {
             serviceHandler.removeCallbacks(it)
@@ -148,7 +141,7 @@ class BleService : Service() {
             startAdvertising()
         }
         pendingRestartRunnable = runnable
-        serviceHandler.postDelayed(runnable, 300)  // 300ms debounce
+        serviceHandler.postDelayed(runnable, 300)
         Log.i(TAG, "restartAdvertising: programado en 300ms")
     }
 
@@ -173,7 +166,6 @@ class BleService : Service() {
             val dataBuilder = AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
 
-            // FIX: Agregar Service UUID para mejor detección cross-device
             dataBuilder.addServiceUuid(android.os.ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
 
             val nexoId = currentNexoId
