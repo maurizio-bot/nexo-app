@@ -166,8 +166,6 @@ class BleService : Service() {
             val dataBuilder = AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
 
-            dataBuilder.addServiceUuid(android.os.ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
-
             val nexoId = currentNexoId
             if (nexoId != null && nexoId.length >= 4) {
                 val manufacturerData = ByteArray(2 + nexoId.length)
