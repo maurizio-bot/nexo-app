@@ -18,9 +18,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
@@ -42,20 +40,12 @@ class BleService : Service() {
 
         private const val PREFS_NAME = "nexo_ble_service"
         private const val PREF_NEXO_ID = "current_nexo_id"
-
-        // Límite duro de advertising legacy = 31 bytes. Usamos máximo 8 chars del nexoId
-        // para dejar margen a Flags (3B) + Company ID (2B) + Magic (2B) + scan response.
-        private const val MAX_ADVERTISING_NEXO_ID_LENGTH = 8
     }
 
     private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
     private var currentNexoId: String? = null
     private var messageReceiver: BroadcastReceiver? = null
     private var bluetoothStateReceiver: BroadcastReceiver? = null
-
-    private val serviceHandler = Handler(Looper.getMainLooper())
-    private var isAdvertisingActive = false
-    private var pendingRestartRunnable: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -80,10 +70,9 @@ class BleService : Service() {
             if (persistedNexoId != null) {
                 currentNexoId = persistedNexoId
                 Log.i(TAG, "NEXO ID recuperado de prefs: $persistedNexoId")
-                restartAdvertising()
-            } else {
-                Log.w(TAG, "onCreate: sin nexoId persistido - advertising NO iniciado hasta recibir uno")
             }
+
+            startAdvertising()
         } catch (e: Exception) {
             Log.e(TAG, "Fatal error in onCreate", e)
             stopSelf()
@@ -91,11 +80,12 @@ class BleService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.i(TAG, "onStartCommand action=${intent?.action} startId=$startId")
+        Log.i(TAG, "onStartCommand action=${intent?.action}")
         val nexoId = intent?.getStringExtra("nexo_advertising_id")
         if (nexoId != null && nexoId.isNotBlank()) {
-            if (currentNexoId == nexoId && isAdvertisingActive) {
-                Log.i(TAG, "NEXO ID igual ($nexoId) y advertising activo, ignorando duplicado")
+            if (currentNexoId == nexoId) {
+                Log.i(TAG, "NEXO ID igual ($nexoId), reanudando advertising")
+                restartAdvertising()
                 return START_STICKY
             }
             currentNexoId = nexoId
@@ -103,8 +93,6 @@ class BleService : Service() {
                 .edit().putString(PREF_NEXO_ID, nexoId).apply()
             Log.i(TAG, "NEXO ID recibido y persistido: $nexoId")
             restartAdvertising()
-        } else if (currentNexoId == null) {
-            Log.w(TAG, "onStartCommand sin nexoId y sin currentNexoId - advertising no iniciado")
         }
         return START_STICKY
     }
@@ -133,30 +121,10 @@ class BleService : Service() {
     }
 
     private fun restartAdvertising() {
-        pendingRestartRunnable?.let {
-            serviceHandler.removeCallbacks(it)
-            Log.i(TAG, "restartAdvertising: cancelando runnable pendiente")
-        }
-        isAdvertisingActive = false
-        val runnable = Runnable {
-            try {
-                bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-            } catch (e: Exception) { }
-            startAdvertising()
-        }
-        pendingRestartRunnable = runnable
-        serviceHandler.postDelayed(runnable, 300)
-        Log.i(TAG, "restartAdvertising: programado en 300ms")
-    }
-
-    /**
-     * Devuelve los últimos N caracteres del nexoId para advertising.
-     * Esto garantiza que el manufacturer data nunca exceda el límite
-     * de 31 bytes del paquete BLE legacy.
-     */
-    private fun getAdvertisingNexoId(fullNexoId: String?): String? {
-        if (fullNexoId.isNullOrBlank() || fullNexoId.length < 4) return null
-        return fullNexoId.takeLast(MAX_ADVERTISING_NEXO_ID_LENGTH)
+        try {
+            bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+        } catch (e: Exception) { }
+        startAdvertising()
     }
 
     private fun startAdvertising() {
@@ -166,11 +134,9 @@ class BleService : Service() {
             val adapter = bluetoothManager.adapter
             if (adapter == null || !adapter.isEnabled) {
                 Log.e(TAG, "Bluetooth adapter not available")
-                isAdvertisingActive = false
                 return
             }
             bluetoothLeAdvertiser = adapter.bluetoothLeAdvertiser
-
             val settings = AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
                 .setConnectable(true)
@@ -182,24 +148,16 @@ class BleService : Service() {
                 .setIncludeDeviceName(false)
 
             val nexoId = currentNexoId
-            val advertisingId = getAdvertisingNexoId(nexoId)
-
-            if (advertisingId != null) {
-                val idBytes = advertisingId.toByteArray(Charsets.UTF_8)
-                val manufacturerData = ByteArray(2 + idBytes.size)
+            if (nexoId != null && nexoId.length >= 4) {
+                val manufacturerData = ByteArray(2 + nexoId.length)
                 manufacturerData[0] = NEXO_MAGIC_HIGH
                 manufacturerData[1] = NEXO_MAGIC_LOW
+                val idBytes = nexoId.toByteArray(Charsets.UTF_8)
                 System.arraycopy(idBytes, 0, manufacturerData, 2, idBytes.size)
-
                 dataBuilder.addManufacturerData(MANUFACTURER_ID, manufacturerData)
-
-                val totalPayloadSize = manufacturerData.size + 2 // +2 por Company ID que añade Android
-                Log.i(TAG, "Advertising con NEXO ID: $nexoId → advertisingId: $advertisingId " +
-                        "(manufacturerData ${manufacturerData.size} bytes, total payload con Company ID: $totalPayloadSize bytes)")
+                Log.i(TAG, "Advertising con NEXO ID: $nexoId (payload ${manufacturerData.size} bytes)")
             } else {
-                Log.w(TAG, "Advertising SIN NEXO ID válido (nexoId=$nexoId) - NO se inicia advertising")
-                isAdvertisingActive = false
-                return
+                Log.w(TAG, "Advertising SIN NEXO ID (no recibido aun)")
             }
 
             val data = dataBuilder.build()
@@ -212,19 +170,14 @@ class BleService : Service() {
             Log.i(TAG, "Advertising iniciado con TX_POWER_HIGH, MODE_LOW_LATENCY")
         } catch (e: Exception) {
             Log.e(TAG, "Error starting advertising", e)
-            isAdvertisingActive = false
         }
     }
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            isAdvertisingActive = true
-            pendingRestartRunnable = null
             Log.i(TAG, "Advertising STARTED")
         }
         override fun onStartFailure(errorCode: Int) {
-            isAdvertisingActive = false
-            pendingRestartRunnable = null
             Log.e(TAG, "Advertising FAILED: $errorCode")
         }
     }
@@ -299,7 +252,6 @@ class BleService : Service() {
                 when (state) {
                     BluetoothAdapter.STATE_OFF -> {
                         Log.w(TAG, "Bluetooth apagado, deteniendo advertising")
-                        isAdvertisingActive = false
                         try {
                             bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
                         } catch (e: Exception) { }
@@ -394,8 +346,6 @@ class BleService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG, "[BLE Svc] onDestroy")
-        isAdvertisingActive = false
-        pendingRestartRunnable?.let { serviceHandler.removeCallbacks(it) }
         try {
             messageReceiver?.let { unregisterReceiver(it) }
         } catch (e: Exception) { }
