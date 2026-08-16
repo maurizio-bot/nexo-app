@@ -407,21 +407,7 @@ class NexoBlePlugin : Plugin() {
                 .put("granted", true)
                 .put("source", "onResume")
             )
-            autoStartGattServerAndAdvertising()
-            // FIX: Reenviar nexoId al servicio si lo tenemos
-            nexoAdvertisingId?.let { id ->
-                val intent = Intent(ctx, BleService::class.java)
-                intent.putExtra("nexo_advertising_id", id)
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        ctx.startForegroundService(intent)
-                    } else {
-                        ctx.startService(intent)
-                    }
-                } catch (e: Exception) {
-                    remLog("WARN", "LIFECYCLE", "No se pudo reenviar nexoId al servicio: ${e.message}")
-                }
-            }
+            autoStartGattServerAndAdvertising()  // Ya incluye nexoAdvertisingId si existe
         }
     }
 
@@ -1600,7 +1586,6 @@ class NexoBlePlugin : Plugin() {
             call.reject("Permiso de scan no concedido")
             return
         }
-        autoStartGattServerAndAdvertising()
         bluetoothScanner = adapter.bluetoothLeScanner
         scanResults.clear()
         val now = System.currentTimeMillis()
