@@ -5,77 +5,9 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.BluetoothGattCharacteristicCharacteristic
-import android.bluetooth.BluetoothGattDescriptor
-importCharacteristic
+import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattServer
-import android.bluetooth.BluetoothGattServerCallback
-import android.bluetooth.BluetoothManager
-import android.bluetooth.BluetoothProfile
-import android.bluetooth.le.BluetoothLeAdvertiser
-import android.bluetooth.le.BluetoothLeScanner
-import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanResult
-import android.bluetooth.le.ScanSettings
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
-import android.os.ParcelUuid
-import android.util.Log
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import com.getcapacitor.JSArray
-import com.getcapacitor.JSObject
-import com.getcapacitor.Plugin
-import com.getcapacitor.PluginCall
-import com.getcapacitor.PluginMethod
-import com.getcapacitor.annotation.CapacitorPlugin
-import com.getcapacitor.annotation.Permission
-import com.getcapacitor.annotation.PermissionCallback
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.nio.charset.Charset
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
-import org.json.JSONObject
-
-@CapacitorPlugin(
-    name = "NexoBLE",
-    permissions = [
-        Permission(strings = [android.Manifest.permission.BLUETOOTH_SCAN], alias = "bluetoothScan"),
-        Permission(strings = [android.Manifest.permission.BLUETOOTH_CONNECT], alias = "bluetoothConnect"),
-        Permission(strings = [android.Manifest.permission.BLUETOOTH_ADVERTISE], alias = "bluetoothAdvertise"),
-        Permission(strings = [android.Manifest.permission.ACCESS_FINE_LOCATION], alias = "location"),
-        Permission(strings = [android.Manifest.permission.POST_NOTIFICATIONS], alias = "postNotifications"),
-        Permission(strings = [android.Manifest.permission.FOREGROUND_SERVICE], alias = "foregroundService"),
-        Permission(strings = [android.Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE], alias = "foregroundServiceConnectedDevice")
-    ]
-)
-class NexoBlePlugin : Plugin() {
-
-    companion object {
-        private const val TAG = "NexoBlePlugin"
-        private const val SCAN_TIMEOUT_MS = 15000L
-        private const val RECONNECT_DELAY_MS = 3000L
-        private const val MAX_RECONNECT_DELAY_MS = 30000L
-        private const val MAX_RECONNECT_ATTEMPTS = 10
-        private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
-        private const val KEEPALIVE_INTERVAL_MS = 10000L
-        private const val MTU_REQUEST = 512
-        private const val MAX_QUEUE_SIZE = 50
-        private const val WRITE_DELAY_MS = 20L
-        private const val MANUFACTURER_ID = 0xFFFF
-        private const val NEXO_MAGIC_HIGH: Byte = 0x4E
-        private const val NEXO_MAGIC_LOW: Byte = 0x android.bluetooth.BluetoothGattServer
 import android.bluetooth.BluetoothGattServerCallback
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
@@ -790,6 +722,7 @@ class NexoBlePlugin : Plugin() {
             call.reject("Error interno: ${e.message}", "INTERNAL_ERROR")
         }
     }
+
     private fun createGattClientCallback(macNorm: String): BluetoothGattCallback {
         return object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
