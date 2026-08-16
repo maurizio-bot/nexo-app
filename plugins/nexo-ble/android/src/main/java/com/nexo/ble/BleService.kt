@@ -42,6 +42,10 @@ class BleService : Service() {
 
         private const val PREFS_NAME = "nexo_ble_service"
         private const val PREF_NEXO_ID = "current_nexo_id"
+
+        // Límite duro de advertising legacy = 31 bytes. Usamos máximo 8 chars del nexoId
+        // para dejar margen a Flags (3B) + Company ID (2B) + Magic (2B) + scan response.
+        private const val MAX_ADVERTISING_NEXO_ID_LENGTH = 8
     }
 
     private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
@@ -77,9 +81,9 @@ class BleService : Service() {
                 currentNexoId = persistedNexoId
                 Log.i(TAG, "NEXO ID recuperado de prefs: $persistedNexoId")
                 restartAdvertising()
+            } else {
+                Log.w(TAG, "onCreate: sin nexoId persistido - advertising NO iniciado hasta recibir uno")
             }
-
-            Log.i(TAG, "onCreate: esperando nexoId via onStartCommand")
         } catch (e: Exception) {
             Log.e(TAG, "Fatal error in onCreate", e)
             stopSelf()
@@ -89,7 +93,7 @@ class BleService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand action=${intent?.action} startId=$startId")
         val nexoId = intent?.getStringExtra("nexo_advertising_id")
-        if (nexoId != null) {
+        if (nexoId != null && nexoId.isNotBlank()) {
             if (currentNexoId == nexoId && isAdvertisingActive) {
                 Log.i(TAG, "NEXO ID igual ($nexoId) y advertising activo, ignorando duplicado")
                 return START_STICKY
@@ -145,6 +149,16 @@ class BleService : Service() {
         Log.i(TAG, "restartAdvertising: programado en 300ms")
     }
 
+    /**
+     * Devuelve los últimos N caracteres del nexoId para advertising.
+     * Esto garantiza que el manufacturer data nunca exceda el límite
+     * de 31 bytes del paquete BLE legacy.
+     */
+    private fun getAdvertisingNexoId(fullNexoId: String?): String? {
+        if (fullNexoId.isNullOrBlank() || fullNexoId.length < 4) return null
+        return fullNexoId.takeLast(MAX_ADVERTISING_NEXO_ID_LENGTH)
+    }
+
     private fun startAdvertising() {
         Log.i(TAG, "startAdvertising...")
         try {
@@ -156,6 +170,7 @@ class BleService : Service() {
                 return
             }
             bluetoothLeAdvertiser = adapter.bluetoothLeAdvertiser
+
             val settings = AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
                 .setConnectable(true)
@@ -167,16 +182,22 @@ class BleService : Service() {
                 .setIncludeDeviceName(false)
 
             val nexoId = currentNexoId
-            if (nexoId != null && nexoId.length >= 4) {
-                val manufacturerData = ByteArray(2 + nexoId.length)
+            val advertisingId = getAdvertisingNexoId(nexoId)
+
+            if (advertisingId != null) {
+                val idBytes = advertisingId.toByteArray(Charsets.UTF_8)
+                val manufacturerData = ByteArray(2 + idBytes.size)
                 manufacturerData[0] = NEXO_MAGIC_HIGH
                 manufacturerData[1] = NEXO_MAGIC_LOW
-                val idBytes = nexoId.toByteArray(Charsets.UTF_8)
                 System.arraycopy(idBytes, 0, manufacturerData, 2, idBytes.size)
+
                 dataBuilder.addManufacturerData(MANUFACTURER_ID, manufacturerData)
-                Log.i(TAG, "Advertising con NEXO ID: $nexoId (manufacturerData ${manufacturerData.size} bytes)")
+
+                val totalPayloadSize = manufacturerData.size + 2 // +2 por Company ID que añade Android
+                Log.i(TAG, "Advertising con NEXO ID: $nexoId → advertisingId: $advertisingId " +
+                        "(manufacturerData ${manufacturerData.size} bytes, total payload con Company ID: $totalPayloadSize bytes)")
             } else {
-                Log.w(TAG, "Advertising SIN NEXO ID (no recibido aun)")
+                Log.w(TAG, "Advertising SIN NEXO ID válido (nexoId=$nexoId) - NO se inicia advertising")
                 isAdvertisingActive = false
                 return
             }
