@@ -18,7 +18,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
@@ -47,6 +49,11 @@ class BleService : Service() {
     private var currentNexoId: String? = null
     private var messageReceiver: BroadcastReceiver? = null
     private var bluetoothStateReceiver: BroadcastReceiver? = null
+
+    // FIX: Debounce para evitar race condition de doble onStartCommand
+    private val serviceHandler = Handler(Looper.getMainLooper())
+    private var isAdvertisingActive = false
+    private var pendingRestartRunnable: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -83,9 +90,14 @@ class BleService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.i(TAG, "onStartCommand action=${intent?.action}")
+        Log.i(TAG, "onStartCommand action=${intent?.action} startId=$startId")
         val nexoId = intent?.getStringExtra("nexo_advertising_id")
         if (nexoId != null) {
+            // FIX: No reiniciar si mismo ID y advertising ya activo
+            if (currentNexoId == nexoId && isAdvertisingActive) {
+                Log.i(TAG, "NEXO ID igual ($nexoId) y advertising activo, ignorando duplicado")
+                return START_STICKY
+            }
             currentNexoId = nexoId
             // FIX: Persistir nexoId para recuperación tras recreación
             getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -122,11 +134,22 @@ class BleService : Service() {
         }
     }
 
+    // FIX: Debounce para evitar race condition de doble restart
     private fun restartAdvertising() {
-        try {
-            bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-        } catch (e: Exception) { }
-        startAdvertising()
+        pendingRestartRunnable?.let {
+            serviceHandler.removeCallbacks(it)
+            Log.i(TAG, "restartAdvertising: cancelando runnable pendiente")
+        }
+        isAdvertisingActive = false
+        val runnable = Runnable {
+            try {
+                bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+            } catch (e: Exception) { }
+            startAdvertising()
+        }
+        pendingRestartRunnable = runnable
+        serviceHandler.postDelayed(runnable, 300)  // 300ms debounce
+        Log.i(TAG, "restartAdvertising: programado en 300ms")
     }
 
     private fun startAdvertising() {
@@ -136,6 +159,7 @@ class BleService : Service() {
             val adapter = bluetoothManager.adapter
             if (adapter == null || !adapter.isEnabled) {
                 Log.e(TAG, "Bluetooth adapter not available")
+                isAdvertisingActive = false
                 return
             }
             bluetoothLeAdvertiser = adapter.bluetoothLeAdvertiser
@@ -149,6 +173,9 @@ class BleService : Service() {
             val dataBuilder = AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
 
+            // FIX: Agregar Service UUID para mejor detección cross-device
+            dataBuilder.addServiceUuid(android.os.ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
+
             val nexoId = currentNexoId
             if (nexoId != null && nexoId.length >= 4) {
                 val manufacturerData = ByteArray(2 + nexoId.length)
@@ -160,6 +187,7 @@ class BleService : Service() {
                 Log.i(TAG, "Advertising con NEXO ID: $nexoId (manufacturerData ${manufacturerData.size} bytes)")
             } else {
                 Log.w(TAG, "Advertising SIN NEXO ID (no recibido aun)")
+                isAdvertisingActive = false
                 return
             }
 
@@ -173,14 +201,19 @@ class BleService : Service() {
             Log.i(TAG, "Advertising iniciado con TX_POWER_HIGH, MODE_LOW_LATENCY")
         } catch (e: Exception) {
             Log.e(TAG, "Error starting advertising", e)
+            isAdvertisingActive = false
         }
     }
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+            isAdvertisingActive = true
+            pendingRestartRunnable = null
             Log.i(TAG, "Advertising STARTED")
         }
         override fun onStartFailure(errorCode: Int) {
+            isAdvertisingActive = false
+            pendingRestartRunnable = null
             Log.e(TAG, "Advertising FAILED: $errorCode")
         }
     }
@@ -255,6 +288,7 @@ class BleService : Service() {
                 when (state) {
                     BluetoothAdapter.STATE_OFF -> {
                         Log.w(TAG, "Bluetooth apagado, deteniendo advertising")
+                        isAdvertisingActive = false
                         try {
                             bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
                         } catch (e: Exception) { }
@@ -262,7 +296,7 @@ class BleService : Service() {
                     }
                     BluetoothAdapter.STATE_ON -> {
                         Log.i(TAG, "Bluetooth encendido, reanudando advertising")
-                        startAdvertising()
+                        restartAdvertising()
                     }
                 }
             }
@@ -349,6 +383,8 @@ class BleService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG, "[BLE Svc] onDestroy")
+        isAdvertisingActive = false
+        pendingRestartRunnable?.let { serviceHandler.removeCallbacks(it) }
         try {
             messageReceiver?.let { unregisterReceiver(it) }
         } catch (e: Exception) { }
