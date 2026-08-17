@@ -120,6 +120,12 @@ export function vaultLoadMessages(contactNexoId) {
     if (!raw) return [];
     var parsed = JSON.parse(raw);
     var msgs = Array.isArray(parsed) ? parsed : [];
+    // FIX: normalizar msgId/messageId al cargar
+    msgs.forEach(function(m) {
+      var mid = m.msgId || m.messageId || m.id || ('msg_' + (m.timestamp || Date.now()));
+      m.msgId = mid;
+      m.messageId = mid;
+    });
     _msgCache.set(contactNexoId, msgs.slice());
     return msgs;
   } catch (e) { return []; }
@@ -139,9 +145,13 @@ export function vaultAppendMessage(contactNexoId, message) {
   if (!contactNexoId || !message) return false;
   return _enqueueMsg(contactNexoId, function() {
     var messages = vaultLoadMessages(contactNexoId);
-    var msgId = message.msgId || message.messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+    var msgId = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+    // FIX: dual-key compatibilidad msgId/messageId
+    message.msgId = msgId;
+    message.messageId = msgId;
     var normalized = {
       msgId: msgId,
+      messageId: msgId,
       text: message.text || message.content || '',
       senderNexoId: message.senderNexoId || message.sender || '',
       senderName: message.senderName || '',
