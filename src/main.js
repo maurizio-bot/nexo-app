@@ -1,10 +1,13 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.2-FASE4
+ * src/main.js - Punto de entrada NEXO v9.9.3-ROBUSTO
  * FIX: _cameraActiveStream declarado explícitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
  * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
  * FIX: ObjectURLs revocados al cerrar fullscreen
  * FIX: _getContactStorageKey usa nexoId cuando está disponible
+ * FIX: msgId/messageId normalizado en _saveMessageToStorage, _updateMessageStorageStatus, _renderMessage
+ * FIX: _sendAttachment guarda en vault inmediatamente
+ * FIX: _loadPersistedMessages normaliza msgId al cargar
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  */
 
@@ -104,7 +107,8 @@ function _sendAttachment(type, payload, meta) {
   };
   var msgId = 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
   var localMsg = {
-    messageId: msgId,
+    msgId: msgId,
+    messageId: msgId,  // FIX: dual-key compatibilidad
     content: JSON.stringify(attachmentData),
     _own: true,
     status: 'pending',
@@ -114,6 +118,11 @@ function _sendAttachment(type, payload, meta) {
     attachmentMeta: meta
   };
   _renderMessage(localMsg);
+  // FIX: guardar en vault inmediatamente
+  try {
+    var cid = _getCurrentContactId();
+    if (cid && window.vaultAppendMessage) vaultAppendMessage(cid, localMsg, true);
+  } catch(e) {}
   var payloadStr = JSON.stringify(attachmentData);
   if (window.bleInterface && window.bleInterface.sendChatMessage) {
     window.bleInterface.sendChatMessage(contactId, payloadStr);
@@ -761,7 +770,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.2-FASE4 iniciando...');
+    console.log('[MAIN] NEXO v9.9.3-ROBUSTO iniciando...');
     console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -1283,14 +1292,18 @@ function _getContactStorageKey() {
 }
 function _saveMessageToStorage(msg) {
   try {
-    if (!msg || !msg.messageId) return;
+    if (!msg) return;
+    // FIX: normalizar msgId/messageId
+    var msgId = msg.msgId || msg.messageId || msg.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+    msg.msgId = msgId;
+    msg.messageId = msgId;
     var contactId = _getCurrentContactId();
     if (contactId) {
       vaultAppendMessage(contactId, msg);
     }
     var key = _getContactStorageKey();
     var messages = JSON.parse(localStorage.getItem(key) || '[]');
-    var exists = messages.some(function(m) { return m.messageId === msg.messageId; });
+    var exists = messages.some(function(m) { return (m.msgId || m.messageId || m.id) === msgId; });
     if (!exists) {
       messages.push(msg);
       if (messages.length > 500) messages = messages.slice(-500);
@@ -1309,7 +1322,7 @@ function _updateMessageStorageStatus(messageId, status) {
     }
     var key = _getContactStorageKey();
     var messages = JSON.parse(localStorage.getItem(key) || '[]');
-    var idx = messages.findIndex(function(m) { return m.messageId === messageId; });
+    var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId || m.id) === messageId; });
     if (idx >= 0) {
       messages[idx].status = status;
       localStorage.setItem(key, JSON.stringify(messages));
@@ -1333,6 +1346,10 @@ function _loadPersistedMessages() {
     var messages = JSON.parse(localStorage.getItem(key) || '[]');
     if (messages.length === 0) return;
     messages.forEach(function(msg) {
+      // FIX: normalizar msgId al cargar
+      var mid = msg.msgId || msg.messageId || msg.id || ('msg_' + (msg.timestamp || Date.now()));
+      msg.msgId = mid;
+      msg.messageId = mid;
       _renderMessage(msg, true);
     });
   } catch (e) {
@@ -1344,9 +1361,10 @@ function _renderMessage(msg, skipSave) {
     if (!msg) return;
     var container = document.getElementById('messages-container');
     if (!container) return;
-        var msgId = msg.messageId || msg._id || msg.id || '';
+    var msgId = msg.msgId || msg.messageId || msg._id || msg.id || '';
     if (!msgId) {
       msgId = 'msg_' + (msg.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 5);
+      msg.msgId = msgId;
       msg.messageId = msgId;
     }
     var existing = document.querySelector('[data-msg-id="' + msgId + '"]');
@@ -1934,4 +1952,3 @@ function _doChatBack() {
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
-
