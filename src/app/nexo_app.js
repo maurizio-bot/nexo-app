@@ -1,8 +1,9 @@
 /**
- * NEXO App v5.0.17-ATTACH-FIX
- * Base: v5.0.16-KEYBOARD-FIX-BACK
- * FIX: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
- * FIX: Eliminado attachment_handlers.js externo, todo integrado en _initInputBarV2
+ * NEXO App v5.0.18-ROBUSTO
+ * Base: v5.0.17-ATTACH-FIX
+ * FIX: Normalización msgId/messageId en todo el pipeline
+ * FIX: Parseo seguro de ACKs sin indexOf frágil
+ * FIX: msgId dual-key en sendMessage, _handleMessage, _saveMessageToVault
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -106,7 +107,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.17-ATTACH-FIX iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.18-ROBUSTO iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -126,7 +127,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.17-ATTACH-FIX Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.18-ROBUSTO Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -312,18 +313,25 @@ class NexoApp {
               if (json.from && !senderUUID) senderUUID = json.from;
             } catch (e) {}
           }
-          if (messageId && content && (content.indexOf('"type":"ack"') !== -1 || content.indexOf('"type":"read_receipt"') !== -1)) {
-            try {
-              var ctrl = JSON.parse(detail.content || detail.data || content);
+          // FIX: parseo seguro de ACKs (evita indexOf frágil en strings JSON)
+          var ctrl = null;
+          try {
+            if (content && content.charAt(0) === '{') ctrl = JSON.parse(content);
+            else if (detail.content && detail.content.charAt(0) === '{') ctrl = JSON.parse(detail.content);
+            else if (detail.data && detail.data.charAt(0) === '{') ctrl = JSON.parse(detail.data);
+          } catch (e) { ctrl = null; }
+          if (ctrl && (ctrl.type === 'ack' || ctrl.type === 'read_receipt')) {
+            var ackMid = ctrl.msgId || ctrl.messageId || ctrl.id || null;
+            if (ackMid) {
               if (ctrl.type === 'ack') {
-                self._handleACK(ctrl.messageId, ctrl.ackType || 'delivered');
+                self._handleACK(ackMid, ctrl.ackType || 'delivered');
                 return;
               }
               if (ctrl.type === 'read_receipt') {
-                self._handleACK(ctrl.messageId, 'read');
+                self._handleACK(ackMid, 'read');
                 return;
               }
-            } catch (ackErr) {}
+            }
           }
           self._handleMessage({
             content: detail.content,
@@ -599,6 +607,10 @@ class NexoApp {
   async _saveMessageToVault(contactId, message) {
     var cid = _normId(contactId);
     if (!cid) return;
+    // FIX: normalizar msgId
+    var mid = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+    message.msgId = mid;
+    message.messageId = mid;
     if (cid.indexOf('nx') !== 0 && window.bleInterface && window.bleInterface.getContacts) {
       var contacts = window.bleInterface.getContacts();
       var found = contacts.find(function(c) { return _normId(c.deviceId) === cid; });
@@ -660,7 +672,9 @@ class NexoApp {
       return false;
     }
     try {
-      var messageId = msg.messageId || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+      var messageId = msg.msgId || msg.messageId || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
+      msg.msgId = messageId;
+      msg.messageId = messageId;
       var isObject = msg && typeof msg === 'object';
       var content = isObject ? (msg.content || msg) : msg;
       var recipient = isObject ? msg.recipient : null;
@@ -737,15 +751,21 @@ class NexoApp {
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
     try {
-      if (msg.messageId) {
+      // FIX: normalizar msgId/messageId
+      var msgId = msg.msgId || msg.messageId || msg.id || null;
+      if (msgId) {
+        msg.msgId = msgId;
+        msg.messageId = msgId;
+      }
+      if (msgId) {
         var now = Date.now();
-        if (this._messageDedupMap.has(msg.messageId)) {
+        if (this._messageDedupMap.has(msgId)) {
           if (source !== 'self') {
-            DEBUG.log('Deduplicado ' + (msg.messageId ? msg.messageId.substring(0, 8) : '') + ' de ' + source, 'debug', 'DEDUP');
+            DEBUG.log('Deduplicado ' + (msgId ? msgId.substring(0, 8) : '') + ' de ' + source, 'debug', 'DEDUP');
           }
           return;
         }
-        this._messageDedupMap.set(msg.messageId, now);
+        this._messageDedupMap.set(msgId, now);
         if (this._messageDedupMap.size > this._maxProcessedIds) {
           var oldestKey = null;
           var oldestTime = Infinity;
@@ -762,7 +782,10 @@ class NexoApp {
           this._messageDedupMap.delete(keysToDelete[i]);
         }
       }
+      // FIX: asegurar msgId normalizado en enriched
       var enriched = Object.assign({}, msg, {
+        msgId: msgId,
+        messageId: msgId,
         _own: !!msg._own,
         _source: source,
         _ts: Date.now(),
@@ -916,4 +939,7 @@ Focos de Interés:
 11. FIX-BACK: Cerrar panel BLE al hacer back desde chat
 12. INPUT BAR v2: Attach menu + Send/Mic toggle
 13. FIX v5.0.17: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
+14. FIX v5.0.18-ROBUSTO: Normalización msgId/messageId en todo pipeline
+15. FIX v5.0.18-ROBUSTO: Parseo seguro de ACKs sin indexOf frágil
+16. FIX v5.0.18-ROBUSTO: msgId dual-key en sendMessage, _handleMessage, vault
 */
