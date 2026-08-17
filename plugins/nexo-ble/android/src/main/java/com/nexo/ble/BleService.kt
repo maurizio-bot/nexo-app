@@ -137,10 +137,15 @@ class BleService : Service() {
             .setConnectable(true)
             .build()
 
+        // Advertisement principal: manufacturer data + nombre corto (truncado por Android si no cabe)
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)
+            .setIncludeDeviceName(true)
             .addManufacturerData(MANUFACTURER_ID, manufacturerData)
-            .addServiceUuid(ParcelUuid(NexoBleSpec.NEXO_SERVICE_UUID))
+            .build()
+
+        // Scan Response: nombre completo del dispositivo (31 bytes extra)
+        val scanResponse = AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
             .build()
 
         advertiseCallback = object : AdvertiseCallback() {
@@ -155,7 +160,7 @@ class BleService : Service() {
         }
 
         try {
-            bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback!!)
+            bluetoothLeAdvertiser?.startAdvertising(settings, data, scanResponse, advertiseCallback!!)
         } catch (e: SecurityException) {
             Log.e(TAG, "SecurityException startAdvertising: ${e.message}")
         } catch (e: Exception) {
