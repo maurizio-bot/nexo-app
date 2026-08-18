@@ -139,7 +139,7 @@ class BleService : Service() {
 
         // Advertisement principal: manufacturer data + nombre corto (truncado por Android si no cabe)
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
+            .setIncludeDeviceName(false)
             .addManufacturerData(MANUFACTURER_ID, manufacturerData)
             .build()
 
