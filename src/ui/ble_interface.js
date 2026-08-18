@@ -1,14 +1,17 @@
 /**
- * BLE Interface v5.2.8-ROBUSTO
+ * BLE Interface v5.2.9-ROBUSTO
  * FIX: Mapas _nexoIdToMac y _macToNexoId declarados en constructor
  * FIX: Mapeo bidireccional en onDeviceFound, onDeviceConnected
- * FIX: _sendMessageNative rechaza si no hay MAC mapping
+ * FIX: _sendMessageNative normaliza MAC (quita :) antes de validar regex
  * FIX: Normalización msgId consistente (msg_ prefix)
  * FIX: data.message fallback en recepción
  * FIX: msgId/messageId normalizado al parsear payload
  * FIX: Dual-key msgId+messageId en sendChatMessage
  * FIX: openChat fuerza connectToDevice con fallback MAC
  * FIX: _autoConnectGATT resuelve MAC antes de conectar
+ * FIX: _getContactByDeviceId normaliza MAC/deviceId
+ * FIX: sendChatMessage usa mappedMac fallback cuando falta deviceId
+ * FIX: onPayloadReceived usa _macToNexoId fallback para resolver remitente
  * FASE4: Hooks vault contactos + mensajes, autoscan conectar/desconectar
  */
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
@@ -155,6 +158,10 @@ function _getDeviceUUID() {
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }
+function _normMac(mac) {
+  // FIX: quita separadores y pasa a lowercase para comparación consistente
+  return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
+}
 function _getBLEContacts() {
   try { var raw = localStorage.getItem(BLE_CONTACTS_STORAGE_KEY); return raw ? JSON.parse(raw) : []; }
   catch (e) { return []; }
@@ -203,7 +210,8 @@ function _getContactByUUID(deviceUUID) {
 }
 function _getContactByDeviceId(deviceId) {
   if (!deviceId) return null;
-  return _getBLEContacts().find(function(c) { return c.deviceId === deviceId; });
+  var nd = _normMac(deviceId);
+  return _getBLEContacts().find(function(c) { return _normMac(c.deviceId) === nd; });
 }
 function _getPinnedContacts() {
   try { var raw = localStorage.getItem(BLE_PINNED_CONTACTS_KEY); return raw ? JSON.parse(raw) : []; }
@@ -365,7 +373,7 @@ export class BLEInterface {
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
     this.ackSystem = null;
-    console.log('[BLEInterface] v5.2.8-ROBUSTO iniciado');
+    console.log('[BLEInterface] v5.2.9-ROBUSTO iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -503,9 +511,10 @@ export class BLEInterface {
         var name = data.name || '';
         var nexoId = data.nexoId || '';
         if (!deviceId) return;
-        if (deviceId && nexoId) {
-          var nd = _normId(deviceId);
-          var nx = _normId(nexoId);
+        // FIX: normalizar MAC antes de guardar en mapas
+        var nd = _normMac(deviceId);
+        var nx = _normId(nexoId);
+        if (nd && nx) {
           self._nexoIdToMac.set(nx, nd);
           self._macToNexoId.set(nd, nx);
         }
@@ -532,6 +541,8 @@ export class BLEInterface {
       try {
         var deviceId = data.deviceId || '';
         if (!deviceId) return;
+        // FIX: normalizar MAC para lookups consistentes
+        var nd = _normMac(deviceId);
         var peerUUID = null;
         var contact = _getContactByDeviceId(deviceId);
         if (contact) peerUUID = contact.deviceUUID;
@@ -544,8 +555,7 @@ export class BLEInterface {
         self._setDeviceState(deviceId, data.role === 'server' ? BLE_STATES.READY_TO_CHAT : BLE_STATES.CONNECTING, {
           direction: data.direction, role: data.role, deviceUUID: peerUUID
         });
-        if (peerUUID && deviceId) {
-          var nd = _normId(deviceId);
+        if (peerUUID && nd) {
           var nx = _normId(peerUUID);
           self._nexoIdToMac.set(nx, nd);
           self._macToNexoId.set(nd, nx);
@@ -681,6 +691,11 @@ export class BLEInterface {
             if (!messageId && json.payload && json.payload.messageId) messageId = json.payload.messageId;
           } catch (e) {}
         }
+        // FIX: fallback _macToNexoId si no se resolvió senderUUID por payload
+        if (!senderUUID) {
+          var nd = _normMac(deviceId);
+          senderUUID = self._macToNexoId.get(nd) || null;
+        }
         if (!senderUUID) {
           var contactByDevice = _getContactByDeviceId(deviceId);
           if (contactByDevice) senderUUID = contactByDevice.deviceUUID;
@@ -787,12 +802,15 @@ export class BLEInterface {
           targetId = knownMac;
           console.log('[BLEInterface] _sendMessageNative: NXID->MAC resolved', normDev, '->', knownMac);
         } else {
-          var looksLikeMac = /^[0-9A-Fa-f]{12}$/.test(normDev);
+          // FIX: normalizar MAC quitando ':' y '-' antes de validar regex
+          var cleanMac = _normMac(normDev);
+          var looksLikeMac = /^[0-9a-f]{12}$/.test(cleanMac);
           if (!looksLikeMac) {
             console.error('[BLEInterface] _sendMessageNative: No MAC mapping for', normDev, '- cannot send');
             reject(new Error('No MAC mapping for NXID ' + normDev));
             return;
           }
+          targetId = cleanMac;
         }
         var isCtrl = _isControlPacket(content);
         var enrichedPayload;
@@ -852,6 +870,14 @@ export class BLEInterface {
             if (_normId(allContacts[i].deviceUUID) === uuid && allContacts[i].deviceId) { deviceId = allContacts[i].deviceId; break; }
           }
         }
+        // FIX: fallback mappedMac si aún no hay deviceId
+        if (!deviceId) {
+          var mappedMac = self._nexoIdToMac.get(uuid);
+          if (mappedMac) {
+            deviceId = mappedMac;
+            console.log('[BLEInterface] sendChatMessage: fallback mappedMac', uuid, '->', mappedMac);
+          }
+        }
         if (!deviceId) { console.error('[BLEInterface] sendChatMessage: No deviceId para UUID', uuid); reject(new Error('Dispositivo no encontrado')); return; }
         if (contact && !contact.deviceId) { contact.deviceId = deviceId; _saveBLEContacts(_getBLEContacts()); }
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
@@ -883,7 +909,9 @@ export class BLEInterface {
         }
         if (isReady) { doSend(); return; }
         enqueueMsg();
+        // FIX: si no está conectando ni listo, forzar conexión nativa
         if (!isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+          console.log('[BLEInterface] sendChatMessage: forcing connectToDevice for', deviceId);
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId })
             .catch(function(e) {});
         }
@@ -1480,9 +1508,9 @@ export class BLEInterface {
     self._setDeviceState(deviceId, BLE_STATES.CONNECTING, { direction: 'outgoing', role: 'client', auto: true });
     self.connectedDevices.set(deviceId, { id: deviceId, name: (device && device.name) || '', direction: 'outgoing', servicesReady: false, deviceUUID: device && device.deviceUUID });
     var connTarget = deviceId;
-    var normTarget = _normId(deviceId);
+    var normTarget = _normMac(deviceId);
     if (!/^[0-9a-f]{12}$/.test(normTarget)) {
-      var mapped = self._nexoIdToMac.get(normTarget);
+      var mapped = self._nexoIdToMac.get(_normId(deviceId));
       if (mapped) connTarget = mapped;
     }
     return _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: connTarget })
