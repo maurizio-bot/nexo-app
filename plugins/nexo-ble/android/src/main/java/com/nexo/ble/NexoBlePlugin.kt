@@ -76,6 +76,7 @@ class NexoBlePlugin : Plugin() {
         private const val NEXO_MAGIC_LOW: Byte = 0x58
         private const val SCAN_DEBOUNCE_MS = 1000L
         private const val MIN_RSSI = -95
+        private const val NXID_MAC_MAP_FILE = "nexo_nxid_mac_map.json"
     }
 
     private var bluetoothGattServer: BluetoothGattServer? = null
@@ -109,6 +110,11 @@ class NexoBlePlugin : Plugin() {
     private val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
     private val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
     private val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
+
+    // === NXID ↔ MAC mapping (RAM + archivo) ===
+    private val nxidToMacMap = ConcurrentHashMap<String, String>()
+    private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
+    private var quickScanResultMac: String? = null
 
     private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
 
@@ -205,10 +211,161 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // === NXID ↔ MAC PERSISTENCE ===
+
+    private fun loadNexoMappings() {
+        try {
+            val file = File(activity.filesDir, NXID_MAC_MAP_FILE)
+            if (!file.exists()) return
+            val content = FileInputStream(file).use { fis ->
+                InputStreamReader(fis, Charsets.UTF_8).use { it.readText() }
+            }
+            val json = JSONObject(content)
+            val mapObj = json.optJSONObject("map") ?: return
+            mapObj.keys().forEach { key ->
+                val value = mapObj.optString(key, "")
+                if (value.isNotEmpty()) {
+                    nxidToMacMap[key.lowercase()] = value.lowercase().replace(":", "").replace("-", "")
+                }
+            }
+            remLog("INFO", "NXID_MAP", "Cargados ${nxidToMacMap.size} mapeos (solo referencia, MAC puede cambiar)")
+        } catch (e: Exception) {
+            remLog("WARN", "NXID_MAP", "Error cargando mapeos: ${e.message}")
+        }
+    }
+
+    private fun saveNexoMappings() {
+        try {
+            val json = JSONObject()
+            val mapObj = JSONObject()
+            nxidToMacMap.forEach { (k, v) -> mapObj.put(k, v) }
+            json.put("map", mapObj)
+            json.put("savedAt", System.currentTimeMillis())
+            val file = File(activity.filesDir, NXID_MAC_MAP_FILE)
+            FileOutputStream(file).use { fos ->
+                OutputStreamWriter(fos, Charsets.UTF_8).use { it.write(json.toString()) }
+            }
+        } catch (e: Exception) {
+            remLog("WARN", "NXID_MAP", "Error guardando mapeos: ${e.message}")
+        }
+    }
+
+    private fun registerNexoMapping(nexoId: String, mac: String) {
+        val nid = nexoId.lowercase().trim()
+        val nmac = normalizeMac(mac)
+        if (nid.isEmpty() || nmac.isEmpty()) return
+        val existing = nxidToMacMap[nid]
+        if (existing == nmac) return
+        nxidToMacMap[nid] = nmac
+        saveNexoMappings()
+        remLog("INFO", "NXID_MAP", "Registrado $nid ↔ $mac")
+    }
+
+    private fun classifyDeviceId(id: String): String {
+        val trimmed = id.trim()
+        if (trimmed.isEmpty()) return "empty"
+        if (trimmed.length == 10 && trimmed.startsWith("NX", ignoreCase = true) &&
+            trimmed.substring(2).all { it.isLetterOrDigit() }) {
+            return "nxid"
+        }
+        val clean = trimmed.replace(":", "").replace("-", "").replace(".", "").lowercase()
+        if (clean.length == 12 && clean.all { it in '0'..'9' || it in 'a'..'f' }) {
+            return "mac"
+        }
+        if (trimmed.matches(Regex("^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$"))) {
+            return "mac"
+        }
+        return "invalid"
+    }
+
+    private fun resolveMacForNexoId(nexoId: String): String? {
+        val nid = nexoId.lowercase().trim()
+
+        // 1. Buscar en scan actual (lo mas fresco)
+        for ((mac, device) in scannedDevices) {
+            // No tenemos el NXID guardado en scannedDevices, pero podemos checkear si la MAC del caché está viva
+        }
+
+        // 2. Si tenemos caché, la usamos SOLO como hint. Pero siempre validamos con scan rápido
+        val cachedMac = nxidToMacMap[nid]
+
+        // 3. Quick scan para obtener MAC actual (la MAC pudo cambiar)
+        remLog("INFO", "NXID_RESOLVE", "Buscando $nid en el aire...")
+        val foundMac = quickScanForNexoId(nid, 5000)
+        if (foundMac != null) {
+            if (foundMac != cachedMac) {
+                remLog("INFO", "NXID_RESOLVE", "MAC cambió para $nid: $cachedMac → $foundMac")
+                registerNexoMapping(nid, foundMac)
+            }
+            return foundMac
+        }
+
+        // 4. Si quickScan falla, usar caché como último recurso (podría ser vieja)
+        if (cachedMac != null) {
+            remLog("WARN", "NXID_RESOLVE", "$nid no encontrado en scan, usando caché: $cachedMac (podría ser vieja)")
+            return cachedMac
+        }
+
+        remLog("WARN", "NXID_RESOLVE", "$nid no resuelto")
+        return null
+    }
+
+    private fun quickScanForNexoId(targetNexoId: String, timeoutMs: Long = 5000): String? {
+        val ctx = activity.applicationContext
+        val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter ?: return null
+        if (!adapter.isEnabled) return null
+        val scanner = adapter.bluetoothLeScanner ?: return null
+
+        quickScanResultMac = null
+        quickScanLatch = java.util.concurrent.CountDownLatch(1)
+
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                result?.device?.let { device ->
+                    val nexoId = extractNexoIdFromScanRecord(result.scanRecord)
+                    if (nexoId != null && nexoId.equals(targetNexoId, ignoreCase = true)) {
+                        val macNorm = normalizeMac(device.address)
+                        quickScanResultMac = macNorm
+                        quickScanLatch?.countDown()
+                        remLog("INFO", "QUICK_SCAN", "Encontrado $targetNexoId en ${device.address}")
+                    }
+                }
+            }
+            override fun onScanFailed(errorCode: Int) {
+                quickScanLatch?.countDown()
+            }
+        }
+
+        try {
+            val settings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build()
+            scanner.startScan(emptyList(), settings, callback)
+        } catch (e: SecurityException) {
+            quickScanLatch?.countDown()
+            return null
+        }
+
+        val found = try {
+            quickScanLatch?.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS) ?: false
+        } catch (e: InterruptedException) {
+            false
+        }
+
+        try { scanner.stopScan(callback) } catch (e: Exception) { }
+        quickScanLatch = null
+
+        return if (found) quickScanResultMac else null
+    }
+
+    // === FIN NXID ↔ MAC ===
+
     override fun load() {
         super.load()
         checkNotificationIntent()
-        remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server")
+        loadNexoMappings()
+        remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server, ${nxidToMacMap.size} mapeos cargados")
         registerBluetoothStateReceiver()
         autoStartGattServerAndAdvertising()
     }
@@ -634,8 +791,31 @@ class NexoBlePlugin : Plugin() {
                 call.reject("deviceId requerido", "INVALID_DEVICE_ID")
                 return
             }
-            val macNorm = normalizeMac(rawDeviceId)
-            remLog("INFO", "GATT_CLIENT", "connectToDevice norm='$macNorm'")
+
+            // === NXID / MAC clasificación y resolución ===
+            val idType = classifyDeviceId(rawDeviceId)
+            if (idType == "invalid") {
+                call.reject("ID invalido: no es NXID ni MAC", "INVALID_DEVICE_ID")
+                return
+            }
+
+            val macNorm: String
+            val resolvedNexoId: String?
+            if (idType == "nxid") {
+                resolvedNexoId = rawDeviceId.trim()
+                val resolvedMac = resolveMacForNexoId(resolvedNexoId)
+                if (resolvedMac == null) {
+                    call.reject("NXID no resuelto a MAC: $rawDeviceId. Intenta escanear primero.", "NXID_UNRESOLVED")
+                    return
+                }
+                macNorm = resolvedMac
+                remLog("INFO", "GATT_CLIENT", "connectToDevice NXID='$resolvedNexoId' → MAC='$macNorm'")
+            } else {
+                macNorm = normalizeMac(rawDeviceId)
+                resolvedNexoId = null
+                remLog("INFO", "GATT_CLIENT", "connectToDevice MAC='$macNorm'")
+            }
+            // === FIN clasificación ===
 
             val existingState = clientConnectionStates[macNorm]
             if (existingState == BluetoothProfile.STATE_CONNECTING) {
@@ -954,8 +1134,17 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun disconnectDevice(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
-        val macNorm = normalizeMac(rawDeviceId)
-        remLog("INFO", "GATT_CLIENT", "disconnectDevice $rawDeviceId")
+        if (rawDeviceId.isEmpty()) {
+            call.reject("deviceId requerido")
+            return
+        }
+        val idType = classifyDeviceId(rawDeviceId)
+        val macNorm = if (idType == "nxid") {
+            resolveMacForNexoId(rawDeviceId.trim()) ?: rawDeviceId.trim().lowercase()
+        } else {
+            normalizeMac(rawDeviceId)
+        }
+        remLog("INFO", "GATT_CLIENT", "disconnectDevice raw=$rawDeviceId resolved=$macNorm")
         reconnectTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         reconnectAttempts.remove(macNorm)
         reconnectDelays.remove(macNorm)
@@ -980,8 +1169,17 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun forceReconnect(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
-        val macNorm = normalizeMac(rawDeviceId)
-        remLog("INFO", "GATT_CLIENT", "forceReconnect $rawDeviceId")
+        if (rawDeviceId.isEmpty()) {
+            call.reject("deviceId requerido")
+            return
+        }
+        val idType = classifyDeviceId(rawDeviceId)
+        val macNorm = if (idType == "nxid") {
+            resolveMacForNexoId(rawDeviceId.trim()) ?: rawDeviceId.trim().lowercase()
+        } else {
+            normalizeMac(rawDeviceId)
+        }
+        remLog("INFO", "GATT_CLIENT", "forceReconnect raw=$rawDeviceId resolved=$macNorm")
         reconnectAttempts[macNorm] = 0
         reconnectDelays.remove(macNorm)
         stopKeepAlive(macNorm)
@@ -1001,8 +1199,17 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun reconnectDevice(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
-        val macNorm = normalizeMac(rawDeviceId)
-        remLog("INFO", "GATT_CLIENT", "reconnectDevice manual $rawDeviceId")
+        if (rawDeviceId.isEmpty()) {
+            call.reject("deviceId requerido")
+            return
+        }
+        val idType = classifyDeviceId(rawDeviceId)
+        val macNorm = if (idType == "nxid") {
+            resolveMacForNexoId(rawDeviceId.trim()) ?: rawDeviceId.trim().lowercase()
+        } else {
+            normalizeMac(rawDeviceId)
+        }
+        remLog("INFO", "GATT_CLIENT", "reconnectDevice manual raw=$rawDeviceId resolved=$macNorm")
         reconnectAttempts[macNorm] = 0
         reconnectDelays.remove(macNorm)
         startAutoReconnect(macNorm)
@@ -1011,14 +1218,34 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun sendMessage(call: PluginCall) {
-        val rawDeviceId = call.getString("deviceId") ?: ""
+        var rawDeviceId = call.getString("deviceId") ?: ""
         val message = call.getString("message") ?: ""
-        val macNorm = normalizeMac(rawDeviceId)
-        remLog("INFO", "SEND", "sendMessage to=$rawDeviceId len=${message.length}")
+
+        // === NXID / MAC clasificación y resolución ===
         if (rawDeviceId.isEmpty()) {
             call.reject("deviceId requerido")
             return
         }
+        val idType = classifyDeviceId(rawDeviceId)
+        if (idType == "invalid") {
+            call.reject("ID invalido: no es NXID ni MAC", "INVALID_DEVICE_ID")
+            return
+        }
+        val macNorm: String
+        if (idType == "nxid") {
+            val resolvedMac = resolveMacForNexoId(rawDeviceId.trim())
+            if (resolvedMac == null) {
+                call.reject("NXID no resuelto a MAC: $rawDeviceId", "NXID_UNRESOLVED")
+                return
+            }
+            macNorm = resolvedMac
+            remLog("INFO", "SEND", "sendMessage NXID='$rawDeviceId' → MAC='$macNorm' len=${message.length}")
+        } else {
+            macNorm = normalizeMac(rawDeviceId)
+            remLog("INFO", "SEND", "sendMessage MAC='$macNorm' len=${message.length}")
+        }
+        // === FIN clasificación ===
+
         val result = sendChunkedOrSingle(macNorm, rawDeviceId, message)
         if (result.sent) {
             call.resolve(JSObject().put("sent", true).put("mode", result.mode).put("deviceId", rawDeviceId))
@@ -1317,6 +1544,10 @@ class NexoBlePlugin : Plugin() {
                 scannedDevices[macNorm] = device
 
                 val nexoId = extractNexoIdFromScanRecord(result.scanRecord)
+
+                if (nexoId != null) {
+                    registerNexoMapping(nexoId, addr)
+                }
 
                 remLog("INFO", "SCAN", "Device found: $name ($addr) NEXO=$nexoId rssi=$rssi - cacheado")
 
