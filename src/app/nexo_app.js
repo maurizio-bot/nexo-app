@@ -1,9 +1,9 @@
 /**
- * NEXO App v5.0.18-ROBUSTO
- * Base: v5.0.17-ATTACH-FIX
- * FIX: Normalización msgId/messageId en todo el pipeline
- * FIX: Parseo seguro de ACKs sin indexOf frágil
- * FIX: msgId dual-key en sendMessage, _handleMessage, _saveMessageToVault
+ * NEXO App v5.0.19-FINAL
+ * Base: v5.0.18-ROBUSTO
+ * FIX: Escucha nexo:ble:ackStatus para palomitas entregado
+ * FIX: Timeout BLE 25s para dar margen a reintentos ACK
+ * FIX: Marcar 'failed' en UI cuando BLE definitivamente falla
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -103,11 +103,12 @@ class NexoApp {
     this.activeContact = null;
     this._bleChatHandler = null;
     this._bleMessageHandler = null;
+    this._ackStatusHandler = null;
     this._messageDedupMap = new Map();
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.18-ROBUSTO iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.19-FINAL iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -127,7 +128,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.18-ROBUSTO Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.19-FINAL Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -352,6 +353,15 @@ class NexoApp {
         }
       };
       window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
+
+      // FIX: escuchar ACKs del BleAckSystem para actualizar palomitas en UI
+      this._ackStatusHandler = function(e) {
+        if (e.detail && e.detail.msgId && e.detail.status) {
+          self._updateMessageStatus(e.detail.msgId, e.detail.status);
+        }
+      };
+      window.addEventListener('nexo:ble:ackStatus', this._ackStatusHandler);
+
     } catch (err) { DEBUG.error('UI_004', 'BLE UI init failed: ' + (err.message || 'unknown')); this.bleInterface = null; }
   }
 
@@ -697,12 +707,15 @@ class NexoApp {
       if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
         try {
           console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
-          await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 15000, 'BLE.sendChatMessage');
+          // FIX: timeout 25s para dar margen a BleAckSystem (3 reintentos × 6s = 18s + delays)
+          await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 25000, 'BLE.sendChatMessage');
           DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
           this._updateMessageStatus(messageId, 'sent');
           return true;
         } catch (e) {
           DEBUG.warn('BLE directo fallo: ' + (e.message || 'unknown'), 'MSG_BLE_FAIL');
+          // FIX: marcar como failed en la UI para que el usuario sepa
+          this._updateMessageStatus(messageId, 'failed');
         }
       }
       var nordicPeers = this.nordicMesh && this.nordicMesh.getPeers ? this.nordicMesh.getPeers() : [];
@@ -831,6 +844,10 @@ class NexoApp {
       try { window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler); } catch(e) {}
       this._bleMessageHandler = null;
     }
+    if (this._ackStatusHandler) {
+      try { window.removeEventListener('nexo:ble:ackStatus', this._ackStatusHandler); } catch(e) {}
+      this._ackStatusHandler = null;
+    }
     if (this.bleInterface) {
       try { this.bleInterface.destroy(); } catch(e) {}
       this.bleInterface = null;
@@ -942,4 +959,7 @@ Focos de Interés:
 14. FIX v5.0.18-ROBUSTO: Normalización msgId/messageId en todo pipeline
 15. FIX v5.0.18-ROBUSTO: Parseo seguro de ACKs sin indexOf frágil
 16. FIX v5.0.18-ROBUSTO: msgId dual-key en sendMessage, _handleMessage, vault
+17. FIX v5.0.19-FINAL: Escucha nexo:ble:ackStatus para palomitas entregado
+18. FIX v5.0.19-FINAL: Timeout BLE 25s para dar margen a reintentos ACK
+19. FIX v5.0.19-FINAL: Marcar 'failed' en UI cuando BLE definitivamente falla
 */
