@@ -1,6 +1,6 @@
 /**
  * ble_ack.js — Sistema ACK real + fragmentación para NEXO
- * v1.0.1-FIX: receivedAcks ahora se usa para deduplicación real de ACKs entrantes
+ * v1.0.2-FIX: processIncomingAck ahora acepta msgId, messageId o id (dual-key)
  */
 export class BleAckSystem {
   constructor(bleInterface) {
@@ -76,20 +76,21 @@ export class BleAckSystem {
   processIncomingAck(content) {
     try {
       var ack = JSON.parse(content);
-      if (ack.type !== 'ack' || !ack.msgId) return false;
-      // FIX v1.0.1: deduplicar ACKs entrantes para no procesar el mismo ACK múltiples veces
-      if (this.receivedAcks.has(ack.msgId)) return true;
-      this.receivedAcks.add(ack.msgId);
+      var ackMsgId = ack.msgId || ack.messageId || ack.id || null;
+      if (ack.type !== 'ack' || !ackMsgId) return false;
+      // FIX v1.0.2: deduplicar ACKs entrantes para no procesar el mismo ACK múltiples veces
+      if (this.receivedAcks.has(ackMsgId)) return true;
+      this.receivedAcks.add(ackMsgId);
       if (this.receivedAcks.size > this.maxReceivedAcks) {
         var first = this.receivedAcks.values().next().value;
         this.receivedAcks.delete(first);
       }
-      var entry = this.pendingAcks.get(ack.msgId);
+      var entry = this.pendingAcks.get(ackMsgId);
       if (entry) {
         clearTimeout(entry.timer);
-        this.pendingAcks.delete(ack.msgId);
+        this.pendingAcks.delete(ackMsgId);
         entry.resolve();
-        this._dispatchStatus(ack.msgId, 'delivered');
+        this._dispatchStatus(ackMsgId, 'delivered');
       }
       return true;
     } catch (e) {
