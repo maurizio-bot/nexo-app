@@ -69,7 +69,7 @@ class NexoBlePlugin : Plugin() {
         private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
-        private const val MAX_QUEUE_SIZE = 50
+        private const val MAX_QUEUE_SIZE = 500
         private const val WRITE_DELAY_MS = 20L
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
