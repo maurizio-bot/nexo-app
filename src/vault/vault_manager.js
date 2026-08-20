@@ -34,7 +34,7 @@ export function vaultLoadContacts() {
 export function vaultSaveContact(contact) {
   try {
     var contacts = vaultLoadContacts();
-    var idx = contacts.findIndex(function(c) { return c.nexoId === contact.nexoId; });
+    var idx = contacts.findIndex(function(c) { return _normId(c.nexoId) === _normId(contact.nexoId); });
     var now = Date.now();
     var normalized = {
       nexoId: contact.nexoId || '',
@@ -153,12 +153,16 @@ export function vaultAppendMessage(contactNexoId, message) {
       msgId: msgId,
       messageId: msgId,
       text: message.text || message.content || '',
+      content: message.content || message.text || '',
       senderNexoId: message.senderNexoId || message.sender || '',
       senderName: message.senderName || '',
       timestamp: message.timestamp || message.ts || Date.now(),
       status: message.status || 'pending',
       _own: !!message._own,
-      type: message.type || 'text'
+      type: message.type || 'text',
+      attachmentType: message.attachmentType || null,
+      attachmentPayload: message.attachmentPayload || null,
+      attachmentMeta: message.attachmentMeta || null
     };
     var existingIdx = messages.findIndex(function(m) { return m.msgId === normalized.msgId; });
     if (existingIdx >= 0) {
