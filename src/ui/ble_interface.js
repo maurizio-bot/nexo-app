@@ -404,6 +404,17 @@ export class BLEInterface {
     _loadContactsFromVault().then(function(contacts) {
       if (contacts && contacts.length > 0) {
         try { localStorage.setItem(BLE_CONTACTS_STORAGE_KEY, JSON.stringify(contacts)); } catch (e) {}
+        // FIX: reconstruir mapas NXID↔MAC desde contactos persistidos
+        contacts.forEach(function(c) {
+          if (c.deviceId && c.deviceUUID) {
+            var nd = _normMac(c.deviceId);
+            var nx = _normId(c.deviceUUID);
+            if (nd && nx) {
+              self._nexoIdToMac.set(nx, nd);
+              self._macToNexoId.set(nd, nx);
+            }
+          }
+        });
       }
       self._continueInit();
     }).catch(function() { self._continueInit(); });
@@ -946,6 +957,13 @@ export class BLEInterface {
           self.foundDevices.forEach(function(d) { if (!deviceId && _normId(d.deviceUUID) === uuid) deviceId = d.id; });
           self.connectedDevices.forEach(function(d) { if (!deviceId && _normId(d.deviceUUID) === uuid) deviceId = d.id; });
         }
+        if (!deviceId) {
+          var mappedMac = self._nexoIdToMac.get(uuid);
+          if (mappedMac) {
+            deviceId = mappedMac;
+            console.log('[BLEInterface] openChat: using mapped MAC', mappedMac);
+          }
+        }
         if (!deviceId) { reject(new Error('Dispositivo no conectado')); return; }
         self._activeChatDeviceId = uuid; self._activeChatDeviceIdNative = deviceId;
         self.newDevicesCount = 0; self.updateBadge();
@@ -982,15 +1000,7 @@ export class BLEInterface {
               .catch(function(e) {});
           }
         }
-        // FIX: si aún no hay deviceId resuelto, intentar conectar por MAC mapeada
-        if (!isFullyReady && !deviceId) {
-          var mappedMac = self._nexoIdToMac.get(uuid);
-          if (mappedMac && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
-            console.log('[BLEInterface] openChat: fallback connect via mapped MAC', mappedMac);
-            _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: mappedMac })
-              .catch(function(e) {});
-          }
-        }
+        // FIX: fallback mappedMac movido arriba (antes del reject)
       } catch (fatalErr) { console.error('[BLEInterface] FATAL openChat:', fatalErr); reject(fatalErr); }
     });
   }
