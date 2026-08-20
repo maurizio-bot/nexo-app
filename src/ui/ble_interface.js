@@ -12,6 +12,7 @@
  * FIX: _getContactByDeviceId normaliza MAC/deviceId
  * FIX: sendChatMessage usa mappedMac fallback cuando falta deviceId
  * FIX: onPayloadReceived usa _macToNexoId fallback para resolver remitente
+ * FIX: _processPendingMessages busca cola por MAC o NXID (cola desincronizada)
  * FASE4: Hooks vault contactos + mensajes, autoscan conectar/desconectar
  */
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
@@ -781,7 +782,12 @@ export class BLEInterface {
   _processPendingMessages(deviceId) {
     var self = this;
     if (!deviceId) return Promise.resolve();
+    // FIX: buscar cola por MAC o por NXID mapeado (cola desincronizada)
     var queue = this._pendingMessageQueue.get(deviceId);
+    if (!queue) {
+      var nx = self._macToNexoId.get(_normMac(deviceId));
+      if (nx) queue = self._pendingMessageQueue.get(nx);
+    }
     if (!queue || queue.length === 0) return Promise.resolve();
     this._pendingMessageQueue.delete(deviceId);
     var processNext = function(idx) {
