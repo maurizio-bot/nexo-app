@@ -1,5 +1,5 @@
 /**
- * BLE Interface v5.2.12-SUPERVISOR
+ * BLE Interface v5.2.13-OFFLINEFIX
  * FIX: Mapas _nexoIdToMac y _macToNexoId declarados en constructor
  * FIX: Mapeo bidireccional en onDeviceFound, onDeviceConnected
  * FIX: _sendMessageNative normaliza MAC (quita :) antes de validar regex
@@ -19,6 +19,8 @@
  * FIX 2: Cleanup estados viejos al iniciar (>10s)
  * FIX 3: Reenvío automático de pending al abrir chat
  * FIX 4: Timeout forzado en _autoConnectGATT (>8s en CONNECTING)
+ * OFFLINEFIX 1: Flush del vault al reconectar (onNotificationsEnabled)
+ * OFFLINEFIX 2: Evitar reenvío doble — actualizar status a 'sent' en vault tras reenvío
  */
 var BLE_CONTACTS_STORAGE_KEY = 'nexo_ble_contacts_v2';
 var BLE_UUID_STORAGE_KEY = 'nexo_device_uuid';
@@ -280,6 +282,23 @@ function _isControlPacket(content) {
 }
 
 // === FASE4: HELPERS VAULT (fallback a localStorage si no existe vault_manager.js) ===
+function _vaultUpdateMessageStatus(nexoId, msgId, status) {
+  try {
+    if (window.vaultUpdateMessageStatus && typeof window.vaultUpdateMessageStatus === 'function') {
+      return window.vaultUpdateMessageStatus(nexoId, msgId, status);
+    }
+  } catch (e) {}
+  try {
+    var key = 'nexo_messages_' + _normId(nexoId);
+    var messages = JSON.parse(localStorage.getItem(key) || '[]');
+    var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId || m.id) === msgId; });
+    if (idx >= 0) {
+      messages[idx].status = status;
+      localStorage.setItem(key, JSON.stringify(messages));
+    }
+  } catch (e) {}
+  return Promise.resolve();
+}
 function _vaultGetOrCreateContact(nexoId, displayName, deviceName) {
   try {
     if (window.vaultGetOrCreateContact && typeof window.vaultGetOrCreateContact === 'function') {
@@ -398,7 +417,7 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.2.12-SUPERVISOR iniciado');
+    console.log('[BLEInterface] v5.2.13-OFFLINEFIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -853,6 +872,11 @@ export class BLEInterface {
         self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: peerUUID });
         self._resolveReadyToChat(deviceId);
         self._processPendingMessages(deviceId);
+        // FIX 1: Flush del vault al reconectar — leer pending persistidos y reenviar
+        var nxFlush = self._macToNexoId.get(_normMac(deviceId));
+        if (nxFlush) {
+          setTimeout(function() { self._resendPendingMessages(nxFlush); }, 300);
+        }
         // Resetear supervisor al estar listo
         self._pingFailCount.set(deviceId, 0);
         self._lastPongTime.set(deviceId, Date.now());
@@ -889,7 +913,7 @@ export class BLEInterface {
       try {
         var deviceId = data.deviceId || '';
         if (!deviceId) return;
-        // Cualquier payload recibido es señal de conexión viva — actualizar supervisor
+        // Cualquier payload recibido es señal de conexion viva — actualizar supervisor
         self._lastPongTime.set(deviceId, Date.now());
         self._pingFailCount.set(deviceId, 0);
         var source = data.source || 'unknown';
@@ -1311,12 +1335,19 @@ export class BLEInterface {
           self.ackSystem.sendWithRetry(deviceId, msg.content || msg.text || '', mid)
             .then(function() {
               console.log('[BLEInterface] Pending reenviado OK:', mid);
+              // FIX 2: Evitar reenvío doble — marcar como sent en vault
+              _vaultUpdateMessageStatus(nexoId, mid, 'sent');
             })
             .catch(function(e) {
               console.warn('[BLEInterface] Pending reenvio fallo:', mid, e.message);
             });
         } else {
-          self._sendMessageNative(deviceId, msg.content || msg.text || '', mid).catch(function(e) {});
+          self._sendMessageNative(deviceId, msg.content || msg.text || '', mid)
+            .then(function() {
+              // FIX 2: Evitar reenvío doble — marcar como sent en vault
+              _vaultUpdateMessageStatus(nexoId, mid, 'sent');
+            })
+            .catch(function(e) {});
         }
       });
     }).catch(function(e) {
