@@ -1,5 +1,6 @@
 /**
- * ble_ack.js — Sistema ACK real + fragmentación para NEXO
+ * ble_ack.js — Sistema ACK real + fragmentación de archivos para NEXO
+ * v1.1.0: sendFile robusto con batches de 5 chunks + reenvío de batch + progreso
  * v1.0.2-FIX: processIncomingAck ahora acepta msgId, messageId o id (dual-key)
  */
 export class BleAckSystem {
@@ -13,6 +14,8 @@ export class BleAckSystem {
     this.chunkSize = 400;
     this.pendingFragments = new Map();
     this.maxFragmentAge = 300000;
+    // v1.1.0: trackeo de envíos de archivos activos
+    this.pendingOutgoingFiles = new Map();
     this._startCleanupInterval();
   }
 
@@ -78,7 +81,6 @@ export class BleAckSystem {
       var ack = JSON.parse(content);
       var ackMsgId = ack.msgId || ack.messageId || ack.id || null;
       if (ack.type !== 'ack' || !ackMsgId) return false;
-      // FIX v1.0.2: deduplicar ACKs entrantes para no procesar el mismo ACK múltiples veces
       if (this.receivedAcks.has(ackMsgId)) return true;
       this.receivedAcks.add(ackMsgId);
       if (this.receivedAcks.size > this.maxReceivedAcks) {
@@ -111,57 +113,124 @@ export class BleAckSystem {
     }
   }
 
+  // ========== v1.1.0: ENVÍO DE ARCHIVOS ROBUSTO ==========
+
   sendFile(deviceId, fileId, base64Data, meta) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var chunks = self._splitIntoChunks(base64Data, self.chunkSize);
       var total = chunks.length;
+      if (total === 0) { reject(new Error('Archivo vacio')); return; }
+
+      var senderId = (self.ble && self.ble.localNexoId) ? self.ble.localNexoId : ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
+
+      // Registrar envío activo para posible reanudación
+      self.pendingOutgoingFiles.set(fileId, {
+        deviceId: deviceId,
+        chunks: chunks,
+        total: total,
+        sent: 0,
+        meta: meta || {},
+        senderId: senderId,
+        startTime: Date.now()
+      });
+
       var fileMeta = {
         v: 1,
         type: 'file_meta',
         fileId: fileId,
         totalChunks: total,
         meta: meta || {},
-        from: (self.ble && self.ble.localNexoId) ? self.ble.localNexoId : ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown'),
+        from: senderId,
         ts: Date.now()
       };
+
+      // Enviar meta con ACK
       self.sendWithRetry(deviceId, JSON.stringify(fileMeta), 'meta_' + fileId)
         .then(function() {
-          var sent = 0;
-          function sendNext() {
-            if (sent >= total) {
+          self._dispatchFileProgress(fileId, 0, total, 'sending');
+          // Enviar por batches de 5 chunks
+          var batchSize = 5;
+          var currentBatch = 0;
+
+          function sendBatch() {
+            var start = currentBatch * batchSize;
+            if (start >= total) {
+              // Terminado
+              self.pendingOutgoingFiles.delete(fileId);
+              self._dispatchFileProgress(fileId, total, total, 'sent');
               resolve();
               return;
             }
-            var chunkPayload = {
-              v: 1,
-              type: 'file_chunk',
-              fileId: fileId,
-              idx: sent,
-              total: total,
-              data: chunks[sent],
-              from: (self.ble && self.ble.localNexoId) ? self.ble.localNexoId : ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown')
-            };
-            var isBatchEnd = ((sent + 1) % 5 === 0) || (sent === total - 1);
-            var msgId = 'chunk_' + fileId + '_' + sent;
-            if (isBatchEnd) {
-              self.sendWithRetry(deviceId, JSON.stringify(chunkPayload), msgId)
-                .then(function() { sent++; sendNext(); })
-                .catch(function(err) { reject(err); });
-            } else {
-              if (self.ble && typeof self.ble._sendMessageNative === 'function') {
-                self.ble._sendMessageNative(deviceId, JSON.stringify(chunkPayload), msgId)
-                  .then(function() { sent++; sendNext(); })
-                  .catch(function(err) { reject(err); });
-              } else {
-                reject(new Error('BLE interface no disponible'));
-              }
+            var end = Math.min(start + batchSize, total);
+            var batchChunks = [];
+            for (var i = start; i < end; i++) {
+              batchChunks.push({
+                v: 1,
+                type: 'file_chunk',
+                fileId: fileId,
+                idx: i,
+                total: total,
+                data: chunks[i],
+                from: senderId
+              });
             }
+            // Enviar todos los chunks del batch directo
+            var sendPromises = [];
+            for (var j = 0; j < batchChunks.length - 1; j++) {
+              (function(chunkPayload) {
+                sendPromises.push(
+                  self.ble._sendMessageNative(deviceId, JSON.stringify(chunkPayload), 'chunk_' + fileId + '_' + chunkPayload.idx)
+                    .catch(function(e) { return { failed: true, error: e }; })
+                );
+              })(batchChunks[j]);
+            }
+            // El último chunk del batch va con ACK (sendWithRetry)
+            var lastChunk = batchChunks[batchChunks.length - 1];
+            var lastMsgId = 'chunk_' + fileId + '_' + lastChunk.idx;
+
+            // Esperar a que todos los chunks directos se envíen
+            Promise.all(sendPromises).then(function(results) {
+              var anyFailed = results.some(function(r) { return r && r.failed; });
+              if (anyFailed) {
+                // Algun chunk directo falló, reintentar todo el batch
+                console.warn('[BleAckSystem] Batch fallo, reintentando batch', currentBatch);
+                setTimeout(function() { sendBatch(); }, 1000);
+                return;
+              }
+              // Enviar último chunk con ACK
+              self.sendWithRetry(deviceId, JSON.stringify(lastChunk), lastMsgId)
+                .then(function() {
+                  currentBatch++;
+                  var sentCount = Math.min(currentBatch * batchSize, total);
+                  var progress = Math.floor((sentCount / total) * 100);
+                  self._dispatchFileProgress(fileId, sentCount, total, 'sending', progress);
+                  // Actualizar tracking
+                  var track = self.pendingOutgoingFiles.get(fileId);
+                  if (track) track.sent = sentCount;
+                  setTimeout(function() { sendBatch(); }, 50);
+                })
+                .catch(function(err) {
+                  // ACK del batch no llegó, reintentar batch completo
+                  console.warn('[BleAckSystem] ACK batch no recibido, reintentando batch', currentBatch);
+                  setTimeout(function() { sendBatch(); }, 1000);
+                });
+            });
           }
-          sendNext();
+
+          sendBatch();
         })
-        .catch(function(err) { reject(err); });
+        .catch(function(err) {
+          self.pendingOutgoingFiles.delete(fileId);
+          self._dispatchFileProgress(fileId, 0, total, 'failed');
+          reject(err);
+        });
     });
+  }
+
+  cancelFileSend(fileId) {
+    this.pendingOutgoingFiles.delete(fileId);
+    this._dispatchFileProgress(fileId, 0, 0, 'cancelled');
   }
 
   _splitIntoChunks(str, size) {
@@ -177,6 +246,7 @@ export class BleAckSystem {
       var deviceId = dataObj.deviceId;
       var content = dataObj.content;
       var msg = JSON.parse(content);
+
       if (msg.type === 'file_meta') {
         this.pendingFragments.set(msg.fileId, {
           chunks: new Map(),
@@ -186,11 +256,14 @@ export class BleAckSystem {
           lastActivity: Date.now()
         });
         this.sendAck(deviceId, msg.fileId);
+        this._dispatchFileProgress(msg.fileId, 0, msg.totalChunks, 'receiving');
         return true;
       }
+
       if (msg.type === 'file_chunk') {
         var buf = this.pendingFragments.get(msg.fileId);
         if (!buf) {
+          // No tenemos el meta, pedir reanudación
           this._requestResume(deviceId, msg.fileId);
           return true;
         }
@@ -199,9 +272,12 @@ export class BleAckSystem {
           buf.received++;
           buf.lastActivity = Date.now();
         }
+        // ACK cada 5 chunks o al final
         if ((msg.idx + 1) % 5 === 0 || msg.idx === msg.total - 1) {
           this.sendAck(deviceId, msg.fileId + '_' + msg.idx);
         }
+        var progress = Math.floor((buf.received / buf.total) * 100);
+        this._dispatchFileProgress(msg.fileId, buf.received, buf.total, 'receiving', progress);
         if (buf.received >= buf.total) {
           var assembled = '';
           for (var i = 0; i < buf.total; i++) {
@@ -209,9 +285,24 @@ export class BleAckSystem {
           }
           this.pendingFragments.delete(msg.fileId);
           this._dispatchFileComplete(msg.fileId, assembled, buf.meta);
+          this._dispatchFileProgress(msg.fileId, buf.total, buf.total, 'received', 100);
         }
         return true;
       }
+
+      if (msg.type === 'file_resume') {
+        // El receptor pide reanudación — reenviar desde el chunk 0
+        // (simplificación: reenviamos todo el archivo)
+        var track = this.pendingOutgoingFiles.get(msg.fileId);
+        if (track) {
+          console.log('[BleAckSystem] Reanudando archivo', msg.fileId);
+          // Reconstruir y reenviar
+          self.sendFile(deviceId, msg.fileId, track.chunks.join(''), track.meta)
+            .catch(function() {});
+        }
+        return true;
+      }
+
       return false;
     } catch (e) {
       return false;
@@ -236,9 +327,19 @@ export class BleAckSystem {
     } catch (e) {}
   }
 
+  _dispatchFileProgress(fileId, sent, total, status, percent) {
+    try {
+      window.dispatchEvent(new CustomEvent('nexo:ble:fileProgress', {
+        detail: { fileId: fileId, sent: sent, total: total, status: status, percent: percent || 0 }
+      }));
+    } catch (e) {}
+  }
+
   _dispatchFileComplete(fileId, data, meta) {
     try {
-      window.dispatchEvent(new CustomEvent('nexo:ble:fileComplete', { detail: { fileId: fileId, data: data, meta: meta } }));
+      window.dispatchEvent(new CustomEvent('nexo:ble:fileComplete', {
+        detail: { fileId: fileId, data: data, meta: meta }
+      }));
     } catch (e) {}
   }
 
@@ -256,6 +357,12 @@ export class BleAckSystem {
           clearTimeout(entry.timer);
           self.pendingAcks.delete(msgId);
           try { entry.reject(new Error('Timeout global')); } catch(e) {}
+        }
+      });
+      // v1.1.0: limpiar envíos de archivo viejos
+      self.pendingOutgoingFiles.forEach(function(track, fileId) {
+        if (now - track.startTime > self.maxFragmentAge) {
+          self.pendingOutgoingFiles.delete(fileId);
         }
       });
     }, 30000);
