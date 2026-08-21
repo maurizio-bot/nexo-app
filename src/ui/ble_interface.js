@@ -1,5 +1,5 @@
 /**
- * BLE Interface v5.2.10-ROBUSTO
+ * BLE Interface v5.2.11-FILES
  * FIX: Mapas _nexoIdToMac y _macToNexoId declarados en constructor
  * FIX: Mapeo bidireccional en onDeviceFound, onDeviceConnected
  * FIX: _sendMessageNative normaliza MAC (quita :) antes de validar regex
@@ -374,7 +374,7 @@ export class BLEInterface {
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
     this.ackSystem = null;
-    console.log('[BLEInterface] v5.2.10-ROBUSTO iniciado');
+    console.log('[BLEInterface] v5.2.11-FILES iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -935,6 +935,32 @@ export class BLEInterface {
       } catch (fatal) { reject(fatal); }
     });
   }
+
+  sendFile(deviceUUID, fileId, base64Data, meta) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      try {
+        var uuid = _normId(deviceUUID);
+        if (!uuid) { reject(new Error('deviceUUID vacio')); return; }
+        var contact = _getContactByUUID(uuid);
+        var deviceId = contact ? contact.deviceId : null;
+        if (!deviceId && self._activeChatDeviceId === uuid) deviceId = self._activeChatDeviceIdNative;
+        if (!deviceId) {
+          var mappedMac = self._nexoIdToMac.get(uuid);
+          if (mappedMac) deviceId = mappedMac;
+        }
+        if (!deviceId) { reject(new Error('Dispositivo no encontrado')); return; }
+        if (!self.ackSystem || typeof self.ackSystem.sendFile !== 'function') {
+          reject(new Error('AckSystem no disponible para envio de archivos'));
+          return;
+        }
+        self.ackSystem.sendFile(deviceId, fileId, base64Data, meta)
+          .then(function() { resolve(); })
+          .catch(function(err) { reject(err); });
+      } catch (fatal) { reject(fatal); }
+    });
+  }
+
   _waitForReadyToChat(deviceId, timeoutMs) {
     var self = this;
     return new Promise(function(resolve, reject) {
