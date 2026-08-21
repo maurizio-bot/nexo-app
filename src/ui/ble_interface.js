@@ -1,5 +1,5 @@
 /**
- * BLE Interface v5.2.9-ROBUSTO
+ * BLE Interface v5.2.10-ROBUSTO
  * FIX: Mapas _nexoIdToMac y _macToNexoId declarados en constructor
  * FIX: Mapeo bidireccional en onDeviceFound, onDeviceConnected
  * FIX: _sendMessageNative normaliza MAC (quita :) antes de validar regex
@@ -374,7 +374,7 @@ export class BLEInterface {
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
     this.ackSystem = null;
-    console.log('[BLEInterface] v5.2.9-ROBUSTO iniciado');
+    console.log('[BLEInterface] v5.2.10-ROBUSTO iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -1291,6 +1291,13 @@ export class BLEInterface {
     var nexoId = device.nexoId || '';
     if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
       return;
+    }
+    // FIX: mapeo bidireccional NXID↔MAC al encontrar por scan
+    var nd = _normMac(deviceId);
+    var nx = _normId(nexoId);
+    if (nd && nx) {
+      this._nexoIdToMac.set(nx, nd);
+      this._macToNexoId.set(nd, nx);
     }
     var isContact = _isBLEContact(nexoId);
     if (isContact) {
