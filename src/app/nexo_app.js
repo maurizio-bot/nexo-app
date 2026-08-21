@@ -1,9 +1,13 @@
 /**
- * NEXO App v5.0.19-FINAL
- * Base: v5.0.18-ROBUSTO
+ * NEXO App v5.0.20-FILES
+ * Base: v5.0.19-FINAL
  * FIX: Escucha nexo:ble:ackStatus para palomitas entregado
  * FIX: Timeout BLE 25s para dar margen a reintentos ACK
  * FIX: Marcar 'failed' en UI cuando BLE definitivamente falla
+ * FIX v5.0.20: Envío de fotos/videos/archivos por BLE con fragmentación
+ * FIX v5.0.20: Batches de 5 chunks + ACK por batch + reenvío de batch
+ * FIX v5.0.20: Recepción de archivos con renderizado según tipo (img/video/file)
+ * FIX v5.0.20: Persistencia de archivos recibidos en vault
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -108,7 +112,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.19-FINAL iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.20-FILES iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -128,7 +132,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.19-FINAL Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.20-FILES Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -314,7 +318,6 @@ class NexoApp {
               if (json.from && !senderUUID) senderUUID = json.from;
             } catch (e) {}
           }
-          // FIX: parseo seguro de ACKs (evita indexOf frágil en strings JSON)
           var ctrl = null;
           try {
             if (content && content.charAt(0) === '{') ctrl = JSON.parse(content);
@@ -361,6 +364,48 @@ class NexoApp {
         }
       };
       window.addEventListener('nexo:ble:ackStatus', this._ackStatusHandler);
+
+      // v5.0.20: Escuchar progreso de archivos BLE
+      this._fileProgressHandler = function(e) {
+        if (e.detail && e.detail.fileId) {
+          var d = e.detail;
+          console.log('[NexoApp] File progress:', d.fileId, d.status, d.percent + '%');
+          var progressEl = document.getElementById('progress-' + d.fileId);
+          if (progressEl) {
+            progressEl.textContent = d.status + ' ' + (d.percent || 0) + '%';
+          }
+        }
+      };
+      window.addEventListener('nexo:ble:fileProgress', this._fileProgressHandler);
+
+      // v5.0.20: Escuchar archivos completos recibidos por BLE
+      this._fileCompleteHandler = function(e) {
+        try {
+          var d = e.detail || {};
+          if (!d.fileId || !d.data) return;
+          console.log('[NexoApp] Archivo recibido:', d.fileId, d.meta);
+          self._renderReceivedFile(d.fileId, d.data, d.meta || {});
+          var senderUUID = d.meta && d.meta.from ? d.meta.from : (self.activeContact ? self.activeContact.id : null);
+          if (senderUUID) {
+            var vaultMsg = {
+              msgId: d.fileId,
+              messageId: d.fileId,
+              content: '[ARCHIVO: ' + (d.meta.name || d.meta.type || 'file') + ']',
+              _own: false,
+              status: 'delivered',
+              timestamp: Date.now(),
+              senderName: d.meta.name || 'Nexo',
+              attachmentType: d.meta.type || 'file',
+              attachmentPayload: d.data,
+              attachmentMeta: d.meta
+            };
+            self._saveMessageToVault(senderUUID, vaultMsg);
+          }
+        } catch (err) {
+          console.error('[NexoApp] Error en fileCompleteHandler:', err);
+        }
+      };
+      window.addEventListener('nexo:ble:fileComplete', this._fileCompleteHandler);
 
     } catch (err) { DEBUG.error('UI_004', 'BLE UI init failed: ' + (err.message || 'unknown')); this.bleInterface = null; }
   }
@@ -494,7 +539,7 @@ class NexoApp {
             }
             var Camera = window.Capacitor.Plugins.Camera;
             Camera.getPhoto({
-              quality: 90, allowEditing: false,
+              quality: 85, allowEditing: false,
               resultType: Camera.CameraResultType.Base64,
               source: Camera.CameraSource.Prompt, saveToGallery: false
             }).then(function(image) {
@@ -502,7 +547,13 @@ class NexoApp {
                 var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
                 var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>';
                 renderOwnBubble(html, '📷 Foto');
-                window._lastAttachmentPayload = { type: 'image', data: dataUrl, width: image.width, height: image.height };
+                // v5.0.20: Enviar foto por BLE
+                self._sendAttachment(self.activeContact ? self.activeContact.id : null, 'image', image.base64String, {
+                  mimeType: 'image/jpeg',
+                  width: image.width || 0,
+                  height: image.height || 0,
+                  size: image.base64String.length
+                });
               }
             }).catch(function(err) {
               console.error('[FOTO] Error:', err);
@@ -516,7 +567,14 @@ class NexoApp {
               var url = URL.createObjectURL(file);
               var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + url + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
               renderOwnBubble(html, '🎬 Video');
-              window._lastAttachmentPayload = { type: 'video', file: file, url: url };
+              // v5.0.20: Enviar video por BLE
+              self._readFileAsBase64(file).then(function(base64) {
+                self._sendAttachment(self.activeContact ? self.activeContact.id : null, 'video', base64, {
+                  mimeType: file.type || 'video/mp4',
+                  name: file.name,
+                  size: file.size
+                });
+              }).catch(function(e) { console.error('[VIDEO] Error leyendo:', e); });
             };
             document.body.appendChild(inputVid); inputVid.click();
             setTimeout(function() { inputVid.remove(); }, 5000);
@@ -528,7 +586,14 @@ class NexoApp {
               var sizeStr = file.size > 1024*1024 ? (file.size/(1024*1024)).toFixed(1) + ' MB' : (file.size/1024).toFixed(0) + ' KB';
               var html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + file.name + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
               renderOwnBubble(html, '📎 Archivo');
-              window._lastAttachmentPayload = { type: 'file', file: file };
+              // v5.0.20: Enviar archivo por BLE
+              self._readFileAsBase64(file).then(function(base64) {
+                self._sendAttachment(self.activeContact ? self.activeContact.id : null, 'file', base64, {
+                  mimeType: file.type || 'application/octet-stream',
+                  name: file.name,
+                  size: file.size
+                });
+              }).catch(function(e) { console.error('[FILE] Error leyendo:', e); });
             };
             document.body.appendChild(inputFile); inputFile.click();
             setTimeout(function() { inputFile.remove(); }, 5000);
@@ -602,7 +667,6 @@ class NexoApp {
       }, 300);
     });
   }
-
   _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
   _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
   _handleNordicMessage(msg) { if (!msg || !msg.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
@@ -848,6 +912,14 @@ class NexoApp {
       try { window.removeEventListener('nexo:ble:ackStatus', this._ackStatusHandler); } catch(e) {}
       this._ackStatusHandler = null;
     }
+    if (this._fileProgressHandler) {
+      try { window.removeEventListener('nexo:ble:fileProgress', this._fileProgressHandler); } catch(e) {}
+      this._fileProgressHandler = null;
+    }
+    if (this._fileCompleteHandler) {
+      try { window.removeEventListener('nexo:ble:fileComplete', this._fileCompleteHandler); } catch(e) {}
+      this._fileCompleteHandler = null;
+    }
     if (this.bleInterface) {
       try { this.bleInterface.destroy(); } catch(e) {}
       this.bleInterface = null;
@@ -936,6 +1008,64 @@ class NexoApp {
     var payload = JSON.stringify({ type: 'read_receipt', messageId: messageId, timestamp: Date.now() });
     this.bleInterface.sendChatMessage(recipientId, payload, messageId).catch(function(e) {});
   }
+
+  // ========== v5.0.20: ENVÍO DE ARCHIVOS POR BLE ==========
+
+  _readFileAsBase64(file) {
+    return new Promise(function(resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var result = e.target.result;
+        var idx = result.indexOf(',');
+        if (idx >= 0) resolve(result.substring(idx + 1));
+        else resolve(result);
+      };
+      reader.onerror = function(e) { reject(new Error('Error leyendo archivo')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  _generateFileId() {
+    return 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  }
+
+  _sendAttachment(targetId, attachType, base64Data, meta) {
+    var self = this;
+    if (!targetId || !self.bleInterface || !self.bleInterface.sendFile) {
+      console.warn('[NexoApp] No se puede enviar archivo: sin contacto activo o sin sendFile');
+      return;
+    }
+    var fileId = self._generateFileId();
+    console.log('[NexoApp] Enviando archivo', attachType, 'id=', fileId, 'size=', base64Data.length);
+    self.bleInterface.sendFile(targetId, fileId, base64Data, Object.assign({ type: attachType }, meta))
+      .then(function() { DEBUG.success('Archivo enviado: ' + fileId, 'FILE_SENT'); })
+      .catch(function(err) { DEBUG.error('FILE_001', 'Error enviando archivo: ' + (err.message || 'unknown')); });
+  }
+
+  _renderReceivedFile(fileId, base64Data, meta) {
+    try {
+      var container = document.getElementById('messages-container');
+      if (!container) return;
+      var attachType = meta && meta.type ? meta.type : 'file';
+      var bubble = document.createElement('div');
+      bubble.className = 'message incoming message-attachment';
+      bubble.style.cssText = 'align-self:flex-start;max-width:75%;margin:6px 16px 6px 16px;padding:8px;border-radius:18px;background:linear-gradient(135deg,#2a2a4a,#1a1a3a);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
+      var html = '';
+      if (attachType === 'image') {
+        var dataUrl = 'data:' + (meta.mimeType || 'image/jpeg') + ';base64,' + base64Data;
+        html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto recibida"></div>';
+      } else if (attachType === 'video') {
+        var dataUrl = 'data:' + (meta.mimeType || 'video/mp4') + ';base64,' + base64Data;
+        html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + dataUrl + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
+      } else {
+        var sizeStr = meta.size > 1024*1024 ? (meta.size/(1024*1024)).toFixed(1) + ' MB' : (meta.size/1024).toFixed(0) + ' KB';
+        html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + (meta.name || 'Archivo') + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
+      }
+      bubble.innerHTML = html + '<div style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + (meta.name || attachType) + '</div>';
+      container.appendChild(bubble);
+      container.scrollTop = container.scrollHeight;
+    } catch (e) { console.error('[NexoApp] Error renderizando archivo recibido:', e); }
+  }
 }
 
 export { NexoApp, DEBUG };
@@ -962,4 +1092,8 @@ Focos de Interés:
 17. FIX v5.0.19-FINAL: Escucha nexo:ble:ackStatus para palomitas entregado
 18. FIX v5.0.19-FINAL: Timeout BLE 25s para dar margen a reintentos ACK
 19. FIX v5.0.19-FINAL: Marcar 'failed' en UI cuando BLE definitivamente falla
+20. FIX v5.0.20-FILES: Envío de fotos/videos/archivos por BLE con fragmentación
+21. FIX v5.0.20-FILES: Batches de 5 chunks + ACK por batch + reenvío de batch
+22. FIX v5.0.20-FILES: Recepción de archivos con renderizado según tipo (img/video/file)
+23. FIX v5.0.20-FILES: Persistencia de archivos recibidos en vault
 */
