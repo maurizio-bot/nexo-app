@@ -1,16 +1,38 @@
 /**
- * vault_manager.js - Persistencia unificada NEXO
- * Items 9 (contactos) + 10 (conversaciones)
- * Reemplaza funciones duplicadas de crypto_vault.js y vault_fs.js
+ * vault_manager.js v2.0.0-NATIVE
+ * Persistencia unificada via plugin nativo NexoBLE.
+ * Sin localStorage. Cache en memoria + escritura async a disco nativo.
  */
 
-var VAULT_CONTACTS_KEY = 'nexo_vault_contacts_v2';
+var VAULT_CONTACTS_FILE = 'nexo_vault_contacts.json';
 var VAULT_MESSAGES_PREFIX = 'nexo_vault_msgs_v2_';
+var _vaultContacts = [];
+var _vaultInitDone = false;
 var _msgCache = new Map();
-var _msgQueue = new Map();
 
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
+}
+
+function _hasNativeMethod(plugin, method) {
+  return plugin && typeof plugin[method] === 'function';
+}
+
+function _safeNativeCall(plugin, method, args) {
+  return new Promise(function(resolve, reject) {
+    if (!plugin) { reject(new Error('Plugin nativo no disponible')); return; }
+    if (typeof plugin[method] !== 'function') { reject(new Error('Metodo ' + method + ' no disponible')); return; }
+    try {
+      var result = plugin[method](args);
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else { resolve(result); }
+    } catch (e) { reject(e); }
+  });
+}
+
+function _nativePlugin() {
+  return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
 }
 
 function _generateColor(str) {
@@ -20,20 +42,55 @@ function _generateColor(str) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-// ========== CONTACTOS (Item 9) ==========
+// ========== INIT ==========
+
+export async function initVault() {
+  if (_vaultInitDone) return;
+  var plugin = _nativePlugin();
+  if (!plugin) {
+    _vaultInitDone = true;
+    return;
+  }
+  try {
+    var result = await _safeNativeCall(plugin, 'loadFromFile', { filename: VAULT_CONTACTS_FILE });
+    if (result && result.exists && result.content) {
+      var data = JSON.parse(result.content);
+      _vaultContacts = Array.isArray(data.contacts) ? data.contacts : [];
+    } else {
+      _vaultContacts = [];
+    }
+  } catch (e) {
+    _vaultContacts = [];
+  }
+  _vaultInitDone = true;
+}
+
+function _persistContacts() {
+  var plugin = _nativePlugin();
+  if (!plugin) return;
+  _safeNativeCall(plugin, 'saveToFile', {
+    filename: VAULT_CONTACTS_FILE,
+    content: JSON.stringify({ contacts: _vaultContacts, savedAt: Date.now() })
+  }).catch(function(e) {});
+}
+
+// ========== CONTACTOS ==========
 
 export function vaultLoadContacts() {
+  return _vaultContacts || [];
+}
+
+export function vaultSaveContacts(contacts) {
   try {
-    var raw = localStorage.getItem(VAULT_CONTACTS_KEY);
-    if (!raw) return [];
-    var parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) { return []; }
+    _vaultContacts = Array.isArray(contacts) ? contacts : [];
+    _persistContacts();
+    return true;
+  } catch (e) { return false; }
 }
 
 export function vaultSaveContact(contact) {
   try {
-    var contacts = vaultLoadContacts();
+    var contacts = _vaultContacts;
     var idx = contacts.findIndex(function(c) { return _normId(c.nexoId) === _normId(contact.nexoId); });
     var now = Date.now();
     var normalized = {
@@ -48,7 +105,8 @@ export function vaultSaveContact(contact) {
       verifiedInPerson: !!contact.verifiedInPerson,
       messageFrequency: contact.messageFrequency || 0,
       proximityScore: contact.proximityScore || 0,
-      publicKey: contact.publicKey || ''
+      publicKey: contact.publicKey || '',
+      deviceId: contact.deviceId || contact.deviceUUID || null
     };
     if (idx >= 0) {
       var existing = contacts[idx];
@@ -56,15 +114,14 @@ export function vaultSaveContact(contact) {
     } else {
       contacts.push(normalized);
     }
-    localStorage.setItem(VAULT_CONTACTS_KEY, JSON.stringify(contacts));
+    _persistContacts();
     return true;
   } catch (e) { console.error('[VaultManager] saveContact:', e); return false; }
 }
 
 export function vaultFindContactByNexoId(nexoId) {
   if (!nexoId) return null;
-  var contacts = vaultLoadContacts();
-  return contacts.find(function(c) { return c.nexoId === nexoId; }) || null;
+  return _vaultContacts.find(function(c) { return _normId(c.nexoId) === _normId(nexoId); }) || null;
 }
 
 export function vaultUpdateContactLastSeen(nexoId) {
@@ -88,103 +145,104 @@ export function vaultGetOrCreateContact(nexoId, deviceName) {
   return c;
 }
 
-// ========== MENSAJES (Item 10) ==========
+// ========== MENSAJES ==========
 
-function _enqueueMsg(contactId, fn) {
-  var cid = _normId(contactId);
-  if (!cid) return Promise.resolve();
-  if (!_msgQueue.has(cid)) _msgQueue.set(cid, { tasks: [], processing: false });
-  return new Promise(function(resolve, reject) {
-    _msgQueue.get(cid).tasks.push({ fn: fn, resolve: resolve, reject: reject });
-    _processMsgQueue(cid);
-  });
+function _msgFileName(contactNexoId) {
+  return VAULT_MESSAGES_PREFIX + _normId(contactNexoId) + '.json';
 }
 
-function _processMsgQueue(contactId) {
-  var queue = _msgQueue.get(contactId);
-  if (!queue || queue.processing) return;
-  queue.processing = true;
-  while (queue.tasks.length > 0) {
-    var task = queue.tasks.shift();
-    try { var r = task.fn(); task.resolve(r); } catch (e) { task.reject(e); }
-  }
-  queue.processing = false;
-  if (queue.tasks.length > 0) setTimeout(function() { _processMsgQueue(contactId); }, 0);
-}
-
-export function vaultLoadMessages(contactNexoId) {
+export async function vaultLoadMessages(contactNexoId) {
   if (!contactNexoId) return [];
-  if (_msgCache.has(contactNexoId)) return _msgCache.get(contactNexoId).slice();
+  var cid = _normId(contactNexoId);
+  if (_msgCache.has(cid)) return _msgCache.get(cid).slice();
+  var plugin = _nativePlugin();
+  if (!plugin) return [];
   try {
-    var raw = localStorage.getItem(VAULT_MESSAGES_PREFIX + contactNexoId);
-    if (!raw) return [];
-    var parsed = JSON.parse(raw);
-    var msgs = Array.isArray(parsed) ? parsed : [];
-    // FIX: normalizar msgId/messageId al cargar
-    msgs.forEach(function(m) {
-      var mid = m.msgId || m.messageId || m.id || ('msg_' + (m.timestamp || Date.now()));
-      m.msgId = mid;
-      m.messageId = mid;
-    });
-    _msgCache.set(contactNexoId, msgs.slice());
-    return msgs;
-  } catch (e) { return []; }
+    var result = await _safeNativeCall(plugin, 'loadFromFile', { filename: _msgFileName(cid) });
+    if (result && result.exists && result.content) {
+      var data = JSON.parse(result.content);
+      var msgs = Array.isArray(data.messages) ? data.messages : (Array.isArray(data) ? data : []);
+      msgs.forEach(function(m) {
+        var mid = m.msgId || m.messageId || m.id || ('msg_' + (m.timestamp || Date.now()));
+        m.msgId = mid;
+        m.messageId = mid;
+      });
+      _msgCache.set(cid, msgs.slice());
+      return msgs;
+    }
+  } catch (e) {}
+  return [];
 }
 
-export function vaultSaveMessages(contactNexoId, messages) {
+function _persistMessages(contactNexoId, messages) {
+  var plugin = _nativePlugin();
+  if (!plugin) return;
+  var cid = _normId(contactNexoId);
+  var toSave = messages.slice(-2000);
+  _msgCache.set(cid, toSave.slice());
+  _safeNativeCall(plugin, 'saveToFile', {
+    filename: _msgFileName(cid),
+    content: JSON.stringify({ messages: toSave, savedAt: Date.now() })
+  }).catch(function(e) {});
+}
+
+export async function vaultSaveMessages(contactNexoId, messages) {
   if (!contactNexoId) return false;
+  var cid = _normId(contactNexoId);
+  var toSave = messages.slice(-2000);
+  _msgCache.set(cid, toSave.slice());
+  var plugin = _nativePlugin();
+  if (!plugin) return false;
   try {
-    var toSave = messages.slice(-2000);
-    localStorage.setItem(VAULT_MESSAGES_PREFIX + contactNexoId, JSON.stringify(toSave));
-    _msgCache.set(contactNexoId, toSave.slice());
+    await _safeNativeCall(plugin, 'saveToFile', {
+      filename: _msgFileName(cid),
+      content: JSON.stringify({ messages: toSave, savedAt: Date.now() })
+    });
     return true;
-  } catch (e) { console.error('[VaultManager] saveMessages:', e); return false; }
+  } catch (e) { return false; }
 }
 
-export function vaultAppendMessage(contactNexoId, message) {
-  if (!contactNexoId || !message) return false;
-  return _enqueueMsg(contactNexoId, function() {
-    var messages = vaultLoadMessages(contactNexoId);
-    var msgId = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
-    // FIX: dual-key compatibilidad msgId/messageId
-    message.msgId = msgId;
-    message.messageId = msgId;
-    var normalized = {
-      msgId: msgId,
-      messageId: msgId,
-      text: message.text || message.content || '',
-      content: message.content || message.text || '',
-      senderNexoId: message.senderNexoId || message.sender || '',
-      senderName: message.senderName || '',
-      timestamp: message.timestamp || message.ts || Date.now(),
-      status: message.status || 'pending',
-      _own: !!message._own,
-      type: message.type || 'text',
-      attachmentType: message.attachmentType || null,
-      attachmentPayload: message.attachmentPayload || null,
-      attachmentMeta: message.attachmentMeta || null
-    };
-    var existingIdx = messages.findIndex(function(m) { return m.msgId === normalized.msgId; });
-    if (existingIdx >= 0) {
-      messages[existingIdx] = Object.assign({}, messages[existingIdx], normalized);
-    } else {
-      messages.push(normalized);
-    }
-    vaultSaveMessages(contactNexoId, messages);
-    return normalized;
-  });
+export async function vaultAppendMessage(contactNexoId, message) {
+  if (!contactNexoId || !message) return null;
+  var cid = _normId(contactNexoId);
+  var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+  var msgId = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+  message.msgId = msgId;
+  message.messageId = msgId;
+  var normalized = {
+    msgId: msgId,
+    messageId: msgId,
+    text: message.text || message.content || '',
+    content: message.content || message.text || '',
+    senderNexoId: message.senderNexoId || message.sender || '',
+    senderName: message.senderName || '',
+    timestamp: message.timestamp || message.ts || Date.now(),
+    status: message.status || 'pending',
+    _own: !!message._own,
+    type: message.type || 'text',
+    attachmentType: message.attachmentType || null,
+    attachmentPayload: message.attachmentPayload || null,
+    attachmentMeta: message.attachmentMeta || null
+  };
+  var existingIdx = messages.findIndex(function(m) { return m.msgId === normalized.msgId; });
+  if (existingIdx >= 0) {
+    messages[existingIdx] = Object.assign({}, messages[existingIdx], normalized);
+  } else {
+    messages.push(normalized);
+  }
+  _persistMessages(cid, messages);
+  return normalized;
 }
 
-export function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
+export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
   if (!contactNexoId || !msgId) return false;
-  return _enqueueMsg(contactNexoId, function() {
-    var messages = vaultLoadMessages(contactNexoId);
-    var idx = messages.findIndex(function(m) { return m.msgId === msgId; });
-    if (idx >= 0) {
-      messages[idx].status = status;
-      vaultSaveMessages(contactNexoId, messages);
-      return true;
-    }
-    return false;
-  });
+  var cid = _normId(contactNexoId);
+  var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+  var idx = messages.findIndex(function(m) { return m.msgId === msgId; });
+  if (idx >= 0) {
+    messages[idx].status = status;
+    _persistMessages(cid, messages);
+    return true;
+  }
+  return false;
 }
