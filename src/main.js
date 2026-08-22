@@ -1,5 +1,5 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.4-OFFLINEFIX
+ * src/main.js - Punto de entrada NEXO v9.9.5-VAULTONLY
  * FIX: _cameraActiveStream declarado explícitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
  * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
@@ -8,10 +8,11 @@
  * FIX: msgId/messageId normalizado en _saveMessageToStorage, _updateMessageStorageStatus, _renderMessage
  * FIX: _sendAttachment guarda en vault inmediatamente
  * FIX: _loadPersistedMessages normaliza msgId al cargar
- * FIX 3: Eliminada persistencia duplicada localStorage — solo vault
+ * FIX 3: Eliminada persistencia duplicada localStorage — solo vault nativo
  * FIX FOTOS: _sendAttachment usa sendFile para image/video/file (fragmentación BLE)
  * FIX FOTOS: Listener nexo:ble:fileComplete para renderizar archivos recibidos
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
+ * VAULTONLY: initVault() antes de todo. Cero localStorage en mensajes/contactos.
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -21,7 +22,7 @@ import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
 import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
 import { createAckSystem } from './ui/ble_ack.js';
-import { vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages, vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId } from './vault/vault_manager.js';
+import { initVault, vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages, vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId } from './vault/vault_manager.js';
 import { createAutoScan } from './ui/autoscan.js';
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
@@ -67,14 +68,14 @@ var _isRecording = false;
 var _voiceStartTime = 0;
 var _voiceTimerInterval = null;
 var _isGettingLocation = false;
-var _cameraActiveStream = null; // FIX: declarado explícitamente
+var _cameraActiveStream = null;
 var _cameraPreviewMode = 'photo';
 var _cameraPreviewRecording = false;
 var _cameraPreviewMediaRecorder = null;
 var _cameraPreviewVideoChunks = [];
 var _cameraVideoStartTime = 0;
-var _objectURLRegistry = []; // FIX: registro para revocar ObjectURLs
-var _autoScan = null; // Fase 4: AutoScanManager
+var _objectURLRegistry = [];
+var _autoScan = null;
 
 function _fmtTime(sec) {
   var m = Math.floor(sec / 60);
@@ -111,7 +112,7 @@ function _sendAttachment(type, payload, meta) {
   var msgId = 'att_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
   var localMsg = {
     msgId: msgId,
-    messageId: msgId,  // FIX: dual-key compatibilidad
+    messageId: msgId,
     content: JSON.stringify(attachmentData),
     _own: true,
     status: 'pending',
@@ -121,12 +122,10 @@ function _sendAttachment(type, payload, meta) {
     attachmentMeta: meta
   };
   _renderMessage(localMsg);
-  // FIX: guardar en vault inmediatamente
   try {
     var cid = _getCurrentContactId();
     if (cid && window.vaultAppendMessage) vaultAppendMessage(cid, localMsg, true);
   } catch(e) {}
-  // FIX FOTOS: Para archivos grandes (image/video/file) usar sendFile con fragmentación
   if ((type === 'image' || type === 'video' || type === 'file') && window.bleInterface && window.bleInterface.sendFile) {
     window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({ type: type }, meta))
       .then(function() {
@@ -140,7 +139,6 @@ function _sendAttachment(type, payload, meta) {
       });
     return;
   }
-  // Para attachments pequeños (location, audio) usar sendChatMessage
   var payloadStr = JSON.stringify(attachmentData);
   if (window.bleInterface && window.bleInterface.sendChatMessage) {
     window.bleInterface.sendChatMessage(contactId, payloadStr, msgId)
@@ -191,7 +189,6 @@ function _openFullscreenMedia(src, type) {
   closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
   closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
   closeBtn.onclick = function() {
-    // FIX: revocar ObjectURL al cerrar
     if (src && src.indexOf('blob:') === 0) {
       try { URL.revokeObjectURL(src); } catch(e) {}
     }
@@ -325,12 +322,10 @@ function _startCameraPreview() {
     .then(_onStreamSuccess)
     .catch(_onStreamError);
 }
-// FIX v9.9.1: Limpia tracks SIEMPRE, incluso si estaba grabando
 function _stopCameraPreview() {
   var wasRecording = _cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording';
   if (wasRecording) {
     try { _cameraPreviewMediaRecorder.stop(); } catch (e) {}
-    // FIX: no retornar prematuramente, limpiar stream después
   }
   var container = document.getElementById('camera-preview-container');
   if (container) {
@@ -796,8 +791,8 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.4-OFFLINEFIX iniciando...');
-    console.log('[MAIN] Storage keys disponibles:', Object.keys(localStorage).filter(function(k) { return k.indexOf('nexo') === 0; }));
+    console.log('[MAIN] NEXO v9.9.5-VAULTONLY iniciando...');
+    console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
     _ensureDOMStructure();
@@ -929,6 +924,7 @@ function _openChatFromNotification(deviceId) {
 }
 async function initializeNexoApp() {
   try {
+    await initVault();
     NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase valida');
     var nexoConfig = {
       relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
@@ -1004,7 +1000,7 @@ async function initializeNexoApp() {
     _setupJumpButton();
     _setupFABButton();
     _setupBackButton();
-    _loadPersistedMessages();
+    await _loadPersistedMessages();
     try {
       _autoScan = createAutoScan(window.NEXO.app.bleInterface);
       window.addEventListener('nexo:ble:deviceConnected', function(e) {
@@ -1038,7 +1034,6 @@ async function initializeNexoApp() {
           }
         }
       });
-      // FIX FOTOS: Escuchar archivos completos recibidos por BLE (fragmentación)
       window.addEventListener('nexo:ble:fileComplete', function(e) {
         try {
           var d = e.detail || {};
@@ -1307,8 +1302,6 @@ function _setupJumpButton() {
     console.warn('[MAIN] _setupJumpButton error:', e);
   }
 }
-// FIX: No interferir con ble_interface.js que ya maneja el FAB.
-// Agregar listener extra causaba doble toggle: abria y cerraba el panel.
 function _setupFABButton() {
   try {
     var fabBtn = document.getElementById('ble-fab-btn');
@@ -1330,7 +1323,6 @@ function _setupFABButton() {
     console.warn('[MAIN] _setupFABButton error:', e);
   }
 }
-// FIX v9.9.1: Usar nexoId para key de storage cuando está disponible
 function _getContactStorageKey() {
   var contactId = 'default';
   try {
@@ -1345,14 +1337,12 @@ function _getContactStorageKey() {
 function _saveMessageToStorage(msg) {
   try {
     if (!msg) return;
-    // FIX: normalizar msgId/messageId
     var msgId = msg.msgId || msg.messageId || msg.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
     msg.msgId = msgId;
     msg.messageId = msgId;
-    // FIX 3: Solo vault — eliminada persistencia duplicada localStorage
     var contactId = _getCurrentContactId();
     if (contactId) {
-      vaultAppendMessage(contactId, msg);
+      vaultAppendMessage(contactId, msg).catch(function(e) {});
     }
   } catch (e) {
     console.warn('[MAIN] _saveMessageToStorage error:', e);
@@ -1361,24 +1351,21 @@ function _saveMessageToStorage(msg) {
 function _updateMessageStorageStatus(messageId, status) {
   try {
     if (!messageId) return;
-    // FIX 3: Solo vault — eliminada persistencia duplicada localStorage
     var contactId = _getCurrentContactId();
     if (contactId) {
-      vaultUpdateMessageStatus(contactId, messageId, status);
+      vaultUpdateMessageStatus(contactId, messageId, status).catch(function(e) {});
     }
   } catch (e) {
     console.warn('[MAIN] _updateMessageStorageStatus error:', e);
   }
 }
-function _loadPersistedMessages() {
+async function _loadPersistedMessages() {
   try {
     var contactId = _getCurrentContactId();
     if (!contactId) return;
-    // FIX 3: Solo vault — eliminado fallback localStorage
-    var vaultMessages = vaultLoadMessages(contactId);
+    var vaultMessages = await vaultLoadMessages(contactId);
     if (vaultMessages && vaultMessages.length > 0) {
       vaultMessages.forEach(function(msg) {
-        // FIX: normalizar msgId al cargar
         var mid = msg.msgId || msg.messageId || msg.id || ('msg_' + (msg.timestamp || Date.now()));
         msg.msgId = mid;
         msg.messageId = mid;
