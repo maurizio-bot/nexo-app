@@ -1,9 +1,9 @@
 /**
- * BLE Interface v5.3.0-VAULTONLY
- * FIX: Toda persistencia migrada a plugin nativo. Cero localStorage.
- * FIX: Caches en memoria (_blePinnedCache, _bleUUIDCache).
- * FIX: Contactos delegados a vault_manager.js (window.vaultLoadContacts).
- * FIX: Pinned, NexoId y UUID usan saveToFile/loadFromFile nativo.
+ * BLE Interface v5.3.1-RECONNECTFIX
+ * FIX: Cola pending usa NXID como clave estable (no MAC efímera)
+ * FIX: _processPendingMessages resuelve MAC→NXID para encontrar cola
+ * FIX: _resendPendingMessages verifica READY antes de reenviar
+ * FIX: _resolveReadyToChat dispara reenvío de vault pending al ponerse READY
  * FASE4: Hooks vault contactos + mensajes, autoscan conectar/desconectar.
  * SUPERVISOR v1.0: Connection health monitoring + ping/pong + auto-reconnect.
  */
@@ -378,7 +378,7 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.0-VAULTONLY iniciado');
+    console.log('[BLEInterface] v5.3.1-RECONNECTFIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -1000,13 +1000,18 @@ export class BLEInterface {
   _processPendingMessages(deviceId) {
     var self = this;
     if (!deviceId) return Promise.resolve();
-    var queue = this._pendingMessageQueue.get(deviceId);
-    if (!queue) {
-      var nx = self._macToNexoId.get(_normMac(deviceId));
-      if (nx) queue = self._pendingMessageQueue.get(nx);
-    }
+    var macNorm = _normMac(deviceId);
+    var nxidNorm = self._macToNexoId.get(macNorm);
+    // FIX: buscar cola por NXID primero (diseño actual), luego fallback por MAC (compatibilidad)
+    var queue = null;
+    if (nxidNorm) queue = self._pendingMessageQueue.get(nxidNorm);
+    if (!queue) queue = self._pendingMessageQueue.get(macNorm);
+    if (!queue) queue = self._pendingMessageQueue.get(deviceId);
     if (!queue || queue.length === 0) return Promise.resolve();
-    this._pendingMessageQueue.delete(deviceId);
+    // FIX: limpiar todas las claves posibles para evitar huérfanos
+    if (nxidNorm) self._pendingMessageQueue.delete(nxidNorm);
+    self._pendingMessageQueue.delete(macNorm);
+    self._pendingMessageQueue.delete(deviceId);
     var processNext = function(idx) {
       if (idx >= queue.length) return Promise.resolve();
       var item = queue[idx];
@@ -1129,9 +1134,10 @@ export class BLEInterface {
         if (isZombie || (!isReady && !isConnecting)) {
           console.log('[BLEInterface] sendChatMessage: stale/zombie detectado, forzando reconnect para', deviceId);
           self._forceDisconnectAndReconnect(deviceId);
-          var queue = self._pendingMessageQueue.get(deviceId) || [];
+          var queueKey = uuid; // FIX: NXID es la clave estable de cola
+          var queue = self._pendingMessageQueue.get(queueKey) || [];
           queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject });
-          self._pendingMessageQueue.set(deviceId, queue);
+          self._pendingMessageQueue.set(queueKey, queue);
           return;
         }
         function doSend() {
@@ -1144,9 +1150,10 @@ export class BLEInterface {
           }
         }
         function enqueueMsg() {
-          var queue = self._pendingMessageQueue.get(deviceId) || [];
+          var queueKey = uuid; // FIX: NXID es la clave estable de cola
+          var queue = self._pendingMessageQueue.get(queueKey) || [];
           queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject });
-          self._pendingMessageQueue.set(deviceId, queue);
+          self._pendingMessageQueue.set(queueKey, queue);
         }
         if (isReady) { doSend(); return; }
         enqueueMsg();
@@ -1196,9 +1203,15 @@ export class BLEInterface {
   }
   _resolveReadyToChat(deviceId) {
     if (!deviceId) return;
+    var self = this;
     var resolver = this._readyResolvers.get(deviceId);
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(deviceId); }
     this._processPendingMessages(deviceId);
+    // FIX: también reenviar mensajes pending del vault cuando el pipeline se pone listo
+    var nx = this._macToNexoId.get(_normMac(deviceId));
+    if (nx) {
+      setTimeout(function() { self._resendPendingMessages(nx); }, 100);
+    }
   }
   openChat(deviceUUID) {
     var self = this;
@@ -1242,7 +1255,16 @@ export class BLEInterface {
           self.elements.panel.classList.remove('active'); self.elements.overlay.classList.remove('active');
         }
         finishOpenChat();
-        self._resendPendingMessages(uuid);
+        // FIX: no reenviar pending del vault inmediatamente si el pipeline no está listo
+        var deviceIdForResend = self._resolveDeviceIdForNexoId(uuid);
+        if (deviceIdForResend) {
+          var st = self._getDeviceState(deviceIdForResend);
+          if (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY) {
+            self._resendPendingMessages(uuid);
+          } else {
+            console.log('[BLEInterface] openChat: reenvio pending pospuesto hasta READY_TO_CHAT');
+          }
+        }
         _vaultLoadMessages(uuid).then(function(messages) {
           if (messages && messages.length > 0) {
             _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid, messages: messages });
@@ -1266,12 +1288,18 @@ export class BLEInterface {
       if (!messages || messages.length === 0) return;
       var pending = messages.filter(function(m) { return m._own === true && m.status === 'pending'; });
       if (pending.length === 0) return;
-      console.log('[BLEInterface] Reenviando', pending.length, 'mensajes pending para', nexoId);
       var deviceId = self._resolveDeviceIdForNexoId(nexoId);
       if (!deviceId) {
         console.warn('[BLEInterface] No deviceId resuelto para reenvio pending de', nexoId);
         return;
       }
+      // FIX: solo reenviar si el pipeline está READY
+      var st = self._getDeviceState(deviceId);
+      if (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY) {
+        console.log('[BLEInterface] Reenvio pending pospuesto para', nexoId, '— pipeline no listo:', st.state);
+        return;
+      }
+      console.log('[BLEInterface] Reenviando', pending.length, 'mensajes pending para', nexoId);
       pending.forEach(function(msg) {
         var mid = msg.msgId || msg.messageId || msg.id;
         if (!mid) return;
