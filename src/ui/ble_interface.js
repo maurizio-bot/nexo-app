@@ -1,9 +1,13 @@
 /**
- * BLE Interface v5.3.1-RECONNECTFIX
+ * BLE Interface v5.3.2-FINALFIX
  * FIX: Cola pending usa NXID como clave estable (no MAC efímera)
  * FIX: _processPendingMessages resuelve MAC→NXID para encontrar cola
  * FIX: _resendPendingMessages verifica READY antes de reenviar
  * FIX: _resolveReadyToChat dispara reenvío de vault pending al ponerse READY
+ * FIX: ACK return después de processIncomingAck (no renderizar como mensaje)
+ * FIX: Doble _processPendingMessages eliminado en onNotificationsEnabled
+ * FIX: _resolveReadyToChat secuencial con Promise (cola → vault)
+ * FIX: Scan cíclico cada 12s para detectar peers que reabrieron app
  * FASE4: Hooks vault contactos + mensajes, autoscan conectar/desconectar.
  * SUPERVISOR v1.0: Connection health monitoring + ping/pong + auto-reconnect.
  */
@@ -378,7 +382,8 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.1-RECONNECTFIX iniciado');
+    this._scanCycleTimer = null; // FIX: scan cíclico para detectar peers offline
+    console.log('[BLEInterface] v5.3.2-FINALFIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -490,12 +495,26 @@ export class BLEInterface {
     self._supervisorTimer = setInterval(function() {
       self._runSupervisorCycle();
     }, self._supervisorIntervalMs);
+    // FIX: scan cíclico cada 12s para detectar peers que reabrieron app
+    if (self._scanCycleTimer) { clearInterval(self._scanCycleTimer); self._scanCycleTimer = null; }
+    self._scanCycleTimer = setInterval(function() {
+      var contacts = _getBLEContacts();
+      var hasOffline = contacts.some(function(c) { return !c.online || (Date.now() - (c.lastSeen || 0)) > 30000; });
+      if (hasOffline && self.nativePlugin && !self.isScanning) {
+        console.log('[BLEInterface] Scan cíclico: detectando peers offline');
+        self._autoScanForKnownContacts();
+      }
+    }, 12000);
     console.log('[BLEInterface] Connection Supervisor iniciado');
   }
   _stopConnectionSupervisor() {
     if (this._supervisorTimer) {
       clearInterval(this._supervisorTimer);
       this._supervisorTimer = null;
+    }
+    if (this._scanCycleTimer) {
+      clearInterval(this._scanCycleTimer);
+      this._scanCycleTimer = null;
     }
     this._pendingPings.forEach(function(p) { clearTimeout(p.timer); });
     this._pendingPings.clear();
@@ -820,12 +839,8 @@ export class BLEInterface {
         var contact = _getContactByDeviceId(deviceId);
         if (contact) peerUUID = contact.nexoId || contact.deviceUUID;
         self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: peerUUID });
+        // FIX: solo _resolveReadyToChat, que maneja secuencialmente cola + vault
         self._resolveReadyToChat(deviceId);
-        self._processPendingMessages(deviceId);
-        var nxFlush = self._macToNexoId.get(_normMac(deviceId));
-        if (nxFlush) {
-          setTimeout(function() { self._resendPendingMessages(nxFlush); }, 300);
-        }
         self._pingFailCount.set(deviceId, 0);
         self._lastPongTime.set(deviceId, Date.now());
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.HEALTHY, since: Date.now() });
@@ -875,6 +890,7 @@ export class BLEInterface {
         var isControl = _isControlPacket(content);
         if (isControl && self.ackSystem) {
           self.ackSystem.processIncomingAck(content);
+          return; // FIX: no renderizar ACKs como mensajes de chat
         }
         // === PING/PONG ===
         var ctrl = null;
@@ -1194,7 +1210,7 @@ export class BLEInterface {
   _waitForReadyToChat(deviceId, timeoutMs) {
     var self = this;
     return new Promise(function(resolve, reject) {
-      if (!deviceId) { reject(new Error('deviceId invalido')); return; }
+      if (!deviceId) { reject(new Error('deviceid invalido')); return; }
       var state = self._getDeviceState(deviceId);
       if (state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY) { resolve(); return; }
       var timer = setTimeout(function() { self._readyResolvers.delete(deviceId); reject(new Error('Timeout esperando READY_TO_CHAT')); }, timeoutMs || 3000);
@@ -1206,12 +1222,15 @@ export class BLEInterface {
     var self = this;
     var resolver = this._readyResolvers.get(deviceId);
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(deviceId); }
-    this._processPendingMessages(deviceId);
-    // FIX: también reenviar mensajes pending del vault cuando el pipeline se pone listo
-    var nx = this._macToNexoId.get(_normMac(deviceId));
-    if (nx) {
-      setTimeout(function() { self._resendPendingMessages(nx); }, 100);
-    }
+    // FIX: secuencial — primero cola pending, luego vault pending. Evita race condition.
+    self._processPendingMessages(deviceId).then(function() {
+      var nx = self._macToNexoId.get(_normMac(deviceId));
+      if (nx) {
+        self._resendPendingMessages(nx);
+      }
+    }).catch(function(e) {
+      console.warn('[BLEInterface] _resolveReadyToChat error:', e.message);
+    });
   }
   openChat(deviceUUID) {
     var self = this;
