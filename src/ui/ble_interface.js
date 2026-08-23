@@ -1,5 +1,5 @@
 /**
- * BLE Interface v5.3.6-MAPSPERSIST
+ * BLE Interface v5.3.7-VAULTFIX
  * FIX: Toda persistencia migrada a plugin nativo. Cero localStorage.
  * FIX: Caches en memoria (_blePinnedCache, _bleUUIDCache).
  * FIX: Contactos delegados a vault_manager.js (window.vaultLoadContacts).
@@ -8,6 +8,7 @@
  * SUPERVISOR v1.0: Connection health monitoring + ping/pong + auto-reconnect.
  * FIX v5.3.6: Mapas MAC<->NXID reconstruidos desde vault al iniciar.
  * FIX v5.3.6: Busqueda en disco como fallback ultimo recurso.
+ * FIX v5.3.7-VAULTFIX: Eliminada toda persistencia de mensajes/contactos. Transporte puro.
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -285,39 +286,7 @@ function _isControlPacket(content) {
   return false;
 }
 
-// === HELPERS VAULT (delegan a vault_manager.js, sin fallback localStorage) ===
-function _vaultUpdateMessageStatus(nexoId, msgId, status) {
-  try {
-    if (window.vaultUpdateMessageStatus && typeof window.vaultUpdateMessageStatus === 'function') {
-      return window.vaultUpdateMessageStatus(nexoId, msgId, status);
-    }
-  } catch (e) {}
-  return Promise.resolve();
-}
-function _vaultGetOrCreateContact(nexoId, displayName, deviceName) {
-  try {
-    if (window.vaultGetOrCreateContact && typeof window.vaultGetOrCreateContact === 'function') {
-      return window.vaultGetOrCreateContact(nexoId, displayName || deviceName);
-    }
-  } catch (e) {}
-  return Promise.resolve();
-}
-function _vaultAppendMessage(nexoId, msg, isOwn) {
-  try {
-    if (window.vaultAppendMessage && typeof window.vaultAppendMessage === 'function') {
-      return window.vaultAppendMessage(nexoId, msg, isOwn);
-    }
-  } catch (e) {}
-  return Promise.resolve();
-}
-function _vaultLoadMessages(nexoId) {
-  try {
-    if (window.vaultLoadMessages && typeof window.vaultLoadMessages === 'function') {
-      return window.vaultLoadMessages(nexoId);
-    }
-  } catch (e) {}
-  return Promise.resolve([]);
-}
+// VAULTFIX: helpers vault eliminados — persistencia centralizada en main.js
 
 // === HELPERS AUTOSCAN (fallback seguro) ===
 function _autoScanRegister(nexoId) {
@@ -384,7 +353,7 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.6-MAPSPERSIST iniciado');
+    console.log('[BLEInterface] v5.3.7-VAULTFIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -959,7 +928,7 @@ export class BLEInterface {
             var idx2 = contacts2.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
             if (idx2 >= 0) { contacts2[idx2].online = true; contacts2[idx2].lastSeen = Date.now(); contacts2[idx2].deviceId = deviceId; if (content && !isControl) contacts2[idx2].lastMessage = content.substring(0, 50); _saveBLEContacts(contacts2); self.renderContactsList(); self.renderOnlineStrip(); }
           }
-          _vaultGetOrCreateContact(senderUUID, senderName, self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name);
+          // VAULTFIX: contactos/mensajes los maneja main.js via eventos
         }
         if (messageId && self._receivedMessageIds.has(messageId)) {
           if (!isControl && self.ackSystem) {
@@ -978,17 +947,7 @@ export class BLEInterface {
           self.ackSystem.sendAck(deviceId, messageId);
         }
         stableId = senderUUID || deviceId;
-        if (!isControl && senderUUID) {
-          var vaultMsg = {
-            messageId: messageId || ('recv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)),
-            content: content,
-            _own: false,
-            status: 'delivered',
-            timestamp: data.timestamp || Date.now(),
-            senderName: senderName
-          };
-          _vaultAppendMessage(senderUUID, vaultMsg, false);
-        }
+        // VAULTFIX: mensajes recibidos los guarda main.js via nexoConfig.onMessage
         var activeUUID = self._activeChatDeviceId;
         if (activeUUID && activeUUID === senderUUID) {
           _safeDispatchEvent('nexo:ble:messageReceived', {
@@ -1136,15 +1095,7 @@ export class BLEInterface {
         if (!deviceId) { console.error('[BLEInterface] sendChatMessage: No deviceId para UUID', uuid); reject(new Error('Dispositivo no encontrado')); return; }
         if (contact && !contact.deviceId) { contact.deviceId = deviceId; _saveBLEContacts(_getBLEContacts()); }
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
-        var ownMsg = {
-          msgId: msgId,
-          messageId: msgId,
-          content: content,
-          _own: true,
-          status: 'pending',
-          timestamp: Date.now()
-        };
-        _vaultAppendMessage(uuid, ownMsg, true);
+        // VAULTFIX: mensajes propios los guarda main.js en _doSend/_sendAttachment
         var state = self._getDeviceState(deviceId);
         var supState = self._supervisorStates.get(deviceId);
         var isReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
@@ -1306,11 +1257,7 @@ export class BLEInterface {
         } else {
           console.log('[BLEInterface] openChat: no deviceId resuelto, reenvio pospuesto');
         }
-        _vaultLoadMessages(uuid).then(function(messages) {
-          if (messages && messages.length > 0) {
-            _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid, messages: messages });
-          }
-        }).catch(function() {});
+        // VAULTFIX: main.js carga mensajes al abrir chat via _loadPersistedMessages
         resolve();
         if (!isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           if (!isConnecting) {
@@ -1889,7 +1836,7 @@ export class BLEInterface {
       return;
     }
     _addBLEContact({ deviceUUID: nexoId, name: name, deviceId: deviceId });
-    _vaultGetOrCreateContact(nexoId, name, device.name);
+    // VAULTFIX: contactos los maneja main.js
     this._autoConnectGATT(deviceId, device);
     this.foundDevices.delete(deviceId);
     this._closePanelAndRefresh();
