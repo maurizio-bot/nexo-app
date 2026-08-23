@@ -82,6 +82,17 @@ function _fmtTime(sec) {
   var s = sec % 60;
   return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
 }
+function _isControlContent(content) {
+  if (!content || typeof content !== 'string' || content.charAt(0) !== '{') return false;
+  try {
+    var obj = JSON.parse(content);
+    if (obj && obj.type) {
+      var controlTypes = ['ack', 'ping', 'pong', 'read_receipt', 'file_meta', 'file_chunk', 'file_resume'];
+      if (controlTypes.indexOf(obj.type) >= 0) return true;
+    }
+  } catch (e) {}
+  return false;
+}
 function _getAttachmentPlugins() {
   var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
   return {
@@ -872,7 +883,7 @@ function _showPermissionOverlay() {
             window.location.href = 'app-settings:';
           }
         } catch (e) {
-          alert('Ve a Configuracion > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
+          alert('Ve a Configuracion > Aplicaciones > NEXO > Permisos\\nActiva \"Dispositivos cercanos\" y \"Bluetooth\"');
         }
       });
     }
@@ -1025,6 +1036,11 @@ async function initializeNexoApp() {
       window.addEventListener('nexo:ble:messageReceived', function(e) {
         if (e && e.detail) {
           var msg = e.detail;
+          // === FILTRO 3 (main.js): Descartar control packets que escapen de ble_interface.js ===
+          if (_isControlContent(msg.content || msg.text || '')) {
+            console.log('[MAIN] Control packet filtrado en messageReceived:', (msg.content || '').substring(0, 60));
+            return;
+          }
           if (msg.senderNexoId) {
             vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
           }
@@ -1101,7 +1117,7 @@ function _fixLogoPath() {
   try {
     var logo = document.getElementById('main-logo');
     if (logo) {
-      logo.style.backgroundImage = 'url("./assets/nexo_logo.png")';
+      logo.style.backgroundImage = 'url(\"./assets/nexo_logo.png\")';
       logo.style.backgroundSize = 'contain';
       logo.style.backgroundRepeat = 'no-repeat';
       logo.style.backgroundPosition = 'center';
@@ -1310,7 +1326,7 @@ function _setupFABButton() {
     if (hasBLE) {
       return;
     }
-    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+    fabBtn.innerHTML = '<svg viewBox=\"0 0 24 24\" width=\"28\" height=\"28\" fill=\"#fff\"><path d=\"M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z\"/></svg>';
     if (!fabBtn._nexoFabBound) {
       fabBtn.addEventListener('click', function() {
         if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
@@ -1379,6 +1395,12 @@ async function _loadPersistedMessages() {
 function _renderMessage(msg, skipSave) {
   try {
     if (!msg) return;
+    // === FILTRO DEFENSIVO: Nunca renderizar paquetes de control ===
+    var rawContent = msg.content || msg.text || '';
+    if (_isControlContent(rawContent)) {
+      console.log('[MAIN] _renderMessage: control packet descartado:', rawContent.substring(0, 60));
+      return;
+    }
     var container = document.getElementById('messages-container');
     if (!container) return;
     var msgId = msg.msgId || msg.messageId || msg._id || msg.id || '';
@@ -1387,7 +1409,7 @@ function _renderMessage(msg, skipSave) {
       msg.msgId = msgId;
       msg.messageId = msgId;
     }
-    var existing = document.querySelector('[data-msg-id="' + msgId + '"]');
+    var existing = document.querySelector('[data-msg-id=\"' + msgId + '\"]');
     if (existing) {
       if (msg.status) {
         _updateMessageStatus(msgId, msg.status);
@@ -1402,7 +1424,7 @@ function _renderMessage(msg, skipSave) {
         payload: msg.attachmentPayload,
         meta: msg.attachmentMeta || {}
       };
-    } else if (msg.content && msg.content.indexOf('"attachmentType"') > -1) {
+    } else if (msg.content && msg.content.indexOf('\"attachmentType\"') > -1) {
       try {
         var parsed = JSON.parse(msg.content);
         if (parsed && parsed.type === 'attachment' && parsed.attachmentType) {
@@ -1476,7 +1498,7 @@ function _renderMessage(msg, skipSave) {
         video.dataset.fullscreenType = 'video';
         var playOverlay = document.createElement('div');
         playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
-        playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
+        playOverlay.innerHTML = '<svg viewBox=\"0 0 24 24\" width=\"40\" height=\"40\" fill=\"#fff\" style=\"opacity:0.9;\"><path d=\"M8 5v14l11-7z\"/></svg>';
         videoWrapper.appendChild(video);
         videoWrapper.appendChild(playOverlay);
         videoWrapper.onclick = function(e) {
@@ -1518,7 +1540,7 @@ function _renderMessage(msg, skipSave) {
             fvideo.dataset.fullscreenType = 'video';
             var fplayOverlay = document.createElement('div');
             fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
-            fplayOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
+            fplayOverlay.innerHTML = '<svg viewBox=\"0 0 24 24\" width=\"40\" height=\"40\" fill=\"#fff\" style=\"opacity:0.9;\"><path d=\"M8 5v14l11-7z\"/></svg>';
             mediaWrapper.appendChild(fvideo);
             mediaWrapper.appendChild(fplayOverlay);
           }
@@ -1530,7 +1552,7 @@ function _renderMessage(msg, skipSave) {
           };
           contentDiv.appendChild(mediaWrapper);
         } else {
-          contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
+          contentDiv.innerHTML = '<div style=\"padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;\">📎 <b>Archivo</b><span style=\"font-size:12px;opacity:0.7;\">' + (attachment.meta.name || 'archivo') + '</span></div>';
         }
       } else if (attachment.type === 'location') {
         var loc = attachment.meta;
@@ -1539,17 +1561,17 @@ function _renderMessage(msg, skipSave) {
         var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
         var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
         var osmUrl = 'https://static-maps.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng + '&zoom=15&size=300x150&markers=' + lat + ',' + lng + ',red-pushpin';
-        var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
-        locHtml += '<div style="position:relative;width:100%;height:120px;background:linear-gradient(135deg,#1a1a2e,#0f3460);overflow:hidden;">';
-        locHtml += '<img src="' + osmUrl + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1;" onerror="this.style.display=\'none\'">';
-        locHtml += '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;z-index:0;">';
-        locHtml += '<svg viewBox="0 0 24 24" width="32" height="32" fill="#FF3B30"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
-        locHtml += '<span style="font-size:11px;color:#aaa;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
+        var locHtml = '<div style=\"border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;\">';
+        locHtml += '<div style=\"position:relative;width:100%;height:120px;background:linear-gradient(135deg,#1a1a2e,#0f3460);overflow:hidden;\">';
+        locHtml += '<img src=\"' + osmUrl + '\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1;\" onerror=\"this.style.display=\'none\'\">';
+        locHtml += '<div style=\"position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;z-index:0;\">';
+        locHtml += '<svg viewBox=\"0 0 24 24\" width=\"32\" height=\"32\" fill=\"#FF3B30\"><path d=\"M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z\"/></svg>';
+        locHtml += '<span style=\"font-size:11px;color:#aaa;\">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
         locHtml += '</div></div>';
-        locHtml += '<div style="padding:8px 12px;"> <b>Ubicacion</b><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
-        locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
-        locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
-        locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
+        locHtml += '<div style=\"padding:8px 12px;\"> <b>Ubicacion</b><span style=\"font-size:12px;opacity:0.7;\">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
+        locHtml += '<div style=\"display:flex;gap:8px;padding:0 12px 10px;\">';
+        locHtml += '<a href=\"' + mapsUrl + '\" target=\"_blank\" style=\"flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;\">Maps</a>';
+        locHtml += '<a href=\"' + wazeUrl + '\" target=\"_blank\" style=\"flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;\">Waze</a>';
         locHtml += '</div></div>';
         contentDiv.innerHTML = locHtml;
       } else if (attachment.type === 'audio') {
@@ -1567,16 +1589,16 @@ function _renderMessage(msg, skipSave) {
         var audioBlob = new Blob([byteArray], { type: mime });
         var audioSrc = URL.createObjectURL(audioBlob);
         _objectURLRegistry.push(audioSrc);
-        var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
-        audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
-        audioHtml += '<div style="flex:1;min-width:0;">';
-        audioHtml += '<div id="' + audioId + '_wave" style="height:24px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;">';
+        var audioHtml = '<div style=\"display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;\" id=\"' + audioId + '_wrap\">';
+        audioHtml += '<button id=\"' + audioId + '_play\" style=\"width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;\">▶</button>';
+        audioHtml += '<div style=\"flex:1;min-width:0;\">';
+        audioHtml += '<div id=\"' + audioId + '_wave\" style=\"height:24px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;\">';
         for (var w = 0; w < 24; w++) {
           var h = 4 + Math.random() * 16;
-          audioHtml += '<div class="wave-bar" data-idx="' + w + '" style="width:3px;height:' + h + 'px;background:#fff;border-radius:1px;flex-shrink:0;transition:height 0.15s ease;"></div>';
+          audioHtml += '<div class=\"wave-bar\" data-idx=\"' + w + '\" style=\"width:3px;height:' + h + 'px;background:#fff;border-radius:1px;flex-shrink:0;transition:height 0.15s ease;\"></div>';
         }
         audioHtml += '</div>';
-        audioHtml += '<div id="' + audioId + '_time" style="font-size:11px;color:#aaa;margin-top:3px;">00:00 / ' + durStr + '</div>';
+        audioHtml += '<div id=\"' + audioId + '_time\" style=\"font-size:11px;color:#aaa;margin-top:3px;\">00:00 / ' + durStr + '</div>';
         audioHtml += '</div></div>';
         contentDiv.innerHTML = audioHtml;
         setTimeout(function() {
@@ -1685,7 +1707,7 @@ function _renderMessage(msg, skipSave) {
 function _updateMessageStatus(messageId, status) {
   try {
     if (!messageId) return;
-    var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
+    var statusEl = document.querySelector('.msg-status[data-msg-id=\"' + messageId + '\"]');
     if (!statusEl) return;
     statusEl.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
     statusEl.classList.add('status-' + status);
@@ -1742,7 +1764,7 @@ function _focusInput(text) {
 }
 function _forceHideSplash() {
   try {
-    var selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]', '#nexo-setup'];
+    var selectors = ['#splash-native', '#splash', '.splash-screen', '[id*=\"splash\"]', '#nexo-setup'];
     for (var i = 0; i < selectors.length; i++) {
       var el = document.querySelector(selectors[i]);
       if (el) {
@@ -1958,7 +1980,7 @@ function _doChatBack() {
         app.style.transition = '';
         app.style.transform = '';
         app.style.opacity = '';
-      }
+      }⁰
       if (contactsView) {
         contactsView.style.transition = '';
         contactsView.style.transform = '';
