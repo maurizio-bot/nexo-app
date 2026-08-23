@@ -1,1099 +1,608 @@
 /**
  * NEXO App v5.0.20-FILES
- * Base: v5.0.19-FINAL
- * FIX: Escucha nexo:ble:ackStatus para palomitas entregado
- * FIX: Timeout BLE 25s para dar margen a reintentos ACK
- * FIX: Marcar 'failed' en UI cuando BLE definitivamente falla
- * FIX v5.0.20: Envío de fotos/videos/archivos por BLE con fragmentación
- * FIX v5.0.20: Batches de 5 chunks + ACK por batch + reenvío de batch
- * FIX v5.0.20: Recepción de archivos con renderizado según tipo (img/video/file)
- * FIX v5.0.20: Persistencia de archivos recibidos en vault
+ * Base: v5.0.19 - FILES
+ * FIX: sendFile delegado a AckSystem.sendFile (fragmentacion BLE)
+ * FIX: _sendAttachment usa sendFile para image/video/file
+ * FIX: _sendPayment usa sendChatMessage para payload de pago
+ * FIX: _renderMessage ahora renderiza attachments (image, video, audio, location, file)
+ * FASE4: Vault persistencia contactos + mensajes
+ * VAULTONLY: Cero localStorage en mensajes/contactos. Delegado a vault_manager.js.
  */
-import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
-import { CryptoVault } from '../vault/crypto_vault.js';
-import { BLEInterface as HybridMesh } from '../mesh/hybrid_mesh.js';
-import { NordicMesh } from '../mesh/nordic_mesh.js';
-import { WebSocketClient } from '../net/web_socket_client.js';
-import { MeshRelayBridge } from '../net/mesh_relay_bridge.js';
-import { GestureEngine } from '../ui/gesture_engine.js';
-import { TheStream } from '../stream/the_stream.js';
-import { rem } from '../ui/rem.js';
-import { initBLEInterface } from '../ui/ble_interface.js';
-import { vaultLoadMessages, vaultAppendMessage, vaultUpdateMessageStatus } from '../vault/crypto_vault.js';
 
-function withTimeoutNAP(promise, ms, context) {
-  var timer;
-  var timeoutPromise = new Promise(function(_, reject) {
-    timer = setTimeout(function() { reject(new Error('[NAP_TIMEOUT] ' + context)); }, ms);
-  });
-  return Promise.race([promise, timeoutPromise]).finally(function() { if (timer) clearTimeout(timer); });
-}
+import { NEXO_CONFIG } from './core/nexo_config.js';
+import { NEXO_DIAG } from './core/nap.js';
+import { DEBUG } from './core/debug.js';
 
-var DEBUG = {
-  silent: false,
-  rem: rem,
-  _logBuffer: [],
-  log: function(msg, type, code) {
-    if (this.silent) return;
-    type = type || 'info';
-    var entry = { ts: Date.now(), time: new Date().toLocaleTimeString(), type: type, code: code, msg: msg };
-    DEBUG._logBuffer.push(entry);
-    if (DEBUG._logBuffer.length > 1000) DEBUG._logBuffer.shift();
-    console.log('[' + entry.time + '] [' + type.toUpperCase() + ']' + (code ? '[' + code + ']' : '') + ' ' + msg);
-  },
-  error: function(code, msg) { DEBUG.log(msg, 'error', code); },
-  success: function(msg, code) { DEBUG.log(msg, 'success', code); },
-  warn: function(msg, code) { DEBUG.log(msg, 'warn', code); },
-  setPhase: function(p) { rem.updatePhase(p); },
-  setMode: function(m) { rem.updateMode(m); },
-  setIdentity: function(id) { if (id) rem.updateIdentity(id); },
-  toggleSilent: function() { this.silent = !this.silent; console.log('[DEBUG] Silent mode:', this.silent); }
-};
+var _isGettingLocation = false;
+var _lastLocationSent = 0;
+var _LOCATION_DEBOUNCE_MS = 3000;
 
-function _safeCall(obj, method, args, fallback) {
-  try {
-    if (obj && typeof obj[method] === 'function') {
-      return obj[method].apply(obj, args || []);
-    }
-  } catch (e) {
-    console.warn('[NexoApp] SafeCall fallo ' + method + ':', e.message);
+export class NexoApp {
+  constructor(config) {
+    this.config = config || {};
+    this.bleInterface = null;
+    this.activeContact = null;
+    this.onMessage = this.config.onMessage || function() {};
+    this.onStatusChange = this.config.onStatusChange || function() {};
+    this.onError = this.config.onError || function() {};
+    this.onVaultStateChange = this.config.onVaultStateChange || function() {};
+    this.actionCallbacks = this.config.actionCallbacks || {};
+    this._pendingAcks = new Map();
+    this._ackTimeouts = new Map();
+    this._ackRetryCount = new Map();
+    this._ackMaxRetries = 3;
+    this._ackRetryDelay = 2000;
+    this._ackTimeoutMs = 6000;
+    this._isProcessingPayment = false;
+    this._isProcessingTransfer = false;
+    this._lastPaymentTime = 0;
+    this._lastTransferTime = 0;
+    this._paymentDebounceMs = 2000;
+    this._transferDebounceMs = 2000;
+    this._bleMessageHandler = null;
+    console.log('[NEXO] App v5.0.20-FILES constructor');
   }
-  return fallback;
-}
 
-function _safeJSONParse(str, fallback) {
-  try { return JSON.parse(str); } catch (e) { return fallback; }
-}
+  init() {
+    var self = this;
+    return new Promise(function(resolve) {
+      try {
+        self._setupBLEListeners();
+        self._setupVaultListeners();
+        self._setupPaymentListeners();
+        resolve();
+      } catch (e) {
+        console.error('[NEXO] init error:', e);
+        resolve();
+      }
+    });
+  }
 
-function _safeJSONStringify(obj) {
-  try { return JSON.stringify(obj); } catch (e) { return '{}'; }
+  _setupBLEListeners() {
+    var self = this;
+    if (!window.bleInterface) {
+      console.warn('[NEXO] bleInterface no disponible');
+      return;
+    }
+    self.bleInterface = window.bleInterface;
+    self._bleMessageHandler = function(e) {
+      try {
+        var detail = e.detail || {};
+        // === FIX: Filtro de seguridad ACK en capa de app ===
+        var content = detail.content || detail.data || '';
+        var ctrl = null;
+        try {
+          if (content && content.charAt(0) === '{') ctrl = JSON.parse(content);
+        } catch (e) { ctrl = null; }
+        if (ctrl && (ctrl.type === 'ack' || ctrl.type === 'read_receipt')) {
+          var ackMid = ctrl.msgId || ctrl.messageId || ctrl.id || null;
+          if (ackMid) {
+            if (ctrl.type === 'ack') self._handleACK(ackMid, ctrl.ackType || 'delivered');
+            if (ctrl.type === 'read_receipt') self._handleACK(ackMid, 'read');
+          }
+          return; // ACKs no pasan al pipeline de mensajes
+        }
+        // === FIN FIX ACK ===
+        var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
+        var senderUUID = detail.deviceUUID || '';
+        if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
+          console.log('[BLE_RECV] Mensaje propio ignorado por UUID');
+          return;
+        }
+        console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
+        var resolvedName = detail.senderName;
+        if (!resolvedName && senderUUID) {
+          try {
+            if (window.vaultFindContactByNexoId) {
+              var c = window.vaultFindContactByNexoId(senderUUID);
+              if (c && c.displayName) resolvedName = c.displayName;
+            }
+          } catch (e) {}
+        }
+        if (!resolvedName && senderUUID) {
+          var contacts = self.bleInterface ? self.bleInterface.getBLEContacts() : [];
+          var found = contacts.find(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
+          if (found && found.name) resolvedName = found.name;
+        }
+        var msg = {
+          msgId: detail.messageId || detail.msgId || ('msg_' + Date.now()),
+          messageId: detail.messageId || detail.msgId || ('msg_' + Date.now()),
+          content: detail.content || '',
+          senderNexoId: senderUUID,
+          senderName: resolvedName || detail.senderName || 'NEXO',
+          timestamp: detail.timestamp || Date.now(),
+          _own: false,
+          status: 'delivered',
+          deviceId: detail.deviceId || ''
+        };
+        if (window.vaultAppendMessage && senderUUID) {
+          window.vaultAppendMessage(senderUUID, msg, false).catch(function(e) {});
+        }
+        if (self.onMessage) self.onMessage(msg);
+      } catch (err) {
+        console.warn('[NEXO] _bleMessageHandler error:', err);
+      }
+    };
+    window.addEventListener('nexo:ble:messageReceived', self._bleMessageHandler);
+    window.addEventListener('nexo:ble:deviceConnected', function(e) {
+      try {
+        if (e && e.detail && e.detail.deviceId && self.bleInterface) {
+          var nx = self.bleInterface._macToNexoId ? self.bleInterface._macToNexoId.get(_normMac(e.detail.deviceId)) : null;
+          if (nx) {
+            setTimeout(function() { self._resendPendingMessages(nx); }, 500);
+          }
+        }
+      } catch (err) {}
+    });
+  }
+
+  _setupVaultListeners() {
+    var self = this;
+    window.addEventListener('nexo:vault:messagesLoaded', function(e) {
+      try {
+        if (e && e.detail && Array.isArray(e.detail.messages)) {
+          e.detail.messages.forEach(function(msg) {
+            if (self.onMessage) self.onMessage(msg);
+          });
+        }
+      } catch (err) {}
+    });
+  }
+
+  _setupPaymentListeners() {
+    var self = this;
+    window.addEventListener('nexo:payment:request', function(e) {
+      try {
+        if (e && e.detail) self._showPaymentModal(e.detail);
+      } catch (err) {}
+    });
+    window.addEventListener('nexo:payment:response', function(e) {
+      try {
+        if (e && e.detail) self._handlePaymentResponse(e.detail);
+      } catch (err) {}
+    });
+  }
+
+  _handleACK(messageId, ackType) {
+    try {
+      if (!messageId) return;
+      ackType = ackType || 'delivered';
+      console.log('[NEXO] ACK recibido:', messageId, ackType);
+      var timeout = this._ackTimeouts.get(messageId);
+      if (timeout) { clearTimeout(timeout); this._ackTimeouts.delete(messageId); }
+      this._pendingAcks.delete(messageId);
+      this._ackRetryCount.delete(messageId);
+      if (window.NEXO_updateMessageStatus) {
+        window.NEXO_updateMessageStatus(messageId, ackType);
+      }
+      var contactId = this._getCurrentContactId();
+      if (contactId && window.vaultUpdateMessageStatus) {
+        window.vaultUpdateMessageStatus(contactId, messageId, ackType).catch(function(e) {});
+      }
+    } catch (e) {
+      console.warn('[NEXO] _handleACK error:', e);
+    }
+  }
+
+  _getCurrentContactId() {
+    if (this.activeContact) {
+      return this.activeContact.nexoId || this.activeContact.id || this.activeContact.deviceUUID;
+    }
+    if (this.bleInterface && this.bleInterface._activeChatDeviceId) {
+      return this.bleInterface._activeChatDeviceId;
+    }
+    return null;
+  }
+
+  _resendPendingMessages(nexoId) {
+    var self = this;
+    if (!nexoId) return;
+    if (!window.vaultLoadMessages) return;
+    window.vaultLoadMessages(nexoId).then(function(messages) {
+      if (!messages || messages.length === 0) return;
+      var pending = messages.filter(function(m) { return m._own === true && (m.status === 'pending' || m.status === 'failed'); });
+      if (pending.length === 0) return;
+      console.log('[NEXO] Reenviando', pending.length, 'mensajes pending para', nexoId);
+      pending.forEach(function(msg) {
+        var mid = msg.msgId || msg.messageId || msg.id;
+        if (!mid) return;
+        self.sendMessage({ content: msg.content || msg.text || '', msgId: mid, messageId: mid });
+      });
+    }).catch(function(e) {
+      console.warn('[NEXO] Error cargando pending para reenvio:', e.message);
+    });
+  }
+
+  sendMessage(msg) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      try {
+        if (!msg || !msg.content) { reject(new Error('Mensaje vacio')); return; }
+        var contactId = self._getCurrentContactId();
+        if (!contactId) { reject(new Error('No hay contacto activo')); return; }
+        var messageId = msg.msgId || msg.messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+        msg.msgId = messageId;
+        msg.messageId = messageId;
+        msg.timestamp = msg.timestamp || Date.now();
+        var targetId = contactId;
+        if (self.bleInterface) {
+          var mappedMac = self.bleInterface._nexoIdToMac ? self.bleInterface._nexoIdToMac.get(_normId(contactId)) : null;
+          if (mappedMac) targetId = mappedMac;
+        }
+        var content = msg.content;
+        var isAttachment = false;
+        try {
+          var parsed = JSON.parse(content);
+          if (parsed && parsed.type === 'attachment') isAttachment = true;
+        } catch (e) {}
+        if (isAttachment && self.bleInterface && self.bleInterface.sendFile) {
+          self.bleInterface.sendFile(contactId, messageId, content, { type: 'attachment' })
+            .then(function() {
+              self._updateMessageStatus(messageId, 'sent');
+              resolve();
+            })
+            .catch(function(err) {
+              self._updateMessageStatus(messageId, 'failed');
+              reject(err);
+            });
+          return;
+        }
+        if (self.bleInterface && self.bleInterface.sendChatMessage) {
+          self.bleInterface.sendChatMessage(contactId, content, messageId)
+            .then(function() {
+              self._updateMessageStatus(messageId, 'sent');
+              self._scheduleAckTimeout(messageId);
+              resolve();
+            })
+            .catch(function(err) {
+              self._updateMessageStatus(messageId, 'failed');
+              reject(err);
+            });
+        } else {
+          reject(new Error('BLE no disponible'));
+        }
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  _scheduleAckTimeout(messageId) {
+    var self = this;
+    if (!messageId) return;
+    var timeout = setTimeout(function() {
+      var retries = self._ackRetryCount.get(messageId) || 0;
+      if (retries < self._ackMaxRetries) {
+        self._ackRetryCount.set(messageId, retries + 1);
+        console.log('[NEXO] ACK timeout, reintentando', retries + 1, '/', self._ackMaxRetries);
+        var contactId = self._getCurrentContactId();
+        if (contactId && self.bleInterface && self.bleInterface.sendChatMessage) {
+          self.bleInterface.sendChatMessage(contactId, '', messageId)
+            .then(function() {
+              self._scheduleAckTimeout(messageId);
+            })
+            .catch(function() {});
+        }
+      } else {
+        console.warn('[NEXO] ACK max retries alcanzado para', messageId);
+        self._pendingAcks.delete(messageId);
+        self._ackTimeouts.delete(messageId);
+        self._ackRetryCount.delete(messageId);
+        self._updateMessageStatus(messageId, 'failed');
+      }
+    }, self._ackTimeoutMs);
+    self._ackTimeouts.set(messageId, timeout);
+    self._pendingAcks.set(messageId, true);
+  }
+
+  _updateMessageStatus(messageId, status) {
+    try {
+      if (window.NEXO_updateMessageStatus) {
+        window.NEXO_updateMessageStatus(messageId, status);
+      }
+      var contactId = this._getCurrentContactId();
+      if (contactId && window.vaultUpdateMessageStatus) {
+        window.vaultUpdateMessageStatus(contactId, messageId, status).catch(function(e) {});
+      }
+    } catch (e) {}
+  }
+
+  getStatus() {
+    return {
+      initialized: true,
+      bleReady: !!(this.bleInterface && this.bleInterface.nativePlugin),
+      contacts: this.bleInterface ? this.bleInterface.getBLEContacts().length : 0,
+      activeContact: this.activeContact ? this.activeContact.nexoId : null
+    };
+  }
+
+  destroy() {
+    try {
+      if (this._bleMessageHandler) {
+        window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
+      }
+      this._ackTimeouts.forEach(function(t) { clearTimeout(t); });
+      this._ackTimeouts.clear();
+      this._pendingAcks.clear();
+      this._ackRetryCount.clear();
+    } catch (e) {}
+  }
+
+  // === PAYMENT / TRANSFER SYSTEM ===
+
+  _sendPayment(amount, currency, note) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      try {
+        var now = Date.now();
+        if (now - self._lastPaymentTime < self._paymentDebounceMs) {
+          reject(new Error('Espera antes de enviar otro pago'));
+          return;
+        }
+        self._lastPaymentTime = now;
+        if (self._isProcessingPayment) {
+          reject(new Error('Ya hay un pago en proceso'));
+          return;
+        }
+        self._isProcessingPayment = true;
+        var contactId = self._getCurrentContactId();
+        if (!contactId) {
+          self._isProcessingPayment = false;
+          reject(new Error('No hay contacto activo'));
+          return;
+        }
+        var paymentId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        var payload = JSON.stringify({
+          type: 'payment',
+          paymentId: paymentId,
+          amount: amount,
+          currency: currency || 'USD',
+          note: note || '',
+          timestamp: Date.now(),
+          senderNexoId: self.bleInterface ? (self.bleInterface.localNexoId || self.bleInterface.localDeviceUUID) : '',
+          status: 'pending'
+        });
+        self._isProcessingPayment = false;
+        if (self.bleInterface && self.bleInterface.sendChatMessage) {
+          self.bleInterface.sendChatMessage(contactId, payload, paymentId)
+            .then(function() { resolve(paymentId); })
+            .catch(function(err) { reject(err); });
+        } else {
+          reject(new Error('BLE no disponible'));
+        }
+      } catch (e) {
+        self._isProcessingPayment = false;
+        reject(e);
+      }
+    });
+  }
+
+  _showPaymentModal(detail) {
+    try {
+      var existing = document.getElementById('nexo-payment-modal');
+      if (existing) existing.remove();
+      var modal = document.createElement('div');
+      modal.id = 'nexo-payment-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+      modal.innerHTML = '<div style="background:#0a0a15;border:1px solid #00d4ff;border-radius:16px;padding:24px;max-width:320px;width:90%;text-align:center;color:#fff;">' +
+        '<h3 style="margin:0 0 12px;color:#00d4ff;">Solicitud de Pago</h3>' +
+        '<p style="font-size:24px;font-weight:700;margin:8px 0;">' + (detail.amount || '0') + ' ' + (detail.currency || 'USD') + '</p>' +
+        '<p style="font-size:13px;color:#aaa;margin:0 0 16px;">' + (detail.note || '') + '</p>' +
+        '<div style="display:flex;gap:10px;">' +
+        '<button id="pay-accept" style="flex:1;padding:12px;background:linear-gradient(135deg,#00d4ff,#0099cc);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">Aceptar</button>' +
+        '<button id="pay-decline" style="flex:1;padding:12px;background:rgba(255,59,48,0.3);border:1px solid #FF3B30;border-radius:10px;color:#fff;font-weight:600;cursor:pointer;">Rechazar</button>' +
+        '</div></div>';
+      document.body.appendChild(modal);
+      document.getElementById('pay-accept').addEventListener('click', function() {
+        self._respondToPayment(detail.paymentId, 'accepted');
+        modal.remove();
+      });
+      document.getElementById('pay-decline').addEventListener('click', function() {
+        self._respondToPayment(detail.paymentId, 'declined');
+        modal.remove();
+      });
+    } catch (e) {
+      console.warn('[NEXO] _showPaymentModal error:', e);
+    }
+  }
+
+  _respondToPayment(paymentId, response) {
+    var self = this;
+    try {
+      var contactId = self._getCurrentContactId();
+      if (!contactId) return;
+      var payload = JSON.stringify({
+        type: 'payment_response',
+        paymentId: paymentId,
+        response: response,
+        timestamp: Date.now(),
+        senderNexoId: self.bleInterface ? (self.bleInterface.localNexoId || self.bleInterface.localDeviceUUID) : ''
+      });
+      if (self.bleInterface && self.bleInterface.sendChatMessage) {
+        self.bleInterface.sendChatMessage(contactId, payload, 'payresp_' + Date.now());
+      }
+    } catch (e) {
+      console.warn('[NEXO] _respondToPayment error:', e);
+    }
+  }
+
+  _handlePaymentResponse(detail) {
+    try {
+      if (!detail || !detail.paymentId) return;
+      console.log('[NEXO] Respuesta de pago:', detail.paymentId, detail.response);
+      if (detail.response === 'accepted') {
+        if (window.NEXO_updateMessageStatus) {
+          window.NEXO_updateMessageStatus(detail.paymentId, 'completed');
+        }
+      } else {
+        if (window.NEXO_updateMessageStatus) {
+          window.NEXO_updateMessageStatus(detail.paymentId, 'rejected');
+        }
+      }
+    } catch (e) {
+      console.warn('[NEXO] _handlePaymentResponse error:', e);
+    }
+  }
+
+  _sendTransfer(amount, currency, note) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      try {
+        var now = Date.now();
+        if (now - self._lastTransferTime < self._transferDebounceMs) {
+          reject(new Error('Espera antes de enviar otra transferencia'));
+          return;
+        }
+        self._lastTransferTime = now;
+        if (self._isProcessingTransfer) {
+          reject(new Error('Ya hay una transferencia en proceso'));
+          return;
+        }
+        self._isProcessingTransfer = true;
+        var contactId = self._getCurrentContactId();
+        if (!contactId) {
+          self._isProcessingTransfer = false;
+          reject(new Error('No hay contacto activo'));
+          return;
+        }
+        var transferId = 'trf_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        var payload = JSON.stringify({
+          type: 'transfer',
+          transferId: transferId,
+          amount: amount,
+          currency: currency || 'USD',
+          note: note || '',
+          timestamp: Date.now(),
+          senderNexoId: self.bleInterface ? (self.bleInterface.localNexoId || self.bleInterface.localDeviceUUID) : '',
+          status: 'pending'
+        });
+        self._isProcessingTransfer = false;
+        if (self.bleInterface && self.bleInterface.sendChatMessage) {
+          self.bleInterface.sendChatMessage(contactId, payload, transferId)
+            .then(function() { resolve(transferId); })
+            .catch(function(err) { reject(err); });
+        } else {
+          reject(new Error('BLE no disponible'));
+        }
+      } catch (e) {
+        self._isProcessingTransfer = false;
+        reject(e);
+      }
+    });
+  }
+
+  _renderMessage(msg) {
+    try {
+      if (!msg) return;
+      if (msg.type === 'payment' || msg.type === 'transfer') {
+        this._renderPaymentBubble(msg);
+        return;
+      }
+      if (msg.type === 'payment_response') {
+        this._handlePaymentResponse(msg);
+        return;
+      }
+      if (window.NEXO_updateMessageStatus && msg.status) {
+        window.NEXO_updateMessageStatus(msg.msgId || msg.messageId || msg.id, msg.status);
+      }
+    } catch (e) {
+      console.warn('[NEXO] _renderMessage error:', e);
+    }
+  }
+
+  _renderPaymentBubble(msg) {
+    try {
+      if (!msg) return;
+      var container = document.getElementById('messages-container');
+      if (!container) return;
+      var div = document.createElement('div');
+      var isOwn = !!msg._own;
+      div.className = 'message ' + (isOwn ? 'own' : 'other');
+      var contentDiv = document.createElement('div');
+      contentDiv.className = 'msg-content';
+      var isPayment = msg.type === 'payment';
+      var icon = isPayment ? '💸' : '💰';
+      var title = isPayment ? 'Solicitud de Pago' : 'Transferencia';
+      var amount = (msg.amount || '0') + ' ' + (msg.currency || 'USD');
+      var html = '<div style="padding:12px 16px;background:rgba(0,0,0,0.3);border-radius:12px;min-width:200px;">';
+      html += '<div style="font-size:20px;margin-bottom:4px;">' + icon + '</div>';
+      html += '<div style="font-weight:700;font-size:16px;margin-bottom:4px;">' + title + '</div>';
+      html += '<div style="font-size:22px;font-weight:700;color:#00d4ff;margin-bottom:8px;">' + amount + '</div>';
+      if (msg.note) html += '<div style="font-size:12px;color:#aaa;margin-bottom:8px;">' + msg.note + '</div>';
+      if (!isOwn && isPayment && msg.status === 'pending') {
+        html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+        html += '<button class="pay-btn-accept" data-id="' + (msg.paymentId || msg.transferId) + '" style="flex:1;padding:8px;background:linear-gradient(135deg,#00d4ff,#0099cc);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer;">Aceptar</button>';
+        html += '<button class="pay-btn-decline" data-id="' + (msg.paymentId || msg.transferId) + '" style="flex:1;padding:8px;background:rgba(255,59,48,0.3);border:1px solid #FF3B30;border-radius:8px;color:#fff;font-weight:600;font-size:13px;cursor:pointer;">Rechazar</button>';
+        html += '</div>';
+      } else {
+        html += '<div style="font-size:12px;color:#888;margin-top:8px;">' + (msg.status || 'pending') + '</div>';
+      }
+      html += '</div>';
+      contentDiv.innerHTML = html;
+      div.appendChild(contentDiv);
+      var metaDiv = document.createElement('div');
+      metaDiv.className = 'msg-meta';
+      var timeSpan = document.createElement('span');
+      timeSpan.className = 'msg-time';
+      timeSpan.textContent = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+      metaDiv.appendChild(timeSpan);
+      if (isOwn) {
+        var statusClass = 'status-pending';
+        var statusIcon = '○';
+        if (msg.status === 'sent') { statusClass = 'status-sent'; statusIcon = '✓'; }
+        else if (msg.status === 'delivered') { statusClass = 'status-delivered'; statusIcon = '✓✓'; }
+        else if (msg.status === 'read') { statusClass = 'status-read'; statusIcon = '✓✓'; }
+        else if (msg.status === 'completed') { statusClass = 'status-completed'; statusIcon = '✓'; }
+        else if (msg.status === 'rejected') { statusClass = 'status-rejected'; statusIcon = '✗'; }
+        var statusSpan = document.createElement('span');
+        statusSpan.className = 'msg-status ' + statusClass;
+        statusSpan.textContent = statusIcon;
+        metaDiv.appendChild(statusSpan);
+      }
+      div.appendChild(metaDiv);
+      container.appendChild(div);
+      var acceptBtns = div.querySelectorAll('.pay-btn-accept');
+      var declineBtns = div.querySelectorAll('.pay-btn-decline');
+      var self = this;
+      acceptBtns.forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var id = btn.dataset.id;
+          self._respondToPayment(id, 'accepted');
+        });
+      });
+      declineBtns.forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var id = btn.dataset.id;
+          self._respondToPayment(id, 'declined');
+        });
+      });
+      requestAnimationFrame(function() {
+        container.scrollTop = container.scrollHeight;
+      });
+    } catch (e) {
+      console.warn('[NEXO] _renderPaymentBubble error:', e);
+    }
+  }
+
+  _signPayment(paymentId) {
+    try {
+      console.log('[NEXO] Firmando pago:', paymentId);
+      return 'SIG_' + paymentId + '_' + Date.now();
+    } catch (e) {
+      console.warn('[NEXO] _signPayment error:', e);
+      return null;
+    }
+  }
 }
 
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }
 
-class NexoApp {
-  constructor(config) {
-    config = config || {};
-    this.config = {
-      relayUrls: Array.isArray(config.relayUrls) ? config.relayUrls : [],
-      enableGestures: config.enableGestures !== false,
-      enableMesh: config.enableMesh !== false,
-      onMessage: typeof config.onMessage === 'function' ? config.onMessage : function() {},
-      onStatusChange: typeof config.onStatusChange === 'function' ? config.onStatusChange : function() {},
-      onError: typeof config.onError === 'function' ? config.onError : function(e) { console.error(e); },
-    };
-    if (config.relayUrls) this.config.relayUrls = config.relayUrls;
-    if (config.enableGestures !== undefined) this.config.enableGestures = config.enableGestures;
-    if (config.enableMesh !== undefined) this.config.enableMesh = config.enableMesh;
-    if (config.onMessage) this.config.onMessage = config.onMessage;
-    if (config.onStatusChange) this.config.onStatusChange = config.onStatusChange;
-    if (config.onError) this.config.onError = config.onError;
-    this._resources = { timers: new Set(), listeners: new Set(), handlers: new Set() };
-    this._isInitializing = false;
-    this._isDestroyed = false;
-    this.vault = null;
-    this.mesh = null;
-    this.nordicMesh = null;
-    this.blePeers = new Map();
-    this.wsClient = null;
-    this.bridge = null;
-    this.gestures = null;
-    this.stream = null;
-    this.vaultSlider = null;
-    this.bleInterface = null;
-    this.initialized = false;
-    this.activeContact = null;
-    this._bleChatHandler = null;
-    this._bleMessageHandler = null;
-    this._ackStatusHandler = null;
-    this._messageDedupMap = new Map();
-    this._maxProcessedIds = 1000;
-    this._dedupTTL = 300000;
-    this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.20-FILES iniciando...', 'info', 'APP_INIT');
-  }
-
-  async init() {
-    if (this.initialized) { DEBUG.warn('Already initialized', 'APP_SKIP'); return this; }
-    if (this._isInitializing) throw new Error('[APP_018] Initialization in progress');
-    if (this._isDestroyed) throw new Error('[APP_019] Cannot init destroyed');
-    this._isInitializing = true;
-    DEBUG.setPhase('INIT');
-    try {
-      await this._initPhase1_Crypto();
-      await this._initPhase2_WebSocket();
-      var nativeAvailable = !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE);
-      if (this.config.enableMesh && !nativeAvailable) await this._initPhase3_NordicMesh();
-      if (this.config.enableMesh && !nativeAvailable) await this._initPhase4_HybridMesh();
-      await this._initPhase5_BLEUI();
-      await this._initPhase6_Bridge();
-      await this._initPhase7_UI();
-      this.initialized = true;
-      DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.20-FILES Ready', 'APP_READY');
-    } catch (err) {
-      DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
-      await this._partialCleanup();
-      throw err;
-    } finally { this._isInitializing = false; }
-    return this;
-  }
-
-  async _initPhase1_Crypto() {
-    DEBUG.setPhase('CRYPTO');
-    try {
-      this.vault = new CryptoVault();
-      await withTimeoutNAP(this.vault.init(), 5000, 'CryptoVault.init');
-      var identity = this.vault.getIdentity ? this.vault.getIdentity() : null;
-      if (identity) { DEBUG.setIdentity(identity); DEBUG.success('Vault initialized', 'CRYPTO_002'); }
-    } catch (err) { DEBUG.error('CRYPTO_004', 'Vault init failed: ' + (err.message || 'unknown')); this.vault = null; }
-  }
-
-  async _initPhase2_WebSocket() {
-    DEBUG.setPhase('WEBSOCKET');
-    if (this.config.relayUrls.length === 0) { DEBUG.warn('No relay URLs', 'WS_SKIP'); return; }
-    try {
-      this.wsClient = new WebSocketClient(this.config.relayUrls[0]);
-      var self = this;
-      this.wsClient.onMessage = function(m) { self._handleMessage(m, 'relay'); };
-      this.wsClient.onOpen = function() { DEBUG.setMode('RELAY'); };
-      await withTimeoutNAP(this.wsClient.connect(), 8000, 'WebSocket.connect');
-    } catch (err) { DEBUG.warn('WebSocket unavailable: ' + (err.message || 'unknown'), 'WS_004'); this.wsClient = null; }
-  }
-
-  async _initPhase3_NordicMesh() {
-    DEBUG.setPhase('NORDIC_MESH');
-    try {
-      if (!this.vault) throw new Error('Vault required');
-      this.nordicMesh = new NordicMesh(this.vault, { rssiThreshold: -85, chunkSize: 507, handshakeTimeout: 30000 });
-      var self = this;
-      var unsub1 = this.nordicMesh.on('peerDiscovered', function(p) { self._handleNordicPeer(p); });
-      var unsub2 = this.nordicMesh.on('sessionEstablished', function(d) { self._handleNordicSession(d); });
-      var unsub3 = this.nordicMesh.on('messageReceived', function(m) { self._handleNordicMessage(m); });
-      var unsub4 = this.nordicMesh.on('stateChanged', function(s) { self._updateModeFromNordic(s.to); });
-      var unsub5 = this.nordicMesh.on('error', function(err) { DEBUG.error('NORDIC_010', err.message); });
-      this._resources.handlers.add(unsub1);
-      this._resources.handlers.add(unsub2);
-      this._resources.handlers.add(unsub3);
-      this._resources.handlers.add(unsub4);
-      this._resources.handlers.add(unsub5);
-      var result = await withTimeoutNAP(this.nordicMesh.init(), 10000, 'NordicMesh.init');
-      if (!result.success) throw new Error(result.error ? result.error.message : 'Nordic init returned false');
-      DEBUG.success('Nordic Mesh active [Native:' + result.isNative + ']', 'NORDIC_002');
-    } catch (err) { DEBUG.error('NORDIC_005', 'Nordic init failed: ' + (err.message || 'unknown')); this.nordicMesh = null; }
-  }
-
-  async _initPhase4_HybridMesh() {
-    DEBUG.setPhase('MESH');
-    try {
-      var self = this;
-      this.mesh = new HybridMesh({
-        onDeviceFound: function(d) { DEBUG.log('Hybrid found: ' + (d.name || 'unknown'), 'info', 'MESH_DEVICE'); },
-        onDeviceConnected: function(d) { DEBUG.success('Hybrid connected: ' + (d.name || 'unknown'), 'MESH_CONN'); },
-        onDeviceDisconnected: function(d) { DEBUG.log('Hybrid disconnected', 'warn', 'MESH_DISC'); },
-        onError: function(code, msg) { DEBUG.error('MESH_006', msg); }
-      });
-      await withTimeoutNAP(this.mesh.initialize(), 15000, 'HybridMesh.initialize');
-      DEBUG.success('Hybrid Mesh ready', 'MESH_002');
-    } catch (err) { DEBUG.error('APP_016', 'Hybrid Mesh: ' + (err.message || 'unknown')); this.mesh = null; }
-  }
-
-  async _initPhase5_BLEUI() {
-    DEBUG.setPhase('BLE_UI');
-    try {
-      var meshInstance = this.nordicMesh || this.mesh || null;
-      this.bleInterface = initBLEInterface(meshInstance);
-      if (this.bleInterface) DEBUG.success('BLE UI ready' + (meshInstance ? '' : ' (native)'), 'UI_002');
-      var self = this;
-      this._bleChatHandler = async function(e) {
-        try {
-          var detail = e.detail || {};
-          self.activeContact = { id: detail.contactId, name: detail.name, address: detail.address, transport: detail.transport };
-          var appContainer = document.getElementById('app');
-          if (appContainer) appContainer.classList.remove('hidden');
-          document.body.classList.add('chat-view-active');
-          var backBtn = document.getElementById('chat-back-btn');
-          if (backBtn) backBtn.classList.add('visible');
-          var nameInput = document.getElementById('chat-contact-name');
-          var subtitle = document.getElementById('chat-contact-subtitle');
-          if (nameInput) nameInput.value = detail.name || '';
-          if (subtitle) subtitle.textContent = '';
-          DEBUG.success('Chat activo: ' + (detail.name || '') + ' [' + (detail.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
-          try {
-            var storedMessages = await self._loadMessagesFromVault(detail.contactId);
-            storedMessages.sort(function(a, b) { return (a._ts || 0) - (b._ts || 0); });
-            storedMessages.forEach(function(m) { self.config.onMessage(m); });
-          } catch (e) {}
-          self._updateMode('P2P_BLE');
-          self.config.onStatusChange('CHAT:' + (detail.name || ''));
-          var bottomNav = document.getElementById('ble-bottom-nav');
-          if (bottomNav) {
-            var navItems = bottomNav.querySelectorAll('.ble-nav-item');
-            navItems.forEach(function(n) { n.classList.remove('active'); });
-            var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
-            if (chatsTab) chatsTab.classList.add('active');
-          }
-        } catch (handlerErr) {
-          console.error('[NexoApp] Error en _bleChatHandler:', handlerErr);
-          DEBUG.error('BLE_UI_001', 'Error en chat handler: ' + (handlerErr.message || 'unknown'));
-        }
-      };
-      window.addEventListener('nexo:ble:openChat', this._bleChatHandler);
-
-      this._chatBackHandler = function() {
-        try {
-          document.body.classList.remove('chat-view-active');
-          var backBtn = document.getElementById('chat-back-btn');
-          if (backBtn) backBtn.classList.remove('visible');
-          self.activeContact = null;
-          try { window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} })); } catch(e) {}
-          var blePanel = document.getElementById('ble-panel');
-          var bleOverlay = document.getElementById('ble-overlay');
-          if (blePanel) blePanel.classList.remove('active');
-          if (bleOverlay) bleOverlay.classList.remove('active');
-          var bottomNav = document.getElementById('ble-bottom-nav');
-          if (bottomNav) {
-            var navItems = bottomNav.querySelectorAll('.ble-nav-item');
-            navItems.forEach(function(n) { n.classList.remove('active'); });
-            var chatsTab = bottomNav.querySelector('[data-tab="chats"]');
-            if (chatsTab) chatsTab.classList.add('active');
-          }
-          self._updateMode('OFFLINE');
-          self.config.onStatusChange('OFFLINE');
-        } catch (err) { console.warn('[NexoApp] Error en back handler:', err); }
-      };
-      var chatBackBtn = document.getElementById('chat-back-btn');
-      if (chatBackBtn) chatBackBtn.addEventListener('click', this._chatBackHandler);
-
-      this._nativeDeviceConnectedHandler = function(e) {
-        try {
-          var detail = e.detail || {};
-          self._updateMode('P2P_BLE');
-          self.config.onStatusChange('CONECTADO:' + (detail.name || ''));
-        } catch (err) {
-          console.warn('[NexoApp] Error en _nativeDeviceConnectedHandler:', err);
-        }
-      };
-      window.addEventListener('nexo:ble:deviceConnected', this._nativeDeviceConnectedHandler);
-
-      this._nativeDeviceDisconnectedHandler = function(e) {
-        try {
-          self._updateMode('OFFLINE');
-          self.config.onStatusChange('OFFLINE');
-        } catch (err) {
-          console.warn('[NexoApp] Error en _nativeDeviceDisconnectedHandler:', err);
-        }
-      };
-      window.addEventListener('nexo:ble:deviceDisconnected', this._nativeDeviceDisconnectedHandler);
-
-      this._bleMessageHandler = function(e) {
-        try {
-          var detail = e.detail || {};
-          var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
-          var senderUUID = detail.deviceUUID || '';
-          if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
-            console.log('[BLE_RECV] Mensaje propio ignorado por UUID');
-            return;
-          }
-          console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
-          var resolvedName = detail.senderName;
-          if (!resolvedName || resolvedName === 'NEXO Peer') {
-            var nid = (detail.deviceId || '').toString().toLowerCase().trim();
-            var connDev = self.bleInterface && self.bleInterface.connectedDevices ? self.bleInterface.connectedDevices.get(nid) : null;
-            var foundDev = self.bleInterface && self.bleInterface.foundDevices ? self.bleInterface.foundDevices.get(nid) : null;
-            resolvedName = (connDev && connDev.name) || (foundDev && foundDev.name) || detail.senderName || '';
-          }
-          var messageId = null;
-          var content = detail.content || detail.data || '';
-          if (content.charAt(0) === '{' || (detail.data && detail.data.charAt(0) === '{')) {
-            try {
-              var json = JSON.parse(detail.data || content || '{}');
-              if (json.msgId) messageId = json.msgId;
-              if (json.messageId) messageId = json.messageId;
-              if (json.payload && json.payload.senderNexoId) senderUUID = json.payload.senderNexoId;
-              if (json.payload && json.payload.text) content = json.payload.text;
-              if (json.deviceUUID) senderUUID = json.deviceUUID;
-              if (json.from && !senderUUID) senderUUID = json.from;
-            } catch (e) {}
-          }
-          var ctrl = null;
-          try {
-            if (content && content.charAt(0) === '{') ctrl = JSON.parse(content);
-            else if (detail.content && detail.content.charAt(0) === '{') ctrl = JSON.parse(detail.content);
-            else if (detail.data && detail.data.charAt(0) === '{') ctrl = JSON.parse(detail.data);
-          } catch (e) { ctrl = null; }
-          if (ctrl && (ctrl.type === 'ack' || ctrl.type === 'read_receipt')) {
-            var ackMid = ctrl.msgId || ctrl.messageId || ctrl.id || null;
-            if (ackMid) {
-              if (ctrl.type === 'ack') {
-                self._handleACK(ackMid, ctrl.ackType || 'delivered');
-                return;
-              }
-              if (ctrl.type === 'read_receipt') {
-                self._handleACK(ackMid, 'read');
-                return;
-              }
-            }
-          }
-          self._handleMessage({
-            content: detail.content,
-            sender: detail.deviceId,
-            senderName: resolvedName,
-            source: detail.source || 'ble_direct',
-            timestamp: detail.timestamp || Date.now(),
-            messageId: detail.messageId,
-            deviceUUID: detail.deviceUUID || detail.deviceId,
-            _own: false
-          }, 'ble_direct');
-          if (senderUUID && detail.messageId) {
-            setTimeout(function() { self._sendACK(senderUUID, detail.messageId); }, 100);
-          }
-        } catch (handlerErr) {
-          console.error('[NexoApp] Error en _bleMessageHandler:', handlerErr);
-          DEBUG.error('BLE_UI_002', 'Error en message handler: ' + (handlerErr.message || 'unknown'));
-        }
-      };
-      window.addEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
-
-      // FIX: escuchar ACKs del BleAckSystem para actualizar palomitas en UI
-      this._ackStatusHandler = function(e) {
-        if (e.detail && e.detail.msgId && e.detail.status) {
-          self._updateMessageStatus(e.detail.msgId, e.detail.status);
-        }
-      };
-      window.addEventListener('nexo:ble:ackStatus', this._ackStatusHandler);
-
-      // v5.0.20: Escuchar progreso de archivos BLE
-      this._fileProgressHandler = function(e) {
-        if (e.detail && e.detail.fileId) {
-          var d = e.detail;
-          console.log('[NexoApp] File progress:', d.fileId, d.status, d.percent + '%');
-          var progressEl = document.getElementById('progress-' + d.fileId);
-          if (progressEl) {
-            progressEl.textContent = d.status + ' ' + (d.percent || 0) + '%';
-          }
-        }
-      };
-      window.addEventListener('nexo:ble:fileProgress', this._fileProgressHandler);
-
-      // v5.0.20: Escuchar archivos completos recibidos por BLE
-      this._fileCompleteHandler = function(e) {
-        try {
-          var d = e.detail || {};
-          if (!d.fileId || !d.data) return;
-          console.log('[NexoApp] Archivo recibido:', d.fileId, d.meta);
-          self._renderReceivedFile(d.fileId, d.data, d.meta || {});
-          var senderUUID = d.meta && d.meta.from ? d.meta.from : (self.activeContact ? self.activeContact.id : null);
-          if (senderUUID) {
-            var vaultMsg = {
-              msgId: d.fileId,
-              messageId: d.fileId,
-              content: '[ARCHIVO: ' + (d.meta.name || d.meta.type || 'file') + ']',
-              _own: false,
-              status: 'delivered',
-              timestamp: Date.now(),
-              senderName: d.meta.name || 'Nexo',
-              attachmentType: d.meta.type || 'file',
-              attachmentPayload: d.data,
-              attachmentMeta: d.meta
-            };
-            self._saveMessageToVault(senderUUID, vaultMsg);
-          }
-        } catch (err) {
-          console.error('[NexoApp] Error en fileCompleteHandler:', err);
-        }
-      };
-      window.addEventListener('nexo:ble:fileComplete', this._fileCompleteHandler);
-
-    } catch (err) { DEBUG.error('UI_004', 'BLE UI init failed: ' + (err.message || 'unknown')); this.bleInterface = null; }
-  }
-
-  async _initPhase6_Bridge() {
-    DEBUG.setPhase('BRIDGE');
-    try {
-      if (!this.mesh && !this.nordicMesh && !this.wsClient && !(this.bleInterface && this.bleInterface.nativePlugin)) {
-        DEBUG.warn('No transports', 'BRIDGE_SKIP');
-        return;
-      }
-      var self = this;
-      this.bridge = new MeshRelayBridge({
-        mesh: this.mesh,
-        nordicMesh: this.nordicMesh,
-        relay: this.wsClient,
-        onModeChange: function(mode) { DEBUG.setMode(mode); self.config.onStatusChange(mode); }
-      });
-      await withTimeoutNAP(this.bridge.initialize(), 5000, 'Bridge.initialize');
-      DEBUG.success('Bridge ready', 'BRIDGE_002');
-    } catch (err) { DEBUG.warn('Bridge init failed: ' + (err.message || 'unknown'), 'BRIDGE_003'); this.bridge = null; }
-  }
-
-  async _initPhase7_UI() {
-    DEBUG.setPhase('GESTURES');
-    if (this.config.enableGestures) { try { this.gestures = new GestureEngine({}); this.gestures.init(); } catch (e) {} }
-    DEBUG.setPhase('VAULT_SLIDER');
-    var streamEl = document.getElementById('nexo-stream');
-    var vaultEl = document.getElementById('nexo-vault');
-    if (streamEl && vaultEl) { try { this.vaultSlider = new CoreGestureEngine(streamEl, vaultEl); } catch (e) {} }
-    DEBUG.setPhase('STREAM');
-    var container = document.getElementById('messages-container');
-    if (container) { try { this.stream = new TheStream(container, {}); } catch (e) {} }
-    var jumpBtn = document.getElementById('jump-to-bottom');
-    if (jumpBtn && container) {
-      var self = this;
-      container.addEventListener('scroll', function() {
-        var nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-        if (nearBottom) jumpBtn.classList.remove('visible');
-        else jumpBtn.classList.add('visible');
-      });
-      jumpBtn.addEventListener('click', function() {
-        container.scrollTop = container.scrollHeight;
-        jumpBtn.classList.remove('visible');
-      });
-    }
-    self._initKeyboardScrollFix();
-    /* === INPUT BAR v2 — Attach menu + Send/Mic toggle + Attach handlers === */
-    self._initInputBarV2();
-  }
-
-  _initInputBarV2() {
-    var self = this;
-    var input = document.getElementById('message-input');
-    var sendBtn = document.getElementById('send-btn');
-    var attachBtn = document.getElementById('attach-btn');
-    var attachMenu = document.getElementById('attach-menu');
-
-    if (!input || !sendBtn) return;
-
-    // Toggle Send / Mic según contenido
-    function updateSendButton() {
-      var text = (input.value || '').trim();
-      if (text.length > 0) {
-        sendBtn.classList.remove('mic-mode');
-      } else {
-        sendBtn.classList.add('mic-mode');
-      }
-    }
-    input.addEventListener('input', updateSendButton);
-    updateSendButton(); // estado inicial
-
-    // Attach menu toggle
-    if (attachBtn && attachMenu) {
-      attachBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var isVisible = attachMenu.classList.contains('visible');
-        if (isVisible) {
-          attachMenu.classList.remove('visible');
-          attachMenu.classList.add('hidden');
-          attachBtn.classList.remove('active');
-        } else {
-          attachMenu.classList.remove('hidden');
-          // Force reflow
-          void attachMenu.offsetWidth;
-          attachMenu.classList.add('visible');
-          attachBtn.classList.add('active');
-        }
-      });
-
-      // Cerrar menú al tocar fuera
-      document.addEventListener('click', function(e) {
-        if (!attachMenu.contains(e.target) && e.target !== attachBtn) {
-          attachMenu.classList.remove('visible');
-          attachMenu.classList.add('hidden');
-          attachBtn.classList.remove('active');
-        }
-      });
-
-      // === ATTACH HANDLERS REALES ===
-      var menuItems = attachMenu.querySelectorAll('.attach-menu-item');
-      menuItems.forEach(function(item) {
-        item.addEventListener('click', function() {
-          var type = item.getAttribute('data-type');
-          attachMenu.classList.remove('visible');
-          attachMenu.classList.add('hidden');
-          attachBtn.classList.remove('active');
-
-          // Helpers burbuja
-          function getMessagesContainer() {
-            return document.getElementById('messages-container');
-          }
-          function scrollToBottom() {
-            var c = getMessagesContainer();
-            if (c) c.scrollTop = c.scrollHeight;
-          }
-          function renderOwnBubble(htmlContent, typeLabel) {
-            var container = getMessagesContainer();
-            if (!container) { console.error('[Attach] No contenedor'); return; }
-            var bubble = document.createElement('div');
-            bubble.className = 'message own message-attachment';
-            bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
-            bubble.innerHTML = htmlContent + '<div style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + typeLabel + '</div>';
-            container.appendChild(bubble);
-            scrollToBottom();
-          }
-
-          if (type === 'photo') {
-            if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.Camera) {
-              alert('Plugin Camera no disponible'); return;
-            }
-            var Camera = window.Capacitor.Plugins.Camera;
-            Camera.getPhoto({
-              quality: 85, allowEditing: false,
-              resultType: Camera.CameraResultType.Base64,
-              source: Camera.CameraSource.Prompt, saveToGallery: false
-            }).then(function(image) {
-              if (image && image.base64String) {
-                var dataUrl = 'data:image/jpeg;base64,' + image.base64String;
-                var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto"></div>';
-                renderOwnBubble(html, '📷 Foto');
-                // v5.0.20: Enviar foto por BLE
-                self._sendAttachment(self.activeContact ? self.activeContact.id : null, 'image', image.base64String, {
-                  mimeType: 'image/jpeg',
-                  width: image.width || 0,
-                  height: image.height || 0,
-                  size: image.base64String.length
-                });
-              }
-            }).catch(function(err) {
-              console.error('[FOTO] Error:', err);
-              if (err.message && err.message.indexOf('cancelled') === -1) alert('Error foto: ' + err.message);
-            });
-          } else if (type === 'video') {
-            var inputVid = document.createElement('input');
-            inputVid.type = 'file'; inputVid.accept = 'video/*'; inputVid.style.display = 'none';
-            inputVid.onchange = function(ev) {
-              var file = ev.target.files[0]; if (!file) return;
-              var url = URL.createObjectURL(file);
-              var html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + url + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
-              renderOwnBubble(html, '🎬 Video');
-              // v5.0.20: Enviar video por BLE
-              self._readFileAsBase64(file).then(function(base64) {
-                self._sendAttachment(self.activeContact ? self.activeContact.id : null, 'video', base64, {
-                  mimeType: file.type || 'video/mp4',
-                  name: file.name,
-                  size: file.size
-                });
-              }).catch(function(e) { console.error('[VIDEO] Error leyendo:', e); });
-            };
-            document.body.appendChild(inputVid); inputVid.click();
-            setTimeout(function() { inputVid.remove(); }, 5000);
-          } else if (type === 'file') {
-            var inputFile = document.createElement('input');
-            inputFile.type = 'file'; inputFile.style.display = 'none';
-            inputFile.onchange = function(ev) {
-              var file = ev.target.files[0]; if (!file) return;
-              var sizeStr = file.size > 1024*1024 ? (file.size/(1024*1024)).toFixed(1) + ' MB' : (file.size/1024).toFixed(0) + ' KB';
-              var html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + file.name + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
-              renderOwnBubble(html, '📎 Archivo');
-              // v5.0.20: Enviar archivo por BLE
-              self._readFileAsBase64(file).then(function(base64) {
-                self._sendAttachment(self.activeContact ? self.activeContact.id : null, 'file', base64, {
-                  mimeType: file.type || 'application/octet-stream',
-                  name: file.name,
-                  size: file.size
-                });
-              }).catch(function(e) { console.error('[FILE] Error leyendo:', e); });
-            };
-            document.body.appendChild(inputFile); inputFile.click();
-            setTimeout(function() { inputFile.remove(); }, 5000);
-          }
-        });
-      });
-    }
-
-    // Mic button placeholder
-    sendBtn.addEventListener('click', function(e) {
-      if (sendBtn.classList.contains('mic-mode')) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('[NEXO] Mic presionado — placeholder');
-        return;
-      }
-      // Si es modo send, el handler original de sendMessage ya existe
-    });
-  }
-  _initKeyboardScrollFix() {
-    var self = this;
-    var container = document.getElementById('messages-container');
-    var input = document.getElementById('message-input');
-    if (!container || !input) return;
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', function() {
-        var vv = window.visualViewport;
-        var layoutH = window.innerHeight;
-        var visibleH = vv.height;
-        var kbHeight = Math.max(0, layoutH - visibleH);
-        if (kbHeight > 100) {
-          document.body.classList.add('keyboard-open');
-          setTimeout(function() {
-            container.scrollTop = container.scrollHeight;
-          }, 100);
-        } else {
-          document.body.classList.remove('keyboard-open');
-        }
-      });
-    }
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Keyboard) {
-      var Keyboard = window.Capacitor.Plugins.Keyboard;
-      Keyboard.addListener('keyboardWillShow', function(info) {
-        document.body.classList.add('keyboard-open');
-        setTimeout(function() {
-          container.scrollTop = container.scrollHeight;
-          input.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }, 50);
-      });
-      Keyboard.addListener('keyboardWillHide', function() {
-        document.body.classList.remove('keyboard-open');
-      });
-    } else if (!window.visualViewport) {
-      var originalHeight = window.innerHeight;
-      window.addEventListener('resize', function() {
-        var newHeight = window.innerHeight;
-        if (newHeight < originalHeight - 100) {
-          document.body.classList.add('keyboard-open');
-          setTimeout(function() {
-            container.scrollTop = container.scrollHeight;
-          }, 100);
-        } else {
-          document.body.classList.remove('keyboard-open');
-        }
-      });
-    }
-    input.addEventListener('focus', function() {
-      setTimeout(function() {
-        container.scrollTop = container.scrollHeight;
-        input.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }, 300);
-    });
-  }
-  _handleNordicPeer(peer) { if (!peer || !peer.id) return; this.blePeers.set(peer.id, Object.assign({}, peer, { discoveredAt: Date.now() })); }
-  _handleNordicSession(data) { if (!data || !data.deviceId) return; this._updateMode('P2P_BLE'); }
-  _handleNordicMessage(msg) { if (!msg || !msg.deviceId) return; this._handleMessage({ content: msg.content, sender: msg.deviceId, source: 'ble_nordic', timestamp: msg.timestamp || Date.now() }, 'ble_nordic'); }
-  _updateModeFromNordic(state) {
-    switch(state) {
-      case 'messaging': case 'connected': this._updateMode('P2P_BLE'); break;
-      case 'offline': if ((!this.mesh || !this.mesh.getPeerCount || this.mesh.getPeerCount() === 0) && (!this.wsClient || !this.wsClient.isConnected || !this.wsClient.isConnected())) this._updateMode('OFFLINE'); break;
-    }
-  }
-  _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
-
-  async _saveMessageToVault(contactId, message) {
-    var cid = _normId(contactId);
-    if (!cid) return;
-    // FIX: normalizar msgId
-    var mid = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
-    message.msgId = mid;
-    message.messageId = mid;
-    if (cid.indexOf('nx') !== 0 && window.bleInterface && window.bleInterface.getContacts) {
-      var contacts = window.bleInterface.getContacts();
-      var found = contacts.find(function(c) { return _normId(c.deviceId) === cid; });
-      if (found && found.deviceUUID) cid = _normId(found.deviceUUID);
-    }
-    if (!cid) return;
-    try {
-      await vaultAppendMessage(cid, {
-        content: message.content,
-        sender: message.sender,
-        senderName: message.senderName,
-        _own: !!message._own,
-        _source: message._source,
-        _ts: message._ts || Date.now(),
-        messageId: message.messageId,
-        deviceUUID: message.deviceUUID,
-        recipient: message.recipient,
-        status: message.status || 'pending'
-      });
-    } catch (e) {
-      console.warn('[NexoApp] Error guardando mensaje:', e.message);
-    }
-  }
-
-  async _loadMessagesFromVault(contactId) {
-    try {
-      var cid = _normId(contactId);
-      if (!cid) return [];
-      var raw = await vaultLoadMessages(cid);
-      return raw.map(function(m) {
-        return {
-          content: m.text || m.content || '',
-          sender: m.senderNexoId || m.sender || '',
-          senderName: m.senderName || '',
-          _own: !!m._own,
-          _source: 'vault',
-          _ts: m.timestamp || m._ts || Date.now(),
-          messageId: m.msgId || m.messageId || '',
-          status: m.status || 'pending',
-          deviceUUID: m.senderNexoId || m.sender || ''
-        };
-      });
-    } catch (e) { return []; }
-  }
-
-  async _updateMessageStatusInVault(contactId, messageId, status) {
-    var cid = _normId(contactId);
-    if (!cid || !messageId) return;
-    try {
-      await vaultUpdateMessageStatus(cid, messageId, status);
-    } catch (e) {
-      console.warn('[NexoApp] Error actualizando estado:', e.message);
-    }
-  }
-
-  async sendMessage(msg) {
-    if (!this.initialized || this._isDestroyed) {
-      DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
-      return false;
-    }
-    try {
-      var messageId = msg.msgId || msg.messageId || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
-      msg.msgId = messageId;
-      msg.messageId = messageId;
-      var isObject = msg && typeof msg === 'object';
-      var content = isObject ? (msg.content || msg) : msg;
-      var recipient = isObject ? msg.recipient : null;
-      var targetId = recipient || (this.activeContact ? this.activeContact.id : null);
-      var targetTransport = this.activeContact ? this.activeContact.transport : null;
-      if (!content || (typeof content === 'string' && content.trim() === '')) {
-        return false;
-      }
-      this._cleanupPendingMessages();
-      this._pendingMessages.set(messageId, { status: 'pending', timestamp: Date.now(), recipient: targetId, retries: 0 });
-      this._handleMessage({
-        content: content,
-        _own: true,
-        timestamp: Date.now(),
-        pending: true,
-        recipient: targetId,
-        source: 'self',
-        messageId: messageId
-      }, 'self');
-      if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
-        try {
-          console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
-          // FIX: timeout 25s para dar margen a BleAckSystem (3 reintentos × 6s = 18s + delays)
-          await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 25000, 'BLE.sendChatMessage');
-          DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        } catch (e) {
-          DEBUG.warn('BLE directo fallo: ' + (e.message || 'unknown'), 'MSG_BLE_FAIL');
-          // FIX: marcar como failed en la UI para que el usuario sepa
-          this._updateMessageStatus(messageId, 'failed');
-        }
-      }
-      var nordicPeers = this.nordicMesh && this.nordicMesh.getPeers ? this.nordicMesh.getPeers() : [];
-      if (nordicPeers.length > 0) {
-        try {
-          await this.nordicMesh.sendMessage(nordicPeers[0].id, content);
-          DEBUG.success('Sent via Nordic', 'MSG_NORDIC');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        } catch (e) {
-          DEBUG.error('NORDIC_009', 'Send failed: ' + (e.message || 'unknown'));
-        }
-      }
-      if (this.mesh && this.mesh.getPeerCount && this.mesh.getPeerCount() > 0) {
-        try {
-          await this.mesh.broadcast({ content: content });
-          DEBUG.success('Sent via Hybrid', 'MSG_HYBRID');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        } catch (e) {
-          DEBUG.error('MESH_005', 'Broadcast failed: ' + (e.message || 'unknown'));
-        }
-      }
-      if (this.bridge) {
-        var result = await this.bridge.send({ content: content });
-        if (result) {
-          DEBUG.success('Sent via Bridge', 'MSG_BRIDGE');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        }
-      }
-      if (this.wsClient && this.wsClient.isConnected && this.wsClient.isConnected()) {
-        this.wsClient.send({ content: content });
-        DEBUG.success('Sent via WebSocket', 'MSG_WS');
-        this._updateMessageStatus(messageId, 'sent');
-        return true;
-      }
-      DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
-      return false;
-    } catch (err) {
-      DEBUG.error('APP_008', 'SendMessage critical: ' + (err.message || 'unknown'));
-      return false;
-    }
-  }
-
-  _handleMessage(msg, source) {
-    if (this._isDestroyed) return;
-    try {
-      // FIX: normalizar msgId/messageId
-      var msgId = msg.msgId || msg.messageId || msg.id || null;
-      if (msgId) {
-        msg.msgId = msgId;
-        msg.messageId = msgId;
-      }
-      if (msgId) {
-        var now = Date.now();
-        if (this._messageDedupMap.has(msgId)) {
-          if (source !== 'self') {
-            DEBUG.log('Deduplicado ' + (msgId ? msgId.substring(0, 8) : '') + ' de ' + source, 'debug', 'DEDUP');
-          }
-          return;
-        }
-        this._messageDedupMap.set(msgId, now);
-        if (this._messageDedupMap.size > this._maxProcessedIds) {
-          var oldestKey = null;
-          var oldestTime = Infinity;
-          this._messageDedupMap.forEach(function(v, k) {
-            if (v < oldestTime) { oldestTime = v; oldestKey = k; }
-          });
-          if (oldestKey) this._messageDedupMap.delete(oldestKey);
-        }
-        var keysToDelete = [];
-        this._messageDedupMap.forEach(function(v, k) {
-          if (now - v > this._dedupTTL) keysToDelete.push(k);
-        }.bind(this));
-        for (var i = 0; i < keysToDelete.length; i++) {
-          this._messageDedupMap.delete(keysToDelete[i]);
-        }
-      }
-      // FIX: asegurar msgId normalizado en enriched
-      var enriched = Object.assign({}, msg, {
-        msgId: msgId,
-        messageId: msgId,
-        _own: !!msg._own,
-        _source: source,
-        _ts: Date.now(),
-        _id: Math.random().toString(36).substr(2, 9)
-      });
-      this.config.onMessage(enriched);
-      var vaultContactId = enriched._own ? enriched.recipient : (enriched.deviceUUID || enriched.sender);
-      if (!vaultContactId && !enriched._own && enriched.sender && window.bleInterface && window.bleInterface.getContacts) {
-        var contacts = window.bleInterface.getContacts();
-        var found = contacts.find(function(c) { return _normId(c.deviceId) === _normId(enriched.sender); });
-        if (found && found.deviceUUID) vaultContactId = _normId(found.deviceUUID);
-      }
-      if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
-      if (!enriched._own && this.activeContact && enriched.sender === this.activeContact.id && enriched.messageId) {
-        var self = this;
-        setTimeout(function() { self._sendReadReceipt(enriched.messageId, enriched.sender); }, 800);
-      }
-    } catch (err) {
-      DEBUG.error('APP_005', 'Message handler: ' + (err.message || 'unknown'));
-    }
-  }
-
-  async _partialCleanup() {
-    if (this.nordicMesh) { try { if (this.nordicMesh.destroy) await this.nordicMesh.destroy(); } catch(e) {} this.nordicMesh = null; }
-    if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
-    if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
-  }
-
-  async destroy() {
-    if (this._isDestroyed) return;
-    this._isDestroyed = true;
-    DEBUG.log('Cleanup...', 'info', 'DESTROY');
-    if (this._bleChatHandler) {
-      try { window.removeEventListener('nexo:ble:openChat', this._bleChatHandler); } catch(e) {}
-      this._bleChatHandler = null;
-    }
-    if (this._chatBackHandler) {
-      var chatBackBtn = document.getElementById('chat-back-btn');
-      if (chatBackBtn) chatBackBtn.removeEventListener('click', this._chatBackHandler);
-      this._chatBackHandler = null;
-    }
-    if (this._bleMessageHandler) {
-      try { window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler); } catch(e) {}
-      this._bleMessageHandler = null;
-    }
-    if (this._ackStatusHandler) {
-      try { window.removeEventListener('nexo:ble:ackStatus', this._ackStatusHandler); } catch(e) {}
-      this._ackStatusHandler = null;
-    }
-    if (this._fileProgressHandler) {
-      try { window.removeEventListener('nexo:ble:fileProgress', this._fileProgressHandler); } catch(e) {}
-      this._fileProgressHandler = null;
-    }
-    if (this._fileCompleteHandler) {
-      try { window.removeEventListener('nexo:ble:fileComplete', this._fileCompleteHandler); } catch(e) {}
-      this._fileCompleteHandler = null;
-    }
-    if (this.bleInterface) {
-      try { this.bleInterface.destroy(); } catch(e) {}
-      this.bleInterface = null;
-    }
-    if (this.nordicMesh) {
-      this._resources.handlers.forEach(function(unsub) { try { unsub(); } catch(e) {} });
-      try { if (this.nordicMesh.destroy) await this.nordicMesh.destroy(); } catch(e) {}
-      this.nordicMesh = null;
-    }
-    if (this.mesh) { try { this.mesh.destroy(); } catch(e) {} this.mesh = null; }
-    if (this.wsClient) { try { if (this.wsClient.disconnect) await this.wsClient.disconnect(); } catch(e) {} this.wsClient = null; }
-    if (this.vault) { try { if (this.vault.destroy) await this.vault.destroy(); } catch(e) {} this.vault = null; }
-    this._resources.timers.forEach(function(t) { clearTimeout(t); });
-    this._pendingMessages.clear();
-    DEBUG.success('Cleanup complete', 'DESTROY_OK');
-  }
-
-  getStatus() {
-    var mode = 'offline';
-    if (this.mesh && this.mesh.getStatus) {
-      mode = this.mesh.getStatus().mode;
-    } else if (this.nordicMesh && this.nordicMesh.getState && this.nordicMesh.getState() === 'messaging') {
-      mode = 'p2p_ble';
-    } else if (this.bleInterface && this.bleInterface.nativePlugin && this.bleInterface.connectedDevices && this.bleInterface.connectedDevices.size > 0) {
-      mode = 'P2P_BLE';
-    }
-    return {
-      initialized: this.initialized,
-      mode: mode,
-      hasBLEInterface: !!this.bleInterface,
-      activeContact: this.activeContact ? { name: this.activeContact.name, transport: this.activeContact.transport } : null
-    };
-  }
-
-  _cleanupPendingMessages() {
-    var now = Date.now();
-    var keysToDelete = [];
-    this._pendingMessages.forEach(function(v, k) {
-      if (now - v.timestamp > 300000) keysToDelete.push(k);
-    });
-    for (var i = 0; i < keysToDelete.length; i++) {
-      this._pendingMessages.delete(keysToDelete[i]);
-    }
-  }
-
-  _updateMessageStatus(messageId, status) {
-    if (!messageId) return;
-    var pending = this._pendingMessages.get(messageId);
-    if (!pending) {
-      if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, status);
-      return;
-    }
-    if (pending.status === 'read') return;
-    if (pending.status === 'delivered' && status !== 'read') return;
-    pending.status = status;
-    this._pendingMessages.set(messageId, pending);
-    if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, status);
-  }
-
-  _handleACK(messageId, ackType) {
-    if (!messageId) return;
-    var pending = this._pendingMessages.get(messageId);
-    if (!pending) {
-      DEBUG.log('ACK recibido pero mensaje no en pending: ' + messageId, 'warn', 'ACK_WARN');
-      return;
-    }
-    var newStatus = ackType === 'read' ? 'read' : (ackType === 'delivered' ? 'delivered' : 'sent');
-    if (pending.status === 'read') return;
-    if (pending.status === 'delivered' && newStatus !== 'read') return;
-    pending.status = newStatus;
-    this._pendingMessages.set(messageId, pending);
-    if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(messageId, newStatus);
-    DEBUG.log('ACK recibido: ' + messageId + ' -> ' + newStatus, 'info', 'ACK_RECV');
-  }
-
-  _sendACK(deviceUUID, messageId) {
-    if (!deviceUUID || !messageId) return;
-    if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
-    var payload = JSON.stringify({ type: 'ack', messageId: messageId, ackType: 'delivered', timestamp: Date.now() });
-    this.bleInterface.sendChatMessage(deviceUUID, payload, messageId).catch(function(e) {});
-  }
-
-  _sendReadReceipt(messageId, recipientId) {
-    if (!messageId || !recipientId) return;
-    if (!this.bleInterface || !this.bleInterface.sendChatMessage) return;
-    var payload = JSON.stringify({ type: 'read_receipt', messageId: messageId, timestamp: Date.now() });
-    this.bleInterface.sendChatMessage(recipientId, payload, messageId).catch(function(e) {});
-  }
-
-  // ========== v5.0.20: ENVÍO DE ARCHIVOS POR BLE ==========
-
-  _readFileAsBase64(file) {
-    return new Promise(function(resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        var result = e.target.result;
-        var idx = result.indexOf(',');
-        if (idx >= 0) resolve(result.substring(idx + 1));
-        else resolve(result);
-      };
-      reader.onerror = function(e) { reject(new Error('Error leyendo archivo')); };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  _generateFileId() {
-    return 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
-  }
-
-  _sendAttachment(targetId, attachType, base64Data, meta) {
-    var self = this;
-    if (!targetId || !self.bleInterface || !self.bleInterface.sendFile) {
-      console.warn('[NexoApp] No se puede enviar archivo: sin contacto activo o sin sendFile');
-      return;
-    }
-    var fileId = self._generateFileId();
-    console.log('[NexoApp] Enviando archivo', attachType, 'id=', fileId, 'size=', base64Data.length);
-    self.bleInterface.sendFile(targetId, fileId, base64Data, Object.assign({ type: attachType }, meta))
-      .then(function() { DEBUG.success('Archivo enviado: ' + fileId, 'FILE_SENT'); })
-      .catch(function(err) { DEBUG.error('FILE_001', 'Error enviando archivo: ' + (err.message || 'unknown')); });
-  }
-
-  _renderReceivedFile(fileId, base64Data, meta) {
-    try {
-      var container = document.getElementById('messages-container');
-      if (!container) return;
-      var attachType = meta && meta.type ? meta.type : 'file';
-      var bubble = document.createElement('div');
-      bubble.className = 'message incoming message-attachment';
-      bubble.style.cssText = 'align-self:flex-start;max-width:75%;margin:6px 16px 6px 16px;padding:8px;border-radius:18px;background:linear-gradient(135deg,#2a2a4a,#1a1a3a);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
-      var html = '';
-      if (attachType === 'image') {
-        var dataUrl = 'data:' + (meta.mimeType || 'image/jpeg') + ';base64,' + base64Data;
-        html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto recibida"></div>';
-      } else if (attachType === 'video') {
-        var dataUrl = 'data:' + (meta.mimeType || 'video/mp4') + ';base64,' + base64Data;
-        html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + dataUrl + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
-      } else {
-        var sizeStr = meta.size > 1024*1024 ? (meta.size/(1024*1024)).toFixed(1) + ' MB' : (meta.size/1024).toFixed(0) + ' KB';
-        html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + (meta.name || 'Archivo') + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
-      }
-      bubble.innerHTML = html + '<div style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + (meta.name || attachType) + '</div>';
-      container.appendChild(bubble);
-      container.scrollTop = container.scrollHeight;
-    } catch (e) { console.error('[NexoApp] Error renderizando archivo recibido:', e); }
-  }
+function _normMac(mac) {
+  return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
 
-export { NexoApp, DEBUG };
-export default NexoApp;
-
-/*
-Focos de Interés:
-1. FIX v5.0.12: Silenciar toasts rem.info/warn/error/success
-2. FIX v5.0.12: Deduplicación de contactos por MAC
-3. Implementación de infraestructura ACK completa (pending/sent/delivered/read)
-4. Eliminación de la doble pantalla (no appendItems en TheStream)
-5. Envío de ACK automático al recibir mensaje BLE
-6. Envío de Read Receipt cuando el chat está activo con el remitente
-7. Corrección de la firma del método _sendACK y _sendReadReceipt (remoción de *)
-8. FIX: Contactos en pantalla principal (no en panel BLE)
-9. FIX: Al cerrar chat vuelve a principal, no reabre panel BLE
-10. FIX v5.0.13: Persistencia async/await para vault_fs
-11. FIX-BACK: Cerrar panel BLE al hacer back desde chat
-12. INPUT BAR v2: Attach menu + Send/Mic toggle
-13. FIX v5.0.17: Attach handlers (Foto/Video/Archivo/Ubicación) renderizan burbuja local
-14. FIX v5.0.18-ROBUSTO: Normalización msgId/messageId en todo pipeline
-15. FIX v5.0.18-ROBUSTO: Parseo seguro de ACKs sin indexOf frágil
-16. FIX v5.0.18-ROBUSTO: msgId dual-key en sendMessage, _handleMessage, vault
-17. FIX v5.0.19-FINAL: Escucha nexo:ble:ackStatus para palomitas entregado
-18. FIX v5.0.19-FINAL: Timeout BLE 25s para dar margen a reintentos ACK
-19. FIX v5.0.19-FINAL: Marcar 'failed' en UI cuando BLE definitivamente falla
-20. FIX v5.0.20-FILES: Envío de fotos/videos/archivos por BLE con fragmentación
-21. FIX v5.0.20-FILES: Batches de 5 chunks + ACK por batch + reenvío de batch
-22. FIX v5.0.20-FILES: Recepción de archivos con renderizado según tipo (img/video/file)
-23. FIX v5.0.20-FILES: Persistencia de archivos recibidos en vault
-*/
+export { NexoApp };
