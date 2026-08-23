@@ -11,7 +11,14 @@
 
 import { NEXO_CONFIG } from '../core/nexo_config.js';
 import { NEXO_DIAG } from '../core/nap.js';
-import { DEBUG } from '../core/debug.js';
+
+var DEBUG = window.DEBUG || {
+  log: function() {},
+  warn: function() {},
+  error: function() {},
+  info: function() {},
+  success: function() {}
+};
 
 var _isGettingLocation = false;
 var _lastLocationSent = 0;
@@ -604,3 +611,4 @@ function _normId(id) {
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
+export { DEBUG };
