@@ -1,6 +1,6 @@
 /**
- * NEXO App v5.0.20-FILES
- * Base: v5.0.19-FINAL
+ * NEXO App v5.0.21-VAULTFIX
+ * Base: v5.0.20-FILES
  * FIX: Escucha nexo:ble:ackStatus para palomitas entregado
  * FIX: Timeout BLE 25s para dar margen a reintentos ACK
  * FIX: Marcar 'failed' en UI cuando BLE definitivamente falla
@@ -8,6 +8,7 @@
  * FIX v5.0.20: Batches de 5 chunks + ACK por batch + reenvío de batch
  * FIX v5.0.20: Recepción de archivos con renderizado según tipo (img/video/file)
  * FIX v5.0.20: Persistencia de archivos recibidos en vault
+ * FIX v5.0.21-VAULTFIX: Eliminada toda persistencia de mensajes/contactos. Lógica pura.
  */
 import { GestureEngine as CoreGestureEngine } from '../core/gesture_engine.js';
 import { CryptoVault } from '../vault/crypto_vault.js';
@@ -19,7 +20,7 @@ import { GestureEngine } from '../ui/gesture_engine.js';
 import { TheStream } from '../stream/the_stream.js';
 import { rem } from '../ui/rem.js';
 import { initBLEInterface } from '../ui/ble_interface.js';
-import { vaultLoadMessages, vaultAppendMessage, vaultUpdateMessageStatus } from '../vault/crypto_vault.js';
+// VAULTFIX: importaciones de vault eliminadas — persistencia centralizada en main.js
 
 function withTimeoutNAP(promise, ms, context) {
   var timer;
@@ -112,7 +113,7 @@ class NexoApp {
     this._maxProcessedIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessages = new Map();
-    DEBUG.log('NEXO v5.0.20-FILES iniciando...', 'info', 'APP_INIT');
+    DEBUG.log('NEXO v5.0.21-VAULTFIX iniciando...', 'info', 'APP_INIT');
   }
 
   async init() {
@@ -132,7 +133,7 @@ class NexoApp {
       await this._initPhase7_UI();
       this.initialized = true;
       DEBUG.setPhase('READY');
-      DEBUG.success('NEXO v5.0.20-FILES Ready', 'APP_READY');
+      DEBUG.success('NEXO v5.0.21-VAULTFIX Ready', 'APP_READY');
     } catch (err) {
       DEBUG.error('APP_020', 'Init failed: ' + (err.message || 'unknown'));
       await this._partialCleanup();
@@ -221,11 +222,7 @@ class NexoApp {
           if (nameInput) nameInput.value = detail.name || '';
           if (subtitle) subtitle.textContent = '';
           DEBUG.success('Chat activo: ' + (detail.name || '') + ' [' + (detail.transport || 'unknown').toUpperCase() + ']', 'BLE_CHAT');
-          try {
-            var storedMessages = await self._loadMessagesFromVault(detail.contactId);
-            storedMessages.sort(function(a, b) { return (a._ts || 0) - (b._ts || 0); });
-            storedMessages.forEach(function(m) { self.config.onMessage(m); });
-          } catch (e) {}
+          // VAULTFIX: carga de mensajes eliminada de _bleChatHandler — main.js carga via _loadPersistedMessages
           self._updateMode('P2P_BLE');
           self.config.onStatusChange('CHAT:' + (detail.name || ''));
           var bottomNav = document.getElementById('ble-bottom-nav');
@@ -378,34 +375,7 @@ class NexoApp {
       };
       window.addEventListener('nexo:ble:fileProgress', this._fileProgressHandler);
 
-      // v5.0.20: Escuchar archivos completos recibidos por BLE
-      this._fileCompleteHandler = function(e) {
-        try {
-          var d = e.detail || {};
-          if (!d.fileId || !d.data) return;
-          console.log('[NexoApp] Archivo recibido:', d.fileId, d.meta);
-          self._renderReceivedFile(d.fileId, d.data, d.meta || {});
-          var senderUUID = d.meta && d.meta.from ? d.meta.from : (self.activeContact ? self.activeContact.id : null);
-          if (senderUUID) {
-            var vaultMsg = {
-              msgId: d.fileId,
-              messageId: d.fileId,
-              content: '[ARCHIVO: ' + (d.meta.name || d.meta.type || 'file') + ']',
-              _own: false,
-              status: 'delivered',
-              timestamp: Date.now(),
-              senderName: d.meta.name || 'Nexo',
-              attachmentType: d.meta.type || 'file',
-              attachmentPayload: d.data,
-              attachmentMeta: d.meta
-            };
-            self._saveMessageToVault(senderUUID, vaultMsg);
-          }
-        } catch (err) {
-          console.error('[NexoApp] Error en fileCompleteHandler:', err);
-        }
-      };
-      window.addEventListener('nexo:ble:fileComplete', this._fileCompleteHandler);
+      // VAULTFIX: fileCompleteHandler eliminado — main.js maneja renderizado y persistencia de archivos
 
     } catch (err) { DEBUG.error('UI_004', 'BLE UI init failed: ' + (err.message || 'unknown')); this.bleInterface = null; }
   }
@@ -678,152 +648,11 @@ class NexoApp {
   }
   _updateMode(mode) { DEBUG.setMode(mode); this.config.onStatusChange(mode); }
 
-  async _saveMessageToVault(contactId, message) {
-    var cid = _normId(contactId);
-    if (!cid) return;
-    // FIX: normalizar msgId
-    var mid = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
-    message.msgId = mid;
-    message.messageId = mid;
-    if (cid.indexOf('nx') !== 0 && window.bleInterface && window.bleInterface.getContacts) {
-      var contacts = window.bleInterface.getContacts();
-      var found = contacts.find(function(c) { return _normId(c.deviceId) === cid; });
-      if (found && found.deviceUUID) cid = _normId(found.deviceUUID);
-    }
-    if (!cid) return;
-    try {
-      await vaultAppendMessage(cid, {
-        content: message.content,
-        sender: message.sender,
-        senderName: message.senderName,
-        _own: !!message._own,
-        _source: message._source,
-        _ts: message._ts || Date.now(),
-        messageId: message.messageId,
-        deviceUUID: message.deviceUUID,
-        recipient: message.recipient,
-        status: message.status || 'pending'
-      });
-    } catch (e) {
-      console.warn('[NexoApp] Error guardando mensaje:', e.message);
-    }
-  }
+  // VAULTFIX: _saveMessageToVault eliminado — main.js maneja persistencia
 
-  async _loadMessagesFromVault(contactId) {
-    try {
-      var cid = _normId(contactId);
-      if (!cid) return [];
-      var raw = await vaultLoadMessages(cid);
-      return raw.map(function(m) {
-        return {
-          content: m.text || m.content || '',
-          sender: m.senderNexoId || m.sender || '',
-          senderName: m.senderName || '',
-          _own: !!m._own,
-          _source: 'vault',
-          _ts: m.timestamp || m._ts || Date.now(),
-          messageId: m.msgId || m.messageId || '',
-          status: m.status || 'pending',
-          deviceUUID: m.senderNexoId || m.sender || ''
-        };
-      });
-    } catch (e) { return []; }
-  }
+  // VAULTFIX: _loadMessagesFromVault eliminado — main.js maneja carga via _loadPersistedMessages
 
-  async _updateMessageStatusInVault(contactId, messageId, status) {
-    var cid = _normId(contactId);
-    if (!cid || !messageId) return;
-    try {
-      await vaultUpdateMessageStatus(cid, messageId, status);
-    } catch (e) {
-      console.warn('[NexoApp] Error actualizando estado:', e.message);
-    }
-  }
-
-  async sendMessage(msg) {
-    if (!this.initialized || this._isDestroyed) {
-      DEBUG.error(this._isDestroyed ? 'APP_022' : 'APP_021', 'Cannot send');
-      return false;
-    }
-    try {
-      var messageId = msg.msgId || msg.messageId || (Date.now() + '-' + Math.random().toString(36).substr(2, 9));
-      msg.msgId = messageId;
-      msg.messageId = messageId;
-      var isObject = msg && typeof msg === 'object';
-      var content = isObject ? (msg.content || msg) : msg;
-      var recipient = isObject ? msg.recipient : null;
-      var targetId = recipient || (this.activeContact ? this.activeContact.id : null);
-      var targetTransport = this.activeContact ? this.activeContact.transport : null;
-      if (!content || (typeof content === 'string' && content.trim() === '')) {
-        return false;
-      }
-      this._cleanupPendingMessages();
-      this._pendingMessages.set(messageId, { status: 'pending', timestamp: Date.now(), recipient: targetId, retries: 0 });
-      this._handleMessage({
-        content: content,
-        _own: true,
-        timestamp: Date.now(),
-        pending: true,
-        recipient: targetId,
-        source: 'self',
-        messageId: messageId
-      }, 'self');
-      if (targetId && targetTransport === 'ble' && this.bleInterface && typeof this.bleInterface.sendChatMessage === 'function') {
-        try {
-          console.log('[NEXO] Enviando via sendChatMessage a UUID:', targetId);
-          // FIX: timeout 25s para dar margen a BleAckSystem (3 reintentos × 6s = 18s + delays)
-          await withTimeoutNAP(this.bleInterface.sendChatMessage(targetId, content, messageId), 25000, 'BLE.sendChatMessage');
-          DEBUG.success('Enviado via BLE a ' + targetId, 'MSG_BLE');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        } catch (e) {
-          DEBUG.warn('BLE directo fallo: ' + (e.message || 'unknown'), 'MSG_BLE_FAIL');
-          // FIX: marcar como failed en la UI para que el usuario sepa
-          this._updateMessageStatus(messageId, 'failed');
-        }
-      }
-      var nordicPeers = this.nordicMesh && this.nordicMesh.getPeers ? this.nordicMesh.getPeers() : [];
-      if (nordicPeers.length > 0) {
-        try {
-          await this.nordicMesh.sendMessage(nordicPeers[0].id, content);
-          DEBUG.success('Sent via Nordic', 'MSG_NORDIC');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        } catch (e) {
-          DEBUG.error('NORDIC_009', 'Send failed: ' + (e.message || 'unknown'));
-        }
-      }
-      if (this.mesh && this.mesh.getPeerCount && this.mesh.getPeerCount() > 0) {
-        try {
-          await this.mesh.broadcast({ content: content });
-          DEBUG.success('Sent via Hybrid', 'MSG_HYBRID');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        } catch (e) {
-          DEBUG.error('MESH_005', 'Broadcast failed: ' + (e.message || 'unknown'));
-        }
-      }
-      if (this.bridge) {
-        var result = await this.bridge.send({ content: content });
-        if (result) {
-          DEBUG.success('Sent via Bridge', 'MSG_BRIDGE');
-          this._updateMessageStatus(messageId, 'sent');
-          return true;
-        }
-      }
-      if (this.wsClient && this.wsClient.isConnected && this.wsClient.isConnected()) {
-        this.wsClient.send({ content: content });
-        DEBUG.success('Sent via WebSocket', 'MSG_WS');
-        this._updateMessageStatus(messageId, 'sent');
-        return true;
-      }
-      DEBUG.warn('No hay dispositivos NEXO disponibles.', 'MSG_FAIL');
-      return false;
-    } catch (err) {
-      DEBUG.error('APP_008', 'SendMessage critical: ' + (err.message || 'unknown'));
-      return false;
-    }
-  }
+  // VAULTFIX: _updateMessageStatusInVault eliminado — main.js maneja estados
 
   _handleMessage(msg, source) {
     if (this._isDestroyed) return;
@@ -869,13 +698,7 @@ class NexoApp {
         _id: Math.random().toString(36).substr(2, 9)
       });
       this.config.onMessage(enriched);
-      var vaultContactId = enriched._own ? enriched.recipient : (enriched.deviceUUID || enriched.sender);
-      if (!vaultContactId && !enriched._own && enriched.sender && window.bleInterface && window.bleInterface.getContacts) {
-        var contacts = window.bleInterface.getContacts();
-        var found = contacts.find(function(c) { return _normId(c.deviceId) === _normId(enriched.sender); });
-        if (found && found.deviceUUID) vaultContactId = _normId(found.deviceUUID);
-      }
-      if (vaultContactId) this._saveMessageToVault(vaultContactId, enriched);
+      // VAULTFIX: vaultContactId y _saveMessageToVault eliminados — main.js maneja persistencia
       if (!enriched._own && this.activeContact && enriched.sender === this.activeContact.id && enriched.messageId) {
         var self = this;
         setTimeout(function() { self._sendReadReceipt(enriched.messageId, enriched.sender); }, 800);
@@ -916,10 +739,7 @@ class NexoApp {
       try { window.removeEventListener('nexo:ble:fileProgress', this._fileProgressHandler); } catch(e) {}
       this._fileProgressHandler = null;
     }
-    if (this._fileCompleteHandler) {
-      try { window.removeEventListener('nexo:ble:fileComplete', this._fileCompleteHandler); } catch(e) {}
-      this._fileCompleteHandler = null;
-    }
+    // VAULTFIX: _fileCompleteHandler eliminado
     if (this.bleInterface) {
       try { this.bleInterface.destroy(); } catch(e) {}
       this.bleInterface = null;
@@ -1042,30 +862,7 @@ class NexoApp {
       .catch(function(err) { DEBUG.error('FILE_001', 'Error enviando archivo: ' + (err.message || 'unknown')); });
   }
 
-  _renderReceivedFile(fileId, base64Data, meta) {
-    try {
-      var container = document.getElementById('messages-container');
-      if (!container) return;
-      var attachType = meta && meta.type ? meta.type : 'file';
-      var bubble = document.createElement('div');
-      bubble.className = 'message incoming message-attachment';
-      bubble.style.cssText = 'align-self:flex-start;max-width:75%;margin:6px 16px 6px 16px;padding:8px;border-radius:18px;background:linear-gradient(135deg,#2a2a4a,#1a1a3a);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
-      var html = '';
-      if (attachType === 'image') {
-        var dataUrl = 'data:' + (meta.mimeType || 'image/jpeg') + ';base64,' + base64Data;
-        html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><img src="' + dataUrl + '" style="max-width:240px;max-height:300px;width:100%;height:auto;display:block;object-fit:cover;" alt="Foto recibida"></div>';
-      } else if (attachType === 'video') {
-        var dataUrl = 'data:' + (meta.mimeType || 'video/mp4') + ';base64,' + base64Data;
-        html = '<div style="border-radius:12px;overflow:hidden;background:#000;"><video src="' + dataUrl + '" style="max-width:240px;max-height:200px;width:100%;display:block;" controls preload="metadata"></video></div>';
-      } else {
-        var sizeStr = meta.size > 1024*1024 ? (meta.size/(1024*1024)).toFixed(1) + ' MB' : (meta.size/1024).toFixed(0) + ' KB';
-        html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + (meta.name || 'Archivo') + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
-      }
-      bubble.innerHTML = html + '<div style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + (meta.name || attachType) + '</div>';
-      container.appendChild(bubble);
-      container.scrollTop = container.scrollHeight;
-    } catch (e) { console.error('[NexoApp] Error renderizando archivo recibido:', e); }
-  }
+  // VAULTFIX: _renderReceivedFile eliminado — main.js maneja renderizado de attachments
 }
 
 export { NexoApp, DEBUG };
@@ -1096,4 +893,5 @@ Focos de Interés:
 21. FIX v5.0.20-FILES: Batches de 5 chunks + ACK por batch + reenvío de batch
 22. FIX v5.0.20-FILES: Recepción de archivos con renderizado según tipo (img/video/file)
 23. FIX v5.0.20-FILES: Persistencia de archivos recibidos en vault
+24. FIX v5.0.21-VAULTFIX: Eliminada toda persistencia de mensajes/contactos. Lógica pura.
 */
