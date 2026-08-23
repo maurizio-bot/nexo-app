@@ -1,5 +1,5 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.7-SAVEBEFORESEND
+ * src/main.js - Punto de entrada NEXO v9.9.8-VAULTFIX
  * FIX: _cameraActiveStream declarado explicitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
  * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
@@ -16,7 +16,7 @@
  * FIX v9.9.6: _renderMessage inserta ordenado por timestamp
  * FIX v9.9.6: _saveMessageToStorage usa senderNexoId para mensajes recibidos
  * FIX v9.9.6: _loadPersistedMessages limpia DOM antes de cargar
- * FIX v9.9.7: _doSend guarda en vault PRIMERO, luego envia (anti-perdida)
+ * FIX v9.9.8: Unico punto de persistencia = main.js. ble_interface.js y nexo_app.js son transporte/logica pura.
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -136,10 +136,10 @@ function _sendAttachment(type, payload, meta) {
     attachmentPayload: payload,
     attachmentMeta: meta
   };
-  _renderMessage(localMsg);
+  _renderMessage(localMsg, true); // skipSave=true
   try {
     var cid = _getCurrentContactId();
-    if (cid && window.vaultAppendMessage) vaultAppendMessage(cid, localMsg, true);
+    if (cid && window.vaultAppendMessage) vaultAppendMessage(cid, localMsg).catch(function(e){});
   } catch(e) {}
   if ((type === 'image' || type === 'video' || type === 'file') && window.bleInterface && window.bleInterface.sendFile) {
     window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({ type: type }, meta))
@@ -806,7 +806,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.7-SAVEBEFORESEND iniciando...');
+    console.log('[MAIN] NEXO v9.9.8-VAULTFIX iniciando...');
     console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -948,10 +948,37 @@ async function initializeNexoApp() {
       enableMesh: true,
       onMessage: function(msg) {
         console.log('Mensaje:', msg);
-        if (msg && msg.senderNexoId) {
-          vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
+        if (!msg) return;
+        // VAULTFIX: unico punto de guardado de mensajes (propios y recibidos)
+        var contactId, isOwn = !!msg._own;
+        if (isOwn) {
+          contactId = _getCurrentContactId();
+        } else {
+          contactId = msg.senderNexoId || msg.deviceUUID || msg.sender;
+          if (msg.senderNexoId) {
+            vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
+          }
         }
-        _renderMessage(msg);
+        if (contactId) {
+          var vaultMsg = {
+            msgId: msg.msgId || msg.messageId || msg.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)),
+            messageId: msg.msgId || msg.messageId || msg.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)),
+            content: msg.content || msg.text || '',
+            text: msg.content || msg.text || '',
+            senderNexoId: msg.senderNexoId || msg.deviceUUID || msg.sender || '',
+            senderName: msg.senderName || '',
+            timestamp: msg.timestamp || msg._ts || Date.now(),
+            status: msg.status || (isOwn ? 'pending' : 'delivered'),
+            _own: isOwn,
+            attachmentType: msg.attachmentType || null,
+            attachmentPayload: msg.attachmentPayload || null,
+            attachmentMeta: msg.attachmentMeta || null
+          };
+          vaultAppendMessage(contactId, vaultMsg).catch(function(e) {
+            console.warn('[MAIN] onMessage vaultAppendMessage fallo:', e.message);
+          });
+        }
+        _renderMessage(msg, true); // skipSave=true, ya guardado en vault
       },
       onStatusChange: function(mode) {
         console.log('Modo:', mode);
@@ -1028,30 +1055,6 @@ async function initializeNexoApp() {
           var nid = e.detail.nexoId || e.detail.deviceId;
           _autoScan.registerKnownDevice(e.detail.deviceId, nid);
           _autoScan.start();
-        }
-      });
-      window.addEventListener('nexo:vault:messagesLoaded', function(e) {
-        if (e && e.detail && Array.isArray(e.detail.messages)) {
-          e.detail.messages.forEach(function(msg) {
-            _renderMessage(msg, true);
-          });
-        }
-      });
-      window.addEventListener('nexo:ble:messageReceived', function(e) {
-        if (e && e.detail) {
-          var msg = e.detail;
-          // === FILTRO 3 (main.js): Descartar control packets que escapen de ble_interface.js ===
-          if (_isControlContent(msg.content || msg.text || '')) {
-            console.log('[MAIN] Control packet filtrado en messageReceived:', (msg.content || '').substring(0, 60));
-            return;
-          }
-          if (msg.senderNexoId) {
-            vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
-          }
-          _renderMessage(msg);
-          if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
-            try { window.NEXO.app.onMessage(msg); } catch(omErr) {}
-          }
         }
       });
       window.addEventListener('nexo:ble:fileComplete', function(e) {
@@ -1173,12 +1176,12 @@ function _setupMessageInput() {
       };
       // 1. GUARDAR primero en vault
       try {
-        if (window.vaultAppendMessage) await window.vaultAppendMessage(contactId, localMsg, true);
+        if (window.vaultAppendMessage) await window.vaultAppendMessage(contactId, localMsg);
       } catch (e) {
         console.warn('[MAIN] _doSend: vaultAppendMessage fallo:', e.message);
       }
       // 2. RENDERIZAR en UI
-      _renderMessage(localMsg);
+      _renderMessage(localMsg, true); // skipSave=true, ya guardado en vault
       // 3. ENVIAR despues
       try {
         await window.NEXO.app.sendMessage({ content: text, messageId: msgId });
@@ -1391,10 +1394,17 @@ function _saveMessageToStorage(msg) {
     var msgId = msg.msgId || msg.messageId || msg.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
     msg.msgId = msgId;
     msg.messageId = msgId;
-    var contactId = msg._own ? _getCurrentContactId() : (msg.senderNexoId || msg.deviceUUID || msg.sender || _getCurrentContactId());
-    if (contactId) {
-      vaultAppendMessage(contactId, msg).catch(function(e) {});
+    var contactId;
+    if (msg._own) {
+      contactId = _getCurrentContactId();
+    } else {
+      contactId = msg.senderNexoId || msg.deviceUUID || msg.sender;
     }
+    if (!contactId) {
+      console.warn('[MAIN] _saveMessageToStorage: no contactId determinable, saltando');
+      return;
+    }
+    vaultAppendMessage(contactId, msg).catch(function(e) {});
   } catch (e) {
     console.warn('[MAIN] _saveMessageToStorage error:', e);
   }
@@ -2045,3 +2055,4 @@ function _doChatBack() {
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
+
