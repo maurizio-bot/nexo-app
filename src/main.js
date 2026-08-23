@@ -1980,7 +1980,7 @@ function _doChatBack() {
         app.style.transition = '';
         app.style.transform = '';
         app.style.opacity = '';
-      }⁰
+      }
       if (contactsView) {
         contactsView.style.transition = '';
         contactsView.style.transform = '';
