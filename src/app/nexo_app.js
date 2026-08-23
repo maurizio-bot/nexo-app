@@ -9,9 +9,9 @@
  * VAULTONLY: Cero localStorage en mensajes/contactos. Delegado a vault_manager.js.
  */
 
-import { NEXO_CONFIG } from './core/nexo_config.js';
-import { NEXO_DIAG } from './core/nap.js';
-import { DEBUG } from './core/debug.js';
+import { NEXO_CONFIG } from '../core/nexo_config.js';
+import { NEXO_DIAG } from '../core/nap.js';
+import { DEBUG } from '../core/debug.js';
 
 var _isGettingLocation = false;
 var _lastLocationSent = 0;
