@@ -876,11 +876,19 @@ export class BLEInterface {
         if (isControl && self.ackSystem) {
           self.ackSystem.processIncomingAck(content);
         }
-        // === PING/PONG ===
+        // === FIX: Clasificacion robusta de control packets ===
         var ctrl = null;
         try {
           if (content && content.charAt(0) === '{') ctrl = JSON.parse(content);
         } catch (e) { ctrl = null; }
+        // ACK / read_receipt: procesar y NUNCA pasar al pipeline de mensajes
+        if (ctrl && (ctrl.type === 'ack' || ctrl.type === 'read_receipt')) {
+          if (self.ackSystem) {
+            self.ackSystem.processIncomingAck(content);
+          }
+          return; // ← ACKs NO se renderizan como mensajes
+        }
+        // PING: responder con PONG
         if (ctrl && ctrl.type === 'ping') {
           var pongPayload = JSON.stringify({
             v: 1, type: 'pong', pingId: ctrl.pingId,
