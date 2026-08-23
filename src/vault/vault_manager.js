@@ -1,5 +1,5 @@
 /**
- * vault_manager.js v2.0.0-NATIVE
+ * vault_manager.js v2.0.1-ORDERED
  * Persistencia unificada via plugin nativo NexoBLE.
  * Sin localStorage. Cache en memoria + escritura async a disco nativo.
  */
@@ -162,6 +162,8 @@ export async function vaultLoadMessages(contactNexoId) {
     if (result && result.exists && result.content) {
       var data = JSON.parse(result.content);
       var msgs = Array.isArray(data.messages) ? data.messages : (Array.isArray(data) ? data : []);
+      // FIX v2.0.1: ordenar por timestamp ascendente
+      msgs.sort(function(a, b) { return (a.timestamp || 0) - (b.timestamp || 0); });
       msgs.forEach(function(m) {
         var mid = m.msgId || m.messageId || m.id || ('msg_' + (m.timestamp || Date.now()));
         m.msgId = mid;
@@ -228,7 +230,15 @@ export async function vaultAppendMessage(contactNexoId, message) {
   if (existingIdx >= 0) {
     messages[existingIdx] = Object.assign({}, messages[existingIdx], normalized);
   } else {
-    messages.push(normalized);
+    // FIX v2.0.1: insertar ordenado por timestamp, no al final
+    var insertIdx = messages.length;
+    for (var i = 0; i < messages.length; i++) {
+      if ((messages[i].timestamp || 0) > (normalized.timestamp || 0)) {
+        insertIdx = i;
+        break;
+      }
+    }
+    messages.splice(insertIdx, 0, normalized);
   }
   _persistMessages(cid, messages);
   return normalized;
