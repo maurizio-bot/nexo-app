@@ -1,18 +1,21 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.5-VAULTONLY
- * FIX: _cameraActiveStream declarado explícitamente
+ * src/main.js - Punto de entrada NEXO v9.9.6-ORDEREDFIX
+ * FIX: _cameraActiveStream declarado explicitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
  * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
  * FIX: ObjectURLs revocados al cerrar fullscreen
- * FIX: _getContactStorageKey usa nexoId cuando está disponible
+ * FIX: _getContactStorageKey usa nexoId cuando esta disponible
  * FIX: msgId/messageId normalizado en _saveMessageToStorage, _updateMessageStorageStatus, _renderMessage
  * FIX: _sendAttachment guarda en vault inmediatamente
  * FIX: _loadPersistedMessages normaliza msgId al cargar
  * FIX 3: Eliminada persistencia duplicada localStorage — solo vault nativo
- * FIX FOTOS: _sendAttachment usa sendFile para image/video/file (fragmentación BLE)
+ * FIX FOTOS: _sendAttachment usa sendFile para image/video/file (fragmentacion BLE)
  * FIX FOTOS: Listener nexo:ble:fileComplete para renderizar archivos recibidos
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  * VAULTONLY: initVault() antes de todo. Cero localStorage en mensajes/contactos.
+ * FIX v9.9.6: _renderMessage inserta ordenado por timestamp
+ * FIX v9.9.6: _saveMessageToStorage usa senderNexoId para mensajes recibidos
+ * FIX v9.9.6: _loadPersistedMessages limpia DOM antes de cargar
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -802,7 +805,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.5-VAULTONLY iniciando...');
+    console.log('[MAIN] NEXO v9.9.6-ORDEREDFIX iniciando...');
     console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -1350,13 +1353,14 @@ function _getContactStorageKey() {
   } catch (e) {}
   return 'nexo_messages_' + contactId;
 }
+// FIX v9.9.6: usar senderNexoId para mensajes recibidos, no solo contacto activo
 function _saveMessageToStorage(msg) {
   try {
     if (!msg) return;
     var msgId = msg.msgId || msg.messageId || msg.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
     msg.msgId = msgId;
     msg.messageId = msgId;
-    var contactId = _getCurrentContactId();
+    var contactId = msg._own ? _getCurrentContactId() : (msg.senderNexoId || msg.deviceUUID || msg.sender || _getCurrentContactId());
     if (contactId) {
       vaultAppendMessage(contactId, msg).catch(function(e) {});
     }
@@ -1375,10 +1379,13 @@ function _updateMessageStorageStatus(messageId, status) {
     console.warn('[MAIN] _updateMessageStorageStatus error:', e);
   }
 }
+// FIX v9.9.6: limpiar DOM antes de cargar para evitar duplicados
 async function _loadPersistedMessages() {
   try {
     var contactId = _getCurrentContactId();
     if (!contactId) return;
+    var container = document.getElementById('messages-container');
+    if (container) container.innerHTML = '';
     var vaultMessages = await vaultLoadMessages(contactId);
     if (vaultMessages && vaultMessages.length > 0) {
       vaultMessages.forEach(function(msg) {
@@ -1392,6 +1399,7 @@ async function _loadPersistedMessages() {
     console.warn('[MAIN] _loadPersistedMessages error:', e);
   }
 }
+// FIX v9.9.6: insertar ordenado por timestamp, no solo al final
 function _renderMessage(msg, skipSave) {
   try {
     if (!msg) return;
@@ -1692,7 +1700,19 @@ function _renderMessage(msg, skipSave) {
       metaDiv.appendChild(statusSpan);
     }
     div.appendChild(metaDiv);
-    container.appendChild(div);
+    // FIX v9.9.6: insertar ordenado por timestamp, no solo al final
+    div.dataset.timestamp = msg.timestamp || Date.now();
+    var inserted = false;
+    var allMsgs = container.querySelectorAll('.message');
+    for (var ri = 0; ri < allMsgs.length; ri++) {
+      var existingTs = parseInt(allMsgs[ri].dataset.timestamp || '0');
+      if (existingTs > (msg.timestamp || 0)) {
+        container.insertBefore(div, allMsgs[ri]);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) container.appendChild(div);
     var msgContainer = document.getElementById('messages-container');
     if (msgContainer) {
       requestAnimationFrame(function() {
