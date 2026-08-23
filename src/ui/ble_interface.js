@@ -272,10 +272,14 @@ function _showToast(message, type) {
 }
 function _isControlPacket(content) {
   if (!content || typeof content !== 'string') return false;
-  if (content.indexOf('"type":"ack"') !== -1) return true;
-  if (content.indexOf('"type":"read_receipt"') !== -1) return true;
-  if (content.indexOf('"type":"ping"') !== -1) return true;
-  if (content.indexOf('"type":"pong"') !== -1) return true;
+  if (content.charAt(0) !== '{') return false;
+  try {
+    var obj = JSON.parse(content);
+    if (obj && obj.type) {
+      var controlTypes = ['ack', 'ping', 'pong', 'read_receipt', 'file_meta', 'file_chunk', 'file_resume'];
+      if (controlTypes.indexOf(obj.type) >= 0) return true;
+    }
+  } catch (e) {}
   return false;
 }
 
