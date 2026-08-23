@@ -1,11 +1,13 @@
 /**
- * BLE Interface v5.3.5-OFFLINEFIX-v2
+ * BLE Interface v5.3.6-MAPSPERSIST
  * FIX: Toda persistencia migrada a plugin nativo. Cero localStorage.
  * FIX: Caches en memoria (_blePinnedCache, _bleUUIDCache).
  * FIX: Contactos delegados a vault_manager.js (window.vaultLoadContacts).
  * FIX: Pinned, NexoId y UUID usan saveToFile/loadFromFile nativo.
  * FASE4: Hooks vault contactos + mensajes, autoscan conectar/desconectar.
  * SUPERVISOR v1.0: Connection health monitoring + ping/pong + auto-reconnect.
+ * FIX v5.3.6: Mapas MAC<->NXID reconstruidos desde vault al iniciar.
+ * FIX v5.3.6: Busqueda en disco como fallback ultimo recurso.
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -382,7 +384,7 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.5-OFFLINEFIX-v2 iniciado');
+    console.log('[BLEInterface] v5.3.6-MAPSPERSIST iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -408,26 +410,35 @@ export class BLEInterface {
   getBLEContacts() {
     return _getBLEContacts();
   }
+  // FIX v5.3.6: reconstruir mapas MAC<->NXID desde vault al iniciar
   _loadContactsAndInit() {
     var self = this;
-    var contacts = _getBLEContacts();
-    if (contacts && contacts.length > 0) {
-      contacts.forEach(function(c) {
-        if (c.deviceId && (c.nexoId || c.deviceUUID)) {
-          var nd = _normMac(c.deviceId);
-          var nx = _normId(c.nexoId || c.deviceUUID);
-          if (nd && nx) {
-            self._nexoIdToMac.set(nx, nd);
-            self._macToNexoId.set(nd, nx);
-          }
-        }
-      });
-    }
+    self._rebuildMacMappingsFromVault();
     _loadPinnedFromVault().then(function() {
       self._continueInit();
     }).catch(function() {
       self._continueInit();
     });
+  }
+  _rebuildMacMappingsFromVault() {
+    var self = this;
+    var contacts = _getBLEContacts();
+    if (!contacts || contacts.length === 0) return;
+    var rebuilt = 0;
+    contacts.forEach(function(c) {
+      if (c.deviceId && (c.nexoId || c.deviceUUID)) {
+        var nd = _normMac(c.deviceId);
+        var nx = _normId(c.nexoId || c.deviceUUID);
+        if (nd && nx) {
+          self._nexoIdToMac.set(nx, nd);
+          self._macToNexoId.set(nd, nx);
+          rebuilt++;
+        }
+      }
+    });
+    if (rebuilt > 0) {
+      console.log('[BLEInterface] Mapas MAC<->NXID reconstruidos desde vault:', rebuilt, 'contactos');
+    }
   }
   _continueInit() {
     var self = this;
@@ -711,6 +722,7 @@ export class BLEInterface {
         if (nd && nx) {
           self._nexoIdToMac.set(nx, nd);
           self._macToNexoId.set(nd, nx);
+          console.log('[BLEInterface] Scan: mapa actualizado', nx, '<->', nd);
         }
         self.onDeviceFound({ id: deviceId, name: name, rssi: data.rssi, nexoId: nexoId });
       } catch (e) {}
@@ -1224,7 +1236,18 @@ export class BLEInterface {
       var cd = this.connectedDevices.get(deviceId);
       if (cd && cd.deviceUUID) nx = _normId(cd.deviceUUID);
     }
+    // FIX v5.3.6: buscar en vault (disco) si memoria esta vacia
+    if (!nx) {
+      var contact = _getContactByDeviceId(deviceId);
+      if (contact) nx = _normId(contact.nexoId || contact.deviceUUID);
+    }
     if (nx) {
+      // Actualizar mapas para futuras reconexiones
+      var nd = _normMac(deviceId);
+      if (nd && nx) {
+        this._macToNexoId.set(nd, nx);
+        this._nexoIdToMac.set(nx, nd);
+      }
       this._resendPendingMessages(nx);
     } else {
       console.warn('[BLEInterface] _resolveReadyToChat: no NXID para deviceId', deviceId, '- reenvio vault pospuesto');
@@ -1657,6 +1680,13 @@ export class BLEInterface {
         contacts[idx].lastSeen = Date.now();
         contacts[idx].deviceId = deviceId;
         _saveBLEContacts(contacts);
+        // FIX v5.3.6: actualizar mapas MAC<->NXID al re-detectar contacto
+        var nd2 = _normMac(deviceId);
+        var nx2 = _normId(nexoId);
+        if (nd2 && nx2) {
+          this._nexoIdToMac.set(nx2, nd2);
+          this._macToNexoId.set(nd2, nx2);
+        }
       }
       this.renderContactsList();
       this.renderOnlineStrip();
