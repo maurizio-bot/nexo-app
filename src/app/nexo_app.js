@@ -604,5 +604,3 @@ function _normId(id) {
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
-
-export { NexoApp };
