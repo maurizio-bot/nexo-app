@@ -1,5 +1,5 @@
 /**
- * BLE Interface v5.3.4-FIX6+ACK
+ * BLE Interface v5.3.5-OFFLINEFIX-v2
  * FIX: Toda persistencia migrada a plugin nativo. Cero localStorage.
  * FIX: Caches en memoria (_blePinnedCache, _bleUUIDCache).
  * FIX: Contactos delegados a vault_manager.js (window.vaultLoadContacts).
@@ -382,7 +382,7 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.4-FIX6+ACK iniciado');
+    console.log('[BLEInterface] v5.3.5-OFFLINEFIX-v2 iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -824,12 +824,8 @@ export class BLEInterface {
         var contact = _getContactByDeviceId(deviceId);
         if (contact) peerUUID = contact.nexoId || contact.deviceUUID;
         self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: peerUUID });
+        // FIX v5.3.5: _resolveReadyToChat ya hace _processPendingMessages + _resendPendingMessages
         self._resolveReadyToChat(deviceId);
-        self._processPendingMessages(deviceId);
-        var nxFlush = self._macToNexoId.get(_normMac(deviceId));
-        if (nxFlush) {
-          setTimeout(function() { self._resendPendingMessages(nxFlush); }, 300);
-        }
         self._pingFailCount.set(deviceId, 0);
         self._lastPongTime.set(deviceId, Date.now());
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.HEALTHY, since: Date.now() });
@@ -1019,20 +1015,25 @@ export class BLEInterface {
     var processNext = function(idx) {
       if (idx >= queue.length) return Promise.resolve();
       var item = queue[idx];
+      // FIX v5.3.5: usar deviceId del item si existe, fallback al parametro
+      var targetId = item.deviceId || deviceId;
+      var sendOpts = item.timestamp ? { timestamp: item.timestamp } : undefined;
       if (self.ackSystem) {
-        return self.ackSystem.sendWithRetry(deviceId, item.content, item.messageId)
+        // ackSystem no soporta opts.timestamp directamente; fallback a native
+        return self._sendMessageNative(targetId, item.content, item.messageId, sendOpts)
           .then(function() { item.resolve(); return processNext(idx + 1); })
           .catch(function(e) { item.reject(e); return processNext(idx + 1); });
       } else {
-        return self._sendMessageNative(deviceId, item.content, item.messageId)
+        return self._sendMessageNative(targetId, item.content, item.messageId, sendOpts)
           .then(function() { item.resolve(); return processNext(idx + 1); })
           .catch(function(e) { item.reject(e); return processNext(idx + 1); });
       }
     };
     return processNext(0);
   }
-  _sendMessageNative(deviceId, content, messageId) {
+  _sendMessageNative(deviceId, content, messageId, opts) {
     var self = this;
+    opts = opts || {};
     return new Promise(function(resolve, reject) {
       try {
         if (!self.nativePlugin) { reject(new Error('Plugin nativo no disponible')); return; }
@@ -1059,11 +1060,13 @@ export class BLEInterface {
         else {
           var senderId = self.localNexoId || self.localDeviceUUID;
           var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+          // FIX v5.3.5: preservar timestamp original para mensajes offline
+          var originalTs = opts.timestamp || Date.now();
           var payloadObj = {
             text: content,
             senderNexoId: senderId,
             senderName: self.localDeviceName || 'Nexo Device',
-            timestamp: Date.now()
+            timestamp: originalTs
           };
           if (content && content.charAt(0) === '{') {
             try {
@@ -1078,7 +1081,7 @@ export class BLEInterface {
             type: 'chat',
             from: senderId,
             to: '',
-            ts: Date.now(),
+            ts: originalTs,
             msgId: msgId,
             payload: payloadObj,
             jump: { ttl: 5, hops: 0, path: [] }
@@ -1140,7 +1143,8 @@ export class BLEInterface {
           self._forceDisconnectAndReconnect(deviceId);
           var queueKey = uuid;
           var queue = self._pendingMessageQueue.get(queueKey) || [];
-          queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject });
+          // FIX v5.3.5: guardar deviceId + timestamp original para orden y posicion correctos
+          queue.push({ content: content, messageId: msgId, deviceId: deviceId, timestamp: Date.now(), resolve: resolve, reject: reject });
           self._pendingMessageQueue.set(queueKey, queue);
           return;
         }
@@ -1210,9 +1214,20 @@ export class BLEInterface {
     var resolver = this._readyResolvers.get(deviceId);
     if (resolver) { clearTimeout(resolver.timer); resolver.resolve(); this._readyResolvers.delete(deviceId); }
     this._processPendingMessages(deviceId);
+    // FIX v5.3.5: obtener nx de multiples fuentes, no solo del mapa
     var nx = this._macToNexoId.get(_normMac(deviceId));
+    if (!nx) {
+      var st = this._deviceStates.get(deviceId);
+      if (st && st.deviceUUID) nx = _normId(st.deviceUUID);
+    }
+    if (!nx) {
+      var cd = this.connectedDevices.get(deviceId);
+      if (cd && cd.deviceUUID) nx = _normId(cd.deviceUUID);
+    }
     if (nx) {
       this._resendPendingMessages(nx);
+    } else {
+      console.warn('[BLEInterface] _resolveReadyToChat: no NXID para deviceId', deviceId, '- reenvio vault pospuesto');
     }
   }
   openChat(deviceUUID) {
@@ -1258,9 +1273,15 @@ export class BLEInterface {
         }
         finishOpenChat();
         var devIdForResend = self._resolveDeviceIdForNexoId(uuid);
-        var stForResend = devIdForResend ? self._getDeviceState(devIdForResend) : { state: BLE_STATES.DISCONNECTED };
-        if (stForResend.state === BLE_STATES.READY_TO_CHAT || stForResend.state === BLE_STATES.NOTIFICATIONS_READY) {
-          self._resendPendingMessages(uuid);
+        if (devIdForResend) {
+          var stForResend = self._getDeviceState(devIdForResend);
+          if (stForResend.state === BLE_STATES.READY_TO_CHAT || stForResend.state === BLE_STATES.NOTIFICATIONS_READY) {
+            self._resendPendingMessages(uuid);
+          } else {
+            console.log('[BLEInterface] openChat: dispositivo no READY, reenvio pospuesto hasta reconexion');
+          }
+        } else {
+          console.log('[BLEInterface] openChat: no deviceId resuelto, reenvio pospuesto');
         }
         _vaultLoadMessages(uuid).then(function(messages) {
           if (messages && messages.length > 0) {
@@ -1292,15 +1313,23 @@ export class BLEInterface {
         return;
       }
       var devState = self._getDeviceState(deviceId);
+      // FIX v5.3.5: si no esta READY, reintentar en 2s en vez de abortar
       if (devState.state !== BLE_STATES.READY_TO_CHAT && devState.state !== BLE_STATES.NOTIFICATIONS_READY) {
-        console.log('[BLEInterface] _resendPendingMessages: dispositivo no READY, posponiendo reenvio para', nexoId);
+        console.log('[BLEInterface] _resendPendingMessages: dispositivo no READY, reintentando en 2s para', nexoId);
+        setTimeout(function() { self._resendPendingMessages(nexoId); }, 2000);
         return;
       }
       pending.forEach(function(msg) {
         var mid = msg.msgId || msg.messageId || msg.id;
         if (!mid) return;
+        var txt = msg.content || msg.text || '';
+        if (!txt) { console.warn('[BLEInterface] Pending msg sin contenido:', mid); return; }
+        // FIX v5.3.5: preservar timestamp original para orden correcto en chat
+        var originalTs = msg.timestamp || msg.ts || Date.now();
+        var sendOpts = { timestamp: originalTs };
         if (self.ackSystem) {
-          self.ackSystem.sendWithRetry(deviceId, msg.content || msg.text || '', mid)
+          // Usar native directo para preservar timestamp (ackSystem no lo soporta)
+          self._sendMessageNative(deviceId, txt, mid, sendOpts)
             .then(function() {
               console.log('[BLEInterface] Pending reenviado OK:', mid);
               _vaultUpdateMessageStatus(nexoId, mid, 'sent');
@@ -1309,11 +1338,13 @@ export class BLEInterface {
               console.warn('[BLEInterface] Pending reenvio fallo:', mid, e.message);
             });
         } else {
-          self._sendMessageNative(deviceId, msg.content || msg.text || '', mid)
+          self._sendMessageNative(deviceId, txt, mid, sendOpts)
             .then(function() {
               _vaultUpdateMessageStatus(nexoId, mid, 'sent');
             })
-            .catch(function(e) {});
+            .catch(function(e) {
+              console.warn('[BLEInterface] Pending reenvio nativo fallo:', mid, e.message);
+            });
         }
       });
     }).catch(function(e) {
