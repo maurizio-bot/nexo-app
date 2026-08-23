@@ -1,5 +1,5 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.6-ORDEREDFIX
+ * src/main.js - Punto de entrada NEXO v9.9.7-SAVEBEFORESEND
  * FIX: _cameraActiveStream declarado explicitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
  * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
@@ -16,6 +16,7 @@
  * FIX v9.9.6: _renderMessage inserta ordenado por timestamp
  * FIX v9.9.6: _saveMessageToStorage usa senderNexoId para mensajes recibidos
  * FIX v9.9.6: _loadPersistedMessages limpia DOM antes de cargar
+ * FIX v9.9.7: _doSend guarda en vault PRIMERO, luego envia (anti-perdida)
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -805,7 +806,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.6-ORDEREDFIX iniciando...');
+    console.log('[MAIN] NEXO v9.9.7-SAVEBEFORESEND iniciando...');
     console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -1147,15 +1148,45 @@ function _setupMessageInput() {
 
     _updateBtnState();
 
+    // FIX v9.9.7: guardar en vault PRIMERO, luego enviar
     var _doSend = async function() {
       var text = input.value.trim();
       if (!text) return;
       input.value = '';
       _updateBtnState();
       input.focus();
+      // FIX v9.9.7: guardar en vault PRIMERO, luego enviar
+      var contactId = _getCurrentContactId();
+      if (!contactId) {
+        console.warn('[MAIN] _doSend: no hay contacto activo');
+        return;
+      }
+      var msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      var localMsg = {
+        msgId: msgId,
+        messageId: msgId,
+        content: text,
+        text: text,
+        _own: true,
+        status: 'pending',
+        timestamp: Date.now()
+      };
+      // 1. GUARDAR primero en vault
       try {
-        await window.NEXO.app.sendMessage({ content: text });
-      } catch (e) {}
+        if (window.vaultAppendMessage) await window.vaultAppendMessage(contactId, localMsg, true);
+      } catch (e) {
+        console.warn('[MAIN] _doSend: vaultAppendMessage fallo:', e.message);
+      }
+      // 2. RENDERIZAR en UI
+      _renderMessage(localMsg);
+      // 3. ENVIAR despues
+      try {
+        await window.NEXO.app.sendMessage({ content: text, messageId: msgId });
+      } catch (e) {
+        console.warn('[MAIN] _doSend: sendMessage fallo:', e.message);
+        _updateMessageStatus(msgId, 'failed');
+        _updateMessageStorageStatus(msgId, 'failed');
+      }
     };
 
     input.addEventListener('input', _updateBtnState);
