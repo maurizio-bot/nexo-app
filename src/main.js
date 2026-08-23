@@ -23,7 +23,6 @@ import { rem } from './ui/rem.js';
 import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
 import { createAckSystem } from './ui/ble_ack.js';
 import { initVault, vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages, vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId } from './vault/vault_manager.js';
-import { createAutoScan } from './ui/autoscan.js';
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
   NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe estar importado');
@@ -1134,8 +1133,20 @@ function _setupMessageInput() {
       input.value = '';
       _updateBtnState();
       input.focus();
+      // === FIX: Guardar en vault PRIMERO, enviar DESPUES ===
+      var msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      var vaultMsg = {
+        msgId: msgId,
+        messageId: msgId,
+        content: text,
+        _own: true,
+        status: 'pending',
+        timestamp: Date.now()
+      };
+      _renderMessage(vaultMsg); // Guarda en vault + renderiza UI con °
+      // === FIN FIX ===
       try {
-        await window.NEXO.app.sendMessage({ content: text });
+        await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId });
       } catch (e) {}
     };
 
@@ -1379,6 +1390,12 @@ async function _loadPersistedMessages() {
 function _renderMessage(msg, skipSave) {
   try {
     if (!msg) return;
+    // === FIX: Filtro de seguridad ACK — nunca renderizar ACKs como mensajes ===
+    if (msg.type === 'ack' || msg.ackType || (msg.content && typeof msg.content === 'string' && msg.content.indexOf('"type":"ack"') !== -1)) {
+      console.warn('[MAIN] ACK filtrado en _renderMessage:', msg.msgId || msg.messageId || msg.id || '');
+      return;
+    }
+    // === FIN FIX ACK ===
     var container = document.getElementById('messages-container');
     if (!container) return;
     var msgId = msg.msgId || msg.messageId || msg._id || msg.id || '';
