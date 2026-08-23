@@ -30,7 +30,7 @@ import { initVault, vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaul
 import { createAutoScan } from './ui/autoscan.js';
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
-  NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe estar importado');
+  NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe ser una clase valida');
   NEXO_CONFIG.assert(typeof rem !== 'undefined', 'rem debe estar importado');
 } catch (assertErr) {
   console.error('[MAIN] Assert de arranque fallo:', assertErr);
@@ -949,7 +949,6 @@ async function initializeNexoApp() {
       onMessage: function(msg) {
         console.log('Mensaje:', msg);
         if (!msg) return;
-        // VAULTFIX: unico punto de guardado de mensajes (propios y recibidos)
         var contactId, isOwn = !!msg._own;
         if (isOwn) {
           contactId = _getCurrentContactId();
@@ -978,7 +977,7 @@ async function initializeNexoApp() {
             console.warn('[MAIN] onMessage vaultAppendMessage fallo:', e.message);
           });
         }
-        _renderMessage(msg, true); // skipSave=true, ya guardado en vault
+        _renderMessage(msg, true);
       },
       onStatusChange: function(mode) {
         console.log('Modo:', mode);
@@ -1180,8 +1179,8 @@ function _setupMessageInput() {
       } catch (e) {
         console.warn('[MAIN] _doSend: vaultAppendMessage fallo:', e.message);
       }
-      // 2. RENDERIZAR en UI
-      _renderMessage(localMsg, true); // skipSave=true, ya guardado en vault
+      // 2. RENDERIZAR en UI (skipSave=true, ya guardado en vault)
+      _renderMessage(localMsg, true);
       // 3. ENVIAR despues
       try {
         await window.NEXO.app.sendMessage({ content: text, messageId: msgId });
@@ -2055,4 +2054,3 @@ function _doChatBack() {
 }
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
-
