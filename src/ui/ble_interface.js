@@ -458,6 +458,11 @@ export class BLEInterface {
         self._autoScanForKnownContacts();
       }
     }, 500);
+    // === FIX OFFLINE: Flush global de pending messages al arrancar ===
+    setTimeout(function() {
+      self._flushAllPendingMessages();
+    }, 3000);
+    // === FIN FIX OFFLINE ===
   }
   // === FIX 2: Cleanup stale states ===
   _cleanupStaleStates() {
@@ -480,6 +485,53 @@ export class BLEInterface {
       console.log('[BLEInterface] Cleanup stale states:', keysToDelete.length, 'devices purgados');
     }
   }
+  // === FIX OFFLINE: Flush global de pending messages al arrancar ===
+  _flushAllPendingMessages() {
+    var self = this;
+    console.log('[BLEInterface] Flush global de pending messages...');
+    var contacts = _getBLEContacts();
+    if (!contacts || contacts.length === 0) {
+      console.log('[BLEInterface] No hay contactos para flush');
+      return;
+    }
+    var totalPending = 0;
+    contacts.forEach(function(contact) {
+      var nx = _normId(contact.nexoId || contact.deviceUUID);
+      if (!nx) return;
+      // FIX OFFLINE: Vault entrega pending YA ORDENADOS cronológicamente
+      var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
+        ? window.vaultGetPendingMessages(nx)
+        : _vaultLoadMessages(nx).then(function(msgs) {
+            return msgs.filter(function(m) { return m._own === true && (m.status === 'pending' || m.status === 'failed'); });
+          });
+      getPending.then(function(pending) {
+        if (!pending || pending.length === 0) return;
+        totalPending += pending.length;
+        console.log('[BLEInterface] Contacto', nx, 'tiene', pending.length, 'mensajes pending/failed (ordenados por vault)');
+        var deviceId = contact.deviceId || self._resolveDeviceIdForNexoId(nx);
+        if (deviceId) {
+          var state = self._getDeviceState(deviceId);
+          var isReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
+          var isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
+          if (isReady) {
+            console.log('[BLEInterface] Dispositivo listo, flusheando pending en orden...');
+            self._resendPendingMessages(nx);
+          } else if (!isConnecting) {
+            console.log('[BLEInterface] Dispositivo desconectado, intentando auto-connect para flush...');
+            self._autoConnectGATT(deviceId, { name: contact.name, deviceUUID: nx });
+          }
+        } else {
+          console.log('[BLEInterface] No hay deviceId para', nx, 'pendiente de scan...');
+        }
+      }).catch(function(e) {
+        console.warn('[BLEInterface] Error en flush para', nx, ':', e.message);
+      });
+    });
+    if (totalPending === 0) {
+      console.log('[BLEInterface] No hay mensajes pending para flush');
+    }
+  }
+  // === FIN FIX OFFLINE ===
   // === SUPERVISOR v1.0 ===
   _startConnectionSupervisor() {
     var self = this;
@@ -661,6 +713,11 @@ export class BLEInterface {
                 .catch(function(e) {});
               }
               self._cleanupStaleStates();
+              // === FIX OFFLINE: Re-flush pending al volver de background ===
+              setTimeout(function() {
+                self._flushAllPendingMessages();
+              }, 2000);
+              // === FIN FIX OFFLINE ===
             }
           } catch (e) {}
         });
@@ -1270,36 +1327,46 @@ export class BLEInterface {
   _resendPendingMessages(nexoId) {
     var self = this;
     if (!nexoId) return;
-    _vaultLoadMessages(nexoId).then(function(messages) {
-      if (!messages || messages.length === 0) return;
-      var pending = messages.filter(function(m) { return m._own === true && m.status === 'pending'; });
-      if (pending.length === 0) return;
-      console.log('[BLEInterface] Reenviando', pending.length, 'mensajes pending para', nexoId);
+    // FIX OFFLINE: Vault entrega pending YA ORDENADOS cronológicamente (más viejo primero)
+    var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
+      ? window.vaultGetPendingMessages(nexoId)
+      : _vaultLoadMessages(nexoId).then(function(msgs) {
+          return msgs.filter(function(m) { return m._own === true && m.status === 'pending'; });
+        });
+    getPending.then(function(pending) {
+      if (!pending || pending.length === 0) return;
+      console.log('[BLEInterface] Reenviando', pending.length, 'mensajes pending para', nexoId, '(orden cronológico)');
       var deviceId = self._resolveDeviceIdForNexoId(nexoId);
       if (!deviceId) {
         console.warn('[BLEInterface] No deviceId resuelto para reenvio pending de', nexoId);
         return;
       }
-      pending.forEach(function(msg) {
+      // Enviar secuencialmente en orden cronológico (más viejo primero)
+      var idx = 0;
+      function sendNext() {
+        if (idx >= pending.length) return;
+        var msg = pending[idx++];
         var mid = msg.msgId || msg.messageId || msg.id;
-        if (!mid) return;
-        if (self.ackSystem) {
-          self.ackSystem.sendWithRetry(deviceId, msg.content || msg.text || '', mid)
-            .then(function() {
-              console.log('[BLEInterface] Pending reenviado OK:', mid);
-              _vaultUpdateMessageStatus(nexoId, mid, 'sent');
-            })
-            .catch(function(e) {
-              console.warn('[BLEInterface] Pending reenvio fallo:', mid, e.message);
-            });
-        } else {
-          self._sendMessageNative(deviceId, msg.content || msg.text || '', mid)
-            .then(function() {
-              _vaultUpdateMessageStatus(nexoId, mid, 'sent');
-            })
-            .catch(function(e) {});
-        }
-      });
+        if (!mid) { sendNext(); return; }
+        var doSend = function() {
+          if (self.ackSystem) {
+            return self.ackSystem.sendWithRetry(deviceId, msg.content || msg.text || '', mid);
+          } else {
+            return self._sendMessageNative(deviceId, msg.content || msg.text || '', mid);
+          }
+        };
+        doSend()
+          .then(function() {
+            console.log('[BLEInterface] Pending reenviado OK:', mid);
+            _vaultUpdateMessageStatus(nexoId, mid, 'sent');
+            sendNext(); // ← Secuencial: espera éxito antes del siguiente
+          })
+          .catch(function(e) {
+            console.warn('[BLEInterface] Pending reenvio fallo:', mid, e.message);
+            sendNext(); // ← Continúa con el siguiente aunque falle
+          });
+      }
+      sendNext();
     }).catch(function(e) {
       console.warn('[BLEInterface] Error cargando pending para reenvio:', e.message);
     });
