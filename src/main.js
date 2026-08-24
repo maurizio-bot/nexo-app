@@ -23,7 +23,7 @@ import { rem } from './ui/rem.js';
 import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
 import { createAckSystem } from './ui/ble_ack.js';
 import { initVault, vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages, vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId } from './vault/vault_manager.js';
-import { initBLEInterface } from './ble/ble_interface.js';
+import { initBLEInterface } from './src/ui/ble_interface.js';
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
   NEXO_CONFIG.assert(typeof NexoApp !== 'undefined', 'NexoApp debe estar importado');
