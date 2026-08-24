@@ -246,3 +246,20 @@ export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
   }
   return false;
 }
+
+// === FIX OFFLINE: Vault entrega pending ordenados cronológicamente ===
+export async function vaultGetPendingMessages(contactNexoId) {
+  if (!contactNexoId) return [];
+  var cid = _normId(contactNexoId);
+  var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+  var pending = messages.filter(function(m) {
+    return m._own === true && (m.status === 'pending' || m.status === 'failed');
+  });
+  // Ordenar por timestamp ascendente (más viejo primero)
+  pending.sort(function(a, b) {
+    return (a.timestamp || 0) - (b.timestamp || 0);
+  });
+  return pending;
+}
+// === FIN FIX OFFLINE ===
+
