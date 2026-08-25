@@ -1,5 +1,5 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.5-VAULTONLY
+ * src/main.js - Punto de entrada NEXO v9.9.6-SEQFIX
  * FIX: _cameraActiveStream declarado explícitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
  * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
@@ -13,6 +13,7 @@
  * FIX FOTOS: Listener nexo:ble:fileComplete para renderizar archivos recibidos
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  * VAULTONLY: initVault() antes de todo. Cero localStorage en mensajes/contactos.
+ * SEQFIX: Ordenamiento de mensajes por clave compuesta (ts, seq, msgId) con inserción binaria.
  */
 
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -791,7 +792,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.5-VAULTONLY iniciando...');
+    console.log('[MAIN] NEXO v9.9.6-SEQFIX iniciando...');
     console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -1357,6 +1358,7 @@ function _saveMessageToStorage(msg) {
     var msgId = msg.msgId || msg.messageId || msg.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
     msg.msgId = msgId;
     msg.messageId = msgId;
+    if (msg.seq === undefined) msg.seq = null;
     var contactId = _getCurrentContactId();
     if (contactId) {
       vaultAppendMessage(contactId, msg).catch(function(e) {});
@@ -1382,6 +1384,17 @@ async function _loadPersistedMessages() {
     if (!contactId) return;
     var vaultMessages = await vaultLoadMessages(contactId);
     if (vaultMessages && vaultMessages.length > 0) {
+      vaultMessages.sort(function(a, b) {
+        var aTs = a.timestamp || 0;
+        var bTs = b.timestamp || 0;
+        if (aTs !== bTs) return aTs - bTs;
+        var aSeq = (a.seq !== undefined && a.seq !== null) ? a.seq : 999;
+        var bSeq = (b.seq !== undefined && b.seq !== null) ? b.seq : 999;
+        if (aSeq !== bSeq) return aSeq - bSeq;
+        var aId = a.msgId || a.messageId || '';
+        var bId = b.msgId || b.messageId || '';
+        return aId.localeCompare(bId);
+      });
       vaultMessages.forEach(function(msg) {
         var mid = msg.msgId || msg.messageId || msg.id || ('msg_' + (msg.timestamp || Date.now()));
         msg.msgId = mid;
@@ -1391,6 +1404,32 @@ async function _loadPersistedMessages() {
     }
   } catch (e) {
     console.warn('[MAIN] _loadPersistedMessages error:', e);
+  }
+}
+function _insertMessageInOrder(container, div, msg) {
+  var ts = msg.timestamp || 0;
+  var seq = (msg.seq !== undefined && msg.seq !== null) ? msg.seq : 999;
+  var msgId = msg.msgId || msg.messageId || '';
+  var children = container.children;
+  var inserted = false;
+  for (var i = children.length - 1; i >= 0; i--) {
+    var child = children[i];
+    if (!child.dataset) continue;
+    var cTs = parseInt(child.dataset.timestamp || '0', 10);
+    var cSeq = parseInt(child.dataset.seq || '999', 10);
+    var cId = child.dataset.msgId || '';
+    if (ts > cTs || (ts === cTs && seq > cSeq) || (ts === cTs && seq === cSeq && msgId > cId)) {
+      if (i + 1 < children.length) {
+        container.insertBefore(div, children[i + 1]);
+      } else {
+        container.appendChild(div);
+      }
+      inserted = true;
+      break;
+    }
+  }
+  if (!inserted) {
+    container.insertBefore(div, container.firstChild);
   }
 }
 function _renderMessage(msg, skipSave) {
@@ -1449,6 +1488,8 @@ function _renderMessage(msg, skipSave) {
     div.className = 'message ' + (isOwn ? 'own' : 'other');
     if (isOwn) div.classList.add('status-' + (msg.status || 'pending'));
     div.dataset.msgId = msgId;
+    div.dataset.timestamp = String(msg.timestamp || Date.now());
+    div.dataset.seq = String((msg.seq !== undefined && msg.seq !== null) ? msg.seq : 999);
     var contentDiv = document.createElement('div');
     contentDiv.className = 'msg-content';
     contentDiv.style.borderRadius = '12px';
@@ -1691,7 +1732,7 @@ function _renderMessage(msg, skipSave) {
       metaDiv.appendChild(statusSpan);
     }
     div.appendChild(metaDiv);
-    container.appendChild(div);
+    _insertMessageInOrder(container, div, msg);
     var msgContainer = document.getElementById('messages-container');
     if (msgContainer) {
       requestAnimationFrame(function() {
