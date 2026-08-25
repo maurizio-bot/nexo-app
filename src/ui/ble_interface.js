@@ -1,11 +1,12 @@
 /**
- * BLE Interface v5.3.0-VAULTONLY
+ * BLE Interface v5.3.1-SEQFIX
  * FIX: Toda persistencia migrada a plugin nativo. Cero localStorage.
  * FIX: Caches en memoria (_blePinnedCache, _bleUUIDCache).
  * FIX: Contactos delegados a vault_manager.js (window.vaultLoadContacts).
  * FIX: Pinned, NexoId y UUID usan saveToFile/loadFromFile nativo.
  * FASE4: Hooks vault contactos + mensajes, autoscan conectar/desconectar.
  * SUPERVISOR v1.0: Connection health monitoring + ping/pong + auto-reconnect.
+ * SEQFIX: Agregado campo seq (uint8) al payload BLE para ordenamiento robusto.
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -359,6 +360,7 @@ export class BLEInterface {
     this._nexoIdToMac = new Map();
     this._macToNexoId = new Map();
     this._receivedMessageIds = new Set();
+    this._localSeqCounters = new Map();
     this._maxMessageIds = 1000;
     this._dedupTTL = 300000;
     this._pendingMessageQueue = new Map();
@@ -378,7 +380,14 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.0-VAULTONLY iniciado');
+    console.log('[BLEInterface] v5.3.1-SEQFIX iniciado');
+  }
+  _getNextSeq() {
+    var nx = _normId(this.localNexoId || this.localDeviceUUID || 'local');
+    var next = (this._localSeqCounters.get(nx) || 0) + 1;
+    if (next > 255) next = 1;
+    this._localSeqCounters.set(nx, next);
+    return next;
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -922,7 +931,7 @@ export class BLEInterface {
         self._pingFailCount.set(deviceId, 0);
         var source = data.source || 'unknown';
         if (source !== 'gatt_server' && source !== 'gatt_client' && source !== 'broadcast') source = 'gatt_client';
-        var messageId = null, senderName = null, senderUUID = null;
+        var messageId = null, senderName = null, senderUUID = null, msgSeq = null;
         var content = data.content || data.data || data.message || '';
         var stableId = null;
         if (self.ackSystem) {
@@ -974,10 +983,12 @@ export class BLEInterface {
             var json = JSON.parse(data.data || content || '{}');
             if (json.msgId) messageId = json.msgId;
             if (json.messageId) messageId = json.messageId;
+            if (json.seq !== undefined) { msgSeq = json.seq; }
             if (json.payload) {
               if (json.payload.senderName) senderName = json.payload.senderName;
               if (json.payload.text) content = json.payload.text;
               if (json.payload.senderNexoId) senderUUID = json.payload.senderNexoId;
+              if (json.payload.seq !== undefined) msgSeq = json.payload.seq;
             }
             if (json.senderName) senderName = json.senderName;
             if (json.deviceName) senderName = json.deviceName;
@@ -1035,7 +1046,8 @@ export class BLEInterface {
             _own: false,
             status: 'delivered',
             timestamp: data.timestamp || Date.now(),
-            senderName: senderName
+            senderName: senderName,
+            seq: msgSeq
           };
           _vaultAppendMessage(senderUUID, vaultMsg, false);
         }
@@ -1044,7 +1056,8 @@ export class BLEInterface {
           _safeDispatchEvent('nexo:ble:messageReceived', {
             deviceId: stableId, deviceUUID: senderUUID, content: content,
             senderName: senderName, messageId: messageId, source: source,
-            timestamp: data.timestamp || Date.now()
+            timestamp: data.timestamp || Date.now(),
+            seq: msgSeq
           });
           return;
         }
@@ -1057,7 +1070,8 @@ export class BLEInterface {
         _safeDispatchEvent('nexo:ble:messageReceived', {
           deviceId: stableId, deviceUUID: senderUUID, content: content,
           senderName: senderName, messageId: messageId, source: source,
-          timestamp: data.timestamp || Date.now()
+          timestamp: data.timestamp || Date.now(),
+          seq: msgSeq
         });
       } catch (e) { console.warn('[BLEInterface] Error onPayloadReceived:', e.message); }
     });
@@ -1115,11 +1129,13 @@ export class BLEInterface {
         else {
           var senderId = self.localNexoId || self.localDeviceUUID;
           var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+          var seq = self._getNextSeq();
           var payloadObj = {
             text: content,
             senderNexoId: senderId,
             senderName: self.localDeviceName || 'Nexo Device',
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            seq: seq
           };
           if (content && content.charAt(0) === '{') {
             try {
@@ -1135,6 +1151,7 @@ export class BLEInterface {
             from: senderId,
             to: '',
             ts: Date.now(),
+            seq: seq,
             msgId: msgId,
             payload: payloadObj,
             jump: { ttl: 5, hops: 0, path: [] }
