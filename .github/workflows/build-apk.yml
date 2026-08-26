@@ -2,7 +2,7 @@ name: NEXO APK
 
 on:
   push:
-    branches: [2443-stable]
+    branches: [NEXOCHAT]
   workflow_dispatch:
 
 jobs:
