@@ -1,7 +1,7 @@
 /**
- * vault_manager.js v2.0.0-NATIVE
- * Persistencia unificada via plugin nativo NexoBLE.
- * Sin localStorage. Cache en memoria + escritura async a disco nativo.
+ * vault_manager.js v2.1.0-SEQFIX
+ * FIX: Campo seq en mensajes + ordenación por (timestamp, seq, msgId)
+ * Base: v2.0.0-NATIVE
  */
 
 var VAULT_CONTACTS_FILE = 'nexo_vault_contacts.json';
@@ -167,6 +167,17 @@ export async function vaultLoadMessages(contactNexoId) {
         m.msgId = mid;
         m.messageId = mid;
       });
+      msgs.sort(function(a, b) {
+        var tsA = a.timestamp || 0;
+        var tsB = b.timestamp || 0;
+        if (tsA !== tsB) return tsA - tsB;
+        var seqA = (typeof a.seq === 'number') ? a.seq : 0;
+        var seqB = (typeof b.seq === 'number') ? b.seq : 0;
+        if (seqA !== seqB) return seqA - seqB;
+        var idA = a.msgId || '';
+        var idB = b.msgId || '';
+        return idA.localeCompare(idB);
+      });
       _msgCache.set(cid, msgs.slice());
       return msgs;
     }
@@ -217,6 +228,7 @@ export async function vaultAppendMessage(contactNexoId, message) {
     senderNexoId: message.senderNexoId || message.sender || '',
     senderName: message.senderName || '',
     timestamp: message.timestamp || message.ts || Date.now(),
+    seq: (typeof message.seq === 'number') ? message.seq : 0,
     status: message.status || 'pending',
     _own: !!message._own,
     type: message.type || 'text',
@@ -255,11 +267,15 @@ export async function vaultGetPendingMessages(contactNexoId) {
   var pending = messages.filter(function(m) {
     return m._own === true && (m.status === 'pending' || m.status === 'failed');
   });
-  // Ordenar por timestamp ascendente (más viejo primero)
+  // Ordenar por timestamp ascendente (más viejo primero), seq como tiebreaker
   pending.sort(function(a, b) {
-    return (a.timestamp || 0) - (b.timestamp || 0);
+    var tsA = a.timestamp || 0;
+    var tsB = b.timestamp || 0;
+    if (tsA !== tsB) return tsA - tsB;
+    var seqA = (typeof a.seq === 'number') ? a.seq : 0;
+    var seqB = (typeof b.seq === 'number') ? b.seq : 0;
+    return seqA - seqB;
   });
   return pending;
 }
 // === FIN FIX OFFLINE ===
-
