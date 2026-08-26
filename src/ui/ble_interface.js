@@ -1,15 +1,13 @@
 /**
- * BLE Interface v5.3.0-VAULTONLY
- * FIX: Toda persistencia migrada a plugin nativo. Cero localStorage.
- * FIX: Caches en memoria (_blePinnedCache, _bleUUIDCache).
- * FIX: Contactos delegados a vault_manager.js (window.vaultLoadContacts).
- * FIX: Pinned, NexoId y UUID usan saveToFile/loadFromFile nativo.
- * FASE4: Hooks vault contactos + mensajes, autoscan conectar/desconectar.
- * SUPERVISOR v1.0: Connection health monitoring + ping/pong + auto-reconnect.
+ * BLE Interface v5.3.1-SEQFIX
+ * FIX: seq counter uint32 con persistencia nativa
+ * FIX: Inserción ordenada en recepción via (timestamp, seq, msgId)
+ * Base: v5.3.0-VAULTONLY
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
 var BLE_UUID_VAULT_FILE = 'nexo_device_uuid.json';
+var BLE_SEQ_COUNTER_FILE = 'nexo_seq_counter.json';
 var GRADIENTS = [
   'ble-gradient-1', 'ble-gradient-2', 'ble-gradient-3', 'ble-gradient-4',
   'ble-gradient-5', 'ble-gradient-6', 'ble-gradient-7', 'ble-gradient-8'
@@ -230,6 +228,36 @@ function _loadPinnedFromVault() {
     } else { resolve(); }
   });
 }
+
+function _loadSeqCounter() {
+  return new Promise(function(resolve) {
+    var plugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
+    if (plugin && typeof plugin.loadFromFile === 'function') {
+      _safeNativeCall(plugin, 'loadFromFile', { filename: BLE_SEQ_COUNTER_FILE })
+        .then(function(result) {
+          if (result && result.exists && result.content) {
+            try {
+              var data = JSON.parse(result.content);
+              if (typeof data.seq === 'number') { resolve(data.seq); return; }
+            } catch (e) {}
+          }
+          resolve(0);
+        }).catch(function() { resolve(0); });
+    } else { resolve(0); }
+  });
+}
+function _saveSeqCounter(seq) {
+  return new Promise(function(resolve) {
+    var plugin = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
+    if (plugin && typeof plugin.saveToFile === 'function') {
+      _safeNativeCall(plugin, 'saveToFile', {
+        filename: BLE_SEQ_COUNTER_FILE,
+        content: JSON.stringify({ seq: seq, updatedAt: Date.now() })
+      }).then(function() { resolve(); }).catch(function() { resolve(); });
+    } else { resolve(); }
+  });
+}
+
 function _isPinned(deviceUUID) {
   return _getPinnedContacts().indexOf(_normId(deviceUUID)) >= 0;
 }
@@ -365,6 +393,8 @@ export class BLEInterface {
     this._readyResolvers = new Map();
     this._notificationFallbackTimers = new Map();
     this.ackSystem = null;
+    this._localSeqCounter = 0;
+    this._seqCounterLoaded = false;
     // === SUPERVISOR v1.0 ===
     this._pendingPings = new Map();
     this._lastPongTime = new Map();
@@ -378,7 +408,7 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.0-VAULTONLY iniciado');
+    console.log('[BLEInterface] v5.3.1-SEQFIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -427,6 +457,8 @@ export class BLEInterface {
   }
   _continueInit() {
     var self = this;
+    var selfSeq = this;
+    _loadSeqCounter().then(function(seq) { selfSeq._localSeqCounter = seq; selfSeq._seqCounterLoaded = true; }).catch(function() { selfSeq._localSeqCounter = 0; selfSeq._seqCounterLoaded = true; });
     if (this.isDummyMode) {
       this.updateStatus('OFFLINE (Dummy)');
     } else {
@@ -680,6 +712,11 @@ export class BLEInterface {
     this.connectedDevices.forEach(function(d) { if (!found && _normId(d.deviceUUID) === nx) found = d.id; });
     this.foundDevices.forEach(function(d) { if (!found && _normId(d.deviceUUID) === nx) found = d.id; });
     return found;
+  }
+  getNextSeq() {
+    this._localSeqCounter = (this._localSeqCounter + 1) >>> 0;
+    _saveSeqCounter(this._localSeqCounter);
+    return this._localSeqCounter;
   }
   // === FIN SUPERVISOR ===
   _initNexoId() {
@@ -974,6 +1011,8 @@ export class BLEInterface {
             var json = JSON.parse(data.data || content || '{}');
             if (json.msgId) messageId = json.msgId;
             if (json.messageId) messageId = json.messageId;
+            var msgSeq = 0;
+            if (typeof json.seq === 'number') msgSeq = json.seq;
             if (json.payload) {
               if (json.payload.senderName) senderName = json.payload.senderName;
               if (json.payload.text) content = json.payload.text;
@@ -1044,7 +1083,8 @@ export class BLEInterface {
           _safeDispatchEvent('nexo:ble:messageReceived', {
             deviceId: stableId, deviceUUID: senderUUID, content: content,
             senderName: senderName, messageId: messageId, source: source,
-            timestamp: data.timestamp || Date.now()
+            timestamp: data.timestamp || Date.now(),
+            seq: msgSeq
           });
           return;
         }
@@ -1057,7 +1097,8 @@ export class BLEInterface {
         _safeDispatchEvent('nexo:ble:messageReceived', {
           deviceId: stableId, deviceUUID: senderUUID, content: content,
           senderName: senderName, messageId: messageId, source: source,
-          timestamp: data.timestamp || Date.now()
+          timestamp: data.timestamp || Date.now(),
+          seq: msgSeq
         });
       } catch (e) { console.warn('[BLEInterface] Error onPayloadReceived:', e.message); }
     });
@@ -1087,7 +1128,7 @@ export class BLEInterface {
     };
     return processNext(0);
   }
-  _sendMessageNative(deviceId, content, messageId) {
+  _sendMessageNative(deviceId, content, messageId, seq) {
     var self = this;
     return new Promise(function(resolve, reject) {
       try {
@@ -1115,6 +1156,7 @@ export class BLEInterface {
         else {
           var senderId = self.localNexoId || self.localDeviceUUID;
           var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+          var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
           var payloadObj = {
             text: content,
             senderNexoId: senderId,
@@ -1135,6 +1177,7 @@ export class BLEInterface {
             from: senderId,
             to: '',
             ts: Date.now(),
+            seq: msgSeq,
             msgId: msgId,
             payload: payloadObj,
             jump: { ttl: 5, hops: 0, path: [] }
@@ -1147,7 +1190,7 @@ export class BLEInterface {
       } catch (e) { reject(e); }
     });
   }
-  sendChatMessage(deviceUUID, content, messageId) {
+  sendChatMessage(deviceUUID, content, messageId, seq) {
     var self = this;
     return new Promise(function(resolve, reject) {
       try {
@@ -1177,13 +1220,15 @@ export class BLEInterface {
         if (!deviceId) { console.error('[BLEInterface] sendChatMessage: No deviceId para UUID', uuid); reject(new Error('Dispositivo no encontrado')); return; }
         if (contact && !contact.deviceId) { contact.deviceId = deviceId; _saveBLEContacts(_getBLEContacts()); }
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+        var msgSeq = (typeof seq === 'number') ? seq : this.getNextSeq();
         var ownMsg = {
           msgId: msgId,
           messageId: msgId,
           content: content,
           _own: true,
           status: 'pending',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          seq: msgSeq
         };
         _vaultAppendMessage(uuid, ownMsg, true);
         var state = self._getDeviceState(deviceId);
@@ -1204,7 +1249,7 @@ export class BLEInterface {
             self.ackSystem.sendWithRetry(deviceId, content, msgId)
               .then(function() { resolve(); }).catch(function(err) { reject(err); });
           } else {
-            self._sendMessageNative(deviceId, content, msgId)
+            self._sendMessageNative(deviceId, content, msgId, msgSeq)
               .then(function() { resolve(); }).catch(function(err) { reject(err); });
           }
         }
