@@ -1,5 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.5-VAULTONLY
+ * src/main.js - Punto de entrada NEXO v9.9.6-SEQFIX
+ * FIX: seq counter en envío + inserción ordenada en DOM por (timestamp, seq, msgId)
  * FIX: _cameraActiveStream declarado explícitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
  * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
@@ -791,7 +792,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.5-VAULTONLY iniciando...');
+    console.log('[MAIN] NEXO v9.9.6-SEQFIX iniciando...');
     console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -1142,17 +1143,19 @@ function _setupMessageInput() {
       _updateBtnState();
       input.focus();
       var msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      var seq = (window.bleInterface && typeof window.bleInterface.getNextSeq === 'function') ? window.bleInterface.getNextSeq() : 0;
       var vaultMsg = {
         msgId: msgId,
         messageId: msgId,
         content: text,
         _own: true,
         status: 'pending',
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        seq: seq
       };
       _renderMessage(vaultMsg);
       try {
-        await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId });
+        await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId, seq: seq });
       } catch (e) {}
     };
 
@@ -1449,6 +1452,8 @@ function _renderMessage(msg, skipSave) {
     div.className = 'message ' + (isOwn ? 'own' : 'other');
     if (isOwn) div.classList.add('status-' + (msg.status || 'pending'));
     div.dataset.msgId = msgId;
+    div.dataset.timestamp = msg.timestamp || Date.now();
+    div.dataset.seq = (typeof msg.seq === 'number') ? msg.seq : 0;
     var contentDiv = document.createElement('div');
     contentDiv.className = 'msg-content';
     contentDiv.style.borderRadius = '12px';
@@ -1691,7 +1696,30 @@ function _renderMessage(msg, skipSave) {
       metaDiv.appendChild(statusSpan);
     }
     div.appendChild(metaDiv);
-    container.appendChild(div);
+    if (skipSave) {
+      container.appendChild(div);
+    } else {
+      var inserted = false;
+      var children = container.querySelectorAll('.message');
+      var msgTs = msg.timestamp || Date.now();
+      var msgSeq = (typeof msg.seq === 'number') ? msg.seq : 0;
+      for (var ci = 0; ci < children.length; ci++) {
+        var child = children[ci];
+        var childTs = parseInt(child.dataset.timestamp || '0', 10);
+        var childSeq = parseInt(child.dataset.seq || '0', 10);
+        var childId = child.dataset.msgId || '';
+        if (msgTs < childTs ||
+            (msgTs === childTs && msgSeq < childSeq) ||
+            (msgTs === childTs && msgSeq === childSeq && msgId.localeCompare(childId) < 0)) {
+          container.insertBefore(div, child);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) {
+        container.appendChild(div);
+      }
+    }
     var msgContainer = document.getElementById('messages-container');
     if (msgContainer) {
       requestAnimationFrame(function() {
