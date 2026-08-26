@@ -1,12 +1,7 @@
 /**
- * NEXO App v5.0.20-FILES
- * Base: v5.0.19 - FILES
- * FIX: sendFile delegado a AckSystem.sendFile (fragmentacion BLE)
- * FIX: _sendAttachment usa sendFile para image/video/file
- * FIX: _sendPayment usa sendChatMessage para payload de pago
- * FIX: _renderMessage ahora renderiza attachments (image, video, audio, location, file)
- * FASE4: Vault persistencia contactos + mensajes
- * VAULTONLY: Cero localStorage en mensajes/contactos. Delegado a vault_manager.js.
+ * NEXO App v5.0.21-SEQFIX
+ * FIX: seq propagado desde main.js a ble_interface.js
+ * Base: v5.0.20-FILES
  */
 
 import { NEXO_CONFIG } from '../core/nexo_config.js';
@@ -47,7 +42,7 @@ export class NexoApp {
     this._paymentDebounceMs = 2000;
     this._transferDebounceMs = 2000;
     this._bleMessageHandler = null;
-    console.log('[NEXO] App v5.0.20-FILES constructor');
+    console.log('[NEXO] App v5.0.21-SEQFIX constructor');
   }
 
   init() {
@@ -118,6 +113,7 @@ export class NexoApp {
           senderNexoId: senderUUID,
           senderName: resolvedName || detail.senderName || 'NEXO',
           timestamp: detail.timestamp || Date.now(),
+          seq: (typeof detail.seq === 'number') ? detail.seq : 0,
           _own: false,
           status: 'delivered',
           deviceId: detail.deviceId || ''
@@ -213,7 +209,7 @@ export class NexoApp {
       pending.forEach(function(msg) {
         var mid = msg.msgId || msg.messageId || msg.id;
         if (!mid) return;
-        self.sendMessage({ content: msg.content || msg.text || '', msgId: mid, messageId: mid });
+        self.sendMessage({ content: msg.content || msg.text || '', msgId: mid, messageId: mid, seq: msg.seq });
       });
     }).catch(function(e) {
       console.warn('[NEXO] Error cargando pending para reenvio:', e.message);
@@ -236,6 +232,7 @@ export class NexoApp {
           var mappedMac = self.bleInterface._nexoIdToMac ? self.bleInterface._nexoIdToMac.get(_normId(contactId)) : null;
           if (mappedMac) targetId = mappedMac;
         }
+        var seq = (typeof msg.seq === 'number') ? msg.seq : null;
         var content = msg.content;
         var isAttachment = false;
         try {
@@ -255,7 +252,7 @@ export class NexoApp {
           return;
         }
         if (self.bleInterface && self.bleInterface.sendChatMessage) {
-          self.bleInterface.sendChatMessage(contactId, content, messageId)
+          self.bleInterface.sendChatMessage(contactId, content, messageId, seq)
             .then(function() {
               self._updateMessageStatus(messageId, 'sent');
               self._scheduleAckTimeout(messageId);
