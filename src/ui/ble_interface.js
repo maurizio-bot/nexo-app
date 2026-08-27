@@ -1063,10 +1063,6 @@ export class BLEInterface {
             self._receivedMessageIds.delete(first);
           }
         }
-        if (!isControl && messageId && self.ackSystem) {
-          self.ackSystem.sendAck(deviceId, messageId);
-        }
-        stableId = senderUUID || deviceId;
         if (!isControl && senderUUID) {
           var vaultMsg = {
             messageId: messageId || ('recv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)),
@@ -1074,7 +1070,8 @@ export class BLEInterface {
             _own: false,
             status: 'delivered',
             timestamp: data.timestamp || Date.now(),
-            senderName: senderName
+            senderName: senderName,
+            seq: msgSeq || 0  // ← FIX #3: preservar seq para orden cronológico
           };
           _vaultAppendMessage(senderUUID, vaultMsg, false);
         }
