@@ -1046,7 +1046,18 @@ async function initializeNexoApp() {
         try {
           var d = e.detail || {};
           if (!d.fileId || !d.data) return;
-          console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, d.meta);
+                // === FIX ACK → UI: listener de status de entrega ===
+      window.addEventListener('nexo:ble:ackStatus', function(e) {
+        try {
+          if (e && e.detail && e.detail.msgId) {
+            _updateMessageStatus(e.detail.msgId, e.detail.status);
+          }
+        } catch (err) {
+          console.warn('[MAIN] Error en ackStatus handler:', err.message);
+        }
+      });
+      // === FIN FIX ACK → UI ===
+      console.log('[MAIN] Fase 4 hooks OK');
           var recvMsg = {
             msgId: d.fileId,
             messageId: d.fileId,
