@@ -1,7 +1,7 @@
 /**
- * NEXO App v5.0.21-SEQFIX
- * FIX: seq propagado desde main.js a ble_interface.js
- * Base: v5.0.20-FILES
+ * NEXO App v5.0.22-ACKFIX
+ * FIX: ACK delegado a ble_ack.js (BleAckSystem.sendWithRetry)
+ * Base: v5.0.21-SEQFIX
  */
 
 import { NEXO_CONFIG } from '../core/nexo_config.js';
@@ -29,12 +29,7 @@ export class NexoApp {
     this.onError = this.config.onError || function() {};
     this.onVaultStateChange = this.config.onVaultStateChange || function() {};
     this.actionCallbacks = this.config.actionCallbacks || {};
-    this._pendingAcks = new Map();
-    this._ackTimeouts = new Map();
-    this._ackRetryCount = new Map();
-    this._ackMaxRetries = 3;
-    this._ackRetryDelay = 2000;
-    this._ackTimeoutMs = 6000;
+    // ACK handling delegado a ble_ack.js (BleAckSystem.sendWithRetry)
     this._isProcessingPayment = false;
     this._isProcessingTransfer = false;
     this._lastPaymentTime = 0;
@@ -42,7 +37,7 @@ export class NexoApp {
     this._paymentDebounceMs = 2000;
     this._transferDebounceMs = 2000;
     this._bleMessageHandler = null;
-    console.log('[NEXO] App v5.0.21-SEQFIX constructor');
+    console.log('[NEXO] App v5.0.22-ACKFIX constructor');
   }
 
   init() {
@@ -171,10 +166,6 @@ export class NexoApp {
       if (!messageId) return;
       ackType = ackType || 'delivered';
       console.log('[NEXO] ACK recibido:', messageId, ackType);
-      var timeout = this._ackTimeouts.get(messageId);
-      if (timeout) { clearTimeout(timeout); this._ackTimeouts.delete(messageId); }
-      this._pendingAcks.delete(messageId);
-      this._ackRetryCount.delete(messageId);
       if (window.NEXO_updateMessageStatus) {
         window.NEXO_updateMessageStatus(messageId, ackType);
       }
@@ -255,7 +246,6 @@ export class NexoApp {
           self.bleInterface.sendChatMessage(contactId, content, messageId, seq)
             .then(function() {
               self._updateMessageStatus(messageId, 'sent');
-              self._scheduleAckTimeout(messageId);
               resolve();
             })
             .catch(function(err) {
@@ -269,34 +259,6 @@ export class NexoApp {
         reject(e);
       }
     });
-  }
-
-  _scheduleAckTimeout(messageId) {
-    var self = this;
-    if (!messageId) return;
-    var timeout = setTimeout(function() {
-      var retries = self._ackRetryCount.get(messageId) || 0;
-      if (retries < self._ackMaxRetries) {
-        self._ackRetryCount.set(messageId, retries + 1);
-        console.log('[NEXO] ACK timeout, reintentando', retries + 1, '/', self._ackMaxRetries);
-        var contactId = self._getCurrentContactId();
-        if (contactId && self.bleInterface && self.bleInterface.sendChatMessage) {
-          self.bleInterface.sendChatMessage(contactId, '', messageId)
-            .then(function() {
-              self._scheduleAckTimeout(messageId);
-            })
-            .catch(function() {});
-        }
-      } else {
-        console.warn('[NEXO] ACK max retries alcanzado para', messageId);
-        self._pendingAcks.delete(messageId);
-        self._ackTimeouts.delete(messageId);
-        self._ackRetryCount.delete(messageId);
-        self._updateMessageStatus(messageId, 'failed');
-      }
-    }, self._ackTimeoutMs);
-    self._ackTimeouts.set(messageId, timeout);
-    self._pendingAcks.set(messageId, true);
   }
 
   _updateMessageStatus(messageId, status) {
@@ -325,10 +287,6 @@ export class NexoApp {
       if (this._bleMessageHandler) {
         window.removeEventListener('nexo:ble:messageReceived', this._bleMessageHandler);
       }
-      this._ackTimeouts.forEach(function(t) { clearTimeout(t); });
-      this._ackTimeouts.clear();
-      this._pendingAcks.clear();
-      this._ackRetryCount.clear();
     } catch (e) {}
   }
 
