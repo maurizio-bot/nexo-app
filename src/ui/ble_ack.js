@@ -1,7 +1,7 @@
 /**
  * ble_ack.js — Sistema ACK real + fragmentación de archivos para NEXO
+ * v1.2.0-ACKFIX: sendReadReceipt + read_receipt support + ACK inmediato
  * v1.1.0: sendFile robusto con batches de 5 chunks + reenvío de batch + progreso
- * v1.0.2-FIX: processIncomingAck ahora acepta msgId, messageId o id (dual-key)
  */
 export class BleAckSystem {
   constructor(bleInterface) {
@@ -80,7 +80,8 @@ export class BleAckSystem {
     try {
       var ack = JSON.parse(content);
       var ackMsgId = ack.msgId || ack.messageId || ack.id || null;
-      if (ack.type !== 'ack' || !ackMsgId) return false;
+      if (!ackMsgId) return false;
+      if (ack.type !== 'ack' && ack.type !== 'read_receipt') return false;
       if (this.receivedAcks.has(ackMsgId)) return true;
       this.receivedAcks.add(ackMsgId);
       if (this.receivedAcks.size > this.maxReceivedAcks) {
@@ -88,11 +89,15 @@ export class BleAckSystem {
         this.receivedAcks.delete(first);
       }
       var entry = this.pendingAcks.get(ackMsgId);
+      var status = ack.type === 'read_receipt' ? 'read' : 'delivered';
       if (entry) {
         clearTimeout(entry.timer);
         this.pendingAcks.delete(ackMsgId);
         entry.resolve();
-        this._dispatchStatus(ackMsgId, 'delivered');
+        this._dispatchStatus(ackMsgId, status);
+      } else {
+        // Notificar UI aunque no sea nuestro ACK pendiente (read receipt entrante)
+        this._dispatchStatus(ackMsgId, status);
       }
       return true;
     } catch (e) {
@@ -110,6 +115,19 @@ export class BleAckSystem {
     });
     if (this.ble && typeof this.ble._sendMessageNative === 'function') {
       this.ble._sendMessageNative(deviceId, ackPayload, null).catch(function() {});
+    }
+  }
+
+  sendReadReceipt(deviceId, msgId) {
+    var receiptPayload = JSON.stringify({
+      v: 1,
+      type: 'read_receipt',
+      msgId: msgId,
+      from: (this.ble && this.ble.localNexoId) ? this.ble.localNexoId : ((this.ble && this.ble.localDeviceUUID) ? this.ble.localDeviceUUID : 'unknown'),
+      ts: Date.now()
+    });
+    if (this.ble && typeof this.ble._sendMessageNative === 'function') {
+      this.ble._sendMessageNative(deviceId, receiptPayload, null).catch(function() {});
     }
   }
 
