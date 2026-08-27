@@ -1,8 +1,9 @@
 /**
- * BLE Interface v5.3.1-SEQFIX
+ * BLE Interface v5.3.7-VAULTFIX
+ * FIX: peerReady universal + ACK inmediato + read receipt + scan fallback
  * FIX: seq counter uint32 con persistencia nativa
  * FIX: Inserción ordenada en recepción via (timestamp, seq, msgId)
- * Base: v5.3.0-VAULTONLY
+ * Base: v5.3.1-SEQFIX
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -408,7 +409,7 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.1-SEQFIX iniciado');
+    console.log('[BLEInterface] v5.3.7-VAULTFIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -553,7 +554,8 @@ export class BLEInterface {
             self._autoConnectGATT(deviceId, { name: contact.name, deviceUUID: nx });
           }
         } else {
-          console.log('[BLEInterface] No hay deviceId para', nx, 'pendiente de scan...');
+          console.log('[BLEInterface] No hay deviceId para', nx, 'forzando scan...');
+          self._autoScanForKnownContacts();
         }
       }).catch(function(e) {
         console.warn('[BLEInterface] Error en flush para', nx, ':', e.message);
@@ -713,6 +715,11 @@ export class BLEInterface {
     this.foundDevices.forEach(function(d) { if (!found && _normId(d.deviceUUID) === nx) found = d.id; });
     return found;
   }
+  _notifyPeerReady(deviceId, nexoId) {
+    if (!deviceId || !nexoId) return;
+    console.log('[BLEInterface] Peer ready:', nexoId, 'device:', deviceId);
+    _safeDispatchEvent('nexo:ble:peerReady', { deviceId: deviceId, nexoId: nexoId });
+  }
   getNextSeq() {
     this._localSeqCounter = (this._localSeqCounter + 1) >>> 0;
     _saveSeqCounter(this._localSeqCounter);
@@ -855,6 +862,15 @@ export class BLEInterface {
         self._pingFailCount.set(deviceId, 0);
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.HEALTHY, since: Date.now() });
         _safeDispatchEvent('nexo:ble:deviceConnected', { deviceId: deviceId, deviceUUID: peerUUID, name: displayName });
+        if (peerUUID) {
+          setTimeout(function() {
+            var st = self._getDeviceState(deviceId);
+            if (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY) {
+              self._notifyPeerReady(deviceId, peerUUID);
+              self._resendPendingMessages(peerUUID);
+            }
+          }, 1500);
+        }
       } catch (e) {}
     });
     this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', function(data) {
@@ -899,6 +915,8 @@ export class BLEInterface {
           if (st.state === BLE_STATES.DISCOVERING_SERVICES) {
             self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT);
             self._resolveReadyToChat(deviceId);
+            var nxFb = self._macToNexoId.get(_normMac(deviceId));
+            if (nxFb) self._notifyPeerReady(deviceId, nxFb);
           }
         }, 3000);
         self._notificationFallbackTimers.set(deviceId, fallbackTimer);
@@ -918,6 +936,7 @@ export class BLEInterface {
         self._processPendingMessages(deviceId);
         var nxFlush = self._macToNexoId.get(_normMac(deviceId));
         if (nxFlush) {
+          self._notifyPeerReady(deviceId, nxFlush);
           setTimeout(function() { self._resendPendingMessages(nxFlush); }, 300);
         }
         self._pingFailCount.set(deviceId, 0);
@@ -1061,6 +1080,10 @@ export class BLEInterface {
           if (self._receivedMessageIds.size > self._maxMessageIds) {
             var first = self._receivedMessageIds.values().next().value;
             self._receivedMessageIds.delete(first);
+          }
+          // ACK inmediato para mensajes de chat nuevos
+          if (!isControl && self.ackSystem) {
+            self.ackSystem.sendAck(deviceId, messageId);
           }
         }
         if (!isControl && senderUUID) {
@@ -1616,6 +1639,17 @@ export class BLEInterface {
           self.elements.overlay.classList.remove('active');
         }
       });
+    });
+    window.addEventListener('nexo:ble:sendReadReceipt', function(e) {
+      try {
+        var d = e.detail || {};
+        if (!d.nexoId || !d.msgId) return;
+        var devId = self._resolveDeviceIdForNexoId(d.nexoId);
+        if (!devId) return;
+        if (self.ackSystem && self.ackSystem.sendReadReceipt) {
+          self.ackSystem.sendReadReceipt(devId, d.msgId);
+        }
+      } catch (err) {}
     });
     window.addEventListener('nexo:ble:closeChat', function() {
       self._activeChatDeviceId = null; self._activeChatDeviceIdNative = null;
