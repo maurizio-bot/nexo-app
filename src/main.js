@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.6-SEQFIX
+ * src/main.js - Punto de entrada NEXO v9.9.8-VAULTFIX
+ * FIX: Mensaje fantasma — peerReady universal + flush en primera conexion + outbox por nexoId
+ * FIX: _doSend captura error y marca failed en UI/vault
  * FIX: seq counter en envío + inserción ordenada en DOM por (timestamp, seq, msgId)
  * FIX: _cameraActiveStream declarado explícitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
@@ -79,6 +81,9 @@ function _fmtTime(sec) {
 var m = Math.floor(sec / 60);
 var s = sec % 60;
 return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+function _normId(id) {
+  return (id || '').toString().toLowerCase().trim();
 }
 function _getAttachmentPlugins() {
 var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
@@ -790,7 +795,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.6-SEQFIX iniciando...');
+console.log('[MAIN] NEXO v9.9.8-VAULTFIX iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -1012,8 +1017,36 @@ _autoScan = createAutoScan(window.NEXO.app.bleInterface);
 window.addEventListener('nexo:ble:deviceConnected', function(e) {
 if (e && e.detail && e.detail.deviceId) {
 _autoScan.unregisterDevice(e.detail.deviceId);
+// FIX FANTASMA: Flush pending al conectar (primera conexion o reconexion)
+if (window.NEXO.app && window.NEXO.app.bleInterface && e.detail.nexoId) {
+setTimeout(function() {
+window.NEXO.app.bleInterface._resendPendingMessages(_normId(e.detail.nexoId));
+}, 800);
+}
 }
 });
+// === FIX FANTASMA: peerReady universal → flush pending ===
+window.addEventListener('nexo:ble:peerReady', function(e) {
+try {
+if (e && e.detail && e.detail.nexoId) {
+var nx = _normId(e.detail.nexoId);
+console.log('[MAIN] peerReady:', nx);
+// Flush pending para este contacto
+if (window.NEXO.app && window.NEXO.app.bleInterface) {
+window.NEXO.app.bleInterface._resendPendingMessages(nx);
+}
+// Actualizar subtitle si es chat activo
+var activeId = _getCurrentContactId();
+if (activeId && _normId(activeId) === nx) {
+var subtitle = document.getElementById('chat-contact-subtitle');
+if (subtitle) subtitle.textContent = 'En linea';
+}
+}
+} catch (err) {
+console.warn('[MAIN] peerReady handler error:', err.message);
+}
+});
+// === FIN FIX FANTASMA ===
 window.addEventListener('nexo:ble:deviceDisconnected', function(e) {
 if (e && e.detail && e.detail.deviceId) {
 var nid = e.detail.nexoId || e.detail.deviceId;
@@ -1161,7 +1194,11 @@ seq: seq
 _renderMessage(vaultMsg);
 try {
 await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId, seq: seq });
-} catch (e) {}
+} catch (e) {
+console.warn('[MAIN] sendMessage failed:', e.message);
+_updateMessageStatus(msgId, 'failed');
+_updateMessageStorageStatus(msgId, 'failed');
+}
 };
 input.addEventListener('input', _updateBtnState);
 input.addEventListener('keyup', _updateBtnState);
