@@ -1,14 +1,41 @@
 /**
- * vault_manager.js v2.1.0-SEQFIX
+ * vault_manager.js v2.1.1-FIX
  * FIX: Campo seq en mensajes + ordenación por (timestamp, seq, msgId)
- * Base: v2.0.0-NATIVE
+ * FIX: LRU cache para _msgCache (límite 20 contactos, evita leak de memoria)
+ * Base: v2.1.0-SEQFIX
  */
 
 var VAULT_CONTACTS_FILE = 'nexo_vault_contacts.json';
 var VAULT_MESSAGES_PREFIX = 'nexo_vault_msgs_v2_';
 var _vaultContacts = [];
 var _vaultInitDone = false;
-var _msgCache = new Map();
+
+// LRU cache nativo para mensajes (max 20 contactos en memoria)
+function _createLRU(maxSize) {
+  var map = new Map();
+  return {
+    get: function(key) {
+      var val = map.get(key);
+      if (val !== undefined) {
+        map.delete(key);
+        map.set(key, val);
+      }
+      return val;
+    },
+    set: function(key, value) {
+      if (map.has(key)) map.delete(key);
+      map.set(key, value);
+      if (map.size > maxSize) {
+        var first = map.keys().next().value;
+        map.delete(first);
+      }
+    },
+    has: function(key) { return map.has(key); },
+    delete: function(key) { map.delete(key); },
+    clear: function() { map.clear(); }
+  };
+}
+var _msgCache = _createLRU(20);
 
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
@@ -154,7 +181,8 @@ function _msgFileName(contactNexoId) {
 export async function vaultLoadMessages(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
-  if (_msgCache.has(cid)) return _msgCache.get(cid).slice();
+  var cached = _msgCache.get(cid);
+  if (cached !== undefined) return cached.slice();
   var plugin = _nativePlugin();
   if (!plugin) return [];
   try {
@@ -267,7 +295,6 @@ export async function vaultGetPendingMessages(contactNexoId) {
   var pending = messages.filter(function(m) {
     return m._own === true && (m.status === 'pending' || m.status === 'failed');
   });
-  // Ordenar por timestamp ascendente (más viejo primero), seq como tiebreaker
   pending.sort(function(a, b) {
     var tsA = a.timestamp || 0;
     var tsB = b.timestamp || 0;
