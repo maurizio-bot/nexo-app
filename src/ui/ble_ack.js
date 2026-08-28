@@ -1,5 +1,6 @@
 /**
- * ble_ack.js — Sistema ACK real + fragmentación de archivos para NEXO
+ * ble_ack.js — Sistema ACK real + fragmentación de archivos para NEXO v1.2.1-ACKFIX
+ * v1.2.1-ACKFIX: Fix chunk_ prefix + self->this + fromName en meta
  * v1.2.0-ACKFIX: sendReadReceipt + read_receipt support + ACK inmediato
  * v1.1.0: sendFile robusto con batches de 5 chunks + reenvío de batch + progreso
  */
@@ -148,7 +149,7 @@ export class BleAckSystem {
         chunks: chunks,
         total: total,
         sent: 0,
-        meta: meta || {},
+        meta: Object.assign({}, meta || {}, { fromName: (self.ble && self.ble.localDeviceName) ? self.ble.localDeviceName : 'NEXO' }),
         senderId: senderId,
         startTime: Date.now()
       });
@@ -158,7 +159,7 @@ export class BleAckSystem {
         type: 'file_meta',
         fileId: fileId,
         totalChunks: total,
-        meta: meta || {},
+        meta: Object.assign({}, meta || {}, { fromName: (self.ble && self.ble.localDeviceName) ? self.ble.localDeviceName : 'NEXO' }),
         from: senderId,
         ts: Date.now()
       };
@@ -198,14 +199,14 @@ export class BleAckSystem {
             for (var j = 0; j < batchChunks.length - 1; j++) {
               (function(chunkPayload) {
                 sendPromises.push(
-                  self.ble._sendMessageNative(deviceId, JSON.stringify(chunkPayload), 'chunk_' + fileId + '_' + chunkPayload.idx)
+                  self.ble._sendMessageNative(deviceId, JSON.stringify(chunkPayload), fileId + '_' + chunkPayload.idx)
                     .catch(function(e) { return { failed: true, error: e }; })
                 );
               })(batchChunks[j]);
             }
             // El último chunk del batch va con ACK (sendWithRetry)
             var lastChunk = batchChunks[batchChunks.length - 1];
-            var lastMsgId = 'chunk_' + fileId + '_' + lastChunk.idx;
+            var lastMsgId = fileId + '_' + lastChunk.idx;
 
             // Esperar a que todos los chunks directos se envíen
             Promise.all(sendPromises).then(function(results) {
@@ -315,7 +316,7 @@ export class BleAckSystem {
         if (track) {
           console.log('[BleAckSystem] Reanudando archivo', msg.fileId);
           // Reconstruir y reenviar
-          self.sendFile(deviceId, msg.fileId, track.chunks.join(''), track.meta)
+          this.sendFile(deviceId, msg.fileId, track.chunks.join(''), track.meta)
             .catch(function() {});
         }
         return true;
