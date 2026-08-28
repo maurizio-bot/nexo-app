@@ -805,7 +805,7 @@ rem.init();
 var permissionsGranted = false;
 try {
 var permPromise = ensureBLEPermissions();
-var permTimeout = new Promise(function(, reject) {
+var permTimeout = new Promise(function(resolve, reject) {
 setTimeout(function() { reject(new Error('PERM_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SCAN) ? NEXO_CONFIG.TIMEOUTS.SCAN : 10000);
 });
 permissionsGranted = await Promise.race([permPromise, permTimeout]);
@@ -976,7 +976,7 @@ _openChatFromNotification(event.deviceId);
 console.log('[MAIN] Notificacion listener no disponible:', notifErr);
 }
 var initPromise = window.NEXO.app.init();
-var timeoutPromise = new Promise(function(, reject) {
+var timeoutPromise = new Promise(function(resolve, reject) {
 setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
 });
 try {
