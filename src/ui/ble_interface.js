@@ -1,12 +1,9 @@
 /**
- * BLE Interface v5.3.8-ACKFIX
- * FIX: peerReady universal + ACK inmediato + read receipt + scan fallback
- * FIX: seq counter uint32 con persistencia nativa
- * FIX: Inserción ordenada en recepción via (timestamp, seq, msgId)
- * FIX: sendChatMessage actualiza vault en then/catch
- * FIX: _isControlPacket usa JSON parse robusto
- * FIX: Payload listener extrae attachments + dispatch único
- * Base: v5.3.7-VAULTFIX
+ * BLE Interface v5.3.9-FIX
+ * FIX: isControl declarado (corrige ReferenceError silencioso)
+ * FIX: stableId corregido a deviceId en dispatch messageReceived
+ * FIX: sendChatMessage usa self.getNextSeq() (evita this undefined en closure)
+ * Base: v5.3.8-ACKFIX
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -400,7 +397,6 @@ export class BLEInterface {
     this.ackSystem = null;
     this._localSeqCounter = 0;
     this._seqCounterLoaded = false;
-    // === SUPERVISOR v1.0 ===
     this._pendingPings = new Map();
     this._lastPongTime = new Map();
     this._pingInterval = null;
@@ -413,7 +409,7 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.8-ACKFIX iniciado');
+    console.log('[BLEInterface] v5.3.9-FIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -495,13 +491,10 @@ export class BLEInterface {
         self._autoScanForKnownContacts();
       }
     }, 500);
-    // === FIX OFFLINE: Flush global de pending messages al arrancar ===
     setTimeout(function() {
       self._flushAllPendingMessages();
     }, 3000);
-    // === FIN FIX OFFLINE ===
   }
-  // === FIX 2: Cleanup stale states ===
   _cleanupStaleStates() {
     var self = this;
     var now = Date.now();
@@ -522,7 +515,6 @@ export class BLEInterface {
       console.log('[BLEInterface] Cleanup stale states:', keysToDelete.length, 'devices purgados');
     }
   }
-  // === FIX OFFLINE: Flush global de pending messages al arrancar ===
   _flushAllPendingMessages() {
     var self = this;
     console.log('[BLEInterface] Flush global de pending messages...');
@@ -535,7 +527,6 @@ export class BLEInterface {
     contacts.forEach(function(contact) {
       var nx = _normId(contact.nexoId || contact.deviceUUID);
       if (!nx) return;
-      // FIX OFFLINE: Vault entrega pending YA ORDENADOS cronológicamente
       var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
         ? window.vaultGetPendingMessages(nx)
         : _vaultLoadMessages(nx).then(function(msgs) {
@@ -569,8 +560,6 @@ export class BLEInterface {
       console.log('[BLEInterface] No hay mensajes pending para flush');
     }
   }
-  // === FIN FIX OFFLINE ===
-  // === SUPERVISOR v1.0 ===
   _startConnectionSupervisor() {
     var self = this;
     if (self._supervisorTimer) {
@@ -729,7 +718,6 @@ export class BLEInterface {
     _saveSeqCounter(this._localSeqCounter);
     return this._localSeqCounter;
   }
-  // === FIN SUPERVISOR ===
   _initNexoId() {
     var self = this;
     _getOrCreateNexoId().then(function(nexoId) {
@@ -761,11 +749,9 @@ export class BLEInterface {
                 .catch(function(e) {});
               }
               self._cleanupStaleStates();
-              // === FIX OFFLINE: Re-flush pending al volver de background ===
               setTimeout(function() {
                 self._flushAllPendingMessages();
               }, 2000);
-              // === FIN FIX OFFLINE ===
             }
           } catch (e) {}
         });
@@ -984,24 +970,30 @@ export class BLEInterface {
         if (source !== 'gatt_server' && source !== 'gatt_client' && source !== 'broadcast') source = 'gatt_client';
         var messageId = null, senderName = null, senderUUID = null;
         var content = data.content || data.data || data.message || '';
-        var stableId = null;
+        
         if (self.ackSystem) {
           var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: content });
           if (fragmentHandled) return;
         }
-        // === FIX: Clasificacion robusta de control packets ===
+
         var ctrl = null;
         try {
           if (content && content.charAt(0) === '{') ctrl = JSON.parse(content);
         } catch (e) { ctrl = null; }
-        // ACK / read_receipt: procesar y NUNCA pasar al pipeline de mensajes
+
+        var isControl = !!(ctrl && (
+          ctrl.type === 'ack' || ctrl.type === 'read_receipt' ||
+          ctrl.type === 'ping' || ctrl.type === 'pong' ||
+          ctrl.type === 'file_meta' || ctrl.type === 'file_chunk' || ctrl.type === 'file_resume'
+        ));
+
         if (ctrl && (ctrl.type === 'ack' || ctrl.type === 'read_receipt')) {
           if (self.ackSystem) {
             self.ackSystem.processIncomingAck(content);
           }
-          return; // ← ACKs NO se renderizan como mensajes
+          return;
         }
-        // PING: responder con PONG
+
         if (ctrl && ctrl.type === 'ping') {
           var pongPayload = JSON.stringify({
             v: 1, type: 'pong', pingId: ctrl.pingId,
@@ -1024,7 +1016,7 @@ export class BLEInterface {
           }
           return;
         }
-        // === FIN PING/PONG ===
+
         if (content.charAt(0) === '{' || (data.data && data.data.charAt(0) === '{')) {
           try {
             var json = JSON.parse(data.data || content || '{}');
@@ -1081,12 +1073,11 @@ export class BLEInterface {
             var first = self._receivedMessageIds.values().next().value;
             self._receivedMessageIds.delete(first);
           }
-          // ACK inmediato para mensajes de chat nuevos
           if (!isControl && self.ackSystem) {
             self.ackSystem.sendAck(deviceId, messageId);
           }
         }
-        // Extraer attachment data si existe en el payload enriquecido
+
         var attachmentData = null;
         if (ctrl && ctrl.payload && ctrl.payload.attachment) {
           attachmentData = ctrl.payload.attachment;
@@ -1110,17 +1101,20 @@ export class BLEInterface {
         }
         var activeUUID = self._activeChatDeviceId;
         var isChatActive = activeUUID && activeUUID === senderUUID;
-        // Solo incrementar unread si el chat NO esta activo
         if (senderUUID && !isControl && !isChatActive) {
           var contacts3 = _getBLEContacts();
           var idx3 = contacts3.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
           if (idx3 >= 0) { contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1; contacts3[idx3].lastMessage = msgContent.substring(0, 50); contacts3[idx3].lastSeen = Date.now(); _saveBLEContacts(contacts3); self.renderContactsList(); self.renderOnlineStrip(); }
         }
         self.newDevicesCount++; self.updateBadge();
-        // FIX: dispatch UNICO de messageReceived, con attachment fields si aplica
         _safeDispatchEvent('nexo:ble:messageReceived', {
-          deviceId: stableId, deviceUUID: senderUUID, content: msgContent,
-          senderName: senderName, senderNexoId: senderUUID, messageId: messageId, source: source,
+          deviceId: deviceId,
+          deviceUUID: senderUUID,
+          content: msgContent,
+          senderName: senderName,
+          senderNexoId: senderUUID,
+          messageId: messageId,
+          source: source,
           timestamp: data.timestamp || Date.now(),
           seq: msgSeq,
           attachmentType: attachmentData ? attachmentData.attachmentType : null,
@@ -1247,7 +1241,7 @@ export class BLEInterface {
         if (!deviceId) { console.error('[BLEInterface] sendChatMessage: No deviceId para UUID', uuid); reject(new Error('Dispositivo no encontrado')); return; }
         if (contact && !contact.deviceId) { contact.deviceId = deviceId; _saveBLEContacts(_getBLEContacts()); }
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
-        var msgSeq = (typeof seq === 'number') ? seq : this.getNextSeq();
+        var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
         var ownMsg = {
           msgId: msgId,
           messageId: msgId,
@@ -1401,7 +1395,6 @@ export class BLEInterface {
   _resendPendingMessages(nexoId) {
     var self = this;
     if (!nexoId) return;
-    // FIX OFFLINE: Vault entrega pending YA ORDENADOS cronológicamente (más viejo primero)
     var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
       ? window.vaultGetPendingMessages(nexoId)
       : _vaultLoadMessages(nexoId).then(function(msgs) {
@@ -1415,7 +1408,6 @@ export class BLEInterface {
         console.warn('[BLEInterface] No deviceId resuelto para reenvio pending de', nexoId);
         return;
       }
-      // Enviar secuencialmente en orden cronológico (más viejo primero)
       var idx = 0;
       function sendNext() {
         if (idx >= pending.length) return;
@@ -1433,11 +1425,11 @@ export class BLEInterface {
           .then(function() {
             console.log('[BLEInterface] Pending reenviado OK:', mid);
             _vaultUpdateMessageStatus(nexoId, mid, 'sent');
-            sendNext(); // ← Secuencial: espera éxito antes del siguiente
+            sendNext();
           })
           .catch(function(e) {
             console.warn('[BLEInterface] Pending reenvio fallo:', mid, e.message);
-            sendNext(); // ← Continúa con el siguiente aunque falle
+            sendNext();
           });
       }
       sendNext();
