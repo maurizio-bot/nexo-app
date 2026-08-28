@@ -1,5 +1,6 @@
 /**
- * ble_ack.js — Sistema ACK real + fragmentación de archivos para NEXO v1.2.1-ACKFIX
+ * ble_ack.js — Sistema ACK real + fragmentación de archivos para NEXO v1.2.2-FIX
+ * v1.2.2-FIX: Reintento de batch reenvía solo chunks fallidos (no todo el batch)
  * v1.2.1-ACKFIX: Fix chunk_ prefix + self->this + fromName en meta
  * v1.2.0-ACKFIX: sendReadReceipt + read_receipt support + ACK inmediato
  * v1.1.0: sendFile robusto con batches de 5 chunks + reenvío de batch + progreso
@@ -15,7 +16,6 @@ export class BleAckSystem {
     this.chunkSize = 400;
     this.pendingFragments = new Map();
     this.maxFragmentAge = 300000;
-    // v1.1.0: trackeo de envíos de archivos activos
     this.pendingOutgoingFiles = new Map();
     this._startCleanupInterval();
   }
@@ -97,7 +97,6 @@ export class BleAckSystem {
         entry.resolve();
         this._dispatchStatus(ackMsgId, status);
       } else {
-        // Notificar UI aunque no sea nuestro ACK pendiente (read receipt entrante)
         this._dispatchStatus(ackMsgId, status);
       }
       return true;
@@ -143,7 +142,6 @@ export class BleAckSystem {
 
       var senderId = (self.ble && self.ble.localNexoId) ? self.ble.localNexoId : ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
 
-      // Registrar envío activo para posible reanudación
       self.pendingOutgoingFiles.set(fileId, {
         deviceId: deviceId,
         chunks: chunks,
@@ -164,18 +162,15 @@ export class BleAckSystem {
         ts: Date.now()
       };
 
-      // Enviar meta con ACK
       self.sendWithRetry(deviceId, JSON.stringify(fileMeta), 'meta_' + fileId)
         .then(function() {
           self._dispatchFileProgress(fileId, 0, total, 'sending');
-          // Enviar por batches de 5 chunks
           var batchSize = 5;
           var currentBatch = 0;
 
           function sendBatch() {
             var start = currentBatch * batchSize;
             if (start >= total) {
-              // Terminado
               self.pendingOutgoingFiles.delete(fileId);
               self._dispatchFileProgress(fileId, total, total, 'sent');
               resolve();
@@ -194,46 +189,51 @@ export class BleAckSystem {
                 from: senderId
               });
             }
-            // Enviar todos los chunks del batch directo
+
+            // Enviar todos los chunks del batch, trackeando fallos individuales
             var sendPromises = [];
-            for (var j = 0; j < batchChunks.length - 1; j++) {
-              (function(chunkPayload) {
+            var failedIndices = [];
+            for (var j = 0; j < batchChunks.length; j++) {
+              (function(chunkPayload, idx) {
                 sendPromises.push(
                   self.ble._sendMessageNative(deviceId, JSON.stringify(chunkPayload), fileId + '_' + chunkPayload.idx)
-                    .catch(function(e) { return { failed: true, error: e }; })
+                    .then(function() { return { ok: true, idx: idx }; })
+                    .catch(function(e) { failedIndices.push(idx); return { ok: false, idx: idx, error: e }; })
                 );
-              })(batchChunks[j]);
+              })(batchChunks[j], j);
             }
-            // El último chunk del batch va con ACK (sendWithRetry)
-            var lastChunk = batchChunks[batchChunks.length - 1];
-            var lastMsgId = fileId + '_' + lastChunk.idx;
 
-            // Esperar a que todos los chunks directos se envíen
             Promise.all(sendPromises).then(function(results) {
-              var anyFailed = results.some(function(r) { return r && r.failed; });
-              if (anyFailed) {
-                // Algun chunk directo falló, reintentar todo el batch
-                console.warn('[BleAckSystem] Batch fallo, reintentando batch', currentBatch);
+              if (failedIndices.length > 0 && failedIndices.length < batchChunks.length) {
+                // Reintentar solo los chunks fallidos de este batch
+                console.warn('[BleAckSystem] Reintentando chunks fallidos del batch:', failedIndices);
+                var retryPromises = [];
+                for (var r = 0; r < failedIndices.length; r++) {
+                  var rpIdx = failedIndices[r];
+                  var rpChunk = batchChunks[rpIdx];
+                  retryPromises.push(
+                    self.ble._sendMessageNative(deviceId, JSON.stringify(rpChunk), fileId + '_' + rpChunk.idx)
+                      .catch(function(e) { return { ok: false, error: e }; })
+                  );
+                }
+                Promise.all(retryPromises).then(function(retryResults) {
+                  var stillFailed = retryResults.some(function(r) { return !r.ok; });
+                  if (stillFailed) {
+                    setTimeout(function() { sendBatch(); }, 1000);
+                    return;
+                  }
+                  // Continuar con último chunk con ACK si era el último del batch
+                  self._finishBatch(deviceId, fileId, batchChunks, currentBatch, total, start, end, batchSize, senderId, sendBatch, resolve);
+                });
+                return;
+              }
+              if (failedIndices.length === batchChunks.length) {
+                // Todo el batch falló, reintentar batch completo
+                console.warn('[BleAckSystem] Batch completo fallo, reintentando batch', currentBatch);
                 setTimeout(function() { sendBatch(); }, 1000);
                 return;
               }
-              // Enviar último chunk con ACK
-              self.sendWithRetry(deviceId, JSON.stringify(lastChunk), lastMsgId)
-                .then(function() {
-                  currentBatch++;
-                  var sentCount = Math.min(currentBatch * batchSize, total);
-                  var progress = Math.floor((sentCount / total) * 100);
-                  self._dispatchFileProgress(fileId, sentCount, total, 'sending', progress);
-                  // Actualizar tracking
-                  var track = self.pendingOutgoingFiles.get(fileId);
-                  if (track) track.sent = sentCount;
-                  setTimeout(function() { sendBatch(); }, 50);
-                })
-                .catch(function(err) {
-                  // ACK del batch no llegó, reintentar batch completo
-                  console.warn('[BleAckSystem] ACK batch no recibido, reintentando batch', currentBatch);
-                  setTimeout(function() { sendBatch(); }, 1000);
-                });
+              self._finishBatch(deviceId, fileId, batchChunks, currentBatch, total, start, end, batchSize, senderId, sendBatch, resolve);
             });
           }
 
@@ -245,6 +245,26 @@ export class BleAckSystem {
           reject(err);
         });
     });
+  }
+
+  _finishBatch(deviceId, fileId, batchChunks, currentBatch, total, start, end, batchSize, senderId, sendBatch, resolve) {
+    var self = this;
+    var lastChunk = batchChunks[batchChunks.length - 1];
+    var lastMsgId = fileId + '_' + lastChunk.idx;
+    self.sendWithRetry(deviceId, JSON.stringify(lastChunk), lastMsgId)
+      .then(function() {
+        currentBatch++;
+        var sentCount = Math.min(currentBatch * batchSize, total);
+        var progress = Math.floor((sentCount / total) * 100);
+        self._dispatchFileProgress(fileId, sentCount, total, 'sending', progress);
+        var track = self.pendingOutgoingFiles.get(fileId);
+        if (track) track.sent = sentCount;
+        setTimeout(function() { sendBatch(); }, 50);
+      })
+      .catch(function(err) {
+        console.warn('[BleAckSystem] ACK batch no recibido, reintentando batch', currentBatch);
+        setTimeout(function() { sendBatch(); }, 1000);
+      });
   }
 
   cancelFileSend(fileId) {
@@ -282,7 +302,6 @@ export class BleAckSystem {
       if (msg.type === 'file_chunk') {
         var buf = this.pendingFragments.get(msg.fileId);
         if (!buf) {
-          // No tenemos el meta, pedir reanudación
           this._requestResume(deviceId, msg.fileId);
           return true;
         }
@@ -291,7 +310,6 @@ export class BleAckSystem {
           buf.received++;
           buf.lastActivity = Date.now();
         }
-        // ACK cada 5 chunks o al final
         if ((msg.idx + 1) % 5 === 0 || msg.idx === msg.total - 1) {
           this.sendAck(deviceId, msg.fileId + '_' + msg.idx);
         }
@@ -310,12 +328,9 @@ export class BleAckSystem {
       }
 
       if (msg.type === 'file_resume') {
-        // El receptor pide reanudación — reenviar desde el chunk 0
-        // (simplificación: reenviamos todo el archivo)
         var track = this.pendingOutgoingFiles.get(msg.fileId);
         if (track) {
           console.log('[BleAckSystem] Reanudando archivo', msg.fileId);
-          // Reconstruir y reenviar
           this.sendFile(deviceId, msg.fileId, track.chunks.join(''), track.meta)
             .catch(function() {});
         }
@@ -378,7 +393,6 @@ export class BleAckSystem {
           try { entry.reject(new Error('Timeout global')); } catch(e) {}
         }
       });
-      // v1.1.0: limpiar envíos de archivo viejos
       self.pendingOutgoingFiles.forEach(function(track, fileId) {
         if (now - track.startTime > self.maxFragmentAge) {
           self.pendingOutgoingFiles.delete(fileId);
