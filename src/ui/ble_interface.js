@@ -1,9 +1,12 @@
 /**
- * BLE Interface v5.3.7-VAULTFIX
+ * BLE Interface v5.3.8-ACKFIX
  * FIX: peerReady universal + ACK inmediato + read receipt + scan fallback
  * FIX: seq counter uint32 con persistencia nativa
  * FIX: Inserción ordenada en recepción via (timestamp, seq, msgId)
- * Base: v5.3.1-SEQFIX
+ * FIX: sendChatMessage actualiza vault en then/catch
+ * FIX: _isControlPacket usa JSON parse robusto
+ * FIX: Payload listener extrae attachments + dispatch único
+ * Base: v5.3.7-VAULTFIX
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -300,12 +303,13 @@ function _showToast(message, type) {
   setTimeout(function() { toast.style.opacity = '0'; setTimeout(function() { if (toast.parentNode) toast.remove(); }, 300); }, 3500);
 }
 function _isControlPacket(content) {
-  if (!content || typeof content !== 'string') return false;
-  if (content.indexOf('"type":"ack"') !== -1) return true;
-  if (content.indexOf('"type":"read_receipt"') !== -1) return true;
-  if (content.indexOf('"type":"ping"') !== -1) return true;
-  if (content.indexOf('"type":"pong"') !== -1) return true;
-  return false;
+  if (!content || typeof content !== 'string' || content.charAt(0) !== '{') return false;
+  try {
+    var obj = JSON.parse(content);
+    return obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'file_meta' || obj.type === 'file_chunk' || obj.type === 'file_resume';
+  } catch (e) {
+    return false;
+  }
 }
 
 // === HELPERS VAULT (delegan a vault_manager.js, sin fallback localStorage) ===
@@ -409,7 +413,7 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.7-VAULTFIX iniciado');
+    console.log('[BLEInterface] v5.3.8-ACKFIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -985,10 +989,6 @@ export class BLEInterface {
           var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: content });
           if (fragmentHandled) return;
         }
-        var isControl = _isControlPacket(content);
-        if (isControl && self.ackSystem) {
-          self.ackSystem.processIncomingAck(content);
-        }
         // === FIX: Clasificacion robusta de control packets ===
         var ctrl = null;
         try {
@@ -1086,39 +1086,46 @@ export class BLEInterface {
             self.ackSystem.sendAck(deviceId, messageId);
           }
         }
+        // Extraer attachment data si existe en el payload enriquecido
+        var attachmentData = null;
+        if (ctrl && ctrl.payload && ctrl.payload.attachment) {
+          attachmentData = ctrl.payload.attachment;
+        }
+        var msgContent = attachmentData ? JSON.stringify(attachmentData) : content;
         if (!isControl && senderUUID) {
           var vaultMsg = {
             messageId: messageId || ('recv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)),
-            content: content,
+            content: msgContent,
             _own: false,
             status: 'delivered',
             timestamp: data.timestamp || Date.now(),
             senderName: senderName,
-            seq: msgSeq || 0  // ← FIX #3: preservar seq para orden cronológico
+            senderNexoId: senderUUID,
+            seq: msgSeq || 0,
+            attachmentType: attachmentData ? attachmentData.attachmentType : null,
+            attachmentPayload: attachmentData ? attachmentData.payload : null,
+            attachmentMeta: attachmentData ? attachmentData.meta : null
           };
           _vaultAppendMessage(senderUUID, vaultMsg, false);
         }
         var activeUUID = self._activeChatDeviceId;
-        if (activeUUID && activeUUID === senderUUID) {
-          _safeDispatchEvent('nexo:ble:messageReceived', {
-            deviceId: stableId, deviceUUID: senderUUID, content: content,
-            senderName: senderName, messageId: messageId, source: source,
-            timestamp: data.timestamp || Date.now(),
-            seq: msgSeq
-          });
-          return;
-        }
-        if (senderUUID && !isControl) {
+        var isChatActive = activeUUID && activeUUID === senderUUID;
+        // Solo incrementar unread si el chat NO esta activo
+        if (senderUUID && !isControl && !isChatActive) {
           var contacts3 = _getBLEContacts();
           var idx3 = contacts3.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
-          if (idx3 >= 0) { contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1; contacts3[idx3].lastMessage = content.substring(0, 50); contacts3[idx3].lastSeen = Date.now(); _saveBLEContacts(contacts3); self.renderContactsList(); self.renderOnlineStrip(); }
+          if (idx3 >= 0) { contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1; contacts3[idx3].lastMessage = msgContent.substring(0, 50); contacts3[idx3].lastSeen = Date.now(); _saveBLEContacts(contacts3); self.renderContactsList(); self.renderOnlineStrip(); }
         }
         self.newDevicesCount++; self.updateBadge();
+        // FIX: dispatch UNICO de messageReceived, con attachment fields si aplica
         _safeDispatchEvent('nexo:ble:messageReceived', {
-          deviceId: stableId, deviceUUID: senderUUID, content: content,
-          senderName: senderName, messageId: messageId, source: source,
+          deviceId: stableId, deviceUUID: senderUUID, content: msgContent,
+          senderName: senderName, senderNexoId: senderUUID, messageId: messageId, source: source,
           timestamp: data.timestamp || Date.now(),
-          seq: msgSeq
+          seq: msgSeq,
+          attachmentType: attachmentData ? attachmentData.attachmentType : null,
+          attachmentPayload: attachmentData ? attachmentData.payload : null,
+          attachmentMeta: attachmentData ? attachmentData.meta : null
         });
       } catch (e) { console.warn('[BLEInterface] Error onPayloadReceived:', e.message); }
     });
@@ -1267,10 +1274,12 @@ export class BLEInterface {
         function doSend() {
           if (self.ackSystem) {
             self.ackSystem.sendWithRetry(deviceId, content, msgId)
-              .then(function() { resolve(); }).catch(function(err) { reject(err); });
+              .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
+              .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
           } else {
             self._sendMessageNative(deviceId, content, msgId, msgSeq)
-              .then(function() { resolve(); }).catch(function(err) { reject(err); });
+              .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
+              .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
           }
         }
         function enqueueMsg() {
