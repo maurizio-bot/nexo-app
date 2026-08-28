@@ -1,7 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.8-VAULTFIX
+ * src/main.js - Punto de entrada NEXO v9.9.9-ACKFIX
  * FIX: Mensaje fantasma — peerReady universal + flush en primera conexion + outbox por nexoId
- * FIX: _doSend captura error y marca failed en UI/vault
+ * FIX: _doSend captura error y marca failed en UI/vault + marca sent en éxito
  * FIX: seq counter en envío + inserción ordenada en DOM por (timestamp, seq, msgId)
  * FIX: _cameraActiveStream declarado explícitamente
  * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
@@ -14,6 +14,7 @@
  * FIX 3: Eliminada persistencia duplicada localStorage — solo vault nativo
  * FIX FOTOS: _sendAttachment usa sendFile para image/video/file (fragmentación BLE)
  * FIX FOTOS: Listener nexo:ble:fileComplete para renderizar archivos recibidos
+ * FIX ACK: ackStatus persiste en vault + read receipt automático
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  * VAULTONLY: initVault() antes de todo. Cero localStorage en mensajes/contactos.
    */
@@ -794,7 +795,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.8-VAULTFIX iniciando...');
+console.log('[MAIN] NEXO v9.9.9-ACKFIX iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -1016,12 +1017,7 @@ _autoScan = createAutoScan(window.NEXO.app.bleInterface);
 window.addEventListener('nexo:ble:deviceConnected', function(e) {
 if (e && e.detail && e.detail.deviceId) {
 _autoScan.unregisterDevice(e.detail.deviceId);
-// FIX FANTASMA: Flush pending al conectar (primera conexion o reconexion)
-if (window.NEXO.app && window.NEXO.app.bleInterface && e.detail.nexoId) {
-setTimeout(function() {
-window.NEXO.app.bleInterface._resendPendingMessages(_normId(e.detail.nexoId));
-}, 800);
-}
+// FIX FANTASMA: El flush de pending se maneja via peerReady universal exclusivamente
 }
 });
 // === FIX FANTASMA: peerReady universal → flush pending ===
@@ -1070,6 +1066,17 @@ _renderMessage(msg);
 if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
 try { window.NEXO.app.onMessage(msg); } catch(omErr) {}
 }
+// READ RECEIPT: si el chat con este remitente esta activo, enviar read receipt
+var activeId = _getCurrentContactId();
+var senderId = msg.senderNexoId || msg.sender || '';
+var msgId = msg.messageId || msg.msgId || '';
+if (activeId && senderId && msgId && _normId(activeId) === _normId(senderId)) {
+setTimeout(function() {
+window.dispatchEvent(new CustomEvent('nexo:ble:sendReadReceipt', {
+detail: { nexoId: senderId, msgId: msgId }
+}));
+}, 400);
+}
 }
 });
 window.addEventListener('nexo:ble:fileComplete', function(e) {
@@ -1102,6 +1109,7 @@ window.addEventListener('nexo:ble:ackStatus', function(e) {
 try {
 if (e && e.detail && e.detail.msgId) {
 _updateMessageStatus(e.detail.msgId, e.detail.status);
+_updateMessageStorageStatus(e.detail.msgId, e.detail.status);
 }
 } catch (err) {
 console.warn('[MAIN] Error en ackStatus handler:', err.message);
@@ -1193,6 +1201,8 @@ seq: seq
 _renderMessage(vaultMsg);
 try {
 await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId, seq: seq });
+_updateMessageStatus(msgId, 'sent');
+_updateMessageStorageStatus(msgId, 'sent');
 } catch (e) {
 console.warn('[MAIN] sendMessage failed:', e.message);
 _updateMessageStatus(msgId, 'failed');
@@ -1380,7 +1390,7 @@ function _getContactStorageKey() {
 var contactId = 'default';
 try {
 if (window.NEXO.app && window.NEXO.app.activeContact) {
-contactId = window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id || 'default';
+contactId = window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
 } else if (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface.activeChatDeviceId) {
 contactId = window.NEXO.app.bleInterface.activeChatDeviceId;
 }
