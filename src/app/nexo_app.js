@@ -1,7 +1,9 @@
 /**
- * NEXO App v5.0.22-ACKFIX
- * FIX: ACK delegado a ble_ack.js (BleAckSystem.sendWithRetry)
- * Base: v5.0.21-SEQFIX
+ * NEXO App v5.0.23-FIX
+ * FIX: Eliminado doble vaultAppendMessage (persistencia unificada en BLEInterface)
+ * FIX: Eliminado _resendPendingMessages duplicado (gestión unificada en BLEInterface)
+ * FIX: _bleMessageHandler simplificado — solo filtra ACKs y loguea
+ * Base: v5.0.22-ACKFIX
  */
 
 import { NEXO_CONFIG } from '../core/nexo_config.js';
@@ -29,7 +31,6 @@ export class NexoApp {
     this.onError = this.config.onError || function() {};
     this.onVaultStateChange = this.config.onVaultStateChange || function() {};
     this.actionCallbacks = this.config.actionCallbacks || {};
-    // ACK handling delegado a ble_ack.js (BleAckSystem.sendWithRetry)
     this._isProcessingPayment = false;
     this._isProcessingTransfer = false;
     this._lastPaymentTime = 0;
@@ -37,7 +38,7 @@ export class NexoApp {
     this._paymentDebounceMs = 2000;
     this._transferDebounceMs = 2000;
     this._bleMessageHandler = null;
-    console.log('[NEXO] App v5.0.22-ACKFIX constructor');
+    console.log('[NEXO] App v5.0.23-FIX constructor');
   }
 
   init() {
@@ -65,7 +66,6 @@ export class NexoApp {
     self._bleMessageHandler = function(e) {
       try {
         var detail = e.detail || {};
-        // === FIX: Filtro de seguridad ACK en capa de app ===
         var content = detail.content || detail.data || '';
         var ctrl = null;
         try {
@@ -77,61 +77,16 @@ export class NexoApp {
             if (ctrl.type === 'ack') self._handleACK(ackMid, ctrl.ackType || 'delivered');
             if (ctrl.type === 'read_receipt') self._handleACK(ackMid, 'read');
           }
-          return; // ACKs no pasan al pipeline de mensajes
-        }
-        // === FIN FIX ACK ===
-        var localUUID = self.bleInterface && self.bleInterface.localDeviceUUID ? self.bleInterface.localDeviceUUID : '';
-        var senderUUID = detail.deviceUUID || '';
-        if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
-          console.log('[BLE_RECV] Mensaje propio ignorado por UUID');
           return;
         }
+        // Solo log y delegación — la persistencia y render los hacen BLEInterface y main.js
         console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
-        var resolvedName = detail.senderName;
-        if (!resolvedName && senderUUID) {
-          try {
-            if (window.vaultFindContactByNexoId) {
-              var c = window.vaultFindContactByNexoId(senderUUID);
-              if (c && c.displayName) resolvedName = c.displayName;
-            }
-          } catch (e) {}
-        }
-        if (!resolvedName && senderUUID) {
-          var contacts = self.bleInterface ? self.bleInterface.getBLEContacts() : [];
-          var found = contacts.find(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
-          if (found && found.name) resolvedName = found.name;
-        }
-        var msg = {
-          msgId: detail.messageId || detail.msgId || ('msg_' + Date.now()),
-          messageId: detail.messageId || detail.msgId || ('msg_' + Date.now()),
-          content: detail.content || '',
-          senderNexoId: senderUUID,
-          senderName: resolvedName || detail.senderName || 'NEXO',
-          timestamp: detail.timestamp || Date.now(),
-          seq: (typeof detail.seq === 'number') ? detail.seq : 0,
-          _own: false,
-          status: 'delivered',
-          deviceId: detail.deviceId || ''
-        };
-        if (window.vaultAppendMessage && senderUUID) {
-          window.vaultAppendMessage(senderUUID, msg, false).catch(function(e) {});
-        }
-        if (self.onMessage) self.onMessage(msg);
+        if (self.onMessage) self.onMessage(detail);
       } catch (err) {
         console.warn('[NEXO] _bleMessageHandler error:', err);
       }
     };
     window.addEventListener('nexo:ble:messageReceived', self._bleMessageHandler);
-    window.addEventListener('nexo:ble:deviceConnected', function(e) {
-      try {
-        if (e && e.detail && e.detail.deviceId && self.bleInterface) {
-          var nx = self.bleInterface._macToNexoId ? self.bleInterface._macToNexoId.get(_normMac(e.detail.deviceId)) : null;
-          if (nx) {
-            setTimeout(function() { self._resendPendingMessages(nx); }, 500);
-          }
-        }
-      } catch (err) {}
-    });
   }
 
   _setupVaultListeners() {
@@ -186,25 +141,6 @@ export class NexoApp {
       return this.bleInterface._activeChatDeviceId;
     }
     return null;
-  }
-
-  _resendPendingMessages(nexoId) {
-    var self = this;
-    if (!nexoId) return;
-    if (!window.vaultLoadMessages) return;
-    window.vaultLoadMessages(nexoId).then(function(messages) {
-      if (!messages || messages.length === 0) return;
-      var pending = messages.filter(function(m) { return m._own === true && (m.status === 'pending' || m.status === 'failed'); });
-      if (pending.length === 0) return;
-      console.log('[NEXO] Reenviando', pending.length, 'mensajes pending para', nexoId);
-      pending.forEach(function(msg) {
-        var mid = msg.msgId || msg.messageId || msg.id;
-        if (!mid) return;
-        self.sendMessage({ content: msg.content || msg.text || '', msgId: mid, messageId: mid, seq: msg.seq });
-      });
-    }).catch(function(e) {
-      console.warn('[NEXO] Error cargando pending para reenvio:', e.message);
-    });
   }
 
   sendMessage(msg) {
