@@ -83,7 +83,8 @@ class NexoBlePlugin : Plugin() {
     private var serverTxCharacteristic: BluetoothGattCharacteristic? = null
     private var serverRxCharacteristic: BluetoothGattCharacteristic? = null
     private val serverConnectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
-    private val serverNotificationEnabled = ConcurrentHashMap<String, Boolean>()
+    // === FIX SÓLIDO: Set<String> thread-safe en vez de Map<String, Boolean> ===
+    private val serverNotificationEnabled = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
     private val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     private val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     private val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
@@ -772,7 +773,12 @@ class NexoBlePlugin : Plugin() {
                 val macNorm = normalizeMac(device.address)
                 val enabled = value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true ||
                               value?.contentEquals(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE) == true
-                serverNotificationEnabled[macNorm] = enabled
+                // === FIX SÓLIDO: usar add/remove del Set en vez de asignación al Map ===
+                if (enabled) {
+                    serverNotificationEnabled.add(macNorm)
+                } else {
+                    serverNotificationEnabled.remove(macNorm)
+                }
                 descriptor.value = value
                 if (responseNeeded) {
                     bluetoothGattServer?.sendResponse(
@@ -1335,8 +1341,8 @@ class NexoBlePlugin : Plugin() {
         val remoteDevice = serverConnectedDevices[macNorm]
         val srvTx = serverTxCharacteristic
         val srv = bluetoothGattServer
-        // Línea 1350 — reemplazar por:
-        val srvEnabled = serverNotificationEnabled[macNorm] as? Boolean ?: false
+        // === FIX SÓLIDO: Set.contains() devuelve Boolean nativo, cero type mismatch ===
+        val srvEnabled = serverNotificationEnabled.contains(macNorm)
 
         if (remoteDevice != null && srv != null && srvTx != null && srvEnabled) {
             try {
