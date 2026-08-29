@@ -83,6 +83,7 @@ class NexoBlePlugin : Plugin() {
     private var serverTxCharacteristic: BluetoothGattCharacteristic? = null
     private var serverRxCharacteristic: BluetoothGattCharacteristic? = null
     private val serverConnectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
+    private val serverNotificationEnabled = ConcurrentHashMap<String, Boolean>()
     private val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     private val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     private val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
@@ -711,6 +712,7 @@ class NexoBlePlugin : Plugin() {
                 )
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 serverConnectedDevices.remove(mac)
+                serverNotificationEnabled.remove(mac)
                 messageBuffers.remove(mac)
                 messageBufferTimers.remove(mac)?.let { mainHandler.removeCallbacks(it) }
                 notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", device.address))
@@ -767,6 +769,10 @@ class NexoBlePlugin : Plugin() {
             value: ByteArray?
         ) {
             if (descriptor.uuid == NexoBleSpec.CCCD_UUID) {
+                val macNorm = normalizeMac(device.address)
+                val enabled = value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true ||
+                              value?.contentEquals(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE) == true
+                serverNotificationEnabled[macNorm] = enabled
                 descriptor.value = value
                 if (responseNeeded) {
                     bluetoothGattServer?.sendResponse(
@@ -777,7 +783,7 @@ class NexoBlePlugin : Plugin() {
                         value
                     )
                 }
-                remLog("INFO", "GATT_SERVER", "CCCD escrito por ${device.address}")
+                remLog("INFO", "GATT_SERVER", "CCCD escrito por ${device.address} enabled=$enabled")
             }
         }
     }
@@ -1323,11 +1329,39 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
+        val data = chunk.toByteArray(Charset.defaultCharset())
+
+        // ===== PRIMERO: GATT Server (más confiable para conexiones incoming) =====
+        val remoteDevice = serverConnectedDevices[macNorm]
+        val srvTx = serverTxCharacteristic
+        val srv = bluetoothGattServer
+        val srvEnabled = serverNotificationEnabled[macNorm] == true
+
+        if (remoteDevice != null && srv != null && srvTx != null && srvEnabled) {
+            try {
+                val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false, data)
+                } else {
+                    @Suppress("DEPRECATION")
+                    srvTx.value = data
+                    @Suppress("DEPRECATION")
+                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
+                }
+                if (success) {
+                    remLog("INFO", "SEND", "GATT Server chunk sent to $macNorm len=${chunk.length}")
+                    return SendResult(true, "gatt_server")
+                }
+            } catch (e: Exception) {
+                remLog("WARN", "SEND", "Server notify failed for $macNorm: ${e.message}")
+            }
+        }
+
+        // ===== SEGUNDO: GATT Client (fallback) =====
         val rxChar = clientRxCharacteristics[macNorm]
         val gatt = gattClients[macNorm]
+
         if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
             try {
-                val data = chunk.toByteArray(Charset.defaultCharset())
                 var writeInitiated = false
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     val status = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
@@ -1376,26 +1410,7 @@ class NexoBlePlugin : Plugin() {
                 remLog("WARN", "SEND", "GATT Client write exception: ${e.message}")
             }
         }
-        val remoteDevice = serverConnectedDevices[macNorm]
-        val srvTx = serverTxCharacteristic
-        val srv = bluetoothGattServer
-        if (remoteDevice != null && srv != null && srvTx != null) {
-            try {
-                val data = chunk.toByteArray(Charset.defaultCharset())
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false, data)
-                } else {
-                    @Suppress("DEPRECATION")
-                    srvTx.value = data
-                    @Suppress("DEPRECATION")
-                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
-                }
-                remLog("INFO", "SEND", "GATT Server chunk sent to $macNorm len=${chunk.length}")
-                return SendResult(true, "gatt_server")
-            } catch (e: Exception) {
-                remLog("WARN", "SEND", "GATT Server notify exception: ${e.message}")
-            }
-        }
+
         return SendResult(false, "")
     }
 
