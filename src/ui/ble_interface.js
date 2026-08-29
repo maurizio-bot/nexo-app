@@ -844,6 +844,7 @@ export class BLEInterface {
         self._setDeviceState(deviceId, data.role === 'server' ? BLE_STATES.READY_TO_CHAT : BLE_STATES.CONNECTING, {
           direction: data.direction, role: data.role, deviceUUID: peerUUID
         });
+        // FIX: siempre llenar el mapeo si tenemos peerUUID, incluso en conexiones incoming
         if (peerUUID && nd) {
           var nx = _normId(peerUUID);
           self._nexoIdToMac.set(nx, nd);
@@ -938,7 +939,11 @@ export class BLEInterface {
         self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { notificationsEnabled: true, deviceUUID: peerUUID });
         self._resolveReadyToChat(deviceId);
         self._processPendingMessages(deviceId);
+        // FIX: fallback a búsqueda por deviceId si _macToNexoId no tiene el mapeo (primer mensaje fantasma)
         var nxFlush = self._macToNexoId.get(_normMac(deviceId));
+        if (!nxFlush && contact) {
+          nxFlush = contact.nexoId || contact.deviceUUID;
+        }
         if (nxFlush) {
           self._notifyPeerReady(deviceId, nxFlush);
           setTimeout(function() { self._resendPendingMessages(nxFlush); }, 300);
@@ -1475,6 +1480,7 @@ export class BLEInterface {
         })
         .catch(function(err) { console.error('[BLEInterface] Error consultando estado:', err); });
     }
+    self.updateVisibilityButton('');
     return Promise.resolve();
   }
   _setupNativeAdvertisingListeners() {
@@ -1570,7 +1576,7 @@ export class BLEInterface {
       '</div>' +
       '</div>' +
       '<div class="ble-search-bar">' +
-      '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>' +
+      '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>' +
       '<span>Buscar contacto...</span>' +
       '</div>' +
       '<div class="ble-section-label">En linea ahora</div>' +
