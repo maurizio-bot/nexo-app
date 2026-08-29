@@ -1,5 +1,5 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.10-FIX
+ * src/main.js - Punto de entrada NEXO v9.9.11-FIX
  * FIX: Mensaje fantasma — peerReady universal + flush en primera conexion + outbox por nexoId
  * FIX: _doSend captura error y marca failed en UI/vault + marca sent en éxito
  * FIX: seq counter en envío + inserción ordenada en DOM por (timestamp, seq, msgId)
@@ -17,6 +17,8 @@
  * FIX ACK: ackStatus persiste en vault + read receipt automático
  * FIX: onMessage simplificado (sin doble render ni doble vaultAppend)
  * FIX: Limpieza de ObjectURLs periódica para evitar memory leak
+ * FIX RENDER: Listeners críticos registrados ANTES de await initPromise para evitar race condition
+ * FIX RENDER: Filtro mensaje propio usa localNexoId (NX...) en lugar de localDeviceUUID
  * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
  * VAULTONLY: initVault() antes de todo. Cero localStorage en mensajes/contactos.
    */
@@ -798,7 +800,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.10-FIX iniciando...');
+console.log('[MAIN] NEXO v9.9.11-FIX iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -929,10 +931,128 @@ console.log('[MAIN] Chat abierto desde notificacion:', deviceId);
 console.warn('[MAIN] _openChatFromNotification error:', e);
 }
 }
+
+// === FIX: Listeners críticos registrados antes de cualquier await largo ===
+function _registerCriticalListeners() {
+try {
+window.addEventListener('nexo:ble:deviceConnected', function(e) {
+if (e && e.detail && e.detail.deviceId) {
+if (_autoScan) _autoScan.unregisterDevice(e.detail.deviceId);
+}
+});
+window.addEventListener('nexo:ble:peerReady', function(e) {
+try {
+if (e && e.detail && e.detail.nexoId) {
+var nx = _normId(e.detail.nexoId);
+console.log('[MAIN] peerReady:', nx);
+if (window.NEXO.app && window.NEXO.app.bleInterface) {
+window.NEXO.app.bleInterface._resendPendingMessages(nx);
+}
+var activeId = _getCurrentContactId();
+if (activeId && _normId(activeId) === nx) {
+var subtitle = document.getElementById('chat-contact-subtitle');
+if (subtitle) subtitle.textContent = 'En linea';
+}
+}
+} catch (err) {
+console.warn('[MAIN] peerReady handler error:', err.message);
+}
+});
+window.addEventListener('nexo:ble:deviceDisconnected', function(e) {
+if (e && e.detail && e.detail.deviceId) {
+var nid = e.detail.nexoId || e.detail.deviceId;
+if (_autoScan) {
+_autoScan.registerKnownDevice(e.detail.deviceId, nid);
+_autoScan.start();
+}
+}
+});
+window.addEventListener('nexo:vault:messagesLoaded', function(e) {
+if (e && e.detail && Array.isArray(e.detail.messages)) {
+e.detail.messages.forEach(function(msg) {
+_renderMessage(msg, true);
+});
+}
+});
+window.addEventListener('nexo:ble:messageReceived', function(e) {
+if (e && e.detail) {
+var msg = e.detail;
+// FIX: Usar localNexoId (NX...) para filtro, no localDeviceUUID (UUID estándar)
+var bi = window.NEXO.app && window.NEXO.app.bleInterface;
+var localUUID = (bi && bi.localNexoId) || (bi && bi.localDeviceUUID) || '';
+var senderUUID = msg.senderNexoId || msg.deviceUUID || '';
+if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
+console.log('[MAIN] Mensaje propio ignorado');
+return;
+}
+if (msg.senderNexoId) {
+vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
+}
+_renderMessage(msg);
+if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
+try { window.NEXO.app.onMessage(msg); } catch(omErr) {}
+}
+var activeId = _getCurrentContactId();
+var senderId = msg.senderNexoId || msg.sender || '';
+var msgId = msg.messageId || msg.msgId || '';
+if (activeId && senderId && msgId && _normId(activeId) === _normId(senderId)) {
+setTimeout(function() {
+window.dispatchEvent(new CustomEvent('nexo:ble:sendReadReceipt', {
+detail: { nexoId: senderId, msgId: msgId }
+}));
+}, 400);
+}
+}
+});
+window.addEventListener('nexo:ble:fileComplete', function(e) {
+try {
+var d = e.detail || {};
+if (!d.fileId || !d.data) return;
+console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, d.meta);
+var recvMsg = {
+msgId: d.fileId,
+messageId: d.fileId,
+attachmentType: d.meta && d.meta.type ? d.meta.type : 'file',
+attachmentPayload: d.data,
+attachmentMeta: d.meta || {},
+_own: false,
+status: 'delivered',
+timestamp: Date.now(),
+senderName: d.meta && d.meta.fromName ? d.meta.fromName : 'NEXO'
+};
+_renderMessage(recvMsg);
+var cid = _getCurrentContactId();
+if (cid && window.vaultAppendMessage) {
+window.vaultAppendMessage(cid, recvMsg, false);
+}
+} catch (err) {
+console.warn('[MAIN] Error en fileComplete handler:', err.message);
+}
+});
+window.addEventListener('nexo:ble:ackStatus', function(e) {
+try {
+if (e && e.detail && e.detail.msgId) {
+_updateMessageStatus(e.detail.msgId, e.detail.status);
+_updateMessageStorageStatus(e.detail.msgId, e.detail.status);
+}
+} catch (err) {
+console.warn('[MAIN] Error en ackStatus handler:', err.message);
+}
+});
+console.log('[MAIN] Critical listeners registered early');
+} catch (err) {
+console.warn('[MAIN] _registerCriticalListeners error:', err);
+}
+}
+
 async function initializeNexoApp() {
 try {
 await initVault();
 NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase valida');
+
+// FIX: Registrar listeners ANTES de cualquier await largo para evitar race condition
+_registerCriticalListeners();
+
 var nexoConfig = {
 relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
 bleTimeout: (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.BLE) ? NEXO_CONFIG.TIMEOUTS.BLE : 30000,
@@ -1012,113 +1132,9 @@ _setupJumpButton();
 _setupFABButton();
 _setupBackButton();
 await _loadPersistedMessages();
-try {
-_autoScan = createAutoScan(window.NEXO.app.bleInterface);
-window.addEventListener('nexo:ble:deviceConnected', function(e) {
-if (e && e.detail && e.detail.deviceId) {
-_autoScan.unregisterDevice(e.detail.deviceId);
-}
-});
-window.addEventListener('nexo:ble:peerReady', function(e) {
-try {
-if (e && e.detail && e.detail.nexoId) {
-var nx = _normId(e.detail.nexoId);
-console.log('[MAIN] peerReady:', nx);
-if (window.NEXO.app && window.NEXO.app.bleInterface) {
-window.NEXO.app.bleInterface._resendPendingMessages(nx);
-}
-var activeId = _getCurrentContactId();
-if (activeId && _normId(activeId) === nx) {
-var subtitle = document.getElementById('chat-contact-subtitle');
-if (subtitle) subtitle.textContent = 'En linea';
-}
-}
-} catch (err) {
-console.warn('[MAIN] peerReady handler error:', err.message);
-}
-});
-window.addEventListener('nexo:ble:deviceDisconnected', function(e) {
-if (e && e.detail && e.detail.deviceId) {
-var nid = e.detail.nexoId || e.detail.deviceId;
-_autoScan.registerKnownDevice(e.detail.deviceId, nid);
-_autoScan.start();
-}
-});
-window.addEventListener('nexo:vault:messagesLoaded', function(e) {
-if (e && e.detail && Array.isArray(e.detail.messages)) {
-e.detail.messages.forEach(function(msg) {
-_renderMessage(msg, true);
-});
-}
-});
-window.addEventListener('nexo:ble:messageReceived', function(e) {
-if (e && e.detail) {
-var msg = e.detail;
-// FIX: Filtro mensaje propio por UUID
-var localUUID = (window.NEXO.app && window.NEXO.app.bleInterface && window.NEXO.app.bleInterface.localDeviceUUID) ? window.NEXO.app.bleInterface.localDeviceUUID : '';
-var senderUUID = msg.senderNexoId || msg.deviceUUID || '';
-if (senderUUID && localUUID && _normId(senderUUID) === _normId(localUUID)) {
-  console.log('[MAIN] Mensaje propio ignorado');
-  return;
-}
-if (msg.senderNexoId) {
-vaultGetOrCreateContact(msg.senderNexoId, msg.senderName || 'NEXO');
-}
-_renderMessage(msg);
-if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
-try { window.NEXO.app.onMessage(msg); } catch(omErr) {}
-}
-var activeId = _getCurrentContactId();
-var senderId = msg.senderNexoId || msg.sender || '';
-var msgId = msg.messageId || msg.msgId || '';
-if (activeId && senderId && msgId && _normId(activeId) === _normId(senderId)) {
-setTimeout(function() {
-window.dispatchEvent(new CustomEvent('nexo:ble:sendReadReceipt', {
-detail: { nexoId: senderId, msgId: msgId }
-}));
-}, 400);
-}
-}
-});
-window.addEventListener('nexo:ble:fileComplete', function(e) {
-try {
-var d = e.detail || {};
-if (!d.fileId || !d.data) return;
-console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, d.meta);
-var recvMsg = {
-msgId: d.fileId,
-messageId: d.fileId,
-attachmentType: d.meta && d.meta.type ? d.meta.type : 'file',
-attachmentPayload: d.data,
-attachmentMeta: d.meta || {},
-_own: false,
-status: 'delivered',
-timestamp: Date.now(),
-senderName: d.meta && d.meta.fromName ? d.meta.fromName : 'NEXO'
-};
-_renderMessage(recvMsg);
-var cid = _getCurrentContactId();
-if (cid && window.vaultAppendMessage) {
-window.vaultAppendMessage(cid, recvMsg, false);
-}
-} catch (err) {
-console.warn('[MAIN] Error en fileComplete handler:', err.message);
-}
-});
-window.addEventListener('nexo:ble:ackStatus', function(e) {
-try {
-if (e && e.detail && e.detail.msgId) {
-_updateMessageStatus(e.detail.msgId, e.detail.status);
-_updateMessageStorageStatus(e.detail.msgId, e.detail.status);
-}
-} catch (err) {
-console.warn('[MAIN] Error en ackStatus handler:', err.message);
-}
-});
+// Los listeners críticos ya están registrados arriba via _registerCriticalListeners()
+// Fase 4 hooks adicionales (no críticos) pueden ir aquí si es necesario
 console.log('[MAIN] Fase 4 hooks OK');
-} catch (f4Err) {
-console.warn('[MAIN] Fase 4 init warn:', f4Err);
-}
 NEXO_DIAG.hideSplash();
 _forceHideSplash();
 console.log('NEXO ' + window.NEXO.version + ' Inicializado');
