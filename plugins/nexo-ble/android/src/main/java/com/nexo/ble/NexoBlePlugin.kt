@@ -1335,7 +1335,7 @@ class NexoBlePlugin : Plugin() {
         val remoteDevice = serverConnectedDevices[macNorm]
         val srvTx = serverTxCharacteristic
         val srv = bluetoothGattServer
-        val srvEnabled = serverNotificationEnabled[macNorm] == true
+        val srvEnabled: Boolean = serverNotificationEnabled[macNorm] ?: false
 
         if (remoteDevice != null && srv != null && srvTx != null && srvEnabled) {
             try {
