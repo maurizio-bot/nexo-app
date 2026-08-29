@@ -83,8 +83,7 @@ class NexoBlePlugin : Plugin() {
     private var serverTxCharacteristic: BluetoothGattCharacteristic? = null
     private var serverRxCharacteristic: BluetoothGattCharacteristic? = null
     private val serverConnectedDevices = ConcurrentHashMap<String, BluetoothDevice>()
-    // === FIX SÓLIDO: Set<String> thread-safe en vez de Map<String, Boolean> ===
-    private val serverNotificationEnabled = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+    private val serverNotificationEnabled = ConcurrentHashMap<String, Boolean>()
     private val gattClients = ConcurrentHashMap<String, BluetoothGatt>()
     private val clientRxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     private val clientTxCharacteristics = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
@@ -773,12 +772,7 @@ class NexoBlePlugin : Plugin() {
                 val macNorm = normalizeMac(device.address)
                 val enabled = value?.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == true ||
                               value?.contentEquals(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE) == true
-                // === FIX SÓLIDO: usar add/remove del Set en vez de asignación al Map ===
-                if (enabled) {
-                    serverNotificationEnabled.add(macNorm)
-                } else {
-                    serverNotificationEnabled.remove(macNorm)
-                }
+                serverNotificationEnabled[macNorm] = enabled
                 descriptor.value = value
                 if (responseNeeded) {
                     bluetoothGattServer?.sendResponse(
@@ -1271,10 +1265,10 @@ class NexoBlePlugin : Plugin() {
 
     private data class SendResult(val sent: Boolean, val mode: String)
 
+    // FIX: chunk size mínimo 20 bytes (MTU 23 - 3 bytes ATT header), no 100
     private fun getChunkSize(macNorm: String): Int {
         val mtu = negotiatedMtu[macNorm] ?: 23
-        if (mtu <= 23) return 100
-        return (mtu - 3).coerceAtLeast(100)
+        return (mtu - 3).coerceAtLeast(20)
     }
 
     private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
@@ -1341,13 +1335,14 @@ class NexoBlePlugin : Plugin() {
         val remoteDevice = serverConnectedDevices[macNorm]
         val srvTx = serverTxCharacteristic
         val srv = bluetoothGattServer
-        // === FIX SÓLIDO: Set.contains() devuelve Boolean nativo, cero type mismatch ===
-        val srvEnabled = serverNotificationEnabled.contains(macNorm)
+        // FIX: getOrDefault devuelve Boolean nativo, cero type mismatch
+        val srvEnabled = serverNotificationEnabled.getOrDefault(macNorm, false)
 
         if (remoteDevice != null && srv != null && srvTx != null && srvEnabled) {
             try {
+                // FIX: API 33+ devuelve Int (status), no Boolean. Forzar comparación con GATT_SUCCESS
                 val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false, data)
+                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false, data) == BluetoothGatt.GATT_SUCCESS
                 } else {
                     @Suppress("DEPRECATION")
                     srvTx.value = data
