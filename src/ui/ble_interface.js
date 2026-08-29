@@ -1,9 +1,10 @@
 /**
- * BLE Interface v5.3.9-FIX
- * FIX: isControl declarado (corrige ReferenceError silencioso)
- * FIX: stableId corregido a deviceId en dispatch messageReceived
- * FIX: sendChatMessage usa self.getNextSeq() (evita this undefined en closure)
- * Base: v5.3.8-ACKFIX
+ * BLE Interface v5.3.10-FIX
+ * FIX: Deduplicación de peer:ready (evita múltiples eventos para mismo dispositivo)
+ * FIX: _notifyPeerReady usa Set para trackear peers ya notificados
+ * FIX: _sendMessageNative loguea modo de envío (client vs server)
+ * FIX: destroy() limpia _notifiedPeers
+ * Base: v5.3.9-FIX
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -409,7 +410,8 @@ export class BLEInterface {
     this._supervisorIntervalMs = 6000;
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
-    console.log('[BLEInterface] v5.3.9-FIX iniciado');
+    this._notifiedPeers = new Set();  // FIX v5.3.10: deduplicación peer:ready
+    console.log('[BLEInterface] v5.3.10-FIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -710,6 +712,13 @@ export class BLEInterface {
   }
   _notifyPeerReady(deviceId, nexoId) {
     if (!deviceId || !nexoId) return;
+    // FIX v5.3.10: Deduplicar peer:ready
+    var key = _normMac(deviceId) + ':' + _normId(nexoId);
+    if (this._notifiedPeers.has(key)) {
+      console.log('[BLEInterface] Peer ready DUPLICADO ignorado:', nexoId);
+      return;
+    }
+    this._notifiedPeers.add(key);
     console.log('[BLEInterface] Peer ready:', nexoId, 'device:', deviceId);
     _safeDispatchEvent('nexo:ble:peerReady', { deviceId: deviceId, nexoId: nexoId });
   }
@@ -875,6 +884,11 @@ export class BLEInterface {
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });
         self._lastPongTime.delete(deviceId);
         self._pingFailCount.delete(deviceId);
+        // FIX v5.3.10: Limpiar peer de notifiedPeers al desconectar
+        if (peerUUID) {
+          var key = _normMac(deviceId) + ':' + _normId(peerUUID);
+          self._notifiedPeers.delete(key);
+        }
         if (peerUUID) {
           var contacts = _getBLEContacts();
           var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(peerUUID); });
@@ -1206,7 +1220,16 @@ export class BLEInterface {
         }
         if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
           _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
-            .then(function() { resolve(); }).catch(function(e) { reject(e); });
+            .then(function(result) {
+              // FIX v5.3.10: Loguear modo de envío para debug
+              var mode = (result && result.mode) ? result.mode : 'unknown';
+              console.log('[BLEInterface] _sendMessageNative OK mode=' + mode + ' target=' + targetId);
+              resolve();
+            })
+            .catch(function(e) {
+              console.error('[BLEInterface] _sendMessageNative FAILED:', e.message);
+              reject(e);
+            });
         } else { reject(new Error('sendMessage no disponible')); }
       } catch (e) { reject(e); }
     });
@@ -2077,6 +2100,7 @@ export class BLEInterface {
     self._nexoIdToMac.clear();
     self._macToNexoId.clear();
     self._receivedMessageIds.clear();
+    self._notifiedPeers.clear();  // FIX v5.3.10
   }
 }
 export function initBLEInterface(bleMesh) {
