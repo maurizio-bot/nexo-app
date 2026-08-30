@@ -1,8 +1,9 @@
 /**
- * vault_manager.js v2.1.1-FIX
+ * vault_manager.js v2.1.2-FIX
  * FIX: Campo seq en mensajes + ordenación por (timestamp, seq, msgId)
  * FIX: LRU cache para _msgCache (límite 20 contactos, evita leak de memoria)
- * Base: v2.1.0-SEQFIX
+ * FIX: Nunca persistir JSONs de protocolo (chat_meta, chat_chunk, file_meta, file_chunk, file_resume)
+ * Base: v2.1.1-FIX
  */
 
 var VAULT_CONTACTS_FILE = 'nexo_vault_contacts.json';
@@ -243,6 +244,18 @@ export async function vaultSaveMessages(contactNexoId, messages) {
 
 export async function vaultAppendMessage(contactNexoId, message) {
   if (!contactNexoId || !message) return null;
+  // FIX v2.1.2: Nunca persistir JSONs de protocolo
+  var txt = message.text || message.content || '';
+  if (typeof txt === 'string' && txt.trim().charAt(0) === '{') {
+    try {
+      var p = JSON.parse(txt.trim());
+      if (p.type === 'chat_meta' || p.type === 'chat_chunk' || p.type === 'file_meta' ||
+          p.type === 'file_chunk' || p.type === 'file_resume') {
+        console.warn('[VaultManager] Protocol JSON rejected from vault:', p.type);
+        return null;
+      }
+    } catch(e) {}
+  }
   var cid = _normId(contactNexoId);
   var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
   var msgId = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
