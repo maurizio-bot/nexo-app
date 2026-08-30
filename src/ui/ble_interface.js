@@ -1174,6 +1174,12 @@ export class BLEInterface {
       try {
         if (!self.nativePlugin) { reject(new Error('Plugin nativo no disponible')); return; }
         if (!deviceId) { reject(new Error('deviceId invalido')); return; }
+        var state = self._getDeviceState(deviceId);
+        if (state.state !== BLE_STATES.READY_TO_CHAT && state.state !== BLE_STATES.NOTIFICATIONS_READY) {
+          console.warn('[BLEInterface] _sendMessageNative: Device no listo', deviceId, 'state=', state.state);
+          reject(new Error('Device not ready: ' + (state.state || 'disconnected')));
+          return;
+        }
         var targetId = deviceId;
         var normDev = _normId(deviceId);
         var knownMac = self._nexoIdToMac.get(normDev);
@@ -1442,6 +1448,10 @@ export class BLEInterface {
         var msg = pending[idx++];
         var mid = msg.msgId || msg.messageId || msg.id;
         if (!mid) { sendNext(); return; }
+        _vaultUpdateMessageStatus(nexoId, mid, 'sending');
+        try {
+          window.NEXO_updateMessageStatus && window.NEXO_updateMessageStatus(mid, 'sending');
+        } catch(e) {}
         var doSend = function() {
           if (self.ackSystem) {
             return self.ackSystem.sendWithRetry(deviceId, msg.content || msg.text || '', mid);
