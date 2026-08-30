@@ -1,6 +1,8 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.13-FIX
+ * src/main.js - Punto de entrada NEXO v9.9.14-FIX
  * FIX: ackSystem vinculado EARLY (antes de initPromise) para que receptor siempre tenga fragment handler
+ * FIX: Eliminado segundo ackSystem post-initPromise (doble instancia causaba pérdida de buffers)
+ * FIX: Filtro defensivo anti-protocolo en messageReceived listener
  * FIX: Mensaje fantasma — peerReady universal + flush en primera conexion + outbox por nexoId
  * FIX: _doSend captura error y marca failed en UI/vault + marca sent en éxito
  * FIX: seq counter en envío + inserción ordenada en DOM por (timestamp, seq, msgId)
@@ -801,7 +803,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.13-FIX iniciando...');
+console.log('[MAIN] NEXO v9.9.14-FIX iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -978,6 +980,24 @@ _renderMessage(msg, true);
 window.addEventListener('nexo:ble:messageReceived', function(e) {
 if (e && e.detail) {
 var msg = e.detail;
+// === FIX v9.9.14: Filtro defensivo anti-protocolo ===
+if (msg.content && typeof msg.content === 'string') {
+  var trimmed = msg.content.trim();
+  if (trimmed.charAt(0) === '{') {
+    try {
+      var protoCheck = JSON.parse(trimmed);
+      if (protoCheck.type === 'chat_meta' || protoCheck.type === 'chat_chunk' ||
+          protoCheck.type === 'file_meta' || protoCheck.type === 'file_chunk' ||
+          protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
+          protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' ||
+          protoCheck.type === 'pong') {
+        console.warn('[MAIN] Protocol JSON defensively dropped in messageReceived:', protoCheck.type);
+        return;
+      }
+    } catch(e) {}
+  }
+}
+// === FIN FIX DEFENSIVO ===
 // FIX: Usar localNexoId (NX...) para filtro, no localDeviceUUID (UUID estándar)
 var bi = window.NEXO.app && window.NEXO.app.bleInterface;
 var localUUID = (bi && bi.localNexoId) || (bi && bi.localDeviceUUID) || '';
@@ -1128,15 +1148,10 @@ contacts: bi.getBLEContacts ? bi.getBLEContacts().length : 0
 });
 }
 } catch (logErr) { console.warn('[MAIN] Log BLE error:', logErr); }
-try {
-if (window.NEXO.app && window.NEXO.app.bleInterface) {
-var ack = createAckSystem(window.NEXO.app.bleInterface);
-window.NEXO.app.bleInterface.setAckSystem(ack);
-console.log('[MAIN] BleAckSystem vinculado OK');
-}
-} catch (ackErr) {
-console.warn('[MAIN] AckSystem no vinculado:', ackErr);
-}
+
+// FIX v9.9.14: Eliminado segundo ackSystem post-initPromise. La instancia EARLY es la única.
+// Esto evita que chat_meta/chat_chunk pierdan sus buffers al ser reemplazados.
+
 _setupMessageInput();
 _setupVaultToggle();
 _setupChatHeader();
