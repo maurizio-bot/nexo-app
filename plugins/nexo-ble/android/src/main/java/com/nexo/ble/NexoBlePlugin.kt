@@ -1315,9 +1315,19 @@ class NexoBlePlugin : Plugin() {
         }
         writeQueueProcessing[macNorm] = true
         val item = queue.removeAt(0)
-        val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
+        var attempts = 0
+        val maxAttempts = 3
+        var result: SendResult
+        do {
+            result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
+            attempts++
+            if (!result.sent && attempts < maxAttempts) {
+                remLog("WARN", "SEND", "Write fallo para $macNorm, reintento $attempts/$maxAttempts")
+                Thread.sleep(WRITE_DELAY_MS)
+            }
+        } while (!result.sent && attempts < maxAttempts)
         if (!result.sent) {
-            remLog("WARN", "SEND", "Write fallo para $macNorm, descartando chunk y avanzando")
+            remLog("WARN", "SEND", "Write fallo para $macNorm tras $maxAttempts intentos, descartando chunk")
             writeQueueProcessing.remove(macNorm)
             mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
             return
