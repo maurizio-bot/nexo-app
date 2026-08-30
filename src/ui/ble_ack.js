@@ -1,5 +1,6 @@
 /**
- * ble_ack.js — Sistema ACK real + fragmentación de archivos para NEXO v1.2.3-FIX
+ * ble_ack.js — Sistema ACK real + fragmentación unificada (chat + archivos) para NEXO v1.3.0-FIX
+ * v1.3.0-FIX: Unificación chat/archivos. Mensajes largos usan chat_chunk (mismo mecanismo que file_chunk).
  * v1.2.3-FIX: ackTimeoutMs 6000→10000, dispatch 'sending' en envío y reintento
  * v1.2.2-FIX: Reintento de batch reenvía solo chunks fallidos (no todo el batch)
  * v1.2.1-ACKFIX: Fix chunk_ prefix + self->this + fromName en meta
@@ -15,6 +16,7 @@ export class BleAckSystem {
     this.receivedAcks = new Set();
     this.maxReceivedAcks = 500;
     this.chunkSize = 400;
+    this.chatChunkPayloadSize = 120; // conservador para cualquier MTU
     this.pendingFragments = new Map();
     this.maxFragmentAge = 300000;
     this.pendingOutgoingFiles = new Map();
@@ -134,6 +136,99 @@ export class BleAckSystem {
     }
   }
 
+  // ========== v1.3.0: CHAT CHUNKED (mismo mecanismo que archivos) ==========
+
+  sendChunkedMessage(deviceId, content, meta, messageId) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      var chunks = self._splitIntoChunks(content, self.chatChunkPayloadSize);
+      var total = chunks.length;
+      if (total === 0) { reject(new Error('Mensaje vacio')); return; }
+      if (total === 1) {
+        self.sendWithRetry(deviceId, content, messageId).then(resolve).catch(reject);
+        return;
+      }
+
+      var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+      var senderId = (self.ble && self.ble.localNexoId) ? self.ble.localNexoId : ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
+      var finalMeta = Object.assign({}, meta || {}, { type: 'chat', fromName: (self.ble && self.ble.localDeviceName) ? self.ble.localDeviceName : 'NEXO' });
+
+      var chatMeta = {
+        v: 1,
+        type: 'chat_meta',
+        msgId: msgId,
+        totalChunks: total,
+        meta: finalMeta,
+        from: senderId,
+        ts: Date.now()
+      };
+
+      self.sendWithRetry(deviceId, JSON.stringify(chatMeta), 'meta_' + msgId)
+        .then(function() {
+          var batchSize = 3;
+          var currentBatch = 0;
+
+          function sendBatch() {
+            var start = currentBatch * batchSize;
+            if (start >= total) {
+              resolve();
+              return;
+            }
+            var end = Math.min(start + batchSize, total);
+            var batchChunks = [];
+            for (var i = start; i < end; i++) {
+              batchChunks.push({
+                v: 1,
+                type: 'chat_chunk',
+                msgId: msgId,
+                idx: i,
+                total: total,
+                data: chunks[i],
+                from: senderId
+              });
+            }
+
+            var sendPromises = [];
+            var failedIndices = [];
+            for (var j = 0; j < batchChunks.length; j++) {
+              (function(chunkPayload, idx) {
+                sendPromises.push(
+                  self.ble._sendMessageNative(deviceId, JSON.stringify(chunkPayload), msgId + '_' + chunkPayload.idx)
+                    .then(function() { return { ok: true, idx: idx }; })
+                    .catch(function(e) { failedIndices.push(idx); return { ok: false, idx: idx, error: e }; })
+                );
+              })(batchChunks[j], j);
+            }
+
+            Promise.all(sendPromises).then(function(results) {
+              if (failedIndices.length > 0) {
+                setTimeout(function() { sendBatch(); }, 1000);
+                return;
+              }
+              var lastChunk = batchChunks[batchChunks.length - 1];
+              var lastMsgId = msgId + '_' + lastChunk.idx;
+              self.sendWithRetry(deviceId, JSON.stringify(lastChunk), lastMsgId)
+                .then(function() {
+                  currentBatch++;
+                  if (start + batchChunks.length >= total) {
+                    resolve();
+                  } else {
+                    setTimeout(function() { sendBatch(); }, 100);
+                  }
+                })
+                .catch(function(err) {
+                  setTimeout(function() { sendBatch(); }, 1000);
+                });
+            });
+          }
+          sendBatch();
+        })
+        .catch(function(err) {
+          reject(err);
+        });
+    });
+  }
+
   // ========== v1.1.0: ENVÍO DE ARCHIVOS ROBUSTO ==========
 
   sendFile(deviceId, fileId, base64Data, meta) {
@@ -193,7 +288,6 @@ export class BleAckSystem {
               });
             }
 
-            // Enviar todos los chunks del batch, trackeando fallos individuales
             var sendPromises = [];
             var failedIndices = [];
             for (var j = 0; j < batchChunks.length; j++) {
@@ -208,7 +302,6 @@ export class BleAckSystem {
 
             Promise.all(sendPromises).then(function(results) {
               if (failedIndices.length > 0 && failedIndices.length < batchChunks.length) {
-                // Reintentar solo los chunks fallidos de este batch
                 console.warn('[BleAckSystem] Reintentando chunks fallidos del batch:', failedIndices);
                 var retryPromises = [];
                 for (var r = 0; r < failedIndices.length; r++) {
@@ -225,13 +318,11 @@ export class BleAckSystem {
                     setTimeout(function() { sendBatch(); }, 1000);
                     return;
                   }
-                  // Continuar con último chunk con ACK si era el último del batch
                   self._finishBatch(deviceId, fileId, batchChunks, currentBatch, total, start, end, batchSize, senderId, sendBatch, resolve);
                 });
                 return;
               }
               if (failedIndices.length === batchChunks.length) {
-                // Todo el batch falló, reintentar batch completo
                 console.warn('[BleAckSystem] Batch completo fallo, reintentando batch', currentBatch);
                 setTimeout(function() { sendBatch(); }, 1000);
                 return;
@@ -288,6 +379,43 @@ export class BleAckSystem {
       var deviceId = dataObj.deviceId;
       var content = dataObj.content;
       var msg = JSON.parse(content);
+
+      if (msg.type === 'chat_meta') {
+        this.pendingFragments.set(msg.msgId, {
+          chunks: new Map(),
+          total: msg.totalChunks,
+          received: 0,
+          meta: msg.meta || {},
+          lastActivity: Date.now(),
+          isChat: true
+        });
+        this.sendAck(deviceId, msg.msgId);
+        return true;
+      }
+
+      if (msg.type === 'chat_chunk') {
+        var buf = this.pendingFragments.get(msg.msgId);
+        if (!buf) {
+          return true;
+        }
+        if (!buf.chunks.has(msg.idx)) {
+          buf.chunks.set(msg.idx, msg.data);
+          buf.received++;
+          buf.lastActivity = Date.now();
+        }
+        if ((msg.idx + 1) % 3 === 0 || msg.idx === msg.total - 1) {
+          this.sendAck(deviceId, msg.msgId + '_' + msg.idx);
+        }
+        if (buf.received >= buf.total) {
+          var assembled = '';
+          for (var i = 0; i < buf.total; i++) {
+            assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
+          }
+          this.pendingFragments.delete(msg.msgId);
+          this._dispatchChunkedMessageComplete(msg.msgId, assembled, buf.meta, deviceId);
+        }
+        return true;
+      }
 
       if (msg.type === 'file_meta') {
         this.pendingFragments.set(msg.fileId, {
@@ -356,6 +484,41 @@ export class BleAckSystem {
     if (this.ble && typeof this.ble._sendMessageNative === 'function') {
       this.ble._sendMessageNative(deviceId, resume, null).catch(function() {});
     }
+  }
+
+  _dispatchChunkedMessageComplete(msgId, content, meta, deviceId) {
+    var senderName = meta.fromName || 'NEXO';
+    var senderId = meta.from || 'unknown';
+    var vaultMsg = {
+      messageId: msgId,
+      content: content,
+      _own: false,
+      status: 'delivered',
+      timestamp: Date.now(),
+      senderName: senderName,
+      senderNexoId: senderId,
+      seq: 0
+    };
+    try {
+      if (window.vaultAppendMessage) {
+        window.vaultAppendMessage(senderId, vaultMsg, false).catch(function() {});
+      }
+    } catch (e) {}
+    try {
+      window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
+        detail: {
+          deviceId: deviceId,
+          deviceUUID: senderId,
+          content: content,
+          senderName: senderName,
+          senderNexoId: senderId,
+          messageId: msgId,
+          source: 'ble',
+          timestamp: Date.now(),
+          seq: 0
+        }
+      }));
+    } catch (e) {}
   }
 
   _dispatchStatus(msgId, status) {
