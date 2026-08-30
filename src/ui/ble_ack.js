@@ -1,5 +1,6 @@
 /**
- * ble_ack.js — Sistema ACK real + fragmentación de archivos para NEXO v1.2.2-FIX
+ * ble_ack.js — Sistema ACK real + fragmentación de archivos para NEXO v1.2.3-FIX
+ * v1.2.3-FIX: ackTimeoutMs 6000→10000, dispatch 'sending' en envío y reintento
  * v1.2.2-FIX: Reintento de batch reenvía solo chunks fallidos (no todo el batch)
  * v1.2.1-ACKFIX: Fix chunk_ prefix + self->this + fromName en meta
  * v1.2.0-ACKFIX: sendReadReceipt + read_receipt support + ACK inmediato
@@ -9,7 +10,7 @@ export class BleAckSystem {
   constructor(bleInterface) {
     this.ble = bleInterface;
     this.pendingAcks = new Map();
-    this.ackTimeoutMs = 6000;
+    this.ackTimeoutMs = 10000;
     this.maxRetries = 3;
     this.receivedAcks = new Set();
     this.maxReceivedAcks = 500;
@@ -35,12 +36,14 @@ export class BleAckSystem {
         sentAt: Date.now()
       };
       self.pendingAcks.set(msgId, entry);
+      self._dispatchStatus(msgId, 'sending');
       self._doSend(entry);
     });
   }
 
   _doSend(entry) {
     var self = this;
+    self._dispatchStatus(entry.msgId, 'sending');
     if (!self.ble || typeof self.ble._sendMessageNative !== 'function') {
       entry.reject(new Error('BLE interface no disponible'));
       self.pendingAcks.delete(entry.msgId);
