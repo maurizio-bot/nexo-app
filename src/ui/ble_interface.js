@@ -1,11 +1,13 @@
 /**
- * BLE Interface v5.3.11-FIX
+ * BLE Interface v5.3.12-FIX
  * FIX: Filtro defensivo anti-protocolo en onPayloadReceived (nunca renderiza chat_meta/chat_chunk/file_meta/file_chunk crudo)
+ * FIX: Filtro robusto con trim (evita bypass por whitespace)
+ * FIX: chat_meta/chat_chunk incluidos en isControl
  * FIX: Deduplicación de peer:ready (evita múltiples eventos para mismo dispositivo)
  * FIX: _notifyPeerReady usa Set para trackear peers ya notificados
  * FIX: _sendMessageNative loguea modo de envío (client vs server)
  * FIX: destroy() limpia _notifiedPeers
- * Base: v5.3.9-FIX
+ * Base: v5.3.11-FIX
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -412,7 +414,7 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();  // FIX v5.3.10: deduplicación peer:ready
-    console.log('[BLEInterface] v5.3.11-FIX iniciado');
+    console.log('[BLEInterface] v5.3.12-FIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -991,29 +993,26 @@ export class BLEInterface {
         var messageId = null, senderName = null, senderUUID = null;
         var content = data.content || data.data || data.message || '';
         
-        // FIX v5.3.11: Nunca renderizar JSON crudo de protocolo de fragmentación
-        if (content && typeof content === 'string') {
-          var isProtocol = false;
-          try {
-            var firstChar = content.charAt(0);
-            if (firstChar === '{') {
-              var protoCheck = JSON.parse(content);
-              if (protoCheck.type === 'chat_meta' || protoCheck.type === 'chat_chunk' ||
-                  protoCheck.type === 'file_meta' || protoCheck.type === 'file_chunk' ||
-                  protoCheck.type === 'file_resume') {
-                isProtocol = true;
-              }
+        // FIX v5.3.12: Filtro robusto con trim + chat_meta/chat_chunk en isControl
+        var trimmedContent = (content || '').trim();
+        var isProtocol = false;
+        try {
+          if (trimmedContent.charAt(0) === '{') {
+            var protoCheck = JSON.parse(trimmedContent);
+            if (protoCheck.type === 'chat_meta' || protoCheck.type === 'chat_chunk' ||
+                protoCheck.type === 'file_meta' || protoCheck.type === 'file_chunk' ||
+                protoCheck.type === 'file_resume') {
+              isProtocol = true;
             }
-          } catch (e) {}
-          if (isProtocol) {
-            console.log('[BLEInterface] Protocol JSON filtered:', content.substring(0, 40));
-            // Aun así pasar al ackSystem para procesamiento, pero NO al render
-            if (self.ackSystem) {
-              var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: content });
-              if (fragmentHandled) return;
-            }
-            return;
           }
+        } catch (e) {}
+        if (isProtocol) {
+          console.log('[BLEInterface] Protocol JSON filtered:', trimmedContent.substring(0, 40));
+          if (self.ackSystem) {
+            var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: trimmedContent });
+            if (fragmentHandled) return;
+          }
+          return;
         }
 
         if (self.ackSystem) {
@@ -1029,6 +1028,7 @@ export class BLEInterface {
         var isControl = !!(ctrl && (
           ctrl.type === 'ack' || ctrl.type === 'read_receipt' ||
           ctrl.type === 'ping' || ctrl.type === 'pong' ||
+          ctrl.type === 'chat_meta' || ctrl.type === 'chat_chunk' ||
           ctrl.type === 'file_meta' || ctrl.type === 'file_chunk' || ctrl.type === 'file_resume'
         ));
 
