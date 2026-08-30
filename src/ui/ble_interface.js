@@ -1300,6 +1300,13 @@ export class BLEInterface {
           return;
         }
         function doSend() {
+          var isLong = content.length > 180;
+          if (isLong && self.ackSystem && typeof self.ackSystem.sendChunkedMessage === 'function') {
+            self.ackSystem.sendChunkedMessage(deviceId, content, {}, msgId)
+              .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
+              .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
+            return;
+          }
           if (self.ackSystem) {
             self.ackSystem.sendWithRetry(deviceId, content, msgId)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
