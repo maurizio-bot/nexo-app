@@ -1,5 +1,6 @@
 /**
- * ble_ack.js — Sistema ACK real + fragmentación unificada + Block ACK emisor (D2)
+ * ble_ack.js — Sistema ACK real + fragmentación unificada + Block ACK bidireccional (D2+D3)
+ * v1.5.0-D3: Receptor Block ACK. Chunks persistidos en vault. Block ACK periódico (2s) o inmediato al completar.
  * v1.4.0-D2: Block ACK emisor. Reenvío selectivo de chunks faltantes. Persistencia outgoing en vault.
  * v1.3.1-FIX: Buffer huérfano para chat_chunk cuando chat_meta se pierde en el aire
  * v1.3.0-FIX: Unificación chat/archivos. Mensajes largos usan chat_chunk (mismo mecanismo que file_chunk).
@@ -30,7 +31,13 @@ export class BleAckSystem {
     this.pendingOutgoingTransfers = new Map(); // D2: unificado chat+file
     this.outgoingBlockAckTimeoutMs = 8000;
     this.blockAckTimers = new Map();
+
+    // D3: Receptor Block ACK
+    this._pendingBlockAcks = new Map(); // transferId -> { deviceId, ts }
+    this._blockAckFlushInterval = null;
+
     this._startCleanupInterval();
+    this._startBlockAckFlushTimer();
   }
 
   // ========== D2: RESUMEN DE TRANSFERENCIAS ROTAS AL INICIAR ==========
@@ -46,7 +53,6 @@ export class BleAckSystem {
         list.forEach(function(tx) {
           if (tx.status === 'complete' || tx.status === 'failed') return;
           console.log('[BleAckSystem] Retomando outgoing transfer:', tx.transferId, tx.type);
-          // Restaurar en memoria
           var sentArr = (tx.sentMask || '').split('').map(function(c){return c==='1';});
           var ackArr = (tx.ackMask || '').split('').map(function(c){return c==='1';});
           self.pendingOutgoingTransfers.set(tx.transferId, {
@@ -64,14 +70,88 @@ export class BleAckSystem {
             reject: function(){},
             startTime: tx.createdAt,
             blockAckTimeouts: tx.blockAckTimeouts || 0,
-            legacy: true // marca que no tenemos promise original
+            legacy: true
           });
-          // Retomar envío de faltantes
           setTimeout(function() {
             self._resendAllMissing(tx.transferId);
           }, 2000);
         });
       }).catch(function(e){});
+    });
+  }
+
+  // ========== D3: TIMER BLOCK ACK RECEPTOR ==========
+  _startBlockAckFlushTimer() {
+    var self = this;
+    if (self._blockAckFlushInterval) clearInterval(self._blockAckFlushInterval);
+    self._blockAckFlushInterval = setInterval(function() {
+      self._flushBlockAcks();
+    }, 2000);
+  }
+
+  _scheduleBlockAck(transferId, deviceId) {
+    this._pendingBlockAcks.set(transferId, { deviceId: deviceId, ts: Date.now() });
+  }
+
+  _sendBlockAck(deviceId, transferId, mask, count) {
+    var payload = JSON.stringify({
+      v: 1,
+      type: 'block_ack',
+      transferId: transferId,
+      receivedMask: mask,
+      receivedCount: count,
+      ts: Date.now()
+    });
+    if (this.ble && typeof this.ble._sendMessageNative === 'function') {
+      this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
+    }
+  }
+
+  _flushBlockAcks() {
+    var self = this;
+    if (self._pendingBlockAcks.size === 0) return;
+    self._pendingBlockAcks.forEach(function(info, transferId) {
+      var buf = self.pendingFragments.get(transferId);
+      if (!buf) {
+        self._pendingBlockAcks.delete(transferId);
+        return;
+      }
+      var maskArr = [];
+      for (var i = 0; i < buf.total; i++) {
+        maskArr.push(buf.chunks.has(i) ? '1' : '0');
+      }
+      self._sendBlockAck(info.deviceId, transferId, maskArr.join(''), buf.received);
+    });
+    self._pendingBlockAcks.clear();
+  }
+
+  _completeIncomingTransfer(contactNexoId, transferId, type, deviceId, totalChunks) {
+    var self = this;
+    if (!window.vaultCompleteTransfer) return;
+    window.vaultCompleteTransfer(contactNexoId, transferId).then(function(msg) {
+      if (!msg) return;
+      if (type === 'chat') {
+        try {
+          window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
+            detail: {
+              deviceId: deviceId,
+              deviceUUID: msg.senderNexoId,
+              content: msg.content,
+              senderName: msg.senderName,
+              senderNexoId: msg.senderNexoId,
+              messageId: msg.msgId,
+              source: 'ble',
+              timestamp: msg.timestamp,
+              seq: msg.seq
+            }
+          }));
+        } catch (e) {}
+      } else if (type === 'file') {
+        self._dispatchFileComplete(transferId, msg.attachmentPayload, msg.attachmentMeta);
+        self._dispatchFileProgress(transferId, totalChunks, totalChunks, 'received', 100);
+      }
+    }).catch(function(e) {
+      console.error('[BleAckSystem] Error completando transferencia vault:', e);
     });
   }
 
@@ -282,7 +362,6 @@ export class BleAckSystem {
       if (!tx.sentMask[i]) { start = i; break; }
     }
     if (start === -1) {
-      // Todos enviados al menos una vez, esperar block_ack final
       self._startBlockAckTimer(transferId, true);
       return;
     }
@@ -318,7 +397,6 @@ export class BleAckSystem {
         self._startBlockAckTimer(transferId, true);
       }
     }).catch(function(err) {
-      // Revertir sentMask para reintento
       indicesToSend.forEach(function(idx) { tx.sentMask[idx] = false; });
       self._persistOutgoingMask(tx);
       setTimeout(function() { self._sendNextBatch(transferId); }, 1000);
@@ -349,7 +427,6 @@ export class BleAckSystem {
 
     tx.blockAckTimeouts = (tx.blockAckTimeouts || 0) + 1;
 
-    // Fallback legacy: si el receptor no entiende block_ack (D0/D1), tras 3 timeouts resolver
     if (tx.blockAckTimeouts >= 3) {
       console.warn('[BleAckSystem] Receptor sin block_ack (legacy). Resolviendo transfer:', transferId);
       self._completeOutgoingTransfer(transferId);
@@ -360,7 +437,6 @@ export class BleAckSystem {
       window.vaultIncrementOutgoingTimeout(tx.contactNexoId, transferId).catch(function(){});
     }
 
-    // Reenviar todos los chunks no acked (no solo el último batch)
     var missing = [];
     for (var i = 0; i < tx.total; i++) {
       if (!tx.ackMask[i]) missing.push(i);
@@ -433,7 +509,6 @@ export class BleAckSystem {
     var mask = msg.receivedMask || '';
     var count = msg.receivedCount || 0;
 
-    // Actualizar ackMask
     for (var i = 0; i < Math.min(mask.length, tx.total); i++) {
       tx.ackMask[i] = mask.charAt(i) === '1';
     }
@@ -452,13 +527,11 @@ export class BleAckSystem {
 
     console.log('[BleAckSystem] Block ACK parcial:', count + '/' + tx.total, 'faltan', tx.total - count);
 
-    // Reenviar faltantes inmediatamente
     var missing = [];
     for (var i = 0; i < tx.total; i++) {
       if (!tx.ackMask[i]) missing.push(i);
     }
     if (missing.length > 0) {
-      // Reset sentMask: solo los acked cuentan como "no necesitan reenvío"
       for (var i = 0; i < tx.total; i++) {
         if (!tx.ackMask[i]) tx.sentMask[i] = false;
       }
@@ -528,7 +601,7 @@ export class BleAckSystem {
     return chunks;
   }
 
-  // ========== RECEPTOR (sin cambios salvo block_ack) ==========
+  // ========== RECEPTOR: D3 Block ACK ==========
 
   processIncomingFragment(dataObj) {
     try {
@@ -536,12 +609,13 @@ export class BleAckSystem {
       var content = dataObj.content;
       var msg = JSON.parse(content);
 
-      // D2: Block ACK desde el receptor
+      // D2: Block ACK desde el receptor (emisor lo procesa)
       if (msg.type === 'block_ack') {
         this._processBlockAck(msg);
         return true;
       }
 
+      // D3: CHAT META
       if (msg.type === 'chat_meta') {
         this.pendingFragments.set(msg.msgId, {
           chunks: new Map(),
@@ -551,10 +625,15 @@ export class BleAckSystem {
           lastActivity: Date.now(),
           isChat: true
         });
-        this.sendAck(deviceId, msg.msgId);
+        var senderId = msg.from || (msg.meta && msg.meta.from) || 'unknown';
+        if (window.vaultCreateTransfer) {
+          window.vaultCreateTransfer(senderId, msg.msgId, 'chat', msg.totalChunks, msg.meta).catch(function(){});
+        }
+        this._scheduleBlockAck(msg.msgId, deviceId);
         return true;
       }
 
+      // D3: CHAT CHUNK
       if (msg.type === 'chat_chunk') {
         var buf = this.pendingFragments.get(msg.msgId);
         if (!buf) {
@@ -573,20 +652,39 @@ export class BleAckSystem {
           buf.received++;
           buf.lastActivity = Date.now();
         }
-        if ((msg.idx + 1) % 3 === 0 || msg.idx === msg.total - 1) {
-          this.sendAck(deviceId, msg.msgId + '_' + msg.idx);
-        }
-        if (buf.received >= buf.total) {
-          var assembled = '';
-          for (var i = 0; i < buf.total; i++) {
-            assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
+
+        var senderId = msg.from || (buf.meta && buf.meta.from) || 'unknown';
+        var self = this;
+
+        if (window.vaultAppendChunk) {
+          window.vaultAppendChunk(senderId, msg.msgId, msg.idx, msg.data).then(function() {
+            if (buf.received >= buf.total) {
+              var maskArr = [];
+              for (var i = 0; i < buf.total; i++) maskArr.push(buf.chunks.has(i) ? '1' : '0');
+              self._sendBlockAck(deviceId, msg.msgId, maskArr.join(''), buf.received);
+              self._completeIncomingTransfer(senderId, msg.msgId, 'chat', deviceId, buf.total);
+              self.pendingFragments.delete(msg.msgId);
+              self._pendingBlockAcks.delete(msg.msgId);
+            } else {
+              self._scheduleBlockAck(msg.msgId, deviceId);
+            }
+          }).catch(function(e){});
+        } else {
+          // Legacy sin vault
+          if ((msg.idx + 1) % 3 === 0 || msg.idx === msg.total - 1) {
+            this.sendAck(deviceId, msg.msgId + '_' + msg.idx);
           }
-          this.pendingFragments.delete(msg.msgId);
-          this._dispatchChunkedMessageComplete(msg.msgId, assembled, buf.meta, deviceId);
+          if (buf.received >= buf.total) {
+            var assembled = '';
+            for (var i = 0; i < buf.total; i++) assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
+            this.pendingFragments.delete(msg.msgId);
+            this._dispatchChunkedMessageComplete(msg.msgId, assembled, buf.meta, deviceId);
+          }
         }
         return true;
       }
 
+      // D3: FILE META
       if (msg.type === 'file_meta') {
         this.pendingFragments.set(msg.fileId, {
           chunks: new Map(),
@@ -595,11 +693,16 @@ export class BleAckSystem {
           meta: msg.meta || {},
           lastActivity: Date.now()
         });
-        this.sendAck(deviceId, msg.fileId);
+        var senderId = msg.from || (msg.meta && msg.meta.from) || 'unknown';
+        if (window.vaultCreateTransfer) {
+          window.vaultCreateTransfer(senderId, msg.fileId, 'file', msg.totalChunks, msg.meta).catch(function(){});
+        }
+        this._scheduleBlockAck(msg.fileId, deviceId);
         this._dispatchFileProgress(msg.fileId, 0, msg.totalChunks, 'receiving');
         return true;
       }
 
+      // D3: FILE CHUNK
       if (msg.type === 'file_chunk') {
         var buf = this.pendingFragments.get(msg.fileId);
         if (!buf) {
@@ -611,19 +714,37 @@ export class BleAckSystem {
           buf.received++;
           buf.lastActivity = Date.now();
         }
-        if ((msg.idx + 1) % 5 === 0 || msg.idx === msg.total - 1) {
-          this.sendAck(deviceId, msg.fileId + '_' + msg.idx);
-        }
+
+        var senderId = msg.from || (buf.meta && buf.meta.from) || 'unknown';
+        var self = this;
         var progress = Math.floor((buf.received / buf.total) * 100);
         this._dispatchFileProgress(msg.fileId, buf.received, buf.total, 'receiving', progress);
-        if (buf.received >= buf.total) {
-          var assembled = '';
-          for (var i = 0; i < buf.total; i++) {
-            assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
+
+        if (window.vaultAppendChunk) {
+          window.vaultAppendChunk(senderId, msg.fileId, msg.idx, msg.data).then(function() {
+            if (buf.received >= buf.total) {
+              var maskArr = [];
+              for (var i = 0; i < buf.total; i++) maskArr.push(buf.chunks.has(i) ? '1' : '0');
+              self._sendBlockAck(deviceId, msg.fileId, maskArr.join(''), buf.received);
+              self._completeIncomingTransfer(senderId, msg.fileId, 'file', deviceId, buf.total);
+              self.pendingFragments.delete(msg.fileId);
+              self._pendingBlockAcks.delete(msg.fileId);
+            } else {
+              self._scheduleBlockAck(msg.fileId, deviceId);
+            }
+          }).catch(function(e){});
+        } else {
+          // Legacy sin vault
+          if ((msg.idx + 1) % 5 === 0 || msg.idx === msg.total - 1) {
+            this.sendAck(deviceId, msg.fileId + '_' + msg.idx);
           }
-          this.pendingFragments.delete(msg.fileId);
-          this._dispatchFileComplete(msg.fileId, assembled, buf.meta);
-          this._dispatchFileProgress(msg.fileId, buf.total, buf.total, 'received', 100);
+          if (buf.received >= buf.total) {
+            var assembled = '';
+            for (var i = 0; i < buf.total; i++) assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
+            this.pendingFragments.delete(msg.fileId);
+            this._dispatchFileComplete(msg.fileId, assembled, buf.meta);
+            this._dispatchFileProgress(msg.fileId, buf.total, buf.total, 'received', 100);
+          }
         }
         return true;
       }
