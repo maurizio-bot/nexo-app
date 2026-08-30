@@ -1,5 +1,6 @@
 /**
- * BLE Interface v5.3.10-FIX
+ * BLE Interface v5.3.11-FIX
+ * FIX: Filtro defensivo anti-protocolo en onPayloadReceived (nunca renderiza chat_meta/chat_chunk/file_meta/file_chunk crudo)
  * FIX: Deduplicación de peer:ready (evita múltiples eventos para mismo dispositivo)
  * FIX: _notifyPeerReady usa Set para trackear peers ya notificados
  * FIX: _sendMessageNative loguea modo de envío (client vs server)
@@ -411,7 +412,7 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();  // FIX v5.3.10: deduplicación peer:ready
-    console.log('[BLEInterface] v5.3.10-FIX iniciado');
+    console.log('[BLEInterface] v5.3.11-FIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -990,6 +991,31 @@ export class BLEInterface {
         var messageId = null, senderName = null, senderUUID = null;
         var content = data.content || data.data || data.message || '';
         
+        // FIX v5.3.11: Nunca renderizar JSON crudo de protocolo de fragmentación
+        if (content && typeof content === 'string') {
+          var isProtocol = false;
+          try {
+            var firstChar = content.charAt(0);
+            if (firstChar === '{') {
+              var protoCheck = JSON.parse(content);
+              if (protoCheck.type === 'chat_meta' || protoCheck.type === 'chat_chunk' ||
+                  protoCheck.type === 'file_meta' || protoCheck.type === 'file_chunk' ||
+                  protoCheck.type === 'file_resume') {
+                isProtocol = true;
+              }
+            }
+          } catch (e) {}
+          if (isProtocol) {
+            console.log('[BLEInterface] Protocol JSON filtered:', content.substring(0, 40));
+            // Aun así pasar al ackSystem para procesamiento, pero NO al render
+            if (self.ackSystem) {
+              var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: content });
+              if (fragmentHandled) return;
+            }
+            return;
+          }
+        }
+
         if (self.ackSystem) {
           var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: content });
           if (fragmentHandled) return;
