@@ -1125,6 +1125,15 @@ console.log('[MAIN] BleAckSystem vinculado EARLY');
 console.warn('[MAIN] AckSystem early vinculo fallo:', ackEarlyErr);
 }
 
+// D2: Retomar envíos rotos al iniciar
+setTimeout(function() {
+  var bi = window.NEXO.app && window.NEXO.app.bleInterface;
+  var ack = bi && bi.ackSystem;
+  if (ack && typeof ack.resumeOutgoingTransfers === 'function') {
+    ack.resumeOutgoingTransfers();
+  }
+}, 3000);
+
 try {
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
 window.Capacitor.Plugins.NexoBLE.addListener('onNotificationOpened', function(event) {
