@@ -12,18 +12,6 @@
  * FIX: ObjectURLs revocados al cerrar fullscreen
  * FIX: _getContactStorageKey usa nexoId cuando está disponible
  * FIX: msgId/messageId normalizado en _saveMessageToStorage, _updateMessageStorageStatus, _renderMessage
- * FIX: _sendAttachment guarda en vault inmediatamente
- * FIX: _loadPersistedMessages normaliza msgId al cargar
- * FIX 3: Eliminada persistencia duplicada localStorage — solo vault nativo
- * FIX FOTOS: _sendAttachment usa sendFile para image/video/file (fragmentación BLE)
- * FIX FOTOS: Listener nexo:ble:fileComplete para renderizar archivos recibidos
- * FIX ACK: ackStatus persiste en vault + read receipt automático
- * FIX: onMessage simplificado (sin doble render ni doble vaultAppend)
- * FIX: Limpieza de ObjectURLs periódica para evitar memory leak
- * FIX RENDER: Listeners críticos registrados ANTES de await initPromise para evitar race condition
- * FIX RENDER: Filtro mensaje propio usa localNexoId (NX...) en lugar de localDeviceUUID
- * FASE4: Vault persistencia contactos + mensajes + AutoScan hooks
- * VAULTONLY: initVault() antes de todo. Cero localStorage en mensajes/contactos.
    */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -32,7 +20,16 @@ import { NexoApp, DEBUG } from './app/nexo_app.js';
 import { rem } from './ui/rem.js';
 import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionShim.js';
 import { createAckSystem } from './ui/ble_ack.js';
-import { initVault, vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages, vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId } from './vault/vault_manager.js';
+import {
+  initVault,
+  vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages,
+  vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId,
+  // D1+D2: Transfer layer
+  vaultCreateTransfer, vaultAppendChunk, vaultGetTransfer, vaultCompleteTransfer,
+  vaultGetIncompleteTransfers, vaultGetPendingOutgoingTransfers, vaultCreateOutgoingTransfer,
+  vaultSetOutgoingChunkAcked, vaultIncrementOutgoingTimeout, vaultRemoveOutgoingTransfer,
+  vaultSetOutgoingStatus
+} from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
 try {
 NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
@@ -58,6 +55,18 @@ window.vaultAppendMessage = vaultAppendMessage;
 window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;
 window.vaultGetOrCreateContact = vaultGetOrCreateContact;
 window.vaultFindContactByNexoId = vaultFindContactByNexoId;
+// D1+D2: Vault Transfer Layer expuesta globalmente para ble_ack.js
+window.vaultCreateTransfer = vaultCreateTransfer;
+window.vaultAppendChunk = vaultAppendChunk;
+window.vaultGetTransfer = vaultGetTransfer;
+window.vaultCompleteTransfer = vaultCompleteTransfer;
+window.vaultGetIncompleteTransfers = vaultGetIncompleteTransfers;
+window.vaultGetPendingOutgoingTransfers = vaultGetPendingOutgoingTransfers;
+window.vaultCreateOutgoingTransfer = vaultCreateOutgoingTransfer;
+window.vaultSetOutgoingChunkAcked = vaultSetOutgoingChunkAcked;
+window.vaultIncrementOutgoingTimeout = vaultIncrementOutgoingTimeout;
+window.vaultRemoveOutgoingTransfer = vaultRemoveOutgoingTransfer;
+window.vaultSetOutgoingStatus = vaultSetOutgoingStatus;
 var SAFETY_TIMEOUT = setTimeout(function() {
 try {
 if (NEXO_DIAG && typeof NEXO_DIAG.isSplashVisible === 'function' && NEXO_DIAG.isSplashVisible()) {
