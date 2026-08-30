@@ -1,5 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.12-FIX
+ * src/main.js - Punto de entrada NEXO v9.9.13-FIX
+ * FIX: ackSystem vinculado EARLY (antes de initPromise) para que receptor siempre tenga fragment handler
  * FIX: Mensaje fantasma — peerReady universal + flush en primera conexion + outbox por nexoId
  * FIX: _doSend captura error y marca failed en UI/vault + marca sent en éxito
  * FIX: seq counter en envío + inserción ordenada en DOM por (timestamp, seq, msgId)
@@ -800,7 +801,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.11-FIX iniciando...');
+console.log('[MAIN] NEXO v9.9.13-FIX iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -1083,6 +1084,18 @@ initBLEInterface();
 } catch (bleInitErr) {
 console.warn('[MAIN] initBLEInterface error:', bleInitErr);
 }
+
+// FIX v9.9.13: Vincular ackSystem EARLY, antes de initPromise, para que receptor siempre tenga fragment handler
+try {
+if (window.NEXO.app && window.NEXO.app.bleInterface) {
+var ackEarly = createAckSystem(window.NEXO.app.bleInterface);
+window.NEXO.app.bleInterface.setAckSystem(ackEarly);
+console.log('[MAIN] BleAckSystem vinculado EARLY');
+}
+} catch (ackEarlyErr) {
+console.warn('[MAIN] AckSystem early vinculo fallo:', ackEarlyErr);
+}
+
 try {
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
 window.Capacitor.Plugins.NexoBLE.addListener('onNotificationOpened', function(event) {
