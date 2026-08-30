@@ -1,5 +1,6 @@
 /**
- * ble_ack.js — Sistema ACK real + fragmentación unificada (chat + archivos) para NEXO v1.3.1-FIX
+ * ble_ack.js — Sistema ACK real + fragmentación unificada + Block ACK emisor (D2)
+ * v1.4.0-D2: Block ACK emisor. Reenvío selectivo de chunks faltantes. Persistencia outgoing en vault.
  * v1.3.1-FIX: Buffer huérfano para chat_chunk cuando chat_meta se pierde en el aire
  * v1.3.0-FIX: Unificación chat/archivos. Mensajes largos usan chat_chunk (mismo mecanismo que file_chunk).
  * v1.2.3-FIX: ackTimeoutMs 6000→10000, dispatch 'sending' en envío y reintento
@@ -8,6 +9,11 @@
  * v1.2.0-ACKFIX: sendReadReceipt + read_receipt support + ACK inmediato
  * v1.1.0: sendFile robusto con batches de 5 chunks + reenvío de batch + progreso
  */
+
+function _normMac(mac) {
+  return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
+}
+
 export class BleAckSystem {
   constructor(bleInterface) {
     this.ble = bleInterface;
@@ -20,9 +26,56 @@ export class BleAckSystem {
     this.chatChunkPayloadSize = 120; // conservador para cualquier MTU
     this.pendingFragments = new Map();
     this.maxFragmentAge = 300000;
-    this.pendingOutgoingFiles = new Map();
+    this.pendingOutgoingFiles = new Map(); // legacy, mantener compat
+    this.pendingOutgoingTransfers = new Map(); // D2: unificado chat+file
+    this.outgoingBlockAckTimeoutMs = 8000;
+    this.blockAckTimers = new Map();
     this._startCleanupInterval();
   }
+
+  // ========== D2: RESUMEN DE TRANSFERENCIAS ROTAS AL INICIAR ==========
+  resumeOutgoingTransfers() {
+    var self = this;
+    if (!window.vaultGetPendingOutgoingTransfers) return;
+    var contacts = (window.vaultLoadContacts && window.vaultLoadContacts()) || [];
+    contacts.forEach(function(contact) {
+      var nx = (contact.nexoId || '').toString().trim();
+      if (!nx) return;
+      window.vaultGetPendingOutgoingTransfers(nx).then(function(list) {
+        if (!list || list.length === 0) return;
+        list.forEach(function(tx) {
+          if (tx.status === 'complete' || tx.status === 'failed') return;
+          console.log('[BleAckSystem] Retomando outgoing transfer:', tx.transferId, tx.type);
+          // Restaurar en memoria
+          var sentArr = (tx.sentMask || '').split('').map(function(c){return c==='1';});
+          var ackArr = (tx.ackMask || '').split('').map(function(c){return c==='1';});
+          self.pendingOutgoingTransfers.set(tx.transferId, {
+            transferId: tx.transferId,
+            deviceId: tx.deviceId,
+            type: tx.type,
+            chunks: tx.chunks || [],
+            total: tx.totalChunks,
+            sentMask: sentArr,
+            ackMask: ackArr,
+            meta: tx.meta || {},
+            contactNexoId: nx,
+            status: tx.status || 'sending',
+            resolve: function(){},
+            reject: function(){},
+            startTime: tx.createdAt,
+            blockAckTimeouts: tx.blockAckTimeouts || 0,
+            legacy: true // marca que no tenemos promise original
+          });
+          // Retomar envío de faltantes
+          setTimeout(function() {
+            self._resendAllMissing(tx.transferId);
+          }, 2000);
+        });
+      }).catch(function(e){});
+    });
+  }
+
+  // ========== ACK SIMPLE (mensajes cortos) ==========
 
   sendWithRetry(deviceId, content, messageId) {
     var self = this;
@@ -137,232 +190,332 @@ export class BleAckSystem {
     }
   }
 
-  // ========== v1.3.0: CHAT CHUNKED (mismo mecanismo que archivos) ==========
+  // ========== D2: OUTGOING TRANSFER UNIFICADO (chat + file) ==========
 
-  sendChunkedMessage(deviceId, content, meta, messageId) {
+  _resolveNexoId(deviceId) {
+    if (!this.ble) return null;
+    var nd = _normMac(deviceId);
+    return this.ble._macToNexoId.get(nd) || null;
+  }
+
+  _resolveDeviceId(nexoId) {
+    if (!this.ble) return null;
+    return this.ble._nexoIdToMac.get(nexoId.toLowerCase().trim()) || null;
+  }
+
+  _startOutgoingTransfer(deviceId, transferId, type, content, meta, chunkSize, batchSize) {
     var self = this;
     return new Promise(function(resolve, reject) {
-      var chunks = self._splitIntoChunks(content, self.chatChunkPayloadSize);
+      var chunks = self._splitIntoChunks(content, chunkSize);
       var total = chunks.length;
-      if (total === 0) { reject(new Error('Mensaje vacio')); return; }
-      if (total === 1) {
-        self.sendWithRetry(deviceId, content, messageId).then(resolve).catch(reject);
+      if (total === 0) { reject(new Error('Contenido vacio')); return; }
+      if (total === 1 && type === 'chat') {
+        self.sendWithRetry(deviceId, content, transferId).then(resolve).catch(reject);
         return;
       }
 
-      var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+      var msgId = transferId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
       var senderId = (self.ble && self.ble.localNexoId) ? self.ble.localNexoId : ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
-      var finalMeta = Object.assign({}, meta || {}, { type: 'chat', fromName: (self.ble && self.ble.localDeviceName) ? self.ble.localDeviceName : 'NEXO' });
-
-      var chatMeta = {
-        v: 1,
-        type: 'chat_meta',
-        msgId: msgId,
-        totalChunks: total,
-        meta: finalMeta,
+      var finalMeta = Object.assign({}, meta || {}, {
+        fromName: (self.ble && self.ble.localDeviceName) ? self.ble.localDeviceName : 'NEXO',
         from: senderId,
         ts: Date.now()
-      };
+      });
 
-      self.sendWithRetry(deviceId, JSON.stringify(chatMeta), 'meta_' + msgId)
-        .then(function() {
-          var batchSize = 3;
-          var currentBatch = 0;
+      var contactNexoId = self._resolveNexoId(deviceId);
+      if (contactNexoId && window.vaultCreateOutgoingTransfer) {
+        window.vaultCreateOutgoingTransfer(contactNexoId, msgId, type, total, chunks, finalMeta, deviceId).catch(function(e){});
+      }
 
-          function sendBatch() {
-            var start = currentBatch * batchSize;
-            if (start >= total) {
-              resolve();
-              return;
-            }
-            var end = Math.min(start + batchSize, total);
-            var batchChunks = [];
-            for (var i = start; i < end; i++) {
-              batchChunks.push({
-                v: 1,
-                type: 'chat_chunk',
-                msgId: msgId,
-                idx: i,
-                total: total,
-                data: chunks[i],
-                from: senderId
-              });
-            }
-
-            var sendPromises = [];
-            var failedIndices = [];
-            for (var j = 0; j < batchChunks.length; j++) {
-              (function(chunkPayload, idx) {
-                sendPromises.push(
-                  self.ble._sendMessageNative(deviceId, JSON.stringify(chunkPayload), msgId + '_' + chunkPayload.idx)
-                    .then(function() { return { ok: true, idx: idx }; })
-                    .catch(function(e) { failedIndices.push(idx); return { ok: false, idx: idx, error: e }; })
-                );
-              })(batchChunks[j], j);
-            }
-
-            Promise.all(sendPromises).then(function(results) {
-              if (failedIndices.length > 0) {
-                setTimeout(function() { sendBatch(); }, 1000);
-                return;
-              }
-              var lastChunk = batchChunks[batchChunks.length - 1];
-              var lastMsgId = msgId + '_' + lastChunk.idx;
-              self.sendWithRetry(deviceId, JSON.stringify(lastChunk), lastMsgId)
-                .then(function() {
-                  currentBatch++;
-                  if (start + batchChunks.length >= total) {
-                    resolve();
-                  } else {
-                    setTimeout(function() { sendBatch(); }, 100);
-                  }
-                })
-                .catch(function(err) {
-                  setTimeout(function() { sendBatch(); }, 1000);
-                });
-            });
-          }
-          sendBatch();
-        })
-        .catch(function(err) {
-          reject(err);
-        });
-    });
-  }
-
-  // ========== v1.1.0: ENVÍO DE ARCHIVOS ROBUSTO ==========
-
-  sendFile(deviceId, fileId, base64Data, meta) {
-    var self = this;
-    return new Promise(function(resolve, reject) {
-      var chunks = self._splitIntoChunks(base64Data, self.chunkSize);
-      var total = chunks.length;
-      if (total === 0) { reject(new Error('Archivo vacio')); return; }
-
-      var senderId = (self.ble && self.ble.localNexoId) ? self.ble.localNexoId : ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
-
-      self.pendingOutgoingFiles.set(fileId, {
+      var tx = {
+        transferId: msgId,
         deviceId: deviceId,
+        type: type,
         chunks: chunks,
         total: total,
-        sent: 0,
-        meta: Object.assign({}, meta || {}, { fromName: (self.ble && self.ble.localDeviceName) ? self.ble.localDeviceName : 'NEXO' }),
+        sentMask: new Array(total).fill(false),
+        ackMask: new Array(total).fill(false),
+        meta: finalMeta,
+        contactNexoId: contactNexoId,
         senderId: senderId,
-        startTime: Date.now()
-      });
+        status: 'sending',
+        resolve: resolve,
+        reject: reject,
+        startTime: Date.now(),
+        blockAckTimeouts: 0,
+        blockAckTimer: null,
+        legacy: false
+      };
+      self.pendingOutgoingTransfers.set(msgId, tx);
+      if (type === 'file') self.pendingOutgoingFiles.set(msgId, { deviceId: deviceId, chunks: chunks, total: total, sent: 0, meta: finalMeta, senderId: senderId, startTime: Date.now() });
 
-      var fileMeta = {
-        v: 1,
-        type: 'file_meta',
-        fileId: fileId,
-        totalChunks: total,
-        meta: Object.assign({}, meta || {}, { fromName: (self.ble && self.ble.localDeviceName) ? self.ble.localDeviceName : 'NEXO' }),
-        from: senderId,
-        ts: Date.now()
+      var metaPayload = type === 'chat' ? {
+        v: 1, type: 'chat_meta', msgId: msgId, totalChunks: total, meta: finalMeta, from: senderId, ts: Date.now()
+      } : {
+        v: 1, type: 'file_meta', fileId: msgId, totalChunks: total, meta: finalMeta, from: senderId, ts: Date.now()
       };
 
-      self.sendWithRetry(deviceId, JSON.stringify(fileMeta), 'meta_' + fileId)
+      self.sendWithRetry(deviceId, JSON.stringify(metaPayload), 'meta_' + msgId)
         .then(function() {
-          self._dispatchFileProgress(fileId, 0, total, 'sending');
-          var batchSize = 5;
-          var currentBatch = 0;
-
-          function sendBatch() {
-            var start = currentBatch * batchSize;
-            if (start >= total) {
-              self.pendingOutgoingFiles.delete(fileId);
-              self._dispatchFileProgress(fileId, total, total, 'sent');
-              resolve();
-              return;
-            }
-            var end = Math.min(start + batchSize, total);
-            var batchChunks = [];
-            for (var i = start; i < end; i++) {
-              batchChunks.push({
-                v: 1,
-                type: 'file_chunk',
-                fileId: fileId,
-                idx: i,
-                total: total,
-                data: chunks[i],
-                from: senderId
-              });
-            }
-
-            var sendPromises = [];
-            var failedIndices = [];
-            for (var j = 0; j < batchChunks.length; j++) {
-              (function(chunkPayload, idx) {
-                sendPromises.push(
-                  self.ble._sendMessageNative(deviceId, JSON.stringify(chunkPayload), fileId + '_' + chunkPayload.idx)
-                    .then(function() { return { ok: true, idx: idx }; })
-                    .catch(function(e) { failedIndices.push(idx); return { ok: false, idx: idx, error: e }; })
-                );
-              })(batchChunks[j], j);
-            }
-
-            Promise.all(sendPromises).then(function(results) {
-              if (failedIndices.length > 0 && failedIndices.length < batchChunks.length) {
-                console.warn('[BleAckSystem] Reintentando chunks fallidos del batch:', failedIndices);
-                var retryPromises = [];
-                for (var r = 0; r < failedIndices.length; r++) {
-                  var rpIdx = failedIndices[r];
-                  var rpChunk = batchChunks[rpIdx];
-                  retryPromises.push(
-                    self.ble._sendMessageNative(deviceId, JSON.stringify(rpChunk), fileId + '_' + rpChunk.idx)
-                      .catch(function(e) { return { ok: false, error: e }; })
-                  );
-                }
-                Promise.all(retryPromises).then(function(retryResults) {
-                  var stillFailed = retryResults.some(function(r) { return !r.ok; });
-                  if (stillFailed) {
-                    setTimeout(function() { sendBatch(); }, 1000);
-                    return;
-                  }
-                  self._finishBatch(deviceId, fileId, batchChunks, currentBatch, total, start, end, batchSize, senderId, sendBatch, resolve);
-                });
-                return;
-              }
-              if (failedIndices.length === batchChunks.length) {
-                console.warn('[BleAckSystem] Batch completo fallo, reintentando batch', currentBatch);
-                setTimeout(function() { sendBatch(); }, 1000);
-                return;
-              }
-              self._finishBatch(deviceId, fileId, batchChunks, currentBatch, total, start, end, batchSize, senderId, sendBatch, resolve);
-            });
-          }
-
-          sendBatch();
+          self._dispatchFileProgress(msgId, 0, total, 'sending', 0);
+          self._sendNextBatch(msgId);
         })
         .catch(function(err) {
-          self.pendingOutgoingFiles.delete(fileId);
-          self._dispatchFileProgress(fileId, 0, total, 'failed');
+          self.pendingOutgoingTransfers.delete(msgId);
+          self.pendingOutgoingFiles.delete(msgId);
+          if (contactNexoId && window.vaultSetOutgoingStatus) {
+            window.vaultSetOutgoingStatus(contactNexoId, msgId, 'failed').catch(function(){});
+          }
           reject(err);
         });
     });
   }
 
-  _finishBatch(deviceId, fileId, batchChunks, currentBatch, total, start, end, batchSize, senderId, sendBatch, resolve) {
+  _sendNextBatch(transferId) {
     var self = this;
-    var lastChunk = batchChunks[batchChunks.length - 1];
-    var lastMsgId = fileId + '_' + lastChunk.idx;
-    self.sendWithRetry(deviceId, JSON.stringify(lastChunk), lastMsgId)
-      .then(function() {
-        currentBatch++;
-        var sentCount = Math.min(currentBatch * batchSize, total);
-        var progress = Math.floor((sentCount / total) * 100);
-        self._dispatchFileProgress(fileId, sentCount, total, 'sending', progress);
-        var track = self.pendingOutgoingFiles.get(fileId);
-        if (track) track.sent = sentCount;
-        setTimeout(function() { sendBatch(); }, 50);
-      })
-      .catch(function(err) {
-        console.warn('[BleAckSystem] ACK batch no recibido, reintentando batch', currentBatch);
-        setTimeout(function() { sendBatch(); }, 1000);
+    var tx = self.pendingOutgoingTransfers.get(transferId);
+    if (!tx || tx.status === 'complete') return;
+
+    var batchSize = tx.type === 'chat' ? 3 : 5;
+    var start = -1;
+    for (var i = 0; i < tx.total; i++) {
+      if (!tx.sentMask[i]) { start = i; break; }
+    }
+    if (start === -1) {
+      // Todos enviados al menos una vez, esperar block_ack final
+      self._startBlockAckTimer(transferId, true);
+      return;
+    }
+
+    var end = Math.min(start + batchSize, tx.total);
+    var indicesToSend = [];
+    for (var i = start; i < end; i++) {
+      if (!tx.sentMask[i]) {
+        tx.sentMask[i] = true;
+        indicesToSend.push(i);
+      }
+    }
+    self._persistOutgoingMask(tx);
+
+    var sendOne = function(idx) {
+      var payload = tx.type === 'chat' ? {
+        v: 1, type: 'chat_chunk', msgId: transferId, idx: idx, total: tx.total,
+        data: tx.chunks[idx], from: tx.senderId
+      } : {
+        v: 1, type: 'file_chunk', fileId: transferId, idx: idx, total: tx.total,
+        data: tx.chunks[idx], from: tx.senderId
+      };
+      return self.ble._sendMessageNative(tx.deviceId, JSON.stringify(payload), transferId + '_' + idx);
+    };
+
+    var p = indicesToSend.map(function(idx) { return sendOne(idx); });
+    Promise.all(p).then(function() {
+      tx.lastBatchEnd = end - 1;
+      self._startBlockAckTimer(transferId, false);
+      if (end < tx.total) {
+        setTimeout(function() { self._sendNextBatch(transferId); }, 100);
+      } else {
+        self._startBlockAckTimer(transferId, true);
+      }
+    }).catch(function(err) {
+      // Revertir sentMask para reintento
+      indicesToSend.forEach(function(idx) { tx.sentMask[idx] = false; });
+      self._persistOutgoingMask(tx);
+      setTimeout(function() { self._sendNextBatch(transferId); }, 1000);
+    });
+  }
+
+  _startBlockAckTimer(transferId, isFinal) {
+    var self = this;
+    var tx = self.pendingOutgoingTransfers.get(transferId);
+    if (!tx) return;
+    if (tx.blockAckTimer) clearTimeout(tx.blockAckTimer);
+    var timeout = isFinal ? 10000 : 6000;
+    tx.blockAckTimer = setTimeout(function() {
+      self._onBlockAckTimeout(transferId);
+    }, timeout);
+  }
+
+  _onBlockAckTimeout(transferId) {
+    var self = this;
+    var tx = self.pendingOutgoingTransfers.get(transferId);
+    if (!tx) return;
+
+    var allAcked = tx.ackMask.every(function(v) { return v; });
+    if (allAcked) {
+      self._completeOutgoingTransfer(transferId);
+      return;
+    }
+
+    tx.blockAckTimeouts = (tx.blockAckTimeouts || 0) + 1;
+
+    // Fallback legacy: si el receptor no entiende block_ack (D0/D1), tras 3 timeouts resolver
+    if (tx.blockAckTimeouts >= 3) {
+      console.warn('[BleAckSystem] Receptor sin block_ack (legacy). Resolviendo transfer:', transferId);
+      self._completeOutgoingTransfer(transferId);
+      return;
+    }
+
+    if (tx.contactNexoId && window.vaultIncrementOutgoingTimeout) {
+      window.vaultIncrementOutgoingTimeout(tx.contactNexoId, transferId).catch(function(){});
+    }
+
+    // Reenviar todos los chunks no acked (no solo el último batch)
+    var missing = [];
+    for (var i = 0; i < tx.total; i++) {
+      if (!tx.ackMask[i]) missing.push(i);
+    }
+
+    if (missing.length === 0) {
+      self._completeOutgoingTransfer(transferId);
+      return;
+    }
+
+    console.log('[BleAckSystem] Block ACK timeout #' + tx.blockAckTimeouts + ', reenviando ' + missing.length + ' chunks:', transferId);
+    self._sendMissingChunks(transferId, missing);
+  }
+
+  _sendMissingChunks(transferId, indices) {
+    var self = this;
+    var tx = self.pendingOutgoingTransfers.get(transferId);
+    if (!tx) return;
+    var batchSize = 3;
+    var current = 0;
+
+    function sendNext() {
+      if (current >= indices.length) {
+        self._startBlockAckTimer(transferId, true);
+        return;
+      }
+      var batch = indices.slice(current, current + batchSize);
+      var promises = batch.map(function(idx) {
+        tx.sentMask[idx] = true;
+        var payload = tx.type === 'chat' ? {
+          v: 1, type: 'chat_chunk', msgId: transferId, idx: idx, total: tx.total,
+          data: tx.chunks[idx], from: tx.senderId
+        } : {
+          v: 1, type: 'file_chunk', fileId: transferId, idx: idx, total: tx.total,
+          data: tx.chunks[idx], from: tx.senderId
+        };
+        return self.ble._sendMessageNative(tx.deviceId, JSON.stringify(payload), transferId + '_' + idx);
       });
+      self._persistOutgoingMask(tx);
+      Promise.all(promises).then(function() {
+        current += batchSize;
+        setTimeout(sendNext, 50);
+      }).catch(function() {
+        setTimeout(sendNext, 500);
+      });
+    }
+    sendNext();
+  }
+
+  _resendAllMissing(transferId) {
+    var tx = this.pendingOutgoingTransfers.get(transferId);
+    if (!tx) return;
+    var missing = [];
+    for (var i = 0; i < tx.total; i++) {
+      if (!tx.ackMask[i]) missing.push(i);
+    }
+    if (missing.length > 0) this._sendMissingChunks(transferId, missing);
+    else this._completeOutgoingTransfer(transferId);
+  }
+
+  _processBlockAck(msg) {
+    var self = this;
+    var transferId = msg.transferId;
+    var tx = self.pendingOutgoingTransfers.get(transferId);
+    if (!tx) {
+      console.log('[BleAckSystem] Block ACK para transfer desconocida o ya completada:', transferId);
+      return;
+    }
+
+    var mask = msg.receivedMask || '';
+    var count = msg.receivedCount || 0;
+
+    // Actualizar ackMask
+    for (var i = 0; i < Math.min(mask.length, tx.total); i++) {
+      tx.ackMask[i] = mask.charAt(i) === '1';
+    }
+    self._persistOutgoingMask(tx);
+
+    if (tx.blockAckTimer) {
+      clearTimeout(tx.blockAckTimer);
+      tx.blockAckTimer = null;
+    }
+
+    if (count >= tx.total || tx.ackMask.every(function(v){return v;})) {
+      console.log('[BleAckSystem] Block ACK completo para', transferId);
+      self._completeOutgoingTransfer(transferId);
+      return;
+    }
+
+    console.log('[BleAckSystem] Block ACK parcial:', count + '/' + tx.total, 'faltan', tx.total - count);
+
+    // Reenviar faltantes inmediatamente
+    var missing = [];
+    for (var i = 0; i < tx.total; i++) {
+      if (!tx.ackMask[i]) missing.push(i);
+    }
+    if (missing.length > 0) {
+      // Reset sentMask: solo los acked cuentan como "no necesitan reenvío"
+      for (var i = 0; i < tx.total; i++) {
+        if (!tx.ackMask[i]) tx.sentMask[i] = false;
+      }
+      self._persistOutgoingMask(tx);
+      self._sendMissingChunks(transferId, missing);
+    }
+  }
+
+  _completeOutgoingTransfer(transferId) {
+    var self = this;
+    var tx = self.pendingOutgoingTransfers.get(transferId);
+    if (!tx) return;
+
+    if (tx.blockAckTimer) clearTimeout(tx.blockAckTimer);
+    tx.status = 'complete';
+    self.pendingOutgoingTransfers.delete(transferId);
+    self.pendingOutgoingFiles.delete(transferId);
+
+    if (tx.contactNexoId && window.vaultRemoveOutgoingTransfer) {
+      window.vaultRemoveOutgoingTransfer(tx.contactNexoId, transferId).catch(function(){});
+    }
+
+    if (tx.type === 'file') {
+      self._dispatchFileProgress(transferId, tx.total, tx.total, 'sent', 100);
+    }
+
+    if (!tx.legacy) {
+      tx.resolve();
+      self._dispatchStatus(transferId, 'delivered');
+    }
+  }
+
+  _persistOutgoingMask(tx) {
+    if (!tx.contactNexoId || !window.vaultSetOutgoingChunkAcked) return;
+    var sentStr = tx.sentMask.map(function(v){return v?'1':'0';}).join('');
+    var ackStr = tx.ackMask.map(function(v){return v?'1':'0';}).join('');
+    window.vaultSetOutgoingChunkAcked(tx.contactNexoId, tx.transferId, sentStr, ackStr).catch(function(e){});
+  }
+
+  // ========== API PÚBLICA: CHAT CHUNKED ==========
+
+  sendChunkedMessage(deviceId, content, meta, messageId) {
+    return this._startOutgoingTransfer(deviceId, messageId, 'chat', content, meta, this.chatChunkPayloadSize, 3);
+  }
+
+  // ========== API PÚBLICA: ENVÍO DE ARCHIVOS ==========
+
+  sendFile(deviceId, fileId, base64Data, meta) {
+    return this._startOutgoingTransfer(deviceId, fileId, 'file', base64Data, meta, this.chunkSize, 5);
   }
 
   cancelFileSend(fileId) {
+    var tx = this.pendingOutgoingTransfers.get(fileId);
+    if (tx && tx.contactNexoId && window.vaultSetOutgoingStatus) {
+      window.vaultSetOutgoingStatus(tx.contactNexoId, fileId, 'cancelled').catch(function(){});
+    }
+    this.pendingOutgoingTransfers.delete(fileId);
     this.pendingOutgoingFiles.delete(fileId);
     this._dispatchFileProgress(fileId, 0, 0, 'cancelled');
   }
@@ -375,11 +528,19 @@ export class BleAckSystem {
     return chunks;
   }
 
+  // ========== RECEPTOR (sin cambios salvo block_ack) ==========
+
   processIncomingFragment(dataObj) {
     try {
       var deviceId = dataObj.deviceId;
       var content = dataObj.content;
       var msg = JSON.parse(content);
+
+      // D2: Block ACK desde el receptor
+      if (msg.type === 'block_ack') {
+        this._processBlockAck(msg);
+        return true;
+      }
 
       if (msg.type === 'chat_meta') {
         this.pendingFragments.set(msg.msgId, {
@@ -396,7 +557,6 @@ export class BleAckSystem {
 
       if (msg.type === 'chat_chunk') {
         var buf = this.pendingFragments.get(msg.msgId);
-        // FIX v1.3.1: Crear buffer huérfano si el chat_meta se perdió en el aire
         if (!buf) {
           this.pendingFragments.set(msg.msgId, {
             chunks: new Map(),
@@ -572,6 +732,16 @@ export class BleAckSystem {
       self.pendingOutgoingFiles.forEach(function(track, fileId) {
         if (now - track.startTime > self.maxFragmentAge) {
           self.pendingOutgoingFiles.delete(fileId);
+        }
+      });
+      self.pendingOutgoingTransfers.forEach(function(tx, id) {
+        if (now - tx.startTime > self.maxFragmentAge * 2) {
+          if (tx.blockAckTimer) clearTimeout(tx.blockAckTimer);
+          self.pendingOutgoingTransfers.delete(id);
+          if (tx.contactNexoId && window.vaultSetOutgoingStatus) {
+            window.vaultSetOutgoingStatus(tx.contactNexoId, id, 'failed').catch(function(){});
+          }
+          if (!tx.legacy) tx.reject(new Error('Timeout global transferencia'));
         }
       });
     }, 30000);
