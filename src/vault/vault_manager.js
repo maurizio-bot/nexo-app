@@ -1,13 +1,15 @@
 /**
- * vault_manager.js v2.1.2-FIX
+ * vault_manager.js v2.2.0-D1
+ * D1: Vault Transfer Layer — persistencia de chunks para mensajes largos y archivos
  * FIX: Campo seq en mensajes + ordenación por (timestamp, seq, msgId)
  * FIX: LRU cache para _msgCache (límite 20 contactos, evita leak de memoria)
  * FIX: Nunca persistir JSONs de protocolo (chat_meta, chat_chunk, file_meta, file_chunk, file_resume)
- * Base: v2.1.1-FIX
+ * Base: v2.1.2-FIX
  */
 
 var VAULT_CONTACTS_FILE = 'nexo_vault_contacts.json';
 var VAULT_MESSAGES_PREFIX = 'nexo_vault_msgs_v2_';
+var VAULT_TRANSFERS_PREFIX = 'nexo_vault_transfers_v2_';
 var _vaultContacts = [];
 var _vaultInitDone = false;
 
@@ -37,6 +39,7 @@ function _createLRU(maxSize) {
   };
 }
 var _msgCache = _createLRU(20);
+var _transferCache = _createLRU(20);
 
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
@@ -319,3 +322,217 @@ export async function vaultGetPendingMessages(contactNexoId) {
   return pending;
 }
 // === FIN FIX OFFLINE ===
+
+// ========== D1: VAULT TRANSFER LAYER (chunks persistentes) ==========
+
+function _transferFileName(contactNexoId) {
+  return VAULT_TRANSFERS_PREFIX + _normId(contactNexoId) + '.json';
+}
+
+async function _loadTransfers(contactNexoId) {
+  if (!contactNexoId) return [];
+  var cid = _normId(contactNexoId);
+  var cached = _transferCache.get(cid);
+  if (cached !== undefined) return cached.slice();
+  var plugin = _nativePlugin();
+  if (!plugin) return [];
+  try {
+    var result = await _safeNativeCall(plugin, 'loadFromFile', { filename: _transferFileName(cid) });
+    if (result && result.exists && result.content) {
+      var data = JSON.parse(result.content);
+      var transfers = Array.isArray(data.transfers) ? data.transfers : [];
+      _transferCache.set(cid, transfers.slice());
+      return transfers;
+    }
+  } catch (e) {}
+  return [];
+}
+
+function _persistTransfers(contactNexoId, transfers) {
+  var plugin = _nativePlugin();
+  if (!plugin) return;
+  var cid = _normId(contactNexoId);
+  var toSave = transfers.slice(-100); // máx 100 transferencias por contacto
+  _transferCache.set(cid, toSave.slice());
+  _safeNativeCall(plugin, 'saveToFile', {
+    filename: _transferFileName(cid),
+    content: JSON.stringify({ transfers: toSave, savedAt: Date.now() })
+  }).catch(function(e) {});
+}
+
+/**
+ * Crea una nueva transferencia (chat o file). Si ya existe, devuelve la existente.
+ * type: 'chat' | 'file'
+ * totalChunks: número total de chunks esperados
+ * meta: objeto con metadata (fromName, from, ts, seq, fileName, mimeType, etc.)
+ */
+export async function vaultCreateTransfer(contactNexoId, transferId, type, totalChunks, meta) {
+  if (!contactNexoId || !transferId || !type || !totalChunks) return null;
+  var cid = _normId(contactNexoId);
+  var transfers = await _loadTransfers(cid);
+  var existing = transfers.find(function(t) { return t.transferId === transferId; });
+  if (existing) return existing;
+  var now = Date.now();
+  var maskArr = [];
+  for (var i = 0; i < totalChunks; i++) maskArr.push('0');
+  var transfer = {
+    transferId: transferId,
+    type: type,
+    status: 'receiving',
+    totalChunks: totalChunks,
+    receivedChunks: 0,
+    receivedMask: maskArr.join(''),
+    chunks: [],
+    meta: meta || {},
+    senderNexoId: (meta && meta.senderNexoId) ? meta.senderNexoId : ((meta && meta.from) ? meta.from : ''),
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: now + 86400000 // 24h
+  };
+  transfers.push(transfer);
+  _persistTransfers(cid, transfers);
+  return transfer;
+}
+
+/**
+ * Añade un chunk a una transferencia existente. Devuelve true si se guardó.
+ */
+export async function vaultAppendChunk(contactNexoId, transferId, index, data) {
+  if (!contactNexoId || !transferId || typeof index !== 'number' || data === undefined || data === null) return false;
+  var cid = _normId(contactNexoId);
+  var transfers = await _loadTransfers(cid);
+  var t = transfers.find(function(tr) { return tr.transferId === transferId; });
+  if (!t) return false;
+  var already = t.chunks.some(function(c) { return c.idx === index; });
+  if (already) return true;
+  t.chunks.push({ idx: index, data: String(data) });
+  t.receivedChunks++;
+  var maskArr = t.receivedMask.split('');
+  if (index >= 0 && index < maskArr.length) maskArr[index] = '1';
+  t.receivedMask = maskArr.join('');
+  t.updatedAt = Date.now();
+  if (t.receivedChunks >= t.totalChunks) t.status = 'complete';
+  _persistTransfers(cid, transfers);
+  return true;
+}
+
+/**
+ * Devuelve una transferencia completa o null.
+ */
+export async function vaultGetTransfer(contactNexoId, transferId) {
+  if (!contactNexoId || !transferId) return null;
+  var cid = _normId(contactNexoId);
+  var transfers = await _loadTransfers(cid);
+  var t = transfers.find(function(tr) { return tr.transferId === transferId; });
+  return t || null;
+}
+
+/**
+ * Devuelve todas las transferencias incompletas de un contacto.
+ */
+export async function vaultGetIncompleteTransfers(contactNexoId) {
+  if (!contactNexoId) return [];
+  var cid = _normId(contactNexoId);
+  var transfers = await _loadTransfers(cid);
+  return transfers.filter(function(t) { return t.status !== 'complete'; });
+}
+
+/**
+ * Devuelve TODAS las transferencias (para debug o sync handshake).
+ */
+export async function vaultGetAllTransfers(contactNexoId) {
+  if (!contactNexoId) return [];
+  return _loadTransfers(_normId(contactNexoId));
+}
+
+/**
+ * Ensambla una transferencia completa, la mueve al historial de mensajes y borra la transferencia.
+ * Devuelve el mensaje ensamblado o null si no está completa.
+ */
+export async function vaultCompleteTransfer(contactNexoId, transferId) {
+  if (!contactNexoId || !transferId) return null;
+  var cid = _normId(contactNexoId);
+  var transfers = await _loadTransfers(cid);
+  var idx = transfers.findIndex(function(t) { return t.transferId === transferId; });
+  if (idx < 0) return null;
+  var t = transfers[idx];
+  if (t.status !== 'complete' && t.receivedChunks < t.totalChunks) {
+    console.warn('[VaultManager] CompleteTransfer: incompleta', transferId, t.receivedChunks + '/' + t.totalChunks);
+    return null;
+  }
+  // Ordenar chunks por índice
+  t.chunks.sort(function(a, b) { return a.idx - b.idx; });
+  var assembled = '';
+  for (var i = 0; i < t.chunks.length; i++) {
+    assembled += t.chunks[i].data || '';
+  }
+  var msg = {
+    msgId: t.transferId,
+    messageId: t.transferId,
+    text: assembled,
+    content: assembled,
+    senderNexoId: t.senderNexoId || (t.meta && t.meta.from) || '',
+    senderName: (t.meta && t.meta.fromName) || (t.meta && t.meta.senderName) || 'NEXO',
+    timestamp: (t.meta && t.meta.ts) ? t.meta.ts : t.createdAt,
+    seq: (t.meta && typeof t.meta.seq === 'number') ? t.meta.seq : 0,
+    status: 'delivered',
+    _own: false,
+    type: t.type === 'file' ? 'file' : 'text',
+    attachmentType: null,
+    attachmentPayload: null,
+    attachmentMeta: null
+  };
+  if (t.type === 'file') {
+    msg.attachmentPayload = assembled;
+    msg.text = '[Archivo]';
+    msg.content = '[Archivo]';
+    msg.attachmentMeta = {
+      fileName: (t.meta && t.meta.fileName) ? t.meta.fileName : 'archivo',
+      mimeType: (t.meta && t.meta.mimeType) ? t.meta.mimeType : 'application/octet-stream',
+      totalSize: (t.meta && t.meta.totalSize) ? t.meta.totalSize : assembled.length,
+      checksum: (t.meta && t.meta.checksum) ? t.meta.checksum : ''
+    };
+  }
+  // Guardar en historial permanente
+  await vaultAppendMessage(contactNexoId, msg);
+  // Eliminar transferencia
+  transfers.splice(idx, 1);
+  _persistTransfers(cid, transfers);
+  console.log('[VaultManager] Transferencia completada y movida al historial:', transferId);
+  return msg;
+}
+
+/**
+ * Cancela y elimina una transferencia del vault.
+ */
+export async function vaultCancelTransfer(contactNexoId, transferId) {
+  if (!contactNexoId || !transferId) return false;
+  var cid = _normId(contactNexoId);
+  var transfers = await _loadTransfers(cid);
+  var idx = transfers.findIndex(function(t) { return t.transferId === transferId; });
+  if (idx < 0) return false;
+  transfers.splice(idx, 1);
+  _persistTransfers(cid, transfers);
+  return true;
+}
+
+/**
+ * Limpia transferencias viejas o expiradas. Devuelve cuántas borró.
+ * maxAgeMs: edad máxima desde updatedAt (default 24h)
+ */
+export async function vaultCleanupTransfers(contactNexoId, maxAgeMs) {
+  if (!contactNexoId) return 0;
+  var cid = _normId(contactNexoId);
+  var transfers = await _loadTransfers(cid);
+  var now = Date.now();
+  var limit = maxAgeMs || 86400000;
+  var before = transfers.length;
+  transfers = transfers.filter(function(t) {
+    var age = now - (t.updatedAt || t.createdAt || 0);
+    var expired = t.expiresAt && t.expiresAt < now;
+    return age < limit && !expired;
+  });
+  var removed = before - transfers.length;
+  if (removed > 0) _persistTransfers(cid, transfers);
+  return removed;
+}
