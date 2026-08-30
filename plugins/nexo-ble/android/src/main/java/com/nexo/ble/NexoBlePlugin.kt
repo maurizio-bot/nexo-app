@@ -167,12 +167,13 @@ class NexoBlePlugin : Plugin() {
                 .put("timestamp", System.currentTimeMillis())
                 .put("reassembled", true)
             )
-            val ctx = activity.applicationContext
-            val broadcastIntent = Intent("com.nexo.ble.MESSAGE_RECEIVED").apply {
-                putExtra("deviceId", deviceId)
-                putExtra("content", completeMessage)
-            }
-            ctx.sendBroadcast(broadcastIntent)
+            // FIX vFIX-2: Eliminado broadcast duplicado. notifyListeners directo es suficiente.
+            // val ctx = activity.applicationContext
+            // val broadcastIntent = Intent("com.nexo.ble.MESSAGE_RECEIVED").apply {
+            //     putExtra("deviceId", deviceId)
+            //     putExtra("content", completeMessage)
+            // }
+            // ctx.sendBroadcast(broadcastIntent)
         } else {
             val timeoutRunnable = Runnable {
                 remLog("WARN", "REASSEMBLY", "Timeout reensamblaje para $macNorm, descartando buffer")
@@ -1661,6 +1662,9 @@ class NexoBlePlugin : Plugin() {
         messageReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 when (intent.action) {
+                    // FIX vFIX-2: Eliminada re-emisión duplicada de onPayloadReceived via broadcast.
+                    // El notifyListeners directo en processReceivedChunk ya cubre esto.
+                    /*
                     NexoBleSpec.ACTION_BLE_MESSAGE_RECEIVED -> {
                         val msg = intent.getStringExtra(NexoBleSpec.EXTRA_MESSAGE_DATA) ?: ""
                         val device = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
@@ -1672,6 +1676,7 @@ class NexoBlePlugin : Plugin() {
                             .put("timestamp", System.currentTimeMillis())
                         )
                     }
+                    */
                     NexoBleSpec.ACTION_BLE_DEVICE_CONNECTED -> {
                         val addr = intent.getStringExtra(NexoBleSpec.EXTRA_DEVICE_ADDRESS) ?: ""
                         notifyListeners("onDeviceConnected", JSObject()
