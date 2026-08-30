@@ -1,5 +1,6 @@
 /**
- * ble_ack.js — Sistema ACK real + fragmentación unificada (chat + archivos) para NEXO v1.3.0-FIX
+ * ble_ack.js — Sistema ACK real + fragmentación unificada (chat + archivos) para NEXO v1.3.1-FIX
+ * v1.3.1-FIX: Buffer huérfano para chat_chunk cuando chat_meta se pierde en el aire
  * v1.3.0-FIX: Unificación chat/archivos. Mensajes largos usan chat_chunk (mismo mecanismo que file_chunk).
  * v1.2.3-FIX: ackTimeoutMs 6000→10000, dispatch 'sending' en envío y reintento
  * v1.2.2-FIX: Reintento de batch reenvía solo chunks fallidos (no todo el batch)
@@ -395,8 +396,17 @@ export class BleAckSystem {
 
       if (msg.type === 'chat_chunk') {
         var buf = this.pendingFragments.get(msg.msgId);
+        // FIX v1.3.1: Crear buffer huérfano si el chat_meta se perdió en el aire
         if (!buf) {
-          return true;
+          this.pendingFragments.set(msg.msgId, {
+            chunks: new Map(),
+            total: msg.total,
+            received: 0,
+            meta: { fromName: 'NEXO', from: msg.from || 'unknown' },
+            lastActivity: Date.now(),
+            isChat: true
+          });
+          buf = this.pendingFragments.get(msg.msgId);
         }
         if (!buf.chunks.has(msg.idx)) {
           buf.chunks.set(msg.idx, msg.data);
