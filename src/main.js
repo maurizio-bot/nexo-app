@@ -1,5 +1,5 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.11-FIX
+ * src/main.js - Punto de entrada NEXO v9.9.12-FIX
  * FIX: Mensaje fantasma — peerReady universal + flush en primera conexion + outbox por nexoId
  * FIX: _doSend captura error y marca failed en UI/vault + marca sent en éxito
  * FIX: seq counter en envío + inserción ordenada en DOM por (timestamp, seq, msgId)
@@ -1209,11 +1209,13 @@ msgId: msgId,
 messageId: msgId,
 content: text,
 _own: true,
-status: 'pending',
+status: 'sending',
 timestamp: Date.now(),
 seq: seq
 };
 _renderMessage(vaultMsg);
+_updateMessageStatus(msgId, 'sending');
+_updateMessageStorageStatus(msgId, 'sending');
 try {
 await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId, seq: seq });
 _updateMessageStatus(msgId, 'sent');
