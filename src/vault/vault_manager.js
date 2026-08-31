@@ -212,7 +212,7 @@ export async function vaultLoadMessages(contactNexoId) {
         if (seqA !== seqB) return seqA - seqB;
         var idA = a.msgId || '';
         var idB = b.msgId || '';
-n        return idA.localeCompare(idB);
+        return idA.localeCompare(idB);
       });
       _msgCache.set(cid, msgs.slice());
       return msgs;
