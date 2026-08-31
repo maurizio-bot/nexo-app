@@ -1,7 +1,8 @@
 /**
- * BLE Interface v6.0.0-TURBO
- * TURBO: Session sync al conectar (ss/sr), routing NACK/ACK compacto
- * FIX: v5.3.13-FIX heredado (isControl, dedup peer:ready, server-first, etc.)
+ * BLE Interface v6.0.1-TURBO-FIX
+ * FIX: _resendPendingMessages usa chunking para textos >180 chars
+ * FIX: sendChatMessage pasa msgSeq a sendChunkedMessage
+ * Base: v6.0.0-TURBO
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -383,7 +384,7 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();
-    console.log('[BLEInterface] v6.0.0-TURBO iniciado');
+    console.log('[BLEInterface] v6.0.1-TURBO-FIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -1088,14 +1089,15 @@ export class BLEInterface {
           console.log('[BLEInterface] sendChatMessage: stale/zombie, forzando reconnect');
           self._forceDisconnectAndReconnect(deviceId);
           var queue = self._pendingMessageQueue.get(deviceId) || [];
-          queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject });
+n          queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject });
           self._pendingMessageQueue.set(deviceId, queue);
           return;
         }
         function doSend() {
           var isLong = content.length > 180;
           if (isLong && self.ackSystem && typeof self.ackSystem.sendChunkedMessage === 'function') {
-            self.ackSystem.sendChunkedMessage(deviceId, content, {}, msgId)
+            // FIX v6.0.1: Pasar msgSeq a sendChunkedMessage
+            self.ackSystem.sendChunkedMessage(deviceId, content, {}, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
               .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
             return;
@@ -1212,6 +1214,8 @@ export class BLEInterface {
       } catch (fatalErr) { console.error('[BLEInterface] FATAL openChat:', fatalErr); reject(fatalErr); }
     });
   }
+
+  // FIX v6.0.1: _resendPendingMessages usa chunking para textos largos
   _resendPendingMessages(nexoId) {
     var self = this;
     if (!nexoId) return;
@@ -1231,16 +1235,27 @@ export class BLEInterface {
         if (!mid) { sendNext(); return; }
         _vaultUpdateMessageStatus(nexoId, mid, 'sending');
         try { window.NEXO_updateMessageStatus && window.NEXO_updateMessageStatus(mid, 'sending'); } catch(e) {}
-        var doSend = function() {
-          if (self.ackSystem) return self.ackSystem.sendWithRetry(deviceId, msg.content || msg.text || '', mid);
-          else return self._sendMessageNative(deviceId, msg.content || msg.text || '', mid);
-        };
+
+        var txt = msg.content || msg.text || '';
+        var doSend;
+        // FIX v6.0.1: Mensajes largos usan chunking en reenvío
+        if (txt.length > 180 && self.ackSystem && typeof self.ackSystem.sendChunkedMessage === 'function') {
+          doSend = function() {
+            return self.ackSystem.sendChunkedMessage(deviceId, txt, {}, mid, msg.seq);
+          };
+        } else if (self.ackSystem) {
+          doSend = function() { return self.ackSystem.sendWithRetry(deviceId, txt, mid); };
+        } else {
+          doSend = function() { return self._sendMessageNative(deviceId, txt, mid); };
+        }
+
         doSend().then(function() { console.log('[BLEInterface] Pending OK:', mid); _vaultUpdateMessageStatus(nexoId, mid, 'sent'); sendNext(); })
           .catch(function(e) { console.warn('[BLEInterface] Pending fallo:', mid, e.message); sendNext(); });
       }
       sendNext();
     }).catch(function(e) { console.warn('[BLEInterface] Error cargando pending:', e.message); });
   }
+
   _initVisibility() {
     var self = this;
     if (self.isDummyMode) return Promise.resolve();
