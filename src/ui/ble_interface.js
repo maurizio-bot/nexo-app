@@ -1089,7 +1089,7 @@ export class BLEInterface {
           console.log('[BLEInterface] sendChatMessage: stale/zombie, forzando reconnect');
           self._forceDisconnectAndReconnect(deviceId);
           var queue = self._pendingMessageQueue.get(deviceId) || [];
-n          queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject });
+          queue.push({ content: content, messageId: msgId, resolve: resolve, reject: reject });
           self._pendingMessageQueue.set(deviceId, queue);
           return;
         }
