@@ -1,5 +1,6 @@
 /**
- * vault_manager.js v2.2.0-D2
+ * vault_manager.js v2.2.1-D2
+ * FIX: Bug 5a — vaultAppendChunk auto-crea transferencia si chat_meta se perdió
  * D1: Vault Transfer Layer — persistencia de chunks para mensajes largos y archivos
  * D2: Outgoing Transfer Registry — Block ACK emisor (máscaras sent/ack, chunks para reenvío)
  * FIX: Campo seq en mensajes + ordenación por (timestamp, seq, msgId)
@@ -211,7 +212,7 @@ export async function vaultLoadMessages(contactNexoId) {
         if (seqA !== seqB) return seqA - seqB;
         var idA = a.msgId || '';
         var idB = b.msgId || '';
-        return idA.localeCompare(idB);
+n        return idA.localeCompare(idB);
       });
       _msgCache.set(cid, msgs.slice());
       return msgs;
@@ -391,12 +392,33 @@ export async function vaultCreateTransfer(contactNexoId, transferId, type, total
   return transfer;
 }
 
-export async function vaultAppendChunk(contactNexoId, transferId, index, data) {
+export async function vaultAppendChunk(contactNexoId, transferId, index, data, totalChunks, meta) {
   if (!contactNexoId || !transferId || typeof index !== 'number' || data === undefined || data === null) return false;
   var cid = _normId(contactNexoId);
   var transfers = await _loadTransfers(cid);
   var t = transfers.find(function(tr) { return tr.transferId === transferId; });
-  if (!t) return false;
+  if (!t) {
+    // FIX v2.2.1: auto-crear transferencia si chat_meta se perdió en el aire
+    if (!totalChunks || totalChunks <= 0) return false;
+    var now = Date.now();
+    var maskArr = [];
+    for (var i = 0; i < totalChunks; i++) maskArr.push('0');
+    t = {
+      transferId: transferId,
+      type: 'chat',
+      status: 'receiving',
+      totalChunks: totalChunks,
+      receivedChunks: 0,
+      receivedMask: maskArr.join(''),
+      chunks: [],
+      meta: meta || {},
+      senderNexoId: cid,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: now + 86400000
+    };
+    transfers.push(t);
+  }
   var already = t.chunks.some(function(c) { return c.idx === index; });
   if (already) return true;
   t.chunks.push({ idx: index, data: String(data) });
