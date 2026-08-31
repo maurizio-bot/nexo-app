@@ -1,5 +1,7 @@
 /**
- * BLE Interface v5.3.12-FIX
+ * BLE Interface v5.3.13-FIX
+ * FIX: Bug 1 — _isControlPacket reconoce chat_meta/chat_chunk/block_ack
+ * FIX: Bug 4 — block_ack en filtros isProtocol + isControl
  * FIX: Filtro defensivo anti-protocolo en onPayloadReceived (nunca renderiza chat_meta/chat_chunk/file_meta/file_chunk crudo)
  * FIX: Filtro robusto con trim (evita bypass por whitespace)
  * FIX: chat_meta/chat_chunk incluidos en isControl
@@ -307,7 +309,7 @@ function _isControlPacket(content) {
   if (!content || typeof content !== 'string' || content.charAt(0) !== '{') return false;
   try {
     var obj = JSON.parse(content);
-    return obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'file_meta' || obj.type === 'file_chunk' || obj.type === 'file_resume';
+    return obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'chat_meta' || obj.type === 'chat_chunk' || obj.type === 'block_ack' || obj.type === 'file_meta' || obj.type === 'file_chunk' || obj.type === 'file_resume';
   } catch (e) {
     return false;
   }
@@ -414,7 +416,7 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();  // FIX v5.3.10: deduplicación peer:ready
-    console.log('[BLEInterface] v5.3.12-FIX iniciado');
+    console.log('[BLEInterface] v5.3.13-FIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -1001,7 +1003,7 @@ export class BLEInterface {
             var protoCheck = JSON.parse(trimmedContent);
             if (protoCheck.type === 'chat_meta' || protoCheck.type === 'chat_chunk' ||
                 protoCheck.type === 'file_meta' || protoCheck.type === 'file_chunk' ||
-                protoCheck.type === 'file_resume') {
+                protoCheck.type === 'file_resume' || protoCheck.type === 'block_ack') {
               isProtocol = true;
             }
           }
@@ -1029,6 +1031,7 @@ export class BLEInterface {
           ctrl.type === 'ack' || ctrl.type === 'read_receipt' ||
           ctrl.type === 'ping' || ctrl.type === 'pong' ||
           ctrl.type === 'chat_meta' || ctrl.type === 'chat_chunk' ||
+          ctrl.type === 'block_ack' ||
           ctrl.type === 'file_meta' || ctrl.type === 'file_chunk' || ctrl.type === 'file_resume'
         ));
 
