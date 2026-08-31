@@ -1,12 +1,7 @@
 /**
- * vault_manager.js v2.2.1-D2
- * FIX: Bug 5a — vaultAppendChunk auto-crea transferencia si chat_meta se perdió
- * D1: Vault Transfer Layer — persistencia de chunks para mensajes largos y archivos
- * D2: Outgoing Transfer Registry — Block ACK emisor (máscaras sent/ack, chunks para reenvío)
- * FIX: Campo seq en mensajes + ordenación por (timestamp, seq, msgId)
- * FIX: LRU cache para _msgCache (límite 20 contactos, evita leak de memoria)
- * FIX: Nunca persistir JSONs de protocolo (chat_meta, chat_chunk, file_meta, file_chunk, file_resume)
- * Base: v2.1.2-FIX
+ * vault_manager.js v2.2.2
+ * FIX: Filtro defensivo anti-protocolo TURBO compacto (t: c/f/n/a/ss/sr)
+ * Base: v2.2.1-D2
  */
 
 var VAULT_CONTACTS_FILE = 'nexo_vault_contacts.json';
@@ -16,7 +11,6 @@ var VAULT_OUTGOING_PREFIX = 'nexo_vault_outgoing_v2_';
 var _vaultContacts = [];
 var _vaultInitDone = false;
 
-// LRU cache nativo para mensajes (max 20 contactos en memoria)
 function _createLRU(maxSize) {
   var map = new Map();
   return {
@@ -77,26 +71,17 @@ function _generateColor(str) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-// ========== INIT ==========
-
 export async function initVault() {
   if (_vaultInitDone) return;
   var plugin = _nativePlugin();
-  if (!plugin) {
-    _vaultInitDone = true;
-    return;
-  }
+  if (!plugin) { _vaultInitDone = true; return; }
   try {
     var result = await _safeNativeCall(plugin, 'loadFromFile', { filename: VAULT_CONTACTS_FILE });
     if (result && result.exists && result.content) {
       var data = JSON.parse(result.content);
       _vaultContacts = Array.isArray(data.contacts) ? data.contacts : [];
-    } else {
-      _vaultContacts = [];
-    }
-  } catch (e) {
-    _vaultContacts = [];
-  }
+    } else { _vaultContacts = []; }
+  } catch (e) { _vaultContacts = []; }
   _vaultInitDone = true;
 }
 
@@ -109,18 +94,11 @@ function _persistContacts() {
   }).catch(function(e) {});
 }
 
-// ========== CONTACTOS ==========
-
-export function vaultLoadContacts() {
-  return _vaultContacts || [];
-}
+export function vaultLoadContacts() { return _vaultContacts || []; }
 
 export function vaultSaveContacts(contacts) {
-  try {
-    _vaultContacts = Array.isArray(contacts) ? contacts : [];
-    _persistContacts();
-    return true;
-  } catch (e) { return false; }
+  try { _vaultContacts = Array.isArray(contacts) ? contacts : []; _persistContacts(); return true; }
+  catch (e) { return false; }
 }
 
 export function vaultSaveContact(contact) {
@@ -146,9 +124,7 @@ export function vaultSaveContact(contact) {
     if (idx >= 0) {
       var existing = contacts[idx];
       contacts[idx] = Object.assign({}, existing, normalized, { createdAt: existing.createdAt || now });
-    } else {
-      contacts.push(normalized);
-    }
+    } else { contacts.push(normalized); }
     _persistContacts();
     return true;
   } catch (e) { console.error('[VaultManager] saveContact:', e); return false; }
@@ -167,20 +143,11 @@ export function vaultUpdateContactLastSeen(nexoId) {
 export function vaultGetOrCreateContact(nexoId, deviceName) {
   var c = vaultFindContactByNexoId(nexoId);
   if (!c) {
-    c = {
-      nexoId: nexoId,
-      displayName: deviceName || nexoId.substring(0, 8),
-      deviceName: deviceName || ''
-    };
+    c = { nexoId: nexoId, displayName: deviceName || nexoId.substring(0, 8), deviceName: deviceName || '' };
     vaultSaveContact(c);
-  } else if (deviceName && !c.deviceName) {
-    c.deviceName = deviceName;
-    vaultSaveContact(c);
-  }
+  } else if (deviceName && !c.deviceName) { c.deviceName = deviceName; vaultSaveContact(c); }
   return c;
 }
-
-// ========== MENSAJES ==========
 
 function _msgFileName(contactNexoId) {
   return VAULT_MESSAGES_PREFIX + _normId(contactNexoId) + '.json';
@@ -200,19 +167,15 @@ export async function vaultLoadMessages(contactNexoId) {
       var msgs = Array.isArray(data.messages) ? data.messages : (Array.isArray(data) ? data : []);
       msgs.forEach(function(m) {
         var mid = m.msgId || m.messageId || m.id || ('msg_' + (m.timestamp || Date.now()));
-        m.msgId = mid;
-        m.messageId = mid;
+        m.msgId = mid; m.messageId = mid;
       });
       msgs.sort(function(a, b) {
-        var tsA = a.timestamp || 0;
-        var tsB = b.timestamp || 0;
+        var tsA = a.timestamp || 0, tsB = b.timestamp || 0;
         if (tsA !== tsB) return tsA - tsB;
         var seqA = (typeof a.seq === 'number') ? a.seq : 0;
         var seqB = (typeof b.seq === 'number') ? b.seq : 0;
         if (seqA !== seqB) return seqA - seqB;
-        var idA = a.msgId || '';
-        var idB = b.msgId || '';
-        return idA.localeCompare(idB);
+        return (a.msgId || '').localeCompare(b.msgId || '');
       });
       _msgCache.set(cid, msgs.slice());
       return msgs;
@@ -241,36 +204,40 @@ export async function vaultSaveMessages(contactNexoId, messages) {
   var plugin = _nativePlugin();
   if (!plugin) return false;
   try {
-    await _safeNativeCall(plugin, 'saveToFile', {
-      filename: _msgFileName(cid),
-      content: JSON.stringify({ messages: toSave, savedAt: Date.now() })
-    });
+    await _safeNativeCall(plugin, 'saveToFile', { filename: _msgFileName(cid), content: JSON.stringify({ messages: toSave, savedAt: Date.now() }) });
     return true;
   } catch (e) { return false; }
 }
 
+// FIX v2.2.2: Filtro defensivo anti-protocolo TURBO compacto + legacy
+function _isProtocolPayload(txt) {
+  if (typeof txt !== 'string') return false;
+  var trimmed = txt.trim();
+  if (trimmed.charAt(0) !== '{') return false;
+  try {
+    var p = JSON.parse(trimmed);
+    if (p.type === 'chat_meta' || p.type === 'chat_chunk' || p.type === 'file_meta' ||
+        p.type === 'file_chunk' || p.type === 'file_resume' || p.type === 'ack' ||
+        p.type === 'read_receipt' || p.type === 'ping' || p.type === 'pong' ||
+        p.type === 'block_ack') return true;
+    if (p.t === 'c' || p.t === 'f' || p.t === 'n' || p.t === 'a' || p.t === 'ss' || p.t === 'sr') return true;
+  } catch(e) {}
+  return false;
+}
+
 export async function vaultAppendMessage(contactNexoId, message) {
   if (!contactNexoId || !message) return null;
-  // FIX v2.1.2: Nunca persistir JSONs de protocolo
   var txt = message.text || message.content || '';
-  if (typeof txt === 'string' && txt.trim().charAt(0) === '{') {
-    try {
-      var p = JSON.parse(txt.trim());
-      if (p.type === 'chat_meta' || p.type === 'chat_chunk' || p.type === 'file_meta' ||
-          p.type === 'file_chunk' || p.type === 'file_resume') {
-        console.warn('[VaultManager] Protocol JSON rejected from vault:', p.type);
-        return null;
-      }
-    } catch(e) {}
+  if (_isProtocolPayload(txt)) {
+    console.warn('[VaultManager] Protocol JSON rejected from vault:', txt.substring(0, 60));
+    return null;
   }
   var cid = _normId(contactNexoId);
   var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
   var msgId = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
-  message.msgId = msgId;
-  message.messageId = msgId;
+  message.msgId = msgId; message.messageId = msgId;
   var normalized = {
-    msgId: msgId,
-    messageId: msgId,
+    msgId: msgId, messageId: msgId,
     text: message.text || message.content || '',
     content: message.content || message.text || '',
     senderNexoId: message.senderNexoId || message.sender || '',
@@ -285,11 +252,8 @@ export async function vaultAppendMessage(contactNexoId, message) {
     attachmentMeta: message.attachmentMeta || null
   };
   var existingIdx = messages.findIndex(function(m) { return m.msgId === normalized.msgId; });
-  if (existingIdx >= 0) {
-    messages[existingIdx] = Object.assign({}, messages[existingIdx], normalized);
-  } else {
-    messages.push(normalized);
-  }
+  if (existingIdx >= 0) { messages[existingIdx] = Object.assign({}, messages[existingIdx], normalized); }
+  else { messages.push(normalized); }
   _persistMessages(cid, messages);
   return normalized;
 }
@@ -299,25 +263,17 @@ export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
   var cid = _normId(contactNexoId);
   var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
   var idx = messages.findIndex(function(m) { return m.msgId === msgId; });
-  if (idx >= 0) {
-    messages[idx].status = status;
-    _persistMessages(cid, messages);
-    return true;
-  }
+  if (idx >= 0) { messages[idx].status = status; _persistMessages(cid, messages); return true; }
   return false;
 }
 
-// === FIX OFFLINE: Vault entrega pending ordenados cronológicamente ===
 export async function vaultGetPendingMessages(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
   var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
-  var pending = messages.filter(function(m) {
-    return m._own === true && (m.status === 'pending' || m.status === 'failed');
-  });
+  var pending = messages.filter(function(m) { return m._own === true && (m.status === 'pending' || m.status === 'failed'); });
   pending.sort(function(a, b) {
-    var tsA = a.timestamp || 0;
-    var tsB = b.timestamp || 0;
+    var tsA = a.timestamp || 0, tsB = b.timestamp || 0;
     if (tsA !== tsB) return tsA - tsB;
     var seqA = (typeof a.seq === 'number') ? a.seq : 0;
     var seqB = (typeof b.seq === 'number') ? b.seq : 0;
@@ -325,9 +281,6 @@ export async function vaultGetPendingMessages(contactNexoId) {
   });
   return pending;
 }
-// === FIN FIX OFFLINE ===
-
-// ========== D1: VAULT TRANSFER LAYER (chunks persistentes receptor) ==========
 
 function _transferFileName(contactNexoId) {
   return VAULT_TRANSFERS_PREFIX + _normId(contactNexoId) + '.json';
@@ -356,7 +309,7 @@ function _persistTransfers(contactNexoId, transfers) {
   var plugin = _nativePlugin();
   if (!plugin) return;
   var cid = _normId(contactNexoId);
-  var toSave = transfers.slice(-100); // máx 100 transferencias por contacto
+  var toSave = transfers.slice(-100);
   _transferCache.set(cid, toSave.slice());
   _safeNativeCall(plugin, 'saveToFile', {
     filename: _transferFileName(cid),
@@ -374,18 +327,11 @@ export async function vaultCreateTransfer(contactNexoId, transferId, type, total
   var maskArr = [];
   for (var i = 0; i < totalChunks; i++) maskArr.push('0');
   var transfer = {
-    transferId: transferId,
-    type: type,
-    status: 'receiving',
-    totalChunks: totalChunks,
-    receivedChunks: 0,
-    receivedMask: maskArr.join(''),
-    chunks: [],
-    meta: meta || {},
+    transferId: transferId, type: type, status: 'receiving',
+    totalChunks: totalChunks, receivedChunks: 0, receivedMask: maskArr.join(''),
+    chunks: [], meta: meta || {},
     senderNexoId: (meta && meta.senderNexoId) ? meta.senderNexoId : ((meta && meta.from) ? meta.from : ''),
-    createdAt: now,
-    updatedAt: now,
-    expiresAt: now + 86400000 // 24h
+    createdAt: now, updatedAt: now, expiresAt: now + 86400000
   };
   transfers.push(transfer);
   _persistTransfers(cid, transfers);
@@ -398,24 +344,15 @@ export async function vaultAppendChunk(contactNexoId, transferId, index, data, t
   var transfers = await _loadTransfers(cid);
   var t = transfers.find(function(tr) { return tr.transferId === transferId; });
   if (!t) {
-    // FIX v2.2.1: auto-crear transferencia si chat_meta se perdió en el aire
     if (!totalChunks || totalChunks <= 0) return false;
     var now = Date.now();
     var maskArr = [];
     for (var i = 0; i < totalChunks; i++) maskArr.push('0');
     t = {
-      transferId: transferId,
-      type: 'chat',
-      status: 'receiving',
-      totalChunks: totalChunks,
-      receivedChunks: 0,
-      receivedMask: maskArr.join(''),
-      chunks: [],
-      meta: meta || {},
-      senderNexoId: cid,
-      createdAt: now,
-      updatedAt: now,
-      expiresAt: now + 86400000
+      transferId: transferId, type: 'chat', status: 'receiving',
+      totalChunks: totalChunks, receivedChunks: 0, receivedMask: maskArr.join(''),
+      chunks: [], meta: meta || {}, senderNexoId: cid,
+      createdAt: now, updatedAt: now, expiresAt: now + 86400000
     };
     transfers.push(t);
   }
@@ -436,8 +373,7 @@ export async function vaultGetTransfer(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return null;
   var cid = _normId(contactNexoId);
   var transfers = await _loadTransfers(cid);
-  var t = transfers.find(function(tr) { return tr.transferId === transferId; });
-  return t || null;
+  return transfers.find(function(tr) { return tr.transferId === transferId; }) || null;
 }
 
 export async function vaultGetIncompleteTransfers(contactNexoId) {
@@ -465,29 +401,20 @@ export async function vaultCompleteTransfer(contactNexoId, transferId) {
   }
   t.chunks.sort(function(a, b) { return a.idx - b.idx; });
   var assembled = '';
-  for (var i = 0; i < t.chunks.length; i++) {
-    assembled += t.chunks[i].data || '';
-  }
+  for (var i = 0; i < t.chunks.length; i++) assembled += t.chunks[i].data || '';
   var msg = {
-    msgId: t.transferId,
-    messageId: t.transferId,
-    text: assembled,
-    content: assembled,
+    msgId: t.transferId, messageId: t.transferId,
+    text: assembled, content: assembled,
     senderNexoId: t.senderNexoId || (t.meta && t.meta.from) || '',
     senderName: (t.meta && t.meta.fromName) || (t.meta && t.meta.senderName) || 'NEXO',
     timestamp: (t.meta && t.meta.ts) ? t.meta.ts : t.createdAt,
     seq: (t.meta && typeof t.meta.seq === 'number') ? t.meta.seq : 0,
-    status: 'delivered',
-    _own: false,
+    status: 'delivered', _own: false,
     type: t.type === 'file' ? 'file' : 'text',
-    attachmentType: null,
-    attachmentPayload: null,
-    attachmentMeta: null
+    attachmentType: null, attachmentPayload: null, attachmentMeta: null
   };
   if (t.type === 'file') {
-    msg.attachmentPayload = assembled;
-    msg.text = '[Archivo]';
-    msg.content = '[Archivo]';
+    msg.attachmentPayload = assembled; msg.text = '[Archivo]'; msg.content = '[Archivo]';
     msg.attachmentMeta = {
       fileName: (t.meta && t.meta.fileName) ? t.meta.fileName : 'archivo',
       mimeType: (t.meta && t.meta.mimeType) ? t.meta.mimeType : 'application/octet-stream',
@@ -530,8 +457,6 @@ export async function vaultCleanupTransfers(contactNexoId, maxAgeMs) {
   return removed;
 }
 
-// ========== D2: OUTGOING TRANSFER REGISTRY (Block ACK emisor) ==========
-
 function _outgoingFileName(contactNexoId) {
   return VAULT_OUTGOING_PREFIX + _normId(contactNexoId) + '.json';
 }
@@ -559,7 +484,7 @@ function _persistOutgoingTransfers(contactNexoId, outgoing) {
   var plugin = _nativePlugin();
   if (!plugin) return;
   var cid = _normId(contactNexoId);
-  var toSave = outgoing.slice(-50); // máx 50 envíos activos por contacto
+  var toSave = outgoing.slice(-50);
   _outgoingCache.set(cid, toSave.slice());
   _safeNativeCall(plugin, 'saveToFile', {
     filename: _outgoingFileName(cid),
@@ -567,9 +492,6 @@ function _persistOutgoingTransfers(contactNexoId, outgoing) {
   }).catch(function(e) {});
 }
 
-/**
- * Crea registro de envío (emisor). Guarda chunks completos para reenvío tras reinicio.
- */
 export async function vaultCreateOutgoingTransfer(contactNexoId, transferId, type, totalChunks, chunks, meta, deviceId) {
   if (!contactNexoId || !transferId || !type || !totalChunks || !chunks) return null;
   var cid = _normId(contactNexoId);
@@ -581,18 +503,11 @@ export async function vaultCreateOutgoingTransfer(contactNexoId, transferId, typ
   for (var i = 0; i < totalChunks; i++) mask.push('0');
   var zeroMask = mask.join('');
   var record = {
-    transferId: transferId,
-    type: type,
-    status: 'sending',
-    totalChunks: totalChunks,
-    chunks: chunks.slice(),
-    sentMask: zeroMask,
-    ackMask: zeroMask,
-    meta: meta || {},
-    deviceId: deviceId || '',
-    createdAt: now,
-    updatedAt: now,
-    expiresAt: now + 86400000,
+    transferId: transferId, type: type, status: 'sending',
+    totalChunks: totalChunks, chunks: chunks.slice(),
+    sentMask: zeroMask, ackMask: zeroMask,
+    meta: meta || {}, deviceId: deviceId || '',
+    createdAt: now, updatedAt: now, expiresAt: now + 86400000,
     blockAckTimeouts: 0
   };
   outgoing.push(record);
@@ -600,9 +515,6 @@ export async function vaultCreateOutgoingTransfer(contactNexoId, transferId, typ
   return record;
 }
 
-/**
- * Actualiza máscaras de envío y ACK. sentMask y ackMask son strings '1010...'.
- */
 export async function vaultSetOutgoingChunkAcked(contactNexoId, transferId, sentMask, ackMask) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
