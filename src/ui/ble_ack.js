@@ -268,7 +268,7 @@ export class BleAckSystem {
       }
       sendNext();
     }).catch(function(){});
-n  }
+   }
 
   sendSessionSync(deviceId, peerNexoId) {
     var self = this;
