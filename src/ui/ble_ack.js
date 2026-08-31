@@ -1,12 +1,20 @@
 /**
- * ble_ack.js v2.0.0-TURBO-FIX1
- * Protocolo compacto JSON de 1 letra key + ventana deslizante de 3 + NACK selectivo + sync de sesion
- * Elimina chat_meta. Chunk 0 lleva metadata completa.
- * Base: v1.5.1-D3 (conserva vault, Block ACK legacy compat)
+ * ble_ack.js v2.1.0-TURBO-FIX2
+ * FIX: chunkSize dinámico por plataforma (130 iOS / 400 Android)
+ * FIX: seq viaja en chunked messages
+ * FIX: ChatStream persiste outgoing en vault + resumeOutgoingTransfers()
+ * FIX: sendWithRetry delega a sendChunkedMessage si contenido > 180
+ * FIX: ChatStream max window retries (5) + timeout global 45s
+ * FIX: _buildChunk incluye seq en meta del chunk 0
+ * Base: v2.0.0-TURBO-FIX1
  */
 
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
+}
+
+function _normId(id) {
+  return (id || '').toString().toLowerCase().trim();
 }
 
 export class BleAckSystem {
@@ -18,7 +26,9 @@ export class BleAckSystem {
     this.receivedAcks = new Set();
     this.maxReceivedAcks = 500;
 
-    this.chunkSize = 400;
+    // FIX v2.1.0: chunkSize dinámico por plataforma
+    var platform = (window.Capacitor && window.Capacitor.getPlatform) ? window.Capacitor.getPlatform() : 'android';
+    this.chunkSize = (platform === 'ios') ? 130 : 400;
     this.windowSize = 3;
     this.windowTimeoutMs = 4000;
 
@@ -34,7 +44,21 @@ export class BleAckSystem {
     this._startCleanupInterval();
   }
 
-  sendChunkedMessage(deviceId, content, meta, messageId) {
+  // FIX v2.1.0: Resolver nexoId desde deviceId (MAC)
+  _resolveNexoId(deviceId) {
+    var mac = _normMac(deviceId);
+    if (this.ble && this.ble._macToNexoId) {
+      var nx = this.ble._macToNexoId.get(mac);
+      if (nx) return nx;
+    }
+    var contacts = (typeof _getBLEContacts === 'function') ? _getBLEContacts() : [];
+    for (var i = 0; i < contacts.length; i++) {
+      if (_normMac(contacts[i].deviceId) === mac) return _normId(contacts[i].nexoId);
+    }
+    return mac;
+  }
+
+  sendChunkedMessage(deviceId, content, meta, messageId, seq) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
@@ -42,6 +66,8 @@ export class BleAckSystem {
       var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
       var ts = Date.now();
       var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: ts });
+      if (typeof seq === 'number') finalMeta.seq = seq;
+
       if (content.length <= 180) {
         self.sendWithRetry(deviceId, content, msgId).then(resolve).catch(reject);
         return;
@@ -107,20 +133,17 @@ export class BleAckSystem {
     var total = (typeof msg.n === 'number') ? msg.n : msg.total;
     var data = msg.d || msg.data;
     var from = msg.fr || msg.from;
+    var seq = (typeof msg.seq === 'number') ? msg.seq : ((msg.meta && typeof msg.meta.seq === 'number') ? msg.meta.seq : 0);
 
     if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
 
     var buf = self.incomingBuffers.get(msgId);
     if (!buf) {
       buf = {
-        chunks: new Map(),
-        total: total,
-        meta: msg.meta || { f: msg.f || 'NEXO', fr: from || 'unknown', ts: msg.ts || Date.now() },
-        received: 0,
-        deviceId: deviceId,
-        lastActivity: Date.now(),
-        isChat: type === 'c',
-        nackSent: false
+        chunks: new Map(), total: total,
+        meta: msg.meta || { f: msg.f || 'NEXO', fr: from || 'unknown', ts: msg.ts || Date.now(), seq: seq },
+        received: 0, deviceId: deviceId, lastActivity: Date.now(),
+        isChat: type === 'c', nackSent: false
       };
       self.incomingBuffers.set(msgId, buf);
       var senderId = from || (buf.meta && buf.meta.fr) || 'unknown';
@@ -263,12 +286,12 @@ export class BleAckSystem {
         if (txt.length <= 180) {
           self.sendWithRetry(deviceId, txt, m.msgId).then(sendNext).catch(sendNext);
         } else {
-          self.sendChunkedMessage(deviceId, txt, {}, m.msgId).then(sendNext).catch(sendNext);
+          self.sendChunkedMessage(deviceId, txt, {}, m.msgId, m.seq).then(sendNext).catch(sendNext);
         }
       }
       sendNext();
     }).catch(function(){});
-   }
+  }
 
   sendSessionSync(deviceId, peerNexoId) {
     var self = this;
@@ -286,8 +309,12 @@ export class BleAckSystem {
     }
   }
 
+  // FIX v2.1.0: sendWithRetry delega a chunking si contenido es largo
   sendWithRetry(deviceId, content, messageId) {
     var self = this;
+    if (content && content.length > 180) {
+      return self.sendChunkedMessage(deviceId, content, {}, messageId);
+    }
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
       var entry = {
@@ -398,12 +425,36 @@ export class BleAckSystem {
     this._dispatchFileProgress(fileId, 0, 0, 'cancelled');
   }
 
+  // FIX v2.1.0: Reanudar envíos rotos al iniciar
+  resumeOutgoingTransfers() {
+    var self = this;
+    if (!window.vaultGetPendingOutgoingTransfers) return;
+    var contacts = (typeof _getBLEContacts === 'function') ? _getBLEContacts() : [];
+    contacts.forEach(function(contact) {
+      var cid = _normId(contact.nexoId);
+      if (!cid) return;
+      window.vaultGetPendingOutgoingTransfers(cid).then(function(list) {
+        if (!list || list.length === 0) return;
+        console.log('[BleAckSystem] Resume:', list.length, 'outgoing para', cid);
+        list.forEach(function(tx) {
+          if (tx.status !== 'sending' && tx.status !== 'pending') return;
+          var content = tx.chunks.map(function(c) { return c.data || ''; }).join('');
+          var devId = tx.deviceId || contact.deviceId;
+          if (!devId) return;
+          self.sendChunkedMessage(devId, content, tx.meta, tx.transferId, (tx.meta && tx.meta.seq))
+            .then(function() {
+              if (window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});
+            })
+            .catch(function(){});
+        });
+      }).catch(function(){});
+    });
+  }
+
   _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId) {
     var vaultMsg = {
       messageId: msgId || meta.msgId || ('recv_' + Date.now()),
-      content: content,
-      _own: false,
-      status: 'delivered',
+      content: content, _own: false, status: 'delivered',
       timestamp: Date.now(),
       senderName: meta.f || 'NEXO',
       senderNexoId: meta.fr || senderId,
@@ -413,15 +464,10 @@ export class BleAckSystem {
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: {
-          deviceId: deviceId,
-          deviceUUID: meta.fr || senderId,
-          content: content,
-          senderName: meta.f || 'NEXO',
-          senderNexoId: meta.fr || senderId,
-          messageId: msgId || meta.msgId,
-          source: 'ble',
-          timestamp: Date.now(),
-          seq: meta.seq || 0
+          deviceId: deviceId, deviceUUID: meta.fr || senderId,
+          content: content, senderName: meta.f || 'NEXO',
+          senderNexoId: meta.fr || senderId, messageId: msgId || meta.msgId,
+          source: 'ble', timestamp: Date.now(), seq: meta.seq || 0
         }
       }));
     } catch (e) {}
@@ -477,6 +523,9 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, chunkSize, window
   this.timer = null;
   this.startTime = Date.now();
   this.aborted = false;
+  this.windowRetryCount = 0;
+  this.maxWindowRetries = 5;
+  this.globalTimeout = null;
 }
 
 ChatStream.prototype.start = function() {
@@ -486,6 +535,23 @@ ChatStream.prototype.start = function() {
     self.reject = reject;
     self._splitChunks();
     if (self.total === 0) { reject(new Error('Vacio')); return; }
+
+    // FIX v2.1.0: Persistir outgoing en vault para reanudación
+    if (window.vaultCreateOutgoingTransfer) {
+      var cid = self.ackSystem._resolveNexoId(self.deviceId);
+      window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
+    }
+
+    // Timeout global de 45s
+    self.globalTimeout = setTimeout(function() {
+      if (!self.aborted) {
+        self.aborted = true;
+        if (self.timer) clearTimeout(self.timer);
+        self.reject(new Error('Timeout global 45s'));
+        self.ackSystem._dispatchStatus(self.msgId, 'failed');
+      }
+    }, 45000);
+
     self._sendWindow();
   });
 };
@@ -558,13 +624,22 @@ ChatStream.prototype._onWindowTimeout = function() {
   }
   if (allAcked) {
     self.windowStart = end;
+    self.windowRetryCount = 0;
     if (self.windowStart >= self.total) {
       self._finish();
     } else {
       self._sendWindow();
     }
   } else {
-    console.log('[ChatStream] Window timeout, reenviando ventana desde', self.windowStart);
+    self.windowRetryCount++;
+    if (self.windowRetryCount > self.maxWindowRetries) {
+      console.warn('[ChatStream] Max window retries alcanzado para', self.msgId);
+      self.abort();
+      self.reject(new Error('Max window retries'));
+      self.ackSystem._dispatchStatus(self.msgId, 'failed');
+      return;
+    }
+    console.log('[ChatStream] Window timeout, reenviando ventana desde', self.windowStart, 'retry', self.windowRetryCount);
     self._sendWindow();
   }
 };
@@ -613,6 +688,14 @@ ChatStream.prototype._finish = function() {
   if (this.aborted) return;
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
+  if (this.globalTimeout) clearTimeout(this.globalTimeout);
+
+  // FIX v2.1.0: Limpiar outgoing de vault al completar
+  if (window.vaultRemoveOutgoingTransfer) {
+    var cid = this.ackSystem._resolveNexoId(this.deviceId);
+    window.vaultRemoveOutgoingTransfer(cid, this.msgId).catch(function(){});
+  }
+
   this.resolve();
   this.ackSystem._dispatchStatus(this.msgId, 'delivered');
 };
@@ -620,6 +703,7 @@ ChatStream.prototype._finish = function() {
 ChatStream.prototype.abort = function() {
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
+  if (this.globalTimeout) clearTimeout(this.globalTimeout);
   if (this.reject) this.reject(new Error('Abortado'));
 };
 
