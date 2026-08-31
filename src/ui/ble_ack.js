@@ -1,6 +1,9 @@
 /**
  * ble_ack.js — Sistema ACK real + fragmentación unificada + Block ACK bidireccional (D2+D3)
- * v1.5.0-D3: Receptor Block ACK. Chunks persistidos en vault. Block ACK periódico (2s) o inmediato al completar.
+ * v1.5.1-D3: Receptor Block ACK
+ * FIX: Bug 3 — chat_meta usa _sendMessageNative directo (sin ACK)
+ * FIX: Bug 5b — vaultAppendChunk recibe totalChunks + meta
+ * FIX: Bug 6 — fallback desde memoria si vaultCompleteTransfer retorna null
  * v1.4.0-D2: Block ACK emisor. Reenvío selectivo de chunks faltantes. Persistencia outgoing en vault.
  * v1.3.1-FIX: Buffer huérfano para chat_chunk cuando chat_meta se pierde en el aire
  * v1.3.0-FIX: Unificación chat/archivos. Mensajes largos usan chat_chunk (mismo mecanismo que file_chunk).
@@ -129,7 +132,25 @@ export class BleAckSystem {
     var self = this;
     if (!window.vaultCompleteTransfer) return;
     window.vaultCompleteTransfer(contactNexoId, transferId).then(function(msg) {
-      if (!msg) return;
+      if (!msg) {
+        // FIX v1.5.1: Fallback — ensamblar desde pendingFragments en memoria
+        var buf = self.pendingFragments.get(transferId);
+        if (buf && buf.received >= buf.total) {
+          var assembled = '';
+          for (var i = 0; i < buf.total; i++) {
+            assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
+          }
+          if (type === 'chat') {
+            self._dispatchChunkedMessageComplete(transferId, assembled, buf.meta, deviceId);
+          } else if (type === 'file') {
+            self._dispatchFileComplete(transferId, assembled, buf.meta);
+            self._dispatchFileProgress(transferId, totalChunks, totalChunks, 'received', 100);
+          }
+          self.pendingFragments.delete(transferId);
+          self._pendingBlockAcks.delete(transferId);
+        }
+        return;
+      }
       if (type === 'chat') {
         try {
           window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
@@ -335,19 +356,28 @@ export class BleAckSystem {
         v: 1, type: 'file_meta', fileId: msgId, totalChunks: total, meta: finalMeta, from: senderId, ts: Date.now()
       };
 
-      self.sendWithRetry(deviceId, JSON.stringify(metaPayload), 'meta_' + msgId)
-        .then(function() {
-          self._dispatchFileProgress(msgId, 0, total, 'sending', 0);
-          self._sendNextBatch(msgId);
-        })
-        .catch(function(err) {
-          self.pendingOutgoingTransfers.delete(msgId);
-          self.pendingOutgoingFiles.delete(msgId);
-          if (contactNexoId && window.vaultSetOutgoingStatus) {
-            window.vaultSetOutgoingStatus(contactNexoId, msgId, 'failed').catch(function(){});
-          }
-          reject(err);
-        });
+      var metaStr = JSON.stringify(metaPayload);
+      var metaMsgId = 'meta_' + msgId;
+      function trySendMeta(attempt) {
+        self.ble._sendMessageNative(deviceId, metaStr, metaMsgId)
+          .then(function() {
+            self._dispatchFileProgress(msgId, 0, total, 'sending', 0);
+            self._sendNextBatch(msgId);
+          })
+          .catch(function(err) {
+            if (attempt < 2) {
+              setTimeout(function() { trySendMeta(attempt + 1); }, 1000 * (attempt + 1));
+            } else {
+              self.pendingOutgoingTransfers.delete(msgId);
+              self.pendingOutgoingFiles.delete(msgId);
+              if (contactNexoId && window.vaultSetOutgoingStatus) {
+                window.vaultSetOutgoingStatus(contactNexoId, msgId, 'failed').catch(function(){});
+              }
+              reject(err);
+            }
+          });
+      }
+      trySendMeta(0);
     });
   }
 
@@ -657,7 +687,7 @@ export class BleAckSystem {
         var self = this;
 
         if (window.vaultAppendChunk) {
-          window.vaultAppendChunk(senderId, msg.msgId, msg.idx, msg.data).then(function() {
+          window.vaultAppendChunk(senderId, msg.msgId, msg.idx, msg.data, msg.total, buf.meta).then(function() {
             if (buf.received >= buf.total) {
               var maskArr = [];
               for (var i = 0; i < buf.total; i++) maskArr.push(buf.chunks.has(i) ? '1' : '0');
@@ -721,7 +751,7 @@ export class BleAckSystem {
         this._dispatchFileProgress(msg.fileId, buf.received, buf.total, 'receiving', progress);
 
         if (window.vaultAppendChunk) {
-          window.vaultAppendChunk(senderId, msg.fileId, msg.idx, msg.data).then(function() {
+          window.vaultAppendChunk(senderId, msg.fileId, msg.idx, msg.data, buf.total, buf.meta).then(function() {
             if (buf.received >= buf.total) {
               var maskArr = [];
               for (var i = 0; i < buf.total; i++) maskArr.push(buf.chunks.has(i) ? '1' : '0');
