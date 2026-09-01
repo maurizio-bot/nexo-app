@@ -1,12 +1,10 @@
 /**
- * ble_ack.js v2.1.0-TURBO-FIX2
- * FIX: chunkSize dinámico por plataforma (130 iOS / 400 Android)
- * FIX: seq viaja en chunked messages
- * FIX: ChatStream persiste outgoing en vault + resumeOutgoingTransfers()
- * FIX: sendWithRetry delega a sendChunkedMessage si contenido > 180
- * FIX: ChatStream max window retries (5) + timeout global 45s
- * FIX: _buildChunk incluye seq en meta del chunk 0
- * Base: v2.0.0-TURBO-FIX1
+ * ble_ack.js v2.1.1-FIX
+ * FIX: sendWithRetry acepta y preserva seq en reintentos de mensajes largos
+ * FIX: sendChunkedMessage genera seq defensivamente si no viene
+ * FIX: ChatStream._buildChunk incluye seq directo en payload chunk 0
+ * FIX: _dispatchChunkedMessageComplete ya NO duplica vaultAppendMessage (main.js lo maneja)
+ * Base: v2.1.0-TURBO-FIX2
  */
 
 function _normMac(mac) {
@@ -66,10 +64,15 @@ export class BleAckSystem {
       var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
       var ts = Date.now();
       var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: ts });
-      if (typeof seq === 'number') finalMeta.seq = seq;
+
+      // FIX v2.1.1: Generar seq defensivamente si no viene
+      if (typeof seq !== 'number') {
+        seq = (self.ble && typeof self.ble.getNextSeq === 'function') ? self.ble.getNextSeq() : 0;
+      }
+      finalMeta.seq = seq;
 
       if (content.length <= 180) {
-        self.sendWithRetry(deviceId, content, msgId).then(resolve).catch(reject);
+        self.sendWithRetry(deviceId, content, msgId, seq).then(resolve).catch(reject);
         return;
       }
       var stream = new ChatStream(self, deviceId, msgId, content, finalMeta, self.chunkSize, self.windowSize, self.windowTimeoutMs);
@@ -284,7 +287,7 @@ export class BleAckSystem {
         var m = pending[idx++];
         var txt = m.content || m.text || '';
         if (txt.length <= 180) {
-          self.sendWithRetry(deviceId, txt, m.msgId).then(sendNext).catch(sendNext);
+          self.sendWithRetry(deviceId, txt, m.msgId, m.seq).then(sendNext).catch(sendNext);
         } else {
           self.sendChunkedMessage(deviceId, txt, {}, m.msgId, m.seq).then(sendNext).catch(sendNext);
         }
@@ -309,11 +312,11 @@ export class BleAckSystem {
     }
   }
 
-  // FIX v2.1.0: sendWithRetry delega a chunking si contenido es largo
-  sendWithRetry(deviceId, content, messageId) {
+  // FIX v2.1.1: sendWithRetry acepta seq y lo preserva en chunking
+  sendWithRetry(deviceId, content, messageId, seq) {
     var self = this;
     if (content && content.length > 180) {
-      return self.sendChunkedMessage(deviceId, content, {}, messageId);
+      return self.sendChunkedMessage(deviceId, content, {}, messageId, seq);
     }
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
@@ -451,16 +454,8 @@ export class BleAckSystem {
     });
   }
 
+  // FIX v2.1.1: Ya NO llama vaultAppendMessage — main.js lo maneja via messageReceived
   _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId) {
-    var vaultMsg = {
-      messageId: msgId || meta.msgId || ('recv_' + Date.now()),
-      content: content, _own: false, status: 'delivered',
-      timestamp: Date.now(),
-      senderName: meta.f || 'NEXO',
-      senderNexoId: meta.fr || senderId,
-      seq: meta.seq || 0
-    };
-    if (window.vaultAppendMessage) window.vaultAppendMessage(meta.fr || senderId, vaultMsg, false).catch(function(){});
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: {
@@ -588,6 +583,7 @@ ChatStream.prototype._sendWindow = function() {
   });
 };
 
+// FIX v2.1.1: seq incluido directo en payload del chunk 0 para robustez
 ChatStream.prototype._buildChunk = function(idx) {
   var isFirst = idx === 0;
   var obj = {
@@ -602,6 +598,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     obj.fr = this.meta.fr || 'unknown';
     obj.ts = this.meta.ts || Date.now();
     obj.meta = this.meta;
+    if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
   }
   return JSON.stringify(obj);
 };
