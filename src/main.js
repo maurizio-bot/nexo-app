@@ -1,5 +1,5 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.14-FIX-TURBO
+ * src/main.js - Punto de entrada NEXO v9.9.15-FIX
  * FIX: ackSystem vinculado EARLY (antes de initPromise) para que receptor siempre tenga fragment handler
  * FIX: Eliminado segundo ackSystem post-initPromise (doble instancia causaba pérdida de buffers)
  * FIX: Filtro defensivo anti-protocolo en messageReceived listener (incluye TURBO compact)
@@ -12,6 +12,9 @@
  * FIX: ObjectURLs revocados al cerrar fullscreen
  * FIX: _getContactStorageKey usa nexoId cuando está disponible
  * FIX: msgId/messageId normalizado en _saveMessageToStorage, _updateMessageStorageStatus, _renderMessage
+ * FIX v9.9.15: Deduplicación defensiva de mensajes renderizados
+ * FIX v9.9.15: _saveMessageToStorage usa remitente real para mensajes entrantes
+ * FIX v9.9.15: _renderMessage no inserta en DOM mensajes de contactos inactivos
    */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -94,6 +97,8 @@ var _cameraPreviewVideoChunks = [];
 var _cameraVideoStartTime = 0;
 var _objectURLRegistry = [];
 var _renderedMessageCount = 0;
+// FIX v9.9.15: Set para deduplicar mensajes ya renderizados
+var _renderedMessageIds = new Set();
 var _autoScan = null;
 function _fmtTime(sec) {
 var m = Math.floor(sec / 60);
@@ -812,7 +817,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.14-FIX-TURBO iniciando...');
+console.log('[MAIN] NEXO v9.9.15-FIX iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -1222,7 +1227,7 @@ function _fixLogoPath() {
 try {
 var logo = document.getElementById('main-logo');
 if (logo) {
-logo.style.backgroundImage = 'url("./assets/nexo_logo.png")';
+logo.style.backgroundImage = 'url(\"./assets/nexo_logo.png\")';
 logo.style.backgroundSize = 'contain';
 logo.style.backgroundRepeat = 'no-repeat';
 logo.style.backgroundPosition = 'center';
@@ -1439,7 +1444,7 @@ var hasBLE = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInter
 if (hasBLE) {
 return;
 }
-fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+fabBtn.innerHTML = '<svg viewBox=\"0 0 24 24\" width=\"28\" height=\"28\" fill=\"#fff\"><path d=\"M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z\"/></svg>';
 if (!fabBtn._nexoFabBound) {
 fabBtn.addEventListener('click', function() {
 if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
@@ -1463,13 +1468,19 @@ contactId = window.NEXO.app.bleInterface.activeChatDeviceId;
 } catch (e) {}
 return 'nexo_messages' + contactId;
 }
+// FIX v9.9.15: Usar remitente real para mensajes entrantes, contacto activo solo para propios
 function _saveMessageToStorage(msg) {
 try {
 if (!msg) return;
 var msgId = msg.msgId || msg.messageId || msg.id || ('msg' + Date.now() + '' + Math.random().toString(36).substr(2, 5));
 msg.msgId = msgId;
 msg.messageId = msgId;
-var contactId = _getCurrentContactId();
+var contactId;
+if (msg._own) {
+  contactId = _getCurrentContactId();
+} else {
+  contactId = msg.senderNexoId || msg.from || msg.sender || _getCurrentContactId();
+}
 if (contactId) {
 vaultAppendMessage(contactId, msg).catch(function(e) {});
 }
@@ -1505,12 +1516,30 @@ _renderMessage(msg, true);
 console.warn('[MAIN] _loadPersistedMessages error:', e);
 }
 }
+// FIX v9.9.15: Deduplicacion + filtro de contacto activo para mensajes entrantes
 function _renderMessage(msg, skipSave) {
 try {
 if (!msg) return;
-if (msg.type === 'ack' || msg.ackType || (msg.content && typeof msg.content === 'string' && msg.content.indexOf('"type":"ack"') !== -1)) {
+// FIX: Deduplicacion defensiva de mensajes ya renderizados
+var msgIdDedup = msg.msgId || msg.messageId || msg.id || '';
+if (msgIdDedup && _renderedMessageIds.has(msgIdDedup)) {
+  if (msg.status) _updateMessageStatus(msgIdDedup, msg.status);
+  return;
+}
+if (msgIdDedup) _renderedMessageIds.add(msgIdDedup);
+
+if (msg.type === 'ack' || msg.ackType || (msg.content && typeof msg.content === 'string' && msg.content.indexOf('\"type\":\"ack\"') !== -1)) {
 console.warn('[MAIN] ACK filtrado en renderMessage:', msg.msgId || msg.messageId || msg.id || '');
 return;
+}
+// FIX: Si es mensaje entrante y NO es el chat activo, solo guardar en vault y salir
+if (!msg._own) {
+  var activeId = _getCurrentContactId();
+  var senderId = msg.senderNexoId || msg.from || msg.sender || '';
+  if (activeId && senderId && _normId(activeId) !== _normId(senderId)) {
+    if (!skipSave) _saveMessageToStorage(msg);
+    return;
+  }
 }
 var container = document.getElementById('messages-container');
 if (!container) return;
@@ -1520,7 +1549,7 @@ msgId = 'msg' + (msg.timestamp || Date.now()) + '' + Math.random().toString(36).
 msg.msgId = msgId;
 msg.messageId = msgId;
 }
-var existing = document.querySelector('[data-msg-id="' + msgId + '"]');
+var existing = document.querySelector('[data-msg-id=\"' + msgId + '\"]');
 if (existing) {
 if (msg.status) {
 _updateMessageStatus(msgId, msg.status);
@@ -1535,7 +1564,7 @@ type: msg.attachmentType,
 payload: msg.attachmentPayload,
 meta: msg.attachmentMeta || {}
 };
-} else if (msg.content && msg.content.indexOf('"attachmentType"') > -1) {
+} else if (msg.content && msg.content.indexOf('\"attachmentType\"') > -1) {
 try {
 var parsed = JSON.parse(msg.content);
 if (parsed && parsed.type === 'attachment' && parsed.attachmentType) {
@@ -1611,7 +1640,7 @@ video.dataset.fullscreenSrc = vSrc;
 video.dataset.fullscreenType = 'video';
 var playOverlay = document.createElement('div');
 playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
-playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
+playOverlay.innerHTML = '<svg viewBox=\"0 0 24 24\" width=\"40\" height=\"40\" fill=\"#fff\" style=\"opacity:0.9;\"><path d=\"M8 5v14l11-7z\"/></svg>';
 videoWrapper.appendChild(video);
 videoWrapper.appendChild(playOverlay);
 videoWrapper.onclick = function(e) {
@@ -1653,7 +1682,7 @@ fvideo.dataset.fullscreenSrc = fvSrc;
 fvideo.dataset.fullscreenType = 'video';
 var fplayOverlay = document.createElement('div');
 fplayOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
-fplayOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
+fplayOverlay.innerHTML = '<svg viewBox=\"0 0 24 24\" width=\"40\" height=\"40\" fill=\"#fff\" style=\"opacity:0.9;\"><path d=\"M8 5v14l11-7z\"/></svg>';
 mediaWrapper.appendChild(fvideo);
 mediaWrapper.appendChild(fplayOverlay);
 }
@@ -1665,7 +1694,7 @@ _openFullscreenMedia(src, type);
 };
 contentDiv.appendChild(mediaWrapper);
 } else {
-contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
+contentDiv.innerHTML = '<div style=\"padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;\">📎 <b>Archivo</b><span style=\"font-size:12px;opacity:0.7;\">' + (attachment.meta.name || 'archivo') + '</span></div>';
 }
 } else if (attachment.type === 'location') {
 var loc = attachment.meta;
@@ -1674,17 +1703,17 @@ var lng = (loc && loc.lng) ? loc.lng : 0;
 var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
 var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
 var osmUrl = 'https://static-maps.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng + '&zoom=15&size=300x150&markers=' + lat + ',' + lng + ',red-pushpin';
-var locHtml = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
-locHtml += '<div style="position:relative;width:100%;height:120px;background:linear-gradient(135deg,#1a1a2e,#0f3460);overflow:hidden;">';
-locHtml += '<img src="' + osmUrl + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1;" onerror="this.style.display=\'none\'">';
-locHtml += '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;z-index:0;">';
-locHtml += '<svg viewBox="0 0 24 24" width="32" height="32" fill="#FF3B30"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>';
-locHtml += '<span style="font-size:11px;color:#aaa;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
+var locHtml = '<div style=\"border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;\">';
+locHtml += '<div style=\"position:relative;width:100%;height:120px;background:linear-gradient(135deg,#1a1a2e,#0f3460);overflow:hidden;\">';
+locHtml += '<img src=\"' + osmUrl + '\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1;\" onerror=\"this.style.display=\'none\'\">';
+locHtml += '<div style=\"position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;z-index:0;\">';
+locHtml += '<svg viewBox=\"0 0 24 24\" width=\"32\" height=\"32\" fill=\"#FF3B30\"><path d=\"M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z\"/></svg>';
+locHtml += '<span style=\"font-size:11px;color:#aaa;\">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span>';
 locHtml += '</div></div>';
-locHtml += '<div style="padding:8px 12px;"> <b>Ubicacion</b><span style="font-size:12px;opacity:0.7;">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
-locHtml += '<div style="display:flex;gap:8px;padding:0 12px 10px;">';
-locHtml += '<a href="' + mapsUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Maps</a>';
-locHtml += '<a href="' + wazeUrl + '" target="_blank" style="flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;">Waze</a>';
+locHtml += '<div style=\"padding:8px 12px;\"> <b>Ubicacion</b><span style=\"font-size:12px;opacity:0.7;\">' + lat.toFixed(4) + ', ' + lng.toFixed(4) + '</span></div>';
+locHtml += '<div style=\"display:flex;gap:8px;padding:0 12px 10px;\">';
+locHtml += '<a href=\"' + mapsUrl + '\" target=\"_blank\" style=\"flex:1;text-align:center;padding:6px;background:rgba(0,130,252,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;\">Maps</a>';
+locHtml += '<a href=\"' + wazeUrl + '\" target=\"_blank\" style=\"flex:1;text-align:center;padding:6px;background:rgba(107,78,255,0.3);border-radius:6px;color:#fff;text-decoration:none;font-size:12px;\">Waze</a>';
 locHtml += '</div></div>';
 contentDiv.innerHTML = locHtml;
 } else if (attachment.type === 'audio') {
@@ -1702,16 +1731,16 @@ var byteArray = new Uint8Array(byteNums);
 var audioBlob = new Blob([byteArray], { type: mime });
 var audioSrc = URL.createObjectURL(audioBlob);
 _objectURLRegistry.push(audioSrc);
-var audioHtml = '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;" id="' + audioId + '_wrap">';
-audioHtml += '<button id="' + audioId + '_play" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">▶</button>';
-audioHtml += '<div style="flex:1;min-width:0;">';
-audioHtml += '<div id="' + audioId + '_wave" style="height:24px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;">';
+var audioHtml = '<div style=\"display:flex;align-items:center;gap:10px;padding:8px 12px;min-width:200px;\" id=\"' + audioId + '_wrap\">';
+audioHtml += '<button id=\"' + audioId + '_play\" style=\"width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;\">▶</button>';
+audioHtml += '<div style=\"flex:1;min-width:0;\">';
+audioHtml += '<div id=\"' + audioId + '_wave\" style=\"height:24px;display:flex;align-items:flex-end;gap:2px;opacity:0.6;\">';
 for (var w = 0; w < 24; w++) {
 var h = 4 + Math.random() * 16;
-audioHtml += '<div class="wave-bar" data-idx="' + w + '" style="width:3px;height:' + h + 'px;background:#fff;border-radius:1px;flex-shrink:0;transition:height 0.15s ease;"></div>';
+audioHtml += '<div class=\"wave-bar\" data-idx=\"' + w + '\" style=\"width:3px;height:' + h + 'px;background:#fff;border-radius:1px;flex-shrink:0;transition:height 0.15s ease;\"></div>';
 }
 audioHtml += '</div>';
-audioHtml += '<div id="' + audioId + '_time" style="font-size:11px;color:#aaa;margin-top:3px;">00:00 / ' + durStr + '</div>';
+audioHtml += '<div id=\"' + audioId + '_time\" style=\"font-size:11px;color:#aaa;margin-top:3px;\">00:00 / ' + durStr + '</div>';
 audioHtml += '</div></div>';
 contentDiv.innerHTML = audioHtml;
 setTimeout(function() {
@@ -1849,7 +1878,7 @@ console.warn('[MAIN] _renderMessage error:', e);
 function _updateMessageStatus(messageId, status) {
 try {
 if (!messageId) return;
-var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
+var statusEl = document.querySelector('.msg-status[data-msg-id=\"' + messageId + '\"]');
 if (!statusEl) return;
 statusEl.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
 statusEl.classList.add('status-' + status);
@@ -1919,7 +1948,7 @@ if (text) input.value = text;
 }
 function _forceHideSplash() {
 try {
-var selectors = ['#splash-native', '#splash', '.splash-screen', '[id*="splash"]', '#nexo-setup'];
+var selectors = ['#splash-native', '#splash', '.splash-screen', '[id*=\"splash\"]', '#nexo-setup'];
 for (var i = 0; i < selectors.length; i++) {
 var el = document.querySelector(selectors[i]);
 if (el) {
