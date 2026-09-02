@@ -1,10 +1,9 @@
 /**
- * BLE Interface v6.0.2-TURBO-FIX
- * FIX: _resendPendingMessages usa chunking para textos >180 chars, preserva seq, maneja estado failed
- * FIX: sendChatMessage pasa msgSeq a sendChunkedMessage y al queue
- * FIX: _processPendingMessages maneja largos y preserva seq
- * FIX: resumeOutgoingTransfers llamado en reenvío
- * Base: v6.0.1-TURBO-FIX
+ * BLE Interface v6.0.3-TURBO-FIX
+ * FIX: Payload enriquecido v1 priorizado sobre json.content
+ * FIX: msgSeq preservado en sendWithRetry
+ * FIX: Session sync post-zombie recovery
+ * Base: v6.0.2-TURBO-FIX
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -386,7 +385,7 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();
-    console.log('[BLEInterface] v6.0.2-TURBO-FIX iniciado');
+    console.log('[BLEInterface] v6.0.3-TURBO-FIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -513,6 +512,15 @@ export class BLEInterface {
       if (lastPong === 0 || timeSincePong > 16000) {
         self._pingDevice(deviceId).then(function(result) {
           self._pingFailCount.set(deviceId, 0);
+          // FIX v6.0.3: Si veníamos de zombie, forzar session sync para recovery
+          var prevState = self._supervisorStates.get(deviceId);
+          if (prevState && prevState.state === SUPERVISOR_STATES.ZOMBIE) {
+            var nx = self._macToNexoId.get(_normMac(deviceId));
+            if (nx && self.ackSystem && self.ackSystem.sendSessionSync) {
+              console.log('[BLEInterface] Zombie recovery, enviando session sync a', nx);
+              self.ackSystem.sendSessionSync(deviceId, nx);
+            }
+          }
           self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.HEALTHY, since: Date.now(), rtt: result.rtt });
         }).catch(function(err) {
           var fails = (self._pingFailCount.get(deviceId) || 0) + 1;
@@ -886,24 +894,33 @@ export class BLEInterface {
           return;
         }
 
+        var msgSeq = 0;
         if (content.charAt(0) === '{' || (data.data && data.data.charAt(0) === '{')) {
           try {
             var json = JSON.parse(data.data || content || '{}');
             if (json.msgId) messageId = json.msgId;
             if (json.messageId) messageId = json.messageId;
-            var msgSeq = 0;
             if (typeof json.seq === 'number') msgSeq = json.seq;
-            if (json.payload) {
+
+            // FIX v6.0.3: Priorizar payload enriquecido v1 y evitar que json.content sobreescriba payload.text
+            if (json.v === 1 && json.type === 'chat' && json.payload) {
+              if (typeof json.payload.text === 'string') content = json.payload.text;
               if (json.payload.senderName) senderName = json.payload.senderName;
-              if (json.payload.text) content = json.payload.text;
               if (json.payload.senderNexoId) senderUUID = json.payload.senderNexoId;
+              if (!messageId && json.msgId) messageId = json.msgId;
+            } else {
+              if (json.payload) {
+                if (json.payload.senderName) senderName = json.payload.senderName;
+                if (json.payload.text) content = json.payload.text;
+                if (json.payload.senderNexoId) senderUUID = json.payload.senderNexoId;
+              }
+              if (json.senderName) senderName = json.senderName;
+              if (json.deviceName) senderName = json.deviceName;
+              if (json.deviceUUID) senderUUID = json.deviceUUID;
+              if (json.content) content = json.content;
+              if (json.from && !senderUUID) senderUUID = json.from;
+              if (!messageId && json.payload && json.payload.messageId) messageId = json.payload.messageId;
             }
-            if (json.senderName) senderName = json.senderName;
-            if (json.deviceName) senderName = json.deviceName;
-            if (json.deviceUUID) senderUUID = json.deviceUUID;
-            if (json.content) content = json.content;
-            if (json.from && !senderUUID) senderUUID = json.from;
-            if (!messageId && json.payload && json.payload.messageId) messageId = json.payload.messageId;
           } catch (e) {}
         }
         if (!senderUUID) {
@@ -1113,7 +1130,8 @@ export class BLEInterface {
             return;
           }
           if (self.ackSystem) {
-            self.ackSystem.sendWithRetry(deviceId, content, msgId)
+            // FIX v6.0.3: Preservar seq en envío de mensajes cortos
+            self.ackSystem.sendWithRetry(deviceId, content, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
               .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
           } else {
