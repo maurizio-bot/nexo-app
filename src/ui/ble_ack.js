@@ -1,5 +1,7 @@
 /**
- * ble_ack.js v2.1.1-FIX
+ * ble_ack.js v2.1.2-FIX
+ * FIX: resumeOutgoingTransfers lee strings planos u objetos
+ * FIX: _dispatchChunkedMessageComplete marca fromVault=true
  * FIX: sendWithRetry acepta y preserva seq en reintentos de mensajes largos
  * FIX: sendChunkedMessage genera seq defensivamente si no viene
  * FIX: ChatStream._buildChunk incluye seq directo en payload chunk 0
@@ -441,7 +443,8 @@ export class BleAckSystem {
         console.log('[BleAckSystem] Resume:', list.length, 'outgoing para', cid);
         list.forEach(function(tx) {
           if (tx.status !== 'sending' && tx.status !== 'pending') return;
-          var content = tx.chunks.map(function(c) { return c.data || ''; }).join('');
+          // FIX v2.1.2: Manejar chunks como strings planos u objetos
+          var content = tx.chunks.map(function(c) { return (typeof c === 'string') ? c : (c.data || c.d || ''); }).join('');
           var devId = tx.deviceId || contact.deviceId;
           if (!devId) return;
           self.sendChunkedMessage(devId, content, tx.meta, tx.transferId, (tx.meta && tx.meta.seq))
@@ -454,7 +457,7 @@ export class BleAckSystem {
     });
   }
 
-  // FIX v2.1.1: Ya NO llama vaultAppendMessage — main.js lo maneja via messageReceived
+  // FIX v2.1.2: Marca fromVault=true para que main.js evite duplicar guardado
   _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId) {
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
@@ -462,7 +465,8 @@ export class BleAckSystem {
           deviceId: deviceId, deviceUUID: meta.fr || senderId,
           content: content, senderName: meta.f || 'NEXO',
           senderNexoId: meta.fr || senderId, messageId: msgId || meta.msgId,
-          source: 'ble', timestamp: Date.now(), seq: meta.seq || 0
+          source: 'ble', timestamp: Date.now(), seq: meta.seq || 0,
+          fromVault: true
         }
       }));
     } catch (e) {}
