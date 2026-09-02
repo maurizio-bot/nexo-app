@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.15-FIX
+ * src/main.js - Punto de entrada NEXO v9.9.16-FIX
+ * FIX: Salta guardado si fromVault=true (evita duplicados de chunking)
+ * FIX: Estado sending con fallback a sent a los 12s (espera ACK real)
  * FIX: ackSystem vinculado EARLY (antes de initPromise) para que receptor siempre tenga fragment handler
  * FIX: Eliminado segundo ackSystem post-initPromise (doble instancia causaba pérdida de buffers)
  * FIX: Filtro defensivo anti-protocolo en messageReceived listener (incluye TURBO compact)
@@ -817,7 +819,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.15-FIX iniciando...');
+console.log('[MAIN] NEXO v9.9.16-FIX iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -994,6 +996,11 @@ _renderMessage(msg, true);
 window.addEventListener('nexo:ble:messageReceived', function(e) {
 if (e && e.detail) {
 var msg = e.detail;
+// FIX v9.9.16: Si el mensaje viene ensamblado desde vault (chunking), solo renderizar
+if (msg.fromVault === true) {
+  _renderMessage(msg, true);
+  return;
+}
 // === FIX v9.9.14-TURBO: Filtro defensivo anti-protocolo (legacy + compact) ===
 if (msg.content && typeof msg.content === 'string') {
   var trimmed = msg.content.trim();
@@ -1070,6 +1077,11 @@ console.warn('[MAIN] Error en fileComplete handler:', err.message);
 window.addEventListener('nexo:ble:ackStatus', function(e) {
 try {
 if (e && e.detail && e.detail.msgId) {
+// FIX v9.9.16: Cancelar fallback timer si llega ACK real antes de los 12s
+if (window._sentFallbackTimers && window._sentFallbackTimers[e.detail.msgId]) {
+  clearTimeout(window._sentFallbackTimers[e.detail.msgId]);
+  delete window._sentFallbackTimers[e.detail.msgId];
+}
 _updateMessageStatus(e.detail.msgId, e.detail.status);
 _updateMessageStorageStatus(e.detail.msgId, e.detail.status);
 }
@@ -1272,10 +1284,19 @@ _updateMessageStatus(msgId, 'sending');
 _updateMessageStorageStatus(msgId, 'sending');
 try {
 await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId, seq: seq });
-_updateMessageStatus(msgId, 'sent');
-_updateMessageStorageStatus(msgId, 'sent');
+// FIX v9.9.16: No marcar 'sent' inmediatamente. Esperar ACK real o fallback a 12s.
+window._sentFallbackTimers = window._sentFallbackTimers || {};
+window._sentFallbackTimers[msgId] = setTimeout(function() {
+  _updateMessageStatus(msgId, 'sent');
+  _updateMessageStorageStatus(msgId, 'sent');
+  delete window._sentFallbackTimers[msgId];
+}, 12000);
 } catch (e) {
 console.warn('[MAIN] sendMessage failed:', e.message);
+if (window._sentFallbackTimers && window._sentFallbackTimers[msgId]) {
+  clearTimeout(window._sentFallbackTimers[msgId]);
+  delete window._sentFallbackTimers[msgId];
+}
 _updateMessageStatus(msgId, 'failed');
 _updateMessageStorageStatus(msgId, 'failed');
 }
