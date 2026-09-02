@@ -28,7 +28,8 @@ export class BleAckSystem {
 
     // FIX v2.1.0: chunkSize dinámico por plataforma
     var platform = (window.Capacitor && window.Capacitor.getPlatform) ? window.Capacitor.getPlatform() : 'android';
-    this.chunkSize = (platform === 'ios') ? 130 : 400;
+    this.chunkSize = (platform === 'ios') ? 130 : 160;  // FIX: 160 para UTF-8 seguro en Android
+
     this.windowSize = 3;
     this.windowTimeoutMs = 4000;
 
@@ -296,7 +297,7 @@ export class BleAckSystem {
       }
       sendNext();
     }).catch(function(){});
-  }
+n  }
 
   sendSessionSync(deviceId, peerNexoId) {
     var self = this;
