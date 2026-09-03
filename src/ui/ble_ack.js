@@ -1,10 +1,8 @@
 /**
- * ble_ack.js v2.2.1-FIX
- * FIX: Quitados ACKs individuales que saturaban el canal BLE
- * FIX: Envío secuencial de chunks (uno por uno) con 30ms de delay
- * FIX: Retransmisión selectiva por chunk (timeout 2s por chunk)
- * FIX: chunkSize = 80 para UTF-8 seguro en cualquier MTU
- * Base: v2.2.0-FIX
+ * ble_ack.js v2.2.2-FIX
+ * ABLACIÓN 1: Eliminado timer de chunk individual (2s). Solo ventana (4s) + NACK.
+ * ABLACIÓN 2: Eliminado obj.meta redundante en chunk 0.
+ * ABLACIÓN 3: Buffer incoming no se borra al ensamblar; se guarda en completedMessages 30s.
  */
 
 function _normMac(mac) {
@@ -33,6 +31,7 @@ export class BleAckSystem {
     this.pendingOutgoingFiles = new Map();
     this.pendingOutgoingTransfers = new Map();
     this.blockAckTimers = new Map();
+    this.completedMessages = new Map(); // [ABLACIÓN 3] msgId -> { total, expireAt }
     this._startCleanupInterval();
   }
 
@@ -128,6 +127,13 @@ export class BleAckSystem {
     var seq = (typeof msg.seq === 'number') ? msg.seq : ((msg.meta && typeof msg.meta.seq === 'number') ? msg.meta.seq : 0);
     if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
 
+    // [ABLACIÓN 3] Si ya ensamblamos este mensaje, reenviamos ACK final y descartamos
+    var completed = self.completedMessages.get(msgId);
+    if (completed) {
+      self._sendChunkAck(deviceId, msgId, null, completed.total, true);
+      return;
+    }
+
     var buf = self.incomingBuffers.get(msgId);
     if (!buf) {
       buf = {
@@ -190,13 +196,17 @@ export class BleAckSystem {
       assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
     }
     self._sendChunkAck(deviceId, msgId, null, buf.total, true);
+
+    // [ABLACIÓN 3] Guardar en completados 30s antes de borrar buffer
+    self.completedMessages.set(msgId, { total: buf.total, expireAt: Date.now() + 30000 });
+    self.incomingBuffers.delete(msgId);
+
     if (buf.isChat) {
       self._dispatchChunkedMessageComplete(senderId, assembled, buf.meta, deviceId, msgId);
     } else {
       self._dispatchFileComplete(senderId, assembled, buf.meta);
       self._dispatchFileProgress(senderId, buf.total, buf.total, 'received', 100);
     }
-    self.incomingBuffers.delete(msgId);
     if (window.vaultCompleteTransfer) {
       window.vaultCompleteTransfer(senderId, msgId).catch(function(){});
     }
@@ -475,6 +485,10 @@ export class BleAckSystem {
       self.pendingAcks.forEach(function(entry, msgId) {
         if (now - entry.sentAt > self.maxFragmentAge) { clearTimeout(entry.timer); self.pendingAcks.delete(msgId); try { entry.reject(new Error('Timeout global')); } catch(e) {} }
       });
+      // [ABLACIÓN 3] Limpiar mensajes completados expirados
+      self.completedMessages.forEach(function(data, msgId) {
+        if (now > data.expireAt) self.completedMessages.delete(msgId);
+      });
     }, 30000);
   }
 }
@@ -503,7 +517,7 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, chunkSize, window
   this.windowRetryCount = 0;
   this.maxWindowRetries = 5;
   this.globalTimeout = null;
-  this._chunkTimers = {};
+  // [ABLACIÓN 1] Eliminado: this._chunkTimers = {};
 }
 
 ChatStream.prototype.start = function() {
@@ -521,7 +535,7 @@ ChatStream.prototype.start = function() {
       if (!self.aborted) {
         self.aborted = true;
         if (self.timer) clearTimeout(self.timer);
-        self._clearChunkTimers();
+        // [ABLACIÓN 1] Eliminado: self._clearChunkTimers();
         self.reject(new Error('Timeout global 45s'));
         self.ackSystem._dispatchStatus(self.msgId, 'failed');
       }
@@ -566,7 +580,7 @@ ChatStream.prototype._sendWindow = function() {
     var payload = self._buildChunk(idx);
     self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
       .then(function() {
-        self._startChunkTimer(idx);
+        // [ABLACIÓN 1] Eliminado: self._startChunkTimer(idx);
         setTimeout(function() { sendNext(idx + 1); }, 30);
       })
       .catch(function(err) {
@@ -590,7 +604,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     obj.f = this.meta.f || 'NEXO';
     obj.fr = this.meta.fr || 'unknown';
     obj.ts = this.meta.ts || Date.now();
-    obj.meta = this.meta;
+    // [ABLACIÓN 2] Eliminado: obj.meta = this.meta;
     if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
   }
   return JSON.stringify(obj);
@@ -634,36 +648,10 @@ ChatStream.prototype._onWindowTimeout = function() {
   }
 };
 
-ChatStream.prototype._startChunkTimer = function(idx) {
-  var self = this;
-  var key = 'chunk_' + idx;
-  if (self._chunkTimers[key]) clearTimeout(self._chunkTimers[key]);
-  self._chunkTimers[key] = setTimeout(function() {
-    self._onChunkTimeout(idx);
-  }, 2000);
-};
-
-ChatStream.prototype._onChunkTimeout = function(idx) {
-  var self = this;
-  if (self.aborted || self.ackedMask[idx]) return;
-  console.log('[ChatStream] Timeout chunk', idx, 'reenviando...');
-  self.sentMask[idx] = true;
-  var payload = self._buildChunk(idx);
-  self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
-    .then(function() {
-      self._startChunkTimer(idx);
-    })
-    .catch(function() {
-      setTimeout(function() { self._onChunkTimeout(idx); }, 500);
-    });
-};
-
-ChatStream.prototype._clearChunkTimers = function() {
-  for (var key in this._chunkTimers) {
-    if (this._chunkTimers[key]) clearTimeout(this._chunkTimers[key]);
-  }
-  this._chunkTimers = {};
-};
+// [ABLACIÓN 1] Eliminados por completo:
+// ChatStream.prototype._startChunkTimer = function(idx) { ... }
+// ChatStream.prototype._onChunkTimeout = function(idx) { ... }
+// ChatStream.prototype._clearChunkTimers = function() { ... }
 
 ChatStream.prototype.handleNack = function(indices) {
   var self = this;
@@ -710,7 +698,7 @@ ChatStream.prototype._finish = function() {
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
-  this._clearChunkTimers();
+  // [ABLACIÓN 1] Eliminado: this._clearChunkTimers();
   if (window.vaultRemoveOutgoingTransfer) {
     var cid = this.ackSystem._resolveNexoId(this.deviceId);
     window.vaultRemoveOutgoingTransfer(cid, this.msgId).catch(function(){});
@@ -723,7 +711,7 @@ ChatStream.prototype.abort = function() {
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
-  this._clearChunkTimers();
+  // [ABLACIÓN 1] Eliminado: this._clearChunkTimers();
   if (this.reject) this.reject(new Error('Abortado'));
 };
 
