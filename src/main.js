@@ -1,23 +1,10 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.16-FIX
- * FIX: Salta guardado si fromVault=true (evita duplicados de chunking)
- * FIX: Estado sending con fallback a sent a los 12s (espera ACK real)
- * FIX: ackSystem vinculado EARLY (antes de initPromise) para que receptor siempre tenga fragment handler
- * FIX: Eliminado segundo ackSystem post-initPromise (doble instancia causaba pérdida de buffers)
- * FIX: Filtro defensivo anti-protocolo en messageReceived listener (incluye TURBO compact)
- * FIX: Mensaje fantasma — peerReady universal + flush en primera conexion + outbox por nexoId
- * FIX: _doSend captura error y marca failed en UI/vault + marca sent en éxito
- * FIX: seq counter en envío + inserción ordenada en DOM por (timestamp, seq, msgId)
- * FIX: _cameraActiveStream declarado explícitamente
- * FIX: _stopCameraPreview limpia tracks incluso si estaba grabando
- * FIX: _setupFABButton NO clona nodo, reutiliza listener existente
- * FIX: ObjectURLs revocados al cerrar fullscreen
- * FIX: _getContactStorageKey usa nexoId cuando está disponible
- * FIX: msgId/messageId normalizado en _saveMessageToStorage, _updateMessageStorageStatus, _renderMessage
- * FIX v9.9.15: Deduplicación defensiva de mensajes renderizados
- * FIX v9.9.15: _saveMessageToStorage usa remitente real para mensajes entrantes
- * FIX v9.9.15: _renderMessage no inserta en DOM mensajes de contactos inactivos
-   */
+ * src/main.js - Punto de entrada NEXO v9.9.17-FIX
+ * FIX: Limpieza de container al abrir chat nuevo / desde notificación / al cargar del vault
+ * FIX: Inserción ordenada SIEMPRE incluso con skipSave=true
+ * FIX: No renderizar mensajes entrantes si no hay chat abierto (evita mezcla en background)
+ * Base: v9.9.16-FIX
+ */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
 import { NEXO_DIAG } from './core/nap.js';
@@ -29,7 +16,6 @@ import {
   initVault,
   vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages,
   vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId,
-  // D1+D2: Transfer layer
   vaultCreateTransfer, vaultAppendChunk, vaultGetTransfer, vaultCompleteTransfer,
   vaultGetIncompleteTransfers, vaultGetPendingOutgoingTransfers, vaultCreateOutgoingTransfer,
   vaultSetOutgoingChunkAcked, vaultIncrementOutgoingTimeout, vaultRemoveOutgoingTransfer,
@@ -60,7 +46,6 @@ window.vaultAppendMessage = vaultAppendMessage;
 window.vaultUpdateMessageStatus = vaultUpdateMessageStatus;
 window.vaultGetOrCreateContact = vaultGetOrCreateContact;
 window.vaultFindContactByNexoId = vaultFindContactByNexoId;
-// D1+D2: Vault Transfer Layer expuesta globalmente para ble_ack.js
 window.vaultCreateTransfer = vaultCreateTransfer;
 window.vaultAppendChunk = vaultAppendChunk;
 window.vaultGetTransfer = vaultGetTransfer;
@@ -82,7 +67,6 @@ document.body.classList.add('nexo-force-ready');
 console.warn('[MAIN] Safety timeout error:', e);
 }
 }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE ? NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE : 3000) + 12000);
-// === ATTACHMENT HANDLERS GLOBALES ===
 var _mediaRecorder = null;
 var _lastLocationSent = 0;
 var _LOCATION_DEBOUNCE_MS = 3000;
@@ -99,7 +83,6 @@ var _cameraPreviewVideoChunks = [];
 var _cameraVideoStartTime = 0;
 var _objectURLRegistry = [];
 var _renderedMessageCount = 0;
-// FIX v9.9.15: Set para deduplicar mensajes ya renderizados
 var _renderedMessageIds = new Set();
 var _autoScan = null;
 function _fmtTime(sec) {
@@ -819,7 +802,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.16-FIX iniciando...');
+console.log('[MAIN] NEXO v9.9.17-FIX iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -928,6 +911,8 @@ if (styles) styles.remove();
 function _openChatFromNotification(deviceId) {
 try {
 if (!window.NEXO.app) return;
+// FIX v9.9.17: Limpieza al abrir chat desde notificación
+_clearMessageContainer();
 var contact = vaultFindContactByNexoId(deviceId);
 if (!contact) {
 contact = { nexoId: deviceId, displayName: 'NEXO' };
@@ -951,7 +936,6 @@ console.warn('[MAIN] _openChatFromNotification error:', e);
 }
 }
 
-// === FIX: Listeners críticos registrados antes de cualquier await largo ===
 function _registerCriticalListeners() {
 try {
 window.addEventListener('nexo:ble:deviceConnected', function(e) {
@@ -988,20 +972,20 @@ _autoScan.start();
 });
 window.addEventListener('nexo:vault:messagesLoaded', function(e) {
 if (e && e.detail && Array.isArray(e.detail.messages)) {
-e.detail.messages.forEach(function(msg) {
-_renderMessage(msg, true);
-});
+  // FIX v9.9.17: Limpieza al cargar mensajes del vault
+  _clearMessageContainer();
+  e.detail.messages.forEach(function(msg) {
+    _renderMessage(msg, true);
+  });
 }
 });
 window.addEventListener('nexo:ble:messageReceived', function(e) {
 if (e && e.detail) {
 var msg = e.detail;
-// FIX v9.9.16: Si el mensaje viene ensamblado desde vault (chunking), solo renderizar
 if (msg.fromVault === true) {
   _renderMessage(msg, true);
   return;
 }
-// === FIX v9.9.14-TURBO: Filtro defensivo anti-protocolo (legacy + compact) ===
 if (msg.content && typeof msg.content === 'string') {
   var trimmed = msg.content.trim();
   if (trimmed.charAt(0) === '{') {
@@ -1012,7 +996,6 @@ if (msg.content && typeof msg.content === 'string') {
           protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
           protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' ||
           protoCheck.type === 'pong' ||
-          // TURBO protocol compact
           protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' ||
           protoCheck.t === 'a' || protoCheck.t === 'ss' || protoCheck.t === 'sr') {
         console.warn('[MAIN] Protocol JSON defensively dropped:', protoCheck.type || protoCheck.t);
@@ -1021,8 +1004,6 @@ if (msg.content && typeof msg.content === 'string') {
     } catch(e) {}
   }
 }
-// === FIN FIX DEFENSIVO ===
-// FIX: Usar localNexoId (NX...) para filtro, no localDeviceUUID (UUID estándar)
 var bi = window.NEXO.app && window.NEXO.app.bleInterface;
 var localUUID = (bi && bi.localNexoId) || (bi && bi.localDeviceUUID) || '';
 var senderUUID = msg.senderNexoId || msg.deviceUUID || '';
@@ -1077,7 +1058,6 @@ console.warn('[MAIN] Error en fileComplete handler:', err.message);
 window.addEventListener('nexo:ble:ackStatus', function(e) {
 try {
 if (e && e.detail && e.detail.msgId) {
-// FIX v9.9.16: Cancelar fallback timer si llega ACK real antes de los 12s
 if (window._sentFallbackTimers && window._sentFallbackTimers[e.detail.msgId]) {
   clearTimeout(window._sentFallbackTimers[e.detail.msgId]);
   delete window._sentFallbackTimers[e.detail.msgId];
@@ -1099,17 +1079,13 @@ async function initializeNexoApp() {
 try {
 await initVault();
 NEXO_CONFIG.assert(typeof NexoApp === 'function', 'NexoApp debe ser una clase valida');
-
-// FIX: Registrar listeners ANTES de cualquier await largo para evitar race condition
 _registerCriticalListeners();
-
 var nexoConfig = {
 relayUrls: ['wss://relay.nexo.local:8080', 'wss://backup.nexo.local:8081'],
 bleTimeout: (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.BLE) ? NEXO_CONFIG.TIMEOUTS.BLE : 30000,
 enableGestures: true,
 enableMesh: true,
 onMessage: function(msg) {
-  // FIX: Solo logging — persistencia y render los hacen BLEInterface + listener directo
   console.log('[NEXO] Mensaje recibido:', msg.msgId || msg.messageId);
 },
 onStatusChange: function(mode) {
@@ -1133,8 +1109,6 @@ initBLEInterface();
 } catch (bleInitErr) {
 console.warn('[MAIN] initBLEInterface error:', bleInitErr);
 }
-
-// FIX v9.9.13: Vincular ackSystem EARLY, antes de initPromise, para que receptor siempre tenga fragment handler
 try {
 if (window.NEXO.app && window.NEXO.app.bleInterface) {
 var ackEarly = createAckSystem(window.NEXO.app.bleInterface);
@@ -1144,8 +1118,6 @@ console.log('[MAIN] BleAckSystem vinculado EARLY');
 } catch (ackEarlyErr) {
 console.warn('[MAIN] AckSystem early vinculo fallo:', ackEarlyErr);
 }
-
-// D2: Retomar envíos rotos al iniciar
 setTimeout(function() {
   var bi = window.NEXO.app && window.NEXO.app.bleInterface;
   var ack = bi && bi.ackSystem;
@@ -1153,7 +1125,6 @@ setTimeout(function() {
     ack.resumeOutgoingTransfers();
   }
 }, 3000);
-
 try {
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) {
 window.Capacitor.Plugins.NexoBLE.addListener('onNotificationOpened', function(event) {
@@ -1186,10 +1157,6 @@ contacts: bi.getBLEContacts ? bi.getBLEContacts().length : 0
 });
 }
 } catch (logErr) { console.warn('[MAIN] Log BLE error:', logErr); }
-
-// FIX v9.9.14: Eliminado segundo ackSystem post-initPromise. La instancia EARLY es la única.
-// Esto evita que chat_meta/chat_chunk pierdan sus buffers al ser reemplazados.
-
 _setupMessageInput();
 _setupVaultToggle();
 _setupChatHeader();
@@ -1198,8 +1165,6 @@ _setupJumpButton();
 _setupFABButton();
 _setupBackButton();
 await _loadPersistedMessages();
-// Los listeners críticos ya están registrados arriba via _registerCriticalListeners()
-// Fase 4 hooks adicionales (no críticos) pueden ir aquí si es necesario
 console.log('[MAIN] Fase 4 hooks OK');
 NEXO_DIAG.hideSplash();
 _forceHideSplash();
@@ -1284,7 +1249,6 @@ _updateMessageStatus(msgId, 'sending');
 _updateMessageStorageStatus(msgId, 'sending');
 try {
 await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId, seq: seq });
-// FIX v9.9.16: No marcar 'sent' inmediatamente. Esperar ACK real o fallback a 12s.
 window._sentFallbackTimers = window._sentFallbackTimers || {};
 window._sentFallbackTimers[msgId] = setTimeout(function() {
   _updateMessageStatus(msgId, 'sent');
@@ -1489,7 +1453,6 @@ contactId = window.NEXO.app.bleInterface.activeChatDeviceId;
 } catch (e) {}
 return 'nexo_messages' + contactId;
 }
-// FIX v9.9.15: Usar remitente real para mensajes entrantes, contacto activo solo para propios
 function _saveMessageToStorage(msg) {
 try {
 if (!msg) return;
@@ -1522,6 +1485,8 @@ console.warn('[MAIN] _updateMessageStorageStatus error:', e);
 }
 async function _loadPersistedMessages() {
 try {
+// FIX v9.9.17: Limpieza de container al cargar mensajes del vault
+_clearMessageContainer();
 var contactId = _getCurrentContactId();
 if (!contactId) return;
 var vaultMessages = await vaultLoadMessages(contactId);
@@ -1537,11 +1502,15 @@ _renderMessage(msg, true);
 console.warn('[MAIN] _loadPersistedMessages error:', e);
 }
 }
-// FIX v9.9.15: Deduplicacion + filtro de contacto activo para mensajes entrantes
+// FIX v9.9.17: Limpieza de container de mensajes
+function _clearMessageContainer() {
+  var container = document.getElementById('messages-container');
+  if (container) container.innerHTML = '';
+  _renderedMessageIds.clear();
+}
 function _renderMessage(msg, skipSave) {
 try {
 if (!msg) return;
-// FIX: Deduplicacion defensiva de mensajes ya renderizados
 var msgIdDedup = msg.msgId || msg.messageId || msg.id || '';
 if (msgIdDedup && _renderedMessageIds.has(msgIdDedup)) {
   if (msg.status) _updateMessageStatus(msgIdDedup, msg.status);
@@ -1553,11 +1522,16 @@ if (msg.type === 'ack' || msg.ackType || (msg.content && typeof msg.content === 
 console.warn('[MAIN] ACK filtrado en renderMessage:', msg.msgId || msg.messageId || msg.id || '');
 return;
 }
-// FIX: Si es mensaje entrante y NO es el chat activo, solo guardar en vault y salir
+// FIX v9.9.17: Si es mensaje entrante y NO es el chat activo, solo guardar en vault y salir
 if (!msg._own) {
   var activeId = _getCurrentContactId();
   var senderId = msg.senderNexoId || msg.from || msg.sender || '';
   if (activeId && senderId && _normId(activeId) !== _normId(senderId)) {
+    if (!skipSave) _saveMessageToStorage(msg);
+    return;
+  }
+  // FIX v9.9.17: Si no hay chat abierto, no renderizar en background
+  if (!activeId) {
     if (!skipSave) _saveMessageToStorage(msg);
     return;
   }
@@ -1857,9 +1831,7 @@ statusSpan.textContent = statusIcon;
 metaDiv.appendChild(statusSpan);
 }
 div.appendChild(metaDiv);
-if (skipSave) {
-container.appendChild(div);
-} else {
+// FIX v9.9.17: Inserción ordenada SIEMPRE, incluso al cargar del vault
 var inserted = false;
 var children = container.querySelectorAll('.message');
 var msgTs = msg.timestamp || Date.now();
@@ -1879,7 +1851,6 @@ break;
 }
 if (!inserted) {
 container.appendChild(div);
-}
 }
 var msgContainer = document.getElementById('messages-container');
 if (msgContainer) {
@@ -1999,9 +1970,15 @@ function _setupBackButton() {
 try {
 var backBtn = document.getElementById('chat-back-btn');
 if (!backBtn) return;
-window.addEventListener('nexo:ble:openChat', function() {
+window.addEventListener('nexo:ble:openChat', function(e) {
 backBtn.classList.add('visible');
 document.body.classList.add('chat-view-active');
+// FIX v9.9.17: Limpieza de container al abrir chat nuevo
+_clearMessageContainer();
+var detail = e.detail || {};
+if (detail.contactId && window.NEXO.app && !window.NEXO.app.activeContact) {
+window.NEXO.app.activeContact = { nexoId: detail.contactId, name: detail.name || 'NEXO' };
+}
 });
 window.addEventListener('nexo:ble:closeChat', function() {
 backBtn.classList.remove('visible');
