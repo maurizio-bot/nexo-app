@@ -1,10 +1,10 @@
 /**
- * ble_ack.js v2.2.0-FIX
+ * ble_ack.js v2.2.1-FIX
+ * FIX: Quitados ACKs individuales que saturaban el canal BLE
  * FIX: Envío secuencial de chunks (uno por uno) con 30ms de delay
- * FIX: ACK individual por cada chunk recibido
  * FIX: Retransmisión selectiva por chunk (timeout 2s por chunk)
  * FIX: chunkSize = 80 para UTF-8 seguro en cualquier MTU
- * Base: v2.1.2-FIX
+ * Base: v2.2.0-FIX
  */
 
 function _normMac(mac) {
@@ -23,22 +23,16 @@ export class BleAckSystem {
     this.maxRetries = 3;
     this.receivedAcks = new Set();
     this.maxReceivedAcks = 500;
-
-    // FIX v2.2.0: chunkSize = 80 para UTF-8 seguro en cualquier MTU
     this.chunkSize = 80;
-
     this.windowSize = 3;
     this.windowTimeoutMs = 4000;
-
     this.outgoingStreams = new Map();
     this.incomingBuffers = new Map();
-
     this.pendingFragments = new Map();
     this.maxFragmentAge = 300000;
     this.pendingOutgoingFiles = new Map();
     this.pendingOutgoingTransfers = new Map();
     this.blockAckTimers = new Map();
-
     this._startCleanupInterval();
   }
 
@@ -63,12 +57,10 @@ export class BleAckSystem {
       var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
       var ts = Date.now();
       var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: ts });
-
       if (typeof seq !== 'number') {
         seq = (self.ble && typeof self.ble.getNextSeq === 'function') ? self.ble.getNextSeq() : 0;
       }
       finalMeta.seq = seq;
-
       if (content.length <= 180) {
         self.sendWithRetry(deviceId, content, msgId, seq).then(resolve).catch(reject);
         return;
@@ -109,7 +101,6 @@ export class BleAckSystem {
       var content = dataObj.content;
       var msg = JSON.parse(content);
       var type = msg.t || msg.type;
-
       if (type === 'block_ack') { this._processBlockAck(msg); return true; }
       if (type === 'ack' || type === 'read_receipt') { this.processIncomingAck(content); return true; }
       if (type === 'ping' || type === 'pong') { return false; }
@@ -135,7 +126,6 @@ export class BleAckSystem {
     var data = msg.d || msg.data;
     var from = msg.fr || msg.from;
     var seq = (typeof msg.seq === 'number') ? msg.seq : ((msg.meta && typeof msg.meta.seq === 'number') ? msg.meta.seq : 0);
-
     if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
 
     var buf = self.incomingBuffers.get(msgId);
@@ -159,9 +149,6 @@ export class BleAckSystem {
       buf.lastActivity = Date.now();
     }
 
-    // FIX v2.2.0: ACK individual inmediato por cada chunk recibido
-    self._sendIndividualAck(deviceId, msgId, idx);
-
     var senderId = from || (buf.meta && buf.meta.fr) || 'unknown';
     if (window.vaultAppendChunk) {
       window.vaultAppendChunk(senderId, msgId, idx, data || '', total, buf.meta).catch(function(){});
@@ -181,7 +168,6 @@ export class BleAckSystem {
       return;
     }
 
-    // Block ACK de respaldo cada windowSize chunks
     if ((idx + 1) % self.windowSize === 0 || idx === total - 1) {
       var ackMask = [];
       for (var i = 0; i < total; i++) ackMask.push(buf.chunks.has(i) ? '1' : '0');
@@ -203,18 +189,14 @@ export class BleAckSystem {
     for (var i = 0; i < buf.total; i++) {
       assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
     }
-
     self._sendChunkAck(deviceId, msgId, null, buf.total, true);
-
     if (buf.isChat) {
       self._dispatchChunkedMessageComplete(senderId, assembled, buf.meta, deviceId, msgId);
     } else {
       self._dispatchFileComplete(senderId, assembled, buf.meta);
       self._dispatchFileProgress(senderId, buf.total, buf.total, 'received', 100);
     }
-
     self.incomingBuffers.delete(msgId);
-
     if (window.vaultCompleteTransfer) {
       window.vaultCompleteTransfer(senderId, msgId).catch(function(){});
     }
@@ -234,14 +216,6 @@ export class BleAckSystem {
     }
   }
 
-  // FIX v2.2.0: ACK individual inmediato por chunk
-  _sendIndividualAck(deviceId, msgId, idx) {
-    var payload = JSON.stringify({ t: 'a', m: msgId, i: idx, f: 0 });
-    if (this.ble && this.ble._sendMessageNative) {
-      this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
-    }
-  }
-
   _handleNack(msg) {
     var msgId = msg.m;
     var indices = msg.k || [];
@@ -254,11 +228,6 @@ export class BleAckSystem {
     var isFinal = msg.f === 1;
     var stream = this.outgoingStreams.get(msgId);
     if (stream) {
-      // FIX v2.2.0: ACK individual por chunk
-      if (typeof msg.i === 'number') {
-        stream.handleIndividualAck(msg.i);
-        return;
-      }
       if (isFinal) stream.handleFinalAck();
       else stream.handlePartialAck(msg.r, msg.c);
     }
@@ -534,7 +503,6 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, chunkSize, window
   this.windowRetryCount = 0;
   this.maxWindowRetries = 5;
   this.globalTimeout = null;
-  // FIX v2.2.0: Timers individuales por chunk
   this._chunkTimers = {};
 }
 
@@ -545,12 +513,10 @@ ChatStream.prototype.start = function() {
     self.reject = reject;
     self._splitChunks();
     if (self.total === 0) { reject(new Error('Vacio')); return; }
-
     if (window.vaultCreateOutgoingTransfer) {
       var cid = self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
     }
-
     self.globalTimeout = setTimeout(function() {
       if (!self.aborted) {
         self.aborted = true;
@@ -560,7 +526,6 @@ ChatStream.prototype.start = function() {
         self.ackSystem._dispatchStatus(self.msgId, 'failed');
       }
     }, 45000);
-
     self._sendWindow();
   });
 };
@@ -578,15 +543,12 @@ ChatStream.prototype._splitChunks = function() {
   this.ackedMask = new Array(this.total).fill(false);
 };
 
-// FIX v2.2.0: Envío secuencial con 30ms de delay entre chunks
 ChatStream.prototype._sendWindow = function() {
   var self = this;
   if (self.aborted) return;
   var end = Math.min(self.windowStart + self.windowSize, self.total);
-
   function sendNext(idx) {
     if (idx >= end || self.aborted) {
-      // Verificar si ya están todos ACKed por ACKs individuales rápidos
       var allAcked = true;
       for (var i = self.windowStart; i < end; i++) {
         if (!self.ackedMask[i]) { allAcked = false; break; }
@@ -612,7 +574,6 @@ ChatStream.prototype._sendWindow = function() {
         setTimeout(function() { sendNext(idx); }, 100);
       });
   }
-
   sendNext(self.windowStart);
 };
 
@@ -673,7 +634,6 @@ ChatStream.prototype._onWindowTimeout = function() {
   }
 };
 
-// FIX v2.2.0: Timer individual por chunk (2s)
 ChatStream.prototype._startChunkTimer = function(idx) {
   var self = this;
   var key = 'chunk_' + idx;
@@ -683,7 +643,6 @@ ChatStream.prototype._startChunkTimer = function(idx) {
   }, 2000);
 };
 
-// FIX v2.2.0: Retransmisión selectiva de chunk individual
 ChatStream.prototype._onChunkTimeout = function(idx) {
   var self = this;
   if (self.aborted || self.ackedMask[idx]) return;
@@ -741,37 +700,6 @@ ChatStream.prototype.handlePartialAck = function(mask, count) {
   }
 };
 
-// FIX v2.2.0: ACK individual por chunk
-ChatStream.prototype.handleIndividualAck = function(idx) {
-  var self = this;
-  if (idx < 0 || idx >= self.total) return;
-  self.ackedMask[idx] = true;
-  var key = 'chunk_' + idx;
-  if (self._chunkTimers[key]) {
-    clearTimeout(self._chunkTimers[key]);
-    delete self._chunkTimers[key];
-  }
-  // Avanzar windowStart si todos los anteriores ya están ACKed
-  while (self.windowStart < self.total && self.ackedMask[self.windowStart]) {
-    self.windowStart++;
-  }
-  // Verificar si toda la ventana actual está ACKed
-  var end = Math.min(self.windowStart + self.windowSize, self.total);
-  var allAcked = true;
-  for (var i = self.windowStart; i < end; i++) {
-    if (!self.ackedMask[i]) { allAcked = false; break; }
-  }
-  if (allAcked) {
-    if (self.timer) clearTimeout(self.timer);
-    self.windowRetryCount = 0;
-    if (self.windowStart >= self.total) {
-      self._finish();
-    } else {
-      self._sendWindow();
-    }
-  }
-};
-
 ChatStream.prototype.handleFinalAck = function() {
   if (this.timer) clearTimeout(this.timer);
   this._finish();
@@ -783,12 +711,10 @@ ChatStream.prototype._finish = function() {
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
   this._clearChunkTimers();
-
   if (window.vaultRemoveOutgoingTransfer) {
     var cid = this.ackSystem._resolveNexoId(this.deviceId);
     window.vaultRemoveOutgoingTransfer(cid, this.msgId).catch(function(){});
   }
-
   this.resolve();
   this.ackSystem._dispatchStatus(this.msgId, 'delivered');
 };
