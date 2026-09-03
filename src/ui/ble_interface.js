@@ -1,9 +1,7 @@
 /**
- * BLE Interface v6.0.3-TURBO-FIX
- * FIX: Payload enriquecido v1 priorizado sobre json.content
- * FIX: msgSeq preservado en sendWithRetry
- * FIX: Session sync post-zombie recovery
- * Base: v6.0.2-TURBO-FIX
+ * BLE Interface v6.0.4-FIX
+ * FIX: Sincroniza activeContact en openChat() para que main.js sepa qué chat está abierto
+ * Base: v6.0.3-TURBO-FIX
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -385,7 +383,7 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();
-    console.log('[BLEInterface] v6.0.3-TURBO-FIX iniciado');
+    console.log('[BLEInterface] v6.0.4-FIX iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -512,7 +510,6 @@ export class BLEInterface {
       if (lastPong === 0 || timeSincePong > 16000) {
         self._pingDevice(deviceId).then(function(result) {
           self._pingFailCount.set(deviceId, 0);
-          // FIX v6.0.3: Si veníamos de zombie, forzar session sync para recovery
           var prevState = self._supervisorStates.get(deviceId);
           if (prevState && prevState.state === SUPERVISOR_STATES.ZOMBIE) {
             var nx = self._macToNexoId.get(_normMac(deviceId));
@@ -902,7 +899,6 @@ export class BLEInterface {
             if (json.messageId) messageId = json.messageId;
             if (typeof json.seq === 'number') msgSeq = json.seq;
 
-            // FIX v6.0.3: Priorizar payload enriquecido v1 y evitar que json.content sobreescriba payload.text
             if (json.v === 1 && json.type === 'chat' && json.payload) {
               if (typeof json.payload.text === 'string') content = json.payload.text;
               if (json.payload.senderName) senderName = json.payload.senderName;
@@ -1006,7 +1002,6 @@ export class BLEInterface {
       var item = queue[idx];
       var itemSeq = (typeof item.seq === 'number') ? item.seq : undefined;
       var isLong = item.content && item.content.length > 180;
-      // FIX v6.0.2: Procesar pending largos con chunking y preservar seq
       if (isLong && self.ackSystem && typeof self.ackSystem.sendChunkedMessage === 'function') {
         return self.ackSystem.sendChunkedMessage(deviceId, item.content, {}, item.messageId, itemSeq)
           .then(function() { item.resolve(); return processNext(idx + 1); })
@@ -1123,14 +1118,12 @@ export class BLEInterface {
         function doSend() {
           var isLong = content.length > 180;
           if (isLong && self.ackSystem && typeof self.ackSystem.sendChunkedMessage === 'function') {
-            // FIX v6.0.1: Pasar msgSeq a sendChunkedMessage
             self.ackSystem.sendChunkedMessage(deviceId, content, {}, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
               .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
             return;
           }
           if (self.ackSystem) {
-            // FIX v6.0.3: Preservar seq en envío de mensajes cortos
             self.ackSystem.sendWithRetry(deviceId, content, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
               .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
@@ -1207,6 +1200,10 @@ export class BLEInterface {
         }
         if (!deviceId) { reject(new Error('Dispositivo no conectado')); return; }
         self._activeChatDeviceId = uuid; self._activeChatDeviceIdNative = deviceId;
+        // FIX v6.0.4: Sincronizar activeContact para que main.js sepa qué chat está abierto
+        if (window.NEXO && window.NEXO.app) {
+          window.NEXO.app.activeContact = contact || { nexoId: uuid, name: (contact && contact.name) || 'NEXO', displayName: (contact && contact.name) || 'NEXO' };
+        }
         self.newDevicesCount = 0; self.updateBadge();
         if (contact) {
           contact.unreadCount = 0; var contacts = _getBLEContacts();
@@ -1243,7 +1240,6 @@ export class BLEInterface {
     });
   }
 
-  // FIX v6.0.2: _resendPendingMessages usa chunking, preserva seq, maneja estado failed, resume transfers
   _resendPendingMessages(nexoId) {
     var self = this;
     if (!nexoId) return;
@@ -1255,13 +1251,11 @@ export class BLEInterface {
       console.log('[BLEInterface] Reenviando', pending.length, 'pending para', nexoId);
       var deviceId = self._resolveDeviceIdForNexoId(nexoId);
       if (!deviceId) { console.warn('[BLEInterface] No deviceId para reenvio', nexoId); return; }
-      // FIX v6.0.2: Verificar estado antes de reenviar
       var st = self._getDeviceState(deviceId);
       if (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY) {
         console.log('[BLEInterface] Device no listo para reenvio, dejando en pending');
         return;
       }
-      // FIX v6.0.2: Reanudar transfers interrumpidos si existe
       if (self.ackSystem && typeof self.ackSystem.resumeOutgoingTransfers === 'function') {
         try { self.ackSystem.resumeOutgoingTransfers(deviceId); } catch(e) {}
       }
@@ -1277,7 +1271,6 @@ export class BLEInterface {
         var txt = msg.content || msg.text || '';
         var doSend;
         var msgSeq = (typeof msg.seq === 'number') ? msg.seq : undefined;
-        // FIX v6.0.1/6.0.2: Mensajes largos usan chunking en reenvío con seq preservado
         if (txt.length > 180 && self.ackSystem && typeof self.ackSystem.sendChunkedMessage === 'function') {
           doSend = function() {
             return self.ackSystem.sendChunkedMessage(deviceId, txt, {}, mid, msgSeq);
@@ -1291,7 +1284,6 @@ export class BLEInterface {
         doSend().then(function() { console.log('[BLEInterface] Pending OK:', mid); _vaultUpdateMessageStatus(nexoId, mid, 'sent'); sendNext(); })
           .catch(function(e) {
             console.warn('[BLEInterface] Pending fallo:', mid, e.message);
-            // FIX v6.0.2: No dejar en 'sending' terminal, marcar failed
             _vaultUpdateMessageStatus(nexoId, mid, 'failed');
             try { window.NEXO_updateMessageStatus && window.NEXO_updateMessageStatus(mid, 'failed'); } catch(e2) {}
             sendNext();
