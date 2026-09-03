@@ -1,12 +1,10 @@
 /**
- * ble_ack.js v2.1.2-FIX
- * FIX: resumeOutgoingTransfers lee strings planos u objetos
- * FIX: _dispatchChunkedMessageComplete marca fromVault=true
- * FIX: sendWithRetry acepta y preserva seq en reintentos de mensajes largos
- * FIX: sendChunkedMessage genera seq defensivamente si no viene
- * FIX: ChatStream._buildChunk incluye seq directo en payload chunk 0
- * FIX: _dispatchChunkedMessageComplete ya NO duplica vaultAppendMessage (main.js lo maneja)
- * Base: v2.1.0-TURBO-FIX2
+ * ble_ack.js v2.2.0-FIX
+ * FIX: Envío secuencial de chunks (uno por uno) con 30ms de delay
+ * FIX: ACK individual por cada chunk recibido
+ * FIX: Retransmisión selectiva por chunk (timeout 2s por chunk)
+ * FIX: chunkSize = 80 para UTF-8 seguro en cualquier MTU
+ * Base: v2.1.2-FIX
  */
 
 function _normMac(mac) {
@@ -26,9 +24,8 @@ export class BleAckSystem {
     this.receivedAcks = new Set();
     this.maxReceivedAcks = 500;
 
-    // FIX v2.1.0: chunkSize dinámico por plataforma
-    var platform = (window.Capacitor && window.Capacitor.getPlatform) ? window.Capacitor.getPlatform() : 'android';
-    this.chunkSize = (platform === 'ios') ? 130 : 160;  // FIX: 160 para UTF-8 seguro en Android
+    // FIX v2.2.0: chunkSize = 80 para UTF-8 seguro en cualquier MTU
+    this.chunkSize = 80;
 
     this.windowSize = 3;
     this.windowTimeoutMs = 4000;
@@ -45,7 +42,6 @@ export class BleAckSystem {
     this._startCleanupInterval();
   }
 
-  // FIX v2.1.0: Resolver nexoId desde deviceId (MAC)
   _resolveNexoId(deviceId) {
     var mac = _normMac(deviceId);
     if (this.ble && this.ble._macToNexoId) {
@@ -68,7 +64,6 @@ export class BleAckSystem {
       var ts = Date.now();
       var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: ts });
 
-      // FIX v2.1.1: Generar seq defensivamente si no viene
       if (typeof seq !== 'number') {
         seq = (self.ble && typeof self.ble.getNextSeq === 'function') ? self.ble.getNextSeq() : 0;
       }
@@ -164,6 +159,9 @@ export class BleAckSystem {
       buf.lastActivity = Date.now();
     }
 
+    // FIX v2.2.0: ACK individual inmediato por cada chunk recibido
+    self._sendIndividualAck(deviceId, msgId, idx);
+
     var senderId = from || (buf.meta && buf.meta.fr) || 'unknown';
     if (window.vaultAppendChunk) {
       window.vaultAppendChunk(senderId, msgId, idx, data || '', total, buf.meta).catch(function(){});
@@ -183,6 +181,7 @@ export class BleAckSystem {
       return;
     }
 
+    // Block ACK de respaldo cada windowSize chunks
     if ((idx + 1) % self.windowSize === 0 || idx === total - 1) {
       var ackMask = [];
       for (var i = 0; i < total; i++) ackMask.push(buf.chunks.has(i) ? '1' : '0');
@@ -235,6 +234,14 @@ export class BleAckSystem {
     }
   }
 
+  // FIX v2.2.0: ACK individual inmediato por chunk
+  _sendIndividualAck(deviceId, msgId, idx) {
+    var payload = JSON.stringify({ t: 'a', m: msgId, i: idx, f: 0 });
+    if (this.ble && this.ble._sendMessageNative) {
+      this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
+    }
+  }
+
   _handleNack(msg) {
     var msgId = msg.m;
     var indices = msg.k || [];
@@ -247,6 +254,11 @@ export class BleAckSystem {
     var isFinal = msg.f === 1;
     var stream = this.outgoingStreams.get(msgId);
     if (stream) {
+      // FIX v2.2.0: ACK individual por chunk
+      if (typeof msg.i === 'number') {
+        stream.handleIndividualAck(msg.i);
+        return;
+      }
       if (isFinal) stream.handleFinalAck();
       else stream.handlePartialAck(msg.r, msg.c);
     }
@@ -297,7 +309,7 @@ export class BleAckSystem {
       }
       sendNext();
     }).catch(function(){});
-n  }
+  }
 
   sendSessionSync(deviceId, peerNexoId) {
     var self = this;
@@ -315,7 +327,6 @@ n  }
     }
   }
 
-  // FIX v2.1.1: sendWithRetry acepta seq y lo preserva en chunking
   sendWithRetry(deviceId, content, messageId, seq) {
     var self = this;
     if (content && content.length > 180) {
@@ -431,7 +442,6 @@ n  }
     this._dispatchFileProgress(fileId, 0, 0, 'cancelled');
   }
 
-  // FIX v2.1.0: Reanudar envíos rotos al iniciar
   resumeOutgoingTransfers() {
     var self = this;
     if (!window.vaultGetPendingOutgoingTransfers) return;
@@ -444,7 +454,6 @@ n  }
         console.log('[BleAckSystem] Resume:', list.length, 'outgoing para', cid);
         list.forEach(function(tx) {
           if (tx.status !== 'sending' && tx.status !== 'pending') return;
-          // FIX v2.1.2: Manejar chunks como strings planos u objetos
           var content = tx.chunks.map(function(c) { return (typeof c === 'string') ? c : (c.data || c.d || ''); }).join('');
           var devId = tx.deviceId || contact.deviceId;
           if (!devId) return;
@@ -458,7 +467,6 @@ n  }
     });
   }
 
-  // FIX v2.1.2: Marca fromVault=true para que main.js evite duplicar guardado
   _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId) {
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
@@ -526,6 +534,8 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, chunkSize, window
   this.windowRetryCount = 0;
   this.maxWindowRetries = 5;
   this.globalTimeout = null;
+  // FIX v2.2.0: Timers individuales por chunk
+  this._chunkTimers = {};
 }
 
 ChatStream.prototype.start = function() {
@@ -536,17 +546,16 @@ ChatStream.prototype.start = function() {
     self._splitChunks();
     if (self.total === 0) { reject(new Error('Vacio')); return; }
 
-    // FIX v2.1.0: Persistir outgoing en vault para reanudación
     if (window.vaultCreateOutgoingTransfer) {
       var cid = self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
     }
 
-    // Timeout global de 45s
     self.globalTimeout = setTimeout(function() {
       if (!self.aborted) {
         self.aborted = true;
         if (self.timer) clearTimeout(self.timer);
+        self._clearChunkTimers();
         self.reject(new Error('Timeout global 45s'));
         self.ackSystem._dispatchStatus(self.msgId, 'failed');
       }
@@ -569,26 +578,44 @@ ChatStream.prototype._splitChunks = function() {
   this.ackedMask = new Array(this.total).fill(false);
 };
 
+// FIX v2.2.0: Envío secuencial con 30ms de delay entre chunks
 ChatStream.prototype._sendWindow = function() {
   var self = this;
   if (self.aborted) return;
   var end = Math.min(self.windowStart + self.windowSize, self.total);
-  var promises = [];
-  for (var i = self.windowStart; i < end; i++) {
-    if (!self.sentMask[i] || !self.ackedMask[i]) {
-      self.sentMask[i] = true;
-      var payload = self._buildChunk(i);
-      promises.push(self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + i));
+
+  function sendNext(idx) {
+    if (idx >= end || self.aborted) {
+      // Verificar si ya están todos ACKed por ACKs individuales rápidos
+      var allAcked = true;
+      for (var i = self.windowStart; i < end; i++) {
+        if (!self.ackedMask[i]) { allAcked = false; break; }
+      }
+      if (!allAcked && !self.aborted) {
+        self._startWindowTimer();
+      }
+      return;
     }
+    if (self.ackedMask[idx]) {
+      setTimeout(function() { sendNext(idx + 1); }, 30);
+      return;
+    }
+    self.sentMask[idx] = true;
+    var payload = self._buildChunk(idx);
+    self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
+      .then(function() {
+        self._startChunkTimer(idx);
+        setTimeout(function() { sendNext(idx + 1); }, 30);
+      })
+      .catch(function(err) {
+        console.warn('[ChatStream] Envío nativo falló chunk', idx, err.message);
+        setTimeout(function() { sendNext(idx); }, 100);
+      });
   }
-  Promise.all(promises).then(function() {
-    self._startWindowTimer();
-  }).catch(function(err) {
-    setTimeout(function() { self._sendWindow(); }, 500);
-  });
+
+  sendNext(self.windowStart);
 };
 
-// FIX v2.1.1: seq incluido directo en payload del chunk 0 para robustez
 ChatStream.prototype._buildChunk = function(idx) {
   var isFirst = idx === 0;
   var obj = {
@@ -646,6 +673,39 @@ ChatStream.prototype._onWindowTimeout = function() {
   }
 };
 
+// FIX v2.2.0: Timer individual por chunk (2s)
+ChatStream.prototype._startChunkTimer = function(idx) {
+  var self = this;
+  var key = 'chunk_' + idx;
+  if (self._chunkTimers[key]) clearTimeout(self._chunkTimers[key]);
+  self._chunkTimers[key] = setTimeout(function() {
+    self._onChunkTimeout(idx);
+  }, 2000);
+};
+
+// FIX v2.2.0: Retransmisión selectiva de chunk individual
+ChatStream.prototype._onChunkTimeout = function(idx) {
+  var self = this;
+  if (self.aborted || self.ackedMask[idx]) return;
+  console.log('[ChatStream] Timeout chunk', idx, 'reenviando...');
+  self.sentMask[idx] = true;
+  var payload = self._buildChunk(idx);
+  self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
+    .then(function() {
+      self._startChunkTimer(idx);
+    })
+    .catch(function() {
+      setTimeout(function() { self._onChunkTimeout(idx); }, 500);
+    });
+};
+
+ChatStream.prototype._clearChunkTimers = function() {
+  for (var key in this._chunkTimers) {
+    if (this._chunkTimers[key]) clearTimeout(this._chunkTimers[key]);
+  }
+  this._chunkTimers = {};
+};
+
 ChatStream.prototype.handleNack = function(indices) {
   var self = this;
   if (self.timer) clearTimeout(self.timer);
@@ -681,6 +741,37 @@ ChatStream.prototype.handlePartialAck = function(mask, count) {
   }
 };
 
+// FIX v2.2.0: ACK individual por chunk
+ChatStream.prototype.handleIndividualAck = function(idx) {
+  var self = this;
+  if (idx < 0 || idx >= self.total) return;
+  self.ackedMask[idx] = true;
+  var key = 'chunk_' + idx;
+  if (self._chunkTimers[key]) {
+    clearTimeout(self._chunkTimers[key]);
+    delete self._chunkTimers[key];
+  }
+  // Avanzar windowStart si todos los anteriores ya están ACKed
+  while (self.windowStart < self.total && self.ackedMask[self.windowStart]) {
+    self.windowStart++;
+  }
+  // Verificar si toda la ventana actual está ACKed
+  var end = Math.min(self.windowStart + self.windowSize, self.total);
+  var allAcked = true;
+  for (var i = self.windowStart; i < end; i++) {
+    if (!self.ackedMask[i]) { allAcked = false; break; }
+  }
+  if (allAcked) {
+    if (self.timer) clearTimeout(self.timer);
+    self.windowRetryCount = 0;
+    if (self.windowStart >= self.total) {
+      self._finish();
+    } else {
+      self._sendWindow();
+    }
+  }
+};
+
 ChatStream.prototype.handleFinalAck = function() {
   if (this.timer) clearTimeout(this.timer);
   this._finish();
@@ -691,8 +782,8 @@ ChatStream.prototype._finish = function() {
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
+  this._clearChunkTimers();
 
-  // FIX v2.1.0: Limpiar outgoing de vault al completar
   if (window.vaultRemoveOutgoingTransfer) {
     var cid = this.ackSystem._resolveNexoId(this.deviceId);
     window.vaultRemoveOutgoingTransfer(cid, this.msgId).catch(function(){});
@@ -706,6 +797,7 @@ ChatStream.prototype.abort = function() {
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
+  this._clearChunkTimers();
   if (this.reject) this.reject(new Error('Abortado'));
 };
 
