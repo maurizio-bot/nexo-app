@@ -1,29 +1,27 @@
 /**
- * ble_ack.js v3.0.0-NEXO
- * Protocolo de fragmentación robusto con Block ACK, pacing y reensamblaje
- * Basado en: Bluetooth Mesh SAR + BitChat + Nordic best practices
- * 
- * Cambios v3.0.0:
- * - chunkSize: 160 (era 80) → menos chunks, menos overhead
- * - windowSize: 2 (era 3) → nunca más de 2 notificaciones seguidas
- * - Pacing: 60ms entre chunks → evita saturar cola BLE
- * - Block ACK numérico (bitmap 32 bits) → eficiente
- * - ACK inmediato por cada chunk recibido → detección rápida de pérdida
- * - NACK selectivo con rate limit → retransmisión rápida
- * - Assembly timeout: 10s → limpieza de buffers huérfanos
- * - No assembly sin chunk 0 → evita ensamblajes incompletos
- * - Backoff exponencial en retransmisión de ventana
+ * ble_ack.js v3.1.0-DOMINANT
+ * Chunk dinámico: chat seguro vs archivos rápidos
+ * Paso 1 del plan de dominación de archivos
  */
 
 const PROTOCOL_VERSION = 2;
-const CHUNK_SIZE = 160;
-const WINDOW_SIZE = 2;
-const WINDOW_TIMEOUT_MS = 2500;
-const PACING_DELAY_MS = 60;
+
+// CHAT: ultra-seguro, nunca pierde un mensaje
+const CHAT_CHUNK_SIZE = 160;
+const CHAT_WINDOW_SIZE = 2;
+const CHAT_WINDOW_TIMEOUT_MS = 2500;
+const CHAT_PACING_DELAY_MS = 60;
+
+// ARCHIVOS: dominante, máxima velocidad sin romper BLE
+const FILE_CHUNK_SIZE = 500;        // 500 chars base64 ≈ 375 bytes reales
+const FILE_WINDOW_SIZE = 4;         // 4 chunks = ~1.5KB antes de pedir ACK
+const FILE_WINDOW_TIMEOUT_MS = 3500;
+const FILE_PACING_DELAY_MS = 15;    // 15ms entre chunks = 4x más rápido que chat
+
 const MAX_WINDOW_RETRIES = 5;
 const ASSEMBLY_TIMEOUT_MS = 10000;
 const COMPLETED_TTL_MS = 30000;
-const GLOBAL_TIMEOUT_MS = 45000;
+const GLOBAL_TIMEOUT_MS = 120000;   // 2 min para archivos grandes
 
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
@@ -41,9 +39,9 @@ export class BleAckSystem {
     this.maxRetries = 3;
     this.receivedAcks = new Set();
     this.maxReceivedAcks = 500;
-    this.chunkSize = CHUNK_SIZE;
-    this.windowSize = WINDOW_SIZE;
-    this.windowTimeoutMs = WINDOW_TIMEOUT_MS;
+    this.chunkSize = CHAT_CHUNK_SIZE;
+    this.windowSize = CHAT_WINDOW_SIZE;
+    this.windowTimeoutMs = CHAT_WINDOW_TIMEOUT_MS;
     this.outgoingStreams = new Map();
     this.incomingBuffers = new Map();
     this.pendingFragments = new Map();
@@ -53,7 +51,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.0.0 iniciado. chunkSize=' + CHUNK_SIZE + ' window=' + WINDOW_SIZE + ' pacing=' + PACING_DELAY_MS + 'ms');
+    console.log('[BleAckSystem] v3.1.0-DOMINANT iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
   }
 
   _resolveNexoId(deviceId) {
@@ -85,7 +83,7 @@ export class BleAckSystem {
         self.sendWithRetry(deviceId, content, msgId, seq).then(resolve).catch(reject);
         return;
       }
-      var stream = new ChatStream(self, deviceId, msgId, content, finalMeta, self.chunkSize, self.windowSize, self.windowTimeoutMs);
+      var stream = new ChatStream(self, deviceId, msgId, content, finalMeta, 'chat');
       self.outgoingStreams.set(msgId, stream);
       stream.start().then(function() {
         self.outgoingStreams.delete(msgId);
@@ -103,7 +101,7 @@ export class BleAckSystem {
       var senderId = (self.ble && self.ble.localNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
       var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
       var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: Date.now(), file: true });
-      var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, self.chunkSize, self.windowSize, self.windowTimeoutMs, 'file');
+      var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
       self.outgoingStreams.set(fileId, stream);
       stream.start().then(function() {
         self.outgoingStreams.delete(fileId);
@@ -149,7 +147,6 @@ export class BleAckSystem {
     if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
     if (total <= 0 || idx < 0 || idx >= total) return;
 
-    // Si ya ensamblamos este mensaje, reenviamos ACK final y descartamos
     var completed = self.completedMessages.get(msgId);
     if (completed) {
       self._sendFinalAck(deviceId, msgId, total);
@@ -157,8 +154,6 @@ export class BleAckSystem {
     }
 
     var buf = self.incomingBuffers.get(msgId);
-
-    // Si no hay buffer y no es chunk 0, no podemos ensamblar. Pedir NACK desde 0.
     if (!buf && idx !== 0) {
       var missing = [];
       for (var i = 0; i <= Math.min(idx, total - 1); i++) missing.push(i);
@@ -174,7 +169,6 @@ export class BleAckSystem {
         isChat: type === 'c', nackSent: false
       };
       self.incomingBuffers.set(msgId, buf);
-      // Timer de assembly timeout
       buf.assemblyTimer = setTimeout(function() {
         if (self.incomingBuffers.has(msgId)) {
           console.warn('[BleAckSystem] Assembly timeout msgId=' + msgId);
@@ -198,10 +192,8 @@ export class BleAckSystem {
       window.vaultAppendChunk(senderId, msgId, idx, data || '', total, buf.meta).catch(function(){});
     }
 
-    // Enviar Block ACK inmediatamente con bitmap actual
     self._sendBlockAck(deviceId, msgId, buf);
 
-    // Detectar huecos y enviar NACK (rate limited)
     if (idx > 0) {
       var missing = self._findMissing(buf);
       if (missing.length > 0 && !buf.nackSent) {
@@ -232,8 +224,6 @@ export class BleAckSystem {
       assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
     }
     self._sendFinalAck(deviceId, msgId, buf.total);
-
-    // Guardar en completados para deduplicación
     self.completedMessages.set(msgId, { total: buf.total, expireAt: Date.now() + COMPLETED_TTL_MS });
     self.incomingBuffers.delete(msgId);
 
@@ -292,11 +282,9 @@ export class BleAckSystem {
       stream.handleFinalAck();
       return;
     }
-    // Actualizar ackedMask desde bitmap numérico
     for (var i = 0; i < total; i++) {
       if (bitmap & (1 << i)) stream.ackedMask[i] = true;
     }
-    // Avanzar windowStart
     while (stream.windowStart < stream.total && stream.ackedMask[stream.windowStart]) {
       stream.windowStart++;
     }
@@ -304,7 +292,6 @@ export class BleAckSystem {
     if (stream.windowStart >= stream.total) {
       stream._finish();
     } else {
-      // Verificar si ventana actual está completa
       var end = Math.min(stream.windowStart + stream.windowSize, stream.total);
       var windowComplete = true;
       for (var i = stream.windowStart; i < end; i++) {
@@ -318,7 +305,6 @@ export class BleAckSystem {
           stream._windowReject = null;
         }
       } else {
-        // Faltan chunks en ventana actual, retransmitir
         stream._retransmitWindow();
       }
     }
@@ -602,18 +588,22 @@ export class BleAckSystem {
   }
 }
 
-function ChatStream(ackSystem, deviceId, msgId, content, meta, chunkSize, windowSize, windowTimeoutMs, type) {
+function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.ackSystem = ackSystem;
   this.ble = ackSystem.ble;
   this.deviceId = deviceId;
   this.msgId = msgId;
   this.content = content;
   this.meta = meta;
-  this.chunkSize = chunkSize;
-  this.windowSize = windowSize;
-  this.windowTimeoutMs = windowTimeoutMs;
+  
+  var isFile = type === 'file';
+  this.chunkSize = isFile ? FILE_CHUNK_SIZE : CHAT_CHUNK_SIZE;
+  this.windowSize = isFile ? FILE_WINDOW_SIZE : CHAT_WINDOW_SIZE;
+  this.windowTimeoutMs = isFile ? FILE_WINDOW_TIMEOUT_MS : CHAT_WINDOW_TIMEOUT_MS;
+  this.pacingDelayMs = isFile ? FILE_PACING_DELAY_MS : CHAT_PACING_DELAY_MS;
+  this.globalTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : 45000;
+  
   this.type = type || 'chat';
-  this.pacingDelayMs = PACING_DELAY_MS;
   this.chunks = [];
   this.total = 0;
   this.sentMask = [];
@@ -629,6 +619,10 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, chunkSize, window
   this.globalTimeout = null;
   this._windowResolve = null;
   this._windowReject = null;
+  
+  if (isFile) {
+    console.log('[ChatStream] MODO ARCHIVO. chunk=' + this.chunkSize + ' window=' + this.windowSize + ' pacing=' + this.pacingDelayMs + 'ms');
+  }
 }
 
 ChatStream.prototype.start = function() {
@@ -645,10 +639,10 @@ ChatStream.prototype.start = function() {
     self.globalTimeout = setTimeout(function() {
       if (!self.aborted) {
         self.abort();
-        reject(new Error('Timeout global 45s'));
+        reject(new Error('Timeout global ' + (self.type === 'file' ? '2min' : '45s')));
         self.ackSystem._dispatchStatus(self.msgId, 'failed');
       }
-    }, GLOBAL_TIMEOUT_MS);
+    }, self.globalTimeoutMs);
     self._runWindowLoop();
   });
 };
@@ -834,6 +828,25 @@ ChatStream.prototype.handleNack = function(indices) {
   }).catch(function() {
     setTimeout(function() { self._retransmitWindow(); }, 500);
   });
+};
+
+ChatStream.prototype.handlePartialAck = function(mask, count) {
+  var self = this;
+  if (!mask) return;
+  for (var i = 0; i < Math.min(mask.length, self.total); i++) {
+    if (mask.charAt(i) === '1') self.ackedMask[i] = true;
+  }
+  while (self.windowStart < self.total && self.ackedMask[self.windowStart]) {
+    self.windowStart++;
+  }
+  if (self.timer) clearTimeout(self.timer);
+  if (self.windowStart >= self.total) {
+    self._finish();
+  } else if (self._windowResolve) {
+    self._windowResolve();
+    self._windowResolve = null;
+    self._windowReject = null;
+  }
 };
 
 ChatStream.prototype.handleFinalAck = function() {
