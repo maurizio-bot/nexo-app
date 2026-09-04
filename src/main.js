@@ -169,12 +169,18 @@ console.log('[ATTACH] Sistema de mensajes no disponible');
 }
 }
 function _toggleAttachMenu() {
-var menu = document.getElementById('attach-menu');
-if (menu) menu.classList.toggle('hidden');
+  var menu = document.getElementById('attach-menu');
+  if (menu) {
+    menu.classList.toggle('hidden');
+    menu.classList.toggle('visible');
+  }
 }
 function _closeAttachMenu() {
-var menu = document.getElementById('attach-menu');
-if (menu) menu.classList.add('hidden');
+  var menu = document.getElementById('attach-menu');
+  if (menu) {
+    menu.classList.add('hidden');
+    menu.classList.remove('visible');
+  }
 }
 function _showCameraPreviewOverlay() {
 var overlay = document.getElementById('camera-preview-overlay');
