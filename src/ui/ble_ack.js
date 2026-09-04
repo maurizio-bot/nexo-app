@@ -1,7 +1,7 @@
 /**
- * ble_ack.js v3.1.0-DOMINANT
+ * ble_ack.js v3.2.0-NATIVE
  * Chunk dinámico: chat seguro vs archivos rápidos
- * Paso 1 del plan de dominación de archivos
+ * Paso 2C: delegación nativa para archivos
  */
 
 const PROTOCOL_VERSION = 2;
@@ -51,7 +51,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.1.0-DOMINANT iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
+    console.log('[BleAckSystem] v3.2.0-NATIVE iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
   }
 
   _resolveNexoId(deviceId) {
@@ -96,6 +96,26 @@ export class BleAckSystem {
   }
 
   sendFile(deviceId, fileId, base64Data, meta) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      // PASO 2: Si el nativo soporta sendFileNative, delegar
+      if (self.ble && typeof self.ble.sendFileNative === 'function') {
+        console.log('[BleAckSystem] Delegando archivo a nativo:', fileId);
+        self.ble.sendFileNative(deviceId, fileId, base64Data, meta)
+          .then(resolve)
+          .catch(function(err) {
+            // Si falla, fallback al JS chunking
+            console.warn('[BleAckSystem] sendFileNative falló, fallback JS:', err.message);
+            self._sendFileJS(deviceId, fileId, base64Data, meta).then(resolve).catch(reject);
+          });
+        return;
+      }
+      // Fallback JS nativo
+      self._sendFileJS(deviceId, fileId, base64Data, meta).then(resolve).catch(reject);
+    });
+  }
+
+  _sendFileJS(deviceId, fileId, base64Data, meta) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var senderId = (self.ble && self.ble.localNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
