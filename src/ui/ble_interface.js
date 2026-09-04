@@ -1,7 +1,7 @@
 /**
- * BLE Interface v6.0.4-FIX
- * FIX: Sincroniza activeContact en openChat() para que main.js sepa qué chat está abierto
- * Base: v6.0.3-TURBO-FIX
+ * BLE Interface v6.0.5-NEXO
+ * FIX: Filtro de protocolo v3 (block_ack 'ba') para ble_ack.js v3.0.0
+ * Base: v6.0.4-FIX
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -292,7 +292,7 @@ function _isControlPacket(content) {
     if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' ||
         obj.type === 'chat_meta' || obj.type === 'chat_chunk' || obj.type === 'block_ack' ||
         obj.type === 'file_meta' || obj.type === 'file_chunk' || obj.type === 'file_resume') return true;
-    if (obj.t === 'c' || obj.t === 'f' || obj.t === 'n' || obj.t === 'a' || obj.t === 'ss' || obj.t === 'sr') return true;
+    if (obj.t === 'c' || obj.t === 'f' || obj.t === 'n' || obj.t === 'a' || obj.t === 'ba' || obj.t === 'ss' || obj.t === 'sr') return true;
     return false;
   } catch (e) { return false; }
 }
@@ -383,7 +383,7 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();
-    console.log('[BLEInterface] v6.0.4-FIX iniciado');
+    console.log('[BLEInterface] v6.0.5-NEXO iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -839,9 +839,10 @@ export class BLEInterface {
           if (trimmedContent.charAt(0) === '{') {
             var protoCheck = JSON.parse(trimmedContent);
             if (protoCheck.type === 'chat_meta' || protoCheck.type === 'chat_chunk' || protoCheck.type === 'file_meta' ||
-                protoCheck.type === 'file_chunk' || protoCheck.type === 'file_resume' || protoCheck.type === 'block_ack') isProtocol = true;
-            if (protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' || protoCheck.t === 'a' ||
-                protoCheck.t === 'ss' || protoCheck.t === 'sr') isProtocol = true;
+                protoCheck.type === 'file_chunk' || protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
+                protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' ||
+                protoCheck.type === 'pong' || protoCheck.type === 'block_ack') isProtocol = true;
+            if (protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' || protoCheck.t === 'a' || protoCheck.t === 'ba' || protoCheck.t === 'ss' || protoCheck.t === 'sr') isProtocol = true;
           }
         } catch (e) {}
 
@@ -865,7 +866,8 @@ export class BLEInterface {
         var isControl = !!(ctrl && (
           ctrl.type === 'ack' || ctrl.type === 'read_receipt' || ctrl.type === 'ping' || ctrl.type === 'pong' ||
           ctrl.type === 'chat_meta' || ctrl.type === 'chat_chunk' || ctrl.type === 'block_ack' ||
-          ctrl.type === 'file_meta' || ctrl.type === 'file_chunk' || ctrl.type === 'file_resume'
+          ctrl.type === 'file_meta' || ctrl.type === 'file_chunk' || ctrl.type === 'file_resume' ||
+          ctrl.t === 'ba'
         ));
 
         if (ctrl && (ctrl.type === 'ack' || ctrl.type === 'read_receipt')) {
