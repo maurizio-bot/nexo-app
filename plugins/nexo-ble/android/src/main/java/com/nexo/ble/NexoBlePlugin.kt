@@ -23,6 +23,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
@@ -115,6 +116,11 @@ class NexoBlePlugin : Plugin() {
     private val nxidToMacMap = ConcurrentHashMap<String, String>()
     private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
     private var quickScanResultMac: String? = null
+
+    // === PASO 2: File Transfer Nativo ===
+    private val fileTransferThread = HandlerThread("NexoFileTransfer").apply { start() }
+    private val fileTransferHandler = Handler(fileTransferThread.looper)
+    // === FIN PASO 2 ===
 
     private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
     private data class JsonExtraction(val json: String, val remainder: String)
@@ -402,6 +408,8 @@ class NexoBlePlugin : Plugin() {
         writeQueueTimeouts.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         writeQueueTimeouts.clear()
         negotiatedMtu.clear()
+        // === PASO 2: Cleanup file transfer thread ===
+        try { fileTransferThread.quitSafely() } catch (e: Exception) { }
     }
 
     private fun isScanning(): Boolean {
@@ -1254,6 +1262,144 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // === PASO 2: File Transfer Nativo ===
+    @PluginMethod
+    fun sendFileNative(call: PluginCall) {
+        val rawDeviceId = call.getString("deviceId") ?: ""
+        val fileId = call.getString("fileId") ?: ""
+        val fileData = call.getString("fileData") ?: ""
+        val metaStr = call.getString("meta") ?: "{}"
+
+        if (rawDeviceId.isEmpty() || fileId.isEmpty() || fileData.isEmpty()) {
+            call.reject("deviceId, fileId, fileData requeridos")
+            return
+        }
+
+        val macNorm: String
+        val idType = classifyDeviceId(rawDeviceId)
+        if (idType == "nxid") {
+            val resolvedMac = resolveMacForNexoId(rawDeviceId.trim())
+            if (resolvedMac == null) {
+                call.reject("NXID no resuelto: $rawDeviceId", "NXID_UNRESOLVED")
+                return
+            }
+            macNorm = resolvedMac
+        } else {
+            macNorm = normalizeMac(rawDeviceId)
+        }
+
+        remLog("INFO", "FILE_NATIVE", "Iniciando transferencia $fileId a $macNorm, size=${fileData.length}")
+
+        call.resolve(JSObject().put("started", true).put("fileId", fileId))
+
+        // Metadata primero (JSON pequeño, va por la cola normal)
+        val metaPayload = """{"v":2,"t":"fm","m":"$fileId","meta":$metaStr,"n":0,"sz":${fileData.length}}"""
+        mainHandler.post { sendChunkedOrSingle(macNorm, rawDeviceId, metaPayload) }
+
+        // Transferencia en background nativo — NUNCA toca el bridge JS por chunk
+        fileTransferHandler.post {
+            val chunkDataSize = 400 // base64 chars por chunk = ~400 bytes datos + ~50 overhead JSON = cabe en MTU 512
+            val chunks = fileData.chunked(chunkDataSize)
+            val total = chunks.size
+            var index = 0
+            var lastProgress = -1
+
+            fun sendNextChunk() {
+                if (index >= total) {
+                    remLog("INFO", "FILE_NATIVE", "Transferencia $fileId COMPLETADA ($total chunks)")
+                    notifyListeners("onFileComplete", JSObject()
+                        .put("fileId", fileId)
+                        .put("success", true)
+                        .put("totalChunks", total)
+                    )
+                    return
+                }
+
+                val payload = """{"v":2,"t":"fd","m":"$fileId","i":$index,"n":$total,"d":"${chunks[index]}"}"""
+                val success = sendDirectNoQueue(macNorm, payload)
+
+                if (!success) {
+                    remLog("WARN", "FILE_NATIVE", "Chunk $index fallo, reintento en 50ms")
+                    fileTransferHandler.postDelayed({ sendDirectNoQueue(macNorm, payload) }, 50)
+                }
+
+                index++
+
+                // Reportar progreso cada 10% al JS
+                val progress = (index * 100) / total
+                if (progress >= lastProgress + 10) {
+                    lastProgress = progress
+                    notifyListeners("onFileProgress", JSObject()
+                        .put("fileId", fileId)
+                        .put("sent", index)
+                        .put("total", total)
+                        .put("percent", progress)
+                        .put("status", "sending")
+                    )
+                }
+
+                // Pacing nativo: 25ms entre chunks (equivale a ~16 KB/s, 1MB en ~65s)
+                fileTransferHandler.postDelayed(::sendNextChunk, 25)
+            }
+
+            // Iniciar envío de chunks 100ms después del metadata
+            fileTransferHandler.postDelayed(::sendNextChunk, 100)
+        }
+    }
+
+    private fun sendDirectNoQueue(macNorm: String, payload: String): Boolean {
+        val data = payload.toByteArray(Charset.defaultCharset())
+
+        // 1. Intentar SERVER (notify) — más rápido, no espera ACK de link
+        val remoteDevice = serverConnectedDevices[macNorm]
+        val srvTx = serverTxCharacteristic
+        val srv = bluetoothGattServer
+        val srvEnabled = serverNotificationEnabled.getOrDefault(macNorm, false)
+
+        if (remoteDevice != null && srv != null && srvTx != null && srvEnabled) {
+            try {
+                val success = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false, data) == BluetoothGatt.GATT_SUCCESS
+                } else {
+                    @Suppress("DEPRECATION")
+                    srvTx.value = data
+                    @Suppress("DEPRECATION")
+                    srv.notifyCharacteristicChanged(remoteDevice, srvTx, false)
+                }
+                if (success) return true
+            } catch (e: Exception) {
+                remLog("WARN", "FILE_NATIVE", "Server notify failed: ${e.message}")
+            }
+        }
+
+        // 2. Fallback CLIENT (write no response)
+        val rxChar = clientRxCharacteristics[macNorm]
+        val gatt = gattClients[macNorm]
+
+        if (gatt != null && rxChar != null && clientConnectionStates[macNorm] == BluetoothProfile.STATE_CONNECTED) {
+            try {
+                var writeInitiated = false
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val status = gatt.writeCharacteristic(rxChar, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+                    writeInitiated = status == BluetoothGatt.GATT_SUCCESS
+                } else {
+                    @Suppress("DEPRECATION")
+                    rxChar.value = data
+                    @Suppress("DEPRECATION")
+                    rxChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                    @Suppress("DEPRECATION")
+                    writeInitiated = gatt.writeCharacteristic(rxChar)
+                }
+                return writeInitiated
+            } catch (e: Exception) {
+                remLog("WARN", "FILE_NATIVE", "Client write failed: ${e.message}")
+            }
+        }
+
+        return false
+    }
+    // === FIN PASO 2 ===
+
     private data class SendResult(val sent: Boolean, val mode: String)
 
     private fun getChunkSize(macNorm: String): Int {
@@ -1401,7 +1547,6 @@ class NexoBlePlugin : Plugin() {
                         processWriteQueue(macNorm)
                     }
                     writeQueueTimeouts[macNorm] = timeoutRunnable
-                    // FIX vFIX-3: Timeout 200ms -> 1000ms
                     mainHandler.postDelayed(timeoutRunnable, 1000)
                     return SendResult(true, "gatt_client")
                 }
