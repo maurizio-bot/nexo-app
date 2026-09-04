@@ -1,9 +1,29 @@
 /**
- * ble_ack.js v2.2.2-FIX
- * ABLACIÓN 1: Eliminado timer de chunk individual (2s). Solo ventana (4s) + NACK.
- * ABLACIÓN 2: Eliminado obj.meta redundante en chunk 0.
- * ABLACIÓN 3: Buffer incoming no se borra al ensamblar; se guarda en completedMessages 30s.
+ * ble_ack.js v3.0.0-NEXO
+ * Protocolo de fragmentación robusto con Block ACK, pacing y reensamblaje
+ * Basado en: Bluetooth Mesh SAR + BitChat + Nordic best practices
+ * 
+ * Cambios v3.0.0:
+ * - chunkSize: 160 (era 80) → menos chunks, menos overhead
+ * - windowSize: 2 (era 3) → nunca más de 2 notificaciones seguidas
+ * - Pacing: 60ms entre chunks → evita saturar cola BLE
+ * - Block ACK numérico (bitmap 32 bits) → eficiente
+ * - ACK inmediato por cada chunk recibido → detección rápida de pérdida
+ * - NACK selectivo con rate limit → retransmisión rápida
+ * - Assembly timeout: 10s → limpieza de buffers huérfanos
+ * - No assembly sin chunk 0 → evita ensamblajes incompletos
+ * - Backoff exponencial en retransmisión de ventana
  */
+
+const PROTOCOL_VERSION = 2;
+const CHUNK_SIZE = 160;
+const WINDOW_SIZE = 2;
+const WINDOW_TIMEOUT_MS = 2500;
+const PACING_DELAY_MS = 60;
+const MAX_WINDOW_RETRIES = 5;
+const ASSEMBLY_TIMEOUT_MS = 10000;
+const COMPLETED_TTL_MS = 30000;
+const GLOBAL_TIMEOUT_MS = 45000;
 
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
@@ -21,9 +41,9 @@ export class BleAckSystem {
     this.maxRetries = 3;
     this.receivedAcks = new Set();
     this.maxReceivedAcks = 500;
-    this.chunkSize = 80;
-    this.windowSize = 3;
-    this.windowTimeoutMs = 4000;
+    this.chunkSize = CHUNK_SIZE;
+    this.windowSize = WINDOW_SIZE;
+    this.windowTimeoutMs = WINDOW_TIMEOUT_MS;
     this.outgoingStreams = new Map();
     this.incomingBuffers = new Map();
     this.pendingFragments = new Map();
@@ -31,8 +51,9 @@ export class BleAckSystem {
     this.pendingOutgoingFiles = new Map();
     this.pendingOutgoingTransfers = new Map();
     this.blockAckTimers = new Map();
-    this.completedMessages = new Map(); // [ABLACIÓN 3] msgId -> { total, expireAt }
+    this.completedMessages = new Map();
     this._startCleanupInterval();
+    console.log('[BleAckSystem] v3.0.0 iniciado. chunkSize=' + CHUNK_SIZE + ' window=' + WINDOW_SIZE + ' pacing=' + PACING_DELAY_MS + 'ms');
   }
 
   _resolveNexoId(deviceId) {
@@ -100,11 +121,11 @@ export class BleAckSystem {
       var content = dataObj.content;
       var msg = JSON.parse(content);
       var type = msg.t || msg.type;
-      if (type === 'block_ack') { this._processBlockAck(msg); return true; }
+      if (type === 'ba' || type === 'block_ack') { this._handleBlockAck(msg); return true; }
       if (type === 'ack' || type === 'read_receipt') { this.processIncomingAck(content); return true; }
       if (type === 'ping' || type === 'pong') { return false; }
       if (type === 'n') { this._handleNack(msg); return true; }
-      if (type === 'a') { this._handleChunkAck(msg); return true; }
+      if (type === 'a') { this._handleLegacyChunkAck(msg); return true; }
       if (type === 'ss') { this._handleSessionSync(deviceId, msg); return true; }
       if (type === 'sr') { this._handleSessionSyncResponse(deviceId, msg); return true; }
       if (type === 'c' || type === 'f') {
@@ -124,26 +145,43 @@ export class BleAckSystem {
     var total = (typeof msg.n === 'number') ? msg.n : msg.total;
     var data = msg.d || msg.data;
     var from = msg.fr || msg.from;
-    var seq = (typeof msg.seq === 'number') ? msg.seq : ((msg.meta && typeof msg.meta.seq === 'number') ? msg.meta.seq : 0);
+    var seq = (typeof msg.seq === 'number') ? msg.seq : 0;
     if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
+    if (total <= 0 || idx < 0 || idx >= total) return;
 
-    // [ABLACIÓN 3] Si ya ensamblamos este mensaje, reenviamos ACK final y descartamos
+    // Si ya ensamblamos este mensaje, reenviamos ACK final y descartamos
     var completed = self.completedMessages.get(msgId);
     if (completed) {
-      self._sendChunkAck(deviceId, msgId, null, completed.total, true);
+      self._sendFinalAck(deviceId, msgId, total);
       return;
     }
 
     var buf = self.incomingBuffers.get(msgId);
+
+    // Si no hay buffer y no es chunk 0, no podemos ensamblar. Pedir NACK desde 0.
+    if (!buf && idx !== 0) {
+      var missing = [];
+      for (var i = 0; i <= Math.min(idx, total - 1); i++) missing.push(i);
+      self._sendNack(deviceId, msgId, missing);
+      return;
+    }
+
     if (!buf) {
       buf = {
         chunks: new Map(), total: total,
-        meta: msg.meta || { f: msg.f || 'NEXO', fr: from || 'unknown', ts: msg.ts || Date.now(), seq: seq },
+        meta: { f: msg.f || 'NEXO', fr: from || 'unknown', ts: msg.ts || Date.now(), seq: seq },
         received: 0, deviceId: deviceId, lastActivity: Date.now(),
         isChat: type === 'c', nackSent: false
       };
       self.incomingBuffers.set(msgId, buf);
-      var senderId = from || (buf.meta && buf.meta.fr) || 'unknown';
+      // Timer de assembly timeout
+      buf.assemblyTimer = setTimeout(function() {
+        if (self.incomingBuffers.has(msgId)) {
+          console.warn('[BleAckSystem] Assembly timeout msgId=' + msgId);
+          self.incomingBuffers.delete(msgId);
+        }
+      }, ASSEMBLY_TIMEOUT_MS);
+      var senderId = from || 'unknown';
       if (window.vaultCreateTransfer) {
         window.vaultCreateTransfer(senderId, msgId, type === 'c' ? 'chat' : 'file', total, buf.meta).catch(function(){});
       }
@@ -160,24 +198,22 @@ export class BleAckSystem {
       window.vaultAppendChunk(senderId, msgId, idx, data || '', total, buf.meta).catch(function(){});
     }
 
-    if (idx > 0 && !buf.chunks.has(idx - 1) && !buf.nackSent) {
+    // Enviar Block ACK inmediatamente con bitmap actual
+    self._sendBlockAck(deviceId, msgId, buf);
+
+    // Detectar huecos y enviar NACK (rate limited)
+    if (idx > 0) {
       var missing = self._findMissing(buf);
-      if (missing.length > 0) {
+      if (missing.length > 0 && !buf.nackSent) {
         self._sendNack(deviceId, msgId, missing);
         buf.nackSent = true;
-        setTimeout(function() { buf.nackSent = false; }, 2000);
+        setTimeout(function() { buf.nackSent = false; }, 1500);
       }
     }
 
     if (buf.received >= buf.total) {
+      if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
       self._assembleAndDispatch(buf, deviceId, senderId, msgId);
-      return;
-    }
-
-    if ((idx + 1) % self.windowSize === 0 || idx === total - 1) {
-      var ackMask = [];
-      for (var i = 0; i < total; i++) ackMask.push(buf.chunks.has(i) ? '1' : '0');
-      self._sendChunkAck(deviceId, msgId, ackMask.join(''), buf.received, false);
     }
   }
 
@@ -195,10 +231,10 @@ export class BleAckSystem {
     for (var i = 0; i < buf.total; i++) {
       assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
     }
-    self._sendChunkAck(deviceId, msgId, null, buf.total, true);
+    self._sendFinalAck(deviceId, msgId, buf.total);
 
-    // [ABLACIÓN 3] Guardar en completados 30s antes de borrar buffer
-    self.completedMessages.set(msgId, { total: buf.total, expireAt: Date.now() + 30000 });
+    // Guardar en completados para deduplicación
+    self.completedMessages.set(msgId, { total: buf.total, expireAt: Date.now() + COMPLETED_TTL_MS });
     self.incomingBuffers.delete(msgId);
 
     if (buf.isChat) {
@@ -213,14 +249,26 @@ export class BleAckSystem {
   }
 
   _sendNack(deviceId, msgId, indices) {
-    var payload = JSON.stringify({ t: 'n', m: msgId, k: indices });
+    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'n', m: msgId, k: indices });
     if (this.ble && this.ble._sendMessageNative) {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
   }
 
-  _sendChunkAck(deviceId, msgId, mask, count, isFinal) {
-    var payload = JSON.stringify({ t: 'a', m: msgId, r: mask, c: count, f: isFinal ? 1 : 0 });
+  _sendBlockAck(deviceId, msgId, buf) {
+    var bitmap = 0;
+    for (var i = 0; i < buf.total; i++) {
+      if (buf.chunks.has(i)) bitmap |= (1 << i);
+    }
+    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, b: bitmap, n: buf.total });
+    if (this.ble && this.ble._sendMessageNative) {
+      this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
+    }
+  }
+
+  _sendFinalAck(deviceId, msgId, total) {
+    var bitmap = (1 << total) - 1;
+    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, b: bitmap, n: total, f: 1 });
     if (this.ble && this.ble._sendMessageNative) {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
@@ -233,13 +281,72 @@ export class BleAckSystem {
     if (stream) stream.handleNack(indices);
   }
 
-  _handleChunkAck(msg) {
+  _handleBlockAck(msg) {
+    var msgId = msg.m || msg.msgId;
+    var bitmap = msg.b || 0;
+    var total = msg.n || 0;
+    var isFinal = msg.f === 1;
+    var stream = this.outgoingStreams.get(msgId);
+    if (!stream) return;
+    if (isFinal) {
+      stream.handleFinalAck();
+      return;
+    }
+    // Actualizar ackedMask desde bitmap numérico
+    for (var i = 0; i < total; i++) {
+      if (bitmap & (1 << i)) stream.ackedMask[i] = true;
+    }
+    // Avanzar windowStart
+    while (stream.windowStart < stream.total && stream.ackedMask[stream.windowStart]) {
+      stream.windowStart++;
+    }
+    if (stream.timer) clearTimeout(stream.timer);
+    if (stream.windowStart >= stream.total) {
+      stream._finish();
+    } else {
+      // Verificar si ventana actual está completa
+      var end = Math.min(stream.windowStart + stream.windowSize, stream.total);
+      var windowComplete = true;
+      for (var i = stream.windowStart; i < end; i++) {
+        if (!stream.ackedMask[i]) { windowComplete = false; break; }
+      }
+      if (windowComplete) {
+        stream.windowRetryCount = 0;
+        if (stream._windowResolve) {
+          stream._windowResolve();
+          stream._windowResolve = null;
+          stream._windowReject = null;
+        }
+      } else {
+        // Faltan chunks en ventana actual, retransmitir
+        stream._retransmitWindow();
+      }
+    }
+  }
+
+  _handleLegacyChunkAck(msg) {
     var msgId = msg.m;
     var isFinal = msg.f === 1;
     var stream = this.outgoingStreams.get(msgId);
-    if (stream) {
-      if (isFinal) stream.handleFinalAck();
-      else stream.handlePartialAck(msg.r, msg.c);
+    if (!stream) return;
+    if (isFinal) {
+      stream.handleFinalAck();
+      return;
+    }
+    var mask = msg.r || '';
+    for (var i = 0; i < Math.min(mask.length, stream.total); i++) {
+      if (mask.charAt(i) === '1') stream.ackedMask[i] = true;
+    }
+    while (stream.windowStart < stream.total && stream.ackedMask[stream.windowStart]) {
+      stream.windowStart++;
+    }
+    if (stream.timer) clearTimeout(stream.timer);
+    if (stream.windowStart >= stream.total) {
+      stream._finish();
+    } else if (stream._windowResolve) {
+      stream._windowResolve();
+      stream._windowResolve = null;
+      stream._windowReject = null;
     }
   }
 
@@ -255,7 +362,7 @@ export class BleAckSystem {
           msgs.forEach(function(m) { if (m.seq > maxSeq) maxSeq = m.seq; });
           myLastSeq = maxSeq;
         }
-        var resp = JSON.stringify({ t: 'sr', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
+        var resp = JSON.stringify({ v: PROTOCOL_VERSION, t: 'sr', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
         if (self.ble && self.ble._sendMessageNative) {
           self.ble._sendMessageNative(deviceId, resp, null).catch(function(){});
         }
@@ -298,7 +405,7 @@ export class BleAckSystem {
         if (msgs && msgs.length > 0) {
           msgs.forEach(function(m) { if (m.seq > myLastSeq) myLastSeq = m.seq; });
         }
-        var payload = JSON.stringify({ t: 'ss', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
+        var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ss', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
         if (self.ble && self.ble._sendMessageNative) {
           self.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
         }
@@ -477,7 +584,10 @@ export class BleAckSystem {
     setInterval(function() {
       var now = Date.now();
       self.incomingBuffers.forEach(function(buf, msgId) {
-        if (now - buf.lastActivity > self.maxFragmentAge) self.incomingBuffers.delete(msgId);
+        if (now - buf.lastActivity > self.maxFragmentAge) {
+          if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
+          self.incomingBuffers.delete(msgId);
+        }
       });
       self.outgoingStreams.forEach(function(stream, msgId) {
         if (now - stream.startTime > self.maxFragmentAge * 2) { stream.abort(); self.outgoingStreams.delete(msgId); }
@@ -485,7 +595,6 @@ export class BleAckSystem {
       self.pendingAcks.forEach(function(entry, msgId) {
         if (now - entry.sentAt > self.maxFragmentAge) { clearTimeout(entry.timer); self.pendingAcks.delete(msgId); try { entry.reject(new Error('Timeout global')); } catch(e) {} }
       });
-      // [ABLACIÓN 3] Limpiar mensajes completados expirados
       self.completedMessages.forEach(function(data, msgId) {
         if (now > data.expireAt) self.completedMessages.delete(msgId);
       });
@@ -504,6 +613,7 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, chunkSize, window
   this.windowSize = windowSize;
   this.windowTimeoutMs = windowTimeoutMs;
   this.type = type || 'chat';
+  this.pacingDelayMs = PACING_DELAY_MS;
   this.chunks = [];
   this.total = 0;
   this.sentMask = [];
@@ -515,9 +625,10 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, chunkSize, window
   this.startTime = Date.now();
   this.aborted = false;
   this.windowRetryCount = 0;
-  this.maxWindowRetries = 5;
+  this.maxWindowRetries = MAX_WINDOW_RETRIES;
   this.globalTimeout = null;
-  // [ABLACIÓN 1] Eliminado: this._chunkTimers = {};
+  this._windowResolve = null;
+  this._windowReject = null;
 }
 
 ChatStream.prototype.start = function() {
@@ -533,15 +644,39 @@ ChatStream.prototype.start = function() {
     }
     self.globalTimeout = setTimeout(function() {
       if (!self.aborted) {
-        self.aborted = true;
-        if (self.timer) clearTimeout(self.timer);
-        // [ABLACIÓN 1] Eliminado: self._clearChunkTimers();
-        self.reject(new Error('Timeout global 45s'));
+        self.abort();
+        reject(new Error('Timeout global 45s'));
         self.ackSystem._dispatchStatus(self.msgId, 'failed');
       }
-    }, 45000);
-    self._sendWindow();
+    }, GLOBAL_TIMEOUT_MS);
+    self._runWindowLoop();
   });
+};
+
+ChatStream.prototype._runWindowLoop = function() {
+  var self = this;
+  function next() {
+    if (self.aborted) return;
+    if (self.windowStart >= self.total) {
+      self._finish();
+      return;
+    }
+    self._sendWindow().then(function() {
+      self.windowRetryCount = 0;
+      setTimeout(next, self.pacingDelayMs);
+    }).catch(function(err) {
+      self.windowRetryCount++;
+      if (self.windowRetryCount > self.maxWindowRetries) {
+        self.abort();
+        self.ackSystem._dispatchStatus(self.msgId, 'failed');
+        if (self.reject) self.reject(new Error('Max window retries'));
+        return;
+      }
+      console.log('[ChatStream] Ventana falló, reintentando. retry=' + self.windowRetryCount);
+      setTimeout(next, 500 * self.windowRetryCount);
+    });
+  }
+  next();
 };
 
 ChatStream.prototype._splitChunks = function() {
@@ -559,41 +694,47 @@ ChatStream.prototype._splitChunks = function() {
 
 ChatStream.prototype._sendWindow = function() {
   var self = this;
-  if (self.aborted) return;
-  var end = Math.min(self.windowStart + self.windowSize, self.total);
-  function sendNext(idx) {
-    if (idx >= end || self.aborted) {
-      var allAcked = true;
-      for (var i = self.windowStart; i < end; i++) {
-        if (!self.ackedMask[i]) { allAcked = false; break; }
+  return new Promise(function(resolve, reject) {
+    self._windowResolve = resolve;
+    self._windowReject = reject;
+    var end = Math.min(self.windowStart + self.windowSize, self.total);
+    function sendNext(idx) {
+      if (idx >= end || self.aborted) {
+        var allAcked = true;
+        for (var i = self.windowStart; i < end; i++) {
+          if (!self.ackedMask[i]) { allAcked = false; break; }
+        }
+        if (allAcked) {
+          if (self.timer) clearTimeout(self.timer);
+          resolve();
+        } else {
+          self._startWindowTimer();
+        }
+        return;
       }
-      if (!allAcked && !self.aborted) {
-        self._startWindowTimer();
+      if (self.ackedMask[idx]) {
+        setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
+        return;
       }
-      return;
+      self.sentMask[idx] = true;
+      var payload = self._buildChunk(idx);
+      self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
+        .then(function() {
+          setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
+        })
+        .catch(function(err) {
+          console.warn('[ChatStream] Envío nativo falló chunk', idx, err.message);
+          setTimeout(function() { sendNext(idx); }, 200);
+        });
     }
-    if (self.ackedMask[idx]) {
-      setTimeout(function() { sendNext(idx + 1); }, 30);
-      return;
-    }
-    self.sentMask[idx] = true;
-    var payload = self._buildChunk(idx);
-    self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
-      .then(function() {
-        // [ABLACIÓN 1] Eliminado: self._startChunkTimer(idx);
-        setTimeout(function() { sendNext(idx + 1); }, 30);
-      })
-      .catch(function(err) {
-        console.warn('[ChatStream] Envío nativo falló chunk', idx, err.message);
-        setTimeout(function() { sendNext(idx); }, 100);
-      });
-  }
-  sendNext(self.windowStart);
+    sendNext(self.windowStart);
+  });
 };
 
 ChatStream.prototype._buildChunk = function(idx) {
   var isFirst = idx === 0;
   var obj = {
+    v: PROTOCOL_VERSION,
     t: this.type === 'chat' ? 'c' : 'f',
     m: this.msgId,
     i: idx,
@@ -604,7 +745,6 @@ ChatStream.prototype._buildChunk = function(idx) {
     obj.f = this.meta.f || 'NEXO';
     obj.fr = this.meta.fr || 'unknown';
     obj.ts = this.meta.ts || Date.now();
-    // [ABLACIÓN 2] Eliminado: obj.meta = this.meta;
     if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
   }
   return JSON.stringify(obj);
@@ -631,27 +771,52 @@ ChatStream.prototype._onWindowTimeout = function() {
     self.windowRetryCount = 0;
     if (self.windowStart >= self.total) {
       self._finish();
-    } else {
-      self._sendWindow();
+    } else if (self._windowResolve) {
+      self._windowResolve();
+      self._windowResolve = null;
+      self._windowReject = null;
     }
   } else {
     self.windowRetryCount++;
     if (self.windowRetryCount > self.maxWindowRetries) {
       console.warn('[ChatStream] Max window retries alcanzado para', self.msgId);
       self.abort();
-      self.reject(new Error('Max window retries'));
+      if (self._windowReject) {
+        self._windowReject(new Error('Max window retries'));
+        self._windowReject = null;
+        self._windowResolve = null;
+      }
       self.ackSystem._dispatchStatus(self.msgId, 'failed');
       return;
     }
     console.log('[ChatStream] Window timeout, reenviando ventana desde', self.windowStart, 'retry', self.windowRetryCount);
-    self._sendWindow();
+    self._retransmitWindow();
   }
 };
 
-// [ABLACIÓN 1] Eliminados por completo:
-// ChatStream.prototype._startChunkTimer = function(idx) { ... }
-// ChatStream.prototype._onChunkTimeout = function(idx) { ... }
-// ChatStream.prototype._clearChunkTimers = function() { ... }
+ChatStream.prototype._retransmitWindow = function() {
+  var self = this;
+  var end = Math.min(self.windowStart + self.windowSize, self.total);
+  function sendNext(idx) {
+    if (idx >= end || self.aborted) {
+      self._startWindowTimer();
+      return;
+    }
+    if (self.ackedMask[idx]) {
+      setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
+      return;
+    }
+    var payload = self._buildChunk(idx);
+    self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
+      .then(function() {
+        setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
+      })
+      .catch(function(err) {
+        setTimeout(function() { sendNext(idx); }, 200);
+      });
+  }
+  sendNext(self.windowStart);
+};
 
 ChatStream.prototype.handleNack = function(indices) {
   var self = this;
@@ -667,25 +832,8 @@ ChatStream.prototype.handleNack = function(indices) {
   Promise.all(promises).then(function() {
     self._startWindowTimer();
   }).catch(function() {
-    setTimeout(function() { self._sendWindow(); }, 500);
+    setTimeout(function() { self._retransmitWindow(); }, 500);
   });
-};
-
-ChatStream.prototype.handlePartialAck = function(mask, count) {
-  var self = this;
-  if (!mask) return;
-  for (var i = 0; i < Math.min(mask.length, self.total); i++) {
-    if (mask.charAt(i) === '1') self.ackedMask[i] = true;
-  }
-  while (self.windowStart < self.total && self.ackedMask[self.windowStart]) {
-    self.windowStart++;
-  }
-  if (self.timer) clearTimeout(self.timer);
-  if (self.windowStart >= self.total) {
-    self._finish();
-  } else {
-    self._sendWindow();
-  }
 };
 
 ChatStream.prototype.handleFinalAck = function() {
@@ -698,7 +846,11 @@ ChatStream.prototype._finish = function() {
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
-  // [ABLACIÓN 1] Eliminado: this._clearChunkTimers();
+  if (this._windowResolve) {
+    this._windowResolve();
+    this._windowResolve = null;
+    this._windowReject = null;
+  }
   if (window.vaultRemoveOutgoingTransfer) {
     var cid = this.ackSystem._resolveNexoId(this.deviceId);
     window.vaultRemoveOutgoingTransfer(cid, this.msgId).catch(function(){});
@@ -711,7 +863,11 @@ ChatStream.prototype.abort = function() {
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
-  // [ABLACIÓN 1] Eliminado: this._clearChunkTimers();
+  if (this._windowResolve) {
+    this._windowResolve();
+    this._windowResolve = null;
+    this._windowReject = null;
+  }
   if (this.reject) this.reject(new Error('Abortado'));
 };
 
