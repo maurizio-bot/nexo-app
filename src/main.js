@@ -1,9 +1,10 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.17-FIX
+ * src/main.js - Punto de entrada NEXO v9.9.18-NEXO
+ * FIX: Límite de 300 caracteres en input de chat + contador visual
  * FIX: Limpieza de container al abrir chat nuevo / desde notificación / al cargar del vault
  * FIX: Inserción ordenada SIEMPRE incluso con skipSave=true
  * FIX: No renderizar mensajes entrantes si no hay chat abierto (evita mezcla en background)
- * Base: v9.9.16-FIX
+ * Base: v9.9.17-FIX
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -802,7 +803,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.17-FIX iniciando...');
+console.log('[MAIN] NEXO v9.9.18-NEXO iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -997,7 +998,7 @@ if (msg.content && typeof msg.content === 'string') {
           protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' ||
           protoCheck.type === 'pong' ||
           protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' ||
-          protoCheck.t === 'a' || protoCheck.t === 'ss' || protoCheck.t === 'sr') {
+          protoCheck.t === 'a' || protoCheck.t === 'ba' || protoCheck.t === 'ss' || protoCheck.t === 'sr') {
         console.warn('[MAIN] Protocol JSON defensively dropped:', protoCheck.type || protoCheck.t);
         return;
       }
@@ -1222,48 +1223,68 @@ var _isComposing = false;
 var _longPressTimer = null;
 var _isLongPress = false;
 var LONG_PRESS_MS = 600;
+    
+// Contador visual de caracteres
+var charCounter = document.getElementById('char-counter');
+if (!charCounter && input.parentNode) {
+  charCounter = document.createElement('span');
+  charCounter.id = 'char-counter';
+  charCounter.style.cssText = 'position:absolute;right:60px;bottom:6px;font-size:11px;color:#888;pointer-events:none;transition:color 0.2s;';
+  input.parentNode.style.position = 'relative';
+  input.parentNode.appendChild(charCounter);
+}
+    
 function _updateBtnState() {
-var hasText = input.value.trim().length > 0;
-btn.classList.toggle('mic-mode', !hasText);
+  var hasText = input.value.trim().length > 0;
+  btn.classList.toggle('mic-mode', !hasText);
+  if (charCounter) {
+    var len = input.value.length;
+    charCounter.textContent = len + '/300';
+    charCounter.style.color = len > 280 ? '#ff6b6b' : (len > 250 ? '#FFC107' : '#888');
+  }
 }
 _updateBtnState();
 var _doSend = async function() {
-var text = input.value.trim();
-if (!text) return;
-input.value = '';
-_updateBtnState();
-input.focus();
-var msgId = 'msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9);
-var seq = (window.bleInterface && typeof window.bleInterface.getNextSeq === 'function') ? window.bleInterface.getNextSeq() : 0;
-var vaultMsg = {
-msgId: msgId,
-messageId: msgId,
-content: text,
-_own: true,
-status: 'sending',
-timestamp: Date.now(),
-seq: seq
-};
-_renderMessage(vaultMsg);
-_updateMessageStatus(msgId, 'sending');
-_updateMessageStorageStatus(msgId, 'sending');
-try {
-await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId, seq: seq });
-window._sentFallbackTimers = window._sentFallbackTimers || {};
-window._sentFallbackTimers[msgId] = setTimeout(function() {
-  _updateMessageStatus(msgId, 'sent');
-  _updateMessageStorageStatus(msgId, 'sent');
-  delete window._sentFallbackTimers[msgId];
-}, 12000);
-} catch (e) {
-console.warn('[MAIN] sendMessage failed:', e.message);
-if (window._sentFallbackTimers && window._sentFallbackTimers[msgId]) {
-  clearTimeout(window._sentFallbackTimers[msgId]);
-  delete window._sentFallbackTimers[msgId];
-}
-_updateMessageStatus(msgId, 'failed');
-_updateMessageStorageStatus(msgId, 'failed');
-}
+  var text = input.value.trim();
+  if (!text) return;
+  if (text.length > 300) {
+    console.warn('[MAIN] Bloqueado: mensaje excede 300 chars (' + text.length + ')');
+    return;
+  }
+  input.value = '';
+  _updateBtnState();
+  input.focus();
+  var msgId = 'msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9);
+  var seq = (window.bleInterface && typeof window.bleInterface.getNextSeq === 'function') ? window.bleInterface.getNextSeq() : 0;
+  var vaultMsg = {
+    msgId: msgId,
+    messageId: msgId,
+    content: text,
+    _own: true,
+    status: 'sending',
+    timestamp: Date.now(),
+    seq: seq
+  };
+  _renderMessage(vaultMsg);
+  _updateMessageStatus(msgId, 'sending');
+  _updateMessageStorageStatus(msgId, 'sending');
+  try {
+    await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId, seq: seq });
+    window._sentFallbackTimers = window._sentFallbackTimers || {};
+    window._sentFallbackTimers[msgId] = setTimeout(function() {
+      _updateMessageStatus(msgId, 'sent');
+      _updateMessageStorageStatus(msgId, 'sent');
+      delete window._sentFallbackTimers[msgId];
+    }, 12000);
+  } catch (e) {
+    console.warn('[MAIN] sendMessage failed:', e.message);
+    if (window._sentFallbackTimers && window._sentFallbackTimers[msgId]) {
+      clearTimeout(window._sentFallbackTimers[msgId]);
+      delete window._sentFallbackTimers[msgId];
+    }
+    _updateMessageStatus(msgId, 'failed');
+    _updateMessageStorageStatus(msgId, 'failed');
+  }
 };
 input.addEventListener('input', _updateBtnState);
 input.addEventListener('keyup', _updateBtnState);
