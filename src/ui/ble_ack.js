@@ -1,12 +1,16 @@
 /**
- * ble_ack.js v3.2.4-NEXO-DEBUG
- * FIX: Trackeo correcto de ventanas (_windowStartAtSend / _windowEndAtSend)
- * FIX: Logs exhaustivos para debuggear transición entre ventanas
+ * ble_ack.js v3.2.5-NEXO
+ * FIX: Reinicio de assemblyTimer con cada chunk nuevo recibido
+ * FIX: Assembly timeout aumentado a 30s (evita borrado prematuro en mensajes largos)
+ * FIX: NACKs calmados — cooldown 3s y solo si buffer incompleto
+ * FIX: Ventana de chat aumentada a 4 chunks (menos rondas de ACK)
+ * Base: v3.2.4-NEXO-DEBUG
  */
 
 const PROTOCOL_VERSION = 2;
 const CHAT_CHUNK_SIZE = 140;
-const CHAT_WINDOW_SIZE = 2;
+// FIX v3.2.5: Ventana de chat 2→4 para reducir rondas de ACK en mensajes largos
+const CHAT_WINDOW_SIZE = 4;
 const CHAT_WINDOW_TIMEOUT_MS = 2500;
 const CHAT_PACING_DELAY_MS = 60;
 const FILE_CHUNK_SIZE = 140;
@@ -14,7 +18,8 @@ const FILE_WINDOW_SIZE = 4;
 const FILE_WINDOW_TIMEOUT_MS = 3500;
 const FILE_PACING_DELAY_MS = 15;
 const MAX_WINDOW_RETRIES = 5;
-const ASSEMBLY_TIMEOUT_MS = 10000;
+// FIX v3.2.5: Timeout de ensamblaje 10s→30s para dar tiempo a mensajes de 1000+ chars
+const ASSEMBLY_TIMEOUT_MS = 30000;
 const COMPLETED_TTL_MS = 30000;
 const GLOBAL_TIMEOUT_MS = 180000;
 
@@ -80,7 +85,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.4-DEBUG iniciado');
+    console.log('[BleAckSystem] v3.2.5-NEXO iniciado');
   }
 
   _resolveNexoId(deviceId) {
@@ -101,6 +106,57 @@ export class BleAckSystem {
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
       var senderId = (self.ble && self.ble.localNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
+      var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
+      var ts = Date.now();
+      var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: ts });
+      if (typeof seq !== 'number') {
+        seq = (self.ble && typeof self.ble.getNextSeq === 'function') ? self.ble.getNextSeq() : 0;
+      }
+      finalMeta.seq = seq;
+      if (content.length <= 180) {
+        self.sendWithRetry(deviceId, content, msgId, seq).then(resolve).catch(reject);
+        return;
+      }
+      var stream = new ChatStream(self, deviceId, msgId, content, finalMeta, 'chat');
+      self.outgoingStreams.set(msgId, stream);
+      stream.start().then(function() {
+        self.outgoingStreams.delete(msgId);
+        resolve();
+      }).catch(function(err) {
+        self.outgoingStreams.delete(msgId);
+        reject(err);
+      });
+    });
+  }
+
+  sendFile(deviceId, fileId, base64Data, meta) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      self._sendFileJS(deviceId, fileId, base64Data, meta).then(resolve).catch(reject);
+    });
+  }
+
+  _sendFileJS(deviceId, fileId, base64Data, meta) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      var senderId = (self.ble && self.ble.localNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
+      var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
+      var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: Date.now(), file: true });
+      var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
+      self.outgoingStreams.set(fileId, stream);
+      stream.start().then(function() {
+        self.outgoingStreams.delete(fileId);
+        resolve();
+      }).catch(function(err) {
+        self.outgoingStreams.delete(fileId);
+        reject(err);
+      });
+    });
+  }
+
+  processIncomingFragment(dataObj) {
+    try {
+      var deviceId = dataObjNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
       var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
       var ts = Date.now();
       var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: ts });
@@ -234,6 +290,14 @@ export class BleAckSystem {
       buf.chunks.set(idx, data || '');
       buf.received++;
       buf.lastActivity = Date.now();
+      // FIX v3.2.5: Reiniciar assemblyTimer con cada chunk nuevo para evitar borrado prematuro
+      if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
+      buf.assemblyTimer = setTimeout(function() {
+        if (self.incomingBuffers.has(msgId)) {
+          console.warn('[BleAckSystem] Assembly timeout msgId=' + msgId);
+          self.incomingBuffers.delete(msgId);
+        }
+      }, ASSEMBLY_TIMEOUT_MS);
     }
 
     var senderId = from || (buf.meta && buf.meta.fr) || 'unknown';
@@ -243,12 +307,13 @@ export class BleAckSystem {
 
     self._sendBlockAck(deviceId, msgId, buf);
 
-    if (idx > 0) {
+    // FIX v3.2.5: NACKs calmados — solo si buffer incompleto, con cooldown 3s
+    if (idx > 0 && buf.received < buf.total) {
       var missing = self._findMissing(buf);
       if (missing.length > 0 && !buf.nackSent) {
         self._sendNack(deviceId, msgId, missing);
         buf.nackSent = true;
-        setTimeout(function() { buf.nackSent = false; }, 1500);
+        setTimeout(function() { buf.nackSent = false; }, 3000);
       }
     }
 
@@ -685,7 +750,6 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.globalTimeoutMs = this.baseTimeoutMs;
   this._windowResolve = null;
   this._windowReject = null;
-  // FIX: Trackear exactamente qué ventana se está enviando
   this._windowStartAtSend = 0;
   this._windowEndAtSend = 0;
   
@@ -784,7 +848,6 @@ ChatStream.prototype._sendWindow = function() {
   return new Promise(function(resolve, reject) {
     self._windowResolve = resolve;
     self._windowReject = reject;
-    // FIX: Guardar exactamente qué ventana estamos enviando
     self._windowStartAtSend = self.windowStart;
     self._windowEndAtSend = Math.min(self.windowStart + self.windowSize, self.total);
     var end = self._windowEndAtSend;
@@ -793,7 +856,6 @@ ChatStream.prototype._sendWindow = function() {
     
     function sendNext(idx) {
       if (idx >= end || self.aborted) {
-        // FIX: Verificar si la ventana ORIGINAL (la que enviamos) está completa
         var allAcked = true;
         for (var i = self._windowStartAtSend; i < self._windowEndAtSend; i++) {
           if (!self.ackedMask[i]) { allAcked = false; break; }
@@ -866,7 +928,6 @@ ChatStream.prototype._onWindowTimeout = function() {
   var self = this;
   if (self.aborted) return;
   
-  // FIX: Verificar la ventana ORIGINAL que se envió, no la actual
   var allAcked = true;
   for (var i = self._windowStartAtSend; i < self._windowEndAtSend; i++) {
     if (!self.ackedMask[i]) { allAcked = false; break; }
