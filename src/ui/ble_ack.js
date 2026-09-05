@@ -1,10 +1,10 @@
 /**
- * ble_ack.js v3.2.1-NEXO
- * FIX: Opcion C - Eliminada delegacion nativa, solo JS chunking
- * FIX: FILE_CHUNK_SIZE 500->180 para caber en payload BLE (255 chars)
- * FIX: Metadata de archivos preservada en chunk 0 (tp, fn, fs, ft)
- * FIX: GLOBAL_TIMEOUT_MS 120000->180000 (3min para archivos grandes)
- * Base: v3.2.0-NATIVE
+ * ble_ack.js v3.2.2-NEXO-FIX
+ * FIX: Bitmap string (sin límite 32 bits)
+ * FIX: Eliminada condición de carrera en _handleBlockAck
+ * FIX: Timeout global proporcional al tamaño
+ * FIX: Chunking seguro para surrogate pairs UTF-16
+ * Base: v3.2.1-NEXO
  */
 
 const PROTOCOL_VERSION = 2;
@@ -16,7 +16,6 @@ const CHAT_WINDOW_TIMEOUT_MS = 2500;
 const CHAT_PACING_DELAY_MS = 60;
 
 // ARCHIVOS: 100% confiable via JS chunking (Opcion C)
-// FIX v3.2.1: 180 chars para que chunk 0 + metadata nunca exceda 255
 const FILE_CHUNK_SIZE = 140;
 const FILE_WINDOW_SIZE = 4;
 const FILE_WINDOW_TIMEOUT_MS = 3500;
@@ -25,7 +24,6 @@ const FILE_PACING_DELAY_MS = 15;
 const MAX_WINDOW_RETRIES = 5;
 const ASSEMBLY_TIMEOUT_MS = 10000;
 const COMPLETED_TTL_MS = 30000;
-// FIX v3.2.1: 3 minutos para archivos grandes (1MB ~90s + margen)
 const GLOBAL_TIMEOUT_MS = 180000;
 
 function _normMac(mac) {
@@ -56,7 +54,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.1-NEXO iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
+    console.log('[BleAckSystem] v3.2.2-NEXO-FIX iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
   }
 
   _resolveNexoId(deviceId) {
@@ -100,11 +98,9 @@ export class BleAckSystem {
     });
   }
 
-  // FIX v3.2.1: Opcion C - Solo JS chunking, nativo eliminado
   sendFile(deviceId, fileId, base64Data, meta) {
     var self = this;
     return new Promise(function(resolve, reject) {
-      // Siempre usar JS chunking, nunca delegar a nativo
       self._sendFileJS(deviceId, fileId, base64Data, meta).then(resolve).catch(reject);
     });
   }
@@ -144,7 +140,6 @@ export class BleAckSystem {
         this._handleIncomingChunk(deviceId, msg, type);
         return true;
       }
-      // FIX v3.2.1: Ignorar fm/fd del nativo si aun llegan (protocolo muerto)
       if (type === 'fm' || type === 'fd') {
         console.warn('[BleAckSystem] Ignorando chunk nativo obsoleto:', type);
         return true;
@@ -181,7 +176,6 @@ export class BleAckSystem {
     }
 
     if (!buf) {
-      // FIX v3.2.1: Preservar metadata completa del archivo (tp, fn, fs, ft)
       buf = {
         chunks: new Map(), total: total,
         meta: {
@@ -275,9 +269,10 @@ export class BleAckSystem {
   }
 
   _sendBlockAck(deviceId, msgId, buf) {
-    var bitmap = 0;
+    // FIX: Bitmap como string para evitar desbordamiento de 32 bits en JS
+    var bitmap = '';
     for (var i = 0; i < buf.total; i++) {
-      if (buf.chunks.has(i)) bitmap |= (1 << i);
+      bitmap += buf.chunks.has(i) ? '1' : '0';
     }
     var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, b: bitmap, n: buf.total });
     if (this.ble && this.ble._sendMessageNative) {
@@ -286,7 +281,9 @@ export class BleAckSystem {
   }
 
   _sendFinalAck(deviceId, msgId, total) {
-    var bitmap = (1 << total) - 1;
+    // FIX: Bitmap como string para evitar desbordamiento de 32 bits en JS
+    var bitmap = '';
+    for (var i = 0; i < total; i++) bitmap += '1';
     var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, b: bitmap, n: total, f: 1 });
     if (this.ble && this.ble._sendMessageNative) {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
@@ -302,7 +299,7 @@ export class BleAckSystem {
 
   _handleBlockAck(msg) {
     var msgId = msg.m || msg.msgId;
-    var bitmap = msg.b || 0;
+    var bitmapStr = msg.b || '';
     var total = msg.n || 0;
     var isFinal = msg.f === 1;
     var stream = this.outgoingStreams.get(msgId);
@@ -311,32 +308,19 @@ export class BleAckSystem {
       stream.handleFinalAck();
       return;
     }
-    for (var i = 0; i < total; i++) {
-      if (bitmap & (1 << i)) stream.ackedMask[i] = true;
+    // FIX: Usar string bitmask (no hay límite de 32 bits) y NUNCA tocar la ventana en vuelo
+    for (var i = 0; i < Math.min(bitmapStr.length, stream.total); i++) {
+      if (bitmapStr.charAt(i) === '1') stream.ackedMask[i] = true;
     }
     while (stream.windowStart < stream.total && stream.ackedMask[stream.windowStart]) {
       stream.windowStart++;
     }
-    if (stream.timer) clearTimeout(stream.timer);
+    // Solo finalizar si el mensaje entero está acked. Nunca resolver/retransmitir la ventana aquí.
     if (stream.windowStart >= stream.total) {
+      if (stream.timer) clearTimeout(stream.timer);
       stream._finish();
-    } else {
-      var end = Math.min(stream.windowStart + stream.windowSize, stream.total);
-      var windowComplete = true;
-      for (var i = stream.windowStart; i < end; i++) {
-        if (!stream.ackedMask[i]) { windowComplete = false; break; }
-      }
-      if (windowComplete) {
-        stream.windowRetryCount = 0;
-        if (stream._windowResolve) {
-          stream._windowResolve();
-          stream._windowResolve = null;
-          stream._windowReject = null;
-        }
-      } else {
-        stream._retransmitWindow();
-      }
     }
+    // NOTA: _sendWindow y _onWindowTimeout son los únicos que manejan el ciclo de vida de la ventana.
   }
 
   _handleLegacyChunkAck(msg) {
@@ -410,7 +394,7 @@ export class BleAckSystem {
       }
       sendNext();
     }).catch(function(){});
-  }
+n  }
 
   sendSessionSync(deviceId, peerNexoId) {
     var self = this;
@@ -630,7 +614,11 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.windowSize = isFile ? FILE_WINDOW_SIZE : CHAT_WINDOW_SIZE;
   this.windowTimeoutMs = isFile ? FILE_WINDOW_TIMEOUT_MS : CHAT_WINDOW_TIMEOUT_MS;
   this.pacingDelayMs = isFile ? FILE_PACING_DELAY_MS : CHAT_PACING_DELAY_MS;
-  this.globalTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : 45000;
+  
+  // FIX: Timeout proporcional al número de ventanas (no fijo para mensajes largos)
+  var estimatedWindows = Math.ceil(this.total / this.windowSize);
+  var timeoutPerWindow = this.windowTimeoutMs * (MAX_WINDOW_RETRIES + 2);
+  this.globalTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : Math.max(45000, estimatedWindows * timeoutPerWindow);
   
   this.type = type || 'chat';
   this.chunks = [];
@@ -706,8 +694,17 @@ ChatStream.prototype._splitChunks = function() {
   var str = this.content;
   var size = this.chunkSize;
   var arr = [];
-  for (var i = 0; i < str.length; i += size) {
-    arr.push(str.substring(i, i + size));
+  var i = 0;
+  // FIX: No cortar en medio de un surrogate pair UTF-16 (emoji)
+  while (i < str.length) {
+    var end = Math.min(i + size, str.length);
+    if (end < str.length &&
+        str.charCodeAt(end - 1) >= 0xD800 && str.charCodeAt(end - 1) <= 0xDBFF &&
+        str.charCodeAt(end) >= 0xDC00 && str.charCodeAt(end) <= 0xDFFF) {
+      end--;
+    }
+    arr.push(str.substring(i, end));
+    i = end;
   }
   this.chunks = arr;
   this.total = arr.length;
@@ -754,7 +751,6 @@ ChatStream.prototype._sendWindow = function() {
   });
 };
 
-// FIX v3.2.1: Incluir metadata de archivo en chunk 0 (tp, fn, fs, ft)
 ChatStream.prototype._buildChunk = function(idx) {
   var isFirst = idx === 0;
   var obj = {
@@ -770,7 +766,6 @@ ChatStream.prototype._buildChunk = function(idx) {
     obj.fr = this.meta.fr || 'unknown';
     obj.ts = this.meta.ts || Date.now();
     if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
-    // Metadata adicional para archivos (campos compactos)
     if (this.meta.type) obj.tp = this.meta.type;
     if (this.meta.name) obj.fn = this.meta.name;
     if (this.meta.size) obj.fs = this.meta.size;
