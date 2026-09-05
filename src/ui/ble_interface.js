@@ -1068,7 +1068,7 @@ export class BLEInterface {
           if (content && content.charAt(0) === '{') {
             try { var parsedContent = JSON.parse(content); if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent; } catch (e) {}
           }
-          enrichedPayload = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, jump: { ttl: 5, hops: 0, path: [] } });
+          enrichedPayload = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj });
         }
         if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
           _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
