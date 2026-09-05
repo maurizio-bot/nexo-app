@@ -1,10 +1,10 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.18-NEXO
- * FIX: Límite de 300 caracteres en input de chat + contador visual
+ * src/main.js - Punto de entrada NEXO v9.9.19-NEXO
+ * FIX: Límite de 255 caracteres en input de chat + contador visual + maxlength
  * FIX: Limpieza de container al abrir chat nuevo / desde notificación / al cargar del vault
  * FIX: Inserción ordenada SIEMPRE incluso con skipSave=true
  * FIX: No renderizar mensajes entrantes si no hay chat abierto (evita mezcla en background)
- * Base: v9.9.17-FIX
+ * Base: v9.9.18-NEXO
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -809,7 +809,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.18-NEXO iniciando...');
+console.log('[MAIN] NEXO v9.9.19-NEXO iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -918,7 +918,6 @@ if (styles) styles.remove();
 function _openChatFromNotification(deviceId) {
 try {
 if (!window.NEXO.app) return;
-// FIX v9.9.17: Limpieza al abrir chat desde notificación
 _clearMessageContainer();
 var contact = vaultFindContactByNexoId(deviceId);
 if (!contact) {
@@ -979,7 +978,6 @@ _autoScan.start();
 });
 window.addEventListener('nexo:vault:messagesLoaded', function(e) {
 if (e && e.detail && Array.isArray(e.detail.messages)) {
-  // FIX v9.9.17: Limpieza al cargar mensajes del vault
   _clearMessageContainer();
   e.detail.messages.forEach(function(msg) {
     _renderMessage(msg, true);
@@ -1230,7 +1228,8 @@ var _longPressTimer = null;
 var _isLongPress = false;
 var LONG_PRESS_MS = 600;
     
-// Contador visual de caracteres
+// FIX v9.9.19: maxlength 255 + contador visual
+input.maxLength = 255;
 var charCounter = document.getElementById('char-counter');
 if (!charCounter && input.parentNode) {
   charCounter = document.createElement('span');
@@ -1245,16 +1244,17 @@ function _updateBtnState() {
   btn.classList.toggle('mic-mode', !hasText);
   if (charCounter) {
     var len = input.value.length;
-    charCounter.textContent = len + '/300';
-    charCounter.style.color = len > 280 ? '#ff6b6b' : (len > 250 ? '#FFC107' : '#888');
+    charCounter.textContent = len + '/255';
+    charCounter.style.color = len > 240 ? '#ff6b6b' : (len > 220 ? '#FFC107' : '#888');
   }
 }
 _updateBtnState();
 var _doSend = async function() {
   var text = input.value.trim();
   if (!text) return;
-  if (text.length > 300) {
-    console.warn('[MAIN] Bloqueado: mensaje excede 300 chars (' + text.length + ')');
+  // FIX v9.9.19: límite real del protocolo BLE = 255
+  if (text.length > 255) {
+    console.warn('[MAIN] Bloqueado: mensaje excede 255 chars (' + text.length + ')');
     return;
   }
   input.value = '';
@@ -1512,7 +1512,6 @@ console.warn('[MAIN] _updateMessageStorageStatus error:', e);
 }
 async function _loadPersistedMessages() {
 try {
-// FIX v9.9.17: Limpieza de container al cargar mensajes del vault
 _clearMessageContainer();
 var contactId = _getCurrentContactId();
 if (!contactId) return;
@@ -1529,7 +1528,6 @@ _renderMessage(msg, true);
 console.warn('[MAIN] _loadPersistedMessages error:', e);
 }
 }
-// FIX v9.9.17: Limpieza de container de mensajes
 function _clearMessageContainer() {
   var container = document.getElementById('messages-container');
   if (container) container.innerHTML = '';
@@ -1549,7 +1547,6 @@ if (msg.type === 'ack' || msg.ackType || (msg.content && typeof msg.content === 
 console.warn('[MAIN] ACK filtrado en renderMessage:', msg.msgId || msg.messageId || msg.id || '');
 return;
 }
-// FIX v9.9.17: Si es mensaje entrante y NO es el chat activo, solo guardar en vault y salir
 if (!msg._own) {
   var activeId = _getCurrentContactId();
   var senderId = msg.senderNexoId || msg.from || msg.sender || '';
@@ -1557,7 +1554,6 @@ if (!msg._own) {
     if (!skipSave) _saveMessageToStorage(msg);
     return;
   }
-  // FIX v9.9.17: Si no hay chat abierto, no renderizar en background
   if (!activeId) {
     if (!skipSave) _saveMessageToStorage(msg);
     return;
@@ -1858,7 +1854,6 @@ statusSpan.textContent = statusIcon;
 metaDiv.appendChild(statusSpan);
 }
 div.appendChild(metaDiv);
-// FIX v9.9.17: Inserción ordenada SIEMPRE, incluso al cargar del vault
 var inserted = false;
 var children = container.querySelectorAll('.message');
 var msgTs = msg.timestamp || Date.now();
@@ -2000,7 +1995,6 @@ if (!backBtn) return;
 window.addEventListener('nexo:ble:openChat', function(e) {
 backBtn.classList.add('visible');
 document.body.classList.add('chat-view-active');
-// FIX v9.9.17: Limpieza de container al abrir chat nuevo
 _clearMessageContainer();
 var detail = e.detail || {};
 if (detail.contactId && window.NEXO.app && !window.NEXO.app.activeContact) {
