@@ -997,6 +997,10 @@ if (msg.content && typeof msg.content === 'string') {
   if (trimmed.charAt(0) === '{') {
     try {
       var protoCheck = JSON.parse(trimmed);
+      if (protoCheck.jump && typeof protoCheck.jump.ttl === 'number') {
+        console.warn('[MAIN] Protocol wrapper v1 con jump descartado:', protoCheck.msgId);
+        return;
+      }
       if (protoCheck.type === 'chat_meta' || protoCheck.type === 'chat_chunk' ||
           protoCheck.type === 'file_meta' || protoCheck.type === 'file_chunk' ||
           protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
