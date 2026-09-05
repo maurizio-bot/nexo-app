@@ -1,7 +1,8 @@
 /**
- * BLE Interface v6.0.6-NEXO
- * FIX: Filtro de protocolo v3 (block_ack 'ba') para ble_ack.js v3.0.0
- * Base: v6.0.5-FIX + Paso 2B (sendFileNative)
+ * BLE Interface v6.0.7-NEXO
+ * FIX: Eliminado sendFileNative y listeners de archivo nativo (Opcion C)
+ * FIX: Filtro de protocolo v3 (block_ack 'ba') para ble_ack.js v3.x
+ * Base: v6.0.6-NEXO
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -383,9 +384,7 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();
-    this._nativeFileProgressListener = null;
-    this._nativeFileCompleteListener = null;
-    console.log('[BLEInterface] v6.0.6-NEXO iniciado');
+    console.log('[BLEInterface] v6.0.7-NEXO iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -435,7 +434,6 @@ export class BLEInterface {
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
       this._setupNativeServerReadyListener();
-      this._setupNativeFileListeners();
       this._loadLocalDeviceInfo();
       this._initVisibility();
       this._initNexoId();
@@ -1820,46 +1818,9 @@ export class BLEInterface {
   getContacts() { return _getBLEContacts(); }
   getContactByUUID(deviceUUID) { return _getContactByUUID(deviceUUID); }
 
-  _setupNativeFileListeners() {
-    if (!this.nativePlugin) return;
-    if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
-    var self = this;
-    this._nativeFileProgressListener = this.nativePlugin.addListener('onFileProgress', function(data) {
-      try { _safeDispatchEvent('nexo:ble:fileProgress', data); } catch(e) {}
-    });
-    this._nativeFileCompleteListener = this.nativePlugin.addListener('onFileComplete', function(data) {
-      try { _safeDispatchEvent('nexo:ble:fileComplete', data); } catch(e) {}
-    });
-    console.log('[BLEInterface] Native file listeners activos');
-  }
-
-  sendFileNative(deviceId, fileId, base64Data, meta) {
-    var self = this;
-    return new Promise(function(resolve, reject) {
-      if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'sendFileNative')) {
-        reject(new Error('sendFileNative no disponible'));
-        return;
-      }
-      _safeNativeCall(self.nativePlugin, 'sendFileNative', {
-        deviceId: deviceId,
-        fileId: fileId,
-        fileData: base64Data,
-        meta: JSON.stringify(meta || {})
-      }).then(function(result) {
-        console.log('[BLEInterface] sendFileNative iniciado:', result);
-        resolve(result);
-      }).catch(function(e) {
-        console.error('[BLEInterface] sendFileNative falló:', e);
-        reject(e);
-      });
-    });
-  }
-
   destroy() {
     var self = this;
     console.log('[BLEInterface] destroy()');
-    try { this._nativeFileProgressListener?.remove(); } catch(e) {}
-    try { this._nativeFileCompleteListener?.remove(); } catch(e) {}
     self._stopConnectionSupervisor();
     self._stopPingInterval();
     self._backoffTimers.forEach(function(t) { clearTimeout(t); });
