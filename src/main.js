@@ -1,6 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.19-NEXO
- * FIX: Límite de 255 caracteres en input de chat + contador visual + maxlength
+ * src/main.js - Punto de entrada NEXO v9.9.20-NEXO
+ * FIX: Eliminado tapón artificial de 255 chars — chunking de ble_ack.js maneja mensajes largos automáticamente
+ * FIX: Sync bidireccional en BLEInterface (aplicado en v6.0.8)
  * FIX: Limpieza de container al abrir chat nuevo / desde notificación / al cargar del vault
  * FIX: Inserción ordenada SIEMPRE incluso con skipSave=true
  * FIX: No renderizar mensajes entrantes si no hay chat abierto (evita mezcla en background)
@@ -809,7 +810,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.19-NEXO iniciando...');
+console.log('[MAIN] NEXO v9.9.20-NEXO iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -1228,8 +1229,7 @@ var _longPressTimer = null;
 var _isLongPress = false;
 var LONG_PRESS_MS = 600;
     
-// FIX v9.9.19: maxlength 255 + contador visual
-input.maxLength = 255;
+// FIX v9.9.20: contador visual sin tapón artificial — chunking automático
 var charCounter = document.getElementById('char-counter');
 if (!charCounter && input.parentNode) {
   charCounter = document.createElement('span');
@@ -1244,19 +1244,15 @@ function _updateBtnState() {
   btn.classList.toggle('mic-mode', !hasText);
   if (charCounter) {
     var len = input.value.length;
-    charCounter.textContent = len + '/255';
-    charCounter.style.color = len > 240 ? '#ff6b6b' : (len > 220 ? '#FFC107' : '#888');
+    charCounter.textContent = len > 0 ? len + ' chars' : '';
+    charCounter.style.color = len > 180 ? '#FFC107' : '#888';
   }
 }
 _updateBtnState();
 var _doSend = async function() {
   var text = input.value.trim();
   if (!text) return;
-  // FIX v9.9.19: límite real del protocolo BLE = 255
-  if (text.length > 255) {
-    console.warn('[MAIN] Bloqueado: mensaje excede 255 chars (' + text.length + ')');
-    return;
-  }
+  // FIX v9.9.20: sin límite artificial — ble_ack.js chunking automático >180 chars
   input.value = '';
   _updateBtnState();
   input.focus();
