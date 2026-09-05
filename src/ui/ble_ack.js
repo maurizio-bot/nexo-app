@@ -10,14 +10,14 @@
 const PROTOCOL_VERSION = 2;
 
 // CHAT: ultra-seguro, nunca pierde un mensaje
-const CHAT_CHUNK_SIZE = 160;
+const CHAT_CHUNK_SIZE = 140;
 const CHAT_WINDOW_SIZE = 2;
 const CHAT_WINDOW_TIMEOUT_MS = 2500;
 const CHAT_PACING_DELAY_MS = 60;
 
 // ARCHIVOS: 100% confiable via JS chunking (Opcion C)
 // FIX v3.2.1: 180 chars para que chunk 0 + metadata nunca exceda 255
-const FILE_CHUNK_SIZE = 180;
+const FILE_CHUNK_SIZE = 140;
 const FILE_WINDOW_SIZE = 4;
 const FILE_WINDOW_TIMEOUT_MS = 3500;
 const FILE_PACING_DELAY_MS = 15;
