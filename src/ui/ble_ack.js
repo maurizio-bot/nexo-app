@@ -1,7 +1,10 @@
 /**
- * ble_ack.js v3.2.0-NATIVE
- * Chunk dinámico: chat seguro vs archivos rápidos
- * Paso 2C: delegación nativa para archivos
+ * ble_ack.js v3.2.1-NEXO
+ * FIX: Opcion C - Eliminada delegacion nativa, solo JS chunking
+ * FIX: FILE_CHUNK_SIZE 500->180 para caber en payload BLE (255 chars)
+ * FIX: Metadata de archivos preservada en chunk 0 (tp, fn, fs, ft)
+ * FIX: GLOBAL_TIMEOUT_MS 120000->180000 (3min para archivos grandes)
+ * Base: v3.2.0-NATIVE
  */
 
 const PROTOCOL_VERSION = 2;
@@ -12,16 +15,18 @@ const CHAT_WINDOW_SIZE = 2;
 const CHAT_WINDOW_TIMEOUT_MS = 2500;
 const CHAT_PACING_DELAY_MS = 60;
 
-// ARCHIVOS: dominante, máxima velocidad sin romper BLE
-const FILE_CHUNK_SIZE = 500;        // 500 chars base64 ≈ 375 bytes reales
-const FILE_WINDOW_SIZE = 4;         // 4 chunks = ~1.5KB antes de pedir ACK
+// ARCHIVOS: 100% confiable via JS chunking (Opcion C)
+// FIX v3.2.1: 180 chars para que chunk 0 + metadata nunca exceda 255
+const FILE_CHUNK_SIZE = 180;
+const FILE_WINDOW_SIZE = 4;
 const FILE_WINDOW_TIMEOUT_MS = 3500;
-const FILE_PACING_DELAY_MS = 15;    // 15ms entre chunks = 4x más rápido que chat
+const FILE_PACING_DELAY_MS = 15;
 
 const MAX_WINDOW_RETRIES = 5;
 const ASSEMBLY_TIMEOUT_MS = 10000;
 const COMPLETED_TTL_MS = 30000;
-const GLOBAL_TIMEOUT_MS = 120000;   // 2 min para archivos grandes
+// FIX v3.2.1: 3 minutos para archivos grandes (1MB ~90s + margen)
+const GLOBAL_TIMEOUT_MS = 180000;
 
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
@@ -51,7 +56,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.0-NATIVE iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
+    console.log('[BleAckSystem] v3.2.1-NEXO iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
   }
 
   _resolveNexoId(deviceId) {
@@ -95,22 +100,11 @@ export class BleAckSystem {
     });
   }
 
+  // FIX v3.2.1: Opcion C - Solo JS chunking, nativo eliminado
   sendFile(deviceId, fileId, base64Data, meta) {
     var self = this;
     return new Promise(function(resolve, reject) {
-      // PASO 2: Si el nativo soporta sendFileNative, delegar
-      if (self.ble && typeof self.ble.sendFileNative === 'function') {
-        console.log('[BleAckSystem] Delegando archivo a nativo:', fileId);
-        self.ble.sendFileNative(deviceId, fileId, base64Data, meta)
-          .then(resolve)
-          .catch(function(err) {
-            // Si falla, fallback al JS chunking
-            console.warn('[BleAckSystem] sendFileNative falló, fallback JS:', err.message);
-            self._sendFileJS(deviceId, fileId, base64Data, meta).then(resolve).catch(reject);
-          });
-        return;
-      }
-      // Fallback JS nativo
+      // Siempre usar JS chunking, nunca delegar a nativo
       self._sendFileJS(deviceId, fileId, base64Data, meta).then(resolve).catch(reject);
     });
   }
@@ -150,6 +144,11 @@ export class BleAckSystem {
         this._handleIncomingChunk(deviceId, msg, type);
         return true;
       }
+      // FIX v3.2.1: Ignorar fm/fd del nativo si aun llegan (protocolo muerto)
+      if (type === 'fm' || type === 'fd') {
+        console.warn('[BleAckSystem] Ignorando chunk nativo obsoleto:', type);
+        return true;
+      }
       return false;
     } catch (e) {
       return false;
@@ -182,9 +181,19 @@ export class BleAckSystem {
     }
 
     if (!buf) {
+      // FIX v3.2.1: Preservar metadata completa del archivo (tp, fn, fs, ft)
       buf = {
         chunks: new Map(), total: total,
-        meta: { f: msg.f || 'NEXO', fr: from || 'unknown', ts: msg.ts || Date.now(), seq: seq },
+        meta: {
+          f: msg.f || 'NEXO',
+          fr: from || 'unknown',
+          ts: msg.ts || Date.now(),
+          seq: seq,
+          type: msg.tp || msg.type || (type === 'f' ? 'file' : null),
+          name: msg.fn || msg.name,
+          size: msg.fs || msg.size,
+          format: msg.ft || msg.format
+        },
         received: 0, deviceId: deviceId, lastActivity: Date.now(),
         isChat: type === 'c', nackSent: false
       };
@@ -659,7 +668,7 @@ ChatStream.prototype.start = function() {
     self.globalTimeout = setTimeout(function() {
       if (!self.aborted) {
         self.abort();
-        reject(new Error('Timeout global ' + (self.type === 'file' ? '2min' : '45s')));
+        reject(new Error('Timeout global ' + (self.type === 'file' ? '3min' : '45s')));
         self.ackSystem._dispatchStatus(self.msgId, 'failed');
       }
     }, self.globalTimeoutMs);
@@ -745,6 +754,7 @@ ChatStream.prototype._sendWindow = function() {
   });
 };
 
+// FIX v3.2.1: Incluir metadata de archivo en chunk 0 (tp, fn, fs, ft)
 ChatStream.prototype._buildChunk = function(idx) {
   var isFirst = idx === 0;
   var obj = {
@@ -760,6 +770,11 @@ ChatStream.prototype._buildChunk = function(idx) {
     obj.fr = this.meta.fr || 'unknown';
     obj.ts = this.meta.ts || Date.now();
     if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
+    // Metadata adicional para archivos (campos compactos)
+    if (this.meta.type) obj.tp = this.meta.type;
+    if (this.meta.name) obj.fn = this.meta.name;
+    if (this.meta.size) obj.fs = this.meta.size;
+    if (this.meta.format) obj.ft = this.meta.format;
   }
   return JSON.stringify(obj);
 };
