@@ -1,6 +1,7 @@
 /**
- * BLE Interface v6.0.7-NEXO
+ * BLE Interface v6.0.8-NEXO
  * FIX: Eliminado sendFileNative y listeners de archivo nativo (Opcion C)
+ * FIX: Sync bidireccional — ambos lados envían sessionSync al conectar
  * FIX: Filtro de protocolo v3 (block_ack 'ba') para ble_ack.js v3.x
  * Base: v6.0.6-NEXO
  */
@@ -384,7 +385,7 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();
-    console.log('[BLEInterface] v6.0.7-NEXO iniciado');
+    console.log('[BLEInterface] v6.0.8-NEXO iniciado');
   }
   _detectMeshType() {
     if (!this.bleMesh) return 'none';
@@ -719,6 +720,12 @@ export class BLEInterface {
             }
           }, 1500);
         }
+        // FIX v6.0.8: Sync bidireccional — ambos lados envían session sync al conectar
+        setTimeout(function() {
+          if (self.ackSystem && self.ackSystem.sendSessionSync && peerUUID) {
+            self.ackSystem.sendSessionSync(deviceId, peerUUID);
+          }
+        }, 2000);
       } catch (e) {}
     });
     this._nativeDeviceDisconnectedListener = this.nativePlugin.addListener('onDeviceDisconnected', function(data) {
