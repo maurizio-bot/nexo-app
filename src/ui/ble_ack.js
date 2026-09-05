@@ -846,7 +846,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     obj.ts = this.meta.ts || Date.now();
     if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
     if (this.meta.type) obj.tp = this.meta.type;
-    if (this.meta.name) this.fn = this.meta.name;
+    if (this.meta.name) obj.fn = this.meta.name;
     if (this.meta.size) obj.fs = this.meta.size;
     if (this.meta.format) obj.ft = this.meta.format;
   }
