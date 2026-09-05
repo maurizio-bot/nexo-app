@@ -1,29 +1,18 @@
 /**
- * ble_ack.js v3.2.3-NEXO-PROD
- * FIX: Parser JSON robusto en nativo (strings/escapes)
- * FIX: MTU servidor registrado (Android 12+)
- * FIX: UTF-8 explícito en todo el pipeline
- * FIX: Chunking seguro surrogate pairs (JS + Kotlin)
- * FIX: ACK/NACK por rangos comprimidos (sin límite 32 bits, sin exceder payload BLE)
- * FIX: Eliminada condición de carrera en _handleBlockAck
- * FIX: Timeout global proporcional al tamaño real del mensaje
- * Base: v3.2.1-NEXO
+ * ble_ack.js v3.2.4-NEXO-DEBUG
+ * FIX: Trackeo correcto de ventanas (_windowStartAtSend / _windowEndAtSend)
+ * FIX: Logs exhaustivos para debuggear transición entre ventanas
  */
 
 const PROTOCOL_VERSION = 2;
-
-// CHAT: ultra-seguro, nunca pierde un mensaje
 const CHAT_CHUNK_SIZE = 140;
 const CHAT_WINDOW_SIZE = 2;
 const CHAT_WINDOW_TIMEOUT_MS = 2500;
 const CHAT_PACING_DELAY_MS = 60;
-
-// ARCHIVOS: 100% confiable via JS chunking (Opcion C)
 const FILE_CHUNK_SIZE = 140;
 const FILE_WINDOW_SIZE = 4;
 const FILE_WINDOW_TIMEOUT_MS = 3500;
 const FILE_PACING_DELAY_MS = 15;
-
 const MAX_WINDOW_RETRIES = 5;
 const ASSEMBLY_TIMEOUT_MS = 10000;
 const COMPLETED_TTL_MS = 30000;
@@ -32,12 +21,9 @@ const GLOBAL_TIMEOUT_MS = 180000;
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
-
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }
-
-// FIX: Comprimir array de índices a string de rangos (ej: [0,1,2,5,6,10] -> "0-2,5-6,10")
 function _compressRanges(indices) {
   if (!indices || indices.length === 0) return '';
   var result = [];
@@ -53,8 +39,6 @@ function _compressRanges(indices) {
   }
   return result.join(',');
 }
-
-// FIX: Descomprimir string de rangos a array de índices
 function _decompressRanges(str) {
   var result = [];
   if (!str) return result;
@@ -96,7 +80,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.3-NEXO-PROD iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
+    console.log('[BleAckSystem] v3.2.4-DEBUG iniciado');
   }
 
   _resolveNexoId(deviceId) {
@@ -303,7 +287,6 @@ export class BleAckSystem {
     }
   }
 
-  // FIX: NACK con rangos comprimidos (nunca excede payload BLE)
   _sendNack(deviceId, msgId, indices) {
     var ranges = _compressRanges(indices);
     var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'n', m: msgId, r: ranges });
@@ -312,7 +295,6 @@ export class BleAckSystem {
     }
   }
 
-  // FIX: Block ACK con rangos comprimidos (escala a archivos de cualquier tamaño)
   _sendBlockAck(deviceId, msgId, buf) {
     var received = [];
     for (var i = 0; i < buf.total; i++) {
@@ -333,7 +315,6 @@ export class BleAckSystem {
     }
   }
 
-  // FIX: NACK entiende rangos comprimidos (nuevo) y array legacy
   _handleNack(msg) {
     var msgId = msg.m;
     var indices = [];
@@ -346,8 +327,6 @@ export class BleAckSystem {
     if (stream) stream.handleNack(indices);
   }
 
-  // FIX: Block ACK sin condición de carrera. Solo marca bits. NUNCA toca ventana en vuelo.
-  // Soporta 'r' (rangos nuevo), 'b' string (legacy), 'b' numérico (legacy muy antiguo)
   _handleBlockAck(msg) {
     var msgId = msg.m || msg.msgId;
     var total = msg.n || 0;
@@ -355,6 +334,7 @@ export class BleAckSystem {
     var stream = this.outgoingStreams.get(msgId);
     if (!stream) return;
     if (isFinal) {
+      console.log('[BleAckSystem] handleFinalAck msgId=' + msgId);
       stream.handleFinalAck();
       return;
     }
@@ -373,21 +353,26 @@ export class BleAckSystem {
       }
     }
 
+    console.log('[BleAckSystem] BlockAck msgId=' + msgId + ' acked=' + ackedIndices.join(',') + ' windowStart=' + stream.windowStart + ' total=' + stream.total);
+
     for (var i = 0; i < ackedIndices.length; i++) {
       var idx = ackedIndices[i];
       if (idx >= 0 && idx < stream.total) stream.ackedMask[idx] = true;
     }
 
+    var oldWindowStart = stream.windowStart;
     while (stream.windowStart < stream.total && stream.ackedMask[stream.windowStart]) {
       stream.windowStart++;
     }
+    if (stream.windowStart !== oldWindowStart) {
+      console.log('[BleAckSystem] windowStart avanzó: ' + oldWindowStart + ' -> ' + stream.windowStart);
+    }
 
-    // Solo finalizar si TODO el mensaje está acked. Nunca resolver/retransmitir la ventana aquí.
     if (stream.windowStart >= stream.total) {
+      console.log('[BleAckSystem] Mensaje completo, finalizando msgId=' + msgId);
       if (stream.timer) clearTimeout(stream.timer);
       stream._finish();
     }
-    // NOTA: El ciclo de vida de la ventana lo manejan únicamente _sendWindow y _onWindowTimeout.
   }
 
   _handleLegacyChunkAck(msg) {
@@ -700,6 +685,9 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.globalTimeoutMs = this.baseTimeoutMs;
   this._windowResolve = null;
   this._windowReject = null;
+  // FIX: Trackear exactamente qué ventana se está enviando
+  this._windowStartAtSend = 0;
+  this._windowEndAtSend = 0;
   
   if (isFile) {
     console.log('[ChatStream] MODO ARCHIVO. chunk=' + this.chunkSize + ' window=' + this.windowSize + ' pacing=' + this.pacingDelayMs + 'ms');
@@ -714,10 +702,11 @@ ChatStream.prototype.start = function() {
     self._splitChunks();
     if (self.total === 0) { reject(new Error('Vacio')); return; }
     
-    // FIX: Timeout proporcional al tamaño real, calculado DESPUÉS de saber total
     var estimatedWindows = Math.ceil(self.total / self.windowSize);
     var timeoutPerWindow = self.windowTimeoutMs * (MAX_WINDOW_RETRIES + 2);
     self.globalTimeoutMs = Math.max(self.baseTimeoutMs, estimatedWindows * timeoutPerWindow);
+    
+    console.log('[ChatStream] START msgId=' + self.msgId + ' totalChunks=' + self.total + ' totalWindows=' + estimatedWindows + ' timeout=' + self.globalTimeoutMs + 'ms');
     
     if (window.vaultCreateOutgoingTransfer) {
       var cid = self.ackSystem._resolveNexoId(self.deviceId);
@@ -725,6 +714,7 @@ ChatStream.prototype.start = function() {
     }
     self.globalTimeout = setTimeout(function() {
       if (!self.aborted) {
+        console.error('[ChatStream] GLOBAL TIMEOUT msgId=' + self.msgId);
         self.abort();
         reject(new Error('Timeout global ' + (self.type === 'file' ? '3min+' : '45s+')));
         self.ackSystem._dispatchStatus(self.msgId, 'failed');
@@ -737,15 +727,22 @@ ChatStream.prototype.start = function() {
 ChatStream.prototype._runWindowLoop = function() {
   var self = this;
   function next() {
-    if (self.aborted) return;
+    if (self.aborted) {
+      console.log('[ChatStream] _runWindowLoop abortado msgId=' + self.msgId);
+      return;
+    }
     if (self.windowStart >= self.total) {
+      console.log('[ChatStream] _runWindowLoop: windowStart >= total, finalizando msgId=' + self.msgId);
       self._finish();
       return;
     }
+    console.log('[ChatStream] _runWindowLoop: enviando ventana. windowStart=' + self.windowStart + ' msgId=' + self.msgId);
     self._sendWindow().then(function() {
+      console.log('[ChatStream] _sendWindow RESUELTA. windowStart ahora=' + self.windowStart + ' msgId=' + self.msgId);
       self.windowRetryCount = 0;
       setTimeout(next, self.pacingDelayMs);
     }).catch(function(err) {
+      console.warn('[ChatStream] _sendWindow RECHAZADA. retry=' + self.windowRetryCount + ' msgId=' + self.msgId);
       self.windowRetryCount++;
       if (self.windowRetryCount > self.maxWindowRetries) {
         self.abort();
@@ -760,7 +757,6 @@ ChatStream.prototype._runWindowLoop = function() {
   next();
 };
 
-// FIX: Chunking que respeta surrogate pairs UTF-16 (no corta emojis)
 ChatStream.prototype._splitChunks = function() {
   var str = this.content;
   var size = this.chunkSize;
@@ -780,6 +776,7 @@ ChatStream.prototype._splitChunks = function() {
   this.total = arr.length;
   this.sentMask = new Array(this.total).fill(false);
   this.ackedMask = new Array(this.total).fill(false);
+  console.log('[ChatStream] _splitChunks: ' + this.total + ' chunks de tamaño ~' + this.chunkSize);
 };
 
 ChatStream.prototype._sendWindow = function() {
@@ -787,27 +784,39 @@ ChatStream.prototype._sendWindow = function() {
   return new Promise(function(resolve, reject) {
     self._windowResolve = resolve;
     self._windowReject = reject;
-    var end = Math.min(self.windowStart + self.windowSize, self.total);
+    // FIX: Guardar exactamente qué ventana estamos enviando
+    self._windowStartAtSend = self.windowStart;
+    self._windowEndAtSend = Math.min(self.windowStart + self.windowSize, self.total);
+    var end = self._windowEndAtSend;
+    
+    console.log('[ChatStream] _sendWindow INICIA. ventana=[' + self._windowStartAtSend + ',' + end + ') msgId=' + self.msgId);
+    
     function sendNext(idx) {
       if (idx >= end || self.aborted) {
+        // FIX: Verificar si la ventana ORIGINAL (la que enviamos) está completa
         var allAcked = true;
-        for (var i = self.windowStart; i < end; i++) {
+        for (var i = self._windowStartAtSend; i < self._windowEndAtSend; i++) {
           if (!self.ackedMask[i]) { allAcked = false; break; }
         }
+        console.log('[ChatStream] _sendWindow sendNext terminó. allAcked=' + allAcked + ' para ventana [' + self._windowStartAtSend + ',' + self._windowEndAtSend + ') msgId=' + self.msgId);
         if (allAcked) {
           if (self.timer) clearTimeout(self.timer);
+          console.log('[ChatStream] _sendWindow RESOLVIENDO (ventana completa) msgId=' + self.msgId);
           resolve();
         } else {
+          console.log('[ChatStream] _sendWindow iniciando timer (esperando ACKs) msgId=' + self.msgId);
           self._startWindowTimer();
         }
         return;
       }
       if (self.ackedMask[idx]) {
+        console.log('[ChatStream] Chunk ' + idx + ' ya acked, saltando msgId=' + self.msgId);
         setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
         return;
       }
       self.sentMask[idx] = true;
       var payload = self._buildChunk(idx);
+      console.log('[ChatStream] Enviando chunk ' + idx + '/' + self.total + ' msgId=' + self.msgId);
       self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
         .then(function() {
           setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
@@ -837,7 +846,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     obj.ts = this.meta.ts || Date.now();
     if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
     if (this.meta.type) obj.tp = this.meta.type;
-    if (this.meta.name) obj.fn = this.meta.name;
+    if (this.meta.name) this.fn = this.meta.name;
     if (this.meta.size) obj.fs = this.meta.size;
     if (this.meta.format) obj.ft = this.meta.format;
   }
@@ -847,6 +856,7 @@ ChatStream.prototype._buildChunk = function(idx) {
 ChatStream.prototype._startWindowTimer = function() {
   var self = this;
   if (self.timer) clearTimeout(self.timer);
+  console.log('[ChatStream] Timer iniciado (' + self.windowTimeoutMs + 'ms) msgId=' + self.msgId);
   self.timer = setTimeout(function() {
     self._onWindowTimeout();
   }, self.windowTimeoutMs);
@@ -855,17 +865,19 @@ ChatStream.prototype._startWindowTimer = function() {
 ChatStream.prototype._onWindowTimeout = function() {
   var self = this;
   if (self.aborted) return;
-  var end = Math.min(self.windowStart + self.windowSize, self.total);
+  
+  // FIX: Verificar la ventana ORIGINAL que se envió, no la actual
   var allAcked = true;
-  for (var i = self.windowStart; i < end; i++) {
+  for (var i = self._windowStartAtSend; i < self._windowEndAtSend; i++) {
     if (!self.ackedMask[i]) { allAcked = false; break; }
   }
+  
+  console.log('[ChatStream] _onWindowTimeout. ventanaOriginal=[' + self._windowStartAtSend + ',' + self._windowEndAtSend + ') allAcked=' + allAcked + ' windowStartActual=' + self.windowStart + ' msgId=' + self.msgId);
+  
   if (allAcked) {
-    self.windowStart = end;
+    console.log('[ChatStream] Ventana original completa por ACKs tardíos. Resolviendo. msgId=' + self.msgId);
     self.windowRetryCount = 0;
-    if (self.windowStart >= self.total) {
-      self._finish();
-    } else if (self._windowResolve) {
+    if (self._windowResolve) {
       self._windowResolve();
       self._windowResolve = null;
       self._windowReject = null;
@@ -883,7 +895,7 @@ ChatStream.prototype._onWindowTimeout = function() {
       self.ackSystem._dispatchStatus(self.msgId, 'failed');
       return;
     }
-    console.log('[ChatStream] Window timeout, reenviando ventana desde', self.windowStart, 'retry', self.windowRetryCount);
+    console.log('[ChatStream] Window timeout, reenviando ventana desde', self.windowStart, 'retry', self.windowRetryCount, 'msgId=' + self.msgId);
     self._retransmitWindow();
   }
 };
@@ -891,6 +903,7 @@ ChatStream.prototype._onWindowTimeout = function() {
 ChatStream.prototype._retransmitWindow = function() {
   var self = this;
   var end = Math.min(self.windowStart + self.windowSize, self.total);
+  console.log('[ChatStream] _retransmitWindow: [' + self.windowStart + ',' + end + ') msgId=' + self.msgId);
   function sendNext(idx) {
     if (idx >= end || self.aborted) {
       self._startWindowTimer();
@@ -914,6 +927,7 @@ ChatStream.prototype._retransmitWindow = function() {
 
 ChatStream.prototype.handleNack = function(indices) {
   var self = this;
+  console.log('[ChatStream] handleNack: ' + indices.join(',') + ' msgId=' + self.msgId);
   if (self.timer) clearTimeout(self.timer);
   var promises = [];
   indices.forEach(function(idx) {
@@ -950,12 +964,14 @@ ChatStream.prototype.handlePartialAck = function(mask, count) {
 };
 
 ChatStream.prototype.handleFinalAck = function() {
+  console.log('[ChatStream] handleFinalAck msgId=' + this.msgId);
   if (this.timer) clearTimeout(this.timer);
   this._finish();
 };
 
 ChatStream.prototype._finish = function() {
   if (this.aborted) return;
+  console.log('[ChatStream] _finish msgId=' + this.msgId);
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
@@ -973,6 +989,7 @@ ChatStream.prototype._finish = function() {
 };
 
 ChatStream.prototype.abort = function() {
+  console.log('[ChatStream] abort msgId=' + this.msgId);
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
