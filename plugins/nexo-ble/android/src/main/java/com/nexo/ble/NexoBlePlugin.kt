@@ -153,33 +153,57 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { }
     }
 
-    // === FIX vFIX-3: Buffer nativo extrae múltiples JSONs sin perder datos ===
+    // FIX: Parser JSON que respeta strings y escapes (no cuenta {/} dentro de strings)
     private fun tryExtractCompleteJson(buffer: String): JsonExtraction? {
         if (buffer.isBlank()) return null
-        var braceCount = 0
-        var startIdx = -1
-        var endIdx = -1
-        for (i in buffer.indices) {
-            val c = buffer[i]
-            if (c == '{') {
-                if (braceCount == 0) startIdx = i
-                braceCount++
-            } else if (c == '}') {
-                braceCount--
-                if (braceCount == 0 && startIdx >= 0) {
-                    endIdx = i
-                    break
+        var i = 0
+        while (i < buffer.length) {
+            while (i < buffer.length && buffer[i] != '{') i++
+            if (i >= buffer.length) return null
+            val startIdx = i
+            var braceCount = 0
+            var inString = false
+            var escapeNext = false
+            var j = i
+            while (j < buffer.length) {
+                val c = buffer[j]
+                if (escapeNext) {
+                    escapeNext = false
+                    j++
+                    continue
                 }
+                if (c == '\\') {
+                    escapeNext = true
+                    j++
+                    continue
+                }
+                if (c == '"') {
+                    inString = !inString
+                    j++
+                    continue
+                }
+                if (!inString) {
+                    if (c == '{') {
+                        braceCount++
+                    } else if (c == '}') {
+                        braceCount--
+                        if (braceCount == 0) {
+                            val candidate = buffer.substring(startIdx, j + 1)
+                            return try {
+                                JSONObject(candidate)
+                                JsonExtraction(candidate, buffer.substring(j + 1))
+                            } catch (e: Exception) {
+                                i = startIdx + 1
+                                break
+                            }
+                        }
+                    }
+                }
+                j++
             }
+            if (j >= buffer.length) return null
         }
-        if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) return null
-        val candidate = buffer.substring(startIdx, endIdx + 1)
-        return try {
-            JSONObject(candidate)
-            JsonExtraction(candidate, buffer.substring(endIdx + 1))
-        } catch (e: Exception) {
-            null
-        }
+        return null
     }
 
     private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
@@ -743,7 +767,7 @@ class NexoBlePlugin : Plugin() {
             value: ByteArray?
         ) {
             if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-                val chunk = value?.toString(Charset.defaultCharset()) ?: ""
+                val chunk = value?.toString(Charsets.UTF_8) ?: ""
                 val mac = device.address
                 remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${chunk.length}")
                 processReceivedChunk(mac, chunk, "gatt_server")
@@ -785,6 +809,14 @@ class NexoBlePlugin : Plugin() {
                 }
                 remLog("INFO", "GATT_SERVER", "CCCD escrito por ${device.address} enabled=$enabled")
             }
+        }
+
+        // FIX: Registrar MTU negociado cuando actuamos como servidor (Android 12+)
+        override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
+            val macNorm = normalizeMac(device.address)
+            val effectiveMtu = if (mtu > 23) mtu else 23
+            negotiatedMtu[macNorm] = effectiveMtu
+            remLog("INFO", "GATT_SERVER", "MTU changed $macNorm mtu=$effectiveMtu")
         }
     }
 
@@ -1049,7 +1081,7 @@ class NexoBlePlugin : Plugin() {
             @Suppress("DEPRECATION")
             override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
                 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
-                    val chunk = characteristic.value?.toString(Charset.defaultCharset()) ?: ""
+                    val chunk = characteristic.value?.toString(Charsets.UTF_8) ?: ""
                     val address = gatt.device?.address ?: ""
                     remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from $address: len=${chunk.length}")
                     processReceivedChunk(address, chunk, "gatt_client")
@@ -1348,7 +1380,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun sendDirectNoQueue(macNorm: String, payload: String): Boolean {
-        val data = payload.toByteArray(Charset.defaultCharset())
+        val data = payload.toByteArray(Charsets.UTF_8)
 
         // 1. Intentar SERVER (notify) — más rápido, no espera ACK de link
         val remoteDevice = serverConnectedDevices[macNorm]
@@ -1407,12 +1439,27 @@ class NexoBlePlugin : Plugin() {
         return (mtu - 3).coerceAtLeast(20)
     }
 
+    // FIX: Chunking que respeta surrogate pairs UTF-16 (no parte emojis)
+    private fun safeChunkString(str: String, chunkSize: Int): List<String> {
+        val result = mutableListOf<String>()
+        var i = 0
+        while (i < str.length) {
+            var end = minOf(i + chunkSize, str.length)
+            if (end < str.length && Character.isHighSurrogate(str[end - 1]) && Character.isLowSurrogate(str[end])) {
+                end--
+            }
+            result.add(str.substring(i, end))
+            i = end
+        }
+        return result
+    }
+
     private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
         val chunkSize = getChunkSize(macNorm)
         if (message.length <= chunkSize) {
             return enqueueWrite(macNorm, rawDeviceId, message)
         }
-        val chunks = message.chunked(chunkSize)
+        val chunks = safeChunkString(message, chunkSize)
         val firstResult = enqueueWrite(macNorm, rawDeviceId, chunks[0])
         if (!firstResult.sent) {
             return SendResult(false, "")
@@ -1475,7 +1522,7 @@ class NexoBlePlugin : Plugin() {
     }
 
     private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
-        val data = chunk.toByteArray(Charset.defaultCharset())
+        val data = chunk.toByteArray(Charsets.UTF_8)
 
         val remoteDevice = serverConnectedDevices[macNorm]
         val srvTx = serverTxCharacteristic
