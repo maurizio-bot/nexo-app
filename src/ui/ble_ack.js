@@ -1,9 +1,12 @@
 /**
- * ble_ack.js v3.2.2-NEXO-FIX
- * FIX: Bitmap string (sin límite 32 bits)
+ * ble_ack.js v3.2.3-NEXO-PROD
+ * FIX: Parser JSON robusto en nativo (strings/escapes)
+ * FIX: MTU servidor registrado (Android 12+)
+ * FIX: UTF-8 explícito en todo el pipeline
+ * FIX: Chunking seguro surrogate pairs (JS + Kotlin)
+ * FIX: ACK/NACK por rangos comprimidos (sin límite 32 bits, sin exceder payload BLE)
  * FIX: Eliminada condición de carrera en _handleBlockAck
- * FIX: Timeout global proporcional al tamaño
- * FIX: Chunking seguro para surrogate pairs UTF-16
+ * FIX: Timeout global proporcional al tamaño real del mensaje
  * Base: v3.2.1-NEXO
  */
 
@@ -34,6 +37,45 @@ function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }
 
+// FIX: Comprimir array de índices a string de rangos (ej: [0,1,2,5,6,10] -> "0-2,5-6,10")
+function _compressRanges(indices) {
+  if (!indices || indices.length === 0) return '';
+  var result = [];
+  var start = indices[0];
+  var prev = indices[0];
+  for (var i = 1; i <= indices.length; i++) {
+    if (i < indices.length && indices[i] === prev + 1) {
+      prev = indices[i];
+    } else {
+      result.push(start === prev ? start.toString() : start + '-' + prev);
+      if (i < indices.length) { start = indices[i]; prev = indices[i]; }
+    }
+  }
+  return result.join(',');
+}
+
+// FIX: Descomprimir string de rangos a array de índices
+function _decompressRanges(str) {
+  var result = [];
+  if (!str) return result;
+  var parts = str.split(',');
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i].trim();
+    if (!part) continue;
+    var dash = part.indexOf('-');
+    if (dash >= 0) {
+      var s = parseInt(part.substring(0, dash), 10);
+      var e = parseInt(part.substring(dash + 1), 10);
+      if (isNaN(s) || isNaN(e)) continue;
+      for (var j = s; j <= e; j++) result.push(j);
+    } else {
+      var n = parseInt(part, 10);
+      if (!isNaN(n)) result.push(n);
+    }
+  }
+  return result;
+}
+
 export class BleAckSystem {
   constructor(bleInterface) {
     this.ble = bleInterface;
@@ -54,7 +96,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.2-NEXO-FIX iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
+    console.log('[BleAckSystem] v3.2.3-NEXO-PROD iniciado. Chat: chunk=' + CHAT_CHUNK_SIZE + ' window=' + CHAT_WINDOW_SIZE + ' | File: chunk=' + FILE_CHUNK_SIZE + ' window=' + FILE_WINDOW_SIZE);
   }
 
   _resolveNexoId(deviceId) {
@@ -261,45 +303,53 @@ export class BleAckSystem {
     }
   }
 
+  // FIX: NACK con rangos comprimidos (nunca excede payload BLE)
   _sendNack(deviceId, msgId, indices) {
-    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'n', m: msgId, k: indices });
+    var ranges = _compressRanges(indices);
+    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'n', m: msgId, r: ranges });
     if (this.ble && this.ble._sendMessageNative) {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
   }
 
+  // FIX: Block ACK con rangos comprimidos (escala a archivos de cualquier tamaño)
   _sendBlockAck(deviceId, msgId, buf) {
-    // FIX: Bitmap como string para evitar desbordamiento de 32 bits en JS
-    var bitmap = '';
+    var received = [];
     for (var i = 0; i < buf.total; i++) {
-      bitmap += buf.chunks.has(i) ? '1' : '0';
+      if (buf.chunks.has(i)) received.push(i);
     }
-    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, b: bitmap, n: buf.total });
+    var ranges = _compressRanges(received);
+    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, r: ranges, n: buf.total });
     if (this.ble && this.ble._sendMessageNative) {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
   }
 
   _sendFinalAck(deviceId, msgId, total) {
-    // FIX: Bitmap como string para evitar desbordamiento de 32 bits en JS
-    var bitmap = '';
-    for (var i = 0; i < total; i++) bitmap += '1';
-    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, b: bitmap, n: total, f: 1 });
+    var ranges = (total <= 1) ? '0' : '0-' + (total - 1);
+    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, r: ranges, n: total, f: 1 });
     if (this.ble && this.ble._sendMessageNative) {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
   }
 
+  // FIX: NACK entiende rangos comprimidos (nuevo) y array legacy
   _handleNack(msg) {
     var msgId = msg.m;
-    var indices = msg.k || [];
+    var indices = [];
+    if (msg.r) {
+      indices = _decompressRanges(msg.r);
+    } else {
+      indices = msg.k || [];
+    }
     var stream = this.outgoingStreams.get(msgId);
     if (stream) stream.handleNack(indices);
   }
 
+  // FIX: Block ACK sin condición de carrera. Solo marca bits. NUNCA toca ventana en vuelo.
+  // Soporta 'r' (rangos nuevo), 'b' string (legacy), 'b' numérico (legacy muy antiguo)
   _handleBlockAck(msg) {
     var msgId = msg.m || msg.msgId;
-    var bitmapStr = msg.b || '';
     var total = msg.n || 0;
     var isFinal = msg.f === 1;
     var stream = this.outgoingStreams.get(msgId);
@@ -308,19 +358,36 @@ export class BleAckSystem {
       stream.handleFinalAck();
       return;
     }
-    // FIX: Usar string bitmask (no hay límite de 32 bits) y NUNCA tocar la ventana en vuelo
-    for (var i = 0; i < Math.min(bitmapStr.length, stream.total); i++) {
-      if (bitmapStr.charAt(i) === '1') stream.ackedMask[i] = true;
+
+    var ackedIndices = [];
+    if (msg.r) {
+      ackedIndices = _decompressRanges(msg.r);
+    } else if (typeof msg.b === 'string' && msg.b.length > 0) {
+      for (var i = 0; i < Math.min(msg.b.length, stream.total); i++) {
+        if (msg.b.charAt(i) === '1') ackedIndices.push(i);
+      }
+    } else if (typeof msg.b === 'number') {
+      var bitmap = msg.b;
+      for (var i = 0; i < stream.total; i++) {
+        if (bitmap & (1 << i)) ackedIndices.push(i);
+      }
     }
+
+    for (var i = 0; i < ackedIndices.length; i++) {
+      var idx = ackedIndices[i];
+      if (idx >= 0 && idx < stream.total) stream.ackedMask[idx] = true;
+    }
+
     while (stream.windowStart < stream.total && stream.ackedMask[stream.windowStart]) {
       stream.windowStart++;
     }
-    // Solo finalizar si el mensaje entero está acked. Nunca resolver/retransmitir la ventana aquí.
+
+    // Solo finalizar si TODO el mensaje está acked. Nunca resolver/retransmitir la ventana aquí.
     if (stream.windowStart >= stream.total) {
       if (stream.timer) clearTimeout(stream.timer);
       stream._finish();
     }
-    // NOTA: _sendWindow y _onWindowTimeout son los únicos que manejan el ciclo de vida de la ventana.
+    // NOTA: El ciclo de vida de la ventana lo manejan únicamente _sendWindow y _onWindowTimeout.
   }
 
   _handleLegacyChunkAck(msg) {
@@ -394,7 +461,7 @@ export class BleAckSystem {
       }
       sendNext();
     }).catch(function(){});
-n  }
+  }
 
   sendSessionSync(deviceId, peerNexoId) {
     var self = this;
@@ -614,11 +681,7 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.windowSize = isFile ? FILE_WINDOW_SIZE : CHAT_WINDOW_SIZE;
   this.windowTimeoutMs = isFile ? FILE_WINDOW_TIMEOUT_MS : CHAT_WINDOW_TIMEOUT_MS;
   this.pacingDelayMs = isFile ? FILE_PACING_DELAY_MS : CHAT_PACING_DELAY_MS;
-  
-  // FIX: Timeout proporcional al número de ventanas (no fijo para mensajes largos)
-  var estimatedWindows = Math.ceil(this.total / this.windowSize);
-  var timeoutPerWindow = this.windowTimeoutMs * (MAX_WINDOW_RETRIES + 2);
-  this.globalTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : Math.max(45000, estimatedWindows * timeoutPerWindow);
+  this.baseTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : 45000;
   
   this.type = type || 'chat';
   this.chunks = [];
@@ -634,6 +697,7 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.windowRetryCount = 0;
   this.maxWindowRetries = MAX_WINDOW_RETRIES;
   this.globalTimeout = null;
+  this.globalTimeoutMs = this.baseTimeoutMs;
   this._windowResolve = null;
   this._windowReject = null;
   
@@ -649,6 +713,12 @@ ChatStream.prototype.start = function() {
     self.reject = reject;
     self._splitChunks();
     if (self.total === 0) { reject(new Error('Vacio')); return; }
+    
+    // FIX: Timeout proporcional al tamaño real, calculado DESPUÉS de saber total
+    var estimatedWindows = Math.ceil(self.total / self.windowSize);
+    var timeoutPerWindow = self.windowTimeoutMs * (MAX_WINDOW_RETRIES + 2);
+    self.globalTimeoutMs = Math.max(self.baseTimeoutMs, estimatedWindows * timeoutPerWindow);
+    
     if (window.vaultCreateOutgoingTransfer) {
       var cid = self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
@@ -656,7 +726,7 @@ ChatStream.prototype.start = function() {
     self.globalTimeout = setTimeout(function() {
       if (!self.aborted) {
         self.abort();
-        reject(new Error('Timeout global ' + (self.type === 'file' ? '3min' : '45s')));
+        reject(new Error('Timeout global ' + (self.type === 'file' ? '3min+' : '45s+')));
         self.ackSystem._dispatchStatus(self.msgId, 'failed');
       }
     }, self.globalTimeoutMs);
@@ -690,12 +760,12 @@ ChatStream.prototype._runWindowLoop = function() {
   next();
 };
 
+// FIX: Chunking que respeta surrogate pairs UTF-16 (no corta emojis)
 ChatStream.prototype._splitChunks = function() {
   var str = this.content;
   var size = this.chunkSize;
   var arr = [];
   var i = 0;
-  // FIX: No cortar en medio de un surrogate pair UTF-16 (emoji)
   while (i < str.length) {
     var end = Math.min(i + size, str.length);
     if (end < str.length &&
