@@ -799,7 +799,7 @@ ChatStream.prototype._splitChunks = function() {
   var arr = [];
   var i = 0;
   
-  var firstChunkMax = Math.min(size, 90);
+  var firstChunkMax = Math.min(size, 60);
   
   while (i < str.length) {
     var remaining = str.length - i;
