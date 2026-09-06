@@ -1,14 +1,19 @@
 /**
- * ble_ack.js v3.2.5-NEXO
+ * ble_ack.js v3.2.6-NEXO
+ * FIX: Chunk 0 limitado a 90 chars para no exceder 255 bytes payload BLE
+ * FIX: CHAT_CHUNK_SIZE 140 -> 110 (margen UTF-8 seguro)
+ * FIX: fromName truncado a 12 chars en chunk 0
+ * FIX: Umbral chunking 180 -> 150
+ * FIX: Retransmision inmediata de huecos detectados en Block ACK (no esperar timeout)
  * FIX: Reinicio de assemblyTimer con cada chunk nuevo recibido
  * FIX: Assembly timeout aumentado a 30s (evita borrado prematuro en mensajes largos)
  * FIX: NACKs calmados — cooldown 3s y solo si buffer incompleto
  * FIX: Ventana de chat aumentada a 4 chunks (menos rondas de ACK)
- * Base: v3.2.4-NEXO-DEBUG
+ * Base: v3.2.5-NEXO
  */
 
 const PROTOCOL_VERSION = 2;
-const CHAT_CHUNK_SIZE = 140;
+const CHAT_CHUNK_SIZE = 110;
 const CHAT_WINDOW_SIZE = 4;
 const CHAT_WINDOW_TIMEOUT_MS = 2500;
 const CHAT_PACING_DELAY_MS = 60;
@@ -83,7 +88,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.5-NEXO iniciado');
+    console.log('[BleAckSystem] v3.2.6-NEXO iniciado');
   }
 
   _resolveNexoId(deviceId) {
@@ -111,7 +116,7 @@ export class BleAckSystem {
         seq = (self.ble && typeof self.ble.getNextSeq === 'function') ? self.ble.getNextSeq() : 0;
       }
       finalMeta.seq = seq;
-      if (content.length <= 180) {
+      if (content.length <= 150) {
         self.sendWithRetry(deviceId, content, msgId, seq).then(resolve).catch(reject);
         return;
       }
@@ -375,7 +380,29 @@ export class BleAckSystem {
       stream.windowStart++;
     }
     if (stream.windowStart !== oldWindowStart) {
-      console.log('[BleAckSystem] windowStart avanzó: ' + oldWindowStart + ' -> ' + stream.windowStart);
+      console.log('[BleAckSystem] windowStart avanzo: ' + oldWindowStart + ' -> ' + stream.windowStart);
+    }
+
+    // FIX v3.2.6: retransmitir inmediatamente chunks faltantes de la ventana actual
+    if (stream.windowStart < stream.total) {
+      var windowEnd = Math.min(stream.windowStart + stream.windowSize, stream.total);
+      var missingInWindow = [];
+      for (var i = stream.windowStart; i < windowEnd; i++) {
+        if (!stream.ackedMask[i]) missingInWindow.push(i);
+      }
+      if (missingInWindow.length > 0 && missingInWindow.length < stream.windowSize) {
+        console.log('[BleAckSystem] Huecos detectados en ventana actual, retransmitiendo:', missingInWindow.join(','));
+        if (stream.timer) {
+          clearTimeout(stream.timer);
+          stream.timer = null;
+        }
+        missingInWindow.forEach(function(idx) {
+          stream.sentMask[idx] = true;
+          var payload = stream._buildChunk(idx);
+          stream.ble._sendMessageNative(stream.deviceId, payload, stream.msgId + '_' + idx).catch(function(){});
+        });
+        stream._startWindowTimer();
+      }
     }
 
     if (stream.windowStart >= stream.total) {
@@ -448,7 +475,7 @@ export class BleAckSystem {
         if (idx >= pending.length) return;
         var m = pending[idx++];
         var txt = m.content || m.text || '';
-        if (txt.length <= 180) {
+        if (txt.length <= 150) {
           self.sendWithRetry(deviceId, txt, m.msgId, m.seq).then(sendNext).catch(sendNext);
         } else {
           self.sendChunkedMessage(deviceId, txt, {}, m.msgId, m.seq).then(sendNext).catch(sendNext);
@@ -476,7 +503,7 @@ export class BleAckSystem {
 
   sendWithRetry(deviceId, content, messageId, seq) {
     var self = this;
-    if (content && content.length > 180) {
+    if (content && content.length > 150) {
       return self.sendChunkedMessage(deviceId, content, {}, messageId, seq);
     }
     return new Promise(function(resolve, reject) {
@@ -759,7 +786,7 @@ ChatStream.prototype._runWindowLoop = function() {
         if (self.reject) self.reject(new Error('Max window retries'));
         return;
       }
-      console.log('[ChatStream] Ventana falló, reintentando. retry=' + self.windowRetryCount);
+      console.log('[ChatStream] Ventana fallo, reintentando. retry=' + self.windowRetryCount);
       setTimeout(next, 500 * self.windowRetryCount);
     });
   }
@@ -771,21 +798,29 @@ ChatStream.prototype._splitChunks = function() {
   var size = this.chunkSize;
   var arr = [];
   var i = 0;
+  
+  var firstChunkMax = Math.min(size, 90);
+  
   while (i < str.length) {
-    var end = Math.min(i + size, str.length);
+    var remaining = str.length - i;
+    var chunkSize = (arr.length === 0) ? Math.min(firstChunkMax, remaining) : Math.min(size, remaining);
+    var end = i + chunkSize;
+    
     if (end < str.length &&
         str.charCodeAt(end - 1) >= 0xD800 && str.charCodeAt(end - 1) <= 0xDBFF &&
         str.charCodeAt(end) >= 0xDC00 && str.charCodeAt(end) <= 0xDFFF) {
       end--;
     }
+    
     arr.push(str.substring(i, end));
     i = end;
   }
+  
   this.chunks = arr;
   this.total = arr.length;
   this.sentMask = new Array(this.total).fill(false);
   this.ackedMask = new Array(this.total).fill(false);
-  console.log('[ChatStream] _splitChunks: ' + this.total + ' chunks de tamaño ~' + this.chunkSize);
+  console.log('[ChatStream] _splitChunks: ' + this.total + ' chunks. chunk0=' + (this.chunks[0] ? this.chunks[0].length : 0) + ' chars, chunkN=' + (this.chunks[1] ? this.chunks[1].length : 0) + ' chars');
 };
 
 ChatStream.prototype._sendWindow = function() {
@@ -805,7 +840,7 @@ ChatStream.prototype._sendWindow = function() {
         for (var i = self._windowStartAtSend; i < self._windowEndAtSend; i++) {
           if (!self.ackedMask[i]) { allAcked = false; break; }
         }
-        console.log('[ChatStream] _sendWindow sendNext terminó. allAcked=' + allAcked + ' para ventana [' + self._windowStartAtSend + ',' + self._windowEndAtSend + ') msgId=' + self.msgId);
+        console.log('[ChatStream] _sendWindow sendNext termino. allAcked=' + allAcked + ' para ventana [' + self._windowStartAtSend + ',' + self._windowEndAtSend + ') msgId=' + self.msgId);
         if (allAcked) {
           if (self.timer) clearTimeout(self.timer);
           console.log('[ChatStream] _sendWindow RESOLVIENDO (ventana completa) msgId=' + self.msgId);
@@ -829,7 +864,7 @@ ChatStream.prototype._sendWindow = function() {
           setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
         })
         .catch(function(err) {
-          console.warn('[ChatStream] Envío nativo falló chunk', idx, err.message);
+          console.warn('[ChatStream] Envio nativo fallo chunk', idx, err.message);
           setTimeout(function() { sendNext(idx); }, 200);
         });
     }
@@ -848,7 +883,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     d: this.chunks[idx]
   };
   if (isFirst) {
-    obj.f = this.meta.f || 'NEXO';
+    obj.f = (this.meta.f || 'NEXO').substring(0, 12);
     obj.fr = this.meta.fr || 'unknown';
     obj.ts = this.meta.ts || Date.now();
     if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
@@ -881,7 +916,7 @@ ChatStream.prototype._onWindowTimeout = function() {
   console.log('[ChatStream] _onWindowTimeout. ventanaOriginal=[' + self._windowStartAtSend + ',' + self._windowEndAtSend + ') allAcked=' + allAcked + ' windowStartActual=' + self.windowStart + ' msgId=' + self.msgId);
   
   if (allAcked) {
-    console.log('[ChatStream] Ventana original completa por ACKs tardíos. Resolviendo. msgId=' + self.msgId);
+    console.log('[ChatStream] Ventana original completa por ACKs tardios. Resolviendo. msgId=' + self.msgId);
     self.windowRetryCount = 0;
     if (self._windowResolve) {
       self._windowResolve();
