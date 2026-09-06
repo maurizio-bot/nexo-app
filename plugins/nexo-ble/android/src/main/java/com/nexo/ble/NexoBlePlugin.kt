@@ -71,7 +71,11 @@ class NexoBlePlugin : Plugin() {
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
         private const val MAX_QUEUE_SIZE = 500
-        private const val WRITE_DELAY_MS = 20L
+        // === FIX F0: Pacing conservador para evitar saturación del stack BLE nativo ===
+        private const val WRITE_DELAY_MS = 40L               // Client writes: 40ms entre operaciones
+        private const val SERVER_NOTIFY_DELAY_MS = 80L       // Server notifications: 80ms entre notifies
+        private const val CLIENT_WRITE_TIMEOUT_MS = 300L     // Timeout de ACK de link para client writes
+        // === FIN FIX F0 ===
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
         private const val NEXO_MAGIC_LOW: Byte = 0x58
@@ -1434,10 +1438,13 @@ class NexoBlePlugin : Plugin() {
 
     private data class SendResult(val sent: Boolean, val mode: String)
 
+    // === FIX F0: Margen de seguridad para UTF-8 multibyte ===
     private fun getChunkSize(macNorm: String): Int {
         val mtu = negotiatedMtu[macNorm] ?: 23
-        return (mtu - 3).coerceAtLeast(20)
+        // Margen de 10 bytes para overhead JSON + acentos UTF-8 (2 bytes) + emojis (4 bytes)
+        return (mtu - 3 - 10).coerceAtLeast(20)
     }
+    // === FIN FIX F0 ===
 
     // FIX: Chunking que respeta surrogate pairs UTF-16 (no parte emojis)
     private fun safeChunkString(str: String, chunkSize: Int): List<String> {
@@ -1489,6 +1496,7 @@ class NexoBlePlugin : Plugin() {
         return SendResult(true, "queued")
     }
 
+    // === FIX F0: Pacing diferenciado server vs client ===
     private fun processWriteQueue(macNorm: String) {
         if (writeQueueProcessing[macNorm] == true) return
         val queue = writeQueues[macNorm] ?: return
@@ -1515,12 +1523,15 @@ class NexoBlePlugin : Plugin() {
             mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
             return
         }
-        if (result.mode == "gatt_server") {
-            writeQueueProcessing.remove(macNorm)
-            mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
-        }
+        // Server notify = 80ms (el stack BLE nativo necesita tiempo para vaciar el buffer de notificaciones)
+        // Client write = 40ms (NO_RESPONSE es más rápido y tiene semáforo nativo via onCharacteristicWrite)
+        val delay = if (result.mode == "gatt_server") SERVER_NOTIFY_DELAY_MS else WRITE_DELAY_MS
+        writeQueueProcessing.remove(macNorm)
+        mainHandler.postDelayed({ processWriteQueue(macNorm) }, delay)
     }
+    // === FIN FIX F0 ===
 
+    // === FIX F0: Timeout de client write reducido y chunk size con margen ===
     private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
         val data = chunk.toByteArray(Charsets.UTF_8)
 
@@ -1594,7 +1605,7 @@ class NexoBlePlugin : Plugin() {
                         processWriteQueue(macNorm)
                     }
                     writeQueueTimeouts[macNorm] = timeoutRunnable
-                    mainHandler.postDelayed(timeoutRunnable, 1000)
+                    mainHandler.postDelayed(timeoutRunnable, CLIENT_WRITE_TIMEOUT_MS)
                     return SendResult(true, "gatt_client")
                 }
             } catch (e: Exception) {
@@ -1604,6 +1615,7 @@ class NexoBlePlugin : Plugin() {
 
         return SendResult(false, "")
     }
+    // === FIN FIX F0 ===
 
     private fun processPendingMessages(macNorm: String) {
         val queue = pendingMessageQueue.remove(macNorm) ?: return
