@@ -9,7 +9,6 @@
 
 const PROTOCOL_VERSION = 2;
 const CHAT_CHUNK_SIZE = 140;
-// FIX v3.2.5: Ventana de chat 2→4 para reducir rondas de ACK en mensajes largos
 const CHAT_WINDOW_SIZE = 4;
 const CHAT_WINDOW_TIMEOUT_MS = 2500;
 const CHAT_PACING_DELAY_MS = 60;
@@ -18,7 +17,6 @@ const FILE_WINDOW_SIZE = 4;
 const FILE_WINDOW_TIMEOUT_MS = 3500;
 const FILE_PACING_DELAY_MS = 15;
 const MAX_WINDOW_RETRIES = 5;
-// FIX v3.2.5: Timeout de ensamblaje 10s→30s para dar tiempo a mensajes de 1000+ chars
 const ASSEMBLY_TIMEOUT_MS = 30000;
 const COMPLETED_TTL_MS = 30000;
 const GLOBAL_TIMEOUT_MS = 180000;
@@ -156,57 +154,6 @@ export class BleAckSystem {
 
   processIncomingFragment(dataObj) {
     try {
-      var deviceId = dataObjNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
-      var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
-      var ts = Date.now();
-      var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: ts });
-      if (typeof seq !== 'number') {
-        seq = (self.ble && typeof self.ble.getNextSeq === 'function') ? self.ble.getNextSeq() : 0;
-      }
-      finalMeta.seq = seq;
-      if (content.length <= 180) {
-        self.sendWithRetry(deviceId, content, msgId, seq).then(resolve).catch(reject);
-        return;
-      }
-      var stream = new ChatStream(self, deviceId, msgId, content, finalMeta, 'chat');
-      self.outgoingStreams.set(msgId, stream);
-      stream.start().then(function() {
-        self.outgoingStreams.delete(msgId);
-        resolve();
-      }).catch(function(err) {
-        self.outgoingStreams.delete(msgId);
-        reject(err);
-      });
-    });
-  }
-
-  sendFile(deviceId, fileId, base64Data, meta) {
-    var self = this;
-    return new Promise(function(resolve, reject) {
-      self._sendFileJS(deviceId, fileId, base64Data, meta).then(resolve).catch(reject);
-    });
-  }
-
-  _sendFileJS(deviceId, fileId, base64Data, meta) {
-    var self = this;
-    return new Promise(function(resolve, reject) {
-      var senderId = (self.ble && self.ble.localNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
-      var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
-      var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: Date.now(), file: true });
-      var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
-      self.outgoingStreams.set(fileId, stream);
-      stream.start().then(function() {
-        self.outgoingStreams.delete(fileId);
-        resolve();
-      }).catch(function(err) {
-        self.outgoingStreams.delete(fileId);
-        reject(err);
-      });
-    });
-  }
-
-  processIncomingFragment(dataObj) {
-    try {
       var deviceId = dataObj.deviceId;
       var content = dataObj.content;
       var msg = JSON.parse(content);
@@ -290,7 +237,6 @@ export class BleAckSystem {
       buf.chunks.set(idx, data || '');
       buf.received++;
       buf.lastActivity = Date.now();
-      // FIX v3.2.5: Reiniciar assemblyTimer con cada chunk nuevo para evitar borrado prematuro
       if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
       buf.assemblyTimer = setTimeout(function() {
         if (self.incomingBuffers.has(msgId)) {
@@ -307,7 +253,6 @@ export class BleAckSystem {
 
     self._sendBlockAck(deviceId, msgId, buf);
 
-    // FIX v3.2.5: NACKs calmados — solo si buffer incompleto, con cooldown 3s
     if (idx > 0 && buf.received < buf.total) {
       var missing = self._findMissing(buf);
       if (missing.length > 0 && !buf.nackSent) {
