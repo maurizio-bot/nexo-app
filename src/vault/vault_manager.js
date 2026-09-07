@@ -38,11 +38,88 @@ function _createLRU(maxSize) {
 var _msgCache = _createLRU(20);
 var _transferCache = _createLRU(20);
 var _outgoingCache = _createLRU(20);
-
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }
-
+function _getContactIdentity(contact) {
+  if (!contact) return '';
+  /*
+   * La identidad principal de NEXO es el NEXO ID.
+   *
+   * NO usamos:
+   * - nombre
+   * - deviceId
+   * - MAC
+   */
+  return _normId(
+    contact.nexoId ||
+    contact.deviceUUID
+  );
+}
+function _dedupeContacts(contacts) {
+  if (!Array.isArray(contacts)) return [];
+  var result = [];
+  var seen = Object.create(null);
+  contacts.forEach(function(contact) {
+    if (!contact || typeof contact !== 'object') {
+      return;
+    }
+    var identity = _getContactIdentity(contact);
+    /*
+     * Un registro sin identidad válida no puede ser
+     * considerado un contacto NEXO.
+     */
+    if (!identity) {
+      return;
+    }
+    /*
+     * Primera aparición: conservarla.
+     */
+    if (!seen[identity]) {
+      seen[identity] = result.length;
+      contact.nexoId = identity;
+      contact.deviceUUID = identity;
+      result.push(contact);
+      return;
+    }
+    /*
+     * Ya existe el mismo NEXO ID.
+     *
+     * Fusionamos información para no perder:
+     * - nombre
+     * - última conexión
+     * - mensajes
+     * - estado
+     * - dirección BLE actual
+     */
+    var existingIndex = seen[identity];
+    var existing = result[existingIndex];
+    if ((contact.lastSeen || 0) > (existing.lastSeen || 0)) {
+      existing.lastSeen = contact.lastSeen;
+      existing.online = contact.online;
+      existing.deviceId = contact.deviceId || existing.deviceId;
+    }
+    if (contact.name && !existing.name) {
+      existing.name = contact.name;
+    }
+    if (contact.displayName && !existing.displayName) {
+      existing.displayName = contact.displayName;
+    }
+    if (contact.deviceName && !existing.deviceName) {
+      existing.deviceName = contact.deviceName;
+    }
+    if (contact.publicKey && !existing.publicKey) {
+      existing.publicKey = contact.publicKey;
+    }
+    if ((contact.unreadCount || 0) > (existing.unreadCount || 0)) {
+      existing.unreadCount = contact.unreadCount;
+    }
+    if (contact.lastMessage && !existing.lastMessage) {
+      existing.lastMessage = contact.lastMessage;
+    }
+  });
+  return result;
+}
 function _hasNativeMethod(plugin, method) {
   return plugin && typeof plugin[method] === 'function';
 }
@@ -59,32 +136,60 @@ function _safeNativeCall(plugin, method, args) {
     } catch (e) { reject(e); }
   });
 }
-
 function _nativePlugin() {
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
 }
-
 function _generateColor(str) {
   var colors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE','#85C1E9'];
   var hash = 0;
   for (var i = 0; i < (str || '').length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i);
   return colors[Math.abs(hash) % colors.length];
 }
-
 export async function initVault() {
   if (_vaultInitDone) return;
   var plugin = _nativePlugin();
-  if (!plugin) { _vaultInitDone = true; return; }
+  if (!plugin) {
+    _vaultContacts = [];
+    _vaultInitDone = true;
+    return;
+  }
   try {
-    var result = await _safeNativeCall(plugin, 'loadFromFile', { filename: VAULT_CONTACTS_FILE });
+    var result = await _safeNativeCall(
+      plugin,
+      'loadFromFile',
+      {
+        filename: VAULT_CONTACTS_FILE
+      }
+    );
+
     if (result && result.exists && result.content) {
       var data = JSON.parse(result.content);
-      _vaultContacts = Array.isArray(data.contacts) ? data.contacts : [];
-    } else { _vaultContacts = []; }
-  } catch (e) { _vaultContacts = []; }
+      var loadedContacts =
+        Array.isArray(data.contacts)
+          ? data.contacts
+          : [];
+      /*
+       * Limpieza automática de duplicados existentes.
+       */
+      var cleanedContacts =
+        _dedupeContacts(loadedContacts);
+      _vaultContacts = cleanedContacts;
+      /*
+       * Si encontramos duplicados, guardamos inmediatamente
+       * la versión limpia.
+       */
+      if (cleanedContacts.length !== loadedContacts.length) {
+        _persistContacts();
+      }
+    } else {
+      _vaultContacts = [];
+    }
+  } catch (e) {
+    console.error('[VaultManager] initVault:', e);
+    _vaultContacts = [];
+  }
   _vaultInitDone = true;
 }
-
 function _persistContacts() {
   var plugin = _nativePlugin();
   if (!plugin) return;
@@ -93,62 +198,173 @@ function _persistContacts() {
     content: JSON.stringify({ contacts: _vaultContacts, savedAt: Date.now() })
   }).catch(function(e) {});
 }
-
 export function vaultLoadContacts() { return _vaultContacts || []; }
-
 export function vaultSaveContacts(contacts) {
-  try { _vaultContacts = Array.isArray(contacts) ? contacts : []; _persistContacts(); return true; }
-  catch (e) { return false; }
-}
-
-export function vaultSaveContact(contact) {
   try {
-    var contacts = _vaultContacts;
-    var idx = contacts.findIndex(function(c) { return _normId(c.nexoId) === _normId(contact.nexoId); });
-    var now = Date.now();
-    var normalized = {
-      nexoId: contact.nexoId || '',
-      displayName: contact.displayName || contact.name || contact.deviceName || 'Desconocido',
-      avatarColor: contact.avatarColor || _generateColor(contact.nexoId),
-      deviceName: contact.deviceName || contact.displayName || '',
-      createdAt: contact.createdAt || now,
-      lastSeen: now,
-      isGuardian: !!contact.isGuardian,
-      trustScore: contact.trustScore || 0,
-      verifiedInPerson: !!contact.verifiedInPerson,
-      messageFrequency: contact.messageFrequency || 0,
-      proximityScore: contact.proximityScore || 0,
-      publicKey: contact.publicKey || '',
-      deviceId: contact.deviceId || contact.deviceUUID || null
-    };
-    if (idx >= 0) {
-      var existing = contacts[idx];
-      contacts[idx] = Object.assign({}, existing, normalized, { createdAt: existing.createdAt || now });
-    } else { contacts.push(normalized); }
+    /*
+     * Segunda barrera contra duplicados.
+     */
+    _vaultContacts = _dedupeContacts(
+      Array.isArray(contacts)
+        ? contacts
+        : []
+    );
     _persistContacts();
     return true;
-  } catch (e) { console.error('[VaultManager] saveContact:', e); return false; }
+  } catch (e) {
+    console.error('[VaultManager] saveContacts:', e);
+    return false;
+  }
 }
+export function vaultSaveContact(contact) {
+  try {
+    if (!contact || typeof contact !== 'object') {
+      return false;
+    }
 
+    var contacts = _vaultContacts || [];
+    var identity = _getContactIdentity(contact);
+
+    if (!identity) {
+      console.warn(
+        '[VaultManager] Contacto rechazado: sin NEXO ID'
+      );
+      return false;
+    }
+
+    var now = Date.now();
+
+    var normalized = {
+      nexoId: identity,
+      deviceUUID: identity,
+
+      displayName:
+        contact.displayName ||
+        contact.name ||
+        contact.deviceName ||
+        'Desconocido',
+
+      avatarColor:
+        contact.avatarColor ||
+        _generateColor(identity),
+
+      deviceName:
+        contact.deviceName ||
+        contact.displayName ||
+        '',
+
+      createdAt:
+        contact.createdAt ||
+        now,
+
+      lastSeen: now,
+
+      isGuardian:
+        !!contact.isGuardian,
+
+      trustScore:
+        contact.trustScore || 0,
+
+      verifiedInPerson:
+        !!contact.verifiedInPerson,
+
+      messageFrequency:
+        contact.messageFrequency || 0,
+
+      proximityScore:
+        contact.proximityScore || 0,
+
+      publicKey:
+        contact.publicKey || '',
+      /*
+       * Dirección BLE actual.
+       * NO se utiliza para identificar al contacto.
+       */
+      deviceId:
+        contact.deviceId ||
+        contact.deviceUUID ||
+        null
+    };
+    /*
+     * Buscar únicamente por identidad NEXO.
+     */
+    var idx = contacts.findIndex(function(c) {
+      return _getContactIdentity(c) === identity;
+    });
+    if (idx >= 0) {
+      var existing = contacts[idx];
+      /*
+       * Actualizamos el registro existente.
+       * Nunca agregamos una segunda entrada.
+       */
+      contacts[idx] = Object.assign(
+        {},
+        existing,
+        normalized,
+        {
+          createdAt:
+            existing.createdAt ||
+            normalized.createdAt
+        }
+      );
+    } else {
+      contacts.push(normalized);
+    }
+    /*
+     * Última barrera:
+     * incluso si contacts ya contenía duplicados,
+     * no permitimos que sobrevivan.
+     */
+    _vaultContacts = _dedupeContacts(contacts);
+    _persistContacts();
+    return true;
+  } catch (e) {
+    console.error(
+      '[VaultManager] saveContact:',
+      e
+    );
+    return false;
+  }
+}
 export function vaultFindContactByNexoId(nexoId) {
   if (!nexoId) return null;
   return _vaultContacts.find(function(c) { return _normId(c.nexoId) === _normId(nexoId); }) || null;
 }
-
 export function vaultUpdateContactLastSeen(nexoId) {
   var c = vaultFindContactByNexoId(nexoId);
   if (c) { c.lastSeen = Date.now(); vaultSaveContact(c); }
 }
-
 export function vaultGetOrCreateContact(nexoId, deviceName) {
-  var c = vaultFindContactByNexoId(nexoId);
+  var identity = _normId(nexoId);
+  if (!identity) {
+    return null;
+  }
+  var c = vaultFindContactByNexoId(identity);
   if (!c) {
-    c = { nexoId: nexoId, displayName: deviceName || nexoId.substring(0, 8), deviceName: deviceName || '' };
+    c = {
+      nexoId: identity,
+      deviceUUID: identity,
+
+      displayName:
+        deviceName ||
+        identity.substring(0, 8),
+
+      deviceName:
+        deviceName || '',
+
+      deviceId: null
+    };
     vaultSaveContact(c);
-  } else if (deviceName && !c.deviceName) { c.deviceName = deviceName; vaultSaveContact(c); }
+    return vaultFindContactByNexoId(identity) || c;
+  } else if (
+    deviceName &&
+    !c.deviceName
+  ) {
+    c.deviceName = deviceName;
+    vaultSaveContact(c);
+  }
   return c;
 }
-
 function _msgFileName(contactNexoId) {
   return VAULT_MESSAGES_PREFIX + _normId(contactNexoId) + '.json';
 }
