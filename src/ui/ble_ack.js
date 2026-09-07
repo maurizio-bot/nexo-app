@@ -1,5 +1,6 @@
 /**
- * ble_ack.js v3.2.6-NEXO
+ * ble_ack.js v3.2.8-NEXO
+ * FIX: Mensajes cortos — timeout 1s, 5 reintentos, delays escalonados fijos [1,1,1.5,2,2.5,3]s
  * FIX: Chunk 0 limitado a 90 chars para no exceder 255 bytes payload BLE
  * FIX: CHAT_CHUNK_SIZE 140 -> 110 (margen UTF-8 seguro)
  * FIX: fromName truncado a 12 chars en chunk 0
@@ -25,6 +26,9 @@ const MAX_WINDOW_RETRIES = 5;
 const ASSEMBLY_TIMEOUT_MS = 30000;
 const COMPLETED_TTL_MS = 30000;
 const GLOBAL_TIMEOUT_MS = 180000;
+const SHORT_MSG_TIMEOUT_MS = 1000;
+const SHORT_MSG_MAX_RETRIES = 5;
+const SHORT_MSG_BACKOFF_DELAYS = [1000, 1000, 1500, 2000, 2500, 3000];
 
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
@@ -72,8 +76,8 @@ export class BleAckSystem {
   constructor(bleInterface) {
     this.ble = bleInterface;
     this.pendingAcks = new Map();
-    this.ackTimeoutMs = 8000;
-    this.maxRetries = 3;
+    this.ackTimeoutMs = SHORT_MSG_TIMEOUT_MS;
+    this.maxRetries = SHORT_MSG_MAX_RETRIES;
     this.receivedAcks = new Set();
     this.maxReceivedAcks = 500;
     this.chunkSize = CHAT_CHUNK_SIZE;
@@ -88,7 +92,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.6-NEXO iniciado');
+    console.log('[BleAckSystem] v3.2.8-NEXO iniciado');
   }
 
   _resolveNexoId(deviceId) {
@@ -526,14 +530,16 @@ export class BleAckSystem {
       self.pendingAcks.delete(entry.msgId);
       return;
     }
+    var delay = SHORT_MSG_BACKOFF_DELAYS[Math.min(entry.retries, SHORT_MSG_BACKOFF_DELAYS.length - 1)];
     self.ble._sendMessageNative(entry.deviceId, entry.content, entry.msgId)
       .then(function() {
-        entry.timer = setTimeout(function() { self._onAckTimeout(entry.msgId); }, self.ackTimeoutMs);
+        entry.timer = setTimeout(function() { self._onAckTimeout(entry.msgId); }, delay);
       })
       .catch(function(err) {
         if (entry.retries < self.maxRetries) {
           entry.retries++;
-          setTimeout(function() { self._doSend(entry); }, 1000 * entry.retries);
+          console.warn('[BleAckSystem] Envio nativo fallo msgId=' + entry.msgId + ', reintento ' + entry.retries + '/' + self.maxRetries);
+          setTimeout(function() { self._doSend(entry); }, delay);
         } else {
           self.pendingAcks.delete(entry.msgId);
           entry.reject(err);
@@ -547,6 +553,7 @@ export class BleAckSystem {
     if (!entry) return;
     if (entry.retries < this.maxRetries) {
       entry.retries++;
+      console.log('[BleAckSystem] ACK timeout msgId=' + msgId + ' reintento ' + entry.retries + '/' + this.maxRetries);
       this._doSend(entry);
     } else {
       this.pendingAcks.delete(msgId);
