@@ -151,21 +151,57 @@ function _saveBLEContacts(contacts) {
 function _addBLEContact(contact) {
   var uuid = _normId(contact.deviceUUID || contact.nexoId);
   if (!uuid) return false;
+
   var contacts = _getBLEContacts();
-  var existingIdx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === uuid; });
+  var now = Date.now();
+
+  /*
+   * IMPORTANTE:
+   * La identidad del contacto es el NEXO ID.
+   *
+   * NO usamos:
+   * - nombre del dispositivo
+   * - MAC / deviceId
+   *
+   * deviceId solamente sirve como dirección BLE temporal.
+   */
+  var existingIdx = contacts.findIndex(function(c) {
+    return _normId(c.nexoId || c.deviceUUID) === uuid;
+  });
+
   if (existingIdx >= 0) {
-    contacts[existingIdx].name = contact.name || contacts[existingIdx].name || '';
-    contacts[existingIdx].lastSeen = Date.now();
-    contacts[existingIdx].online = true;
-    if (contact.deviceId) contacts[existingIdx].deviceId = contact.deviceId;
+    var existing = contacts[existingIdx];
+
+    existing.nexoId = uuid;
+    existing.deviceUUID = uuid;
+
+    if (contact.name) {
+      existing.name = contact.name;
+    }
+    existing.lastSeen = now;
+    existing.online = true;
+    /*
+     * La MAC puede cambiar.
+     * Solamente actualizamos el localizador temporal.
+     */
+    if (contact.deviceId) {
+      existing.deviceId = contact.deviceId;
+    }
     _saveBLEContacts(contacts);
     return true;
   }
   contacts.push({
-    nexoId: uuid, deviceUUID: uuid, name: contact.name || '',
-    deviceId: contact.deviceId || null, addedAt: Date.now(),
-    lastSeen: Date.now(), online: true, unreadCount: 0, lastMessage: ''
+    nexoId: uuid,
+    deviceUUID: uuid,
+    name: contact.name || '',
+    deviceId: contact.deviceId || null,
+    addedAt: now,
+    lastSeen: now,
+    online: true,
+    unreadCount: 0,
+    lastMessage: ''
   });
+
   _saveBLEContacts(contacts);
   return true;
 }
@@ -175,7 +211,12 @@ function _removeBLEContact(deviceUUID) {
   _saveBLEContacts(contacts);
 }
 function _isBLEContact(deviceUUID) {
-  return _getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(deviceUUID); });
+  var uuid = _normId(deviceUUID);
+  if (!uuid) return false;
+
+  return _getBLEContacts().some(function(c) {
+    return _normId(c.nexoId || c.deviceUUID) === uuid;
+  });
 }
 function _getContactByUUID(deviceUUID) {
   var uuid = _normId(deviceUUID);
@@ -1565,32 +1606,118 @@ export class BLEInterface {
     return self._doToggleScan();
   }
   onDeviceFound(device) {
-    var deviceId = device.id || '';
-    if (!deviceId) return;
-    var nexoId = device.nexoId || '';
-    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) return;
-    var nd = _normMac(deviceId);
-    var nx = _normId(nexoId);
-    if (nd && nx) { this._nexoIdToMac.set(nx, nd); this._macToNexoId.set(nd, nx); }
-    var isContact = _isBLEContact(nexoId);
-    if (isContact) {
-      var contacts = _getBLEContacts();
-      var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(nexoId); });
-      if (idx >= 0) { contacts[idx].online = true; contacts[idx].lastSeen = Date.now(); contacts[idx].deviceId = deviceId; _saveBLEContacts(contacts); }
-      this.renderContactsList(); this.renderOnlineStrip();
-      var state = this._getDeviceState(deviceId);
-      if (state.state === BLE_STATES.DISCONNECTED) this._autoConnectGATT(deviceId, device);
-      return;
+  var deviceId = device.id || '';
+  if (!deviceId) return;
+
+  var nexoId = device.nexoId || '';
+
+  /*
+   * Un dispositivo NEXO válido debe tener un NEXO ID.
+   */
+  if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
+    return;
+  }
+
+  var nd = _normMac(deviceId);
+  var nx = _normId(nexoId);
+
+  /*
+   * La MAC/deviceId solamente sirve para localizar
+   * temporalmente al dispositivo BLE.
+   */
+  if (nd && nx) {
+    this._nexoIdToMac.set(nx, nd);
+    this._macToNexoId.set(nd, nx);
+  }
+
+  /*
+   * PRIMER CASO:
+   * Ya es un contacto.
+   *
+   * No agregamos otro.
+   * Solamente actualizamos su dirección BLE actual.
+   */
+  var isContact = _isBLEContact(nexoId);
+
+  if (isContact) {
+    var contacts = _getBLEContacts();
+
+    var idx = contacts.findIndex(function(c) {
+      return _normId(c.nexoId || c.deviceUUID) === nx;
+    });
+
+    if (idx >= 0) {
+      contacts[idx].online = true;
+      contacts[idx].lastSeen = Date.now();
+
+      /*
+       * Puede haber cambiado la dirección BLE.
+       * Actualizamos deviceId, pero NO la identidad.
+       */
+      contacts[idx].deviceId = deviceId;
+
+      if (device.name && !contacts[idx].name) {
+        contacts[idx].name = device.name;
+      }
+
+      _saveBLEContacts(contacts);
     }
-    if (!this.foundDevices.has(deviceId)) {
-      device.lastSeen = Date.now(); device.deviceUUID = nexoId;
-      this.foundDevices.set(deviceId, device);
-      this.newDevicesCount++; this.updateBadge(); this.renderNewDeviceBar();
-    } else {
-      var existing = this.foundDevices.get(deviceId);
-      existing.rssi = device.rssi; existing.lastSeen = Date.now(); existing.deviceUUID = nexoId;
-      this.foundDevices.set(deviceId, existing); this.renderNewDeviceBar();
+
+    this.renderContactsList();
+    this.renderOnlineStrip();
+
+    var state = this._getDeviceState(deviceId);
+
+    if (state.state === BLE_STATES.DISCONNECTED) {
+      this._autoConnectGATT(deviceId, device);
     }
+
+    return;
+  }
+
+  /*
+   * SEGUNDO CASO:
+   * Es un dispositivo nuevo.
+   *
+   * MUY IMPORTANTE:
+   * La clave de foundDevices es ahora NEXO ID,
+   * NO deviceId/MAC.
+   *
+   * De esta forma, si Android nos entrega:
+   *
+   * MAC A -> NX12345678
+   * MAC B -> NX12345678
+   *
+   * seguimos teniendo UN solo dispositivo pendiente.
+   */
+  var existing = this.foundDevices.get(nx);
+
+  if (!existing) {
+    device.lastSeen = Date.now();
+    device.deviceUUID = nexoId;
+
+    this.foundDevices.set(nx, device);
+
+    this.newDevicesCount++;
+    this.updateBadge();
+    this.renderNewDeviceBar();
+
+  } else {
+    /*
+     * Mismo NEXO ID detectado nuevamente.
+     *
+     * Actualizamos los datos, incluyendo la nueva
+     * dirección BLE, pero NO creamos otro registro.
+     */
+    existing.id = deviceId;
+    existing.name = device.name || existing.name || '';
+    existing.rssi = device.rssi;
+    existing.lastSeen = Date.now();
+    existing.deviceUUID = nexoId;
+
+    this.foundDevices.set(nx, existing);
+    this.renderNewDeviceBar();
+  }
   }
   renderOnlineStrip() {
     var self = this;
@@ -1741,28 +1868,78 @@ export class BLEInterface {
     });
   }
   _addNewDevice(deviceId) {
-    var self = this;
-    if (!deviceId) {
-      var bar = this.elements.newDeviceBar;
-      if (bar && bar.dataset) deviceId = bar.dataset.deviceId || '';
+  var self = this;
+  /*
+   * Ahora deviceId representa la clave de foundDevices,
+   * que es el NEXO ID.
+   */
+  if (!deviceId) {
+    var bar = this.elements.newDeviceBar;
+    if (bar && bar.dataset) {
+      deviceId = bar.dataset.deviceId || '';
     }
-    var device = this.foundDevices.get(deviceId);
-    if (!device) return;
-    var name = device.name || device.deviceUUID || 'Nexo Device';
-    var nexoId = device.deviceUUID || '';
-    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) { console.warn('[BLEInterface] Sin NEXO ID'); return; }
-    _addBLEContact({ deviceUUID: nexoId, name: name, deviceId: deviceId });
-    _vaultGetOrCreateContact(nexoId, name, device.name);
-    this._autoConnectGATT(deviceId, device);
-    this.foundDevices.delete(deviceId);
-    this._closePanelAndRefresh();
   }
-  _closePanelAndRefresh() {
-    this.elements.panel.classList.remove('active');
-    this.elements.overlay.classList.remove('active');
-    this.renderContactsList();
-    this.renderOnlineStrip();
-    this.renderNewDeviceBar();
+  var device = this.foundDevices.get(deviceId);
+  if (!device) return;
+  var name = device.name || device.deviceUUID || 'Nexo Device';
+  var nexoId = device.deviceUUID || '';
+  if (!nexoId ||
+      nexoId.length !== 10 ||
+      nexoId.indexOf('NX') !== 0) {
+    console.warn('[BLEInterface] Sin NEXO ID');
+    return;
+  }
+  /*
+   * Última comprobación antes de guardar.
+   *
+   * Si otro evento ya agregó el contacto mientras
+   * el usuario pulsaba "+", no se crea otro.
+   */
+  if (!_isBLEContact(nexoId)) {
+    _addBLEContact({
+      deviceUUID: nexoId,
+      name: name,
+      /*
+       * device.id sigue siendo la dirección BLE actual.
+       * NO es la identidad.
+       */
+      deviceId: device.id || null
+    });
+    _vaultGetOrCreateContact(
+      nexoId,
+      name,
+      device.name
+    );
+  } else {
+    /*
+     * Ya existe.
+     * Actualizamos únicamente la dirección BLE actual.
+     */
+    var contacts = _getBLEContacts();
+    var idx = contacts.findIndex(function(c) {
+      return _normId(c.nexoId || c.deviceUUID) ===
+             _normId(nexoId);
+    });
+    if (idx >= 0) {
+      contacts[idx].deviceId = device.id || contacts[idx].deviceId;
+      contacts[idx].lastSeen = Date.now();
+      contacts[idx].online = true;
+      _saveBLEContacts(contacts);
+    }
+  }
+  /*
+   * La conexión utiliza la dirección BLE actual.
+   */
+  this._autoConnectGATT(
+    device.id || deviceId,
+    device
+  );
+  /*
+   * Eliminamos el dispositivo pendiente usando
+   * su NEXO ID, no su MAC.
+   */
+  this.foundDevices.delete(deviceId);
+  this._closePanelAndRefresh();
   }
   _autoConnectGATT(deviceId, device) {
     var self = this;
