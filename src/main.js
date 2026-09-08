@@ -1172,7 +1172,6 @@ _setupVaultToggle();
 _setupChatHeader();
 _setupKeyboardShortcuts();
 _setupJumpButton();
-_setupFABButton();
 _setupBackButton();
 await _loadPersistedMessages();
 console.log('[MAIN] Fase 4 hooks OK');
