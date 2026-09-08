@@ -1,4 +1,9 @@
-// attachment_handlers.js — Cableado real a NEXOFileTransfer / NEXOPhotos / BLEInterface
+/**
+ * attachment_handlers.js v2 — Cableado real + RECEPCION
+ * Reemplaza al v1 completo.
+ * Agrega: burbuja inmediata al enviar, render de archivos
+ * entrantes (foto/audio/archivo), guardado en vault.
+ */
 (function() {
   'use strict';
 
@@ -6,138 +11,201 @@
   var attachMenu  = document.getElementById('attach-menu');
 
   function getActiveContactId() {
-    // 1) Desde NEXO app
     if (window.NEXO && window.NEXO.app && window.NEXO.app.activeContact) {
       return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.deviceUUID;
     }
-    // 2) Desde bleInterface
-    if (window.bleInterface) {
-      return window.bleInterface._activeChatDeviceId;
-    }
+    if (window.bleInterface) return window.bleInterface._activeChatDeviceId;
     return null;
   }
-
   function resolveDeviceId(nexoId) {
     if (!window.bleInterface) return null;
-    // Intentar por contacto
     var c = window.bleInterface.getContactByUUID && window.bleInterface.getContactByUUID(nexoId);
     if (c && c.deviceId) return c.deviceId;
-    // Intentar por mapeo interno
     if (window.bleInterface._resolveDeviceIdForNexoId) {
       return window.bleInterface._resolveDeviceIdForNexoId(nexoId);
     }
     return nexoId;
   }
-
-  function getMessagesContainer() {
-    return document.getElementById('messages-container');
-  }
-
+  function getMessagesContainer() { return document.getElementById('messages-container'); }
   function scrollToBottom() {
     var c = getMessagesContainer();
     if (c) c.scrollTop = c.scrollHeight;
   }
 
-  function renderAttachmentBubble(htmlContent, typeLabel, msgId) {
+  function renderAttachmentBubble(htmlContent, typeLabel, bubbleId) {
     var container = getMessagesContainer();
     if (!container) return null;
     var bubble = document.createElement('div');
     bubble.className = 'message own message-attachment';
-    bubble.id = 'attach-' + (msgId || Date.now());
-    bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
+    bubble.id = bubbleId;
+    bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;position:relative;';
     bubble.innerHTML = htmlContent +
       '<div class="attach-status" style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + typeLabel + ' · Enviando...</div>';
     container.appendChild(bubble);
     scrollToBottom();
     return bubble;
   }
-
-  function updateBubbleStatus(msgId, text) {
-    var bubble = document.getElementById('attach-' + msgId);
+  function updateBubbleStatus(bubbleId, text) {
+    var bubble = document.getElementById(bubbleId);
     if (!bubble) return;
     var status = bubble.querySelector('.attach-status');
     if (status) status.textContent = text;
   }
 
-  // ── 1. CÁMARA ──
+  // ═══ RECEPCION: render de archivo entrante ═══
+  function renderIncomingAttachment(rec) {
+    var container = getMessagesContainer();
+    if (!container || !rec || !rec.blobUrl) return;
+
+    var bubble = document.createElement('div');
+    bubble.className = 'message incoming message-attachment';
+    bubble.style.cssText = 'align-self:flex-start;max-width:75%;margin:6px auto 6px 16px;padding:8px;border-radius:18px;background:rgba(255,255,255,0.08);color:#E5E5E5;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;';
+
+    var isImage = (rec.mimeType || '').indexOf('image/') === 0;
+    var isAudio = (rec.mimeType || '').indexOf('audio/') === 0;
+
+    if (isImage) {
+      bubble.innerHTML =
+        '<img src="' + rec.blobUrl + '" style="max-width:240px;max-height:320px;border-radius:12px;object-fit:cover;display:block;" alt="Foto">' +
+        '<a href="' + rec.blobUrl + '" download="' + (rec.fileName || 'foto.jpg') + '" style="font-size:11px;color:#00c8ff;text-align:right;">Descargar</a>' +
+        '<div class="attach-status" style="font-size:10px;opacity:0.7;text-align:right;">🖼️ Foto recibida' + (rec.layer === 'preview' ? ' (preview)' : '') + '</div>';
+    } else if (isAudio) {
+      bubble.innerHTML =
+        '<audio controls src="' + rec.blobUrl + '" style="max-width:240px;"></audio>' +
+        '<div class="attach-status" style="font-size:10px;opacity:0.7;text-align:right;">🎵 Audio recibido</div>';
+    } else {
+      var sizeStr = rec.size > 1048576
+        ? (rec.size / 1048576).toFixed(1) + ' MB'
+        : (rec.size / 1024).toFixed(0) + ' KB';
+      bubble.innerHTML =
+        '<a href="' + rec.blobUrl + '" download="' + (rec.fileName || 'archivo') + '" style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;text-decoration:none;color:#E5E5E5;">' +
+        '<div style="font-size:24px;">📄</div>' +
+        '<div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + (rec.fileName || 'archivo') + '</div>' +
+        '<div style="font-size:11px;opacity:0.7;">' + sizeStr + ' · tocar para descargar</div></div></a>';
+    }
+    container.appendChild(bubble);
+    scrollToBottom();
+  }
+
+  // Guardar mensaje adjunto en vault (historial)
+  function saveIncomingToVault(rec) {
+    if (!window.vaultAppendMessage || !rec.senderId) return;
+    var isImage = (rec.mimeType || '').indexOf('image/') === 0;
+    window.vaultAppendMessage(rec.senderId, {
+      msgId: rec.msgId,
+      senderNexoId: rec.senderId,
+      senderName: (rec.meta && rec.meta.f) || 'NEXO',
+      timestamp: rec.timestamp,
+      status: 'delivered',
+      _own: false,
+      type: isImage ? 'image' : 'file',
+      text: isImage ? '[Foto]' : '[Archivo: ' + rec.fileName + ']',
+      content: isImage ? '[Foto]' : '[Archivo: ' + rec.fileName + ']',
+      attachmentType: isImage ? 'image' : 'file',
+      attachmentPayload: 'data:' + rec.mimeType + ';base64,' + rec.base64,
+      attachmentMeta: {
+        fileName: rec.fileName,
+        mimeType: rec.mimeType,
+        totalSize: rec.size,
+        layer: rec.layer
+      }
+    }).catch(function() {});
+  }
+
+  // ═══ WIRE: recepcion via NEXOFileTransfer ═══
+  if (typeof window.NEXOFileTransfer !== 'undefined') {
+    window.NEXOFileTransfer.onReceived(function(rec) {
+      renderIncomingAttachment(rec);
+      saveIncomingToVault(rec);
+    });
+  } else {
+    // Fallback: escuchar el evento directo
+    window.addEventListener('nexo:ble:fileComplete', function(e) {
+      var d = e.detail || {};
+      if (!d.data || !window.NEXOFileTransfer) return;
+      var meta = d.meta || {};
+      var mime = meta.format || 'application/octet-stream';
+      var rec = {
+        msgId: d.fileId, blobUrl: window.NEXOFileTransfer.base64ToBlobUrl(d.data, mime),
+        base64: d.data, mimeType: mime, fileName: meta.name || 'archivo',
+        size: meta.size || 0, layer: meta.layer || 'original',
+        senderId: meta.senderNexoId || '', timestamp: meta.ts || Date.now(), meta: meta
+      };
+      renderIncomingAttachment(rec);
+      saveIncomingToVault(rec);
+    });
+  }
+
+  // ═══ ENVIO: Cámara ═══
   var btnCamera = document.querySelector('[data-type="camera"]');
   if (btnCamera) {
     btnCamera.addEventListener('click', function(e) {
       e.preventDefault(); e.stopPropagation();
       if (attachMenu) { attachMenu.classList.remove('visible'); attachMenu.classList.add('hidden'); }
-
       var contactId = getActiveContactId();
       var deviceId  = contactId ? resolveDeviceId(contactId) : null;
       if (!deviceId) { alert('No hay contacto activo'); return; }
+      if (typeof window.NEXOPhotos === 'undefined') { alert('NEXOPhotos no cargado'); return; }
 
-      if (typeof window.NEXOPhotos === 'undefined') {
-        alert('NEXOPhotos no cargado'); return;
-      }
+      var tempId = 'attach-tmp-' + Date.now();
+      renderAttachmentBubble('<div style="padding:8px;">📷 Foto</div>', '📷 Foto', tempId);
 
       window.NEXOPhotos.sendPhoto(deviceId, 'camera', {
-        onThumbnail: function(msgId, data) {
-          // Mostrar thumbnail inmediatamente
-        },
         onProgress: function(msgId, progress) {
-          updateBubbleStatus(msgId, '📷 Foto · ' + Math.round(progress) + '%');
+          updateBubbleStatus(tempId, '📷 Foto · ' + Math.round(progress) + '%');
         },
         onComplete: function(msgId, success, error) {
-          updateBubbleStatus(msgId, success ? '📷 Foto · Enviada' : '📷 Foto · Error');
+          var t = document.getElementById(tempId);
+          if (t) t.id = 'attach-' + msgId;
+          updateBubbleStatus('attach-' + msgId, success ? '📷 Foto · Enviada' : '📷 Foto · Error');
         }
-      }).then(function(msgId) {
-        renderAttachmentBubble('<div style="padding:8px;">📷 Foto</div>', '📷 Foto', msgId);
       }).catch(function(err) {
-        console.error('[Attach] Cámara:', err);
-        alert('Error foto: ' + err.message);
+        console.error('[Attach] Camara:', err);
+        updateBubbleStatus(tempId, '📷 Foto · Error: ' + err.message);
       });
     });
   }
 
-  // ── 2. GALERÍA ──
+  // ═══ ENVIO: Galeria ═══
   var btnGallery = document.querySelector('[data-type="gallery"]');
   if (btnGallery) {
     btnGallery.addEventListener('click', function(e) {
       e.preventDefault(); e.stopPropagation();
       if (attachMenu) { attachMenu.classList.remove('visible'); attachMenu.classList.add('hidden'); }
-
       var contactId = getActiveContactId();
       var deviceId  = contactId ? resolveDeviceId(contactId) : null;
       if (!deviceId) { alert('No hay contacto activo'); return; }
+      if (typeof window.NEXOPhotos === 'undefined') { alert('NEXOPhotos no cargado'); return; }
 
-      if (typeof window.NEXOPhotos === 'undefined') {
-        alert('NEXOPhotos no cargado'); return;
-      }
+      var tempId = 'attach-tmp-' + Date.now();
+      renderAttachmentBubble('<div style="padding:8px;">🖼️ Foto</div>', '🖼️ Galeria', tempId);
 
       window.NEXOPhotos.sendPhoto(deviceId, 'gallery', {
         onProgress: function(msgId, progress) {
-          updateBubbleStatus(msgId, '🖼️ Galería · ' + Math.round(progress) + '%');
+          updateBubbleStatus(tempId, '🖼️ Galeria · ' + Math.round(progress) + '%');
         },
         onComplete: function(msgId, success, error) {
-          updateBubbleStatus(msgId, success ? '🖼️ Galería · Enviada' : '🖼️ Galería · Error');
+          var t = document.getElementById(tempId);
+          if (t) t.id = 'attach-' + msgId;
+          updateBubbleStatus('attach-' + msgId, success ? '🖼️ Galeria · Enviada' : '🖼️ Galeria · Error');
         }
-      }).then(function(msgId) {
-        renderAttachmentBubble('<div style="padding:8px;">🖼️ Foto</div>', '🖼️ Galería', msgId);
       }).catch(function(err) {
-        console.error('[Attach] Galería:', err);
-        alert('Error galería: ' + err.message);
+        console.error('[Attach] Galeria:', err);
+        updateBubbleStatus(tempId, '🖼️ Galeria · Error: ' + err.message);
       });
     });
   }
 
-  // ── 3. ARCHIVO ──
+  // ═══ ENVIO: Archivo ═══
   var btnFile = document.querySelector('[data-type="file"]');
   if (btnFile) {
     btnFile.addEventListener('click', function(e) {
       e.preventDefault(); e.stopPropagation();
       if (attachMenu) { attachMenu.classList.remove('visible'); attachMenu.classList.add('hidden'); }
-
       var contactId = getActiveContactId();
       var deviceId  = contactId ? resolveDeviceId(contactId) : null;
       if (!deviceId) { alert('No hay contacto activo'); return; }
-
-      if (typeof window.NEXOFileTransfer === 'undefined') {
-        alert('NEXOFileTransfer no cargado'); return;
-      }
+      if (typeof window.NEXOFileTransfer === 'undefined') { alert('NEXOFileTransfer no cargado'); return; }
 
       var input = document.createElement('input');
       input.type = 'file';
@@ -145,30 +213,30 @@
       input.onchange = function(ev) {
         var file = ev.target.files[0];
         if (!file) return;
-        if (file.size > 5242880) { alert('Máximo 5MB'); return; }
-
-        var sizeStr = file.size > 1024*1024
-          ? (file.size/(1024*1024)).toFixed(1) + ' MB'
-          : (file.size/1024).toFixed(0) + ' KB';
+        if (file.size > 5242880) { alert('Maximo 5MB'); return; }
+        var sizeStr = file.size > 1048576
+          ? (file.size / 1048576).toFixed(1) + ' MB'
+          : (file.size / 1024).toFixed(0) + ' KB';
+        var html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;">' +
+          '<div style="font-size:24px;">📄</div>' +
+          '<div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + file.name + '</div>' +
+          '<div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
+        var tempId = 'attach-tmp-' + Date.now();
+        renderAttachmentBubble(html, '📎 Archivo', tempId);
 
         window.NEXOFileTransfer.sendFile(deviceId, file, {
           onProgress: function(msgId, progress) {
-            updateBubbleStatus(msgId, '📎 ' + file.name + ' · ' + Math.round(progress) + '%');
+            updateBubbleStatus(tempId, '📎 ' + file.name + ' · ' + Math.round(progress) + '%');
           },
           onComplete: function(msgId, success, error) {
-            updateBubbleStatus(msgId, success ? '📎 ' + file.name + ' · Enviado' : '📎 ' + file.name + ' · Error');
+            var t = document.getElementById(tempId);
+            if (t) t.id = 'attach-' + msgId;
+            updateBubbleStatus('attach-' + msgId, success ? '📎 ' + file.name + ' · Enviado' : '📎 ' + file.name + ' · Error');
           }
-        }).then(function(msgId) {
-          var html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;">' +
-            '<div style="font-size:24px;">📄</div>' +
-            '<div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + file.name + '</div>' +
-            '<div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
-          renderAttachmentBubble(html, '📎 Archivo', msgId);
         }).catch(function(err) {
           console.error('[Attach] Archivo:', err);
-          alert('Error archivo: ' + err.message);
+          updateBubbleStatus(tempId, '📎 ' + file.name + ' · Error');
         });
-
         setTimeout(function() { if (input.parentNode) input.remove(); }, 5000);
       };
       document.body.appendChild(input);
@@ -176,5 +244,5 @@
     });
   }
 
-  console.log('[attachment_handlers] Cableado real activo');
+  console.log('[attachment_handlers v2] Cableado + recepcion activos');
 })();
