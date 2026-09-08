@@ -37,22 +37,22 @@ function _normId(id) {
 return (id || '').toString().toLowerCase().trim();
 }
 function _safeNativeCall(plugin, method, args) {
-return new Promise(function(resolve, reject) {
-if (!plugin || typeof plugin[method] !== 'function') {
-reject(new Error('Plugin nativo no disponible'));
-return;
-}
-try {
-var result = pluginmethod;
-if (result && typeof result.then === 'function') {
-result.then(resolve).catch(reject);
-} else {
-resolve(result);
-}
-} catch (e) {
-reject(e);
-}
-});
+  return new Promise(function(resolve, reject) {
+    if (!plugin || typeof plugin[method] !== 'function') {
+      reject(new Error('Plugin nativo no disponible'));
+      return;
+    }
+    try {
+      var result = plugin[method](args);   // ← CORREGIDO: era pluginmethod
+      if (result && typeof result.then === 'function') {
+        result.then(resolve).catch(reject);
+      } else {
+        resolve(result);
+      }
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 function _getNativePlugin() {
 return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null;
