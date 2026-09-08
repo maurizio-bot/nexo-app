@@ -83,7 +83,6 @@ class NexoBlePlugin : Plugin() {
         private const val MIN_RSSI = -95
         private const val NXID_MAC_MAP_FILE = "nexo_nxid_mac_map.json"
     }
-
     private var bluetoothGattServer: BluetoothGattServer? = null
     private var serverTxCharacteristic: BluetoothGattCharacteristic? = null
     private var serverRxCharacteristic: BluetoothGattCharacteristic? = null
@@ -116,19 +115,69 @@ class NexoBlePlugin : Plugin() {
     private val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
     private val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
     private val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
-
     private val nxidToMacMap = ConcurrentHashMap<String, String>()
     private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
     private var quickScanResultMac: String? = null
-
     // === PASO 2: File Transfer Nativo ===
     private val fileTransferThread = HandlerThread("NexoFileTransfer").apply { start() }
     private val fileTransferHandler = Handler(fileTransferThread.looper)
     // === FIN PASO 2 ===
-
+    private val fileTransferManager = FileTransferManager()
+    private val fileTransferCallbacks = object : FileTransferManager.TransferCallbacks {
+    override fun onProgress(msgId: String, progressPercent: Int, bytesSent: Long, totalBytes: Long) {
+        notifyListeners("onFileProgress", JSObject()
+            .put("msgId", msgId)
+            .put("fileId", msgId)
+            .put("progress", progressPercent)
+            .put("percent", progressPercent)
+            .put("bytesSent", bytesSent)
+            .put("totalBytes", totalBytes)
+            .put("status", "transferring"))
+    }
+    override fun onChunkSent(msgId: String, chunkIndex: Int) {}
+    override fun onTransferComplete(msgId: String, success: Boolean, error: String?) {
+        val path = fileTransferManager.getReceivedFilePath(msgId)
+        notifyListeners("onFileComplete", JSObject()
+            .put("msgId", msgId)
+            .put("fileId", msgId)
+            .put("success", success)
+            .put("error", error ?: "")
+            .put("path", path ?: ""))
+    }
+    override fun onTransferReceived(msgId: String, from: String, fileName: String, fileSize: Long, mimeType: String) {
+        notifyListeners("onFileReceived", JSObject()
+            .put("msgId", msgId)
+            .put("fileId", msgId)
+            .put("from", from)
+            .put("fileName", fileName)
+            .put("fileSize", fileSize)
+            .put("mimeType", mimeType)
+            .put("status", "receiving"))
+    }
+    override fun onThumbnailReady(msgId: String, thumbnailData: ByteArray) {
+        notifyListeners("onThumbnailReceived", JSObject()
+            .put("msgId", msgId)
+            .put("data", android.util.Base64.encodeToString(thumbnailData, android.util.Base64.NO_WRAP)))
+    }
+    override fun onPreviewReady(msgId: String, previewData: ByteArray) {
+        notifyListeners("onPreviewReceived", JSObject()
+            .put("msgId", msgId)
+            .put("data", android.util.Base64.encodeToString(previewData, android.util.Base64.NO_WRAP)))
+    }
+    override fun onResumeRequest(msgId: String, lastChunkReceived: Int) {
+        notifyListeners("onFileResumeRequest", JSObject()
+            .put("msgId", msgId)
+            .put("lastChunkReceived", lastChunkReceived))
+    }
+    override fun onChunkAck(msgId: String, blockIndex: Int, missingChunks: List<Int>) {
+        notifyListeners("onFileAck", JSObject()
+            .put("msgId", msgId)
+            .put("blockIndex", blockIndex)
+            .put("missing", JSArray(missingChunks)))
+       }
+    }
     private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
     private data class JsonExtraction(val json: String, val remainder: String)
-
     private fun remLog(level: String, tag: String, message: String) {
         Log.i("NEXO_REM", "[$level][$tag] $message")
         try {
@@ -140,7 +189,6 @@ class NexoBlePlugin : Plugin() {
             )
         } catch (e: Exception) { }
     }
-
     private fun checkNotificationIntent() {
         try {
             val intent = activity.intent
@@ -156,7 +204,6 @@ class NexoBlePlugin : Plugin() {
             }
         } catch (e: Exception) { }
     }
-
     // FIX: Parser JSON que respeta strings y escapes (no cuenta {/} dentro de strings)
     private fun tryExtractCompleteJson(buffer: String): JsonExtraction? {
         if (buffer.isBlank()) return null
@@ -209,16 +256,13 @@ class NexoBlePlugin : Plugin() {
         }
         return null
     }
-
     private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
         val macNorm = normalizeMac(deviceId)
         messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
         val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
         buffer.append(chunk)
-
         var remaining = buffer.toString()
         var extractedCount = 0
-
         while (true) {
             val extraction = tryExtractCompleteJson(remaining)
             if (extraction != null) {
@@ -237,7 +281,6 @@ class NexoBlePlugin : Plugin() {
                 break
             }
         }
-
         if (remaining.isEmpty()) {
             messageBuffers.remove(macNorm)
             messageBufferTimers.remove(macNorm)
@@ -253,7 +296,6 @@ class NexoBlePlugin : Plugin() {
         }
     }
     // === FIN FIX vFIX-3 ===
-
     private fun loadNexoMappings() {
         try {
             val file = File(activity.filesDir, NXID_MAC_MAP_FILE)
@@ -274,7 +316,6 @@ class NexoBlePlugin : Plugin() {
             remLog("WARN", "NXID_MAP", "Error cargando mapeos: ${e.message}")
         }
     }
-
     private fun saveNexoMappings() {
         try {
             val json = JSONObject()
@@ -290,7 +331,6 @@ class NexoBlePlugin : Plugin() {
             remLog("WARN", "NXID_MAP", "Error guardando mapeos: ${e.message}")
         }
     }
-
     private fun registerNexoMapping(nexoId: String, mac: String) {
         val nid = nexoId.lowercase().trim()
         val nmac = normalizeMac(mac)
@@ -301,7 +341,6 @@ class NexoBlePlugin : Plugin() {
         saveNexoMappings()
         remLog("INFO", "NXID_MAP", "Registrado $nid ↔ $mac")
     }
-
     private fun classifyDeviceId(id: String): String {
         val trimmed = id.trim()
         if (trimmed.isEmpty()) return "empty"
@@ -318,7 +357,6 @@ class NexoBlePlugin : Plugin() {
         }
         return "invalid"
     }
-
     private fun resolveMacForNexoId(nexoId: String): String? {
         val nid = nexoId.lowercase().trim()
         val cachedMac = nxidToMacMap[nid]
@@ -338,17 +376,14 @@ class NexoBlePlugin : Plugin() {
         remLog("WARN", "NXID_RESOLVE", "$nid no resuelto")
         return null
     }
-
     private fun quickScanForNexoId(targetNexoId: String, timeoutMs: Long = 5000): String? {
         val ctx = activity.applicationContext
         val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter ?: return null
         if (!adapter.isEnabled) return null
         val scanner = adapter.bluetoothLeScanner ?: return null
-
         quickScanResultMac = null
         quickScanLatch = java.util.concurrent.CountDownLatch(1)
-
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult?) {
                 result?.device?.let { device ->
@@ -365,7 +400,6 @@ class NexoBlePlugin : Plugin() {
                 quickScanLatch?.countDown()
             }
         }
-
         try {
             val settings = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
@@ -375,19 +409,16 @@ class NexoBlePlugin : Plugin() {
             quickScanLatch?.countDown()
             return null
         }
-
         val found = try {
             quickScanLatch?.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS) ?: false
         } catch (e: InterruptedException) {
             false
         }
-
         try { scanner.stopScan(callback) } catch (e: Exception) { }
         quickScanLatch = null
 
         return if (found) quickScanResultMac else null
     }
-
     override fun load() {
         super.load()
         checkNotificationIntent()
@@ -396,7 +427,6 @@ class NexoBlePlugin : Plugin() {
         registerBluetoothStateReceiver()
         autoStartGattServerAndAdvertising()
     }
-
     override fun handleOnResume() {
         super.handleOnResume()
         checkNotificationIntent()
@@ -411,12 +441,10 @@ class NexoBlePlugin : Plugin() {
             autoStartGattServerAndAdvertising()
         }
     }
-
     override fun handleOnPause() {
         super.handleOnPause()
         remLog("INFO", "LIFECYCLE", "handleOnPause")
     }
-
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         remLog("INFO", "LIFECYCLE", "handleOnDestroy - limpiando DUAL GATT")
@@ -439,11 +467,9 @@ class NexoBlePlugin : Plugin() {
         // === PASO 2: Cleanup file transfer thread ===
         try { fileTransferThread.quitSafely() } catch (e: Exception) { }
     }
-
     private fun isScanning(): Boolean {
         return bluetoothScanner != null
     }
-
     private fun reconnectKnownDevices() {
         val ctx = activity.applicationContext
         val bluetoothManager = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -459,7 +485,6 @@ class NexoBlePlugin : Plugin() {
             }
         }
     }
-
     private fun registerBluetoothStateReceiver() {
         if (bluetoothStateReceiver != null) return
         bluetoothStateReceiver = object : BroadcastReceiver() {
@@ -499,14 +524,12 @@ class NexoBlePlugin : Plugin() {
             remLog("WARN", "BT_STATE", "No se pudo registrar receiver: ${e.message}")
         }
     }
-
     private fun unregisterBluetoothStateReceiver() {
         bluetoothStateReceiver?.let {
             try { activity.unregisterReceiver(it) } catch (e: Exception) { }
             bluetoothStateReceiver = null
         }
     }
-
     private fun autoStartGattServerAndAdvertising() {
         val ctx = activity.applicationContext
         if (!checkCoreBLEPermissions(ctx)) {
@@ -542,7 +565,6 @@ class NexoBlePlugin : Plugin() {
             }
         }
     }
-
     private fun cleanupAllConnections() {
         gattClients.forEach { (mac, gatt) ->
             try {
@@ -574,7 +596,6 @@ class NexoBlePlugin : Plugin() {
         writeQueueTimeouts.clear()
         negotiatedMtu.clear()
     }
-
     @PluginMethod
     fun checkBLEStatus(call: PluginCall) {
         remLog("INFO", "PERMISSIONS", "checkBLEStatus")
@@ -601,7 +622,6 @@ class NexoBlePlugin : Plugin() {
         result.put("serverReady", bluetoothGattServer != null)
         call.resolve(result)
     }
-
     @PluginMethod
     fun initializeBLE(call: PluginCall) {
         remLog("INFO", "PERMISSIONS", "initializeBLE")
