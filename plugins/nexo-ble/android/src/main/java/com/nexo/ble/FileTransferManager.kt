@@ -1661,8 +1661,12 @@ class FileTransferManager(
     // ============================================================
     // PUBLIC PROGRESS
     // ============================================================
+    fun getReceivedFilePath(msgId: String): String? {
+    val transfer = activeTransfers[msgId] ?: return null
+    return transfer.tempFile?.takeIf { it.exists() }?.absolutePath
+    }
     fun getTransferProgress(
-        msgId: String
+    msgId: String
     ): Int {
         val transfer = activeTransfers[msgId] ?: return 0
         return if (transfer.totalChunks > 0) {
