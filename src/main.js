@@ -525,7 +525,7 @@ _stopCameraPreview();
 await new Promise(function(r) { setTimeout(r, 150); });
 var input = document.createElement('input');
 input.type = 'file';
-input.accept = 'image/,video/';
+input.accept = 'image/*,video/*';
 input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
 input.onchange = function(e) {
 var file = e.target.files[0];
@@ -555,7 +555,7 @@ function _handleFile() {
 _closeAttachMenu();
 var input = document.createElement('input');
 input.type = 'file';
-input.accept = '/';
+input.accept = '*/*';
 input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
 input.onchange = function(e) {
 var file = e.target.files[0];
