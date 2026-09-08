@@ -1449,21 +1449,29 @@ console.warn('[MAIN] _setupJumpButton error:', e);
 }
 }
 function _setupFABButton() {
-try {
-var fabBtn = document.getElementById('ble-fab-btn');
-if (!fabBtn) return;
-fabBtn.innerHTML = '<svg viewBox=\"0 0 24 24\" width=\"28\" height=\"28\" fill=\"#fff\"><path d=\"M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z\"/></svg>';
-if (!fabBtn._nexoFabBound) {
-fabBtn.addEventListener('click', function() {
-if (window.bleInterface && typeof window.bleInterface.togglePanel === 'function') {
-window.bleInterface.togglePanel();
-}
-});
-fabBtn._nexoFabBound = true;
-}
-} catch (e) {
-console.warn('[MAIN] _setupFABButton error:', e);
-}
+  try {
+    var fabBtn = document.getElementById('ble-fab-btn');
+    if (!fabBtn) return;
+
+    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+
+    if (!fabBtn._nexoFabBound) {
+      fabBtn.addEventListener('click', function() {
+        var ble = window.bleInterface ||
+          (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
+
+        if (ble && typeof ble.togglePanel === 'function') {
+          ble.togglePanel();
+        } else {
+          console.warn('[MAIN] BLE Interface no disponible para FAB');
+        }
+      });
+
+      fabBtn._nexoFabBound = true;
+    }
+  } catch (e) {
+    console.warn('[MAIN] _setupFABButton error:', e);
+  }
 }
 function _getContactStorageKey() {
 var contactId = 'default';
