@@ -1,21 +1,21 @@
 /**
- * NEXO Turbo File Transfer JS API
- * Envio de archivos, fotos y audio por BLE
- * Base funcional v1
+ * NEXO File Transfer JS v1.1
+ * FIX: Cableado real a BleAckSystem (ruta JS validada en v3.2.8)
+ *      - Elimina dependencia de sendFileNative (no validado)
+ *      - Imagenes: envia PREVIEW por defecto (capas progresivas)
+ *      - Progreso real via evento nexo:ble:fileProgress
+ *      - Recepcion via nexo:ble:fileComplete -> blob URL
  * ES5 compatible
  */
-
 var NEXOFileTransfer = (function() {
     'use strict';
+
     var CONFIG = {
-        THUMB_MAX_SIZE: 5120,
-        THUMB_DIMENSIONS: 150,
-        PREVIEW_MAX_SIZE: 61440,
-        PREVIEW_DIMENSIONS: 640,
-        MAX_FILE_SIZE: 5242880,
-        AUDIO_FORMAT: 'audio/webm;codecs=opus',
-        AUDIO_FALLBACK: 'audio/wav'
+        MAX_FILE_SIZE: 5242880,          // 5MB hard limit
+        RECOMMENDED_MAX: 1048576,        // 1MB recomendado (aviso, no bloqueo)
+        SEND_ORIGINAL_IMAGES: false      // por defecto enviar preview (640px webp)
     };
+
     var _callbacks = {
         onProgress: null,
         onComplete: null,
@@ -24,685 +24,341 @@ var NEXOFileTransfer = (function() {
         onPreview: null
     };
     var _activeTransfers = {};
-    var _mediaRecorder = null; 
+    var _mediaRecorder = null;
     var _audioChunks = [];
+    var _listenersSetup = false;
+
     function _generateMsgId() {
-        return 'ft-' + Date.now() + '-' +
-            Math.random().toString(36).substr(2, 9);
+        return 'ft-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
     }
     function _normId(id) {
         return (id || '').toString().toLowerCase().trim();
     }
-    /*
-     * FIX-01
-     * El código anterior tenía:
-     *     var result = pluginmethod;
-     *
-     * Eso no llamaba al método nativo.
-     */
-    function _safeNativeCall(plugin, method, args) {
-        return new Promise(function(resolve, reject) {
-            if (!plugin || typeof plugin[method] !== 'function') {
-                reject(new Error(
-                    'Método nativo no disponible: ' + method
-                ));
-                return;
-            }
-            try {
-                var result = plugin[method](args || {});
 
-                if (result && typeof result.then === 'function') {
-                    result.then(resolve).catch(reject);
-                } else {
-                    resolve(result);
-                }
-            } catch (e) {
-                reject(e);
-            }
-        });
+    // === ACCESO A BleAckSystem (ruta JS real) ===
+    function _getAckSystem() {
+        var bi = window.bleInterface;
+        if (!bi) return null;
+        return bi.ackSystem || bi._ackSystem || bi.bleAck || null;
     }
-    function _getNativePlugin() {
-        if (!window.Capacitor ||
-            !window.Capacitor.Plugins) {
-            return null;
-        }
-        return window.Capacitor.Plugins.NexoBLE || null;
-    }
-    /*
-     * Blob -> Base64
-     *
-     * Esta primera versión utiliza Base64 únicamente para
-     * establecer el cableado funcional.
-     *
-     * Más adelante lo eliminaremos para pasar el archivo
-     * mediante URI/stream nativo y evitar copias de memoria.
-     */
+
+    // === Base64 helpers ===
     function _blobToBase64(blob) {
         return new Promise(function(resolve, reject) {
             var reader = new FileReader();
             reader.onload = function(e) {
-                try {
-                    var dataUrl = e.target.result || '';
-                    var comma = dataUrl.indexOf(',');
-
-                    if (comma < 0) {
-                        reject(new Error(
-                            'Formato Base64 inválido'
-                        ));
-                        return;
-                    }
-                    resolve(dataUrl.substring(comma + 1));
-                } catch (e) {
-                    reject(e);
-                }
+                var dataUrl = e.target.result || '';
+                var comma = dataUrl.indexOf(',');
+                if (comma < 0) { reject(new Error('Formato Base64 invalido')); return; }
+                resolve(dataUrl.substring(comma + 1));
             };
-            reader.onerror = function() {
-                reject(new Error('Error leyendo archivo'));
-            };
+            reader.onerror = function() { reject(new Error('Error leyendo archivo')); };
             reader.readAsDataURL(blob);
         });
     }
-    function _compressImage(
-        file,
-        maxDimension,
-        quality,
-        format
-    ) {
+    function _base64ToBlob(base64, mimeType) {
+        try {
+            var byteChars = atob(base64);
+            var byteNums = new Array(byteChars.length);
+            for (var i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+            var byteArray = new Uint8Array(byteNums);
+            return new Blob([byteArray], { type: mimeType || 'application/octet-stream' });
+        } catch (e) { return null; }
+    }
+    function _base64ToBlobUrl(base64, mimeType) {
+        var blob = _base64ToBlob(base64, mimeType);
+        if (!blob) return null;
+        var url = URL.createObjectURL(blob);
+        // Limpieza automatica a los 10 min
+        setTimeout(function() { try { URL.revokeObjectURL(url); } catch (e) {} }, 600000);
+        return url;
+    }
+
+    // === Compresion de imagen ===
+    function _compressImage(file, maxDimension, quality, format) {
         return new Promise(function(resolve, reject) {
             var reader = new FileReader();
             reader.onload = function(e) {
                 var img = new Image();
                 img.onload = function() {
                     try {
-                        var canvas =
-                            document.createElement('canvas');
-                        var ctx =
-                            canvas.getContext('2d');
-                        var width = img.width;
-                        var height = img.height;
+                        var canvas = document.createElement('canvas');
+                        var ctx = canvas.getContext('2d');
+                        var width = img.width, height = img.height;
                         if (width > height) {
-                            if (width > maxDimension) {
-                                height = Math.round(
-                                    height *
-                                    (maxDimension / width)
-                                );
-                                width = maxDimension;
-                            }
+                            if (width > maxDimension) { height = Math.round(height * (maxDimension / width)); width = maxDimension; }
                         } else {
-                            if (height > maxDimension) {
-                                width = Math.round(
-                                    width *
-                                    (maxDimension / height)
-                                );
-                                height = maxDimension;
-                            }
+                            if (height > maxDimension) { width = Math.round(width * (maxDimension / height)); height = maxDimension; }
                         }
-                        canvas.width = width;
-                        canvas.height = height;
-                        ctx.drawImage(
-                            img,
-                            0,
-                            0,
-                            width,
-                            height
-                        );
-                        canvas.toBlob(
-                            function(blob) {
-                                if (blob) {
-                                    resolve(blob);
-                                } else {
-                                    reject(new Error(
-                                        'Canvas toBlob falló'
-                                    ));
-                                }
-                            },
-                            format,
-                            quality
-                        );
-                    } catch (err) {
-                        reject(err);
-                    }
+                        canvas.width = width; canvas.height = height;
+                        ctx.fillStyle = '#000000';
+                        ctx.fillRect(0, 0, width, height);
+                        ctx.drawImage(img, 0, 0, width, height);
+                        canvas.toBlob(function(blob) {
+                            if (blob) resolve(blob); else reject(new Error('Canvas toBlob fallo'));
+                        }, format, quality);
+                    } catch (err) { reject(err); }
                 };
-                img.onerror = function() {
-                    reject(new Error(
-                        'Error cargando imagen'
-                    ));
-                };
+                img.onerror = function() { reject(new Error('Error cargando imagen')); };
                 img.src = e.target.result;
             };
-            reader.onerror = function() {
-                reject(new Error(
-                    'Error leyendo imagen'
-                ));
-            };
+            reader.onerror = function() { reject(new Error('Error leyendo imagen')); };
             reader.readAsDataURL(file);
         });
     }
     function _generateProgressiveLayers(file) {
-        var self = this;
-        return new Promise(function(resolve, reject) {
-            var layers = {
-                thumbnail: null,
-                preview: null,
-                original: file
-            };
-            _compressImage(
-                file,
-                CONFIG.THUMB_DIMENSIONS,
-                0.5,
-                'image/webp'
-            )
-            .then(function(thumb) {
-                layers.thumbnail = thumb;
-
-                return _compressImage(
-                    file,
-                    CONFIG.PREVIEW_DIMENSIONS,
-                    0.6,
-                    'image/webp'
-                );
-            })
-            .then(function(preview) {
-                layers.preview = preview;
-                resolve(layers);
-            })
-            .catch(function() {
-                _compressImage(
-                    file,
-                    CONFIG.THUMB_DIMENSIONS,
-                    0.5,
-                    'image/jpeg'
-                )
+        return new Promise(function(resolve) {
+            var layers = { thumbnail: null, preview: null, original: file };
+            _compressImage(file, 150, 0.5, 'image/webp')
                 .then(function(thumb) {
                     layers.thumbnail = thumb;
-
-                    return _compressImage(
-                        file,
-                        CONFIG.PREVIEW_DIMENSIONS,
-                        0.6,
-                        'image/jpeg'
-                    );
+                    return _compressImage(file, 640, 0.6, 'image/webp');
                 })
-                .then(function(preview) {
-                    layers.preview = preview;
-                    resolve(layers);
-                })
-                .catch(reject);
-            });
-        });
-    }
-    /*
-     * En esta primera versión mandamos una sola transferencia
-     * nativa. El Kotlin se encarga del chunking BLE.
-     */
-    function _sendNativeFile(
-        deviceId,
-        msgId,
-        file,
-        fileName,
-        mimeType,
-        layers,
-        options
-    ) {
-        var plugin = _getNativePlugin();
-        if (!plugin) {
-            return Promise.reject(
-                new Error('Plugin NexoBLE no disponible')
-            );
-        }
-        return _blobToBase64(file)
-            .then(function(base64) {
-                var meta = {
-                    v: 1,
-                    type: 'file_meta',
-                    msgId: msgId,
-                    ts: Date.now(),
-                    payload: {
-                        fileName: fileName,
-                        fileSize: file.size,
-                        mimeType: mimeType,
-                        hasThumbnail: !!(
-                            layers &&
-                            layers.thumbnail
-                        ),
-                        hasPreview: !!(
-                            layers &&
-                            layers.preview
-                        )
-                    }
-                };
-                return _safeNativeCall(
-                    plugin,
-                    'sendFileNative',
-                    {
-                        deviceId: deviceId,
-                        fileId: msgId,
-                        fileData: base64,
-                        meta: JSON.stringify(meta)
-                    }
-                );
-            })
-            .then(function(result) {
-                if (result && result.started === false) {
-                    throw new Error(
-                        result.error ||
-                        'No se pudo iniciar transferencia'
-                    );
-                }
-
-                return result;
-            });
-    }
-    function sendFile(deviceId, file, options) {
-        options = options || {};
-
-        return new Promise(function(resolve, reject) {
-            if (!file) {
-                reject(new Error('Archivo requerido'));
-                return;
-            }
-            if (file.size <= 0) {
-                reject(new Error('Archivo vacío'));
-                return;
-            }
-            if (file.size > CONFIG.MAX_FILE_SIZE) {
-                reject(new Error(
-                    'Archivo excede 5MB'
-                ));
-                return;
-            }
-            var msgId = _generateMsgId();
-            var transfer = {
-                deviceId: _normId(deviceId),
-                fileName:
-                    options.fileName ||
-                    file.name ||
-                    'archivo',
-                mimeType:
-                    options.mimeType ||
-                    file.type ||
-                    'application/octet-stream',
-                fileSize: file.size,
-                state: 'preparing',
-                progress: 0,
-                startTime: Date.now()
-            };
-            _activeTransfers[msgId] = transfer;
-            var isImage =
-                !!file.type &&
-                file.type.indexOf('image/') === 0;
-            var preparePromise;
-            if (isImage) {
-                preparePromise =
-                    _generateProgressiveLayers(file);
-            } else {
-                preparePromise =
-                    Promise.resolve({
-                        thumbnail: null,
-                        preview: null,
-                        original: file
-                    });
-            }
-            preparePromise
-                .then(function(layers) {
-                    transfer.state = 'sending';
-
-                    transfer.thumbnailSize =
-                        layers.thumbnail ?
-                        layers.thumbnail.size : 0;
-
-                    transfer.previewSize =
-                        layers.preview ?
-                        layers.preview.size : 0;
-
-                    if (options.onProgress) {
-                        options.onProgress(
-                            msgId,
-                            0,
-                            0,
-                            file.size
-                        );
-                    }
-
-                    /*
-                     * Importante:
-                     * La capa progresiva sigue existiendo,
-                     * pero en esta primera versión solamente
-                     * enviamos el ORIGINAL.
-                     *
-                     * Thumbnail/preview los añadiremos al
-                     * protocolo después de validar el camino
-                     * completo.
-                     */
-                    return _sendNativeFile(
-                        deviceId,
-                        msgId,
-                        layers.original,
-                        transfer.fileName,
-                        transfer.mimeType,
-                        null,
-                        options
-                    );
-                })
-                .then(function() {
-                    resolve(msgId);
-                })
-                .catch(function(err) {
-                    transfer.state = 'error';
-                    if (options.onComplete) {
-                        options.onComplete(
-                            msgId,
-                            false,
-                            err.message
-                        );
-                    }
-                    if (_callbacks.onComplete) {
-                        _callbacks.onComplete(
-                            msgId,
-                            false,
-                            err.message
-                        );
-                    }
-                    reject(err);
+                .then(function(preview) { layers.preview = preview; resolve(layers); })
+                .catch(function() {
+                    _compressImage(file, 150, 0.5, 'image/jpeg')
+                        .then(function(thumb) {
+                            layers.thumbnail = thumb;
+                            return _compressImage(file, 640, 0.6, 'image/jpeg');
+                        })
+                        .then(function(preview) { layers.preview = preview; resolve(layers); })
+                        .catch(function() { resolve(layers); });
                 });
         });
     }
-    function _startVoiceRecording() {
+
+    // === ENVIO por BleAckSystem ===
+    /**
+     * Envia archivo via ruta JS (ChatStream tipo 'file')
+     * Imagenes: envia preview por defecto (options.sendOriginal = true para original)
+     */
+    function sendFile(deviceId, file, options) {
+        options = options || {};
         return new Promise(function(resolve, reject) {
-            if (!navigator.mediaDevices ||
-                !navigator.mediaDevices.getUserMedia) {
-                reject(new Error(
-                    'MediaDevices no disponible'
-                ));
+            if (!file) { reject(new Error('Archivo requerido')); return; }
+            if (file.size <= 0) { reject(new Error('Archivo vacio')); return; }
+            if (file.size > CONFIG.MAX_FILE_SIZE) { reject(new Error('Archivo excede 5MB')); return; }
+
+            var ack = _getAckSystem();
+            if (!ack || typeof ack.sendFile !== 'function') {
+                reject(new Error('BleAckSystem no disponible (bleInterface no listo)'));
                 return;
             }
-            navigator.mediaDevices
-                .getUserMedia({ audio: true })
-                .then(function(stream) {
-                    var mimeType =
-                        CONFIG.AUDIO_FORMAT;
-                    var options = {};
-                    if (
-                        typeof MediaRecorder !==
-                        'undefined' &&
-                        MediaRecorder.isTypeSupported(
-                            mimeType
-                        )
-                    ) {
-                        options.mimeType = mimeType;
-                    }
-                    _mediaRecorder =
-                        new MediaRecorder(
-                            stream,
-                            options
-                        );
 
-                    _audioChunks = [];
+            var msgId = _generateMsgId();
+            var isImage = !!file.type && file.type.indexOf('image/') === 0;
 
-                    _mediaRecorder.ondataavailable =
-                        function(e) {
-                            if (
-                                e.data &&
-                                e.data.size > 0
-                            ) {
-                                _audioChunks.push(
-                                    e.data
-                                );
-                            }
-                        };
+            var transfer = {
+                deviceId: _normId(deviceId),
+                fileName: options.fileName || file.name || 'archivo',
+                mimeType: options.mimeType || file.type || 'application/octet-stream',
+                originalSize: file.size,
+                state: 'preparing',
+                progress: 0,
+                isImage: isImage,
+                startTime: Date.now()
+            };
+            _activeTransfers[msgId] = transfer;
 
-                    _mediaRecorder.start(100);
+            var preparePromise = isImage
+                ? _generateProgressiveLayers(file)
+                : Promise.resolve({ thumbnail: null, preview: null, original: file });
 
-                    resolve();
-                })
-                .catch(reject);
+            preparePromise.then(function(layers) {
+                // Elegir payload
+                var sendOriginal = options.sendOriginal === true;
+                var payloadBlob = file;
+                if (isImage && layers.preview && !sendOriginal && !CONFIG.SEND_ORIGINAL_IMAGES) {
+                    payloadBlob = layers.preview;
+                    transfer.sentLayer = 'preview';
+                } else {
+                    transfer.sentLayer = 'original';
+                }
+                transfer.payloadSize = payloadBlob.size;
+
+                if (payloadBlob.size > CONFIG.RECOMMENDED_MAX && !options.skipSizeWarning) {
+                    console.warn('[NEXOFileTransfer] Archivo grande (' +
+                        Math.round(payloadBlob.size/1024) + 'KB). Sobre BLE puede tardar mucho. ' +
+                        'Considera sendOriginal=false para imagenes.');
+                }
+
+                transfer.state = 'sending';
+                if (options.onProgress) options.onProgress(msgId, 0, 0, payloadBlob.size);
+
+                return _blobToBase64(payloadBlob).then(function(base64) {
+                    return ack.sendFile(deviceId, msgId, base64, {
+                        type: 'file',
+                        name: transfer.fileName,
+                        size: payloadBlob.size,
+                        format: transfer.mimeType,
+                        originalSize: file.size,
+                        originalName: file.name,
+                        layer: transfer.sentLayer
+                    });
+                });
+            }).then(function() {
+                // La confirmacion real llega por nexo:ble:fileProgress/status
+                resolve(msgId);
+            }).catch(function(err) {
+                transfer.state = 'error';
+                _fireComplete(msgId, false, err.message, options);
+                reject(err);
+            });
+        });
+    }
+
+    function _fireComplete(msgId, success, error, options) {
+        if (options && options.onComplete) options.onComplete(msgId, success, error);
+        if (_callbacks.onComplete) _callbacks.onComplete(msgId, success, error);
+    }
+
+    // === LISTENERS GLOBALES (eventos de ble_ack) ===
+    function _setupGlobalListeners() {
+        if (_listenersSetup) return;
+        _listenersSetup = true;
+
+        window.addEventListener('nexo:ble:fileProgress', function(e) {
+            var d = e.detail || {};
+            var msgId = d.fileId;
+            if (!msgId || !_activeTransfers[msgId]) return;
+            var t = _activeTransfers[msgId];
+            t.progress = d.percent || 0;
+            if (t.progress >= 100) t.state = 'completed';
+            if (_callbacks.onProgress) {
+                _callbacks.onProgress(msgId, t.progress, d.sent || 0, d.total || 0);
+            }
+        });
+
+        window.addEventListener('nexo:ble:fileComplete', function(e) {
+            var d = e.detail || {};
+            var msgId = d.fileId;
+            var meta = d.meta || {};
+
+            // 1) Confirmacion de salida (el otro lado ensamblo completo)
+            if (msgId && _activeTransfers[msgId]) {
+                var t = _activeTransfers[msgId];
+                t.state = 'completed';
+                t.progress = 100;
+                if (_callbacks.onProgress) _callbacks.onProgress(msgId, 100, t.payloadSize || 0, t.payloadSize || 0);
+                _fireComplete(msgId, true, null, null);
+                return;
+            }
+
+            // 2) Archivo entrante: data = base64 ensamblado
+            if (d.data && _callbacks.onReceived) {
+                var mime = meta.format || meta.mimeType || 'application/octet-stream';
+                var blobUrl = _base64ToBlobUrl(d.data, mime);
+                _callbacks.onReceived({
+                    msgId: msgId,
+                    fileId: msgId,
+                    blobUrl: blobUrl,
+                    base64: d.data,
+                    mimeType: mime,
+                    fileName: meta.name || 'archivo',
+                    size: meta.size || 0,
+                    originalSize: meta.originalSize || meta.size || 0,
+                    layer: meta.layer || 'original',
+                    senderId: meta.senderNexoId || meta.fr || '',
+                    timestamp: meta.ts || Date.now(),
+                    meta: meta
+                });
+            }
+        });
+    }
+
+    // === VOZ ===
+    function _startVoiceRecording() {
+        return new Promise(function(resolve, reject) {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                reject(new Error('MediaDevices no disponible')); return;
+            }
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+                var mimeType = 'audio/webm;codecs=opus';
+                var opts = {};
+                if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) {
+                    opts.mimeType = mimeType;
+                }
+                _mediaRecorder = new MediaRecorder(stream, opts);
+                _audioChunks = [];
+                _mediaRecorder.ondataavailable = function(e) {
+                    if (e.data && e.data.size > 0) _audioChunks.push(e.data);
+                };
+                _mediaRecorder.start(100);
+                resolve();
+            }).catch(reject);
         });
     }
     function _stopVoiceRecording() {
         return new Promise(function(resolve, reject) {
-            if (!_mediaRecorder) {
-                reject(new Error(
-                    'No hay grabación activa'
-                ));
-                return;
-            }
+            if (!_mediaRecorder) { reject(new Error('No hay grabacion activa')); return; }
             var recorder = _mediaRecorder;
             recorder.onstop = function() {
-                var blob = new Blob(
-                    _audioChunks,
-                    {
-                        type:
-                            recorder.mimeType ||
-                            'audio/webm'
-                    }
-                );
-                _mediaRecorder = null;
-                _audioChunks = [];
+                var blob = new Blob(_audioChunks, { type: recorder.mimeType || 'audio/webm' });
+                _mediaRecorder = null; _audioChunks = [];
                 resolve(blob);
             };
-
             recorder.stop();
         });
     }
-    function startVoiceRecording() {
-        return _startVoiceRecording();
-    }
+    function startVoiceRecording() { return _startVoiceRecording(); }
     function sendVoice(deviceId, options) {
         options = options || {};
-
-        return _stopVoiceRecording()
-            .then(function(blob) {
-                return sendFile(
-                    deviceId,
-                    blob,
-                    {
-                        fileName:
-                            'voice-' +
-                            Date.now() +
-                            '.webm',
-                        mimeType:
-                            blob.type ||
-                            'audio/webm',
-                        onProgress:
-                            options.onProgress,
-                        onComplete:
-                            options.onComplete
-                    }
-                );
+        return _stopVoiceRecording().then(function(blob) {
+            return sendFile(deviceId, blob, {
+                fileName: 'voice-' + Date.now() + '.webm',
+                mimeType: blob.type || 'audio/webm',
+                onProgress: options.onProgress,
+                onComplete: options.onComplete,
+                skipSizeWarning: true
             });
+        });
     }
+
     function cancelTransfer(msgId) {
-        var plugin = _getNativePlugin();
-
-        if (!plugin) {
-            return Promise.reject(
-                new Error('Plugin no disponible')
-            );
+        var ack = _getAckSystem();
+        if (ack && typeof ack.cancelFileSend === 'function') {
+            ack.cancelFileSend(msgId);
         }
-        return _safeNativeCall(
-            plugin,
-            'cancelFileTransfer',
-            {
-                msgId: msgId
-            }
-        );
+        if (_activeTransfers[msgId]) _activeTransfers[msgId].state = 'cancelled';
+        return Promise.resolve(true);
     }
-    function onProgress(callback) {
-        _callbacks.onProgress = callback;
-    }
-    function onComplete(callback) {
-        _callbacks.onComplete = callback;
-    }
-    function onReceived(callback) {
-        _callbacks.onReceived = callback;
-    }
-    function onThumbnail(callback) {
-        _callbacks.onThumbnail = callback;
-    }
-    function onPreview(callback) {
-        _callbacks.onPreview = callback;
-    }
-    function _setupNativeListeners() {
-        var plugin = _getNativePlugin();
 
-        if (!plugin ||
-            typeof plugin.addListener !== 'function') {
-            return;
-        }
-        plugin.addListener(
-            'onFileProgress',
-            function(data) {
-                data = data || {};
-                var msgId =
-                    data.msgId ||
-                    data.fileId ||
-                    '';
-                var progress =
-                    data.progress !== undefined ?
-                    data.progress :
-                    (
-                        data.percent !== undefined ?
-                        data.percent :
-                        0
-                    );
-                var bytesSent =
-                    data.bytesSent !== undefined ?
-                    data.bytesSent :
-                    (
-                        data.sent !== undefined ?
-                        data.sent :
-                        0
-                    );
-                var totalBytes =
-                    data.totalBytes !== undefined ?
-                    data.totalBytes :
-                    (
-                        data.total !== undefined ?
-                        data.total :
-                        0
-                    );
-                if (_activeTransfers[msgId]) {
-                    _activeTransfers[msgId].progress =
-                        progress;
-                }
-                if (_callbacks.onProgress) {
-                    _callbacks.onProgress(
-                        msgId,
-                        progress,
-                        bytesSent,
-                        totalBytes
-                    );
-                }
-            }
-        );
-        plugin.addListener(
-            'onFileComplete',
-            function(data) {
-                data = data || {};
-                var msgId =
-                    data.msgId ||
-                    data.fileId ||
-                    '';
-                var success =
-                    data.success === true;
-                if (_activeTransfers[msgId]) {
-                    _activeTransfers[msgId].state =
-                        success ?
-                        'completed' :
-                        'error';
+    // === CALLBACKS ===
+    function onProgress(cb) { _callbacks.onProgress = cb; }
+    function onComplete(cb) { _callbacks.onComplete = cb; }
+    function onReceived(cb) { _callbacks.onReceived = cb; }
+    function onThumbnail(cb) { _callbacks.onThumbnail = cb; }
+    function onPreview(cb) { _callbacks.onPreview = cb; }
 
-                    _activeTransfers[msgId].progress =
-                        success ? 100 : (
-                            _activeTransfers[msgId]
-                                .progress || 0
-                        );
-                }
-                if (_callbacks.onComplete) {
-                    _callbacks.onComplete(
-                        msgId,
-                        success,
-                        data.error
-                    );
-                }
-            }
-        );
-        plugin.addListener(
-            'onFileReceived',
-            function(data) {
-                if (_callbacks.onReceived) {
-                    _callbacks.onReceived(data);
-                }
-            }
-        );
-        plugin.addListener(
-            'onThumbnailReceived',
-            function(data) {
-                if (_callbacks.onThumbnail) {
-                    _callbacks.onThumbnail(
-                        data.msgId,
-                        data.data
-                    );
-                }
-            }
-        );
-        plugin.addListener(
-            'onPreviewReceived',
-            function(data) {
-                if (_callbacks.onPreview) {
-                    _callbacks.onPreview(
-                        data.msgId,
-                        data.data
-                    );
-                }
-            }
-        );
-    }
-    function getTransfer(msgId) {
-        return _activeTransfers[msgId] || null;
-    }
+    function getTransfer(msgId) { return _activeTransfers[msgId] || null; }
     function getAllTransfers() {
-        return Object.assign(
-            {},
-            _activeTransfers
-        );
+        var out = {};
+        for (var k in _activeTransfers) out[k] = _activeTransfers[k];
+        return out;
     }
-    if (document.readyState === 'loading') {
-        document.addEventListener(
-            'DOMContentLoaded',
-            _setupNativeListeners
-        );
-    } else {
-        _setupNativeListeners();
-    }
+
+    _setupGlobalListeners();
+
     return {
         sendFile: sendFile,
         sendVoice: sendVoice,
         startVoiceRecording: startVoiceRecording,
         cancelTransfer: cancelTransfer,
-
         onProgress: onProgress,
         onComplete: onComplete,
         onReceived: onReceived,
         onThumbnail: onThumbnail,
         onPreview: onPreview,
-
         getTransfer: getTransfer,
         getAllTransfers: getAllTransfers,
-
+        base64ToBlobUrl: _base64ToBlobUrl,
         CONFIG: CONFIG
     };
 })();
 
-if (
-    typeof module !== 'undefined' &&
-    module.exports
-) {
-    module.exports = {
-        NEXOFileTransfer:
-            NEXOFileTransfer
-    };
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { NEXOFileTransfer: NEXOFileTransfer };
 }
 if (typeof window !== 'undefined') {
-    window.NEXOFileTransfer =
-        NEXOFileTransfer;
+    window.NEXOFileTransfer = NEXOFileTransfer;
 }
