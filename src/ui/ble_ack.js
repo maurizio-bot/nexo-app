@@ -94,7 +94,6 @@ export class BleAckSystem {
     this._startCleanupInterval();
     console.log('[BleAckSystem] v3.2.8-NEXO iniciado');
   }
-
   _resolveNexoId(deviceId) {
     var mac = _normMac(deviceId);
     if (this.ble && this.ble._macToNexoId) {
@@ -107,7 +106,6 @@ export class BleAckSystem {
     }
     return mac;
   }
-
   sendChunkedMessage(deviceId, content, meta, messageId, seq) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -135,14 +133,12 @@ export class BleAckSystem {
       });
     });
   }
-
   sendFile(deviceId, fileId, base64Data, meta) {
     var self = this;
     return new Promise(function(resolve, reject) {
       self._sendFileJS(deviceId, fileId, base64Data, meta).then(resolve).catch(reject);
     });
   }
-
   _sendFileJS(deviceId, fileId, base64Data, meta) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -160,7 +156,6 @@ export class BleAckSystem {
       });
     });
   }
-
   processIncomingFragment(dataObj) {
     try {
       var deviceId = dataObj.deviceId;
@@ -187,7 +182,6 @@ export class BleAckSystem {
       return false;
     }
   }
-
   _handleIncomingChunk(deviceId, msg, type) {
     var self = this;
     var msgId = msg.m || msg.msgId;
@@ -204,7 +198,6 @@ export class BleAckSystem {
       self._sendFinalAck(deviceId, msgId, total);
       return;
     }
-
     var buf = self.incomingBuffers.get(msgId);
     if (!buf && idx !== 0) {
       var missing = [];
@@ -212,7 +205,6 @@ export class BleAckSystem {
       self._sendNack(deviceId, msgId, missing);
       return;
     }
-
     if (!buf) {
       buf = {
         chunks: new Map(), total: total,
@@ -241,7 +233,6 @@ export class BleAckSystem {
         window.vaultCreateTransfer(senderId, msgId, type === 'c' ? 'chat' : 'file', total, buf.meta).catch(function(){});
       }
     }
-
     if (!buf.chunks.has(idx)) {
       buf.chunks.set(idx, data || '');
       buf.received++;
@@ -254,14 +245,11 @@ export class BleAckSystem {
         }
       }, ASSEMBLY_TIMEOUT_MS);
     }
-
     var senderId = from || (buf.meta && buf.meta.fr) || 'unknown';
     if (window.vaultAppendChunk) {
       window.vaultAppendChunk(senderId, msgId, idx, data || '', total, buf.meta).catch(function(){});
     }
-
     self._sendBlockAck(deviceId, msgId, buf);
-
     if (idx > 0 && buf.received < buf.total) {
       var missing = self._findMissing(buf);
       if (missing.length > 0 && !buf.nackSent) {
@@ -270,13 +258,11 @@ export class BleAckSystem {
         setTimeout(function() { buf.nackSent = false; }, 3000);
       }
     }
-
     if (buf.received >= buf.total) {
       if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
       self._assembleAndDispatch(buf, deviceId, senderId, msgId);
     }
   }
-
   _findMissing(buf) {
     var missing = [];
     for (var i = 0; i < buf.total; i++) {
@@ -284,7 +270,6 @@ export class BleAckSystem {
     }
     return missing;
   }
-
   _assembleAndDispatch(buf, deviceId, senderId, msgId) {
     var self = this;
     var assembled = '';
@@ -294,7 +279,6 @@ export class BleAckSystem {
     self._sendFinalAck(deviceId, msgId, buf.total);
     self.completedMessages.set(msgId, { total: buf.total, expireAt: Date.now() + COMPLETED_TTL_MS });
     self.incomingBuffers.delete(msgId);
-
     if (buf.isChat) {
       self._dispatchChunkedMessageComplete(senderId, assembled, buf.meta, deviceId, msgId);
     } else {
@@ -305,7 +289,6 @@ export class BleAckSystem {
       window.vaultCompleteTransfer(senderId, msgId).catch(function(){});
     }
   }
-
   _sendNack(deviceId, msgId, indices) {
     var ranges = _compressRanges(indices);
     var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'n', m: msgId, r: ranges });
@@ -914,14 +897,11 @@ ChatStream.prototype._startWindowTimer = function() {
 ChatStream.prototype._onWindowTimeout = function() {
   var self = this;
   if (self.aborted) return;
-  
   var allAcked = true;
   for (var i = self._windowStartAtSend; i < self._windowEndAtSend; i++) {
     if (!self.ackedMask[i]) { allAcked = false; break; }
   }
-  
   console.log('[ChatStream] _onWindowTimeout. ventanaOriginal=[' + self._windowStartAtSend + ',' + self._windowEndAtSend + ') allAcked=' + allAcked + ' windowStartActual=' + self.windowStart + ' msgId=' + self.msgId);
-  
   if (allAcked) {
     console.log('[ChatStream] Ventana original completa por ACKs tardios. Resolviendo. msgId=' + self.msgId);
     self.windowRetryCount = 0;
@@ -972,7 +952,6 @@ ChatStream.prototype._retransmitWindow = function() {
   }
   sendNext(self.windowStart);
 };
-
 ChatStream.prototype.handleNack = function(indices) {
   var self = this;
   console.log('[ChatStream] handleNack: ' + indices.join(',') + ' msgId=' + self.msgId);
@@ -991,7 +970,6 @@ ChatStream.prototype.handleNack = function(indices) {
     setTimeout(function() { self._retransmitWindow(); }, 500);
   });
 };
-
 ChatStream.prototype.handlePartialAck = function(mask, count) {
   var self = this;
   if (!mask) return;
@@ -1010,7 +988,6 @@ ChatStream.prototype.handlePartialAck = function(mask, count) {
     self._windowReject = null;
   }
 };
-
 ChatStream.prototype.handleFinalAck = function() {
   console.log('[ChatStream] handleFinalAck msgId=' + this.msgId);
   if (this.timer) clearTimeout(this.timer);
@@ -1033,7 +1010,9 @@ ChatStream.prototype._finish = function() {
   }
   this.resolve();
   this.ackSystem._dispatchStatus(this.msgId, 'delivered');
-};
+  if (this.type === 'file') {
+  this.ackSystem._dispatchFileComplete(this.msgId, null, this.meta);
+}
 ChatStream.prototype.abort = function() {
   console.log('[ChatStream] abort msgId=' + this.msgId);
   this.aborted = true;
