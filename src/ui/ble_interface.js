@@ -1372,9 +1372,13 @@ export class BLEInterface {
     if (this.isAdvertising) btn.classList.add('active'); else btn.classList.remove('active');
   }
   updateScanButton() {
-    var btn = this.elements.scanBtn;
-    if (!btn) return;
-    if (this.isScanning) btn.classList.add('scanning'); else btn.classList.remove('scanning');
+  var btn = this.elements.scanBtn;
+  if (!btn) return;
+  var panelActive = this.elements.panel &&
+  this.elements.panel.classList.contains('active');
+  btn.style.display = panelActive ? 'flex' : 'none';
+  if (this.isScanning) btn.classList.add('scanning');
+  else btn.classList.remove('scanning');
   }
   toggleVisibility() {
     var self = this;
@@ -1389,7 +1393,7 @@ export class BLEInterface {
           if (_hasNativeMethod(self.nativePlugin, 'stopAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'stopAdvertising', {}); else promise = Promise.resolve();
           if (promise) return promise.then(function() { self.isAdvertising = false; self.updateVisibilityButton(); });
           self.isAdvertising = false;
-        } else {
+          } else {
           if (_hasNativeMethod(self.nativePlugin, 'startAdvertising')) promise = _safeNativeCall(self.nativePlugin, 'startAdvertising', {}); else promise = Promise.resolve();
           if (promise) return promise.then(function() { self.isAdvertising = true; self.updateVisibilityButton(); });
           self.isAdvertising = true;
@@ -1516,7 +1520,11 @@ export class BLEInterface {
     this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
     var backBtn = document.getElementById('ble-panel-back');
     if (backBtn) {
-      backBtn.addEventListener('click', function() { self.elements.panel.classList.remove('active'); self.elements.overlay.classList.remove('active'); });
+      backBtn.addEventListener('click', function() {
+      self.elements.panel.classList.remove('active');
+      self.elements.overlay.classList.remove('active');
+      self.updateScanButton();
+      });
     }
     var navItems = this.elements.bottomNav.querySelectorAll('.ble-nav-item');
     navItems.forEach(function(item) {
@@ -1564,6 +1572,7 @@ export class BLEInterface {
       var self = this;
       setTimeout(function() { if (!self.isDummyMode && self.nativePlugin && !self.isScanning) self._autoScanForKnownContacts(); }, 300);
     }
+    this.updateScanButton();
   }
   _executeToggleScan() {
     var self = this;
