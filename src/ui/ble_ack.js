@@ -282,12 +282,12 @@ export class BleAckSystem {
     if (buf.isChat) {
       self._dispatchChunkedMessageComplete(senderId, assembled, buf.meta, deviceId, msgId);
     } else {
-      self._dispatchFileComplete(senderId, assembled, buf.meta);
-      self._dispatchFileProgress(senderId, buf.total, buf.total, 'received', 100);
-    }
-    if (window.vaultCompleteTransfer) {
+      self._dispatchFileComplete(msgId, assembled, buf.meta);
+      self._dispatchFileProgress(msgId, buf.total, buf.total, 'received', 100);
+      if (window.vaultCompleteTransfer) {
       window.vaultCompleteTransfer(senderId, msgId).catch(function(){});
     }
+  }
   }
   _sendNack(deviceId, msgId, indices) {
     var ranges = _compressRanges(indices);
@@ -296,7 +296,6 @@ export class BleAckSystem {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
   }
-
   _sendBlockAck(deviceId, msgId, buf) {
     var received = [];
     for (var i = 0; i < buf.total; i++) {
