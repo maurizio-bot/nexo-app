@@ -191,6 +191,7 @@ var NEXOFileTransfer = (function() {
                 var payloadBlob = file;
                 if (isImage && layers.preview && !sendOriginal && !CONFIG.SEND_ORIGINAL_IMAGES) {
                     payloadBlob = layers.preview;
+                    transfer.mimeType = payloadBlob.type || 'image/webp';
                     transfer.sentLayer = 'preview';
                 } else {
                     transfer.sentLayer = 'original';
