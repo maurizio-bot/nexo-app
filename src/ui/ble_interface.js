@@ -1939,7 +1939,9 @@ export class BLEInterface {
    * su NEXO ID, no su MAC.
    */
   this.foundDevices.delete(deviceId);
-  this._closePanelAndRefresh();
+  this.renderNewDeviceBar();
+  this.renderContactsList();
+  this.renderOnlineStrip();
   }
   _autoConnectGATT(deviceId, device) {
     var self = this;
