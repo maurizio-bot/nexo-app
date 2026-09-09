@@ -1942,6 +1942,7 @@ export class BLEInterface {
   this.renderNewDeviceBar();
   this.renderContactsList();
   this.renderOnlineStrip();
+  this.togglePanel();
   }
   _autoConnectGATT(deviceId, device) {
     var self = this;
