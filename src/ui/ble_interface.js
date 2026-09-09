@@ -1027,7 +1027,6 @@ export class BLEInterface {
           var idx3 = contacts3.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
           if (idx3 >= 0) { contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1; contacts3[idx3].lastMessage = msgContent.substring(0, 50); contacts3[idx3].lastSeen = Date.now(); _saveBLEContacts(contacts3); self.renderContactsList(); self.renderOnlineStrip(); }
         }
-        self.newDevicesCount++; self.updateBadge();
         _safeDispatchEvent('nexo:ble:messageReceived', {
           deviceId: deviceId, deviceUUID: senderUUID, content: msgContent, senderName: senderName,
           senderNexoId: senderUUID, messageId: messageId, source: source, timestamp: data.timestamp || Date.now(),
