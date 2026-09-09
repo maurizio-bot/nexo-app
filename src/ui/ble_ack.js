@@ -144,7 +144,17 @@ export class BleAckSystem {
     return new Promise(function(resolve, reject) {
       var senderId = (self.ble && self.ble.localNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
       var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
-      var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: Date.now(), file: true });
+      var seq = (self.ble && typeof self.ble.getNextSeq === 'function')
+      ? self.ble.getNextSeq()
+      : 0;
+
+     var finalMeta = Object.assign({}, meta || {}, {
+     f: fromName,
+     fr: senderId,
+     ts: Date.now(),
+     seq: seq,
+     file: true
+      });
       var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
       self.outgoingStreams.set(fileId, stream);
       stream.start().then(function() {
