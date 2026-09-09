@@ -1016,7 +1016,6 @@ ChatStream.prototype.handleFinalAck = function() {
   if (this.timer) clearTimeout(this.timer);
   this._finish();
 };
-
 ChatStream.prototype._finish = function() {
   if (this.aborted) return;
   console.log('[ChatStream] _finish msgId=' + this.msgId);
@@ -1034,10 +1033,7 @@ ChatStream.prototype._finish = function() {
   }
   this.resolve();
   this.ackSystem._dispatchStatus(this.msgId, 'delivered');
-  if (this.type === 'file') {
-  this.ackSystem._dispatchFileProgress(this.msgId, 1, 1, 'sent', 100);
-  this.ackSystem._dispatchFileComplete(this.msgId, null, this.meta);
-  }
+};
 ChatStream.prototype.abort = function() {
   console.log('[ChatStream] abort msgId=' + this.msgId);
   this.aborted = true;
