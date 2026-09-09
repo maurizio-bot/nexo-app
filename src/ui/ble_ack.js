@@ -1003,25 +1003,15 @@ ChatStream.prototype.handleFinalAck = function() {
   this._finish();
 };
 ChatStream.prototype._finish = function() {
-  if (this.aborted) return;
-  console.log('[ChatStream] _finish msgId=' + this.msgId);
-  this.aborted = true;
-  if (this.timer) clearTimeout(this.timer);
-  if (this.globalTimeout) clearTimeout(this.globalTimeout);
-  if (this._windowResolve) {
-    this._windowResolve();
-    this._windowResolve = null;
-    this._windowReject = null;
-  }
-  if (window.vaultRemoveOutgoingTransfer) {
-    var cid = this.ackSystem._resolveNexoId(this.deviceId);
-    window.vaultRemoveOutgoingTransfer(cid, this.msgId).catch(function(){});
-  }
-  this.resolve();
-  this.ackSystem._dispatchStatus(this.msgId, 'delivered');
-  if (this.type === 'file') {
-  this.ackSystem._dispatchFileComplete(this.msgId, null, this.meta);
-  }
+    if (this.aborted) return;
+    console.log('[ChatStream] _finish msgId=' + this.msgId);
+    this.aborted = true;
+    if (this.timer) clearTimeout(this.timer);
+    if (this.globalTimeout) clearTimeout(this.globalTimeout);
+    this.ackSystem._dispatchStatus(this.msgId, 'delivered');
+    if (this.type === 'file') {
+        this.ackSystem._dispatchFileComplete(this.msgId, null, this.meta);
+    }
 };
 ChatStream.prototype.abort = function() {
   console.log('[ChatStream] abort msgId=' + this.msgId);
