@@ -1012,6 +1012,11 @@ ChatStream.prototype._finish = function() {
     if (this.type === 'file') {
         this.ackSystem._dispatchFileComplete(this.msgId, null, this.meta);
     }
+    if (this.resolve) {
+        this.resolve();
+        this.resolve = null;
+        this.reject = null;
+    }
 };
 ChatStream.prototype.abort = function() {
   console.log('[ChatStream] abort msgId=' + this.msgId);
