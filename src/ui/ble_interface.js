@@ -339,7 +339,6 @@ function _isControlPacket(content) {
     return false;
   } catch (e) { return false; }
 }
-
 function _vaultUpdateMessageStatus(nexoId, msgId, status) {
   try {
     if (window.vaultUpdateMessageStatus && typeof window.vaultUpdateMessageStatus === 'function') {
@@ -1284,58 +1283,181 @@ export class BLEInterface {
     });
   }
 
-  _resendPendingMessages(nexoId) {
+    _resendPendingMessages(nexoId) {
     var self = this;
     if (!nexoId) return;
+
     var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
       ? window.vaultGetPendingMessages(nexoId)
-      : _vaultLoadMessages(nexoId).then(function(msgs) { return msgs.filter(function(m) { return m._own === true && m.status === 'pending'; }); });
-    getPending.then(function(pending) {
+      : _vaultLoadMessages(nexoId).then(function(msgs) {
+          return msgs.filter(function(m) {
+            return m._own === true && (m.status === 'pending' || m.status === 'failed');
+          });
+        });
+      getPending.then(function(pending) {
       if (!pending || pending.length === 0) return;
       console.log('[BLEInterface] Reenviando', pending.length, 'pending para', nexoId);
       var deviceId = self._resolveDeviceIdForNexoId(nexoId);
-      if (!deviceId) { console.warn('[BLEInterface] No deviceId para reenvio', nexoId); return; }
+      if (!deviceId) {
+        console.warn('[BLEInterface] No deviceId para reenvio', nexoId);
+        return;
+      }
       var st = self._getDeviceState(deviceId);
       if (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY) {
         console.log('[BLEInterface] Device no listo para reenvio, dejando en pending');
         return;
       }
       if (self.ackSystem && typeof self.ackSystem.resumeOutgoingTransfers === 'function') {
-        try { self.ackSystem.resumeOutgoingTransfers(deviceId); } catch(e) {}
+        try { self.ackSystem.resumeOutgoingTransfers(deviceId); } catch (e) {}
       }
       var idx = 0;
       function sendNext() {
         if (idx >= pending.length) return;
         var msg = pending[idx++];
         var mid = msg.msgId || msg.messageId || msg.id;
-        if (!mid) { sendNext(); return; }
-        _vaultUpdateMessageStatus(nexoId, mid, 'sending');
-        try { window.NEXO_updateMessageStatus && window.NEXO_updateMessageStatus(mid, 'sending'); } catch(e) {}
-
-        var txt = msg.content || msg.text || '';
-        var doSend;
-        var msgSeq = (typeof msg.seq === 'number') ? msg.seq : undefined;
-        if (txt.length > 180 && self.ackSystem && typeof self.ackSystem.sendChunkedMessage === 'function') {
-          doSend = function() {
-            return self.ackSystem.sendChunkedMessage(deviceId, txt, {}, mid, msgSeq);
-          };
-        } else if (self.ackSystem) {
-          doSend = function() { return self.ackSystem.sendWithRetry(deviceId, txt, mid, msgSeq); };
-        } else {
-          doSend = function() { return self._sendMessageNative(deviceId, txt, mid, msgSeq); };
+        if (!mid) {
+          sendNext();
+          return;
         }
+        _vaultUpdateMessageStatus(nexoId, mid, 'sending');
+        try {
+          if (window.NEXO_updateMessageStatus) {
+            window.NEXO_updateMessageStatus(mid, 'sending');
+          }
+        } catch (e) {}
+        /*
+         * ADJUNTOS:
+         * Las fotos, videos y archivos NO se deben reenviar
+         * como mensajes de texto. Se recuperan del propio mensaje
+         * guardado en Vault y vuelven al mismo flujo sendFile().
+         */
+        var attachmentType = msg.attachmentType || null;
+        var attachmentPayload = msg.attachmentPayload || null;
+        var attachmentMeta = msg.attachmentMeta || null;
+        /*
+         * Compatibilidad con mensajes guardados anteriormente:
+         * si no existen los campos separados, intentamos recuperar
+         * la información desde msg.content.
+         */
+        if (!attachmentType && msg.content && typeof msg.content === 'string') {
+          try {
+            var parsed = JSON.parse(msg.content);
 
-        doSend().then(function() { console.log('[BLEInterface] Pending OK:', mid); _vaultUpdateMessageStatus(nexoId, mid, 'sent'); sendNext(); })
+            if (parsed && parsed.type === 'attachment') {
+              attachmentType = parsed.attachmentType || null;
+              attachmentPayload = parsed.payload || null;
+              attachmentMeta = parsed.meta || null;
+            }
+          } catch (e) {}
+        }
+        var msgSeq = (typeof msg.seq === 'number') ? msg.seq : undefined;
+        var doSend;
+        if (
+          attachmentType &&
+          attachmentPayload &&
+          (attachmentType === 'image' ||
+           attachmentType === 'video' ||
+           attachmentType === 'file')
+        ) {
+          if (!self.ackSystem || typeof self.ackSystem.sendFile !== 'function') {
+            console.warn('[BLEInterface] AckSystem sin sendFile para pending:', mid);
+            _vaultUpdateMessageStatus(nexoId, mid, 'failed');
+            try {
+              if (window.NEXO_updateMessageStatus) {
+                window.NEXO_updateMessageStatus(mid, 'failed');
+              }
+            } catch (e2) {}
+            sendNext();
+            return;
+          }
+          var fileMeta = Object.assign(
+            { type: attachmentType },
+            attachmentMeta || {}
+          );
+          doSend = function() {
+            return self.ackSystem.sendFile(
+              deviceId,
+              mid,
+              attachmentPayload,
+              fileMeta
+            );
+          };
+          console.log(
+            '[BLEInterface] Reenviando ADJUNTO:',
+            attachmentType,
+            mid
+          );
+        } else {
+          /*
+           * MENSAJE NORMAL:
+           * Conservamos exactamente el flujo existente para
+           * mensajes cortos y largos.
+           */
+          var txt = msg.content || msg.text || '';
+          if (
+            txt.length > 180 &&
+            self.ackSystem &&
+            typeof self.ackSystem.sendChunkedMessage === 'function'
+          ) {
+            doSend = function() {
+              return self.ackSystem.sendChunkedMessage(
+                deviceId,
+                txt,
+                {},
+                mid,
+                msgSeq
+              );
+            };
+          } else if (self.ackSystem) {
+            doSend = function() {
+              return self.ackSystem.sendWithRetry(
+                deviceId,
+                txt,
+                mid,
+                msgSeq
+              );
+            };
+          } else {
+            doSend = function() {
+              return self._sendMessageNative(
+                deviceId,
+                txt,
+                mid,
+                msgSeq
+              );
+            };
+          }
+        }
+        doSend()
+          .then(function() {
+            console.log('[BLEInterface] Pending OK:', mid);
+            _vaultUpdateMessageStatus(nexoId, mid, 'sent');
+            try {
+              if (window.NEXO_updateMessageStatus) {
+                window.NEXO_updateMessageStatus(mid, 'sent');
+              }
+            } catch (e) {}
+            sendNext();
+          })
           .catch(function(e) {
             console.warn('[BLEInterface] Pending fallo:', mid, e.message);
             _vaultUpdateMessageStatus(nexoId, mid, 'failed');
-            try { window.NEXO_updateMessageStatus && window.NEXO_updateMessageStatus(mid, 'failed'); } catch(e2) {}
+            try {
+              if (window.NEXO_updateMessageStatus) {
+                window.NEXO_updateMessageStatus(mid, 'failed');
+              }
+            } catch (e2) {}
             sendNext();
           });
       }
       sendNext();
-    }).catch(function(e) { console.warn('[BLEInterface] Error cargando pending:', e.message); });
-  }
+    }).catch(function(e) {
+      console.warn(
+        '[BLEInterface] Error cargando pending:',
+        e.message
+      );
+    });
+    }
 
   _initVisibility() {
     var self = this;
