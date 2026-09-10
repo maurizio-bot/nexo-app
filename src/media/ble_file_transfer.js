@@ -214,7 +214,11 @@ var NEXOFileTransfer = (function() {
                     });
                 });
             }).then(function() {
-                resolve(msgId);
+            transfer.state = 'completed';
+            transfer.progress = 100;
+            _fireProgress(msgId, 100, transfer.payloadSize || 0, transfer.payloadSize || 0);
+            _fireComplete(msgId, true, null);
+            resolve(msgId);
             }).catch(function(err) {
                 transfer.state = 'error';
                 _fireComplete(msgId, false, err.message);
@@ -258,12 +262,14 @@ var NEXOFileTransfer = (function() {
             var msgId = d.fileId;
             var meta = d.meta || {};
             if (msgId && _activeTransfers[msgId]) {
-                var t = _activeTransfers[msgId];
-                t.state = 'completed';
-                t.progress = 100;
-                _fireProgress(msgId, 100, t.payloadSize || 0, t.payloadSize || 0);
-                _fireComplete(msgId, true, null);
-                return;
+            var t = _activeTransfers[msgId];
+            if (t.state !== 'completed') {
+            t.state = 'completed';
+            t.progress = 100;
+            _fireProgress(msgId, 100, t.payloadSize || 0, t.payloadSize || 0);
+            _fireComplete(msgId, true, null);
+            }
+            return;
             }
             if (d.data && _callbacks.onReceived) {
                 var mime = meta.format || meta.mimeType || 'application/octet-stream';
