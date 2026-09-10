@@ -1172,24 +1172,12 @@ export class BLEInterface {
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
               .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
             return;
-          }
-          self.ackSystem.sendFile(deviceId, fileId, base64Data, meta)
-  .then(function() {
-    _vaultUpdateMessageStatus(uuid, fileId, 'sent');
-    try { window.NEXO_updateMessageStatus && window.NEXO_updateMessageStatus(fileId, 'sent'); } catch(e) {}
-    resolve();
-  })
-  .catch(function(err) {
-    _vaultUpdateMessageStatus(uuid, fileId, 'failed');
-    try { window.NEXO_updateMessageStatus && window.NEXO_updateMessageStatus(fileId, 'failed'); } catch(e) {}
-    reject(err);
-    });
           } else {
             self._sendMessageNative(deviceId, content, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
               .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
           }
-        }
+                }
         function enqueueMsg() {
           var queue = self._pendingMessageQueue.get(deviceId) || [];
           queue.push({ content: content, messageId: msgId, seq: msgSeq, resolve: resolve, reject: reject });
