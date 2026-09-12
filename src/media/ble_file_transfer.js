@@ -2,6 +2,7 @@
  * NEXO File Transfer JS v1.2
  * FIX: callbacks de transferencia correctamente enlazados
  * FIX: progreso y finalizacion real por transferencia
+ * FIX: envio conectado correctamente con BleAckSystem.sendFile()
  * ES5 compatible
  */
 var NEXOFileTransfer = (function() {
@@ -55,9 +56,14 @@ var NEXOFileTransfer = (function() {
         try {
             var byteChars = atob(base64);
             var byteNums = new Array(byteChars.length);
-            for (var i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+
+            for (var i = 0; i < byteChars.length; i++) {
+                byteNums[i] = byteChars.charCodeAt(i);
+            }
             var byteArray = new Uint8Array(byteNums);
-            return new Blob([byteArray], { type: mimeType || 'application/octet-stream' });
+            return new Blob([byteArray], {
+                type: mimeType || 'application/octet-stream'
+            });
         } catch (e) {
             return null;
         }
@@ -67,7 +73,9 @@ var NEXOFileTransfer = (function() {
         if (!blob) return null;
         var url = URL.createObjectURL(blob);
         setTimeout(function() {
-            try { URL.revokeObjectURL(url); } catch (e) {}
+            try {
+                URL.revokeObjectURL(url);
+            } catch (e) {}
         }, 600000);
         return url;
     }
@@ -80,7 +88,8 @@ var NEXOFileTransfer = (function() {
                     try {
                         var canvas = document.createElement('canvas');
                         var ctx = canvas.getContext('2d');
-                        var width = img.width, height = img.height;
+                        var width = img.width;
+                        var height = img.height;
                         if (width > height) {
                             if (width > maxDimension) {
                                 height = Math.round(height * (maxDimension / width));
@@ -98,9 +107,13 @@ var NEXOFileTransfer = (function() {
                         ctx.fillRect(0, 0, width, height);
                         ctx.drawImage(img, 0, 0, width, height);
                         canvas.toBlob(function(blob) {
-                            if (blob) resolve(blob);
-                            else reject(new Error('Canvas toBlob fallo'));
+                            if (blob) {
+                                resolve(blob);
+                            } else {
+                                reject(new Error('Canvas toBlob fallo'));
+                            }
                         }, format, quality);
+
                     } catch (err) {
                         reject(err);
                     }
@@ -118,28 +131,41 @@ var NEXOFileTransfer = (function() {
     }
     function _generateProgressiveLayers(file) {
         return new Promise(function(resolve) {
-            var layers = { thumbnail: null, preview: null, original: file };
+            var layers = {
+                thumbnail: null,
+                preview: null,
+                original: file
+            };
             _compressImage(file, 150, 0.5, 'image/webp')
                 .then(function(thumb) {
                     layers.thumbnail = thumb;
-                    if (_callbacks.onThumbnail) _callbacks.onThumbnail(null, thumb);
+                    if (_callbacks.onThumbnail) {
+                        _callbacks.onThumbnail(null, thumb);
+                    }
                     return _compressImage(file, 640, 0.6, 'image/webp');
                 })
                 .then(function(preview) {
                     layers.preview = preview;
-                    if (_callbacks.onPreview) _callbacks.onPreview(null, preview);
+                    if (_callbacks.onPreview) {
+                        _callbacks.onPreview(null, preview);
+                    }
                     resolve(layers);
                 })
                 .catch(function() {
                     _compressImage(file, 150, 0.5, 'image/jpeg')
                         .then(function(thumb) {
                             layers.thumbnail = thumb;
-                            if (_callbacks.onThumbnail) _callbacks.onThumbnail(null, thumb);
+                            if (_callbacks.onThumbnail) {
+                                _callbacks.onThumbnail(null, thumb);
+                            }
                             return _compressImage(file, 640, 0.6, 'image/jpeg');
                         })
                         .then(function(preview) {
                             layers.preview = preview;
-                            if (_callbacks.onPreview) _callbacks.onPreview(null, preview);
+
+                            if (_callbacks.onPreview) {
+                                _callbacks.onPreview(null, preview);
+                            }
                             resolve(layers);
                         })
                         .catch(function() {
@@ -148,92 +174,23 @@ var NEXOFileTransfer = (function() {
                 });
         });
     }
-    function sendFile(deviceId, file, options) {
-        options = options || {};
-        return new Promise(function(resolve, reject) {
-            if (!file) {
-                reject(new Error('Archivo requerido'));
-                return;
-            }
-            if (file.size <= 0) {
-                reject(new Error('Archivo vacio'));
-                return;
-            }
-            if (file.size > CONFIG.MAX_FILE_SIZE) {
-                reject(new Error('Archivo excede 5MB'));
-                return;
-            }
-            var ack = _getAckSystem();
-            if (!ack || typeof ack.sendFile !== 'function') {
-                reject(new Error('BleAckSystem no disponible (bleInterface no listo)'));
-                return;
-            }
-            var msgId = _generateMsgId();
-            var isImage = !!file.type && file.type.indexOf('image/') === 0;
-            var transfer = {
-                deviceId: _normId(deviceId),
-                fileName: options.fileName || file.name || 'archivo',
-                mimeType: options.mimeType || file.type || 'application/octet-stream',
-                originalSize: file.size,
-                state: 'preparing',
-                progress: 0,
-                isImage: isImage,
-                startTime: Date.now(),
-                onProgress: options.onProgress || null,
-                onComplete: options.onComplete || null
-            };
-            _activeTransfers[msgId] = transfer;
-            var preparePromise = isImage
-                ? _generateProgressiveLayers(file)
-                : Promise.resolve({ thumbnail: null, preview: null, original: file });
-            preparePromise.then(function(layers) {
-                var sendOriginal = options.sendOriginal === true;
-                var payloadBlob = file;
-                if (isImage && layers.preview && !sendOriginal && !CONFIG.SEND_ORIGINAL_IMAGES) {
-                    payloadBlob = layers.preview;
-                    transfer.mimeType = payloadBlob.type || 'image/webp';
-                    transfer.sentLayer = 'preview';
-                } else {
-                    transfer.sentLayer = 'original';
-                }
-                transfer.payloadSize = payloadBlob.size;
-                if (payloadBlob.size > CONFIG.RECOMMENDED_MAX && !options.skipSizeWarning) {
-                    console.warn('[NEXOFileTransfer] Archivo grande (' + Math.round(payloadBlob.size / 1024) + 'KB). Sobre BLE puede tardar mucho.');
-                }
-                transfer.state = 'sending';
-                _fireProgress(msgId, 0, 0, payloadBlob.size);
-                return _blobToBase64(payloadBlob).then(function(base64) {
-                    return ack.sendFile(deviceId, msgId, base64, {
-                        type: 'file',
-                        name: transfer.fileName,
-                        size: payloadBlob.size,
-                        format: transfer.mimeType,
-                        originalSize: file.size,
-                        originalName: file.name || transfer.fileName,
-                        layer: transfer.sentLayer
-                    });
-                });
-            }).then(function() {
-            transfer.state = 'completed';
-            transfer.progress = 100;
-            _fireProgress(msgId, 100, transfer.payloadSize || 0, transfer.payloadSize || 0);
-            _fireComplete(msgId, true, null);
-            resolve(msgId);
-            }).catch(function(err) {
-                transfer.state = 'error';
-                _fireComplete(msgId, false, err.message);
-                delete _activeTransfers[msgId];
-                reject(err);
-            });
-        });
-    }
     function _fireProgress(msgId, progress, sent, total) {
         var transfer = _activeTransfers[msgId];
         if (transfer && transfer.onProgress) {
-            transfer.onProgress(msgId, progress, sent || 0, total || transfer.payloadSize || 0);
+            transfer.onProgress(
+                msgId,
+                progress,
+                sent || 0,
+                total || transfer.payloadSize || 0
+            );
         }
         if (_callbacks.onProgress) {
-            _callbacks.onProgress(msgId, progress, sent || 0, total || 0);
+            _callbacks.onProgress(
+                msgId,
+                progress,
+                sent || 0,
+                total || 0
+            );
         }
     }
     function _fireComplete(msgId, success, error) {
@@ -253,27 +210,51 @@ var NEXOFileTransfer = (function() {
             var msgId = d.fileId;
             if (!msgId || !_activeTransfers[msgId]) return;
             var t = _activeTransfers[msgId];
-            t.progress = Math.max(0, Math.min(100, Number(d.percent) || 0));
-            if (t.progress >= 100) t.state = 'completed';
-            _fireProgress(msgId, t.progress, d.sent || 0, d.total || t.payloadSize || 0);
+            t.progress = Math.max(
+                0,
+                Math.min(100, Number(d.percent) || 0)
+            );
+            if (t.progress >= 100) {
+                t.state = 'completed';
+            }
+            _fireProgress(
+                msgId,
+                t.progress,
+                d.sent || 0,
+                d.total || t.payloadSize || 0
+            );
         });
         window.addEventListener('nexo:ble:fileComplete', function(e) {
             var d = e.detail || {};
             var msgId = d.fileId;
             var meta = d.meta || {};
             if (msgId && _activeTransfers[msgId]) {
-            var t = _activeTransfers[msgId];
-            if (t.state !== 'completed') {
-            t.state = 'completed';
-            t.progress = 100;
-            _fireProgress(msgId, 100, t.payloadSize || 0, t.payloadSize || 0);
-            _fireComplete(msgId, true, null);
-            }
-            return;
+                var t = _activeTransfers[msgId];
+                if (t.state !== 'completed') {
+                    t.state = 'completed';
+                    t.progress = 100;
+                    _fireProgress(
+                        msgId,
+                        100,
+                        t.payloadSize || 0,
+                        t.payloadSize || 0
+                    );
+                    _fireComplete(
+                        msgId,
+                        true,
+                        null
+                    );
+                }
+                return;
             }
             if (d.data && _callbacks.onReceived) {
-                var mime = meta.format || meta.mimeType || 'application/octet-stream';
-                var blobUrl = _base64ToBlobUrl(d.data, mime);
+                var mime = meta.format ||
+                    meta.mimeType ||
+                    'application/octet-stream';
+                var blobUrl = _base64ToBlobUrl(
+                    d.data,
+                    mime
+                );
                 _callbacks.onReceived({
                     msgId: msgId,
                     fileId: msgId,
@@ -282,29 +263,162 @@ var NEXOFileTransfer = (function() {
                     mimeType: mime,
                     fileName: meta.name || 'archivo',
                     size: meta.size || 0,
-                    originalSize: meta.originalSize || meta.size || 0,
+                    originalSize: meta.originalSize ||
+                        meta.size ||
+                        0,
                     layer: meta.layer || 'original',
-                    senderId: meta.senderNexoId || meta.fr || '',
-                    timestamp: meta.ts || Date.now(),
+                    senderId: meta.senderNexoId ||
+                        meta.fr ||
+                        '',
+                    timestamp: meta.ts ||
+                        Date.now(),
                     meta: meta
                 });
             }
         });
     }
+    function sendFile(deviceId, file, options) {
+        options = options || {};
+        return new Promise(function(resolve, reject) {
+            if (!file) {
+                reject(new Error('Archivo requerido'));
+                return;
+            }
+            if (file.size <= 0) {
+                reject(new Error('Archivo vacio'));
+                return;
+            }
+            if (file.size > CONFIG.MAX_FILE_SIZE) {
+                reject(new Error('Archivo excede 5MB'));
+                return;
+            }
+            var ack = _getAckSystem();
+            if (!ack || typeof ack.sendFile !== 'function') {
+                reject(new Error('Sistema BLE de archivos no disponible'));
+                return;
+            }
+            var msgId = options.msgId ||
+                options.fileId ||
+                _generateMsgId();
+            var fileName = options.fileName ||
+                file.name ||
+                'archivo';
+            var mimeType = options.mimeType ||
+                file.type ||
+                'application/octet-stream';
+            var originalSize = file.size;
+            var transfer = {
+                msgId: msgId,
+                fileId: msgId,
+                deviceId: deviceId,
+                fileName: fileName,
+                mimeType: mimeType,
+                payloadSize: 0,
+                originalSize: originalSize,
+                progress: 0,
+                state: 'preparing',
+                startedAt: Date.now(),
+                onProgress: options.onProgress || null,
+                onComplete: options.onComplete || null
+            };
+            _activeTransfers[msgId] = transfer;
+            _fireProgress(
+                msgId,
+                0,
+                0,
+                originalSize
+            );
+            _blobToBase64(file)
+                .then(function(base64Data) {
+                    if (!base64Data) {
+                        throw new Error('Archivo Base64 vacio');
+                    }
+                    transfer.payloadSize = base64Data.length;
+                    transfer.state = 'sending';
+                    var meta = {
+                        name: fileName,
+                        mimeType: mimeType,
+                        format: mimeType,
+                        size: base64Data.length,
+                        originalSize: originalSize,
+                        layer: options.layer || 'original',
+                        senderNexoId:
+                            (window.bleInterface &&
+                            window.bleInterface.localNexoId) ||
+                            '',
+                        ts: Date.now()
+                    };
+                    if (options.meta) {
+                        for (var key in options.meta) {
+                            if (Object.prototype.hasOwnProperty.call(options.meta, key)) {
+                                meta[key] = options.meta[key];
+                            }
+                        }
+                    }
+                    return ack.sendFile(
+                        deviceId,
+                        msgId,
+                        base64Data,
+                        meta
+                    );
+                })
+                .then(function() {
+                    transfer.state = 'completed';
+                    transfer.progress = 100;
+                    _fireProgress(
+                        msgId,
+                        100,
+                        transfer.payloadSize,
+                        transfer.payloadSize
+                    );
+                    _fireComplete(
+                        msgId,
+                        true,
+                        null
+                    );
+                    resolve({
+                        msgId: msgId,
+                        fileId: msgId,
+                        success: true
+                    });
+                })
+                .catch(function(err) {
+                    transfer.state = 'failed';
+                    transfer.error = err;
+                    _fireComplete(
+                        msgId,
+                        false,
+                        err
+                    );
+                    reject(err);
+                });
+        });
+    }
     function _startVoiceRecording() {
         return new Promise(function(resolve, reject) {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            if (!navigator.mediaDevices ||
+                !navigator.mediaDevices.getUserMedia) {
                 reject(new Error('MediaDevices no disponible'));
                 return;
             }
-            navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+            navigator.mediaDevices.getUserMedia({
+                audio: true
+            }).then(function(stream) {
                 var mimeType = 'audio/webm;codecs=opus';
                 var opts = {};
-                if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType)) opts.mimeType = mimeType;
-                _mediaRecorder = new MediaRecorder(stream, opts);
+                if (typeof MediaRecorder !== 'undefined' &&
+                    MediaRecorder.isTypeSupported(mimeType)) {
+                    opts.mimeType = mimeType;
+                }
+                _mediaRecorder = new MediaRecorder(
+                    stream,
+                    opts
+                );
                 _audioChunks = [];
                 _mediaRecorder.ondataavailable = function(e) {
-                    if (e.data && e.data.size > 0) _audioChunks.push(e.data);
+                    if (e.data && e.data.size > 0) {
+                        _audioChunks.push(e.data);
+                    }
                 };
                 _mediaRecorder.start(100);
                 resolve();
@@ -319,9 +433,16 @@ var NEXOFileTransfer = (function() {
             }
             var recorder = _mediaRecorder;
             recorder.onstop = function() {
-                var blob = new Blob(_audioChunks, { type: recorder.mimeType || 'audio/webm' });
+                var blob = new Blob(
+                    _audioChunks,
+                    {
+                        type: recorder.mimeType ||
+                            'audio/webm'
+                    }
+                );
                 _mediaRecorder = null;
                 _audioChunks = [];
+
                 resolve(blob);
             };
             recorder.stop();
@@ -333,19 +454,36 @@ var NEXOFileTransfer = (function() {
     function sendVoice(deviceId, options) {
         options = options || {};
         return _stopVoiceRecording().then(function(blob) {
-            return sendFile(deviceId, blob, {
-                fileName: 'voice-' + Date.now() + '.webm',
-                mimeType: blob.type || 'audio/webm',
-                onProgress: options.onProgress,
-                onComplete: options.onComplete,
-                skipSizeWarning: true
-            });
+            return sendFile(
+                deviceId,
+                blob,
+                {
+                    fileName:
+                        'voice-' +
+                        Date.now() +
+                        '.webm',
+                    mimeType:
+                        blob.type ||
+                        'audio/webm',
+                    onProgress:
+                        options.onProgress,
+                    onComplete:
+                        options.onComplete,
+                    skipSizeWarning: true
+                }
+            );
         });
     }
     function cancelTransfer(msgId) {
         var ack = _getAckSystem();
-        if (ack && typeof ack.cancelFileSend === 'function') ack.cancelFileSend(msgId);
-        if (_activeTransfers[msgId]) _activeTransfers[msgId].state = 'cancelled';
+
+        if (ack &&
+            typeof ack.cancelFileSend === 'function') {
+            ack.cancelFileSend(msgId);
+        }
+        if (_activeTransfers[msgId]) {
+            _activeTransfers[msgId].state = 'cancelled';
+        }
         return Promise.resolve(true);
     }
     function onProgress(cb) {
@@ -368,7 +506,11 @@ var NEXOFileTransfer = (function() {
     }
     function getAllTransfers() {
         var out = {};
-        for (var k in _activeTransfers) out[k] = _activeTransfers[k];
+        for (var k in _activeTransfers) {
+            if (Object.prototype.hasOwnProperty.call(_activeTransfers, k)) {
+                out[k] = _activeTransfers[k];
+            }
+        }
         return out;
     }
     _setupGlobalListeners();
@@ -389,7 +531,9 @@ var NEXOFileTransfer = (function() {
     };
 })();
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { NEXOFileTransfer: NEXOFileTransfer };
+    module.exports = {
+        NEXOFileTransfer: NEXOFileTransfer
+    };
 }
 if (typeof window !== 'undefined') {
     window.NEXOFileTransfer = NEXOFileTransfer;
