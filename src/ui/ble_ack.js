@@ -12,7 +12,6 @@
  * FIX: Ventana de chat aumentada a 4 chunks (menos rondas de ACK)
  * Base: v3.2.5-NEXO
  */
-
 const PROTOCOL_VERSION = 2;
 const CHAT_CHUNK_SIZE = 90;
 const CHAT_WINDOW_SIZE = 4;
@@ -29,7 +28,6 @@ const GLOBAL_TIMEOUT_MS = 180000;
 const SHORT_MSG_TIMEOUT_MS = 1000;
 const SHORT_MSG_MAX_RETRIES = 5;
 const SHORT_MSG_BACKOFF_DELAYS = [1000, 1000, 1500, 2000, 2500, 3000];
-
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
@@ -71,7 +69,6 @@ function _decompressRanges(str) {
   }
   return result;
 }
-
 export class BleAckSystem {
   constructor(bleInterface) {
     this.ble = bleInterface;
@@ -144,16 +141,13 @@ export class BleAckSystem {
     return new Promise(function(resolve, reject) {
       var senderId = (self.ble && self.ble.localNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
       var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
-      var seq = (self.ble && typeof self.ble.getNextSeq === 'function')
-      ? self.ble.getNextSeq()
-      : 0;
-
-     var finalMeta = Object.assign({}, meta || {}, {
-     f: fromName,
-     fr: senderId,
-     ts: Date.now(),
-     seq: seq,
-     file: true
+      var seq = (self.ble && typeof self.ble.getNextSeq === 'function') ? self.ble.getNextSeq() : 0;
+      var finalMeta = Object.assign({}, meta || {}, {
+        f: fromName,
+        fr: senderId,
+        ts: Date.now(),
+        seq: seq,
+        file: true
       });
       var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
       self.outgoingStreams.set(fileId, stream);
@@ -202,7 +196,6 @@ export class BleAckSystem {
     var seq = (typeof msg.seq === 'number') ? msg.seq : 0;
     if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
     if (total <= 0 || idx < 0 || idx >= total) return;
-
     var completed = self.completedMessages.get(msgId);
     if (completed) {
       self._sendFinalAck(deviceId, msgId, total);
@@ -295,9 +288,9 @@ export class BleAckSystem {
       self._dispatchFileComplete(msgId, assembled, buf.meta);
       self._dispatchFileProgress(msgId, buf.total, buf.total, 'received', 100);
       if (window.vaultCompleteTransfer) {
-      window.vaultCompleteTransfer(senderId, msgId).catch(function(){});
+        window.vaultCompleteTransfer(senderId, msgId).catch(function(){});
+      }
     }
-  }
   }
   _sendNack(deviceId, msgId, indices) {
     var ranges = _compressRanges(indices);
@@ -317,7 +310,6 @@ export class BleAckSystem {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
   }
-
   _sendFinalAck(deviceId, msgId, total) {
     var ranges = (total <= 1) ? '0' : '0-' + (total - 1);
     var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, r: ranges, n: total, f: 1 });
@@ -325,7 +317,6 @@ export class BleAckSystem {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
   }
-
   _handleNack(msg) {
     var msgId = msg.m;
     var indices = [];
@@ -337,7 +328,6 @@ export class BleAckSystem {
     var stream = this.outgoingStreams.get(msgId);
     if (stream) stream.handleNack(indices);
   }
-
   _handleBlockAck(msg) {
     var msgId = msg.m || msg.msgId;
     var total = msg.n || 0;
@@ -349,7 +339,6 @@ export class BleAckSystem {
       stream.handleFinalAck();
       return;
     }
-
     var ackedIndices = [];
     if (msg.r) {
       ackedIndices = _decompressRanges(msg.r);
@@ -363,14 +352,11 @@ export class BleAckSystem {
         if (bitmap & (1 << i)) ackedIndices.push(i);
       }
     }
-
     console.log('[BleAckSystem] BlockAck msgId=' + msgId + ' acked=' + ackedIndices.join(',') + ' windowStart=' + stream.windowStart + ' total=' + stream.total);
-
     for (var i = 0; i < ackedIndices.length; i++) {
       var idx = ackedIndices[i];
       if (idx >= 0 && idx < stream.total) stream.ackedMask[idx] = true;
     }
-
     var oldWindowStart = stream.windowStart;
     while (stream.windowStart < stream.total && stream.ackedMask[stream.windowStart]) {
       stream.windowStart++;
@@ -378,8 +364,6 @@ export class BleAckSystem {
     if (stream.windowStart !== oldWindowStart) {
       console.log('[BleAckSystem] windowStart avanzo: ' + oldWindowStart + ' -> ' + stream.windowStart);
     }
-
-    // FIX v3.2.6: retransmitir inmediatamente chunks faltantes de la ventana actual
     if (stream.windowStart < stream.total) {
       var windowEnd = Math.min(stream.windowStart + stream.windowSize, stream.total);
       var missingInWindow = [];
@@ -400,14 +384,12 @@ export class BleAckSystem {
         stream._startWindowTimer();
       }
     }
-
     if (stream.windowStart >= stream.total) {
       console.log('[BleAckSystem] Mensaje completo, finalizando msgId=' + msgId);
       if (stream.timer) clearTimeout(stream.timer);
       stream._finish();
     }
   }
-
   _handleLegacyChunkAck(msg) {
     var msgId = msg.m;
     var isFinal = msg.f === 1;
@@ -433,7 +415,6 @@ export class BleAckSystem {
       stream._windowReject = null;
     }
   }
-
   _handleSessionSync(deviceId, msg) {
     var self = this;
     var peerLastSeq = msg.l || 0;
@@ -453,7 +434,6 @@ export class BleAckSystem {
       }).catch(function(){});
     }
   }
-
   _handleSessionSyncResponse(deviceId, msg) {
     var self = this;
     var peerLastSeq = msg.l || 0;
@@ -480,7 +460,6 @@ export class BleAckSystem {
       sendNext();
     }).catch(function(){});
   }
-
   sendSessionSync(deviceId, peerNexoId) {
     var self = this;
     var myLastSeq = 0;
@@ -496,7 +475,6 @@ export class BleAckSystem {
       }).catch(function(){});
     }
   }
-
   sendWithRetry(deviceId, content, messageId, seq) {
     var self = this;
     if (content && content.length > 150) {
@@ -513,7 +491,6 @@ export class BleAckSystem {
       self._doSend(entry);
     });
   }
-
   _doSend(entry) {
     var self = this;
     self._dispatchStatus(entry.msgId, 'sending');
@@ -539,7 +516,6 @@ export class BleAckSystem {
         }
       });
   }
-
   _onAckTimeout(msgId) {
     var entry = this.pendingAcks.get(msgId);
     if (!entry) return;
@@ -553,7 +529,6 @@ export class BleAckSystem {
       this._dispatchStatus(msgId, 'failed');
     }
   }
-
   processIncomingAck(content) {
     try {
       var ack = JSON.parse(content);
@@ -579,17 +554,14 @@ export class BleAckSystem {
       return true;
     } catch (e) { return false; }
   }
-
   sendAck(deviceId, msgId) {
     var ackPayload = JSON.stringify({ v: 1, type: 'ack', msgId: msgId, from: (this.ble && this.ble.localNexoId) || 'unknown', ts: Date.now() });
     if (this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(deviceId, ackPayload, null).catch(function(){});
   }
-
   sendReadReceipt(deviceId, msgId) {
     var payload = JSON.stringify({ v: 1, type: 'read_receipt', msgId: msgId, from: (this.ble && this.ble.localNexoId) || 'unknown', ts: Date.now() });
     if (this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
   }
-
   _processBlockAck(msg) {
     var transferId = msg.transferId;
     var tx = this.pendingOutgoingTransfers.get(transferId);
@@ -598,14 +570,12 @@ export class BleAckSystem {
     for (var i = 0; i < Math.min(mask.length, tx.total); i++) { tx.ackMask[i] = mask.charAt(i) === '1'; }
     if (tx.ackMask.every(function(v){return v;})) { this._completeLegacyTransfer(transferId); }
   }
-
   _completeLegacyTransfer(transferId) {
     var tx = this.pendingOutgoingTransfers.get(transferId);
     if (!tx) return;
     this.pendingOutgoingTransfers.delete(transferId);
     if (!tx.legacy) { tx.resolve(); this._dispatchStatus(transferId, 'delivered'); }
   }
-
   cancelFileSend(fileId) {
     var tx = this.outgoingStreams.get(fileId) || this.pendingOutgoingTransfers.get(fileId);
     if (tx && tx.contactNexoId && window.vaultSetOutgoingStatus) window.vaultSetOutgoingStatus(tx.contactNexoId, fileId, 'cancelled').catch(function(){});
@@ -614,7 +584,6 @@ export class BleAckSystem {
     this.pendingOutgoingFiles.delete(fileId);
     this._dispatchFileProgress(fileId, 0, 0, 'cancelled');
   }
-
   resumeOutgoingTransfers() {
     var self = this;
     if (!window.vaultGetPendingOutgoingTransfers) return;
@@ -639,7 +608,6 @@ export class BleAckSystem {
       }).catch(function(){});
     });
   }
-
   _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId) {
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
@@ -653,19 +621,15 @@ export class BleAckSystem {
       }));
     } catch (e) {}
   }
-
   _dispatchStatus(msgId, status) {
     try { window.dispatchEvent(new CustomEvent('nexo:ble:ackStatus', { detail: { msgId: msgId, status: status } })); } catch (e) {}
   }
-
   _dispatchFileProgress(fileId, sent, total, status, percent) {
     try { window.dispatchEvent(new CustomEvent('nexo:ble:fileProgress', { detail: { fileId: fileId, sent: sent, total: total, status: status, percent: percent || 0 } })); } catch (e) {}
   }
-
   _dispatchFileComplete(fileId, data, meta) {
     try { window.dispatchEvent(new CustomEvent('nexo:ble:fileComplete', { detail: { fileId: fileId, data: data, meta: meta } })); } catch (e) {}
   }
-
   _startCleanupInterval() {
     var self = this;
     setInterval(function() {
@@ -688,7 +652,6 @@ export class BleAckSystem {
     }, 30000);
   }
 }
-
 function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.ackSystem = ackSystem;
   this.ble = ackSystem.ble;
@@ -696,14 +659,12 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.msgId = msgId;
   this.content = content;
   this.meta = meta;
-  
   var isFile = type === 'file';
   this.chunkSize = isFile ? FILE_CHUNK_SIZE : CHAT_CHUNK_SIZE;
   this.windowSize = isFile ? FILE_WINDOW_SIZE : CHAT_WINDOW_SIZE;
   this.windowTimeoutMs = isFile ? FILE_WINDOW_TIMEOUT_MS : CHAT_WINDOW_TIMEOUT_MS;
   this.pacingDelayMs = isFile ? FILE_PACING_DELAY_MS : CHAT_PACING_DELAY_MS;
   this.baseTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : 45000;
-  
   this.type = type || 'chat';
   this.chunks = [];
   this.total = 0;
@@ -723,12 +684,10 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this._windowReject = null;
   this._windowStartAtSend = 0;
   this._windowEndAtSend = 0;
-  
   if (isFile) {
     console.log('[ChatStream] MODO ARCHIVO. chunk=' + this.chunkSize + ' window=' + this.windowSize + ' pacing=' + this.pacingDelayMs + 'ms');
   }
 }
-
 ChatStream.prototype.start = function() {
   var self = this;
   return new Promise(function(resolve, reject) {
@@ -736,13 +695,10 @@ ChatStream.prototype.start = function() {
     self.reject = reject;
     self._splitChunks();
     if (self.total === 0) { reject(new Error('Vacio')); return; }
-    
     var estimatedWindows = Math.ceil(self.total / self.windowSize);
     var timeoutPerWindow = self.windowTimeoutMs * (MAX_WINDOW_RETRIES + 2);
     self.globalTimeoutMs = Math.max(self.baseTimeoutMs, estimatedWindows * timeoutPerWindow);
-    
     console.log('[ChatStream] START msgId=' + self.msgId + ' totalChunks=' + self.total + ' totalWindows=' + estimatedWindows + ' timeout=' + self.globalTimeoutMs + 'ms');
-    
     if (window.vaultCreateOutgoingTransfer) {
       var cid = self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
@@ -758,7 +714,6 @@ ChatStream.prototype.start = function() {
     self._runWindowLoop();
   });
 };
-
 ChatStream.prototype._runWindowLoop = function() {
   var self = this;
   function next() {
@@ -791,37 +746,30 @@ ChatStream.prototype._runWindowLoop = function() {
   }
   next();
 };
-
 ChatStream.prototype._splitChunks = function() {
   var str = this.content;
   var size = this.chunkSize;
   var arr = [];
   var i = 0;
-  
   var firstChunkMax = Math.min(size, 60);
-  
   while (i < str.length) {
     var remaining = str.length - i;
     var chunkSize = (arr.length === 0) ? Math.min(firstChunkMax, remaining) : Math.min(size, remaining);
     var end = i + chunkSize;
-    
     if (end < str.length &&
         str.charCodeAt(end - 1) >= 0xD800 && str.charCodeAt(end - 1) <= 0xDBFF &&
         str.charCodeAt(end) >= 0xDC00 && str.charCodeAt(end) <= 0xDFFF) {
       end--;
     }
-    
     arr.push(str.substring(i, end));
     i = end;
   }
-  
   this.chunks = arr;
   this.total = arr.length;
   this.sentMask = new Array(this.total).fill(false);
   this.ackedMask = new Array(this.total).fill(false);
   console.log('[ChatStream] _splitChunks: ' + this.total + ' chunks. chunk0=' + (this.chunks[0] ? this.chunks[0].length : 0) + ' chars, chunkN=' + (this.chunks[1] ? this.chunks[1].length : 0) + ' chars');
 };
-
 ChatStream.prototype._sendWindow = function() {
   var self = this;
   return new Promise(function(resolve, reject) {
@@ -830,9 +778,7 @@ ChatStream.prototype._sendWindow = function() {
     self._windowStartAtSend = self.windowStart;
     self._windowEndAtSend = Math.min(self.windowStart + self.windowSize, self.total);
     var end = self._windowEndAtSend;
-    
     console.log('[ChatStream] _sendWindow INICIA. ventana=[' + self._windowStartAtSend + ',' + end + ') msgId=' + self.msgId);
-    
     function sendNext(idx) {
       if (idx >= end || self.aborted) {
         var allAcked = true;
@@ -870,7 +816,6 @@ ChatStream.prototype._sendWindow = function() {
     sendNext(self.windowStart);
   });
 };
-
 ChatStream.prototype._buildChunk = function(idx) {
   var isFirst = idx === 0;
   var obj = {
@@ -893,7 +838,6 @@ ChatStream.prototype._buildChunk = function(idx) {
   }
   return JSON.stringify(obj);
 };
-
 ChatStream.prototype._startWindowTimer = function() {
   var self = this;
   if (self.timer) clearTimeout(self.timer);
@@ -902,7 +846,6 @@ ChatStream.prototype._startWindowTimer = function() {
     self._onWindowTimeout();
   }, self.windowTimeoutMs);
 };
-
 ChatStream.prototype._onWindowTimeout = function() {
   var self = this;
   if (self.aborted) return;
@@ -936,7 +879,6 @@ ChatStream.prototype._onWindowTimeout = function() {
     self._retransmitWindow();
   }
 };
-
 ChatStream.prototype._retransmitWindow = function() {
   var self = this;
   var end = Math.min(self.windowStart + self.windowSize, self.total);
@@ -1003,20 +945,20 @@ ChatStream.prototype.handleFinalAck = function() {
   this._finish();
 };
 ChatStream.prototype._finish = function() {
-    if (this.aborted) return;
-    console.log('[ChatStream] _finish msgId=' + this.msgId);
-    this.aborted = true;
-    if (this.timer) clearTimeout(this.timer);
-    if (this.globalTimeout) clearTimeout(this.globalTimeout);
-    this.ackSystem._dispatchStatus(this.msgId, 'delivered');
-    if (this.type === 'file') {
-        this.ackSystem._dispatchFileComplete(this.msgId, null, this.meta);
-    }
-    if (this.resolve) {
-        this.resolve();
-        this.resolve = null;
-        this.reject = null;
-    }
+  if (this.aborted) return;
+  console.log('[ChatStream] _finish msgId=' + this.msgId);
+  this.aborted = true;
+  if (this.timer) clearTimeout(this.timer);
+  if (this.globalTimeout) clearTimeout(this.globalTimeout);
+  this.ackSystem._dispatchStatus(this.msgId, 'delivered');
+  if (this.type === 'file') {
+    this.ackSystem._dispatchFileComplete(this.msgId, null, this.meta);
+  }
+  if (this.resolve) {
+    this.resolve();
+    this.resolve = null;
+    this.reject = null;
+  }
 };
 ChatStream.prototype.abort = function() {
   console.log('[ChatStream] abort msgId=' + this.msgId);
@@ -1032,4 +974,4 @@ ChatStream.prototype.abort = function() {
 };
 export function createAckSystem(bleInterface) {
   return new BleAckSystem(bleInterface);
-}
+                                                                       }
