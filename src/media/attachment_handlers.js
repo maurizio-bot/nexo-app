@@ -1,5 +1,5 @@
 /**
- * attachment_handlers.js v2.1 — Cableado NEXOFileTransfer + NEXOPhotos + RECEPCION
+ * attachment_handlers.js v2.2 — Cableado NEXOFileTransfer + NEXOPhotos + RECEPCION DEFINITIVA
  */
 (function() {
   'use strict';
@@ -91,25 +91,6 @@
   if (typeof window.NEXOFileTransfer !== 'undefined') {
     window.NEXOFileTransfer.onReceived(handleIncoming);
   }
-  window.addEventListener('nexo:ble:fileComplete', function(e) {
-    var d = e.detail || {};
-    if (!d.data || !window.NEXOFileTransfer || typeof window.NEXOFileTransfer.base64ToBlobUrl !== 'function') return;
-    var meta = d.meta || {};
-    var mime = meta.format || meta.mimeType || 'application/octet-stream';
-    handleIncoming({
-      msgId: d.fileId,
-      blobUrl: window.NEXOFileTransfer.base64ToBlobUrl(d.data, mime),
-      base64: d.data,
-      mimeType: mime,
-      fileName: meta.name || 'archivo',
-      size: meta.size || 0,
-      originalSize: meta.originalSize || meta.size || 0,
-      layer: meta.layer || 'original',
-      senderId: meta.senderNexoId || meta.fr || '',
-      timestamp: meta.ts || Date.now(),
-      meta: meta
-    });
-  });
   var btnCamera = document.querySelector('[data-type="camera"]');
   if (btnCamera) {
     btnCamera.addEventListener('click', function(e) {
@@ -199,5 +180,5 @@
       input.click();
     });
   }
-  console.log('[attachment_handlers v2.1] Cableado + recepcion activos');
+  console.log('[attachment_handlers v2.2] Cableado + recepcion definitiva activos');
 })();
