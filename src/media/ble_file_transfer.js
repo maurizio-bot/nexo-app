@@ -363,19 +363,6 @@ var NEXOFileTransfer = (function() {
                     );
                 })
                 .then(function() {
-                    transfer.state = 'completed';
-                    transfer.progress = 100;
-                    _fireProgress(
-                        msgId,
-                        100,
-                        transfer.payloadSize,
-                        transfer.payloadSize
-                    );
-                    _fireComplete(
-                        msgId,
-                        true,
-                        null
-                    );
                     resolve({
                         msgId: msgId,
                         fileId: msgId,
