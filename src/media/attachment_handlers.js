@@ -1,5 +1,10 @@
 /**
- * attachment_handlers.js v2.2 — Cableado NEXOFileTransfer + NEXOPhotos + RECEPCION DEFINITIVA
+ * attachment_handlers.js v2.3 — NEXOFileTransfer + NEXOPhotos + RECEPCION
+ *
+ * IMPORTANTE:
+ * - No crea burbujas de envío propias.
+ * - El estado de los mensajes de envío lo controla main.js.
+ * - Mantiene recepción de archivos/fotos/audio y Vault.
  */
 (function() {
   'use strict';
@@ -9,7 +14,9 @@
     if (window.NEXO && window.NEXO.app && window.NEXO.app.activeContact) {
       return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.deviceUUID;
     }
-    if (window.bleInterface) return window.bleInterface._activeChatDeviceId;
+    if (window.bleInterface) {
+      return window.bleInterface._activeChatDeviceId;
+    }
     return null;
   }
   function resolveDeviceId(nexoId) {
@@ -19,31 +26,15 @@
     if (window.bleInterface._resolveDeviceIdForNexoId) return window.bleInterface._resolveDeviceIdForNexoId(nexoId);
     return nexoId;
   }
-  function getMessagesContainer() { return document.getElementById('messages-container'); }
+  function getMessagesContainer() {
+    return document.getElementById('messages-container');
+  }
   function scrollToBottom() {
     var c = getMessagesContainer();
     if (c) c.scrollTop = c.scrollHeight;
   }
   function escapeHtml(value) {
     return String(value || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-  }
-  function renderAttachmentBubble(htmlContent, typeLabel, bubbleId) {
-    var container = getMessagesContainer();
-    if (!container) return null;
-    var bubble = document.createElement('div');
-    bubble.className = 'message own message-attachment';
-    bubble.id = bubbleId;
-    bubble.style.cssText = 'align-self:flex-end;max-width:75%;margin:6px 16px 6px auto;padding:8px;border-radius:18px;background:linear-gradient(135deg,#0082FC,#6B4EFF);color:#E5E5E5;font-size:14px;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:6px;position:relative;';
-    bubble.innerHTML = htmlContent + '<div class="attach-status" style="font-size:10px;opacity:0.7;text-align:right;margin-top:4px;">' + typeLabel + ' · Enviando...</div>';
-    container.appendChild(bubble);
-    scrollToBottom();
-    return bubble;
-  }
-  function updateBubbleStatus(bubbleId, text) {
-    var bubble = document.getElementById(bubbleId);
-    if (!bubble) return;
-    var status = bubble.querySelector('.attach-status');
-    if (status) status.textContent = text;
   }
   function renderIncomingAttachment(rec) {
     var container = getMessagesContainer();
@@ -94,91 +85,124 @@
   var btnCamera = document.querySelector('[data-type="camera"]');
   if (btnCamera) {
     btnCamera.addEventListener('click', function(e) {
-      e.preventDefault(); e.stopPropagation();
-      if (attachMenu) { attachMenu.classList.remove('visible'); attachMenu.classList.add('hidden'); }
+      e.preventDefault();
+      e.stopPropagation();
+      if (attachMenu) {
+        attachMenu.classList.remove('visible');
+        attachMenu.classList.add('hidden');
+      }
       var contactId = getActiveContactId();
       var deviceId = contactId ? resolveDeviceId(contactId) : null;
-      if (!deviceId) { alert('No hay contacto activo'); return; }
-      if (typeof window.NEXOPhotos === 'undefined') { alert('NEXOPhotos no cargado'); return; }
-      var tempId = 'attach-tmp-' + Date.now();
-      renderAttachmentBubble('<div style="padding:8px;">📷 Foto</div>', '📷 Foto', tempId);
+      if (!deviceId) {
+        alert('No hay contacto activo');
+        return;
+      }
+      if (typeof window.NEXOPhotos === 'undefined') {
+        alert('NEXOPhotos no cargado');
+        return;
+      }
       window.NEXOPhotos.sendPhoto(deviceId, 'camera', {
-        onProgress: function(msgId, progress) { updateBubbleStatus(tempId, '📷 Foto · ' + Math.round(progress) + '%'); },
+        onProgress: function(msgId, progress) {
+          console.log('[Attach] Camara progreso:', msgId, Math.round(progress) + '%');
+        },
         onComplete: function(msgId, success, error) {
-          var t = document.getElementById(tempId);
-          if (t && msgId) t.id = 'attach-' + msgId;
-          if (msgId) updateBubbleStatus('attach-' + msgId, success ? '📷 Foto · Enviada' : '📷 Foto · Error');
-          else updateBubbleStatus(tempId, success ? '📷 Foto · Enviada' : '📷 Foto · Error');
+          if (success) {
+            console.log('[Attach] Camara enviada:', msgId);
+          } else {
+            console.warn('[Attach] Camara error:', error || 'Error desconocido');
+          }
         }
       }).catch(function(err) {
         console.error('[Attach] Camara:', err);
-        updateBubbleStatus(tempId, '📷 Foto · Error');
       });
     });
   }
   var btnGallery = document.querySelector('[data-type="gallery"]');
   if (btnGallery) {
     btnGallery.addEventListener('click', function(e) {
-      e.preventDefault(); e.stopPropagation();
-      if (attachMenu) { attachMenu.classList.remove('visible'); attachMenu.classList.add('hidden'); }
+      e.preventDefault();
+      e.stopPropagation();
+      if (attachMenu) {
+        attachMenu.classList.remove('visible');
+        attachMenu.classList.add('hidden');
+      }
       var contactId = getActiveContactId();
       var deviceId = contactId ? resolveDeviceId(contactId) : null;
-      if (!deviceId) { alert('No hay contacto activo'); return; }
-      if (typeof window.NEXOPhotos === 'undefined') { alert('NEXOPhotos no cargado'); return; }
-      var tempId = 'attach-tmp-' + Date.now();
-      renderAttachmentBubble('<div style="padding:8px;">🖼️ Foto</div>', '🖼️ Galeria', tempId);
+      if (!deviceId) {
+        alert('No hay contacto activo');
+        return;
+      }
+      if (typeof window.NEXOPhotos === 'undefined') {
+        alert('NEXOPhotos no cargado');
+        return;
+      }
       window.NEXOPhotos.sendPhoto(deviceId, 'gallery', {
-        onProgress: function(msgId, progress) { updateBubbleStatus(tempId, '🖼️ Galeria · ' + Math.round(progress) + '%'); },
+        onProgress: function(msgId, progress) {
+          console.log('[Attach] Galeria progreso:', msgId, Math.round(progress) + '%');
+        },
         onComplete: function(msgId, success, error) {
-          var t = document.getElementById(tempId);
-          if (t && msgId) t.id = 'attach-' + msgId;
-          if (msgId) updateBubbleStatus('attach-' + msgId, success ? '🖼️ Galeria · Enviada' : '🖼️ Galeria · Error');
-          else updateBubbleStatus(tempId, success ? '🖼️ Galeria · Enviada' : '🖼️ Galeria · Error');
+          if (success) {
+            console.log('[Attach] Galeria enviada:', msgId);
+          } else {
+            console.warn('[Attach] Galeria error:', error || 'Error desconocido');
+          }
         }
       }).catch(function(err) {
         console.error('[Attach] Galeria:', err);
-        updateBubbleStatus(tempId, '🖼️ Galeria · Error');
       });
     });
   }
   var btnFile = document.querySelector('[data-type="file"]');
   if (btnFile) {
     btnFile.addEventListener('click', function(e) {
-      e.preventDefault(); e.stopPropagation();
-      if (attachMenu) { attachMenu.classList.remove('visible'); attachMenu.classList.add('hidden'); }
+      e.preventDefault();
+      e.stopPropagation();
+      if (attachMenu) {
+        attachMenu.classList.remove('visible');
+        attachMenu.classList.add('hidden');
+      }
       var contactId = getActiveContactId();
       var deviceId = contactId ? resolveDeviceId(contactId) : null;
-      if (!deviceId) { alert('No hay contacto activo'); return; }
-      if (typeof window.NEXOFileTransfer === 'undefined') { alert('NEXOFileTransfer no cargado'); return; }
+      if (!deviceId) {
+        alert('No hay contacto activo');
+        return;
+      }
+      if (typeof window.NEXOFileTransfer === 'undefined') {
+        alert('NEXOFileTransfer no cargado');
+        return;
+      }
       var input = document.createElement('input');
       input.type = 'file';
       input.style.display = 'none';
       input.onchange = function(ev) {
         var file = ev.target.files[0];
         if (!file) return;
-        if (file.size > 5242880) { alert('Maximo 5MB'); if (input.parentNode) input.remove(); return; }
-        var sizeStr = file.size > 1048576 ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size / 1024).toFixed(0) + ' KB';
-        var safeName = escapeHtml(file.name);
-        var html = '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:10px;"><div style="font-size:24px;">📄</div><div style="overflow:hidden;"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">' + safeName + '</div><div style="font-size:11px;opacity:0.7;">' + sizeStr + '</div></div></div>';
-        var tempId = 'attach-tmp-' + Date.now();
-        renderAttachmentBubble(html, '📎 Archivo', tempId);
+        if (file.size > 5242880) {
+          alert('Maximo 5MB');
+          if (input.parentNode) input.remove();
+          return;
+        }
         window.NEXOFileTransfer.sendFile(deviceId, file, {
-          onProgress: function(msgId, progress) { updateBubbleStatus(tempId, '📎 ' + file.name + ' · ' + Math.round(progress) + '%'); },
+          onProgress: function(msgId, progress) {
+            console.log('[Attach] Archivo progreso:', msgId, Math.round(progress) + '%');
+          },
           onComplete: function(msgId, success, error) {
-            var t = document.getElementById(tempId);
-            if (t && msgId) t.id = 'attach-' + msgId;
-            if (msgId) updateBubbleStatus('attach-' + msgId, success ? '📎 ' + file.name + ' · Enviado' : '📎 ' + file.name + ' · Error');
-            else updateBubbleStatus(tempId, success ? '📎 ' + file.name + ' · Enviado' : '📎 ' + file.name + ' · Error');
+            if (success) {
+              console.log('[Attach] Archivo enviado:', msgId, file.name);
+            } else {
+              console.warn('[Attach] Archivo error:', error || 'Error desconocido');
+            }
           }
         }).catch(function(err) {
           console.error('[Attach] Archivo:', err);
-          updateBubbleStatus(tempId, '📎 ' + file.name + ' · Error');
         });
-        setTimeout(function() { if (input.parentNode) input.remove(); }, 5000);
+        setTimeout(function() {
+          if (input.parentNode) input.remove();
+        }, 5000);
       };
       document.body.appendChild(input);
       input.click();
     });
   }
-  console.log('[attachment_handlers v2.2] Cableado + recepcion definitiva activos');
+  console.log('[attachment_handlers v2.3] Recepcion activa; sin burbujas de envio duplicadas');
 })();
