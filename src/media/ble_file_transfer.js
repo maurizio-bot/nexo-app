@@ -1,8 +1,9 @@
 /**
- * NEXO File Transfer JS v1.2
+ * NEXO File Transfer JS v1.3
  * FIX: callbacks de transferencia correctamente enlazados
  * FIX: progreso y finalizacion real por transferencia
  * FIX: envio conectado correctamente con BleAckSystem.sendFile()
+ * FIX: recepcion unificada exclusivamente en main.js mediante fileComplete
  * ES5 compatible
  */
 var NEXOFileTransfer = (function() {
@@ -15,7 +16,6 @@ var NEXOFileTransfer = (function() {
     var _callbacks = {
         onProgress: null,
         onComplete: null,
-        onReceived: null,
         onThumbnail: null,
         onPreview: null
     };
@@ -56,7 +56,6 @@ var NEXOFileTransfer = (function() {
         try {
             var byteChars = atob(base64);
             var byteNums = new Array(byteChars.length);
-
             for (var i = 0; i < byteChars.length; i++) {
                 byteNums[i] = byteChars.charCodeAt(i);
             }
@@ -113,7 +112,6 @@ var NEXOFileTransfer = (function() {
                                 reject(new Error('Canvas toBlob fallo'));
                             }
                         }, format, quality);
-
                     } catch (err) {
                         reject(err);
                     }
@@ -162,7 +160,6 @@ var NEXOFileTransfer = (function() {
                         })
                         .then(function(preview) {
                             layers.preview = preview;
-
                             if (_callbacks.onPreview) {
                                 _callbacks.onPreview(null, preview);
                             }
@@ -227,53 +224,22 @@ var NEXOFileTransfer = (function() {
         window.addEventListener('nexo:ble:fileComplete', function(e) {
             var d = e.detail || {};
             var msgId = d.fileId;
-            var meta = d.meta || {};
-            if (msgId && _activeTransfers[msgId]) {
-                var t = _activeTransfers[msgId];
-                if (t.state !== 'completed') {
-                    t.state = 'completed';
-                    t.progress = 100;
-                    _fireProgress(
-                        msgId,
-                        100,
-                        t.payloadSize || 0,
-                        t.payloadSize || 0
-                    );
-                    _fireComplete(
-                        msgId,
-                        true,
-                        null
-                    );
-                }
-                return;
-            }
-            if (d.data && _callbacks.onReceived) {
-                var mime = meta.format ||
-                    meta.mimeType ||
-                    'application/octet-stream';
-                var blobUrl = _base64ToBlobUrl(
-                    d.data,
-                    mime
+            if (!msgId || !_activeTransfers[msgId]) return;
+            var t = _activeTransfers[msgId];
+            if (t.state !== 'completed') {
+                t.state = 'completed';
+                t.progress = 100;
+                _fireProgress(
+                    msgId,
+                    100,
+                    t.payloadSize || 0,
+                    t.payloadSize || 0
                 );
-                _callbacks.onReceived({
-                    msgId: msgId,
-                    fileId: msgId,
-                    blobUrl: blobUrl,
-                    base64: d.data,
-                    mimeType: mime,
-                    fileName: meta.name || 'archivo',
-                    size: meta.size || 0,
-                    originalSize: meta.originalSize ||
-                        meta.size ||
-                        0,
-                    layer: meta.layer || 'original',
-                    senderId: meta.senderNexoId ||
-                        meta.fr ||
-                        '',
-                    timestamp: meta.ts ||
-                        Date.now(),
-                    meta: meta
-                });
+                _fireComplete(
+                    msgId,
+                    true,
+                    null
+                );
             }
         });
     }
@@ -429,7 +395,6 @@ var NEXOFileTransfer = (function() {
                 );
                 _mediaRecorder = null;
                 _audioChunks = [];
-
                 resolve(blob);
             };
             recorder.stop();
@@ -463,7 +428,6 @@ var NEXOFileTransfer = (function() {
     }
     function cancelTransfer(msgId) {
         var ack = _getAckSystem();
-
         if (ack &&
             typeof ack.cancelFileSend === 'function') {
             ack.cancelFileSend(msgId);
@@ -478,9 +442,6 @@ var NEXOFileTransfer = (function() {
     }
     function onComplete(cb) {
         _callbacks.onComplete = cb;
-    }
-    function onReceived(cb) {
-        _callbacks.onReceived = cb;
     }
     function onThumbnail(cb) {
         _callbacks.onThumbnail = cb;
@@ -508,7 +469,6 @@ var NEXOFileTransfer = (function() {
         cancelTransfer: cancelTransfer,
         onProgress: onProgress,
         onComplete: onComplete,
-        onReceived: onReceived,
         onThumbnail: onThumbnail,
         onPreview: onPreview,
         getTransfer: getTransfer,
