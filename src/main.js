@@ -94,13 +94,14 @@ var _objectURLRegistry = [];
 var _renderedMessageCount = 0;
 var _renderedMessageIds = new Set();
 var _autoScan = null;
+var _msgContactMap = {};
 function _fmtTime(sec) {
 var m = Math.floor(sec / 60);
 var s = sec % 60;
 return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
 }
 function _normId(id) {
-  return (id || '').toString().toLowerCase().trim();
+return (id || '').toString().toLowerCase().trim();
 }
 function _getAttachmentPlugins() {
 var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
@@ -116,20 +117,14 @@ return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
 }
 return null;
 }
-function _sendAttachment(type, payload, meta) {
+function _sendAttachment(type, payload, meta) { 
 var contactId = _getCurrentContactId();
 if (!contactId) {
 console.log('[ATTACH] No hay contacto seleccionado');
 return;
 }
-var attachmentData = {
-type: 'attachment',
-attachmentType: type,
-payload: payload,
-meta: meta,
-timestamp: Date.now()
-};
-var msgId = 'att' + Date.now() + '' + Math.random().toString(36).substr(2, 6);
+var msgId = 'msg' + Date.now() + Math.random().toString(36).substr(2, 5);
+_msgContactMap[msgId] = contactId;
 var localMsg = {
 msgId: msgId,
 messageId: msgId,
