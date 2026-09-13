@@ -440,7 +440,6 @@ function _isProtocolPayload(txt) {
   } catch(e) {}
   return false;
 }
-
 export async function vaultAppendMessage(contactNexoId, message) {
   if (!contactNexoId || !message) return null;
   var txt = message.text || message.content || '';
@@ -473,16 +472,31 @@ export async function vaultAppendMessage(contactNexoId, message) {
   _persistMessages(cid, messages);
   return normalized;
 }
-
 export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
-  if (!contactNexoId || !msgId) return false;
-  var cid = _normId(contactNexoId);
-  var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
-  var idx = messages.findIndex(function(m) { return m.msgId === msgId; });
-  if (idx >= 0) { messages[idx].status = status; _persistMessages(cid, messages); return true; }
+  if (!msgId || !status) return false;
+  var tried = Object.create(null);
+  async function updateInContact(cid) {
+    if (!cid) return false;
+    cid = _normId(cid);
+    if (!cid || tried[cid]) return false;
+    tried[cid] = true;
+    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+    var idx = messages.findIndex(function(m) {
+      return (m.msgId || m.messageId || m.id) === msgId;
+    });
+    if (idx < 0) return false;
+    messages[idx].status = status;
+    _persistMessages(cid, messages);
+    return true;
+  }
+  if (await updateInContact(contactNexoId)) return true;
+  var contacts = Array.isArray(_vaultContacts) ? _vaultContacts : [];
+  for (var i = 0; i < contacts.length; i++) {
+    var cid = _getContactIdentity(contacts[i]);
+    if (await updateInContact(cid)) return true;
+  }
   return false;
 }
-
 export async function vaultGetPendingMessages(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
@@ -497,11 +511,9 @@ export async function vaultGetPendingMessages(contactNexoId) {
   });
   return pending;
 }
-
 function _transferFileName(contactNexoId) {
   return VAULT_TRANSFERS_PREFIX + _normId(contactNexoId) + '.json';
 }
-
 async function _loadTransfers(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
@@ -520,7 +532,6 @@ async function _loadTransfers(contactNexoId) {
   } catch (e) {}
   return [];
 }
-
 function _persistTransfers(contactNexoId, transfers) {
   var plugin = _nativePlugin();
   if (!plugin) return;
@@ -532,7 +543,6 @@ function _persistTransfers(contactNexoId, transfers) {
     content: JSON.stringify({ transfers: toSave, savedAt: Date.now() })
   }).catch(function(e) {});
 }
-
 export async function vaultCreateTransfer(contactNexoId, transferId, type, totalChunks, meta) {
   if (!contactNexoId || !transferId || !type || !totalChunks) return null;
   var cid = _normId(contactNexoId);
@@ -553,7 +563,6 @@ export async function vaultCreateTransfer(contactNexoId, transferId, type, total
   _persistTransfers(cid, transfers);
   return transfer;
 }
-
 export async function vaultAppendChunk(contactNexoId, transferId, index, data, totalChunks, meta) {
   if (!contactNexoId || !transferId || typeof index !== 'number' || data === undefined || data === null) return false;
   var cid = _normId(contactNexoId);
@@ -584,26 +593,22 @@ export async function vaultAppendChunk(contactNexoId, transferId, index, data, t
   _persistTransfers(cid, transfers);
   return true;
 }
-
 export async function vaultGetTransfer(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return null;
   var cid = _normId(contactNexoId);
   var transfers = await _loadTransfers(cid);
   return transfers.find(function(tr) { return tr.transferId === transferId; }) || null;
 }
-
 export async function vaultGetIncompleteTransfers(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
   var transfers = await _loadTransfers(cid);
   return transfers.filter(function(t) { return t.status !== 'complete'; });
 }
-
 export async function vaultGetAllTransfers(contactNexoId) {
   if (!contactNexoId) return [];
   return _loadTransfers(_normId(contactNexoId));
 }
-
 export async function vaultCompleteTransfer(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return null;
   var cid = _normId(contactNexoId);
@@ -644,7 +649,6 @@ export async function vaultCompleteTransfer(contactNexoId, transferId) {
   console.log('[VaultManager] Transferencia completada y movida al historial:', transferId);
   return msg;
 }
-
 export async function vaultCancelTransfer(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
@@ -655,7 +659,6 @@ export async function vaultCancelTransfer(contactNexoId, transferId) {
   _persistTransfers(cid, transfers);
   return true;
 }
-
 export async function vaultCleanupTransfers(contactNexoId, maxAgeMs) {
   if (!contactNexoId) return 0;
   var cid = _normId(contactNexoId);
@@ -672,11 +675,9 @@ export async function vaultCleanupTransfers(contactNexoId, maxAgeMs) {
   if (removed > 0) _persistTransfers(cid, transfers);
   return removed;
 }
-
 function _outgoingFileName(contactNexoId) {
   return VAULT_OUTGOING_PREFIX + _normId(contactNexoId) + '.json';
 }
-
 async function _loadOutgoingTransfers(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
@@ -695,7 +696,6 @@ async function _loadOutgoingTransfers(contactNexoId) {
   } catch (e) {}
   return [];
 }
-
 function _persistOutgoingTransfers(contactNexoId, outgoing) {
   var plugin = _nativePlugin();
   if (!plugin) return;
@@ -707,7 +707,6 @@ function _persistOutgoingTransfers(contactNexoId, outgoing) {
     content: JSON.stringify({ outgoing: toSave, savedAt: Date.now() })
   }).catch(function(e) {});
 }
-
 export async function vaultCreateOutgoingTransfer(contactNexoId, transferId, type, totalChunks, chunks, meta, deviceId) {
   if (!contactNexoId || !transferId || !type || !totalChunks || !chunks) return null;
   var cid = _normId(contactNexoId);
@@ -730,7 +729,6 @@ export async function vaultCreateOutgoingTransfer(contactNexoId, transferId, typ
   _persistOutgoingTransfers(cid, outgoing);
   return record;
 }
-
 export async function vaultSetOutgoingChunkAcked(contactNexoId, transferId, sentMask, ackMask) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
@@ -743,7 +741,6 @@ export async function vaultSetOutgoingChunkAcked(contactNexoId, transferId, sent
   _persistOutgoingTransfers(cid, outgoing);
   return true;
 }
-
 export async function vaultIncrementOutgoingTimeout(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
@@ -755,21 +752,18 @@ export async function vaultIncrementOutgoingTimeout(contactNexoId, transferId) {
   _persistOutgoingTransfers(cid, outgoing);
   return true;
 }
-
 export async function vaultGetOutgoingTransfer(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return null;
   var cid = _normId(contactNexoId);
   var outgoing = await _loadOutgoingTransfers(cid);
   return outgoing.find(function(o) { return o.transferId === transferId; }) || null;
 }
-
 export async function vaultGetPendingOutgoingTransfers(contactNexoId) {
   if (!contactNexoId) return [];
   var cid = _normId(contactNexoId);
   var outgoing = await _loadOutgoingTransfers(cid);
   return outgoing.filter(function(o) { return o.status !== 'complete' && o.status !== 'failed'; });
 }
-
 export async function vaultRemoveOutgoingTransfer(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
@@ -780,7 +774,6 @@ export async function vaultRemoveOutgoingTransfer(contactNexoId, transferId) {
   _persistOutgoingTransfers(cid, outgoing);
   return true;
 }
-
 export async function vaultSetOutgoingStatus(contactNexoId, transferId, status) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
@@ -792,7 +785,6 @@ export async function vaultSetOutgoingStatus(contactNexoId, transferId, status) 
   _persistOutgoingTransfers(cid, outgoing);
   return true;
 }
-
 export async function vaultCleanupOutgoingTransfers(contactNexoId, maxAgeMs) {
   if (!contactNexoId) return 0;
   var cid = _normId(contactNexoId);
