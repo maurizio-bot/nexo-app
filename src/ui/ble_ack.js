@@ -1,5 +1,3 @@
-/**
- * ble_ack.js v3.2.10-NEXO
  * FIX: Transferencia de archivos/fotos fiable — chunk 60, ventana 3, pacing 40ms
  * FIX: Timeout global de archivos 10 min (escala con nº de chunks)
  * FIX: Assembly timeout 120s (fotos grandes)
@@ -7,6 +5,7 @@
  * FIX: Meta de recepción incluye type/format/sender de forma consistente
  * FIX: firstChunkMax 40 para archivos (respeta MTU BLE)
  * FIX: restaurado _normMac/_normId (rompían envío de archivos)
+ * FIX: getBLEContacts vía this.ble (resumeOutgoingTransfers y _resolveNexoId)
  * Base: v3.2.8-NEXO
  */
 const PROTOCOL_VERSION = 2;
@@ -87,7 +86,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.10-NEXO iniciado');
+    console.log('[BleAckSystem] v3.2.11-NEXO iniciado');
   }
   _resolveNexoId(deviceId) {
     var mac = _normMac(deviceId);
@@ -95,7 +94,7 @@ export class BleAckSystem {
       var nx = this.ble._macToNexoId.get(mac);
       if (nx) return nx;
     }
-    var contacts = (typeof _getBLEContacts === 'function') ? _getBLEContacts() : [];
+    var contacts = (this.ble && typeof this.ble.getBLEContacts === 'function') ? this.ble.getBLEContacts() : [];
     for (var i = 0; i < contacts.length; i++) {
       if (_normMac(contacts[i].deviceId) === mac) return _normId(contacts[i].nexoId);
     }
@@ -599,7 +598,7 @@ export class BleAckSystem {
   resumeOutgoingTransfers() {
     var self = this;
     if (!window.vaultGetPendingOutgoingTransfers) return;
-    var contacts = (typeof _getBLEContacts === 'function') ? _getBLEContacts() : [];
+    var contacts = (self.ble && typeof self.ble.getBLEContacts === 'function') ? self.ble.getBLEContacts() : [];
     contacts.forEach(function(contact) {
       var cid = _normId(contact.nexoId);
       if (!cid) return;
