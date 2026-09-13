@@ -12,6 +12,8 @@
  * FIX: Limpieza de container al abrir chat nuevo / desde notificación / al cargar del vault
  * FIX: Inserción ordenada SIEMPRE incluso con skipSave=true
  * FIX: No renderizar mensajes entrantes si no hay chat abierto (evita mezcla en background)
+ * FIX: attachmentData estaba undefined → ReferenceError al enviar location/audio
+ * FIX: _updateMessageStorageStatus ahora resuelve contactId vía _msgContactMap
  * Base: v9.9.20-NEXO
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
@@ -125,6 +127,15 @@ return;
 }
 var msgId = 'msg' + Date.now() + Math.random().toString(36).substr(2, 5);
 _msgContactMap[msgId] = contactId;
+
+// FIX: attachmentData estaba undefined → ReferenceError
+var attachmentData = {
+  type: 'attachment',
+  attachmentType: type,
+  payload: payload,
+  meta: meta || {}
+};
+
 var localMsg = {
 msgId: msgId,
 messageId: msgId,
@@ -134,14 +145,14 @@ status: 'pending',
 timestamp: Date.now(),
 attachmentType: type,
 attachmentPayload: payload,
-attachmentMeta: meta
+attachmentMeta: meta || {}
 };
 _renderMessage(localMsg);
 try {
 if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg, true);
 } catch(e) {}
 if ((type === 'image' || type === 'video' || type === 'file') && window.bleInterface && window.bleInterface.sendFile) {
-window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({ type: type }, meta))
+window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({ type: type }, meta || {}))
 .then(function() {
 _updateMessageStatus(msgId, 'sent');
 _updateMessageStorageStatus(msgId, 'sent', contactId);
@@ -1198,6 +1209,7 @@ _setupChatHeader();
 _setupKeyboardShortcuts();
 _setupJumpButton();
 _setupBackButton();
+_setupFABButton();
 await _loadPersistedMessages();
 console.log('[MAIN] Fase 4 hooks OK');
 NEXO_DIAG.hideSplash();
@@ -1530,7 +1542,12 @@ console.warn('[MAIN] _saveMessageToStorage error:', e);
 }
 function _updateMessageStorageStatus(messageId, status, contactId) {
 try {
-if (!messageId || !status || !contactId) return;
+if (!messageId || !status) return;
+// FIX: fallback a _msgContactMap o contacto activo
+if (!contactId) {
+  contactId = _msgContactMap[messageId] || _getCurrentContactId();
+}
+if (!contactId) return;
 vaultUpdateMessageStatus(contactId, messageId, status).catch(function(e) {});
 } catch (e) {
 console.warn('[MAIN] _updateMessageStorageStatus error:', e);
