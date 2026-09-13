@@ -103,8 +103,8 @@ var _msgContactMap = {};
 
 function _compressImageBase64(base64, maxDim, quality) {
   return new Promise(function(resolve) {
-    maxDim = maxDim || 800;
-    quality = quality || 0.65;
+    maxDim = maxDim || 480;
+    quality = quality || 0.5;
     try {
       var img = new Image();
       img.onload = function() {
@@ -617,7 +617,7 @@ if (isVideo) {
 _sendAttachment('video', base64, { name: file.name, size: file.size, type: file.type });
 input.remove();
 } else {
-_compressImageBase64(base64, 800, 0.65).then(function(res) {
+_compressImageBase64(base64, 480, 0.5).then(function(res) {
   _sendAttachment('image', res.base64, {
     name: file.name,
     size: res.base64.length,
