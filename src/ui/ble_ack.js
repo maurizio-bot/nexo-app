@@ -1,11 +1,12 @@
 /**
- * ble_ack.js v3.2.9-NEXO
- * FIX: Transferencia de archivos/fotos fiable — chunk 140, ventana 8, pacing 18ms
+ * ble_ack.js v3.2.10-NEXO
+ * FIX: Transferencia de archivos/fotos fiable — chunk 60, ventana 3, pacing 40ms
  * FIX: Timeout global de archivos 10 min (escala con nº de chunks)
  * FIX: Assembly timeout 120s (fotos grandes)
  * FIX: Emisor ya NO dispara fileComplete con data=null (solo receptor)
  * FIX: Meta de recepción incluye type/format/sender de forma consistente
- * FIX: firstChunkMax 80 para archivos (más datos útiles en chunk 0)
+ * FIX: firstChunkMax 40 para archivos (respeta MTU BLE)
+ * FIX: restaurado _normMac/_normId (rompían envío de archivos)
  * Base: v3.2.8-NEXO
  */
 const PROTOCOL_VERSION = 2;
@@ -26,7 +27,10 @@ const SHORT_MSG_TIMEOUT_MS = 1000;
 const SHORT_MSG_MAX_RETRIES = 5;
 const SHORT_MSG_BACKOFF_DELAYS = [1000, 1000, 1500, 2000, 2500, 3000];
 function _normMac(mac) {
-return (id || '').toString().toLowerCase().trim();
+  return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
+}
+function _normId(id) {
+  return (id || '').toString().toLowerCase().trim();
 }
 function _compressRanges(indices) {
   if (!indices || indices.length === 0) return '';
@@ -83,7 +87,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.8-NEXO iniciado');
+    console.log('[BleAckSystem] v3.2.10-NEXO iniciado');
   }
   _resolveNexoId(deviceId) {
     var mac = _normMac(deviceId);
@@ -774,7 +778,7 @@ ChatStream.prototype._splitChunks = function() {
   var arr = [];
   var i = 0;
   // Chunk 0 lleva meta (fr, type, format…): limitar datos para no reventar MTU
-  var firstChunkMax = (this.type === 'file') ? Math.min(size, 80) : Math.min(size, 60);
+  var firstChunkMax = (this.type === 'file') ? Math.min(size, 40) : Math.min(size, 60);
   while (i < str.length) {
     var remaining = str.length - i;
     var chunkSize = (arr.length === 0) ? Math.min(firstChunkMax, remaining) : Math.min(size, remaining);
