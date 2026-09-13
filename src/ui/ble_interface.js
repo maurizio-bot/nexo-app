@@ -1258,24 +1258,62 @@ export class BLEInterface {
         var deviceId = contact ? contact.deviceId : null;
         if (!deviceId && self._activeChatDeviceId === uuid) deviceId = self._activeChatDeviceIdNative;
         if (!deviceId) {
+          self.foundDevices.forEach(function(d) {
+            if (!deviceId && _normId(d.deviceUUID) === uuid) deviceId = d.id;
+          });
+          self.connectedDevices.forEach(function(d) {
+            if (!deviceId && _normId(d.deviceUUID) === uuid) deviceId = d.id;
+          });
+        }
+        if (!deviceId) {
           var mappedMac = self._nexoIdToMac.get(uuid);
           if (mappedMac) deviceId = mappedMac;
         }
         if (!deviceId) { reject(new Error('Dispositivo no encontrado')); return; }
-        if (!self.ackSystem || typeof self.ackSystem.sendFile !== 'function') { reject(new Error('AckSystem no disponible')); return; }
-
+        if (!self.ackSystem || typeof self.ackSystem.sendFile !== 'function') {
+          reject(new Error('AckSystem no disponible'));
+          return;
+        }
         function startTransfer() {
-          console.log('[BLEInterface] sendFile fileId=' + fileId + ' deviceId=' + deviceId + ' b64len=' + (base64Data ? base64Data.length : 0));
+          console.log('[BLEInterface] sendFile START fileId=' + fileId + ' deviceId=' + deviceId + ' b64len=' + base64Data.length);
           self.ackSystem.sendFile(deviceId, fileId, base64Data, meta || {})
             .then(function() { resolve(); })
             .catch(function(err) { reject(err); });
         }
+        function ensureReadyThenSend() {
+          var state = self._getDeviceState(deviceId);
+          var isReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
+          if (isReady) {
+            startTransfer();
+            return;
+          }
+          console.log('[BLEInterface] sendFile: device no listo (' + (state.state || '?') + '), esperando READY…');
+          self._waitForReadyToChat(deviceId, 12000)
+            .then(function() { startTransfer(); })
+            .catch(function() {
+              console.log('[BLEInterface] sendFile: timeout READY, forzando reconnect');
+              if (typeof self._forceDisconnectAndReconnect === 'function') {
+                self._forceDisconnectAndReconnect(deviceId);
+              } else if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+                _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
+              }
+              self._waitForReadyToChat(deviceId, 15000)
+                .then(function() { startTransfer(); })
+                .catch(function(err) {
+                  reject(new Error('Device not ready for file: ' + (err && err.message)));
+                });
+            });
+        }
 
-        // Si la cámara acaba de cerrarse / está pausada, esperar a resume
+        // Tras cámara: esperar resume + margen para que el radio se estabilice
+        var afterCamera = function() {
+          setTimeout(ensureReadyThenSend, 400);
+        };
+
         if (self._cameraBlePaused) {
-          self._waitIfCameraPaused().then(startTransfer).catch(reject);
+          self._waitIfCameraPaused().then(afterCamera).catch(reject);
         } else {
-          startTransfer();
+          afterCamera();
         }
       } catch (fatal) { reject(fatal); }
     });
