@@ -1056,6 +1056,8 @@ status: 'delivered',
 timestamp: Date.now(),
 senderName: d.meta && d.meta.fromName ? d.meta.fromName : 'NEXO'
 };
+recvMsg._own = false;
+recvMsg.status = 'delivered'; 
 _renderMessage(recvMsg);
 var cid = _getCurrentContactId();
 if (cid && window.vaultAppendMessage) {
