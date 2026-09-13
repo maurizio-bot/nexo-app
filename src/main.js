@@ -1,11 +1,18 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.20-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.21-NEXO
+ * FIX: Unificado el flujo de recepción de adjuntos con el flujo de mensajes de texto.
+ *      'nexo:ble:fileComplete' ya NO construye/guarda/renderiza su propio mensaje por
+ *      separado: ahora delega en _handleIncomingMessage(), la misma ruta que usa
+ *      'nexo:ble:messageReceived'. Esto elimina la burbuja/guardado duplicado que dejaba
+ *      mensajes en pending (el guardado manual usaba _getCurrentContactId() del chat
+ *      ABIERTO en vez del remitente real, y no pasaba por el dedupe de eco propio).
+ *      NEXOFileTransfer no se toca: sigue siendo quien hace la transferencia física.
  * FIX: Eliminado tapón artificial de 255 chars — chunking de ble_ack.js maneja mensajes largos automáticamente
  * FIX: Sync bidireccional en BLEInterface (aplicado en v6.0.8)
  * FIX: Limpieza de container al abrir chat nuevo / desde notificación / al cargar del vault
  * FIX: Inserción ordenada SIEMPRE incluso con skipSave=true
  * FIX: No renderizar mensajes entrantes si no hay chat abierto (evita mezcla en background)
- * Base: v9.9.18-NEXO
+ * Base: v9.9.20-NEXO
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -810,7 +817,7 @@ _closeAttachMenu();
 document.addEventListener('DOMContentLoaded', async function() {
 _bindAttachmentHandlers();
 try {
-console.log('[MAIN] NEXO v9.9.20-NEXO iniciando...');
+console.log('[MAIN] NEXO v9.9.21-NEXO iniciando...');
 console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
 NEXO_DIAG.init();
 window.NEXO.diag = NEXO_DIAG;
@@ -943,51 +950,9 @@ console.warn('[MAIN] _openChatFromNotification error:', e);
 }
 }
 
-function _registerCriticalListeners() {
+function _handleIncomingMessage(msg) {
 try {
-window.addEventListener('nexo:ble:deviceConnected', function(e) {
-if (e && e.detail && e.detail.deviceId) {
-if (_autoScan) _autoScan.unregisterDevice(e.detail.deviceId);
-}
-});
-window.addEventListener('nexo:ble:peerReady', function(e) {
-try {
-if (e && e.detail && e.detail.nexoId) {
-var nx = _normId(e.detail.nexoId);
-console.log('[MAIN] peerReady:', nx);
-if (window.NEXO.app && window.NEXO.app.bleInterface) {
-window.NEXO.app.bleInterface._resendPendingMessages(nx);
-}
-var activeId = _getCurrentContactId();
-if (activeId && _normId(activeId) === nx) {
-var subtitle = document.getElementById('chat-contact-subtitle');
-if (subtitle) subtitle.textContent = 'En linea';
-}
-}
-} catch (err) {
-console.warn('[MAIN] peerReady handler error:', err.message);
-}
-});
-window.addEventListener('nexo:ble:deviceDisconnected', function(e) {
-if (e && e.detail && e.detail.deviceId) {
-var nid = e.detail.nexoId || e.detail.deviceId;
-if (_autoScan) {
-_autoScan.registerKnownDevice(e.detail.deviceId, nid);
-_autoScan.start();
-}
-}
-});
-window.addEventListener('nexo:vault:messagesLoaded', function(e) {
-if (e && e.detail && Array.isArray(e.detail.messages)) {
-  _clearMessageContainer();
-  e.detail.messages.forEach(function(msg) {
-    _renderMessage(msg, true);
-  });
-}
-});
-window.addEventListener('nexo:ble:messageReceived', function(e) {
-if (e && e.detail) {
-var msg = e.detail;
+if (!msg) return;
 if (msg.fromVault === true) {
   _renderMessage(msg, true);
   return;
@@ -1038,33 +1003,87 @@ detail: { nexoId: senderId, msgId: msgId }
 }));
 }, 400);
 }
+} catch (err) {
+console.warn('[MAIN] _handleIncomingMessage error:', err && err.message);
+}
+}
+
+function _registerCriticalListeners() {
+try {
+window.addEventListener('nexo:ble:deviceConnected', function(e) {
+if (e && e.detail && e.detail.deviceId) {
+if (_autoScan) _autoScan.unregisterDevice(e.detail.deviceId);
+}
+});
+window.addEventListener('nexo:ble:peerReady', function(e) {
+try {
+if (e && e.detail && e.detail.nexoId) {
+var nx = _normId(e.detail.nexoId);
+console.log('[MAIN] peerReady:', nx);
+if (window.NEXO.app && window.NEXO.app.bleInterface) {
+window.NEXO.app.bleInterface._resendPendingMessages(nx);
+}
+var activeId = _getCurrentContactId();
+if (activeId && _normId(activeId) === nx) {
+var subtitle = document.getElementById('chat-contact-subtitle');
+if (subtitle) subtitle.textContent = 'En linea';
+}
+}
+} catch (err) {
+console.warn('[MAIN] peerReady handler error:', err.message);
+}
+});
+window.addEventListener('nexo:ble:deviceDisconnected', function(e) {
+if (e && e.detail && e.detail.deviceId) {
+var nid = e.detail.nexoId || e.detail.deviceId;
+if (_autoScan) {
+_autoScan.registerKnownDevice(e.detail.deviceId, nid);
+_autoScan.start();
+}
+}
+});
+window.addEventListener('nexo:vault:messagesLoaded', function(e) {
+if (e && e.detail && Array.isArray(e.detail.messages)) {
+  _clearMessageContainer();
+  e.detail.messages.forEach(function(msg) {
+    _renderMessage(msg, true);
+  });
+}
+});
+window.addEventListener('nexo:ble:messageReceived', function(e) {
+if (e && e.detail) {
+_handleIncomingMessage(e.detail);
 }
 });
 window.addEventListener('nexo:ble:fileComplete', function(e) {
 try {
 var d = e.detail || {};
 if (!d.fileId || !d.data) return;
-console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, d.meta);
+var meta = d.meta || {};
+console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, meta);
+// Un solo mensaje con attachment: se normaliza aquí y se delega en
+// _handleIncomingMessage(), la MISMA ruta que usa nexo:ble:messageReceived.
+// NEXOFileTransfer sigue siendo quien hace la transferencia física; este
+// listener solo traduce su evento a la forma de mensaje unificada — ya no
+// crea ni guarda su propia burbuja/registro por separado.
 var recvMsg = {
 msgId: d.fileId,
 messageId: d.fileId,
-attachmentType: d.meta && d.meta.type ? d.meta.type : 'file',
+attachmentType: meta.type || 'file',
 attachmentPayload: d.data,
-attachmentMeta: d.meta || {},
+attachmentMeta: meta,
+// Ajusta estas claves si NEXOFileTransfer entrega el ID del remitente
+// con otro nombre de campo — es necesario para archivar en el contacto
+// correcto y para el dedupe de eco propio dentro de _handleIncomingMessage.
+senderNexoId: meta.senderNexoId || meta.fromNexoId || meta.fromId || d.senderNexoId || null,
+senderName: meta.fromName || 'NEXO',
 _own: false,
 status: 'delivered',
-timestamp: Date.now(),
-senderName: d.meta && d.meta.fromName ? d.meta.fromName : 'NEXO'
+timestamp: Date.now()
 };
-recvMsg._own = false;
-recvMsg.status = 'delivered'; 
-_renderMessage(recvMsg);
-var cid = _getCurrentContactId();
-if (cid && window.vaultAppendMessage) {
-window.vaultAppendMessage(cid, recvMsg, false);
-}
+_handleIncomingMessage(recvMsg);
 } catch (err) {
-console.warn('[MAIN] Error en fileComplete handler:', err.message);
+console.warn('[MAIN] Error en fileComplete handler:', err && err.message);
 }
 });
 window.addEventListener('nexo:ble:ackStatus', function(e) {
