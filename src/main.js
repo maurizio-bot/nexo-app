@@ -201,9 +201,15 @@ _cameraVideoStartTime = 0;
 _updateCameraPreviewUI();
 }
 function _hideCameraPreviewOverlay() {
-var overlay = document.getElementById('camera-preview-overlay');
-if (overlay) overlay.classList.add('hidden');
-_stopCameraPreview();
+  var overlay = document.getElementById('camera-preview-overlay');
+  if (overlay) overlay.classList.add('hidden');
+  _stopCameraPreview();
+  var ble = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
+  if (ble && typeof ble.resumeBLEAfterCamera === 'function') {
+    setTimeout(function() {
+      ble.resumeBLEAfterCamera();
+    }, 500);
+  }
 }
 function _openFullscreenMedia(src, type) {
 var existing = document.getElementById('fullscreen-media-overlay');
