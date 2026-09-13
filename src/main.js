@@ -143,19 +143,18 @@ attachmentMeta: meta
 };
 _renderMessage(localMsg);
 try {
-var cid = _getCurrentContactId();
-if (cid && window.vaultAppendMessage) vaultAppendMessage(cid, localMsg, true);
+if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg, true);
 } catch(e) {}
 if ((type === 'image' || type === 'video' || type === 'file') && window.bleInterface && window.bleInterface.sendFile) {
 window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({ type: type }, meta))
 .then(function() {
 _updateMessageStatus(msgId, 'sent');
-_updateMessageStorageStatus(msgId, 'sent');
+_updateMessageStorageStatus(msgId, 'sent', contactId);
 })
 .catch(function(err) {
 console.warn('[ATTACH] sendFile failed:', err.message);
 _updateMessageStatus(msgId, 'failed');
-_updateMessageStorageStatus(msgId, 'failed');
+_updateMessageStorageStatus(msgId, 'failed', contactId);
 });
 return;
 }
@@ -164,11 +163,11 @@ if (window.bleInterface && window.bleInterface.sendChatMessage) {
 window.bleInterface.sendChatMessage(contactId, payloadStr, msgId)
 .then(function() {
 _updateMessageStatus(msgId, 'sent');
-_updateMessageStorageStatus(msgId, 'sent');
+_updateMessageStorageStatus(msgId, 'sent', contactId);
 })
 .catch(function(err) {
 _updateMessageStatus(msgId, 'failed');
-_updateMessageStorageStatus(msgId, 'failed');
+_updateMessageStorageStatus(msgId, 'failed', contactId);
 });
 } else if (window.NEXO.app && window.NEXO.app.sendMessage) {
 window.NEXO.app.sendMessage({ content: payloadStr });
