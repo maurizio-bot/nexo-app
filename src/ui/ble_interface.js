@@ -1,9 +1,11 @@
 /**
- * BLE Interface v6.0.8-NEXO
+ * BLE Interface v6.0.9-NEXO
+ * FIX: pauseBLEForCamera realmente bloquea envíos hasta resume
+ * FIX: sendFile espera a que la cámara libere BLE si estaba pausado
  * FIX: Eliminado sendFileNative y listeners de archivo nativo (Opcion C)
  * FIX: Sync bidireccional — ambos lados envían sessionSync al conectar
  * FIX: Filtro de protocolo v3 (block_ack 'ba') para ble_ack.js v3.x
- * Base: v6.0.6-NEXO
+ * Base: v6.0.8-NEXO
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -1065,70 +1067,114 @@ export class BLEInterface {
     return processNext(0);
   }
   pauseBLEForCamera() {
-  if (this._cameraBlePaused) return;
-  this._cameraBlePaused = true;
-  console.log('[BLEInterface] BLE PAUSADO por cámara');
-}
-resumeBLEAfterCamera() {
-  if (!this._cameraBlePaused) return;
-  this._cameraBlePaused = false;
-  var waiters = this._cameraBleResumeWaiters.splice(0);
-  console.log('[BLEInterface] BLE REANUDADO después de cámara; pendientes=' + waiters.length);
-  waiters.forEach(function(resolve) {
-    try { resolve(); } catch (e) {}
-  });
-} 
+    if (this._cameraBlePaused) return;
+    this._cameraBlePaused = true;
+    if (!this._cameraBleResumeWaiters) this._cameraBleResumeWaiters = [];
+    console.log('[BLEInterface] BLE PAUSADO por cámara');
+  }
+  resumeBLEAfterCamera() {
+    if (!this._cameraBlePaused) return;
+    this._cameraBlePaused = false;
+    if (!this._cameraBleResumeWaiters) this._cameraBleResumeWaiters = [];
+    var waiters = this._cameraBleResumeWaiters.splice(0);
+    console.log('[BLEInterface] BLE REANUDADO después de cámara; pendientes=' + waiters.length);
+    waiters.forEach(function(resolve) {
+      try { resolve(); } catch (e) {}
+    });
+  }
+  _waitIfCameraPaused() {
+    var self = this;
+    return new Promise(function(resolve) {
+      if (!self._cameraBlePaused) { resolve(); return; }
+      if (!self._cameraBleResumeWaiters) self._cameraBleResumeWaiters = [];
+      console.log('[BLEInterface] Envío en cola: esperando fin de cámara');
+      self._cameraBleResumeWaiters.push(resolve);
+      // Safety: no bloquear más de 60s
+      setTimeout(function() {
+        if (self._cameraBlePaused) {
+          self._cameraBlePaused = false;
+          var left = self._cameraBleResumeWaiters.splice(0);
+          left.forEach(function(r) { try { r(); } catch (e) {} });
+        }
+      }, 60000);
+    });
+  }
   _sendMessageNative(deviceId, content, messageId, seq) {
     var self = this;
     return new Promise(function(resolve, reject) {
       try {
         if (!self.nativePlugin) { reject(new Error('Plugin nativo no disponible')); return; }
         if (!deviceId) { reject(new Error('deviceId invalido')); return; }
-        var state = self._getDeviceState(deviceId);
-        if (state.state !== BLE_STATES.READY_TO_CHAT && state.state !== BLE_STATES.NOTIFICATIONS_READY) {
-          console.warn('[BLEInterface] _sendMessageNative: Device no listo', deviceId, 'state=', state.state);
-          reject(new Error('Device not ready: ' + (state.state || 'disconnected')));
-          return;
+
+        function doSend() {
+          try {
+            var state = self._getDeviceState(deviceId);
+            if (state.state !== BLE_STATES.READY_TO_CHAT && state.state !== BLE_STATES.NOTIFICATIONS_READY) {
+              console.warn('[BLEInterface] _sendMessageNative: Device no listo', deviceId, 'state=', state.state);
+              reject(new Error('Device not ready: ' + (state.state || 'disconnected')));
+              return;
+            }
+            var targetId = deviceId;
+            var normDev = _normId(deviceId);
+            var knownMac = self._nexoIdToMac.get(normDev);
+            if (knownMac) {
+              targetId = knownMac;
+              console.log('[BLEInterface] _sendMessageNative: NXID->MAC resolved', normDev, '->', knownMac);
+            } else {
+              var cleanMac = _normMac(normDev);
+              var looksLikeMac = /^[0-9a-f]{12}$/.test(cleanMac);
+              if (!looksLikeMac) {
+                console.error('[BLEInterface] _sendMessageNative: No MAC mapping for', normDev);
+                reject(new Error('No MAC mapping for NXID ' + normDev));
+                return;
+              }
+              targetId = cleanMac;
+            }
+            var isCtrl = _isControlPacket(content);
+            var enrichedPayload;
+            if (isCtrl) {
+              enrichedPayload = content;
+            } else {
+              var senderId = self.localNexoId || self.localDeviceUUID;
+              var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+              var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
+              var payloadObj = { text: content, senderNexoId: senderId, senderName: self.localDeviceName || 'Nexo Device', timestamp: Date.now() };
+              if (content && content.charAt(0) === '{') {
+                try {
+                  var parsedContent = JSON.parse(content);
+                  if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent;
+                } catch (e) {}
+              }
+              enrichedPayload = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj });
+            }
+            if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
+              _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
+                .then(function(result) {
+                  var mode = (result && result.mode) ? result.mode : 'unknown';
+                  console.log('[BLEInterface] _sendMessageNative OK mode=' + mode + ' target=' + targetId);
+                  resolve();
+                })
+                .catch(function(e) {
+                  console.error('[BLEInterface] _sendMessageNative FAILED:', e.message);
+                  reject(e);
+                });
+            } else {
+              reject(new Error('sendMessage no disponible'));
+            }
+          } catch (e) {
+            reject(e);
+          }
         }
-        var targetId = deviceId;
-        var normDev = _normId(deviceId);
-        var knownMac = self._nexoIdToMac.get(normDev);
-        if (knownMac) {
-          targetId = knownMac;
-          console.log('[BLEInterface] _sendMessageNative: NXID->MAC resolved', normDev, '->', knownMac);
+
+        // Esperar si la cámara tiene el radio ocupado
+        if (self._cameraBlePaused) {
+          self._waitIfCameraPaused().then(doSend).catch(reject);
         } else {
-          var cleanMac = _normMac(normDev);
-          var looksLikeMac = /^[0-9a-f]{12}$/.test(cleanMac);
-          if (!looksLikeMac) {
-            console.error('[BLEInterface] _sendMessageNative: No MAC mapping for', normDev);
-            reject(new Error('No MAC mapping for NXID ' + normDev));
-            return;
-          }
-          targetId = cleanMac;
+          doSend();
         }
-        var isCtrl = _isControlPacket(content);
-        var enrichedPayload;
-        if (isCtrl) { enrichedPayload = content; }
-        else {
-          var senderId = self.localNexoId || self.localDeviceUUID;
-          var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
-          var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
-          var payloadObj = { text: content, senderNexoId: senderId, senderName: self.localDeviceName || 'Nexo Device', timestamp: Date.now() };
-          if (content && content.charAt(0) === '{') {
-            try { var parsedContent = JSON.parse(content); if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent; } catch (e) {}
-          }
-          enrichedPayload = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj });
-          }
-          if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
-          _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
-            .then(function(result) {
-              var mode = (result && result.mode) ? result.mode : 'unknown';
-              console.log('[BLEInterface] _sendMessageNative OK mode=' + mode + ' target=' + targetId);
-              resolve();
-            })
-            .catch(function(e) { console.error('[BLEInterface] _sendMessageNative FAILED:', e.message); reject(e); });
-        } else { reject(new Error('sendMessage no disponible')); }
-      } catch (e) { reject(e); }
+      } catch (fatal) {
+        reject(fatal);
+      }
     });
   }
   sendChatMessage(deviceUUID, content, messageId, seq) {
@@ -1207,6 +1253,7 @@ resumeBLEAfterCamera() {
       try {
         var uuid = _normId(deviceUUID);
         if (!uuid) { reject(new Error('deviceUUID vacio')); return; }
+        if (!base64Data) { reject(new Error('base64Data vacio')); return; }
         var contact = _getContactByUUID(uuid);
         var deviceId = contact ? contact.deviceId : null;
         if (!deviceId && self._activeChatDeviceId === uuid) deviceId = self._activeChatDeviceIdNative;
@@ -1216,7 +1263,20 @@ resumeBLEAfterCamera() {
         }
         if (!deviceId) { reject(new Error('Dispositivo no encontrado')); return; }
         if (!self.ackSystem || typeof self.ackSystem.sendFile !== 'function') { reject(new Error('AckSystem no disponible')); return; }
-        self.ackSystem.sendFile(deviceId, fileId, base64Data, meta).then(function() { resolve(); }).catch(function(err) { reject(err); });
+
+        function startTransfer() {
+          console.log('[BLEInterface] sendFile fileId=' + fileId + ' deviceId=' + deviceId + ' b64len=' + (base64Data ? base64Data.length : 0));
+          self.ackSystem.sendFile(deviceId, fileId, base64Data, meta || {})
+            .then(function() { resolve(); })
+            .catch(function(err) { reject(err); });
+        }
+
+        // Si la cámara acaba de cerrarse / está pausada, esperar a resume
+        if (self._cameraBlePaused) {
+          self._waitIfCameraPaused().then(startTransfer).catch(reject);
+        } else {
+          startTransfer();
+        }
       } catch (fatal) { reject(fatal); }
     });
   }
