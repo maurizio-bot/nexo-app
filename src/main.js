@@ -505,7 +505,7 @@ console.log('[CAMERA] Foto capturada', canvas.width + 'x' + canvas.height, 'b64l
 _hideCameraPreviewOverlay();
 setTimeout(function() {
   _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
-}, 500);
+}, 800);
 }
 function _handleCameraCapture() {
 if (_cameraPreviewMode === 'photo') {
