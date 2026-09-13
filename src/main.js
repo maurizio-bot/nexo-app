@@ -492,20 +492,20 @@ var canvas = document.createElement('canvas');
 var vw = video.videoWidth || 1280;
 var vh = video.videoHeight || 720;
 // Captura a resolución moderada para BLE
-var maxDim = 800;
+var maxDim = 480;
 var scale = 1;
 if (vw > maxDim || vh > maxDim) scale = Math.min(maxDim / vw, maxDim / vh);
 canvas.width = Math.max(1, Math.round(vw * scale));
 canvas.height = Math.max(1, Math.round(vh * scale));
 var ctx = canvas.getContext('2d');
 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-var base64 = canvas.toDataURL('image/jpeg', 0.65).split(',')[1];
+var base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
 console.log('[CAMERA] Foto capturada', canvas.width + 'x' + canvas.height, 'b64len=' + base64.length);
 // Cerrar cámara y reanudar BLE ANTES de enviar
 _hideCameraPreviewOverlay();
 setTimeout(function() {
   _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
-}, 800);
+}, 480);
 }
 function _handleCameraCapture() {
 if (_cameraPreviewMode === 'photo') {
