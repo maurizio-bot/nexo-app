@@ -527,9 +527,13 @@ if (captureBtn) captureBtn.addEventListener('click', _handleCameraCapture);
 if (modeBtn) modeBtn.addEventListener('click', _toggleCameraMode);
 }
 async function _handleCamera() {
-_closeAttachMenu();
-_showCameraPreviewOverlay();
-_startCameraPreview();
+  _closeAttachMenu();
+  var ble = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
+  if (ble && typeof ble.pauseBLEForCamera === 'function') {
+    ble.pauseBLEForCamera();
+  }
+  _showCameraPreviewOverlay();
+  _startCameraPreview();
 }
 async function _handleGallery() {
 _closeAttachMenu();
