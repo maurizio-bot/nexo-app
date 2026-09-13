@@ -1,4 +1,5 @@
- * FIX: Transferencia de archivos/fotos fiable — chunk 60, ventana 3, pacing 40ms
+/**
+* FIX: Transferencia de archivos/fotos fiable — chunk 60, ventana 3, pacing 40ms
  * FIX: Timeout global de archivos 10 min (escala con nº de chunks)
  * FIX: Assembly timeout 120s (fotos grandes)
  * FIX: Emisor ya NO dispara fileComplete con data=null (solo receptor)
