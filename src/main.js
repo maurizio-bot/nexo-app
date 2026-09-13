@@ -1,12 +1,11 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.22-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.23-NEXO
  * FIX: Unificado el flujo de recepción de adjuntos con el flujo de mensajes de texto.
  *      'nexo:ble:fileComplete' ya NO construye/guarda/renderiza su propio mensaje por
  *      separado: ahora delega en _handleIncomingMessage(), la misma ruta que usa
  *      'nexo:ble:messageReceived'. Esto elimina la burbuja/guardado duplicado que dejaba
  *      mensajes en pending (el guardado manual usaba _getCurrentContactId() del chat
  *      ABIERTO en vez del remitente real, y no pasaba por el dedupe de eco propio).
- *      NEXOFileTransfer no se toca: sigue siendo quien hace la transferencia física.
  * FIX: Eliminado tapón artificial de 255 chars — chunking de ble_ack.js maneja mensajes largos automáticamente
  * FIX: Sync bidireccional en BLEInterface (aplicado en v6.0.8)
  * FIX: Limpieza de container al abrir chat nuevo / desde notificación / al cargar del vault
@@ -15,9 +14,13 @@
  * FIX: attachmentData estaba undefined → ReferenceError al enviar location/audio
  * FIX: _updateMessageStorageStatus ahora resuelve contactId vía _msgContactMap
  * FIX: fileComplete resuelve remitente vía meta.fr (ble_ack)
- * FIX: Compresión de imagen antes de BLE (800px / q0.65)
+ * FIX: Compresión de imagen antes de BLE (480px / q0.5)
  * FIX: Cámara cierra y resume BLE antes de sendFile
- * Base: v9.9.21-NEXO
+ * FIX v9.9.23: No degradar status delivered/read → sent (sendFile.then vs ackStatus)
+ * FIX v9.9.23: Tope de tamaño BLE para video/archivo (evita pending eterno / !)
+ * FIX v9.9.23: _setupFABButton no añade segundo click (ble_interface ya enlaza togglePanel)
+ * FIX v9.9.23: sendFile valida payload no vacío antes de transferir
+ * Base: v9.9.22-NEXO
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -100,6 +103,33 @@ var _renderedMessageCount = 0;
 var _renderedMessageIds = new Set();
 var _autoScan = null;
 var _msgContactMap = {};
+/** Tope base64 para BLE (aprox. ~250KB binario). Fotos comprimidas suelen quedar bajo esto. */
+var MAX_BLE_B64_BYTES = 350000;
+var _STATUS_RANK = {
+  pending: 1, queued: 2, sending: 3, sent: 4, delivered: 5, read: 6, failed: 0
+};
+
+function _statusRank(s) {
+  return _STATUS_RANK[s] || 0;
+}
+
+function _canUpgradeStatus(fromStatus, toStatus) {
+  if (!toStatus) return false;
+  if (toStatus === 'failed') return true;
+  if (!fromStatus) return true;
+  // No degradar delivered/read a sent/sending/pending
+  return _statusRank(toStatus) >= _statusRank(fromStatus);
+}
+
+function _getDomMessageStatus(messageId) {
+  try {
+    var el = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
+    if (!el) return null;
+    var cls = el.className || '';
+    var m = cls.match(/status-(pending|queued|sending|sent|delivered|read|failed)/);
+    return m ? m[1] : null;
+  } catch (e) { return null; }
+}
 
 function _compressImageBase64(base64, maxDim, quality) {
   return new Promise(function(resolve) {
@@ -168,6 +198,10 @@ if (!contactId) {
 console.log('[ATTACH] No hay contacto seleccionado');
 return;
 }
+if (!payload || (typeof payload === 'string' && payload.length === 0)) {
+console.warn('[ATTACH] Payload vacío, no se envía');
+return;
+}
 var msgId = 'msg' + Date.now() + Math.random().toString(36).substr(2, 5);
 _msgContactMap[msgId] = contactId;
 
@@ -190,18 +224,32 @@ attachmentType: type,
 attachmentPayload: payload,
 attachmentMeta: meta || {}
 };
+
+// Tope BLE: video/archivo grandes fallan o dejan pending eterno
+if ((type === 'video' || type === 'file') && typeof payload === 'string' && payload.length > MAX_BLE_B64_BYTES) {
+  console.warn('[ATTACH] Payload demasiado grande para BLE:', type, payload.length);
+  localMsg.status = 'failed';
+  _renderMessage(localMsg);
+  try {
+    if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg);
+  } catch (e) {}
+  _showPermissionError('Archivo demasiado grande para BLE (~' + Math.round(payload.length / 1024) + 'KB). Usa una foto comprimida.');
+  return;
+}
+
 _renderMessage(localMsg);
 try {
-if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg, true);
+if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg);
 } catch(e) {}
 if ((type === 'image' || type === 'video' || type === 'file') && window.bleInterface && window.bleInterface.sendFile) {
 window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({ type: type }, meta || {}))
 .then(function() {
-_updateMessageStatus(msgId, 'sent');
-_updateMessageStorageStatus(msgId, 'sent', contactId);
+  // ackStatus puede haber marcado delivered ya: no degradar
+  _updateMessageStatus(msgId, 'sent');
+  _updateMessageStorageStatus(msgId, 'sent', contactId);
 })
 .catch(function(err) {
-console.warn('[ATTACH] sendFile failed:', err.message);
+console.warn('[ATTACH] sendFile failed:', err && err.message);
 _updateMessageStatus(msgId, 'failed');
 _updateMessageStorageStatus(msgId, 'failed', contactId);
 });
@@ -505,7 +553,7 @@ console.log('[CAMERA] Foto capturada', canvas.width + 'x' + canvas.height, 'b64l
 _hideCameraPreviewOverlay();
 setTimeout(function() {
   _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
-}, 480);
+}, 600);
 }
 function _handleCameraCapture() {
 if (_cameraPreviewMode === 'photo') {
@@ -614,6 +662,12 @@ var reader = new FileReader();
 reader.onload = function(evt) {
 var base64 = evt.target.result.split(',')[1];
 if (isVideo) {
+if (base64 && base64.length > MAX_BLE_B64_BYTES) {
+  console.warn('[ATTACH] Video demasiado grande:', base64.length);
+  _showPermissionError('Video demasiado grande para BLE. Usa una foto o un clip muy corto.');
+  input.remove();
+  return;
+}
 _sendAttachment('video', base64, { name: file.name, size: file.size, type: file.type });
 input.remove();
 } else {
@@ -652,6 +706,12 @@ if (!file) { input.remove(); return; }
 var reader = new FileReader();
 reader.onload = function(evt) {
 var base64 = evt.target.result.split(',')[1];
+if (base64 && base64.length > MAX_BLE_B64_BYTES) {
+  console.warn('[ATTACH] Archivo demasiado grande:', base64.length);
+  _showPermissionError('Archivo demasiado grande para BLE (~' + Math.round(base64.length / 1024) + 'KB).');
+  input.remove();
+  return;
+}
 _sendAttachment('file', base64, { name: file.name, size: file.size, type: file.type });
 console.log('[ATTACH] Archivo:', file.name);
 input.remove();
@@ -1549,25 +1609,10 @@ console.warn('[MAIN] _setupJumpButton error:', e);
 }
 function _setupFABButton() {
   try {
+    // ble_interface.js ya crea #ble-fab-btn y enlaza togglePanel.
+    // NO añadir otro click aquí: provoca doble toggle (abre y cierra al instante).
     var fabBtn = document.getElementById('ble-fab-btn');
     if (!fabBtn) return;
-
-    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
-
-    if (!fabBtn._nexoFabBound) {
-      fabBtn.addEventListener('click', function() {
-        var ble = window.bleInterface ||
-          (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
-
-        if (ble && typeof ble.togglePanel === 'function') {
-          ble.togglePanel();
-        } else {
-          console.warn('[MAIN] BLE Interface no disponible para FAB');
-        }
-      });
-
-      fabBtn._nexoFabBound = true;
-    }
   } catch (e) {
     console.warn('[MAIN] _setupFABButton error:', e);
   }
@@ -2000,6 +2045,13 @@ try {
 if (!messageId || !status) return;
 var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
 if (!statusEl) return;
+var current = null;
+var cls = statusEl.className || '';
+var m = cls.match(/status-(pending|queued|sending|sent|delivered|read|failed)/);
+if (m) current = m[1];
+if (!_canUpgradeStatus(current, status)) {
+  return;
+}
 statusEl.classList.remove('status-pending', 'status-queued', 'status-sending', 'status-sent', 'status-delivered', 'status-read', 'status-failed');
 statusEl.classList.add('status-' + status);
 if (status === 'queued') statusEl.textContent = '°';
