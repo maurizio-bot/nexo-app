@@ -1273,7 +1273,6 @@ _setupChatHeader();
 _setupKeyboardShortcuts();
 _setupJumpButton();
 _setupBackButton();
-_setupFABButton();
 await _loadPersistedMessages();
 console.log('[MAIN] Fase 4 hooks OK');
 NEXO_DIAG.hideSplash();
