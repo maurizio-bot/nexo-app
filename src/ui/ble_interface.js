@@ -425,6 +425,8 @@ export class BLEInterface {
     this._backoffTimers = new Map();
     this._reconnectAttempts = new Map();
     this._notifiedPeers = new Set();
+    this._cameraBlePaused = false;
+    this._cameraBleResumeWaiters = [];  
     console.log('[BLEInterface] v6.0.8-NEXO iniciado');
   }
   _detectMeshType() {
@@ -880,7 +882,6 @@ export class BLEInterface {
         if (source !== 'gatt_server' && source !== 'gatt_client' && source !== 'broadcast') source = 'gatt_client';
         var messageId = null, senderName = null, senderUUID = null;
         var content = data.content || data.data || data.message || '';
-
         var trimmedContent = (content || '').trim();
         var isProtocol = false;
         try {
@@ -893,7 +894,6 @@ export class BLEInterface {
             if (protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' || protoCheck.t === 'a' || protoCheck.t === 'ba' || protoCheck.t === 'ss' || protoCheck.t === 'sr') isProtocol = true;
           }
         } catch (e) {}
-
         if (isProtocol) {
           console.log('[BLEInterface] Protocol filtered:', trimmedContent.substring(0, 50));
           if (self.ackSystem) {
@@ -902,12 +902,10 @@ export class BLEInterface {
           }
           return;
         }
-
         if (self.ackSystem) {
           var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: content });
           if (fragmentHandled) return;
         }
-
         var ctrl = null;
         try { if (content && content.charAt(0) === '{') ctrl = JSON.parse(content); } catch (e) { ctrl = null; }
 
@@ -917,7 +915,6 @@ export class BLEInterface {
           ctrl.type === 'file_meta' || ctrl.type === 'file_chunk' || ctrl.type === 'file_resume' ||
           ctrl.t === 'ba'
         ));
-
         if (ctrl && (ctrl.type === 'ack' || ctrl.type === 'read_receipt')) {
           if (self.ackSystem) self.ackSystem.processIncomingAck(content);
           return;
@@ -940,7 +937,6 @@ export class BLEInterface {
           }
           return;
         }
-
         var msgSeq = 0;
         if (content.charAt(0) === '{' || (data.data && data.data.charAt(0) === '{')) {
           try {
@@ -1068,6 +1064,20 @@ export class BLEInterface {
     };
     return processNext(0);
   }
+  pauseBLEForCamera() {
+  if (this._cameraBlePaused) return;
+  this._cameraBlePaused = true;
+  console.log('[BLEInterface] BLE PAUSADO por cámara');
+}
+resumeBLEAfterCamera() {
+  if (!this._cameraBlePaused) return;
+  this._cameraBlePaused = false;
+  var waiters = this._cameraBleResumeWaiters.splice(0);
+  console.log('[BLEInterface] BLE REANUDADO después de cámara; pendientes=' + waiters.length);
+  waiters.forEach(function(resolve) {
+    try { resolve(); } catch (e) {}
+  });
+} 
   _sendMessageNative(deviceId, content, messageId, seq) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -1108,8 +1118,8 @@ export class BLEInterface {
             try { var parsedContent = JSON.parse(content); if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent; } catch (e) {}
           }
           enrichedPayload = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj });
-        }
-        if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
+          }
+          if (_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
           _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: enrichedPayload })
             .then(function(result) {
               var mode = (result && result.mode) ? result.mode : 'unknown';
@@ -1281,12 +1291,10 @@ export class BLEInterface {
         }
       } catch (fatalErr) { console.error('[BLEInterface] FATAL openChat:', fatalErr); reject(fatalErr); }
     });
-  }
-
+    }
     _resendPendingMessages(nexoId) {
     var self = this;
     if (!nexoId) return;
-
     var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
       ? window.vaultGetPendingMessages(nexoId)
       : _vaultLoadMessages(nexoId).then(function(msgs) {
