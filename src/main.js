@@ -1513,17 +1513,18 @@ contactId = window.NEXO.app.bleInterface.activeChatDeviceId;
 } catch (e) {}
 return 'nexo_messages' + contactId;
 }
-function _saveMessageToStorage(msg) {
+function _saveMessageToStorage(msg, contactId) {
 try {
 if (!msg) return;
 var msgId = msg.msgId || msg.messageId || msg.id || ('msg' + Date.now() + '' + Math.random().toString(36).substr(2, 5));
 msg.msgId = msgId;
 msg.messageId = msgId;
-var contactId;
+if (!contactId) {
 if (msg._own) {
-  contactId = _getCurrentContactId();
+contactId = msg.contactNexoId || msg.contactId || null;
 } else {
-  contactId = msg.senderNexoId || msg.from || msg.sender || _getCurrentContactId();
+contactId = msg.senderNexoId || msg.from || msg.sender || null;
+}
 }
 if (contactId) {
 vaultAppendMessage(contactId, msg).catch(function(e) {});
