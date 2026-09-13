@@ -1,5 +1,5 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.21-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.22-NEXO
  * FIX: Unificado el flujo de recepción de adjuntos con el flujo de mensajes de texto.
  *      'nexo:ble:fileComplete' ya NO construye/guarda/renderiza su propio mensaje por
  *      separado: ahora delega en _handleIncomingMessage(), la misma ruta que usa
@@ -14,7 +14,10 @@
  * FIX: No renderizar mensajes entrantes si no hay chat abierto (evita mezcla en background)
  * FIX: attachmentData estaba undefined → ReferenceError al enviar location/audio
  * FIX: _updateMessageStorageStatus ahora resuelve contactId vía _msgContactMap
- * Base: v9.9.20-NEXO
+ * FIX: fileComplete resuelve remitente vía meta.fr (ble_ack)
+ * FIX: Compresión de imagen antes de BLE (800px / q0.65)
+ * FIX: Cámara cierra y resume BLE antes de sendFile
+ * Base: v9.9.21-NEXO
  */
 import { NEXO_CONFIG } from './core/nexo_config.js';
 import './styles/critical.css';
@@ -97,6 +100,46 @@ var _renderedMessageCount = 0;
 var _renderedMessageIds = new Set();
 var _autoScan = null;
 var _msgContactMap = {};
+
+function _compressImageBase64(base64, maxDim, quality) {
+  return new Promise(function(resolve) {
+    maxDim = maxDim || 800;
+    quality = quality || 0.65;
+    try {
+      var img = new Image();
+      img.onload = function() {
+        try {
+          var w = img.naturalWidth || img.width;
+          var h = img.naturalHeight || img.height;
+          var scale = 1;
+          if (w > maxDim || h > maxDim) {
+            scale = Math.min(maxDim / w, maxDim / h);
+          }
+          var tw = Math.max(1, Math.round(w * scale));
+          var th = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement('canvas');
+          canvas.width = tw;
+          canvas.height = th;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, tw, th);
+          var out = canvas.toDataURL('image/jpeg', quality);
+          var b64 = out.split(',')[1] || '';
+          console.log('[ATTACH] compress image', w + 'x' + h, '->', tw + 'x' + th, 'b64', base64.length, '->', b64.length);
+          resolve({ base64: b64, width: tw, height: th, format: 'jpeg' });
+        } catch (e) {
+          console.warn('[ATTACH] compress fail, using original', e.message);
+          resolve({ base64: base64, width: 0, height: 0, format: 'jpeg' });
+        }
+      };
+      img.onerror = function() {
+        resolve({ base64: base64, width: 0, height: 0, format: 'jpeg' });
+      };
+      img.src = 'data:image/jpeg;base64,' + base64;
+    } catch (e) {
+      resolve({ base64: base64, width: 0, height: 0, format: 'jpeg' });
+    }
+  });
+}
 function _fmtTime(sec) {
 var m = Math.floor(sec / 60);
 var s = sec % 60;
@@ -446,13 +489,23 @@ if (!container) return;
 var video = container.querySelector('video');
 if (!video) return;
 var canvas = document.createElement('canvas');
-canvas.width = video.videoWidth || 1280;
-canvas.height = video.videoHeight || 720;
+var vw = video.videoWidth || 1280;
+var vh = video.videoHeight || 720;
+// Captura a resolución moderada para BLE
+var maxDim = 800;
+var scale = 1;
+if (vw > maxDim || vh > maxDim) scale = Math.min(maxDim / vw, maxDim / vh);
+canvas.width = Math.max(1, Math.round(vw * scale));
+canvas.height = Math.max(1, Math.round(vh * scale));
 var ctx = canvas.getContext('2d');
 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-var base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-_sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
+var base64 = canvas.toDataURL('image/jpeg', 0.65).split(',')[1];
+console.log('[CAMERA] Foto capturada', canvas.width + 'x' + canvas.height, 'b64len=' + base64.length);
+// Cerrar cámara y reanudar BLE ANTES de enviar
 _hideCameraPreviewOverlay();
+setTimeout(function() {
+  _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
+}, 500);
 }
 function _handleCameraCapture() {
 if (_cameraPreviewMode === 'photo') {
@@ -504,8 +557,11 @@ return;
 var reader = new FileReader();
 reader.onloadend = function() {
 var base64 = reader.result.split(',')[1];
-_sendAttachment('video', base64, { format: 'webm', duration: duration });
+console.log('[CAMERA] Video listo b64len=' + (base64 ? base64.length : 0) + ' dur=' + duration);
 _hideCameraPreviewOverlay();
+setTimeout(function() {
+  _sendAttachment('video', base64, { format: 'webm', duration: duration });
+}, 500);
 };
 reader.onerror = function() {
 console.log('[CAMERA] Error leyendo video');
@@ -537,6 +593,7 @@ async function _handleCamera() {
   if (ble && typeof ble.pauseBLEForCamera === 'function') {
     ble.pauseBLEForCamera();
   }
+  await new Promise(function(r) { setTimeout(r, 200); });
   _showCameraPreviewOverlay();
   _startCameraPreview();
 }
@@ -558,10 +615,20 @@ reader.onload = function(evt) {
 var base64 = evt.target.result.split(',')[1];
 if (isVideo) {
 _sendAttachment('video', base64, { name: file.name, size: file.size, type: file.type });
-} else {
-_sendAttachment('image', base64, { name: file.name, size: file.size, type: file.type, format: file.type.split('/')[1] || 'jpeg' });
-}
 input.remove();
+} else {
+_compressImageBase64(base64, 800, 0.65).then(function(res) {
+  _sendAttachment('image', res.base64, {
+    name: file.name,
+    size: res.base64.length,
+    type: 'image/jpeg',
+    format: res.format || 'jpeg',
+    width: res.width,
+    height: res.height
+  });
+  input.remove();
+});
+}
 };
 reader.onerror = function() {
 console.log('[ATTACH] Error leyendo archivo');
@@ -1073,28 +1140,25 @@ _handleIncomingMessage(e.detail);
 window.addEventListener('nexo:ble:fileComplete', function(e) {
 try {
 var d = e.detail || {};
-if (!d.fileId || !d.data) return;
+if (!d.fileId || !d.data) {
+  console.warn('[MAIN] fileComplete ignorado: falta fileId o data', d && d.fileId, !!(d && d.data));
+  return;
+}
 var meta = d.meta || {};
-console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, meta);
-// Un solo mensaje con attachment: se normaliza aquí y se delega en
-// _handleIncomingMessage(), la MISMA ruta que usa nexo:ble:messageReceived.
-// NEXOFileTransfer sigue siendo quien hace la transferencia física; este
-// listener solo traduce su evento a la forma de mensaje unificada — ya no
-// crea ni guarda su propia burbuja/registro por separado.
+console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, 'type=', meta.type, 'fr=', meta.fr, 'len=', (d.data || '').length);
+// ble_ack.js pone el remitente en meta.fr / meta.senderNexoId
+var senderId = meta.senderNexoId || meta.fromNexoId || meta.fromId || meta.fr || d.senderNexoId || null;
 var recvMsg = {
 msgId: d.fileId,
 messageId: d.fileId,
-attachmentType: meta.type || 'file',
+attachmentType: meta.type || meta.tp || 'file',
 attachmentPayload: d.data,
 attachmentMeta: meta,
-// Ajusta estas claves si NEXOFileTransfer entrega el ID del remitente
-// con otro nombre de campo — es necesario para archivar en el contacto
-// correcto y para el dedupe de eco propio dentro de _handleIncomingMessage.
-senderNexoId: meta.senderNexoId || meta.fromNexoId || meta.fromId || d.senderNexoId || null,
-senderName: meta.fromName || 'NEXO',
+senderNexoId: senderId,
+senderName: meta.fromName || meta.f || 'NEXO',
 _own: false,
 status: 'delivered',
-timestamp: Date.now()
+timestamp: meta.ts || Date.now()
 };
 _handleIncomingMessage(recvMsg);
 } catch (err) {
