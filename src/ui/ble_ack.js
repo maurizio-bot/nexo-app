@@ -13,10 +13,10 @@ const CHAT_CHUNK_SIZE = 90;
 const CHAT_WINDOW_SIZE = 4;
 const CHAT_WINDOW_TIMEOUT_MS = 3000;
 const CHAT_PACING_DELAY_MS = 30;
-const FILE_CHUNK_SIZE = 140;
-const FILE_WINDOW_SIZE = 8;
-const FILE_WINDOW_TIMEOUT_MS = 5000;
-const FILE_PACING_DELAY_MS = 18;
+const FILE_CHUNK_SIZE = 60;
+const FILE_WINDOW_SIZE = 3;
+const FILE_WINDOW_TIMEOUT_MS = 8000;
+const FILE_PACING_DELAY_MS = 40;
 const MAX_WINDOW_RETRIES = 8;
 const ASSEMBLY_TIMEOUT_MS = 120000;
 const COMPLETED_TTL_MS = 60000;
@@ -26,10 +26,7 @@ const SHORT_MSG_TIMEOUT_MS = 1000;
 const SHORT_MSG_MAX_RETRIES = 5;
 const SHORT_MSG_BACKOFF_DELAYS = [1000, 1000, 1500, 2000, 2500, 3000];
 function _normMac(mac) {
-  return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
-}
-function _normId(id) {
-  return (id || '').toString().toLowerCase().trim();
+return (id || '').toString().toLowerCase().trim();
 }
 function _compressRanges(indices) {
   if (!indices || indices.length === 0) return '';
