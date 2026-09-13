@@ -1532,13 +1532,10 @@ vaultAppendMessage(contactId, msg).catch(function(e) {});
 console.warn('[MAIN] _saveMessageToStorage error:', e);
 }
 }
-function _updateMessageStorageStatus(messageId, status) {
+function _updateMessageStorageStatus(messageId, status, contactId) {
 try {
-if (!messageId) return;
-var contactId = _getCurrentContactId();
-if (contactId) {
+if (!messageId || !status || !contactId) return;
 vaultUpdateMessageStatus(contactId, messageId, status).catch(function(e) {});
-}
 } catch (e) {
 console.warn('[MAIN] _updateMessageStorageStatus error:', e);
 }
@@ -1924,19 +1921,20 @@ console.warn('[MAIN] _renderMessage error:', e);
 }
 function _updateMessageStatus(messageId, status) {
 try {
-if (!messageId) return;
-var statusEl = document.querySelector('.msg-status[data-msg-id=\"' + messageId + '\"]');
+if (!messageId || !status) return;
+var statusEl = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
 if (!statusEl) return;
-statusEl.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
+statusEl.classList.remove('status-pending', 'status-queued', 'status-sending', 'status-sent', 'status-delivered', 'status-read', 'status-failed');
 statusEl.classList.add('status-' + status);
 if (status === 'queued') statusEl.textContent = '°';
 else if (status === 'sending') statusEl.textContent = '○';
 else if (status === 'sent') statusEl.textContent = '✓';
 else if (status === 'delivered') statusEl.textContent = '✓';
 else if (status === 'read') statusEl.textContent = '✓✓';
+else if (status === 'failed') statusEl.textContent = '!';
 var msgDiv = statusEl.closest('.message');
 if (msgDiv) {
-msgDiv.classList.remove('status-pending', 'status-sent', 'status-delivered', 'status-read');
+msgDiv.classList.remove('status-pending', 'status-queued', 'status-sending', 'status-sent', 'status-delivered', 'status-read', 'status-failed');
 msgDiv.classList.add('status-' + status);
 }
 } catch (e) {
