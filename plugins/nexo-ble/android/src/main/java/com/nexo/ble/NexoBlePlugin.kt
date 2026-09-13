@@ -1111,6 +1111,17 @@ class NexoBlePlugin : Plugin() {
                     processReceivedChunk(address, chunk, "gatt_client")
                 }
             }
+
+            // NUEVO: Soporte para Android 13+ onCharacteristicChanged con payload directo
+            @Suppress("DEPRECATION")
+            override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
+                if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
+                    val chunk = value.toString(Charsets.UTF_8)
+                    val address = gatt.device?.address ?: ""
+                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API 33+) from $address: len=${chunk.length}")
+                    processReceivedChunk(address, chunk, "gatt_client")
+                }
+            }
         }
     }
 
