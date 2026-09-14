@@ -1,3 +1,6 @@
+// Comandos para actualizar el script:
+// rm ble_ack.js
+// cat << 'EOF' > ble_ack.js
 /**
 * FIX: Transferencia de archivos/fotos fiable — chunk 60, ventana 3, pacing 40ms
  * FIX: Timeout global de archivos 10 min (escala con nº de chunks)
@@ -1003,4 +1006,4 @@ ChatStream.prototype.abort = function() {
 };
 export function createAckSystem(bleInterface) {
 return new BleAckSystem(bleInterface);
-}                                                                   
+}
