@@ -1163,16 +1163,6 @@ export class BLEInterface {
     self._cameraBleResumeWaiters.push(resolve);
   });
   }
-      // Safety: no bloquear más de 60s
-      setTimeout(function() {
-        if (self._cameraBlePaused) {
-          self._cameraBlePaused = false;
-          var left = self._cameraBleResumeWaiters.splice(0);
-          left.forEach(function(r) { try { r(); } catch (e) {} });
-        }
-      }, 60000);
-    });
-  }
   _sendMessageNative(deviceId, content, messageId, seq) {
     var self = this;
     return new Promise(function(resolve, reject) {
