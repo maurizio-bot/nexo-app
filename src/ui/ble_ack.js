@@ -1,8 +1,11 @@
-// Comandos para actualizar el script:
-// rm ble_ack.js
-// cat << 'EOF' > ble_ack.js
 /**
-* FIX: Transferencia de archivos/fotos fiable — chunk 60, ventana 3, pacing 40ms
+* FIX v3.2.12: resumeOutgoingTransfers respeta tx.type — antes reenviaba SIEMPRE
+ *             vía sendChunkedMessage (tipo 'chat'), corrompiendo fotos/videos
+ *             interrumpidos (llegaban como texto plano en vez de adjunto)
+ * FIX v3.2.12: width/height de imagen ahora viajan en el chunk 0 (se descartaban)
+ * FIX v3.2.12: eliminado ChatStream.handlePartialAck (código muerto, nunca se
+ *             invocaba; _handleBlockAck ya tiene la lógica real inline)
+ * FIX: Transferencia de archivos/fotos fiable — chunk 60, ventana 3, pacing 40ms
  * FIX: Timeout global de archivos 10 min (escala con nº de chunks)
  * FIX: Assembly timeout 120s (fotos grandes)
  * FIX: Emisor ya NO dispara fileComplete con data=null (solo receptor)
@@ -10,7 +13,7 @@
  * FIX: firstChunkMax 40 para archivos (respeta MTU BLE)
  * FIX: restaurado _normMac/_normId (rompían envío de archivos)
  * FIX: getBLEContacts vía this.ble (resumeOutgoingTransfers y _resolveNexoId)
- * Base: v3.2.8-NEXO
+ * Base: v3.2.11-NEXO
  */
 const PROTOCOL_VERSION = 2;
 const CHAT_CHUNK_SIZE = 90;
@@ -90,7 +93,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.11-NEXO iniciado');
+    console.log('[BleAckSystem] v3.2.12-NEXO iniciado');
   }
   _resolveNexoId(deviceId) {
     var mac = _normMac(deviceId);
@@ -234,7 +237,9 @@ export class BleAckSystem {
           type: resolvedType,
           name: msg.fn || msg.name,
           size: msg.fs || msg.size,
-          format: msg.ft || msg.format
+          format: msg.ft || msg.format,
+          width: msg.w || msg.width,
+          height: msg.h || msg.height
         },
         received: 0, deviceId: deviceId, lastActivity: Date.now(),
         isChat: type === 'c', nackSent: false
@@ -614,7 +619,14 @@ export class BleAckSystem {
           var content = tx.chunks.map(function(c) { return (typeof c === 'string') ? c : (c.data || c.d || ''); }).join('');
           var devId = tx.deviceId || contact.deviceId;
           if (!devId) return;
-          self.sendChunkedMessage(devId, content, tx.meta, tx.transferId, (tx.meta && tx.meta.seq))
+          // FIX: respetar tx.type. Antes SIEMPRE se llamaba a sendChunkedMessage (tipo 'chat'),
+          // así que una foto/video interrumpido se reenviaba como texto (t:'c') y el receptor
+          // lo entregaba como mensaje de texto plano en vez de adjunto.
+          var isFileTx = tx.type === 'file';
+          var resumePromise = isFileTx
+            ? self.sendFile(devId, tx.transferId, content, tx.meta || {})
+            : self.sendChunkedMessage(devId, content, tx.meta, tx.transferId, (tx.meta && tx.meta.seq));
+          resumePromise
             .then(function() {
               if (window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});
             })
@@ -865,6 +877,9 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.name) obj.fn = this.meta.name;
     if (this.meta.size) obj.fs = this.meta.size;
     if (this.meta.format) obj.ft = this.meta.format;
+    // FIX: width/height se perdían (nunca se empaquetaban), quedaban null en el receptor
+    if (this.meta.width) obj.w = this.meta.width;
+    if (this.meta.height) obj.h = this.meta.height;
   }
   return JSON.stringify(obj);
 };
@@ -951,24 +966,6 @@ ChatStream.prototype.handleNack = function(indices) {
     setTimeout(function() { self._retransmitWindow(); }, 500);
   });
 };
-ChatStream.prototype.handlePartialAck = function(mask, count) {
-  var self = this;
-  if (!mask) return;
-  for (var i = 0; i < Math.min(mask.length, self.total); i++) {
-    if (mask.charAt(i) === '1') self.ackedMask[i] = true;
-  }
-  while (self.windowStart < self.total && self.ackedMask[self.windowStart]) {
-    self.windowStart++;
-  }
-  if (self.timer) clearTimeout(self.timer);
-  if (self.windowStart >= self.total) {
-    self._finish();
-  } else if (self._windowResolve) {
-    self._windowResolve();
-    self._windowResolve = null;
-    self._windowReject = null;
-  }
-};
 ChatStream.prototype.handleFinalAck = function() {
   console.log('[ChatStream] handleFinalAck msgId=' + this.msgId);
   if (this.timer) clearTimeout(this.timer);
@@ -1006,4 +1003,4 @@ ChatStream.prototype.abort = function() {
 };
 export function createAckSystem(bleInterface) {
 return new BleAckSystem(bleInterface);
-}
+}                                                                   
