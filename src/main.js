@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.23-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.24-NEXO
+ * FIX v9.9.24: Tope MAX_BLE_B64_BYTES ahora también aplica a 'image' (antes solo
+ *             video/file), cubriendo el caso en que la compresión de imagen falle.
  * FIX: Unificado el flujo de recepción de adjuntos con el flujo de mensajes de texto.
  *      'nexo:ble:fileComplete' ya NO construye/guarda/renderiza su propio mensaje por
  *      separado: ahora delega en _handleIncomingMessage(), la misma ruta que usa
@@ -225,8 +227,10 @@ attachmentPayload: payload,
 attachmentMeta: meta || {}
 };
 
-// Tope BLE: video/archivo grandes fallan o dejan pending eterno
-if ((type === 'video' || type === 'file') && typeof payload === 'string' && payload.length > MAX_BLE_B64_BYTES) {
+// Tope BLE: video/archivo/imagen grandes fallan o dejan pending eterno.
+// FIX: se agrega 'image' — si _compressImageBase64 fallara (su catch devuelve el
+// base64 original sin comprimir), antes esta imagen se enviaba sin control de tamaño.
+if ((type === 'video' || type === 'file' || type === 'image') && typeof payload === 'string' && payload.length > MAX_BLE_B64_BYTES) {
   console.warn('[ATTACH] Payload demasiado grande para BLE:', type, payload.length);
   localMsg.status = 'failed';
   _renderMessage(localMsg);
