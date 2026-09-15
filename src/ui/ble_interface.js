@@ -1,11 +1,15 @@
 /**
- * BLE Interface v6.0.9-NEXO
+ * BLE Interface v6.1.0-NEXO
+ * FIX v6.1.0: resumeBLEAfterCamera reconecta ACTIVAMENTE a los dispositivos que
+ *             pauseBLEForCamera desconectó, en vez de depender solo del auto-scan
+ *             pasivo de 6s. Esto elimina la carrera con el timeout de sendFile()
+ *             que hacía fallar el envío de fotos justo tras usar la cámara.
  * FIX: pauseBLEForCamera realmente bloquea envíos hasta resume
  * FIX: sendFile espera a que la cámara libere BLE si estaba pausado
  * FIX: Eliminado sendFileNative y listeners de archivo nativo (Opcion C)
  * FIX: Sync bidireccional — ambos lados envían sessionSync al conectar
  * FIX: Filtro de protocolo v3 (block_ack 'ba') para ble_ack.js v3.x
- * Base: v6.0.8-NEXO
+ * Base: v6.0.9-NEXO
  */
 var BLE_NEXO_ID_VAULT_FILE = 'nexo_advertising_id.json';
 var BLE_PINNED_VAULT_FILE = 'nexo_ble_pinned.json';
@@ -1113,6 +1117,8 @@ export class BLEInterface {
   self._cameraBlePaused = false;
   if (!self._cameraBleResumeWaiters) self._cameraBleResumeWaiters = [];
   var waiters = self._cameraBleResumeWaiters.splice(0);
+  // FIX: capturar la lista ANTES de limpiarla, para poder reconectar activamente
+  var pausedDevices = (self._cameraBlePausedDevices || []).slice();
   var resumePromises = [];
   console.log('[BLEInterface] BLE REANUDANDO después de cámara');
   if (self._cameraBleWasAdvertising && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'startAdvertising')) {
@@ -1128,6 +1134,26 @@ export class BLEInterface {
     );
   }
   self._startConnectionSupervisor();
+  // FIX: reconexión ACTIVA a los dispositivos desconectados por la pausa de cámara.
+  // Antes solo se dependía del auto-scan pasivo (6s) para redetectarlos vía advertising,
+  // lo que dejaba una ventana de carrera con el timeout de sendFile() y hacía fallar
+  // el envío de fotos justo después de usar la cámara. Se intenta reconexión directa
+  // por el último MAC/deviceId conocido, y el scan queda como respaldo si el MAC cambió.
+  pausedDevices.forEach(function(deviceId) {
+    if (!deviceId) return;
+    resumePromises.push(
+      new Promise(function(resolve) {
+        setTimeout(function() {
+          if (self._cameraBlePaused) { resolve(); return; }
+          var nx = self._macToNexoId.get(_normMac(deviceId));
+          var contact = nx ? _getContactByUUID(nx) : null;
+          var deviceInfo = { name: contact ? contact.name : '', deviceUUID: nx || null };
+          console.log('[BLEInterface] Reconexión activa post-cámara ->', deviceId, nx || '(sin NEXO ID mapeado)');
+          self._autoConnectGATT(deviceId, deviceInfo).catch(function() {}).then(function() { resolve(); });
+        }, 250);
+      })
+    );
+  });
   if (self.nativePlugin && !self.isScanning && _hasNativeMethod(self.nativePlugin, 'startScan')) {
     resumePromises.push(
       new Promise(function(resolve) {
