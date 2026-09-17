@@ -1413,7 +1413,7 @@ export class BLEInterface {
                 _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
               }
               // Segundo intento
-              self._waitForReadyToChat(deviceId, 16000)
+              self._waitForReadyToChat(deviceId, 25000)
                 .then(function() { startTransfer(); })
                 .catch(function(err) {
                   reject(new Error('Device not ready for file: ' + (err && err.message)));
