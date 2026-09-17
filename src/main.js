@@ -112,7 +112,7 @@ var _autoScan = null;
 var _msgContactMap = {};
 
 /** Tope base64 para BLE (aprox. \~250KB binario). Fotos comprimidas suelen quedar bajo esto. */
-var MAX_BLE_B64_BYTES = 350000;
+var MAX_BLE_B64_BYTES = 8000000;
 
 var _STATUS_RANK = {
   pending: 1, queued: 2, sending: 3, sent: 4, delivered: 5, read: 6, failed: 0
@@ -179,17 +179,14 @@ function _compressImageBase64(base64, maxDim, quality) {
     }
   });
 }
-
 function _fmtTime(sec) {
   var m = Math.floor(sec / 60);
   var s = sec % 60;
   return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
 }
-
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }
-
 function _getAttachmentPlugins() {
   var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
   return {
@@ -198,20 +195,18 @@ function _getAttachmentPlugins() {
     Geolocation: Plugins ? Plugins.Geolocation : null
   };
 }
-
 function _getCurrentContactId() {
   if (window.NEXO.app && window.NEXO.app.activeContact) {
     return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
   }
   return null;
 }
-
 /**
  * Espera robusta a que BLE esté listo tras cerrar la cámara.
  * Evita race conditions que provocaban failed prematuro.
  */
 function _waitForBLEReady(maxMs) {
-  maxMs = maxMs || 4000;
+  maxMs = maxMs || 8000;
   return new Promise(function(resolve) {
     var start = Date.now();
     function check() {
