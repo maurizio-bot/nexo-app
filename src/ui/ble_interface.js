@@ -1,5 +1,7 @@
 /**
- * BLE Interface v6.1.1-NEXO
+ * BLE Interface v6.1.2-NEXO
+ * FIX v6.1.2: _sendMessageNative envía "message" (no "content") con sobre v1 chat;
+ *             desde v6.1.1 todos los envíos llegaban vacíos al nativo.
  * FIX v6.1.1: Espera post-cámara 100% bloqueante + reintento automático.
  *             Resolución de deviceId reforzada (evita MAC nulo/obsoleto).
  *             Supervisor no fuerza reconexión destructiva mientras hay
@@ -1280,13 +1282,27 @@ export class BLEInterface {
         reject(new Error('sendMessage nativo no disponible'));
         return;
       }
-      var payload = {
-        deviceId: deviceId,
-        content: content,
-        messageId: messageId || ('msg_' + Date.now()),
-        seq: typeof seq === 'number' ? seq : 0
-      };
-      _safeNativeCall(self.nativePlugin, 'sendMessage', payload)
+      // FIX v6.1.2: el nativo lee 'message' (no 'content'); desde v6.1.1 se enviaba vacío.
+      // Mensajes normales viajan en el sobre v1 'chat' con datos del remitente (como en v6.1.0);
+      // los paquetes de control (ack, ping, chunks, sync) van tal cual.
+      var targetId = deviceId;
+      var knownMac = self._nexoIdToMac.get(_normId(deviceId));
+      if (knownMac) targetId = knownMac;
+      var outgoing = content;
+      if (!_isControlPacket(content)) {
+        var senderId = self.localNexoId || self.localDeviceUUID;
+        var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+        var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
+        var payloadObj = { text: content, senderNexoId: senderId, senderName: self.localDeviceName || 'Nexo Device', timestamp: Date.now() };
+        if (content && content.charAt(0) === '{') {
+          try {
+            var parsedContent = JSON.parse(content);
+            if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent;
+          } catch (e) {}
+        }
+        outgoing = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj });
+      }
+      _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: outgoing })
         .then(resolve)
         .catch(reject);
     });

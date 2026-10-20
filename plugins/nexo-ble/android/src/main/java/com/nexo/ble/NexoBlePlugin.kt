@@ -1291,7 +1291,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun sendMessage(call: PluginCall) {
         val rawDeviceId = call.getString("deviceId") ?: ""
-        val message = call.getString("message") ?: ""
+        val message = call.getString("message") ?: call.getString("content") ?: ""
 
         if (rawDeviceId.isEmpty()) {
             call.reject("deviceId requerido")
