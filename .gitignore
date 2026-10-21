@@ -3,3 +3,7 @@ node_modules
 .env
 dist/
 android/gradle.properties
+tests/sim/builds/
+tests/sim/.deps/
+tests/sim/node_modules/
+tests/sim/last_logs_*.txt

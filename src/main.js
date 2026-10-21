@@ -1,5 +1,9 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.25-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.26-NEXO
+ * FIX v9.9.26: AckSystem se vincula de verdad (antes NEXO.app.bleInterface era null en ese punto):
+ *             vuelven entregado/leído y el envío de fotos/archivos.
+ *             Mensajes propios de texto se guardan en el vault (contactNexoId).
+ *             Tipo de adjunto en meta.type y MIME en meta.mime (galería/archivos se dibujan bien).
  * FIX v9.9.25: Eliminado el "!" prematuro en envíos de archivo/imagen/vídeo.
  *             - Espera robusta post-cámara (polling READY_TO_CHAT + timeout).
  *             - sendFile ya no marca failed ante rechazos transitorios.
@@ -232,6 +236,14 @@ function _waitForBLEReady(maxMs) {
 }
 
 function _sendAttachment(type, payload, meta) {
+  // FIX v9.9.26: meta.type llega con el MIME del archivo ('image/jpeg', 'text/plain'...) y pisaba
+  // el tipo de adjunto en Object.assign({type}, meta): el receptor no sabía dibujarlo.
+  // El tipo de adjunto va en meta.type y el MIME en meta.mime.
+  meta = Object.assign({}, meta || {});
+  if (meta.type && meta.type !== type) {
+    if (!meta.mime && meta.type.indexOf('/') > 0) meta.mime = meta.type;
+    meta.type = type;
+  }
   var contactId = _getCurrentContactId();
   if (!contactId) {
     console.log('[ATTACH] No hay contacto seleccionado');
@@ -286,7 +298,7 @@ function _sendAttachment(type, payload, meta) {
     _updateMessageStatus(msgId, 'sending');
     _updateMessageStorageStatus(msgId, 'sending', contactId);
 
-    window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({ type: type }, meta || {}))
+    window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({}, meta, { type: type }))
       .then(function() {
         // Solo subir a 'sent' si aún no ha llegado un ack superior
         var current = _getDomMessageStatus(msgId);
@@ -1067,7 +1079,7 @@ function _bindAttachmentHandlers() {
 document.addEventListener('DOMContentLoaded', async function() {
   _bindAttachmentHandlers();
   try {
-    console.log('[MAIN] NEXO v9.9.25-NEXO iniciando...');
+    console.log('[MAIN] NEXO v9.9.26-NEXO iniciando...');
     console.log('[MAIN] Vault-only mode: localStorage eliminado, persistencia nativa activa.');
     NEXO_DIAG.init();
     window.NEXO.diag = NEXO_DIAG;
@@ -1390,10 +1402,15 @@ async function initializeNexoApp() {
       console.warn('[MAIN] initBLEInterface error:', bleInitErr);
     }
     try {
-      if (window.NEXO.app && window.NEXO.app.bleInterface) {
-        var ackEarly = createAckSystem(window.NEXO.app.bleInterface);
-        window.NEXO.app.bleInterface.setAckSystem(ackEarly);
+      // FIX v9.9.26: NEXO.app.bleInterface se asigna en NEXO.app.init() (más abajo), así que aquí
+      // seguía en null y el AckSystem nunca se vinculaba (sin entregado/leído, sendFile rechazado).
+      var biEarly = (window.NEXO.app && window.NEXO.app.bleInterface) || window.bleInterface;
+      if (biEarly) {
+        var ackEarly = createAckSystem(biEarly);
+        biEarly.setAckSystem(ackEarly);
         console.log('[MAIN] BleAckSystem vinculado EARLY');
+      } else {
+        console.warn('[MAIN] BleAckSystem NO vinculado: bleInterface no disponible');
       }
     } catch (ackEarlyErr) {
       console.warn('[MAIN] AckSystem early vinculo fallo:', ackEarlyErr);
@@ -1533,9 +1550,14 @@ function _setupMessageInput() {
       input.focus();
       var msgId = 'msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9);
       var seq = (window.bleInterface && typeof window.bleInterface.getNextSeq === 'function') ? window.bleInterface.getNextSeq() : 0;
+      // FIX v9.9.26: sin contactNexoId el mensaje propio no se guardaba en el vault (desaparecía al
+      // reabrir el chat y la cola de reenvío no lo veía).
+      var chatContactId = _getCurrentContactId();
+      if (chatContactId) _msgContactMap[msgId] = chatContactId;
       var vaultMsg = {
         msgId: msgId,
         messageId: msgId,
+        contactNexoId: chatContactId,
         content: text,
         _own: true,
         status: 'sending',
@@ -1775,8 +1797,9 @@ function _updateMessageStorageStatus(messageId, status, contactId) {
     if (!contactId) {
       contactId = _msgContactMap[messageId] || _getCurrentContactId();
     }
-    if (!contactId) return;
-    vaultUpdateMessageStatus(contactId, messageId, status).catch(function(e) {});
+    // FIX v9.9.26: sin contacto (chat cerrado o app reiniciada) vaultUpdateMessageStatus busca el
+    // mensaje en todos los contactos; antes se descartaba el 'entregado'/'leído'.
+    vaultUpdateMessageStatus(contactId || null, messageId, status).catch(function(e) {});
   } catch (e) {
     console.warn('[MAIN] _updateMessageStorageStatus error:', e);
   }
@@ -1941,7 +1964,8 @@ function _renderMessage(msg, skipSave) {
         };
         contentDiv.appendChild(videoWrapper);
       } else if (attachment.type === 'file') {
-        var fileType = (attachment.meta.type || '').toLowerCase();
+        var fileMime = attachment.meta.mime || (String(attachment.meta.type || '').indexOf('/') > 0 ? attachment.meta.type : '');
+        var fileType = fileMime.toLowerCase();
         var isImageFile = fileType.indexOf('image') === 0;
         var isVideoFile = fileType.indexOf('video') === 0;
         if (isImageFile || isVideoFile) {
@@ -1949,7 +1973,7 @@ function _renderMessage(msg, skipSave) {
           mediaWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
           if (isImageFile) {
             var fimg = document.createElement('img');
-            fimg.src = 'data:' + attachment.meta.type + ';base64,' + attachment.payload;
+            fimg.src = 'data:' + fileMime + ';base64,' + attachment.payload;
             fimg.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
             fimg.dataset.fullscreenSrc = fimg.src;
             fimg.dataset.fullscreenType = 'image';
@@ -1962,7 +1986,7 @@ function _renderMessage(msg, skipSave) {
               fvByteNums[fvi] = fvByteChars.charCodeAt(fvi);
             }
             var fvByteArray = new Uint8Array(fvByteNums);
-            var fvBlob = new Blob([fvByteArray], { type: attachment.meta.type });
+            var fvBlob = new Blob([fvByteArray], { type: fileMime });
             var fvSrc = URL.createObjectURL(fvBlob);
             _objectURLRegistry.push(fvSrc);
             fvideo.src = fvSrc;

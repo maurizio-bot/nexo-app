@@ -1,0 +1,8 @@
+{
+  "name": "nexo-sim",
+  "private": true,
+  "description": "Prueba virtual de extremo a extremo: dos teléfonos con el bundle real de la APK",
+  "dependencies": {
+    "jsdom": "24.1.3"
+  }
+}

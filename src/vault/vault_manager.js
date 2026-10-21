@@ -1,5 +1,6 @@
 /**
- * vault_manager.js v2.2.2
+ * vault_manager.js v2.2.3
+ * FIX v2.2.3: estado de mensaje no se degrada; completar transferencia no pisa el adjunto guardado.
  * FIX: Filtro defensivo anti-protocolo TURBO compacto (t: c/f/n/a/ss/sr)
  * Base: v2.2.1-D2
  */
@@ -472,6 +473,8 @@ export async function vaultAppendMessage(contactNexoId, message) {
   _persistMessages(cid, messages);
   return normalized;
 }
+var _STATUS_RANK = { failed: 0, pending: 1, queued: 2, sending: 3, sent: 4, delivered: 5, read: 6 };
+function _statusRank(s) { return _STATUS_RANK[s] || 0; }
 export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
   if (!msgId || !status) return false;
   var tried = Object.create(null);
@@ -485,6 +488,8 @@ export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
       return (m.msgId || m.messageId || m.id) === msgId;
     });
     if (idx < 0) return false;
+    // FIX v2.2.3: no degradar (p.ej. 'sent' tardío pisando 'delivered'/'read')
+    if (_statusRank(status) < _statusRank(messages[idx].status) && !(status === 'failed' && _statusRank(messages[idx].status) < 5)) return true;
     messages[idx].status = status;
     _persistMessages(cid, messages);
     return true;
@@ -643,7 +648,10 @@ export async function vaultCompleteTransfer(contactNexoId, transferId) {
       checksum: (t.meta && t.meta.checksum) ? t.meta.checksum : ''
     };
   }
-  await vaultAppendMessage(contactNexoId, msg);
+  // FIX v2.2.3: main.js ya guarda el adjunto completo (fileComplete); no pisarlo con '[Archivo]'
+  var currentMsgs = _msgCache.has(cid) ? _msgCache.get(cid) : (await vaultLoadMessages(cid));
+  var alreadySaved = currentMsgs.some(function(m) { return m.msgId === t.transferId; });
+  if (!alreadySaved) await vaultAppendMessage(contactNexoId, msg);
   transfers.splice(idx, 1);
   _persistTransfers(cid, transfers);
   console.log('[VaultManager] Transferencia completada y movida al historial:', transferId);

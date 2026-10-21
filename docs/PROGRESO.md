@@ -29,23 +29,42 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js`,
 | 2681–2683 | | Ajustes de tamaños y tiempos |
 | 2684 | `f9f35ab` | Workflow con llave fija (pero faltaba el secret) |
 | 2685 | `5962c6f` | **Fix del envío** (`_sendMessageNative` vuelve a mandar `message` + sobre v1 chat) |
-| 2686 | `5962c6f` | Mismo código, primera firmada con la llave fija. Prueba: los mensajes se marcan enviados pero **no llegan** |
-| 2687 | (este commit) | **Fix claves de dispositivo**: estado/cola/esperas usan MAC normalizada (ver abajo) |
+| 2686 | `5962c6f` | Mismo código, primera firmada con la llave fija. Prueba real: burbuja con "○", **no llega** |
+| 2687 | `2e02b1c` | Fix claves de dispositivo (MAC normalizada). Subida sin verificar: no usar |
+| 2688 | (este commit) | Fixes verificados con el simulador de dos teléfonos (`tests/sim/`), ver abajo |
 
 ## Pendiente inmediato
-- [ ] Probar la 2687 (se instala encima de la 2686): texto corto, texto largo (>180 caracteres),
-  foto, checks de entregado/leído.
+- [ ] Probar la 2688 en los dos teléfonos (se instala encima de la 2686/2687): texto corto, largo,
+  foto, ✓ entregado / ✓✓ leído, y que un mensaje enviado con el otro lejos llegue al volver.
 
-### Diagnóstico de la 2686 (mensajes que no llegan)
-Desde `7d44823`, `_resolveDeviceIdForNexoId` devuelve la MAC normalizada (`aabbcc…`) del mapeo
-NXID→MAC, pero `_deviceStates` se guardaba con el id nativo (`AA:BB:CC…`). Al enviar, el dispositivo
-nunca aparecía "listo": el mensaje se quedaba en `_pendingMessageQueue` (con otra clave, así que nunca
-se vaciaba) y `main.js` lo marcaba "enviado" igualmente a los 12 s por su temporizador de respaldo.
-La 2679 buscaba primero `contact.deviceId` (formato nativo) y por eso funcionaba.
+## Regla de trabajo
+Antes de cada push que genere APK: `tests/sim/build.sh && node tests/sim/run.js tests/sim/builds/wip --content-fallback`
+y comprobar que todas las comprobaciones de `RESULTADO` salen bien. Ver `tests/sim/README.md`.
+
+## Fallos encontrados y corregidos (2688), todos reproducidos y verificados en el simulador
+1. **Envío atascado ("○")** — desde `7d44823` el envío buscaba el estado del dispositivo con la MAC
+   normalizada (`bbbb…`) y se guardaba con la nativa (`BB:BB:…`): nunca "listo", cola sin vaciar.
+2. **AckSystem nunca vinculado** (desde el primer commit): `main.js` usaba `NEXO.app.bleInterface`, que
+   aún era null. Sin él: nunca "entregado"/"leído" y fotos/archivos siempre fallaban ("!").
+3. Mensaje largo reensamblado marcado `fromVault` → no se guardaba y se perdía con el chat cerrado.
+4. Tipo de adjunto pisado por el MIME (`image/jpeg`, `text/plain`) → galería/archivos no se dibujaban.
+5. `read_receipt` descartado por el dedup del `ack` del mismo mensaje.
+6. Mensajes propios de texto no se guardaban en el vault (desaparecían al reabrir el chat).
+7. Estado guardado podía retroceder (entregado → enviado); y sin chat abierto no se guardaba.
+8. Nadie re-buscaba a un contacto desconectado: la cola no salía hasta abrir "Gente". Ahora se re-busca
+   cada 15 s (máx. ~10 min) y una conexión entrante también vacía la cola.
+9. Tras reiniciar la app, mensajes en "enviando" no se reenviaban nunca.
+10. Completar una transferencia podía pisar el adjunto guardado con "[Archivo]".
+
+Comparación en el simulador: la 2679 entregaba texto pero sin ✓ entregado/leído, archivos en "!" y sin
+reenvío tras reiniciar; la 2686 no entregaba nada; la 2688 pasa todas las comprobaciones (3 corridas).
 
 ## Problemas detectados (sin corregir todavía)
-- `main.js` marca un mensaje como "enviado" a los 12 s aunque nunca haya salido
-  (`_sentFallbackTimers`); engaña al diagnosticar.
+- `main.js` marca "enviado" a los 12 s tras entregar el mensaje al nativo aunque no llegue confirmación
+  (`_sentFallbackTimers`).
+- La sincronización de sesión (`ss`/`sr` en `ble_ack.js`) compara `seq` de ambos teléfonos mezclados y
+  puede reenviar mensajes ya entregados al reconectar (el receptor los descarta por id; solo es tráfico).
+- No simulado: direcciones Bluetooth aleatorias de Android entre escaneo y conexión, alcance real.
 - `window.vaultSaveContacts` no se expone en `main.js`: algunos cambios de contacto de
   `ble_interface.js` no se guardan en disco.
 - HTML sin escapar con datos del otro teléfono (nombre de archivo, nombre de contacto, último mensaje):

@@ -1,5 +1,7 @@
 /**
-* FIX v3.2.12: resumeOutgoingTransfers respeta tx.type — antes reenviaba SIEMPRE
+* FIX v3.2.13: read_receipt ya no se descarta tras el ack del mismo mensaje; mensajes largos
+ *             reensamblados se guardan (sin fromVault); el MIME viaja en 'mt'.
+ * FIX v3.2.12: resumeOutgoingTransfers respeta tx.type — antes reenviaba SIEMPRE
  *             vía sendChunkedMessage (tipo 'chat'), corrompiendo fotos/videos
  *             interrumpidos (llegaban como texto plano en vez de adjunto)
  * FIX v3.2.12: width/height de imagen ahora viajan en el chunk 0 (se descartaban)
@@ -236,6 +238,7 @@ export class BleAckSystem {
           seq: seq,
           type: resolvedType,
           name: msg.fn || msg.name,
+          mime: msg.mt || msg.mime,
           size: msg.fs || msg.size,
           format: msg.ft || msg.format,
           width: msg.w || msg.width,
@@ -555,8 +558,10 @@ export class BleAckSystem {
       var ackMsgId = ack.msgId || ack.messageId || ack.id || null;
       if (!ackMsgId) return false;
       if (ack.type !== 'ack' && ack.type !== 'read_receipt') return false;
-      if (this.receivedAcks.has(ackMsgId)) return true;
-      this.receivedAcks.add(ackMsgId);
+      // FIX v3.2.13: dedup por tipo+id; antes el 'ack' de un mensaje hacía descartar su 'read_receipt'
+      var ackKey = ack.type + ':' + ackMsgId;
+      if (this.receivedAcks.has(ackKey)) return true;
+      this.receivedAcks.add(ackKey);
       if (this.receivedAcks.size > this.maxReceivedAcks) {
         var first = this.receivedAcks.values().next().value;
         this.receivedAcks.delete(first);
@@ -642,8 +647,8 @@ export class BleAckSystem {
           deviceId: deviceId, deviceUUID: meta.fr || senderId,
           content: content, senderName: meta.f || 'NEXO',
           senderNexoId: meta.fr || senderId, messageId: msgId || meta.msgId,
-          source: 'ble', timestamp: Date.now(), seq: meta.seq || 0,
-          fromVault: true
+          source: 'ble', timestamp: meta.ts || Date.now(), seq: meta.seq || 0
+          // FIX v3.2.13: sin fromVault; con fromVault main.js no lo guardaba y se perdía si el chat estaba cerrado
         }
       }));
     } catch (e) {}
@@ -875,6 +880,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (typeof this.meta.seq === 'number') obj.seq = this.meta.seq;
     if (this.meta.type) obj.tp = this.meta.type;
     if (this.meta.name) obj.fn = this.meta.name;
+    if (this.meta.mime) obj.mt = this.meta.mime;
     if (this.meta.size) obj.fs = this.meta.size;
     if (this.meta.format) obj.ft = this.meta.format;
     // FIX: width/height se perdían (nunca se empaquetaban), quedaban null en el receptor

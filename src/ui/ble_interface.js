@@ -1,5 +1,9 @@
 /**
- * BLE Interface v6.1.3-NEXO
+ * BLE Interface v6.1.4-NEXO
+ * FIX v6.1.4: Tras reiniciar la app, los mensajes que quedaron en 'sending' se reenvían.
+ * FIX v6.1.4: Re-búsqueda automática (cada 15s, máx ~10 min) de contactos desconectados o con
+ *             mensajes en cola; antes nadie re-escaneaba y la cola no salía hasta abrir "Gente".
+ *             Conexión entrante (rol servidor) también vacía la cola de pendientes.
  * FIX v6.1.3: Estados, cola de pendientes y esperas READY usan MAC normalizada como clave.
  *             El mapeo NXID->MAC devuelve 'aabbcc..' y los eventos nativos 'AA:BB:CC..';
  *             el envío nunca veía el dispositivo como listo y los mensajes se quedaban en cola.
@@ -356,6 +360,19 @@ function _isControlPacket(content) {
   } catch (e) { return false; }
 }
 
+// Mensajes propios que deben reenviarse. Incluye 'sending'/'queued': tras cerrar la app ya no hay
+// nada en vuelo y antes se quedaban así para siempre. Adjuntos en 'sending' los reanuda
+// resumeOutgoingTransfers (ble_ack), no aquí, para no duplicar la transferencia.
+function _isResendable(m) {
+  if (!m || m._own !== true) return false;
+  if (m.status === 'pending' || m.status === 'failed') return true;
+  if (m.status === 'sending' || m.status === 'queued') {
+    var t = m.attachmentType;
+    return !(t === 'image' || t === 'video' || t === 'file');
+  }
+  return false;
+}
+
 function _vaultUpdateMessageStatus(nexoId, msgId, status) {
   try {
     if (window.vaultUpdateMessageStatus && typeof window.vaultUpdateMessageStatus === 'function') {
@@ -452,6 +469,9 @@ export class BLEInterface {
     this._cameraBleResumeWaiters = [];
     this._cameraBlePausedDevices = [];
     this._cameraBleWasAdvertising = false;
+    this._lostPeers = new Set();
+    this._reconnectScanTimer = null;
+    this._reconnectScanAttempts = 0;
     console.log('[BLEInterface] v6.1.1-NEXO iniciado');
   }
 
@@ -552,7 +572,7 @@ export class BLEInterface {
       if (!nx) return;
       var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
         ? window.vaultGetPendingMessages(nx)
-        : _vaultLoadMessages(nx).then(function(msgs) { return msgs.filter(function(m) { return m._own === true && (m.status === 'pending' || m.status === 'failed'); }); });
+        : _vaultLoadMessages(nx).then(function(msgs) { return msgs.filter(_isResendable); });
       getPending.then(function(pending) {
         if (!pending || pending.length === 0) return;
         console.log('[BLEInterface]', nx, 'tiene', pending.length, 'pending');
@@ -561,10 +581,13 @@ export class BLEInterface {
           var state = self._getDeviceState(deviceId);
           var isReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
           if (isReady) { self._resendPendingMessages(nx); }
-          else if (state.state !== BLE_STATES.CONNECTING && state.state !== BLE_STATES.DISCOVERING_SERVICES) {
-            self._autoConnectGATT(deviceId, { name: contact.name, deviceUUID: nx });
+          else {
+            self._markPeerLost(nx);
+            if (state.state !== BLE_STATES.CONNECTING && state.state !== BLE_STATES.DISCOVERING_SERVICES) {
+              self._autoConnectGATT(deviceId, { name: contact.name, deviceUUID: nx });
+            }
           }
-        } else { self._autoScanForKnownContacts(); }
+        } else { self._markPeerLost(nx); self._autoScanForKnownContacts(); }
       }).catch(function(e) { console.warn('[BLEInterface] Error flush', nx, e.message); });
     });
   }
@@ -740,8 +763,48 @@ export class BLEInterface {
     return found;
   }
 
+  _isMsgInFlight(msgId) {
+    if (!msgId) return false;
+    var found = false;
+    this._pendingMessageQueue.forEach(function(q) { q.forEach(function(it) { if (it.messageId === msgId) found = true; }); });
+    if (found) return true;
+    var ack = this.ackSystem;
+    if (ack && ack.pendingAcks && ack.pendingAcks.has(msgId)) return true;
+    if (ack && ack.outgoingStreams && ack.outgoingStreams.has(msgId)) return true;
+    return false;
+  }
+
+  _markPeerLost(nexoId) {
+    var nx = _normId(nexoId);
+    if (!nx) return;
+    this._lostPeers.add(nx);
+    this._startReconnectScanLoop();
+  }
+
+  _startReconnectScanLoop() {
+    var self = this;
+    if (self._reconnectScanTimer || self.isDummyMode || !self.nativePlugin) return;
+    self._reconnectScanAttempts = 0;
+    function tick() {
+      self._reconnectScanTimer = null;
+      if (self._lostPeers.size === 0 || self._reconnectScanAttempts >= 40) {
+        self._reconnectScanAttempts = 0;
+        return;
+      }
+      var hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      if (!hidden && !self._cameraBlePaused && !self.isScanning) {
+        self._reconnectScanAttempts++;
+        console.log('[BLEInterface] Re-búsqueda de contactos perdidos', Array.from(self._lostPeers), 'intento', self._reconnectScanAttempts);
+        self._autoScanForKnownContacts();
+      }
+      self._reconnectScanTimer = setTimeout(tick, 15000);
+    }
+    self._reconnectScanTimer = setTimeout(tick, 2000);
+  }
+
   _notifyPeerReady(deviceId, nexoId) {
     if (!deviceId || !nexoId) return;
+    this._lostPeers.delete(_normId(nexoId));
     var key = _normMac(deviceId) + ':' + _normId(nexoId);
     if (this._notifiedPeers.has(key)) { console.log('[BLEInterface] Peer ready dup ignorado:', nexoId); return; }
     this._notifiedPeers.add(key);
@@ -872,6 +935,7 @@ export class BLEInterface {
             var st = self._getDeviceState(deviceId);
             if (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY) {
               self._notifyPeerReady(deviceId, peerUUID);
+              self._processPendingMessages(deviceId);
               self._resendPendingMessages(peerUUID);
             }
           }, 1500);
@@ -908,6 +972,7 @@ export class BLEInterface {
           var contacts = _getBLEContacts();
           var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(peerUUID); });
           if (idx >= 0) { contacts[idx].online = false; _saveBLEContacts(contacts); self.renderContactsList(); self.renderOnlineStrip(); }
+          self._markPeerLost(peerUUID);
           _autoScanRegister(peerUUID);
           _autoScanStart();
         }
@@ -1377,6 +1442,7 @@ export class BLEInterface {
 
         if (isReady) { doSend(); return; }
         enqueueMsg();
+        self._markPeerLost(uuid);
         if (!isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           console.log('[BLEInterface] sendChatMessage: forcing connectToDevice for', deviceId);
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
@@ -1557,12 +1623,12 @@ export class BLEInterface {
     var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
       ? window.vaultGetPendingMessages(nexoId)
       : _vaultLoadMessages(nexoId).then(function(msgs) {
-          return msgs.filter(function(m) {
-            return m._own === true && (m.status === 'pending' || m.status === 'failed');
-          });
+          return msgs.filter(_isResendable);
         });
     getPending.then(function(pending) {
-      if (!pending || pending.length === 0) return;
+      // No reenviar lo que sigue en vuelo en esta sesión (cola JS, ACK pendiente o stream activo)
+      pending = (pending || []).filter(function(m) { return !self._isMsgInFlight(m.msgId || m.messageId || m.id); });
+      if (pending.length === 0) return;
       console.log('[BLEInterface] Reenviando', pending.length, 'pending para', nexoId);
       var deviceId = self._resolveDeviceIdForNexoId(nexoId);
       if (!deviceId) {
@@ -2392,6 +2458,8 @@ export class BLEInterface {
     console.log('[BLEInterface] destroy()');
     self._stopConnectionSupervisor();
     self._stopPingInterval();
+    if (self._reconnectScanTimer) { clearTimeout(self._reconnectScanTimer); self._reconnectScanTimer = null; }
+    self._lostPeers.clear();
     self._backoffTimers.forEach(function(t) { clearTimeout(t); });
     self._backoffTimers.clear();
     self._reconnectAttempts.clear();
