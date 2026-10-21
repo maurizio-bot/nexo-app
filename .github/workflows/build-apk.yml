@@ -69,13 +69,33 @@ jobs:
             echo "::warning::Falta el secret DEBUG_KEYSTORE_BASE64: el APK se firmará con una llave nueva y no podrá actualizar la versión instalada."
             exit 0
           fi
-          mkdir -p ~/.android
-          echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+          # Gradle en el runner no usaba ~/.android/debug.keystore (cada APK salía con otra llave):
+          # la ruta se pasa explícitamente a android/app/build.gradle (signingConfigs.debug).
+          KS="$RUNNER_TEMP/nexo-debug.keystore"
+          echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$KS"
+          echo "NEXO_DEBUG_KEYSTORE=$KS" >> $GITHUB_ENV
           echo "Keystore de debug fijo instalado"
 
       - name: Build Android Debug APK
         working-directory: ./android
         run: ./gradlew clean assembleDebug --stacktrace
+
+      # Comprueba que el APK quedó firmado con la llave fija; si no, falla (no publicar un APK que
+      # obligue a desinstalar).
+      - name: Verify APK signature
+        if: env.NEXO_DEBUG_KEYSTORE != ''
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          GOT=$("$APKSIGNER" verify --print-certs "$APK" | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}' | tr 'A-F' 'a-f')
+          WANT=$(keytool -list -v -keystore "$NEXO_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey | grep -m1 'SHA256:' | awk '{print $2}' | tr -d ':' | tr 'A-F' 'a-f')
+          echo "Firma del APK: $GOT"
+          echo "Llave fija:    $WANT"
+          if [ -z "$GOT" ] || [ "$GOT" != "$WANT" ]; then
+            echo "::error::El APK no está firmado con la llave fija"
+            exit 1
+          fi
+          echo "Firma correcta: se podrá instalar encima de la versión anterior"
 
       - name: Rename APK
         run: |
@@ -85,7 +105,16 @@ jobs:
           cp "$APK" "nexo-nightly-${{ github.run_number }}-$SHORT_SHA.apk"
           echo "APK_FILE=nexo-nightly-${{ github.run_number }}-$SHORT_SHA.apk" >> $GITHUB_ENV
 
+      # Solo NEXOCHAT publica release; en otras ramas (workflow_dispatch) solo compila y verifica.
+      - name: Upload APK (otras ramas)
+        if: github.ref != 'refs/heads/NEXOCHAT'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_FILE }}
+          path: ${{ env.APK_FILE }}
+
       - name: Create Release with APK
+        if: github.ref == 'refs/heads/NEXOCHAT'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly-${{ github.run_number }}

@@ -38,6 +38,7 @@ class NativePhone {
     this.pendingQueue = new Map(); // macNorm -> [msg] (Kotlin pendingMessageQueue)
     this.sent = []; // registro de lo que salió por el aire
     this.calls = []; // registro de llamadas JS -> nativo
+    this.stats = { saves: 0, saveBytes: 0, maxSave: 0 }; // coste de persistencia (cruza el bridge)
   }
 
   emit(event, data) {
@@ -51,8 +52,27 @@ class NativePhone {
 
   // ---- envío al aire ----
   _air(fromPeerMac, toPhone, bytes, source) {
-    // Entrega con latencia; el receptor lo procesa como processReceivedChunk
-    setTimeout(() => toPhone._processReceivedChunk(this.address, bytes, source), 15);
+    // Cola por enlace como processWriteQueue de Kotlin: una escritura cada 40 ms (cliente) u 80 ms
+    // (notify de servidor). Con opts.realTiming=false entrega casi inmediata.
+    const delay = this.opts.realTiming === false ? 1 : (source === 'gatt_client' ? 80 : 40);
+    if (!this.writeQ) this.writeQ = new Map();
+    const key = norm(toPhone.address);
+    if (!this.writeQ.has(key)) this.writeQ.set(key, { items: [], busy: false });
+    const q = this.writeQ.get(key);
+    // Pérdida simulada (radio real): se pierde la escritura entera
+    if (this.opts.loss && Math.random() < this.opts.loss) { this.stats.lost = (this.stats.lost || 0) + 1; return; }
+    // Kotlin MAX_QUEUE_SIZE = 500: con la cola llena descarta
+    if (q.items.length >= 500) { this.stats.dropped = (this.stats.dropped || 0) + 1; return; }
+    q.items.push(() => toPhone._processReceivedChunk(this.address, bytes, source));
+    this.stats.maxQueue = Math.max(this.stats.maxQueue || 0, q.items.length);
+    if (/"t":"ba"/.test(bytes)) this.stats.acksOut = (this.stats.acksOut || 0) + 1; else if (/"t":"f"/.test(bytes)) this.stats.chunksOut = (this.stats.chunksOut || 0) + 1;
+    const pump = () => {
+      if (!q.items.length) { q.busy = false; return; }
+      q.busy = true;
+      const fn = q.items.shift();
+      setTimeout(() => { fn(); setTimeout(pump, delay); }, 10);
+    };
+    if (!q.busy) pump();
   }
 
   _sendSingleChunk(macNorm, chunk) {
@@ -133,7 +153,8 @@ class NativePhone {
         this.emit('onServicesReady', { deviceId: peer.address, servicesReady: true });
         this._flushPending(macNorm);
         setTimeout(() => {
-          this.mtu.set(macNorm, 512); peer.mtu.set(norm(this.address), 512);
+          const mtu = this.opts.mtu || 512;
+          this.mtu.set(macNorm, mtu); peer.mtu.set(norm(this.address), mtu);
           peer.serverNotif.set(norm(this.address), true);
           this.emit('onNotificationsEnabled', { deviceId: peer.address, notificationsEnabled: true });
         }, 40);
@@ -233,7 +254,7 @@ class NativePhone {
         }, 0);
       }),
       getConnectedDevices: wrap('getConnectedDevices', (c) => c.resolve({ devices: [] })),
-      saveToFile: wrap('saveToFile', (c) => { const f = c.getString('filename'); const t = c.getString('content'); if (f == null) return c.reject('filename requerido'); if (t == null) return c.reject('content requerido'); self.files.set(f, t); c.resolve({ success: true, path: '/data/' + f }); }),
+      saveToFile: wrap('saveToFile', (c) => { const f = c.getString('filename'); const t = c.getString('content'); if (f == null) return c.reject('filename requerido'); if (t == null) return c.reject('content requerido'); self.files.set(f, t); self.stats.saves++; self.stats.saveBytes += t.length; self.stats.maxSave = Math.max(self.stats.maxSave, t.length); c.resolve({ success: true, path: '/data/' + f }); }),
       loadFromFile: wrap('loadFromFile', (c) => { const f = c.getString('filename'); if (f == null) return c.reject('filename requerido'); if (!self.files.has(f)) return c.resolve({ exists: false, content: '' }); c.resolve({ exists: true, content: self.files.get(f), path: '/data/' + f }); }),
       deleteFile: wrap('deleteFile', (c) => { c.resolve({ deleted: self.files.delete(c.getString('filename')) }); }),
       listFiles: wrap('listFiles', (c) => c.resolve({ files: Array.from(self.files.keys()) })),

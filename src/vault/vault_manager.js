@@ -1,5 +1,6 @@
 /**
- * vault_manager.js v2.2.3
+ * vault_manager.js v2.3.0
+ * v2.3.0: adjuntos grandes en archivo propio (attachmentRef) + vaultHydrateAttachments; migración automática.
  * FIX v2.2.3: estado de mensaje no se degrada; completar transferencia no pisa el adjunto guardado.
  * FIX: Filtro defensivo anti-protocolo TURBO compacto (t: c/f/n/a/ss/sr)
  * Base: v2.2.1-D2
@@ -366,6 +367,54 @@ export function vaultGetOrCreateContact(nexoId, deviceName) {
   }
   return c;
 }
+// v2.3.0: los adjuntos grandes van en su propio archivo (nexo_att_<msgId>.b64) y el historial guarda
+// solo 'attachmentRef'. Antes cada foto iba DOS veces dentro del JSON del historial (payload y
+// content) y cada cambio de estado reescribía todas las fotos del chat: la app se congelaba.
+var ATT_INLINE_LIMIT = 2048;
+var _pendingAttachments = Object.create(null); // ref -> payload mientras se escribe a disco
+function _attFileName(msgId) {
+  return 'nexo_att_' + String(msgId).replace(/[^A-Za-z0-9_-]/g, '_') + '.b64';
+}
+// Saca el payload grande del mensaje (sin await: no abrir carreras de lectura-escritura del historial)
+function _externalizeAttachment(m, existing) {
+  if (!m || !m.attachmentPayload || typeof m.attachmentPayload !== 'string' || m.attachmentPayload.length <= ATT_INLINE_LIMIT) return false;
+  var ref = (existing && existing.attachmentRef) || m.attachmentRef || _attFileName(m.msgId);
+  if (!(existing && existing.attachmentRef)) {
+    var payload = m.attachmentPayload;
+    var plugin = _nativePlugin();
+    _pendingAttachments[ref] = payload;
+    if (plugin) {
+      _safeNativeCall(plugin, 'saveToFile', { filename: ref, content: payload })
+        .then(function() { delete _pendingAttachments[ref]; })
+        .catch(function(e) { console.warn('[VaultManager] No se pudo guardar adjunto', ref, e && e.message); });
+    }
+  }
+  m.attachmentRef = ref;
+  m.attachmentPayload = null;
+  if (typeof m.content === 'string' && m.content.indexOf('"payload"') >= 0) { m.content = '[adjunto]'; m.text = '[adjunto]'; }
+  return true;
+}
+// Devuelve copias de los mensajes con el payload del adjunto cargado (para dibujar o reenviar)
+export async function vaultHydrateAttachments(messages) {
+  var list = Array.isArray(messages) ? messages : [];
+  var plugin = _nativePlugin();
+  var out = [];
+  for (var i = 0; i < list.length; i++) {
+    var m = list[i];
+    if (!m || !m.attachmentRef || m.attachmentPayload) { out.push(m); continue; }
+    var copy = Object.assign({}, m);
+    var mem = _pendingAttachments[m.attachmentRef];
+    if (mem) copy.attachmentPayload = mem;
+    else if (plugin) {
+      try {
+        var r = await _safeNativeCall(plugin, 'loadFromFile', { filename: m.attachmentRef });
+        if (r && r.exists && r.content) copy.attachmentPayload = r.content;
+      } catch (e) {}
+    }
+    out.push(copy);
+  }
+  return out;
+}
 function _msgFileName(contactNexoId) {
   return VAULT_MESSAGES_PREFIX + _normId(contactNexoId) + '.json';
 }
@@ -386,6 +435,9 @@ export async function vaultLoadMessages(contactNexoId) {
         var mid = m.msgId || m.messageId || m.id || ('msg_' + (m.timestamp || Date.now()));
         m.msgId = mid; m.messageId = mid;
       });
+      // Migración: historiales antiguos con fotos dentro del JSON
+      var migrated = false;
+      msgs.forEach(function(m) { if (_externalizeAttachment(m, null)) migrated = true; });
       msgs.sort(function(a, b) {
         var tsA = a.timestamp || 0, tsB = b.timestamp || 0;
         if (tsA !== tsB) return tsA - tsB;
@@ -395,6 +447,7 @@ export async function vaultLoadMessages(contactNexoId) {
         return (a.msgId || '').localeCompare(b.msgId || '');
       });
       _msgCache.set(cid, msgs.slice());
+      if (migrated) _persistMessages(cid, msgs);
       return msgs;
     }
   } catch (e) {}
@@ -465,10 +518,21 @@ export async function vaultAppendMessage(contactNexoId, message) {
     type: message.type || 'text',
     attachmentType: message.attachmentType || null,
     attachmentPayload: message.attachmentPayload || null,
-    attachmentMeta: message.attachmentMeta || null
+    attachmentMeta: message.attachmentMeta || null,
+    attachmentRef: message.attachmentRef || null
   };
   var existingIdx = messages.findIndex(function(m) { return m.msgId === normalized.msgId; });
-  if (existingIdx >= 0) { messages[existingIdx] = Object.assign({}, messages[existingIdx], normalized); }
+  var existing = existingIdx >= 0 ? messages[existingIdx] : null;
+  _externalizeAttachment(normalized, existing);
+  if (existing) {
+    var merged = Object.assign({}, existing, normalized);
+    // No perder datos del adjunto ni el texto si la nueva versión no los trae
+    ['attachmentType', 'attachmentMeta', 'attachmentRef', 'attachmentPayload'].forEach(function(k) {
+      if (normalized[k] == null && existing[k] != null) merged[k] = existing[k];
+    });
+    if (!normalized.content && existing.content) { merged.content = existing.content; merged.text = existing.text; }
+    messages[existingIdx] = merged;
+  }
   else { messages.push(normalized); }
   _persistMessages(cid, messages);
   return normalized;

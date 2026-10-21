@@ -1,5 +1,8 @@
 /**
-* FIX v3.2.13: read_receipt ya no se descarta tras el ack del mismo mensaje; mensajes largos
+* v3.3.0: Transferencias sin tormenta de retransmisiones: NACK solo de huecos reales, ack agrupado
+ *         (cada 4 trozos o 150 ms), sin reenvío por ack parcial, la ventana avanza al confirmarse,
+ *         trozos de 360, ventana 8, sin persistir cada trozo recibido (se escribía y nunca se leía).
+ * FIX v3.2.13: read_receipt ya no se descarta tras el ack del mismo mensaje; mensajes largos
  *             reensamblados se guardan (sin fromVault); el MIME viaja en 'mt'.
  * FIX v3.2.12: resumeOutgoingTransfers respeta tx.type — antes reenviaba SIEMPRE
  *             vía sendChunkedMessage (tipo 'chat'), corrompiendo fotos/videos
@@ -18,12 +21,18 @@
  * Base: v3.2.11-NEXO
  */
 const PROTOCOL_VERSION = 2;
-const CHAT_CHUNK_SIZE = 90;
-const CHAT_WINDOW_SIZE = 4;
+// v3.3.0: trozos de 360 caracteres (con la cabecera JSON caben en una escritura con MTU 512;
+// con MTU menor el nativo los parte y los reensambla). Antes 80-90 => 4-5x más paquetes.
+const CHAT_CHUNK_SIZE = 360;
+const CHAT_WINDOW_SIZE = 8;
 const CHAT_WINDOW_TIMEOUT_MS = 3000;
 const CHAT_PACING_DELAY_MS = 30;
-const FILE_CHUNK_SIZE = 80;
-const FILE_WINDOW_SIZE = 4;
+const FILE_CHUNK_SIZE = 360;
+const FILE_WINDOW_SIZE = 8;
+// Receptor: confirma cada ACK_EVERY trozos o tras ACK_DEBOUNCE_MS sin más trozos (antes, uno por trozo)
+const ACK_EVERY = 4;
+const ACK_DEBOUNCE_MS = 150;
+const NACK_INTERVAL_MS = 1500;
 const FILE_WINDOW_TIMEOUT_MS = 8000;
 const FILE_PACING_DELAY_MS = 25;
 const MAX_WINDOW_RETRIES = 8;
@@ -254,14 +263,11 @@ export class BleAckSystem {
           self.incomingBuffers.delete(msgId);
         }
       }, ASSEMBLY_TIMEOUT_MS);
-      var senderId = from || 'unknown';
-      if (window.vaultCreateTransfer) {
-        window.vaultCreateTransfer(senderId, msgId, type === 'c' ? 'chat' : 'file', total, buf.meta).catch(function(){});
-      }
     }
     if (!buf.chunks.has(idx)) {
       buf.chunks.set(idx, data || '');
       buf.received++;
+      if (typeof buf.maxIdx !== 'number' || idx > buf.maxIdx) buf.maxIdx = idx;
       buf.lastActivity = Date.now();
       if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
       buf.assemblyTimer = setTimeout(function() {
@@ -272,22 +278,42 @@ export class BleAckSystem {
       }, ASSEMBLY_TIMEOUT_MS);
     }
     var senderId = from || (buf.meta && buf.meta.fr) || 'unknown';
-    if (window.vaultAppendChunk) {
-      window.vaultAppendChunk(senderId, msgId, idx, data || '', total, buf.meta).catch(function(){});
-    }
-    self._sendBlockAck(deviceId, msgId, buf);
-    if (idx > 0 && buf.received < buf.total) {
-      var missing = self._findMissing(buf);
-      if (missing.length > 0 && !buf.nackSent) {
-        self._sendNack(deviceId, msgId, missing);
-        buf.nackSent = true;
-        setTimeout(function() { buf.nackSent = false; }, 3000);
-      }
-    }
     if (buf.received >= buf.total) {
       if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
+      if (buf.ackTimer) { clearTimeout(buf.ackTimer); buf.ackTimer = null; }
       self._assembleAndDispatch(buf, deviceId, senderId, msgId);
+      return;
     }
+    // v3.3.0: ack agrupado (antes uno por trozo: saturaba la cola nativa de 80 ms por notify)
+    self._scheduleBlockAck(deviceId, msgId, buf);
+    // v3.3.0: NACK solo de huecos reales (por debajo del mayor índice recibido). Antes incluía todos
+    // los trozos futuros ("2-767") y el emisor los reenviaba todos: tormenta de retransmisiones.
+    var gaps = self._findGaps(buf);
+    var now = Date.now();
+    if (gaps.length > 0 && (!buf.lastNackAt || now - buf.lastNackAt > NACK_INTERVAL_MS)) {
+      buf.lastNackAt = now;
+      self._sendNack(deviceId, msgId, gaps);
+    }
+  }
+  _findGaps(buf) {
+    var gaps = [];
+    for (var i = 0; i < buf.maxIdx; i++) {
+      if (!buf.chunks.has(i)) gaps.push(i);
+    }
+    return gaps;
+  }
+  _scheduleBlockAck(deviceId, msgId, buf) {
+    var self = this;
+    if (buf.received % ACK_EVERY === 0) {
+      if (buf.ackTimer) { clearTimeout(buf.ackTimer); buf.ackTimer = null; }
+      self._sendBlockAck(deviceId, msgId, buf);
+      return;
+    }
+    if (buf.ackTimer) return;
+    buf.ackTimer = setTimeout(function() {
+      buf.ackTimer = null;
+      if (self.incomingBuffers.get(msgId) === buf) self._sendBlockAck(deviceId, msgId, buf);
+    }, ACK_DEBOUNCE_MS);
   }
   _findMissing(buf) {
     var missing = [];
@@ -310,9 +336,6 @@ export class BleAckSystem {
     } else {
       self._dispatchFileComplete(msgId, assembled, buf.meta);
       self._dispatchFileProgress(msgId, buf.total, buf.total, 'received', 100);
-      if (window.vaultCompleteTransfer) {
-        window.vaultCompleteTransfer(senderId, msgId).catch(function(){});
-      }
     }
   }
   _sendNack(deviceId, msgId, indices) {
@@ -375,7 +398,6 @@ export class BleAckSystem {
         if (bitmap & (1 << i)) ackedIndices.push(i);
       }
     }
-    console.log('[BleAckSystem] BlockAck msgId=' + msgId + ' acked=' + ackedIndices.join(',') + ' windowStart=' + stream.windowStart + ' total=' + stream.total);
     for (var i = 0; i < ackedIndices.length; i++) {
       var idx = ackedIndices[i];
       if (idx >= 0 && idx < stream.total) stream.ackedMask[idx] = true;
@@ -393,19 +415,20 @@ export class BleAckSystem {
       for (var i = stream.windowStart; i < windowEnd; i++) {
         if (!stream.ackedMask[i]) missingInWindow.push(i);
       }
-      if (missingInWindow.length > 0 && missingInWindow.length < stream.windowSize) {
-        console.log('[BleAckSystem] Huecos detectados en ventana actual, retransmitiendo:', missingInWindow.join(','));
-        if (stream.timer) {
-          clearTimeout(stream.timer);
-          stream.timer = null;
-        }
-        missingInWindow.forEach(function(idx) {
-          stream.sentMask[idx] = true;
-          var payload = stream._buildChunk(idx);
-          stream.ble._sendMessageNative(stream.deviceId, payload, stream.msgId + '_' + idx).catch(function(){});
-        });
-        stream._startWindowTimer();
-      }
+      // v3.3.0: lo no confirmado de la ventana suele seguir en vuelo; los huecos reales llegan por
+      // NACK y las pérdidas por timeout de ventana. Antes se reenviaba aquí: retransmisiones espurias.
+    }
+    var sentAllAcked = stream._windowResolve && stream._windowEndAtSend > stream._windowStartAtSend;
+    for (var w = stream._windowStartAtSend; sentAllAcked && w < stream._windowEndAtSend; w++) {
+      if (!stream.ackedMask[w]) sentAllAcked = false;
+    }
+    if (sentAllAcked && stream.windowStart < stream.total) {
+      // v3.3.0: ventana confirmada => seguir ya (antes esperaba al timeout de 3-8 s por ventana)
+      if (stream.timer) { clearTimeout(stream.timer); stream.timer = null; }
+      var res = stream._windowResolve;
+      stream._windowResolve = null;
+      stream._windowReject = null;
+      res();
     }
     if (stream.windowStart >= stream.total) {
       console.log('[BleAckSystem] Mensaje completo, finalizando msgId=' + msgId);
@@ -798,7 +821,7 @@ ChatStream.prototype._splitChunks = function() {
   var arr = [];
   var i = 0;
   // Chunk 0 lleva meta (fr, type, format…): limitar datos para no reventar MTU
-  var firstChunkMax = (this.type === 'file') ? Math.min(size, 40) : Math.min(size, 60);
+  var firstChunkMax = (this.type === 'file') ? Math.min(size, 120) : Math.min(size, 200);
   while (i < str.length) {
     var remaining = str.length - i;
     var chunkSize = (arr.length === 0) ? Math.min(firstChunkMax, remaining) : Math.min(size, remaining);
@@ -825,14 +848,15 @@ ChatStream.prototype._sendWindow = function() {
     self._windowStartAtSend = self.windowStart;
     self._windowEndAtSend = Math.min(self.windowStart + self.windowSize, self.total);
     var end = self._windowEndAtSend;
-    console.log('[ChatStream] _sendWindow INICIA. ventana=[' + self._windowStartAtSend + ',' + end + ') msgId=' + self.msgId);
+    var myStart = self._windowStartAtSend;
     function sendNext(idx) {
+      // v3.3.0: si la ventana ya se cerró por ack (y empezó otra), este envío termina aquí
+      if (self._windowStartAtSend !== myStart) return;
       if (idx >= end || self.aborted) {
         var allAcked = true;
         for (var i = self._windowStartAtSend; i < self._windowEndAtSend; i++) {
           if (!self.ackedMask[i]) { allAcked = false; break; }
         }
-        console.log('[ChatStream] _sendWindow sendNext termino. allAcked=' + allAcked + ' para ventana [' + self._windowStartAtSend + ',' + self._windowEndAtSend + ') msgId=' + self.msgId);
         if (allAcked) {
           if (self.timer) clearTimeout(self.timer);
           console.log('[ChatStream] _sendWindow RESOLVIENDO (ventana completa) msgId=' + self.msgId);
@@ -850,7 +874,6 @@ ChatStream.prototype._sendWindow = function() {
       }
       self.sentMask[idx] = true;
       var payload = self._buildChunk(idx);
-      console.log('[ChatStream] Enviando chunk ' + idx + '/' + self.total + ' msgId=' + self.msgId);
       self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
         .then(function() {
           setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);

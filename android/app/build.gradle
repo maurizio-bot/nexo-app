@@ -29,7 +29,26 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
+    // Firma fija para que cada APK pueda instalarse encima de la anterior. El workflow escribe la
+    // llave (secret DEBUG_KEYSTORE_BASE64) y exporta su ruta en NEXO_DEBUG_KEYSTORE. Sin esa variable
+    // (compilación local) se usa la llave de debug por defecto.
+    signingConfigs {
+        debug {
+            def nexoKeystore = System.getenv('NEXO_DEBUG_KEYSTORE')
+            if (nexoKeystore && file(nexoKeystore).exists()) {
+                storeFile file(nexoKeystore)
+                storeType 'pkcs12'
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

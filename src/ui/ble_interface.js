@@ -400,6 +400,13 @@ function _vaultAppendMessage(nexoId, msg, isOwn) {
   return Promise.resolve();
 }
 
+function _hydrateAttachments(msgs) {
+  try {
+    if (window.vaultHydrateAttachments && typeof window.vaultHydrateAttachments === 'function') return window.vaultHydrateAttachments(msgs);
+  } catch (e) {}
+  return Promise.resolve(msgs);
+}
+
 function _vaultLoadMessages(nexoId) {
   try {
     if (window.vaultLoadMessages && typeof window.vaultLoadMessages === 'function') {
@@ -1088,7 +1095,6 @@ export class BLEInterface {
           }
         } catch (e) {}
         if (isProtocol) {
-          console.log('[BLEInterface] Protocol filtered:', trimmedContent.substring(0, 50));
           if (self.ackSystem) {
             var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: trimmedContent });
             if (fragmentHandled) return;
@@ -1600,7 +1606,7 @@ export class BLEInterface {
         }
         finishOpenChat();
         self._resendPendingMessages(uuid);
-        _vaultLoadMessages(uuid).then(function(messages) {
+        _vaultLoadMessages(uuid).then(_hydrateAttachments).then(function(messages) {
           if (messages && messages.length > 0) _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid, messages: messages });
         }).catch(function() {});
         resolve();
@@ -1625,6 +1631,7 @@ export class BLEInterface {
       : _vaultLoadMessages(nexoId).then(function(msgs) {
           return msgs.filter(_isResendable);
         });
+    getPending = getPending.then(_hydrateAttachments);
     getPending.then(function(pending) {
       // No reenviar lo que sigue en vuelo en esta sesión (cola JS, ACK pendiente o stream activo)
       pending = (pending || []).filter(function(m) { return !self._isMsgInFlight(m.msgId || m.messageId || m.id); });

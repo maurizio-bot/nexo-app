@@ -43,7 +43,7 @@ import {
   vaultCreateTransfer, vaultAppendChunk, vaultGetTransfer, vaultCompleteTransfer,
   vaultGetIncompleteTransfers, vaultGetPendingOutgoingTransfers, vaultCreateOutgoingTransfer,
   vaultSetOutgoingChunkAcked, vaultIncrementOutgoingTimeout, vaultRemoveOutgoingTransfer,
-  vaultSetOutgoingStatus
+  vaultSetOutgoingStatus, vaultHydrateAttachments
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
 
@@ -83,6 +83,7 @@ window.vaultSetOutgoingChunkAcked = vaultSetOutgoingChunkAcked;
 window.vaultIncrementOutgoingTimeout = vaultIncrementOutgoingTimeout;
 window.vaultRemoveOutgoingTransfer = vaultRemoveOutgoingTransfer;
 window.vaultSetOutgoingStatus = vaultSetOutgoingStatus;
+window.vaultHydrateAttachments = vaultHydrateAttachments;
 
 var SAFETY_TIMEOUT = setTimeout(function() {
   try {
@@ -1810,7 +1811,7 @@ async function _loadPersistedMessages() {
     _clearMessageContainer();
     var contactId = _getCurrentContactId();
     if (!contactId) return;
-    var vaultMessages = await vaultLoadMessages(contactId);
+    var vaultMessages = await vaultHydrateAttachments(await vaultLoadMessages(contactId));
     if (vaultMessages && vaultMessages.length > 0) {
       vaultMessages.forEach(function(msg) {
         var mid = msg.msgId || msg.messageId || msg.id || ('msg' + (msg.timestamp || Date.now()));
