@@ -1,5 +1,8 @@
 /**
- * BLE Interface v6.1.7-NEXO
+ * BLE Interface v6.1.8-NEXO
+ * FIX v6.1.8: Lista de contactos ordenada por el último mensaje enviado o recibido (lastMessageAt);
+ *             antes por lastSeen, que cambia con cada ping/escaneo y hacía saltar la lista. La hora y
+ *             el texto de la fila son los del último mensaje. Redibujado agrupado (máx. cada 300 ms).
  * FIX v6.1.7: Al volver a la app (aviso nativo o visibilitychange) se reconecta, se sincroniza y se
  *             vacía la cola (dependía de @capacitor/app, no instalado). Re-búsqueda sin el tope de
  *             10 min, también con la app oculta (escaneo filtrado), y búsqueda de 2 min al abrir/volver.
@@ -107,6 +110,20 @@ function _getOrCreateNexoId() {
       _saveNexoIdToVault(newId).then(function(id) { resolve(id); });
     });
   });
+}
+
+// Texto corto del último mensaje para la lista de contactos
+function _messagePreview(content, attachmentType) {
+  var t = attachmentType;
+  if (!t && typeof content === 'string' && content.charAt(0) === '{') {
+    try { var p = JSON.parse(content); if (p && p.attachmentType) t = p.attachmentType; } catch (e) {}
+  }
+  if (t === 'image') return '📷 Foto';
+  if (t === 'video') return '🎬 Vídeo';
+  if (t === 'audio' || t === 'voice') return '🎤 Audio';
+  if (t === 'location') return '📍 Ubicación';
+  if (t) return '📎 Archivo';
+  return String(content || '').substring(0, 50);
 }
 
 function _formatTime(ts) {
@@ -563,6 +580,7 @@ export class BLEInterface {
     setTimeout(function() { self._flushAllPendingMessages(); }, 3000);
     // v6.1.7: antes un solo escaneo de 6 s al abrir; si no veía al otro, nadie volvía a buscar
     setTimeout(function() { if (!self.isDummyMode && self.nativePlugin) self._startPresenceSearch(120000); }, 7000);
+    setTimeout(function() { self._backfillLastMessageAt(); }, 1500);
   }
 
   _cleanupStaleStates() {
@@ -1346,7 +1364,7 @@ export class BLEInterface {
           } else {
             var contacts2 = _getBLEContacts();
             var idx2 = contacts2.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
-            if (idx2 >= 0) { contacts2[idx2].online = true; contacts2[idx2].lastSeen = Date.now(); contacts2[idx2].deviceId = deviceId; if (content && !isControl) contacts2[idx2].lastMessage = content.substring(0, 50); _saveBLEContacts(contacts2); self.renderContactsList(); self.renderOnlineStrip(); }
+            if (idx2 >= 0) { contacts2[idx2].online = true; contacts2[idx2].lastSeen = Date.now(); contacts2[idx2].deviceId = deviceId; _saveBLEContacts(contacts2); self.renderContactsList(); self.renderOnlineStrip(); }
           }
           _vaultGetOrCreateContact(senderUUID, senderName, self.connectedDevices.get(deviceId) && self.connectedDevices.get(deviceId).name);
         }
@@ -1381,8 +1399,9 @@ export class BLEInterface {
         if (senderUUID && !isControl && !isChatActive) {
           var contacts3 = _getBLEContacts();
           var idx3 = contacts3.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
-          if (idx3 >= 0) { contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1; contacts3[idx3].lastMessage = msgContent.substring(0, 50); contacts3[idx3].lastSeen = Date.now(); _saveBLEContacts(contacts3); self.renderContactsList(); self.renderOnlineStrip(); }
+          if (idx3 >= 0) { contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1; contacts3[idx3].lastSeen = Date.now(); _saveBLEContacts(contacts3); }
         }
+        if (senderUUID && !isControl) self.noteContactMessage(senderUUID, _messagePreview(content, attachmentData && attachmentData.attachmentType), data.timestamp || Date.now());
         _safeDispatchEvent('nexo:ble:messageReceived', {
           deviceId: deviceId,
           deviceUUID: senderUUID,
@@ -2356,8 +2375,48 @@ export class BLEInterface {
       strip.appendChild(item);
     });
   }
+  // v6.1.8: se llamaba con cada paquete recibido (pings, trozos de foto) y reconstruía toda la lista
   renderContactsList() {
     var self = this;
+    var now = Date.now();
+    if (self._contactsRenderTimer) return;
+    var wait = 300 - (now - (self._lastContactsRender || 0));
+    if (wait <= 0) { self._renderContactsListNow(); return; }
+    self._contactsRenderTimer = setTimeout(function() { self._contactsRenderTimer = null; self._renderContactsListNow(); }, wait);
+  }
+
+  // v6.1.8: único punto que actualiza el último mensaje de un contacto (enviado o recibido)
+  noteContactMessage(nexoId, preview, ts) {
+    var nx = _normId(nexoId);
+    if (!nx) return;
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c) return;
+    var t = ts || Date.now();
+    if ((c.lastMessageAt || 0) > t) return;
+    c.lastMessageAt = t;
+    if (preview) c.lastMessage = preview;
+    _saveBLEContacts(contacts);
+    this.renderContactsList();
+  }
+
+  // v6.1.8: contactos guardados antes de lastMessageAt: se toma del historial
+  _backfillLastMessageAt() {
+    var self = this;
+    var contacts = _getBLEContacts().filter(function(c) { return !c.lastMessageAt && (c.nexoId || c.deviceUUID); });
+    if (!contacts.length) return;
+    Promise.all(contacts.map(function(c) {
+      var nx = _normId(c.nexoId || c.deviceUUID);
+      return _vaultLoadMessages(nx).then(function(msgs) {
+        var last = (msgs || []).reduce(function(m, x) { return (x.timestamp || 0) > ((m && m.timestamp) || 0) ? x : m; }, null);
+        if (last) self.noteContactMessage(nx, _messagePreview(last.content || last.text, last.attachmentType), last.timestamp);
+      }).catch(function() {});
+    }));
+  }
+
+  _renderContactsListNow() {
+    var self = this;
+    self._lastContactsRender = Date.now();
     var list = this.elements.mainContactsList;
     if (!list) return;
     list.innerHTML = '';
@@ -2375,6 +2434,7 @@ export class BLEInterface {
           existing.lastSeen = c.lastSeen;
           existing.online = c.online;
           existing.lastMessage = c.lastMessage || existing.lastMessage;
+          existing.lastMessageAt = Math.max(existing.lastMessageAt || 0, c.lastMessageAt || 0);
           existing.unreadCount = Math.max(existing.unreadCount || 0, c.unreadCount || 0);
           existing.deviceId = c.deviceId || existing.deviceId;
         }
@@ -2393,7 +2453,12 @@ export class BLEInterface {
       var aPinned = pinned.indexOf(_normId(a.nexoId || a.deviceUUID)) >= 0 ? 1 : 0;
       var bPinned = pinned.indexOf(_normId(b.nexoId || b.deviceUUID)) >= 0 ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned;
-      return (b.lastSeen || 0) - (a.lastSeen || 0);
+      // v6.1.8: por último mensaje; sin mensajes, por fecha de alta (estable)
+      var d = (b.lastMessageAt || 0) - (a.lastMessageAt || 0);
+      if (d !== 0) return d;
+      d = (b.addedAt || 0) - (a.addedAt || 0);
+      if (d !== 0) return d;
+      return String(a.name || '').localeCompare(String(b.name || ''));
     });
     contacts.forEach(function(contact, index) {
       var uuid = _normId(contact.nexoId || contact.deviceUUID);
@@ -2401,7 +2466,7 @@ export class BLEInterface {
       var initials = _getInitials(contact.name);
       var gradClass = _getGradientForUUID(uuid);
       var lastMsg = contact.lastMessage || (isOnline ? 'En linea' : 'Offline');
-      var timeStr = _formatTime(contact.lastSeen);
+      var timeStr = _formatTime(contact.lastMessageAt);
       var unread = contact.unreadCount || 0;
       var row = document.createElement('div');
       row.className = 'ble-contact-row';

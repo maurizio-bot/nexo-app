@@ -33,6 +33,24 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2693 | `c12c974` | Mensajes retenidos al reabrir, control de flujo nativo por callback, progreso visible |
 | 2694 | `b75a767` | Verificación en rama de trabajo (Kotlin + firma), sin release |
 | 2695 | `37ad25e` | Historial sin carreras (mensajes borrados al reabrir), textos repetidos visibles, reconexión al volver a la app |
+| 2696 | (este) | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
+
+## Ronda 2696 (verificada en simulador salvo la recodificación)
+**Lista de contactos que saltaba**: se ordenaba por `lastSeen` (cambia con cada ping/escaneo/
+reconexión). Ahora por `lastMessageAt` (último mensaje enviado o recibido; `noteContactMessage` en
+`ble_interface.js`), la fila muestra ese mensaje y su hora, y se redibuja como mucho cada 300 ms (antes
+con cada paquete). `window.vaultSaveContacts` no estaba expuesto: último mensaje/no leídos nunca se
+guardaban. `tests/sim/contacts.js --churn`: 2695 cambiaba de orden sin mensajes; ahora estable.
+**Vídeo en dos pasos** (`main.js` `_sendVideo`): previa recodificada en el teléfono (240p, 60-200
+kbps, `_makeVideoPreview`: video → canvas + WebAudio → MediaRecorder) enviada como mensaje normal; al
+llegar, el original va solo como transferencia `<msgId>_hd` (cabecera `hf`), con textos intercalados, y
+en el receptor sustituye a la previa en el mismo mensaje (`vaultReplaceAttachment`). Estado `hdStatus`
+en el historial; se retoma al reconectar (`_resumeHdTransfers`) o al reabrir. Cámara a 1,5 Mbps.
+Límites: previa ≤ 60 s de vídeo, HD ≤ ~6 MB; si no se puede recodificar se envía el original como antes.
+`tests/sim/video.js` (previa simulada): previa 5 s, texto durante el HD 0,2-0,4 s, HD 300 KB 35 s,
+corte de enlace al 30 % → completa (59 s), A cierra la app al 30 % → completa (42 s), 2 MB 213 s.
+**Sin verificar**: la recodificación real (MediaRecorder/canvas no existen en jsdom): calidad y tamaño
+de la previa solo se ven en el teléfono (log `[VIDEO] Previa WxH N KB`).
 
 ## Ronda 2695 (verificada en simulador)
 Prueba real de la 2693: con B en segundo plano o cerrada seguían faltando mensajes; vídeo de 5 s = ~8 min.
@@ -83,6 +101,8 @@ tests/sim/build.sh && node tests/sim/run.js tests/sim/builds/wip --content-fallb
 node tests/sim/perf.js tests/sim/builds/wip --pdf-kb=150 [--pace=15,15 | --mtu=247 | --loss=0.03]
 node tests/sim/lifecycle.js tests/sim/builds/wip --retain --close-no-service --asymmetric --js-delay=6000 --io-delay=25
 node tests/sim/background.js tests/sim/builds/wip --scenario=closed --rotate --no-m3 --io-delay=25 --app-events
+node tests/sim/contacts.js tests/sim/builds/wip --churn --io-delay=25
+node tests/sim/video.js tests/sim/builds/wip --io-delay=25 [--cut | --restart-a]
 ```
 Ver `tests/sim/README.md`. Límites: no simula la radio real (velocidad, alcance) ni Kotlin en sí.
 

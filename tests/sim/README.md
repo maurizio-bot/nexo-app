@@ -47,3 +47,8 @@ La línea `RESULTADO` resume cada comprobación. Los logs de ambos teléfonos qu
 
 Límites: no simula la radio real (alcance, interferencias, direcciones aleatorias de Android entre
 escaneo y conexión), ni la cámara/canvas, ni el código Kotlin en sí (solo su comportamiento).
+
+`contacts.js` (tres teléfonos): orden de la lista por último mensaje; `--churn` añade actividad de
+radio (reconexiones) para comprobar que no salta. `video.js`: vídeo previa + HD automático con una
+previa simulada (jsdom no tiene MediaRecorder); `--cut` corta el enlace a mitad del HD, `--restart-a`
+cierra y reabre la app del emisor, `--orig-kb=2000 --preview-kb=140` tamaños.

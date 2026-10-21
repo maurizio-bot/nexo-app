@@ -1,5 +1,9 @@
 /**
- * vault_manager.js v2.3.1
+ * vault_manager.js v2.3.3
+ * v2.3.3: vídeo HD: vaultReplaceAttachment (el HD sustituye a la previa), vaultSetMessageFields,
+ *         vaultSaveFile y vaultHydrateAttachments(..., { preferHd }) para ver el original propio.
+ * v2.3.2: contactos con lastMessageAt (orden de la lista por último mensaje); guardado de contactos
+ *         agrupado (300 ms) para no escribir el archivo con cada paquete recibido.
  * FIX v2.3.1: historial sin carreras. Cada cambio (añadir, estado, guardar) va en cola por contacto y
  *             las lecturas simultáneas comparten una carga. Antes, al abrir la app (caché vacía) dos
  *             mensajes seguidos leían el mismo archivo y el segundo guardado borraba el primero.
@@ -131,7 +135,10 @@ function _dedupeContacts(contacts) {
     if ((contact.unreadCount || 0) > (existing.unreadCount || 0)) {
       existing.unreadCount = contact.unreadCount;
     }
-    if (contact.lastMessage && !existing.lastMessage) {
+    if ((contact.lastMessageAt || 0) > (existing.lastMessageAt || 0)) {
+      existing.lastMessageAt = contact.lastMessageAt;
+      if (contact.lastMessage) existing.lastMessage = contact.lastMessage;
+    } else if (contact.lastMessage && !existing.lastMessage) {
       existing.lastMessage = contact.lastMessage;
     }
   });
@@ -207,7 +214,12 @@ export async function initVault() {
   }
   _vaultInitDone = true;
 }
+var _persistContactsTimer = null;
 function _persistContacts() {
+  if (_persistContactsTimer) return;
+  _persistContactsTimer = setTimeout(function() { _persistContactsTimer = null; _persistContactsNow(); }, 300);
+}
+function _persistContactsNow() {
   var plugin = _nativePlugin();
   if (!plugin) return;
   _safeNativeCall(plugin, 'saveToFile', {
@@ -410,19 +422,23 @@ function _externalizeAttachment(m, existing) {
   return true;
 }
 // Devuelve copias de los mensajes con el payload del adjunto cargado (para dibujar o reenviar)
-export async function vaultHydrateAttachments(messages) {
+export async function vaultHydrateAttachments(messages, opts) {
   var list = Array.isArray(messages) ? messages : [];
   var plugin = _nativePlugin();
+  var preferHd = !!(opts && opts.preferHd);
   var out = [];
   for (var i = 0; i < list.length; i++) {
     var m = list[i];
-    if (!m || !m.attachmentRef || m.attachmentPayload) { out.push(m); continue; }
+    // Vídeo propio con original guardado: para verlo se usa el HD (lo enviado como mensaje es la previa)
+    var ref = (preferHd && m && m.hdRef) ? m.hdRef : (m && m.attachmentRef);
+    if (!m || !ref || (m.attachmentPayload && ref === m.attachmentRef)) { out.push(m); continue; }
     var copy = Object.assign({}, m);
-    var mem = _pendingAttachments[m.attachmentRef];
+    if (ref === m.hdRef && m.hdMime) copy.attachmentMeta = Object.assign({}, m.attachmentMeta || {}, { mime: m.hdMime });
+    var mem = _pendingAttachments[ref];
     if (mem) copy.attachmentPayload = mem;
     else if (plugin) {
       try {
-        var r = await _safeNativeCall(plugin, 'loadFromFile', { filename: m.attachmentRef });
+        var r = await _safeNativeCall(plugin, 'loadFromFile', { filename: ref });
         if (r && r.exists && r.content) copy.attachmentPayload = r.content;
       } catch (e) {}
     }
@@ -568,6 +584,69 @@ async function _appendMessageNow(cid, message) {
   _persistMessages(cid, messages);
   return normalized;
 }
+// v2.3.3: guarda un archivo suelto (p.ej. el vídeo original para el HD) y lo deja en memoria hasta escribirlo
+export function vaultSaveFile(filename, content) {
+  _pendingAttachments[filename] = content;
+  var plugin = _nativePlugin();
+  if (!plugin) return Promise.resolve(false);
+  return _safeNativeCall(plugin, 'saveToFile', { filename: filename, content: content })
+    .then(function() { delete _pendingAttachments[filename]; return true; })
+    .catch(function() { return false; });
+}
+export async function vaultLoadFile(filename) {
+  if (_pendingAttachments[filename]) return _pendingAttachments[filename];
+  var plugin = _nativePlugin();
+  if (!plugin) return null;
+  try {
+    var r = await _safeNativeCall(plugin, 'loadFromFile', { filename: filename });
+    return (r && r.exists && r.content) ? r.content : null;
+  } catch (e) { return null; }
+}
+export function vaultHdFileName(msgId) { return _attFileName(msgId + '_hd'); }
+
+// v2.3.3: cambia campos de un mensaje (sin tocar estado ni contenido)
+export async function vaultSetMessageFields(contactNexoId, msgId, patch) {
+  if (!msgId || !patch) return false;
+  if (!contactNexoId) {
+    // Sin contacto (p.ej. ack tras reabrir la app): buscar el mensaje en todos
+    var contacts = Array.isArray(_vaultContacts) ? _vaultContacts : [];
+    for (var i = 0; i < contacts.length; i++) {
+      var id = _getContactIdentity(contacts[i]);
+      if (id && await vaultSetMessageFields(id, msgId, patch)) return true;
+    }
+    return false;
+  }
+  var cid = _normId(contactNexoId);
+  return _withMsgLock(cid, async function() {
+    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+    var idx = messages.findIndex(function(m) { return m.msgId === msgId; });
+    if (idx < 0) return false;
+    messages[idx] = Object.assign({}, messages[idx], patch);
+    _persistMessages(cid, messages);
+    return true;
+  });
+}
+
+// v2.3.3: el vídeo HD sustituye al adjunto (previa) de un mensaje ya recibido
+export async function vaultReplaceAttachment(contactNexoId, msgId, payload, metaPatch) {
+  if (!contactNexoId || !msgId || !payload) return false;
+  var cid = _normId(contactNexoId);
+  return _withMsgLock(cid, async function() {
+    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+    var idx = messages.findIndex(function(m) { return m.msgId === msgId; });
+    if (idx < 0) return false;
+    var m = Object.assign({}, messages[idx]);
+    var ref = m.attachmentRef || _attFileName(msgId);
+    vaultSaveFile(ref, payload);
+    m.attachmentRef = ref;
+    m.attachmentPayload = null;
+    m.attachmentMeta = Object.assign({}, m.attachmentMeta || {}, metaPatch || {});
+    messages[idx] = m;
+    _persistMessages(cid, messages);
+    return true;
+  });
+}
+
 var _STATUS_RANK = { failed: 0, pending: 1, queued: 2, sending: 3, sent: 4, delivered: 5, read: 6 };
 function _statusRank(s) { return _STATUS_RANK[s] || 0; }
 export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {

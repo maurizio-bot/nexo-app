@@ -1,4 +1,6 @@
 /**
+* v3.3.3: Vídeo HD: cabecera 'hf' (mensaje que mejora), tiempo máximo según tamaño y sin
+*         transferencias duplicadas al reanudar una que sigue en curso.
 * v3.3.2: Eventos de progreso de envío y recepción de archivos (cada 5 %).
 * v3.3.1: Sincronización de sesión con el seq correcto (solo mensajes recibidos del otro) y reenvío de
  *         lo propio sin confirmar.
@@ -180,10 +182,19 @@ export class BleAckSystem {
         type: (meta && meta.type) ? meta.type : 'file',
         size: (meta && meta.size) ? meta.size : base64Data.length
       });
+      // v3.3.3: reanudar (resumeOutgoingTransfers) una transferencia que sigue en curso creaba un segundo
+      // flujo con el mismo id que pisaba al primero
+      var running = self.outgoingStreams.get(fileId);
+      if (running && !running.aborted && running._promise) {
+        console.log('[BleAckSystem] sendFile ya en curso fileId=' + fileId);
+        running._promise.then(resolve, reject);
+        return;
+      }
       console.log('[BleAckSystem] sendFile START fileId=' + fileId + ' type=' + finalMeta.type + ' bytes(b64)=' + base64Data.length + ' to=' + deviceId);
       var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
       self.outgoingStreams.set(fileId, stream);
-      stream.start().then(function() {
+      stream._promise = stream.start();
+      stream._promise.then(function() {
         self.outgoingStreams.delete(fileId);
         console.log('[BleAckSystem] sendFile OK fileId=' + fileId);
         resolve();
@@ -260,7 +271,9 @@ export class BleAckSystem {
           size: msg.fs || msg.size,
           format: msg.ft || msg.format,
           width: msg.w || msg.width,
-          height: msg.h || msg.height
+          height: msg.h || msg.height,
+          hdFor: msg.hf || null,
+          preview: msg.pv === 1
         },
         received: 0, deviceId: deviceId, lastActivity: Date.now(),
         isChat: type === 'c', nackSent: false
@@ -711,7 +724,7 @@ export class BleAckSystem {
     if (status !== 'failed' && (pct >= 100 || (typeof buf.lastPct === 'number' && pct - buf.lastPct < 5))) return;
     buf.lastPct = pct;
     this._dispatchFileProgress(msgId, buf.received, buf.total, status || 'receiving', pct, {
-      direction: 'in', senderNexoId: buf.meta.fr, fileType: buf.meta.type, mime: buf.meta.mime, name: buf.meta.name
+      direction: 'in', senderNexoId: buf.meta.fr, fileType: buf.meta.type, mime: buf.meta.mime, name: buf.meta.name, hdFor: buf.meta.hdFor
     });
   }
   _dispatchFileComplete(fileId, data, meta) {
@@ -811,8 +824,9 @@ ChatStream.prototype.start = function() {
     var timeoutPerWindow = self.windowTimeoutMs * (MAX_WINDOW_RETRIES + 2);
     var baseTo = (self.type === 'file') ? FILE_GLOBAL_TIMEOUT_MS : self.baseTimeoutMs;
     self.globalTimeoutMs = Math.max(baseTo, estimatedWindows * timeoutPerWindow);
-    // Cap razonable: 15 min max
-    if (self.globalTimeoutMs > 900000) self.globalTimeoutMs = 900000;
+    // Cap razonable: 15 min max; archivos grandes (vídeo HD) hasta 60 min a un mínimo de ~1,5 KB/s
+    var cap = (self.type === 'file') ? Math.min(3600000, Math.max(900000, Math.round(self.content.length / 1.5))) : 900000;
+    if (self.globalTimeoutMs > cap) self.globalTimeoutMs = cap;
     console.log('[ChatStream] START msgId=' + self.msgId + ' type=' + self.type + ' totalChunks=' + self.total + ' totalWindows=' + estimatedWindows + ' timeout=' + self.globalTimeoutMs + 'ms');
     if (window.vaultCreateOutgoingTransfer) {
       var cid = self.ackSystem._resolveNexoId(self.deviceId);
@@ -955,6 +969,8 @@ ChatStream.prototype._buildChunk = function(idx) {
     // FIX: width/height se perdían (nunca se empaquetaban), quedaban null en el receptor
     if (this.meta.width) obj.w = this.meta.width;
     if (this.meta.height) obj.h = this.meta.height;
+    if (this.meta.hdFor) obj.hf = this.meta.hdFor;
+    if (this.meta.preview) obj.pv = 1;
   }
   return JSON.stringify(obj);
 };

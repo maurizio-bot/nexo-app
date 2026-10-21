@@ -1,5 +1,10 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.28-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.30-NEXO
+ * v9.9.30: Vídeo en dos pasos: previa 240p recodificada en el teléfono (llega rápido) y el original
+ *          (HD) automático después, en segundo plano; sustituye a la previa en el otro teléfono.
+ *          Si no se puede recodificar, se envía el original como antes.
+ * FIX v9.9.29: la lista de contactos se ordena por el último mensaje (también los enviados y los
+ *             archivos recibidos); window.vaultSaveContacts expuesto (los contactos no se guardaban).
  * FIX v9.9.28: no se descartan mensajes recibidos con el mismo texto que otros recientes.
  * FIX v9.9.27: Progreso visible de archivos: "○ 45%" en la burbuja propia y "Recibiendo foto… N%"
  *             en el chat del receptor mientras llega.
@@ -42,12 +47,13 @@ import { ensureBLEPermissions, getPermissionShim } from './core/NexoPermissionSh
 import { createAckSystem } from './ui/ble_ack.js';
 import {
   initVault,
-  vaultLoadContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages,
+  vaultLoadContacts, vaultSaveContacts, vaultSaveContact, vaultLoadMessages, vaultSaveMessages,
   vaultAppendMessage, vaultUpdateMessageStatus, vaultGetOrCreateContact, vaultFindContactByNexoId,
   vaultCreateTransfer, vaultAppendChunk, vaultGetTransfer, vaultCompleteTransfer,
   vaultGetIncompleteTransfers, vaultGetPendingOutgoingTransfers, vaultCreateOutgoingTransfer,
   vaultSetOutgoingChunkAcked, vaultIncrementOutgoingTimeout, vaultRemoveOutgoingTransfer,
-  vaultSetOutgoingStatus, vaultHydrateAttachments
+  vaultSetOutgoingStatus, vaultHydrateAttachments,
+  vaultSetMessageFields, vaultReplaceAttachment, vaultSaveFile, vaultLoadFile, vaultHdFileName
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
 
@@ -70,6 +76,9 @@ window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 window.vaultLoadContacts = vaultLoadContacts;
 window.vaultSaveContact = vaultSaveContact;
+// FIX v9.9.29: ble_interface guarda los contactos con window.vaultSaveContacts; no estaba expuesto y
+// el último mensaje / no leídos nunca llegaban a disco
+window.vaultSaveContacts = vaultSaveContacts;
 window.vaultLoadMessages = vaultLoadMessages;
 window.vaultSaveMessages = vaultSaveMessages;
 window.vaultAppendMessage = vaultAppendMessage;
@@ -246,7 +255,7 @@ function _waitForBLEReady(maxMs) {
   });
 }
 
-function _sendAttachment(type, payload, meta) {
+function _sendAttachment(type, payload, meta, opts) {
   // FIX v9.9.26: meta.type llega con el MIME del archivo ('image/jpeg', 'text/plain'...) y pisaba
   // el tipo de adjunto en Object.assign({type}, meta): el receptor no sabía dibujarlo.
   // El tipo de adjunto va en meta.type y el MIME en meta.mime.
@@ -267,6 +276,7 @@ function _sendAttachment(type, payload, meta) {
 
   var msgId = 'msg' + Date.now() + Math.random().toString(36).substr(2, 5);
   _msgContactMap[msgId] = contactId;
+  _noteContactMessage(contactId, type, Date.now());
 
   var attachmentData = {
     type: 'attachment',
@@ -299,7 +309,11 @@ function _sendAttachment(type, payload, meta) {
     return;
   }
 
-  _renderMessage(localMsg);
+  // v9.9.30: el vídeo con HD se ve en el propio teléfono en calidad original (se envía la previa)
+  var shownMsg = (opts && opts.displayPayload)
+    ? Object.assign({}, localMsg, { attachmentPayload: opts.displayPayload, attachmentMeta: Object.assign({}, meta || {}, { mime: opts.displayMime || (meta && meta.mime) }), hdStatus: 'pending' })
+    : localMsg;
+  _renderMessage(shownMsg, true);
   try {
     if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg);
   } catch (e) {}
@@ -338,7 +352,7 @@ function _sendAttachment(type, payload, meta) {
         _updateMessageStatus(msgId, 'failed');
         _updateMessageStorageStatus(msgId, 'failed', contactId);
       });
-    return;
+    return msgId;
   }
 
   // Ruta de mensajes de texto / location / audio (JSON)
@@ -483,6 +497,7 @@ function _setupVideoRecorder(stream) {
   }
   try {
     var options = mimeType ? { mimeType: mimeType } : {};
+    options.videoBitsPerSecond = CAMERA_HD_BPS; // v9.9.30: 720p a 1,5 Mbps (el HD tarda menos)
     _cameraPreviewMediaRecorder = new MediaRecorder(stream, options);
     _cameraPreviewVideoChunks = [];
     _cameraPreviewMediaRecorder.ondataavailable = function(e) {
@@ -702,8 +717,8 @@ function _handleCameraCapture() {
             if (_cameraVideoStartTime > 0) {
               duration = Math.round((Date.now() - _cameraVideoStartTime) / 1000);
             }
-            var mimeType = 'video/webm';
-            var blob = new Blob(_cameraPreviewVideoChunks, { type: mimeType });
+            var mimeType = (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.mimeType) || 'video/webm';
+            var blob = new Blob(_cameraPreviewVideoChunks, { type: mimeType.split(';')[0] });
             if (blob.size === 0) {
               console.log('[CAMERA] Video blob vacio, grabacion fallo');
               var status = document.getElementById('camera-preview-status');
@@ -712,21 +727,12 @@ function _handleCameraCapture() {
               _updateCameraPreviewUI();
               return;
             }
-            var reader = new FileReader();
-            reader.onloadend = function() {
-              var base64 = reader.result.split(',')[1];
-              console.log('[CAMERA] Video listo b64len=' + (base64 ? base64.length : 0) + ' dur=' + duration);
-              _hideCameraPreviewOverlay();
-              _waitForBLEReady(4500).then(function() {
-                _sendAttachment('video', base64, { format: 'webm', duration: duration });
-              });
-            };
-            reader.onerror = function() {
-              console.log('[CAMERA] Error leyendo video');
-              _cameraPreviewRecording = false;
-              _updateCameraPreviewUI();
-            };
-            reader.readAsDataURL(blob);
+            console.log('[CAMERA] Video listo ' + Math.round(blob.size / 1024) + ' KB dur=' + duration);
+            _hideCameraPreviewOverlay();
+            // v9.9.30: previa rápida + HD automático
+            _waitForBLEReady(4500).then(function() {
+              _sendVideo(blob, { format: _videoFormat(mimeType), duration: duration });
+            });
           }, 1200);
           _cameraPreviewRecording = false;
           _updateCameraPreviewUI();
@@ -771,21 +777,16 @@ async function _handleGallery() {
     var file = e.target.files[0];
     if (!file) { input.remove(); return; }
     var isVideo = file.type.indexOf('video') === 0;
-    // Comprobar antes de leer: leer un archivo enorme ya congela el WebView
-    if (isVideo && file.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(file.size)); input.remove(); return; }
+    // v9.9.30: el vídeo no se lee entero: se recodifica una previa y el original va como HD si cabe
+    if (isVideo) {
+      _sendVideo(file, { name: file.name, size: file.size, mime: file.type });
+      input.remove();
+      return;
+    }
     var reader = new FileReader();
     reader.onload = function(evt) {
       var base64 = evt.target.result.split(',')[1];
-      if (isVideo) {
-        if (base64 && base64.length > MAX_BLE_B64_BYTES) {
-          console.warn('[ATTACH] Video demasiado grande:', base64.length);
-          _showPermissionError(_tooBigMessage(Math.floor(base64.length * 3 / 4)));
-          input.remove();
-          return;
-        }
-        _sendAttachment('video', base64, { name: file.name, size: file.size, type: file.type });
-        input.remove();
-      } else {
+      {
         _compressImageBase64(base64, 480, 0.5).then(function(res) {
           _sendAttachment('image', res.base64, {
             name: file.name,
@@ -1303,6 +1304,8 @@ function _registerCriticalListeners() {
           if (window.NEXO.app && window.NEXO.app.bleInterface) {
             window.NEXO.app.bleInterface._resendPendingMessages(nx);
           }
+          // v9.9.30: vídeos HD que quedaron pendientes o a medias
+          setTimeout(function() { _resumeHdTransfers(nx); }, 3000);
           var activeId = _getCurrentContactId();
           if (activeId && _normId(activeId) === nx) {
             var subtitle = document.getElementById('chat-contact-subtitle');
@@ -1343,7 +1346,12 @@ function _registerCriticalListeners() {
           return;
         }
         var meta = d.meta || {};
+        if (meta.hdFor) {
+          _applyHdUpgrade(meta.senderNexoId || meta.fromNexoId || meta.fr || d.senderNexoId, meta.hdFor, d.data, meta);
+          return;
+        }
         _removeIncomingPlaceholder(d.fileId);
+        _noteContactMessage(meta.senderNexoId || meta.fromNexoId || meta.fr || d.senderNexoId, meta.type || meta.tp || 'file', Date.now());
         console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, 'type=', meta.type, 'fr=', meta.fr, 'len=', (d.data || '').length);
         var senderId = meta.senderNexoId || meta.fromNexoId || meta.fromId || meta.fr || d.senderNexoId || null;
         var recvMsg = {
@@ -1373,8 +1381,14 @@ function _registerCriticalListeners() {
             clearTimeout(window._sentFallbackTimers[e.detail.msgId]);
             delete window._sentFallbackTimers[e.detail.msgId];
           }
-          _updateMessageStatus(e.detail.msgId, e.detail.status);
-          _updateMessageStorageStatus(e.detail.msgId, e.detail.status);
+          var sid = e.detail.msgId, st = e.detail.status;
+          if (/_hd$/.test(sid)) {
+            if (st === 'delivered' || st === 'read') { var base = sid.replace(/_hd$/, ''); _onHdSent(_msgContactMap[base] || (_hdOutbox[base] && _hdOutbox[base].cid), base); }
+            return;
+          }
+          _updateMessageStatus(sid, st);
+          _updateMessageStorageStatus(sid, st);
+          if ((st === 'delivered' || st === 'read') && _hdOutbox[sid]) _startHd(_hdOutbox[sid].cid, sid);
         }
       } catch (err) {
         console.warn('[MAIN] Error en ackStatus handler:', err.message);
@@ -1584,6 +1598,7 @@ function _setupMessageInput() {
         seq: seq
       };
       _renderMessage(vaultMsg);
+      _noteContactMessage(chatContactId, text, vaultMsg.timestamp);
       _updateMessageStatus(msgId, 'sending');
       _updateMessageStorageStatus(msgId, 'sending');
       try {
@@ -1829,7 +1844,7 @@ async function _loadPersistedMessages() {
     _clearMessageContainer();
     var contactId = _getCurrentContactId();
     if (!contactId) return;
-    var vaultMessages = await vaultHydrateAttachments(await vaultLoadMessages(contactId));
+    var vaultMessages = await vaultHydrateAttachments(await vaultLoadMessages(contactId), { preferHd: true });
     if (vaultMessages && vaultMessages.length > 0) {
       vaultMessages.forEach(function(msg) {
         var mid = msg.msgId || msg.messageId || msg.id || ('msg' + (msg.timestamp || Date.now()));
@@ -1949,7 +1964,7 @@ function _renderMessage(msg, skipSave) {
         videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
         var video = document.createElement('video');
         var vFmt = attachment.meta.format || 'webm';
-        var vMime = 'video/' + vFmt;
+        var vMime = (attachment.meta.mime && attachment.meta.mime.indexOf('video/') === 0) ? attachment.meta.mime.split(';')[0] : 'video/' + vFmt;
         var vByteChars = atob(attachment.payload);
         var vByteNums = new Array(vByteChars.length);
         for (var vi = 0; vi < vByteChars.length; vi++) {
@@ -1971,6 +1986,17 @@ function _renderMessage(msg, skipSave) {
         playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
         videoWrapper.appendChild(video);
         videoWrapper.appendChild(playOverlay);
+        // v9.9.30: estado del HD (propio: hdStatus; recibido: previa o HD)
+        var hdText = msg._own
+          ? (msg.hdStatus === 'sent' ? 'HD ✓' : (msg.hdStatus ? 'HD en espera' : ''))
+          : (attachment.meta.hd ? 'HD' : (attachment.meta.preview ? 'Previa · HD en camino' : ''));
+        if (hdText) {
+          var hdBadge = document.createElement('span');
+          hdBadge.className = 'hd-badge';
+          hdBadge.style.cssText = 'position:absolute;top:6px;left:6px;padding:2px 6px;border-radius:8px;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;pointer-events:none;';
+          hdBadge.textContent = hdText;
+          videoWrapper.appendChild(hdBadge);
+        }
         videoWrapper.onclick = function(e) {
           e.stopPropagation();
           _openFullscreenMedia(video.dataset.fullscreenSrc, 'video');
@@ -2202,6 +2228,233 @@ function _renderMessage(msg, skipSave) {
   }
 }
 
+// ===================== v9.9.30: vídeo previa + HD =====================
+var PREVIEW_MAX_SIDE = 426;          // 240p
+var PREVIEW_MAX_SECONDS = 60;
+var MAX_HD_B64_BYTES = 8000000;      // original de hasta ~6 MB (en segundo plano)
+var CAMERA_HD_BPS = 1500000;         // grabación 720p a 1,5 Mbps (antes ~2,5 por defecto)
+var _hdOutbox = {};                  // msgId -> { cid, mime, b64 } (emisor, en memoria)
+var _hdInFlight = {};
+
+function _videoFormat(mime) { return /mp4/i.test(mime || '') ? 'mp4' : 'webm'; }
+function _blobToB64(blob) {
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function() { resolve(String(r.result).split(',')[1] || ''); };
+    r.onerror = function() { reject(new Error('lectura')); };
+    r.readAsDataURL(blob);
+  });
+}
+
+// Recodifica a 240p y bitrate bajo reproduciendo el vídeo en un canvas (sin sonido audible: el audio
+// va por WebAudio solo a la grabación). Devuelve null si el teléfono no puede o no reduce el tamaño.
+function _makeVideoPreview(blob, knownDuration) {
+  return new Promise(function(resolve) {
+    var done = false, cleanup = [];
+    function finish(res) { if (done) return; done = true; cleanup.forEach(function(f) { try { f(); } catch (e) {} }); resolve(res); }
+    try {
+      if (typeof MediaRecorder === 'undefined' || !window.HTMLCanvasElement || !HTMLCanvasElement.prototype.captureStream) return finish(null);
+      var url = URL.createObjectURL(blob);
+      cleanup.push(function() { URL.revokeObjectURL(url); });
+      var v = document.createElement('video');
+      v.playsInline = true; v.preload = 'auto';
+      v.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;';
+      document.body.appendChild(v);
+      cleanup.push(function() { v.pause(); v.removeAttribute('src'); v.remove(); });
+      var metaTimer = setTimeout(function() { finish(null); }, 15000);
+      v.onerror = function() { finish(null); };
+      v.onloadedmetadata = function() {
+        clearTimeout(metaTimer);
+        var dur = isFinite(v.duration) && v.duration > 0 ? v.duration : (knownDuration || 0);
+        if (dur > PREVIEW_MAX_SECONDS) return finish({ tooLong: true, duration: dur });
+        var w = v.videoWidth || 640, h = v.videoHeight || 360;
+        var scale = Math.min(1, PREVIEW_MAX_SIDE / Math.max(w, h));
+        var cw = Math.max(2, Math.round(w * scale / 2) * 2), ch = Math.max(2, Math.round(h * scale / 2) * 2);
+        var canvas = document.createElement('canvas');
+        canvas.width = cw; canvas.height = ch;
+        var ctx = canvas.getContext('2d');
+        var tracks = canvas.captureStream(24).getVideoTracks().slice();
+        try {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          var ac = new AC();
+          cleanup.push(function() { ac.close(); });
+          var dest = ac.createMediaStreamDestination();
+          ac.createMediaElementSource(v).connect(dest);
+          dest.stream.getAudioTracks().forEach(function(t) { tracks.push(t); });
+        } catch (e) { v.muted = true; }
+        var mime = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].filter(function(m) { return MediaRecorder.isTypeSupported(m); })[0] || '';
+        // ~250 KB de previa como objetivo, entre 60 y 200 kbps de vídeo
+        var vbps = Math.max(60000, Math.min(200000, Math.round(250000 * 8 / Math.max(dur || 10, 1)) - 24000));
+        var rec = new MediaRecorder(new MediaStream(tracks), Object.assign(mime ? { mimeType: mime } : {}, { videoBitsPerSecond: vbps, audioBitsPerSecond: 24000 }));
+        var parts = [];
+        rec.ondataavailable = function(e) { if (e.data && e.data.size) parts.push(e.data); };
+        rec.onstop = function() {
+          var out = new Blob(parts, { type: (rec.mimeType || mime || 'video/webm').split(';')[0] });
+          console.log('[VIDEO] Previa ' + cw + 'x' + ch + ' ' + Math.round(out.size / 1024) + ' KB (original ' + Math.round(blob.size / 1024) + ' KB)');
+          finish(out.size > 0 && out.size < blob.size * 0.8 ? out : null);
+        };
+        var draw = setInterval(function() { try { ctx.drawImage(v, 0, 0, cw, ch); } catch (e) {} }, 42);
+        cleanup.push(function() { clearInterval(draw); });
+        var stop = function() { try { if (rec.state !== 'inactive') rec.stop(); else finish(null); } catch (e) { finish(null); } };
+        v.onended = stop;
+        var maxTimer = setTimeout(stop, ((dur || PREVIEW_MAX_SECONDS) + 5) * 1000);
+        cleanup.push(function() { clearTimeout(maxTimer); });
+        rec.start(500);
+        var pp = v.play();
+        if (pp && pp.catch) pp.catch(function() { finish(null); });
+      };
+      v.src = url;
+    } catch (e) { finish(null); }
+  });
+}
+
+function _showOwnPreparing(show) {
+  var container = document.getElementById('messages-container');
+  var ph = document.getElementById('video-preparing');
+  if (!show) { if (ph) ph.remove(); return; }
+  if (!container || ph) return;
+  ph = document.createElement('div');
+  ph.id = 'video-preparing';
+  ph.className = 'message own progress-placeholder';
+  ph.innerHTML = '<div class="msg-content">🎬 Preparando vídeo…</div>';
+  container.appendChild(ph);
+}
+
+// Envía un vídeo: previa rápida + HD automático (o el original si no se puede recodificar)
+function _sendVideo(blob, meta) {
+  var contactId = _getCurrentContactId();
+  if (!contactId || !blob) return;
+  meta = Object.assign({}, meta || {});
+  var mime = (blob.type || meta.mime || 'video/webm').split(';')[0];
+  _showOwnPreparing(true);
+  var makePreview = (typeof window.NEXO_makeVideoPreview === 'function') ? window.NEXO_makeVideoPreview : _makeVideoPreview;
+  return makePreview(blob, meta.duration).then(function(preview) {
+    _showOwnPreparing(false);
+    if (preview && preview.tooLong) {
+      _showPermissionError('Vídeo demasiado largo para Bluetooth (' + Math.round(preview.duration) + ' s). Máximo ' + PREVIEW_MAX_SECONDS + ' s.');
+      return;
+    }
+    if (!preview) {
+      if (blob.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(blob.size)); return; }
+      return _blobToB64(blob).then(function(b64) {
+        _sendAttachment('video', b64, Object.assign({}, meta, { mime: mime, format: _videoFormat(mime) }));
+      });
+    }
+    var pMime = (preview.type || 'video/webm').split(';')[0];
+    var withHd = Math.ceil(blob.size / 3) * 4 <= MAX_HD_B64_BYTES;
+    return Promise.all([_blobToB64(preview), withHd ? _blobToB64(blob) : Promise.resolve(null)]).then(function(r) {
+      var msgId = _sendAttachment('video', r[0], Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? blob.size : 0 }),
+        r[1] ? { displayPayload: r[1], displayMime: mime } : null);
+      if (msgId && r[1]) _registerHd(contactId, msgId, r[1], mime);
+    });
+  }).catch(function(e) {
+    _showOwnPreparing(false);
+    console.warn('[VIDEO] Error preparando vídeo:', e && e.message);
+  });
+}
+
+function _registerHd(cid, msgId, hdB64, mime) {
+  var ref = vaultHdFileName(msgId);
+  _hdOutbox[msgId] = { cid: cid, mime: mime, b64: hdB64 };
+  vaultSaveFile(ref, hdB64);
+  vaultSetMessageFields(cid, msgId, { hdRef: ref, hdStatus: 'pending', hdMime: mime });
+  _setHdBadge(msgId, 'HD en espera');
+}
+
+// Emisor: manda el original cuando la previa ya llegó (o al reconectar si quedó a medias)
+function _startHd(cid, msgId) {
+  var bi = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
+  if (!cid || !msgId || _hdInFlight[msgId] || !bi || typeof bi.sendFile !== 'function') return;
+  _hdInFlight[msgId] = true;
+  var entry = _hdOutbox[msgId] || {};
+  var getB64 = entry.b64 ? Promise.resolve(entry.b64) : vaultLoadFile(vaultHdFileName(msgId));
+  getB64.then(function(b64) {
+    if (!b64) { delete _hdInFlight[msgId]; return; }
+    var mime = entry.mime || 'video/webm';
+    console.log('[VIDEO] Enviando HD de ' + msgId + ' (' + Math.round(b64.length / 1024) + ' KB)');
+    vaultSetMessageFields(cid, msgId, { hdStatus: 'sending' });
+    _setHdBadge(msgId, 'HD 0%');
+    return bi.sendFile(cid, msgId + '_hd', b64, { type: 'video', hdFor: msgId, mime: mime, format: _videoFormat(mime), size: b64.length })
+      .then(function() { _onHdSent(cid, msgId); })
+      .catch(function(err) {
+        delete _hdInFlight[msgId];
+        console.warn('[VIDEO] HD interrumpido, se reintenta al reconectar:', err && err.message);
+        vaultSetMessageFields(cid, msgId, { hdStatus: 'pending' });
+        _setHdBadge(msgId, 'HD en espera');
+      });
+  }).catch(function() { delete _hdInFlight[msgId]; });
+}
+
+function _onHdSent(cid, msgId) {
+  delete _hdInFlight[msgId];
+  if (_hdOutbox[msgId]) delete _hdOutbox[msgId];
+  vaultSetMessageFields(cid, msgId, { hdStatus: 'sent' });
+  _setHdBadge(msgId, 'HD ✓');
+}
+
+function _resumeHdTransfers(cid) {
+  if (!cid) return;
+  vaultLoadMessages(cid).then(function(msgs) {
+    (msgs || []).forEach(function(m) {
+      if (m._own && m.hdRef && (m.hdStatus === 'pending' || m.hdStatus === 'sending') &&
+          (m.status === 'delivered' || m.status === 'read')) _startHd(cid, m.msgId);
+    });
+  }).catch(function() {});
+}
+
+// Receptor: el HD sustituye a la previa del mismo mensaje
+function _applyHdUpgrade(cid, msgId, payload, meta) {
+  var mime = (meta.mime || 'video/webm').split(';')[0];
+  vaultReplaceAttachment(cid, msgId, payload, { mime: mime, format: _videoFormat(mime), hd: true, preview: false }).then(function(ok) {
+    if (!ok) {
+      // Sin la previa guardada: se guarda como vídeo normal
+      _handleIncomingMessage({ msgId: msgId, messageId: msgId, attachmentType: 'video', attachmentPayload: payload,
+        attachmentMeta: Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), hd: true, hdFor: null }),
+        senderNexoId: cid, senderName: meta.f || 'NEXO', _own: false, status: 'delivered', timestamp: meta.ts || Date.now() });
+      return;
+    }
+    console.log('[VIDEO] HD recibido para ' + msgId);
+    _swapVideoInBubble(msgId, payload, mime);
+    _setHdBadge(msgId, 'HD');
+  });
+}
+
+function _swapVideoInBubble(msgId, payload, mime) {
+  var bubble = document.querySelector('.message[data-msg-id="' + msgId + '"]');
+  var video = bubble && bubble.querySelector('video');
+  if (!video) return;
+  try {
+    var bin = atob(payload), arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    var src = URL.createObjectURL(new Blob([arr], { type: mime }));
+    _objectURLRegistry.push(src);
+    video.src = src;
+    video.dataset.fullscreenSrc = src;
+  } catch (e) {}
+}
+
+function _setHdBadge(msgId, text) {
+  var bubble = document.querySelector('.message[data-msg-id="' + msgId + '"]');
+  var wrap = bubble && bubble.querySelector('.video-attachment');
+  if (!wrap) return;
+  var b = wrap.querySelector('.hd-badge');
+  if (!b) {
+    b = document.createElement('span');
+    b.className = 'hd-badge';
+    b.style.cssText = 'position:absolute;top:6px;left:6px;padding:2px 6px;border-radius:8px;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;pointer-events:none;';
+    wrap.appendChild(b);
+  }
+  b.textContent = text;
+}
+
+// v9.9.29: la lista de contactos se ordena por el último mensaje enviado o recibido
+var _PREVIEW_BY_TYPE = { image: '📷 Foto', video: '🎬 Vídeo', audio: '🎤 Audio', voice: '🎤 Audio', location: '📍 Ubicación', file: '📎 Archivo' };
+function _noteContactMessage(contactId, textOrType, ts) {
+  var bi = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
+  if (!contactId || !bi || typeof bi.noteContactMessage !== 'function') return;
+  bi.noteContactMessage(contactId, _PREVIEW_BY_TYPE[textOrType] || String(textOrType || '').substring(0, 50), ts);
+}
+
 function _removeIncomingPlaceholder(fileId) {
   var ph = document.querySelector('[data-progress-id="' + fileId + '"]');
   if (ph && ph.parentNode) ph.parentNode.removeChild(ph);
@@ -2211,6 +2464,9 @@ function _removeIncomingPlaceholder(fileId) {
 function _onFileProgress(d) {
   if (!d || !d.fileId) return;
   var pct = Math.max(0, Math.min(99, d.percent || 0));
+  // v9.9.30: progreso del HD dentro de la burbuja del vídeo (emisor: fileId '<msgId>_hd')
+  var hdBase = d.hdFor || (/_hd$/.test(d.fileId) ? d.fileId.replace(/_hd$/, '') : null);
+  if (hdBase) { if (d.status !== 'failed') _setHdBadge(hdBase, 'HD ' + pct + '%'); return; }
   if (d.direction === 'in') {
     if (d.status === 'failed') { _removeIncomingPlaceholder(d.fileId); return; }
     var activeId = _getCurrentContactId();
@@ -2560,4 +2816,5 @@ function _doChatBack() {
 }
 
 window.NEXO_updateMessageStatus = _updateMessageStatus;
+window.NEXO_sendVideo = _sendVideo; // pruebas (tests/sim/video.js)
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();
