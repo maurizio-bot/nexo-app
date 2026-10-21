@@ -33,6 +33,15 @@ el progreso visible ("○ N%" en A, "Recibiendo… N%" en B).
 `--close-no-service` = cierra la conexión cuando el otro no tiene servidor GATT, `--asymmetric` =
 direcciones distintas al anunciar y al conectar (Android), `--js-delay` = lo que tarda el WebView en
 arrancar. Sin `--retain` reproduce la pérdida de la 2691 (eventos sin oyente descartados).
+`--io-delay=25` añade la latencia real de leer/guardar archivos por el bridge (sin ella el historial
+nunca mostraba carreras).
+
+`background.js` (desde la 2695): `--scenario=bg` (B en segundo plano, se cae el enlace, vuelve),
+`--scenario=closed` (B cierra y reabre), `--scenario=repeat` (mismo texto varias veces). Opciones de
+radio realista: `--io-delay=25`, `--rotate` (dirección nueva al reabrir), `--scan-miss=0.3`,
+`--supervision=8000` (el otro tarda en notar la caída), `--a-bg` (A también oculta),
+`--app-events` (Kotlin nuevo avisa onResume/onPause), `--no-m3` (A no vuelve a escribir),
+`--off=660000` (11 min fuera). Con la app oculta, un escaneo sin filtro no da resultados.
 
 La línea `RESULTADO` resume cada comprobación. Los logs de ambos teléfonos quedan en `last_logs_*.txt`.
 

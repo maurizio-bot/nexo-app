@@ -31,6 +31,28 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2691 | `37152b8` | Firma fija real; sin tormenta de retransmisiones; adjuntos fuera del historial. Prueba real: textos y fotos OK pero lento; al reabrir la app se perdían 1-2 mensajes |
 | 2692 | `d6c7fae` | Verificación en rama de trabajo (Kotlin compila, firma OK), sin release |
 | 2693 | `c12c974` | Mensajes retenidos al reabrir, control de flujo nativo por callback, progreso visible |
+| 2694 | `b75a767` | Verificación en rama de trabajo (Kotlin + firma), sin release |
+| 2695 | (este) | Historial sin carreras (mensajes borrados al reabrir), textos repetidos visibles, reconexión al volver a la app |
+
+## Ronda 2695 (verificada en simulador)
+Prueba real de la 2693: con B en segundo plano o cerrada seguían faltando mensajes; vídeo de 5 s = ~8 min.
+**Causa principal (reproducida con `--io-delay=25`)**: `vaultAppendMessage`/`vaultUpdateMessageStatus`
+leían el historial, lo modificaban y lo guardaban sin exclusión. Con la caché vacía (app recién abierta)
+dos mensajes seguidos (y cada uno se guarda dos veces: `ble_interface` y `main.js`) leían el mismo
+archivo y el último guardado borraba los demás. A veía "entregado" y B no tenía nada. Arreglo: cola por
+contacto (`_withMsgLock`), carga compartida y una lectura lenta ya no pisa una caché más nueva.
+Con 2693: 0/3 guardados; ahora 3/3 (25 y 60 ms de latencia).
+**Textos repetidos**: `_renderMessage` descartaba un recibido igual a uno de los 5 últimos ("ok") y A
+veía ✓✓. 2693: 1 de 3 visibles; ahora 3 de 3.
+**Robustez de reconexión** (no reproducía pérdida en el simulador, pero eran puntos frágiles):
+`@capacitor/app` no está instalado → al volver a la app no se hacía nada; ahora aviso nativo
+`onAppStateChange` + `visibilitychange`. Re-búsqueda sin tope de 10 min (15 s → 60 s; tras 30 min cada
+5 min solo si hay pendientes), también oculta con escaneo filtrado (Android no da resultados sin filtro
+con pantalla apagada), y 2 min de búsqueda de contactos al abrir/volver.
+**Vídeo** (sin cambios aún, pendiente de decisión): grabación a 1280x720 y ~2,5 Mbps (por defecto de
+MediaRecorder) = ~1,6 MB por 5 s; medido ~4,4 KB/s reales. Plan propuesto: 1) grabar/recomprimir a
+640x360 ~400 kbps (~6x menos); 2) idea del dueño: vista previa rápida y HD después en segundo plano o
+bajo demanda; 3) transporte binario (sin base64/JSON, ~1,6x) para todos los archivos.
 
 ## Ronda 2693 (verificada en simulador)
 **Pérdida al reabrir / segundo plano** (reproducida con `tests/sim/lifecycle.js`):
@@ -59,12 +81,14 @@ resultados no comprobados. Respetar la estructura existente (NEXO ID, mapas, vau
 ```
 tests/sim/build.sh && node tests/sim/run.js tests/sim/builds/wip --content-fallback
 node tests/sim/perf.js tests/sim/builds/wip --pdf-kb=150 [--pace=15,15 | --mtu=247 | --loss=0.03]
-node tests/sim/lifecycle.js tests/sim/builds/wip --retain --close-no-service --asymmetric --js-delay=6000
+node tests/sim/lifecycle.js tests/sim/builds/wip --retain --close-no-service --asymmetric --js-delay=6000 --io-delay=25
+node tests/sim/background.js tests/sim/builds/wip --scenario=closed --rotate --no-m3 --io-delay=25 --app-events
 ```
 Ver `tests/sim/README.md`. Límites: no simula la radio real (velocidad, alcance) ni Kotlin en sí.
 
 ## Problemas conocidos (sin corregir)
-- `main.js` marca "enviado" a los 12 s aunque no haya confirmación (`_sentFallbackTimers`).
+- Recibir con la app cerrada (deslizada) necesita mover el servidor GATT al `BleService`.
+- Sin registro de diagnóstico exportable desde el teléfono (solo logcat).
 - `window.vaultSaveContacts` no expuesto: algunos cambios de contacto no se guardan.
 - HTML sin escapar con datos del otro teléfono (nombre de archivo/contacto, último mensaje).
 - Transferencias en base64 dentro de JSON (+33 %). `FileTransferManager.kt` (binario) desconectado:
