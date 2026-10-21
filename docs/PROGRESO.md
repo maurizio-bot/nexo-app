@@ -30,7 +30,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2688 | `c45f5f5` | Envío/ACK/historial OK. Fotos lentas, app trabada tras 2ª foto, PDF no llega |
 | 2691 | `37152b8` | Firma fija real; sin tormenta de retransmisiones; adjuntos fuera del historial. Prueba real: textos y fotos OK pero lento; al reabrir la app se perdían 1-2 mensajes |
 | 2692 | `d6c7fae` | Verificación en rama de trabajo (Kotlin compila, firma OK), sin release |
-| 2693 | (este) | Mensajes retenidos al reabrir, control de flujo nativo por callback, progreso visible |
+| 2693 | `c12c974` | Mensajes retenidos al reabrir, control de flujo nativo por callback, progreso visible |
 
 ## Ronda 2693 (verificada en simulador)
 **Pérdida al reabrir / segundo plano** (reproducida con `tests/sim/lifecycle.js`):
