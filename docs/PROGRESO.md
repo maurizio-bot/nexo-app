@@ -33,7 +33,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2693 | `c12c974` | Mensajes retenidos al reabrir, control de flujo nativo por callback, progreso visible |
 | 2694 | `b75a767` | Verificación en rama de trabajo (Kotlin + firma), sin release |
 | 2695 | `37ad25e` | Historial sin carreras (mensajes borrados al reabrir), textos repetidos visibles, reconexión al volver a la app |
-| 2696 | (este) | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
+| 2696 | `939f4ec` | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
 
 ## Ronda 2696 (verificada en simulador salvo la recodificación)
 **Lista de contactos que saltaba**: se ordenaba por `lastSeen` (cambia con cada ping/escaneo/
