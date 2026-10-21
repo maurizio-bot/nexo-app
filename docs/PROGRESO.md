@@ -35,11 +35,24 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2695 | `37ad25e` | Historial sin carreras (mensajes borrados al reabrir), textos repetidos visibles, reconexión al volver a la app |
 | 2696 | `939f4ec` | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
 | 2697 | `2fc0074` | Vídeo/texto a app cerrada ya no se pierden (cola por contacto), vídeo se ve más de una vez, miniatura |
-| 2698 | `43256cd` | Vídeo: burbuja con miniatura sin reproductor, visor que libera, previa robusta, diagnóstico en Perfil |
+| 2698 | `43256cd` | Vídeo: burbuja con miniatura sin reproductor, visor que libera, previa robusta, diagnóstico en Perfil — **BASE ESTABLE** (rama `base-estable-2698`) |
+
+## Base estable: build 2698
+El dueño la probó en teléfonos reales y la fijó como **base sólida** (21-10-2026).
+- Código: rama **`base-estable-2698`** (commit `43256cd`). No se toca; el proxy no deja subir etiquetas.
+- APK: release `nightly-2698` (archivo `NEXO2698-43256cd.apk`). Misma llave y mismo `versionCode 1`
+  que todas las builds: se instala encima de cualquier build posterior sin desinstalar (el workflow no
+  borra releases antiguas).
+- Volver a la base (sin reescribir la historia, genera una build nueva con el código de la 2698):
+  ```
+  git checkout NEXOCHAT && git pull
+  git restore --source=base-estable-2698 --staged --worktree -- src plugins android index.html package.json package-lock.json
+  git commit -m "Volver a la base estable 2698" && git push origin NEXOCHAT
+  ```
 
 ## Siguiente paso (al retomar)
-- El dueño está probando la **2698** en dos teléfonos y pegará el texto de **Perfil → Copiar
-  diagnóstico** de ambos. Pruebas pedidas: vídeo de 5 s con la app del otro cerrada y abierta; abrir el
+- Pruebas rápidas de la 2698 en teléfonos reales: funciona (aceptable; faltan pruebas para afinar).
+  Si aparece un fallo, pedir el texto de **Perfil → Copiar diagnóstico** de ambos teléfonos. Pruebas pedidas: vídeo de 5 s con la app del otro cerrada y abierta; abrir el
   vídeo varias veces; ver si aparece la miniatura, cuánto tarda la previa y si pasa a HD.
 - Al recibir el diagnóstico, buscar en "eventos clave": `[VIDEO] Previa: …` (¿se generó? ¿motivo si
   no?), `Enviando HD`, `sendFile`, `Reenvi`, `Peer ready`, `El visor no pudo reproducir`, líneas ` W `/` E `.
