@@ -1,5 +1,8 @@
 /**
- * BLE Interface v6.1.2-NEXO
+ * BLE Interface v6.1.3-NEXO
+ * FIX v6.1.3: Estados, cola de pendientes y esperas READY usan MAC normalizada como clave.
+ *             El mapeo NXID->MAC devuelve 'aabbcc..' y los eventos nativos 'AA:BB:CC..';
+ *             el envío nunca veía el dispositivo como listo y los mensajes se quedaban en cola.
  * FIX v6.1.2: _sendMessageNative envía "message" (no "content") con sobre v1 chat;
  *             desde v6.1.1 todos los envíos llegaban vacíos al nativo.
  * FIX v6.1.1: Espera post-cámara 100% bloqueante + reintento automático.
@@ -527,9 +530,14 @@ export class BLEInterface {
     var now = Date.now();
     var keysToDelete = [];
     self._deviceStates.forEach(function(state, deviceId) { if (now - (state.timestamp || 0) > 10000) keysToDelete.push(deviceId); });
-    keysToDelete.forEach(function(deviceId) {
-      self._deviceStates.delete(deviceId); self.connectedDevices.delete(deviceId);
-      self._supervisorStates.delete(deviceId); self._lastPongTime.delete(deviceId); self._pingFailCount.delete(deviceId);
+    keysToDelete.forEach(function(key) {
+      self._deviceStates.delete(key);
+      // connectedDevices y supervisor usan el deviceId nativo (con ':'), no la clave normalizada
+      self.connectedDevices.forEach(function(d, deviceId) {
+        if (_normMac(deviceId) !== key) return;
+        self.connectedDevices.delete(deviceId);
+        self._supervisorStates.delete(deviceId); self._lastPongTime.delete(deviceId); self._pingFailCount.delete(deviceId);
+      });
     });
     if (keysToDelete.length > 0) console.log('[BLEInterface] Cleanup stale states:', keysToDelete.length);
   }
@@ -978,12 +986,13 @@ export class BLEInterface {
     meta = meta || {};
     if (!deviceId) return;
     var stateObj = Object.assign({}, meta, { state: state, timestamp: Date.now() });
-    this._deviceStates.set(deviceId, stateObj);
+    // FIX v6.1.3: clave normalizada; los eventos nativos traen 'AA:BB:..' y el mapeo NXID->MAC 'aabb..'
+    this._deviceStates.set(_normMac(deviceId), stateObj);
   }
 
   _getDeviceState(deviceId) {
     if (!deviceId) return { state: BLE_STATES.DISCONNECTED };
-    return this._deviceStates.get(deviceId) || { state: BLE_STATES.DISCONNECTED };
+    return this._deviceStates.get(_normMac(deviceId)) || { state: BLE_STATES.DISCONNECTED };
   }
 
   _setupNativePayloadListener() {
@@ -1310,9 +1319,9 @@ export class BLEInterface {
 
   _processPendingMessages(deviceId) {
     var self = this;
-    var queue = self._pendingMessageQueue.get(deviceId);
+    var queue = self._pendingMessageQueue.get(_normMac(deviceId));
     if (!queue || queue.length === 0) return;
-    self._pendingMessageQueue.delete(deviceId);
+    self._pendingMessageQueue.delete(_normMac(deviceId));
     queue.forEach(function(item) {
       self._sendMessageNative(deviceId, item.content, item.messageId, item.seq)
         .then(function() { if (item.resolve) item.resolve(); })
@@ -1361,9 +1370,9 @@ export class BLEInterface {
         }
 
         function enqueueMsg() {
-          var queue = self._pendingMessageQueue.get(deviceId) || [];
+          var queue = self._pendingMessageQueue.get(_normMac(deviceId)) || [];
           queue.push({ content: content, messageId: msgId, seq: msgSeq, resolve: resolve, reject: reject });
-          self._pendingMessageQueue.set(deviceId, queue);
+          self._pendingMessageQueue.set(_normMac(deviceId), queue);
         }
 
         if (isReady) { doSend(); return; }
@@ -1464,20 +1473,20 @@ export class BLEInterface {
         return;
       }
       var timer = setTimeout(function() {
-        self._readyResolvers.delete(deviceId);
+        self._readyResolvers.delete(_normMac(deviceId));
         reject(new Error('Timeout esperando READY_TO_CHAT'));
       }, timeoutMs || 12000);
-      self._readyResolvers.set(deviceId, { resolve: resolve, timer: timer });
+      self._readyResolvers.set(_normMac(deviceId), { resolve: resolve, timer: timer });
     });
   }
 
   _resolveReadyToChat(deviceId) {
     if (!deviceId) return;
-    var resolver = this._readyResolvers.get(deviceId);
+    var resolver = this._readyResolvers.get(_normMac(deviceId));
     if (resolver) {
       clearTimeout(resolver.timer);
       resolver.resolve();
-      this._readyResolvers.delete(deviceId);
+      this._readyResolvers.delete(_normMac(deviceId));
     }
     this._processPendingMessages(deviceId);
   }

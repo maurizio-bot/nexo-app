@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto y avance
 
-Última actualización: 2026-10-20
+Última actualización: 2026-10-21
 
 ## Cómo se construye
 - Rama principal: `NEXOCHAT`. Cada push dispara `.github/workflows/build-apk.yml`, que publica una
@@ -29,13 +29,23 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js`,
 | 2681–2683 | | Ajustes de tamaños y tiempos |
 | 2684 | `f9f35ab` | Workflow con llave fija (pero faltaba el secret) |
 | 2685 | `5962c6f` | **Fix del envío** (`_sendMessageNative` vuelve a mandar `message` + sobre v1 chat) |
-| 2686 | `5962c6f` | Mismo código, primera firmada con la llave fija |
+| 2686 | `5962c6f` | Mismo código, primera firmada con la llave fija. Prueba: los mensajes se marcan enviados pero **no llegan** |
+| 2687 | (este commit) | **Fix claves de dispositivo**: estado/cola/esperas usan MAC normalizada (ver abajo) |
 
 ## Pendiente inmediato
-- [ ] Probar la 2686 en dos teléfonos (desinstalando antes una última vez):
-  texto corto, texto largo (>180 caracteres), foto, checks de entregado/leído.
+- [ ] Probar la 2687 (se instala encima de la 2686): texto corto, texto largo (>180 caracteres),
+  foto, checks de entregado/leído.
+
+### Diagnóstico de la 2686 (mensajes que no llegan)
+Desde `7d44823`, `_resolveDeviceIdForNexoId` devuelve la MAC normalizada (`aabbcc…`) del mapeo
+NXID→MAC, pero `_deviceStates` se guardaba con el id nativo (`AA:BB:CC…`). Al enviar, el dispositivo
+nunca aparecía "listo": el mensaje se quedaba en `_pendingMessageQueue` (con otra clave, así que nunca
+se vaciaba) y `main.js` lo marcaba "enviado" igualmente a los 12 s por su temporizador de respaldo.
+La 2679 buscaba primero `contact.deviceId` (formato nativo) y por eso funcionaba.
 
 ## Problemas detectados (sin corregir todavía)
+- `main.js` marca un mensaje como "enviado" a los 12 s aunque nunca haya salido
+  (`_sentFallbackTimers`); engaña al diagnosticar.
 - `window.vaultSaveContacts` no se expone en `main.js`: algunos cambios de contacto de
   `ble_interface.js` no se guardan en disco.
 - HTML sin escapar con datos del otro teléfono (nombre de archivo, nombre de contacto, último mensaje):
