@@ -19,7 +19,8 @@ const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k
 const scenario = arg('scenario', 'bg');
 const aBg = !!arg('a-bg', false);
 const offMs = arg('off', 25000);
-const noM3 = !!arg('no-m3', false); // A no escribe nada más al volver B (lo normal: espera)
+const noM3 = !!arg('no-m3', false);
+const withVideo = !!arg('video', false); // closed: A manda un vídeo (300 KB) antes de m1 // A no escribe nada más al volver B (lo normal: espera)
 const opts = {
   readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, asymmetric: true,
   supervisionMs: arg('supervision', 8000), scanMiss: arg('scan-miss', 0), scanThrottle: true,
@@ -43,6 +44,9 @@ async function bootJs(name, native) {
       win.CapacitorCustomPlatform = { name: 'android' }; win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
       Object.defineProperty(win.document, 'visibilityState', { configurable: true, get: () => vis });
       Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => vis === 'hidden' });
+      // Vídeo (--video): jsdom no tiene blob URLs ni MediaRecorder; previa simulada de 45 KB
+      let nUrl = 0; win.URL.createObjectURL = () => 'blob:sim/' + (++nUrl); win.URL.revokeObjectURL = () => {};
+      win.NEXO_makeVideoPreview = () => { const b = new win.Blob([new Uint8Array(45 * 1024).fill(7)], { type: 'video/webm' }); b.thumb = 'T'.repeat(6000); return Promise.resolve(b); };
     },
   });
   const win = dom.window;
@@ -105,6 +109,8 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
     if (!noM3) await sendText(A, 'm3');
   } else {
     B.win.close(); nB.destroyActivity();
+    await sleep(arg('pre-wait', 0)); // B lleva un rato cerrada: A ya sabe que no está
+    if (withVideo) { A.win.NEXO_sendVideo(new A.win.Blob([new Uint8Array(300 * 1024).fill(3)], { type: 'video/mp4' }), { name: 'clip.mp4', duration: 5 }); await sleep(2000); }
     await sendText(A, 'm1'); await sleep(3000);
     await sendText(A, 'm2'); await sleep(3000);
     if (aBg) A.setActive(false);
@@ -120,11 +126,19 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
     await sleep(1000);
     const v = await B.win.vaultLoadMessages(idA);
     want.forEach((w) => { if (!llegada[w] && v.some((m) => m.content === w)) llegada[w] = Math.round((Date.now() - tBack) / 1000) + ' s'; });
+    if (withVideo && !llegada.VIDEO && v.some((m) => m.attachmentType === 'video')) llegada.VIDEO = Math.round((Date.now() - tBack) / 1000) + ' s';
+    if (withVideo && !llegada.HD && v.some((m) => m.attachmentType === 'video' && m.attachmentMeta && m.attachmentMeta.hd)) llegada.HD = Math.round((Date.now() - tBack) / 1000) + ' s';
+  }
+  if (withVideo) for (let i = 0; i < 120 && !llegada.HD; i++) {
+    await sleep(1000);
+    const v = await B.win.vaultLoadMessages(idA);
+    if (!llegada.VIDEO && v.some((m) => m.attachmentType === 'video')) llegada.VIDEO = Math.round((Date.now() - tBack) / 1000) + ' s';
+    if (v.some((m) => m.attachmentType === 'video' && m.attachmentMeta && m.attachmentMeta.hd)) llegada.HD = Math.round((Date.now() - tBack) / 1000) + ' s';
   }
   await sleep(3000);
   const res = {
     build: path.basename(buildDir), scenario, a_en_segundo_plano: aBg, app_events: opts.appStateEvents, scan_miss: opts.scanMiss,
-    llegada_a_B_tras_volver: want.map((w) => w + ': ' + (llegada[w] || 'NO LLEGÓ')),
+    llegada_a_B_tras_volver: want.map((w) => w + ': ' + (llegada[w] || 'NO LLEGÓ')).concat(withVideo ? ['video: ' + (llegada.VIDEO || 'NO LLEGÓ'), 'HD: ' + (llegada.HD || 'NO LLEGÓ')] : []),
     estado_en_A: want.map((w) => w + ': ' + statusOf(A, w)),
     escaneos_A: nA.stats.scans || 0, escaneos_B: nB.stats.scans || 0,
     escaneos_bloqueados_por_android: (nA.stats.throttledScans || 0) + (nB.stats.throttledScans || 0),

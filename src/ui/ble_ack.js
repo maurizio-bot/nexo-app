@@ -1,4 +1,5 @@
 /**
+* v3.3.4: Miniatura del vídeo ('th') en la cabecera.
 * v3.3.3: Vídeo HD: cabecera 'hf' (mensaje que mejora), tiempo máximo según tamaño y sin
 *         transferencias duplicadas al reanudar una que sigue en curso.
 * v3.3.2: Eventos de progreso de envío y recepción de archivos (cada 5 %).
@@ -273,7 +274,8 @@ export class BleAckSystem {
           width: msg.w || msg.width,
           height: msg.h || msg.height,
           hdFor: msg.hf || null,
-          preview: msg.pv === 1
+          preview: msg.pv === 1,
+          thumb: msg.th || null
         },
         received: 0, deviceId: deviceId, lastActivity: Date.now(),
         isChat: type === 'c', nackSent: false
@@ -971,6 +973,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.height) obj.h = this.meta.height;
     if (this.meta.hdFor) obj.hf = this.meta.hdFor;
     if (this.meta.preview) obj.pv = 1;
+    if (this.meta.thumb) obj.th = this.meta.thumb; // miniatura JPEG del vídeo (poster)
   }
   return JSON.stringify(obj);
 };

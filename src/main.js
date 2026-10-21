@@ -1,5 +1,8 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.30-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.31-NEXO
+ * FIX v9.9.31: vídeo/archivo a un contacto ausente queda pendiente y se reenvía al reconectar (antes
+ *             se perdía); el vídeo recibido se puede ver más de una vez (cerrar el visor destruía su
+ *             URL, y cada 50 mensajes se destruían todas); miniatura (poster) en la burbuja del vídeo.
  * v9.9.30: Vídeo en dos pasos: previa 240p recodificada en el teléfono (llega rápido) y el original
  *          (HD) automático después, en segundo plano; sustituye a la previa en el otro teléfono.
  *          Si no se puede recodificar, se envía el original como antes.
@@ -338,8 +341,8 @@ function _sendAttachment(type, payload, meta, opts) {
 
         // No marcar failed ante errores transitorios / timeouts leves
         var isTransient =
-          /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary/i.test(msg) ||
-          (err && err.code === 'BLE_BUSY');
+          /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary|no disponible/i.test(msg) ||
+          (err && (err.code === 'BLE_BUSY' || err.code === 'PEER_ABSENT'));
 
         if (isTransient) {
           // Dejar en 'sending' o 'sent' y dejar que el ackSystem / resumeOutgoingTransfers
@@ -430,12 +433,9 @@ function _openFullscreenMedia(src, type) {
   var closeBtn = document.createElement('button');
   closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
   closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
-  closeBtn.onclick = function() {
-    if (src && src.indexOf('blob:') === 0) {
-      try { URL.revokeObjectURL(src); } catch (e) {}
-    }
-    overlay.remove();
-  };
+  // v9.9.31: no revocar src: es la misma URL que usa la burbuja (después no se podía volver a ver);
+  // se liberan al salir del chat (_cleanupObjectURLs)
+  closeBtn.onclick = function() { overlay.remove(); };
   overlay.appendChild(closeBtn);
   if (type === 'image') {
     var img = document.createElement('img');
@@ -452,12 +452,7 @@ function _openFullscreenMedia(src, type) {
     overlay.appendChild(video);
   }
   overlay.addEventListener('click', function(e) {
-    if (e.target === overlay) {
-      if (src && src.indexOf('blob:') === 0) {
-        try { URL.revokeObjectURL(src); } catch (e) {}
-      }
-      overlay.remove();
-    }
+    if (e.target === overlay) overlay.remove();
   });
   document.body.appendChild(overlay);
 }
@@ -1388,7 +1383,10 @@ function _registerCriticalListeners() {
           }
           _updateMessageStatus(sid, st);
           _updateMessageStorageStatus(sid, st);
-          if ((st === 'delivered' || st === 'read') && _hdOutbox[sid]) _startHd(_hdOutbox[sid].cid, sid);
+          if (st === 'delivered' || st === 'read') {
+            if (_hdOutbox[sid]) _startHd(_hdOutbox[sid].cid, sid);
+            else _resumeHdForMsg(sid);
+          }
         }
       } catch (err) {
         console.warn('[MAIN] Error en ackStatus handler:', err.message);
@@ -1979,6 +1977,7 @@ function _renderMessage(msg, skipSave) {
         video.playsInline = true;
         video.muted = true;
         video.preload = 'metadata';
+        if (attachment.meta.thumb) video.poster = 'data:image/jpeg;base64,' + attachment.meta.thumb;
         video.dataset.fullscreenSrc = vSrc;
         video.dataset.fullscreenType = 'video';
         var playOverlay = document.createElement('div');
@@ -2220,9 +2219,8 @@ function _renderMessage(msg, skipSave) {
     }
     if (!skipSave) _saveMessageToStorage(msg);
     _renderedMessageCount++;
-    if (_renderedMessageCount % 50 === 0) {
-      _cleanupObjectURLs();
-    }
+    // v9.9.31: antes cada 50 mensajes se revocaban TODAS las URL (vídeos/archivos visibles dejaban de
+    // funcionar); se liberan al salir del chat
   } catch (e) {
     console.warn('[MAIN] _renderMessage error:', e);
   }
@@ -2291,9 +2289,16 @@ function _makeVideoPreview(blob, knownDuration) {
         rec.onstop = function() {
           var out = new Blob(parts, { type: (rec.mimeType || mime || 'video/webm').split(';')[0] });
           console.log('[VIDEO] Previa ' + cw + 'x' + ch + ' ' + Math.round(out.size / 1024) + ' KB (original ' + Math.round(blob.size / 1024) + ' KB)');
-          finish(out.size > 0 && out.size < blob.size * 0.8 ? out : null);
+          if (out.size > 0 && out.size < blob.size * 0.8) { out.thumb = thumb; finish(out); } else finish(null);
         };
-        var draw = setInterval(function() { try { ctx.drawImage(v, 0, 0, cw, ch); } catch (e) {} }, 42);
+        var thumb = null, frames = 0;
+        var draw = setInterval(function() {
+          try {
+            ctx.drawImage(v, 0, 0, cw, ch);
+            // Miniatura (poster) para la burbuja: un fotograma a ~0,3 s
+            if (!thumb && ++frames === 8) thumb = canvas.toDataURL('image/jpeg', 0.6).split(',')[1] || null;
+          } catch (e) {}
+        }, 42);
         cleanup.push(function() { clearInterval(draw); });
         var stop = function() { try { if (rec.state !== 'inactive') rec.stop(); else finish(null); } catch (e) { finish(null); } };
         v.onended = stop;
@@ -2343,7 +2348,7 @@ function _sendVideo(blob, meta) {
     var pMime = (preview.type || 'video/webm').split(';')[0];
     var withHd = Math.ceil(blob.size / 3) * 4 <= MAX_HD_B64_BYTES;
     return Promise.all([_blobToB64(preview), withHd ? _blobToB64(blob) : Promise.resolve(null)]).then(function(r) {
-      var msgId = _sendAttachment('video', r[0], Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? blob.size : 0 }),
+      var msgId = _sendAttachment('video', r[0], Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? blob.size : 0, thumb: preview.thumb || null }),
         r[1] ? { displayPayload: r[1], displayMime: mime } : null);
       if (msgId && r[1]) _registerHd(contactId, msgId, r[1], mime);
     });
@@ -2390,6 +2395,20 @@ function _onHdSent(cid, msgId) {
   if (_hdOutbox[msgId]) delete _hdOutbox[msgId];
   vaultSetMessageFields(cid, msgId, { hdStatus: 'sent' });
   _setHdBadge(msgId, 'HD ✓');
+}
+
+// La previa se entregó por un reenvío (p.ej. tras reabrir la app): buscar si tiene HD pendiente
+function _resumeHdForMsg(msgId) {
+  if (_hdInFlight[msgId]) return;
+  var contacts = (typeof vaultLoadContacts === 'function') ? vaultLoadContacts() : [];
+  (contacts || []).forEach(function(c) {
+    var cid = _normId(c.nexoId || c.deviceUUID);
+    if (!cid) return;
+    vaultLoadMessages(cid).then(function(msgs) {
+      var m = (msgs || []).find(function(x) { return x.msgId === msgId; });
+      if (m && m._own && m.hdRef && m.hdStatus !== 'sent') _startHd(cid, msgId);
+    }).catch(function() {});
+  });
 }
 
 function _resumeHdTransfers(cid) {

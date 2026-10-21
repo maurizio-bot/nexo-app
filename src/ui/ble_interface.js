@@ -1,5 +1,10 @@
 /**
- * BLE Interface v6.1.8-NEXO
+ * BLE Interface v6.1.9-NEXO
+ * FIX v6.1.9: Cola de mensajes por contacto (antes por dirección Bluetooth: al reabrir la app el otro
+ *             cambia de dirección y la cola vieja no salía nunca). sendFile sin el otro presente ya no
+ *             espera ~40 s a una dirección concreta: falla rápido (PEER_ABSENT) y el adjunto queda para
+ *             el reenvío al reconectar (antes se perdía). Adjuntos 'sending' sin transferencia viva se
+ *             reenvían.
  * FIX v6.1.8: Lista de contactos ordenada por el último mensaje enviado o recibido (lastMessageAt);
  *             antes por lastSeen, que cambia con cada ping/escaneo y hacía saltar la lista. La hora y
  *             el texto de la fila son los del último mensaje. Redibujado agrupado (máx. cada 300 ms).
@@ -392,10 +397,9 @@ function _isControlPacket(content) {
 function _isResendable(m) {
   if (!m || m._own !== true) return false;
   if (m.status === 'pending' || m.status === 'failed') return true;
-  if (m.status === 'sending' || m.status === 'queued') {
-    var t = m.attachmentType;
-    return !(t === 'image' || t === 'video' || t === 'file');
-  }
+  // v6.1.9: también adjuntos. Si la transferencia sigue viva, _isMsgInFlight la excluye y
+  // ble_ack.sendFile reutiliza la que esté en curso con el mismo id (no se duplica).
+  if (m.status === 'sending' || m.status === 'queued') return true;
   return false;
 }
 
@@ -949,6 +953,9 @@ export class BLEInterface {
   _notifyPeerReady(deviceId, nexoId) {
     if (!deviceId || !nexoId) return;
     this._lostPeers.delete(_normId(nexoId));
+    var ndPeer = _normMac(deviceId);
+    if (!this._macToNexoId.get(ndPeer)) this._macToNexoId.set(ndPeer, _normId(nexoId));
+    this._processPendingMessages(deviceId);
     var key = _normMac(deviceId) + ':' + _normId(nexoId);
     if (this._notifiedPeers.has(key)) { console.log('[BLEInterface] Peer ready dup ignorado:', nexoId); return; }
     this._notifiedPeers.add(key);
@@ -1574,9 +1581,16 @@ export class BLEInterface {
 
   _processPendingMessages(deviceId) {
     var self = this;
-    var queue = self._pendingMessageQueue.get(_normMac(deviceId));
-    if (!queue || queue.length === 0) return;
-    self._pendingMessageQueue.delete(_normMac(deviceId));
+    // v6.1.9: cola por contacto ('nx:<id>') + la antigua por dirección
+    var keys = [_normMac(deviceId)];
+    var nxQ = self._macToNexoId.get(_normMac(deviceId));
+    if (nxQ) keys.push('nx:' + _normId(nxQ));
+    var queue = [];
+    keys.forEach(function(k) {
+      var q = self._pendingMessageQueue.get(k);
+      if (q && q.length) { queue = queue.concat(q); self._pendingMessageQueue.delete(k); }
+    });
+    if (queue.length === 0) return;
     queue.forEach(function(item) {
       // v6.1.6: con confirmación y reintentos. Antes salía una sola vez sin ack: si el otro teléfono
       // acababa de abrir la app y su JS aún no escuchaba, se perdía mostrando ✓.
@@ -1635,9 +1649,10 @@ export class BLEInterface {
         }
 
         function enqueueMsg() {
-          var queue = self._pendingMessageQueue.get(_normMac(deviceId)) || [];
+          var qKey = 'nx:' + uuid;
+          var queue = self._pendingMessageQueue.get(qKey) || [];
           queue.push({ content: content, messageId: msgId, seq: msgSeq, resolve: resolve, reject: reject });
-          self._pendingMessageQueue.set(_normMac(deviceId), queue);
+          self._pendingMessageQueue.set(qKey, queue);
         }
 
         if (isReady) { doSend(); return; }
@@ -1686,30 +1701,36 @@ export class BLEInterface {
             .catch(function(err) { reject(err); });
         }
 
+        // v6.1.9: el dispositivo se resuelve en cada intento (el otro puede volver con otra dirección).
+        // Si en 8 s no hay enlace listo con ese contacto: PEER_ABSENT; el adjunto queda pendiente y se
+        // reenvía al reconectar. Antes esperaba ~40 s a la dirección vieja y el vídeo se perdía.
         function ensureReadyThenSend() {
-          var state = self._getDeviceState(deviceId);
-          var isReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
-          if (isReady) {
-            startTransfer();
-            return;
-          }
-          console.log('[BLEInterface] sendFile: device no listo (' + (state.state || '?') + '), esperando READY…');
-          self._waitForReadyToChat(deviceId, 14000)
-            .then(function() { startTransfer(); })
-            .catch(function() {
-              console.log('[BLEInterface] sendFile: timeout READY, forzando reconnect');
-              if (typeof self._forceDisconnectAndReconnect === 'function') {
-                self._forceDisconnectAndReconnect(deviceId);
-              } else if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
-                _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
+          var deadline = Date.now() + 8000;
+          var nudged = false;
+          (function check() {
+            var dev = self._resolveDeviceIdForNexoId(uuid) || deviceId;
+            var st = self._getDeviceState(dev);
+            if (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY) {
+              deviceId = dev;
+              startTransfer();
+              return;
+            }
+            if (!nudged) {
+              nudged = true;
+              console.log('[BLEInterface] sendFile: contacto no listo (' + (st.state || '?') + '), buscando…');
+              self._markPeerLost(uuid);
+              if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice') && st.state !== BLE_STATES.CONNECTING) {
+                _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: dev }).catch(function() {});
               }
-              // Segundo intento
-              self._waitForReadyToChat(deviceId, 25000)
-                .then(function() { startTransfer(); })
-                .catch(function(err) {
-                  reject(new Error('Device not ready for file: ' + (err && err.message)));
-                });
-            });
+            }
+            if (Date.now() >= deadline) {
+              var e = new Error('Contacto no disponible: queda pendiente');
+              e.code = 'PEER_ABSENT';
+              reject(e);
+              return;
+            }
+            setTimeout(check, 500);
+          })();
         }
 
         // Flujo post-cámara

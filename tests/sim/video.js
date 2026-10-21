@@ -26,9 +26,9 @@ async function boot(name, native) {
     resources: new DistLoader(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
       win.CapacitorCustomPlatform = { name: 'android' }; win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
-      let n = 0; win.URL.createObjectURL = () => 'blob:sim/' + (++n); win.URL.revokeObjectURL = () => {};
+      let n = 0; win.URL.createObjectURL = () => 'blob:sim/' + (++n); win.__revoked = new Set(); win.URL.revokeObjectURL = (u) => win.__revoked.add(u);
       // Previa simulada: el original reducido a previewKb (como haría la recodificación a 240p)
-      win.NEXO_makeVideoPreview = (blob) => Promise.resolve(new win.Blob([new Uint8Array(previewKb * 1024).fill(7)], { type: 'video/webm' }));
+      win.NEXO_makeVideoPreview = (blob) => { const b = new win.Blob([new Uint8Array(previewKb * 1024).fill(7)], { type: 'video/webm' }); b.thumb = 'T'.repeat(6000); return Promise.resolve(b); };
     },
   });
   const win = dom.window;
@@ -95,6 +95,18 @@ const badge = (p) => { const v = videoBubbles(p)[0]; const b = v && v.querySelec
     A_hdStatus: vA[0] && vA[0].hdStatus, A_estado: vA[0] && vA[0].status,
     contactos_B: Array.from(B.win.document.querySelectorAll('#main-contacts-list .ble-contact-msg')).map((e) => e.textContent),
   });
+  // Ver el vídeo dos veces en B: abrir visor, cerrar, volver a abrir; la URL de la burbuja debe seguir viva
+  const vidB = videoBubbles(B)[0] && videoBubbles(B)[0].querySelector('video');
+  if (vidB) {
+    for (let k = 0; k < 2; k++) {
+      click(B.win, vidB.closest('.video-attachment') || vidB); await sleep(400);
+      const ov = B.win.document.getElementById('fullscreen-media-overlay');
+      r['visor_abre_' + (k + 1)] = !!ov;
+      const closeBtn = ov && ov.querySelector('button'); if (closeBtn) click(B.win, closeBtn); await sleep(300);
+    }
+    r.url_burbuja_destruida = B.win.__revoked.has(vidB.src) || B.win.__revoked.has(vidB.dataset.fullscreenSrc);
+    r.poster_en_B = (vidB.getAttribute('poster') || '').substring(0, 30);
+  }
   // Reabrir el chat en A: el vídeo propio debe verse con su etiqueta HD ✓
   A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(500);
   await openChat(A); await sleep(1500);

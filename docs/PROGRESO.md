@@ -34,6 +34,25 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2694 | `b75a767` | Verificación en rama de trabajo (Kotlin + firma), sin release |
 | 2695 | `37ad25e` | Historial sin carreras (mensajes borrados al reabrir), textos repetidos visibles, reconexión al volver a la app |
 | 2696 | `939f4ec` | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
+| 2697 | (este) | Vídeo/texto a app cerrada ya no se pierden (cola por contacto), vídeo se ve más de una vez, miniatura |
+
+## Ronda 2697 (verificada en simulador)
+Prueba real de la 2696: vídeo + texto a un teléfono con la app cerrada → al abrirla no llegó nada; la
+previa no se veía; el vídeo recibido solo se reproducía una vez.
+1. **Vídeo a contacto ausente perdido**: `sendFile` esperaba ~40 s a la dirección vieja, rechazaba "not
+   ready", `main.js` lo trataba como transitorio y lo dejaba en 'sending'; como la transferencia no había
+   empezado no había nada que reanudar y `_isResendable` excluía adjuntos en 'sending'. Ahora falla en 8 s
+   (`PEER_ABSENT`), busca al contacto y el adjunto se reenvía al reconectar (adjuntos 'sending' sin
+   transferencia viva son reenviables; `_sendFileJS` no duplica). El HD arranca también tras ese reenvío.
+2. **Textos que no salían tras reabrir el otro**: `_pendingMessageQueue` iba por dirección Bluetooth; al
+   reabrir, Android cambia la dirección y la cola vieja no se vaciaba nunca (y `_isMsgInFlight` impedía
+   el reenvío). Ahora la cola es por contacto (`nx:<id>`) y se vacía en `_notifyPeerReady`.
+   `background.js --scenario=closed --video --pre-wait=15000 --off=90000 --rotate`: 2696 nada; ahora
+   textos 6 s, previa 11 s, HD 41 s tras reabrir.
+3. **Vídeo que solo se veía una vez**: cerrar el visor revocaba la URL que usa la burbuja; además cada 50
+   mensajes se revocaban todas. Ahora solo al salir del chat (`video.js`: 2696 URL destruida; ahora no).
+4. **Miniatura**: fotograma JPEG de la previa en la cabecera (`th`) → `poster` del vídeo (en Android un
+   `<video>` sin poster se ve gris/negro hasta reproducirlo).
 
 ## Ronda 2696 (verificada en simulador salvo la recodificación)
 **Lista de contactos que saltaba**: se ordenaba por `lastSeen` (cambia con cada ping/escaneo/
@@ -103,6 +122,7 @@ node tests/sim/lifecycle.js tests/sim/builds/wip --retain --close-no-service --a
 node tests/sim/background.js tests/sim/builds/wip --scenario=closed --rotate --no-m3 --io-delay=25 --app-events
 node tests/sim/contacts.js tests/sim/builds/wip --churn --io-delay=25
 node tests/sim/video.js tests/sim/builds/wip --io-delay=25 [--cut | --restart-a]
+node tests/sim/background.js tests/sim/builds/wip --scenario=closed --video --no-m3 --pre-wait=15000 --off=90000 --rotate --io-delay=25 --app-events
 ```
 Ver `tests/sim/README.md`. Límites: no simula la radio real (velocidad, alcance) ni Kotlin en sí.
 
