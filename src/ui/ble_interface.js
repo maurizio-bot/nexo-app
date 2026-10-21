@@ -1,5 +1,6 @@
 /**
- * BLE Interface v6.1.9-NEXO
+ * BLE Interface v6.1.10-NEXO
+ * v6.1.10: la pestaña Perfil abre el registro de diagnóstico.
  * FIX v6.1.9: Cola de mensajes por contacto (antes por dirección Bluetooth: al reabrir la app el otro
  *             cambia de dirección y la cola vieja no salía nunca). sendFile sin el otro presente ya no
  *             espera ~40 s a una dirección concreta: falla rápido (PEER_ABSENT) y el adjunto queda para
@@ -2207,6 +2208,11 @@ export class BLEInterface {
         item.classList.add('active');
         var tab = item.dataset.tab;
         if (tab === 'people') self.togglePanel();
+        else if (tab === 'profile') {
+          // v6.1.10: Perfil con el registro de diagnóstico (main.js)
+          _safeDispatchEvent('nexo:ui:profile', {});
+          navItems.forEach(function(n) { n.classList.toggle('active', n.dataset.tab === 'chats'); });
+        }
         else if (tab === 'chats') {
           self.elements.panel.classList.remove('active');
           self.elements.overlay.classList.remove('active');

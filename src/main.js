@@ -1,5 +1,9 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.31-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.32-NEXO
+ * FIX v9.9.32: burbuja de vídeo con miniatura (sin reproductor: en Android cada <video> retiene un
+ *             decodificador y el visor dejaba de reproducir); el visor libera su reproductor al cerrar;
+ *             miniatura también sin previa (y generada al recibir si falta); previa robusta (nunca se
+ *             cuelga, sin audio si el AudioContext no arranca); registro de diagnóstico en Perfil.
  * FIX v9.9.31: vídeo/archivo a un contacto ausente queda pendiente y se reenvía al reconectar (antes
  *             se perdía); el vídeo recibido se puede ver más de una vez (cerrar el visor destruía su
  *             URL, y cada 50 mensajes se destruían todas); miniatura (poster) en la burbuja del vídeo.
@@ -78,6 +82,93 @@ window.NEXO = {
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 window.vaultLoadContacts = vaultLoadContacts;
+
+// ===================== v9.9.32: registro de diagnóstico =====================
+// Últimas líneas de la consola (también de la sesión anterior) para verlas en Perfil → Diagnóstico y
+// copiarlas: lo que pasa en el teléfono real sin necesidad de un PC.
+var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log.txt';
+var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
+// Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
+var DIAG_KEY_RE = /\[VIDEO\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
+(function() {
+  function fmt(a) {
+    if (typeof a === 'string') return a;
+    if (a && a.message) return a.message;
+    try { return JSON.stringify(a, function(k, v) { return (typeof v === 'string' && v.length > 120) ? v.substring(0, 120) + '…' : v; }); } catch (e) { return String(a); }
+  }
+  ['log', 'info', 'warn', 'error'].forEach(function(level) {
+    var orig = console[level] ? console[level].bind(console) : function() {};
+    console[level] = function() {
+      try {
+        var parts = [];
+        for (var i = 0; i < arguments.length; i++) parts.push(fmt(arguments[i]));
+        var d = new Date();
+        var ts = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2) + '.' + ('00' + d.getMilliseconds()).slice(-3);
+        var line = ts + (level === 'warn' ? ' W ' : level === 'error' ? ' E ' : ' ') + parts.join(' ').substring(0, 300);
+        _diagLines.push(line);
+        if (_diagLines.length > DIAG_MAX) _diagLines.splice(0, _diagLines.length - DIAG_MAX);
+        if (DIAG_KEY_RE.test(line)) { _diagKey.push(line); if (_diagKey.length > DIAG_KEY_MAX) _diagKey.splice(0, _diagKey.length - DIAG_KEY_MAX); }
+        _diagDirty = true;
+      } catch (e) {}
+      return orig.apply(null, arguments);
+    };
+  });
+  window.addEventListener('error', function(e) { console.error('[ERROR] ' + (e && e.message) + ' @' + (e && e.filename) + ':' + (e && e.lineno)); });
+  window.addEventListener('unhandledrejection', function(e) { console.warn('[PROMESA] ' + (e && e.reason && (e.reason.message || e.reason))); });
+  function plugin() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE; }
+  setTimeout(function() {
+    var pl = plugin();
+    if (!pl || typeof pl.loadFromFile !== 'function') return;
+    pl.loadFromFile({ filename: DIAG_FILE }).then(function(r) { if (r && r.exists && r.content) _diagPrev = r.content; }).catch(function() {});
+  }, 500);
+  setInterval(function() {
+    var pl = plugin();
+    if (!_diagDirty || !pl || typeof pl.saveToFile !== 'function') return;
+    _diagDirty = false;
+    pl.saveToFile({ filename: DIAG_FILE, content: _diagSessionText() }).catch(function() {});
+  }, 20000);
+})();
+
+function _diagSessionText() {
+  return '--- eventos clave ---\n' + _diagKey.join('\n') + '\n--- últimas líneas ---\n' + _diagLines.slice(-400).join('\n');
+}
+
+function _diagnosticText() {
+  var bi = window.bleInterface || {};
+  var head = 'NEXO diagnóstico ' + new Date().toISOString() + '\nNEXO ID: ' + (bi.localNexoId || '?') + '\nUA: ' + navigator.userAgent + '\n';
+  return head + (_diagPrev ? '\n===== SESIÓN ANTERIOR =====\n' + _diagPrev + '\n' : '') +
+    '\n===== SESIÓN ACTUAL =====\n' + _diagSessionText();
+}
+
+function _openProfileSheet() {
+  var old = document.getElementById('nexo-profile-sheet');
+  if (old) old.remove();
+  var bi = window.bleInterface || {};
+  var sheet = document.createElement('div');
+  sheet.id = 'nexo-profile-sheet';
+  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;font-family:inherit;';
+  sheet.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+    '<div style="font-size:20px;font-weight:700;">Perfil</div><button id="nexo-profile-close" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">Cerrar</button></div>' +
+    '<div style="font-size:14px;opacity:0.85;margin-bottom:12px;">Mi NEXO ID: <b id="nexo-profile-id"></b></div>' +
+    '<div style="font-size:16px;font-weight:600;margin:8px 0;">Diagnóstico</div>' +
+    '<div style="font-size:12px;opacity:0.7;margin-bottom:8px;">Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.</div>' +
+    '<button id="nexo-diag-copy" style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:600;margin-bottom:8px;">Copiar diagnóstico</button>' +
+    '<textarea id="nexo-diag-text" readonly style="flex:1;width:100%;box-sizing:border-box;background:#000;color:#9fe;border:1px solid #234;border-radius:8px;font-size:10px;font-family:monospace;padding:8px;"></textarea>';
+  document.body.appendChild(sheet);
+  sheet.querySelector('#nexo-profile-id').textContent = bi.localNexoId || '?';
+  var ta = sheet.querySelector('#nexo-diag-text');
+  ta.value = _diagnosticText();
+  ta.scrollTop = ta.scrollHeight;
+  sheet.querySelector('#nexo-profile-close').onclick = function() { sheet.remove(); };
+  sheet.querySelector('#nexo-diag-copy').onclick = function() {
+    var btn = this, txt = ta.value;
+    var ok = function() { btn.textContent = 'Copiado ✓'; setTimeout(function() { btn.textContent = 'Copiar diagnóstico'; }, 2000); };
+    var fallback = function() { try { ta.focus(); ta.select(); document.execCommand('copy'); ok(); } catch (e) { btn.textContent = 'Selecciona el texto y cópialo'; } };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok).catch(fallback);
+    else fallback();
+  };
+}
+window.addEventListener('nexo:ui:profile', _openProfileSheet);
 window.vaultSaveContact = vaultSaveContact;
 // FIX v9.9.29: ble_interface guarda los contactos con window.vaultSaveContacts; no estaba expuesto y
 // el último mensaje / no leídos nunca llegaban a disco
@@ -424,9 +515,24 @@ function _hideCameraPreviewOverlay() {
   }
 }
 
+// v9.9.32: liberar el reproductor de verdad (en Android quitarlo del DOM no suelta el decodificador)
+function _releaseMedia(root) {
+  if (!root) return;
+  Array.prototype.forEach.call(root.querySelectorAll('video,audio'), function(m) {
+    try { m.pause(); } catch (e) {}
+    try { m.removeAttribute('src'); m.load(); } catch (e) {}
+  });
+}
+function _closeFullscreenMedia() {
+  var ov = document.getElementById('fullscreen-media-overlay');
+  if (!ov) return;
+  _releaseMedia(ov);
+  ov.remove();
+}
+
 function _openFullscreenMedia(src, type) {
-  var existing = document.getElementById('fullscreen-media-overlay');
-  if (existing) existing.remove();
+  _closeFullscreenMedia();
+  if (!src) { console.warn('[VIDEO] Sin fuente para el visor'); return; }
   var overlay = document.createElement('div');
   overlay.id = 'fullscreen-media-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:5000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
@@ -435,7 +541,7 @@ function _openFullscreenMedia(src, type) {
   closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
   // v9.9.31: no revocar src: es la misma URL que usa la burbuja (después no se podía volver a ver);
   // se liberan al salir del chat (_cleanupObjectURLs)
-  closeBtn.onclick = function() { overlay.remove(); };
+  closeBtn.onclick = function(e) { if (e) e.stopPropagation(); _closeFullscreenMedia(); };
   overlay.appendChild(closeBtn);
   if (type === 'image') {
     var img = document.createElement('img');
@@ -449,10 +555,11 @@ function _openFullscreenMedia(src, type) {
     video.autoplay = true;
     video.playsInline = true;
     video.style.cssText = 'max-width:95vw;max-height:85vh;border-radius:8px;background:#000;';
+    video.onerror = function() { console.warn('[VIDEO] El visor no pudo reproducir: código ' + (video.error && video.error.code)); };
     overlay.appendChild(video);
   }
   overlay.addEventListener('click', function(e) {
-    if (e.target === overlay) overlay.remove();
+    if (e.target === overlay) _closeFullscreenMedia();
   });
   document.body.appendChild(overlay);
 }
@@ -1957,33 +2064,33 @@ function _renderMessage(msg, skipSave) {
         };
         contentDiv.appendChild(img);
       } else if (attachment.type === 'video') {
+        // v9.9.32: la burbuja NO crea un reproductor <video> (en Android cada uno retiene un
+        // decodificador de hardware y tras el primero el visor ya no podía reproducir). Muestra la
+        // miniatura; el reproductor solo existe en el visor y se libera al cerrarlo.
         var videoWrapper = document.createElement('div');
         videoWrapper.className = 'video-attachment';
-        videoWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
-        var video = document.createElement('video');
+        videoWrapper.style.cssText = 'position:relative;width:220px;min-height:124px;max-height:280px;overflow:hidden;background:#111;cursor:pointer;';
         var vFmt = attachment.meta.format || 'webm';
         var vMime = (attachment.meta.mime && attachment.meta.mime.indexOf('video/') === 0) ? attachment.meta.mime.split(';')[0] : 'video/' + vFmt;
-        var vByteChars = atob(attachment.payload);
-        var vByteNums = new Array(vByteChars.length);
-        for (var vi = 0; vi < vByteChars.length; vi++) {
-          vByteNums[vi] = vByteChars.charCodeAt(vi);
+        var vSrc = '';
+        try { vSrc = URL.createObjectURL(_b64ToBlob(attachment.payload, vMime)); _objectURLRegistry.push(vSrc); } catch (vErr) { console.warn('[VIDEO] No se pudo preparar el vídeo:', vErr && vErr.message); }
+        videoWrapper.dataset.src = vSrc;
+        videoWrapper.dataset.fullscreenSrc = vSrc;
+        videoWrapper.dataset.fullscreenType = 'video';
+        var thumbImg = document.createElement('img');
+        thumbImg.className = 'video-thumb';
+        thumbImg.alt = '';
+        thumbImg.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
+        if (attachment.meta.thumb) thumbImg.src = 'data:image/jpeg;base64,' + attachment.meta.thumb;
+        else {
+          thumbImg.style.display = 'none';
+          // Sin miniatura (vídeo antiguo o previa fallida): se saca una aquí, una sola vez, y se guarda
+          _ensureVideoThumb(msg, attachment, vSrc, thumbImg);
         }
-        var vByteArray = new Uint8Array(vByteNums);
-        var vBlob = new Blob([vByteArray], { type: vMime });
-        var vSrc = URL.createObjectURL(vBlob);
-        _objectURLRegistry.push(vSrc);
-        video.src = vSrc;
-        video.style.cssText = 'width:100%;height:auto;max-height:280px;display:block;';
-        video.playsInline = true;
-        video.muted = true;
-        video.preload = 'metadata';
-        if (attachment.meta.thumb) video.poster = 'data:image/jpeg;base64,' + attachment.meta.thumb;
-        video.dataset.fullscreenSrc = vSrc;
-        video.dataset.fullscreenType = 'video';
         var playOverlay = document.createElement('div');
-        playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);pointer-events:none;';
-        playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="40" height="40" fill="#fff" style="opacity:0.9;"><path d="M8 5v14l11-7z"/></svg>';
-        videoWrapper.appendChild(video);
+        playOverlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.25);pointer-events:none;';
+        playOverlay.innerHTML = '<svg viewBox="0 0 24 24" width="44" height="44" fill="#fff" style="opacity:0.95;"><path d="M8 5v14l11-7z"/></svg>';
+        videoWrapper.appendChild(thumbImg);
         videoWrapper.appendChild(playOverlay);
         // v9.9.30: estado del HD (propio: hdStatus; recibido: previa o HD)
         var hdText = msg._own
@@ -1998,7 +2105,7 @@ function _renderMessage(msg, skipSave) {
         }
         videoWrapper.onclick = function(e) {
           e.stopPropagation();
-          _openFullscreenMedia(video.dataset.fullscreenSrc, 'video');
+          _openFullscreenMedia(videoWrapper.dataset.src, 'video');
         };
         contentDiv.appendChild(videoWrapper);
       } else if (attachment.type === 'file') {
@@ -2245,26 +2352,40 @@ function _blobToB64(blob) {
 }
 
 // Recodifica a 240p y bitrate bajo reproduciendo el vídeo en un canvas (sin sonido audible: el audio
-// va por WebAudio solo a la grabación). Devuelve null si el teléfono no puede o no reduce el tamaño.
+// va por WebAudio solo a la grabación). Devuelve un Blob (con .thumb = miniatura JPEG en base64) o null
+// si el teléfono no puede; nunca se queda colgada (vigilante general).
+// v9.9.32: vídeo temporal dentro de la pantalla (Android no decodifica vídeos ocultos), AudioContext
+// reanudado o sin audio si sigue suspendido, vigilante de atascos y registro [VIDEO] de cada paso.
 function _makeVideoPreview(blob, knownDuration) {
   return new Promise(function(resolve) {
-    var done = false, cleanup = [];
-    function finish(res) { if (done) return; done = true; cleanup.forEach(function(f) { try { f(); } catch (e) {} }); resolve(res); }
+    var done = false, cleanup = [], t0 = Date.now();
+    function log(m) { console.log('[VIDEO] ' + m + ' (' + Math.round((Date.now() - t0) / 100) / 10 + ' s)'); }
+    function finish(res, why) {
+      if (done) return; done = true;
+      if (!res || res.tooLong) log('Previa no generada: ' + (why || (res && res.tooLong ? 'demasiado largo' : '?')));
+      cleanup.forEach(function(f) { try { f(); } catch (e) {} });
+      resolve(res);
+    }
     try {
-      if (typeof MediaRecorder === 'undefined' || !window.HTMLCanvasElement || !HTMLCanvasElement.prototype.captureStream) return finish(null);
+      if (typeof MediaRecorder === 'undefined' || !window.HTMLCanvasElement || !HTMLCanvasElement.prototype.captureStream) return finish(null, 'sin MediaRecorder/captureStream');
+      log('Previa: inicio, original ' + Math.round(blob.size / 1024) + ' KB ' + (blob.type || '?'));
       var url = URL.createObjectURL(blob);
       cleanup.push(function() { URL.revokeObjectURL(url); });
       var v = document.createElement('video');
       v.playsInline = true; v.preload = 'auto';
-      v.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;';
+      v.style.cssText = 'position:fixed;right:0;bottom:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1;';
       document.body.appendChild(v);
-      cleanup.push(function() { v.pause(); v.removeAttribute('src'); v.remove(); });
-      var metaTimer = setTimeout(function() { finish(null); }, 15000);
-      v.onerror = function() { finish(null); };
+      cleanup.push(function() { v.pause(); v.removeAttribute('src'); v.load(); v.remove(); });
+      var watchdog = setTimeout(function() { finish(null, 'sin metadatos en 15 s'); }, 15000);
+      cleanup.push(function() { clearTimeout(watchdog); });
+      v.onerror = function() { finish(null, 'el teléfono no puede leer el vídeo (código ' + (v.error && v.error.code) + ')'); };
       v.onloadedmetadata = function() {
-        clearTimeout(metaTimer);
+        clearTimeout(watchdog);
         var dur = isFinite(v.duration) && v.duration > 0 ? v.duration : (knownDuration || 0);
+        log('Previa: metadatos ' + v.videoWidth + 'x' + v.videoHeight + ' dur=' + (Math.round(dur * 10) / 10));
         if (dur > PREVIEW_MAX_SECONDS) return finish({ tooLong: true, duration: dur });
+        // Vigilante general: nunca más de la duración + 25 s
+        watchdog = setTimeout(function() { finish(null, 'tiempo agotado'); }, ((dur || PREVIEW_MAX_SECONDS) + 25) * 1000);
         var w = v.videoWidth || 640, h = v.videoHeight || 360;
         var scale = Math.min(1, PREVIEW_MAX_SIDE / Math.max(w, h));
         var cw = Math.max(2, Math.round(w * scale / 2) * 2), ch = Math.max(2, Math.round(h * scale / 2) * 2);
@@ -2272,44 +2393,72 @@ function _makeVideoPreview(blob, knownDuration) {
         canvas.width = cw; canvas.height = ch;
         var ctx = canvas.getContext('2d');
         var tracks = canvas.captureStream(24).getVideoTracks().slice();
-        try {
-          var AC = window.AudioContext || window.webkitAudioContext;
-          var ac = new AC();
-          cleanup.push(function() { ac.close(); });
-          var dest = ac.createMediaStreamDestination();
-          ac.createMediaElementSource(v).connect(dest);
-          dest.stream.getAudioTracks().forEach(function(t) { tracks.push(t); });
-        } catch (e) { v.muted = true; }
-        var mime = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].filter(function(m) { return MediaRecorder.isTypeSupported(m); })[0] || '';
-        // ~250 KB de previa como objetivo, entre 60 y 200 kbps de vídeo
-        var vbps = Math.max(60000, Math.min(200000, Math.round(250000 * 8 / Math.max(dur || 10, 1)) - 24000));
-        var rec = new MediaRecorder(new MediaStream(tracks), Object.assign(mime ? { mimeType: mime } : {}, { videoBitsPerSecond: vbps, audioBitsPerSecond: 24000 }));
-        var parts = [];
-        rec.ondataavailable = function(e) { if (e.data && e.data.size) parts.push(e.data); };
-        rec.onstop = function() {
-          var out = new Blob(parts, { type: (rec.mimeType || mime || 'video/webm').split(';')[0] });
-          console.log('[VIDEO] Previa ' + cw + 'x' + ch + ' ' + Math.round(out.size / 1024) + ' KB (original ' + Math.round(blob.size / 1024) + ' KB)');
-          if (out.size > 0 && out.size < blob.size * 0.8) { out.thumb = thumb; finish(out); } else finish(null);
-        };
-        var thumb = null, frames = 0;
-        var draw = setInterval(function() {
-          try {
-            ctx.drawImage(v, 0, 0, cw, ch);
-            // Miniatura (poster) para la burbuja: un fotograma a ~0,3 s
-            if (!thumb && ++frames === 8) thumb = canvas.toDataURL('image/jpeg', 0.6).split(',')[1] || null;
-          } catch (e) {}
-        }, 42);
-        cleanup.push(function() { clearInterval(draw); });
-        var stop = function() { try { if (rec.state !== 'inactive') rec.stop(); else finish(null); } catch (e) { finish(null); } };
-        v.onended = stop;
-        var maxTimer = setTimeout(stop, ((dur || PREVIEW_MAX_SECONDS) + 5) * 1000);
-        cleanup.push(function() { clearTimeout(maxTimer); });
-        rec.start(500);
-        var pp = v.play();
-        if (pp && pp.catch) pp.catch(function() { finish(null); });
+        _previewAudioTracks(v, cleanup).then(function(audioTracks) {
+          if (done) return;
+          audioTracks.forEach(function(t) { tracks.push(t); });
+          if (!audioTracks.length) v.muted = true;
+          log('Previa: audio ' + (audioTracks.length ? 'sí' : 'no'));
+          var mime = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].filter(function(m) { return MediaRecorder.isTypeSupported(m); })[0] || '';
+          // ~250 KB de previa como objetivo, entre 60 y 200 kbps de vídeo
+          var vbps = Math.max(60000, Math.min(200000, Math.round(250000 * 8 / Math.max(dur || 10, 1)) - 24000));
+          var rec;
+          try { rec = new MediaRecorder(new MediaStream(tracks), Object.assign(mime ? { mimeType: mime } : {}, { videoBitsPerSecond: vbps, audioBitsPerSecond: 24000 })); }
+          catch (e) { return finish(null, 'MediaRecorder: ' + e.message); }
+          var parts = [], thumb = null, frames = 0, lastT = -1, stuck = 0;
+          rec.ondataavailable = function(e) { if (e.data && e.data.size) parts.push(e.data); };
+          rec.onerror = function(e) { finish(null, 'error del grabador'); };
+          rec.onstop = function() {
+            var out = new Blob(parts, { type: (rec.mimeType || mime || 'video/webm').split(';')[0] });
+            log('Previa ' + cw + 'x' + ch + ' ' + Math.round(out.size / 1024) + ' KB (original ' + Math.round(blob.size / 1024) + ' KB), miniatura ' + (thumb ? 'sí' : 'no'));
+            if (out.size > 0 && out.size < blob.size * 0.8) { out.thumb = thumb; finish(out); } else finish(null, 'la previa no es más pequeña (' + Math.round(out.size / 1024) + ' KB)');
+          };
+          var stop = function(why) {
+            log('Previa: fin (' + why + ')');
+            try { if (rec.state !== 'inactive') rec.stop(); else finish(null, 'grabador inactivo'); } catch (e) { finish(null, 'stop: ' + e.message); }
+          };
+          var draw = setInterval(function() {
+            try {
+              ctx.drawImage(v, 0, 0, cw, ch);
+              // Miniatura (poster) para la burbuja: un fotograma a ~0,3 s
+              if (!thumb && ++frames === 8) thumb = canvas.toDataURL('image/jpeg', 0.6).split(',')[1] || null;
+            } catch (e) {}
+            // Atasco: el vídeo no avanza en 5 s
+            if (v.currentTime === lastT) { if (++stuck > 120) { clearInterval(draw); stop('reproducción atascada en ' + Math.round(v.currentTime * 10) / 10 + ' s'); } }
+            else { stuck = 0; lastT = v.currentTime; }
+          }, 42);
+          cleanup.push(function() { clearInterval(draw); });
+          v.onended = function() { stop('vídeo terminado'); };
+          rec.start(500);
+          var pp = v.play();
+          if (pp && pp.catch) pp.catch(function(e) { finish(null, 'play() rechazado: ' + (e && e.message)); });
+        });
       };
       v.src = url;
-    } catch (e) { finish(null); }
+    } catch (e) { finish(null, 'excepción: ' + (e && e.message)); }
+  });
+}
+
+// Pista de audio del vídeo para la grabación, por WebAudio (no suena). Si el AudioContext no arranca
+// (Android sin gesto del usuario) se devuelve [] y la previa va sin sonido en vez de colgarse.
+function _previewAudioTracks(v, cleanup) {
+  return new Promise(function(resolve) {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return resolve([]);
+      var ac = new AC();
+      cleanup.push(function() { try { ac.close(); } catch (e) {} });
+      var ready = function() {
+        try {
+          var dest = ac.createMediaStreamDestination();
+          ac.createMediaElementSource(v).connect(dest);
+          resolve(dest.stream.getAudioTracks());
+        } catch (e) { resolve([]); }
+      };
+      if (ac.state === 'running') return ready();
+      var p = ac.resume ? ac.resume() : null;
+      var t = setTimeout(function() { resolve([]); }, 800);
+      if (p && p.then) p.then(function() { if (ac.state === 'running') { clearTimeout(t); ready(); } }).catch(function() {});
+    } catch (e) { resolve([]); }
   });
 }
 
@@ -2333,6 +2482,7 @@ function _sendVideo(blob, meta) {
   var mime = (blob.type || meta.mime || 'video/webm').split(';')[0];
   _showOwnPreparing(true);
   var makePreview = (typeof window.NEXO_makeVideoPreview === 'function') ? window.NEXO_makeVideoPreview : _makeVideoPreview;
+  console.log('[VIDEO] Enviar vídeo ' + Math.round(blob.size / 1024) + ' KB ' + mime + ' dur=' + (meta.duration || '?'));
   return makePreview(blob, meta.duration).then(function(preview) {
     _showOwnPreparing(false);
     if (preview && preview.tooLong) {
@@ -2340,14 +2490,18 @@ function _sendVideo(blob, meta) {
       return;
     }
     if (!preview) {
+      // Sin previa: se envía el original (como antes), con miniatura si se puede
       if (blob.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(blob.size)); return; }
-      return _blobToB64(blob).then(function(b64) {
-        _sendAttachment('video', b64, Object.assign({}, meta, { mime: mime, format: _videoFormat(mime) }));
+      console.log('[VIDEO] Enviando el original sin previa (' + Math.round(blob.size / 1024) + ' KB)');
+      return Promise.all([_blobToB64(blob), _makeVideoThumb(blob, 320)]).then(function(r) {
+        _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null }));
       });
     }
     var pMime = (preview.type || 'video/webm').split(';')[0];
     var withHd = Math.ceil(blob.size / 3) * 4 <= MAX_HD_B64_BYTES;
-    return Promise.all([_blobToB64(preview), withHd ? _blobToB64(blob) : Promise.resolve(null)]).then(function(r) {
+    var thumbP = preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320);
+    return Promise.all([_blobToB64(preview), withHd ? _blobToB64(blob) : Promise.resolve(null), thumbP]).then(function(r) {
+      preview.thumb = r[2] || null;
       var msgId = _sendAttachment('video', r[0], Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? blob.size : 0, thumb: preview.thumb || null }),
         r[1] ? { displayPayload: r[1], displayMime: mime } : null);
       if (msgId && r[1]) _registerHd(contactId, msgId, r[1], mime);
@@ -2440,16 +2594,72 @@ function _applyHdUpgrade(cid, msgId, payload, meta) {
 
 function _swapVideoInBubble(msgId, payload, mime) {
   var bubble = document.querySelector('.message[data-msg-id="' + msgId + '"]');
-  var video = bubble && bubble.querySelector('video');
-  if (!video) return;
+  var wrap = bubble && bubble.querySelector('.video-attachment');
+  if (!wrap) return;
   try {
-    var bin = atob(payload), arr = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    var src = URL.createObjectURL(new Blob([arr], { type: mime }));
+    var src = URL.createObjectURL(_b64ToBlob(payload, mime));
     _objectURLRegistry.push(src);
-    video.src = src;
-    video.dataset.fullscreenSrc = src;
-  } catch (e) {}
+    wrap.dataset.src = src;
+    wrap.dataset.fullscreenSrc = src;
+  } catch (e) { console.warn('[VIDEO] No se pudo poner el HD en la burbuja:', e && e.message); }
+}
+
+function _b64ToBlob(b64, mime) {
+  var bin = atob(b64 || ''), arr = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime || 'application/octet-stream' });
+}
+
+// Miniatura JPEG (base64) de un vídeo (Blob o URL): primer fotograma. null si no se puede.
+// El <video> temporal va dentro de la pantalla (1 px): Android no decodifica vídeos ocultos.
+function _makeVideoThumb(srcOrBlob, maxSide) {
+  return new Promise(function(resolve) {
+    var done = false, url = null, v = null;
+    function finish(r) {
+      if (done) return; done = true;
+      try { if (v) { v.pause(); v.removeAttribute('src'); v.load(); v.remove(); } } catch (e) {}
+      if (url) { try { URL.revokeObjectURL(url); } catch (e) {} }
+      resolve(r);
+    }
+    try {
+      url = (typeof srcOrBlob === 'string') ? null : URL.createObjectURL(srcOrBlob);
+      v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'auto';
+      v.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1;';
+      document.body.appendChild(v);
+      var timer = setTimeout(function() { finish(null); }, 6000);
+      var grab = function() {
+        try {
+          var w = v.videoWidth, h = v.videoHeight;
+          if (!w || !h) return;
+          var sc = Math.min(1, (maxSide || 320) / Math.max(w, h));
+          var c = document.createElement('canvas');
+          c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+          c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+          clearTimeout(timer);
+          finish(c.toDataURL('image/jpeg', 0.6).split(',')[1] || null);
+        } catch (e) { clearTimeout(timer); finish(null); }
+      };
+      v.onloadeddata = function() { setTimeout(grab, 120); };
+      v.onerror = function() { clearTimeout(timer); finish(null); };
+      v.src = url || srcOrBlob;
+    } catch (e) { finish(null); }
+  });
+}
+
+var _thumbsInProgress = {};
+function _ensureVideoThumb(msg, attachment, src, img) {
+  var mid = msg.msgId || msg.messageId;
+  if (!src || !mid || _thumbsInProgress[mid]) return;
+  _thumbsInProgress[mid] = true;
+  _makeVideoThumb(src, 320).then(function(t) {
+    delete _thumbsInProgress[mid];
+    if (!t) return;
+    img.src = 'data:image/jpeg;base64,' + t;
+    img.style.display = 'block';
+    var cid = msg._own ? (msg.contactNexoId || _msgContactMap[mid] || _getCurrentContactId()) : (msg.senderNexoId || _getCurrentContactId());
+    vaultSetMessageFields(cid || null, mid, { metaMerge: { thumb: t } });
+  });
 }
 
 function _setHdBadge(msgId, text) {

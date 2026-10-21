@@ -35,6 +35,24 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2695 | `37ad25e` | Historial sin carreras (mensajes borrados al reabrir), textos repetidos visibles, reconexión al volver a la app |
 | 2696 | `939f4ec` | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
 | 2697 | `2fc0074` | Vídeo/texto a app cerrada ya no se pierden (cola por contacto), vídeo se ve más de una vez, miniatura |
+| 2698 | (este) | Vídeo: burbuja con miniatura sin reproductor, visor que libera, previa robusta, diagnóstico en Perfil |
+
+## Ronda 2698 (verificada en Chromium real + simulador)
+Prueba real de la 2697: el vídeo no llega, no pasa a HD, no se ve la miniatura y solo se reproduce una
+vez. Nuevo `tests/sim/browser.js` (Chromium real): con la 2697 el ciclo completo funciona en Chromium
+(previa real 177-230 KB, miniatura, HD, app cerrada) pero quedaban 3 reproductores vivos tras abrir el
+visor 3 veces. Conclusión: lo que falla es propio del WebView de Android.
+1. **Reproducir más de una vez**: cada burbuja creaba un `<video>` (preload=metadata) y el visor no se
+   liberaba al cerrar; en Android cada reproductor retiene un decodificador de hardware. Ahora la burbuja
+   muestra la miniatura (`<img>`), el reproductor solo existe en el visor y se libera
+   (`pause`+`removeAttribute('src')`+`load`). Chromium: 0 reproductores vivos (antes 3).
+2. **Previa que podía colgarse** (si el grabador no terminaba, el vídeo no se enviaba nunca): vigilante
+   general, detección de atasco, vídeo temporal dentro de la pantalla (Android no decodifica ocultos),
+   AudioContext reanudado o previa sin audio. Si falla: original con miniatura (`--no-preview`).
+3. **Miniatura**: también sin previa (`_makeVideoThumb` del original) y, si un vídeo llega sin ella, se
+   genera al dibujarlo y se guarda (`metaMerge`).
+4. **Diagnóstico**: Perfil → Diagnóstico (eventos clave + últimas líneas, también de la sesión anterior)
+   con botón Copiar. Es la forma de ver qué pasa en el teléfono real.
 
 ## Ronda 2697 (verificada en simulador)
 Prueba real de la 2696: vídeo + texto a un teléfono con la app cerrada → al abrirla no llegó nada; la
@@ -121,6 +139,7 @@ node tests/sim/perf.js tests/sim/builds/wip --pdf-kb=150 [--pace=15,15 | --mtu=2
 node tests/sim/lifecycle.js tests/sim/builds/wip --retain --close-no-service --asymmetric --js-delay=6000 --io-delay=25
 node tests/sim/background.js tests/sim/builds/wip --scenario=closed --rotate --no-m3 --io-delay=25 --app-events
 node tests/sim/contacts.js tests/sim/builds/wip --churn --io-delay=25
+node tests/sim/browser.js tests/sim/builds/wip [--closed | --no-preview]   # Chromium real
 node tests/sim/video.js tests/sim/builds/wip --io-delay=25 [--cut | --restart-a]
 node tests/sim/background.js tests/sim/builds/wip --scenario=closed --video --no-m3 --pre-wait=15000 --off=90000 --rotate --io-delay=25 --app-events
 ```
@@ -128,7 +147,6 @@ Ver `tests/sim/README.md`. Límites: no simula la radio real (velocidad, alcance
 
 ## Problemas conocidos (sin corregir)
 - Recibir con la app cerrada (deslizada) necesita mover el servidor GATT al `BleService`.
-- Sin registro de diagnóstico exportable desde el teléfono (solo logcat).
 - `window.vaultSaveContacts` no expuesto: algunos cambios de contacto no se guardan.
 - HTML sin escapar con datos del otro teléfono (nombre de archivo/contacto, último mensaje).
 - Transferencias en base64 dentro de JSON (+33 %). `FileTransferManager.kt` (binario) desconectado:

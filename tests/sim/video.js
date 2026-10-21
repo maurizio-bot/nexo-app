@@ -39,7 +39,7 @@ async function boot(name, native) {
 const click = (win, el) => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
 async function openChat(p) { click(p.win, p.win.document.querySelector('#main-contacts-list .ble-contact-row')); await sleep(400); }
 async function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
-const videoBubbles = (p) => Array.from(p.win.document.querySelectorAll('#messages-container .message:not(.progress-placeholder)')).filter((m) => m.querySelector('video'));
+const videoBubbles = (p) => Array.from(p.win.document.querySelectorAll('#messages-container .message:not(.progress-placeholder)')).filter((m) => m.querySelector('.video-attachment'));
 const badge = (p) => { const v = videoBubbles(p)[0]; const b = v && v.querySelector('.hd-badge'); return b ? b.textContent : null; };
 
 (async () => {
@@ -96,16 +96,16 @@ const badge = (p) => { const v = videoBubbles(p)[0]; const b = v && v.querySelec
     contactos_B: Array.from(B.win.document.querySelectorAll('#main-contacts-list .ble-contact-msg')).map((e) => e.textContent),
   });
   // Ver el vídeo dos veces en B: abrir visor, cerrar, volver a abrir; la URL de la burbuja debe seguir viva
-  const vidB = videoBubbles(B)[0] && videoBubbles(B)[0].querySelector('video');
+  const vidB = videoBubbles(B)[0] && videoBubbles(B)[0].querySelector('.video-attachment');
   if (vidB) {
     for (let k = 0; k < 2; k++) {
-      click(B.win, vidB.closest('.video-attachment') || vidB); await sleep(400);
+      click(B.win, vidB); await sleep(400);
       const ov = B.win.document.getElementById('fullscreen-media-overlay');
       r['visor_abre_' + (k + 1)] = !!ov;
       const closeBtn = ov && ov.querySelector('button'); if (closeBtn) click(B.win, closeBtn); await sleep(300);
     }
-    r.url_burbuja_destruida = B.win.__revoked.has(vidB.src) || B.win.__revoked.has(vidB.dataset.fullscreenSrc);
-    r.poster_en_B = (vidB.getAttribute('poster') || '').substring(0, 30);
+    r.url_burbuja_destruida = B.win.__revoked.has(vidB.dataset.src);
+    r.poster_en_B = ((vidB.querySelector('img.video-thumb') || {}).src || '').substring(0, 30);
   }
   // Reabrir el chat en A: el vídeo propio debe verse con su etiqueta HD ✓
   A.win.dispatchEvent(new A.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(500);

@@ -621,7 +621,11 @@ export async function vaultSetMessageFields(contactNexoId, msgId, patch) {
     var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
     var idx = messages.findIndex(function(m) { return m.msgId === msgId; });
     if (idx < 0) return false;
-    messages[idx] = Object.assign({}, messages[idx], patch);
+    var cur = messages[idx];
+    var p = Object.assign({}, patch);
+    // metaMerge: campos que se añaden a attachmentMeta sin reemplazarlo (p.ej. la miniatura)
+    if (p.metaMerge) { p.attachmentMeta = Object.assign({}, cur.attachmentMeta || {}, p.metaMerge); delete p.metaMerge; }
+    messages[idx] = Object.assign({}, cur, p);
     _persistMessages(cid, messages);
     return true;
   });

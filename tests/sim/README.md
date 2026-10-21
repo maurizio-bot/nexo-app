@@ -52,3 +52,12 @@ escaneo y conexión), ni la cámara/canvas, ni el código Kotlin en sí (solo su
 radio (reconexiones) para comprobar que no salta. `video.js`: vídeo previa + HD automático con una
 previa simulada (jsdom no tiene MediaRecorder); `--cut` corta el enlace a mitad del HD, `--restart-a`
 cierra y reabre la app del emisor, `--orig-kb=2000 --preview-kb=140` tamaños.
+
+`browser.js`: los dos teléfonos en **Chromium real** (Playwright, ya instalado en el contenedor) con la
+radio simulada en Node (`native_mock.js` por un puente). Aquí sí funcionan `<video>`, canvas,
+MediaRecorder, WebAudio y blob URLs: graba un clip real de 5 s, lo envía con la previa real, miniatura y
+HD, y abre el visor varias veces contando los reproductores que quedan vivos (en Android cada uno retiene
+un decodificador). Opciones: `--closed` (B cerrada al enviar), `--no-preview` (fuerza el plan B),
+`--views=3`. `node browser.js builds/wip --closed`. Lo que NO cubre: el WebView de Android en sí
+(decodificadores de hardware, H.264, AudioContext sin gesto): para eso, Perfil → Diagnóstico en el
+teléfono.
