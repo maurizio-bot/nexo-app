@@ -1319,12 +1319,14 @@ class NexoBlePlugin : Plugin() {
             }
 
             val result = sendChunkedOrSingle(macNorm, rawDeviceId, message)
+            // MTU negociado: el JS ajusta el tamaño de los trozos de archivos (ble_ack.js)
+            val mtu = negotiatedMtu[macNorm] ?: 23
             if (result.sent) {
-                call.resolve(JSObject().put("sent", true).put("mode", result.mode).put("deviceId", rawDeviceId))
+                call.resolve(JSObject().put("sent", true).put("mode", result.mode).put("deviceId", rawDeviceId).put("mtu", mtu))
             } else {
                 val queue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
                 queue.add(message)
-                call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId))
+                call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId).put("mtu", mtu))
             }
         }
     }

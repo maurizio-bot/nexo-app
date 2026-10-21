@@ -19,6 +19,11 @@ Escenario (todo por la interfaz: botones, input, menú de adjuntos):
 5. B se aleja, A escribe, B vuelve: debe llegar una sola vez.
 6. B se aleja, A escribe y **reinicia la app**, B vuelve: debe llegar y guardar su estado.
 
+`perf.js` mide adjuntos: dos fotos (~60 KB base64), textos después y un PDF. Informa tiempos, piezas
+enviadas, descartes de la cola nativa (500), escrituras a disco y lag del hilo. Opciones:
+`--mtu=247`, `--mtu=23`, `--loss=0.03`, `--pdf-kb=400`. El mock replica el ritmo del nativo
+(40 ms por escritura de cliente, 80 ms por notify de servidor) y su cola de 500.
+
 La línea `RESULTADO` resume cada comprobación. Los logs de ambos teléfonos quedan en `last_logs_*.txt`.
 
 Límites: no simula la radio real (alcance, interferencias, direcciones aleatorias de Android entre

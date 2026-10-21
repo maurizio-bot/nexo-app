@@ -249,8 +249,9 @@ class NativePhone {
           const mac = self._resolveMac(raw);
           if (!mac) return c.reject('NXID no resuelto a MAC: ' + raw, 'NXID_UNRESOLVED');
           const r = self._sendChunkedOrSingle(mac, message);
-          if (r.sent) c.resolve({ sent: true, mode: r.mode, deviceId: raw });
-          else { if (!self.pendingQueue.has(mac)) self.pendingQueue.set(mac, []); self.pendingQueue.get(mac).push(message); c.resolve({ sent: false, queued: true, mode: 'pending', deviceId: raw }); }
+          const mtu = self.mtu.get(mac) || 23;
+          if (r.sent) c.resolve({ sent: true, mode: r.mode, deviceId: raw, mtu });
+          else { if (!self.pendingQueue.has(mac)) self.pendingQueue.set(mac, []); self.pendingQueue.get(mac).push(message); c.resolve({ sent: false, queued: true, mode: 'pending', deviceId: raw, mtu }); }
         }, 0);
       }),
       getConnectedDevices: wrap('getConnectedDevices', (c) => c.resolve({ devices: [] })),

@@ -4,6 +4,7 @@
  *             vuelven entregado/leído y el envío de fotos/archivos.
  *             Mensajes propios de texto se guardan en el vault (contactNexoId).
  *             Tipo de adjunto en meta.type y MIME en meta.mime (galería/archivos se dibujan bien).
+ *             Límite de archivo ~2,2 MB comprobado ANTES de leerlo (leer uno enorme congelaba la app).
  * FIX v9.9.25: Eliminado el "!" prematuro en envíos de archivo/imagen/vídeo.
  *             - Espera robusta post-cámara (polling READY_TO_CHAT + timeout).
  *             - sendFile ya no marca failed ante rechazos transitorios.
@@ -117,7 +118,13 @@ var _autoScan = null;
 var _msgContactMap = {};
 
 /** Tope base64 para BLE (aprox. \~250KB binario). Fotos comprimidas suelen quedar bajo esto. */
-var MAX_BLE_B64_BYTES = 8000000;
+// v9.9.26: ~3 MB en base64 (~2,2 MB de archivo). A la velocidad real de BLE (unos KB/s) 8 MB eran
+// más de 20 minutos y bloqueaban la app; por encima de esto no se envía.
+var MAX_BLE_B64_BYTES = 3000000;
+var MAX_BLE_FILE_BYTES = Math.floor(MAX_BLE_B64_BYTES * 3 / 4);
+function _tooBigMessage(bytes) {
+  return 'Archivo demasiado grande para Bluetooth (' + (bytes / 1048576).toFixed(1) + ' MB). Máximo ~' + (MAX_BLE_FILE_BYTES / 1048576).toFixed(1) + ' MB.';
+}
 
 var _STATUS_RANK = {
   pending: 1, queued: 2, sending: 3, sent: 4, delivered: 5, read: 6, failed: 0
@@ -285,7 +292,7 @@ function _sendAttachment(type, payload, meta) {
     try {
       if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg);
     } catch (e) {}
-    _showPermissionError('Archivo demasiado grande para BLE (\~' + Math.round(payload.length / 1024) + 'KB). Usa una foto comprimida o un clip muy corto.');
+    _showPermissionError(_tooBigMessage(Math.floor(payload.length * 3 / 4)));
     return;
   }
 
@@ -761,13 +768,15 @@ async function _handleGallery() {
     var file = e.target.files[0];
     if (!file) { input.remove(); return; }
     var isVideo = file.type.indexOf('video') === 0;
+    // Comprobar antes de leer: leer un archivo enorme ya congela el WebView
+    if (isVideo && file.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(file.size)); input.remove(); return; }
     var reader = new FileReader();
     reader.onload = function(evt) {
       var base64 = evt.target.result.split(',')[1];
       if (isVideo) {
         if (base64 && base64.length > MAX_BLE_B64_BYTES) {
           console.warn('[ATTACH] Video demasiado grande:', base64.length);
-          _showPermissionError('Video demasiado grande para BLE. Usa una foto o un clip muy corto.');
+          _showPermissionError(_tooBigMessage(Math.floor(base64.length * 3 / 4)));
           input.remove();
           return;
         }
@@ -807,12 +816,14 @@ function _handleFile() {
   input.onchange = function(e) {
     var file = e.target.files[0];
     if (!file) { input.remove(); return; }
+    // Comprobar antes de leer: leer un archivo enorme ya congela el WebView
+    if (file.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(file.size)); input.remove(); return; }
     var reader = new FileReader();
     reader.onload = function(evt) {
       var base64 = evt.target.result.split(',')[1];
       if (base64 && base64.length > MAX_BLE_B64_BYTES) {
         console.warn('[ATTACH] Archivo demasiado grande:', base64.length);
-        _showPermissionError('Archivo demasiado grande para BLE (\~' + Math.round(base64.length / 1024) + 'KB).');
+        _showPermissionError(_tooBigMessage(Math.floor(base64.length * 3 / 4)));
         input.remove();
         return;
       }

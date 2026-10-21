@@ -1,5 +1,7 @@
 /**
- * BLE Interface v6.1.4-NEXO
+ * BLE Interface v6.1.5-NEXO
+ * FIX v6.1.5: textos cortos con confirmación y reintentos (sendWithRetry); guarda el MTU que devuelve
+ *             el nativo (getMtu) para que ble_ack ajuste el tamaño de los trozos.
  * FIX v6.1.4: Tras reiniciar la app, los mensajes que quedaron en 'sending' se reenvían.
  * FIX v6.1.4: Re-búsqueda automática (cada 15s, máx ~10 min) de contactos desconectados o con
  *             mensajes en cola; antes nadie re-escaneaba y la cola no salía hasta abrir "Gente".
@@ -477,6 +479,7 @@ export class BLEInterface {
     this._cameraBlePausedDevices = [];
     this._cameraBleWasAdvertising = false;
     this._lostPeers = new Set();
+    this._mtuByDevice = new Map(); // MAC normalizada -> MTU negociado (lo devuelve sendMessage nativo)
     this._reconnectScanTimer = null;
     this._reconnectScanAttempts = 0;
     console.log('[BLEInterface] v6.1.1-NEXO iniciado');
@@ -768,6 +771,14 @@ export class BLEInterface {
       if (!found && _normId(d.deviceUUID) === nx) found = d.id;
     });
     return found;
+  }
+
+  getMtu(deviceId) {
+    var m = this._mtuByDevice.get(_normMac(deviceId));
+    if (m) return m;
+    var nx = this._macToNexoId.get(_normMac(deviceId));
+    var mapped = nx ? this._nexoIdToMac.get(nx) : null;
+    return (mapped && this._mtuByDevice.get(mapped)) || 0;
   }
 
   _isMsgInFlight(msgId) {
@@ -1383,7 +1394,10 @@ export class BLEInterface {
         outgoing = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj });
       }
       _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: outgoing })
-        .then(resolve)
+        .then(function(r) {
+          if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._mtuByDevice.set(_normMac(targetId), r.mtu);
+          resolve(r);
+        })
         .catch(reject);
     });
   }
@@ -1433,6 +1447,12 @@ export class BLEInterface {
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
               .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
             return;
+          } else if (self.ackSystem && typeof self.ackSystem.sendWithRetry === 'function') {
+            // v6.1.5: con confirmación y reintentos; antes un paquete perdido en el aire se perdía
+            // para siempre aunque mostrara ✓ (el receptor descarta duplicados por id)
+            self.ackSystem.sendWithRetry(deviceId, content, msgId, msgSeq)
+              .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
+              .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
           } else {
             self._sendMessageNative(deviceId, content, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })

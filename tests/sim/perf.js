@@ -73,6 +73,13 @@ const delta = (a, b) => ({ perdidos: (b.lost || 0) - (a.lost || 0), cola_max: b.
   const report = {};
   const rnd = (n) => { const b = Buffer.alloc(n); for (let i = 0; i < n; i++) b[i] = (i * 7919 + 13) & 255; return b; };
 
+  // 0. Archivo por encima del límite: aviso y nada enviado
+  const before = bubbles(A.win).length;
+  await sendFile(A, 'enorme.pdf', 'application/pdf', rnd(2600 * 1024));
+  await sleep(1500);
+  const toast = A.win.document.getElementById('perm-error-toast');
+  report.limite_archivo = { aviso: toast ? toast.textContent : null, burbujas_nuevas: bubbles(A.win).length - before };
+
   // 1. Foto ~45 KB binaria (~60 KB base64), como una foto de galería comprimida
   for (const [label, kb] of [['foto_1', 45], ['foto_2', 45]]) {
     resetLag(); const a0 = snap(A), b0 = snap(B); const t0 = Date.now();
@@ -91,6 +98,7 @@ const delta = (a, b) => ({ perdidos: (b.lost || 0) - (a.lost || 0), cola_max: b.
   await sendFile(A, 'documento.pdf', 'application/pdf', rnd(pdfKb * 1024));
   let okPdf = false;
   for (let i = 0; i < 900 && !okPdf; i++) { await sleep(200); okPdf = B.win.document.body.innerHTML.indexOf('documento.pdf') >= 0; }
+  if (okPdf) await sleep(3000); // dejar llegar el ack final antes de leer el estado
   report['pdf_' + pdfKb + 'KB'] = { llega: okPdf, segundos: Math.round((Date.now() - t1) / 100) / 10, lag_max_ms: maxLag, A: delta(a0, snap(A)), B: delta(b0, snap(B)) };
   report.estados_A = bubbles(A.win).filter((b) => b.own).map((b) => b.text.substring(0, 20) + '=' + b.status);
   report.archivos_B = Array.from(B.native.files.entries()).map(([k, v]) => k + ':' + Math.round(v.length / 1024) + 'KB');

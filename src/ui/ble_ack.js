@@ -729,6 +729,20 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.chunkSize = isFile ? FILE_CHUNK_SIZE : CHAT_CHUNK_SIZE;
   this.windowSize = isFile ? FILE_WINDOW_SIZE : CHAT_WINDOW_SIZE;
   this.windowTimeoutMs = isFile ? FILE_WINDOW_TIMEOUT_MS : CHAT_WINDOW_TIMEOUT_MS;
+  // v3.3.0: ajustar al MTU negociado. El nativo escribe trozos de (MTU-13) caracteres, uno cada
+  // 40-80 ms; con MTU pequeño un paquete grande ocupa muchas escrituras y la ventana debe ser menor
+  // y esperar más (si no, timeouts espurios y la cola nativa de 500 se llena y descarta).
+  var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
+  var perWrite = mtu ? Math.max(mtu - 13, 10) : 0;
+  var overhead = 90; // cabecera JSON de un trozo ('v','t','m','i','n','d')
+  // Trozos grandes aunque ocupen 2-3 escrituras (menos paquetes y acks); solo se reducen si un
+  // paquete necesitaría más de 3 escrituras (MTU pequeño). Medido: MTU 247 => 18 s/foto con 360
+  // frente a 27 s ajustando a una sola escritura.
+  if (!perWrite) this.chunkSize = Math.min(this.chunkSize, 200);
+  else if (Math.ceil((this.chunkSize + overhead) / perWrite) > 3) this.chunkSize = Math.max(60, 3 * perWrite - overhead);
+  this.writesPerPacket = perWrite ? Math.ceil((this.chunkSize + overhead) / perWrite) : 2;
+  if (this.writesPerPacket > 2) this.windowSize = Math.min(this.windowSize, 4);
+  this.windowTimeoutMs = Math.max(this.windowTimeoutMs, this.windowSize * this.writesPerPacket * 100 + 3000);
   this.pacingDelayMs = isFile ? FILE_PACING_DELAY_MS : CHAT_PACING_DELAY_MS;
   this.baseTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : 45000;
   this.type = type || 'chat';
