@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-21
+Última actualización: 2026-10-21 (build 2698)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -36,6 +36,16 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2696 | `939f4ec` | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
 | 2697 | `2fc0074` | Vídeo/texto a app cerrada ya no se pierden (cola por contacto), vídeo se ve más de una vez, miniatura |
 | 2698 | `43256cd` | Vídeo: burbuja con miniatura sin reproductor, visor que libera, previa robusta, diagnóstico en Perfil |
+
+## Siguiente paso (al retomar)
+- El dueño está probando la **2698** en dos teléfonos y pegará el texto de **Perfil → Copiar
+  diagnóstico** de ambos. Pruebas pedidas: vídeo de 5 s con la app del otro cerrada y abierta; abrir el
+  vídeo varias veces; ver si aparece la miniatura, cuánto tarda la previa y si pasa a HD.
+- Al recibir el diagnóstico, buscar en "eventos clave": `[VIDEO] Previa: …` (¿se generó? ¿motivo si
+  no?), `Enviando HD`, `sendFile`, `Reenvi`, `Peer ready`, `El visor no pudo reproducir`, líneas ` W `/` E `.
+  Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
+- Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
+  con la app cerrada (servidor GATT en el `BleService`).
 
 ## Ronda 2698 (verificada en Chromium real + simulador)
 Prueba real de la 2697: el vídeo no llega, no pasa a HD, no se ve la miniatura y solo se reproduce una
