@@ -36,7 +36,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2696 | `939f4ec` | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
 | 2697 | `2fc0074` | Vídeo/texto a app cerrada ya no se pierden (cola por contacto), vídeo se ve más de una vez, miniatura |
 | 2698 | `43256cd` | Vídeo: burbuja con miniatura sin reproductor, visor que libera, previa robusta, diagnóstico en Perfil — **BASE ESTABLE** (rama `base-estable-2698`) |
-| 2699 | (este) | Compartir contactos (botón contacto): selección múltiple, tarjeta, alta con parpadeo |
+| 2699 | `d563355` | Compartir contactos (botón contacto): selección múltiple, tarjeta, alta con parpadeo |
 
 ## Base estable: build 2698
 El dueño la probó en teléfonos reales y la fijó como **base sólida** (21-10-2026).
