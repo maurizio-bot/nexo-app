@@ -14,6 +14,7 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
@@ -447,10 +448,13 @@ class NexoBlePlugin : Plugin() {
             )
             autoStartGattServerAndAdvertising()
         }
+        // El JS no tiene @capacitor/app: se le avisa desde aquí para reconectar y vaciar la cola
+        notifyListeners("onAppStateChange", JSObject().put("isActive", true))
     }
     override fun handleOnPause() {
         super.handleOnPause()
         remLog("INFO", "LIFECYCLE", "handleOnPause")
+        notifyListeners("onAppStateChange", JSObject().put("isActive", false))
     }
     override fun handleOnDestroy() {
         super.handleOnDestroy()
@@ -1772,8 +1776,15 @@ class NexoBlePlugin : Plugin() {
         scannedDevices.clear()
         lastScanNotifyTime.clear()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
+        // filtered=true (re-búsqueda con la app oculta): solo anuncios NEXO. Sin filtro Android no
+        // entrega resultados con la pantalla apagada.
+        val filters = if (call.getBoolean("filtered", false) == true) listOf(
+            ScanFilter.Builder()
+                .setManufacturerData(MANUFACTURER_ID, byteArrayOf(NEXO_MAGIC_HIGH, NEXO_MAGIC_LOW), byteArrayOf(0xFF.toByte(), 0xFF.toByte()))
+                .build()
+        ) else emptyList()
         try {
-            bluetoothScanner?.startScan(emptyList(), settings, scanCallback)
+            bluetoothScanner?.startScan(filters, settings, scanCallback)
             mainHandler.removeCallbacks(scanTimeoutRunnable)
             mainHandler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
             call.resolve(JSObject().put("started", true))

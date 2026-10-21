@@ -1,5 +1,8 @@
 /**
- * BLE Interface v6.1.6-NEXO
+ * BLE Interface v6.1.7-NEXO
+ * FIX v6.1.7: Al volver a la app (aviso nativo o visibilitychange) se reconecta, se sincroniza y se
+ *             vacía la cola (dependía de @capacitor/app, no instalado). Re-búsqueda sin el tope de
+ *             10 min, también con la app oculta (escaneo filtrado), y búsqueda de 2 min al abrir/volver.
  * FIX v6.1.6: Mensajes que no aparecían al reabrir la app: cola de pendientes con ack y reintentos;
  *             reenvío inmediato al recibir cualquier paquete del otro; conexiones abiertas por el
  *             nativo antes del JS se recuperan (getConnectedDevices); reconexión también desde ERROR;
@@ -558,6 +561,8 @@ export class BLEInterface {
     this.renderOnlineStrip();
     setTimeout(function() { if (!self.isDummyMode && self.nativePlugin) self._autoScanForKnownContacts(); }, 500);
     setTimeout(function() { self._flushAllPendingMessages(); }, 3000);
+    // v6.1.7: antes un solo escaneo de 6 s al abrir; si no veía al otro, nadie volvía a buscar
+    setTimeout(function() { if (!self.isDummyMode && self.nativePlugin) self._startPresenceSearch(120000); }, 7000);
   }
 
   _cleanupStaleStates() {
@@ -860,25 +865,67 @@ export class BLEInterface {
     this._startReconnectScanLoop();
   }
 
+  // v6.1.7: re-búsqueda sin rendirse mientras haya algo que entregar. Antes: máx. 40 intentos (10 min)
+  // y nada con la app oculta; si el otro volvía después, nadie reconectaba.
+  //  - visible: cada 15 s los 2 primeros minutos, luego cada 60 s
+  //  - oculta: cada 60 s con escaneo filtrado (sin filtro Android no da resultados con pantalla apagada)
+  //  - pasados 30 min solo sigue (cada 5 min) si quedan mensajes pendientes para un contacto perdido
+  //  - además, al abrir/volver a la app se busca 2 min a todo contacto no conectado (puede tener
+  //    mensajes para nosotros)
   _startReconnectScanLoop() {
     var self = this;
     if (self._reconnectScanTimer || self.isDummyMode || !self.nativePlugin) return;
     self._reconnectScanAttempts = 0;
+    self._reconnectLoopStart = Date.now();
+    function schedule(ms) { self._reconnectScanTimer = setTimeout(tick, ms); }
     function tick() {
       self._reconnectScanTimer = null;
-      if (self._lostPeers.size === 0 || self._reconnectScanAttempts >= 40) {
-        self._reconnectScanAttempts = 0;
-        return;
-      }
+      var now = Date.now();
+      var presence = now < (self._presenceUntil || 0) && self._hasUnreadyContacts();
+      if (self._lostPeers.size === 0 && !presence) { self._reconnectScanAttempts = 0; return; }
+      var elapsed = now - self._reconnectLoopStart;
       var hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-      if (!hidden && !self._cameraBlePaused && !self.isScanning) {
-        self._reconnectScanAttempts++;
-        console.log('[BLEInterface] Re-búsqueda de contactos perdidos', Array.from(self._lostPeers), 'intento', self._reconnectScanAttempts);
-        self._autoScanForKnownContacts();
-      }
-      self._reconnectScanTimer = setTimeout(tick, 15000);
+      var interval = hidden ? 60000 : (self._reconnectScanAttempts < 8 ? 15000 : 60000);
+      var go = function() {
+        if (!self._cameraBlePaused && !self.isScanning) {
+          self._reconnectScanAttempts++;
+          console.log('[BLEInterface] Re-búsqueda de contactos', Array.from(self._lostPeers), presence ? '(+presencia)' : '', 'intento', self._reconnectScanAttempts, hidden ? 'oculta' : '');
+          self._autoScanForKnownContacts({ filtered: hidden });
+        }
+      };
+      if (elapsed < 1800000 || presence) { go(); schedule(interval); return; }
+      self._lostPeersWithPending().then(function(withPending) {
+        if (withPending.length === 0) { self._reconnectScanAttempts = 0; return; }
+        go(); schedule(300000);
+      }).catch(function() { schedule(300000); });
     }
-    self._reconnectScanTimer = setTimeout(tick, 2000);
+    schedule(2000);
+  }
+
+  _hasUnreadyContacts() {
+    var self = this;
+    return (_getBLEContacts() || []).some(function(c) {
+      var nx = _normId(c.nexoId || c.deviceUUID);
+      if (!nx) return false;
+      var dev = self._resolveDeviceIdForNexoId(nx);
+      if (!dev) return true;
+      var st = self._getDeviceState(dev).state;
+      return st !== BLE_STATES.READY_TO_CHAT && st !== BLE_STATES.NOTIFICATIONS_READY;
+    });
+  }
+
+  _lostPeersWithPending() {
+    var peers = Array.from(this._lostPeers);
+    return Promise.all(peers.map(function(nx) {
+      return _vaultLoadMessages(nx).then(function(msgs) { return (msgs || []).some(_isResendable) ? nx : null; }).catch(function() { return null; });
+    })).then(function(r) { return r.filter(Boolean); });
+  }
+
+  // v6.1.7: al abrir la app o volver a ella, buscar un rato a los contactos no conectados
+  _startPresenceSearch(ms) {
+    this._presenceUntil = Date.now() + (ms || 120000);
+    if (this._reconnectScanTimer) { clearTimeout(this._reconnectScanTimer); this._reconnectScanTimer = null; }
+    this._startReconnectScanLoop();
   }
 
   _notifyPeerReady(deviceId, nexoId) {
@@ -910,6 +957,19 @@ export class BLEInterface {
 
   _setupAppStateListener() {
     var self = this;
+    // v6.1.7: @capacitor/app no está instalado: el bloque de abajo nunca se activaba y al volver a la app
+    // no se reconectaba ni se vaciaba la cola. Ahora avisan el nativo (onAppStateChange) y el WebView
+    // (visibilitychange); se usa el primero que llegue.
+    if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'addListener')) {
+      self.nativePlugin.addListener('onAppStateChange', function(st) {
+        if (st && st.isActive) self._onAppResumed('nativo');
+      });
+    }
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') self._onAppResumed('visibilidad');
+      });
+    }
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
       var appPlugin = window.Capacitor.Plugins.App;
       if (_hasNativeMethod(appPlugin, 'addListener')) {
@@ -928,6 +988,28 @@ export class BLEInterface {
         });
       }
     }
+  }
+
+  _onAppResumed(source) {
+    var self = this;
+    var now = Date.now();
+    if (now - (self._lastResumeAt || 0) < 2000) return;
+    self._lastResumeAt = now;
+    if (self.isDummyMode || !self.nativePlugin) return;
+    console.log('[BLEInterface] App de vuelta en primer plano (' + source + ')');
+    try { self.renderContactsList(); self.renderOnlineStrip(); } catch (e) {}
+    self._cleanupStaleStates();
+    // Conexiones que siguieron vivas: pedir al otro lo que nos falte y reenviar lo nuestro
+    self._seedNativeConnections();
+    self._deviceStates.forEach(function(st, key) {
+      if (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY) return;
+      var nx = self._macToNexoId.get(key);
+      if (!nx) return;
+      if (self.ackSystem && self.ackSystem.sendSessionSync) self.ackSystem.sendSessionSync(key, nx);
+      self._resendPendingMessages(nx);
+    });
+    self._startPresenceSearch(120000);
+    setTimeout(function() { self._flushAllPendingMessages(); }, 1500);
   }
 
   _autoStartAdvertising() {
@@ -1960,14 +2042,14 @@ export class BLEInterface {
     self.updateVisibilityButton();
     return Promise.resolve();
   }
-  _autoScanForKnownContacts() {
+  _autoScanForKnownContacts(opts) {
     var self = this;
     if (self._cameraBlePaused) return;
     if (self.isScanning) return;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
     console.log('[BLEInterface] Auto-scan iniciado');
     self.foundDevices.clear();
-    _safeNativeCall(self.nativePlugin, 'startScan', {})
+    _safeNativeCall(self.nativePlugin, 'startScan', { filtered: !!(opts && opts.filtered) })
       .then(function() {
         self.isScanning = true;
         self.updateScanButton();

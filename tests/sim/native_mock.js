@@ -65,21 +65,52 @@ class NativePhone {
   // handleOnDestroy de Kotlin: cleanupAllConnections + stopGattServer. El BleService (foreground) sigue
   // anunciando con el último NEXO ID. Los demás ven caer sus conexiones con este teléfono.
   destroyActivity() {
+    this.destroyed = true;
     this.serverUp = false;
     this.listeners = new Map();
     this.retained = new Map();
     const meAdv = norm(this.address), meInit = norm(this.initAddress);
     this.radio.phones.forEach((p) => {
       if (p === this) return;
-      if (p.clients.has(meAdv)) { p.clients.delete(meAdv); p.emit('onDeviceDisconnected', { deviceId: this.address }); }
-      if (p.serverConnected.has(meInit)) { p.serverConnected.delete(meInit); p.serverNotif.delete(meInit); p.emit('onDeviceDisconnected', { deviceId: this.initAddress }); }
+      // Radio real: el otro no se entera hasta que vence el supervision timeout (opts.supervisionMs);
+      // mientras, sus escrituras "salen" bien pero se pierden (ver _processReceivedChunk).
+      p._dropLinkLater(meAdv, this.address, meInit, this.initAddress);
       this.clients.delete(norm(p.address)); this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress));
     });
     this.pendingQueue.clear(); this.buffers.clear(); this.writeQ = new Map();
   }
 
+  // Lectura/escritura de archivo: el Kotlin la hace en el hilo del plugin (en orden de llamada) y la
+  // respuesta vuelve por el bridge unos ms después (opts.ioDelay). Con 0 responde al instante.
+  _io(fn) { if (this.opts.ioDelay) setTimeout(fn, this.opts.ioDelay); else fn(); }
+
+  _dropLinkLater(advNorm, advAddr, initNorm, initAddr) {
+    const drop = () => {
+      if (this.clients.has(advNorm)) { this.clients.delete(advNorm); this.emit('onDeviceDisconnected', { deviceId: advAddr }); }
+      if (this.serverConnected.has(initNorm)) { this.serverConnected.delete(initNorm); this.serverNotif.delete(initNorm); this.emit('onDeviceDisconnected', { deviceId: initAddr }); }
+    };
+    if (this.opts.supervisionMs) setTimeout(drop, this.opts.supervisionMs); else drop();
+  }
+
+  // Volver a la app / pasar a segundo plano (Activity onResume/onPause). Solo el Kotlin nuevo lo avisa
+  // al JS (opts.appStateEvents); el JS ve además visibilitychange si el WebView lo emite.
+  setAppActive(active) {
+    this.appActive = !!active;
+    if (this.opts.appStateEvents) this.emit('onAppStateChange', { isActive: !!active });
+  }
+
   // ---- ciclo de vida (Kotlin load(): autoStartGattServerAndAdvertising) ----
-  load() { this.serviceRunning = true; this.serverUp = true; }
+  load() {
+    // Android reinicia el anuncio al reabrir la app: dirección aleatoria nueva (opts.rotateOnRestart)
+    if (this.destroyed && this.opts.rotateOnRestart) {
+      this.restarts = (this.restarts || 0) + 1;
+      const hex = (n) => n.toString(16).toUpperCase().padStart(2, '0');
+      this.address = this.address.replace(/..:..$/, hex(0x40 + this.restarts) + ':' + hex(0x10 + this.restarts));
+      this.initAddress = this.opts.asymmetric ? this.address.replace(/..$/, (b) => hex(parseInt(b, 16) ^ 0x80)) : this.address;
+    }
+    this.destroyed = false;
+    this.serviceRunning = true; this.serverUp = true;
+  }
 
   // ---- envío al aire ----
   _air(fromAddress, toPhone, bytes, source) {
@@ -141,6 +172,8 @@ class NativePhone {
 
   // ---- recepción (Kotlin processReceivedChunk + tryExtractCompleteJson) ----
   _processReceivedChunk(fromAddress, chunk, source) {
+    const sender = this.radio.phones.find((p) => norm(p.address) === norm(fromAddress) || norm(p.initAddress) === norm(fromAddress));
+    if (this.offline || this.serverUp === false || (sender && sender.offline)) { this.stats.voidWrites = (this.stats.voidWrites || 0) + 1; return; }
     const mac = norm(fromAddress);
     let buf = (this.buffers.get(mac) || '') + chunk;
     for (;;) {
@@ -160,8 +193,7 @@ class NativePhone {
     this.radio.phones.forEach((p) => {
       if (p === this) return;
       const drop = (holder, otherAddr) => { holder.emit('onDeviceDisconnected', { deviceId: otherAddr }); holder.buffers.delete(norm(otherAddr)); };
-      if (p.clients.has(norm(this.address))) { p.clients.delete(norm(this.address)); drop(p, this.address); }
-      if (p.serverConnected.has(norm(this.initAddress))) { p.serverConnected.delete(norm(this.initAddress)); p.serverNotif.delete(norm(this.initAddress)); drop(p, this.initAddress); }
+      p._dropLinkLater(norm(this.address), this.address, norm(this.initAddress), this.initAddress);
       if (this.clients.has(norm(p.address))) { this.clients.delete(norm(p.address)); drop(this, p.address); }
       if (this.serverConnected.has(norm(p.initAddress))) { this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress)); drop(this, p.initAddress); }
     });
@@ -253,10 +285,19 @@ class NativePhone {
       stopAdvertising: wrap('stopAdvertising', (c) => { self.serviceRunning = false; c.resolve({ stopped: true }); }),
       setAdvertisingData: wrap('setAdvertisingData', (c, a) => { const id = c.getString('nexoId'); if (!id) return c.reject('nexoId requerido'); self.advertisingId = id; self.serviceRunning = true; c.resolve({ set: true, nexoId: id }); }),
       getLocalDeviceInfo: wrap('getLocalDeviceInfo', (c) => c.resolve({ deviceName: self.name, deviceAddress: '' })),
-      startScan: wrap('startScan', (c) => {
+      startScan: wrap('startScan', (c, a) => {
         c.resolve({ started: true });
+        // Android 8.1+: con la pantalla apagada un escaneo sin filtro no entrega resultados
+        if (self.appActive === false && !(a && a.filtered)) { self.stats.screenOffScans = (self.stats.screenOffScans || 0) + 1; return; }
+        // Android: más de 5 startScan en 30 s => el sistema no entrega resultados (sin error)
+        const now = Date.now();
+        self.scanStarts = (self.scanStarts || []).filter((t) => now - t < 30000);
+        self.scanStarts.push(now);
+        self.stats.scans = (self.stats.scans || 0) + 1;
+        if (self.opts.scanThrottle && self.scanStarts.length > 5) { self.stats.throttledScans = (self.stats.throttledScans || 0) + 1; return; }
         setTimeout(() => self.radio.phones.forEach((p) => {
           if (p === self || p.offline || !p.serviceRunning || !p.advertisingId) return;
+          if (self.opts.scanMiss && Math.random() < self.opts.scanMiss) { self.stats.scanMisses = (self.stats.scanMisses || 0) + 1; return; }
           self.emit('onDeviceFound', { deviceId: p.address, name: p.name, rssi: -50, nexoId: p.advertisingId });
         }), 80);
       }),
@@ -308,8 +349,8 @@ class NativePhone {
         self.serverConnected.forEach((peer, mac) => devices.push({ id: peer.initAddress, address: peer.initAddress, direction: 'incoming', role: 'server', ready: !!self.serverNotif.get(mac) }));
         c.resolve({ devices });
       }),
-      saveToFile: wrap('saveToFile', (c) => { const f = c.getString('filename'); const t = c.getString('content'); if (f == null) return c.reject('filename requerido'); if (t == null) return c.reject('content requerido'); self.files.set(f, t); self.stats.saves++; self.stats.saveBytes += t.length; self.stats.maxSave = Math.max(self.stats.maxSave, t.length); c.resolve({ success: true, path: '/data/' + f }); }),
-      loadFromFile: wrap('loadFromFile', (c) => { const f = c.getString('filename'); if (f == null) return c.reject('filename requerido'); if (!self.files.has(f)) return c.resolve({ exists: false, content: '' }); c.resolve({ exists: true, content: self.files.get(f), path: '/data/' + f }); }),
+      saveToFile: wrap('saveToFile', (c) => { const f = c.getString('filename'); const t = c.getString('content'); if (f == null) return c.reject('filename requerido'); if (t == null) return c.reject('content requerido'); self.files.set(f, t); self.stats.saves++; self.stats.saveBytes += t.length; self.stats.maxSave = Math.max(self.stats.maxSave, t.length); self._io(() => c.resolve({ success: true, path: '/data/' + f })); }),
+      loadFromFile: wrap('loadFromFile', (c) => { const f = c.getString('filename'); if (f == null) return c.reject('filename requerido'); if (!self.files.has(f)) return self._io(() => c.resolve({ exists: false, content: '' })); const content = self.files.get(f); self._io(() => c.resolve({ exists: true, content, path: '/data/' + f })); }),
       deleteFile: wrap('deleteFile', (c) => { c.resolve({ deleted: self.files.delete(c.getString('filename')) }); }),
       listFiles: wrap('listFiles', (c) => c.resolve({ files: Array.from(self.files.keys()) })),
       startListeningMessages: wrap('startListeningMessages', (c) => c.resolve({ listening: true })),

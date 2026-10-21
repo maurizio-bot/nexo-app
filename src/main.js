@@ -1,5 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.27-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.28-NEXO
+ * FIX v9.9.28: no se descartan mensajes recibidos con el mismo texto que otros recientes.
  * FIX v9.9.27: Progreso visible de archivos: "○ 45%" en la burbuja propia y "Recibiendo foto… N%"
  *             en el chat del receptor mientras llega.
  * FIX v9.9.26: AckSystem se vincula de verdad (antes NEXO.app.bleInterface era null en ese punto):
@@ -1909,15 +1910,9 @@ function _renderMessage(msg, skipSave) {
         }
       } catch (e) {}
     }
-    if (!msg._own && msg.content && !attachment) {
-      var recentMessages = container.querySelectorAll('.message.other');
-      for (var i = recentMessages.length - 1; i >= Math.max(0, recentMessages.length - 5); i--) {
-        var existingContent = recentMessages[i].querySelector('.msg-content');
-        if (existingContent && existingContent.textContent === msg.content) {
-          return;
-        }
-      }
-    }
+    // FIX v9.9.28: antes se descartaba un mensaje recibido si su texto era igual a uno de los 5 últimos
+    // ("ok", "si", "hola"...): no se veía aunque el otro recibía ✓✓. Los duplicados reales ya se
+    // filtran por id (_renderedMessageIds y data-msg-id).
     var div = document.createElement('div');
     var isOwn = !!msg._own;
     div.className = 'message ' + (isOwn ? 'own' : 'other');

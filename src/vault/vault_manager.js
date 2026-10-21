@@ -1,5 +1,8 @@
 /**
- * vault_manager.js v2.3.0
+ * vault_manager.js v2.3.1
+ * FIX v2.3.1: historial sin carreras. Cada cambio (añadir, estado, guardar) va en cola por contacto y
+ *             las lecturas simultáneas comparten una carga. Antes, al abrir la app (caché vacía) dos
+ *             mensajes seguidos leían el mismo archivo y el segundo guardado borraba el primero.
  * v2.3.0: adjuntos grandes en archivo propio (attachmentRef) + vaultHydrateAttachments; migración automática.
  * FIX v2.2.3: estado de mensaje no se degrada; completar transferencia no pisa el adjunto guardado.
  * FIX: Filtro defensivo anti-protocolo TURBO compacto (t: c/f/n/a/ss/sr)
@@ -38,6 +41,18 @@ function _createLRU(maxSize) {
   };
 }
 var _msgCache = _createLRU(20);
+var _msgLocks = new Map();   // cid -> promesa del último cambio en cola
+var _msgLoading = new Map(); // cid -> promesa de carga en curso
+
+// Ejecuta fn en exclusiva para ese contacto (leer → modificar → guardar sin que otro se cuele)
+function _withMsgLock(cid, fn) {
+  var prev = _msgLocks.get(cid) || Promise.resolve();
+  var run = prev.then(fn, fn);
+  var tail = run.catch(function() {});
+  _msgLocks.set(cid, tail);
+  tail.then(function() { if (_msgLocks.get(cid) === tail) _msgLocks.delete(cid); });
+  return run;
+}
 var _transferCache = _createLRU(20);
 var _outgoingCache = _createLRU(20);
 function _normId(id) {
@@ -424,10 +439,19 @@ export async function vaultLoadMessages(contactNexoId) {
   var cid = _normId(contactNexoId);
   var cached = _msgCache.get(cid);
   if (cached !== undefined) return cached.slice();
+  if (_msgLoading.has(cid)) return (await _msgLoading.get(cid)).slice();
+  var loading = _loadMessagesFromDisk(cid);
+  _msgLoading.set(cid, loading);
+  try { return (await loading).slice(); } finally { _msgLoading.delete(cid); }
+}
+
+async function _loadMessagesFromDisk(cid) {
   var plugin = _nativePlugin();
   if (!plugin) return [];
   try {
     var result = await _safeNativeCall(plugin, 'loadFromFile', { filename: _msgFileName(cid) });
+    // Si mientras se leía alguien guardó (caché ya puesta), lo guardado es más nuevo que el archivo leído
+    if (_msgCache.get(cid) !== undefined) return _msgCache.get(cid).slice();
     if (result && result.exists && result.content) {
       var data = JSON.parse(result.content);
       var msgs = Array.isArray(data.messages) ? data.messages : (Array.isArray(data) ? data : []);
@@ -450,6 +474,7 @@ export async function vaultLoadMessages(contactNexoId) {
       if (migrated) _persistMessages(cid, msgs);
       return msgs;
     }
+    if (result && !result.exists) _msgCache.set(cid, []);
   } catch (e) {}
   return [];
 }
@@ -469,6 +494,9 @@ function _persistMessages(contactNexoId, messages) {
 export async function vaultSaveMessages(contactNexoId, messages) {
   if (!contactNexoId) return false;
   var cid = _normId(contactNexoId);
+  return _withMsgLock(cid, function() { return _saveMessagesNow(cid, messages); });
+}
+async function _saveMessagesNow(cid, messages) {
   var toSave = messages.slice(-2000);
   _msgCache.set(cid, toSave.slice());
   var plugin = _nativePlugin();
@@ -502,6 +530,9 @@ export async function vaultAppendMessage(contactNexoId, message) {
     return null;
   }
   var cid = _normId(contactNexoId);
+  return _withMsgLock(cid, function() { return _appendMessageNow(cid, message); });
+}
+async function _appendMessageNow(cid, message) {
   var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
   var msgId = message.msgId || message.messageId || message.id || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
   message.msgId = msgId; message.messageId = msgId;
@@ -547,16 +578,18 @@ export async function vaultUpdateMessageStatus(contactNexoId, msgId, status) {
     cid = _normId(cid);
     if (!cid || tried[cid]) return false;
     tried[cid] = true;
-    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
-    var idx = messages.findIndex(function(m) {
-      return (m.msgId || m.messageId || m.id) === msgId;
+    return _withMsgLock(cid, async function() {
+      var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+      var idx = messages.findIndex(function(m) {
+        return (m.msgId || m.messageId || m.id) === msgId;
+      });
+      if (idx < 0) return false;
+      // FIX v2.2.3: no degradar (p.ej. 'sent' tardío pisando 'delivered'/'read')
+      if (_statusRank(status) < _statusRank(messages[idx].status) && !(status === 'failed' && _statusRank(messages[idx].status) < 5)) return true;
+      messages[idx] = Object.assign({}, messages[idx], { status: status });
+      _persistMessages(cid, messages);
+      return true;
     });
-    if (idx < 0) return false;
-    // FIX v2.2.3: no degradar (p.ej. 'sent' tardío pisando 'delivered'/'read')
-    if (_statusRank(status) < _statusRank(messages[idx].status) && !(status === 'failed' && _statusRank(messages[idx].status) < 5)) return true;
-    messages[idx].status = status;
-    _persistMessages(cid, messages);
-    return true;
   }
   if (await updateInContact(contactNexoId)) return true;
   var contacts = Array.isArray(_vaultContacts) ? _vaultContacts : [];

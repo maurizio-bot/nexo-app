@@ -9,7 +9,7 @@ const { Radio, NativePhone } = require('./native_mock');
 
 const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
-const opts = { readsContentFallback: true, retain: arg('retain', false) ? ['onPayloadReceived'] : [], closeOnNoService: !!arg('close-no-service', false), asymmetric: !!arg('asymmetric', false) };
+const opts = { readsContentFallback: true, retain: arg('retain', false) ? ['onPayloadReceived'] : [], closeOnNoService: !!arg('close-no-service', false), asymmetric: !!arg('asymmetric', false), ioDelay: arg('io-delay', 0) };
 const jsDelay = arg('js-delay', 2500);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
