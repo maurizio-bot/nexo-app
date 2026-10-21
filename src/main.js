@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.26-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.27-NEXO
+ * FIX v9.9.27: Progreso visible de archivos: "○ 45%" en la burbuja propia y "Recibiendo foto… N%"
+ *             en el chat del receptor mientras llega.
  * FIX v9.9.26: AckSystem se vincula de verdad (antes NEXO.app.bleInterface era null en ese punto):
  *             vuelven entregado/leído y el envío de fotos/archivos.
  *             Mensajes propios de texto se guardan en el vault (contactNexoId).
@@ -1340,6 +1342,7 @@ function _registerCriticalListeners() {
           return;
         }
         var meta = d.meta || {};
+        _removeIncomingPlaceholder(d.fileId);
         console.log('[MAIN] Archivo recibido via fileComplete:', d.fileId, 'type=', meta.type, 'fr=', meta.fr, 'len=', (d.data || '').length);
         var senderId = meta.senderNexoId || meta.fromNexoId || meta.fromId || meta.fr || d.senderNexoId || null;
         var recvMsg = {
@@ -1358,6 +1361,9 @@ function _registerCriticalListeners() {
       } catch (err) {
         console.warn('[MAIN] Error en fileComplete handler:', err && err.message);
       }
+    });
+    window.addEventListener('nexo:ble:fileProgress', function(e) {
+      try { _onFileProgress(e && e.detail); } catch (err) {}
     });
     window.addEventListener('nexo:ble:ackStatus', function(e) {
       try {
@@ -2199,6 +2205,48 @@ function _renderMessage(msg, skipSave) {
   } catch (e) {
     console.warn('[MAIN] _renderMessage error:', e);
   }
+}
+
+function _removeIncomingPlaceholder(fileId) {
+  var ph = document.querySelector('[data-progress-id="' + fileId + '"]');
+  if (ph && ph.parentNode) ph.parentNode.removeChild(ph);
+}
+
+// v9.9.27: progreso de transferencias de archivos (eventos 'nexo:ble:fileProgress' de ble_ack.js)
+function _onFileProgress(d) {
+  if (!d || !d.fileId) return;
+  var pct = Math.max(0, Math.min(99, d.percent || 0));
+  if (d.direction === 'in') {
+    if (d.status === 'failed') { _removeIncomingPlaceholder(d.fileId); return; }
+    var activeId = _getCurrentContactId();
+    if (!activeId || !d.senderNexoId || _normId(activeId) !== _normId(d.senderNexoId)) return;
+    if (_renderedMessageIds.has(d.fileId)) return;
+    var container = document.getElementById('messages-container');
+    if (!container) return;
+    var kind = String(d.mime || '').split('/')[0];
+    var label = (d.fileType === 'image' || kind === 'image') ? '📷 Recibiendo foto'
+      : (d.fileType === 'video' || kind === 'video') ? '🎬 Recibiendo vídeo'
+      : (d.fileType === 'audio' || d.fileType === 'voice' || kind === 'audio') ? '🎤 Recibiendo audio'
+      : '📄 Recibiendo ' + (d.name || 'archivo');
+    var ph = document.querySelector('[data-progress-id="' + d.fileId + '"]');
+    if (!ph) {
+      ph = document.createElement('div');
+      ph.className = 'message other progress-placeholder';
+      ph.dataset.progressId = d.fileId;
+      var c = document.createElement('div');
+      c.className = 'msg-content';
+      ph.appendChild(c);
+      container.appendChild(ph);
+      requestAnimationFrame(function() { container.scrollTop = container.scrollHeight; });
+    }
+    ph.firstChild.textContent = label + '… ' + pct + '%';
+    return;
+  }
+  var statusEl = document.querySelector('.msg-status[data-msg-id="' + d.fileId + '"]');
+  if (!statusEl) return;
+  var m = (statusEl.className || '').match(/status-(pending|queued|sending|sent)\b/);
+  if (!m) return;
+  statusEl.textContent = (m[1] === 'sent' ? '✓' : '○') + ' ' + pct + '%';
 }
 
 function _updateMessageStatus(messageId, status) {

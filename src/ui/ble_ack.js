@@ -1,5 +1,8 @@
 /**
-* v3.3.0: Transferencias sin tormenta de retransmisiones: NACK solo de huecos reales, ack agrupado
+* v3.3.2: Eventos de progreso de envío y recepción de archivos (cada 5 %).
+* v3.3.1: Sincronización de sesión con el seq correcto (solo mensajes recibidos del otro) y reenvío de
+ *         lo propio sin confirmar.
+ * v3.3.0: Transferencias sin tormenta de retransmisiones: NACK solo de huecos reales, ack agrupado
  *         (cada 4 trozos o 150 ms), sin reenvío por ack parcial, la ventana avanza al confirmarse,
  *         trozos de 360, ventana 8, sin persistir cada trozo recibido (se escribía y nunca se leía).
  * FIX v3.2.13: read_receipt ya no se descarta tras el ack del mismo mensaje; mensajes largos
@@ -26,15 +29,15 @@ const PROTOCOL_VERSION = 2;
 const CHAT_CHUNK_SIZE = 360;
 const CHAT_WINDOW_SIZE = 8;
 const CHAT_WINDOW_TIMEOUT_MS = 3000;
-const CHAT_PACING_DELAY_MS = 30;
+const CHAT_PACING_DELAY_MS = 2;
 const FILE_CHUNK_SIZE = 360;
-const FILE_WINDOW_SIZE = 8;
+const FILE_WINDOW_SIZE = 12;
 // Receptor: confirma cada ACK_EVERY trozos o tras ACK_DEBOUNCE_MS sin más trozos (antes, uno por trozo)
 const ACK_EVERY = 4;
 const ACK_DEBOUNCE_MS = 150;
 const NACK_INTERVAL_MS = 1500;
 const FILE_WINDOW_TIMEOUT_MS = 8000;
-const FILE_PACING_DELAY_MS = 25;
+const FILE_PACING_DELAY_MS = 2; // el nativo ya regula el ritmo (control de flujo por callback)
 const MAX_WINDOW_RETRIES = 8;
 const ASSEMBLY_TIMEOUT_MS = 120000;
 const COMPLETED_TTL_MS = 60000;
@@ -48,6 +51,12 @@ function _normMac(mac) {
 }
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
+}
+// Mayor seq de los mensajes RECIBIDOS del otro (su contador); los propios usan nuestro contador
+function _maxSeqFromPeer(msgs) {
+  var max = 0;
+  (msgs || []).forEach(function(m) { if (!m._own && typeof m.seq === 'number' && m.seq > max) max = m.seq; });
+  return max;
 }
 function _compressRanges(indices) {
   if (!indices || indices.length === 0) return '';
@@ -260,6 +269,7 @@ export class BleAckSystem {
       buf.assemblyTimer = setTimeout(function() {
         if (self.incomingBuffers.has(msgId)) {
           console.warn('[BleAckSystem] Assembly timeout msgId=' + msgId);
+          self._reportIncomingProgress(msgId, self.incomingBuffers.get(msgId), 'failed');
           self.incomingBuffers.delete(msgId);
         }
       }, ASSEMBLY_TIMEOUT_MS);
@@ -273,6 +283,7 @@ export class BleAckSystem {
       buf.assemblyTimer = setTimeout(function() {
         if (self.incomingBuffers.has(msgId)) {
           console.warn('[BleAckSystem] Assembly timeout msgId=' + msgId);
+          self._reportIncomingProgress(msgId, self.incomingBuffers.get(msgId), 'failed');
           self.incomingBuffers.delete(msgId);
         }
       }, ASSEMBLY_TIMEOUT_MS);
@@ -286,6 +297,7 @@ export class BleAckSystem {
     }
     // v3.3.0: ack agrupado (antes uno por trozo: saturaba la cola nativa de 80 ms por notify)
     self._scheduleBlockAck(deviceId, msgId, buf);
+    self._reportIncomingProgress(msgId, buf);
     // v3.3.0: NACK solo de huecos reales (por debajo del mayor índice recibido). Antes incluía todos
     // los trozos futuros ("2-767") y el emisor los reenviaba todos: tormenta de retransmisiones.
     var gaps = self._findGaps(buf);
@@ -408,6 +420,12 @@ export class BleAckSystem {
     }
     if (stream.windowStart !== oldWindowStart) {
       console.log('[BleAckSystem] windowStart avanzo: ' + oldWindowStart + ' -> ' + stream.windowStart);
+      // v3.3.2: progreso de envío (cada 5 %) para la burbuja propia
+      var pctOut = Math.floor(stream.windowStart * 100 / stream.total);
+      if (stream.type === 'file' && pctOut < 100 && (typeof stream._lastPct !== 'number' || pctOut - stream._lastPct >= 5)) {
+        stream._lastPct = pctOut;
+        this._dispatchFileProgress(msgId, stream.windowStart, stream.total, 'sending', pctOut);
+      }
     }
     if (stream.windowStart < stream.total) {
       var windowEnd = Math.min(stream.windowStart + stream.windowSize, stream.total);
@@ -469,9 +487,7 @@ export class BleAckSystem {
     if (window.vaultLoadMessages && peerNexoId) {
       window.vaultLoadMessages(peerNexoId).then(function(msgs) {
         if (msgs && msgs.length > 0) {
-          var maxSeq = 0;
-          msgs.forEach(function(m) { if (m.seq > maxSeq) maxSeq = m.seq; });
-          myLastSeq = maxSeq;
+          myLastSeq = _maxSeqFromPeer(msgs);
         }
         var resp = JSON.stringify({ v: PROTOCOL_VERSION, t: 'sr', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
         if (self.ble && self.ble._sendMessageNative) {
@@ -487,9 +503,17 @@ export class BleAckSystem {
     if (!peerNexoId || !window.vaultLoadMessages) return;
     window.vaultLoadMessages(peerNexoId).then(function(msgs) {
       if (!msgs) return;
+      // v3.3.1: peerLastSeq es el mayor seq NUESTRO que el otro tiene (antes mezclaba los contadores de
+      // ambos teléfonos y dejaba sin reenviar). Se reenvía lo propio sin confirmar: pendiente/fallido
+      // siempre; 'sent' (sin ack) si su seq es mayor que lo que el otro tiene. Máx. 7 días y 50 mensajes.
+      var cutoff = Date.now() - 7 * 86400000;
       var pending = msgs.filter(function(m) {
-        return m._own === true && m.seq > peerLastSeq && (m.status === 'pending' || m.status === 'sent' || m.status === 'delivered');
-      });
+        if (m._own !== true || m.attachmentType || (m.timestamp || 0) < cutoff) return false;
+        var mid = m.msgId || m.messageId;
+        if (self.ble && typeof self.ble._isMsgInFlight === 'function' && self.ble._isMsgInFlight(mid)) return false;
+        if (m.status === 'pending' || m.status === 'sending' || m.status === 'queued' || m.status === 'failed') return true;
+        return m.status === 'sent' && (m.seq || 0) > peerLastSeq;
+      }).slice(-50);
       if (pending.length === 0) return;
       console.log('[BleAckSystem] Sync: reenviando', pending.length, 'mensajes faltantes a', peerNexoId);
       var idx = 0;
@@ -511,9 +535,7 @@ export class BleAckSystem {
     var myLastSeq = 0;
     if (window.vaultLoadMessages) {
       window.vaultLoadMessages(peerNexoId).then(function(msgs) {
-        if (msgs && msgs.length > 0) {
-          msgs.forEach(function(m) { if (m.seq > myLastSeq) myLastSeq = m.seq; });
-        }
+        myLastSeq = _maxSeqFromPeer(msgs);
         var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ss', fr: (self.ble && self.ble.localNexoId) || 'unknown', l: myLastSeq });
         if (self.ble && self.ble._sendMessageNative) {
           self.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
@@ -679,8 +701,18 @@ export class BleAckSystem {
   _dispatchStatus(msgId, status) {
     try { window.dispatchEvent(new CustomEvent('nexo:ble:ackStatus', { detail: { msgId: msgId, status: status } })); } catch (e) {}
   }
-  _dispatchFileProgress(fileId, sent, total, status, percent) {
-    try { window.dispatchEvent(new CustomEvent('nexo:ble:fileProgress', { detail: { fileId: fileId, sent: sent, total: total, status: status, percent: percent || 0 } })); } catch (e) {}
+  _dispatchFileProgress(fileId, sent, total, status, percent, extra) {
+    try { window.dispatchEvent(new CustomEvent('nexo:ble:fileProgress', { detail: Object.assign({ fileId: fileId, sent: sent, total: total, status: status, percent: percent || 0, direction: 'out' }, extra || {}) })); } catch (e) {}
+  }
+  // v3.3.2: progreso de recepción (cada 5 %) para mostrar "Recibiendo foto… N%" mientras llega
+  _reportIncomingProgress(msgId, buf, status) {
+    if (buf.isChat) return;
+    var pct = status === 'failed' ? 0 : Math.floor(buf.received * 100 / buf.total);
+    if (status !== 'failed' && (pct >= 100 || (typeof buf.lastPct === 'number' && pct - buf.lastPct < 5))) return;
+    buf.lastPct = pct;
+    this._dispatchFileProgress(msgId, buf.received, buf.total, status || 'receiving', pct, {
+      direction: 'in', senderNexoId: buf.meta.fr, fileType: buf.meta.type, mime: buf.meta.mime, name: buf.meta.name
+    });
   }
   _dispatchFileComplete(fileId, data, meta) {
     try {

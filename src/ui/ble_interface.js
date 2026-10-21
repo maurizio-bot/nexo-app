@@ -1,5 +1,9 @@
 /**
- * BLE Interface v6.1.5-NEXO
+ * BLE Interface v6.1.6-NEXO
+ * FIX v6.1.6: Mensajes que no aparecían al reabrir la app: cola de pendientes con ack y reintentos;
+ *             reenvío inmediato al recibir cualquier paquete del otro; conexiones abiertas por el
+ *             nativo antes del JS se recuperan (getConnectedDevices); reconexión también desde ERROR;
+ *             se prefiere un enlace listo aunque su dirección no sea la del escaneo.
  * FIX v6.1.5: textos cortos con confirmación y reintentos (sendWithRetry); guarda el MTU que devuelve
  *             el nativo (getMtu) para que ble_ack ajuste el tamaño de los trozos.
  * FIX v6.1.4: Tras reiniciar la app, los mensajes que quedaron en 'sending' se reenvían.
@@ -538,6 +542,7 @@ export class BLEInterface {
       this._setupNativePayloadListener();
       this._setupNativeStateListeners();
       this._setupNativeServerReadyListener();
+      setTimeout(function() { self._seedNativeConnections(); }, 300);
       this._loadLocalDeviceInfo();
       this._initVisibility();
       this._initNexoId();
@@ -744,6 +749,17 @@ export class BLEInterface {
     var nx = _normId(nexoId);
     if (!nx) return null;
 
+    // 0. v6.1.6: preferir un enlace YA LISTO con ese NEXO ID. Android usa direcciones distintas para
+    // anunciarse y para conectarse como cliente: el otro puede estar conectado por una dirección
+    // distinta de la del escaneo.
+    var self = this;
+    var ready = null;
+    this._deviceStates.forEach(function(st, key) {
+      if (ready || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
+      if (_normId(self._macToNexoId.get(key)) === nx) ready = key;
+    });
+    if (ready) return ready;
+
     // 1. Mapeo vivo
     var mappedMac = this._nexoIdToMac.get(nx);
     if (mappedMac) return mappedMac;
@@ -790,6 +806,51 @@ export class BLEInterface {
     if (ack && ack.pendingAcks && ack.pendingAcks.has(msgId)) return true;
     if (ack && ack.outgoingStreams && ack.outgoingStreams.has(msgId)) return true;
     return false;
+  }
+
+  // v6.1.6: el nativo puede tener conexiones abiertas desde antes de que el JS escuchara (app recién
+  // abierta): sus eventos onDeviceConnected se perdieron. Se consultan y se dan por listas.
+  _seedNativeConnections() {
+    var self = this;
+    if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'getConnectedDevices')) return;
+    _safeNativeCall(self.nativePlugin, 'getConnectedDevices', {}).then(function(res) {
+      var list = (res && res.devices) || [];
+      list.forEach(function(d) {
+        var deviceId = d.id || d.address;
+        if (!deviceId || !d.ready) return;
+        var st = self._getDeviceState(deviceId);
+        if (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY) return;
+        var contact = _getContactByDeviceId(deviceId);
+        var nx = self._macToNexoId.get(_normMac(deviceId)) || (contact ? _normId(contact.nexoId || contact.deviceUUID) : null);
+        self.connectedDevices.set(deviceId, { id: deviceId, name: d.name || '', direction: d.direction, role: d.role, servicesReady: true, deviceUUID: nx });
+        self._setDeviceState(deviceId, BLE_STATES.READY_TO_CHAT, { role: d.role, seeded: true });
+        console.log('[BLEInterface] Conexión existente recuperada al arrancar:', deviceId, nx || '(sin id)');
+        if (nx) {
+          self._notifyPeerReady(deviceId, nx);
+          if (self.ackSystem && self.ackSystem.sendSessionSync) self.ackSystem.sendSessionSync(deviceId, nx);
+          self._resendPendingMessages(nx);
+        }
+      });
+    }).catch(function() {});
+  }
+
+  // v6.1.6: cualquier paquete del otro prueba que su app está viva: reenviar lo pendiente ya
+  // (antes se esperaba a timeouts o a la siguiente reconexión). Máx. una vez cada 4 s por contacto.
+  _kickPeer(deviceId, nexoId) {
+    var nx = _normId(nexoId);
+    if (!nx || !deviceId) return;
+    var nd = _normMac(deviceId);
+    if (!this._macToNexoId.get(nd)) this._macToNexoId.set(nd, nx);
+    if (!this._nexoIdToMac.get(nx)) this._nexoIdToMac.set(nx, nd);
+    if (!this._lastKick) this._lastKick = new Map();
+    var now = Date.now();
+    if (now - (this._lastKick.get(nx) || 0) < 4000) return;
+    this._lastKick.set(nx, now);
+    var st = this._getDeviceState(deviceId);
+    if (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY) {
+      this._processPendingMessages(deviceId);
+      this._resendPendingMessages(nx);
+    }
   }
 
   _markPeerLost(nexoId) {
@@ -1089,6 +1150,14 @@ export class BLEInterface {
         if (!deviceId) return;
         self._lastPongTime.set(deviceId, Date.now());
         self._pingFailCount.set(deviceId, 0);
+        try {
+          var raw0 = (data.content || data.data || '').trim();
+          if (raw0.charAt(0) === '{') {
+            var p0 = JSON.parse(raw0);
+            var from0 = p0.fr || p0.fromNexoId || p0.from || (p0.payload && p0.payload.senderNexoId) || '';
+            if (/^nx[0-9a-z]{8}$/i.test(from0)) self._kickPeer(deviceId, from0);
+          }
+        } catch (kickErr) {}
         var source = data.source || 'unknown';
         if (source !== 'gatt_server' && source !== 'gatt_client' && source !== 'broadcast') source = 'gatt_client';
         var messageId = null, senderName = null, senderUUID = null;
@@ -1408,8 +1477,12 @@ export class BLEInterface {
     if (!queue || queue.length === 0) return;
     self._pendingMessageQueue.delete(_normMac(deviceId));
     queue.forEach(function(item) {
-      self._sendMessageNative(deviceId, item.content, item.messageId, item.seq)
-        .then(function() { if (item.resolve) item.resolve(); })
+      // v6.1.6: con confirmación y reintentos. Antes salía una sola vez sin ack: si el otro teléfono
+      // acababa de abrir la app y su JS aún no escuchaba, se perdía mostrando ✓.
+      var send = (self.ackSystem && typeof self.ackSystem.sendWithRetry === 'function')
+        ? self.ackSystem.sendWithRetry(deviceId, item.content, item.messageId, item.seq)
+        : self._sendMessageNative(deviceId, item.content, item.messageId, item.seq);
+      send.then(function() { if (item.resolve) item.resolve(); })
         .catch(function(err) { if (item.reject) item.reject(err); });
     });
   }
@@ -2157,7 +2230,8 @@ export class BLEInterface {
       this.renderContactsList();
       this.renderOnlineStrip();
       var state = this._getDeviceState(deviceId);
-      if (state.state === BLE_STATES.DISCONNECTED) {
+      // v6.1.6: también desde ERROR (p.ej. se conectó cuando el otro tenía la app cerrada)
+      if (state.state === BLE_STATES.DISCONNECTED || state.state === BLE_STATES.ERROR) {
         this._autoConnectGATT(deviceId, device);
       }
       return;

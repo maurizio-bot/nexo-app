@@ -74,7 +74,9 @@ class NexoBlePlugin : Plugin() {
         // === FIX F0: Pacing conservador para evitar saturación del stack BLE nativo ===
         private const val WRITE_DELAY_MS = 40L               // Client writes: 40ms entre operaciones
         private const val SERVER_NOTIFY_DELAY_MS = 80L       // Server notifications: 80ms entre notifies
-        private const val CLIENT_WRITE_TIMEOUT_MS = 300L     // Timeout de ACK de link para client writes
+        private const val CLIENT_WRITE_TIMEOUT_MS = 300L     // Timeout de respaldo si no llega onCharacteristicWrite
+        private const val SERVER_NOTIFY_TIMEOUT_MS = 200L    // Timeout de respaldo si no llega onNotificationSent
+        private const val WRITE_RETRY_DELAY_MS = 15L         // Reintento si el stack está ocupado (sin bloquear)
         // === FIN FIX F0 ===
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
@@ -115,6 +117,7 @@ class NexoBlePlugin : Plugin() {
     private val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
     private val writeQueueProcessing = ConcurrentHashMap<String, Boolean>()
     private val writeQueueTimeouts = ConcurrentHashMap<String, Runnable>()
+    private val writeRetryCount = ConcurrentHashMap<String, Int>()
     private val nxidToMacMap = ConcurrentHashMap<String, String>()
     private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
     private var quickScanResultMac: String? = null
@@ -267,13 +270,17 @@ class NexoBlePlugin : Plugin() {
             val extraction = tryExtractCompleteJson(remaining)
             if (extraction != null) {
                 remLog("INFO", "REASSEMBLY", "JSON extraído de $macNorm len=${extraction.json.length}")
+                // retainUntilConsumed=true: si el JS aún no escucha (app recién abierta, WebView
+                // recargando), Capacitor guarda el mensaje y lo entrega al registrarse el listener.
+                // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.
                 notifyListeners("onPayloadReceived", JSObject()
                     .put("deviceId", deviceId)
                     .put("content", extraction.json)
                     .put("data", extraction.json)
                     .put("source", source)
                     .put("timestamp", System.currentTimeMillis())
-                    .put("reassembled", true)
+                    .put("reassembled", true),
+                    true
                 )
                 remaining = extraction.remainder
                 extractedCount++
@@ -835,6 +842,12 @@ class NexoBlePlugin : Plugin() {
             }
         }
 
+        // Android confirma que la notificación salió: enviar la siguiente de la cola
+        override fun onNotificationSent(device: BluetoothDevice, status: Int) {
+            val macNorm = normalizeMac(device.address)
+            mainHandler.post { onWriteDone(macNorm) }
+        }
+
         // FIX: Registrar MTU negociado cuando actuamos como servidor (Android 12+)
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
             val macNorm = normalizeMac(device.address)
@@ -1000,6 +1013,10 @@ class NexoBlePlugin : Plugin() {
                             gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                             remLog("INFO", "GATT_CLIENT_CB", "ConnectionPriority HIGH set para $address")
                         }
+                        // PHY 2M (2 Mbps) si ambos lo soportan; si no, Android se queda en 1M
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            gatt.setPreferredPhy(BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_OPTION_NO_PREFERRED)
+                        }
                     } catch (e: Exception) {
                         remLog("WARN", "GATT_CLIENT_CB", "No se pudo setear priority: ${e.message}")
                     }
@@ -1029,6 +1046,7 @@ class NexoBlePlugin : Plugin() {
                 remLog("INFO", "GATT_CLIENT_CB", "onServicesDiscovered $address status=$status")
                 if (status != BluetoothGatt.GATT_SUCCESS) {
                     notifyListeners("onConnectionFailed", JSObject().put("deviceId", address).put("reason", "Service discovery failed"))
+                    closeClientWithoutService(gatt, macNorm, address)
                     return
                 }
                 try {
@@ -1040,7 +1058,10 @@ class NexoBlePlugin : Plugin() {
                     remLog("WARN", "GATT_CLIENT_CB", "No se pudo request MTU: ${e.message}")
                 }
                 val service = gatt.getService(NexoBleSpec.NEXO_SERVICE_UUID) ?: run {
+                    // El otro teléfono tiene la app cerrada (su servidor GATT no está). Antes la conexión
+                    // quedaba abierta sin servicio y "ya conectado" impedía reconectar al reabrir.
                     notifyListeners("onConnectionFailed", JSObject().put("deviceId", address).put("reason", "NEXO service not found"))
+                    closeClientWithoutService(gatt, macNorm, address)
                     return
                 }
                 val txChar = service.getCharacteristic(NexoBleSpec.TX_CHARACTERISTIC_UUID)
@@ -1089,16 +1110,10 @@ class NexoBlePlugin : Plugin() {
                 val address = gatt.device?.address ?: ""
                 val macNormLocal = normalizeMac(address)
                 if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-                    writeQueueTimeouts.remove(macNormLocal)?.let { mainHandler.removeCallbacks(it) }
-                    if (status == BluetoothGatt.GATT_SUCCESS) {
-                        remLog("INFO", "GATT_CLIENT_CB", "onCharacteristicWrite SUCCESS $address")
-                    } else {
+                    if (status != BluetoothGatt.GATT_SUCCESS) {
                         remLog("WARN", "GATT_CLIENT_CB", "onCharacteristicWrite FAILED $address status=$status")
                     }
-                    mainHandler.postDelayed({
-                        writeQueueProcessing.remove(macNormLocal)
-                        processWriteQueue(macNormLocal)
-                    }, WRITE_DELAY_MS)
+                    mainHandler.post { onWriteDone(macNormLocal) }
                 }
             }
 
@@ -1123,6 +1138,15 @@ class NexoBlePlugin : Plugin() {
                 }
             }
         }
+    }
+
+    private fun closeClientWithoutService(gatt: BluetoothGatt, macNorm: String, address: String) {
+        try { gatt.disconnect(); gatt.close() } catch (e: Exception) { }
+        gattClients.remove(macNorm)
+        clientRxCharacteristics.remove(macNorm)
+        clientTxCharacteristics.remove(macNorm)
+        clientConnectionStates.remove(macNorm)
+        notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", address).put("reason", "no_service"))
     }
 
     private fun startKeepAlive(macNorm: String) {
@@ -1506,7 +1530,7 @@ class NexoBlePlugin : Plugin() {
         }
         for (i in 1 until chunks.size) {
             val item = WriteQueueItem(macNorm, rawDeviceId, chunks[i])
-            val queue = writeQueues.getOrPut(macNorm) { mutableListOf() }
+            val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
             if (queue.size >= MAX_QUEUE_SIZE) {
                 remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk $i")
                 continue
@@ -1519,48 +1543,66 @@ class NexoBlePlugin : Plugin() {
 
     private fun enqueueWrite(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
         val item = WriteQueueItem(macNorm, rawDeviceId, chunk)
-        val queue = writeQueues.getOrPut(macNorm) { mutableListOf() }
+        val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
         if (queue.size >= MAX_QUEUE_SIZE) {
             remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk")
             return SendResult(false, "")
         }
         queue.add(item)
-        processWriteQueue(macNorm)
+        // La cola se procesa solo en el hilo principal (los callbacks de Android también llegan ahí)
+        mainHandler.post { processWriteQueue(macNorm) }
         return SendResult(true, "queued")
     }
 
     // === FIX F0: Pacing diferenciado server vs client ===
+    // Control de flujo por callback (v2): una escritura en vuelo por dispositivo; la siguiente sale en
+    // cuanto Android confirma la anterior (onCharacteristicWrite como cliente, onNotificationSent como
+    // servidor), con un timeout de respaldo. Antes: esperas fijas de 40/80 ms y reintentos con
+    // Thread.sleep en el hilo principal (congelaban la interfaz).
     private fun processWriteQueue(macNorm: String) {
         if (writeQueueProcessing[macNorm] == true) return
         val queue = writeQueues[macNorm] ?: return
-        if (queue.isEmpty()) {
-            writeQueueProcessing.remove(macNorm)
-            return
-        }
-        writeQueueProcessing[macNorm] = true
-        val item = queue.removeAt(0)
-        var attempts = 0
-        val maxAttempts = 3
-        var result: SendResult
-        do {
-            result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
-            attempts++
-            if (!result.sent && attempts < maxAttempts) {
-                remLog("WARN", "SEND", "Write fallo para $macNorm, reintento $attempts/$maxAttempts")
-                Thread.sleep(WRITE_DELAY_MS)
-            }
-        } while (!result.sent && attempts < maxAttempts)
+        val item = synchronized(queue) { if (queue.isEmpty()) null else queue[0] } ?: return
+        val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
         if (!result.sent) {
-            remLog("WARN", "SEND", "Write fallo para $macNorm tras $maxAttempts intentos, descartando chunk")
-            writeQueueProcessing.remove(macNorm)
-            mainHandler.postDelayed({ processWriteQueue(macNorm) }, WRITE_DELAY_MS)
+            val attempts = (writeRetryCount[macNorm] ?: 0) + 1
+            if (attempts < 3) {
+                writeRetryCount[macNorm] = attempts
+            } else {
+                remLog("WARN", "SEND", "Write fallo para $macNorm tras 3 intentos, descartando chunk")
+                writeRetryCount.remove(macNorm)
+                removeHead(queue, item)
+            }
+            // Bloquear la cola durante la espera: otras llamadas no deben gastar los reintentos de golpe
+            writeQueueProcessing[macNorm] = true
+            mainHandler.postDelayed({
+                writeQueueProcessing.remove(macNorm)
+                processWriteQueue(macNorm)
+            }, WRITE_RETRY_DELAY_MS)
             return
         }
-        // Server notify = 80ms (el stack BLE nativo necesita tiempo para vaciar el buffer de notificaciones)
-        // Client write = 40ms (NO_RESPONSE es más rápido y tiene semáforo nativo via onCharacteristicWrite)
-        val delay = if (result.mode == "gatt_server") SERVER_NOTIFY_DELAY_MS else WRITE_DELAY_MS
+        writeRetryCount.remove(macNorm)
+        removeHead(queue, item)
+        writeQueueProcessing[macNorm] = true
+        val timeoutMs = if (result.mode == "gatt_server") SERVER_NOTIFY_TIMEOUT_MS else CLIENT_WRITE_TIMEOUT_MS
+        val timeoutRunnable = Runnable {
+            writeQueueTimeouts.remove(macNorm)
+            onWriteDone(macNorm)
+        }
+        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
+        writeQueueTimeouts[macNorm] = timeoutRunnable
+        mainHandler.postDelayed(timeoutRunnable, timeoutMs)
+    }
+
+    private fun removeHead(queue: MutableList<WriteQueueItem>, item: WriteQueueItem) {
+        synchronized(queue) { if (queue.isNotEmpty() && queue[0] === item) queue.removeAt(0) }
+    }
+
+    // Llamado (en el hilo principal) cuando Android confirma la escritura/notificación o vence el timeout
+    private fun onWriteDone(macNorm: String) {
+        writeQueueTimeouts.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         writeQueueProcessing.remove(macNorm)
-        mainHandler.postDelayed({ processWriteQueue(macNorm) }, delay)
+        processWriteQueue(macNorm)
     }
     // === FIN FIX F0 ===
 
@@ -1632,13 +1674,6 @@ class NexoBlePlugin : Plugin() {
                     }
                 }
                 if (writeInitiated) {
-                    val timeoutRunnable = Runnable {
-                        remLog("WARN", "SEND", "Timeout cola $macNorm, forzando avance")
-                        writeQueueProcessing.remove(macNorm)
-                        processWriteQueue(macNorm)
-                    }
-                    writeQueueTimeouts[macNorm] = timeoutRunnable
-                    mainHandler.postDelayed(timeoutRunnable, CLIENT_WRITE_TIMEOUT_MS)
                     return SendResult(true, "gatt_client")
                 }
             } catch (e: Exception) {
@@ -1861,11 +1896,14 @@ class NexoBlePlugin : Plugin() {
         gattClients.forEach { (mac, gatt) ->
             val state = clientConnectionStates[mac] ?: BluetoothProfile.STATE_DISCONNECTED
             if (state == BluetoothProfile.STATE_CONNECTED) {
+                val addr = gatt.device?.address ?: mac.chunked(2).joinToString(":").uppercase()
                 val device = JSObject()
-                    .put("id", mac.chunked(2).joinToString(":"))
-                    .put("address", mac.chunked(2).joinToString(":"))
-                    .put("name", gatt.device?.name ?: "NEXO Peer")
+                    .put("id", addr)
+                    .put("address", addr)
+                    .put("name", try { gatt.device?.name } catch (e: SecurityException) { null } ?: "NEXO Peer")
                     .put("direction", "outgoing")
+                    .put("role", "client")
+                    .put("ready", clientRxCharacteristics.containsKey(mac))
                 devices.put(device)
             }
         }
@@ -1873,8 +1911,10 @@ class NexoBlePlugin : Plugin() {
             val item = JSObject()
                 .put("id", device.address)
                 .put("address", device.address)
-                .put("name", device.name ?: "NEXO Peer")
+                .put("name", try { device.name } catch (e: SecurityException) { null } ?: "NEXO Peer")
                 .put("direction", "incoming")
+                .put("role", "server")
+                .put("ready", serverNotificationEnabled.getOrDefault(mac, false))
             devices.put(item)
         }
         call.resolve(JSObject().put("devices", devices))

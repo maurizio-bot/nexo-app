@@ -10,6 +10,8 @@ const { Radio, NativePhone } = require('./native_mock');
 const buildDir = path.resolve(process.argv[2]);
 const argNum = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k + '=')); return a ? Number(a.split('=')[1]) : d; };
 const mtu = argNum('mtu', 512), loss = argNum('loss', 0);
+const paceArg = (process.argv.find((x) => x.startsWith('--pace=')) || '').split('=')[1];
+const pace = paceArg ? paceArg.split(',').map(Number) : undefined;
 const pdfKb = Number((process.argv.find((a) => a.startsWith('--pdf-kb=')) || '--pdf-kb=400').split('=')[1]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -25,7 +27,7 @@ setInterval(() => { const now = Date.now(); const lag = now - last - 20; if (lag
 function resetLag() { maxLag = 0; lagSamples = []; }
 
 async function boot(name, address, radio) {
-  const native = new NativePhone(name, address, { readsContentFallback: true, mtu, loss });
+  const native = new NativePhone(name, address, { readsContentFallback: true, mtu, loss, pace, retain: ['onPayloadReceived'] });
   radio.add(native); native.load();
   const logs = [];
   const vc = new VirtualConsole();
@@ -41,7 +43,7 @@ async function boot(name, address, radio) {
   return { name, native, win, logs };
 }
 const click = (win, el) => el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
-const bubbles = (win) => Array.from(win.document.querySelectorAll('#messages-container .message')).map((m) => ({
+const bubbles = (win) => Array.from(win.document.querySelectorAll('#messages-container .message:not(.progress-placeholder)')).map((m) => ({
   own: m.classList.contains('own'), text: (m.querySelector('.msg-content') || {}).textContent || '',
   hasImg: !!m.querySelector('.msg-content img'),
   status: ((m.querySelector('.msg-status') || {}).className || '').replace('msg-status status-', ''),
@@ -84,9 +86,14 @@ const delta = (a, b) => ({ perdidos: (b.lost || 0) - (a.lost || 0), cola_max: b.
   for (const [label, kb] of [['foto_1', 45], ['foto_2', 45]]) {
     resetLag(); const a0 = snap(A), b0 = snap(B); const t0 = Date.now();
     await sendFile(A, label + '.jpg', 'image/jpeg', rnd(kb * 1024));
-    let ok = false;
-    for (let i = 0; i < 600 && !ok; i++) { await sleep(200); ok = bubbles(B.win).some((b) => b.hasImg && b.own === false && B.win.document.body.innerHTML.indexOf(label) >= 0) || bubbles(B.win).filter((b) => b.hasImg).length >= (label === 'foto_1' ? 1 : 2); }
-    report[label] = { llega: ok, segundos: Math.round((Date.now() - t0) / 100) / 10, lag_max_ms: maxLag, A: delta(a0, snap(A)), B: delta(b0, snap(B)) };
+    let ok = false; const prog = { A: new Set(), B: new Set() };
+    for (let i = 0; i < 600 && !ok; i++) {
+      await sleep(200);
+      A.win.document.querySelectorAll('.msg-status').forEach((e) => { if (/%/.test(e.textContent)) prog.A.add(e.textContent); });
+      B.win.document.querySelectorAll('[data-progress-id]').forEach((e) => prog.B.add(e.textContent));
+      ok = bubbles(B.win).some((b) => b.hasImg && b.own === false && Array.from(B.win.document.querySelectorAll('#messages-container .message:not(.progress-placeholder)')).some((m) => m.innerHTML.indexOf(label) >= 0)) || bubbles(B.win).filter((b) => b.hasImg).length >= (label === 'foto_1' ? 1 : 2); }
+    await sleep(300);
+    report[label] = { progreso_A: Array.from(prog.A).slice(0, 4).concat(prog.A.size > 4 ? ['…' + prog.A.size] : []), progreso_B: Array.from(prog.B).slice(-2), marcador_B_tras_llegar: B.win.document.querySelectorAll('[data-progress-id]').length, llega: ok, segundos: Math.round((Date.now() - t0) / 100) / 10, lag_max_ms: maxLag, A: delta(a0, snap(A)), B: delta(b0, snap(B)) };
   }
   // 2. Coste de un texto normal después de recibir fotos (reescrituras del historial)
   resetLag(); let a0 = snap(A), b0 = snap(B);
@@ -97,9 +104,9 @@ const delta = (a, b) => ({ perdidos: (b.lost || 0) - (a.lost || 0), cola_max: b.
   resetLag(); a0 = snap(A); b0 = snap(B); const t1 = Date.now();
   await sendFile(A, 'documento.pdf', 'application/pdf', rnd(pdfKb * 1024));
   let okPdf = false;
-  for (let i = 0; i < 900 && !okPdf; i++) { await sleep(200); okPdf = B.win.document.body.innerHTML.indexOf('documento.pdf') >= 0; }
+  for (let i = 0; i < 900 && !okPdf; i++) { await sleep(200); okPdf = Array.from(B.win.document.querySelectorAll('#messages-container .message:not(.progress-placeholder)')).some((m) => m.innerHTML.indexOf('documento.pdf') >= 0); }
   if (okPdf) await sleep(3000); // dejar llegar el ack final antes de leer el estado
-  report['pdf_' + pdfKb + 'KB'] = { llega: okPdf, segundos: Math.round((Date.now() - t1) / 100) / 10, lag_max_ms: maxLag, A: delta(a0, snap(A)), B: delta(b0, snap(B)) };
+  report['pdf_' + pdfKb + 'KB'] = { marcador_B_tras_llegar: B.win.document.querySelectorAll('[data-progress-id]').length, llega: okPdf, segundos: Math.round((Date.now() - t1) / 100) / 10, lag_max_ms: maxLag, A: delta(a0, snap(A)), B: delta(b0, snap(B)) };
   report.estados_A = bubbles(A.win).filter((b) => b.own).map((b) => b.text.substring(0, 20) + '=' + b.status);
   report.archivos_B = Array.from(B.native.files.entries()).map(([k, v]) => k + ':' + Math.round(v.length / 1024) + 'KB');
   console.log('PERF ' + JSON.stringify(report, null, 1));

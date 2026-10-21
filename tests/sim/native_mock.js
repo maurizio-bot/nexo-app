@@ -24,7 +24,10 @@ class NativePhone {
   // opts.readsContentFallback: true si el Kotlin incluye `?: call.getString("content")`
   constructor(name, address, opts = {}) {
     this.name = name;
-    this.address = address; // dirección que ven los demás (formato Android 'AA:BB:..')
+    this.address = address; // dirección de anuncio: la que se ve al escanear y a la que se conectan
+    // Dirección con la que ESTE teléfono aparece cuando se conecta como cliente a otro. En Android real
+    // suele ser distinta de la de anuncio (direcciones aleatorias por conjunto de anuncio).
+    this.initAddress = opts.asymmetric ? address.replace(/..$/, (b) => ((parseInt(b, 16) ^ 0x80).toString(16).toUpperCase().padStart(2, '0'))) : address;
     this.opts = opts;
     this.listeners = new Map();
     this.files = new Map();
@@ -43,18 +46,49 @@ class NativePhone {
 
   emit(event, data) {
     const cbs = this.listeners.get(event) || [];
+    // Capacitor (Plugin.notifyListeners): sin listener JS el evento se DESCARTA, salvo que el nativo lo
+    // emita con retainUntilConsumed=true (opts.retain = lista de eventos que el Kotlin retiene).
+    if (!cbs.length) {
+      this.stats.droppedEvents = (this.stats.droppedEvents || 0) + (this.opts.retain && this.opts.retain.includes(event) ? 0 : 1);
+      if (this.opts.retain && this.opts.retain.includes(event)) {
+        if (!this.retained) this.retained = new Map();
+        if (!this.retained.has(event)) this.retained.set(event, []);
+        this.retained.get(event).push(data);
+      } else if (event === 'onPayloadReceived') this.radio.log(this.name, 'EVENTO PERDIDO sin listener', event, String(data.content).substring(0, 60));
+      return;
+    }
     // Capacitor entrega eventos de forma asíncrona por el bridge
     setTimeout(() => cbs.forEach((cb) => { try { cb(JSON.parse(JSON.stringify(data))); } catch (e) { this.radio.log(this.name, 'listener error', event, e.message); } }), 0);
   }
 
+  // ---- ciclo de vida de la actividad (cerrar / reabrir la app) ----
+  // handleOnDestroy de Kotlin: cleanupAllConnections + stopGattServer. El BleService (foreground) sigue
+  // anunciando con el último NEXO ID. Los demás ven caer sus conexiones con este teléfono.
+  destroyActivity() {
+    this.serverUp = false;
+    this.listeners = new Map();
+    this.retained = new Map();
+    const meAdv = norm(this.address), meInit = norm(this.initAddress);
+    this.radio.phones.forEach((p) => {
+      if (p === this) return;
+      if (p.clients.has(meAdv)) { p.clients.delete(meAdv); p.emit('onDeviceDisconnected', { deviceId: this.address }); }
+      if (p.serverConnected.has(meInit)) { p.serverConnected.delete(meInit); p.serverNotif.delete(meInit); p.emit('onDeviceDisconnected', { deviceId: this.initAddress }); }
+      this.clients.delete(norm(p.address)); this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress));
+    });
+    this.pendingQueue.clear(); this.buffers.clear(); this.writeQ = new Map();
+  }
+
   // ---- ciclo de vida (Kotlin load(): autoStartGattServerAndAdvertising) ----
-  load() { this.serviceRunning = true; }
+  load() { this.serviceRunning = true; this.serverUp = true; }
 
   // ---- envío al aire ----
-  _air(fromPeerMac, toPhone, bytes, source) {
+  _air(fromAddress, toPhone, bytes, source) {
     // Cola por enlace como processWriteQueue de Kotlin: una escritura cada 40 ms (cliente) u 80 ms
     // (notify de servidor). Con opts.realTiming=false entrega casi inmediata.
-    const delay = this.opts.realTiming === false ? 1 : (source === 'gatt_client' ? 80 : 40);
+    // opts.pace = [ms por write de cliente, ms por notify de servidor]. Por defecto el Kotlin antiguo
+    // (40/80 fijos); con control de flujo por callback el ritmo lo marca la radio (p.ej. 15/15).
+    const pace = this.opts.pace || [40, 80];
+    const delay = this.opts.realTiming === false ? 1 : (source === 'gatt_client' ? pace[1] : pace[0]);
     if (!this.writeQ) this.writeQ = new Map();
     const key = norm(toPhone.address);
     if (!this.writeQ.has(key)) this.writeQ.set(key, { items: [], busy: false });
@@ -63,7 +97,7 @@ class NativePhone {
     if (this.opts.loss && Math.random() < this.opts.loss) { this.stats.lost = (this.stats.lost || 0) + 1; return; }
     // Kotlin MAX_QUEUE_SIZE = 500: con la cola llena descarta
     if (q.items.length >= 500) { this.stats.dropped = (this.stats.dropped || 0) + 1; return; }
-    q.items.push(() => toPhone._processReceivedChunk(this.address, bytes, source));
+    q.items.push(() => toPhone._processReceivedChunk(fromAddress, bytes, source));
     this.stats.maxQueue = Math.max(this.stats.maxQueue || 0, q.items.length);
     if (/"t":"ba"/.test(bytes)) this.stats.acksOut = (this.stats.acksOut || 0) + 1; else if (/"t":"f"/.test(bytes)) this.stats.chunksOut = (this.stats.chunksOut || 0) + 1;
     const pump = () => {
@@ -80,14 +114,14 @@ class NativePhone {
     const srvPeer = this.serverConnected.get(macNorm);
     if (srvPeer && this.serverNotif.get(macNorm)) {
       this.sent.push({ to: macNorm, chunk, mode: 'gatt_server' });
-      this._air(macNorm, srvPeer, chunk, 'gatt_client');
+      this._air(this.address, srvPeer, chunk, 'gatt_client'); // notify: el cliente nos ve por la dirección de anuncio
       return { sent: true, mode: 'gatt_server' };
     }
     // 2. Cliente (write) si estamos conectados como cliente
     const cl = this.clients.get(macNorm);
     if (cl && cl.state === 'connected' && cl.rxReady) {
       this.sent.push({ to: macNorm, chunk, mode: 'gatt_client' });
-      this._air(macNorm, cl.peer, chunk, 'gatt_server');
+      this._air(this.initAddress, cl.peer, chunk, 'gatt_server'); // write: el servidor nos ve por la de iniciador
       return { sent: true, mode: 'gatt_client' };
     }
     return { sent: false, mode: '' };
@@ -125,12 +159,11 @@ class NativePhone {
     if (!off) return;
     this.radio.phones.forEach((p) => {
       if (p === this) return;
-      const me = norm(this.address), them = norm(p.address);
-      const drop = (holder, otherAddr, mac) => { holder.emit('onDeviceDisconnected', { deviceId: otherAddr }); holder.buffers.delete(mac); };
-      if (p.clients.has(me)) { p.clients.delete(me); drop(p, this.address, me); }
-      if (p.serverConnected.has(me)) { p.serverConnected.delete(me); p.serverNotif.delete(me); drop(p, this.address, me); }
-      if (this.clients.has(them)) { this.clients.delete(them); drop(this, p.address, them); }
-      if (this.serverConnected.has(them)) { this.serverConnected.delete(them); this.serverNotif.delete(them); drop(this, p.address, them); }
+      const drop = (holder, otherAddr) => { holder.emit('onDeviceDisconnected', { deviceId: otherAddr }); holder.buffers.delete(norm(otherAddr)); };
+      if (p.clients.has(norm(this.address))) { p.clients.delete(norm(this.address)); drop(p, this.address); }
+      if (p.serverConnected.has(norm(this.initAddress))) { p.serverConnected.delete(norm(this.initAddress)); p.serverNotif.delete(norm(this.initAddress)); drop(p, this.initAddress); }
+      if (this.clients.has(norm(p.address))) { this.clients.delete(norm(p.address)); drop(this, p.address); }
+      if (this.serverConnected.has(norm(p.initAddress))) { this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress)); drop(this, p.initAddress); }
     });
   }
 
@@ -144,18 +177,30 @@ class NativePhone {
       cl.state = 'connected';
       if (call) call.resolve({ connected: true, alreadyConnected: false, deviceId: peer.address });
       this.emit('onDeviceConnected', { deviceId: peer.address, direction: 'outgoing', role: 'client', servicesReady: false });
-      // Lado servidor del otro teléfono
-      peer.serverConnected.set(norm(this.address), this);
-      peer.emit('onDeviceConnected', { deviceId: this.address, direction: 'incoming', role: 'server', servicesReady: true });
+      // Lado servidor del otro teléfono (solo si su servidor GATT está abierto)
+      if (peer.serverUp !== false) {
+        peer.serverConnected.set(norm(this.initAddress), this);
+        peer.emit('onDeviceConnected', { deviceId: this.initAddress, direction: 'incoming', role: 'server', servicesReady: true });
+      }
       // onServicesDiscovered -> requestMtu + escritura CCCD
       setTimeout(() => {
+        if (peer.serverUp === false) {
+          // Kotlin: "NEXO service not found" -> onConnectionFailed; la conexión GATT queda abierta sin rx
+          // (salvo que el Kotlin la cierre: opts.closeOnNoService)
+          this.emit('onConnectionFailed', { deviceId: peer.address, reason: 'NEXO service not found' });
+          if (this.opts.closeOnNoService) {
+            this.clients.delete(macNorm); peer.serverConnected.delete(norm(this.initAddress));
+            this.emit('onDeviceDisconnected', { deviceId: peer.address });
+          }
+          return;
+        }
         cl.rxReady = true;
         this.emit('onServicesReady', { deviceId: peer.address, servicesReady: true });
         this._flushPending(macNorm);
         setTimeout(() => {
           const mtu = this.opts.mtu || 512;
-          this.mtu.set(macNorm, mtu); peer.mtu.set(norm(this.address), mtu);
-          peer.serverNotif.set(norm(this.address), true);
+          this.mtu.set(macNorm, mtu); peer.mtu.set(norm(this.initAddress), mtu);
+          peer.serverNotif.set(norm(this.initAddress), true);
           this.emit('onNotificationsEnabled', { deviceId: peer.address, notificationsEnabled: true });
         }, 40);
       }, 40);
@@ -192,6 +237,9 @@ class NativePhone {
       addListener(event, cb) {
         if (!self.listeners.has(event)) self.listeners.set(event, []);
         self.listeners.get(event).push(cb);
+        // sendRetainedArgumentsForEvent: al llegar el primer listener se entregan los retenidos
+        const ret = self.retained && self.retained.get(event);
+        if (ret && ret.length) { self.retained.delete(event); ret.forEach((d) => self.emit(event, d)); }
         const handle = { remove: () => { const l = self.listeners.get(event) || []; const i = l.indexOf(cb); if (i >= 0) l.splice(i, 1); return Promise.resolve(); } };
         const p = Promise.resolve(handle);
         p.remove = handle.remove;
@@ -231,7 +279,7 @@ class NativePhone {
         if (!raw) return c.reject('deviceId requerido');
         const mac = self._resolveMac(raw) || raw.toLowerCase();
         const cl = self.clients.get(mac);
-        if (cl) { self.clients.delete(mac); cl.peer.serverConnected.delete(norm(self.address)); cl.peer.serverNotif.delete(norm(self.address)); cl.peer.emit('onDeviceDisconnected', { deviceId: self.address }); }
+        if (cl) { self.clients.delete(mac); cl.peer.serverConnected.delete(norm(self.initAddress)); cl.peer.serverNotif.delete(norm(self.initAddress)); cl.peer.emit('onDeviceDisconnected', { deviceId: self.initAddress }); }
         self.pendingQueue.delete(mac);
         self.emit('onDeviceDisconnected', { deviceId: raw });
         c.resolve({ disconnected: true });
@@ -254,7 +302,12 @@ class NativePhone {
           else { if (!self.pendingQueue.has(mac)) self.pendingQueue.set(mac, []); self.pendingQueue.get(mac).push(message); c.resolve({ sent: false, queued: true, mode: 'pending', deviceId: raw, mtu }); }
         }, 0);
       }),
-      getConnectedDevices: wrap('getConnectedDevices', (c) => c.resolve({ devices: [] })),
+      getConnectedDevices: wrap('getConnectedDevices', (c) => {
+        const devices = [];
+        self.clients.forEach((cl) => { if (cl.state === 'connected') devices.push({ id: cl.peer.address, address: cl.peer.address, direction: 'outgoing', role: 'client', ready: !!cl.rxReady }); });
+        self.serverConnected.forEach((peer, mac) => devices.push({ id: peer.initAddress, address: peer.initAddress, direction: 'incoming', role: 'server', ready: !!self.serverNotif.get(mac) }));
+        c.resolve({ devices });
+      }),
       saveToFile: wrap('saveToFile', (c) => { const f = c.getString('filename'); const t = c.getString('content'); if (f == null) return c.reject('filename requerido'); if (t == null) return c.reject('content requerido'); self.files.set(f, t); self.stats.saves++; self.stats.saveBytes += t.length; self.stats.maxSave = Math.max(self.stats.maxSave, t.length); c.resolve({ success: true, path: '/data/' + f }); }),
       loadFromFile: wrap('loadFromFile', (c) => { const f = c.getString('filename'); if (f == null) return c.reject('filename requerido'); if (!self.files.has(f)) return c.resolve({ exists: false, content: '' }); c.resolve({ exists: true, content: self.files.get(f), path: '/data/' + f }); }),
       deleteFile: wrap('deleteFile', (c) => { c.resolve({ deleted: self.files.delete(c.getString('filename')) }); }),

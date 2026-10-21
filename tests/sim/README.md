@@ -21,8 +21,18 @@ Escenario (todo por la interfaz: botones, input, menú de adjuntos):
 
 `perf.js` mide adjuntos: dos fotos (~60 KB base64), textos después y un PDF. Informa tiempos, piezas
 enviadas, descartes de la cola nativa (500), escrituras a disco y lag del hilo. Opciones:
-`--mtu=247`, `--mtu=23`, `--loss=0.03`, `--pdf-kb=400`. El mock replica el ritmo del nativo
-(40 ms por escritura de cliente, 80 ms por notify de servidor) y su cola de 500.
+`--mtu=247`, `--mtu=23`, `--loss=0.03`, `--pdf-kb=400`, `--pace=15,15` (ms por escritura
+servidor,cliente). Desde la 2693 el nativo envía la siguiente escritura cuando Android confirma la
+anterior (`onNotificationSent` / `onCharacteristicWrite`); `--pace` modela cuánto tarda la radio en
+confirmar (15 ms ≈ buen enlace, 30 ms ≈ enlace lento). Cola de 500 como el nativo. También comprueba
+el progreso visible ("○ N%" en A, "Recibiendo… N%" en B).
+
+`lifecycle.js` reproduce "cierro/pongo en segundo plano la app de B, A escribe, B la reabre":
+`node lifecycle.js builds/wip --retain --close-no-service --asymmetric --seq-b=500 --js-delay=6000`.
+`--retain` = el nativo guarda los mensajes hasta que el JS escucha (como `notifyListeners(..., true)`),
+`--close-no-service` = cierra la conexión cuando el otro no tiene servidor GATT, `--asymmetric` =
+direcciones distintas al anunciar y al conectar (Android), `--js-delay` = lo que tarda el WebView en
+arrancar. Sin `--retain` reproduce la pérdida de la 2691 (eventos sin oyente descartados).
 
 La línea `RESULTADO` resume cada comprobación. Los logs de ambos teléfonos quedan en `last_logs_*.txt`.
 
