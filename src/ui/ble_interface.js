@@ -1,5 +1,8 @@
 /**
- * BLE Interface v6.1.10-NEXO
+ * BLE Interface v6.1.11-NEXO
+ * v6.1.11: Contactos compartidos (addSharedContacts) con parpadeo hasta abrir su chat. Un contacto que
+ *          aún no se ha visto por radio se puede abrir y escribir: los mensajes quedan en cola y se
+ *          entregan al encontrarlo (antes: "Dispositivo no encontrado" / no se abría el chat).
  * v6.1.10: la pestaña Perfil abre el registro de diagnóstico.
  * FIX v6.1.9: Cola de mensajes por contacto (antes por dirección Bluetooth: al reabrir la app el otro
  *             cambia de dirección y la cola vieja no salía nunca). sendFile sin el otro presente ya no
@@ -128,6 +131,7 @@ function _messagePreview(content, attachmentType) {
   if (t === 'video') return '🎬 Vídeo';
   if (t === 'audio' || t === 'voice') return '🎤 Audio';
   if (t === 'location') return '📍 Ubicación';
+  if (t === 'contact') return '👤 Contacto';
   if (t) return '📎 Archivo';
   return String(content || '').substring(0, 50);
 }
@@ -1614,7 +1618,12 @@ export class BLEInterface {
 
         var deviceId = self._resolveDeviceIdForNexoId(uuid);
         if (!deviceId) {
-          reject(new Error('Dispositivo no encontrado'));
+          // v6.1.11: contacto aún no visto por radio (p.ej. compartido): en cola hasta encontrarlo
+          var q0 = self._pendingMessageQueue.get('nx:' + uuid) || [];
+          q0.push({ content: content, messageId: msgId, seq: msgSeq, resolve: resolve, reject: reject });
+          self._pendingMessageQueue.set('nx:' + uuid, q0);
+          console.log('[BLEInterface] sendChatMessage: contacto aún no visto, en cola hasta encontrarlo', uuid);
+          self._markPeerLost(uuid);
           return;
         }
 
@@ -1686,7 +1695,11 @@ export class BLEInterface {
           }
         }
         if (!deviceId) {
-          reject(new Error('Dispositivo no encontrado'));
+          // v6.1.11: contacto aún no visto: el adjunto queda pendiente y se reenvía al encontrarlo
+          self._markPeerLost(uuid);
+          var eNf = new Error('Contacto no disponible: queda pendiente');
+          eNf.code = 'PEER_ABSENT';
+          reject(eNf);
           return;
         }
 
@@ -1790,7 +1803,9 @@ export class BLEInterface {
         if (!deviceId) {
           deviceId = self._resolveDeviceIdForNexoId(uuid);
         }
-        if (!deviceId) { reject(new Error('Dispositivo no conectado')); return; }
+        // v6.1.11: sin dirección conocida (contacto compartido aún no visto) el chat se abre igual y se
+        // busca al contacto; antes se rechazaba y no se podía abrir
+        if (!deviceId) self._markPeerLost(uuid);
         self._activeChatDeviceId = uuid;
         self._activeChatDeviceIdNative = deviceId;
         if (window.NEXO && window.NEXO.app) {
@@ -1802,7 +1817,7 @@ export class BLEInterface {
           contact.unreadCount = 0;
           var contacts = _getBLEContacts();
           var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === uuid; });
-          if (idx >= 0) { contacts[idx].unreadCount = 0; _saveBLEContacts(contacts); self.renderContactsList(); self.renderOnlineStrip(); }
+          if (idx >= 0) { contacts[idx].unreadCount = 0; contacts[idx].isNewShared = false; _saveBLEContacts(contacts); self.renderContactsList(); self.renderOnlineStrip(); }
         }
         var state = self._getDeviceState(deviceId);
         var isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
@@ -1826,7 +1841,7 @@ export class BLEInterface {
           if (messages && messages.length > 0) _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid, messages: messages });
         }).catch(function() {});
         resolve();
-        if (!isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
+        if (deviceId && !isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           if (!isConnecting) {
             console.log('[BLEInterface] openChat: forcing connectToDevice for', deviceId);
             _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
@@ -2397,7 +2412,9 @@ export class BLEInterface {
       item.className = 'ble-online-item';
       var initials = _getInitials(contact.name);
       var gradClass = _getGradientForUUID(uuid);
-      item.innerHTML = '<div class="ble-online-avatar ' + gradClass + '">' + initials + '<div class="ble-online-dot"></div></div><span class="ble-online-name">' + (contact.name || '') + '</span>';
+      item.innerHTML = '<div class="ble-online-avatar ' + gradClass + '"><span></span><div class="ble-online-dot"></div></div><span class="ble-online-name"></span>';
+      item.querySelector('.ble-online-avatar span').textContent = initials;
+      item.querySelector('.ble-online-name').textContent = contact.name || '';
       item.addEventListener('click', function() { self.openChat(uuid); });
       strip.appendChild(item);
     });
@@ -2425,6 +2442,38 @@ export class BLEInterface {
     if (preview) c.lastMessage = preview;
     _saveBLEContacts(contacts);
     this.renderContactsList();
+  }
+
+  // v6.1.11: contactos recibidos en una tarjeta compartida. Se validan (NX + 8), se omite el propio y
+  // los ya existentes; los nuevos quedan marcados (parpadean en la lista hasta abrir su chat) y se
+  // empiezan a buscar por radio. Devuelve { added: [...], existing: [...] }.
+  addSharedContacts(list, sharedBy) {
+    var self = this;
+    var res = { added: [], existing: [] };
+    var me = _normId(self.localNexoId);
+    var contacts = _getBLEContacts();
+    (Array.isArray(list) ? list : []).forEach(function(c) {
+      var id = String((c && c.nexoId) || '').trim();
+      if (!/^NX[0-9A-Z]{8}$/i.test(id)) return;
+      var nx = _normId(id);
+      if (nx === me) return;
+      var name = String((c && c.name) || '').replace(/[<>]/g, '').trim().substring(0, 40) || id.toUpperCase();
+      var cur = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+      if (cur) { res.existing.push(cur.name || name); return; }
+      contacts.push({
+        nexoId: nx, deviceUUID: nx, name: name, deviceId: null, addedAt: Date.now(), lastSeen: 0,
+        online: false, unreadCount: 0, lastMessage: '', isNewShared: true, sharedBy: _normId(sharedBy) || null
+      });
+      res.added.push(name);
+      self._markPeerLost(nx);
+    });
+    if (res.added.length) {
+      _saveBLEContacts(contacts);
+      self.renderContactsList();
+      self._startPresenceSearch(120000);
+      console.log('[BLEInterface] Contactos compartidos agregados:', res.added.join(', '));
+    }
+    return res;
   }
 
   // v6.1.8: contactos guardados antes de lastMessageAt: se toma del historial
@@ -2480,6 +2529,9 @@ export class BLEInterface {
       var aPinned = pinned.indexOf(_normId(a.nexoId || a.deviceUUID)) >= 0 ? 1 : 0;
       var bPinned = pinned.indexOf(_normId(b.nexoId || b.deviceUUID)) >= 0 ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned;
+      // v6.1.11: recién agregados desde una tarjeta compartida, arriba hasta abrir su chat
+      var aNew = a.isNewShared ? 1 : 0, bNew = b.isNewShared ? 1 : 0;
+      if (aNew !== bNew) return bNew - aNew;
       // v6.1.8: por último mensaje; sin mensajes, por fecha de alta (estable)
       var d = (b.lastMessageAt || 0) - (a.lastMessageAt || 0);
       if (d !== 0) return d;
@@ -2492,11 +2544,11 @@ export class BLEInterface {
       var isOnline = contact.online && (Date.now() - (contact.lastSeen || 0)) < 60000;
       var initials = _getInitials(contact.name);
       var gradClass = _getGradientForUUID(uuid);
-      var lastMsg = contact.lastMessage || (isOnline ? 'En linea' : 'Offline');
+      var lastMsg = contact.lastMessage || (contact.isNewShared ? 'Nuevo contacto · listo para escribir' : (isOnline ? 'En linea' : 'Offline'));
       var timeStr = _formatTime(contact.lastMessageAt);
       var unread = contact.unreadCount || 0;
       var row = document.createElement('div');
-      row.className = 'ble-contact-row';
+      row.className = 'ble-contact-row' + (contact.isNewShared ? ' ble-contact-new' : '');
       row.addEventListener('click', function(e) {
         if (e.target.closest('.ble-contact-menu') || e.target.closest('.ble-btn-menu')) return;
         self.openChat(uuid);
@@ -2507,7 +2559,10 @@ export class BLEInterface {
       row.appendChild(avatar);
       var info = document.createElement('div');
       info.className = 'ble-contact-info';
-      info.innerHTML = '<div class="ble-contact-name">' + (contact.name || '') + '</div><div class="ble-contact-msg">' + lastMsg + '</div>';
+      // v6.1.11: texto, no HTML (nombres y mensajes vienen de otros teléfonos)
+      var nameDiv = document.createElement('div'); nameDiv.className = 'ble-contact-name'; nameDiv.textContent = contact.name || '';
+      var msgDiv = document.createElement('div'); msgDiv.className = 'ble-contact-msg'; msgDiv.textContent = lastMsg;
+      info.appendChild(nameDiv); info.appendChild(msgDiv);
       row.appendChild(info);
       var meta = document.createElement('div');
       meta.className = 'ble-contact-meta';

@@ -48,7 +48,7 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   A.win.bleInterface.togglePanel();
   for (let k = 0; k < 2; k++) {
     let add = null;
-    for (let i = 0; i < 100 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
+    for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
     click(A.win, add); await sleep(2000);
   }
   A.win.bleInterface.togglePanel();

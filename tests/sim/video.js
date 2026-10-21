@@ -49,7 +49,7 @@ const badge = (p) => { const v = videoBubbles(p)[0]; const b = v && v.querySelec
   let [A, B] = await Promise.all([boot('A', nA), boot('B', nB)]);
   A.win.bleInterface.togglePanel();
   let add = null;
-  for (let i = 0; i < 100 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
+  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
   click(A.win, add); await sleep(1500);
   A.win.bleInterface.togglePanel();
   await openChat(A); await sendText(A, 'hola'); await sleep(2500);

@@ -61,3 +61,9 @@ un decodificador). Opciones: `--closed` (B cerrada al enviar), `--no-preview` (f
 `--views=3`. `node browser.js builds/wip --closed`. Lo que NO cubre: el WebView de Android en sí
 (decodificadores de hardware, H.264, AudioContext sin gesto): para eso, Perfil → Diagnóstico en el
 teléfono.
+
+`share.js` (tres teléfonos): A comparte el contacto C con B (botón contacto del menú de adjuntos); B
+pulsa la tarjeta, C aparece parpadeando en su lista y B le escribe aunque nunca se habían conectado.
+`--c-away`: C fuera de alcance al escribirle (el mensaje espera en cola y llega al encontrarlo).
+Nota: las pruebas esperan hasta 40 s a emparejar (con mucha carga de CPU 10 s no bastaban) y
+`background.js` avisa si no pudo emparejar en vez de dar un resultado engañoso.

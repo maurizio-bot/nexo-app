@@ -76,7 +76,8 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
   const miss = opts.scanMiss; opts.scanMiss = 0;
   A.win.bleInterface.togglePanel();
   let add = null;
-  for (let i = 0; i < 100 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
+  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
+  if (!add) { console.log('BACKGROUND ' + JSON.stringify({ error: 'la prueba no pudo emparejar A con B' })); process.exit(2); }
   click(A.win, add); await sleep(1500);
   A.win.bleInterface.togglePanel();
   await openChat(A); await sendText(A, 'hola'); await sleep(2500);
@@ -146,6 +147,6 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
     escrituras_perdidas_enlace_caido: (nA.stats.voidWrites || 0) + (nB.stats.voidWrites || 0),
   };
   console.log('BACKGROUND ' + JSON.stringify(res));
-  fs.writeFileSync(path.join(__dirname, 'last_logs_background.txt'), allLogs.join('\n'));
+  fs.writeFileSync(process.env.SIM_LOG || path.join(__dirname, 'last_logs_background.txt'), allLogs.join('\n'));
   process.exit(0);
 })().catch((e) => { console.error('FALLO:', e.stack); process.exit(1); });

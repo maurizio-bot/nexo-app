@@ -36,6 +36,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2696 | `939f4ec` | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
 | 2697 | `2fc0074` | Vídeo/texto a app cerrada ya no se pierden (cola por contacto), vídeo se ve más de una vez, miniatura |
 | 2698 | `43256cd` | Vídeo: burbuja con miniatura sin reproductor, visor que libera, previa robusta, diagnóstico en Perfil — **BASE ESTABLE** (rama `base-estable-2698`) |
+| 2699 | (este) | Compartir contactos (botón contacto): selección múltiple, tarjeta, alta con parpadeo |
 
 ## Base estable: build 2698
 El dueño la probó en teléfonos reales y la fijó como **base sólida** (21-10-2026).
@@ -59,6 +60,22 @@ El dueño la probó en teléfonos reales y la fijó como **base sólida** (21-10
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2699 (verificada en simulador + Chromium real)
+**Compartir contactos** (último botón del menú de adjuntos), como WhatsApp:
+- Abre una hoja con los contactos (buscador, casillas, "Enviar (N)"); se envía un adjunto `contact`
+  con `{ contacts: [{ nexoId, name }] }` por el camino de texto (como la ubicación). Sin dirección
+  Bluetooth (cambia y no sirve al otro).
+- En el chat aparece una tarjeta "👤 Contacto(s)". En el receptor, pulsarla (o "Agregar a contactos")
+  llama a `bleInterface.addSharedContacts`: valida `NX`+8, omite el propio y los ya existentes; los
+  nuevos quedan arriba **parpadeando** (`isNewShared`, clase `ble-contact-new`) hasta abrir su chat, con
+  "Nuevo contacto · listo para escribir", y se empiezan a buscar por radio. "Escribir" abre su chat.
+- Para que estén "listos para el uso": `openChat` ya no rechaza un contacto sin dirección conocida, y
+  escribirle deja el mensaje en la cola por contacto hasta encontrarlo (antes "Dispositivo no
+  encontrado"); adjuntos quedan pendientes (`PEER_ABSENT`).
+- Nombres en la lista y la barra "en línea" como texto, no HTML (venían de otros teléfonos).
+`tests/sim/share.js`: B nunca había visto a C → tras agregarlo, mensaje B→C en 1 s; con C fuera de
+alcance queda "enviando" y llega a los 30 s al volver C. Batería completa y `browser.js` sin cambios.
 
 ## Ronda 2698 (verificada en Chromium real + simulador)
 Prueba real de la 2697: el vídeo no llega, no pasa a HD, no se ve la miniatura y solo se reproduce una
@@ -163,6 +180,7 @@ node tests/sim/lifecycle.js tests/sim/builds/wip --retain --close-no-service --a
 node tests/sim/background.js tests/sim/builds/wip --scenario=closed --rotate --no-m3 --io-delay=25 --app-events
 node tests/sim/contacts.js tests/sim/builds/wip --churn --io-delay=25
 node tests/sim/browser.js tests/sim/builds/wip [--closed | --no-preview]   # Chromium real
+node tests/sim/share.js tests/sim/builds/wip --io-delay=25 [--c-away]
 node tests/sim/video.js tests/sim/builds/wip --io-delay=25 [--cut | --restart-a]
 node tests/sim/background.js tests/sim/builds/wip --scenario=closed --video --no-m3 --pre-wait=15000 --off=90000 --rotate --io-delay=25 --app-events
 ```
