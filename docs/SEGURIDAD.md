@@ -49,9 +49,10 @@ Cada punto está comprobado en el código o en la configuración (no son suposic
 6. **Relleno** de longitud por tramos.
 7. **Números de seguridad** (60 cifras + QR) con estado "verificado".
 
-### Fase 3 — en el teléfono y en el aire
+### Fase 3 — en el teléfono y en el aire — EN CURSO (hecho: 8, bloqueo con huella y capturas; build BUILDNUM)
 8. **Cifrado en reposo**: clave maestra en el Android Keystore (no extraíble); identidad, mensajes y
-   adjuntos cifrados en disco.
+   adjuntos cifrados en disco. **Hecho**, más el **bloqueo opcional con huella** y la **opción de bloquear
+   capturas** (decisiones del dueño, 22-10-2026: los dos opcionales, en Perfil).
 9. **Anuncios Bluetooth rotativos**: identificador que cambia cada pocos minutos y que solo los contactos
    saben reconocer (un desconocido no puede seguirte); Jump sigue funcionando.
 10. **Emisor oculto para los puentes** (solo ven el destino) y opción de bloquear capturas.
@@ -108,3 +109,33 @@ agenda ni los metadatos), funciona sin internet y, con la fase 3, sin identifica
 - Pendiente de la fase 2: **QR** del número de seguridad (hace falta lector con la cámara); hoy se comparan
   las cifras. Límite conocido: un atacante activo en el momento del primer contacto podría quitar el `b2` del
   kx para que sigan con el protocolo 1 (una vez en el 2, ya no se puede).
+
+## Fase 3 (primera parte): qué se hizo y cómo se comprobó (build BUILDNUM)
+- **Cifrado en reposo** (`plugins/nexo-ble/.../AtRestStore.kt`, usado por `saveToFile` / `loadFromFile` /
+  `deleteFile`): todo lo que NEXO guarda (identidad, NEXO ID, claves del protocolo 2, contactos, mensajes,
+  adjuntos, Fénix, cola de Jump) va en disco como `NXE1` + iv + AES-256-GCM. La clave de datos es aleatoria y
+  se guarda envuelta (AES-GCM) con una clave del **Android Keystore** que no sale del chip; en memoria solo
+  mientras la app corre. No pide la huella para usarla: los mensajes tienen que poder guardarse con la app
+  bloqueada o en segundo plano (como WhatsApp/Signal en Android).
+  - Archivos de versiones anteriores: se leen tal cual y se cifran en segundo plano al arrancar (cada uno se
+    comprueba antes de sustituirlo; escritura atómica). Solo los `nexo_*` de la carpeta de la app; el mapa
+    nativo NEXO ID → dirección (`nexo_nxid_mac_map.json`, lo lee el Kotlin) sigue en claro (no tiene
+    contenido).
+  - Sin clave (Keystore roto) no se sobrescribe nunca un archivo cifrado; Perfil → Seguridad lo indica.
+  - Qué protege: copiar la carpeta de la app (teléfono rooteado, copia forense, backup) no da nada legible.
+    Qué no: alguien con el teléfono desbloqueado y NEXO abierto (para eso, el bloqueo con huella).
+- **Bloqueo con huella** (`src/ui/app_lock.js`, Perfil → Seguridad), desactivado por defecto: al abrir y al
+  volver tras el tiempo elegido (inmediatamente / 1 min / 30 min) pide huella, cara o PIN del teléfono
+  (`BiometricPrompt`). Activarlo y quitarlo exige la huella. Bloqueada, la app sigue funcionando por debajo
+  (los mensajes llegan). Con "inmediatamente" se tapa al salir (no se ve en recientes). Si el teléfono deja de
+  tener huella y PIN, se quita el bloqueo (si no, el usuario quedaría fuera para siempre).
+- **Capturas** (Perfil → Seguridad), permitidas por defecto: al bloquearlas (`FLAG_SECURE`) tampoco se ve NEXO
+  en recientes ni en grabaciones de pantalla.
+- Fénix: la clave maestra K (`nexo_fenix.json`) queda cifrada en reposo como todo lo demás.
+- Pruebas: `tests/kotlin` (JVM, 7 pruebas: cifrado en disco, archivos antiguos y migración, sin clave no se
+  sobrescribe, otra clave o manipulado no se lee, rutas fuera de la carpeta, migrar mientras se guarda, 30 MB);
+  `tests/sim/lock.js` (bloqueo, tiempos, PIN sin bucle, mensajes llegan bloqueada, reabrir, sin huella,
+  capturas; la prueba del bucle se comprobó quitando la protección: falla). La migración real de datos de una
+  versión anterior solo se puede confirmar en el teléfono.
+- Pendiente de la fase 3: anuncios Bluetooth rotativos (9), emisor oculto para los puentes (10), poscuántico
+  (11).
