@@ -58,6 +58,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2718 | `29bcc90` | Chat tipo WhatsApp (responder, reenviar, eliminar para mí / para todos, copiar) y cámara nueva (VÍDEO/FOTO, revisar antes de enviar, selfie en espejo, fotos a 800 px). APK verificada |
 | 2719 | `a217b9e` | Compilación de prueba en la rama de trabajo (Kotlin de la fase 3), sin release |
 | 2720 | `a217b9e` | Seguridad fase 3: datos cifrados en el teléfono (Keystore), bloqueo opcional con huella/PIN y bloquear capturas (Perfil → Seguridad). APK verificada (firma 23d86688…, sin copias) |
+| 2721 | `e47a031` | Compilación de prueba en la rama de trabajo, sin release |
+| 2722 | `e47a031` | Envío fluido: la 2720 hacía lento hasta el texto (releía todos los adjuntos en cada arranque y los archivos bloqueaban la fila única del plugin). Archivos en hilos propios, tiempos de cada texto en el diagnóstico. APK verificada |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -81,6 +83,10 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2722: el dueño dijo que con la 2720 "hasta enviar mensajes es lento". Corregido lo encontrado (ver ronda
+  2722). Pedir el diagnóstico de los dos teléfonos tras mandar 5-6 textos: líneas `[SEND] Texto entregado en X
+  ms (cifrar, salir por Bluetooth, reintentos)`, `[NATIVO] FILE_IO … lento` y `[LOCK] … migración`. Si sigue
+  lento, esos números dicen si es el cifrado, la radio o los reintentos. No cambiar a ciegas.
 - 2720 (seguridad fase 3): **lo primero**, instalarla encima y comprobar que siguen contactos, chats, NEXO ID y
   Fénix (al arrancar se cifran los archivos de antes; en el diagnóstico: `Cifrado en reposo activo; N
   archivo(s) cifrados ahora`). Perfil → Seguridad debe decir "Tus datos están cifrados en este teléfono".
@@ -143,6 +149,21 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2722: el envío de textos se volvió lento con la 2720 (informe del dueño)
+- Causa 1 (reproducida en `tests/kotlin`): la migración del cifrado en reposo releía enteros todos los
+  archivos de NEXO en cada arranque, con un único cerrojo: un guardado pequeño (las claves del protocolo 2
+  se guardan antes de cada envío) esperó 4,3 s con 6 archivos de 20 MB. Ahora: un cerrojo por archivo, solo
+  se lee la cabecera de lo ya cifrado (240 MB → 0 leídos), migración por trozos y a prioridad baja. 4 ms.
+- Causa 2: Capacitor ejecuta todas las llamadas al plugin en un hilo y en fila; guardar/leer un archivo grande
+  (ahora además cifrado) retrasaba `sendMessage`. Archivos en hilos propios (adjuntos aparte; el orden de
+  cada archivo se mantiene). `native_mock` modela ese hilo (`pluginThread`, `ioOffThread`) y
+  `tests/sim/iolatency.js` lo mide (texto tras un archivo de 1,5 MB: 0,5 s → 0,2 s con 150 ms/MB supuestos).
+- Interfaz (Chromium, CPU 4x, `stress.js`): igual que la 2717 (ráfaga de textos 7,8 s / 7,6 s; burbuja propia
+  ~20 ms); fotos + textos 9,2 s / 7,6 s por las fotos de 800 px.
+- El diagnóstico ahora trae el tiempo de cada texto y los avisos nativos de archivos (antes `remLog` no
+  llegaba al diagnóstico).
+- Ojo: el cifrado de Java en el servidor va a ~60 MB/s; en Android lo hace Conscrypt (sin medir aquí).
 
 ## Ronda 2720: seguridad fase 3, primera parte (ver `docs/SEGURIDAD.md`)
 - Cifrado en reposo nativo (`AtRestStore.kt`, AES-256-GCM, clave de datos envuelta por el Android Keystore):
