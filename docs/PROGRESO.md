@@ -482,5 +482,13 @@ Kotlin `FileTransferManager`, `FileTranferProtocol`, `MessageChunker`, `NexoBleS
 `sendFileNative` (el JS no los usaba); después, `src/vault/chispas/` (el dueño: se puede eliminar). El JavaScript de la APK quedó idéntico byte a byte.
 Se conservan para más adelante: `src/net/*` + `server/relay/` (Wi-Fi/datos), `plugins/nexo-auth` +
 `src/vault/crypto_vault.js` + `src/auth/*` (huella y cifrado en reposo, fase 3). Pendiente de que el dueño
-explique: `src/stream/*` ("The Stream"), `src/perf/virtual_engine.js`, los
+explique: nada (revisado el 22-10).
+Borrados después (sin función real): `virtual_engine.js` (lista virtual, no el "motor" de la app),
+`vault_fs.js` (guardado antiguo, sustituido por `vault_manager.js`), `vault_panel.js` (maqueta con contactos
+inventados y Chispas), `the_stream.js` (era una lista de mensajes de chat, no el feed), `core/gesture_engine.js`.
+Se conservan `src/stream/pulse_algorithm.js` (orden de publicaciones) y `src/ui/gesture_engine.js` (gestos
+desde los bordes) para **Stream**: pantalla con Vídeos (arriba izq.) y Estados de contactos (arriba der.),
+deslizar arriba = siguiente, doble toque = me gusta, deslizar a la izquierda = comentarios, a la derecha =
+volver a contactos. El dueño decidió dejarlo para más adelante (propuesta: Estados primero, cifrados y sin
+Internet; Vídeos cuando haya núcleos o servidor).
 `gesture_engine.js`, `vault_fs.js`, `vault_panel.js`.
