@@ -33,6 +33,7 @@ var QUEUE_MAX = 200;
 var QUEUE_MAX_BYTES = 30000000; // lo guardado de paso para otros (fotos, textos largos) no pasa de ~30 MB
 var SEEN_TTL_MS = 3600000;
 var NEARBY_TTL_MS = 120000;       // un NEXO visto al escanear cuenta como cercano 2 min
+var NEARBY_FRESH_MS = 30000;      // para decir "llego a X" o ir directo hay que haberlo visto hace <30 s
 var DISCOVER_THROTTLE_MS = 45000; // como mucho una búsqueda de camino por destino cada 45 s
 var DISCOVER_WAIT_MS = 60000;     // una búsqueda vale 60 s
 var SCAN_FRESH_MS = 30000;        // si se escaneó hace menos, no se vuelve a escanear para buscar camino
@@ -405,9 +406,9 @@ export class BleRelay {
     if (!had) this._connectNearbyIfWanted(nx);
   }
 
-  _seenRecently(nx) {
+  _seenRecently(nx, maxAge) {
     var n = this.nearby.get(_nid(nx));
-    return (n && Date.now() - n.ts < NEARBY_TTL_MS) ? n : null;
+    return (n && Date.now() - n.ts < (maxAge || NEARBY_TTL_MS)) ? n : null;
   }
 
   _isContact(nx) {
@@ -507,10 +508,19 @@ export class BleRelay {
 
   // ---------- búsqueda de camino bajo demanda ----------
   // Llamar cuando un mensaje propio no tiene enlace directo ni ruta
-  discover(dst) {
+  discover(dst, force) {
     var self = this, d = _nid(dst), now = Date.now();
     if (!_isNx(d) || d === self.me()) return;
     if (self.nextHop(d)) return;
+    // Visto hace nada: lo más cercano es ir directo; si en 8 s no hay enlace, se busca puente
+    if (!force && self._seenRecently(d, NEARBY_FRESH_MS)) {
+      self._connectNearby(d);
+      if (!self._directTry) self._directTry = {};
+      if (!self._directTry[d]) {
+        self._directTry[d] = setTimeout(function() { delete self._directTry[d]; if (!self.nextHop(d)) self.discover(d, true); }, 8000);
+      }
+      return;
+    }
     var wait = self._discoverWait.get(d) || DISCOVER_THROTTLE_MS;
     if (now - (self._discoverAt.get(d) || 0) < wait) return;
     self._discoverAt.set(d, now);
@@ -585,8 +595,8 @@ export class BleRelay {
     if (d === me) return 0;
     var h = this.nextHop(d);
     if (h) return h.hops;
-    if (this._seenRecently(d)) {
-      // A la vista: ruta "cercana" (se conecta al usarla)
+    if (this._seenRecently(d, NEARBY_FRESH_MS)) {
+      // A la vista hace nada: ruta "cercana" (se conecta al usarla)
       this.routes.set(d, { via: d, hops: 1, ts: Date.now(), nearby: true });
       return 1;
     }

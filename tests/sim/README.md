@@ -92,4 +92,5 @@ A y C sin verse: A escribe a C (corto, largo, foto); comprueba que llega, ✓ en
 contesta, que B no lee ni muestra nada y la custodia (C se aleja cuando B ya tiene la foto). `--shared`:
 A nunca vio a C (B le comparte el contacto). `--chain`: A–B–C–D, 3 saltos. `--stranger`: B no es contacto
 de nadie (camino bajo demanda, conexiones de paso que se cierran solas, B sin chats ni contactos nuevos);
-con `--low-battery` B está al 10 % y no debe hacer de puente hasta que se enchufa.
+con `--low-battery` B está al 10 % y no debe hacer de puente hasta que se enchufa. `--direct-later`: la foto
+queda en B sin camino y luego A y C quedan a alcance: A debe reenviarla directo.

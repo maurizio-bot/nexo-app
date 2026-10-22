@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2706)
+Última actualización: 2026-10-22 (build 2707)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -60,7 +60,7 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
 ## Siguiente paso (al retomar)
 - 2704: probar enviar un PDF (miniatura, tocar → se abre) y una APK pequeña (tocar → instalar; Android pide
   permiso la 1.ª vez). Una APK grande debe mostrar el aviso de tamaño.
-- 2706: igual que la 2705 pero B puede ser un teléfono que NO es contacto de nadie (solo con NEXO abierto
+- 2707: igual que la 2705 pero B puede ser un teléfono que NO es contacto de nadie (solo con NEXO abierto
   o en segundo plano). Comprobar también que B no ve chats ni contactos nuevos.
 - Siguiente: Wi-Fi Direct para fotos/vídeos/archivos (luego Wi-Fi y datos; para datos/Wi-Fi entre redes
   hace falta decidir el servidor de relevo).
@@ -85,7 +85,7 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
-## Ronda 2706: Jump con cualquier teléfono NEXO (bajo demanda) + batería + selector de camino
+## Ronda 2707: Jump con cualquier teléfono NEXO (bajo demanda) + batería + selector de camino
 El dueño: los únicos requisitos para ser puente son estar a alcance y tener NEXO (en la 2705 solo valían
 teléfonos conectados, en la práctica contactos). Criterio de caminos acordado (seguridad y velocidad):
 textos → directo, Jump, Wi-Fi, datos; archivos → directo (y Wi-Fi Direct cuando exista), Wi-Fi, Jump si el
@@ -107,7 +107,15 @@ tiempo es razonable; datos móviles siempre el último (cuestan dinero); sin se�
   mostraba como mensaje y agregaba al emisor como contacto); conexión de paso que caía y no se borraba (el
   puente no volvía a conectar con el destino); al reconectar con un vecino conocido no se le repetía la
   pregunta pendiente.
-- Simulador: `jump.js --stranger` (B no es contacto de nadie) y `--stranger --low-battery`.
+- Lo más cercano primero: si el destino se vio hace <30 s se intenta directo (8 s) antes de buscar
+  puente; un puente solo dice "llego" si lo vio hace <30 s (si no, escanea antes). Lo que salió por un
+  puente y aún no tiene ✓✓ se reenvía directo en cuanto hay enlace con el destino (duplicado descartado
+  por id): un puente que se quedó sin camino ya no deja el mensaje parado.
+- Simulador: `jump.js --stranger` (B no es contacto de nadie), `--stranger --low-battery` y
+  `--direct-later`. Resultados: con desconocido en medio el primer texto llega en ~15 s (incluye 8 s de
+  intento directo y la búsqueda), largo y foto, ✓✓, leído, respuesta; B sin contactos ni chats;
+  conexiones de paso cerradas solas (~80 s). Batería 10 %: B no hace de puente; enchufado, llega en ~55 s.
+  Batería completa (21 pruebas) y Chromium real en verde. Kotlin (`getPowerStatus`) compilado en CI.
 
 ## Ronda 2705: Jump fase 2 — mensajes de varios saltos (A → B → C)
 Pedido del dueño: saltos entre teléfonos, cualquier teléfono NEXO hace de puente, textos y fotos (el
@@ -127,7 +135,7 @@ cifrado de extremo a extremo de la 2702 era la fase 1). Nuevo `src/ui/ble_relay.
   cifrado de un desconocido que escribe por un puente se guarda al crear el contacto; si falta se pide de
   extremo a extremo (`kx` dirigido; un puente nunca puede cambiar una clave ya conocida).
 - Los puentes solo ven quién, a quién y los ids; no pueden leer el contenido ni lo muestran.
-- Límite (resuelto en la 2706): los puentes eran solo teléfonos ya conectados (en la práctica contactos).
+- Límite (resuelto en la 2707): los puentes eran solo teléfonos ya conectados (en la práctica contactos).
 - Simulador: modelo de alcance (`radio.block/unblock`) y `tests/sim/jump.js` (A–B–C conocidos,
   `--shared` A nunca vio a C, `--chain` A–B–C–D con 3 saltos). Verificado: textos, largo y foto llegan,
   ✓✓ y leído vuelven, la respuesta vuelve, los puentes no leen ni guardan nada, custodia (C se aleja

@@ -7,6 +7,7 @@
 //   --chain:  cuatro teléfonos A–B–C–D; A escribe a D (3 saltos)
 //   --stranger: B no es contacto de nadie (solo tiene NEXO y está en medio): camino bajo demanda
 //   --low-battery: (con --stranger) B al 10 % sin cargar: no debe hacer de puente; luego se enchufa
+//   --direct-later: la foto queda en B sin camino a C y luego A y C quedan a alcance: A la reenvía directo
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -16,6 +17,7 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
 const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 0), asymmetric: true };
+const directLater = !!arg('direct-later', false);
 const shared = !!arg('shared', false), chain = !!arg('chain', false), stranger = !!arg('stranger', false), lowBat = !!arg('low-battery', false);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
@@ -174,10 +176,11 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.C_no_la_tiene_aun = !(await has('C', (m) => m.attachmentPayload === foto2.toString('base64')));
     r.cola_en_B = P.B.win.bleInterface.relay.queue.length;
     await sleep(3000);
-    radio.unblock(nat.B, nat.C);
+    if (directLater) radio.unblock(nat.A, nat.C); else radio.unblock(nat.B, nat.C);
     r.llega_al_volver_C_s = await waitFor(() => has('C', (m) => (m.attachmentPayload === foto2.toString('base64') || (m.attachmentRef && nat.C.files.get(m.attachmentRef) === foto2.toString('base64')))), 120000);
     r.doble_check_al_volver_s = await waitFor(() => ['delivered', 'read'].includes(statusById(P.A, m2 && m2.msgId)), 30000);
     r.cola_en_B_final = P.B.win.bleInterface.relay.queue.length;
+    if (directLater) r.reenviado_directo_por_A = logs.some((l) => /\[A\].*se reenvía directo/.test(l));
   }
   if (stranger) {
     r.B_contactos = P.B.win.vaultLoadContacts().map((c) => c.name);

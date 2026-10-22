@@ -1008,6 +1008,7 @@ export class BLEInterface {
     if (!this._macToNexoId.get(ndPeer)) this._macToNexoId.set(ndPeer, _normId(nexoId));
     this._sendKx(deviceId, false);
     if (this.relay) this.relay.onLinkChange();
+    this._resendRelayedDirect(nexoId, deviceId);
     this._processPendingMessages(deviceId);
     var key = _normMac(deviceId) + ':' + _normId(nexoId);
     if (this._notifiedPeers.has(key)) { console.log('[BLEInterface] Peer ready dup ignorado:', nexoId); return; }
@@ -1781,8 +1782,48 @@ export class BLEInterface {
     var hop = self.relay && self.relay.relayHop(nx);
     if (!hop || !self.ackSystem) return Promise.reject(Object.assign(new Error('Sin ruta'), { code: 'PEER_ABSENT' }));
     console.log('[JUMP] Enviando ' + msgId + ' a ' + nx + ' por ' + hop.via + ' (' + hop.hops + ' saltos)');
+    self._noteRelayedOut(msgId, nx);
     if (content.length > 180) return self.ackSystem.sendChunkedMessage(hop.deviceId, content, { dst: nx }, msgId, seq);
     return self.ackSystem.sendWithRetry(hop.deviceId, content, msgId, seq, { dst: nx });
+  }
+
+  // Jump: lo que salió por un puente y aún no tiene ✓✓ se reenvía directo si aparece enlace con el
+  // destino (el puente pudo quedarse sin camino; el destino descarta duplicados por id)
+  _noteRelayedOut(msgId, nexoId) {
+    if (!msgId) return;
+    this._relayedOut = this._relayedOut || new Map();
+    this._relayedOut.set(msgId, { nx: _normId(nexoId), ts: Date.now() });
+  }
+
+  _resendRelayedDirect(nexoId, deviceId) {
+    var self = this, nx = _normId(nexoId);
+    if (!self._relayedOut || !self._relayedOut.size || !self.ackSystem) return;
+    var ids = [];
+    self._relayedOut.forEach(function(v, id) {
+      if (Date.now() - v.ts > 86400000) self._relayedOut.delete(id);
+      else if (v.nx === nx && Date.now() - v.ts > 3000) ids.push(id);
+    });
+    if (!ids.length) return;
+    _vaultLoadMessages(nx).then(function(msgs) {
+      return _hydrateAttachments((msgs || []).filter(function(m) {
+        var id = m.msgId || m.messageId || m.id;
+        if (ids.indexOf(id) < 0) return false;
+        if (m.status === 'delivered' || m.status === 'read') { self._relayedOut.delete(id); return false; }
+        return !self._isMsgInFlight(id);
+      }));
+    }).then(function(list) {
+      (list || []).forEach(function(m) {
+        var id = m.msgId || m.messageId || m.id;
+        self._relayedOut.delete(id);
+        console.log('[JUMP] ' + id + ' salió por un puente sin ✓✓: se reenvía directo a ' + nx);
+        var p = (m.attachmentType && m.attachmentPayload)
+          ? self.ackSystem.sendFile(deviceId, id, m.attachmentPayload, Object.assign({ type: m.attachmentType }, m.attachmentMeta || {}))
+          : (String(m.content || '').length > 180
+            ? self.ackSystem.sendChunkedMessage(deviceId, m.content, {}, id, m.seq)
+            : self.ackSystem.sendWithRetry(deviceId, m.content || '', id, m.seq));
+        p.catch(function() {});
+      });
+    }).catch(function() {});
   }
 
   // kx de extremo a extremo (Jump): pedir/enviar la clave pública a un destino por las rutas
@@ -1974,6 +2015,7 @@ export class BLEInterface {
               deviceId = rh.deviceId;
               meta = Object.assign({}, meta || {}, { dst: uuid });
               console.log('[JUMP] Adjunto ' + fileId + ' a ' + uuid + ' por ' + rh.via);
+              self._noteRelayedOut(fileId, uuid);
               self.relay.plan(uuid, (meta && meta.type) || 'file', base64Data.length);
               startTransfer();
               return;
@@ -2132,6 +2174,7 @@ export class BLEInterface {
         deviceId = rh.deviceId;
         relayDst = _normId(nexoId);
         console.log('[JUMP] Reenviando', pending.length, 'pending para', nexoId, 'por', rh.via);
+        pending.forEach(function(m) { self._noteRelayedOut(m.msgId || m.messageId || m.id, relayDst); });
       } else {
         console.log('[BLEInterface] Reenviando', pending.length, 'pending para', nexoId);
         if (self.ackSystem && typeof self.ackSystem.resumeOutgoingTransfers === 'function') {
