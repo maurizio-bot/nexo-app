@@ -45,6 +45,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2705 | `0b04628` | Jump: mensajes de varios saltos (A → B → C) por teléfonos conectados, cifrados para el destino |
 | 2706 | `09da6aa` | Compilación de prueba en la rama de trabajo (Kotlin getPowerStatus), sin release |
 | 2707 | `48887c1` | Jump con cualquier teléfono NEXO (bajo demanda), protección de batería, selector de camino |
+| 2708 | `eeade70` | Compilación de prueba en la rama de trabajo (Kotlin Wi-Fi Direct), sin release |
+| 2709 | `b5269f4` | Wi-Fi Direct para fotos, vídeos y archivos (hasta ~22 MB, vídeo original) |
 
 ## Base estable: build 2699
 Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
@@ -67,7 +69,7 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
 - 2709 (Wi-Fi Direct): con dos teléfonos cerca y NEXO actualizado, mandar una foto, un vídeo y un archivo
   de varios MB: deben llegar en segundos. La 1.ª vez Android pide permiso de "dispositivos cercanos"
   (13+) o ubicación. Diagnóstico: líneas `[WIFI-DIRECT]`.
-- Siguiente (pedido por el dueño): revisión de seguridad para estar al nivel de Signal o mejor. Después:
+- Revisión de seguridad hecha: `docs/SEGURIDAD.md` (comparación con Signal y plan en 3 fases). Después:
   Wi-Fi normal y datos (para datos/Wi-Fi entre redes hace falta decidir el servidor de relevo).
 - 2705 (Jump): probar con 3 teléfonos A–B–C donde A y C no se alcancen (otra habitación / distancia) y B
   en medio: A escribe a C (texto y foto). Debe salir ✓ al quedar en B y ✓✓ al llegar a C. Diagnóstico:
