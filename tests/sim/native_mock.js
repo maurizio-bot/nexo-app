@@ -392,8 +392,8 @@ class NativePhone {
         setTimeout(() => {
           self.radio.wdGroups.delete(a.ssid);
           self.stats.wdBytes = (self.stats.wdBytes || 0) + data.length;
-          g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data, bytes: data.length });
-          c.resolve({ ok: true, ms, bytes: data.length });
+          g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data, bytes: data.length, readMs: ms - 2000, ts: Date.now() });
+          c.resolve({ ok: true, ms, bytes: data.length, joinMs: 2000, xferMs: ms - 2000, bridgeMs: 0 });
         }, ms);
       }),
       // Batería (opts.battery = { level, charging, powerSave }; por defecto 80 %, sin cargar)

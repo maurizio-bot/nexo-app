@@ -2330,6 +2330,7 @@ class NexoBlePlugin : Plugin() {
         try {
             server.accept().use { sock ->
                 sock.soTimeout = 30000
+                val tRead = System.currentTimeMillis()
                 val input = java.io.DataInputStream(java.io.BufferedInputStream(sock.getInputStream()))
                 val h = JSONObject(input.readUTF())
                 if (h.optString("id") != transferId) throw Exception("transferencia distinta")
@@ -2338,8 +2339,10 @@ class NexoBlePlugin : Plugin() {
                 val buf = ByteArray(len.toInt())
                 input.readFully(buf)
                 sock.getOutputStream().apply { write(1); flush() }
-                remLog("INFO", "WIFI_DIRECT", "Recibido $transferId ($len bytes)")
-                notifyListeners("onWifiDirectReceived", JSObject().put("transferId", transferId).put("data", String(buf, Charsets.UTF_8)).put("bytes", len), true)
+                val readMs = System.currentTimeMillis() - tRead
+                remLog("INFO", "WIFI_DIRECT", "Recibido $transferId ($len bytes) en $readMs ms")
+                notifyListeners("onWifiDirectReceived", JSObject().put("transferId", transferId).put("data", String(buf, Charsets.UTF_8)).put("bytes", len)
+                    .put("readMs", readMs).put("ts", System.currentTimeMillis()), true)
             }
         } catch (e: Exception) {
             remLog("WARN", "WIFI_DIRECT", "Recepción fallida $transferId: ${e.message}")
@@ -2365,8 +2368,12 @@ class NexoBlePlugin : Plugin() {
         val m = p2pManager!!
         val ch = p2pChannel!!
         val t0 = System.currentTimeMillis()
+        // Tiempo que tardó el contenido en pasar de la app (WebView) a Android
+        val jsTs = call.getLong("jsTs") ?: t0
+        val bridgeMs = (t0 - jsTs).coerceAtLeast(0)
         val cfg = WifiP2pConfig.Builder().setNetworkName(ssid).setPassphrase(pass).build()
         fun push(addr: java.net.InetAddress) {
+            val tJoined = System.currentTimeMillis()
             Thread {
                 try {
                     val bytes = data.toByteArray(Charsets.UTF_8)
@@ -2379,9 +2386,11 @@ class NexoBlePlugin : Plugin() {
                         out.flush()
                         if (s.getInputStream().read() != 1) throw Exception("sin confirmación")
                     }
-                    val ms = System.currentTimeMillis() - t0
-                    remLog("INFO", "WIFI_DIRECT", "Enviado $transferId (${bytes.size} bytes) en $ms ms")
-                    call.resolve(JSObject().put("ok", true).put("ms", ms).put("bytes", bytes.size))
+                    val now = System.currentTimeMillis()
+                    val ms = now - t0
+                    remLog("INFO", "WIFI_DIRECT", "Enviado $transferId (${bytes.size} bytes) en $ms ms (unirse ${tJoined - t0} ms, envío ${now - tJoined} ms, de la app a Android $bridgeMs ms)")
+                    call.resolve(JSObject().put("ok", true).put("ms", ms).put("bytes", bytes.size)
+                        .put("joinMs", tJoined - t0).put("xferMs", now - tJoined).put("bridgeMs", bridgeMs))
                 } catch (e: Exception) {
                     call.reject("Envío fallido: ${e.message}", "WD_SEND")
                 } finally {
@@ -2393,7 +2402,7 @@ class NexoBlePlugin : Plugin() {
             m.requestConnectionInfo(ch) { info ->
                 val addr = info?.groupOwnerAddress
                 if (info != null && info.groupFormed && addr != null) push(addr)
-                else if (attempt < 40) mainHandler.postDelayed({ waitGroup(attempt + 1) }, 500)
+                else if (attempt < 80) mainHandler.postDelayed({ waitGroup(attempt + 1) }, 250)
                 else { wdTearDown(); call.reject("El grupo no se formó", "WD_TIMEOUT") }
             }
         }

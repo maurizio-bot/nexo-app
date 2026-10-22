@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.42-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.43-NEXO
+ * v9.9.43: ubicación: aviso mientras se busca, GPS → última conocida/red → aviso claro (antes, sin señal,
+ *          no pasaba nada visible); coordenadas recibidas tratadas como números.
  * v9.9.42: Wi-Fi Direct fallido: el vídeo enviado como original pasa a previa + HD por Bluetooth (el mismo
  *          mensaje); un archivo que no cabe por Bluetooth queda fallido con aviso (antes: 1 % para siempre).
  * v9.9.41: seguridad fase 2: protocolo 2 (e2e_ratchet.js) iniciado al arrancar; aviso del chat con el número de
@@ -1196,42 +1198,69 @@ function _showPermissionError(permName) {
   }, 4000);
 }
 
+// v9.9.43: aviso informativo (no de error) arriba de la pantalla; ms = cuánto se ve
+function _showInfoToast(text, ms) {
+  var existing = document.getElementById('perm-error-toast');
+  if (existing) existing.remove();
+  var toast = document.createElement('div');
+  toast.id = 'perm-error-toast';
+  toast.className = 'info-toast';
+  toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,130,252,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
+  toast.textContent = text;
+  document.body.appendChild(toast);
+  setTimeout(function() { if (toast.parentNode) toast.remove(); }, ms || 4000);
+}
+function _hideInfoToast() {
+  var t = document.getElementById('perm-error-toast');
+  if (t && t.className === 'info-toast') t.remove();
+}
+
+// v9.9.43: ubicación. Antes, sin señal de GPS (interior) no se veía nada durante ~35 s y luego tampoco
+// (el error se callaba). Ahora: aviso mientras se busca; GPS hasta 12 s; si no responde, la última posición
+// conocida o la de la red; si nada, aviso claro. Líneas [ATTACH] Ubicación… en el diagnóstico.
 async function _handleLocation() {
   if (_isGettingLocation) return;
   _isGettingLocation = true;
   _closeAttachMenu();
-  var plugins = _getAttachmentPlugins();
-  var sent = false;
-  var safetyTimer = setTimeout(function() {
-    _isGettingLocation = false;
-  }, 25000);
+  var G = _getAttachmentPlugins().Geolocation;
+  var t0 = Date.now();
+  var why = '';
+  var pos = null;
+  _showInfoToast('📍 Obteniendo tu ubicación…', 30000);
   try {
-    if (plugins.Geolocation &&
-        typeof plugins.Geolocation.checkPermissions === 'function' &&
-        typeof plugins.Geolocation.requestPermissions === 'function' &&
-        typeof plugins.Geolocation.getCurrentPosition === 'function') {
+    if (G && typeof G.getCurrentPosition === 'function') {
       try {
-        var perm = await plugins.Geolocation.checkPermissions();
-        if (perm.location !== 'granted') {
-          var req = await plugins.Geolocation.requestPermissions();
-          if (req.location !== 'granted') throw new Error('Permiso denegado');
+        if (typeof G.checkPermissions === 'function' && typeof G.requestPermissions === 'function') {
+          var perm = await G.checkPermissions();
+          if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') {
+            var req = await G.requestPermissions();
+            if (req.location !== 'granted' && req.coarseLocation !== 'granted') why = 'permiso denegado';
+          }
         }
-        var pos = await plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 });
-        _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-        sent = true;
-      } catch (pluginErr) {
-        console.log('[ATTACH:LOCATION] Plugin fallo:', pluginErr.message);
-        if (pluginErr.message && pluginErr.message.indexOf('denied') > -1) {
-          _showPermissionError('Ubicacion');
-          return;
+        if (!why) {
+          pos = await G.getCurrentPosition({ enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 })
+            .catch(function(e) { why = (e && e.message) || 'error'; return null; });
+          if (!pos && !/denied|permission|not enabled|disabled/i.test(why)) {
+            console.log('[ATTACH] Ubicación: el GPS no respondió (' + why + '), probando la última conocida o por red');
+            pos = await G.getCurrentPosition({ enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 })
+              .catch(function(e) { why = (e && e.message) || why; return null; });
+          }
         }
-      }
+      } catch (e) { why = (e && e.message) || 'error'; }
+    } else {
+      pos = await _browserPosition().catch(function(e) { why = (e && e.message) || 'sin API de ubicación'; return null; });
     }
-    if (!sent) {
-      _handleLocationFallback();
+    if (pos && pos.coords) {
+      _hideInfoToast();
+      console.log('[ATTACH] Ubicación obtenida en ' + Math.round((Date.now() - t0) / 100) / 10 + ' s (precisión ' + Math.round(pos.coords.accuracy || 0) + ' m)');
+      _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      return;
     }
+    console.warn('[ATTACH] Ubicación no disponible tras ' + Math.round((Date.now() - t0) / 100) / 10 + ' s: ' + why);
+    if (/permiso|denied|permission/i.test(why)) _showPermissionError('Ubicacion');
+    else if (/not enabled|disabled|services/i.test(why)) _showInfoToast('Activa la ubicación (GPS) del teléfono y vuelve a intentarlo.', 5000);
+    else _showInfoToast('No se pudo obtener tu ubicación (sin señal de GPS). Prueba cerca de una ventana o al aire libre.', 6000);
   } finally {
-    clearTimeout(safetyTimer);
     _isGettingLocation = false;
   }
 }
@@ -1248,28 +1277,14 @@ function _sendLocation(lat, lng, accuracy) {
   console.log('[ATTACH] Ubicacion enviada');
 }
 
-function _handleLocationFallback() {
-  try {
-    if (!navigator.geolocation) {
-      console.log('[ATTACH] Geolocation API no disponible');
-      _showPermissionError('Ubicacion');
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      function(pos) {
-        _sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-      },
-      function(err) {
-        console.log('[ATTACH:LOCATION] Fallback error:', err.code, err.message);
-        if (err.code === 1) {
-          _showPermissionError('Ubicacion');
-        }
-      },
-      { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 }
-    );
-  } catch (e) {
-    console.log('[ATTACH:LOCATION] Fallback fallo:', e.message);
-  }
+// Sin el plugin: la API del navegador
+function _browserPosition() {
+  return new Promise(function(resolve, reject) {
+    if (!navigator.geolocation) { reject(new Error('sin API de ubicación')); return; }
+    navigator.geolocation.getCurrentPosition(resolve, function(err) {
+      reject(new Error(err && err.code === 1 ? 'permission denied' : ((err && err.message) || 'error')));
+    }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
+  });
 }
 
 async function _handleVoiceToggle() {
@@ -2535,8 +2550,9 @@ function _renderMessage(msg, skipSave) {
         }
       } else if (attachment.type === 'location') {
         var loc = attachment.meta;
-        var lat = (loc && loc.lat) ? loc.lat : 0;
-        var lng = (loc && loc.lng) ? loc.lng : 0;
+        // Números siempre (vienen de otro teléfono y van dentro del HTML)
+        var lat = Number(loc && loc.lat) || 0;
+        var lng = Number(loc && loc.lng) || 0;
         var mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lng;
         var wazeUrl = 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes';
         var osmUrl = 'https://static-maps.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng + '&zoom=15&size=300x150&markers=' + lat + ',' + lng + ',red-pushpin';

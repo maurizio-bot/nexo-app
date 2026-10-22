@@ -128,10 +128,19 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   await sleep(1500);
   r.enorme_aviso = toastText(A) !== tNow ? toastText(A).substring(0, 90) : null;
   r.enorme_llega_s = bNoWd ? null : await waitFor(() => has(f3.toString('base64')), 240000);
-  // 4) Vídeo (galería): original por Wi-Fi Direct
+  // 4) Vídeo (galería): original por Wi-Fi Direct. Se pierde el 'wf' (entregado, por Bluetooth) de B: con la
+  // 2713 A lo daba por fallido a los 45 s y lo mandaba otra vez como previa + HD por Bluetooth
+  const ctlB = B.win.bleInterface.wifiDirect._ctl.bind(B.win.bleInterface.wifiDirect);
+  B.win.bleInterface.wifiDirect._ctl = (d, o) => (o && o.type === 'wf' ? Promise.resolve() : ctlB(d, o));
   const v = bytes(900000, 3);
   await pickFile(A, new A.win.File([v], 'clip.mp4', { type: 'video/mp4' }), 'gallery');
   r.video_llega_s = await waitFor(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.attachmentType === 'video' && (m.attachmentPayload === v.toString('base64') || (m.attachmentRef && nB.files.get(m.attachmentRef) === v.toString('base64')))), 240000);
+  const vidId = await lastAttId();
+  r.video_estado_A = await waitFor(() => statusById(vidId) === 'delivered' || statusById(vidId) === 'read', 20000) !== null ? statusById(vidId) : statusById(vidId);
+  await sleep(50000);
+  r.video_sin_wf_reenviado_por_bluetooth = air.filter((x) => x.indexOf(vidId) >= 0 && x.indexOf('"type":"w') < 0).length > 3;
+  r.video_HD_por_bluetooth = air.some((x) => x.indexOf(vidId + '_hd') >= 0);
+  B.win.bleInterface.wifiDirect._ctl = ctlB;
   // 5) Falla Wi-Fi Direct → Bluetooth
   if (!bNoWd) {
     nB.opts.wdFail = true;
@@ -147,7 +156,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.credenciales_en_claro = /"passphrase"|"ssid"|DIRECT-..-NEXO/.test(airText);
   r.contenido_en_claro = airText.indexOf(f1.toString('base64').substring(5000, 5060)) >= 0;
   r.errores = logs.filter((l) => / error: /.test(l)).slice(0, 5);
-  r.diag_A = logs.filter((l) => l.startsWith('[A]') && /WIFI-DIRECT/.test(l)).map((l) => l.replace(/^\[A\] \w+: /, '').substring(0, 80)).slice(0, 12);
+  r.diag_A = logs.filter((l) => l.startsWith('[A]') && /WIFI-DIRECT/.test(l)).map((l) => l.replace(/^\[A\] \w+: /, '').substring(0, 150)).slice(0, 12);
+  r.diag_B = logs.filter((l) => l.startsWith('[B]') && /WIFI-DIRECT\] Recibido/.test(l)).map((l) => l.replace(/^\[B\] \w+: /, '').substring(0, 120)).slice(0, 3);
   console.log('WIFIDIRECT ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_wifidirect.txt'), logs.join('\n'));
   process.exit(0);

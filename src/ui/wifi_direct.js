@@ -1,5 +1,8 @@
 /**
  * wifi_direct.js v1.2 — Fotos, vídeos y archivos por Wi-Fi Direct con un contacto a alcance.
+ * v1.3: entregado en cuanto el receptor confirma por el propio socket (tiene todos los bytes): antes se esperaba
+ *       además 'wf' por Bluetooth y, si tardaba >45 s, se daba por fallido y el vídeo se volvía a mandar como
+ *       previa + HD por Bluetooth aunque ya hubiera llegado. Tiempos por fase en el diagnóstico.
  * v1.2: si falla con un contacto, no se vuelve a intentar con él durante FAIL_COOLDOWN_MS (todo va por
  *       Bluetooth); sin permiso en este teléfono deja de anunciarse y de usarse; esperas acotadas (permiso
  *       y envío). Hasta la 2712 el permiso de Android 13+ no estaba declarado y nunca se concedía.
@@ -20,7 +23,6 @@ import { e2eAnyEncrypted } from '../vault/e2e_proto.js';
 export var WD_MIN_BYTES = 150000;    // ~35 s por Bluetooth a la velocidad medida; montar el grupo son ~5 s
 export var WD_MAX_BYTES = 30000000;  // contenido cifrado en base64 (~22 MB de archivo)
 var OFFER_TIMEOUT_MS = 25000;
-var DONE_TIMEOUT_MS = 45000;
 var PERM_TIMEOUT_MS = 60000;
 var FAIL_COOLDOWN_MS = 10 * 60000;
 
@@ -127,20 +129,24 @@ export class WifiDirect {
         st.onNo = function(why) { clearTimeout(offerTimer); self.out.delete(fileId); reject(new Error('el otro no puede (' + (why || '?') + ')')); };
         st.onCreds = function(c) {
           clearTimeout(offerTimer);
-          var doneTimer = null;
-          st.onDone = function() { clearTimeout(doneTimer); self.out.delete(fileId); resolve(); };
+          var tCreds = Date.now();
+          st.onDone = function() {}; // 'wf' llega después; la entrega ya la confirmó el socket
           e2eDecryptText(c).then(function(r) {
             var cr = JSON.parse(r.text);
             console.log('[WIFI-DIRECT] Enviando ' + fileId + ' (' + Math.round(data.length / 1024) + ' KB) a ' + peer);
             // Tope: unirse al grupo (~20 s) + el contenido a 100 KB/s como mínimo
             var sendTimer = null;
             return Promise.race([
-              _plugin().wifiDirectSend({ ssid: cr.s, passphrase: cr.p, port: cr.o, transferId: fileId, data: data }),
+              _plugin().wifiDirectSend({ ssid: cr.s, passphrase: cr.p, port: cr.o, transferId: fileId, data: data, jsTs: Date.now() }),
               new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 30000 + Math.round(data.length / 100)); })
             ]).then(function(v) { clearTimeout(sendTimer); return v; }, function(e) { clearTimeout(sendTimer); throw e; });
           }).then(function(res) {
-            console.log('[WIFI-DIRECT] ' + fileId + ' transferido en ' + Math.round((res && res.ms || 0) / 100) / 10 + ' s');
-            doneTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin confirmación de entrega')); }, DONE_TIMEOUT_MS);
+            var sec = function(ms) { return Math.round((ms || 0) / 100) / 10 + ' s'; };
+            // Fases: oferta→credenciales (el otro crea el grupo), paso de datos a Android, unirse al grupo, envío
+            console.log('[WIFI-DIRECT] ' + fileId + ' fases: grupo del otro ' + sec(tCreds - t0) + ', a Android ' + sec(res && res.bridgeMs) +
+              ', unirse ' + sec(res && res.joinMs) + ', envío ' + sec(res && res.xferMs) + ' (' + Math.round((data.length / 1024) / Math.max(0.1, ((res && res.xferMs) || 1) / 1000)) + ' KB/s)');
+            self.out.delete(fileId);
+            resolve();
           }).catch(function(e) { self.out.delete(fileId); reject(e); });
         };
         self.out.set(fileId, st);
@@ -209,7 +215,8 @@ export class WifiDirect {
       console.warn('[WIFI-DIRECT] Recepción de ' + id + ' fallida: ' + (ev.error || 'contenido no válido'));
       return;
     }
-    console.log('[WIFI-DIRECT] Recibido ' + id + ' (' + Math.round(ev.data.length / 1024) + ' KB)');
+    console.log('[WIFI-DIRECT] Recibido ' + id + ' (' + Math.round(ev.data.length / 1024) + ' KB)' +
+      (ev.ts ? ', de Android a la app ' + Math.round((Date.now() - ev.ts) / 100) / 10 + ' s' : '') + (ev.readMs ? ', lectura ' + Math.round(ev.readMs / 100) / 10 + ' s' : ''));
     var ack = self.ble.ackSystem;
     if (ack) {
       // Como un flujo terminado: si luego llega también por Bluetooth, se descarta

@@ -111,7 +111,14 @@ límite de Bluetooth), vídeo original, credenciales nunca en claro y caída a B
 `--broken=noperm` (los dos sin permiso: la 2711 no declaraba `NEARBY_WIFI_DEVICES` y en Android 13+ nunca se
 concedía; `opts.wdNoPerm`) y `--broken=fail` (unirse al grupo falla): un archivo de 6 MB queda fallido con
 aviso y un vídeo de 2,6 MB llega como previa + HD por Bluetooth. Con la 2711 los dos se quedaban "enviando"
-(1 %) para siempre y la oferta de Wi-Fi Direct se repetía en bucle.
+(1 %) para siempre y la oferta de Wi-Fi Direct se repetía en bucle. En la prueba normal se pierde el 'wf' de B
+(entregado, por Bluetooth): con la 2713 A daba el vídeo por fallido y lo reenviaba como previa + HD por
+Bluetooth aunque ya hubiera llegado; ahora vale la confirmación del propio socket. `diag_A`/`diag_B` muestran
+los tiempos por fase (grupo del otro, paso a Android, unirse, envío, lectura, de Android a la app).
+
+`location.js` (plugin Geolocation simulado): `--gps=ok` (llega y se ve en los dos, cifrada), `--gps=indoor` (el
+GPS no responde y se usa la posición por red), `--gps=timeout` y `--gps=off` (avisos claros; antes, sin señal,
+no se veía nada).
 `--b-no-wd`: B sin Wi-Fi Direct (todo como antes).
 
 `impostor.js`: M se hace pasar por B ante A (mismo NEXO ID, otra clave). A no debe mostrar su mensaje ni
