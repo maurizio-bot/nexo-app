@@ -74,3 +74,7 @@ agenda ni los metadatos), funciona sin internet y, con la fase 3, sin identifica
 - Pruebas: `tests/sim/impostor.js` (M dice ser B ante A: no se muestra, no recibe nada, al rechazar el B
   real recibe lo pendiente), `e2e.js` (reinstalación de B: retenido hasta aceptar; ningún contenido en los
   registros) y batería completa.
+- Verificado en la APK publicada 2711 (manifiesto binario): sin `debuggable`, `allowBackup=false`,
+  `dataExtractionRules` presente; firma 23d86688… (se instala encima).
+- Limpieza pendiente (no es un riesgo): webpack copia `client/android` (plantilla antigua, sin claves) dentro
+  de la APK en `assets/public/android/`; sobra.

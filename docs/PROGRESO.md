@@ -47,6 +47,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2707 | `48887c1` | Jump con cualquier teléfono NEXO (bajo demanda), protección de batería, selector de camino |
 | 2708 | `eeade70` | Compilación de prueba en la rama de trabajo (Kotlin Wi-Fi Direct), sin release |
 | 2709 | `b5269f4` | Wi-Fi Direct para fotos, vídeos y archivos (hasta ~22 MB, vídeo original) |
+| 2710 | `2947c22` | Compilación de prueba en la rama de trabajo (APK no depurable), sin release |
+| 2711 | `5f3a1ad` | Seguridad fase 1: APK no depurable, sin copias, registros sin contenido, anti-suplantación |
 
 ## Base estable: build 2699
 Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
