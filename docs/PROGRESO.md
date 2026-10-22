@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2703)
+Última actualización: 2026-10-22 (build 2704)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -40,6 +40,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2700 | `eef24ed` | Rendimiento: historial paginado, sin congelones al recibir, escrituras agrupadas, radio libre en transferencias |
 | 2701 | `cc42d09` | Vídeo: HD recodificado 720p si el original es grande, tiempo restante, tiempos en el diagnóstico |
 | 2702 | `d7b85ab` | Cifrado de extremo a extremo (textos, adjuntos, nombre y miniatura); fin de los reenvíos de lo ya entregado. Actualizar todos los teléfonos |
+| 2703 | `b611dbd` | Compilación de prueba en la rama de trabajo (Kotlin de archivos), sin release |
+| 2704 | `b9c412f` | Archivos: PDF con miniatura y se abre al tocar, APK se instala, selector sin cierre a los 30 s |
 
 ## Base estable: build 2699
 Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
@@ -55,7 +57,7 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   ```
 
 ## Siguiente paso (al retomar)
-- 2703: probar enviar un PDF (miniatura, tocar → se abre) y una APK pequeña (tocar → instalar; Android pide
+- 2704: probar enviar un PDF (miniatura, tocar → se abre) y una APK pequeña (tocar → instalar; Android pide
   permiso la 1.ª vez). Una APK grande debe mostrar el aviso de tamaño.
 - Orden acordado con el dueño: **L2CAP** (envío binario en flujo; Android 10+, el envío actual queda de
   respaldo) y después jump fase 2. Antes de L2CAP, medir en los teléfonos MTU/PHY/paquetes por segundo.
@@ -75,7 +77,7 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
-## Ronda 2703: archivos (APK sin aviso, PDF que no abría)
+## Ronda 2704: archivos (APK sin aviso, PDF que no abría)
 Dueño: "no puedo enviar APK (no sale ningún aviso)" y "los PDF llegan pero sin vista previa y no abren".
 - Sin aviso: el `<input>` del selector se quitaba a los 30 s; si se tardaba más en elegir (buscar la APK en
   Descargas, un vídeo en la galería) lo elegido no hacía nada y sin aviso (reproducido en `files.js` con la
