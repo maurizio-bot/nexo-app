@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2712)
+Última actualización: 2026-10-22 (build 2713)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -50,6 +50,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2710 | `2947c22` | Compilación de prueba en la rama de trabajo (APK no depurable), sin release |
 | 2711 | `5f3a1ad` | Seguridad fase 1: APK no depurable, sin copias, registros sin contenido, anti-suplantación |
 | 2712 | `9c33e79` | Seguridad fase 2: protocolo de Signal (Double Ratchet), sobre atado al cifrado, relleno, número de seguridad. Actualizar todos los teléfonos. APK verificada (firma 23d86688…, sin depuración ni copias) |
+| 2713 | `4a33565` | Wi-Fi Direct: permiso de Android 13+ (faltaba: nunca funcionaba) y vídeo/archivo que se quedaban en 1 % si fallaba. APK verificada (firma, NEARBY_WIFI_DEVICES presente) |
 
 ## Base estable: build 2699
 Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
@@ -65,6 +66,11 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   ```
 
 ## Siguiente paso (al retomar)
+- 2713 (Wi-Fi Direct): el dueño vio en la 2711 un vídeo que se quedaba en 1 % en el emisor. Instalar en los
+  dos teléfonos y mandar un vídeo de varios MB: la 1.ª vez Android puede pedir "Dispositivos cercanos" en
+  cada teléfono (aceptar). Debe llegar en segundos por Wi-Fi Direct; si Wi-Fi Direct falla, debe llegar
+  igualmente como previa + HD por Bluetooth (nunca quedarse en 1 %). Diagnóstico de ambos: líneas
+  `[WIFI-DIRECT]` (dicen si se envió, si falló y por qué) y `[VIDEO]`.
 - 2712 (cifrado como Signal): instalar en **todos** los teléfonos. Al conectar, el diagnóstico dice
   `[E2E] nx…: protocolo 2`. Tocar el aviso 🔒 del chat en los dos teléfonos: el número de 60 cifras debe ser
   idéntico; si lo es, "Marcar como verificado". Textos, fotos, vídeos y Jump deben seguir llegando.
@@ -99,6 +105,16 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2713: Wi-Fi Direct se quedaba en 1 % (informe del dueño con la 2711)
+- Causa 1: `NEARBY_WIFI_DEVICES` no estaba en el manifiesto de la app (comprobado en la APK publicada). En
+  Android 13+ el permiso se deniega sin preguntar: Wi-Fi Direct nunca funcionó en esos teléfonos.
+- Causa 2: con Wi-Fi Direct anunciado, el vídeo iba solo como original por Wi-Fi Direct; al fallar, no cabía
+  por Bluetooth y quedaba "pendiente" para siempre (1 %), con la oferta repitiéndose en bucle.
+- Reproducido en `tests/sim/wifidirect.js --broken=noperm` y `--broken=fail` con la 2711 (vídeo y archivo
+  "enviando" para siempre, 24 ofertas). Corregido: permiso declarado; si falla, el vídeo pasa a previa + HD
+  por Bluetooth (previa en 6,5 s) y un archivo que no cabe queda fallido con aviso; 10 min sin reintentar
+  con ese contacto; 2 ofertas en vez de 24. Batería completa OK.
 
 ## Ronda 2712: seguridad fase 2 (ver `docs/SEGURIDAD.md`)
 - Protocolo 2 = X3DH + Double Ratchet (`src/vault/e2e_ratchet.js`), elegido por contacto
