@@ -39,6 +39,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2699 | `d563355` | Compartir contactos (botón contacto): selección múltiple, tarjeta, alta con parpadeo — **BASE ESTABLE** (rama `base-estable-2699`) |
 | 2700 | `eef24ed` | Rendimiento: historial paginado, sin congelones al recibir, escrituras agrupadas, radio libre en transferencias |
 | 2701 | `cc42d09` | Vídeo: HD recodificado 720p si el original es grande, tiempo restante, tiempos en el diagnóstico |
+| 2702 | `d7b85ab` | Cifrado de extremo a extremo (textos, adjuntos, nombre y miniatura); fin de los reenvíos de lo ya entregado. Actualizar todos los teléfonos |
 
 ## Base estable: build 2699
 Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
