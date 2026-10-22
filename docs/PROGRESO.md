@@ -38,6 +38,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2698 | `43256cd` | Vídeo: burbuja con miniatura sin reproductor, visor que libera, previa robusta, diagnóstico en Perfil — **BASE ESTABLE** (rama `base-estable-2698`) |
 | 2699 | `d563355` | Compartir contactos (botón contacto): selección múltiple, tarjeta, alta con parpadeo — **BASE ESTABLE** (rama `base-estable-2699`) |
 | 2700 | `eef24ed` | Rendimiento: historial paginado, sin congelones al recibir, escrituras agrupadas, radio libre en transferencias |
+| 2701 | (este) | Vídeo: HD recodificado 720p si el original es grande, tiempo restante, tiempos en el diagnóstico |
 
 ## Base estable: build 2699
 Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
@@ -61,6 +62,18 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2701: vídeo previa → HD revisado
+El dueño no veía el cambio a HD. Causa más probable: vídeos de la galería (cámara del teléfono: 1080p/4K,
+10-25 MB por 5 s) superaban `MAX_HD_B64_BYTES` y solo viajaba la previa. Ahora, si el original es >2,5 MB
+o >720p, en la MISMA pasada de la previa se graba un HD 720p a 1,2 Mbps (`HD_DIRECT_MAX_BYTES`,
+`HD_MAX_SIDE`, `HD_REENCODE_BPS`); si no, el HD es el original. Etiqueta con tiempo restante
+("HD 45% · ~2 min"), registro `[VIDEO] Previa entregada en X s` / `HD entregado en Y s (KB, KB/s)` y la
+burbuja propia se pinta desde una URL del archivo (sin decodificar base64: quitaba ~1 s de bloqueo).
+Chromium real (`browser.js`, `--big`): clip 720p 972 KB → previa 227 KB en 29 s, HD (original) a 126 s;
+clip 1080p 2,1 MB → HD recodificado 1,66 MB, previa 33 s, HD 198 s. El simulador va a ~13 KB/s; en los
+teléfonos del dueño se midieron ~4,4 KB/s (2695): previa ~1-1,5 min y HD ~5 min. La gran mejora
+pendiente de velocidad es el transporte (binario / L2CAP) — ver pendientes.
 
 ## Ronda 2700: rendimiento (medido en Chromium real con la CPU frenada 4x)
 Nuevo `tests/sim/stress.js` (3 teléfonos precargados, historial de B: 400 mensajes con 8 fotos y 2

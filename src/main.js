@@ -408,8 +408,8 @@ function _sendAttachment(type, payload, meta, opts) {
   }
 
   // v9.9.30: el vídeo con HD se ve en el propio teléfono en calidad original (se envía la previa)
-  var shownMsg = (opts && opts.displayPayload)
-    ? Object.assign({}, localMsg, { attachmentPayload: opts.displayPayload, attachmentMeta: Object.assign({}, meta || {}, { mime: opts.displayMime || (meta && meta.mime) }), hdStatus: 'pending' })
+  var shownMsg = (opts && (opts.displayPayload || opts.displayUrl))
+    ? Object.assign({}, localMsg, { attachmentPayload: opts.displayPayload || localMsg.attachmentPayload, attachmentDisplayUrl: opts.displayUrl || null, attachmentMeta: Object.assign({}, meta || {}, { mime: opts.displayMime || (meta && meta.mime) }), hdStatus: 'pending' })
     : localMsg;
   _renderMessage(shownMsg, true);
   try {
@@ -1623,6 +1623,10 @@ function _registerCriticalListeners() {
           _updateMessageStatus(sid, st);
           _updateMessageStorageStatus(sid, st);
           if (st === 'delivered' || st === 'read') {
+            if (_videoTimes[sid] && !_videoTimes[sid].previewS) {
+              _videoTimes[sid].previewS = Math.round((Date.now() - _videoTimes[sid].t0) / 1000);
+              console.log('[VIDEO] Previa entregada en ' + _videoTimes[sid].previewS + ' s (' + _videoTimes[sid].previewKB + ' KB)');
+            }
             if (_hdOutbox[sid]) _startHd(_hdOutbox[sid].cid, sid);
             else _resumeHdForMsg(sid);
           }
@@ -2260,8 +2264,10 @@ function _renderMessage(msg, skipSave) {
         videoWrapper.style.cssText = 'position:relative;width:220px;min-height:124px;max-height:280px;overflow:hidden;background:#111;cursor:pointer;';
         var vFmt = attachment.meta.format || 'webm';
         var vMime = (attachment.meta.mime && attachment.meta.mime.indexOf('video/') === 0) ? attachment.meta.mime.split(';')[0] : 'video/' + vFmt;
-        var vSrc = '';
-        try { vSrc = URL.createObjectURL(_b64ToBlob(attachment.payload, vMime)); _objectURLRegistry.push(vSrc); } catch (vErr) { console.warn('[VIDEO] No se pudo preparar el vídeo:', vErr && vErr.message); }
+        var vSrc = msg.attachmentDisplayUrl || '';
+        if (!vSrc) {
+          try { vSrc = URL.createObjectURL(_b64ToBlob(attachment.payload, vMime)); _objectURLRegistry.push(vSrc); } catch (vErr) { console.warn('[VIDEO] No se pudo preparar el vídeo:', vErr && vErr.message); }
+        }
         videoWrapper.dataset.src = vSrc;
         videoWrapper.dataset.fullscreenSrc = vSrc;
         videoWrapper.dataset.fullscreenType = 'video';
@@ -2529,7 +2535,11 @@ function _renderMessage(msg, skipSave) {
 var PREVIEW_MAX_SIDE = 426;          // 240p
 var PREVIEW_MAX_SECONDS = 60;
 var MAX_HD_B64_BYTES = 8000000;      // original de hasta ~6 MB (en segundo plano)
+var HD_DIRECT_MAX_BYTES = 2500000;   // original mayor (o >720p): se manda un HD recodificado
+var HD_MAX_SIDE = 1280;              // HD recodificado: 720p
+var HD_REENCODE_BPS = 1200000;       // ~750 KB por 5 s
 var CAMERA_HD_BPS = 1500000;         // grabación 720p a 1,5 Mbps (antes ~2,5 por defecto)
+var _videoTimes = {};                // msgId -> tiempos de previa/HD (registro de diagnóstico)
 var _hdOutbox = {};                  // msgId -> { cid, mime, b64 } (emisor, en memoria)
 var _hdInFlight = {};
 
@@ -2596,21 +2606,52 @@ function _makeVideoPreview(blob, knownDuration) {
           var rec;
           try { rec = new MediaRecorder(new MediaStream(tracks), Object.assign(mime ? { mimeType: mime } : {}, { videoBitsPerSecond: vbps, audioBitsPerSecond: 24000 })); }
           catch (e) { return finish(null, 'MediaRecorder: ' + e.message); }
-          var parts = [], thumb = null, frames = 0, lastT = -1, stuck = 0;
+          // v9.9.35: original grande (galería: 1080p/4K, decenas de MB) → en la misma pasada un HD 720p
+          // recodificado; antes ese HD superaba el límite y solo viajaba la previa
+          var needHd = blob.size > HD_DIRECT_MAX_BYTES || Math.max(w, h) > HD_MAX_SIDE;
+          var hdRec = null, hdParts = [], hdCanvas = null, hdCtx = null, hw = 0, hh = 0;
+          if (needHd) {
+            try {
+              var hs = Math.min(1, HD_MAX_SIDE / Math.max(w, h));
+              hw = Math.max(2, Math.round(w * hs / 2) * 2); hh = Math.max(2, Math.round(h * hs / 2) * 2);
+              hdCanvas = document.createElement('canvas'); hdCanvas.width = hw; hdCanvas.height = hh;
+              hdCtx = hdCanvas.getContext('2d');
+              var hdTracks = hdCanvas.captureStream(24).getVideoTracks().slice();
+              audioTracks.forEach(function(t) { hdTracks.push(t.clone()); });
+              hdRec = new MediaRecorder(new MediaStream(hdTracks), Object.assign(mime ? { mimeType: mime } : {}, { videoBitsPerSecond: HD_REENCODE_BPS, audioBitsPerSecond: 64000 }));
+              hdRec.ondataavailable = function(e) { if (e.data && e.data.size) hdParts.push(e.data); };
+              log('Previa: también HD ' + hw + 'x' + hh + ' (original ' + w + 'x' + h + ', ' + Math.round(blob.size / 1024) + ' KB)');
+            } catch (e) { hdRec = null; log('Previa: sin HD recodificado (' + e.message + ')'); }
+          }
+          var parts = [], thumb = null, frames = 0, lastT = -1, stuck = 0, pendingStops = hdRec ? 2 : 1, out = null;
           rec.ondataavailable = function(e) { if (e.data && e.data.size) parts.push(e.data); };
           rec.onerror = function(e) { finish(null, 'error del grabador'); };
-          rec.onstop = function() {
-            var out = new Blob(parts, { type: (rec.mimeType || mime || 'video/webm').split(';')[0] });
-            log('Previa ' + cw + 'x' + ch + ' ' + Math.round(out.size / 1024) + ' KB (original ' + Math.round(blob.size / 1024) + ' KB), miniatura ' + (thumb ? 'sí' : 'no'));
-            if (out.size > 0 && out.size < blob.size * 0.8) { out.thumb = thumb; finish(out); } else finish(null, 'la previa no es más pequeña (' + Math.round(out.size / 1024) + ' KB)');
+          var stopped = function() {
+            if (--pendingStops > 0) return;
+            if (hdRec) {
+              var hdBlob = new Blob(hdParts, { type: (hdRec.mimeType || mime || 'video/webm').split(';')[0] });
+              log('HD recodificado ' + hw + 'x' + hh + ' ' + Math.round(hdBlob.size / 1024) + ' KB');
+              if (hdBlob.size > 0 && hdBlob.size < blob.size * 0.9) out.hd = hdBlob;
+            }
+            finish(out);
           };
+          rec.onstop = function() {
+            out = new Blob(parts, { type: (rec.mimeType || mime || 'video/webm').split(';')[0] });
+            log('Previa ' + cw + 'x' + ch + ' ' + Math.round(out.size / 1024) + ' KB (original ' + Math.round(blob.size / 1024) + ' KB), miniatura ' + (thumb ? 'sí' : 'no'));
+            if (!(out.size > 0 && out.size < blob.size * 0.8)) return finish(null, 'la previa no es más pequeña (' + Math.round(out.size / 1024) + ' KB)');
+            out.thumb = thumb;
+            stopped();
+          };
+          if (hdRec) { hdRec.onstop = stopped; hdRec.onerror = function() { hdRec = null; pendingStops = 1; if (out) finish(out); }; }
           var stop = function(why) {
             log('Previa: fin (' + why + ')');
+            try { if (hdRec && hdRec.state !== 'inactive') hdRec.stop(); } catch (e) {}
             try { if (rec.state !== 'inactive') rec.stop(); else finish(null, 'grabador inactivo'); } catch (e) { finish(null, 'stop: ' + e.message); }
           };
           var draw = setInterval(function() {
             try {
               ctx.drawImage(v, 0, 0, cw, ch);
+              if (hdCtx) hdCtx.drawImage(v, 0, 0, hw, hh);
               // Miniatura (poster) para la burbuja: un fotograma a ~0,3 s
               if (!thumb && ++frames === 8) thumb = canvas.toDataURL('image/jpeg', 0.6).split(',')[1] || null;
             } catch (e) {}
@@ -2621,6 +2662,7 @@ function _makeVideoPreview(blob, knownDuration) {
           cleanup.push(function() { clearInterval(draw); });
           v.onended = function() { stop('vídeo terminado'); };
           rec.start(500);
+          if (hdRec) { try { hdRec.start(500); } catch (e) { hdRec = null; pendingStops = 1; } }
           var pp = v.play();
           if (pp && pp.catch) pp.catch(function(e) { finish(null, 'play() rechazado: ' + (e && e.message)); });
         });
@@ -2675,6 +2717,7 @@ function _sendVideo(blob, meta) {
   _showOwnPreparing(true);
   var makePreview = (typeof window.NEXO_makeVideoPreview === 'function') ? window.NEXO_makeVideoPreview : _makeVideoPreview;
   console.log('[VIDEO] Enviar vídeo ' + Math.round(blob.size / 1024) + ' KB ' + mime + ' dur=' + (meta.duration || '?'));
+  var tStart = Date.now();
   return makePreview(blob, meta.duration).then(function(preview) {
     _showOwnPreparing(false);
     if (preview && preview.tooLong) {
@@ -2690,13 +2733,24 @@ function _sendVideo(blob, meta) {
       });
     }
     var pMime = (preview.type || 'video/webm').split(';')[0];
-    var withHd = Math.ceil(blob.size / 3) * 4 <= MAX_HD_B64_BYTES;
+    // HD: el recodificado a 720p si el original era grande; si no, el original
+    var hdBlob = preview.hd || blob;
+    var hdMime = (hdBlob.type || mime).split(';')[0];
+    var withHd = Math.ceil(hdBlob.size / 3) * 4 <= MAX_HD_B64_BYTES;
+    if (!withHd) console.log('[VIDEO] Sin HD: ' + Math.round(hdBlob.size / 1024) + ' KB supera el límite');
     var thumbP = preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320);
-    return Promise.all([_blobToB64(preview), withHd ? _blobToB64(blob) : Promise.resolve(null), thumbP]).then(function(r) {
+    return Promise.all([_blobToB64(preview), withHd ? _blobToB64(hdBlob) : Promise.resolve(null), thumbP]).then(function(r) {
       preview.thumb = r[2] || null;
-      var msgId = _sendAttachment('video', r[0], Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? blob.size : 0, thumb: preview.thumb || null }),
-        r[1] ? { displayPayload: r[1], displayMime: mime } : null);
-      if (msgId && r[1]) _registerHd(contactId, msgId, r[1], mime);
+      // v9.9.35: la burbuja propia se pinta desde una URL del archivo (antes decodificaba el base64 del
+      // original en el hilo de la interfaz: ~1 s bloqueado al enviar)
+      var displayUrl = null;
+      try { displayUrl = URL.createObjectURL(hdBlob); _objectURLRegistry.push(displayUrl); } catch (e) {}
+      var msgId = _sendAttachment('video', r[0], Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? hdBlob.size : 0, thumb: preview.thumb || null }),
+        r[1] ? { displayUrl: displayUrl, displayMime: hdMime } : null);
+      if (msgId && r[1]) {
+        _videoTimes[msgId] = { t0: tStart, previewKB: Math.round(preview.size / 1024), hdKB: Math.round(hdBlob.size / 1024) };
+        _registerHd(contactId, msgId, r[1], hdMime);
+      }
     });
   }).catch(function(e) {
     _showOwnPreparing(false);
@@ -2724,6 +2778,7 @@ function _startHd(cid, msgId) {
     var mime = entry.mime || 'video/webm';
     console.log('[VIDEO] Enviando HD de ' + msgId + ' (' + Math.round(b64.length / 1024) + ' KB)');
     vaultSetMessageFields(cid, msgId, { hdStatus: 'sending' });
+    if (_videoTimes[msgId]) _videoTimes[msgId].hdStart = Date.now();
     _setHdBadge(msgId, 'HD 0%');
     return bi.sendFile(cid, msgId + '_hd', b64, { type: 'video', hdFor: msgId, mime: mime, format: _videoFormat(mime), size: b64.length })
       .then(function() { _onHdSent(cid, msgId); })
@@ -2737,6 +2792,12 @@ function _startHd(cid, msgId) {
 }
 
 function _onHdSent(cid, msgId) {
+  var vt = _videoTimes[msgId];
+  if (vt && vt.hdStart && !vt.done) {
+    vt.done = true;
+    var hdS = Math.max(1, Math.round((Date.now() - vt.hdStart) / 1000));
+    console.log('[VIDEO] HD entregado en ' + hdS + ' s (' + vt.hdKB + ' KB, ' + Math.round(vt.hdKB * 4 / 3 / hdS * 10) / 10 + ' KB/s por radio); total ' + Math.round((Date.now() - vt.t0) / 1000) + ' s');
+  }
   delete _hdInFlight[msgId];
   if (_hdOutbox[msgId]) delete _hdOutbox[msgId];
   vaultSetMessageFields(cid, msgId, { hdStatus: 'sent' });
@@ -2882,12 +2943,25 @@ function _removeIncomingPlaceholder(fileId) {
 }
 
 // v9.9.27: progreso de transferencias de archivos (eventos 'nexo:ble:fileProgress' de ble_ack.js)
+var _hdProgress = {};
 function _onFileProgress(d) {
   if (!d || !d.fileId) return;
   var pct = Math.max(0, Math.min(99, d.percent || 0));
   // v9.9.30: progreso del HD dentro de la burbuja del vídeo (emisor: fileId '<msgId>_hd')
   var hdBase = d.hdFor || (/_hd$/.test(d.fileId) ? d.fileId.replace(/_hd$/, '') : null);
-  if (hdBase) { if (d.status !== 'failed') _setHdBadge(hdBase, 'HD ' + pct + '%'); return; }
+  if (hdBase) {
+    if (d.status === 'failed') return;
+    // v9.9.35: tiempo restante estimado (el HD tarda minutos por Bluetooth: que se vea que avanza)
+    var pr = _hdProgress[hdBase] || (_hdProgress[hdBase] = { t0: Date.now(), p0: pct });
+    var eta = '';
+    if (pct - pr.p0 >= 5) {
+      var left = (Date.now() - pr.t0) / (pct - pr.p0) * (100 - pct) / 1000;
+      eta = left >= 90 ? ' · ~' + Math.round(left / 60) + ' min' : ' · ~' + Math.max(5, Math.round(left / 5) * 5) + ' s';
+    }
+    _setHdBadge(hdBase, 'HD ' + pct + '%' + eta);
+    if (pct >= 99) delete _hdProgress[hdBase];
+    return;
+  }
   if (d.direction === 'in') {
     if (d.status === 'failed') { _removeIncomingPlaceholder(d.fileId); return; }
     var activeId = _getCurrentContactId();

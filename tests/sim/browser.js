@@ -11,6 +11,7 @@ const PW = (() => { try { return require('playwright'); } catch (e) { return req
 const buildDir = path.resolve(process.argv[2]);
 const dist = path.join(buildDir, 'dist');
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
+const big = !!arg('big', false); // clip 1080p a 8 Mbps (como uno de la cámara del teléfono)
 const seconds = arg('seconds', 5), views = arg('views', 3), closed = !!arg('closed', false), noPreview = !!arg('no-preview', false);
 const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 25), supervisionMs: 3000 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -82,23 +83,24 @@ async function sendText(page, t) {
   const idA = await A.evaluate(() => window.bleInterface.localNexoId);
 
   // Clip real grabado con MediaRecorder (como la cámara): 1280x720, 1,5 Mbps, con audio
-  const clip = await A.evaluate(async (seconds) => {
-    const c = document.createElement('canvas'); c.width = 1280; c.height = 720; const ctx = c.getContext('2d');
+  const clip = await A.evaluate(async ([seconds, big]) => {
+    const W = big ? 1920 : 1280, H = big ? 1080 : 720;
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const ctx = c.getContext('2d');
     const s = c.captureStream(30);
     const ac = new AudioContext(); const o = ac.createOscillator(); const d = ac.createMediaStreamDestination(); o.connect(d); o.start();
     s.addTrack(d.stream.getAudioTracks()[0]);
     const mime = ['video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m));
-    const r = new MediaRecorder(s, { mimeType: mime, videoBitsPerSecond: 1500000 });
+    const r = new MediaRecorder(s, { mimeType: mime, videoBitsPerSecond: big ? 8000000 : 1500000 });
     const parts = []; r.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
     let f = 0;
-    const iv = setInterval(() => { ctx.fillStyle = `hsl(${(f * 7) % 360},70%,45%)`; ctx.fillRect(0, 0, 1280, 720); ctx.fillStyle = '#fff'; ctx.font = '140px sans-serif'; ctx.fillText('NEXO ' + f++, 120, 420); for (let i = 0; i < 400; i++) ctx.fillRect(Math.random() * 1280, Math.random() * 720, 10, 10); }, 33);
+    const iv = setInterval(() => { ctx.fillStyle = `hsl(${(f * 7) % 360},70%,45%)`; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '140px sans-serif'; ctx.fillText('NEXO ' + f++, 120, 420); for (let i = 0; i < (big ? 3000 : 400); i++) ctx.fillRect(Math.random() * W, Math.random() * H, 10, 10); }, 33);
     r.start(100);
     await new Promise((res) => setTimeout(res, seconds * 1000));
     clearInterval(iv);
     await new Promise((res) => { r.onstop = res; r.stop(); });
     window.__clip = new Blob(parts, { type: mime.split(';')[0] });
-    return { mime, KB: Math.round(window.__clip.size / 1024) };
-  }, seconds);
+    return { mime, KB: Math.round(window.__clip.size / 1024), res: W + 'x' + H };
+  }, [seconds, big]);
   const res = { build: path.basename(buildDir), clip, app_B_cerrada: closed, previa_forzada_a_fallar: noPreview };
   if (noPreview) await A.evaluate(() => { window.MediaRecorder = undefined; });
 
@@ -120,6 +122,8 @@ async function sendText(page, t) {
       return v ? { meta: { hd: !!(v.attachmentMeta && v.attachmentMeta.hd), preview: !!(v.attachmentMeta && v.attachmentMeta.preview), thumb: !!(v.attachmentMeta && v.attachmentMeta.thumb) } } : null;
     }, idA);
     if (st && !res.video_llega_s) { res.video_llega_s = Math.round((Date.now() - t0) / 1000); res.llega_como = st.meta; }
+    const badgeB = await B.evaluate(() => { const b = document.querySelector('#messages-container .hd-badge'); return b ? b.textContent : null; });
+    if (badgeB && /~/.test(badgeB) && !res.etiqueta_con_tiempo) res.etiqueta_con_tiempo = badgeB;
     if (st && st.meta.hd) { res.HD_llega_s = Math.round((Date.now() - t0) / 1000); break; }
   }
   // Previa generada de verdad en A (log de _makeVideoPreview)
