@@ -3,7 +3,9 @@
 // el estado final y cualquier burbuja con texto técnico (JSON, E2:, etc.) en cualquiera de los dos.
 // --kb=N: tamaño de la foto (por defecto 300 KB, como una foto a 1600 px). --wd: Wi-Fi Direct en los dos.
 // --plugin-thread=N (ms por MB) y --off-thread: hilo único de Capacitor / archivos en hilos propios (2722).
+// --camera: al 20 % B abre la cámara de NEXO (pausa el Bluetooth), hace su foto y la envía.
 // --cut: la foto de A se corta al 20 % y durante el corte (--cut-ms) B manda la suya.
+// --bridge-ms=N: coste de cada aviso Android → app (en fila); --kotlin-2722: todos los registros cruzan.
 // Uso: node photos.js <dir_build> [--kb=300] [--wd] [--plugin-thread=150] [--off-thread] [--cut] [--io-delay=25]
 'use strict';
 const fs = require('fs');
@@ -13,8 +15,8 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 
 const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
-const kb = arg('kb', 300), wd = !!arg('wd', false), pt = arg('plugin-thread', 0), off = !!arg('off-thread', false), cut = !!arg('cut', false), cutMs = arg('cut-ms', 15000);
-const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 25), asymmetric: true, wifiDirect: wd, pluginThread: pt || undefined, ioOffThread: off };
+const kb = arg('kb', 300), wd = !!arg('wd', false), pt = arg('plugin-thread', 0), off = !!arg('off-thread', false), cut = !!arg('cut', false) || !!arg('camera', false), camera = !!arg('camera', false), cutMs = arg('cut-ms', 15000), bridgeMs = arg('bridge-ms', 0), k2722 = !!arg('kotlin-2722', false);
+const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 25), asymmetric: true, wifiDirect: wd, pluginThread: pt || undefined, ioOffThread: off, bridgeMs, remLogAll: k2722 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
   constructor(dir) { super(); this.dir = dir; }
@@ -102,7 +104,7 @@ async function oneWay(S, R, label, bytesKb) {
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', opts);
   radio.add(nA); radio.add(nB); nA.load(); nB.load();
   const A = await boot('A', nA), B = await boot('B', nB);
-  const r = { build: path.basename(buildDir), kb, wifi_direct: wd, hilo_plugin_ms_mb: pt, archivos_en_otro_hilo: off };
+  const r = { build: path.basename(buildDir), kb, wifi_direct: wd, hilo_plugin_ms_mb: pt, archivos_en_otro_hilo: off, puente_ms_por_aviso: bridgeMs, kotlin: k2722 ? '2722' : '2723' };
   A.win.bleInterface.togglePanel(); const paired = await addFound(A, 'B'); A.win.bleInterface.togglePanel();
   if (!paired) { console.log('PHOTOS ' + JSON.stringify({ error: 'no empareja' })); process.exit(0); }
   await openChatWith(A, 'B'); sendText(A, 'hola B'); await sleep(3000);
@@ -119,11 +121,22 @@ async function oneWay(S, R, label, bytesKb) {
     let cutAt = null;
     for (let i = 0; i < 400 && !cutAt; i++) { await sleep(100); const o = ownLast(A); if (o) { seenA.add(o.texto_estado); const m = /(\d+)%/.exec(o.texto_estado); if (m && Number(m[1]) >= 20) cutAt = o.texto_estado; } }
     r.corte_en = cutAt;
-    radio.block(nA, nB);
-    await sleep(2000);
-    const sentB = await sendPhoto(B, 'fotoB.jpg', kb * 1024);
-    for (let i = 0; i < cutMs / 250; i++) { await sleep(250); const a = ownLast(A), b = ownLast(B); if (a) seenA.add(a.texto_estado); if (b) seenB.add(b.texto_estado); }
-    radio.unblock(nA, nB);
+    let sentB;
+    if (camera) {
+      // Como la cámara de NEXO: al abrirla B pausa el Bluetooth (desconecta a todos); al hacer la foto lo
+      // reanuda y la envía al cerrar
+      r.modo = 'B abre la cámara durante la foto de A';
+      B.win.bleInterface.pauseBLEForCamera();
+      for (let i = 0; i < cutMs / 250; i++) { await sleep(250); const a = ownLast(A); if (a) seenA.add(a.texto_estado); }
+      await B.win.bleInterface.resumeBLEAfterCamera();
+      sentB = await sendPhoto(B, 'fotoB.jpg', kb * 1024);
+    } else {
+      radio.block(nA, nB);
+      await sleep(2000);
+      sentB = await sendPhoto(B, 'fotoB.jpg', kb * 1024);
+      for (let i = 0; i < cutMs / 250; i++) { await sleep(250); const a = ownLast(A), b = ownLast(B); if (a) seenA.add(a.texto_estado); if (b) seenB.add(b.texto_estado); }
+      radio.unblock(nA, nB);
+    }
     const t0 = Date.now();
     let gotB = null, gotA = null;
     for (let i = 0; i < 720 && !(gotA && gotB); i++) {
@@ -142,6 +155,7 @@ async function oneWay(S, R, label, bytesKb) {
     const dA = (await A.win.vaultLoadMessages(idB)).find((m) => m.attachmentType && !m._own);
     r.identicas = [dB && (dB.attachmentPayload || nB.files.get(dB.attachmentRef)) === sentA.toString('base64'), dA && (dA.attachmentPayload || nA.files.get(dA.attachmentRef)) === sentB.toString('base64')];
   }
+  r.avisos_por_el_puente = { A: nA.stats.bridgeEvents || 0, B: nB.stats.bridgeEvents || 0, registros_nativos: (nA.stats.remLogsToJs || 0) + (nB.stats.remLogsToJs || 0), espera_max_ms: Math.max(nA.stats.bridgeWaitMax || 0, nB.stats.bridgeWaitMax || 0) };
   r.codigo_a_la_vista_A = codeBubbles(A);
   r.codigo_a_la_vista_B = codeBubbles(B);
   r.errores = logs.filter((l) => / error: | warn: |JSDOMERROR/.test(l)).map((l) => l.substring(0, 220)).slice(0, 15);

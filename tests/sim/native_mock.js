@@ -71,7 +71,16 @@ class NativePhone {
       return;
     }
     // Capacitor entrega eventos de forma asíncrona por el bridge
-    setTimeout(() => cbs.forEach((cb) => { try { cb(JSON.parse(JSON.stringify(data))); } catch (e) { this.radio.log(this.name, 'listener error', event, e.message); } }), 0);
+    const deliver = () => cbs.forEach((cb) => { try { cb(JSON.parse(JSON.stringify(data))); } catch (e) { this.radio.log(this.name, 'listener error', event, e.message); } });
+    // opts.bridgeMs: en el teléfono cada evento es un evaluateJavascript en el hilo de la interfaz, uno detrás de
+    // otro; cada uno cuesta (ms). Sin esto, entrega inmediata.
+    if (!this.opts.bridgeMs) { setTimeout(deliver, 0); return; }
+    this.stats.bridgeEvents = (this.stats.bridgeEvents || 0) + 1;
+    const tq = Date.now();
+    this._bq = (this._bq || Promise.resolve()).then(() => new Promise((done) => setTimeout(() => {
+      this.stats.bridgeWaitMax = Math.max(this.stats.bridgeWaitMax || 0, Date.now() - tq);
+      deliver(); done();
+    }, this.opts.bridgeMs)));
   }
 
   // ---- ciclo de vida de la actividad (cerrar / reabrir la app) ----
