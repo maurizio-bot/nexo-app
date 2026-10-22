@@ -237,7 +237,16 @@ Sistema de seguridad y persistencia para que la información crítica de NEXO **
 - Piezas reutilizables: el Shamir de `shard_crypto.js` (probado por su propio `selfTest`) y el cifrado por destinatario de `fenix_backup.js`. El único heartbeat del repo es el de `src/net/web_socket_client.js` (cada 30 s, para la conexión WebSocket, también sin usar).
 - `docs/PROGRESO.md` del repo ya anota que se esperaba que el dueño confirmara si "Fénix" era `src/fenix/`. Esta definición indica que Fénix es más amplio: almacenamiento distribuido de archivos.
 
-### Preguntas abiertas (sin resolver)
+### Respuestas del dueño (22-oct) y fase 1 implementada (build 2715)
+
+Ver `docs/FENIX.md`. Resumen: se protege primero la **cuenta** (NEXO ID, claves, contactos); los nodos son los
+**contactos**, automático al llegar a **10** (1.ª copia) y **20** (2.ª copia); contacto que no responde al
+pingeo → perdido → su fragmento pasa a otro; la **huella no puede recuperar** la clave en un teléfono nuevo
+(Android no la entrega), así que la clave maestra se parte entre los contactos (6 de 10) y para recuperar
+**cada contacto confirma en su pantalla** quién es. Pendiente: mensajes y archivos, pingeo por Jump, huella
+para proteger la clave en el teléfono (fase 3 de seguridad).
+
+### Preguntas abiertas (las de abajo quedan respondidas por lo anterior salvo 5 —pingeo fuera de alcance— y 8)
 
 1. **"2x" y la regla de 20.** Si siempre debe haber al menos dos copias de cada fragmento, ¿qué añade la copia espejo al llegar a 20 nodos? ¿Por debajo de 20 hay una sola copia, o el espejo sería una tercera?
 2. **¿Qué cuenta para los 20?** ¿Nodos de confianza de un usuario, de la red NEXO entera, de un núcleo, o fragmentos por archivo?

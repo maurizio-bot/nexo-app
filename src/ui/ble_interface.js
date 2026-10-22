@@ -1,10 +1,13 @@
 import { initE2E, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eOpenText, e2eAllowsE1 } from '../vault/e2e_proto.js';
-import { ratchetInit, ratchetMyBundle, ratchetNotePeerBundle, ratchetForget } from '../vault/e2e_ratchet.js';
+import { ratchetInit, ratchetMyBundle, ratchetNotePeerBundle, ratchetForget, ratchetResetPeer } from '../vault/e2e_ratchet.js';
 import { createRelay } from './ble_relay.js';
 import { createWifiDirect } from './wifi_direct.js';
+import { createFenix } from '../fenix/fenix.js';
 /**
- * BLE Interface v6.7.0-NEXO
+ * BLE Interface v6.8.0-NEXO
+ * v6.8.0: Protocolo Fénix (src/fenix/fenix.js): el kx anuncia fx:1 (y 'rs' tras recuperar una cuenta: los
+ *         contactos borran las sesiones del protocolo 2 con ella); paquetes de control 'fp'/'fo'/'fq'/'fd'.
  * v6.7.0: Protocolo 2 de cifrado (como Signal): el kx y las tarjetas de contacto llevan el paquete de claves
  *         'b2'; solo se guarda si es de la clave aceptada del contacto (el de una clave pendiente espera a que
  *         el usuario la acepte). El contacto pasa a proto 2 y ya no se le cifra con el 1; lo que llegue de él
@@ -417,6 +420,7 @@ function _isControlPacket(content) {
     var obj = JSON.parse(content);
     if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'kx' || obj.type === 'rt' || obj.type === 'rk' || obj.type === 'rq' || obj.type === 'rp' ||
         obj.type === 'wq' || obj.type === 'wa' || obj.type === 'wn' || obj.type === 'wf' ||
+        obj.type === 'fp' || obj.type === 'fo' || obj.type === 'fq' || obj.type === 'fd' ||
         obj.type === 'chat_meta' || obj.type === 'chat_chunk' || obj.type === 'block_ack' ||
         obj.type === 'file_meta' || obj.type === 'file_chunk' || obj.type === 'file_resume') return true;
     if (obj.t === 'c' || obj.t === 'f' || obj.t === 'n' || obj.t === 'a' || obj.t === 'ba' || obj.t === 'ss' || obj.t === 'sr') return true;
@@ -527,6 +531,7 @@ export class BLEInterface {
     this.ackSystem = null;
     this.relay = createRelay(this);
     this.wifiDirect = createWifiDirect(this);
+    this.fenix = createFenix(this);
     this._localSeqCounter = 0;
     this._seqCounterLoaded = false;
     this._pendingPings = new Map();
@@ -680,6 +685,7 @@ export class BLEInterface {
     self._supervisorTimer = setInterval(function() { self._runSupervisorCycle(); }, self._supervisorIntervalMs);
     console.log('[BLEInterface] Supervisor iniciado');
     if (self.relay) self.relay.start();
+    if (self.fenix) self.fenix.init();
     if (self.wifiDirect) self.wifiDirect.init().then(function(st) {
       // Los ya conectados aún no sabían que tenemos Wi-Fi Direct: repetir el kx con wd:1
       if (st && st.supported) self._deviceStates.forEach(function(v, k) {
@@ -1350,6 +1356,12 @@ export class BLEInterface {
       try { pw = JSON.parse(raw); } catch (e) {}
       if (pw && self.wifiDirect.handle(pw, data.deviceId)) return Promise.resolve(null);
     }
+    // Fénix: pingeo, borrado y petición de recuperación (directos, sin 'to')
+    if (/"type":"f[poqd]"/.test(raw) && self.fenix) {
+      var pf = null;
+      try { pf = JSON.parse(raw); } catch (e) {}
+      if (pf && !pf.to && self.fenix.handle(pf, data.deviceId)) return Promise.resolve(null);
+    }
     var jump = /"to":"nx/i.test(raw) || /"type":"r[tkqp]"/.test(raw);
     if (!jump && raw.indexOf('"type":"kx"') < 0 && raw.indexOf('E1:') < 0 && raw.indexOf('E2:') < 0) return Promise.resolve(data);
     var p;
@@ -1372,6 +1384,8 @@ export class BLEInterface {
       // Asociar la dirección (un teléfono que se conectó a nosotros y no es contacto no tenía mapeo)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
       if (p.j && self.relay) self.relay.markCapable(p.from);
+      if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs);
+      if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId);
       if (p.wd && self.wifiDirect) self.wifiDirect.markPeer(p.from);
       else if (self.wifiDirect) self.wifiDirect.unmarkPeer(p.from); // ya no lo anuncia (p.ej. sin permiso)
       // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
@@ -1419,6 +1433,9 @@ export class BLEInterface {
       // mostraría como mensajes de texto). b2: paquete de claves del protocolo 2.
       var pkt = { v: 1, type: 'kx', from: self.localNexoId, pk: pk, j: 1 };
       if (b2) pkt.b2 = b2;
+      pkt.fx = 1;
+      var rs = self.fenix ? self.fenix.resetMark() : 0;
+      if (rs) pkt.rs = rs;
       if (self.wifiDirect && self.wifiDirect.supported()) pkt.wd = 1;
       if (request) pkt.rq = 1;
       return self._sendMessageNative(deviceId, JSON.stringify(pkt), null);
@@ -1466,6 +1483,27 @@ export class BLEInterface {
     if (this._noteSenderKey(nx, key) === false) return 'hold';
     if (proto === 2) this._markProto2(nx, key);
     return 'ok';
+  }
+
+  // Fénix: el contacto lo tiene (puede guardar fragmentos); se recuerda en el contacto
+  _noteFenixPeer(nexoId, deviceId) {
+    var nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (c && !c.fx) { c.fx = 1; _saveBLEContacts(contacts); }
+    if (this.fenix) this.fenix.markPeer(nx, deviceId);
+  }
+
+  // Fénix: el contacto recuperó su cuenta en otro teléfono (misma clave): sesiones del protocolo 2 nuevas
+  _noteRestored(nexoId, pk, rs) {
+    var nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || !pk || c.publicKey !== pk || !(rs > (c.rsSeen || 0)) || rs > Date.now() + 60000) return;
+    c.rsSeen = rs;
+    _saveBLEContacts(contacts);
+    console.log('[FENIX] ' + nx + ' recuperó su cuenta: sesiones de cifrado nuevas');
+    ratchetResetPeer(nx, pk).catch(function() {});
   }
 
   // El contacto habla el protocolo 2 con su clave aceptada: desde ahora solo ese

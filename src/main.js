@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.43-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.44-NEXO
+ * v9.9.44: Protocolo Fénix (fase 1, la cuenta): estado y "Recuperar mi cuenta" en el Perfil; aviso en el teléfono
+ *          de un contacto para confirmar quién pide recuperar; reinicio al recuperar.
  * v9.9.43: ubicación: aviso mientras se busca, GPS → última conocida/red → aviso claro (antes, sin señal,
  *          no pasaba nada visible); coordenadas recibidas tratadas como números.
  * v9.9.42: Wi-Fi Direct fallido: el vídeo enviado como original pasa a previa + HD por Bluetooth (el mismo
@@ -178,6 +180,9 @@ function _openProfileSheet() {
   sheet.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
     '<div style="font-size:20px;font-weight:700;">Perfil</div><button id="nexo-profile-close" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">Cerrar</button></div>' +
     '<div style="font-size:14px;opacity:0.85;margin-bottom:12px;">Mi NEXO ID: <b id="nexo-profile-id"></b></div>' +
+    '<div style="font-size:16px;font-weight:600;margin:8px 0;">Fénix</div>' +
+    '<div id="nexo-fenix-status" style="font-size:12px;opacity:0.8;margin-bottom:8px;white-space:pre-line;"></div>' +
+    '<button id="nexo-fenix-recover" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;margin-bottom:12px;">Recuperar mi cuenta (teléfono nuevo)</button>' +
     '<div style="font-size:16px;font-weight:600;margin:8px 0;">Diagnóstico</div>' +
     '<div style="font-size:12px;opacity:0.7;margin-bottom:8px;">Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.</div>' +
     '<button id="nexo-diag-copy" style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:600;margin-bottom:8px;">Copiar diagnóstico</button>' +
@@ -188,6 +193,15 @@ function _openProfileSheet() {
   ta.value = _diagnosticText();
   ta.scrollTop = ta.scrollHeight;
   sheet.querySelector('#nexo-profile-close').onclick = function() { sheet.remove(); };
+  _renderFenixStatus();
+  sheet.querySelector('#nexo-fenix-recover').onclick = function() {
+    var fx = bi.fenix;
+    if (!fx) return;
+    if (fx.recovery) { fx.cancelRecovery(); _renderFenixStatus(); return; }
+    if (!window.confirm('Recuperar tu cuenta: pide a tus contactos (al menos 6) que estén cerca con NEXO abierto. A cada uno le saldrá un aviso para confirmar que eres tú. ¿Empezar?')) return;
+    fx.startRecovery(bi.localDeviceName || '');
+    _renderFenixStatus();
+  };
   sheet.querySelector('#nexo-diag-copy').onclick = function() {
     var btn = this, txt = ta.value;
     var ok = function() { btn.textContent = 'Copiado ✓'; setTimeout(function() { btn.textContent = 'Copiar diagnóstico'; }, 2000); };
@@ -197,6 +211,73 @@ function _openProfileSheet() {
   };
 }
 window.addEventListener('nexo:ui:profile', _openProfileSheet);
+
+// ===================== v9.9.44: Protocolo Fénix (src/fenix/fenix.js, docs/FENIX.md) =====================
+var _fenixRecoveryText = '';
+function _renderFenixStatus() {
+  var el = document.getElementById('nexo-fenix-status');
+  var btn = document.getElementById('nexo-fenix-recover');
+  var fx = window.bleInterface && window.bleInterface.fenix;
+  if (!el || !fx) return;
+  var st = fx.status();
+  var txt;
+  if (fx.recovery) txt = _fenixRecoveryText || 'Buscando contactos cerca…';
+  else if (!st.active) txt = 'Tu cuenta se protegerá sola cuando tengas ' + st.min + ' contactos con NEXO actualizado (tienes ' + st.eligible + ').';
+  else txt = '🔥 Cuenta protegida: ' + st.delivered + ' de ' + (st.n * st.copies) + ' fragmentos entregados (' + st.copies + (st.copies > 1 ? ' copias' : ' copia') + '). Se recupera con ' + st.t + ' contactos.' + (st.lost ? ' ' + st.lost + ' contacto(s) perdidos: sus fragmentos pasan a otros.' : '');
+  if (st.guarding) txt += '\nGuardas fragmentos de ' + st.guarding + ' contacto(s) (no puedes leerlos).';
+  el.textContent = txt;
+  if (btn) btn.textContent = fx.recovery ? 'Cancelar la recuperación' : 'Recuperar mi cuenta (teléfono nuevo)';
+}
+window.addEventListener('nexo:fenix:recovery', function(e) {
+  var d = (e && e.detail) || {};
+  _fenixRecoveryText = d.state === 'cancelled' ? '' : 'Recuperando: ' + d.got + ' de ' + d.need + ' fragmentos (preguntados ' + d.asked + ' teléfonos cerca). Tus contactos deben confirmar en su pantalla.';
+  _renderFenixStatus();
+});
+window.addEventListener('nexo:fenix:restored', function(e) {
+  var d = (e && e.detail) || {};
+  _fenixRecoveryText = '✅ Cuenta ' + (d.nexoId || '') + ' recuperada con ' + (d.contacts || 0) + ' contactos. Reiniciando…';
+  _renderFenixStatus();
+  _showInfoToast('✅ Cuenta recuperada. Reiniciando NEXO…', 3000);
+  setTimeout(function() { try { window.location.reload(); } catch (err) {} }, 2500);
+});
+// En el teléfono de un contacto: alguien con un teléfono nuevo pide recuperar su cuenta
+window.addEventListener('nexo:fenix:request', function(e) {
+  var d = (e && e.detail) || {};
+  var fx = window.bleInterface && window.bleInterface.fenix;
+  if (!fx || !d.rid || !Array.isArray(d.choices)) return;
+  var old = document.getElementById('nexo-fenix-ask');
+  if (old) old.remove();
+  var box = document.createElement('div');
+  box.id = 'nexo-fenix-ask';
+  box.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;';
+  var card = document.createElement('div');
+  card.style.cssText = 'background:#11121f;color:#fff;border-radius:16px;padding:18px;max-width:340px;width:100%;font-size:14px;';
+  var h = document.createElement('div');
+  h.style.cssText = 'font-size:17px;font-weight:700;margin-bottom:8px;';
+  h.textContent = '🔥 Recuperar una cuenta';
+  var p = document.createElement('div');
+  p.style.cssText = 'opacity:0.85;margin-bottom:12px;';
+  p.textContent = 'Un teléfono nuevo cerca' + (d.name ? ' ("' + d.name + '")' : '') + ' pide recuperar su cuenta NEXO. Ayúdale solo si la persona está contigo y estás seguro de quién es. ¿Quién es?';
+  card.appendChild(h); card.appendChild(p);
+  var close = function() { box.remove(); };
+  d.choices.forEach(function(c) {
+    var b = document.createElement('button');
+    b.className = 'fenix-yes';
+    b.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:10px;border:none;border-radius:10px;background:#00c8ff;color:#fff;font-size:15px;';
+    b.textContent = 'Es ' + c.name;
+    b.onclick = function() { close(); fx.answerRecovery(d.rid, c.nx); };
+    card.appendChild(b);
+  });
+  var no = document.createElement('button');
+  no.className = 'fenix-no';
+  no.style.cssText = 'display:block;width:100%;padding:10px;border:none;border-radius:10px;background:rgba(255,255,255,0.15);color:#fff;font-size:15px;';
+  no.textContent = 'No lo sé / no es nadie de ellos';
+  no.onclick = function() { close(); fx.answerRecovery(d.rid, null); };
+  card.appendChild(no);
+  box.appendChild(card);
+  document.body.appendChild(box);
+});
+
 window.vaultSaveContact = vaultSaveContact;
 // FIX v9.9.29: ble_interface guarda los contactos con window.vaultSaveContacts; no estaba expuesto y
 // el último mensaje / no leídos nunca llegaban a disco
@@ -1594,7 +1675,7 @@ function _handleIncomingMessage(msg) {
               protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
               protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' || protoCheck.type === 'kx' ||
               protoCheck.type === 'rt' || protoCheck.type === 'rk' || protoCheck.type === 'rq' || protoCheck.type === 'rp' ||
-              /^w[qanf]$/.test(protoCheck.type || '') ||
+              /^w[qanf]$/.test(protoCheck.type || '') || /^f[poqd]$/.test(protoCheck.type || '') ||
               protoCheck.type === 'pong' ||
               protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' ||
               protoCheck.t === 'a' || protoCheck.t === 'ba' || protoCheck.t === 'ss' || protoCheck.t === 'sr') {

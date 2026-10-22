@@ -123,3 +123,9 @@ no se veía nada).
 
 `impostor.js`: M se hace pasar por B ante A (mismo NEXO ID, otra clave). A no debe mostrar su mensaje ni
 enviarle nada; aviso con Aceptar/Rechazar; al rechazar, lo pendiente llega al B real.
+
+`fenix.js` (Protocolo Fénix, `docs/FENIX.md`; umbrales reducidos con `window.NEXO_FENIX_TEST`): A agrega 5
+contactos; al llegar al mínimo reparte solo sus fragmentos (nadie los puede leer ni aparecen en los chats);
+pingeo; E desaparece → perdido → su fragmento pasa a F; E vuelve → lo borra. Luego A pierde el teléfono: N
+pide recuperar, 3 contactos confirman en su pantalla, N vuelve con NEXO ID, identidad y contactos de A y sigue
+hablando cifrado con B (sesiones nuevas, sin aviso de clave). `--mirror`: 2 copias de cada fragmento.

@@ -2,6 +2,7 @@ import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
+* v3.8.0: Fénix: los archivos con meta.type 'fenix' van a fenix.onFile (no al chat ni a su progreso).
 * v3.7.1: Wi-Fi Direct fallido: WD_FAILED si no cabe por Bluetooth (antes quedaba pendiente para siempre);
 *         el HD de un vídeo (hasta BLE_HD_MAX_CHARS) sigue por Bluetooth como antes de Wi-Fi Direct.
 * v3.7.0: Protocolo 2 de cifrado (e2e_ratchet.js, como Signal) con los contactos que lo tienen; el 1 con builds
@@ -979,7 +980,7 @@ export class BleAckSystem {
   }
   // v3.3.2: progreso de recepción (cada 5 %) para mostrar "Recibiendo foto… N%" mientras llega
   _reportIncomingProgress(msgId, buf, status) {
-    if (buf.isChat) return;
+    if (buf.isChat || buf.meta.type === 'fenix') return;
     var me = _normId(this.ble && this.ble.localNexoId);
     if (buf.meta.dst && _normId(buf.meta.dst) !== me) return; // de paso (Jump): no es para este teléfono
     var pct = status === 'failed' ? 0 : Math.floor(buf.received * 100 / buf.total);
@@ -1014,6 +1015,8 @@ export class BleAckSystem {
     try {
       var m = meta || {};
       var sender = m.senderNexoId || m.fromNexoId || m.fr || null;
+      // Fénix: fragmentos y respuestas de recuperación (no son mensajes del chat)
+      if (m.type === 'fenix') { if (self.ble && self.ble.fenix) self.ble.fenix.onFile(fileId, data, m, sender); return; }
       window.dispatchEvent(new CustomEvent('nexo:ble:fileComplete', {
         detail: {
           fileId: fileId,

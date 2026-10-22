@@ -411,6 +411,18 @@ export function ratchetDecrypt(nexoId, packed, outerAd) {
   });
 }
 
+// El contacto recuperó su cuenta con Fénix (misma identidad, sesiones perdidas con su teléfono): se borran las
+// sesiones con él; el próximo mensaje empieza una nueva (X3DH) con su paquete de claves
+export function ratchetResetPeer(nexoId, ik) {
+  return _serial(async function() {
+    await ratchetInit();
+    var nx = _nid(nexoId);
+    if (!_store || !_store.sessions[nx]) return;
+    _store.sessions[nx] = _store.sessions[nx].filter(function(s) { return s.rik !== ik; });
+    await _save();
+  });
+}
+
 // Clave de identidad rechazada por el usuario: fuera sus sesiones
 export function ratchetForget(nexoId, ik) {
   return _serial(async function() {
