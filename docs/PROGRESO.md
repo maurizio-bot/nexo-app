@@ -43,6 +43,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2703 | `b611dbd` | Compilación de prueba en la rama de trabajo (Kotlin de archivos), sin release |
 | 2704 | `b9c412f` | Archivos: PDF con miniatura y se abre al tocar, APK se instala, selector sin cierre a los 30 s |
 | 2705 | `0b04628` | Jump: mensajes de varios saltos (A → B → C) por teléfonos conectados, cifrados para el destino |
+| 2706 | `09da6aa` | Compilación de prueba en la rama de trabajo (Kotlin getPowerStatus), sin release |
+| 2707 | `48887c1` | Jump con cualquier teléfono NEXO (bajo demanda), protección de batería, selector de camino |
 
 ## Base estable: build 2699
 Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
