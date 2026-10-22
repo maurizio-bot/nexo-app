@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2714)
+Última actualización: 2026-10-22 (build 2715)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -52,6 +52,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2712 | `9c33e79` | Seguridad fase 2: protocolo de Signal (Double Ratchet), sobre atado al cifrado, relleno, número de seguridad. Actualizar todos los teléfonos. APK verificada (firma 23d86688…, sin depuración ni copias) |
 | 2713 | `4a33565` | Wi-Fi Direct: permiso de Android 13+ (faltaba: nunca funcionaba) y vídeo/archivo que se quedaban en 1 % si fallaba. APK verificada (firma, NEARBY_WIFI_DEVICES presente) |
 | 2714 | `cdb3b89` | Ubicación con aviso y alternativas (GPS → red); Wi-Fi Direct ya no reenvía por Bluetooth lo entregado; tiempos por fase. APK verificada |
+| 2715 | `8a2d5e7` | Protocolo Fénix fase 1: respaldo automático de la cuenta en 10/20 contactos, pingeo y curación, recuperación con 6 confirmaciones. APK verificada |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -76,9 +77,10 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   varios MB. Emisor: `[WIFI-DIRECT] … fases: grupo del otro X s, a Android X s, unirse X s, envío X s (KB/s)`;
   receptor: `Recibido … de Android a la app X s, lectura X s`. Con eso se decide qué acelerar (mantener el
   grupo abierto entre envíos, no pasar el contenido por el WebView, etc.). No cambiar a ciegas.
-- "Protocolo Fénix": el dueño preguntó si sé qué es. En el código solo existe `src/fenix/` (copia de la clave
-  en 5 trozos Shamir 3-de-5 repartidos entre contactos "guardianes"; no se usa en la APK). Esperando que el
-  dueño confirme si se refiere a eso.
+- 2715 (Fénix): con 10 contactos actualizados a la 2715+, Perfil → Fénix debe decir "Cuenta protegida: N de 10
+  fragmentos entregados" (se entregan al estar conectados). Recuperación: en un teléfono nuevo, Perfil →
+  Recuperar mi cuenta, con 6 de esos contactos cerca y NEXO abierto; a cada uno le sale el aviso "¿Quién es?".
+  Diagnóstico: líneas `[FENIX]`. Pendiente de Fénix: mensajes y archivos, pingeo por Jump, huella (fase 3).
 - 2713 (Wi-Fi Direct): el dueño vio en la 2711 un vídeo que se quedaba en 1 % en el emisor. Instalar en los
   dos teléfonos y mandar un vídeo de varios MB: la 1.ª vez Android puede pedir "Dispositivos cercanos" en
   cada teléfono (aceptar). Debe llegar en segundos por Wi-Fi Direct; si Wi-Fi Direct falla, debe llegar
@@ -118,6 +120,18 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2715: Protocolo Fénix, fase 1 (la cuenta) — `docs/FENIX.md`
+- Definición del dueño en `docs/NEXO_CONTEXTO.md` §7; decisiones: cuenta primero, nodos = contactos
+  (automático), 10 → 1.ª copia, 20 → 2.ª, perdido si no pinguea, recuperar con confirmación de los contactos
+  (la huella no puede recuperar una clave en otro teléfono: se le explicó).
+- `src/fenix/fenix.js` (reusa el Shamir de `shard_crypto.js`; ojo: `splitSecret` ya devuelve hexadecimal —
+  el primer intento lo reconvertía y los nodos rechazaban los fragmentos, visto en la prueba).
+- La cabecera de los flujos solo lleva campos conocidos: el tipo de paquete de Fénix va dentro del contenido.
+- Prueba `tests/sim/fenix.js` (7 teléfonos, umbrales reducidos): reparto 7 s, pingeo, perdido a los 62 s y
+  fragmento a otro en 0,5 s, borrado al volver, recuperación con 3 confirmaciones en 14 s (mismo NEXO ID,
+  identidad y contactos; sigue hablando cifrado sin aviso de clave). `--mirror`: 2 copias. Batería OK.
+- Encontrado de paso (simulador, no la app): el mock solo informa de lo visto al empezar un escaneo.
 
 ## Ronda 2714: ubicación y Wi-Fi Direct (informe del dueño con la 2713)
 - Ubicación "no se envía ni llega": en el simulador el envío y la recepción funcionaban (`location.js --gps=ok`).
