@@ -36,19 +36,20 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2696 | `939f4ec` | Vídeo previa 240p + HD automático; lista de contactos por último mensaje |
 | 2697 | `2fc0074` | Vídeo/texto a app cerrada ya no se pierden (cola por contacto), vídeo se ve más de una vez, miniatura |
 | 2698 | `43256cd` | Vídeo: burbuja con miniatura sin reproductor, visor que libera, previa robusta, diagnóstico en Perfil — **BASE ESTABLE** (rama `base-estable-2698`) |
-| 2699 | `d563355` | Compartir contactos (botón contacto): selección múltiple, tarjeta, alta con parpadeo |
+| 2699 | `d563355` | Compartir contactos (botón contacto): selección múltiple, tarjeta, alta con parpadeo — **BASE ESTABLE** (rama `base-estable-2699`) |
+| 2700 | (este) | Rendimiento: historial paginado, sin congelones al recibir, escrituras agrupadas, radio libre en transferencias |
 
-## Base estable: build 2698
-El dueño la probó en teléfonos reales y la fijó como **base sólida** (21-10-2026).
-- Código: rama **`base-estable-2698`** (commit `43256cd`). No se toca; el proxy no deja subir etiquetas.
-- APK: release `nightly-2698` (archivo `NEXO2698-43256cd.apk`). Misma llave y mismo `versionCode 1`
-  que todas las builds: se instala encima de cualquier build posterior sin desinstalar (el workflow no
-  borra releases antiguas).
-- Volver a la base (sin reescribir la historia, genera una build nueva con el código de la 2698):
+## Base estable: build 2699
+Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
+22-10-2026. Anterior: 2698 (rama `base-estable-2698`).
+- Código: rama **`base-estable-2699`** (commit `d563355`). No se toca; el proxy no deja subir etiquetas.
+- APK: release `nightly-2699`. Misma llave y mismo `versionCode 1` que todas las builds: se instala
+  encima de cualquier build posterior sin desinstalar (el workflow no borra releases antiguas).
+- Volver a la base (sin reescribir la historia, genera una build nueva con el código de la 2699):
   ```
   git checkout NEXOCHAT && git pull
-  git restore --source=base-estable-2698 --staged --worktree -- src plugins android index.html package.json package-lock.json
-  git commit -m "Volver a la base estable 2698" && git push origin NEXOCHAT
+  git restore --source=base-estable-2699 --staged --worktree -- src plugins android index.html package.json package-lock.json
+  git commit -m "Volver a la base estable 2699" && git push origin NEXOCHAT
   ```
 
 ## Siguiente paso (al retomar)
@@ -60,6 +61,34 @@ El dueño la probó en teléfonos reales y la fijó como **base sólida** (21-10
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2700: rendimiento (medido en Chromium real con la CPU frenada 4x)
+Nuevo `tests/sim/stress.js` (3 teléfonos precargados, historial de B: 400 mensajes con 8 fotos y 2
+vídeos) y `tests/sim/profile.js` (perfil de CPU por función). Misma prueba en 5 builds:
+
+| Receptor B | 2679 (base dueño) | 2691 | 2698 | 2699 | 2700 |
+|---|---|---|---|---|---|
+| Ráfaga 40 textos: CPU | 100 % | 82 % | 81 % | 84 % | 40 % |
+| Ráfaga: congelón máx. | 43 s | 2,4 s | 1,7 s | 2,6 s | 0,08 s |
+| Multi-chat: congelón máx. | 3,9 s | 0,17 s | 0,24 s | 0,24 s | 0,08 s |
+| Abrir chat 400 msj: CPU | 5,4 s | 6,0 s | 4,8 s | 5,3 s | 1,1 s |
+| Abrir chat: congelón máx. | 2,5 s | 2,4 s | 1,8 s | 1,9 s | 0,4 s |
+
+Conclusión: entre 2691 y 2699 no hubo regresión de CPU; la lentitud venía de defectos antiguos que
+crecen con el historial (por eso se nota más con el uso):
+1. Cada mensaje dibujado programaba `scrollTop = scrollHeight` (relayout de todo el chat por mensaje).
+2. Inserción de burbujas recorriendo todas las anteriores (O(n²) al abrir un chat).
+3. Al abrir un chat el historial se cargaba y dibujaba DOS veces (`ble_interface.openChat` →
+   `nexo:vault:messagesLoaded` con todo y sus adjuntos leídos de disco) y `nexo_app` registraba cada
+   mensaje como "recibido".
+4. Historial reescrito entero en disco con cada cambio de estado.
+Arreglos: página de 60 mensajes (anteriores al subir), inserción desde el final, un scroll por fotograma,
+mensajes nuevos al disco al momento y estados agrupados (300 ms). Además:
+- **Fallo real**: "atrás" + abrir otro chat en <300 ms dejaba el chat nuevo sin contacto activo (mensajes
+  pintados pero no enviados, fotos no enviadas). Afectaba a todas las builds anteriores.
+- Radio: la re-búsqueda y el escaneo automático se pausan durante transferencias de archivo (comparten
+  la radio). `perf.js --absent --scan-penalty=1.6`: PDF 150 KB 23,5 s (2699) → 18,4 s.
+Pendiente medido: al enviar un vídeo, un bloqueo de ~1 s en el emisor (con CPU 4x; también en 2679).
 
 ## Ronda 2699 (verificada en simulador + Chromium real)
 **Compartir contactos** (último botón del menú de adjuntos), como WhatsApp:
@@ -181,6 +210,7 @@ node tests/sim/background.js tests/sim/builds/wip --scenario=closed --rotate --n
 node tests/sim/contacts.js tests/sim/builds/wip --churn --io-delay=25
 node tests/sim/browser.js tests/sim/builds/wip [--closed | --no-preview]   # Chromium real
 node tests/sim/share.js tests/sim/builds/wip --io-delay=25 [--c-away]
+node tests/sim/stress.js tests/sim/builds/wip    # rendimiento (Chromium real, CPU 4x, ~10 min)
 node tests/sim/video.js tests/sim/builds/wip --io-delay=25 [--cut | --restart-a]
 node tests/sim/background.js tests/sim/builds/wip --scenario=closed --video --no-m3 --pre-wait=15000 --off=90000 --rotate --io-delay=25 --app-events
 ```

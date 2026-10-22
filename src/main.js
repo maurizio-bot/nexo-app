@@ -2077,7 +2077,7 @@ function _updateMessageStorageStatus(messageId, status, contactId) {
 }
 
 var HISTORY_PAGE = 60;
-var _olderMessages = [], _olderContactId = null, _loadingOlder = false, _suppressAutoScroll = false;
+var _olderMessages = [], _olderContactId = null, _loadingOlder = false, _suppressAutoScroll = false, _olderArmed = false;
 
 // Al acercarse arriba del todo se dibujan los 60 anteriores sin que la vista salte
 function _bindOlderMessagesScroll() {
@@ -2085,7 +2085,8 @@ function _bindOlderMessagesScroll() {
   if (!mc || mc._olderBound) return;
   mc._olderBound = true;
   mc.addEventListener('scroll', function() {
-    if (mc.scrollTop < 150 && _olderMessages.length && !_loadingOlder) _loadOlderMessages();
+    // Solo cuando el usuario sube (no por el scroll inicial, con el chat aún arriba del todo)
+    if (_olderArmed && mc.scrollTop < 150 && _olderMessages.length && !_loadingOlder) _loadOlderMessages();
   }, { passive: true });
 }
 async function _loadOlderMessages() {
@@ -2118,6 +2119,7 @@ async function _loadPersistedMessages() {
     // recalculaba la maquetación de todas las burbujas)
     var all = await vaultLoadMessages(contactId);
     if (_normId(_getCurrentContactId()) !== _normId(contactId)) return;
+    _olderArmed = false;
     _olderMessages = all.slice(0, Math.max(0, all.length - HISTORY_PAGE));
     _olderContactId = contactId;
     var vaultMessages = await vaultHydrateAttachments(all.slice(-HISTORY_PAGE), { preferHd: true });
@@ -2129,6 +2131,8 @@ async function _loadPersistedMessages() {
       _renderMessage(msg, true);
     });
     _bindOlderMessagesScroll();
+    // Armar la carga de anteriores cuando el chat ya está abajo (tras el scroll inicial)
+    setTimeout(function() { _olderArmed = true; }, 600);
   } catch (e) {
     console.warn('[MAIN] _loadPersistedMessages error:', e);
   }

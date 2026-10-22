@@ -67,3 +67,8 @@ pulsa la tarjeta, C aparece parpadeando en su lista y B le escribe aunque nunca 
 `--c-away`: C fuera de alcance al escribirle (el mensaje espera en cola y llega al encontrarlo).
 Nota: las pruebas esperan hasta 40 s a emparejar (con mucha carga de CPU 10 s no bastaban) y
 `background.js` avisa si no pudo emparejar en vez de dar un resultado engañoso.
+
+Rendimiento (Chromium real, `pw_harness.js`): `stress.js` mide por fases (reposo, ráfaga, multi-chat,
+fotos, vídeo, abrir historial grande) el lag del hilo de la interfaz, tareas largas, CPU (CDP) y
+memoria, con la CPU frenada (`--cpu=4`, como un teléfono de gama media). `profile.js` da el tiempo
+de CPU por función del receptor. Comparar builds: `./build.sh <commit>` y la misma prueba en cada una.
