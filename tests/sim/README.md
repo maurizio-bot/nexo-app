@@ -94,3 +94,8 @@ A nunca vio a C (B le comparte el contacto). `--chain`: A–B–C–D, 3 saltos.
 de nadie (camino bajo demanda, conexiones de paso que se cierran solas, B sin chats ni contactos nuevos);
 con `--low-battery` B está al 10 % y no debe hacer de puente hasta que se enchufa. `--direct-later`: la foto
 queda en B sin camino y luego A y C quedan a alcance: A debe reenviarla directo.
+
+`wifidirect.js`: Wi-Fi Direct simulado (`opts.wifiDirect`, ~2 MB/s; `opts.wdFail` hace fallar la unión al
+grupo). Archivo grande por Wi-Fi Direct sin trozos por Bluetooth, pequeño por Bluetooth, 6 MB (más que el
+límite de Bluetooth), vídeo original, credenciales nunca en claro y caída a Bluetooth si falla.
+`--b-no-wd`: B sin Wi-Fi Direct (todo como antes).

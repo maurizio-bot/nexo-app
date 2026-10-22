@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2707)
+Última actualización: 2026-10-22 (build 2709)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -64,8 +64,11 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   permiso la 1.ª vez). Una APK grande debe mostrar el aviso de tamaño.
 - 2707: igual que la 2705 pero B puede ser un teléfono que NO es contacto de nadie (solo con NEXO abierto
   o en segundo plano). Comprobar también que B no ve chats ni contactos nuevos.
-- Siguiente: Wi-Fi Direct para fotos/vídeos/archivos (luego Wi-Fi y datos; para datos/Wi-Fi entre redes
-  hace falta decidir el servidor de relevo).
+- 2709 (Wi-Fi Direct): con dos teléfonos cerca y NEXO actualizado, mandar una foto, un vídeo y un archivo
+  de varios MB: deben llegar en segundos. La 1.ª vez Android pide permiso de "dispositivos cercanos"
+  (13+) o ubicación. Diagnóstico: líneas `[WIFI-DIRECT]`.
+- Siguiente (pedido por el dueño): revisión de seguridad para estar al nivel de Signal o mejor. Después:
+  Wi-Fi normal y datos (para datos/Wi-Fi entre redes hace falta decidir el servidor de relevo).
 - 2705 (Jump): probar con 3 teléfonos A–B–C donde A y C no se alcancen (otra habitación / distancia) y B
   en medio: A escribe a C (texto y foto). Debe salir ✓ al quedar en B y ✓✓ al llegar a C. Diagnóstico:
   líneas `[JUMP]` (rutas, "Puente", "Reenviado").
@@ -86,6 +89,25 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2709: Wi-Fi Direct para fotos, vídeos y archivos
+Criterio del dueño: lo más cercano primero, con sentido común de velocidad; para archivos, Wi-Fi Direct
+(directo teléfono a teléfono, sin terceros) antes que Jump/Wi-Fi/datos.
+- Nativo (`NexoBlePlugin.kt`, Android 10+): `wifiDirectStatus`, `requestWifiDirectPermission`
+  (NEARBY_WIFI_DEVICES en 13+, ubicación antes; se pide la primera vez que hace falta), `wifiDirectHost`
+  (el que recibe crea un grupo con nombre y contraseña aleatorios en cada envío y abre un socket),
+  `wifiDirectSend` (el que envía se une sin aviso del sistema con WifiP2pConfig.Builder, manda el
+  contenido —ya cifrado E2E— y espera confirmación); el grupo se cierra al terminar.
+- `src/ui/wifi_direct.js`: control por Bluetooth ('wq' oferta con la clave pública del emisor, 'wa'
+  credenciales cifradas para el emisor, 'wn' no, 'wf' entregado). Se usa si los dos lo tienen (kx con
+  `wd:1`), hay enlace directo y el contenido pasa de ~150 KB; si falla, sigue por Bluetooth (o queda
+  pendiente si pasa del límite de Bluetooth). Una transferencia a la vez.
+- `main.js`: con Wi-Fi Direct alcanzable el límite de archivo sube a ~22 MB y el vídeo va original sin
+  previa ni HD aparte; sin él, todo como antes (el aviso de tamaño menciona Wi-Fi Direct).
+- Simulador (`wifidirect.js`, ~2 MB/s): 600 KB en 4,5 s (0 trozos por Bluetooth) frente a 58 s por
+  Bluetooth; 6 MB en 7 s; vídeo original en 5 s; si falla, por Bluetooth; credenciales y contenido nunca
+  en claro. Batería completa (22 pruebas) en verde; Kotlin compilado en CI (2708). La velocidad real y el
+  comportamiento con cada fabricante solo se ven en los teléfonos.
 
 ## Ronda 2707: Jump con cualquier teléfono NEXO (bajo demanda) + batería + selector de camino
 El dueño: los únicos requisitos para ser puente son estar a alcance y tener NEXO (en la 2705 solo valían
