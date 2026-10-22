@@ -56,6 +56,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2716 | `504994f` | Compilación de prueba en la rama de trabajo (limpieza de Kotlin), sin release |
 | 2717 | `504994f` | Limpieza: fuera ~10.900 líneas de código sustituido o duplicado. JavaScript idéntico a la 2715; APK 0,5 MB más ligera (sin `client/android` ni iconos sobrantes). APK verificada |
 | 2718 | `29bcc90` | Chat tipo WhatsApp (responder, reenviar, eliminar para mí / para todos, copiar) y cámara nueva (VÍDEO/FOTO, revisar antes de enviar, selfie en espejo, fotos a 800 px). APK verificada |
+| 2719 | `a217b9e` | Compilación de prueba en la rama de trabajo (Kotlin de la fase 3), sin release |
+| 2720 | `a217b9e` | Seguridad fase 3: datos cifrados en el teléfono (Keystore), bloqueo opcional con huella/PIN y bloquear capturas (Perfil → Seguridad). APK verificada (firma 23d86688…, sin copias) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -66,6 +68,11 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Ojo: volver a una base anterior a la 2712 deja el cifrado en el protocolo 1; los teléfonos con 2712+ no
   vuelven al 1 con un contacto que ya usa el 2 (pasadas 26 h descartan lo que llegue con el 1). Por eso
   la base es la 2713: no conviene bajar de la 2712.
+- **Ojo desde la 2720:** los teléfonos con 2720+ tienen los datos cifrados en disco y la 2713 no sabe leerlos
+  (vería contactos y chats vacíos y podría sobrescribirlos). Si hay que volver a la base, conservar el
+  cifrado: tras el `git restore` de abajo, recuperar de NEXOCHAT `AtRestStore.kt`, los cambios de
+  `saveToFile` / `loadFromFile` / `deleteFile` / `atRestDataKey` en `NexoBlePlugin.kt` y la dependencia de
+  `build.gradle` del plugin. Lo mejor: fijar una base nueva ≥ 2720 cuando el dueño la confirme.
 - Volver a la base (sin reescribir la historia, genera una build nueva con el código de la 2713):
   ```
   git checkout NEXOCHAT && git pull
@@ -74,6 +81,13 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2720 (seguridad fase 3): **lo primero**, instalarla encima y comprobar que siguen contactos, chats, NEXO ID y
+  Fénix (al arrancar se cifran los archivos de antes; en el diagnóstico: `Cifrado en reposo activo; N
+  archivo(s) cifrados ahora`). Perfil → Seguridad debe decir "Tus datos están cifrados en este teléfono".
+  Probar: activar el bloqueo (pide huella), salir y volver (inmediatamente / 1 min), que los mensajes lleguen
+  con NEXO bloqueado; bloquear capturas (captura en negro, NEXO en blanco en recientes). Si algo falla:
+  diagnóstico, líneas `[LOCK]` y `AT_REST`. Volver a la 2718 o anterior tras la 2720 **no** sirve: esas no
+  leen los archivos cifrados (la base estable 2713 tampoco).
 - 2718: probar en el teléfono (los dos con 2718): mantener pulsada una burbuja → menú; deslizarla a la derecha
   → responder; reenviar a otro chat; eliminar para todos (el otro ve "Se eliminó este mensaje"). Cámara:
   pestañas, foto → revisar → enviar, selfie (debe verse como un espejo y la foto igual), vídeo con contador.
@@ -129,6 +143,16 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2720: seguridad fase 3, primera parte (ver `docs/SEGURIDAD.md`)
+- Cifrado en reposo nativo (`AtRestStore.kt`, AES-256-GCM, clave de datos envuelta por el Android Keystore):
+  transparente para el JS (`saveToFile` / `loadFromFile`), archivos antiguos se leen y se migran solos (solo
+  `nexo_*`). Pruebas JVM en `tests/kotlin` (7, `gradle --no-daemon test`).
+- Perfil → Seguridad (`src/ui/app_lock.js`): bloqueo opcional con huella/PIN (inmediatamente / 1 min / 30 min)
+  y bloquear capturas (`FLAG_SECURE`). Prueba `tests/sim/lock.js`; encontrado al probar: con el PIN, Android
+  abre otra pantalla y la app "se va" y "vuelve"; sin protección, al quitar el bloqueo volvía a pedir la huella
+  (bucle). Protegido y comprobado con mutación.
+- Batería completa (36 pruebas) sin cambios respecto a la 2718.
 
 ## Ronda 2718: chat tipo WhatsApp y cámara
 - Chat: menú al mantener pulsado (o clic derecho), deslizar = responder, cita tocable, reenviar a varios chats,

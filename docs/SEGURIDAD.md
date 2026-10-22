@@ -49,7 +49,7 @@ Cada punto está comprobado en el código o en la configuración (no son suposic
 6. **Relleno** de longitud por tramos.
 7. **Números de seguridad** (60 cifras + QR) con estado "verificado".
 
-### Fase 3 — en el teléfono y en el aire — EN CURSO (hecho: 8, bloqueo con huella y capturas; build BUILDNUM)
+### Fase 3 — en el teléfono y en el aire — EN CURSO (hecho: 8, bloqueo con huella y capturas; build 2720)
 8. **Cifrado en reposo**: clave maestra en el Android Keystore (no extraíble); identidad, mensajes y
    adjuntos cifrados en disco. **Hecho**, más el **bloqueo opcional con huella** y la **opción de bloquear
    capturas** (decisiones del dueño, 22-10-2026: los dos opcionales, en Perfil).
@@ -110,7 +110,7 @@ agenda ni los metadatos), funciona sin internet y, con la fase 3, sin identifica
   las cifras. Límite conocido: un atacante activo en el momento del primer contacto podría quitar el `b2` del
   kx para que sigan con el protocolo 1 (una vez en el 2, ya no se puede).
 
-## Fase 3 (primera parte): qué se hizo y cómo se comprobó (build BUILDNUM)
+## Fase 3 (primera parte): qué se hizo y cómo se comprobó (build 2720)
 - **Cifrado en reposo** (`plugins/nexo-ble/.../AtRestStore.kt`, usado por `saveToFile` / `loadFromFile` /
   `deleteFile`): todo lo que NEXO guarda (identidad, NEXO ID, claves del protocolo 2, contactos, mensajes,
   adjuntos, Fénix, cola de Jump) va en disco como `NXE1` + iv + AES-256-GCM. La clave de datos es aleatoria y
