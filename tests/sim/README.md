@@ -81,3 +81,8 @@ intercambian las claves y el aviso cuando B reinstala (clave nueva). `mixed.js b
 claro, lo de B llega, y al actualizarse B llega lo pendiente. `resend.js`: un texto largo o archivo ya
 entregado no se vuelve a enviar al reconectar ni al reiniciar la app; `--upgrade=builds/wip` arranca A
 con otra build sobre los mismos archivos (limpieza de lo que dejó la anterior).
+
+`files.js`: botón archivo. El selector sigue vivo aunque se tarde >30 s en elegir, avisos (demasiado
+grande, no se pudo leer), PDF con miniatura y páginas (el simulador imita `pdfThumbnail`), nombre del otro
+teléfono mostrado como texto, el tipo llega, tocar la burbuja llama a `openFile` con el archivo idéntico,
+APK sin tipo reconocida por la extensión, y nada viaja en claro.

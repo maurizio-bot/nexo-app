@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2702)
+Última actualización: 2026-10-22 (build 2703)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -55,6 +55,10 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   ```
 
 ## Siguiente paso (al retomar)
+- 2703: probar enviar un PDF (miniatura, tocar → se abre) y una APK pequeña (tocar → instalar; Android pide
+  permiso la 1.ª vez). Una APK grande debe mostrar el aviso de tamaño.
+- Orden acordado con el dueño: **L2CAP** (envío binario en flujo; Android 10+, el envío actual queda de
+  respaldo) y después jump fase 2. Antes de L2CAP, medir en los teléfonos MTU/PHY/paquetes por segundo.
 - 2702 (cifrado): el dueño debe instalarla en **todos** los teléfonos. Comprobar en el chat el aviso 🔒 y
   que textos, fotos y vídeos siguen llegando; si algo queda con reloj, Perfil → Copiar diagnóstico de
   ambos (buscar `[E2E]`: `Sin clave pública`, `No se pudo descifrar`, `La clave de … cambió`).
@@ -70,6 +74,24 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2703: archivos (APK sin aviso, PDF que no abría)
+Dueño: "no puedo enviar APK (no sale ningún aviso)" y "los PDF llegan pero sin vista previa y no abren".
+- Sin aviso: el `<input>` del selector se quitaba a los 30 s; si se tardaba más en elegir (buscar la APK en
+  Descargas, un vídeo en la galería) lo elegido no hacía nada y sin aviso (reproducido en `files.js` con la
+  2702). Ahora vive hasta que se elige (`_pickFile`), un error de lectura avisa y cada paso deja `[ATTACH]`
+  en el diagnóstico. Las APK suelen pasar del límite de ~2,1 MB: ahora sale el aviso (subirlo depende de
+  L2CAP, siguiente ronda).
+- No abría: la burbuja de un archivo que no es foto/vídeo era solo una etiqueta, y el tipo (mime) no
+  llegaba al otro teléfono (`_sendAttachment` pisaba `meta.type` con 'file'). Ahora viaja `mime`; la
+  burbuja muestra icono, nombre (como texto: antes se metía como HTML), tamaño y páginas, y al tocar el
+  plugin `openFile` lo escribe en la caché y lo abre con la app que corresponda (FileProvider +
+  ACTION_VIEW). APK: permiso `REQUEST_INSTALL_PACKAGES`; Android pide permitir a NEXO instalar apps la
+  primera vez.
+- Miniatura PDF: `pdfThumbnail` (PdfRenderer de Android) dibuja la 1.ª página al enviar; viaja cifrada en
+  la cabecera (`th`, páginas en `pg`); el receptor la genera si no llega.
+- Verificado: batería jsdom (15 pruebas, nueva `files.js`) y Kotlin compilado en CI (run de la rama de
+  trabajo, firma OK). La apertura real (lector de PDF, instalador) solo se puede comprobar en el teléfono.
 
 ## Ronda 2702: cifrado de extremo a extremo (fase 1 de "jump") + reenvíos inútiles
 Plan acordado con el dueño para jump (saltos A → B → C, cualquier teléfono NEXO hace de puente, textos y
@@ -269,7 +291,7 @@ Ver `tests/sim/README.md`. Límites: no simula la radio real (velocidad, alcance
 ## Problemas conocidos (sin corregir)
 - Recibir con la app cerrada (deslizada) necesita mover el servidor GATT al `BleService`.
 - `window.vaultSaveContacts` no expuesto: algunos cambios de contacto no se guardan.
-- HTML sin escapar con datos del otro teléfono (nombre de archivo/contacto, último mensaje).
+- HTML sin escapar con datos del otro teléfono (nombre de contacto, último mensaje; el de archivo ya no).
 - Transferencias en base64 dentro de JSON (+33 %). `FileTransferManager.kt` (binario) desconectado:
   siguiente gran mejora de velocidad.
 - Trozos con emojis/acentos pueden superar el MTU en bytes (el nativo trocea por caracteres).
