@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2717)
+Última actualización: 2026-10-22 (build 2718)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -55,6 +55,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2715 | `8a2d5e7` | Protocolo Fénix fase 1: respaldo automático de la cuenta en 10/20 contactos, pingeo y curación, recuperación con 6 confirmaciones. APK verificada |
 | 2716 | `504994f` | Compilación de prueba en la rama de trabajo (limpieza de Kotlin), sin release |
 | 2717 | `504994f` | Limpieza: fuera ~10.900 líneas de código sustituido o duplicado. JavaScript idéntico a la 2715; APK 0,5 MB más ligera (sin `client/android` ni iconos sobrantes). APK verificada |
+| 2718 | `29bcc90` | Chat tipo WhatsApp (responder, reenviar, eliminar para mí / para todos, copiar) y cámara nueva (VÍDEO/FOTO, revisar antes de enviar, selfie en espejo, fotos a 800 px). APK verificada |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -73,6 +74,12 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2718: probar en el teléfono (los dos con 2718): mantener pulsada una burbuja → menú; deslizarla a la derecha
+  → responder; reenviar a otro chat; eliminar para todos (el otro ve "Se eliminó este mensaje"). Cámara:
+  pestañas, foto → revisar → enviar, selfie (debe verse como un espejo y la foto igual), vídeo con contador.
+  Ojo: con contactos en builds anteriores a la 2715 las respuestas van como texto normal y no sale
+  "Eliminar para todos". Las fotos pesan más (800 px): ~2x de tiempo por Bluetooth.
+- Siguiente: seguridad fase 3 (pedido por el dueño tras pulir chat y cámara).
 - 2714: probar la ubicación (dentro de casa y fuera): debe salir el aviso "Obteniendo tu ubicación…" y luego
   la burbuja, o un aviso claro. Si no, diagnóstico: líneas `[ATTACH] Ubicación…`.
 - 2714 (Wi-Fi Direct lento): pedir al dueño el diagnóstico de **los dos** teléfonos tras mandar un vídeo de
@@ -122,6 +129,18 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2718: chat tipo WhatsApp y cámara
+- Chat: menú al mantener pulsado (o clic derecho), deslizar = responder, cita tocable, reenviar a varios chats,
+  copiar, eliminar para mí / para todos (24 h, solo mensajes propios). Formatos `nexo_txt` / `nexo_act` solo a
+  contactos con `fx` (2715+). Encontrado en la prueba y corregido: tras eliminar para todos, la lista de chats
+  seguía mostrando el texto borrado.
+- Cámara: rehecha (pestañas, disparador, contador con límite, linterna, galería, revisar/repetir/enviar). El
+  selfie no estaba en espejo (por eso se veía "al revés"); ahora la vista frontal es espejo y la foto sale
+  igual que se ve (comprobado en Chromium con una imagen asimétrica). El vídeo frontal se graba sin espejo
+  (como sale de la cámara). Fotos a 800 px / 1600 con Wi-Fi Direct (antes 480).
+- Pruebas: `chatactions.js`, `camera.js`. La batería separa las pruebas largas y de interfaz de las de tiempo
+  real (`bg_bg` fallaba solo con la máquina muy cargada; sola pasa siempre).
 
 ## Ronda 2715: Protocolo Fénix, fase 1 (la cuenta) — `docs/FENIX.md`
 - Definición del dueño en `docs/NEXO_CONTEXTO.md` §7; decisiones: cuenta primero, nodos = contactos
