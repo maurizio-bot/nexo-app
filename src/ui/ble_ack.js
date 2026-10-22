@@ -192,6 +192,7 @@ export class BleAckSystem {
         return;
       }
       console.log('[BleAckSystem] sendFile START fileId=' + fileId + ' type=' + finalMeta.type + ' bytes(b64)=' + base64Data.length + ' to=' + deviceId);
+      if (self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
       var stream = new ChatStream(self, deviceId, fileId, base64Data, finalMeta, 'file');
       self.outgoingStreams.set(fileId, stream);
       stream._promise = stream.start();
@@ -281,6 +282,7 @@ export class BleAckSystem {
         isChat: type === 'c', nackSent: false
       };
       self.incomingBuffers.set(msgId, buf);
+      if (!buf.isChat && self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
       buf.assemblyTimer = setTimeout(function() {
         if (self.incomingBuffers.has(msgId)) {
           console.warn('[BleAckSystem] Assembly timeout msgId=' + msgId);

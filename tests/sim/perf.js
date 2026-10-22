@@ -27,7 +27,7 @@ setInterval(() => { const now = Date.now(); const lag = now - last - 20; if (lag
 function resetLag() { maxLag = 0; lagSamples = []; }
 
 async function boot(name, address, radio) {
-  const native = new NativePhone(name, address, { readsContentFallback: true, mtu, loss, pace, retain: ['onPayloadReceived'] });
+  const native = new NativePhone(name, address, { readsContentFallback: true, mtu, loss, pace, retain: ['onPayloadReceived'], scanPenalty: argNum('scan-penalty', 0) });
   radio.add(native); native.load();
   const logs = [];
   const vc = new VirtualConsole();
@@ -69,6 +69,8 @@ const delta = (a, b) => ({ perdidos: (b.lost || 0) - (a.lost || 0), cola_max: b.
   for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
   click(A.win, add); await sleep(1500);
   await openChat(A);
+  // --absent: A tiene además un contacto que no está cerca (su re-búsqueda escanea durante las pruebas)
+  if (process.argv.includes('--absent') && A.win.bleInterface.addSharedContacts) A.win.bleInterface.addSharedContacts([{ nexoId: 'NXC0000003', name: 'Ausente' }]);
   await sendText(A, 'hola'); await sleep(2500);
   await openChat(B); await sleep(500);
 
@@ -108,6 +110,7 @@ const delta = (a, b) => ({ perdidos: (b.lost || 0) - (a.lost || 0), cola_max: b.
   if (okPdf) await sleep(3000); // dejar llegar el ack final antes de leer el estado
   report['pdf_' + pdfKb + 'KB'] = { marcador_B_tras_llegar: B.win.document.querySelectorAll('[data-progress-id]').length, llega: okPdf, segundos: Math.round((Date.now() - t1) / 100) / 10, lag_max_ms: maxLag, A: delta(a0, snap(A)), B: delta(b0, snap(B)) };
   report.estados_A = bubbles(A.win).filter((b) => b.own).map((b) => b.text.substring(0, 20) + '=' + b.status);
+  report.escaneos_A = A.native.stats.scans || 0; report.escrituras_lentas_A = A.native.stats.slowWrites || 0;
   report.archivos_B = Array.from(B.native.files.entries()).map(([k, v]) => k + ':' + Math.round(v.length / 1024) + 'KB');
   console.log('PERF ' + JSON.stringify(report, null, 1));
   fs.writeFileSync(path.join(__dirname, 'last_logs_perf.txt'), A.logs.concat(B.logs).join('\n'));

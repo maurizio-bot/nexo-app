@@ -1,5 +1,7 @@
 /**
- * BLE Interface v6.1.11-NEXO
+ * BLE Interface v6.1.13-NEXO
+ * v6.1.13: la re-búsqueda no escanea mientras hay una transferencia de archivo (comparten la radio).
+ * v6.1.12: abrir chat ya no carga el historial completo con sus adjuntos (lo pagina main.js).
  * v6.1.11: Contactos compartidos (addSharedContacts) con parpadeo hasta abrir su chat. Un contacto que
  *          aún no se ha visto por radio se puede abrir y escribir: los mensajes quedan en cola y se
  *          entregan al encontrarlo (antes: "Dispositivo no encontrado" / no se abría el chat).
@@ -914,6 +916,9 @@ export class BLEInterface {
       var hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
       var interval = hidden ? 60000 : (self._reconnectScanAttempts < 8 ? 15000 : 60000);
       var go = function() {
+        // v6.1.13: escanear comparte la radio con las conexiones; durante una transferencia de archivo
+        // se salta este turno (en el teléfono real la foto/vídeo iba más lenta)
+        if (self._transferActive()) { console.log('[BLEInterface] Re-búsqueda aplazada: transferencia en curso'); return; }
         if (!self._cameraBlePaused && !self.isScanning) {
           self._reconnectScanAttempts++;
           console.log('[BLEInterface] Re-búsqueda de contactos', Array.from(self._lostPeers), presence ? '(+presencia)' : '', 'intento', self._reconnectScanAttempts, hidden ? 'oculta' : '');
@@ -927,6 +932,25 @@ export class BLEInterface {
       }).catch(function() { schedule(300000); });
     }
     schedule(2000);
+  }
+
+  // v6.1.13: al empezar una transferencia de archivo se corta el escaneo automático en curso
+  // (comparte la radio); un escaneo del usuario (panel Gente) no se toca
+  _stopAutoScan() {
+    var self = this;
+    if (!self.isScanning || !self._autoScanActive || !self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'stopScan')) return;
+    self._autoScanActive = false;
+    console.log('[BLEInterface] Escaneo automático detenido: transferencia en curso');
+    _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() { self.isScanning = false; self.updateScanButton(); }).catch(function() { self.isScanning = false; });
+  }
+
+  _transferActive() {
+    var ack = this.ackSystem;
+    if (!ack) return false;
+    var busy = false, now = Date.now();
+    if (ack.outgoingStreams) ack.outgoingStreams.forEach(function(st) { if (st && st.type === 'file' && !st.aborted) busy = true; });
+    if (!busy && ack.incomingBuffers) ack.incomingBuffers.forEach(function(b) { if (b && !b.isChat && now - (b.lastActivity || 0) < 5000) busy = true; });
+    return busy;
   }
 
   _hasUnreadyContacts() {
@@ -1837,9 +1861,9 @@ export class BLEInterface {
         }
         finishOpenChat();
         self._resendPendingMessages(uuid);
-        _vaultLoadMessages(uuid).then(_hydrateAttachments).then(function(messages) {
-          if (messages && messages.length > 0) _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid, messages: messages });
-        }).catch(function() {});
+        // v6.1.12: solo se avisa; main.js dibuja la última página del historial. Antes se cargaba aquí
+        // TODO el historial leyendo de disco todos sus adjuntos y main.js lo dibujaba entero
+        _safeDispatchEvent('nexo:vault:messagesLoaded', { contactId: uuid });
         resolve();
         if (deviceId && !isFullyReady && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           if (!isConnecting) {
@@ -2108,8 +2132,13 @@ export class BLEInterface {
     _safeNativeCall(self.nativePlugin, 'startScan', { filtered: !!(opts && opts.filtered) })
       .then(function() {
         self.isScanning = true;
+        self._autoScanActive = true;
+        var token = self._autoScanToken = (self._autoScanToken || 0) + 1;
         self.updateScanButton();
         setTimeout(function() {
+          // Solo si sigue siendo este escaneo automático (no cortar uno posterior del usuario)
+          if (self._autoScanToken !== token || !self._autoScanActive) return;
+          self._autoScanActive = false;
           if (self.isScanning && _hasNativeMethod(self.nativePlugin, 'stopScan')) {
             _safeNativeCall(self.nativePlugin, 'stopScan', {}).then(function() {
               self.isScanning = false;
@@ -2300,8 +2329,10 @@ export class BLEInterface {
       self.renderNewDeviceBar();
       self.renderOnlineStrip();
       if (_hasNativeMethod(self.nativePlugin, 'startScan')) {
+        self._autoScanActive = false; // escaneo del usuario: no lo corta el temporizador automático
         return _safeNativeCall(self.nativePlugin, 'startScan', {}).then(function() {
           self.isScanning = true;
+          self._autoScanActive = false;
           self.updateScanButton();
         });
       }

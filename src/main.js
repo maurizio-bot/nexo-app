@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.33-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.34-NEXO
+ * v9.9.34: rendimiento: inserción de burbujas desde el final (antes O(n²) al abrir un chat), un solo
+ *          scroll por fotograma; "atrás" + abrir otro chat rápido ya no deja el chat nuevo sin contacto.
  * v9.9.33: Compartir contactos (botón contacto del menú de adjuntos): selección múltiple, tarjeta en
  *          el chat y, al pulsarla en el otro teléfono, se agregan y parpadean en la lista.
  * FIX v9.9.32: burbuja de vídeo con miniatura (sin reproductor: en Android cada <video> retiene un
@@ -1560,13 +1562,10 @@ function _registerCriticalListeners() {
         }
       }
     });
+    // v9.9.34: al abrir un chat se dibuja solo la última página (ver _loadPersistedMessages)
     window.addEventListener('nexo:vault:messagesLoaded', function(e) {
-      if (e && e.detail && Array.isArray(e.detail.messages)) {
-        _clearMessageContainer();
-        e.detail.messages.forEach(function(msg) {
-          _renderMessage(msg, true);
-        });
-      }
+      var d = (e && e.detail) || {};
+      if (d.contactId && _normId(d.contactId) === _normId(_getCurrentContactId())) _loadPersistedMessages();
     });
     window.addEventListener('nexo:ble:messageReceived', function(e) {
       if (e && e.detail) {
@@ -2077,20 +2076,59 @@ function _updateMessageStorageStatus(messageId, status, contactId) {
   }
 }
 
+var HISTORY_PAGE = 60;
+var _olderMessages = [], _olderContactId = null, _loadingOlder = false, _suppressAutoScroll = false;
+
+// Al acercarse arriba del todo se dibujan los 60 anteriores sin que la vista salte
+function _bindOlderMessagesScroll() {
+  var mc = document.getElementById('messages-container');
+  if (!mc || mc._olderBound) return;
+  mc._olderBound = true;
+  mc.addEventListener('scroll', function() {
+    if (mc.scrollTop < 150 && _olderMessages.length && !_loadingOlder) _loadOlderMessages();
+  }, { passive: true });
+}
+async function _loadOlderMessages() {
+  var mc = document.getElementById('messages-container');
+  var cid = _getCurrentContactId();
+  if (!mc || !cid || cid !== _olderContactId) return;
+  _loadingOlder = true;
+  try {
+    var batch = _olderMessages.splice(Math.max(0, _olderMessages.length - HISTORY_PAGE));
+    batch = await vaultHydrateAttachments(batch, { preferHd: true });
+    if (_getCurrentContactId() !== cid) return;
+    var h0 = mc.scrollHeight, t0 = mc.scrollTop;
+    _suppressAutoScroll = true;
+    for (var i = batch.length - 1; i >= 0; i--) _renderMessage(batch[i], true);
+    _suppressAutoScroll = false;
+    mc.scrollTop = t0 + (mc.scrollHeight - h0);
+  } catch (e) {
+    _suppressAutoScroll = false;
+    console.warn('[MAIN] Error cargando mensajes anteriores:', e && e.message);
+  } finally { _loadingOlder = false; }
+}
+
 async function _loadPersistedMessages() {
   try {
     _clearMessageContainer();
     var contactId = _getCurrentContactId();
     if (!contactId) return;
-    var vaultMessages = await vaultHydrateAttachments(await vaultLoadMessages(contactId), { preferHd: true });
-    if (vaultMessages && vaultMessages.length > 0) {
-      vaultMessages.forEach(function(msg) {
-        var mid = msg.msgId || msg.messageId || msg.id || ('msg' + (msg.timestamp || Date.now()));
-        msg.msgId = mid;
-        msg.messageId = mid;
-        _renderMessage(msg, true);
-      });
-    }
+    // v9.9.34: solo los últimos HISTORY_PAGE mensajes; los anteriores al subir (antes se dibujaba todo
+    // el historial: con cientos de mensajes abrir el chat congelaba la app y cada mensaje nuevo
+    // recalculaba la maquetación de todas las burbujas)
+    var all = await vaultLoadMessages(contactId);
+    if (_normId(_getCurrentContactId()) !== _normId(contactId)) return;
+    _olderMessages = all.slice(0, Math.max(0, all.length - HISTORY_PAGE));
+    _olderContactId = contactId;
+    var vaultMessages = await vaultHydrateAttachments(all.slice(-HISTORY_PAGE), { preferHd: true });
+    if (_normId(_getCurrentContactId()) !== _normId(contactId)) return;
+    vaultMessages.forEach(function(msg) {
+      var mid = msg.msgId || msg.messageId || msg.id || ('msg' + (msg.timestamp || Date.now()));
+      msg.msgId = mid;
+      msg.messageId = mid;
+      _renderMessage(msg, true);
+    });
+    _bindOlderMessagesScroll();
   } catch (e) {
     console.warn('[MAIN] _loadPersistedMessages error:', e);
   }
@@ -2100,6 +2138,19 @@ function _clearMessageContainer() {
   var container = document.getElementById('messages-container');
   if (container) container.innerHTML = '';
   _renderedMessageIds.clear();
+}
+
+// v9.9.34: un solo ajuste de scroll por fotograma (leer scrollHeight recalcula la maquetación de todo
+// el chat; antes se hacía una vez por mensaje dibujado)
+var _scrollPending = false;
+function _scheduleScrollToBottom() {
+  if (_scrollPending) return;
+  _scrollPending = true;
+  requestAnimationFrame(function() {
+    _scrollPending = false;
+    var mc = document.getElementById('messages-container');
+    if (mc) mc.scrollTop = mc.scrollHeight;
+  });
 }
 
 function _renderMessage(msg, skipSave) {
@@ -2433,32 +2484,34 @@ function _renderMessage(msg, skipSave) {
       metaDiv.appendChild(statusSpan);
     }
     div.appendChild(metaDiv);
-    var inserted = false;
-    var children = container.querySelectorAll('.message');
+    // v9.9.34: se busca la posición desde el final (un mensaje nuevo casi siempre va al final). Antes
+    // se recorrían TODAS las burbujas por cada mensaje: abrir un chat de 400 mensajes = ~100.000
+    // lecturas del DOM. Mismo orden: delante del primer mensaje posterior (los marcadores sin fecha se
+    // ignoran).
     var msgTs = msg.timestamp || Date.now();
     var msgSeq = (typeof msg.seq === 'number') ? msg.seq : 0;
-    for (var ci = 0; ci < children.length; ci++) {
-      var child = children[ci];
-      var childTs = parseInt(child.dataset.timestamp || '0', 10);
+    var before = null;
+    // Anterior a todo lo dibujado (cargar mensajes antiguos al subir): directamente al principio
+    var firstReal = container.firstElementChild;
+    while (firstReal && !(firstReal.dataset && firstReal.dataset.timestamp)) firstReal = firstReal.nextElementSibling;
+    if (firstReal) {
+      var fTs = parseInt(firstReal.dataset.timestamp, 10), fSeq = parseInt(firstReal.dataset.seq || '0', 10);
+      if (msgTs < fTs || (msgTs === fTs && msgSeq < fSeq)) before = firstReal;
+    }
+    for (var child = before ? null : container.lastElementChild; child; child = child.previousElementSibling) {
+      if (!child.dataset || !child.dataset.timestamp) continue;
+      var childTs = parseInt(child.dataset.timestamp, 10);
       var childSeq = parseInt(child.dataset.seq || '0', 10);
       var childId = child.dataset.msgId || '';
       if (msgTs < childTs ||
           (msgTs === childTs && msgSeq < childSeq) ||
           (msgTs === childTs && msgSeq === childSeq && msgId.localeCompare(childId) < 0)) {
-        container.insertBefore(div, child);
-        inserted = true;
-        break;
-      }
+        before = child;
+      } else break;
     }
-    if (!inserted) {
-      container.appendChild(div);
-    }
-    var msgContainer = document.getElementById('messages-container');
-    if (msgContainer) {
-      requestAnimationFrame(function() {
-        msgContainer.scrollTop = msgContainer.scrollHeight;
-      });
-    }
+    if (before) container.insertBefore(div, before);
+    else container.appendChild(div);
+    if (!_suppressAutoScroll) _scheduleScrollToBottom();
     if (!skipSave) _saveMessageToStorage(msg);
     _renderedMessageCount++;
     // v9.9.31: antes cada 50 mensajes se revocaban TODAS las URL (vídeos/archivos visibles dejaban de
@@ -2982,6 +3035,7 @@ function _setupBackButton() {
     var backBtn = document.getElementById('chat-back-btn');
     if (!backBtn) return;
     window.addEventListener('nexo:ble:openChat', function(e) {
+      _chatNavToken++;
       backBtn.classList.add('visible');
       document.body.classList.add('chat-view-active');
       _clearMessageContainer();
@@ -3123,8 +3177,13 @@ function _setupSwipeBack() {
   }
 }
 
+// v9.9.34: cada apertura de chat incrementa este contador; el cierre diferido de "atrás" solo limpia
+// el estado si no se abrió otro chat mientras tanto (antes, atrás + otro chat en <300 ms dejaba el
+// chat nuevo sin contacto activo: los mensajes se pintaban pero no se enviaban)
+var _chatNavToken = 0;
 function _doChatBack() {
   try {
+    var navToken = ++_chatNavToken;
     _cleanupObjectURLs();
     var app = document.getElementById('app');
     var contactsView = document.getElementById('contacts-view');
@@ -3144,6 +3203,12 @@ function _doChatBack() {
       contactsView.style.transform = 'translateX(0)';
     }
     setTimeout(function() {
+      if (navToken !== _chatNavToken) {
+        // Se abrió otro chat durante la animación: solo deshacer los estilos de la animación
+        if (app) { app.style.transition = ''; app.style.transform = ''; app.style.opacity = ''; }
+        if (contactsView) { contactsView.style.transition = ''; contactsView.style.transform = ''; contactsView.style.opacity = ''; contactsView.style.display = ''; }
+        return;
+      }
       if (backBtn) backBtn.classList.remove('visible');
       document.body.classList.remove('chat-view-active');
       var nameInput = document.getElementById('chat-contact-name');

@@ -119,7 +119,9 @@ class NativePhone {
     // opts.pace = [ms por write de cliente, ms por notify de servidor]. Por defecto el Kotlin antiguo
     // (40/80 fijos); con control de flujo por callback el ritmo lo marca la radio (p.ej. 15/15).
     const pace = this.opts.pace || [40, 80];
-    const delay = this.opts.realTiming === false ? 1 : (source === 'gatt_client' ? pace[1] : pace[0]);
+    let delay = this.opts.realTiming === false ? 1 : (source === 'gatt_client' ? pace[1] : pace[0]);
+    // Radio real: escanear comparte el tiempo de radio con las conexiones (opts.scanPenalty, p.ej. 1.6)
+    if (this.opts.scanPenalty && (this.scanningUntil || 0) > Date.now()) { delay = Math.round(delay * this.opts.scanPenalty); this.stats.slowWrites = (this.stats.slowWrites || 0) + 1; }
     if (!this.writeQ) this.writeQ = new Map();
     const key = norm(toPhone.address);
     if (!this.writeQ.has(key)) this.writeQ.set(key, { items: [], busy: false });
@@ -294,6 +296,7 @@ class NativePhone {
         self.scanStarts = (self.scanStarts || []).filter((t) => now - t < 30000);
         self.scanStarts.push(now);
         self.stats.scans = (self.stats.scans || 0) + 1;
+        self.scanningUntil = now + 6000;
         if (self.opts.scanThrottle && self.scanStarts.length > 5) { self.stats.throttledScans = (self.stats.throttledScans || 0) + 1; return; }
         setTimeout(() => self.radio.phones.forEach((p) => {
           if (p === self || p.offline || !p.serviceRunning || !p.advertisingId) return;
@@ -301,7 +304,7 @@ class NativePhone {
           self.emit('onDeviceFound', { deviceId: p.address, name: p.name, rssi: -50, nexoId: p.advertisingId });
         }), 80);
       }),
-      stopScan: wrap('stopScan', (c) => c.resolve({ stopped: true })),
+      stopScan: wrap('stopScan', (c) => { self.scanningUntil = 0; c.resolve({ stopped: true }); }),
       connectToDevice: wrap('connectToDevice', (c) => {
         const raw = c.getString('deviceId') || c.getString('address') || '';
         if (!raw) return c.reject('deviceId requerido', 'INVALID_DEVICE_ID');

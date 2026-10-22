@@ -1,5 +1,6 @@
 /**
- * vault_manager.js v2.3.3
+ * vault_manager.js v2.3.4
+ * v2.3.4: un mensaje nuevo se escribe al momento; cambios de estado y duplicados, agrupados (300 ms).
  * v2.3.3: vídeo HD: vaultReplaceAttachment (el HD sustituye a la previa), vaultSetMessageFields,
  *         vaultSaveFile y vaultHydrateAttachments(..., { preferHd }) para ver el original propio.
  * v2.3.2: contactos con lastMessageAt (orden de la lista por último mensaje); guardado de contactos
@@ -495,16 +496,35 @@ async function _loadMessagesFromDisk(cid) {
   return [];
 }
 
-function _persistMessages(contactNexoId, messages) {
-  var plugin = _nativePlugin();
-  if (!plugin) return;
+// v2.3.4: la caché se actualiza al momento y el archivo se escribe agrupado (300 ms tras el último
+// cambio de ese contacto). Antes cada mensaje y cada cambio de estado (enviado/entregado/leído)
+// serializaba y escribía el historial entero. Se escribe ya si la app pasa a segundo plano o se cierra.
+var _persistTimers = new Map();
+function _persistMessages(contactNexoId, messages, immediate) {
   var cid = _normId(contactNexoId);
-  var toSave = messages.slice(-2000);
-  _msgCache.set(cid, toSave.slice());
+  _msgCache.set(cid, messages.slice(-2000));
+  // Un mensaje nuevo se escribe ya (durabilidad); los cambios de estado y duplicados, agrupados
+  if (immediate) { _writeMessagesFile(cid); return; }
+  if (_persistTimers.has(cid)) return;
+  _persistTimers.set(cid, setTimeout(function() { _writeMessagesFile(cid); }, 300));
+}
+function _writeMessagesFile(cid) {
+  var t = _persistTimers.get(cid);
+  if (t) { clearTimeout(t); _persistTimers.delete(cid); }
+  var plugin = _nativePlugin();
+  var msgs = _msgCache.get(cid);
+  if (!plugin || !msgs) return;
   _safeNativeCall(plugin, 'saveToFile', {
     filename: _msgFileName(cid),
-    content: JSON.stringify({ messages: toSave, savedAt: Date.now() })
+    content: JSON.stringify({ messages: msgs, savedAt: Date.now() })
   }).catch(function(e) {});
+}
+function _flushPendingWrites() {
+  Array.from(_persistTimers.keys()).forEach(_writeMessagesFile);
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushPendingWrites(); });
+  window.addEventListener('pagehide', _flushPendingWrites);
 }
 
 export async function vaultSaveMessages(contactNexoId, messages) {
@@ -581,7 +601,7 @@ async function _appendMessageNow(cid, message) {
     messages[existingIdx] = merged;
   }
   else { messages.push(normalized); }
-  _persistMessages(cid, messages);
+  _persistMessages(cid, messages, !existing);
   return normalized;
 }
 // v2.3.3: guarda un archivo suelto (p.ej. el vídeo original para el HD) y lo deja en memoria hasta escribirlo
