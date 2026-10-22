@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.40-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.41-NEXO
+ * v9.9.41: seguridad fase 2: protocolo 2 (e2e_ratchet.js) iniciado al arrancar; aviso del chat con el número de
+ *          seguridad de 60 cifras y "Marcar como verificado"; las tarjetas de contacto llevan su paquete de claves.
  * v9.9.40: seguridad: clave de un contacto cambiada → aviso con huellas (anterior y nueva) y botones Aceptar /
  *          Rechazar; registros sin contenido de mensajes ni nombres de archivo (archivo de registro nuevo).
  * v9.9.39: Wi-Fi Direct: con el contacto a alcance (y con Wi-Fi Direct) el límite de archivo sube a
@@ -76,7 +78,8 @@ import {
   vaultSetMessageFields, vaultReplaceAttachment, vaultSaveFile, vaultLoadFile, vaultHdFileName
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
-import { initE2E, e2eMyPublicKey, e2eFingerprint } from './vault/e2e_crypto.js';
+import { initE2E } from './vault/e2e_crypto.js';
+import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle } from './vault/e2e_ratchet.js';
 
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
@@ -97,7 +100,8 @@ window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 window.vaultLoadContacts = vaultLoadContacts;
 // v9.9.36: identidad de cifrado de extremo a extremo (se crea la primera vez)
-initE2E().catch(function(e) { console.warn('[E2E] init:', e && e.message); });
+// v9.9.41: y la del protocolo 2 (como Signal: claves que cambian con cada mensaje)
+initE2E().then(function() { return ratchetInit(); }).catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 
 // ===================== v9.9.32: registro de diagnóstico =====================
 // Últimas líneas de la consola (también de la sesión anterior) para verlas en Perfil → Diagnóstico y
@@ -572,7 +576,15 @@ function _handleShareContacts() {
       var cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = !!chosen[id];
-      cb.onchange = function() { if (cb.checked) chosen[id] = { nexoId: id.toUpperCase(), name: c.name || '', publicKey: c.publicKey || '' }; else delete chosen[id]; refreshBtn(); };
+      cb.onchange = function() {
+        if (cb.checked) {
+          chosen[id] = { nexoId: id.toUpperCase(), name: c.name || '', publicKey: c.publicKey || '' };
+          // v9.9.41: su paquete de claves del protocolo 2 (si es de su clave aceptada)
+          var b2 = c.publicKey && !c.pendingKey ? ratchetPeerBundle(id) : null;
+          if (b2 && b2.ik === c.publicKey) chosen[id].b2 = b2;
+        } else delete chosen[id];
+        refreshBtn();
+      };
       var txt = document.createElement('div');
       var nm = document.createElement('div'); nm.style.cssText = 'font-size:16px;'; nm.textContent = c.name || id.toUpperCase();
       var sub = document.createElement('div'); sub.style.cssText = 'font-size:12px;opacity:0.6;'; sub.textContent = id.toUpperCase();
@@ -2233,8 +2245,9 @@ function _renderE2EBanner() {
       (held ? ' ' + held + (held === 1 ? ' mensaje retenido.' : ' mensajes retenidos.') : '') +
       ' Hasta que la aceptes no se muestran sus mensajes nuevos ni se le envía nada.' +
       ' Si no reinstaló NEXO, puede ser un impostor: comparad las huellas en persona.';
-  } else if (c.publicKey && c.keyAcceptedAt) txt = '🔒 Cifrado de extremo a extremo. Aceptaste una clave nueva de ' + name + ' (' + new Date(c.keyAcceptedAt).toLocaleString() + ').';
-  else if (c.publicKey) txt = '🔒 Mensajes cifrados de extremo a extremo. Nadie fuera de este chat puede leerlos.';
+  } else if (c.publicKey && c.verified === c.publicKey) txt = '🔒✔ Cifrado de extremo a extremo. Verificaste el número de seguridad de ' + name + '.';
+  else if (c.publicKey && c.keyAcceptedAt) txt = '🔒 Cifrado de extremo a extremo. Aceptaste una clave nueva de ' + name + ' (' + new Date(c.keyAcceptedAt).toLocaleString() + '). Toca para verificar.';
+  else if (c.publicKey) txt = '🔒 Mensajes cifrados de extremo a extremo. Nadie fuera de este chat puede leerlos. Toca para verificar.';
   else txt = '⏳ Esperando la clave de cifrado de ' + name + ': tus mensajes saldrán cifrados en cuanto conecte.';
   var t = document.createElement('div');
   t.className = 'e2e-text';
@@ -2244,10 +2257,27 @@ function _renderE2EBanner() {
   fp.className = 'e2e-fp';
   fp.style.cssText = 'margin-top:6px;font-family:monospace;';
   b.appendChild(fp);
+  // v9.9.41: número de seguridad de 60 cifras (como Signal): el mismo en los dos teléfonos; comparadlo en persona
+  var me = _normId(window.bleInterface && window.bleInterface.localNexoId);
   var showFp = function() {
-    Promise.all([e2eFingerprint(e2eMyPublicKey()), e2eFingerprint(c.publicKey), c.pendingKey ? e2eFingerprint(c.pendingKey) : Promise.resolve('')]).then(function(f) {
-      fp.textContent = 'Tu huella: ' + (f[0] || '?') + '\nHuella de ' + name + ': ' + (f[1] || 'sin clave aún') + (c.pendingKey ? '\nHuella NUEVA: ' + f[2] : '');
-    });
+    if (fp.dataset.shown) return;
+    fp.dataset.shown = '1';
+    fp.textContent = 'Calculando…';
+    Promise.all([c.publicKey ? ratchetSafetyNumber(me, cid, c.publicKey) : Promise.resolve(''), c.pendingKey ? ratchetSafetyNumber(me, cid, c.pendingKey) : Promise.resolve('')]).then(function(n) {
+      var fmt = function(x) { var g = x.split(' '); return g.slice(0, 4).join(' ') + '\n' + g.slice(4, 8).join(' ') + '\n' + g.slice(8).join(' '); };
+      fp.textContent = c.pendingKey
+        ? 'Número de seguridad con la clave anterior:\n' + (n[0] ? fmt(n[0]) : '—') + '\nCon la clave NUEVA:\n' + fmt(n[1])
+        : (n[0] ? 'Número de seguridad (debe ser idéntico en el teléfono de ' + name + '):\n' + fmt(n[0]) : 'Sin clave aún');
+      if (!c.pendingKey && c.publicKey && bi && typeof bi.setContactVerified === 'function') {
+        var on = c.verified === c.publicKey;
+        var vb = document.createElement('button');
+        vb.className = 'e2e-verify';
+        vb.textContent = on ? 'Quitar verificado' : 'Marcar como verificado';
+        vb.style.cssText = 'display:block;margin:8px auto 0;padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;background:' + (on ? 'rgba(255,255,255,0.15)' : '#00c8ff') + ';color:#fff;';
+        vb.onclick = function(ev) { ev.stopPropagation(); bi.setContactVerified(cid, !on); };
+        fp.appendChild(vb);
+      }
+    }).catch(function() { fp.textContent = ''; delete fp.dataset.shown; });
   };
   b.onclick = showFp;
   if (c.pendingKey) {

@@ -74,7 +74,16 @@ const ownStatus = (p, t) => { const el = Array.from(p.win.document.querySelector
   r.llega_tras_actualizar_B = (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'SECRETO-a-viejo');
   r.estado_A_final = ownStatus(A, 'SECRETO-a-viejo');
   r.en_claro_en_el_aire_final = air.join('\n').indexOf('SECRETO-a-viejo') >= 0;
-  r.paquetes_cifrados = air.filter((x) => x.indexOf('E1:') >= 0).length;
+  r.paquetes_cifrados = air.filter((x) => x.indexOf('E1:') >= 0 || x.indexOf('E2:') >= 0).length;
+  r.paquetes_E1 = air.filter((x) => x.indexOf('E1:') >= 0).length;
+  r.paquetes_E2 = air.filter((x) => x.indexOf('E2:') >= 0).length;
+  // Tras actualizarse B: los dos con el protocolo 2 y un texto nuevo de A llega
+  await sendText(A, 'SECRETO-tras-actualizar'); await sleep(5000);
+  r.llega_nuevo_tras_actualizar = (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'SECRETO-tras-actualizar');
+  const pc = (P, id) => (P.win.vaultLoadContacts().find((c) => c.nexoId.toLowerCase() === String(id).toLowerCase()) || {}).proto || 1;
+  r.protocolo_A_y_B = pc(A, B.win.bleInterface.localNexoId) + '/' + pc(B, idA);
+  r.paquetes_E2_final = air.filter((x) => x.indexOf('E2:') >= 0).length;
+  r.en_claro_final = ['SECRETO-a-viejo', 'SECRETO-tras-actualizar'].filter((x) => air.join('\n').indexOf(x) >= 0);
   console.log('MIXED ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_mixed.txt'), logs.join('\n'));
   if (process.env.AIR) fs.writeFileSync(process.env.AIR, airLog.join('\n'));

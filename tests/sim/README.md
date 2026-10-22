@@ -82,6 +82,16 @@ claro, lo de B llega, y al actualizarse B llega lo pendiente. `resend.js`: un te
 entregado no se vuelve a enviar al reconectar ni al reiniciar la app; `--upgrade=builds/wip` arranca A
 con otra build sobre los mismos archivos (limpieza de lo que dejó la anterior).
 
+Protocolo 2 (como Signal, `src/vault/e2e_ratchet.js`): `node ratchet.js` prueba el módulo solo, sin la app
+(varios teléfonos en el mismo proceso con su copia del módulo y su almacenamiento): primeros mensajes en
+desorden, conversación, pérdidas, datos del sobre o cabecera manipulados, reinicio (repeticiones detectadas
+sin caché), inicio simultáneo, relleno, archivo de 1,5 MB, número de seguridad, impostor con dos claves que
+no echa la sesión buena y estado perdido del otro. En la app, `e2e.js` comprueba además que todo sale como
+E2, la repetición de un paquete capturado (mismo id u otro) no se muestra, el protocolo 1 de quien ya usa el
+2 se descarta (y el mensaje llega después con el 2), el número de seguridad es igual en los dos teléfonos y
+"Marcar como verificado". `mixed.js --old=builds/5f3a1ad` (2711, protocolo 1): A nueva habla el 1 con B; al
+actualizarse B pasan los dos al 2.
+
 `files.js`: botón archivo. El selector sigue vivo aunque se tarde >30 s en elegir, avisos (demasiado
 grande, no se pudo leer), PDF con miniatura y páginas (el simulador imita `pdfThumbnail`), nombre del otro
 teléfono mostrado como texto, el tipo llega, tocar la burbuja llama a `openFile` con el archivo idéntico,

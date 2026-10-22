@@ -1,5 +1,6 @@
 /**
- * e2e_crypto.js v1.0 — Cifrado de extremo a extremo de NEXO (WebCrypto).
+ * e2e_crypto.js v1.1 — Cifrado de extremo a extremo de NEXO (WebCrypto). Protocolo 1 (clave fija por
+ * pareja); el protocolo 2 (Double Ratchet) está en e2e_ratchet.js y usa e2eIdentityDH.
  * - Identidad: par ECDH P-256 por teléfono, guardado en el almacenamiento interno de la app
  *   (archivo nexo_e2e_identity.json). La clave pública se comparte; la privada no sale del teléfono.
  * - Clave por pareja: ECDH(mi privada, su pública) → HKDF-SHA256 (info con ambas públicas ordenadas)
@@ -68,6 +69,16 @@ export function initE2E() {
 }
 
 export function e2eMyPublicKey() { return _identity ? _identity.pubB64 : null; }
+
+// v1.1: ECDH con la clave de identidad (para el acuerdo inicial del protocolo 2, e2e_ratchet.js). La
+// privada no sale de este módulo: solo se devuelve el secreto compartido (32 bytes).
+export async function e2eIdentityDH(peerPubB64) {
+  await initE2E();
+  if (!_identity) throw new Error('E2E sin identidad');
+  var subtle = _subtle();
+  var peer = await subtle.importKey('raw', _b64ToBytes(peerPubB64), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  return new Uint8Array(await subtle.deriveBits({ name: 'ECDH', public: peer }, _identity.priv, 256));
+}
 
 // Huella legible de una clave pública (para comparar en persona): 5 grupos de 4 cifras hex
 export async function e2eFingerprint(pubB64) {

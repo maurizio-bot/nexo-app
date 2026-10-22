@@ -1,5 +1,11 @@
-import { e2eAvailable, e2eIsEncrypted, e2eEncryptText, e2eEncryptB64, e2eDecryptText, e2eDecryptToB64 } from '../vault/e2e_crypto.js';
+import { e2eAvailable } from '../vault/e2e_crypto.js';
+import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
+import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
+* v3.7.0: Protocolo 2 de cifrado (e2e_ratchet.js, como Signal) con los contactos que lo tienen; el 1 con builds
+*         anteriores (e2e_proto.js elige). Los datos del sobre (emisor|destino|id) van atados al cifrado: el id
+*         se fija antes de cifrar. Nombre y miniatura de un archivo: ids "<id>#n" y "<id>#t". Un reintento de
+*         algo ya descifrado (DUP) no se muestra otra vez.
 * v3.6.0: Wi-Fi Direct (wifi_direct.js): los archivos grandes van primero por Wi-Fi Direct si el contacto
 *         está a alcance y también lo tiene; si falla, por Bluetooth como siempre (_sendFileBest).
 * v3.5.0: Jump (ble_relay.js): envío a un destino por otro teléfono (opts.dst / meta.dst: se cifra
@@ -63,6 +69,7 @@ const SHORT_MSG_BACKOFF_DELAYS = [1000, 1000, 1500, 2000, 2500, 3000];
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
+function _newMsgId() { return 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6); }
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }
@@ -145,11 +152,12 @@ export class BleAckSystem {
   sendChunkedMessage(deviceId, content, meta, messageId, seq) {
     var self = this;
     var dst = meta && meta.dst;
-    if (e2eAvailable() && content && !e2eIsEncrypted(content)) {
+    if (e2eAvailable() && content && !e2eAnyEncrypted(content)) {
       if (content.length <= 150) return self.sendWithRetry(deviceId, content, messageId, seq, dst ? { dst: dst } : undefined);
-      return self._preparingFor(messageId, self._ensurePeerKey(deviceId, dst)
-        .then(function(pk) { return e2eEncryptText(pk, content); }))
-        .then(function(enc) { return self.sendChunkedMessage(deviceId, enc, meta, messageId, seq); });
+      var cid = messageId || _newMsgId();
+      return self._preparingFor(cid, self._ensurePeerKey(deviceId, dst)
+        .then(function(t) { return e2eSealText(t, content, self._outAd(t, cid)); }))
+        .then(function(enc) { return self.sendChunkedMessage(deviceId, enc, meta, cid, seq); });
     }
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
@@ -180,14 +188,14 @@ export class BleAckSystem {
     var self = this;
     var running = self.outgoingStreams.get(fileId);
     if (running && !running.aborted && running._promise) return running._promise;
-    if (e2eAvailable() && base64Data && !e2eIsEncrypted(base64Data)) {
+    if (e2eAvailable() && base64Data && !e2eAnyEncrypted(base64Data)) {
       // También el nombre y la miniatura del vídeo, que van en la cabecera
       var m = meta || {};
-      return self._preparingFor(fileId, self._ensurePeerKey(deviceId, m.dst).then(function(pk) {
+      return self._preparingFor(fileId, self._ensurePeerKey(deviceId, m.dst).then(function(t) {
         return Promise.all([
-          e2eEncryptB64(pk, base64Data),
-          (m.thumb && !e2eIsEncrypted(m.thumb)) ? e2eEncryptB64(pk, m.thumb) : m.thumb,
-          (m.name && !e2eIsEncrypted(m.name)) ? e2eEncryptText(pk, m.name) : m.name
+          e2eSealB64(t, base64Data, self._outAd(t, fileId)),
+          (m.thumb && !e2eAnyEncrypted(m.thumb)) ? e2eSealB64(t, m.thumb, self._outAd(t, fileId + '#t')) : m.thumb,
+          (m.name && !e2eAnyEncrypted(m.name)) ? e2eSealText(t, m.name, self._outAd(t, fileId + '#n')) : m.name
         ]);
       })).then(function(r) {
         var em = Object.assign({}, m);
@@ -640,10 +648,21 @@ export class BleAckSystem {
     var c = this._contactOf(deviceId, dst);
     return (c && c.publicKey && !c.pendingKey) ? c.publicKey : null;
   }
-  // Clave pública del destinatario; si falta se pide (kx) y se espera hasta 5 s
+  // Con qué cifrar para este contacto: { nx, key, proto } o null. Con protocolo 2 hace falta su paquete de
+  // claves (o una sesión); nunca se vuelve al 1 con quien ya tiene el 2.
+  _target(deviceId, dst) {
+    var c = this._contactOf(deviceId, dst);
+    if (!c || !c.publicKey || c.pendingKey) return null;
+    var nx = _normId(c.nexoId || c.deviceUUID);
+    if (c.proto === 2) return ratchetCanEncrypt(nx, c.publicKey) ? { nx: nx, key: c.publicKey, proto: 2 } : null;
+    return { nx: nx, key: c.publicKey, proto: 1 };
+  }
+  _outAd(t, id) { return e2eOuterAd(this.ble && this.ble.localNexoId, t.nx, id); }
+  _inAd(from, id) { return e2eOuterAd(from, this.ble && this.ble.localNexoId, id); }
+  // Destino para cifrar; si falta su clave (o su paquete del protocolo 2) se pide (kx) y se espera hasta 5 s
   _ensurePeerKey(deviceId, dst) {
     var self = this;
-    var k = self._peerKey(deviceId, dst);
+    var k = self._target(deviceId, dst);
     if (k) return Promise.resolve(k);
     var c = self._contactOf(deviceId, dst);
     if (c && c.pendingKey) {
@@ -658,7 +677,7 @@ export class BleAckSystem {
     return new Promise(function(resolve, reject) {
       var t0 = Date.now();
       (function poll() {
-        var key = self._peerKey(deviceId, dst);
+        var key = self._target(deviceId, dst);
         if (key) return resolve(key);
         if (Date.now() - t0 > 5000) {
           var e = new Error('Sin clave de cifrado del contacto');
@@ -680,10 +699,11 @@ export class BleAckSystem {
     promise.then(done, done);
     return promise;
   }
-  // false: clave distinta de la del contacto (retener hasta que el usuario decida)
-  _noteSenderKey(nexoId, key) {
-    if (this.ble && typeof this.ble._noteSenderKey === 'function') return this.ble._noteSenderKey(nexoId, key) !== false;
-    return true;
+  // 'ok' | 'hold' (clave distinta de la del contacto: retener hasta que el usuario decida) | 'drop'
+  // (protocolo 1 de quien ya usa el 2)
+  _checkSender(nexoId, r) {
+    if (this.ble && typeof this.ble._checkSender === 'function') return this.ble._checkSender(nexoId, r.senderKey, r.proto);
+    return 'ok';
   }
   _hold(nexoId, release, id) {
     if (this.ble && typeof this.ble._quarantine === 'function') this.ble._quarantine(nexoId, release, id);
@@ -692,13 +712,14 @@ export class BleAckSystem {
   sendWithRetry(deviceId, content, messageId, seq, opts) {
     var self = this;
     var dst = opts && opts.dst;
-    if (content && content.length > 150 && !e2eIsEncrypted(content)) {
+    if (content && content.length > 150 && !e2eAnyEncrypted(content)) {
       return self.sendChunkedMessage(deviceId, content, dst ? { dst: dst } : {}, messageId, seq);
     }
-    if (!e2eAvailable() || e2eIsEncrypted(content)) return self._sendWithRetryRaw(deviceId, content, messageId, seq, dst);
-    return self._preparingFor(messageId, self._ensurePeerKey(deviceId, dst)
-      .then(function(pk) { return e2eEncryptText(pk, content); }))
-      .then(function(enc) { return self._sendWithRetryRaw(deviceId, enc, messageId, seq, dst); });
+    if (!e2eAvailable() || e2eAnyEncrypted(content)) return self._sendWithRetryRaw(deviceId, content, messageId, seq, dst);
+    var mid = messageId || _newMsgId();
+    return self._preparingFor(mid, self._ensurePeerKey(deviceId, dst)
+      .then(function(t) { return e2eSealText(t, content, self._outAd(t, mid)); }))
+      .then(function(enc) { return self._sendWithRetryRaw(deviceId, enc, mid, seq, dst); });
   }
   // Jump: un puente reenvía un paquete tal cual y espera la confirmación del siguiente salto
   sendRawWithRetry(deviceId, packet, msgId) {
@@ -915,12 +936,16 @@ export class BleAckSystem {
   }
   _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId) {
     var self = this;
-    if (e2eIsEncrypted(content)) {
-      e2eDecryptText(content).then(function(r) {
+    if (e2eAnyEncrypted(content)) {
+      var from = meta.fr || senderId;
+      e2eOpenText(from, content, self._inAd(from, msgId)).then(function(r) {
+        if (r.dup) return;
         var go = function() { self._dispatchChunkedMessageComplete(senderId, r.text, meta, deviceId, msgId); };
-        if (!self._noteSenderKey(meta.fr || senderId, r.senderKey)) { self._hold(meta.fr || senderId, go, msgId); return; }
+        var v = self._checkSender(from, r);
+        if (v === 'drop') return;
+        if (v === 'hold') { self._hold(from, go, msgId); return; }
         go();
-      }).catch(function(e) { console.warn('[E2E] No se pudo descifrar el mensaje ' + msgId + ':', e && e.message); });
+      }).catch(function(e) { if (!e || e.code !== 'DUP') console.warn('[E2E] No se pudo descifrar el mensaje ' + msgId + ':', e && e.message); });
       return;
     }
     try {
@@ -951,24 +976,28 @@ export class BleAckSystem {
     buf.lastPct = pct;
     this._dispatchFileProgress(msgId, buf.received, buf.total, status || 'receiving', pct, {
       direction: 'in', senderNexoId: buf.meta.fr, fileType: buf.meta.type, mime: buf.meta.mime,
-      name: e2eIsEncrypted(buf.meta.name) ? undefined : buf.meta.name, hdFor: buf.meta.hdFor
+      name: e2eAnyEncrypted(buf.meta.name) ? undefined : buf.meta.name, hdFor: buf.meta.hdFor
     });
   }
   _dispatchFileComplete(fileId, data, meta) {
     var self = this;
-    if (e2eIsEncrypted(data)) {
+    if (e2eAnyEncrypted(data)) {
       var dm = Object.assign({}, meta || {});
+      var from = dm.fr || dm.senderNexoId || dm.fromNexoId;
       Promise.all([
-        e2eDecryptToB64(data),
-        e2eIsEncrypted(dm.thumb) ? e2eDecryptToB64(dm.thumb).then(function(t) { return t.b64; }, function() { return null; }) : dm.thumb,
-        e2eIsEncrypted(dm.name) ? e2eDecryptText(dm.name).then(function(t) { return t.text; }, function() { return null; }) : dm.name
+        e2eOpenToB64(from, data, self._inAd(from, fileId)),
+        e2eAnyEncrypted(dm.thumb) ? e2eOpenToB64(from, dm.thumb, self._inAd(from, fileId + '#t')).then(function(t) { return t.b64; }, function() { return null; }) : dm.thumb,
+        e2eAnyEncrypted(dm.name) ? e2eOpenText(from, dm.name, self._inAd(from, fileId + '#n')).then(function(t) { return t.text; }, function() { return null; }) : dm.name
       ]).then(function(r) {
+        if (r[0].dup) return;
         dm.thumb = r[1] || null;
         dm.name = r[2] || undefined;
         var go = function() { self._dispatchFileComplete(fileId, r[0].b64, dm); };
-        if (!self._noteSenderKey(dm.fr, r[0].senderKey)) { self._hold(dm.fr, go, fileId); return; }
+        var v = self._checkSender(from, r[0]);
+        if (v === 'drop') return;
+        if (v === 'hold') { self._hold(from, go, fileId); return; }
         go();
-      }).catch(function(e) { console.warn('[E2E] No se pudo descifrar el archivo ' + fileId + ':', e && e.message); });
+      }).catch(function(e) { if (!e || e.code !== 'DUP') console.warn('[E2E] No se pudo descifrar el archivo ' + fileId + ':', e && e.message); });
       return;
     }
     try {

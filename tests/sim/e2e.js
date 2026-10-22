@@ -43,6 +43,10 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', opts);
   radio.add(nA); radio.add(nB); nA.load(); nB.load();
   let [A, B] = await Promise.all([boot('A', nA), boot('B', nB)]);
+  // Paquetes de chat que llegan a B (ya reensamblados), para reinyectarlos después
+  const chatsToB = [];
+  const origPre = B.win.bleInterface._prePayload.bind(B.win.bleInterface);
+  B.win.bleInterface._prePayload = (d) => { const c = String((d && (d.content || d.data)) || ''); if (c.indexOf('"type":"chat"') >= 0) chatsToB.push({ deviceId: d.deviceId, content: c }); return origPre(d); };
   const r = { build: path.basename(buildDir), webcrypto_en_app: !!(A.win.crypto && A.win.crypto.subtle) };
   A.win.bleInterface.togglePanel();
   let add = null;
@@ -83,12 +87,46 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   r.llega_respuesta = vA.some((m) => m.content === 'SECRETO-respuesta');
   r.en_el_aire_en_claro = ['SECRETO-corto', 'SECRETO-largo', 'SECRETO-respuesta', 'abcdefghijabcdefghij', fotoB64.substring(1000, 1060), 'SECRETO-foto', 'SECRETO-video', thumb.substring(40, 100)].filter((x) => airText.indexOf(x) >= 0);
   r.paquetes_cifrados_E1 = air.filter((x) => x.indexOf('E1:') >= 0).length;
+  r.paquetes_cifrados_E2 = air.filter((x) => x.indexOf('E2:') >= 0).length;
   r.intercambios_kx = air.filter((x) => x.indexOf('"type":"kx"') >= 0).length;
   const cA = A.win.vaultLoadContacts().find((c) => c.nexoId.toLowerCase() === idB.toLowerCase()) || {};
   const cB = B.win.vaultLoadContacts().find((c) => c.nexoId.toLowerCase() === idA.toLowerCase()) || {};
   r.A_tiene_clave_de_B = !!cA.publicKey; r.B_tiene_clave_de_A = !!cB.publicKey;
   r.aviso_chat_A = ((A.win.document.getElementById('e2e-banner') || {}).textContent || '').substring(0, 40);
   r.estados_A = Array.from(A.win.document.querySelectorAll('#messages-container .message.own .msg-status')).map((e) => e.className.replace('msg-status status-', ''));
+  r.protocolo_2_en_los_dos = cA.proto === 2 && cB.proto === 2;
+
+  // Protocolo 2: repeticiones. El paquete del texto corto, reinyectado tal cual (mismo id) y con otro id
+  const corto = chatsToB.find((x) => x.content.indexOf('E2:') >= 0);
+  if (corto) {
+    const bi = B.win.bleInterface;
+    await bi._prePayload(corto).then((d) => d && bi._handlePayload(d));
+    const otro = corto.content.replace(/"msgId":"([^"]+)"/, '"msgId":"$1_rep"');
+    await bi._prePayload({ deviceId: corto.deviceId, content: otro }).then((d) => d && bi._handlePayload(d));
+    await sleep(1500);
+  }
+  const vB2 = await B.win.vaultLoadMessages(idA);
+  // (con el mismo id: duplicado confirmado; con otro id: la clave de ese mensaje ya se borró → DUP, no se muestra)
+  r.repeticion_mismo_y_otro_id_no_se_muestra = !!corto && vB2.filter((m) => m.content === 'SECRETO-corto-123').length === 1 &&
+    !vB2.some((m) => /_rep$/.test(m.messageId || m.msgId || ''));
+  // Vuelta atrás: A (manipulado) cifra con el protocolo 1 a B, que ya usa el 2 desde hace más del margen
+  const setC = (P, id, f) => { const cs = P.win.vaultLoadContacts(); const c = cs.find((x) => x.nexoId.toLowerCase() === id.toLowerCase()); f(c); P.win.vaultSaveContacts(cs); };
+  setC(B, idA, (c) => { c.proto2At = Date.now() - 30 * 3600000; });
+  setC(A, idB, (c) => { delete c.proto; });
+  await sendText(A, 'SECRETO-protocolo-1'); await sleep(4000);
+  r.protocolo_1_rechazado = !(await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'SECRETO-protocolo-1') && logs.some((l) => /protocolo 1 descartado/.test(l));
+  setC(A, idB, (c) => { c.proto = 2; c.proto2At = Date.now(); });
+  // Al volver al 2, ese mensaje sale cifrado con el 2 y llega
+  const t0 = Date.now();
+  let llega1 = false;
+  while (!llega1 && Date.now() - t0 < 90000) { await sleep(1000); llega1 = (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'SECRETO-protocolo-1'); }
+  r.luego_llega_con_el_2_s = llega1 ? Math.round((Date.now() - t0) / 1000) : null;
+  // Número de seguridad: el mismo en los dos teléfonos; "verificado"
+  const sn = async (P) => { const b = P.win.document.getElementById('e2e-banner'); click(P.win, b); for (let i = 0; i < 40; i++) { await sleep(250); const t = (P.win.document.querySelector('#e2e-banner .e2e-fp') || {}).textContent || ''; const m = t.replace(/\s+/g, ' ').match(/(\d{5} ){11}\d{5}/); if (m) return m[0]; } return null; };
+  const snA = await sn(A), snB = await sn(B);
+  r.numero_seguridad_igual = !!snA && snA === snB;
+  click(A.win, A.win.document.querySelector('#e2e-banner .e2e-verify')); await sleep(500);
+  r.verificado = ((A.win.document.querySelector('#e2e-banner .e2e-text') || {}).textContent || '').indexOf('Verificaste') >= 0;
 
   // B "reinstala": identidad nueva. A NO debe aceptarla sola (podría ser un impostor): queda pendiente,
   // no se le envía nada hasta que el usuario de A la acepte; después todo sigue cifrado con la nueva.
@@ -110,6 +148,7 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   r.llega_tras_aceptar_s = llega ? Math.round((Date.now() - t1) / 100) / 10 : null;
   const cA3 = A.win.vaultLoadContacts().find((c) => c.nexoId.toLowerCase() === idB.toLowerCase()) || {};
   r.clave_nueva_aceptada = cA3.publicKey === pendKey && !cA3.pendingKey;
+  r.tras_aceptar_protocolo_2_sin_verificar = cA3.proto === 2 && !cA3.verified;
   r.en_el_aire_tras_cambio = air.join('\n').indexOf('SECRETO-tras-cambio') >= 0;
   r.errores_descifrado = logs.filter((l) => /No se pudo descifrar/.test(l)).length;
   // Seguridad: ningún contenido ni nombre de archivo en los registros (se guardan y salen en el diagnóstico)

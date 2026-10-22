@@ -1,5 +1,5 @@
 /**
- * wifi_direct.js v1.0 — Fotos, vídeos y archivos por Wi-Fi Direct con un contacto a alcance.
+ * wifi_direct.js v1.1 — Fotos, vídeos y archivos por Wi-Fi Direct con un contacto a alcance.
  *
  * Bluetooth es el canal de control; Wi-Fi Direct solo lleva el contenido (ya cifrado de extremo a extremo):
  *   A → B  'wq' { id, size, meta }        ¿recibes por Wi-Fi Direct?
@@ -11,7 +11,8 @@
  * tienen (kx con wd:1, Android 10+) y para contenidos de más de WD_MIN_BYTES (para poco no compensa
  * montar el grupo). Una transferencia a la vez.
  */
-import { e2eEncryptText, e2eDecryptText, e2eIsEncrypted, e2eMyPublicKey } from '../vault/e2e_crypto.js';
+import { e2eEncryptText, e2eDecryptText, e2eMyPublicKey } from '../vault/e2e_crypto.js';
+import { e2eAnyEncrypted } from '../vault/e2e_proto.js';
 
 export var WD_MIN_BYTES = 150000;    // ~35 s por Bluetooth a la velocidad medida; montar el grupo son ~5 s
 export var WD_MAX_BYTES = 30000000;  // contenido cifrado en base64 (~22 MB de archivo)
@@ -174,7 +175,7 @@ export class WifiDirect {
     self.incoming.delete(id);
     self.busy = false;
     if (!inc) return;
-    if (ev.error || !ev.data || !e2eIsEncrypted(ev.data)) {
+    if (ev.error || !ev.data || !e2eAnyEncrypted(ev.data)) {
       console.warn('[WIFI-DIRECT] Recepción de ' + id + ' fallida: ' + (ev.error || 'contenido no válido'));
       return;
     }

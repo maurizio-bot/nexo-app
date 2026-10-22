@@ -1,8 +1,15 @@
-import { initE2E, e2eMyPublicKey, e2eIsEncrypted, e2eDecryptText } from '../vault/e2e_crypto.js';
+import { initE2E, e2eMyPublicKey } from '../vault/e2e_crypto.js';
+import { e2eAnyEncrypted, e2eOuterAd, e2eOpenText, e2eAllowsE1 } from '../vault/e2e_proto.js';
+import { ratchetInit, ratchetMyBundle, ratchetNotePeerBundle, ratchetForget } from '../vault/e2e_ratchet.js';
 import { createRelay } from './ble_relay.js';
 import { createWifiDirect } from './wifi_direct.js';
 /**
- * BLE Interface v6.6.0-NEXO
+ * BLE Interface v6.7.0-NEXO
+ * v6.7.0: Protocolo 2 de cifrado (como Signal): el kx y las tarjetas de contacto llevan el paquete de claves
+ *         'b2'; solo se guarda si es de la clave aceptada del contacto (el de una clave pendiente espera a que
+ *         el usuario la acepte). El contacto pasa a proto 2 y ya no se le cifra con el 1; lo que llegue de él
+ *         con el 1 se descarta pasado el margen (e2eAllowsE1). Un reintento de un texto ya descifrado tras
+ *         reiniciar (DUP) se confirma solo si está en el historial.
  * v6.6.0: Seguridad (anti-suplantación): la clave de un contacto no cambia sola. Una clave distinta queda
  *         pendiente (pendingKey); lo que llega cifrado con ella se retiene y no se le envía nada hasta que
  *         el usuario la acepte (acceptContactKey) o la rechace (rejectContactKey).
@@ -1344,7 +1351,7 @@ export class BLEInterface {
       if (pw && self.wifiDirect.handle(pw, data.deviceId)) return Promise.resolve(null);
     }
     var jump = /"to":"nx/i.test(raw) || /"type":"r[tkqp]"/.test(raw);
-    if (!jump && raw.indexOf('"type":"kx"') < 0 && raw.indexOf('E1:') < 0) return Promise.resolve(data);
+    if (!jump && raw.indexOf('"type":"kx"') < 0 && raw.indexOf('E1:') < 0 && raw.indexOf('E2:') < 0) return Promise.resolve(data);
     var p;
     try { p = JSON.parse(raw); } catch (e) { return Promise.resolve(data); }
     // Jump: rutas, custodia y paquetes de paso hacia otro teléfono
@@ -1356,10 +1363,12 @@ export class BLEInterface {
         // Clave pedida por otro teléfono: solo se acepta si aún no hay ninguna (un puente no puede
         // cambiar una clave ya conocida)
         if (p.from && p.pk && !self._contactKey(p.from)) self._noteSenderKey(p.from, p.pk);
+        if (p.from && p.b2) self._notePeerBundle(p.from, p.b2);
         if (p.rq) self._sendKxRouted(p.from, false);
         return Promise.resolve(null);
       }
       if (p.from && p.pk) self._noteSenderKey(p.from, p.pk);
+      if (p.from && p.b2) self._notePeerBundle(p.from, p.b2);
       // Asociar la dirección (un teléfono que se conectó a nosotros y no es contacto no tenía mapeo)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
       if (p.j && self.relay) self.relay.markCapable(p.from);
@@ -1369,19 +1378,23 @@ export class BLEInterface {
       return Promise.resolve(null);
     }
     if (viaRelay) data = Object.assign({}, data, { viaRelay: true, relayOrigin: _normId(p.from) });
-    if (p && p.v === 1 && p.type === 'chat' && p.payload && e2eIsEncrypted(p.payload.text)) {
-      return e2eDecryptText(p.payload.text).then(function(r) {
-        var sender = p.from || p.payload.senderNexoId;
-        var keyOk = self._noteSenderKey(sender, r.senderKey);
+    if (p && p.v === 1 && p.type === 'chat' && p.payload && e2eAnyEncrypted(p.payload.text)) {
+      var sender = p.from || p.payload.senderNexoId;
+      return e2eOpenText(sender, p.payload.text, e2eOuterAd(sender, self.localNexoId, p.msgId)).then(function(r) {
+        var v = self._checkSender(sender, r.senderKey, r.proto);
+        if (v === 'drop') return null;
         p.payload.text = r.text;
         p.payload.e2e = true;
         var out = Object.assign({}, data);
         out.e2eSenderKey = r.senderKey; // si el remitente aún no es contacto, se guarda al crearlo
+        out.e2eProto = r.proto;
         out.content = out.data = JSON.stringify(p);
         // Clave distinta de la conocida: retenido (sin mostrar ni confirmar) hasta que el usuario decida
-        if (keyOk === false) { self._quarantine(sender, function() { self._handlePayload(out); }, p.msgId); return null; }
+        if (v === 'hold') { self._quarantine(sender, function() { self._handlePayload(out); }, p.msgId); return null; }
         return out;
       }).catch(function(e) {
+        // Reintento de uno ya descifrado (tras reiniciar no queda el texto): confirmarlo si se guardó
+        if (e && e.code === 'DUP') { self._ackIfStored(data.deviceId, sender, p.msgId, viaRelay ? _normId(p.from) : null); return null; }
         console.warn('[E2E] No se pudo descifrar un mensaje de ' + (p.from || '?') + ': ' + (e && e.message));
         return null;
       });
@@ -1398,12 +1411,13 @@ export class BLEInterface {
     if (!force && now - ((self._kxSentAt && self._kxSentAt[key]) || 0) < 15000) return;
     self._kxSentAt = self._kxSentAt || {};
     self._kxSentAt[key] = now;
-    initE2E().then(function() {
+    initE2E().then(function() { return ratchetMyBundle().catch(function() { return null; }); }).then(function(b2) {
       var pk = e2eMyPublicKey();
       if (!pk || !self.localNexoId) return;
       // j:1 = entiende Jump (rutas): solo a quien lo diga se le mandan 'rt' (una build anterior los
-      // mostraría como mensajes de texto)
+      // mostraría como mensajes de texto). b2: paquete de claves del protocolo 2.
       var pkt = { v: 1, type: 'kx', from: self.localNexoId, pk: pk, j: 1 };
+      if (b2) pkt.b2 = b2;
       if (self.wifiDirect && self.wifiDirect.supported()) pkt.wd = 1;
       if (request) pkt.rq = 1;
       return self._sendMessageNative(deviceId, JSON.stringify(pkt), null);
@@ -1442,6 +1456,56 @@ export class BLEInterface {
     return false;
   }
 
+  // Mensaje descifrado: 'ok', 'hold' (clave distinta de la aceptada) o 'drop' (protocolo 1 de quien ya usa
+  // el 2, pasado el margen: sería la repetición de un mensaje viejo)
+  _checkSender(nexoId, key, proto) {
+    var nx = _normId(nexoId);
+    var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (proto !== 2 && !e2eAllowsE1(c)) { console.warn('[E2E] Mensaje de ' + nx + ' con protocolo 1 descartado (ya usa el 2)'); return 'drop'; }
+    if (this._noteSenderKey(nx, key) === false) return 'hold';
+    if (proto === 2) this._markProto2(nx, key);
+    return 'ok';
+  }
+
+  // El contacto habla el protocolo 2 con su clave aceptada: desde ahora solo ese
+  _markProto2(nexoId, key) {
+    var nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || !key || c.publicKey !== key || c.proto === 2) return;
+    c.proto = 2;
+    c.proto2At = Date.now();
+    _saveBLEContacts(contacts);
+    console.log('[E2E] ' + nx + ': protocolo 2');
+  }
+
+  // Paquete de claves del protocolo 2 (kx o tarjeta): solo el de la clave aceptada; el de una pendiente se
+  // guarda en el contacto hasta que el usuario la acepte
+  _notePeerBundle(nexoId, b) {
+    var self = this, nx = _normId(nexoId);
+    if (!b || typeof b !== 'object' || !/^nx[0-9a-z]{8}$/.test(nx)) return Promise.resolve(false);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || !c.publicKey) return Promise.resolve(false);
+    if (b.ik !== c.publicKey) {
+      if (c.pendingKey && b.ik === c.pendingKey) { c.pendingBundle = b; _saveBLEContacts(contacts); }
+      return Promise.resolve(false);
+    }
+    return ratchetNotePeerBundle(nx, b).then(function(ok) {
+      if (ok) self._markProto2(nx, b.ik);
+      return ok;
+    }).catch(function() { return false; });
+  }
+
+  _ackIfStored(deviceId, nexoId, msgId, routeTo) {
+    var self = this;
+    if (!msgId || !self.ackSystem) return;
+    _vaultLoadMessages(_normId(nexoId)).then(function(msgs) {
+      var known = (msgs || []).some(function(m) { return (m.msgId || m.messageId || m.id) === msgId; });
+      if (known) self.ackSystem.sendAck(deviceId, msgId, routeTo);
+    }).catch(function() {});
+  }
+
   // Mensajes retenidos por clave cambiada (en memoria; si la app se cierra, el emisor los reenvía al no
   // haber recibido confirmación)
   _quarantine(nexoId, release, id) {
@@ -1453,6 +1517,18 @@ export class BLEInterface {
     if (this._held.length > 50) this._held.shift();
     console.warn('[E2E] Mensaje de ' + nx + ' retenido: clave cambiada sin aceptar');
     _safeDispatchEvent('nexo:e2e:held', { nexoId: nx, count: this.heldCount(nx) });
+  }
+
+  // Número de seguridad comprobado en persona (se guarda la clave verificada: si cambia, deja de estarlo)
+  setContactVerified(nexoId, on) {
+    var nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || !c.publicKey || c.pendingKey) return false;
+    if (on) c.verified = c.publicKey; else delete c.verified;
+    _saveBLEContacts(contacts);
+    _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, verified: !!on });
+    return true;
   }
 
   heldCount(nexoId) {
@@ -1468,13 +1544,19 @@ export class BLEInterface {
     c.publicKey = c.pendingKey;
     delete c.pendingKey;
     c.keyAcceptedAt = Date.now();
+    // Identidad nueva: protocolo, verificación y paquete de claves empiezan de cero
+    var pb = c.pendingBundle;
+    delete c.pendingBundle; delete c.proto; delete c.proto2At; delete c.verified;
+    // Ya anunció el protocolo 2 con esta clave: desde ya (lo pendiente no debe salir con el 1)
+    if (pb && pb.ik === c.publicKey) { c.proto = 2; c.proto2At = Date.now(); }
     _saveBLEContacts(contacts);
+    var noted = pb ? self._notePeerBundle(nx, pb) : Promise.resolve(false);
     console.log('[E2E] Clave nueva de ' + nx + ' aceptada por el usuario');
     var held = (self._held || []).filter(function(h) { return h.nx === nx; });
     self._held = (self._held || []).filter(function(h) { return h.nx !== nx; });
     held.forEach(function(h) { try { h.release(); } catch (e) {} });
     _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, accepted: true });
-    self._resendPendingMessages(nx);
+    noted.then(function() { self._resendPendingMessages(nx); });
     return true;
   }
 
@@ -1485,7 +1567,9 @@ export class BLEInterface {
     if (!c || !c.pendingKey) return false;
     c.rejectedKey = c.pendingKey;
     delete c.pendingKey;
+    delete c.pendingBundle;
     _saveBLEContacts(contacts);
+    ratchetForget(nx, c.rejectedKey).catch(function() {});
     this._held = (this._held || []).filter(function(h) { return h.nx !== nx; });
     console.warn('[E2E] Clave nueva de ' + nx + ' rechazada por el usuario');
     _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, rejected: true });
@@ -1615,6 +1699,7 @@ export class BLEInterface {
           if (!_isBLEContact(senderUUID)) {
             _addBLEContact({ deviceUUID: senderUUID, name: senderName, deviceId: data.viaRelay ? null : deviceId });
             if (data.e2eSenderKey) self._noteSenderKey(senderUUID, data.e2eSenderKey);
+            if (data.e2eSenderKey && data.e2eProto === 2) self._markProto2(senderUUID, data.e2eSenderKey);
             self.renderContactsList(); self.renderOnlineStrip();
           } else {
             var contacts2 = _getBLEContacts();
@@ -1925,10 +2010,11 @@ export class BLEInterface {
     self._kxSentAt = self._kxSentAt || {};
     if (now - (self._kxSentAt[key] || 0) < 15000) return;
     self._kxSentAt[key] = now;
-    initE2E().then(function() {
+    initE2E().then(function() { return ratchetMyBundle().catch(function() { return null; }); }).then(function(b2) {
       var pk = e2eMyPublicKey();
       if (!pk || !self.localNexoId) return;
       var pkt = { v: 1, type: 'kx', from: _normId(self.localNexoId), to: nx, pk: pk, msgId: 'kx_' + now };
+      if (b2) pkt.b2 = b2;
       if (request) pkt.rq = 1;
       self.relay.sendRouted(pkt);
     }).catch(function() {});
@@ -2854,7 +2940,7 @@ export class BLEInterface {
   // empiezan a buscar por radio. Devuelve { added: [...], existing: [...] }.
   addSharedContacts(list, sharedBy) {
     var self = this;
-    var res = { added: [], existing: [] }, keyFilled = false;
+    var res = { added: [], existing: [] }, keyFilled = false, bundles = [];
     var me = _normId(self.localNexoId);
     var contacts = _getBLEContacts();
     (Array.isArray(list) ? list : []).forEach(function(c) {
@@ -2866,6 +2952,7 @@ export class BLEInterface {
       var cur = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
       if (cur) {
         if (!cur.publicKey && c && typeof c.publicKey === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(c.publicKey)) { cur.publicKey = c.publicKey; keyFilled = true; }
+        if (c && c.b2) bundles.push([nx, c.b2]);
         res.existing.push(cur.name || name);
         return;
       }
@@ -2875,6 +2962,7 @@ export class BLEInterface {
         online: false, unreadCount: 0, lastMessage: '', isNewShared: true, sharedBy: _normId(sharedBy) || null,
         publicKey: pk
       });
+      if (pk && c.b2) bundles.push([nx, c.b2]);
       res.added.push(name);
       self._markPeerLost(nx);
     });
@@ -2885,6 +2973,8 @@ export class BLEInterface {
       self._startPresenceSearch(120000);
       console.log('[BLEInterface] Contactos compartidos agregados:', res.added.join(', '));
     }
+    // Paquetes de claves del protocolo 2 que trae la tarjeta (solo si son de la clave del contacto)
+    bundles.forEach(function(x) { self._notePeerBundle(x[0], x[1]); });
     return res;
   }
 
