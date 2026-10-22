@@ -274,11 +274,33 @@ class NativePhone {
   // ---- API del plugin (nombres = @PluginMethod de Kotlin) ----
   plugin() {
     const self = this;
+    // opts.pluginThread = ms por MB: como Capacitor, todas las llamadas en UN hilo y en fila; guardar/leer un
+    // archivo lo ocupa según su tamaño (en el teléfono: escribir/leer + cifrar). opts.ioOffThread: Kotlin 2721+,
+    // los archivos van en sus propios hilos (adjuntos aparte) y no hacen esperar a sendMessage.
+    const FILE_OPS = { saveToFile: 1, loadFromFile: 1, deleteFile: 1 };
+    const lane = (name, args) => {
+      if (!FILE_OPS[name] || !self.opts.ioOffThread) return 'plugin';
+      return /^nexo_(att|relay)_/.test(String(args.filename || '')) ? 'io_big' : 'io_small';
+    };
+    const cost = (name, args) => {
+      if (!FILE_OPS[name]) return 0;
+      const len = name === 'saveToFile' ? String(args.content || '').length : String(self.files.get(args.filename) || '').length;
+      return 1 + (len / 1e6) * self.opts.pluginThread;
+    };
+    self.lanes = self.lanes || {};
     const wrap = (name, fn) => (args = {}) => {
       self.calls.push({ name, args: JSON.parse(JSON.stringify(args || {})) });
-      return new Promise((resolve, reject) => {
+      const run = (resolve, reject) => {
         const call = { resolve, reject: (msg, code) => { const e = new Error(msg); e.code = code; reject(e); }, getString: (k) => (args && typeof args[k] === 'string' ? args[k] : null) };
         try { fn(call, args || {}); } catch (e) { reject(e); }
+      };
+      if (!self.opts.pluginThread) return new Promise(run);
+      return new Promise((resolve, reject) => {
+        const l = lane(name, args || {}), t0 = Date.now();
+        self.lanes[l] = (self.lanes[l] || Promise.resolve()).then(() => new Promise((done) => {
+          if (name === 'sendMessage') { const w = Date.now() - t0; self.stats.sendWaits = self.stats.sendWaits || []; self.stats.sendWaits.push(w); }
+          setTimeout(() => { run(resolve, reject); done(); }, cost(name, args || {}));
+        }));
       });
     };
     const api = {
@@ -419,7 +441,7 @@ class NativePhone {
       // Seguridad fase 3 (Kotlin: AtRestStore + Keystore, BiometricPrompt, FLAG_SECURE). Aquí los archivos ya se
       // guardan "cifrados" de forma transparente. opts.noBiometric: el teléfono no tiene huella ni PIN.
       // self.bioAnswer: lo que responde el diálogo de huella (true = huella correcta; por defecto true).
-      atRestStatus: wrap('atRestStatus', (c) => c.resolve({ active: true })),
+      atRestStatus: wrap('atRestStatus', (c) => c.resolve({ active: true, migration: '0 archivo(s) cifrados ahora (3 ms)' })),
       biometricStatus: wrap('biometricStatus', (c) => c.resolve({ available: !self.opts.noBiometric, code: self.opts.noBiometric ? 11 : 0 })),
       biometricAuth: wrap('biometricAuth', (c) => {
         self.stats.bioAsked = (self.stats.bioAsked || 0) + 1;

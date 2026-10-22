@@ -397,12 +397,15 @@ class NexoBlePlugin : Plugin() {
     override fun load() {
         super.load()
         // Seguridad fase 3: cifrar en segundo plano lo que aún esté en claro (archivos de versiones anteriores)
+        // (prioridad baja; de lo ya cifrado solo se lee la cabecera)
         Thread {
             try {
+                val t0 = System.currentTimeMillis()
                 val n = atRest().migrateAll()
-                remLog("INFO", "AT_REST", if (atRestDataKey() != null) "Cifrado en reposo activo; $n archivo(s) cifrados ahora" else "Cifrado en reposo NO disponible")
-            } catch (e: Exception) { remLog("WARN", "AT_REST", "Migración: ${e.message}") }
-        }.start()
+                atRestMigration = if (atRestDataKey() != null) "$n archivo(s) cifrados ahora (${System.currentTimeMillis() - t0} ms)" else "sin clave"
+                remLog("INFO", "AT_REST", if (atRestDataKey() != null) "Cifrado en reposo activo; $atRestMigration" else "Cifrado en reposo NO disponible")
+            } catch (e: Throwable) { remLog("WARN", "AT_REST", "Migración: ${e.message}") }
+        }.apply { priority = Thread.MIN_PRIORITY }.start()
         checkNotificationIntent()
         loadNexoMappings()
         remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server, ${nxidToMacMap.size} mapeos cargados")
@@ -1859,6 +1862,23 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("listening", true))
     }
 
+    // Los archivos se leen y guardan fuera del hilo de los plugins (Capacitor los ejecuta todos en uno, en fila):
+    // así guardar o leer un vídeo no hace esperar a sendMessage ni a los guardados pequeños (claves, historial).
+    // Cada archivo va siempre al mismo hilo (el orden de guardar/leer un mismo archivo se mantiene); los grandes
+    // (adjuntos, HD y cola de Jump) tienen el suyo.
+    private val ioSmall = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val ioBig = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private fun ioFor(name: String) = if (name.startsWith("nexo_att_") || name.startsWith("nexo_relay_")) ioBig else ioSmall
+    private fun ioRun(name: String, op: String, call: PluginCall, block: () -> Unit) {
+        ioFor(name).execute {
+            val t0 = System.currentTimeMillis()
+            try { block() } catch (e: Throwable) { call.reject("Error $op archivo: ${e.message}") }
+            val ms = System.currentTimeMillis() - t0
+            // Sin el nombre (puede llevar el NEXO ID de un contacto): solo el tipo
+            if (ms > 300) remLog("WARN", "FILE_IO", "$op lento: ${ms} ms (${if (ioFor(name) === ioBig) "adjunto" else name.substringBefore("_nx").substringBefore(".")})")
+        }
+    }
+
     @PluginMethod
     fun saveToFile(call: PluginCall) {
         val filename = call.getString("filename") ?: run {
@@ -1869,11 +1889,10 @@ class NexoBlePlugin : Plugin() {
             call.reject("content requerido")
             return
         }
-        try {
+        val path = File(context.filesDir, filename).absolutePath
+        ioRun(filename, "guardando", call) {
             atRest().write(filename, content) // cifrado en reposo (AtRestStore)
-            call.resolve(JSObject().put("success", true).put("path", File(activity.filesDir, filename).absolutePath))
-        } catch (e: Exception) {
-            call.reject("Error guardando archivo: ${e.message}")
+            call.resolve(JSObject().put("success", true).put("path", path))
         }
     }
 
@@ -1883,15 +1902,11 @@ class NexoBlePlugin : Plugin() {
             call.reject("filename requerido")
             return
         }
-        try {
+        val path = File(context.filesDir, filename).absolutePath
+        ioRun(filename, "leyendo", call) {
             val content = atRest().read(filename)
-            if (content == null) {
-                call.resolve(JSObject().put("exists", false).put("content", ""))
-                return
-            }
-            call.resolve(JSObject().put("exists", true).put("content", content).put("path", File(activity.filesDir, filename).absolutePath))
-        } catch (e: Exception) {
-            call.reject("Error leyendo archivo: ${e.message}")
+            if (content == null) call.resolve(JSObject().put("exists", false).put("content", ""))
+            else call.resolve(JSObject().put("exists", true).put("content", content).put("path", path))
         }
     }
 
@@ -1901,11 +1916,8 @@ class NexoBlePlugin : Plugin() {
             call.reject("filename requerido")
             return
         }
-        try {
-            val deleted = atRest().delete(filename)
-            call.resolve(JSObject().put("deleted", deleted))
-        } catch (e: Exception) {
-            call.reject("Error borrando archivo: ${e.message}")
+        ioRun(filename, "borrando", call) {
+            call.resolve(JSObject().put("deleted", atRest().delete(filename)))
         }
     }
 
@@ -1916,6 +1928,7 @@ class NexoBlePlugin : Plugin() {
     private val atRestAlias = "nexo_at_rest_wrap_v1"
     @Volatile private var atRestKey: SecretKey? = null
     @Volatile private var atRestFailed = false
+    @Volatile private var atRestMigration = "en curso"
     private var atRestStore: AtRestStore? = null
 
     @Synchronized
@@ -1972,7 +1985,7 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun atRestStatus(call: PluginCall) {
-        call.resolve(JSObject().put("active", atRestDataKey() != null))
+        call.resolve(JSObject().put("active", atRestDataKey() != null).put("migration", atRestMigration))
     }
 
     private fun biometricAuthenticators(): Int =

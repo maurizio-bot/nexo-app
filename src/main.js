@@ -128,7 +128,7 @@ var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_O
 function _extOf(name) { var m = /\.([A-Za-z0-9]{1,6})$/.exec(String(name || '')); return m ? '*.' + m[1].toLowerCase() : '(sin extensión)'; }
 var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
-var DIAG_KEY_RE = /\[VIDEO\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
+var DIAG_KEY_RE = /\[VIDEO\]|\[SEND\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
   function fmt(a) {
     if (typeof a === 'string') return a;
@@ -159,6 +159,10 @@ var DIAG_KEY_RE = /\[VIDEO\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMER
     var pl = plugin();
     if (!pl || typeof pl.loadFromFile !== 'function') return;
     pl.loadFromFile({ filename: DIAG_FILE }).then(function(r) { if (r && r.exists && r.content) _diagPrev = r.content; }).catch(function() {});
+    // v9.9.48: avisos nativos de archivos (lentos, cifrado en reposo); solo estas etiquetas (sin contenido)
+    if (typeof pl.addListener === 'function') pl.addListener('onRemLog', function(d) {
+      if (d && (d.tag === 'FILE_IO' || d.tag === 'AT_REST')) console[d.level === 'WARN' ? 'warn' : 'log']('[NATIVO] ' + d.tag + ': ' + d.message);
+    });
     if (typeof pl.deleteFile === 'function') pl.deleteFile({ filename: DIAG_OLD_FILE }).catch(function() {});
   }, 500);
   setInterval(function() {

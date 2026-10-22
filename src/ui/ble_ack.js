@@ -729,9 +729,10 @@ export class BleAckSystem {
     }
     if (!e2eAvailable() || e2eAnyEncrypted(content)) return self._sendWithRetryRaw(deviceId, content, messageId, seq, dst);
     var mid = messageId || _newMsgId();
+    var t0 = Date.now();
     return self._preparingFor(mid, self._ensurePeerKey(deviceId, dst)
       .then(function(t) { return e2eSealText(t, content, self._outAd(t, mid)); }))
-      .then(function(enc) { return self._sendWithRetryRaw(deviceId, enc, mid, seq, dst); });
+      .then(function(enc) { return self._sendWithRetryRaw(deviceId, enc, mid, seq, dst, { t0: t0, seal: Date.now() - t0 }); });
   }
   // Jump: un puente reenvía un paquete tal cual y espera la confirmación del siguiente salto
   sendRawWithRetry(deviceId, packet, msgId) {
@@ -762,13 +763,15 @@ export class BleAckSystem {
     this.pendingAcks.delete(msgId);
     entry.resolve();
   }
-  _sendWithRetryRaw(deviceId, content, messageId, seq, dst) {
+  // timing: { t0, seal } para el diagnóstico (cuánto tarda cada texto y en qué)
+  _sendWithRetryRaw(deviceId, content, messageId, seq, dst, timing) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
       var entry = {
         msgId: msgId, deviceId: deviceId, content: content, dst: dst || null,
-        resolve: resolve, reject: reject, retries: 0, timer: null, sentAt: Date.now()
+        resolve: resolve, reject: reject, retries: 0, timer: null, sentAt: Date.now(),
+        t0: (timing && timing.t0) || Date.now(), seal: (timing && timing.seal) || 0, outMs: 0
       };
       self.pendingAcks.set(msgId, entry);
       self._dispatchStatus(msgId, 'sending');
@@ -786,8 +789,10 @@ export class BleAckSystem {
     var delay = SHORT_MSG_BACKOFF_DELAYS[Math.min(entry.retries, SHORT_MSG_BACKOFF_DELAYS.length - 1)];
     var sendP = entry.raw ? self.ble._sendRawNative(entry.deviceId, entry.content)
       : self.ble._sendMessageNative(entry.deviceId, entry.content, entry.msgId, undefined, entry.dst);
+    var tOut = Date.now();
     sendP
       .then(function() {
+        if (!entry.outMs) entry.outMs = Date.now() - tOut;
         entry.timer = setTimeout(function() { self._onAckTimeout(entry.msgId); }, delay);
       })
       .catch(function(err) {
@@ -838,6 +843,10 @@ export class BleAckSystem {
         this.pendingAcks.delete(ackMsgId);
         entry.resolve();
         if (!entry.quiet) this._dispatchStatus(ackMsgId, status);
+        if (!entry.quiet && !entry.raw && entry.t0) {
+          console.log('[SEND] Texto entregado en ' + (Date.now() - entry.t0) + ' ms (cifrar ' + entry.seal + ' ms, salir por Bluetooth ' +
+            entry.outMs + ' ms, reintentos ' + entry.retries + ')');
+        }
       } else {
         this._dispatchStatus(ackMsgId, status);
       }

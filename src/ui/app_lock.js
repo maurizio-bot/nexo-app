@@ -141,7 +141,9 @@ export function initAppLock(opts) {
     });
     _call('atRestStatus').then(function(r) {
       _atRest = r ? !!r.active : null;
-      console.log('[LOCK] Cifrado en reposo: ' + (_atRest === null ? 'sin datos' : _atRest ? 'activo' : 'NO disponible'));
+      console.log('[LOCK] Cifrado en reposo: ' + (_atRest === null ? 'sin datos' : _atRest ? 'activo' : 'NO disponible') + (r && r.migration ? '; migración: ' + r.migration : ''));
+      // La migración de los archivos de antes va en segundo plano: su resultado, un poco después
+      if (r && r.migration === 'en curso') setTimeout(function() { _call('atRestStatus').then(function(r2) { if (r2) console.log('[LOCK] Cifrado en reposo; migración: ' + r2.migration); }); }, 20000);
       renderSecuritySection();
     });
   };
