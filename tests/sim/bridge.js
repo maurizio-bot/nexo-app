@@ -43,8 +43,10 @@ async function sendPhoto(page, name, bytes) {
   if (!paired) { console.log('BRIDGE ' + JSON.stringify({ error: 'no empareja' })); process.exit(0); }
   const idA = await A.page.evaluate(() => window.bleInterface.localNexoId), idB = await B.page.evaluate(() => window.bleInterface.localNexoId);
   const say = (p, t) => p.page.evaluate((t) => { const i = document.getElementById('message-input'); i.value = t; i.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('send-btn').dispatchEvent(new MouseEvent('click', { bubbles: true })); }, t);
-  await click(A.page, '#main-contacts-list .ble-contact-row'); await sleep(500); await say(A, 'hola'); await sleep(3000);
-  await click(B.page, '#main-contacts-list .ble-contact-row'); await sleep(500); await say(B, 'hola'); await sleep(3000);
+  // Abrir el chat (con la CPU frenada tarda): reintentar hasta que haya contacto activo
+  const openChat = async (p) => { for (let i = 0; i < 60; i++) { if (await p.page.evaluate(() => !!(window.NEXO.app && window.NEXO.app.activeContact))) return true; await click(p.page, '#main-contacts-list .ble-contact-row'); await sleep(500); } return false; };
+  r.chat_A = await openChat(A); await say(A, 'hola'); await sleep(3000);
+  r.chat_B = await openChat(B); await say(B, 'hola'); await sleep(3000);
   for (const [S, R, idS, label] of [[A, B, idA, 'A_a_B'], [B, A, idB, 'B_a_A']]) {
     const before = { a: nA.stats.remLogsToJs || 0, b: nB.stats.remLogsToJs || 0 };
     const st = await phaseStart([A, B]);
