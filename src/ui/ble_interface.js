@@ -1,7 +1,10 @@
 import { initE2E, e2eMyPublicKey, e2eIsEncrypted, e2eDecryptText } from '../vault/e2e_crypto.js';
 import { createRelay } from './ble_relay.js';
 /**
- * BLE Interface v6.3.0-NEXO
+ * BLE Interface v6.4.0-NEXO
+ * v6.4.0: Jump con cualquier teléfono NEXO: lo visto al escanear se anota (relay.noteSeen); sin enlace ni
+ *         ruta se busca camino bajo demanda (relay.discover); se responde al kx (el lado servidor también
+ *         dice que entiende Jump) y los escaneos de Jump no muestran el aviso de dispositivo nuevo.
  * v6.3.0: Jump (ble_relay.js): si el contacto no está a alcance pero otro teléfono conectado tiene ruta,
  *         textos y adjuntos salen por él ('to'/'dt' = destino); lo que llega por otro teléfono no se
  *         asocia a la dirección del puente y su ack vuelve dirigido al origen; kx de extremo a extremo.
@@ -399,7 +402,7 @@ function _isControlPacket(content) {
   if (!content || typeof content !== 'string' || content.charAt(0) !== '{') return false;
   try {
     var obj = JSON.parse(content);
-    if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'kx' || obj.type === 'rt' || obj.type === 'rk' ||
+    if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'kx' || obj.type === 'rt' || obj.type === 'rk' || obj.type === 'rq' || obj.type === 'rp' ||
         obj.type === 'chat_meta' || obj.type === 'chat_chunk' || obj.type === 'block_ack' ||
         obj.type === 'file_meta' || obj.type === 'file_chunk' || obj.type === 'file_resume') return true;
     if (obj.t === 'c' || obj.t === 'f' || obj.t === 'n' || obj.t === 'a' || obj.t === 'ba' || obj.t === 'ss' || obj.t === 'sr') return true;
@@ -1124,6 +1127,7 @@ export class BLEInterface {
         var nd = _normMac(deviceId);
         var nx = _normId(nexoId);
         if (nd && nx) { self._nexoIdToMac.set(nx, nd); self._macToNexoId.set(nd, nx); }
+        if (nx && self.relay) self.relay.noteSeen(nx, deviceId, data.rssi);
         self.onDeviceFound({ id: deviceId, name: name, rssi: data.rssi, nexoId: nexoId });
       } catch (e) {}
     });
@@ -1317,11 +1321,12 @@ export class BLEInterface {
     var self = this;
     var raw = (data && (data.content || data.data || data.message) || '').trim();
     if (raw.charAt(0) !== '{') return Promise.resolve(data);
-    var jump = /"to":"nx/i.test(raw) || raw.indexOf('"type":"rt"') >= 0 || raw.indexOf('"type":"rk"') >= 0;
+    var jump = /"to":"nx/i.test(raw) || /"type":"r[tkqp]"/.test(raw);
     if (!jump && raw.indexOf('"type":"kx"') < 0 && raw.indexOf('E1:') < 0) return Promise.resolve(data);
     var p;
     try { p = JSON.parse(raw); } catch (e) { return Promise.resolve(data); }
     // Jump: rutas, custodia y paquetes de paso hacia otro teléfono
+    if (jump && p && /^r[tqp]$/.test(p.type || '') && /^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
     if (jump && self.relay && self.relay.intercept(p, raw, data.deviceId)) return Promise.resolve(null);
     var viaRelay = !!(p && p.to && Number(p.hp) > 0);
     if (p && p.type === 'kx') {
@@ -1333,8 +1338,11 @@ export class BLEInterface {
         return Promise.resolve(null);
       }
       if (p.from && p.pk) self._noteSenderKey(p.from, p.pk);
+      // Asociar la dirección (un teléfono que se conectó a nosotros y no es contacto no tenía mapeo)
+      if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
       if (p.j && self.relay) self.relay.markCapable(p.from);
-      if (p.rq) self._sendKx(data.deviceId, false, true);
+      // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
+      if (p.rq || p.j) self._sendKx(data.deviceId, false, !!p.rq);
       return Promise.resolve(null);
     }
     if (viaRelay) data = Object.assign({}, data, { viaRelay: true, relayOrigin: _normId(p.from) });
@@ -1844,6 +1852,7 @@ export class BLEInterface {
           return;
         }
         if (!deviceId) {
+          if (self.relay) self.relay.discover(uuid);
           // v6.1.11: contacto aún no visto por radio (p.ej. compartido): en cola hasta encontrarlo
           var q0 = self._pendingMessageQueue.get('nx:' + uuid) || [];
           q0.push({ content: content, messageId: msgId, seq: msgSeq, resolve: resolve, reject: reject });
@@ -1894,6 +1903,8 @@ export class BLEInterface {
         if (isReady) { doSend(); return; }
         enqueueMsg();
         self._markPeerLost(uuid);
+        // v6.4.0: sin enlace directo: buscar camino por otros teléfonos NEXO (Jump bajo demanda)
+        if (self.relay) self.relay.discover(uuid);
         if (!isConnecting && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice')) {
           console.log('[BLEInterface] sendChatMessage: forcing connectToDevice for', deviceId);
           _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: deviceId }).catch(function() {});
@@ -1924,6 +1935,7 @@ export class BLEInterface {
         if (!deviceId) {
           // v6.1.11: contacto aún no visto: el adjunto queda pendiente y se reenvía al encontrarlo
           self._markPeerLost(uuid);
+          if (self.relay) self.relay.discover(uuid);
           var eNf = new Error('Contacto no disponible: queda pendiente');
           eNf.code = 'PEER_ABSENT';
           reject(eNf);
@@ -1962,6 +1974,7 @@ export class BLEInterface {
               deviceId = rh.deviceId;
               meta = Object.assign({}, meta || {}, { dst: uuid });
               console.log('[JUMP] Adjunto ' + fileId + ' a ' + uuid + ' por ' + rh.via);
+              self.relay.plan(uuid, (meta && meta.type) || 'file', base64Data.length);
               startTransfer();
               return;
             }
@@ -1974,6 +1987,7 @@ export class BLEInterface {
               }
             }
             if (Date.now() >= deadline) {
+              if (self.relay) self.relay.discover(uuid);
               var e = new Error('Contacto no disponible: queda pendiente');
               e.code = 'PEER_ABSENT';
               reject(e);
@@ -2112,6 +2126,7 @@ export class BLEInterface {
         var rh = self.relay && self.relay.relayHop(nexoId);
         if (!rh) {
           console.log('[BLEInterface] ' + pending.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera');
+          if (self.relay) self.relay.discover(nexoId);
           return;
         }
         deviceId = rh.deviceId;
@@ -2642,8 +2657,8 @@ export class BLEInterface {
       device.lastSeen = Date.now();
       device.deviceUUID = nexoId;
       this.foundDevices.set(nx, device);
-      this.newDevicesCount++;
-      this.updateBadge();
+      // Escaneo de Jump (buscar camino para otros): no avisar de "dispositivo nuevo"
+      if (!this._relayScan) { this.newDevicesCount++; this.updateBadge(); }
       this.renderNewDeviceBar();
     } else {
       existing.id = deviceId;

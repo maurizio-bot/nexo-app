@@ -90,4 +90,6 @@ APK sin tipo reconocida por la extensión, y nada viaja en claro.
 `jump.js` (mensajes de varios saltos): `radio.block(a, b)` deja dos teléfonos fuera de alcance. A–B–C con
 A y C sin verse: A escribe a C (corto, largo, foto); comprueba que llega, ✓ en B / ✓✓ de C / leído, que C
 contesta, que B no lee ni muestra nada y la custodia (C se aleja cuando B ya tiene la foto). `--shared`:
-A nunca vio a C (B le comparte el contacto). `--chain`: A–B–C–D, 3 saltos.
+A nunca vio a C (B le comparte el contacto). `--chain`: A–B–C–D, 3 saltos. `--stranger`: B no es contacto
+de nadie (camino bajo demanda, conexiones de paso que se cierran solas, B sin chats ni contactos nuevos);
+con `--low-battery` B está al 10 % y no debe hacer de puente hasta que se enchufa.

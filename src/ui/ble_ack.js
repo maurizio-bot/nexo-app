@@ -1274,6 +1274,9 @@ ChatStream.prototype._finish = function() {
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
+  // Velocidad real por salto (la usa el selector de camino de Jump)
+  var relay = this.ackSystem.ble && this.ackSystem.ble.relay;
+  if (relay && this.type === 'file') relay.noteSpeed(this.content.length, Date.now() - this.startTime);
   // Jump: el ack final de un puente es custodia (✓); el ✓✓ llega con el ack del destino
   if (!this.meta.fwd) this.ackSystem._dispatchStatus(this.msgId, this.meta.dst ? 'sent' : 'delivered');
   // v3.4.0: entregado → fuera del registro de salientes (si no, se reenviaba al abrir la app o reconectar)

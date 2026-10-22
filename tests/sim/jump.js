@@ -2,9 +2,11 @@
 // corto, largo y una foto), C contesta; todo pasa por B sin que B pueda leerlo ni lo muestre. Estados:
 // ✓ al quedar en B (custodia), ✓✓ cuando confirma C (ack de extremo a extremo), leído al abrir el chat.
 // También: C sale del alcance de B (B lo guarda y lo entrega al volver) y cadena de 3 saltos.
-// Uso: node jump.js <dir_build> [--io-delay=25] [--shared] [--chain]
+// Uso: node jump.js <dir_build> [--io-delay=25] [--shared] [--chain] [--stranger [--low-battery]]
 //   --shared: A nunca ha visto a C (B le comparte el contacto con su clave)
 //   --chain:  cuatro teléfonos A–B–C–D; A escribe a D (3 saltos)
+//   --stranger: B no es contacto de nadie (solo tiene NEXO y está en medio): camino bajo demanda
+//   --low-battery: (con --stranger) B al 10 % sin cargar: no debe hacer de puente; luego se enchufa
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -14,7 +16,7 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
 const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 0), asymmetric: true };
-const shared = !!arg('shared', false), chain = !!arg('chain', false);
+const shared = !!arg('shared', false), chain = !!arg('chain', false), stranger = !!arg('stranger', false), lowBat = !!arg('low-battery', false);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
   constructor(dir) { super(); this.dir = dir; }
@@ -61,10 +63,11 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const names = chain ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C'];
   const nat = {}, P = {};
   names.forEach((n, i) => { nat[n] = new NativePhone(n, n.repeat(2) + ':' + n.repeat(2) + ':' + n.repeat(2) + ':' + n.repeat(2) + ':' + n.repeat(2) + ':0' + (i + 1), opts); radio.add(nat[n]); nat[n].load(); });
+  if (lowBat) nat.B.battery = { level: 10, charging: false, powerSave: false };
   (await Promise.all(names.map((n) => boot(n, nat[n])))).forEach((p) => { P[p.name] = p; });
   const id = (n) => P[n].win.bleInterface.localNexoId;
   const dest = chain ? 'D' : 'C';
-  const r = { build: path.basename(buildDir), modo: chain ? 'cadena A-B-C-D' : (shared ? 'A nunca vio a C (contacto compartido)' : 'A y C se conocían') };
+  const r = { build: path.basename(buildDir), modo: chain ? 'cadena A-B-C-D' : stranger ? ('B desconocido en medio' + (lowBat ? ', batería 10 %' : '')) : (shared ? 'A nunca vio a C (contacto compartido)' : 'A y C se conocían') };
 
   // Emparejar X con Y: X solo ve a Y mientras lo agrega; X saluda para que Y lo conozca
   async function pair(x, y) {
@@ -76,7 +79,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     others.forEach((o) => radio.unblock(nat[x], nat[o]));
     return ok;
   }
-  const links = chain ? [['A', 'B'], ['B', 'C'], ['C', 'D']] : [['A', 'B'], ['B', 'C']];
+  const links = chain ? [['A', 'B'], ['B', 'C'], ['C', 'D']] : stranger ? [] : [['A', 'B'], ['B', 'C']];
   for (const [x, y] of links) if (!(await pair(x, y))) { console.log('JUMP ' + JSON.stringify({ error: 'no empareja ' + x + y })); process.exit(0); }
   if (!shared) { if (!(await pair('A', dest))) { console.log('JUMP ' + JSON.stringify({ error: 'no empareja A' + dest })); process.exit(0); } }
   // Alcance: solo los vecinos de la cadena se ven
@@ -99,10 +102,10 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     const cC = P.A.win.vaultLoadContacts().find((c) => (c.nexoId || '').toLowerCase() === id('C').toLowerCase());
     r.A_recibe_contacto_C_con_clave = !!(cC && cC.publicKey);
   }
-  // Rutas: esperar a que A tenga ruta al destino
-  r.ruta_lista_s = await waitFor(() => !!P.A.win.bleInterface.relay.relayHop(id(dest).toLowerCase()), 60000);
-  r.rutas_A = P.A.win.bleInterface.relay.describe();
+  // Rutas: esperar a que A tenga ruta al destino (con un desconocido en medio la busca al enviar)
+  if (!stranger) r.ruta_lista_s = await waitFor(() => !!P.A.win.bleInterface.relay.relayHop(id(dest).toLowerCase()), 60000);
   const airBefore = Object.keys(air).reduce((o, k) => { o[k] = air[k].length; return o; }, {});
+  const badgeB0 = P.B.win.bleInterface.newDevicesCount || 0;
 
   // A escribe al destino: corto, largo y foto
   await openChatWith(P.A, dest);
@@ -117,7 +120,15 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   fin.dispatchEvent(new P.A.win.Event('change'));
   const idA = id('A');
   const has = async (n, pred) => (await P[n].win.vaultLoadMessages(idA)).some(pred);
-  r.llega_corto_s = await waitFor(() => has(dest, (m) => m.content === 'SECRETO-corto'), 60000);
+  if (lowBat) {
+    r.con_B_al_10_llega = await waitFor(() => has(dest, (m) => m.content === 'SECRETO-corto'), 70000);
+    r.estado_A_con_B_al_10 = status(P.A, 'SECRETO-corto');
+    r.B_puentes = logs.filter((l) => /\[B\].*Puente:/.test(l)).length;
+    nat.B.battery = { level: 10, charging: true, powerSave: false };
+    console.error('B enchufado');
+  }
+  r.llega_corto_s = await waitFor(() => has(dest, (m) => m.content === 'SECRETO-corto'), lowBat ? 300000 : 60000);
+  r.rutas_A = P.A.win.bleInterface.relay.describe();
   r.llega_largo_s = await waitFor(() => has(dest, (m) => m.content === largo), 60000);
   r.llega_foto_s = await waitFor(() => has(dest, (m) => (m.attachmentType === 'file' || m.attachmentType === 'image') && (m.attachmentPayload === foto.toString('base64') || (m.attachmentRef && nat[dest].files.get(m.attachmentRef) === foto.toString('base64')))), 90000);
   r.doble_check_corto_s = await waitFor(() => ['delivered', 'read'].includes(status(P.A, 'SECRETO-corto')), 30000);
@@ -167,6 +178,13 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.llega_al_volver_C_s = await waitFor(() => has('C', (m) => (m.attachmentPayload === foto2.toString('base64') || (m.attachmentRef && nat.C.files.get(m.attachmentRef) === foto2.toString('base64')))), 120000);
     r.doble_check_al_volver_s = await waitFor(() => ['delivered', 'read'].includes(statusById(P.A, m2 && m2.msgId)), 30000);
     r.cola_en_B_final = P.B.win.bleInterface.relay.queue.length;
+  }
+  if (stranger) {
+    r.B_contactos = P.B.win.vaultLoadContacts().map((c) => c.name);
+    r.B_avisos_nuevos_por_jump = (P.B.win.bleInterface.newDevicesCount || 0) - badgeB0;
+    r.B_lista_chats = Array.from(P.B.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).length;
+    r.conexiones_de_paso_A_B = [P.A.win.bleInterface.relay.transient.size, P.B.win.bleInterface.relay.transient.size];
+    r.cierre_conexiones_de_paso_s = await waitFor(() => P.A.win.bleInterface.relay.transient.size === 0 && P.B.win.bleInterface.relay.transient.size === 0, 150000);
   }
   r.errores = logs.filter((l) => / error: /.test(l)).slice(0, 5);
   r.descifrado_fallido = logs.filter((l) => /No se pudo descifrar/.test(l)).length;

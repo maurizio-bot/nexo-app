@@ -1530,7 +1530,7 @@ function _handleIncomingMessage(msg) {
               protoCheck.type === 'file_meta' || protoCheck.type === 'file_chunk' ||
               protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
               protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' || protoCheck.type === 'kx' ||
-              protoCheck.type === 'rt' || protoCheck.type === 'rk' ||
+              protoCheck.type === 'rt' || protoCheck.type === 'rk' || protoCheck.type === 'rq' || protoCheck.type === 'rp' ||
               protoCheck.type === 'pong' ||
               protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' ||
               protoCheck.t === 'a' || protoCheck.t === 'ba' || protoCheck.t === 'ss' || protoCheck.t === 'sr') {

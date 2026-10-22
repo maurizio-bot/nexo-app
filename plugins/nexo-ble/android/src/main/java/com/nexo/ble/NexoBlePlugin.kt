@@ -2207,4 +2207,19 @@ class NexoBlePlugin : Plugin() {
             tmp?.delete()
         }
     }
+
+    // Jump: nivel de batería, si está cargando y si está en ahorro de energía (con poca batería el
+    // teléfono deja de hacer de puente para otros)
+    @PluginMethod
+    fun getPowerStatus(call: PluginCall) {
+        try {
+            val bm = context.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+            val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            val charging = bm.isCharging
+            val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            call.resolve(JSObject().put("level", level).put("charging", charging).put("powerSave", pm.isPowerSaveMode))
+        } catch (e: Exception) {
+            call.reject("Estado de batería no disponible: ${e.message}")
+        }
+    }
 }

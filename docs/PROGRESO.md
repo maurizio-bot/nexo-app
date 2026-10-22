@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2705)
+Última actualización: 2026-10-22 (build 2706)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -60,6 +60,10 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
 ## Siguiente paso (al retomar)
 - 2704: probar enviar un PDF (miniatura, tocar → se abre) y una APK pequeña (tocar → instalar; Android pide
   permiso la 1.ª vez). Una APK grande debe mostrar el aviso de tamaño.
+- 2706: igual que la 2705 pero B puede ser un teléfono que NO es contacto de nadie (solo con NEXO abierto
+  o en segundo plano). Comprobar también que B no ve chats ni contactos nuevos.
+- Siguiente: Wi-Fi Direct para fotos/vídeos/archivos (luego Wi-Fi y datos; para datos/Wi-Fi entre redes
+  hace falta decidir el servidor de relevo).
 - 2705 (Jump): probar con 3 teléfonos A–B–C donde A y C no se alcancen (otra habitación / distancia) y B
   en medio: A escribe a C (texto y foto). Debe salir ✓ al quedar en B y ✓✓ al llegar a C. Diagnóstico:
   líneas `[JUMP]` (rutas, "Puente", "Reenviado").
@@ -81,6 +85,30 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## Ronda 2706: Jump con cualquier teléfono NEXO (bajo demanda) + batería + selector de camino
+El dueño: los únicos requisitos para ser puente son estar a alcance y tener NEXO (en la 2705 solo valían
+teléfonos conectados, en la práctica contactos). Criterio de caminos acordado (seguridad y velocidad):
+textos → directo, Jump, Wi-Fi, datos; archivos → directo (y Wi-Fi Direct cuando exista), Wi-Fi, Jump si el
+tiempo es razonable; datos móviles siempre el último (cuestan dinero); sin señal, Jump para todo.
+- Vecindario sin conectarse: cada NEXO visto al escanear (contacto o no) se anota 2 min.
+- Búsqueda de camino bajo demanda ('rq'/'rp', máx. 4 saltos): cuando un mensaje propio no tiene enlace ni
+  ruta; escaneo corto si hace falta, se pregunta a vecinos conectados y a cercanos (conexión de paso);
+  quien vio al destino hace poco o tiene ruta contesta y la ruta queda puesta por el camino de vuelta. El
+  puente conecta con el destino al usarla. Reintento con espera creciente (45 s … 10 min) solo mientras haya
+  mensajes esperando: sin nada que enviar no se gasta nada extra.
+- Conexiones de paso con desconocidos: máx. 3, se cierran tras 60 s sin uso; no se agregan como contacto
+  ni salen en chats ni en el aviso de dispositivo nuevo. Se responde al kx (el lado que recibe la conexión
+  también dice que entiende Jump) y su dirección se asocia al llegar sus paquetes.
+- Batería (`getPowerStatus` en el plugin): con <15 % sin cargar o en ahorro de energía no hace de puente
+  (no contesta 'rq', retira sus rutas, no da custodia); sus propios mensajes sí salen.
+- Selector de camino (`relay.plan`): hoy directo o Jump (registra el tiempo estimado con la velocidad
+  medida por salto); es donde se añadirán Wi-Fi Direct, Wi-Fi y datos.
+- Fallos encontrados al probar y corregidos: 'rq'/'rp' sin marcar como paquetes de control (el puente los
+  mostraba como mensaje y agregaba al emisor como contacto); conexión de paso que caía y no se borraba (el
+  puente no volvía a conectar con el destino); al reconectar con un vecino conocido no se le repetía la
+  pregunta pendiente.
+- Simulador: `jump.js --stranger` (B no es contacto de nadie) y `--stranger --low-battery`.
+
 ## Ronda 2705: Jump fase 2 — mensajes de varios saltos (A → B → C)
 Pedido del dueño: saltos entre teléfonos, cualquier teléfono NEXO hace de puente, textos y fotos (el
 cifrado de extremo a extremo de la 2702 era la fase 1). Nuevo `src/ui/ble_relay.js`:
@@ -99,8 +127,7 @@ cifrado de extremo a extremo de la 2702 era la fase 1). Nuevo `src/ui/ble_relay.
   cifrado de un desconocido que escribe por un puente se guarda al crear el contacto; si falta se pide de
   extremo a extremo (`kx` dirigido; un puente nunca puede cambiar una clave ya conocida).
 - Los puentes solo ven quién, a quién y los ids; no pueden leer el contenido ni lo muestran.
-- Límite: los puentes son teléfonos **conectados** entre sí (en la práctica, contactos a alcance). No
-  hay entrega diferida a quien no esté en ninguna ruta en ese momento (el mensaje espera en el emisor).
+- Límite (resuelto en la 2706): los puentes eran solo teléfonos ya conectados (en la práctica contactos).
 - Simulador: modelo de alcance (`radio.block/unblock`) y `tests/sim/jump.js` (A–B–C conocidos,
   `--shared` A nunca vio a C, `--chain` A–B–C–D con 3 saltos). Verificado: textos, largo y foto llegan,
   ✓✓ y leído vuelven, la respuesta vuelve, los puentes no leen ni guardan nada, custodia (C se aleja
