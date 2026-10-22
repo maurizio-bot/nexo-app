@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.38-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.39-NEXO
+ * v9.9.39: Wi-Fi Direct: con el contacto a alcance (y con Wi-Fi Direct) el límite de archivo sube a
+ *          ~22 MB y el vídeo va original sin previa; líneas [WIFI-DIRECT] en el diagnóstico.
  * v9.9.38: Jump: líneas [JUMP] en el diagnóstico; rt/rk son paquetes de protocolo.
  * v9.9.37: archivos: burbuja con miniatura (PDF), nombre como texto, tamaño y abrir al tocar (openFile);
  *          el tipo (mime) viaja al otro teléfono; el selector ya no se cierra solo a los 30 s.
@@ -101,7 +103,7 @@ initE2E().catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log.txt';
 var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
-var DIAG_KEY_RE = /\[VIDEO\]|\[E2E\]|\[JUMP\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
+var DIAG_KEY_RE = /\[VIDEO\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
   function fmt(a) {
     if (typeof a === 'string') return a;
@@ -240,8 +242,18 @@ var _msgContactMap = {};
 // más de 20 minutos y bloqueaban la app; por encima de esto no se envía.
 var MAX_BLE_B64_BYTES = 3000000;
 var MAX_BLE_FILE_BYTES = Math.floor(MAX_BLE_B64_BYTES * 3 / 4);
-function _tooBigMessage(bytes) {
-  return 'Archivo demasiado grande para Bluetooth (' + (bytes / 1048576).toFixed(1) + ' MB). Máximo ~' + (MAX_BLE_FILE_BYTES / 1048576).toFixed(1) + ' MB.';
+// v9.9.39: con Wi-Fi Direct (contacto a alcance que también lo tiene) el límite sube a ~22 MB
+var WD_MAX_B64_BYTES = 30000000;
+function _wdReach(contactId) {
+  var bi = window.bleInterface;
+  return !!(bi && bi.wifiDirect && contactId && bi.wifiDirect.canReach(contactId));
+}
+function _maxB64For(contactId) { return _wdReach(contactId) ? WD_MAX_B64_BYTES : MAX_BLE_B64_BYTES; }
+function _tooBigMessage(bytes, contactId) {
+  if (_wdReach(contactId)) return 'Archivo demasiado grande (' + (bytes / 1048576).toFixed(1) + ' MB). Máximo ~' + (WD_MAX_B64_BYTES * 3 / 4 / 1048576).toFixed(0) + ' MB.';
+  var bi = window.bleInterface;
+  var hint = (bi && bi.wifiDirect && bi.wifiDirect.supported()) ? ' Con Wi-Fi Direct (los dos con NEXO actualizado y cerca) se pueden enviar hasta ~22 MB.' : '';
+  return 'Archivo demasiado grande para Bluetooth (' + (bytes / 1048576).toFixed(1) + ' MB). Máximo ~' + (MAX_BLE_FILE_BYTES / 1048576).toFixed(1) + ' MB.' + hint;
 }
 
 var _STATUS_RANK = {
@@ -404,14 +416,14 @@ function _sendAttachment(type, payload, meta, opts) {
   };
 
   // Tope BLE: video/archivo/imagen grandes → failed limpio (sin romper flujo)
-  if ((type === 'video' || type === 'file' || type === 'image') && typeof payload === 'string' && payload.length > MAX_BLE_B64_BYTES) {
+  if ((type === 'video' || type === 'file' || type === 'image') && typeof payload === 'string' && payload.length > _maxB64For(contactId)) {
     console.warn('[ATTACH] Payload demasiado grande para BLE:', type, payload.length);
     localMsg.status = 'failed';
     _renderMessage(localMsg);
     try {
       if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg);
     } catch (e) {}
-    _showPermissionError(_tooBigMessage(Math.floor(payload.length * 3 / 4)));
+    _showPermissionError(_tooBigMessage(Math.floor(payload.length * 3 / 4), contactId));
     return;
   }
 
@@ -1106,15 +1118,17 @@ function _handleFile() {
   _closeAttachMenu();
   _pickFile('*/*', 'Archivo', function(file) {
     // Comprobar antes de leer: leer un archivo enorme ya congela el WebView
-    if (file.size > MAX_BLE_FILE_BYTES) {
+    var cidF = _getCurrentContactId();
+    var maxB64 = _maxB64For(cidF);
+    if (file.size > Math.floor(maxB64 * 3 / 4)) {
       console.warn('[ATTACH] Archivo demasiado grande: ' + file.size);
-      _showPermissionError(_tooBigMessage(file.size));
+      _showPermissionError(_tooBigMessage(file.size, cidF));
       return;
     }
     _readFileBase64(file).then(function(base64) {
-      if (base64.length > MAX_BLE_B64_BYTES) {
+      if (base64.length > maxB64) {
         console.warn('[ATTACH] Archivo demasiado grande:', base64.length);
-        _showPermissionError(_tooBigMessage(Math.floor(base64.length * 3 / 4)));
+        _showPermissionError(_tooBigMessage(Math.floor(base64.length * 3 / 4), cidF));
         return;
       }
       var mime = _mimeOf(file.type, file.name);
@@ -1531,6 +1545,7 @@ function _handleIncomingMessage(msg) {
               protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
               protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' || protoCheck.type === 'kx' ||
               protoCheck.type === 'rt' || protoCheck.type === 'rk' || protoCheck.type === 'rq' || protoCheck.type === 'rp' ||
+              /^w[qanf]$/.test(protoCheck.type || '') ||
               protoCheck.type === 'pong' ||
               protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' ||
               protoCheck.t === 'a' || protoCheck.t === 'ba' || protoCheck.t === 'ss' || protoCheck.t === 'sr') {
@@ -2794,6 +2809,14 @@ function _sendVideo(blob, meta) {
   var makePreview = (typeof window.NEXO_makeVideoPreview === 'function') ? window.NEXO_makeVideoPreview : _makeVideoPreview;
   console.log('[VIDEO] Enviar vídeo ' + Math.round(blob.size / 1024) + ' KB ' + mime + ' dur=' + (meta.duration || '?'));
   var tStart = Date.now();
+  // v9.9.39: con Wi-Fi Direct el original va directo en segundos (sin previa ni HD aparte)
+  if (_wdReach(contactId) && Math.ceil(blob.size / 3) * 4 <= WD_MAX_B64_BYTES) {
+    console.log('[VIDEO] Original por Wi-Fi Direct (' + Math.round(blob.size / 1024) + ' KB)');
+    return Promise.all([_blobToB64(blob), _makeVideoThumb(blob, 320)]).then(function(r) {
+      _showOwnPreparing(false);
+      _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null }));
+    }).catch(function(e) { _showOwnPreparing(false); console.warn('[VIDEO] Error preparando vídeo:', e && e.message); });
+  }
   return makePreview(blob, meta.duration).then(function(preview) {
     _showOwnPreparing(false);
     if (preview && preview.tooLong) {

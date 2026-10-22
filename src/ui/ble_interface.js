@@ -1,7 +1,10 @@
 import { initE2E, e2eMyPublicKey, e2eIsEncrypted, e2eDecryptText } from '../vault/e2e_crypto.js';
 import { createRelay } from './ble_relay.js';
+import { createWifiDirect } from './wifi_direct.js';
 /**
- * BLE Interface v6.4.0-NEXO
+ * BLE Interface v6.5.0-NEXO
+ * v6.5.0: Wi-Fi Direct (wifi_direct.js): el kx anuncia wd:1 si el teléfono lo tiene; paquetes de control
+ *         'wq'/'wa'/'wn'/'wf' por Bluetooth; una transferencia por Wi-Fi Direct cuenta como en vuelo.
  * v6.4.0: Jump con cualquier teléfono NEXO: lo visto al escanear se anota (relay.noteSeen); sin enlace ni
  *         ruta se busca camino bajo demanda (relay.discover); se responde al kx (el lado servidor también
  *         dice que entiende Jump) y los escaneos de Jump no muestran el aviso de dispositivo nuevo.
@@ -403,6 +406,7 @@ function _isControlPacket(content) {
   try {
     var obj = JSON.parse(content);
     if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'kx' || obj.type === 'rt' || obj.type === 'rk' || obj.type === 'rq' || obj.type === 'rp' ||
+        obj.type === 'wq' || obj.type === 'wa' || obj.type === 'wn' || obj.type === 'wf' ||
         obj.type === 'chat_meta' || obj.type === 'chat_chunk' || obj.type === 'block_ack' ||
         obj.type === 'file_meta' || obj.type === 'file_chunk' || obj.type === 'file_resume') return true;
     if (obj.t === 'c' || obj.t === 'f' || obj.t === 'n' || obj.t === 'a' || obj.t === 'ba' || obj.t === 'ss' || obj.t === 'sr') return true;
@@ -512,6 +516,7 @@ export class BLEInterface {
     this._notificationFallbackTimers = new Map();
     this.ackSystem = null;
     this.relay = createRelay(this);
+    this.wifiDirect = createWifiDirect(this);
     this._localSeqCounter = 0;
     this._seqCounterLoaded = false;
     this._pendingPings = new Map();
@@ -665,6 +670,12 @@ export class BLEInterface {
     self._supervisorTimer = setInterval(function() { self._runSupervisorCycle(); }, self._supervisorIntervalMs);
     console.log('[BLEInterface] Supervisor iniciado');
     if (self.relay) self.relay.start();
+    if (self.wifiDirect) self.wifiDirect.init().then(function(st) {
+      // Los ya conectados aún no sabían que tenemos Wi-Fi Direct: repetir el kx con wd:1
+      if (st && st.supported) self._deviceStates.forEach(function(v, k) {
+        if (v.state === BLE_STATES.READY_TO_CHAT || v.state === BLE_STATES.NOTIFICATIONS_READY) self._sendKx(k, false, true);
+      });
+    });
   }
 
   _stopConnectionSupervisor() {
@@ -859,6 +870,7 @@ export class BLEInterface {
     if (ack && ack.pendingAcks && ack.pendingAcks.has(msgId)) return true;
     if (ack && ack.outgoingStreams && ack.outgoingStreams.has(msgId)) return true;
     if (ack && ack.preparing && ack.preparing.has(msgId)) return true;
+    if (this.wifiDirect && this.wifiDirect.out.has(msgId)) return true;
     return false;
   }
 
@@ -1322,6 +1334,12 @@ export class BLEInterface {
     var self = this;
     var raw = (data && (data.content || data.data || data.message) || '').trim();
     if (raw.charAt(0) !== '{') return Promise.resolve(data);
+    // Wi-Fi Direct: control de una transferencia (por Bluetooth)
+    if (/"type":"w[qanf]"/.test(raw) && self.wifiDirect) {
+      var pw = null;
+      try { pw = JSON.parse(raw); } catch (e) {}
+      if (pw && self.wifiDirect.handle(pw, data.deviceId)) return Promise.resolve(null);
+    }
     var jump = /"to":"nx/i.test(raw) || /"type":"r[tkqp]"/.test(raw);
     if (!jump && raw.indexOf('"type":"kx"') < 0 && raw.indexOf('E1:') < 0) return Promise.resolve(data);
     var p;
@@ -1342,6 +1360,7 @@ export class BLEInterface {
       // Asociar la dirección (un teléfono que se conectó a nosotros y no es contacto no tenía mapeo)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
       if (p.j && self.relay) self.relay.markCapable(p.from);
+      if (p.wd && self.wifiDirect) self.wifiDirect.markPeer(p.from);
       // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
       if (p.rq || p.j) self._sendKx(data.deviceId, false, !!p.rq);
       return Promise.resolve(null);
@@ -1379,6 +1398,7 @@ export class BLEInterface {
       // j:1 = entiende Jump (rutas): solo a quien lo diga se le mandan 'rt' (una build anterior los
       // mostraría como mensajes de texto)
       var pkt = { v: 1, type: 'kx', from: self.localNexoId, pk: pk, j: 1 };
+      if (self.wifiDirect && self.wifiDirect.supported()) pkt.wd = 1;
       if (request) pkt.rq = 1;
       return self._sendMessageNative(deviceId, JSON.stringify(pkt), null);
     }).catch(function() {});

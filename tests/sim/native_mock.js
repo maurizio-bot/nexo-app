@@ -365,6 +365,35 @@ class NativePhone {
         self.serverConnected.forEach((peer, mac) => devices.push({ id: peer.initAddress, address: peer.initAddress, direction: 'incoming', role: 'server', ready: !!self.serverNotif.get(mac) }));
         c.resolve({ devices });
       }),
+      // Wi-Fi Direct (opts.wifiDirect: lo tiene; opts.wdFail: unirse al grupo falla). El receptor crea el
+      // grupo con credenciales; el emisor solo se une con ellas y a alcance; ~2 MB/s.
+      wifiDirectStatus: wrap('wifiDirectStatus', (c) => c.resolve({ supported: !!self.opts.wifiDirect, granted: true, wifiOn: true })),
+      requestWifiDirectPermission: wrap('requestWifiDirectPermission', (c) => c.resolve({ granted: true })),
+      wifiDirectHost: wrap('wifiDirectHost', (c, a) => {
+        if (!self.opts.wifiDirect) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
+        const rnd = (n) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
+        const ssid = 'DIRECT-' + rnd(2) + '-NEXO', pass = rnd(16), port = 40000 + Math.floor(Math.random() * 20000);
+        self.radio.wdGroups = self.radio.wdGroups || new Map();
+        self.radio.wdGroups.set(ssid, { host: self, pass, port, id: a.transferId });
+        self.stats.wdGroups = (self.stats.wdGroups || 0) + 1;
+        setTimeout(() => c.resolve({ ssid, passphrase: pass, port }), 1500);
+        setTimeout(() => { if (self.radio.wdGroups.get(ssid)) { self.radio.wdGroups.delete(ssid); self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 90000);
+      }),
+      wifiDirectSend: wrap('wifiDirectSend', (c, a) => {
+        if (!self.opts.wifiDirect) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
+        const g = self.radio.wdGroups && self.radio.wdGroups.get(a.ssid);
+        const data = String(a.data || '');
+        if (!g || g.pass !== a.passphrase || g.port !== a.port || g.id !== a.transferId || !self.radio.inRange(self, g.host) || self.opts.wdFail || g.host.opts.wdFail) {
+          return setTimeout(() => c.reject('No se pudo conectar (2)', 'WD_CONNECT'), 3000);
+        }
+        const ms = 2000 + Math.round(data.length / 2000);
+        setTimeout(() => {
+          self.radio.wdGroups.delete(a.ssid);
+          self.stats.wdBytes = (self.stats.wdBytes || 0) + data.length;
+          g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data, bytes: data.length });
+          c.resolve({ ok: true, ms, bytes: data.length });
+        }, ms);
+      }),
       // Batería (opts.battery = { level, charging, powerSave }; por defecto 80 %, sin cargar)
       getPowerStatus: wrap('getPowerStatus', (c) => { const b = self.battery || self.opts.battery || { level: 80, charging: false, powerSave: false }; c.resolve({ level: b.level, charging: !!b.charging, powerSave: !!b.powerSave }); }),
       // Archivos (Kotlin: FileProvider + ACTION_VIEW; PdfRenderer). Aquí se registran las llamadas.

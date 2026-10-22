@@ -27,6 +27,9 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.net.wifi.WifiManager
+import android.net.wifi.p2p.WifiP2pConfig
+import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -67,7 +70,8 @@ import org.json.JSONObject
         Permission(strings = [android.Manifest.permission.ACCESS_FINE_LOCATION], alias = "location"),
         Permission(strings = [android.Manifest.permission.POST_NOTIFICATIONS], alias = "postNotifications"),
         Permission(strings = [android.Manifest.permission.FOREGROUND_SERVICE], alias = "foregroundService"),
-        Permission(strings = [android.Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE], alias = "foregroundServiceConnectedDevice")
+        Permission(strings = [android.Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE], alias = "foregroundServiceConnectedDevice"),
+        Permission(strings = ["android.permission.NEARBY_WIFI_DEVICES"], alias = "nearbyWifi")
     ]
 )
 class NexoBlePlugin : Plugin() {
@@ -2220,6 +2224,184 @@ class NexoBlePlugin : Plugin() {
             call.resolve(JSObject().put("level", level).put("charging", charging).put("powerSave", pm.isPowerSaveMode))
         } catch (e: Exception) {
             call.reject("Estado de batería no disponible: ${e.message}")
+        }
+    }
+
+    // ===== Wi-Fi Direct: fotos, vídeos y archivos con el contacto a alcance (mucho más rápido que BLE) =====
+    // El que recibe crea un grupo con nombre y contraseña aleatorios (Android 10+: el otro se une sin aviso
+    // del sistema) y abre un socket; el que envía se une, manda el contenido (ya cifrado de extremo a
+    // extremo) y espera la confirmación. El grupo se cierra al terminar. Bluetooth sigue siendo el canal de
+    // control (por ahí viajan las credenciales, cifradas).
+    private var p2pManager: WifiP2pManager? = null
+    private var p2pChannel: WifiP2pManager.Channel? = null
+    private var wdServer: java.net.ServerSocket? = null
+    private val WD_MAX_BYTES = 40_000_000L
+
+    private fun p2pInit(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)) return false
+        if (p2pManager == null) {
+            p2pManager = context.getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
+            p2pChannel = p2pManager?.initialize(context, Looper.getMainLooper(), null)
+        }
+        return p2pManager != null && p2pChannel != null
+    }
+
+    private fun wdPermissionGranted(): Boolean =
+        if (Build.VERSION.SDK_INT >= 33) isGranted(context, "android.permission.NEARBY_WIFI_DEVICES")
+        else isGranted(context, android.Manifest.permission.ACCESS_FINE_LOCATION)
+
+    private fun wdRandom(n: Int): String {
+        val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+        val rnd = java.security.SecureRandom()
+        return (1..n).map { chars[rnd.nextInt(chars.length)] }.joinToString("")
+    }
+
+    private fun wdTearDown() {
+        mainHandler.post {
+            val m = p2pManager
+            val ch = p2pChannel
+            if (m != null && ch != null) {
+                try { m.removeGroup(ch, null) } catch (e: Exception) {}
+                try { m.cancelConnect(ch, null) } catch (e: Exception) {}
+            }
+        }
+    }
+
+    @PluginMethod
+    fun wifiDirectStatus(call: PluginCall) {
+        val supported = p2pInit()
+        val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        call.resolve(JSObject().put("supported", supported).put("granted", wdPermissionGranted()).put("wifiOn", wm?.isWifiEnabled ?: false))
+    }
+
+    @PluginMethod
+    fun requestWifiDirectPermission(call: PluginCall) {
+        if (wdPermissionGranted()) { call.resolve(JSObject().put("granted", true)); return }
+        requestPermissionForAlias(if (Build.VERSION.SDK_INT >= 33) "nearbyWifi" else "location", call, "wifiDirectPermCallback")
+    }
+
+    @PermissionCallback
+    fun wifiDirectPermCallback(call: PluginCall) {
+        call.resolve(JSObject().put("granted", wdPermissionGranted()))
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    @PluginMethod
+    fun wifiDirectHost(call: PluginCall) {
+        val transferId = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !p2pInit() || !wdPermissionGranted()) {
+            call.reject("Wi-Fi Direct no disponible", "WD_UNAVAILABLE"); return
+        }
+        val m = p2pManager!!
+        val ch = p2pChannel!!
+        val name = "DIRECT-" + wdRandom(2) + "-NEXO"
+        val pass = wdRandom(16)
+        val cfg = WifiP2pConfig.Builder().setNetworkName(name).setPassphrase(pass)
+            .enablePersistentMode(false).setGroupOperatingBand(WifiP2pConfig.GROUP_OWNER_BAND_AUTO).build()
+        fun create() {
+            m.createGroup(ch, cfg, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    try {
+                        try { wdServer?.close() } catch (e: Exception) {}
+                        val server = java.net.ServerSocket(0)
+                        server.soTimeout = 90000
+                        wdServer = server
+                        remLog("INFO", "WIFI_DIRECT", "Grupo creado para $transferId, puerto ${server.localPort}")
+                        call.resolve(JSObject().put("ssid", name).put("passphrase", pass).put("port", server.localPort))
+                        Thread { wdReceive(server, transferId) }.start()
+                    } catch (e: Exception) {
+                        wdTearDown()
+                        call.reject("Socket no disponible: ${e.message}", "WD_SOCKET")
+                    }
+                }
+                override fun onFailure(reason: Int) { call.reject("No se pudo crear el grupo ($reason)", "WD_GROUP") }
+            })
+        }
+        mainHandler.post {
+            m.removeGroup(ch, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() { create() }
+                override fun onFailure(reason: Int) { create() }
+            })
+        }
+    }
+
+    private fun wdReceive(server: java.net.ServerSocket, transferId: String) {
+        try {
+            server.accept().use { sock ->
+                sock.soTimeout = 30000
+                val input = java.io.DataInputStream(java.io.BufferedInputStream(sock.getInputStream()))
+                val h = JSONObject(input.readUTF())
+                if (h.optString("id") != transferId) throw Exception("transferencia distinta")
+                val len = h.optLong("len")
+                if (len <= 0 || len > WD_MAX_BYTES) throw Exception("tamaño no válido")
+                val buf = ByteArray(len.toInt())
+                input.readFully(buf)
+                sock.getOutputStream().apply { write(1); flush() }
+                remLog("INFO", "WIFI_DIRECT", "Recibido $transferId ($len bytes)")
+                notifyListeners("onWifiDirectReceived", JSObject().put("transferId", transferId).put("data", String(buf, Charsets.UTF_8)).put("bytes", len), true)
+            }
+        } catch (e: Exception) {
+            remLog("WARN", "WIFI_DIRECT", "Recepción fallida $transferId: ${e.message}")
+            notifyListeners("onWifiDirectReceived", JSObject().put("transferId", transferId).put("error", e.message ?: "error"), true)
+        } finally {
+            try { server.close() } catch (e: Exception) {}
+            if (wdServer === server) wdServer = null
+            wdTearDown()
+        }
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    @PluginMethod
+    fun wifiDirectSend(call: PluginCall) {
+        val ssid = call.getString("ssid") ?: run { call.reject("ssid requerido"); return }
+        val pass = call.getString("passphrase") ?: run { call.reject("passphrase requerido"); return }
+        val port = call.getInt("port") ?: run { call.reject("port requerido"); return }
+        val transferId = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+        val data = call.getString("data") ?: run { call.reject("data requerido"); return }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !p2pInit() || !wdPermissionGranted()) {
+            call.reject("Wi-Fi Direct no disponible", "WD_UNAVAILABLE"); return
+        }
+        val m = p2pManager!!
+        val ch = p2pChannel!!
+        val t0 = System.currentTimeMillis()
+        val cfg = WifiP2pConfig.Builder().setNetworkName(ssid).setPassphrase(pass).build()
+        fun push(addr: java.net.InetAddress) {
+            Thread {
+                try {
+                    val bytes = data.toByteArray(Charsets.UTF_8)
+                    java.net.Socket().use { s ->
+                        s.connect(java.net.InetSocketAddress(addr, port), 10000)
+                        s.soTimeout = 60000
+                        val out = java.io.DataOutputStream(java.io.BufferedOutputStream(s.getOutputStream()))
+                        out.writeUTF(JSONObject().put("id", transferId).put("len", bytes.size).toString())
+                        out.write(bytes)
+                        out.flush()
+                        if (s.getInputStream().read() != 1) throw Exception("sin confirmación")
+                    }
+                    val ms = System.currentTimeMillis() - t0
+                    remLog("INFO", "WIFI_DIRECT", "Enviado $transferId (${bytes.size} bytes) en $ms ms")
+                    call.resolve(JSObject().put("ok", true).put("ms", ms).put("bytes", bytes.size))
+                } catch (e: Exception) {
+                    call.reject("Envío fallido: ${e.message}", "WD_SEND")
+                } finally {
+                    wdTearDown()
+                }
+            }.start()
+        }
+        fun waitGroup(attempt: Int) {
+            m.requestConnectionInfo(ch) { info ->
+                val addr = info?.groupOwnerAddress
+                if (info != null && info.groupFormed && addr != null) push(addr)
+                else if (attempt < 40) mainHandler.postDelayed({ waitGroup(attempt + 1) }, 500)
+                else { wdTearDown(); call.reject("El grupo no se formó", "WD_TIMEOUT") }
+            }
+        }
+        mainHandler.post {
+            m.connect(ch, cfg, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() { waitGroup(0) }
+                override fun onFailure(reason: Int) { call.reject("No se pudo conectar ($reason)", "WD_CONNECT") }
+            })
         }
     }
 }

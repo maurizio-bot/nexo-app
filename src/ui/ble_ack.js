@@ -1,5 +1,7 @@
 import { e2eAvailable, e2eIsEncrypted, e2eEncryptText, e2eEncryptB64, e2eDecryptText, e2eDecryptToB64 } from '../vault/e2e_crypto.js';
 /**
+* v3.6.0: Wi-Fi Direct (wifi_direct.js): los archivos grandes van primero por Wi-Fi Direct si el contacto
+*         está a alcance y también lo tiene; si falla, por Bluetooth como siempre (_sendFileBest).
 * v3.5.0: Jump (ble_relay.js): envío a un destino por otro teléfono (opts.dst / meta.dst: se cifra
 *         para el destino; trozos con 'dt' y 'hp'), custodia 'rk', reenvío de flujos en un puente
 *         (forwardStream) y ack de extremo a extremo dirigido al origen.
@@ -50,6 +52,7 @@ const NACK_INTERVAL_MS = 1500;
 const FILE_WINDOW_TIMEOUT_MS = 8000;
 const FILE_PACING_DELAY_MS = 2; // el nativo ya regula el ritmo (control de flujo por callback)
 const MAX_WINDOW_RETRIES = 8;
+const BLE_FILE_MAX_CHARS = 3100000; // tope por Bluetooth (main.js MAX_BLE_B64_BYTES + cabecera de cifrado)
 const ASSEMBLY_TIMEOUT_MS = 120000;
 const COMPLETED_TTL_MS = 60000;
 const GLOBAL_TIMEOUT_MS = 180000;
@@ -190,11 +193,45 @@ export class BleAckSystem {
         var em = Object.assign({}, m);
         if (r[1]) em.thumb = r[1];
         if (r[2]) em.name = r[2];
-        return self._sendFileJS(deviceId, fileId, r[0], em);
+        return self._sendFileBest(deviceId, fileId, r[0], em);
       });
     }
-    return new Promise(function(resolve, reject) {
-      self._sendFileJS(deviceId, fileId, base64Data, meta).then(resolve).catch(reject);
+    return self._sendFileBest(deviceId, fileId, base64Data, meta);
+  }
+  // Datos de cabecera de un archivo (los mismos por Bluetooth y por Wi-Fi Direct)
+  _fileMeta(meta, size) {
+    var senderId = (this.ble && this.ble.localNexoId) || ((this.ble && this.ble.localDeviceUUID) ? this.ble.localDeviceUUID : 'unknown');
+    var fromName = (this.ble && this.ble.localDeviceName) || 'NEXO';
+    var seq = (this.ble && typeof this.ble.getNextSeq === 'function') ? this.ble.getNextSeq() : 0;
+    return Object.assign({}, meta || {}, {
+      f: fromName,
+      fr: senderId,
+      senderNexoId: senderId,
+      ts: Date.now(),
+      seq: seq,
+      file: true,
+      type: (meta && meta.type) ? meta.type : 'file',
+      size: (meta && meta.size) ? meta.size : size
+    });
+  }
+  // v3.6.0: Wi-Fi Direct primero si se puede (mucho más rápido); si falla, Bluetooth
+  _sendFileBest(deviceId, fileId, data, meta) {
+    var self = this, wd = self.ble && self.ble.wifiDirect;
+    if (!data || !wd || (meta && meta.dst) || !wd.eligible(deviceId, data.length)) return self._sendFileJS(deviceId, fileId, data, meta);
+    var running = self.outgoingStreams.get(fileId);
+    if (running && !running.aborted && running._promise) return running._promise;
+    self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
+    return wd.send(deviceId, fileId, data, self._fileMeta(meta, data.length)).then(function() {
+      self._dispatchStatus(fileId, 'delivered');
+      self._dispatchFileProgress(fileId, 1, 1, 'delivered', 100);
+    }, function(err) {
+      // Demasiado grande para Bluetooth: queda pendiente y se reintenta por Wi-Fi Direct al reconectar
+      if (data.length > BLE_FILE_MAX_CHARS) {
+        var e = new Error('Wi-Fi Direct no disponible ahora (' + (err && err.message) + '): queda pendiente');
+        e.code = 'PEER_ABSENT';
+        throw e;
+      }
+      return self._sendFileJS(deviceId, fileId, data, meta);
     });
   }
   _sendFileJS(deviceId, fileId, base64Data, meta) {
@@ -204,19 +241,7 @@ export class BleAckSystem {
         reject(new Error('Datos de archivo vacios'));
         return;
       }
-      var senderId = (self.ble && self.ble.localNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
-      var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
-      var seq = (self.ble && typeof self.ble.getNextSeq === 'function') ? self.ble.getNextSeq() : 0;
-      var finalMeta = Object.assign({}, meta || {}, {
-        f: fromName,
-        fr: senderId,
-        senderNexoId: senderId,
-        ts: Date.now(),
-        seq: seq,
-        file: true,
-        type: (meta && meta.type) ? meta.type : 'file',
-        size: (meta && meta.size) ? meta.size : base64Data.length
-      });
+      var finalMeta = self._fileMeta(meta, base64Data.length);
       // v3.3.3: reanudar (resumeOutgoingTransfers) una transferencia que sigue en curso creaba un segundo
       // flujo con el mismo id que pisaba al primero
       var running = self.outgoingStreams.get(fileId);

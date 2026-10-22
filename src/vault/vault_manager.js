@@ -564,7 +564,7 @@ function _isProtocolPayload(txt) {
     var p = JSON.parse(trimmed);
     if (p.type === 'chat_meta' || p.type === 'chat_chunk' || p.type === 'file_meta' ||
         p.type === 'file_chunk' || p.type === 'file_resume' || p.type === 'ack' ||
-        p.type === 'read_receipt' || p.type === 'ping' || p.type === 'pong' || p.type === 'kx' || p.type === 'rt' || p.type === 'rk' || p.type === 'rq' || p.type === 'rp' ||
+        p.type === 'read_receipt' || p.type === 'ping' || p.type === 'pong' || p.type === 'kx' || p.type === 'rt' || p.type === 'rk' || p.type === 'rq' || p.type === 'rp' || /^w[qanf]$/.test(p.type || '') ||
         p.type === 'block_ack') return true;
     if (p.t === 'c' || p.t === 'f' || p.t === 'n' || p.t === 'a' || p.t === 'ss' || p.t === 'sr') return true;
   } catch(e) {}
