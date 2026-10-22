@@ -52,17 +52,20 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2712 | `9c33e79` | Seguridad fase 2: protocolo de Signal (Double Ratchet), sobre atado al cifrado, relleno, número de seguridad. Actualizar todos los teléfonos. APK verificada (firma 23d86688…, sin depuración ni copias) |
 | 2713 | `4a33565` | Wi-Fi Direct: permiso de Android 13+ (faltaba: nunca funcionaba) y vídeo/archivo que se quedaban en 1 % si fallaba. APK verificada (firma, NEARBY_WIFI_DEVICES presente) |
 
-## Base estable: build 2699
-Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
-22-10-2026. Anterior: 2698 (rama `base-estable-2698`).
-- Código: rama **`base-estable-2699`** (commit `d563355`). No se toca; el proxy no deja subir etiquetas.
-- APK: release `nightly-2699`. Misma llave y mismo `versionCode 1` que todas las builds: se instala
+## Base estable: build 2713
+Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
+22-10-2026. Anteriores: 2699 (rama `base-estable-2699`, commit `d563355`) y 2698 (`base-estable-2698`).
+- Código: rama **`base-estable-2713`** (commit `4a33565`). No se toca; el proxy no deja subir etiquetas.
+- APK: release `nightly-2713`. Misma llave y mismo `versionCode 1` que todas las builds: se instala
   encima de cualquier build posterior sin desinstalar (el workflow no borra releases antiguas).
-- Volver a la base (sin reescribir la historia, genera una build nueva con el código de la 2699):
+- Ojo: volver a una base anterior a la 2712 deja el cifrado en el protocolo 1; los teléfonos con 2712+ no
+  vuelven al 1 con un contacto que ya usa el 2 (pasadas 26 h descartan lo que llegue con el 1). Por eso
+  la base es la 2713: no conviene bajar de la 2712.
+- Volver a la base (sin reescribir la historia, genera una build nueva con el código de la 2713):
   ```
   git checkout NEXOCHAT && git pull
-  git restore --source=base-estable-2699 --staged --worktree -- src plugins android index.html package.json package-lock.json
-  git commit -m "Volver a la base estable 2699" && git push origin NEXOCHAT
+  git restore --source=base-estable-2713 --staged --worktree -- src plugins android index.html package.json package-lock.json
+  git commit -m "Volver a la base estable 2713" && git push origin NEXOCHAT
   ```
 
 ## Siguiente paso (al retomar)
