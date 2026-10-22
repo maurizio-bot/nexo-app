@@ -25,7 +25,7 @@ async function boot(name, native) {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously',
     resources: new DistLoader(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
-      win.CapacitorCustomPlatform = { name: 'android' }; win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
+      win.CapacitorCustomPlatform = { name: 'android' }; require('./native_mock').installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
       let n = 0; win.URL.createObjectURL = () => 'blob:sim/' + (++n); win.__revoked = new Set(); win.URL.revokeObjectURL = (u) => win.__revoked.add(u);
       // Previa simulada: el original reducido a previewKb (como haría la recodificación a 240p)
       win.NEXO_makeVideoPreview = (blob) => { const b = new win.Blob([new Uint8Array(previewKb * 1024).fill(7)], { type: 'video/webm' }); b.thumb = 'T'.repeat(6000); return Promise.resolve(b); };

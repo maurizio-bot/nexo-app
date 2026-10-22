@@ -1,5 +1,10 @@
+import { initE2E, e2eMyPublicKey, e2eIsEncrypted, e2eDecryptText } from '../vault/e2e_crypto.js';
 /**
- * BLE Interface v6.1.13-NEXO
+ * BLE Interface v6.2.0-NEXO
+ * v6.2.0: Cifrado de extremo a extremo: intercambio de claves públicas al conectar ('kx', o a petición
+ *         con rq), clave del contacto guardada la primera vez y aviso si cambia; textos cortos
+ *         descifrados en un paso previo en orden (ble_ack cifra/descifra el resto). La re-búsqueda solo
+ *         se aplaza por un envío de archivo que avanza (uno parado ya no la bloquea).
  * v6.1.13: la re-búsqueda no escanea mientras hay una transferencia de archivo (comparten la radio).
  * v6.1.12: abrir chat ya no carga el historial completo con sus adjuntos (lo pagina main.js).
  * v6.1.11: Contactos compartidos (addSharedContacts) con parpadeo hasta abrir su chat. Un contacto que
@@ -390,7 +395,7 @@ function _isControlPacket(content) {
   if (!content || typeof content !== 'string' || content.charAt(0) !== '{') return false;
   try {
     var obj = JSON.parse(content);
-    if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' ||
+    if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'kx' ||
         obj.type === 'chat_meta' || obj.type === 'chat_chunk' || obj.type === 'block_ack' ||
         obj.type === 'file_meta' || obj.type === 'file_chunk' || obj.type === 'file_resume') return true;
     if (obj.t === 'c' || obj.t === 'f' || obj.t === 'n' || obj.t === 'a' || obj.t === 'ba' || obj.t === 'ss' || obj.t === 'sr') return true;
@@ -408,6 +413,11 @@ function _isResendable(m) {
   // ble_ack.sendFile reutiliza la que esté en curso con el mismo id (no se duplica).
   if (m.status === 'sending' || m.status === 'queued') return true;
   return false;
+}
+
+// v6.2.0: sin clave de cifrado del contacto (aún no la envió) o contacto ausente → sigue pendiente, no fallido
+function _failStatus(err) {
+  return (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT')) ? 'pending' : 'failed';
 }
 
 function _vaultUpdateMessageStatus(nexoId, msgId, status) {
@@ -839,6 +849,7 @@ export class BLEInterface {
     var ack = this.ackSystem;
     if (ack && ack.pendingAcks && ack.pendingAcks.has(msgId)) return true;
     if (ack && ack.outgoingStreams && ack.outgoingStreams.has(msgId)) return true;
+    if (ack && ack.preparing && ack.preparing.has(msgId)) return true;
     return false;
   }
 
@@ -948,7 +959,9 @@ export class BLEInterface {
     var ack = this.ackSystem;
     if (!ack) return false;
     var busy = false, now = Date.now();
-    if (ack.outgoingStreams) ack.outgoingStreams.forEach(function(st) { if (st && st.type === 'file' && !st.aborted) busy = true; });
+    // v6.2.0: solo si el otro sigue confirmando (si cerró la app a mitad, el flujo sigue vivo hasta su
+    // tiempo máximo y sin re-búsqueda no se le volvía a encontrar para continuar)
+    if (ack.outgoingStreams) ack.outgoingStreams.forEach(function(st) { if (st && st.type === 'file' && !st.aborted && now - (st.lastAckAt || 0) < 10000) busy = true; });
     if (!busy && ack.incomingBuffers) ack.incomingBuffers.forEach(function(b) { if (b && !b.isChat && now - (b.lastActivity || 0) < 5000) busy = true; });
     return busy;
   }
@@ -984,6 +997,7 @@ export class BLEInterface {
     this._lostPeers.delete(_normId(nexoId));
     var ndPeer = _normMac(deviceId);
     if (!this._macToNexoId.get(ndPeer)) this._macToNexoId.set(ndPeer, _normId(nexoId));
+    this._sendKx(deviceId, false);
     this._processPendingMessages(deviceId);
     var key = _normMac(deviceId) + ':' + _normId(nexoId);
     if (this._notifiedPeers.has(key)) { console.log('[BLEInterface] Peer ready dup ignorado:', nexoId); return; }
@@ -1280,7 +1294,80 @@ export class BLEInterface {
     if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
     if (this._nativePayloadListener) { try { this._nativePayloadListener.remove(); } catch (e) {} }
     var self = this;
+    // v6.2.0: paso previo en orden (cadena de promesas): descifra textos cortos E2E y atiende 'kx'
+    this._payloadChain = Promise.resolve();
     this._nativePayloadListener = this.nativePlugin.addListener('onPayloadReceived', function(data) {
+      self._payloadChain = self._payloadChain
+        .then(function() { return self._prePayload(data); })
+        .then(function(d) { if (d) self._handlePayload(d); })
+        .catch(function(e) { console.warn('[BLEInterface] Error procesando paquete:', e && e.message); });
+    });
+  }
+
+  // Devuelve el paquete listo para procesar (descifrado) o null si ya se atendió aquí
+  _prePayload(data) {
+    var self = this;
+    var raw = (data && (data.content || data.data || data.message) || '').trim();
+    if (raw.charAt(0) !== '{' || raw.indexOf('"type":"kx"') < 0 && raw.indexOf('E1:') < 0) return Promise.resolve(data);
+    var p;
+    try { p = JSON.parse(raw); } catch (e) { return Promise.resolve(data); }
+    if (p && p.type === 'kx') {
+      if (p.from && p.pk) self._noteSenderKey(p.from, p.pk);
+      if (p.rq) self._sendKx(data.deviceId, false, true);
+      return Promise.resolve(null);
+    }
+    if (p && p.v === 1 && p.type === 'chat' && p.payload && e2eIsEncrypted(p.payload.text)) {
+      return e2eDecryptText(p.payload.text).then(function(r) {
+        self._noteSenderKey(p.from || p.payload.senderNexoId, r.senderKey);
+        p.payload.text = r.text;
+        p.payload.e2e = true;
+        var out = Object.assign({}, data);
+        out.content = out.data = JSON.stringify(p);
+        return out;
+      }).catch(function(e) {
+        console.warn('[E2E] No se pudo descifrar un mensaje de ' + (p.from || '?') + ': ' + (e && e.message));
+        return null;
+      });
+    }
+    return Promise.resolve(data);
+  }
+
+  // v6.2.0: intercambio de claves públicas (al conectar, o si el otro la pide con rq)
+  _sendKx(deviceId, request, force) {
+    var self = this;
+    if (!deviceId) return;
+    var key = _normMac(deviceId) + (request ? ':rq' : '');
+    var now = Date.now();
+    if (!force && now - ((self._kxSentAt && self._kxSentAt[key]) || 0) < 15000) return;
+    self._kxSentAt = self._kxSentAt || {};
+    self._kxSentAt[key] = now;
+    initE2E().then(function() {
+      var pk = e2eMyPublicKey();
+      if (!pk || !self.localNexoId) return;
+      var pkt = { v: 1, type: 'kx', from: self.localNexoId, pk: pk };
+      if (request) pkt.rq = 1;
+      return self._sendMessageNative(deviceId, JSON.stringify(pkt), null);
+    }).catch(function() {});
+  }
+
+  // Clave pública de un contacto: la primera se guarda; si cambia se acepta y se avisa (como WhatsApp)
+  _noteSenderKey(nexoId, pk) {
+    var nx = _normId(nexoId);
+    if (!nx || !pk || !/^nx[0-9a-z]{8}$/.test(nx)) return;
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || c.publicKey === pk) return;
+    var changed = !!c.publicKey;
+    c.publicKey = pk;
+    if (changed) { c.keyChangedAt = Date.now(); console.warn('[E2E] La clave de ' + (c.name || nx) + ' cambió'); }
+    else console.log('[E2E] Clave de ' + (c.name || nx) + ' guardada');
+    _saveBLEContacts(contacts);
+    _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: changed });
+  }
+
+  _handlePayload(data) {
+    var self = this;
+    (function() {
       try {
         var deviceId = data.deviceId || '';
         if (!deviceId) return;
@@ -1454,7 +1541,7 @@ export class BLEInterface {
       } catch (e) {
         console.warn('[BLEInterface] onPayloadReceived error:', e && e.message);
       }
-    });
+    })();
   }
 
   // ---------------------------------------------------------------------------
@@ -1667,14 +1754,14 @@ export class BLEInterface {
           if (isLong && self.ackSystem && typeof self.ackSystem.sendChunkedMessage === 'function') {
             self.ackSystem.sendChunkedMessage(deviceId, content, {}, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
-              .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
+              .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, _failStatus(err)); reject(err); });
             return;
           } else if (self.ackSystem && typeof self.ackSystem.sendWithRetry === 'function') {
             // v6.1.5: con confirmación y reintentos; antes un paquete perdido en el aire se perdía
             // para siempre aunque mostrara ✓ (el receptor descarta duplicados por id)
             self.ackSystem.sendWithRetry(deviceId, content, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
-              .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, 'failed'); reject(err); });
+              .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, _failStatus(err)); reject(err); });
           } else {
             self._sendMessageNative(deviceId, content, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
@@ -2021,7 +2108,7 @@ export class BLEInterface {
           .catch(function(e) {
             console.warn('[BLEInterface] Pending fallo:', mid, e.message);
             // No marcar failed de forma agresiva si es transitorio
-            var isTransient = /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary/i.test(e.message || '');
+            var isTransient = /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary/i.test(e.message || '') || _failStatus(e) === 'pending';
             if (!isTransient) {
               _vaultUpdateMessageStatus(nexoId, mid, 'failed');
               try {
@@ -2480,7 +2567,7 @@ export class BLEInterface {
   // empiezan a buscar por radio. Devuelve { added: [...], existing: [...] }.
   addSharedContacts(list, sharedBy) {
     var self = this;
-    var res = { added: [], existing: [] };
+    var res = { added: [], existing: [] }, keyFilled = false;
     var me = _normId(self.localNexoId);
     var contacts = _getBLEContacts();
     (Array.isArray(list) ? list : []).forEach(function(c) {
@@ -2490,14 +2577,21 @@ export class BLEInterface {
       if (nx === me) return;
       var name = String((c && c.name) || '').replace(/[<>]/g, '').trim().substring(0, 40) || id.toUpperCase();
       var cur = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
-      if (cur) { res.existing.push(cur.name || name); return; }
+      if (cur) {
+        if (!cur.publicKey && c && typeof c.publicKey === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(c.publicKey)) { cur.publicKey = c.publicKey; keyFilled = true; }
+        res.existing.push(cur.name || name);
+        return;
+      }
+      var pk = (c && typeof c.publicKey === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(c.publicKey)) ? c.publicKey : '';
       contacts.push({
         nexoId: nx, deviceUUID: nx, name: name, deviceId: null, addedAt: Date.now(), lastSeen: 0,
-        online: false, unreadCount: 0, lastMessage: '', isNewShared: true, sharedBy: _normId(sharedBy) || null
+        online: false, unreadCount: 0, lastMessage: '', isNewShared: true, sharedBy: _normId(sharedBy) || null,
+        publicKey: pk
       });
       res.added.push(name);
       self._markPeerLost(nx);
     });
+    if (keyFilled && !res.added.length) _saveBLEContacts(contacts);
     if (res.added.length) {
       _saveBLEContacts(contacts);
       self.renderContactsList();

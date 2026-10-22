@@ -38,7 +38,7 @@ async function bootPhone(name, address, radio, existingNative) {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html',
     runScripts: 'dangerously', resources: new DistLoader(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
-      win.CapacitorCustomPlatform = { name: 'android' };
+      win.CapacitorCustomPlatform = { name: 'android' }; require('./native_mock').installWebCrypto(win);
       win.Capacitor = { Plugins: { NexoBLE: native.plugin() } };
       win.scrollTo = () => {}; win.HTMLElement.prototype.scrollTo = function () {};
     },

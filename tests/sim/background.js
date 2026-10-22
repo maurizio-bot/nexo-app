@@ -41,7 +41,7 @@ async function bootJs(name, native) {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously',
     resources: new DistLoader(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
-      win.CapacitorCustomPlatform = { name: 'android' }; win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
+      win.CapacitorCustomPlatform = { name: 'android' }; require('./native_mock').installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
       Object.defineProperty(win.document, 'visibilityState', { configurable: true, get: () => vis });
       Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => vis === 'hidden' });
       // Vídeo (--video): jsdom no tiene blob URLs ni MediaRecorder; previa simulada de 45 KB

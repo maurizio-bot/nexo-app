@@ -72,3 +72,12 @@ Rendimiento (Chromium real, `pw_harness.js`): `stress.js` mide por fases (reposo
 fotos, vídeo, abrir historial grande) el lag del hilo de la interfaz, tareas largas, CPU (CDP) y
 memoria, con la CPU frenada (`--cpu=4`, como un teléfono de gama media). `profile.js` da el tiempo
 de CPU por función del receptor. Comparar builds: `./build.sh <commit>` y la misma prueba en cada una.
+
+Cifrado de extremo a extremo (las pruebas jsdom usan el WebCrypto de Node: `installWebCrypto`):
+`e2e.js` captura todo lo que pasa por la "radio" y comprueba que ningún contenido (texto corto, largo,
+archivo, nombre y miniatura del vídeo) viaja en claro, que todo llega descifrado e intacto, que se
+intercambian las claves y el aviso cuando B reinstala (clave nueva). `mixed.js builds/wip
+--old=builds/<commit>`: actualización a medias (B con una build sin cifrado): lo de A espera sin salir en
+claro, lo de B llega, y al actualizarse B llega lo pendiente. `resend.js`: un texto largo o archivo ya
+entregado no se vuelve a enviar al reconectar ni al reiniciar la app; `--upgrade=builds/wip` arranca A
+con otra build sobre los mismos archivos (limpieza de lo que dejó la anterior).

@@ -1,5 +1,6 @@
 /**
- * vault_manager.js v2.3.4
+ * vault_manager.js v2.3.5
+ * v2.3.5: escrituras del registro de salientes en cola por contacto (antes se pisaban); kx es protocolo.
  * v2.3.4: un mensaje nuevo se escribe al momento; cambios de estado y duplicados, agrupados (300 ms).
  * v2.3.3: vídeo HD: vaultReplaceAttachment (el HD sustituye a la previa), vaultSetMessageFields,
  *         vaultSaveFile y vaultHydrateAttachments(..., { preferHd }) para ver el original propio.
@@ -56,6 +57,17 @@ function _withMsgLock(cid, fn) {
   var tail = run.catch(function() {});
   _msgLocks.set(cid, tail);
   tail.then(function() { if (_msgLocks.get(cid) === tail) _msgLocks.delete(cid); });
+  return run;
+}
+// v2.3.5: las escrituras del registro de salientes también en cola por contacto: dos borrados a la vez
+// leían la misma lista y el segundo deshacía el primero (quedaba un envío entregado que se reenviaba)
+var _outLocks = new Map();
+function _withOutLock(cid, fn) {
+  var prev = _outLocks.get(cid) || Promise.resolve();
+  var run = prev.then(fn, fn);
+  var tail = run.catch(function() {});
+  _outLocks.set(cid, tail);
+  tail.then(function() { if (_outLocks.get(cid) === tail) _outLocks.delete(cid); });
   return run;
 }
 var _transferCache = _createLRU(20);
@@ -552,7 +564,7 @@ function _isProtocolPayload(txt) {
     var p = JSON.parse(trimmed);
     if (p.type === 'chat_meta' || p.type === 'chat_chunk' || p.type === 'file_meta' ||
         p.type === 'file_chunk' || p.type === 'file_resume' || p.type === 'ack' ||
-        p.type === 'read_receipt' || p.type === 'ping' || p.type === 'pong' ||
+        p.type === 'read_receipt' || p.type === 'ping' || p.type === 'pong' || p.type === 'kx' ||
         p.type === 'block_ack') return true;
     if (p.t === 'c' || p.t === 'f' || p.t === 'n' || p.t === 'a' || p.t === 'ss' || p.t === 'sr') return true;
   } catch(e) {}
@@ -918,47 +930,53 @@ function _persistOutgoingTransfers(contactNexoId, outgoing) {
 export async function vaultCreateOutgoingTransfer(contactNexoId, transferId, type, totalChunks, chunks, meta, deviceId) {
   if (!contactNexoId || !transferId || !type || !totalChunks || !chunks) return null;
   var cid = _normId(contactNexoId);
-  var outgoing = await _loadOutgoingTransfers(cid);
-  var existing = outgoing.find(function(o) { return o.transferId === transferId; });
-  if (existing) return existing;
-  var now = Date.now();
-  var mask = [];
-  for (var i = 0; i < totalChunks; i++) mask.push('0');
-  var zeroMask = mask.join('');
-  var record = {
-    transferId: transferId, type: type, status: 'sending',
-    totalChunks: totalChunks, chunks: chunks.slice(),
-    sentMask: zeroMask, ackMask: zeroMask,
-    meta: meta || {}, deviceId: deviceId || '',
-    createdAt: now, updatedAt: now, expiresAt: now + 86400000,
-    blockAckTimeouts: 0
-  };
-  outgoing.push(record);
-  _persistOutgoingTransfers(cid, outgoing);
-  return record;
+  return _withOutLock(cid, async function() {
+    var outgoing = await _loadOutgoingTransfers(cid);
+    var existing = outgoing.find(function(o) { return o.transferId === transferId; });
+    if (existing) return existing;
+    var now = Date.now();
+    var mask = [];
+    for (var i = 0; i < totalChunks; i++) mask.push('0');
+    var zeroMask = mask.join('');
+    var record = {
+      transferId: transferId, type: type, status: 'sending',
+      totalChunks: totalChunks, chunks: chunks.slice(),
+      sentMask: zeroMask, ackMask: zeroMask,
+      meta: meta || {}, deviceId: deviceId || '',
+      createdAt: now, updatedAt: now, expiresAt: now + 86400000,
+      blockAckTimeouts: 0
+    };
+    outgoing.push(record);
+    _persistOutgoingTransfers(cid, outgoing);
+    return record;
+  });
 }
 export async function vaultSetOutgoingChunkAcked(contactNexoId, transferId, sentMask, ackMask) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
-  var outgoing = await _loadOutgoingTransfers(cid);
-  var o = outgoing.find(function(x) { return x.transferId === transferId; });
-  if (!o) return false;
-  if (sentMask !== undefined) o.sentMask = sentMask;
-  if (ackMask !== undefined) o.ackMask = ackMask;
-  o.updatedAt = Date.now();
-  _persistOutgoingTransfers(cid, outgoing);
-  return true;
+  return _withOutLock(cid, async function() {
+    var outgoing = await _loadOutgoingTransfers(cid);
+    var o = outgoing.find(function(x) { return x.transferId === transferId; });
+    if (!o) return false;
+    if (sentMask !== undefined) o.sentMask = sentMask;
+    if (ackMask !== undefined) o.ackMask = ackMask;
+    o.updatedAt = Date.now();
+    _persistOutgoingTransfers(cid, outgoing);
+    return true;
+  });
 }
 export async function vaultIncrementOutgoingTimeout(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
-  var outgoing = await _loadOutgoingTransfers(cid);
-  var o = outgoing.find(function(x) { return x.transferId === transferId; });
-  if (!o) return false;
-  o.blockAckTimeouts = (o.blockAckTimeouts || 0) + 1;
-  o.updatedAt = Date.now();
-  _persistOutgoingTransfers(cid, outgoing);
-  return true;
+  return _withOutLock(cid, async function() {
+    var outgoing = await _loadOutgoingTransfers(cid);
+    var o = outgoing.find(function(x) { return x.transferId === transferId; });
+    if (!o) return false;
+    o.blockAckTimeouts = (o.blockAckTimeouts || 0) + 1;
+    o.updatedAt = Date.now();
+    _persistOutgoingTransfers(cid, outgoing);
+    return true;
+  });
 }
 export async function vaultGetOutgoingTransfer(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return null;
@@ -975,37 +993,43 @@ export async function vaultGetPendingOutgoingTransfers(contactNexoId) {
 export async function vaultRemoveOutgoingTransfer(contactNexoId, transferId) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
-  var outgoing = await _loadOutgoingTransfers(cid);
-  var idx = outgoing.findIndex(function(o) { return o.transferId === transferId; });
-  if (idx < 0) return false;
-  outgoing.splice(idx, 1);
-  _persistOutgoingTransfers(cid, outgoing);
-  return true;
+  return _withOutLock(cid, async function() {
+    var outgoing = await _loadOutgoingTransfers(cid);
+    var idx = outgoing.findIndex(function(o) { return o.transferId === transferId; });
+    if (idx < 0) return false;
+    outgoing.splice(idx, 1);
+    _persistOutgoingTransfers(cid, outgoing);
+    return true;
+  });
 }
 export async function vaultSetOutgoingStatus(contactNexoId, transferId, status) {
   if (!contactNexoId || !transferId) return false;
   var cid = _normId(contactNexoId);
-  var outgoing = await _loadOutgoingTransfers(cid);
-  var o = outgoing.find(function(x) { return x.transferId === transferId; });
-  if (!o) return false;
-  o.status = status;
-  o.updatedAt = Date.now();
-  _persistOutgoingTransfers(cid, outgoing);
-  return true;
+  return _withOutLock(cid, async function() {
+    var outgoing = await _loadOutgoingTransfers(cid);
+    var o = outgoing.find(function(x) { return x.transferId === transferId; });
+    if (!o) return false;
+    o.status = status;
+    o.updatedAt = Date.now();
+    _persistOutgoingTransfers(cid, outgoing);
+    return true;
+  });
 }
 export async function vaultCleanupOutgoingTransfers(contactNexoId, maxAgeMs) {
   if (!contactNexoId) return 0;
   var cid = _normId(contactNexoId);
-  var outgoing = await _loadOutgoingTransfers(cid);
-  var now = Date.now();
-  var limit = maxAgeMs || 86400000;
-  var before = outgoing.length;
-  outgoing = outgoing.filter(function(o) {
-    var age = now - (o.updatedAt || o.createdAt || 0);
-    var expired = o.expiresAt && o.expiresAt < now;
-    return age < limit && !expired;
+  return _withOutLock(cid, async function() {
+    var outgoing = await _loadOutgoingTransfers(cid);
+    var now = Date.now();
+    var limit = maxAgeMs || 86400000;
+    var before = outgoing.length;
+    outgoing = outgoing.filter(function(o) {
+      var age = now - (o.updatedAt || o.createdAt || 0);
+      var expired = o.expiresAt && o.expiresAt < now;
+      return age < limit && !expired;
+    });
+    var removed = before - outgoing.length;
+    if (removed > 0) _persistOutgoingTransfers(cid, outgoing);
+    return removed;
   });
-  var removed = before - outgoing.length;
-  if (removed > 0) _persistOutgoingTransfers(cid, outgoing);
-  return removed;
 }

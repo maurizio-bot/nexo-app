@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.34-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.36-NEXO
+ * v9.9.36: cifrado de extremo a extremo: aviso en el chat (pulsar: huellas), NO_KEY deja el mensaje
+ *          pendiente, al compartir contactos va su clave pública; líneas [E2E] en el diagnóstico.
  * v9.9.34: rendimiento: inserción de burbujas desde el final (antes O(n²) al abrir un chat), un solo
  *          scroll por fotograma; "atrás" + abrir otro chat rápido ya no deja el chat nuevo sin contacto.
  * v9.9.33: Compartir contactos (botón contacto del menú de adjuntos): selección múltiple, tarjeta en
@@ -67,6 +69,7 @@ import {
   vaultSetMessageFields, vaultReplaceAttachment, vaultSaveFile, vaultLoadFile, vaultHdFileName
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
+import { initE2E, e2eMyPublicKey, e2eFingerprint } from './vault/e2e_crypto.js';
 
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
@@ -86,6 +89,8 @@ window.NEXO = {
 window.NEXO_REM = rem;
 window.NEXO_DIAG = NEXO_DIAG;
 window.vaultLoadContacts = vaultLoadContacts;
+// v9.9.36: identidad de cifrado de extremo a extremo (se crea la primera vez)
+initE2E().catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 
 // ===================== v9.9.32: registro de diagnóstico =====================
 // Últimas líneas de la consola (también de la sesión anterior) para verlas en Perfil → Diagnóstico y
@@ -93,7 +98,7 @@ window.vaultLoadContacts = vaultLoadContacts;
 var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log.txt';
 var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
-var DIAG_KEY_RE = /\[VIDEO\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
+var DIAG_KEY_RE = /\[VIDEO\]|\[E2E\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
   function fmt(a) {
     if (typeof a === 'string') return a;
@@ -437,7 +442,7 @@ function _sendAttachment(type, payload, meta, opts) {
         // No marcar failed ante errores transitorios / timeouts leves
         var isTransient =
           /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary|no disponible/i.test(msg) ||
-          (err && (err.code === 'BLE_BUSY' || err.code === 'PEER_ABSENT'));
+          (err && (err.code === 'BLE_BUSY' || err.code === 'PEER_ABSENT' || err.code === 'NO_KEY'));
 
         if (isTransient) {
           // Dejar en 'sending' o 'sent' y dejar que el ackSystem / resumeOutgoingTransfers
@@ -546,7 +551,7 @@ function _handleShareContacts() {
       var cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.checked = !!chosen[id];
-      cb.onchange = function() { if (cb.checked) chosen[id] = { nexoId: id.toUpperCase(), name: c.name || '' }; else delete chosen[id]; refreshBtn(); };
+      cb.onchange = function() { if (cb.checked) chosen[id] = { nexoId: id.toUpperCase(), name: c.name || '', publicKey: c.publicKey || '' }; else delete chosen[id]; refreshBtn(); };
       var txt = document.createElement('div');
       var nm = document.createElement('div'); nm.style.cssText = 'font-size:16px;'; nm.textContent = c.name || id.toUpperCase();
       var sub = document.createElement('div'); sub.style.cssText = 'font-size:12px;opacity:0.6;'; sub.textContent = id.toUpperCase();
@@ -1487,7 +1492,7 @@ function _handleIncomingMessage(msg) {
           if (protoCheck.type === 'chat_meta' || protoCheck.type === 'chat_chunk' ||
               protoCheck.type === 'file_meta' || protoCheck.type === 'file_chunk' ||
               protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
-              protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' ||
+              protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' || protoCheck.type === 'kx' ||
               protoCheck.type === 'pong' ||
               protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' ||
               protoCheck.t === 'a' || protoCheck.t === 'ba' || protoCheck.t === 'ss' || protoCheck.t === 'sr') {
@@ -1856,8 +1861,9 @@ function _setupMessageInput() {
           clearTimeout(window._sentFallbackTimers[msgId]);
           delete window._sentFallbackTimers[msgId];
         }
-        _updateMessageStatus(msgId, 'failed');
-        _updateMessageStorageStatus(msgId, 'failed');
+        var st = (e && e.code === 'NO_KEY') ? 'pending' : 'failed';
+        _updateMessageStatus(msgId, st);
+        _updateMessageStorageStatus(msgId, st);
       }
     };
 
@@ -2135,12 +2141,44 @@ async function _loadPersistedMessages() {
       _renderMessage(msg, true);
     });
     _bindOlderMessagesScroll();
+    _renderE2EBanner();
     // Armar la carga de anteriores cuando el chat ya está abajo (tras el scroll inicial)
     setTimeout(function() { _olderArmed = true; }, 600);
   } catch (e) {
     console.warn('[MAIN] _loadPersistedMessages error:', e);
   }
 }
+
+// v9.9.36: aviso de cifrado al principio del chat (pulsar: huellas para comparar en persona)
+function _renderE2EBanner() {
+  var mc = document.getElementById('messages-container');
+  var cid = _normId(_getCurrentContactId());
+  if (!mc || !cid) return;
+  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === cid; }) || {};
+  var name = c.name || cid.toUpperCase();
+  var b = document.getElementById('e2e-banner');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'e2e-banner';
+    b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;background:rgba(255,200,0,0.12);color:#ffd76a;font-size:12px;text-align:center;cursor:pointer;';
+    mc.insertBefore(b, mc.firstChild);
+  }
+  var txt;
+  if (c.publicKey && c.keyChangedAt) txt = '⚠️ La clave de seguridad de ' + name + ' cambió (' + new Date(c.keyChangedAt).toLocaleString() + '). Si no lo esperabas, comparad las huellas en persona. Los mensajes siguen cifrados.';
+  else if (c.publicKey) txt = '🔒 Mensajes cifrados de extremo a extremo. Nadie fuera de este chat puede leerlos.';
+  else txt = '⏳ Esperando la clave de cifrado de ' + name + ': tus mensajes saldrán cifrados en cuanto conecte.';
+  b.textContent = txt;
+  b.onclick = function() {
+    Promise.all([e2eFingerprint(e2eMyPublicKey()), e2eFingerprint(c.publicKey)]).then(function(f) {
+      b.textContent = txt + '\nTu huella: ' + (f[0] || '?') + '\nHuella de ' + name + ': ' + (f[1] || 'sin clave aún');
+      b.style.whiteSpace = 'pre-line';
+    });
+  };
+}
+window.addEventListener('nexo:e2e:key', function(e) {
+  var d = (e && e.detail) || {};
+  if (d.nexoId && d.nexoId === _normId(_getCurrentContactId())) _renderE2EBanner();
+});
 
 function _clearMessageContainer() {
   var container = document.getElementById('messages-container');

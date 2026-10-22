@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-21 (build 2698)
+Última actualización: 2026-10-22 (build 2702)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -54,6 +54,13 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   ```
 
 ## Siguiente paso (al retomar)
+- 2702 (cifrado): el dueño debe instalarla en **todos** los teléfonos. Comprobar en el chat el aviso 🔒 y
+  que textos, fotos y vídeos siguen llegando; si algo queda con reloj, Perfil → Copiar diagnóstico de
+  ambos (buscar `[E2E]`: `Sin clave pública`, `No se pudo descifrar`, `La clave de … cambió`).
+- Jump fase 2 (rutas de varios saltos, textos y fotos): descubrimiento de ruta por inundación pequeña
+  (ttl + ids vistos), entrega salto a salto con guardado en cada puente, acks de vuelta; el contenido
+  ya va cifrado para el destino final (los puentes no lo leen). En el simulador hace falta un modelo de
+  alcance (A no ve a C).
 - Pruebas rápidas de la 2698 en teléfonos reales: funciona (aceptable; faltan pruebas para afinar).
   Si aparece un fallo, pedir el texto de **Perfil → Copiar diagnóstico** de ambos teléfonos. Pruebas pedidas: vídeo de 5 s con la app del otro cerrada y abierta; abrir el
   vídeo varias veces; ver si aparece la miniatura, cuánto tarda la previa y si pasa a HD.
@@ -62,6 +69,35 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2702: cifrado de extremo a extremo (fase 1 de "jump") + reenvíos inútiles
+Plan acordado con el dueño para jump (saltos A → B → C, cualquier teléfono NEXO hace de puente, textos y
+fotos): primero cifrar, después las rutas. Esta ronda es el cifrado.
+- `src/vault/e2e_crypto.js` (WebCrypto): identidad ECDH P-256 por teléfono (`nexo_e2e_identity.json`,
+  la privada no sale), clave por pareja ECDH → HKDF-SHA256 → AES-GCM 256, IV aleatorio por mensaje.
+  Formato `E1:<pública emisor>:<iv>:<datos>`. Se cifra el contenido (textos cortos y largos, adjuntos,
+  nombre y miniatura del archivo); quién/a quién/ids/acks van en claro (los necesitarán los puentes).
+- Claves: paquete `kx` al conectar (y a petición, `rq`); la primera se guarda en el contacto (TOFU); si
+  cambia (reinstalación) se acepta y se avisa (`keyChangedAt`). Al compartir un contacto va su clave:
+  A puede cifrar para C sin haberlo visto (base de jump). Sin clave del destinatario se pide y se
+  espera 5 s; si no llega → `NO_KEY` y el mensaje queda pendiente: **nunca sale en claro**.
+- Chat: aviso arriba (🔒 / ⏳ esperando clave / ⚠️ clave cambió); al pulsarlo, huellas de ambos para
+  comparar en persona. Líneas `[E2E]` en Perfil → Diagnóstico.
+- Compatibilidad: un teléfono con una build anterior no descifra. Lo que se le envía espera (reloj) y
+  llega cuando se actualiza; lo que manda él (en claro) sí se recibe. **Actualizar ambos teléfonos.**
+- Fallo previo encontrado al probar (desde siempre): el registro de envíos salientes de un texto largo o
+  archivo no se borraba al entregarse; al abrir la app (a los 3 s) o al reconectar con algo pendiente
+  se volvían a enviar **todos** (hasta 50, vídeos incluidos), ocupando la radio minutos. Ahora se borra
+  al entregar, y lo que dejó la build anterior se limpia sin reenviar (consulta el historial). Las
+  escrituras de ese registro van en cola por contacto (dos borrados a la vez se pisaban).
+- Otros: un ack repetido resuelve el reenvío que lo espera (antes un mensaje entregado acababa en rojo
+  tras 5 reintentos si se enviaba dos veces); un mensaje cifrándose cuenta como "en vuelo" (no se
+  duplica); la re-búsqueda solo se aplaza por un envío de archivo que avanza (uno parado porque el otro
+  cerró la app la bloqueaba hasta su tiempo máximo).
+- Verificado: batería jsdom completa (14 pruebas, con `e2e.js`, `mixed.js` contra la 2701 y
+  `resend.js`), `browser.js` en Chromium real (WebCrypto real: vídeo 720p, previa 38 s, HD 169 s,
+  13,3 KB/s como antes, 3/3 reproducciones). En 1 de ~10 ejecuciones de la batería el escenario
+  "app cerrada + vídeo" no entregó nada (sin log; no se volvió a reproducir en 8 repeticiones).
 
 ## Ronda 2701: vídeo previa → HD revisado
 El dueño no veía el cambio a HD. Causa más probable: vídeos de la galería (cámara del teléfono: 1080p/4K,
@@ -236,7 +272,9 @@ Ver `tests/sim/README.md`. Límites: no simula la radio real (velocidad, alcance
 - Transferencias en base64 dentro de JSON (+33 %). `FileTransferManager.kt` (binario) desconectado:
   siguiente gran mejora de velocidad.
 - Trozos con emojis/acentos pueden superar el MTU en bytes (el nativo trocea por caracteres).
-- Sin cifrado (`crypto_vault.js` no se usa). `quickScanForNexoId` bloquea hasta 5 s.
+- Cifrado E2E desde la 2702 (`e2e_crypto.js`; `crypto_vault.js` sigue sin usarse). La clave de un
+  contacto se acepta con aviso si cambia (sin verificación automática: comparar huellas en persona).
+  `quickScanForNexoId` bloquea hasta 5 s.
 - Manifest declara `.mesh.NordicMeshService` inexistente; falta `@capacitor/app`;
   `_showPaymentModal` usa `self` sin definir.
 

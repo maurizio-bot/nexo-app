@@ -185,7 +185,8 @@ export class NexoApp {
               resolve();
             })
             .catch(function(err) {
-              self._updateMessageStatus(messageId, 'failed');
+              // Sin clave de cifrado aún (NO_KEY): pendiente, se envía al recibirla
+              self._updateMessageStatus(messageId, (err && err.code === 'NO_KEY') ? 'pending' : 'failed');
               reject(err);
             });
         } else {

@@ -388,4 +388,14 @@ function extractJson(buffer) {
   return null;
 }
 
-module.exports = { Radio, NativePhone, norm };
+// WebCrypto real (la de Node) en la ventana de jsdom: el cifrado E2E de la app funciona igual que en
+// el teléfono (sin esto e2eAvailable() es falso y la app no cifraría nada en las pruebas)
+function installWebCrypto(win) {
+  const wc = require('crypto').webcrypto;
+  Object.defineProperty(win, 'crypto', { configurable: true, value: wc });
+  const util = require('util');
+  if (!win.TextEncoder) win.TextEncoder = util.TextEncoder;
+  if (!win.TextDecoder) win.TextDecoder = util.TextDecoder;
+}
+
+module.exports = { Radio, NativePhone, norm, installWebCrypto };
