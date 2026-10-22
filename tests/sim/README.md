@@ -99,3 +99,6 @@ queda en B sin camino y luego A y C quedan a alcance: A debe reenviarla directo.
 grupo). Archivo grande por Wi-Fi Direct sin trozos por Bluetooth, pequeño por Bluetooth, 6 MB (más que el
 límite de Bluetooth), vídeo original, credenciales nunca en claro y caída a Bluetooth si falla.
 `--b-no-wd`: B sin Wi-Fi Direct (todo como antes).
+
+`impostor.js`: M se hace pasar por B ante A (mismo NEXO ID, otra clave). A no debe mostrar su mensaje ni
+enviarle nada; aviso con Aceptar/Rechazar; al rechazar, lo pendiente llega al B real.

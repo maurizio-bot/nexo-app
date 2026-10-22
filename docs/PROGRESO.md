@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2709)
+Última actualización: 2026-10-22 (build 2711)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -91,6 +91,12 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2711: seguridad fase 1 (ver `docs/SEGURIDAD.md`)
+- APK no depurable y sin copias de seguridad; registros sin contenido; anti-suplantación (clave cambiada
+  → retenido hasta que el usuario acepte o rechace en el chat). `tests/sim/impostor.js`.
+- Ojo al dueño: si un contacto reinstala NEXO, ahora hay que pulsar **Aceptar clave nueva** en su chat
+  (antes se aceptaba sola con un aviso). Es lo que impide que otro teléfono se haga pasar por él.
 
 ## Ronda 2709: Wi-Fi Direct para fotos, vídeos y archivos
 Criterio del dueño: lo más cercano primero, con sentido común de velocidad; para archivos, Wi-Fi Direct

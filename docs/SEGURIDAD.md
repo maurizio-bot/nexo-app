@@ -35,7 +35,7 @@ Cada punto está comprobado en el código o en la configuración (no son suposic
 | Capturas de pantalla | Permitidas | Opción de bloquearlas | Baja |
 
 ## Plan
-### Fase 1 — urgente (fallos graves y baratos de arreglar)
+### Fase 1 — urgente (fallos graves y baratos de arreglar) — HECHA (build 2711)
 1. **APK de producción** (no depurable), firmada con la misma llave (se instala encima) y `allowBackup="false"`.
 2. **Registros sin contenido**: nada de texto de mensajes, nombres de archivo ni de contactos.
 3. **Anti-suplantación**: si un mensaje llega con una clave distinta de la guardada, no se acepta como del
@@ -59,3 +59,18 @@ Cada punto está comprobado en el código o en la configuración (no son suposic
 
 Dónde NEXO puede quedar por encima de Signal: sin servidor ni número de teléfono (ningún tercero ve la
 agenda ni los metadatos), funciona sin internet y, con la fase 3, sin identificador rastreable en el aire.
+
+## Fase 1: qué se hizo y cómo se comprobó
+- APK no depurable (`debuggable false` en la variante que compila CI, misma firma: se instala encima),
+  WebView sin depuración (`webContentsDebuggingEnabled: false`), `allowBackup="false"`,
+  `fullBackupContent="false"` y `data_extraction_rules.xml` (nada sale en copias ni en transferencias de
+  móvil a móvil; al cambiar de teléfono no se migran los chats, como en Signal sin su copia propia).
+- Registros: sin texto de mensajes, nombres de archivo (solo la extensión) ni nombres de contactos; archivo
+  de registro nuevo (`nexo_diag_log2.txt`) y el anterior se borra al arrancar.
+- Anti-suplantación: la clave de un contacto no cambia sola. Clave distinta → `pendingKey`; lo que llega
+  con ella se retiene (no se muestra ni se confirma) y no se envía nada al contacto hasta que el usuario,
+  en el aviso del chat (huellas anterior y nueva), pulse Aceptar o Rechazar. Rechazar: lo pendiente sale
+  al contacto real con la clave de siempre.
+- Pruebas: `tests/sim/impostor.js` (M dice ser B ante A: no se muestra, no recibe nada, al rechazar el B
+  real recibe lo pendiente), `e2e.js` (reinstalación de B: retenido hasta aceptar; ningún contenido en los
+  registros) y batería completa.
