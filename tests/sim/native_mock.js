@@ -352,6 +352,20 @@ class NativePhone {
         self.serverConnected.forEach((peer, mac) => devices.push({ id: peer.initAddress, address: peer.initAddress, direction: 'incoming', role: 'server', ready: !!self.serverNotif.get(mac) }));
         c.resolve({ devices });
       }),
+      // Archivos (Kotlin: FileProvider + ACTION_VIEW; PdfRenderer). Aquí se registran las llamadas.
+      openFile: wrap('openFile', (c) => {
+        const b64 = c.getString('base64'); if (!b64) return c.reject('base64 requerido');
+        self.opened = self.opened || [];
+        self.opened.push({ name: c.getString('name'), mime: c.getString('mime'), bytes: Buffer.from(b64, 'base64').length, b64 });
+        c.resolve({ opened: true });
+      }),
+      pdfThumbnail: wrap('pdfThumbnail', (c) => {
+        const b64 = c.getString('base64'); if (!b64) return c.reject('base64 requerido');
+        const head = Buffer.from(b64.substring(0, 16), 'base64').toString('latin1');
+        if (head.indexOf('%PDF') !== 0) return c.reject('PDF no legible: no es un PDF');
+        const m = Buffer.from(b64, 'base64').toString('latin1').match(/\/Count (\d+)/);
+        c.resolve({ thumb: Buffer.from('JPEG-1a-pagina').toString('base64'), pages: m ? Number(m[1]) : 1 });
+      }),
       saveToFile: wrap('saveToFile', (c) => { const f = c.getString('filename'); const t = c.getString('content'); if (f == null) return c.reject('filename requerido'); if (t == null) return c.reject('content requerido'); self.files.set(f, t); self.stats.saves++; self.stats.saveBytes += t.length; self.stats.maxSave = Math.max(self.stats.maxSave, t.length); self._io(() => c.resolve({ success: true, path: '/data/' + f })); }),
       loadFromFile: wrap('loadFromFile', (c) => { const f = c.getString('filename'); if (f == null) return c.reject('filename requerido'); if (!self.files.has(f)) return self._io(() => c.resolve({ exists: false, content: '' })); const content = self.files.get(f); self._io(() => c.resolve({ exists: true, content, path: '/data/' + f })); }),
       deleteFile: wrap('deleteFile', (c) => { c.resolve({ deleted: self.files.delete(c.getString('filename')) }); }),

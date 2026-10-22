@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.36-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.37-NEXO
+ * v9.9.37: archivos: burbuja con miniatura (PDF), nombre como texto, tamaño y abrir al tocar (openFile);
+ *          el tipo (mime) viaja al otro teléfono; el selector ya no se cierra solo a los 30 s.
  * v9.9.36: cifrado de extremo a extremo: aviso en el chat (pulsar: huellas), NO_KEY deja el mensaje
  *          pendiente, al compartir contactos va su clave pública; líneas [E2E] en el diagnóstico.
  * v9.9.34: rendimiento: inserción de burbujas desde el final (antes O(n²) al abrir un chat), un solo
@@ -1009,86 +1011,120 @@ async function _handleCamera() {
   _startCameraPreview();
 }
 
+// v9.9.37: selector de archivos. Antes el <input> se quitaba a los 30 s aunque el usuario siguiera
+// eligiendo en el selector de Android (buscar una APK en Descargas o un vídeo en la galería lleva más):
+// lo elegido después no hacía nada y sin aviso. Ahora vive hasta que se elige algo (o se abre otro).
+var _pendingPicker = null;
+function _pickFile(accept, label, onFile) {
+  if (_pendingPicker && _pendingPicker.parentNode) _pendingPicker.remove();
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = accept;
+  input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
+  input.onchange = function(e) {
+    var file = e.target.files && e.target.files[0];
+    if (_pendingPicker === input) _pendingPicker = null;
+    input.remove();
+    if (!file) { console.log('[ATTACH] ' + label + ': nada elegido'); return; }
+    console.log('[ATTACH] ' + label + ' elegido: ' + file.name + ' ' + Math.round(file.size / 1024) + ' KB ' + (file.type || 'sin tipo'));
+    onFile(file);
+  };
+  _pendingPicker = input;
+  document.body.appendChild(input);
+  console.log('[ATTACH] Selector abierto: ' + label);
+  input.click();
+}
+
+function _readFileBase64(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function(evt) {
+      var r = String((evt.target && evt.target.result) || '');
+      var b64 = r.substring(r.indexOf(',') + 1);
+      if (!b64) reject(new Error('archivo vacío')); else resolve(b64);
+    };
+    reader.onerror = function() { reject((reader.error) || new Error('error de lectura')); };
+    reader.readAsDataURL(file);
+  });
+}
+
+function _readFailed(err) {
+  var m = (err && (err.message || err.name)) || 'error de lectura';
+  console.warn('[ATTACH] No se pudo leer el archivo: ' + m);
+  _showPermissionError('Archivo: no se pudo leer (' + m + ')');
+}
+
 async function _handleGallery() {
   _closeAttachMenu();
   _hideCameraPreviewOverlay();
   _stopCameraPreview();
   await new Promise(function(r) { setTimeout(r, 150); });
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*,video/*';
-  input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
-  input.onchange = function(e) {
-    var file = e.target.files[0];
-    if (!file) { input.remove(); return; }
+  _pickFile('image/*,video/*', 'Galería', function(file) {
     var isVideo = file.type.indexOf('video') === 0;
     // v9.9.30: el vídeo no se lee entero: se recodifica una previa y el original va como HD si cabe
     if (isVideo) {
       _sendVideo(file, { name: file.name, size: file.size, mime: file.type });
-      input.remove();
       return;
     }
-    var reader = new FileReader();
-    reader.onload = function(evt) {
-      var base64 = evt.target.result.split(',')[1];
-      {
-        _compressImageBase64(base64, 480, 0.5).then(function(res) {
-          _sendAttachment('image', res.base64, {
-            name: file.name,
-            size: res.base64.length,
-            type: 'image/jpeg',
-            format: res.format || 'jpeg',
-            width: res.width,
-            height: res.height
-          });
-          input.remove();
+    _readFileBase64(file).then(function(base64) {
+      return _compressImageBase64(base64, 480, 0.5).then(function(res) {
+        _sendAttachment('image', res.base64, {
+          name: file.name,
+          size: res.base64.length,
+          type: 'image/jpeg',
+          format: res.format || 'jpeg',
+          width: res.width,
+          height: res.height
         });
-      }
-    };
-    reader.onerror = function() {
-      console.log('[ATTACH] Error leyendo archivo');
-      input.remove();
-    };
-    reader.readAsDataURL(file);
-  };
-  document.body.appendChild(input);
-  input.click();
-  setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
+      });
+    }).catch(_readFailed);
+  });
+}
+
+function _isPdf(mime, name) { return mime === 'application/pdf' || /\.pdf$/i.test(name || ''); }
+var _MIME_BY_EXT = { pdf: 'application/pdf', apk: 'application/vnd.android.package-archive', txt: 'text/plain', zip: 'application/zip',
+  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+function _mimeOf(mime, name) {
+  if (mime && mime.indexOf('/') > 0 && mime !== 'application/octet-stream') return mime;
+  var ext = String(name || '').split('.').pop().toLowerCase();
+  return _MIME_BY_EXT[ext] || mime || 'application/octet-stream';
+}
+
+// Primera página de un PDF (lector de PDF de Android, en el plugin). null si no se puede.
+function _pdfThumb(base64) {
+  var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
+  if (!pl || typeof pl.pdfThumbnail !== 'function') return Promise.resolve(null);
+  return Promise.race([
+    pl.pdfThumbnail({ base64: base64, width: 320 }).catch(function(e) { console.warn('[ATTACH] Miniatura PDF:', e && e.message); return null; }),
+    new Promise(function(r) { setTimeout(function() { r(null); }, 8000); })
+  ]);
 }
 
 function _handleFile() {
   _closeAttachMenu();
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '*/*';
-  input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
-  input.onchange = function(e) {
-    var file = e.target.files[0];
-    if (!file) { input.remove(); return; }
+  _pickFile('*/*', 'Archivo', function(file) {
     // Comprobar antes de leer: leer un archivo enorme ya congela el WebView
-    if (file.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(file.size)); input.remove(); return; }
-    var reader = new FileReader();
-    reader.onload = function(evt) {
-      var base64 = evt.target.result.split(',')[1];
-      if (base64 && base64.length > MAX_BLE_B64_BYTES) {
+    if (file.size > MAX_BLE_FILE_BYTES) {
+      console.warn('[ATTACH] Archivo demasiado grande: ' + file.size);
+      _showPermissionError(_tooBigMessage(file.size));
+      return;
+    }
+    _readFileBase64(file).then(function(base64) {
+      if (base64.length > MAX_BLE_B64_BYTES) {
         console.warn('[ATTACH] Archivo demasiado grande:', base64.length);
         _showPermissionError(_tooBigMessage(Math.floor(base64.length * 3 / 4)));
-        input.remove();
         return;
       }
-      _sendAttachment('file', base64, { name: file.name, size: file.size, type: file.type });
-      console.log('[ATTACH] Archivo:', file.name);
-      input.remove();
-    };
-    reader.onerror = function() {
-      console.log('[ATTACH] Error leyendo archivo');
-      input.remove();
-    };
-    reader.readAsDataURL(file);
-  };
-  document.body.appendChild(input);
-  input.click();
-  setTimeout(function() { if (input.parentNode) input.remove(); }, 30000);
+      var mime = _mimeOf(file.type, file.name);
+      var meta = { name: file.name, size: file.size, type: mime, mime: mime };
+      return (_isPdf(mime, file.name) ? _pdfThumb(base64) : Promise.resolve(null)).then(function(t) {
+        if (t && t.thumb) { meta.thumb = t.thumb; meta.pages = t.pages; }
+        _sendAttachment('file', base64, meta);
+        console.log('[ATTACH] Archivo:', file.name, mime, t && t.thumb ? 'con miniatura' : '');
+      });
+    }).catch(_readFailed);
+  });
 }
 
 function _showPermissionError(permName) {
@@ -2387,7 +2423,7 @@ function _renderMessage(msg, skipSave) {
           };
           contentDiv.appendChild(mediaWrapper);
         } else {
-          contentDiv.innerHTML = '<div style="padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:10px;">📎 <b>Archivo</b><span style="font-size:12px;opacity:0.7;">' + (attachment.meta.name || 'archivo') + '</span></div>';
+          contentDiv.appendChild(_buildFileCard(msg, attachment, fileMime));
         }
       } else if (attachment.type === 'location') {
         var loc = attachment.meta;
@@ -2939,6 +2975,102 @@ function _makeVideoThumb(srcOrBlob, maxSide) {
 }
 
 var _thumbsInProgress = {};
+// v9.9.37: burbuja de archivo (PDF, APK, documentos…). Antes solo una etiqueta: no se podía abrir y el
+// nombre (lo manda el otro teléfono) se metía como HTML. Ahora: miniatura de la 1.ª página si es PDF,
+// nombre como texto, tamaño y, al tocar, se abre con la app que corresponda (plugin openFile).
+var _FILE_ICONS = [[/pdf/, '📄'], [/android\.package-archive/, '📦'], [/zip|rar|7z|compressed|tar/, '🗜️'],
+  [/sheet|excel|csv/, '📊'], [/presentation|powerpoint/, '📽️'], [/^text\/|word|document|rtf/, '📝'], [/^audio\//, '🎵']];
+function _fileIcon(mime) {
+  for (var i = 0; i < _FILE_ICONS.length; i++) if (_FILE_ICONS[i][0].test(mime)) return _FILE_ICONS[i][1];
+  return '📎';
+}
+function _fmtSize(b) {
+  b = Number(b) || 0;
+  return b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+}
+function _buildFileCard(msg, attachment, mime) {
+  var m = attachment.meta || {};
+  var name = String(m.name || 'archivo');
+  mime = _mimeOf(mime, name);
+  var card = document.createElement('div');
+  card.className = 'file-attachment';
+  card.style.cssText = 'width:220px;max-width:100%;background:rgba(0,0,0,0.3);border-radius:10px;overflow:hidden;cursor:pointer;';
+  if (_isPdf(mime, name)) {
+    var img = document.createElement('img');
+    img.className = 'file-thumb';
+    img.alt = '';
+    img.style.cssText = 'display:none;width:100%;max-height:260px;object-fit:cover;object-position:top;background:#fff;';
+    if (m.thumb) { img.src = 'data:image/jpeg;base64,' + m.thumb; img.style.display = 'block'; }
+    else _ensurePdfThumb(msg, attachment, img);
+    card.appendChild(img);
+  }
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;';
+  var ic = document.createElement('div');
+  ic.style.cssText = 'font-size:26px;line-height:1;';
+  ic.textContent = _fileIcon(mime);
+  var txt = document.createElement('div');
+  txt.style.cssText = 'min-width:0;flex:1;';
+  var nm = document.createElement('div');
+  nm.className = 'file-name';
+  nm.style.cssText = 'font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  nm.textContent = name;
+  var sub = document.createElement('div');
+  sub.className = 'file-sub';
+  sub.style.cssText = 'font-size:11px;opacity:0.7;';
+  var size = Number(m.size) || (attachment.payload ? Math.floor(attachment.payload.length * 3 / 4) : 0);
+  var parts = [];
+  if (m.pages) parts.push(m.pages + (m.pages == 1 ? ' página' : ' páginas'));
+  if (size) parts.push(_fmtSize(size));
+  parts.push('Toca para abrir');
+  sub.textContent = parts.join(' · ');
+  txt.appendChild(nm);
+  txt.appendChild(sub);
+  row.appendChild(ic);
+  row.appendChild(txt);
+  card.appendChild(row);
+  card.onclick = function(e) {
+    e.stopPropagation();
+    _openAttachmentFile(attachment.payload, name, mime);
+  };
+  return card;
+}
+
+var _openingFile = false;
+function _openAttachmentFile(b64, name, mime) {
+  var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
+  if (!b64) { _showPermissionError('Archivo: todavía no está disponible'); return; }
+  if (!pl || typeof pl.openFile !== 'function') { _showPermissionError('Archivo: esta versión no puede abrirlo'); return; }
+  if (_openingFile) return;
+  _openingFile = true;
+  console.log('[ATTACH] Abrir archivo: ' + name + ' (' + mime + ')');
+  pl.openFile({ base64: b64, name: name, mime: mime }).then(function(r) {
+    if (r && r.opened === false) {
+      console.warn('[ATTACH] No abierto: ' + r.reason);
+      if (r.reason === 'install_permission') _showPermissionError('Archivo: permite a NEXO instalar apps y vuelve a tocar la APK');
+      else _showPermissionError('Archivo: no hay ninguna app en el teléfono para abrir este tipo de archivo');
+    }
+  }).catch(function(e) {
+    console.warn('[ATTACH] Error abriendo archivo: ' + (e && e.message));
+    _showPermissionError('Archivo: no se pudo abrir (' + ((e && e.message) || 'error') + ')');
+  }).then(function() { _openingFile = false; });
+}
+
+// Receptor (o mensajes antiguos): si el PDF llegó sin miniatura, se genera aquí y se guarda
+function _ensurePdfThumb(msg, attachment, img) {
+  var mid = msg.msgId || msg.messageId;
+  if (!attachment.payload || !mid || _thumbsInProgress[mid]) return;
+  _thumbsInProgress[mid] = true;
+  _pdfThumb(attachment.payload).then(function(t) {
+    delete _thumbsInProgress[mid];
+    if (!t || !t.thumb) return;
+    img.src = 'data:image/jpeg;base64,' + t.thumb;
+    img.style.display = 'block';
+    var cid = msg._own ? (msg.contactNexoId || _msgContactMap[mid] || _getCurrentContactId()) : (msg.senderNexoId || _getCurrentContactId());
+    vaultSetMessageFields(cid || null, mid, { metaMerge: { thumb: t.thumb, pages: t.pages } });
+  });
+}
+
 function _ensureVideoThumb(msg, attachment, src, img) {
   var mid = msg.msgId || msg.messageId;
   if (!src || !mid || _thumbsInProgress[mid]) return;

@@ -17,19 +17,28 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.os.ParcelUuid
+import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -38,6 +47,7 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -2103,6 +2113,98 @@ class NexoBlePlugin : Plugin() {
             call.resolve(JSObject().put("files", arr))
         } catch (e: Exception) {
             call.reject("Error listando archivos: ${e.message}")
+        }
+    }
+
+    // ===== Archivos recibidos: abrir con otra app y miniatura de PDF =====
+
+    // Nombre seguro para un archivo en la caché (llega del otro teléfono)
+    private fun safeFileName(name: String?): String {
+        val clean = (name ?: "").substringAfterLast('/').substringAfterLast('\\')
+            .replace(Regex("[^A-Za-z0-9._ ()\\-]"), "_").trim().trimStart('.')
+        return (if (clean.isEmpty()) "archivo" else clean).take(80)
+    }
+
+    private fun writeCacheFile(dirName: String, name: String, b64: String): File {
+        val dir = File(activity.cacheDir, dirName)
+        dir.mkdirs()
+        // Los abiertos hace más de un día ya no hacen falta
+        val old = System.currentTimeMillis() - 86400000L
+        dir.listFiles()?.forEach { if (it.lastModified() < old) it.delete() }
+        val file = File(dir, name)
+        FileOutputStream(file).use { it.write(Base64.decode(b64, Base64.DEFAULT)) }
+        return file
+    }
+
+    // Escribe el archivo en la caché y lo abre con la app que corresponda (lector de PDF, instalador
+    // de APK…) mediante el FileProvider de la app. Devuelve opened=false con reason si no se puede.
+    @PluginMethod
+    fun openFile(call: PluginCall) {
+        val b64 = call.getString("base64") ?: run { call.reject("base64 requerido"); return }
+        val name = safeFileName(call.getString("name"))
+        var mime = call.getString("mime") ?: ""
+        if (!mime.contains('/')) {
+            mime = android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
+        }
+        try {
+            val isApk = mime == "application/vnd.android.package-archive" || name.lowercase().endsWith(".apk")
+            if (isApk) mime = "application/vnd.android.package-archive"
+            if (isApk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !context.packageManager.canRequestPackageInstalls()) {
+                // Android pide permitir a NEXO instalar apps (una sola vez)
+                val s = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                activity.startActivity(s)
+                call.resolve(JSObject().put("opened", false).put("reason", "install_permission"))
+                return
+            }
+            val file = writeCacheFile("nexo_open", name, b64)
+            val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+            val intent = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, mime)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            activity.startActivity(intent)
+            remLog("INFO", "FILE", "Abriendo $name ($mime, ${file.length()} bytes)")
+            call.resolve(JSObject().put("opened", true))
+        } catch (e: ActivityNotFoundException) {
+            call.resolve(JSObject().put("opened", false).put("reason", "no_app"))
+        } catch (e: Exception) {
+            remLog("WARN", "FILE", "No se pudo abrir $name: ${e.message}")
+            call.reject("Error abriendo archivo: ${e.message}")
+        }
+    }
+
+    // Primera página de un PDF como JPEG (base64) con el lector de PDF de Android, y número de páginas
+    @PluginMethod
+    fun pdfThumbnail(call: PluginCall) {
+        val b64 = call.getString("base64") ?: run { call.reject("base64 requerido"); return }
+        val width = (call.getInt("width") ?: 320).coerceIn(64, 1024)
+        var tmp: File? = null
+        var pfd: ParcelFileDescriptor? = null
+        var renderer: PdfRenderer? = null
+        try {
+            tmp = writeCacheFile("nexo_pdf", "thumb_" + System.nanoTime() + ".pdf", b64)
+            pfd = ParcelFileDescriptor.open(tmp, ParcelFileDescriptor.MODE_READ_ONLY)
+            renderer = PdfRenderer(pfd)
+            val pages = renderer.pageCount
+            if (pages < 1) { call.reject("PDF sin páginas"); return }
+            val page = renderer.openPage(0)
+            val h = (width.toFloat() * page.height / page.width.coerceAtLeast(1)).toInt().coerceIn(1, width * 2)
+            val bmp = Bitmap.createBitmap(width, h, Bitmap.Config.ARGB_8888)
+            bmp.eraseColor(Color.WHITE)
+            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            page.close()
+            val out = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
+            bmp.recycle()
+            call.resolve(JSObject().put("thumb", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)).put("pages", pages))
+        } catch (e: Exception) {
+            call.reject("PDF no legible: ${e.message}")
+        } finally {
+            try { renderer?.close() } catch (e: Exception) {}
+            try { pfd?.close() } catch (e: Exception) {}
+            tmp?.delete()
         }
     }
 }
