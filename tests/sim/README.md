@@ -147,3 +147,9 @@ una salida corta; "inmediatamente" tapa al salir y pide la huella al volver; ped
 llegan; al reabrir tapa y pide la huella; sin huella ni PIN en el teléfono se desbloquea y se quita el bloqueo;
 capturas bloqueadas (FLAG_SECURE) también al reabrir. El cifrado en reposo es nativo: `tests/kotlin`
 (`gradle --no-daemon test`, AtRestStore en JVM).
+
+`photos.js` (A y B): fotos de tamaño real en las dos direcciones; registra el progreso que ve quien envía, si
+llega idéntica, el estado final, burbujas con texto técnico a la vista y las escrituras a disco por tipo de
+archivo. `--wd` (Wi-Fi Direct), `--plugin-thread=N --off-thread` (hilo único de Capacitor / 2722), `--cut`
+(la foto de A se corta al 20 % y durante el corte B manda la suya: A se queda en 20 %, B en "○ pendiente";
+al volver el alcance deben llegar las dos).
