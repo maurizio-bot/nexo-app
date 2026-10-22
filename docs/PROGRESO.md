@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2713)
+Última actualización: 2026-10-22 (build 2714)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -51,6 +51,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2711 | `5f3a1ad` | Seguridad fase 1: APK no depurable, sin copias, registros sin contenido, anti-suplantación |
 | 2712 | `9c33e79` | Seguridad fase 2: protocolo de Signal (Double Ratchet), sobre atado al cifrado, relleno, número de seguridad. Actualizar todos los teléfonos. APK verificada (firma 23d86688…, sin depuración ni copias) |
 | 2713 | `4a33565` | Wi-Fi Direct: permiso de Android 13+ (faltaba: nunca funcionaba) y vídeo/archivo que se quedaban en 1 % si fallaba. APK verificada (firma, NEARBY_WIFI_DEVICES presente) |
+| 2714 | `cdb3b89` | Ubicación con aviso y alternativas (GPS → red); Wi-Fi Direct ya no reenvía por Bluetooth lo entregado; tiempos por fase. APK verificada |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -69,6 +70,15 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2714: probar la ubicación (dentro de casa y fuera): debe salir el aviso "Obteniendo tu ubicación…" y luego
+  la burbuja, o un aviso claro. Si no, diagnóstico: líneas `[ATTACH] Ubicación…`.
+- 2714 (Wi-Fi Direct lento): pedir al dueño el diagnóstico de **los dos** teléfonos tras mandar un vídeo de
+  varios MB. Emisor: `[WIFI-DIRECT] … fases: grupo del otro X s, a Android X s, unirse X s, envío X s (KB/s)`;
+  receptor: `Recibido … de Android a la app X s, lectura X s`. Con eso se decide qué acelerar (mantener el
+  grupo abierto entre envíos, no pasar el contenido por el WebView, etc.). No cambiar a ciegas.
+- "Protocolo Fénix": el dueño preguntó si sé qué es. En el código solo existe `src/fenix/` (copia de la clave
+  en 5 trozos Shamir 3-de-5 repartidos entre contactos "guardianes"; no se usa en la APK). Esperando que el
+  dueño confirme si se refiere a eso.
 - 2713 (Wi-Fi Direct): el dueño vio en la 2711 un vídeo que se quedaba en 1 % en el emisor. Instalar en los
   dos teléfonos y mandar un vídeo de varios MB: la 1.ª vez Android puede pedir "Dispositivos cercanos" en
   cada teléfono (aceptar). Debe llegar en segundos por Wi-Fi Direct; si Wi-Fi Direct falla, debe llegar
@@ -108,6 +118,18 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2714: ubicación y Wi-Fi Direct (informe del dueño con la 2713)
+- Ubicación "no se envía ni llega": en el simulador el envío y la recepción funcionaban (`location.js --gps=ok`).
+  Lo que fallaba era obtener la posición: sin señal de GPS (interior) no se veía nada ~35 s y el error se
+  callaba. Ahora: aviso, GPS 12 s → última conocida/red → aviso claro (`--gps=indoor|timeout|off`). Causa en
+  los teléfonos del dueño no confirmada (falta su diagnóstico).
+- "HD por Bluetooth si ya va por Wi-Fi Direct": reproducido en `wifidirect.js` con la 2713: si se perdía el
+  'wf' (confirmación por Bluetooth), el emisor daba el vídeo por fallido a los 45 s y lo reenviaba como
+  previa + HD por Bluetooth aunque ya hubiera llegado. Ahora vale la confirmación del socket.
+- "Wi-Fi Direct lento": sin medidas reales todavía; añadidos tiempos por fase al diagnóstico y comprobación
+  del grupo cada 250 ms (antes 500).
+- Base estable movida a la 2713 (`base-estable-2713`).
 
 ## Ronda 2713: Wi-Fi Direct se quedaba en 1 % (informe del dueño con la 2711)
 - Causa 1: `NEARBY_WIFI_DEVICES` no estaba en el manifiesto de la app (comprobado en la APK publicada). En
