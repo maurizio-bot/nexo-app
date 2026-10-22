@@ -108,6 +108,10 @@ queda en B sin camino y luego A y C quedan a alcance: A debe reenviarla directo.
 `wifidirect.js`: Wi-Fi Direct simulado (`opts.wifiDirect`, ~2 MB/s; `opts.wdFail` hace fallar la unión al
 grupo). Archivo grande por Wi-Fi Direct sin trozos por Bluetooth, pequeño por Bluetooth, 6 MB (más que el
 límite de Bluetooth), vídeo original, credenciales nunca en claro y caída a Bluetooth si falla.
+`--broken=noperm` (los dos sin permiso: la 2711 no declaraba `NEARBY_WIFI_DEVICES` y en Android 13+ nunca se
+concedía; `opts.wdNoPerm`) y `--broken=fail` (unirse al grupo falla): un archivo de 6 MB queda fallido con
+aviso y un vídeo de 2,6 MB llega como previa + HD por Bluetooth. Con la 2711 los dos se quedaban "enviando"
+(1 %) para siempre y la oferta de Wi-Fi Direct se repetía en bucle.
 `--b-no-wd`: B sin Wi-Fi Direct (todo como antes).
 
 `impostor.js`: M se hace pasar por B ante A (mismo NEXO ID, otra clave). A no debe mostrar su mensaje ni

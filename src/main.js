@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.41-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.42-NEXO
+ * v9.9.42: Wi-Fi Direct fallido: el vídeo enviado como original pasa a previa + HD por Bluetooth (el mismo
+ *          mensaje); un archivo que no cabe por Bluetooth queda fallido con aviso (antes: 1 % para siempre).
  * v9.9.41: seguridad fase 2: protocolo 2 (e2e_ratchet.js) iniciado al arrancar; aviso del chat con el número de
  *          seguridad de 60 cifras y "Marcar como verificado"; las tarjetas de contacto llevan su paquete de claves.
  * v9.9.40: seguridad: clave de un contacto cambiada → aviso con huellas (anterior y nueva) y botones Aceptar /
@@ -447,39 +449,7 @@ function _sendAttachment(type, payload, meta, opts) {
   } catch (e) {}
 
   if ((type === 'image' || type === 'video' || type === 'file') && window.bleInterface && window.bleInterface.sendFile) {
-    // Marcar como sending de forma inmediata
-    _updateMessageStatus(msgId, 'sending');
-    _updateMessageStorageStatus(msgId, 'sending', contactId);
-
-    window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({}, meta, { type: type }))
-      .then(function() {
-        // Solo subir a 'sent' si aún no ha llegado un ack superior
-        var current = _getDomMessageStatus(msgId);
-        if (_canUpgradeStatus(current, 'sent')) {
-          _updateMessageStatus(msgId, 'sent');
-          _updateMessageStorageStatus(msgId, 'sent', contactId);
-        }
-      })
-      .catch(function(err) {
-        var msg = (err && err.message) ? err.message : String(err || '');
-        console.warn('[ATTACH] sendFile rejected:', msg);
-
-        // No marcar failed ante errores transitorios / timeouts leves
-        var isTransient =
-          /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary|no disponible/i.test(msg) ||
-          (err && (err.code === 'BLE_BUSY' || err.code === 'PEER_ABSENT' || err.code === 'NO_KEY'));
-
-        if (isTransient) {
-          // Dejar en 'sending' o 'sent' y dejar que el ackSystem / resumeOutgoingTransfers
-          // se encargue. Nunca poner "!" por una interrupción leve.
-          console.log('[ATTACH] Rechazo transitorio — no se marca failed');
-          return;
-        }
-
-        // Error definitivo → failed
-        _updateMessageStatus(msgId, 'failed');
-        _updateMessageStorageStatus(msgId, 'failed', contactId);
-      });
+    _sendFileFor(contactId, msgId, type, payload, meta, opts);
     return msgId;
   }
 
@@ -507,6 +477,52 @@ function _sendAttachment(type, payload, meta, opts) {
   } else {
     console.log('[ATTACH] Sistema de mensajes no disponible');
   }
+}
+
+// v9.9.42: envío de un adjunto ya guardado (también lo reusa el vídeo cuando falla Wi-Fi Direct)
+function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
+  // Marcar como sending de forma inmediata
+  _updateMessageStatus(msgId, 'sending');
+  _updateMessageStorageStatus(msgId, 'sending', contactId);
+
+  window.bleInterface.sendFile(contactId, msgId, payload, Object.assign({}, meta, { type: type }))
+    .then(function() {
+      // Solo subir a 'sent' si aún no ha llegado un ack superior
+      var current = _getDomMessageStatus(msgId);
+      if (_canUpgradeStatus(current, 'sent')) {
+        _updateMessageStatus(msgId, 'sent');
+        _updateMessageStorageStatus(msgId, 'sent', contactId);
+      }
+    })
+    .catch(function(err) {
+      var msg = (err && err.message) ? err.message : String(err || '');
+      console.warn('[ATTACH] sendFile rejected:', msg);
+      // v9.9.42: Wi-Fi Direct falló y no cabe por Bluetooth: el vídeo sigue como previa + HD; un archivo
+      // queda fallido con aviso (antes se quedaba "enviando" en 1 % para siempre)
+      if (err && err.code === 'WD_FAILED') {
+        if (opts && typeof opts.onWdFail === 'function') { opts.onWdFail(msgId); return; }
+        _updateMessageStatus(msgId, 'failed');
+        _updateMessageStorageStatus(msgId, 'failed', contactId);
+        _showPermissionError('No se pudo enviar por Wi-Fi Direct y es demasiado grande para Bluetooth (' + (Math.floor(String(payload).length * 3 / 4) / 1048576).toFixed(1) + ' MB). Máximo ~' + (MAX_BLE_FILE_BYTES / 1048576).toFixed(1) + ' MB.');
+        return;
+      }
+
+      // No marcar failed ante errores transitorios / timeouts leves
+      var isTransient =
+        /timeout|abort|network|disconnected|not ready|busy|interrupted|temporary|no disponible/i.test(msg) ||
+        (err && (err.code === 'BLE_BUSY' || err.code === 'PEER_ABSENT' || err.code === 'NO_KEY'));
+
+      if (isTransient) {
+        // Dejar en 'sending' o 'sent' y dejar que el ackSystem / resumeOutgoingTransfers
+        // se encargue. Nunca poner "!" por una interrupción leve.
+        console.log('[ATTACH] Rechazo transitorio — no se marca failed');
+        return;
+      }
+
+      // Error definitivo → failed
+      _updateMessageStatus(msgId, 'failed');
+      _updateMessageStorageStatus(msgId, 'failed', contactId);
+    });
 }
 
 function _toggleAttachMenu() {
@@ -2885,11 +2901,14 @@ function _sendVideo(blob, meta) {
   console.log('[VIDEO] Enviar vídeo ' + Math.round(blob.size / 1024) + ' KB ' + mime + ' dur=' + (meta.duration || '?'));
   var tStart = Date.now();
   // v9.9.39: con Wi-Fi Direct el original va directo en segundos (sin previa ni HD aparte)
+  // v9.9.42: si Wi-Fi Direct falla, el mismo mensaje sigue como previa + HD por Bluetooth (_videoViaBle)
   if (_wdReach(contactId) && Math.ceil(blob.size / 3) * 4 <= WD_MAX_B64_BYTES) {
     console.log('[VIDEO] Original por Wi-Fi Direct (' + Math.round(blob.size / 1024) + ' KB)');
     return Promise.all([_blobToB64(blob), _makeVideoThumb(blob, 320)]).then(function(r) {
       _showOwnPreparing(false);
-      _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null }));
+      _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null, wdOnly: true }), {
+        onWdFail: function(msgId) { _videoViaBle(contactId, msgId, blob, meta, mime, makePreview, tStart); }
+      });
     }).catch(function(e) { _showOwnPreparing(false); console.warn('[VIDEO] Error preparando vídeo:', e && e.message); });
   }
   return makePreview(blob, meta.duration).then(function(preview) {
@@ -2929,6 +2948,44 @@ function _sendVideo(blob, meta) {
   }).catch(function(e) {
     _showOwnPreparing(false);
     console.warn('[VIDEO] Error preparando vídeo:', e && e.message);
+  });
+}
+
+// v9.9.42: el original no pudo ir por Wi-Fi Direct: el mensaje ya mostrado pasa a previa + HD por Bluetooth
+function _videoViaBle(cid, msgId, blob, meta, mime, makePreview, tStart) {
+  console.log('[VIDEO] Wi-Fi Direct no funcionó: previa + HD por Bluetooth');
+  var fail = function(txt) {
+    _updateMessageStatus(msgId, 'failed');
+    _updateMessageStorageStatus(msgId, 'failed', cid);
+    if (txt) _showPermissionError(txt);
+  };
+  makePreview(blob, meta.duration).then(function(preview) {
+    if (preview && preview.tooLong) { fail('Vídeo demasiado largo para Bluetooth (' + Math.round(preview.duration) + ' s). Máximo ' + PREVIEW_MAX_SECONDS + ' s.'); return; }
+    if (!preview) {
+      if (blob.size > MAX_BLE_FILE_BYTES) { fail(_tooBigMessage(blob.size)); return; }
+      return _blobToB64(blob).then(function(b64) {
+        var m0 = Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), wdOnly: false });
+        _sendFileFor(cid, msgId, 'video', b64, m0);
+      });
+    }
+    var pMime = (preview.type || 'video/webm').split(';')[0];
+    var hdBlob = preview.hd || blob;
+    var hdMime = (hdBlob.type || mime).split(';')[0];
+    var withHd = Math.ceil(hdBlob.size / 3) * 4 <= MAX_HD_B64_BYTES;
+    var thumbP = preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320);
+    return Promise.all([_blobToB64(preview), withHd ? _blobToB64(hdBlob) : Promise.resolve(null), thumbP]).then(function(r) {
+      var pm = Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? hdBlob.size : 0, thumb: r[2] || null, wdOnly: false });
+      return vaultReplaceAttachment(cid, msgId, r[0], pm).then(function() {
+        _sendFileFor(cid, msgId, 'video', r[0], pm);
+        if (r[1]) {
+          _videoTimes[msgId] = { t0: tStart, previewKB: Math.round(preview.size / 1024), hdKB: Math.round(hdBlob.size / 1024) };
+          _registerHd(cid, msgId, r[1], hdMime);
+        }
+      });
+    });
+  }).catch(function(e) {
+    console.warn('[VIDEO] Error preparando la previa:', e && e.message);
+    fail(null);
   });
 }
 

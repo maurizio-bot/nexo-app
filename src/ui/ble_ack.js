@@ -2,6 +2,8 @@ import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
+* v3.7.1: Wi-Fi Direct fallido: WD_FAILED si no cabe por Bluetooth (antes quedaba pendiente para siempre);
+*         el HD de un vídeo (hasta BLE_HD_MAX_CHARS) sigue por Bluetooth como antes de Wi-Fi Direct.
 * v3.7.0: Protocolo 2 de cifrado (e2e_ratchet.js, como Signal) con los contactos que lo tienen; el 1 con builds
 *         anteriores (e2e_proto.js elige). Los datos del sobre (emisor|destino|id) van atados al cifrado: el id
 *         se fija antes de cifrar. Nombre y miniatura de un archivo: ids "<id>#n" y "<id>#t". Un reintento de
@@ -59,6 +61,7 @@ const FILE_WINDOW_TIMEOUT_MS = 8000;
 const FILE_PACING_DELAY_MS = 2; // el nativo ya regula el ritmo (control de flujo por callback)
 const MAX_WINDOW_RETRIES = 8;
 const BLE_FILE_MAX_CHARS = 3100000; // tope por Bluetooth (main.js MAX_BLE_B64_BYTES + cabecera de cifrado)
+const BLE_HD_MAX_CHARS = 9500000;   // HD de vídeo (main.js MAX_HD_B64_BYTES + relleno y cabecera de cifrado)
 const ASSEMBLY_TIMEOUT_MS = 120000;
 const COMPLETED_TTL_MS = 60000;
 const GLOBAL_TIMEOUT_MS = 180000;
@@ -225,7 +228,11 @@ export class BleAckSystem {
   // v3.6.0: Wi-Fi Direct primero si se puede (mucho más rápido); si falla, Bluetooth
   _sendFileBest(deviceId, fileId, data, meta) {
     var self = this, wd = self.ble && self.ble.wifiDirect;
-    if (!data || !wd || (meta && meta.dst) || !wd.eligible(deviceId, data.length)) return self._sendFileJS(deviceId, fileId, data, meta);
+    if (!data || !wd || (meta && meta.dst) || !wd.eligible(deviceId, data.length)) {
+      // Vídeo original pensado para Wi-Fi Direct que ya no puede ir por ahí: la app lo manda como previa + HD
+      if (meta && meta.wdOnly) { var e0 = new Error('Wi-Fi Direct no disponible'); e0.code = 'WD_FAILED'; return Promise.reject(e0); }
+      return self._sendFileJS(deviceId, fileId, data, meta);
+    }
     var running = self.outgoingStreams.get(fileId);
     if (running && !running.aborted && running._promise) return running._promise;
     self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
@@ -233,10 +240,14 @@ export class BleAckSystem {
       self._dispatchStatus(fileId, 'delivered');
       self._dispatchFileProgress(fileId, 1, 1, 'delivered', 100);
     }, function(err) {
-      // Demasiado grande para Bluetooth: queda pendiente y se reintenta por Wi-Fi Direct al reconectar
-      if (data.length > BLE_FILE_MAX_CHARS) {
-        var e = new Error('Wi-Fi Direct no disponible ahora (' + (err && err.message) + '): queda pendiente');
-        e.code = 'PEER_ABSENT';
+      // v3.7.1: falló Wi-Fi Direct. Si no cabe por Bluetooth (o es el vídeo original, que la app manda por
+      // otro camino) → WD_FAILED: quien llama decide (vídeo: previa + HD por Bluetooth; archivo: fallido con
+      // aviso). Hasta la 2712 quedaba "pendiente" para siempre (1 % en el emisor). El HD sí va por Bluetooth.
+      var limit = (meta && meta.hdFor) ? BLE_HD_MAX_CHARS : BLE_FILE_MAX_CHARS;
+      if ((meta && meta.wdOnly) || data.length > limit) {
+        var e = new Error('Wi-Fi Direct falló (' + (err && err.message) + ')');
+        e.code = 'WD_FAILED';
+        self._dispatchFileProgress(fileId, 0, 1, 'failed', 0);
         throw e;
       }
       return self._sendFileJS(deviceId, fileId, data, meta);

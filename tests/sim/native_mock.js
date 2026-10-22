@@ -368,10 +368,11 @@ class NativePhone {
       }),
       // Wi-Fi Direct (opts.wifiDirect: lo tiene; opts.wdFail: unirse al grupo falla). El receptor crea el
       // grupo con credenciales; el emisor solo se une con ellas y a alcance; ~2 MB/s.
-      wifiDirectStatus: wrap('wifiDirectStatus', (c) => c.resolve({ supported: !!self.opts.wifiDirect, granted: true, wifiOn: true })),
-      requestWifiDirectPermission: wrap('requestWifiDirectPermission', (c) => c.resolve({ granted: true })),
+      // opts.wdNoPerm: sin permiso (la 2711 no declaraba NEARBY_WIFI_DEVICES: Android 13+ lo deniega sin preguntar)
+      wifiDirectStatus: wrap('wifiDirectStatus', (c) => c.resolve({ supported: !!self.opts.wifiDirect, granted: !self.opts.wdNoPerm, wifiOn: true })),
+      requestWifiDirectPermission: wrap('requestWifiDirectPermission', (c) => { self.stats.wdPermAsked = (self.stats.wdPermAsked || 0) + 1; c.resolve({ granted: !self.opts.wdNoPerm }); }),
       wifiDirectHost: wrap('wifiDirectHost', (c, a) => {
-        if (!self.opts.wifiDirect) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
+        if (!self.opts.wifiDirect || self.opts.wdNoPerm) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
         const rnd = (n) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
         const ssid = 'DIRECT-' + rnd(2) + '-NEXO', pass = rnd(16), port = 40000 + Math.floor(Math.random() * 20000);
         self.radio.wdGroups = self.radio.wdGroups || new Map();
@@ -381,7 +382,7 @@ class NativePhone {
         setTimeout(() => { if (self.radio.wdGroups.get(ssid)) { self.radio.wdGroups.delete(ssid); self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 90000);
       }),
       wifiDirectSend: wrap('wifiDirectSend', (c, a) => {
-        if (!self.opts.wifiDirect) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
+        if (!self.opts.wifiDirect || self.opts.wdNoPerm) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
         const g = self.radio.wdGroups && self.radio.wdGroups.get(a.ssid);
         const data = String(a.data || '');
         if (!g || g.pass !== a.passphrase || g.port !== a.port || g.id !== a.transferId || !self.radio.inRange(self, g.host) || self.opts.wdFail || g.host.opts.wdFail) {

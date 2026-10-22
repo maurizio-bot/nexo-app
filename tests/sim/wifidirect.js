@@ -2,6 +2,9 @@
 // Bluetooth, uno de 6 MB (más que el límite de Bluetooth), vídeo original sin previa, credenciales del
 // grupo nunca en claro, y si Wi-Fi Direct falla, sigue por Bluetooth.
 // Uso: node wifidirect.js <dir_build> [--io-delay=25] [--b-no-wd]  (B sin Wi-Fi Direct: todo como antes)
+//      --broken=noperm (los dos sin permiso, como la 2711 en Android 13+) | --broken=fail (unirse al grupo
+//      falla): un vídeo mayor que el límite de Bluetooth debe llegar igualmente (previa + HD por Bluetooth)
+//      y un archivo de 6 MB debe quedar como fallido con aviso, no "enviando" para siempre.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -28,7 +31,9 @@ async function boot(name, native) {
   const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously',
     resources: new DistLoader(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
-    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
+    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {};
+      // Previa de vídeo simulada (jsdom no tiene MediaRecorder), como en video.js
+      win.NEXO_makeVideoPreview = () => { const b = new win.Blob([new Uint8Array(45 * 1024).fill(7)], { type: 'video/webm' }); b.thumb = 'T'.repeat(6000); return Promise.resolve(b); }; },
   });
   const win = dom.window;
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);
@@ -55,7 +60,10 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', Object.assign({}, opts, { wifiDirect: !bNoWd }));
   radio.add(nA); radio.add(nB); nA.load(); nB.load();
   const [A, B] = await Promise.all([boot('A', nA), boot('B', nB)]);
-  const r = { build: path.basename(buildDir), B_con_wifi_direct: !bNoWd };
+  const broken = (process.argv.find((x) => x.startsWith('--broken=')) || '').split('=')[1] || '';
+  if (broken === 'noperm') { nA.opts.wdNoPerm = true; nB.opts.wdNoPerm = true; }
+  if (broken === 'fail') { nA.opts.wdFail = true; }
+  const r = { build: path.basename(buildDir), B_con_wifi_direct: !bNoWd, roto: broken || null };
   A.win.bleInterface.togglePanel();
   let add = null;
   for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
@@ -70,6 +78,36 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const lastAttId = async () => ((await A.win.vaultLoadMessages(idB)).filter((m) => m.attachmentType).pop() || {}).msgId;
   const statusById = (mid) => { const s = A.win.document.querySelector('.message[data-msg-id="' + mid + '"] .msg-status'); return s ? s.className.replace('msg-status status-', '') : null; };
 
+  if (broken) {
+    // Archivo de 6 MB (solo cabe por Wi-Fi Direct): debe quedar fallido con aviso, no "enviando" para siempre
+    const f6 = bytes(6 * 1024 * 1024, 7);
+    const tPrev = toastText(A);
+    await pickFile(A, new A.win.File([f6], 'enorme.bin', { type: 'application/octet-stream' }));
+    let aviso = null;
+    await waitFor(() => { if (toastText(A) !== tPrev) aviso = toastText(A); return !!aviso; }, 60000);
+    const id6 = await lastAttId();
+    await waitFor(() => statusById(id6) === 'failed', 30000);
+    r.enorme_estado_A = id6 ? statusById(id6) : 'no se envió';
+    r.enorme_aviso = aviso ? aviso.substring(0, 110) : null;
+    // Vídeo de 2,6 MB (más que el límite de Bluetooth sin Wi-Fi Direct). Se olvida el fallo anterior para
+    // que vuelva a intentarse por Wi-Fi Direct y falle con el vídeo
+    A.win.bleInterface.wifiDirect.failUntil = {};
+    const vb = bytes(2600000, 5);
+    await pickFile(A, new A.win.File([vb], 'clip.mp4', { type: 'video/mp4' }), 'gallery');
+    const vid = async () => (await B.win.vaultLoadMessages(idA)).find((m) => m.attachmentType === 'video');
+    r.video_llega_s = await waitFor(async () => !!(await vid()), 180000);
+    const vidA = await lastAttId();
+    r.video_estado_A = statusById(vidA);
+    r.video_burbujas_A = A.win.document.querySelectorAll('#messages-container .message.own .video-attachment').length;
+    const hdOk = async () => { const m = await vid(); if (!m) return false; const p = m.attachmentRef ? nB.files.get(m.attachmentRef) : m.attachmentPayload; return p === vb.toString('base64') || (m.hdRef && nB.files.get(m.hdRef) === vb.toString('base64')); };
+    r.video_HD_llega_s = await waitFor(hdOk, 600000);
+    r.ofertas_wd = air.filter((x) => x.indexOf('"type":"wq"') >= 0).length;
+    r.permiso_pedido_A = nA.stats.wdPermAsked || 0;
+    r.diag_A = logs.filter((l) => l.startsWith('[A]') && /WIFI-DIRECT|\[VIDEO\]/.test(l)).map((l) => l.replace(/^\[A\] \w+: /, '').substring(0, 90)).slice(0, 14);
+    console.log('WIFIDIRECT ' + JSON.stringify(r));
+    fs.writeFileSync(path.join(__dirname, 'last_logs_wifidirect.txt'), logs.join('\n'));
+    process.exit(0);
+  }
   // 1) 600 KB: Wi-Fi Direct
   const f1 = bytes(600000, 13);
   let t0 = Date.now();

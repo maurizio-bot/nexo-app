@@ -1373,6 +1373,7 @@ export class BLEInterface {
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
       if (p.j && self.relay) self.relay.markCapable(p.from);
       if (p.wd && self.wifiDirect) self.wifiDirect.markPeer(p.from);
+      else if (self.wifiDirect) self.wifiDirect.unmarkPeer(p.from); // ya no lo anuncia (p.ej. sin permiso)
       // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
       if (p.rq || p.j) self._sendKx(data.deviceId, false, !!p.rq);
       return Promise.resolve(null);

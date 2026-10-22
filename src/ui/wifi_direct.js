@@ -1,5 +1,8 @@
 /**
- * wifi_direct.js v1.1 — Fotos, vídeos y archivos por Wi-Fi Direct con un contacto a alcance.
+ * wifi_direct.js v1.2 — Fotos, vídeos y archivos por Wi-Fi Direct con un contacto a alcance.
+ * v1.2: si falla con un contacto, no se vuelve a intentar con él durante FAIL_COOLDOWN_MS (todo va por
+ *       Bluetooth); sin permiso en este teléfono deja de anunciarse y de usarse; esperas acotadas (permiso
+ *       y envío). Hasta la 2712 el permiso de Android 13+ no estaba declarado y nunca se concedía.
  *
  * Bluetooth es el canal de control; Wi-Fi Direct solo lleva el contenido (ya cifrado de extremo a extremo):
  *   A → B  'wq' { id, size, meta }        ¿recibes por Wi-Fi Direct?
@@ -18,6 +21,8 @@ export var WD_MIN_BYTES = 150000;    // ~35 s por Bluetooth a la velocidad medid
 export var WD_MAX_BYTES = 30000000;  // contenido cifrado en base64 (~22 MB de archivo)
 var OFFER_TIMEOUT_MS = 25000;
 var DONE_TIMEOUT_MS = 45000;
+var PERM_TIMEOUT_MS = 60000;
+var FAIL_COOLDOWN_MS = 10 * 60000;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _mac(m) { return (m || '').toString().toLowerCase().replace(/[:-]/g, '').trim(); }
@@ -31,6 +36,8 @@ export class WifiDirect {
     this.out = new Map();        // id → { onCreds, onDone, reject }
     this.incoming = new Map();   // id → { meta, deviceId, from, ts }
     this.busy = false;
+    this.denied = false;         // el permiso se pidió y no se concedió
+    this.failUntil = {};         // nexoId → hasta cuándo no se intenta (falló)
     this._asked = false;
     this._listener = null;
   }
@@ -43,12 +50,22 @@ export class WifiDirect {
     }
     return pl.wifiDirectStatus().then(function(st) {
       self.status = st || null;
+      if (st && st.granted) self.denied = false;
       if (st && st.supported) console.log('[WIFI-DIRECT] Disponible' + (st.granted ? '' : ' (falta permiso)') + (st.wifiOn ? '' : ', Wi-Fi apagado'));
       return st;
     }).catch(function() { return null; });
   }
 
-  supported() { return !!(this.status && this.status.supported); }
+  supported() { return !!(this.status && this.status.supported) && !this.denied; }
+  // Falló con este contacto: un rato todo por Bluetooth (no se deja nada esperando a Wi-Fi Direct)
+  noteFail(nexoId) {
+    var nx = _nid(nexoId);
+    if (!nx) return;
+    this.failUntil[nx] = Date.now() + FAIL_COOLDOWN_MS;
+    console.warn('[WIFI-DIRECT] Con ' + nx + ' no funcionó: por Bluetooth durante ' + Math.round(FAIL_COOLDOWN_MS / 60000) + ' min');
+  }
+  _cooling(nx) { return (this.failUntil[nx] || 0) > Date.now(); }
+  unmarkPeer(nexoId) { var nx = _nid(nexoId); if (nx && this.peers.delete(nx)) console.log('[WIFI-DIRECT] ' + nx + ' ya no lo tiene disponible'); }
   markPeer(nexoId) { var nx = _nid(nexoId); if (nx && !this.peers.has(nx)) { this.peers.add(nx); console.log('[WIFI-DIRECT] ' + nx + ' también lo tiene'); } }
 
   _nexoOf(deviceId) { return _nid(this.ble && this.ble._macToNexoId && this.ble._macToNexoId.get(_mac(deviceId))); }
@@ -61,14 +78,15 @@ export class WifiDirect {
   // ¿Se puede usar con este contacto ahora? (los dos lo tienen y hay enlace Bluetooth directo)
   canReach(nexoId) {
     var nx = _nid(nexoId);
-    if (!this.supported() || !this.peers.has(nx) || !this.ble) return false;
+    if (!this.supported() || !this.peers.has(nx) || this._cooling(nx) || !this.ble) return false;
     var dev = typeof this.ble._resolveDeviceIdForNexoId === 'function' ? this.ble._resolveDeviceIdForNexoId(nx) : null;
     return !!dev && this._directReady(dev);
   }
 
   eligible(deviceId, bytes) {
     if (this.busy || !this.supported() || bytes < WD_MIN_BYTES || bytes > WD_MAX_BYTES) return false;
-    return this.peers.has(this._nexoOf(deviceId)) && this._directReady(deviceId);
+    var nx = this._nexoOf(deviceId);
+    return this.peers.has(nx) && !this._cooling(nx) && this._directReady(deviceId);
   }
 
   _ensurePermission() {
@@ -76,11 +94,17 @@ export class WifiDirect {
     if (self.status && self.status.granted) return Promise.resolve(true);
     if (!pl || typeof pl.requestWifiDirectPermission !== 'function' || self._asked) return Promise.resolve(false);
     self._asked = true;
-    return pl.requestWifiDirectPermission().then(function(r) {
-      var ok = !!(r && r.granted);
+    var timer = null;
+    return Promise.race([
+      pl.requestWifiDirectPermission().then(function(r) { return !!(r && r.granted); }).catch(function() { return false; }),
+      new Promise(function(res) { timer = setTimeout(function() { res(null); }, PERM_TIMEOUT_MS); })
+    ]).then(function(ok) {
+      clearTimeout(timer);
+      if (ok === null) { self._asked = false; return false; } // sin respuesta: se puede volver a pedir
       if (self.status) self.status.granted = ok;
+      if (!ok) { self.denied = true; console.warn('[WIFI-DIRECT] Permiso no concedido: todo por Bluetooth'); }
       return ok;
-    }).catch(function() { return false; });
+    });
   }
 
   _ctl(deviceId, obj) {
@@ -108,7 +132,12 @@ export class WifiDirect {
           e2eDecryptText(c).then(function(r) {
             var cr = JSON.parse(r.text);
             console.log('[WIFI-DIRECT] Enviando ' + fileId + ' (' + Math.round(data.length / 1024) + ' KB) a ' + peer);
-            return _plugin().wifiDirectSend({ ssid: cr.s, passphrase: cr.p, port: cr.o, transferId: fileId, data: data });
+            // Tope: unirse al grupo (~20 s) + el contenido a 100 KB/s como mínimo
+            var sendTimer = null;
+            return Promise.race([
+              _plugin().wifiDirectSend({ ssid: cr.s, passphrase: cr.p, port: cr.o, transferId: fileId, data: data }),
+              new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 30000 + Math.round(data.length / 100)); })
+            ]).then(function(v) { clearTimeout(sendTimer); return v; }, function(e) { clearTimeout(sendTimer); throw e; });
           }).then(function(res) {
             console.log('[WIFI-DIRECT] ' + fileId + ' transferido en ' + Math.round((res && res.ms || 0) / 100) / 10 + ' s');
             doneTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin confirmación de entrega')); }, DONE_TIMEOUT_MS);
@@ -124,6 +153,7 @@ export class WifiDirect {
     }, function(e) {
       self.busy = false;
       console.warn('[WIFI-DIRECT] ' + fileId + ': ' + (e && e.message) + ' → por Bluetooth');
+      self.noteFail(peer);
       throw e;
     });
   }
@@ -151,7 +181,7 @@ export class WifiDirect {
     if (!key) { no('sin clave'); return true; }
     self.busy = true;
     self._ensurePermission().then(function(ok) {
-      if (!ok) throw new Error('sin permiso');
+      if (!ok) throw new Error('sin permiso');  // (denied ya marcado: el próximo kx no lo anuncia)
       return _plugin().wifiDirectHost({ transferId: id, size: p.size });
     }).then(function(cr) {
       self.incoming.set(id, { meta: p.meta || {}, deviceId: deviceId, from: from, ts: Date.now() });
