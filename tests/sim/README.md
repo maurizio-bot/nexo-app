@@ -139,3 +139,11 @@ queda en su historial ni en la lista de chats); una acción falsa (B intenta bor
 contador, girar), revisar antes de enviar (Repetir / Enviar), cámara liberada mientras se revisa, cámara
 frontal en espejo y la foto igual que se ve (imagen asimétrica: la izquierda debe salir del mismo color),
 foto y vídeo llegan.
+
+`lock.js` (A con huella, B sin huella ni PIN): seguridad fase 3, Perfil → Seguridad. Por defecto nada
+bloqueado; activar el bloqueo exige la huella (cancelarla no lo activa; B no puede); "tras 1 minuto" no bloquea
+una salida corta; "inmediatamente" tapa al salir y pide la huella al volver; pedir el PIN (la app "se va" y
+"vuelve") no provoca otro bloqueo ni otra petición (también al quitar el bloqueo); bloqueada, los mensajes
+llegan; al reabrir tapa y pide la huella; sin huella ni PIN en el teléfono se desbloquea y se quita el bloqueo;
+capturas bloqueadas (FLAG_SECURE) también al reabrir. El cifrado en reposo es nativo: `tests/kotlin`
+(`gradle --no-daemon test`, AtRestStore en JVM).

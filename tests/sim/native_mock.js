@@ -416,6 +416,20 @@ class NativePhone {
       loadFromFile: wrap('loadFromFile', (c) => { const f = c.getString('filename'); if (f == null) return c.reject('filename requerido'); if (!self.files.has(f)) return self._io(() => c.resolve({ exists: false, content: '' })); const content = self.files.get(f); self._io(() => c.resolve({ exists: true, content, path: '/data/' + f })); }),
       deleteFile: wrap('deleteFile', (c) => { c.resolve({ deleted: self.files.delete(c.getString('filename')) }); }),
       listFiles: wrap('listFiles', (c) => c.resolve({ files: Array.from(self.files.keys()) })),
+      // Seguridad fase 3 (Kotlin: AtRestStore + Keystore, BiometricPrompt, FLAG_SECURE). Aquí los archivos ya se
+      // guardan "cifrados" de forma transparente. opts.noBiometric: el teléfono no tiene huella ni PIN.
+      // self.bioAnswer: lo que responde el diálogo de huella (true = huella correcta; por defecto true).
+      atRestStatus: wrap('atRestStatus', (c) => c.resolve({ active: true })),
+      biometricStatus: wrap('biometricStatus', (c) => c.resolve({ available: !self.opts.noBiometric, code: self.opts.noBiometric ? 11 : 0 })),
+      biometricAuth: wrap('biometricAuth', (c) => {
+        self.stats.bioAsked = (self.stats.bioAsked || 0) + 1;
+        if (self.opts.noBiometric) return c.resolve({ ok: false, reason: 'sin huella', code: 11 });
+        const ok = self.bioAnswer === undefined ? true : !!self.bioAnswer;
+        // self.bioDuring(): lo que pasa mientras se pide (con el PIN, Android abre otra pantalla: la app "se va" y "vuelve")
+        if (typeof self.bioDuring === 'function') self.bioDuring();
+        setTimeout(() => c.resolve(ok ? { ok: true } : { ok: false, reason: 'Cancelado', code: 13 }), 50);
+      }),
+      setSecureScreen: wrap('setSecureScreen', (c, a) => { self.secureScreen = a.on === true; c.resolve({ on: self.secureScreen }); }),
       startListeningMessages: wrap('startListeningMessages', (c) => c.resolve({ listening: true })),
     };
     return api;

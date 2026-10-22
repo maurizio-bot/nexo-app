@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.46-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.47-NEXO
+ * v9.9.47: seguridad fase 3 — Perfil → Seguridad: bloqueo opcional con huella/PIN y bloquear capturas
+ *   (src/ui/app_lock.js); los archivos de NEXO se cifran en el teléfono (Kotlin, AtRestStore + Keystore).
  * v9.9.46: cámara tipo WhatsApp (VÍDEO/FOTO, disparador grande, contador, linterna, galería, revisar antes
  *          de enviar); cámara frontal en espejo y foto igual que se ve; fotos a 800 px (1600 con Wi-Fi Direct).
  * v9.9.45: chat tipo WhatsApp: mantener pulsado → Responder / Reenviar / Copiar / Eliminar para mí / para
@@ -89,6 +91,7 @@ import {
   vaultDeleteMessage, vaultBlankMessage
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
+import { initAppLock, securitySectionHtml, renderSecuritySection } from './ui/app_lock.js';
 import { initE2E } from './vault/e2e_crypto.js';
 import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle } from './vault/e2e_ratchet.js';
 
@@ -112,6 +115,8 @@ window.NEXO_DIAG = NEXO_DIAG;
 window.vaultLoadContacts = vaultLoadContacts;
 // v9.9.36: identidad de cifrado de extremo a extremo (se crea la primera vez)
 // v9.9.41: y la del protocolo 2 (como Signal: claves que cambian con cada mensaje)
+// v9.9.47 (seguridad fase 3): bloqueo con huella y capturas (Perfil → Seguridad)
+initAppLock({ toast: function(t, ms) { _showInfoToast(t, ms); } });
 initE2E().then(function() { return ratchetInit(); }).catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 
 // ===================== v9.9.32: registro de diagnóstico =====================
@@ -181,17 +186,18 @@ function _openProfileSheet() {
   var bi = window.bleInterface || {};
   var sheet = document.createElement('div');
   sheet.id = 'nexo-profile-sheet';
-  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;font-family:inherit;';
+  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;font-family:inherit;overflow-y:auto;';
   sheet.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
     '<div style="font-size:20px;font-weight:700;">Perfil</div><button id="nexo-profile-close" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">Cerrar</button></div>' +
     '<div style="font-size:14px;opacity:0.85;margin-bottom:12px;">Mi NEXO ID: <b id="nexo-profile-id"></b></div>' +
     '<div style="font-size:16px;font-weight:600;margin:8px 0;">Fénix</div>' +
     '<div id="nexo-fenix-status" style="font-size:12px;opacity:0.8;margin-bottom:8px;white-space:pre-line;"></div>' +
     '<button id="nexo-fenix-recover" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;margin-bottom:12px;">Recuperar mi cuenta (teléfono nuevo)</button>' +
+    securitySectionHtml() +
     '<div style="font-size:16px;font-weight:600;margin:8px 0;">Diagnóstico</div>' +
     '<div style="font-size:12px;opacity:0.7;margin-bottom:8px;">Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.</div>' +
     '<button id="nexo-diag-copy" style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:600;margin-bottom:8px;">Copiar diagnóstico</button>' +
-    '<textarea id="nexo-diag-text" readonly style="flex:1;width:100%;box-sizing:border-box;background:#000;color:#9fe;border:1px solid #234;border-radius:8px;font-size:10px;font-family:monospace;padding:8px;"></textarea>';
+    '<textarea id="nexo-diag-text" readonly style="flex:1;min-height:220px;width:100%;box-sizing:border-box;background:#000;color:#9fe;border:1px solid #234;border-radius:8px;font-size:10px;font-family:monospace;padding:8px;"></textarea>';
   document.body.appendChild(sheet);
   sheet.querySelector('#nexo-profile-id').textContent = bi.localNexoId || '?';
   var ta = sheet.querySelector('#nexo-diag-text');
@@ -199,6 +205,7 @@ function _openProfileSheet() {
   ta.scrollTop = ta.scrollHeight;
   sheet.querySelector('#nexo-profile-close').onclick = function() { sheet.remove(); };
   _renderFenixStatus();
+  renderSecuritySection();
   sheet.querySelector('#nexo-fenix-recover').onclick = function() {
     var fx = bi.fenix;
     if (!fx) return;

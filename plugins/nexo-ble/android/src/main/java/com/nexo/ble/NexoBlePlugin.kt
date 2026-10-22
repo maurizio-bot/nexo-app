@@ -37,6 +37,18 @@ import android.os.ParcelFileDescriptor
 import android.os.ParcelUuid
 import android.provider.Settings
 import android.util.Base64
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.view.WindowManager
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -384,6 +396,13 @@ class NexoBlePlugin : Plugin() {
     }
     override fun load() {
         super.load()
+        // Seguridad fase 3: cifrar en segundo plano lo que aún esté en claro (archivos de versiones anteriores)
+        Thread {
+            try {
+                val n = atRest().migrateAll()
+                remLog("INFO", "AT_REST", if (atRestDataKey() != null) "Cifrado en reposo activo; $n archivo(s) cifrados ahora" else "Cifrado en reposo NO disponible")
+            } catch (e: Exception) { remLog("WARN", "AT_REST", "Migración: ${e.message}") }
+        }.start()
         checkNotificationIntent()
         loadNexoMappings()
         remLog("INFO", "LIFECYCLE", "load - auto-starting GATT server, ${nxidToMacMap.size} mapeos cargados")
@@ -1851,14 +1870,8 @@ class NexoBlePlugin : Plugin() {
             return
         }
         try {
-            val file = File(activity.filesDir, filename)
-            file.parentFile?.mkdirs()
-            FileOutputStream(file).use { fos ->
-                OutputStreamWriter(fos, Charsets.UTF_8).use { writer ->
-                    writer.write(content)
-                }
-            }
-            call.resolve(JSObject().put("success", true).put("path", file.absolutePath))
+            atRest().write(filename, content) // cifrado en reposo (AtRestStore)
+            call.resolve(JSObject().put("success", true).put("path", File(activity.filesDir, filename).absolutePath))
         } catch (e: Exception) {
             call.reject("Error guardando archivo: ${e.message}")
         }
@@ -1871,17 +1884,12 @@ class NexoBlePlugin : Plugin() {
             return
         }
         try {
-            val file = File(activity.filesDir, filename)
-            if (!file.exists()) {
+            val content = atRest().read(filename)
+            if (content == null) {
                 call.resolve(JSObject().put("exists", false).put("content", ""))
                 return
             }
-            val content = FileInputStream(file).use { fis ->
-                InputStreamReader(fis, Charsets.UTF_8).use { reader ->
-                    reader.readText()
-                }
-            }
-            call.resolve(JSObject().put("exists", true).put("content", content).put("path", file.absolutePath))
+            call.resolve(JSObject().put("exists", true).put("content", content).put("path", File(activity.filesDir, filename).absolutePath))
         } catch (e: Exception) {
             call.reject("Error leyendo archivo: ${e.message}")
         }
@@ -1894,11 +1902,117 @@ class NexoBlePlugin : Plugin() {
             return
         }
         try {
-            val file = File(activity.filesDir, filename)
-            val deleted = file.delete()
+            val deleted = atRest().delete(filename)
             call.resolve(JSObject().put("deleted", deleted))
         } catch (e: Exception) {
             call.reject("Error borrando archivo: ${e.message}")
+        }
+    }
+
+    // ===== Seguridad fase 3: cifrado en reposo, huella y capturas =====
+    // Clave de datos (AES-256) aleatoria, guardada envuelta (AES-GCM) con una clave del Android Keystore que no
+    // sale del chip; en memoria solo mientras la app corre. Sin requisito de huella: los mensajes deben poder
+    // guardarse con la app bloqueada o en segundo plano.
+    private val atRestAlias = "nexo_at_rest_wrap_v1"
+    @Volatile private var atRestKey: SecretKey? = null
+    @Volatile private var atRestFailed = false
+    private var atRestStore: AtRestStore? = null
+
+    @Synchronized
+    private fun atRest(): AtRestStore {
+        atRestStore?.let { return it }
+        val st = AtRestStore(context.filesDir) { atRestDataKey() }
+        st.skip = setOf(NXID_MAC_MAP_FILE) // lo lee y escribe el propio Kotlin
+        st.migrateOnly = { it.startsWith("nexo_") } // solo lo de NEXO (no los archivos de librerías de Android)
+        atRestStore = st
+        return st
+    }
+
+    @Synchronized
+    private fun atRestDataKey(): SecretKey? {
+        atRestKey?.let { return it }
+        if (atRestFailed) return null
+        return try {
+            val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            val wrap = (ks.getKey(atRestAlias, null) as? SecretKey) ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").run {
+                init(KeyGenParameterSpec.Builder(atRestAlias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .build())
+                generateKey()
+            }
+            val prefs = context.getSharedPreferences("nexo_at_rest", Context.MODE_PRIVATE)
+            val stored = prefs.getString("dek", null)
+            val dek: ByteArray = if (stored == null) {
+                val k = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+                val c = Cipher.getInstance("AES/GCM/NoPadding")
+                c.init(Cipher.ENCRYPT_MODE, wrap)
+                val blob = c.iv + c.doFinal(k)
+                if (!prefs.edit().putString("dek", Base64.encodeToString(blob, Base64.NO_WRAP)).commit()) throw Exception("no se pudo guardar la clave")
+                k
+            } else {
+                val blob = Base64.decode(stored, Base64.NO_WRAP)
+                val c = Cipher.getInstance("AES/GCM/NoPadding")
+                c.init(Cipher.DECRYPT_MODE, wrap, GCMParameterSpec(128, blob, 0, 12))
+                c.doFinal(blob, 12, blob.size - 12)
+            }
+            val key = SecretKeySpec(dek, "AES")
+            // Autoprueba antes de usarla
+            val probe = "nexo-at-rest-probe".toByteArray()
+            if (!AtRestStore.decrypt(key, AtRestStore.encrypt(key, probe)).contentEquals(probe)) throw Exception("autoprueba fallida")
+            atRestKey = key
+            key
+        } catch (e: Exception) {
+            atRestFailed = true
+            remLog("WARN", "AT_REST", "Clave de cifrado en reposo no disponible: ${e.message}")
+            null
+        }
+    }
+
+    @PluginMethod
+    fun atRestStatus(call: PluginCall) {
+        call.resolve(JSObject().put("active", atRestDataKey() != null))
+    }
+
+    private fun biometricAuthenticators(): Int =
+        if (Build.VERSION.SDK_INT >= 30) BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        else BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+
+    @PluginMethod
+    fun biometricStatus(call: PluginCall) {
+        val r = BiometricManager.from(context).canAuthenticate(biometricAuthenticators())
+        call.resolve(JSObject().put("available", r == BiometricManager.BIOMETRIC_SUCCESS).put("code", r))
+    }
+
+    // Huella / cara / PIN del teléfono. Resuelve { ok: true } o { ok: false, reason }
+    @PluginMethod
+    fun biometricAuth(call: PluginCall) {
+        val act = activity as? FragmentActivity ?: run { call.resolve(JSObject().put("ok", false).put("reason", "sin actividad")); return }
+        val title = call.getString("title") ?: "Desbloquear NEXO"
+        val subtitle = call.getString("subtitle") ?: ""
+        act.runOnUiThread {
+            try {
+                val prompt = BiometricPrompt(act, ContextCompat.getMainExecutor(context), object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { call.resolve(JSObject().put("ok", true)) }
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) { call.resolve(JSObject().put("ok", false).put("reason", errString.toString()).put("code", errorCode)) }
+                })
+                val info = BiometricPrompt.PromptInfo.Builder().setTitle(title).setSubtitle(subtitle).setAllowedAuthenticators(biometricAuthenticators()).build()
+                prompt.authenticate(info)
+            } catch (e: Exception) {
+                call.resolve(JSObject().put("ok", false).put("reason", e.message ?: "error"))
+            }
+        }
+    }
+
+    // Bloquear capturas y grabación de pantalla (y ocultar NEXO en "recientes")
+    @PluginMethod
+    fun setSecureScreen(call: PluginCall) {
+        val on = call.getBoolean("on") ?: false
+        val act = activity ?: run { call.reject("sin actividad"); return }
+        act.runOnUiThread {
+            if (on) act.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else act.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            call.resolve(JSObject().put("on", on))
         }
     }
 
