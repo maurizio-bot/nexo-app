@@ -479,8 +479,8 @@ Limpieza del 22-10-2026 (pedida por el dueño): se borró lo sustituido por cód
 `ble_permissions`, `utils/permissions`, `SetupManager`, `SetupWizard`, copias en `src/main/`, la app antigua
 `client/` (webpack la copiaba dentro de la APK: 49 archivos + 3 iconos) y sus workflows, `dist/android/`, y en
 Kotlin `FileTransferManager`, `FileTranferProtocol`, `MessageChunker`, `NexoBleServer`, `NexoGattService` y
-`sendFileNative` (el JS no los usaba). El JavaScript de la APK quedó idéntico byte a byte.
+`sendFileNative` (el JS no los usaba); después, `src/vault/chispas/` (el dueño: se puede eliminar). El JavaScript de la APK quedó idéntico byte a byte.
 Se conservan para más adelante: `src/net/*` + `server/relay/` (Wi-Fi/datos), `plugins/nexo-auth` +
 `src/vault/crypto_vault.js` + `src/auth/*` (huella y cifrado en reposo, fase 3). Pendiente de que el dueño
-explique: `src/stream/*` ("The Stream"), `src/vault/chispas/`, `src/perf/virtual_engine.js`, los
+explique: `src/stream/*` ("The Stream"), `src/perf/virtual_engine.js`, los
 `gesture_engine.js`, `vault_fs.js`, `vault_panel.js`.
