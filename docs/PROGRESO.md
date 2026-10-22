@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2711)
+Última actualización: 2026-10-22 (build 2712)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -49,6 +49,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2709 | `b5269f4` | Wi-Fi Direct para fotos, vídeos y archivos (hasta ~22 MB, vídeo original) |
 | 2710 | `2947c22` | Compilación de prueba en la rama de trabajo (APK no depurable), sin release |
 | 2711 | `5f3a1ad` | Seguridad fase 1: APK no depurable, sin copias, registros sin contenido, anti-suplantación |
+| 2712 | `9c33e79` | Seguridad fase 2: protocolo de Signal (Double Ratchet), sobre atado al cifrado, relleno, número de seguridad. Actualizar todos los teléfonos. APK verificada (firma 23d86688…, sin depuración ni copias) |
 
 ## Base estable: build 2699
 Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfonos incluido), fijada el
@@ -64,6 +65,11 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   ```
 
 ## Siguiente paso (al retomar)
+- 2712 (cifrado como Signal): instalar en **todos** los teléfonos. Al conectar, el diagnóstico dice
+  `[E2E] nx…: protocolo 2`. Tocar el aviso 🔒 del chat en los dos teléfonos: el número de 60 cifras debe ser
+  idéntico; si lo es, "Marcar como verificado". Textos, fotos, vídeos y Jump deben seguir llegando.
+- Seguridad fase 3 (siguiente): cifrado en reposo con el Keystore, anuncios Bluetooth rotativos, emisor oculto
+  para los puentes, QR del número de seguridad, poscuántico.
 - 2704: probar enviar un PDF (miniatura, tocar → se abre) y una APK pequeña (tocar → instalar; Android pide
   permiso la 1.ª vez). Una APK grande debe mostrar el aviso de tamaño.
 - 2707: igual que la 2705 pero B puede ser un teléfono que NO es contacto de nadie (solo con NEXO abierto
@@ -93,6 +99,15 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2712: seguridad fase 2 (ver `docs/SEGURIDAD.md`)
+- Protocolo 2 = X3DH + Double Ratchet (`src/vault/e2e_ratchet.js`), elegido por contacto
+  (`src/vault/e2e_proto.js`); kx y tarjetas con paquete de claves `b2`; sobre (emisor|destino|id) atado al
+  cifrado; relleno; número de seguridad + verificado. Estado en `nexo_ratchet.json`.
+- Fallo encontrado en la prueba y corregido antes de subir: al aceptar una clave nueva, lo pendiente salía
+  con el protocolo 1 (el contacto aún no estaba marcado con el 2); ahora se marca antes de reenviar.
+- Verificado: `ratchet.js` 40/40, batería completa (sin cambios de tiempos), `mixed.js` con la 2711 y la 2704
+  (pasan al 2 al actualizarse), Chromium real (vídeo 38 s, HD 169 s, 3/3 reproducciones).
 
 ## Ronda 2711: seguridad fase 1 (ver `docs/SEGURIDAD.md`)
 - APK no depurable y sin copias de seguridad; registros sin contenido; anti-suplantación (clave cambiada
