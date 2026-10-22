@@ -629,19 +629,29 @@ export class BleAckSystem {
     }
   }
   // ===== v3.4.0: E2E =====
-  _peerKey(deviceId, dst) {
+  _contactOf(deviceId, dst) {
     var nx = _normId(dst || this._resolveNexoId(deviceId));
     var cs = (this.ble && typeof this.ble.getBLEContacts === 'function') ? this.ble.getBLEContacts() : [];
-    for (var i = 0; i < cs.length; i++) {
-      if (_normId(cs[i].nexoId || cs[i].deviceUUID) === nx && cs[i].publicKey) return cs[i].publicKey;
-    }
+    for (var i = 0; i < cs.length; i++) if (_normId(cs[i].nexoId || cs[i].deviceUUID) === nx) return cs[i];
     return null;
+  }
+  // Clave para cifrar a este contacto (null si no hay, o si cambió y el usuario aún no la aceptó)
+  _peerKey(deviceId, dst) {
+    var c = this._contactOf(deviceId, dst);
+    return (c && c.publicKey && !c.pendingKey) ? c.publicKey : null;
   }
   // Clave pública del destinatario; si falta se pide (kx) y se espera hasta 5 s
   _ensurePeerKey(deviceId, dst) {
     var self = this;
     var k = self._peerKey(deviceId, dst);
     if (k) return Promise.resolve(k);
+    var c = self._contactOf(deviceId, dst);
+    if (c && c.pendingKey) {
+      // Clave cambiada sin aceptar: no se cifra para la nueva (podría ser un impostor) ni para la vieja
+      var ek = new Error('La clave del contacto cambió: acéptala en el chat para enviar');
+      ek.code = 'NO_KEY';
+      return Promise.reject(ek);
+    }
     // Destino por otro teléfono: la clave se pide de extremo a extremo (kx dirigido), no al puente
     if (dst && self.ble && typeof self.ble._sendKxRouted === 'function') self.ble._sendKxRouted(dst, true);
     else if (self.ble && typeof self.ble._sendKx === 'function') self.ble._sendKx(deviceId, true);
@@ -670,8 +680,13 @@ export class BleAckSystem {
     promise.then(done, done);
     return promise;
   }
+  // false: clave distinta de la del contacto (retener hasta que el usuario decida)
   _noteSenderKey(nexoId, key) {
-    if (this.ble && typeof this.ble._noteSenderKey === 'function') this.ble._noteSenderKey(nexoId, key);
+    if (this.ble && typeof this.ble._noteSenderKey === 'function') return this.ble._noteSenderKey(nexoId, key) !== false;
+    return true;
+  }
+  _hold(nexoId, release, id) {
+    if (this.ble && typeof this.ble._quarantine === 'function') this.ble._quarantine(nexoId, release, id);
   }
   // opts.dst: destino final (Jump) si deviceId es un puente
   sendWithRetry(deviceId, content, messageId, seq, opts) {
@@ -902,8 +917,9 @@ export class BleAckSystem {
     var self = this;
     if (e2eIsEncrypted(content)) {
       e2eDecryptText(content).then(function(r) {
-        self._noteSenderKey(meta.fr || senderId, r.senderKey);
-        self._dispatchChunkedMessageComplete(senderId, r.text, meta, deviceId, msgId);
+        var go = function() { self._dispatchChunkedMessageComplete(senderId, r.text, meta, deviceId, msgId); };
+        if (!self._noteSenderKey(meta.fr || senderId, r.senderKey)) { self._hold(meta.fr || senderId, go, msgId); return; }
+        go();
       }).catch(function(e) { console.warn('[E2E] No se pudo descifrar el mensaje ' + msgId + ':', e && e.message); });
       return;
     }
@@ -947,10 +963,11 @@ export class BleAckSystem {
         e2eIsEncrypted(dm.thumb) ? e2eDecryptToB64(dm.thumb).then(function(t) { return t.b64; }, function() { return null; }) : dm.thumb,
         e2eIsEncrypted(dm.name) ? e2eDecryptText(dm.name).then(function(t) { return t.text; }, function() { return null; }) : dm.name
       ]).then(function(r) {
-        self._noteSenderKey(dm.fr, r[0].senderKey);
         dm.thumb = r[1] || null;
         dm.name = r[2] || undefined;
-        self._dispatchFileComplete(fileId, r[0].b64, dm);
+        var go = function() { self._dispatchFileComplete(fileId, r[0].b64, dm); };
+        if (!self._noteSenderKey(dm.fr, r[0].senderKey)) { self._hold(dm.fr, go, fileId); return; }
+        go();
       }).catch(function(e) { console.warn('[E2E] No se pudo descifrar el archivo ' + fileId + ':', e && e.message); });
       return;
     }

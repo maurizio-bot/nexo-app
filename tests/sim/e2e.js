@@ -90,18 +90,30 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   r.aviso_chat_A = ((A.win.document.getElementById('e2e-banner') || {}).textContent || '').substring(0, 40);
   r.estados_A = Array.from(A.win.document.querySelectorAll('#messages-container .message.own .msg-status')).map((e) => e.className.replace('msg-status status-', ''));
 
-  // B "reinstala": identidad nueva. A debe aceptar la clave nueva, avisar y seguir cifrando.
+  // B "reinstala": identidad nueva. A NO debe aceptarla sola (podría ser un impostor): queda pendiente,
+  // no se le envía nada hasta que el usuario de A la acepte; después todo sigue cifrado con la nueva.
   const oldKey = cA.publicKey;
   B.win.close(); nB.destroyActivity(); nB.files.delete('nexo_e2e_identity.json'); await sleep(2000);
   nB.load(); B = await boot('B', nB); await sleep(8000);
   await sendText(A, 'SECRETO-tras-cambio'); await sleep(8000);
   const cA2 = A.win.vaultLoadContacts().find((c) => c.nexoId.toLowerCase() === idB.toLowerCase()) || {};
-  r.clave_de_B_cambio_en_A = !!cA2.publicKey && cA2.publicKey !== oldKey;
-  r.aviso_cambio_en_A = !!cA2.keyChangedAt;
-  r.aviso_chat_A_tras_cambio = ((A.win.document.getElementById('e2e-banner') || {}).textContent || '').substring(0, 45);
-  r.llega_tras_cambio = (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'SECRETO-tras-cambio');
+  r.clave_vieja_se_mantiene = cA2.publicKey === oldKey;
+  const pendKey = cA2.pendingKey;
+  r.clave_nueva_pendiente = !!pendKey && pendKey !== oldKey;
+  r.aviso_chat_A_tras_cambio = ((A.win.document.querySelector('#e2e-banner .e2e-text') || {}).textContent || '').substring(0, 45);
+  r.botones_aceptar_rechazar = !!A.win.document.querySelector('#e2e-banner .e2e-accept') && !!A.win.document.querySelector('#e2e-banner .e2e-reject');
+  r.no_sale_antes_de_aceptar = !(await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'SECRETO-tras-cambio');
+  click(A.win, A.win.document.querySelector('#e2e-banner .e2e-accept'));
+  const t1 = Date.now();
+  let llega = false;
+  while (!llega && Date.now() - t1 < 60000) { await sleep(500); llega = (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'SECRETO-tras-cambio'); }
+  r.llega_tras_aceptar_s = llega ? Math.round((Date.now() - t1) / 100) / 10 : null;
+  const cA3 = A.win.vaultLoadContacts().find((c) => c.nexoId.toLowerCase() === idB.toLowerCase()) || {};
+  r.clave_nueva_aceptada = cA3.publicKey === pendKey && !cA3.pendingKey;
   r.en_el_aire_tras_cambio = air.join('\n').indexOf('SECRETO-tras-cambio') >= 0;
   r.errores_descifrado = logs.filter((l) => /No se pudo descifrar/.test(l)).length;
+  // Seguridad: ningún contenido ni nombre de archivo en los registros (se guardan y salen en el diagnóstico)
+  r.contenido_en_registros = logs.filter((l) => /SECRETO/.test(l)).map((l) => l.substring(0, 80)).slice(0, 3);
   console.log('E2E ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_e2e.txt'), logs.join('\n'));
   process.exit(0);

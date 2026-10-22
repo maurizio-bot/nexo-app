@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.39-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.40-NEXO
+ * v9.9.40: seguridad: clave de un contacto cambiada → aviso con huellas (anterior y nueva) y botones Aceptar /
+ *          Rechazar; registros sin contenido de mensajes ni nombres de archivo (archivo de registro nuevo).
  * v9.9.39: Wi-Fi Direct: con el contacto a alcance (y con Wi-Fi Direct) el límite de archivo sube a
  *          ~22 MB y el vídeo va original sin previa; líneas [WIFI-DIRECT] en el diagnóstico.
  * v9.9.38: Jump: líneas [JUMP] en el diagnóstico; rt/rk son paquetes de protocolo.
@@ -100,7 +102,10 @@ initE2E().catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 // ===================== v9.9.32: registro de diagnóstico =====================
 // Últimas líneas de la consola (también de la sesión anterior) para verlas en Perfil → Diagnóstico y
 // copiarlas: lo que pasa en el teléfono real sin necesidad de un PC.
-var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log.txt';
+// v9.9.40 (seguridad): archivo nuevo; el anterior podía tener fragmentos de mensajes y se borra
+var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_OLD_FILE = 'nexo_diag_log.txt';
+// En los registros solo la extensión de un archivo (el nombre puede ser privado)
+function _extOf(name) { var m = /\.([A-Za-z0-9]{1,6})$/.exec(String(name || '')); return m ? '*.' + m[1].toLowerCase() : '(sin extensión)'; }
 var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
 var DIAG_KEY_RE = /\[VIDEO\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
@@ -134,6 +139,7 @@ var DIAG_KEY_RE = /\[VIDEO\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMER
     var pl = plugin();
     if (!pl || typeof pl.loadFromFile !== 'function') return;
     pl.loadFromFile({ filename: DIAG_FILE }).then(function(r) { if (r && r.exists && r.content) _diagPrev = r.content; }).catch(function() {});
+    if (typeof pl.deleteFile === 'function') pl.deleteFile({ filename: DIAG_OLD_FILE }).catch(function() {});
   }, 500);
   setInterval(function() {
     var pl = plugin();
@@ -1039,7 +1045,7 @@ function _pickFile(accept, label, onFile) {
     if (_pendingPicker === input) _pendingPicker = null;
     input.remove();
     if (!file) { console.log('[ATTACH] ' + label + ': nada elegido'); return; }
-    console.log('[ATTACH] ' + label + ' elegido: ' + file.name + ' ' + Math.round(file.size / 1024) + ' KB ' + (file.type || 'sin tipo'));
+    console.log('[ATTACH] ' + label + ' elegido: ' + _extOf(file.name) + ' ' + Math.round(file.size / 1024) + ' KB ' + (file.type || 'sin tipo'));
     onFile(file);
   };
   _pendingPicker = input;
@@ -1136,7 +1142,7 @@ function _handleFile() {
       return (_isPdf(mime, file.name) ? _pdfThumb(base64) : Promise.resolve(null)).then(function(t) {
         if (t && t.thumb) { meta.thumb = t.thumb; meta.pages = t.pages; }
         _sendAttachment('file', base64, meta);
-        console.log('[ATTACH] Archivo:', file.name, mime, t && t.thumb ? 'con miniatura' : '');
+        console.log('[ATTACH] Archivo:', _extOf(file.name), mime, t && t.thumb ? 'con miniatura' : '');
       });
     }).catch(_readFailed);
   });
@@ -2213,24 +2219,63 @@ function _renderE2EBanner() {
   if (!b) {
     b = document.createElement('div');
     b.id = 'e2e-banner';
-    b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;background:rgba(255,200,0,0.12);color:#ffd76a;font-size:12px;text-align:center;cursor:pointer;';
     mc.insertBefore(b, mc.firstChild);
   }
+  b.innerHTML = '';
+  b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;cursor:pointer;white-space:pre-line;' +
+    (c.pendingKey ? 'background:rgba(255,59,48,0.15);color:#ff8a80;' : 'background:rgba(255,200,0,0.12);color:#ffd76a;');
+  var bi = window.bleInterface;
   var txt;
-  if (c.publicKey && c.keyChangedAt) txt = '⚠️ La clave de seguridad de ' + name + ' cambió (' + new Date(c.keyChangedAt).toLocaleString() + '). Si no lo esperabas, comparad las huellas en persona. Los mensajes siguen cifrados.';
+  if (c.pendingKey) {
+    // v9.9.40 (seguridad): clave nueva sin aceptar: puede ser un reinstalación o un impostor
+    var held = (bi && typeof bi.heldCount === 'function') ? bi.heldCount(cid) : 0;
+    txt = '⚠️ La clave de seguridad de ' + name + ' cambió (' + new Date(c.keyChangedAt || Date.now()).toLocaleString() + ').' +
+      (held ? ' ' + held + (held === 1 ? ' mensaje retenido.' : ' mensajes retenidos.') : '') +
+      ' Hasta que la aceptes no se muestran sus mensajes nuevos ni se le envía nada.' +
+      ' Si no reinstaló NEXO, puede ser un impostor: comparad las huellas en persona.';
+  } else if (c.publicKey && c.keyAcceptedAt) txt = '🔒 Cifrado de extremo a extremo. Aceptaste una clave nueva de ' + name + ' (' + new Date(c.keyAcceptedAt).toLocaleString() + ').';
   else if (c.publicKey) txt = '🔒 Mensajes cifrados de extremo a extremo. Nadie fuera de este chat puede leerlos.';
   else txt = '⏳ Esperando la clave de cifrado de ' + name + ': tus mensajes saldrán cifrados en cuanto conecte.';
-  b.textContent = txt;
-  b.onclick = function() {
-    Promise.all([e2eFingerprint(e2eMyPublicKey()), e2eFingerprint(c.publicKey)]).then(function(f) {
-      b.textContent = txt + '\nTu huella: ' + (f[0] || '?') + '\nHuella de ' + name + ': ' + (f[1] || 'sin clave aún');
-      b.style.whiteSpace = 'pre-line';
+  var t = document.createElement('div');
+  t.className = 'e2e-text';
+  t.textContent = txt;
+  b.appendChild(t);
+  var fp = document.createElement('div');
+  fp.className = 'e2e-fp';
+  fp.style.cssText = 'margin-top:6px;font-family:monospace;';
+  b.appendChild(fp);
+  var showFp = function() {
+    Promise.all([e2eFingerprint(e2eMyPublicKey()), e2eFingerprint(c.publicKey), c.pendingKey ? e2eFingerprint(c.pendingKey) : Promise.resolve('')]).then(function(f) {
+      fp.textContent = 'Tu huella: ' + (f[0] || '?') + '\nHuella de ' + name + ': ' + (f[1] || 'sin clave aún') + (c.pendingKey ? '\nHuella NUEVA: ' + f[2] : '');
     });
   };
+  b.onclick = showFp;
+  if (c.pendingKey) {
+    showFp();
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;justify-content:center;margin-top:8px;';
+    var mk = function(label, cls, fn) {
+      var btn = document.createElement('button');
+      btn.className = cls;
+      btn.textContent = label;
+      btn.style.cssText = 'padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;' + (cls === 'e2e-accept' ? 'background:#00c8ff;color:#fff;' : 'background:rgba(255,255,255,0.15);color:#fff;');
+      btn.onclick = function(ev) { ev.stopPropagation(); fn(); };
+      return btn;
+    };
+    row.appendChild(mk('Aceptar clave nueva', 'e2e-accept', function() { if (bi && bi.acceptContactKey) bi.acceptContactKey(cid); }));
+    row.appendChild(mk('Rechazar', 'e2e-reject', function() { if (bi && bi.rejectContactKey) bi.rejectContactKey(cid); }));
+    b.appendChild(row);
+  }
 }
 window.addEventListener('nexo:e2e:key', function(e) {
   var d = (e && e.detail) || {};
   if (d.nexoId && d.nexoId === _normId(_getCurrentContactId())) _renderE2EBanner();
+});
+window.addEventListener('nexo:e2e:held', function(e) {
+  var d = (e && e.detail) || {};
+  if (d.nexoId && d.nexoId === _normId(_getCurrentContactId())) _renderE2EBanner();
+  // En la lista de chats: aviso en el último mensaje del contacto
+  if (d.nexoId) _noteContactMessage(d.nexoId, '⚠️ Mensaje retenido: clave cambiada', Date.now());
 });
 
 function _clearMessageContainer() {
@@ -3068,7 +3113,7 @@ function _openAttachmentFile(b64, name, mime) {
   if (!pl || typeof pl.openFile !== 'function') { _showPermissionError('Archivo: esta versión no puede abrirlo'); return; }
   if (_openingFile) return;
   _openingFile = true;
-  console.log('[ATTACH] Abrir archivo: ' + name + ' (' + mime + ')');
+  console.log('[ATTACH] Abrir archivo ' + _extOf(name) + ' (' + mime + ')');
   pl.openFile({ base64: b64, name: name, mime: mime }).then(function(r) {
     if (r && r.opened === false) {
       console.warn('[ATTACH] No abierto: ' + r.reason);

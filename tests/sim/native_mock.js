@@ -150,7 +150,8 @@ class NativePhone {
       if (!q.items.length) { q.busy = false; return; }
       q.busy = true;
       const fn = q.items.shift();
-      setTimeout(() => { fn(); setTimeout(pump, delay); }, 10);
+      // Un error al entregar no debe dejar la cola de ese enlace parada para siempre
+      setTimeout(() => { try { fn(); } catch (e) { this.radio.log(this.name, 'ERROR entregando', e && e.stack); (this.stats.deliverErrors = (this.stats.deliverErrors || 0) + 1); } setTimeout(pump, delay); }, 10);
     };
     if (!q.busy) pump();
   }

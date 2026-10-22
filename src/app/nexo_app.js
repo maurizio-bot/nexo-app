@@ -80,7 +80,8 @@ export class NexoApp {
           return;
         }
         // Solo log y delegación — la persistencia y render los hacen BLEInterface y main.js
-        console.log('[BLE_RECV] Mensaje de ' + (detail.senderName || '') + ': ' + (detail.content ? detail.content.substring(0, 30) : '') + '...');
+        // Seguridad: nunca el contenido ni el nombre en los registros (se guardan y se copian en el diagnóstico)
+        console.log('[BLE_RECV] Mensaje ' + (detail.messageId || '') + ' de ' + (detail.senderNexoId || '?') + ' (' + String(detail.content || '').length + ' car.)');
         if (self.onMessage) self.onMessage(detail);
       } catch (err) {
         console.warn('[NEXO] _bleMessageHandler error:', err);

@@ -46,8 +46,12 @@ android {
     }
 
     buildTypes {
+        // Seguridad: aunque se compila la variante debug (misma firma fija, se instala encima), la APK NO es
+        // depurable: con depuración cualquiera con un cable USB podía leer los archivos internos (run-as) e
+        // inspeccionar la app (WebView depurable).
         debug {
             signingConfig signingConfigs.debug
+            debuggable false
         }
         release {
             minifyEnabled false

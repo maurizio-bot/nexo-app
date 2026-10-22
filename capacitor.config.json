@@ -17,6 +17,7 @@
     "buildOptions": {
       "keystorePath": null,
       "keystoreAlias": null
-    }
+    },
+    "webContentsDebuggingEnabled": false
   }
 }

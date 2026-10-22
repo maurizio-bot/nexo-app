@@ -2169,12 +2169,12 @@ class NexoBlePlugin : Plugin() {
                 .setDataAndType(uri, mime)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             activity.startActivity(intent)
-            remLog("INFO", "FILE", "Abriendo $name ($mime, ${file.length()} bytes)")
+            remLog("INFO", "FILE", "Abriendo archivo ($mime, ${file.length()} bytes)")
             call.resolve(JSObject().put("opened", true))
         } catch (e: ActivityNotFoundException) {
             call.resolve(JSObject().put("opened", false).put("reason", "no_app"))
         } catch (e: Exception) {
-            remLog("WARN", "FILE", "No se pudo abrir $name: ${e.message}")
+            remLog("WARN", "FILE", "No se pudo abrir el archivo: ${e.message}")
             call.reject("Error abriendo archivo: ${e.message}")
         }
     }

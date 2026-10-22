@@ -2,7 +2,10 @@ import { initE2E, e2eMyPublicKey, e2eIsEncrypted, e2eDecryptText } from '../vaul
 import { createRelay } from './ble_relay.js';
 import { createWifiDirect } from './wifi_direct.js';
 /**
- * BLE Interface v6.5.0-NEXO
+ * BLE Interface v6.6.0-NEXO
+ * v6.6.0: Seguridad (anti-suplantación): la clave de un contacto no cambia sola. Una clave distinta queda
+ *         pendiente (pendingKey); lo que llega cifrado con ella se retiene y no se le envía nada hasta que
+ *         el usuario la acepte (acceptContactKey) o la rechace (rejectContactKey).
  * v6.5.0: Wi-Fi Direct (wifi_direct.js): el kx anuncia wd:1 si el teléfono lo tiene; paquetes de control
  *         'wq'/'wa'/'wn'/'wf' por Bluetooth; una transferencia por Wi-Fi Direct cuenta como en vuelo.
  * v6.4.0: Jump con cualquier teléfono NEXO: lo visto al escanear se anota (relay.noteSeen); sin enlace ni
@@ -1368,12 +1371,15 @@ export class BLEInterface {
     if (viaRelay) data = Object.assign({}, data, { viaRelay: true, relayOrigin: _normId(p.from) });
     if (p && p.v === 1 && p.type === 'chat' && p.payload && e2eIsEncrypted(p.payload.text)) {
       return e2eDecryptText(p.payload.text).then(function(r) {
-        self._noteSenderKey(p.from || p.payload.senderNexoId, r.senderKey);
+        var sender = p.from || p.payload.senderNexoId;
+        var keyOk = self._noteSenderKey(sender, r.senderKey);
         p.payload.text = r.text;
         p.payload.e2e = true;
         var out = Object.assign({}, data);
         out.e2eSenderKey = r.senderKey; // si el remitente aún no es contacto, se guarda al crearlo
         out.content = out.data = JSON.stringify(p);
+        // Clave distinta de la conocida: retenido (sin mostrar ni confirmar) hasta que el usuario decida
+        if (keyOk === false) { self._quarantine(sender, function() { self._handlePayload(out); }, p.msgId); return null; }
         return out;
       }).catch(function(e) {
         console.warn('[E2E] No se pudo descifrar un mensaje de ' + (p.from || '?') + ': ' + (e && e.message));
@@ -1411,18 +1417,81 @@ export class BLEInterface {
   }
 
   // Clave pública de un contacto: la primera se guarda; si cambia se acepta y se avisa (como WhatsApp)
+  // Devuelve false si la clave del emisor es distinta de la guardada: sin servidor que autentique, cualquiera
+  // cerca podría decir "soy X" con otra clave. Esa clave queda pendiente hasta que el usuario la acepte.
   _noteSenderKey(nexoId, pk) {
     var nx = _normId(nexoId);
-    if (!nx || !pk || !/^nx[0-9a-z]{8}$/.test(nx)) return;
+    if (!nx || !pk || !/^nx[0-9a-z]{8}$/.test(nx)) return true;
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
-    if (!c || c.publicKey === pk) return;
-    var changed = !!c.publicKey;
-    c.publicKey = pk;
-    if (changed) { c.keyChangedAt = Date.now(); console.warn('[E2E] La clave de ' + (c.name || nx) + ' cambió'); }
-    else console.log('[E2E] Clave de ' + (c.name || nx) + ' guardada');
+    if (!c || c.publicKey === pk) return true;
+    if (!c.publicKey) {
+      c.publicKey = pk;
+      console.log('[E2E] Clave de ' + nx + ' guardada');
+      _saveBLEContacts(contacts);
+      _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false });
+      return true;
+    }
+    if (c.pendingKey !== pk) {
+      c.pendingKey = pk;
+      c.keyChangedAt = Date.now();
+      console.warn('[E2E] La clave de ' + nx + ' cambió: pendiente de aceptar (no se muestra ni se le envía nada)');
+      _saveBLEContacts(contacts);
+      _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: true });
+    }
+    return false;
+  }
+
+  // Mensajes retenidos por clave cambiada (en memoria; si la app se cierra, el emisor los reenvía al no
+  // haber recibido confirmación)
+  _quarantine(nexoId, release, id) {
+    var nx = _normId(nexoId);
+    this._held = this._held || [];
+    // Un reintento del mismo mensaje no cuenta dos veces
+    if (id && this._held.some(function(h) { return h.id === id; })) return;
+    this._held.push({ nx: nx, release: release, id: id || null, ts: Date.now() });
+    if (this._held.length > 50) this._held.shift();
+    console.warn('[E2E] Mensaje de ' + nx + ' retenido: clave cambiada sin aceptar');
+    _safeDispatchEvent('nexo:e2e:held', { nexoId: nx, count: this.heldCount(nx) });
+  }
+
+  heldCount(nexoId) {
+    var nx = _normId(nexoId);
+    return (this._held || []).filter(function(h) { return h.nx === nx; }).length;
+  }
+
+  acceptContactKey(nexoId) {
+    var self = this, nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || !c.pendingKey) return false;
+    c.publicKey = c.pendingKey;
+    delete c.pendingKey;
+    c.keyAcceptedAt = Date.now();
     _saveBLEContacts(contacts);
-    _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: changed });
+    console.log('[E2E] Clave nueva de ' + nx + ' aceptada por el usuario');
+    var held = (self._held || []).filter(function(h) { return h.nx === nx; });
+    self._held = (self._held || []).filter(function(h) { return h.nx !== nx; });
+    held.forEach(function(h) { try { h.release(); } catch (e) {} });
+    _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, accepted: true });
+    self._resendPendingMessages(nx);
+    return true;
+  }
+
+  rejectContactKey(nexoId) {
+    var nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || !c.pendingKey) return false;
+    c.rejectedKey = c.pendingKey;
+    delete c.pendingKey;
+    _saveBLEContacts(contacts);
+    this._held = (this._held || []).filter(function(h) { return h.nx !== nx; });
+    console.warn('[E2E] Clave nueva de ' + nx + ' rechazada por el usuario');
+    _safeDispatchEvent('nexo:e2e:key', { nexoId: nx, changed: false, rejected: true });
+    // Lo que esperaba sale cifrado con la clave de siempre
+    this._resendPendingMessages(nx);
+    return true;
   }
 
   _handlePayload(data) {
