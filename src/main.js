@@ -1,5 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.37-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.38-NEXO
+ * v9.9.38: Jump: líneas [JUMP] en el diagnóstico; rt/rk son paquetes de protocolo.
  * v9.9.37: archivos: burbuja con miniatura (PDF), nombre como texto, tamaño y abrir al tocar (openFile);
  *          el tipo (mime) viaja al otro teléfono; el selector ya no se cierra solo a los 30 s.
  * v9.9.36: cifrado de extremo a extremo: aviso en el chat (pulsar: huellas), NO_KEY deja el mensaje
@@ -100,7 +101,7 @@ initE2E().catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log.txt';
 var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
-var DIAG_KEY_RE = /\[VIDEO\]|\[E2E\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
+var DIAG_KEY_RE = /\[VIDEO\]|\[E2E\]|\[JUMP\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
   function fmt(a) {
     if (typeof a === 'string') return a;
@@ -1529,6 +1530,7 @@ function _handleIncomingMessage(msg) {
               protoCheck.type === 'file_meta' || protoCheck.type === 'file_chunk' ||
               protoCheck.type === 'file_resume' || protoCheck.type === 'ack' ||
               protoCheck.type === 'read_receipt' || protoCheck.type === 'ping' || protoCheck.type === 'kx' ||
+              protoCheck.type === 'rt' || protoCheck.type === 'rk' ||
               protoCheck.type === 'pong' ||
               protoCheck.t === 'c' || protoCheck.t === 'f' || protoCheck.t === 'n' ||
               protoCheck.t === 'a' || protoCheck.t === 'ba' || protoCheck.t === 'ss' || protoCheck.t === 'sr') {

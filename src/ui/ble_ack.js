@@ -1,5 +1,8 @@
 import { e2eAvailable, e2eIsEncrypted, e2eEncryptText, e2eEncryptB64, e2eDecryptText, e2eDecryptToB64 } from '../vault/e2e_crypto.js';
 /**
+* v3.5.0: Jump (ble_relay.js): envío a un destino por otro teléfono (opts.dst / meta.dst: se cifra
+*         para el destino; trozos con 'dt' y 'hp'), custodia 'rk', reenvío de flujos en un puente
+*         (forwardStream) y ack de extremo a extremo dirigido al origen.
 * v3.4.0: Cifrado de extremo a extremo: textos (cortos y largos) y adjuntos se cifran aquí con la
 *         clave pública del destinatario (nunca salen en claro; sin clave → NO_KEY y queda pendiente)
 *         y se descifran al llegar (también nombre y miniatura del archivo). Una transferencia entregada se borra del registro de salientes
@@ -138,9 +141,10 @@ export class BleAckSystem {
   }
   sendChunkedMessage(deviceId, content, meta, messageId, seq) {
     var self = this;
+    var dst = meta && meta.dst;
     if (e2eAvailable() && content && !e2eIsEncrypted(content)) {
-      if (content.length <= 150) return self.sendWithRetry(deviceId, content, messageId, seq);
-      return self._preparingFor(messageId, self._ensurePeerKey(deviceId)
+      if (content.length <= 150) return self.sendWithRetry(deviceId, content, messageId, seq, dst ? { dst: dst } : undefined);
+      return self._preparingFor(messageId, self._ensurePeerKey(deviceId, dst)
         .then(function(pk) { return e2eEncryptText(pk, content); }))
         .then(function(enc) { return self.sendChunkedMessage(deviceId, enc, meta, messageId, seq); });
     }
@@ -155,7 +159,7 @@ export class BleAckSystem {
       }
       finalMeta.seq = seq;
       if (content.length <= 150) {
-        self.sendWithRetry(deviceId, content, msgId, seq).then(resolve).catch(reject);
+        self.sendWithRetry(deviceId, content, msgId, seq, dst ? { dst: dst } : undefined).then(resolve).catch(reject);
         return;
       }
       var stream = new ChatStream(self, deviceId, msgId, content, finalMeta, 'chat');
@@ -176,7 +180,7 @@ export class BleAckSystem {
     if (e2eAvailable() && base64Data && !e2eIsEncrypted(base64Data)) {
       // También el nombre y la miniatura del vídeo, que van en la cabecera
       var m = meta || {};
-      return self._preparingFor(fileId, self._ensurePeerKey(deviceId).then(function(pk) {
+      return self._preparingFor(fileId, self._ensurePeerKey(deviceId, m.dst).then(function(pk) {
         return Promise.all([
           e2eEncryptB64(pk, base64Data),
           (m.thumb && !e2eIsEncrypted(m.thumb)) ? e2eEncryptB64(pk, m.thumb) : m.thumb,
@@ -307,7 +311,9 @@ export class BleAckSystem {
           hdFor: msg.hf || null,
           preview: msg.pv === 1,
           thumb: msg.th || null,
-          pages: msg.pg || null
+          pages: msg.pg || null,
+          dst: msg.dt || null,
+          hp: msg.hp || 0
         },
         received: 0, deviceId: deviceId, lastActivity: Date.now(),
         isChat: type === 'c', nackSent: false
@@ -391,6 +397,11 @@ export class BleAckSystem {
     self._sendFinalAck(deviceId, msgId, buf.total);
     self.completedMessages.set(msgId, { total: buf.total, expireAt: Date.now() + COMPLETED_TTL_MS });
     self.incomingBuffers.delete(msgId);
+    // Jump: va para otro teléfono → hacer de puente (no se muestra ni se descifra aquí)
+    var relay = self.ble && self.ble.relay;
+    if (relay && buf.meta.dst && relay.onStreamComplete(buf.isChat ? 'chat' : 'file', msgId, assembled, buf.meta, deviceId)) return;
+    // Llegó por otro teléfono: confirmación de extremo a extremo al origen
+    if (buf.meta.hp > 0 && buf.meta.fr) self.sendAck(deviceId, msgId, buf.meta.fr);
     if (buf.isChat) {
       self._dispatchChunkedMessageComplete(senderId, assembled, buf.meta, deviceId, msgId);
     } else {
@@ -471,7 +482,7 @@ export class BleAckSystem {
       console.log('[BleAckSystem] windowStart avanzo: ' + oldWindowStart + ' -> ' + stream.windowStart);
       // v3.3.2: progreso de envío (cada 5 %) para la burbuja propia
       var pctOut = Math.floor(stream.windowStart * 100 / stream.total);
-      if (stream.type === 'file' && pctOut < 100 && (typeof stream._lastPct !== 'number' || pctOut - stream._lastPct >= 5)) {
+      if (stream.type === 'file' && !stream.meta.fwd && pctOut < 100 && (typeof stream._lastPct !== 'number' || pctOut - stream._lastPct >= 5)) {
         stream._lastPct = pctOut;
         this._dispatchFileProgress(msgId, stream.windowStart, stream.total, 'sending', pctOut);
       }
@@ -593,8 +604,8 @@ export class BleAckSystem {
     }
   }
   // ===== v3.4.0: E2E =====
-  _peerKey(deviceId) {
-    var nx = _normId(this._resolveNexoId(deviceId));
+  _peerKey(deviceId, dst) {
+    var nx = _normId(dst || this._resolveNexoId(deviceId));
     var cs = (this.ble && typeof this.ble.getBLEContacts === 'function') ? this.ble.getBLEContacts() : [];
     for (var i = 0; i < cs.length; i++) {
       if (_normId(cs[i].nexoId || cs[i].deviceUUID) === nx && cs[i].publicKey) return cs[i].publicKey;
@@ -602,20 +613,22 @@ export class BleAckSystem {
     return null;
   }
   // Clave pública del destinatario; si falta se pide (kx) y se espera hasta 5 s
-  _ensurePeerKey(deviceId) {
+  _ensurePeerKey(deviceId, dst) {
     var self = this;
-    var k = self._peerKey(deviceId);
+    var k = self._peerKey(deviceId, dst);
     if (k) return Promise.resolve(k);
-    if (self.ble && typeof self.ble._sendKx === 'function') self.ble._sendKx(deviceId, true);
+    // Destino por otro teléfono: la clave se pide de extremo a extremo (kx dirigido), no al puente
+    if (dst && self.ble && typeof self.ble._sendKxRouted === 'function') self.ble._sendKxRouted(dst, true);
+    else if (self.ble && typeof self.ble._sendKx === 'function') self.ble._sendKx(deviceId, true);
     return new Promise(function(resolve, reject) {
       var t0 = Date.now();
       (function poll() {
-        var key = self._peerKey(deviceId);
+        var key = self._peerKey(deviceId, dst);
         if (key) return resolve(key);
         if (Date.now() - t0 > 5000) {
           var e = new Error('Sin clave de cifrado del contacto');
           e.code = 'NO_KEY';
-          console.warn('[E2E] Sin clave pública de ' + self._resolveNexoId(deviceId) + ': el mensaje queda pendiente');
+          console.warn('[E2E] Sin clave pública de ' + (dst || self._resolveNexoId(deviceId)) + ': el mensaje queda pendiente');
           return reject(e);
         }
         setTimeout(poll, 250);
@@ -635,22 +648,53 @@ export class BleAckSystem {
   _noteSenderKey(nexoId, key) {
     if (this.ble && typeof this.ble._noteSenderKey === 'function') this.ble._noteSenderKey(nexoId, key);
   }
-  sendWithRetry(deviceId, content, messageId, seq) {
+  // opts.dst: destino final (Jump) si deviceId es un puente
+  sendWithRetry(deviceId, content, messageId, seq, opts) {
     var self = this;
+    var dst = opts && opts.dst;
     if (content && content.length > 150 && !e2eIsEncrypted(content)) {
-      return self.sendChunkedMessage(deviceId, content, {}, messageId, seq);
+      return self.sendChunkedMessage(deviceId, content, dst ? { dst: dst } : {}, messageId, seq);
     }
-    if (!e2eAvailable() || e2eIsEncrypted(content)) return self._sendWithRetryRaw(deviceId, content, messageId, seq);
-    return self._preparingFor(messageId, self._ensurePeerKey(deviceId)
+    if (!e2eAvailable() || e2eIsEncrypted(content)) return self._sendWithRetryRaw(deviceId, content, messageId, seq, dst);
+    return self._preparingFor(messageId, self._ensurePeerKey(deviceId, dst)
       .then(function(pk) { return e2eEncryptText(pk, content); }))
-      .then(function(enc) { return self._sendWithRetryRaw(deviceId, enc, messageId, seq); });
+      .then(function(enc) { return self._sendWithRetryRaw(deviceId, enc, messageId, seq, dst); });
   }
-  _sendWithRetryRaw(deviceId, content, messageId, seq) {
+  // Jump: un puente reenvía un paquete tal cual y espera la confirmación del siguiente salto
+  sendRawWithRetry(deviceId, packet, msgId) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      var entry = { msgId: msgId, deviceId: deviceId, content: packet, raw: true, quiet: true,
+        resolve: resolve, reject: reject, retries: 0, timer: null, sentAt: Date.now() };
+      var prev = self.pendingAcks.get(msgId);
+      if (prev) { clearTimeout(prev.timer); prev.reject(new Error('reemplazado')); }
+      self.pendingAcks.set(msgId, entry);
+      self._doSend(entry);
+    });
+  }
+  // 'rk': el puente guardó el mensaje (✓ enviado; ✓✓ cuando confirme el destino)
+  handleCustody(msgId) {
+    var entry = msgId && this.pendingAcks.get(msgId);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    this.pendingAcks.delete(msgId);
+    entry.resolve();
+    if (!entry.quiet) this._dispatchStatus(msgId, 'sent');
+  }
+  // Un ack de extremo a extremo que pasa por este puente confirma también su salto
+  resolveHopQuiet(msgId) {
+    var entry = msgId && this.pendingAcks.get(msgId);
+    if (!entry || !entry.quiet) return;
+    clearTimeout(entry.timer);
+    this.pendingAcks.delete(msgId);
+    entry.resolve();
+  }
+  _sendWithRetryRaw(deviceId, content, messageId, seq, dst) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
       var entry = {
-        msgId: msgId, deviceId: deviceId, content: content,
+        msgId: msgId, deviceId: deviceId, content: content, dst: dst || null,
         resolve: resolve, reject: reject, retries: 0, timer: null, sentAt: Date.now()
       };
       self.pendingAcks.set(msgId, entry);
@@ -660,14 +704,16 @@ export class BleAckSystem {
   }
   _doSend(entry) {
     var self = this;
-    self._dispatchStatus(entry.msgId, 'sending');
+    if (!entry.quiet) self._dispatchStatus(entry.msgId, 'sending');
     if (!self.ble || typeof self.ble._sendMessageNative !== 'function') {
       entry.reject(new Error('BLE no disponible'));
       self.pendingAcks.delete(entry.msgId);
       return;
     }
     var delay = SHORT_MSG_BACKOFF_DELAYS[Math.min(entry.retries, SHORT_MSG_BACKOFF_DELAYS.length - 1)];
-    self.ble._sendMessageNative(entry.deviceId, entry.content, entry.msgId)
+    var sendP = entry.raw ? self.ble._sendRawNative(entry.deviceId, entry.content)
+      : self.ble._sendMessageNative(entry.deviceId, entry.content, entry.msgId, undefined, entry.dst);
+    sendP
       .then(function() {
         entry.timer = setTimeout(function() { self._onAckTimeout(entry.msgId); }, delay);
       })
@@ -679,7 +725,7 @@ export class BleAckSystem {
         } else {
           self.pendingAcks.delete(entry.msgId);
           entry.reject(err);
-          self._dispatchStatus(entry.msgId, 'failed');
+          if (!entry.quiet) self._dispatchStatus(entry.msgId, 'failed');
         }
       });
   }
@@ -693,7 +739,7 @@ export class BleAckSystem {
     } else {
       this.pendingAcks.delete(msgId);
       entry.reject(new Error('ACK timeout'));
-      this._dispatchStatus(msgId, 'failed');
+      if (!entry.quiet) this._dispatchStatus(msgId, 'failed');
     }
   }
   processIncomingAck(content) {
@@ -718,20 +764,41 @@ export class BleAckSystem {
         clearTimeout(entry.timer);
         this.pendingAcks.delete(ackMsgId);
         entry.resolve();
-        this._dispatchStatus(ackMsgId, status);
+        if (!entry.quiet) this._dispatchStatus(ackMsgId, status);
       } else {
         this._dispatchStatus(ackMsgId, status);
       }
       return true;
     } catch (e) { return false; }
   }
-  sendAck(deviceId, msgId) {
-    var ackPayload = JSON.stringify({ v: 1, type: 'ack', msgId: msgId, from: (this.ble && this.ble.localNexoId) || 'unknown', ts: Date.now() });
-    if (this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(deviceId, ackPayload, null).catch(function(){});
+  // routeTo: origen de un mensaje que llegó por otro teléfono (Jump): el ack vuelve dirigido a él
+  sendAck(deviceId, msgId, routeTo) {
+    var obj = { v: 1, type: 'ack', msgId: msgId, from: (this.ble && this.ble.localNexoId) || 'unknown', ts: Date.now() };
+    if (routeTo) { obj.to = String(routeTo).toLowerCase(); this._sendRouted(obj, deviceId); return; }
+    if (this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(deviceId, JSON.stringify(obj), null).catch(function(){});
   }
-  sendReadReceipt(deviceId, msgId) {
-    var payload = JSON.stringify({ v: 1, type: 'read_receipt', msgId: msgId, from: (this.ble && this.ble.localNexoId) || 'unknown', ts: Date.now() });
-    if (this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
+  sendReadReceipt(deviceId, msgId, routeTo) {
+    var obj = { v: 1, type: 'read_receipt', msgId: msgId, from: (this.ble && this.ble.localNexoId) || 'unknown', ts: Date.now() };
+    if (routeTo) { obj.to = String(routeTo).toLowerCase(); this._sendRouted(obj, deviceId); return; }
+    if (this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(deviceId, JSON.stringify(obj), null).catch(function(){});
+  }
+  _sendRouted(obj, fallbackDeviceId) {
+    var relay = this.ble && this.ble.relay;
+    if (relay) { relay.sendRouted(obj); return; }
+    if (fallbackDeviceId && this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(fallbackDeviceId, JSON.stringify(obj), null).catch(function(){});
+  }
+  // Jump: un puente reenvía un flujo completo (texto largo o archivo) tal cual hacia el siguiente salto
+  forwardStream(deviceId, msgId, data, meta, kind) {
+    var self = this;
+    var running = self.outgoingStreams.get(msgId);
+    if (running && !running.aborted && running._promise) return running._promise;
+    var fm = Object.assign({}, meta, { fwd: true });
+    if (typeof fm.seq !== 'number') fm.seq = 0;
+    var stream = new ChatStream(self, deviceId, msgId, data, fm, kind === 'chat' ? 'chat' : 'file');
+    self.outgoingStreams.set(msgId, stream);
+    stream._promise = stream.start();
+    return stream._promise.then(function() { self.outgoingStreams.delete(msgId); },
+      function(err) { self.outgoingStreams.delete(msgId); throw err; });
   }
   _processBlockAck(msg) {
     var transferId = msg.transferId;
@@ -818,7 +885,7 @@ export class BleAckSystem {
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: {
-          deviceId: deviceId, deviceUUID: meta.fr || senderId,
+          deviceId: meta.hp > 0 ? null : deviceId, deviceUUID: meta.fr || senderId,
           content: content, senderName: meta.f || 'NEXO',
           senderNexoId: meta.fr || senderId, messageId: msgId || meta.msgId,
           source: 'ble', timestamp: meta.ts || Date.now(), seq: meta.seq || 0
@@ -836,6 +903,8 @@ export class BleAckSystem {
   // v3.3.2: progreso de recepción (cada 5 %) para mostrar "Recibiendo foto… N%" mientras llega
   _reportIncomingProgress(msgId, buf, status) {
     if (buf.isChat) return;
+    var me = _normId(this.ble && this.ble.localNexoId);
+    if (buf.meta.dst && _normId(buf.meta.dst) !== me) return; // de paso (Jump): no es para este teléfono
     var pct = status === 'failed' ? 0 : Math.floor(buf.received * 100 / buf.total);
     if (status !== 'failed' && (pct >= 100 || (typeof buf.lastPct === 'number' && pct - buf.lastPct < 5))) return;
     buf.lastPct = pct;
@@ -961,8 +1030,8 @@ ChatStream.prototype.start = function() {
     var cap = (self.type === 'file') ? Math.min(3600000, Math.max(900000, Math.round(self.content.length / 1.5))) : 900000;
     if (self.globalTimeoutMs > cap) self.globalTimeoutMs = cap;
     console.log('[ChatStream] START msgId=' + self.msgId + ' type=' + self.type + ' totalChunks=' + self.total + ' totalWindows=' + estimatedWindows + ' timeout=' + self.globalTimeoutMs + 'ms');
-    if (window.vaultCreateOutgoingTransfer) {
-      var cid = self.ackSystem._resolveNexoId(self.deviceId);
+    if (window.vaultCreateOutgoingTransfer && !self.meta.fwd) {
+      var cid = self.meta.dst || self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
     }
     self.globalTimeout = setTimeout(function() {
@@ -1106,6 +1175,8 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.preview) obj.pv = 1;
     if (this.meta.thumb) obj.th = this.meta.thumb; // miniatura JPEG del vídeo (poster) o 1.ª página del PDF
     if (this.meta.pages) obj.pg = this.meta.pages;
+    if (this.meta.dst) obj.dt = this.meta.dst;
+    if (this.meta.hp) obj.hp = this.meta.hp;
   }
   return JSON.stringify(obj);
 };
@@ -1203,15 +1274,16 @@ ChatStream.prototype._finish = function() {
   this.aborted = true;
   if (this.timer) clearTimeout(this.timer);
   if (this.globalTimeout) clearTimeout(this.globalTimeout);
-  this.ackSystem._dispatchStatus(this.msgId, 'delivered');
+  // Jump: el ack final de un puente es custodia (✓); el ✓✓ llega con el ack del destino
+  if (!this.meta.fwd) this.ackSystem._dispatchStatus(this.msgId, this.meta.dst ? 'sent' : 'delivered');
   // v3.4.0: entregado → fuera del registro de salientes (si no, se reenviaba al abrir la app o reconectar)
-  if (window.vaultRemoveOutgoingTransfer) {
-    window.vaultRemoveOutgoingTransfer(this.ackSystem._resolveNexoId(this.deviceId), this.msgId).catch(function(){});
+  if (window.vaultRemoveOutgoingTransfer && !this.meta.fwd) {
+    window.vaultRemoveOutgoingTransfer(this.meta.dst || this.ackSystem._resolveNexoId(this.deviceId), this.msgId).catch(function(){});
   }
   // NO disparar fileComplete en el emisor: el receptor lo emite al ensamblar.
   // Antes se enviaba data=null y podía interferir con listeners.
-  if (this.type === 'file') {
-    this.ackSystem._dispatchFileProgress(this.msgId, this.total, this.total, 'delivered', 100);
+  if (this.type === 'file' && !this.meta.fwd) {
+    this.ackSystem._dispatchFileProgress(this.msgId, this.total, this.total, this.meta.dst ? 'sent' : 'delivered', 100);
   }
   if (this.resolve) {
     this.resolve();

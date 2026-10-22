@@ -14,8 +14,21 @@ const classify = (id) => {
 };
 
 class Radio {
-  constructor() { this.phones = []; this.trace = []; }
+  constructor() { this.phones = []; this.trace = []; this.blocked = new Set(); }
   add(p) { this.phones.push(p); p.radio = this; }
+  // Alcance (jump): por defecto todos se ven; block(a, b) los deja fuera de alcance entre sí (cae la
+  // conexión que tuvieran, no se ven al escanear, no conectan y lo escrito se pierde)
+  _key(a, b) { return [a.name, b.name].sort().join('|'); }
+  inRange(a, b) { return !a || !b || !this.blocked.has(this._key(a, b)); }
+  block(a, b) {
+    this.blocked.add(this._key(a, b));
+    [[a, b], [b, a]].forEach(([x, y]) => {
+      if (x.clients.has(norm(y.address))) { x.clients.delete(norm(y.address)); x.emit('onDeviceDisconnected', { deviceId: y.address }); }
+      if (x.serverConnected.has(norm(y.initAddress))) { x.serverConnected.delete(norm(y.initAddress)); x.serverNotif.delete(norm(y.initAddress)); x.emit('onDeviceDisconnected', { deviceId: y.initAddress }); }
+      x.buffers.delete(norm(y.address)); x.buffers.delete(norm(y.initAddress));
+    });
+  }
+  unblock(a, b) { this.blocked.delete(this._key(a, b)); }
   byNorm(mac) { return this.phones.find((p) => norm(p.address) === norm(mac)); }
   log(...a) { this.trace.push(a.join(' ')); }
 }
@@ -175,7 +188,7 @@ class NativePhone {
   // ---- recepción (Kotlin processReceivedChunk + tryExtractCompleteJson) ----
   _processReceivedChunk(fromAddress, chunk, source) {
     const sender = this.radio.phones.find((p) => norm(p.address) === norm(fromAddress) || norm(p.initAddress) === norm(fromAddress));
-    if (this.offline || this.serverUp === false || (sender && sender.offline)) { this.stats.voidWrites = (this.stats.voidWrites || 0) + 1; return; }
+    if (this.offline || this.serverUp === false || (sender && sender.offline) || (sender && !this.radio.inRange(this, sender))) { this.stats.voidWrites = (this.stats.voidWrites || 0) + 1; return; }
     const mac = norm(fromAddress);
     let buf = (this.buffers.get(mac) || '') + chunk;
     for (;;) {
@@ -299,7 +312,7 @@ class NativePhone {
         self.scanningUntil = now + 6000;
         if (self.opts.scanThrottle && self.scanStarts.length > 5) { self.stats.throttledScans = (self.stats.throttledScans || 0) + 1; return; }
         setTimeout(() => self.radio.phones.forEach((p) => {
-          if (p === self || p.offline || !p.serviceRunning || !p.advertisingId) return;
+          if (p === self || p.offline || !p.serviceRunning || !p.advertisingId || !self.radio.inRange(self, p)) return;
           if (self.opts.scanMiss && Math.random() < self.opts.scanMiss) { self.stats.scanMisses = (self.stats.scanMisses || 0) + 1; return; }
           self.emit('onDeviceFound', { deviceId: p.address, name: p.name, rssi: -50, nexoId: p.advertisingId });
         }), 80);
@@ -315,7 +328,7 @@ class NativePhone {
         if (cl && cl.state === 'connecting') return c.resolve({ connected: false, error: 'Connection already in progress', deviceId: raw });
         if (cl && cl.state === 'connected') return c.resolve({ connected: true, alreadyConnected: true, deviceId: raw });
         const peer = self.radio.byNorm(mac);
-        if (!peer || peer.offline || self.offline) { setTimeout(() => { c.resolve({ connected: false, deviceId: raw, error: 'Connection error 133' }); }, 200); return; }
+        if (!peer || peer.offline || self.offline || !self.radio.inRange(self, peer)) { setTimeout(() => { c.resolve({ connected: false, deviceId: raw, error: 'Connection error 133' }); }, 200); return; }
         self._connectClient(peer, c);
       }),
       disconnectDevice: wrap('disconnectDevice', (c) => {

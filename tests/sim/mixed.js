@@ -63,6 +63,11 @@ const ownStatus = (p, t) => { const el = Array.from(p.win.document.querySelector
   r.llega_a_B_viejo = (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'SECRETO-a-viejo');
   await openChat(B); await sendText(B, 'hola desde B viejo'); await sleep(4000);
   r.A_recibe_de_B_viejo = (await A.win.vaultLoadMessages(B.win.bleInterface.localNexoId)).some((m) => m.content === 'hola desde B viejo');
+  // Paquetes nuevos (kx, rutas de jump) que la build vieja no conoce no deben aparecer como mensajes
+  await sleep(35000);
+  const junk = (await B.win.vaultLoadMessages(idA)).filter((m) => /"type":"(kx|rt|rk)"|"v":1/.test(m.content || ''));
+  r.basura_en_B_viejo = junk.map((m) => (m.content || '').substring(0, 40));
+  r.burbujas_basura_B_viejo = Array.from(B.win.document.querySelectorAll('#messages-container .message')).filter((m) => /"type":"|"v":1/.test(m.textContent)).length;
   // B se actualiza (mismos archivos, build nueva)
   B.win.close(); nB.destroyActivity(); await sleep(2000);
   nB.load(); B = await boot('B', nB); await sleep(25000);

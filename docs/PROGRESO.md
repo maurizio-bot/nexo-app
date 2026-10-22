@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2704)
+Última actualización: 2026-10-22 (build 2705)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -59,8 +59,11 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
 ## Siguiente paso (al retomar)
 - 2704: probar enviar un PDF (miniatura, tocar → se abre) y una APK pequeña (tocar → instalar; Android pide
   permiso la 1.ª vez). Una APK grande debe mostrar el aviso de tamaño.
-- Orden acordado con el dueño: **L2CAP** (envío binario en flujo; Android 10+, el envío actual queda de
-  respaldo) y después jump fase 2. Antes de L2CAP, medir en los teléfonos MTU/PHY/paquetes por segundo.
+- 2705 (Jump): probar con 3 teléfonos A–B–C donde A y C no se alcancen (otra habitación / distancia) y B
+  en medio: A escribe a C (texto y foto). Debe salir ✓ al quedar en B y ✓✓ al llegar a C. Diagnóstico:
+  líneas `[JUMP]` (rutas, "Puente", "Reenviado").
+- Velocidad: el dueño decidió dejar L2CAP; primero **medir** en los teléfonos (MTU, PHY, paquetes por
+  segundo, esperas de confirmación) y corregir sobre GATT; L2CAP solo si eso se queda corto.
 - 2702 (cifrado): el dueño debe instalarla en **todos** los teléfonos. Comprobar en el chat el aviso 🔒 y
   que textos, fotos y vídeos siguen llegando; si algo queda con reloj, Perfil → Copiar diagnóstico de
   ambos (buscar `[E2E]`: `Sin clave pública`, `No se pudo descifrar`, `La clave de … cambió`).
@@ -76,6 +79,31 @@ Probada por el dueño en teléfonos reales (compartir contactos entre 3 teléfon
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2705: Jump fase 2 — mensajes de varios saltos (A → B → C)
+Pedido del dueño: saltos entre teléfonos, cualquier teléfono NEXO hace de puente, textos y fotos (el
+cifrado de extremo a extremo de la 2702 era la fase 1). Nuevo `src/ui/ble_relay.js`:
+- Rutas por vector de distancias: cada teléfono anuncia (`rt`) a sus vecinos conectados a quién alcanza y
+  en cuántos saltos (máx. 4), sin devolver a un vecino lo aprendido de él; cada 30 s y al cambiar un
+  enlace; caducan a los 95 s o al caer el vecino. Solo a vecinos que entienden Jump (su `kx` lleva
+  `j:1`): una build anterior mostraba los paquetes desconocidos como mensajes de texto (comprobado con
+  la 2701: también le pasa con el `kx` desde la 2702; con la 2704 ya no hay basura).
+- Envío: si el contacto no está a alcance pero hay ruta, textos (cortos y largos) y adjuntos salen por el
+  siguiente salto con su destino (`to` en paquetes, `dt`/`hp` en la cabecera de flujos), cifrados para el
+  destino. El puente confirma que lo guarda (`rk` o el ack final del flujo) → ✓ en el emisor; lo apunta en
+  una cola persistente (`nexo_relay_queue.json`, archivos aparte, tope 30 MB, 24 h) y lo reenvía; si se
+  queda sin ruta, espera. El destino confirma de extremo a extremo (ack/leído dirigidos al origen) → ✓✓.
+  Sin ruta ni enlace, el mensaje espera en el emisor y sale en cuanto aparece una ruta.
+- Lo que llega por un puente no se asocia a la dirección del puente (contacto, mapeos). La clave de
+  cifrado de un desconocido que escribe por un puente se guarda al crear el contacto; si falta se pide de
+  extremo a extremo (`kx` dirigido; un puente nunca puede cambiar una clave ya conocida).
+- Los puentes solo ven quién, a quién y los ids; no pueden leer el contenido ni lo muestran.
+- Límite: los puentes son teléfonos **conectados** entre sí (en la práctica, contactos a alcance). No
+  hay entrega diferida a quien no esté en ninguna ruta en ese momento (el mensaje espera en el emisor).
+- Simulador: modelo de alcance (`radio.block/unblock`) y `tests/sim/jump.js` (A–B–C conocidos,
+  `--shared` A nunca vio a C, `--chain` A–B–C–D con 3 saltos). Verificado: textos, largo y foto llegan,
+  ✓✓ y leído vuelven, la respuesta vuelve, los puentes no leen ni guardan nada, custodia (C se aleja
+  cuando B ya tiene la foto → la entrega al volver) y batería completa (19 pruebas) + Chromium real.
 
 ## Ronda 2704: archivos (APK sin aviso, PDF que no abría)
 Dueño: "no puedo enviar APK (no sale ningún aviso)" y "los PDF llegan pero sin vista previa y no abren".
