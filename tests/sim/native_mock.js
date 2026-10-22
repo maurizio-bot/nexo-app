@@ -125,6 +125,15 @@ class NativePhone {
     this.serviceRunning = true; this.serverUp = true;
   }
 
+  // Kotlin remLog(): se registra cada trozo enviado y recibido y cada sendMessage. Hasta la 2722 todos hacían
+  // notifyListeners("onRemLog") (opts.remLogAll); desde la 2723 solo AT_REST y FILE_IO. Con un listener en JS,
+  // cada aviso cruza el puente al WebView.
+  _remLog(level, tag, message) {
+    this.stats.remLogs = (this.stats.remLogs || 0) + 1;
+    if (!this.opts.remLogAll && tag !== 'AT_REST' && tag !== 'FILE_IO') return;
+    if ((this.listeners.get('onRemLog') || []).length) { this.stats.remLogsToJs = (this.stats.remLogsToJs || 0) + 1; this.emit('onRemLog', { level, tag, message, timestamp: Date.now() }); }
+  }
+
   // ---- envío al aire ----
   _air(fromAddress, toPhone, bytes, source) {
     // Cola por enlace como processWriteQueue de Kotlin: una escritura cada 40 ms (cliente) u 80 ms
@@ -161,6 +170,7 @@ class NativePhone {
     const srvPeer = this.serverConnected.get(macNorm);
     if (srvPeer && this.serverNotif.get(macNorm)) {
       this.sent.push({ to: macNorm, chunk, mode: 'gatt_server' });
+      this._remLog('INFO', 'SEND', 'GATT Server chunk sent to ' + macNorm + ' len=' + chunk.length);
       this._air(this.address, srvPeer, chunk, 'gatt_client'); // notify: el cliente nos ve por la dirección de anuncio
       return { sent: true, mode: 'gatt_server' };
     }
@@ -168,6 +178,7 @@ class NativePhone {
     const cl = this.clients.get(macNorm);
     if (cl && cl.state === 'connected' && cl.rxReady) {
       this.sent.push({ to: macNorm, chunk, mode: 'gatt_client' });
+      this._remLog('INFO', 'SEND', 'GATT Client chunk sent (NO_RESPONSE) to ' + macNorm + ' len=' + chunk.length);
       this._air(this.initAddress, cl.peer, chunk, 'gatt_server'); // write: el servidor nos ve por la de iniciador
       return { sent: true, mode: 'gatt_client' };
     }
@@ -191,6 +202,7 @@ class NativePhone {
     const sender = this.radio.phones.find((p) => norm(p.address) === norm(fromAddress) || norm(p.initAddress) === norm(fromAddress));
     if (this.offline || this.serverUp === false || (sender && sender.offline) || (sender && !this.radio.inRange(this, sender))) { this.stats.voidWrites = (this.stats.voidWrites || 0) + 1; return; }
     const mac = norm(fromAddress);
+    this._remLog('INFO', source === 'gatt_client' ? 'GATT_CLIENT_CB' : 'GATT_SERVER', 'RX chunk from ' + mac + ': len=' + chunk.length);
     let buf = (this.buffers.get(mac) || '') + chunk;
     for (;;) {
       const ex = extractJson(buf);
@@ -376,6 +388,7 @@ class NativePhone {
         setTimeout(() => { // mainHandler.post
           const mac = self._resolveMac(raw);
           if (!mac) return c.reject('NXID no resuelto a MAC: ' + raw, 'NXID_UNRESOLVED');
+          self._remLog('INFO', 'SEND', 'sendMessage MAC=\'' + mac + '\' len=' + message.length);
           const r = self._sendChunkedOrSingle(mac, message);
           const mtu = self.mtu.get(mac) || 23;
           if (r.sent) c.resolve({ sent: true, mode: r.mode, deviceId: raw, mtu });

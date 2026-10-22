@@ -149,8 +149,12 @@ class NexoBlePlugin : Plugin() {
     private var quickScanResultMac: String? = null
     private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
     private data class JsonExtraction(val json: String, val remainder: String)
+    // Solo estas etiquetas cruzan a la app (diagnóstico). El resto (uno por cada trozo enviado o recibido) solo
+    // va a logcat: la 2722 los escuchaba todos y miles de avisos por foto saturaban el puente (fotos paradas).
+    private val remLogToJs = setOf("AT_REST", "FILE_IO")
     private fun remLog(level: String, tag: String, message: String) {
         Log.i("NEXO_REM", "[$level][$tag] $message")
+        if (tag !in remLogToJs) return
         try {
             notifyListeners("onRemLog", JSObject()
                 .put("level", level)
