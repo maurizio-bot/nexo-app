@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2715)
+Última actualización: 2026-10-22 (build 2717)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -53,6 +53,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2713 | `4a33565` | Wi-Fi Direct: permiso de Android 13+ (faltaba: nunca funcionaba) y vídeo/archivo que se quedaban en 1 % si fallaba. APK verificada (firma, NEARBY_WIFI_DEVICES presente) |
 | 2714 | `cdb3b89` | Ubicación con aviso y alternativas (GPS → red); Wi-Fi Direct ya no reenvía por Bluetooth lo entregado; tiempos por fase. APK verificada |
 | 2715 | `8a2d5e7` | Protocolo Fénix fase 1: respaldo automático de la cuenta en 10/20 contactos, pingeo y curación, recuperación con 6 confirmaciones. APK verificada |
+| 2716 | `504994f` | Compilación de prueba en la rama de trabajo (limpieza de Kotlin), sin release |
+| 2717 | `504994f` | Limpieza: fuera ~10.900 líneas de código sustituido o duplicado. JavaScript idéntico a la 2715; APK 0,5 MB más ligera (sin `client/android` ni iconos sobrantes). APK verificada |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
