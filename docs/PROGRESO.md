@@ -472,6 +472,13 @@ Ver `tests/sim/README.md`. Límites: no simula la radio real (velocidad, alcance
   `_showPaymentModal` usa `self` sin definir.
 
 ## Código no usado (visión a futuro)
-Malla y relay (`src/mesh/`, `src/net/`, `server/relay/`), backup Fénix Shamir 3-de-5 (`src/fenix/`),
-biometría (`src/auth/`, `plugins/nexo-auth`), The Stream (`src/stream/`), Chispas
-(`src/vault/chispas/`). Pendiente: que el dueño comparta la visión del Proyecto (`docs/VISION.md`).
+Limpieza del 22-10-2026 (pedida por el dueño): se borró lo sustituido por código vivo — `src/media/*` (ahora
+`ble_ack.js`), `src/mesh/*` (ahora Jump), `src/fenix/fenix_backup.js` (ahora `fenix.js`), `autoscan`,
+`ble_permissions`, `utils/permissions`, `SetupManager`, `SetupWizard`, copias en `src/main/`, la app antigua
+`client/` (webpack la copiaba dentro de la APK: 49 archivos + 3 iconos) y sus workflows, `dist/android/`, y en
+Kotlin `FileTransferManager`, `FileTranferProtocol`, `MessageChunker`, `NexoBleServer`, `NexoGattService` y
+`sendFileNative` (el JS no los usaba). El JavaScript de la APK quedó idéntico byte a byte.
+Se conservan para más adelante: `src/net/*` + `server/relay/` (Wi-Fi/datos), `plugins/nexo-auth` +
+`src/vault/crypto_vault.js` + `src/auth/*` (huella y cifrado en reposo, fase 3). Pendiente de que el dueño
+explique: `src/stream/*` ("The Stream"), `src/vault/chispas/`, `src/perf/virtual_engine.js`, los
+`gesture_engine.js`, `vault_fs.js`, `vault_panel.js`.

@@ -62,19 +62,6 @@ export default {
           from: 'src/assets',
           to: 'assets',
           noErrorOnMissing: true
-        },
-        {
-          from: 'client/assets',  // Fallback: assets legacy si aún no migraste todo
-          to: 'assets',
-          noErrorOnMissing: true,
-          globOptions: {
-            ignore: ['**/.*']  // Ignorar archivos ocultos
-          }
-        },
-        {
-          from: 'client/android',  // Si tienes recursos android específicos en client/
-          to: 'android',
-          noErrorOnMissing: true
         }
       ]
     })
