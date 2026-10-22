@@ -1,5 +1,7 @@
 /**
- * vault_manager.js v2.3.5
+ * vault_manager.js v2.3.6
+ * v2.3.6: vaultDeleteMessage (eliminar para mí) y vaultBlankMessage (eliminado para todos: queda el aviso);
+ *         ambos borran los archivos del adjunto y del HD.
  * v2.3.5: escrituras del registro de salientes en cola por contacto (antes se pisaban); kx es protocolo.
  * v2.3.4: un mensaje nuevo se escribe al momento; cambios de estado y duplicados, agrupados (300 ms).
  * v2.3.3: vídeo HD: vaultReplaceAttachment (el HD sustituye a la previa), vaultSetMessageFields,
@@ -659,6 +661,46 @@ export async function vaultSetMessageFields(contactNexoId, msgId, patch) {
     if (p.metaMerge) { p.attachmentMeta = Object.assign({}, cur.attachmentMeta || {}, p.metaMerge); delete p.metaMerge; }
     messages[idx] = Object.assign({}, cur, p);
     _persistMessages(cid, messages);
+    return true;
+  });
+}
+
+// v2.3.6: archivos de un mensaje (adjunto y HD)
+function _deleteMessageFiles(m, msgId) {
+  var plugin = _nativePlugin();
+  if (!plugin) return;
+  var names = {};
+  [m && m.attachmentRef, m && m.hdRef, _attFileName(msgId), vaultHdFileName(msgId)].forEach(function(n) { if (n) names[n] = true; });
+  Object.keys(names).forEach(function(n) { _safeNativeCall(plugin, 'deleteFile', { filename: n }).catch(function() {}); });
+}
+// Eliminar para mí: fuera del historial
+export async function vaultDeleteMessage(contactNexoId, msgId) {
+  if (!contactNexoId || !msgId) return false;
+  var cid = _normId(contactNexoId);
+  return _withMsgLock(cid, async function() {
+    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+    var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId) === msgId; });
+    if (idx < 0) return false;
+    var m = messages[idx];
+    messages.splice(idx, 1);
+    _persistMessages(cid, messages);
+    _deleteMessageFiles(m, msgId);
+    return true;
+  });
+}
+// Eliminado para todos: el mensaje queda como aviso ("Se eliminó este mensaje"), sin contenido ni adjuntos
+export async function vaultBlankMessage(contactNexoId, msgId) {
+  if (!contactNexoId || !msgId) return false;
+  var cid = _normId(contactNexoId);
+  return _withMsgLock(cid, async function() {
+    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+    var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId) === msgId; });
+    if (idx < 0) return false;
+    var m = messages[idx];
+    messages[idx] = Object.assign({}, m, { deleted: true, content: '', attachmentType: null, attachmentPayload: null,
+      attachmentRef: null, attachmentMeta: null, hdRef: null, hdStatus: null });
+    _persistMessages(cid, messages);
+    _deleteMessageFiles(m, msgId);
     return true;
   });
 }

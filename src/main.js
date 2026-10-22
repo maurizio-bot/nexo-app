@@ -1,5 +1,9 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.44-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.46-NEXO
+ * v9.9.46: cámara tipo WhatsApp (VÍDEO/FOTO, disparador grande, contador, linterna, galería, revisar antes
+ *          de enviar); cámara frontal en espejo y foto igual que se ve; fotos a 800 px (1600 con Wi-Fi Direct).
+ * v9.9.45: chat tipo WhatsApp: mantener pulsado → Responder / Reenviar / Copiar / Eliminar para mí / para
+ *          todos; deslizar una burbuja a la derecha = responder (cita tocable); reenviar a uno o varios chats.
  * v9.9.44: Protocolo Fénix (fase 1, la cuenta): estado y "Recuperar mi cuenta" en el Perfil; aviso en el teléfono
  *          de un contacto para confirmar quién pide recuperar; reinicio al recuperar.
  * v9.9.43: ubicación: aviso mientras se busca, GPS → última conocida/red → aviso claro (antes, sin señal,
@@ -81,7 +85,8 @@ import {
   vaultGetIncompleteTransfers, vaultGetPendingOutgoingTransfers, vaultCreateOutgoingTransfer,
   vaultSetOutgoingChunkAcked, vaultIncrementOutgoingTimeout, vaultRemoveOutgoingTransfer,
   vaultSetOutgoingStatus, vaultHydrateAttachments,
-  vaultSetMessageFields, vaultReplaceAttachment, vaultSaveFile, vaultLoadFile, vaultHdFileName
+  vaultSetMessageFields, vaultReplaceAttachment, vaultSaveFile, vaultLoadFile, vaultHdFileName,
+  vaultDeleteMessage, vaultBlankMessage
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
 import { initE2E } from './vault/e2e_crypto.js';
@@ -326,6 +331,9 @@ var _cameraPreviewRecording = false;
 var _cameraPreviewMediaRecorder = null;
 var _cameraPreviewVideoChunks = [];
 var _cameraVideoStartTime = 0;
+var _cameraTimer = null;      // v9.9.46: contador de grabación
+var _cameraTorchOn = false;
+var _cameraReview = null;     // { type: 'photo'|'video', b64, w, h, blob, url, mime, duration }
 var _objectURLRegistry = [];
 var _renderedMessageCount = 0;
 var _renderedMessageIds = new Set();
@@ -477,11 +485,13 @@ function _sendAttachment(type, payload, meta, opts) {
     if (!meta.mime && meta.type.indexOf('/') > 0) meta.mime = meta.type;
     meta.type = type;
   }
-  var contactId = _getCurrentContactId();
+  // v9.9.45: opts.contactId = otro chat (reenviar): se guarda y envía allí sin dibujarlo en el abierto
+  var contactId = (opts && opts.contactId) || _getCurrentContactId();
   if (!contactId) {
     console.log('[ATTACH] No hay contacto seleccionado');
     return;
   }
+  var showHere = _normId(contactId) === _normId(_getCurrentContactId());
   if (!payload || (typeof payload === 'string' && payload.length === 0)) {
     console.warn('[ATTACH] Payload vacío, no se envía');
     return;
@@ -514,7 +524,7 @@ function _sendAttachment(type, payload, meta, opts) {
   if ((type === 'video' || type === 'file' || type === 'image') && typeof payload === 'string' && payload.length > _maxB64For(contactId)) {
     console.warn('[ATTACH] Payload demasiado grande para BLE:', type, payload.length);
     localMsg.status = 'failed';
-    _renderMessage(localMsg);
+    if (showHere) _renderMessage(localMsg, true);
     try {
       if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg);
     } catch (e) {}
@@ -526,7 +536,7 @@ function _sendAttachment(type, payload, meta, opts) {
   var shownMsg = (opts && (opts.displayPayload || opts.displayUrl))
     ? Object.assign({}, localMsg, { attachmentPayload: opts.displayPayload || localMsg.attachmentPayload, attachmentDisplayUrl: opts.displayUrl || null, attachmentMeta: Object.assign({}, meta || {}, { mime: opts.displayMime || (meta && meta.mime) }), hdStatus: 'pending' })
     : localMsg;
-  _renderMessage(shownMsg, true);
+  if (showHere) _renderMessage(shownMsg, true);
   try {
     if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg);
   } catch (e) {}
@@ -606,6 +616,373 @@ function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
       _updateMessageStatus(msgId, 'failed');
       _updateMessageStorageStatus(msgId, 'failed', contactId);
     });
+}
+
+// ===================== v9.9.45: chat tipo WhatsApp: responder, reenviar, eliminar, copiar =====================
+// Mantener pulsada una burbuja (o clic derecho) abre el menú; deslizarla a la derecha responde.
+// Formato (solo con contactos 2715+, que lo entienden; a los demás va el texto solo):
+//   texto con respuesta o reenviado: {"type":"nexo_txt","t":texto,"rp":{id,a,s,k},"fw":1}
+//   eliminar para todos:              {"type":"nexo_act","act":"del","id":msgId}  (no se muestra)
+var _replyTo = null;               // { id, a: autor (NEXO ID), s: resumen, k: tipo }
+var DELETE_ALL_MS = 24 * 3600000;  // "eliminar para todos" hasta 24 h después de enviarlo
+
+function _chatKind(content) {
+  if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
+  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act')) ? p : null; } catch (e) { return null; }
+}
+function _plainText(content) { var k = _chatKind(content); return k ? String(k.t || '') : String(content || ''); }
+function _myNexoId() { var bi = window.bleInterface; return _normId(bi && bi.localNexoId); }
+function _contactName(nx) {
+  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(nx); });
+  return (c && c.name) || String(nx || '').toUpperCase();
+}
+function _peerUnderstands(cid) {
+  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(cid); });
+  return !!(c && c.fx);
+}
+function _msgSummary(msg) {
+  if (msg.attachmentType) return { k: msg.attachmentType, s: _PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo' };
+  return { k: 'text', s: _plainText(msg.content).substring(0, 100) };
+}
+function _findMessage(cid, id) {
+  return vaultLoadMessages(cid).then(function(list) {
+    return (list || []).find(function(m) { return (m.msgId || m.messageId) === id; }) || null;
+  }).catch(function() { return null; });
+}
+
+// Burbuja de texto: eliminado, reenviado, respuesta citada (todo como texto: viene de otro teléfono)
+function _fillTextBubble(contentDiv, msg, isOwn) {
+  if (msg.deleted) {
+    contentDiv.classList.add('msg-deleted');
+    contentDiv.style.fontStyle = 'italic';
+    contentDiv.style.opacity = '0.7';
+    contentDiv.textContent = isOwn ? '🚫 Eliminaste este mensaje' : '🚫 Se eliminó este mensaje';
+    return;
+  }
+  var raw = msg.content || msg.text || '';
+  var k = _chatKind(raw);
+  if (!k || k.type !== 'nexo_txt') { contentDiv.textContent = raw; return; }
+  if (k.fw) {
+    var fw = document.createElement('div');
+    fw.className = 'msg-forwarded';
+    fw.style.cssText = 'font-size:11px;font-style:italic;opacity:0.7;margin-bottom:2px;';
+    fw.textContent = '↪ Reenviado';
+    contentDiv.appendChild(fw);
+  }
+  if (k.rp && k.rp.id) {
+    var q = document.createElement('div');
+    q.className = 'msg-quote';
+    q.style.cssText = 'border-left:3px solid #00c8ff;background:rgba(0,0,0,0.25);border-radius:6px;padding:4px 8px;margin-bottom:4px;cursor:pointer;font-size:12px;';
+    var who = document.createElement('div');
+    who.style.cssText = 'color:#00c8ff;font-weight:600;';
+    who.textContent = _normId(k.rp.a) === _myNexoId() ? 'Tú' : _contactName(k.rp.a);
+    var what = document.createElement('div');
+    what.style.cssText = 'opacity:0.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;';
+    what.textContent = String(k.rp.s || '');
+    q.appendChild(who); q.appendChild(what);
+    q.onclick = function(e) { e.stopPropagation(); _scrollToMessage(k.rp.id); };
+    contentDiv.appendChild(q);
+  }
+  var t = document.createElement('span');
+  t.className = 'msg-text';
+  t.textContent = String(k.t || '');
+  contentDiv.appendChild(t);
+}
+
+function _scrollToMessage(id) {
+  var el = document.querySelector('.message[data-msg-id="' + id + '"]');
+  if (!el) { _showInfoToast('El mensaje citado ya no está en el chat', 2500); return; }
+  try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+  el.classList.add('msg-highlight');
+  el.style.transition = 'background 0.4s';
+  el.style.background = 'rgba(0,200,255,0.25)';
+  setTimeout(function() { el.style.background = ''; el.classList.remove('msg-highlight'); }, 1400);
+}
+
+function _setupMessageActions() {
+  var mc = document.getElementById('messages-container');
+  if (!mc || mc._nexoActions) return;
+  mc._nexoActions = true;
+  mc.style.touchAction = 'pan-y';
+  var timer = null, startX = 0, startY = 0, target = null, swiping = false, fired = false;
+  var bubbleOf = function(e) {
+    var m = e.target && e.target.closest ? e.target.closest('.message') : null;
+    return (m && m.dataset.msgId && !m.classList.contains('progress-placeholder')) ? m : null;
+  };
+  mc.addEventListener('pointerdown', function(e) {
+    var m = bubbleOf(e);
+    if (!m) return;
+    target = m; startX = e.clientX; startY = e.clientY; swiping = false; fired = false;
+    clearTimeout(timer);
+    timer = setTimeout(function() { fired = true; _openMsgMenu(m); }, 500);
+  });
+  mc.addEventListener('pointermove', function(e) {
+    if (!target) return;
+    var dx = e.clientX - startX, dy = e.clientY - startY;
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(timer);
+    // Deslizar a la derecha = responder (lejos del borde izquierdo, que es "volver")
+    if (startX > 40 && dx > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      swiping = true;
+      target.style.transform = 'translateX(' + Math.min(dx, 80) + 'px)';
+    }
+  });
+  var end = function(e) {
+    clearTimeout(timer);
+    if (!target) return;
+    var t = target, dx = (typeof e.clientX === 'number' ? e.clientX : startX) - startX;
+    target = null;
+    if (swiping) {
+      swiping = false;
+      t.style.transition = 'transform 0.15s';
+      t.style.transform = '';
+      setTimeout(function() { t.style.transition = ''; }, 200);
+      if (dx > 60) _startReply(t.dataset.msgId);
+    }
+  };
+  mc.addEventListener('pointerup', end);
+  mc.addEventListener('pointercancel', end);
+  mc.addEventListener('contextmenu', function(e) {
+    var m = bubbleOf(e);
+    if (!m) return;
+    e.preventDefault();
+    if (!fired) _openMsgMenu(m);
+  });
+  // Tras abrir el menú con una pulsación larga no se abre además la foto o el vídeo
+  mc.addEventListener('click', function(e) { if (fired) { fired = false; e.stopPropagation(); e.preventDefault(); } }, true);
+}
+
+function _openMsgMenu(div) {
+  var id = div && div.dataset.msgId, cid = _getCurrentContactId();
+  if (!id || !cid) return;
+  _findMessage(cid, id).then(function(msg) {
+    if (!msg) return;
+    var old = document.getElementById('nexo-msg-menu');
+    if (old) old.remove();
+    var isOwn = !!msg._own, deleted = !!msg.deleted;
+    var box = document.createElement('div');
+    box.id = 'nexo-msg-menu';
+    box.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;';
+    var sheet = document.createElement('div');
+    sheet.style.cssText = 'background:#14152a;color:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:8px 0 14px;';
+    var close = function() { box.remove(); div.style.background = ''; };
+    var add = function(label, cls, fn, danger) {
+      var b = document.createElement('button');
+      b.className = 'mm-item ' + cls;
+      b.textContent = label;
+      b.style.cssText = 'display:block;width:100%;text-align:left;padding:14px 20px;background:none;border:none;font-size:16px;color:' + (danger ? '#ff6b6b' : '#fff') + ';';
+      b.onclick = function(e) { e.stopPropagation(); close(); fn(); };
+      sheet.appendChild(b);
+    };
+    if (!deleted) add('↩  Responder', 'mm-reply', function() { _startReply(id, msg); });
+    if (!deleted) add('↪  Reenviar', 'mm-forward', function() { _openForwardSheet(msg); });
+    if (!deleted && !msg.attachmentType) add('⧉  Copiar', 'mm-copy', function() { _copyText(_plainText(msg.content)); });
+    add('🗑  Eliminar para mí', 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
+    if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && _peerUnderstands(cid)) {
+      add('🗑  Eliminar para todos', 'mm-del-all', function() { _deleteForAll(cid, msg); }, true);
+    }
+    add('Cancelar', 'mm-cancel', function() {});
+    box.onclick = function(e) { if (e.target === box) close(); };
+    box.appendChild(sheet);
+    div.style.background = 'rgba(0,200,255,0.12)';
+    document.body.appendChild(box);
+  });
+}
+
+function _startReply(id, msg) {
+  var cid = _getCurrentContactId();
+  if (!id || !cid) return;
+  (msg ? Promise.resolve(msg) : _findMessage(cid, id)).then(function(m) {
+    if (!m || m.deleted) return;
+    var sum = _msgSummary(m);
+    _replyTo = { id: id, a: m._own ? _myNexoId() : _normId(m.senderNexoId || cid), s: sum.s, k: sum.k };
+    _renderReplyBar();
+    var input = document.getElementById('message-input');
+    if (input) input.focus();
+  });
+}
+function _cancelReply() { _replyTo = null; _renderReplyBar(); }
+function _renderReplyBar() {
+  var old = document.getElementById('reply-bar');
+  if (old) old.remove();
+  if (!_replyTo) return;
+  var area = document.getElementById('input-area');
+  if (!area || !area.parentNode) return;
+  var bar = document.createElement('div');
+  bar.id = 'reply-bar';
+  bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:3px solid #00c8ff;background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
+  var txt = document.createElement('div');
+  txt.style.cssText = 'flex:1;min-width:0;';
+  var who = document.createElement('div');
+  who.style.cssText = 'color:#00c8ff;font-weight:600;';
+  who.textContent = 'Respondiendo a ' + (_replyTo.a === _myNexoId() ? 'ti' : _contactName(_replyTo.a));
+  var what = document.createElement('div');
+  what.style.cssText = 'opacity:0.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+  what.textContent = _replyTo.s;
+  txt.appendChild(who); txt.appendChild(what);
+  var x = document.createElement('button');
+  x.className = 'reply-cancel';
+  x.textContent = '✕';
+  x.style.cssText = 'background:none;border:none;color:#fff;font-size:18px;padding:4px 8px;';
+  x.onclick = _cancelReply;
+  bar.appendChild(txt); bar.appendChild(x);
+  area.parentNode.insertBefore(bar, area);
+}
+
+function _copyText(text) {
+  var ok = function() { _showInfoToast('Copiado', 1500); };
+  var fallback = function() {
+    try { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); ok(); } catch (e) {}
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok).catch(fallback);
+  else fallback();
+}
+
+// Texto a cualquier chat (el abierto u otro). hidden: acción del chat (no se muestra ni cuenta como último)
+function _sendTextTo(cid, wire, plain, hidden) {
+  var bi = window.bleInterface;
+  if (!cid || !bi || typeof bi.sendChatMessage !== 'function') return null;
+  var msgId = 'msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9);
+  var seq = typeof bi.getNextSeq === 'function' ? bi.getNextSeq() : 0;
+  _msgContactMap[msgId] = cid;
+  var vm = { msgId: msgId, messageId: msgId, contactNexoId: cid, content: wire, _own: true, status: 'sending', timestamp: Date.now(), seq: seq };
+  if (hidden) vm.hidden = true;
+  if (!hidden && _normId(cid) === _normId(_getCurrentContactId())) _renderMessage(vm);
+  else vaultAppendMessage(cid, vm).catch(function() {});
+  if (!hidden) _noteContactMessage(cid, plain, vm.timestamp);
+  bi.sendChatMessage(cid, wire, msgId, seq).then(function() {
+    if (_canUpgradeStatus(_getDomMessageStatus(msgId), 'sent')) _updateMessageStatus(msgId, 'sent');
+    _updateMessageStorageStatus(msgId, 'sent', cid);
+  }).catch(function(err) {
+    var st = (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT')) ? 'pending' : 'failed';
+    _updateMessageStatus(msgId, st);
+    _updateMessageStorageStatus(msgId, st, cid);
+  });
+  return msgId;
+}
+
+function _openForwardSheet(msg) {
+  var old = document.getElementById('nexo-forward-sheet');
+  if (old) old.remove();
+  var all = (vaultLoadContacts() || []).filter(function(c) { return c && (c.nexoId || c.deviceUUID); });
+  var chosen = {};
+  var box = document.createElement('div');
+  box.id = 'nexo-forward-sheet';
+  box.style.cssText = 'position:fixed;inset:0;z-index:6000;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
+  var head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;';
+  var title = document.createElement('div');
+  title.style.cssText = 'font-size:18px;font-weight:700;';
+  title.textContent = 'Reenviar a…';
+  var cancel = document.createElement('button');
+  cancel.textContent = 'Cancelar';
+  cancel.style.cssText = 'background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:16px;padding:8px 14px;';
+  cancel.onclick = function() { box.remove(); };
+  head.appendChild(title); head.appendChild(cancel);
+  var list = document.createElement('div');
+  list.style.cssText = 'flex:1;overflow-y:auto;';
+  var send = document.createElement('button');
+  send.className = 'fw-send';
+  send.style.cssText = 'margin-top:12px;padding:12px;border:none;border-radius:12px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-size:15px;font-weight:600;';
+  var refresh = function() { var n = Object.keys(chosen).length; send.textContent = n ? 'Reenviar (' + n + ')' : 'Elige uno o más chats'; send.disabled = !n; };
+  all.forEach(function(c) {
+    var id = _normId(c.nexoId || c.deviceUUID);
+    var row = document.createElement('label');
+    row.className = 'fw-row';
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,0.06);';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.onchange = function() { if (cb.checked) chosen[id] = true; else delete chosen[id]; refresh(); };
+    var nm = document.createElement('span');
+    nm.className = 'fw-name';
+    nm.textContent = c.name || id.toUpperCase();
+    row.appendChild(cb); row.appendChild(nm);
+    list.appendChild(row);
+  });
+  send.onclick = function() {
+    var ids = Object.keys(chosen);
+    if (!ids.length) return;
+    box.remove();
+    Promise.all(ids.map(function(cid) { return _forwardTo(cid, msg); })).then(function() {
+      _showInfoToast('Reenviado a ' + ids.length + (ids.length === 1 ? ' chat' : ' chats'), 2000);
+    });
+  };
+  refresh();
+  box.appendChild(head); box.appendChild(list); box.appendChild(send);
+  document.body.appendChild(box);
+}
+
+async function _forwardTo(cid, msg) {
+  if (msg.attachmentType) {
+    var payload = msg.attachmentPayload;
+    if (!payload && msg.attachmentRef) payload = await vaultLoadFile(msg.attachmentRef);
+    var meta = Object.assign({}, msg.attachmentMeta || {});
+    // Vídeo propio: el original (HD) si está guardado
+    if (msg.attachmentType === 'video' && msg.hdRef) {
+      var hd = await vaultLoadFile(msg.hdRef);
+      if (hd) { payload = hd; if (msg.hdMime) { meta.mime = msg.hdMime; meta.format = _videoFormat(msg.hdMime); } }
+    }
+    ['preview', 'hdSize', 'hdFor', 'hd', 'wdOnly', 'fwd'].forEach(function(k) { delete meta[k]; });
+    if (!payload) { _showInfoToast('No se pudo reenviar: el archivo ya no está', 2500); return; }
+    console.log('[ATTACH] Reenviando ' + msg.attachmentType + ' a ' + cid);
+    _sendAttachment(msg.attachmentType, payload, meta, { contactId: cid });
+    return;
+  }
+  var text = _plainText(msg.content);
+  var wire = _peerUnderstands(cid) ? JSON.stringify({ type: 'nexo_txt', t: text, fw: 1 }) : text;
+  _sendTextTo(cid, wire, text);
+}
+
+// Vista previa de la lista de chats según el último mensaje que queda (lo eliminado no se ve ahí)
+function _refreshChatPreview(cid) {
+  return vaultLoadMessages(cid).then(function(list) {
+    var last = null;
+    (list || []).forEach(function(m) { if (!m.hidden && (!last || (m.timestamp || 0) >= (last.timestamp || 0))) last = m; });
+    var contacts = vaultLoadContacts() || [];
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(cid); });
+    if (!c) return;
+    c.lastMessage = !last ? '' : last.deleted ? '🚫 Mensaje eliminado' : last.attachmentType ? (_PREVIEW_BY_TYPE[last.attachmentType] || '📎 Archivo') : _plainText(last.content).substring(0, 50);
+    vaultSaveContacts(contacts);
+    var bi = window.bleInterface;
+    if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();
+  }).catch(function() {});
+}
+
+function _deleteForMe(cid, id) {
+  var el = document.querySelector('.message[data-msg-id="' + id + '"]');
+  if (el) el.remove();
+  _renderedMessageIds.delete(id);
+  if (_replyTo && _replyTo.id === id) _cancelReply();
+  vaultDeleteMessage(cid, id).then(function() { return _refreshChatPreview(cid); }).catch(function() {});
+  console.log('[CHAT] Mensaje eliminado para mí');
+}
+
+function _deleteForAll(cid, msg) {
+  var id = msg.msgId || msg.messageId;
+  _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'del', id: id }), '', true);
+  vaultBlankMessage(cid, id).then(function() { _rerenderBlank(id, msg); return _refreshChatPreview(cid); }).catch(function() {});
+  console.log('[CHAT] Mensaje eliminado para todos');
+}
+
+function _rerenderBlank(id, msg) {
+  var el = document.querySelector('.message[data-msg-id="' + id + '"]');
+  if (!el) return;
+  el.remove();
+  _renderedMessageIds.delete(id);
+  _renderMessage(Object.assign({}, msg, { deleted: true, content: '', attachmentType: null, attachmentPayload: null, attachmentRef: null, attachmentMeta: null }), true);
+}
+
+// Recibido: el contacto eliminó para todos uno de SUS mensajes
+function _applyChatAction(senderId, act) {
+  if (!act || act.act !== 'del' || !act.id) return;
+  var cid = _normId(senderId);
+  _findMessage(cid, act.id).then(function(m) {
+    if (!m || m._own || m.deleted) return; // solo mensajes que escribió quien lo pide
+    console.log('[CHAT] ' + cid + ' eliminó un mensaje para todos');
+    return vaultBlankMessage(cid, act.id).then(function() {
+      if (_normId(_getCurrentContactId()) === cid) _rerenderBlank(act.id, m);
+      return _refreshChatPreview(cid);
+    });
+  });
 }
 
 function _toggleAttachMenu() {
@@ -774,12 +1151,14 @@ function _showCameraPreviewOverlay() {
   _cameraPreviewRecording = false;
   _cameraPreviewVideoChunks = [];
   _cameraVideoStartTime = 0;
+  _closeReview();
   _updateCameraPreviewUI();
 }
 
 function _hideCameraPreviewOverlay() {
   var overlay = document.getElementById('camera-preview-overlay');
   if (overlay) overlay.classList.add('hidden');
+  _closeReview();
   _stopCameraPreview();
   var ble = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
   if (ble && typeof ble.resumeBLEAfterCamera === 'function') {
@@ -839,20 +1218,40 @@ function _openFullscreenMedia(src, type) {
   document.body.appendChild(overlay);
 }
 
+// ===================== v9.9.46: cámara tipo WhatsApp =====================
+// Pestañas VÍDEO / FOTO, disparador grande (rojo en vídeo; cuadrado mientras graba), contador, linterna,
+// girar, acceso a la galería y revisión antes de enviar (Repetir / Enviar). Cámara frontal en espejo, como
+// un espejo de verdad; la foto sale igual que se ve. Foto con más resolución (más aún si hay Wi-Fi Direct).
+function _photoTarget(cid) { return _wdReach(cid) ? { max: 1600, q: 0.85 } : { max: 800, q: 0.65 }; }
+function _videoLimitSec(cid) { return _wdReach(cid) ? 110 : PREVIEW_MAX_SECONDS; }
+
 function _updateCameraPreviewUI() {
   var captureBtn = document.getElementById('camera-btn-capture');
   var status = document.getElementById('camera-preview-status');
-  var modeBtn = document.getElementById('camera-btn-mode');
   if (!captureBtn) return;
-  if (_cameraPreviewMode === 'video') {
-    captureBtn.classList.add('recording');
-    if (status) status.textContent = _cameraPreviewRecording ? 'Grabando... toca para detener' : 'Toca para grabar video';
-    if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
-  } else {
-    captureBtn.classList.remove('recording');
-    if (status) status.textContent = '';
-    if (modeBtn) modeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>';
-  }
+  var isVideo = _cameraPreviewMode === 'video';
+  captureBtn.classList.toggle('video-mode', isVideo);
+  captureBtn.classList.toggle('recording', isVideo && _cameraPreviewRecording);
+  ['video', 'photo'].forEach(function(m) {
+    var b = document.getElementById('cam-mode-' + m);
+    if (b) b.classList.toggle('active', _cameraPreviewMode === m);
+  });
+  var modes = document.querySelector('#camera-preview-overlay .cam-modes');
+  if (modes) modes.style.visibility = _cameraPreviewRecording ? 'hidden' : 'visible';
+  var timer = document.getElementById('cam-timer');
+  if (timer) timer.classList.toggle('hidden', !_cameraPreviewRecording);
+  var flip = document.getElementById('camera-btn-flip');
+  if (flip) flip.style.visibility = _cameraPreviewRecording ? 'hidden' : 'visible';
+  var gal = document.getElementById('camera-btn-gallery');
+  if (gal) gal.style.visibility = _cameraPreviewRecording ? 'hidden' : 'visible';
+  if (status && !status.dataset.error) status.textContent = '';
+}
+
+function _cameraError(text) {
+  var status = document.getElementById('camera-preview-status');
+  if (!status) return;
+  status.dataset.error = text ? '1' : '';
+  status.textContent = text || '';
 }
 
 function _setupVideoRecorder(stream) {
@@ -865,12 +1264,9 @@ function _setupVideoRecorder(stream) {
     'video/webm',
     'video/mp4;codecs=avc1.42E01E,mp4a.40.2'
   ];
+  if (typeof MediaRecorder === 'undefined') { _cameraError('Este teléfono no permite grabar vídeo aquí'); return; }
   for (var i = 0; i < candidates.length; i++) {
-    if (MediaRecorder.isTypeSupported(candidates[i])) {
-      mimeType = candidates[i];
-      console.log('[CAMERA] MediaRecorder mimeType seleccionado:', mimeType);
-      break;
-    }
+    if (MediaRecorder.isTypeSupported(candidates[i])) { mimeType = candidates[i]; break; }
   }
   try {
     var options = mimeType ? { mimeType: mimeType } : {};
@@ -880,18 +1276,15 @@ function _setupVideoRecorder(stream) {
     _cameraPreviewMediaRecorder.ondataavailable = function(e) {
       if (e.data && e.data.size > 0) _cameraPreviewVideoChunks.push(e.data);
     };
-    _cameraPreviewMediaRecorder.onstop = function() {
-      console.log('[CAMERA] Grabacion detenida, procesando...');
-    };
     _cameraPreviewMediaRecorder.onerror = function(e) {
       console.log('[CAMERA] MediaRecorder error:', e.message);
       _cameraPreviewRecording = false;
+      _stopCameraTimer();
       _updateCameraPreviewUI();
     };
   } catch (recErr) {
     console.log('[CAMERA] MediaRecorder init error:', recErr.message);
-    var status = document.getElementById('camera-preview-status');
-    if (status) status.textContent = 'Error: grabacion no soportada';
+    _cameraError('Error: grabación no soportada');
   }
 }
 
@@ -899,72 +1292,71 @@ function _startCameraPreview() {
   var container = document.getElementById('camera-preview-container');
   if (!container) return;
   var overlay = document.getElementById('camera-preview-overlay');
-  if (overlay && overlay.classList.contains('hidden')) {
-    overlay.classList.remove('hidden');
-  }
+  if (overlay && overlay.classList.contains('hidden')) overlay.classList.remove('hidden');
+  _cameraError('');
   var facing = container.dataset.facing || 'environment';
   var needAudio = _cameraPreviewMode === 'video';
   var isFront = facing === 'user';
+  // Foto: la mayor resolución que dé la cámara (hasta 1080p); vídeo: 720p (lo que se envía)
+  var size = _cameraPreviewMode === 'photo' ? { width: { ideal: 1920 }, height: { ideal: 1080 } } : { width: { ideal: 1280 }, height: { ideal: 720 } };
   var constraints = {
-    video: isFront ? { facingMode: { exact: 'user' } } : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    video: Object.assign({ facingMode: isFront ? { exact: 'user' } : { ideal: 'environment' } }, size),
     audio: needAudio
   };
+  var token = _cameraStartToken = (_cameraStartToken || 0) + 1;
   function _onStreamSuccess(stream) {
+    if (token !== _cameraStartToken) { stream.getTracks().forEach(function(t) { t.stop(); }); return; }
     _cameraActiveStream = stream;
     var video = document.createElement('video');
     video.autoplay = true;
     video.playsInline = true;
     video.muted = true;
-    video.style.width = '100%';
-    video.style.height = '100%';
-    video.style.objectFit = 'cover';
     video.srcObject = stream;
     container.innerHTML = '';
+    container.classList.toggle('mirror', isFront);
     container.appendChild(video);
     video.play().catch(function(e) { console.log('[CAMERA] play error:', e.message); });
     container.dataset.stream = 'active';
-    if (_cameraPreviewMode === 'video') {
-      _setupVideoRecorder(stream);
-    }
+    // Linterna (solo si la cámara la tiene)
+    _cameraTorchOn = false;
+    var torch = document.getElementById('camera-btn-torch');
+    var track = stream.getVideoTracks && stream.getVideoTracks()[0];
+    var caps = (track && typeof track.getCapabilities === 'function') ? track.getCapabilities() : {};
+    if (torch) { torch.classList.toggle('hidden', !(caps && caps.torch)); torch.classList.remove('on'); }
+    if (_cameraPreviewMode === 'video') _setupVideoRecorder(stream);
   }
   function _onStreamError(err) {
     console.log('[CAMERA] Error getUserMedia:', err.name, err.message);
-    var fallbackConstraints = {
-      video: isFront ? { facingMode: 'user' } : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: needAudio
-    };
-    navigator.mediaDevices.getUserMedia(fallbackConstraints)
-      .then(_onStreamSuccess)
-      .catch(function(err2) {
-        console.log('[CAMERA] Fallback error:', err2.name, err2.message);
-        var status = document.getElementById('camera-preview-status');
-        if (status) status.textContent = 'Error camara: ' + err2.message;
-      });
+    var fallback = { video: isFront ? { facingMode: 'user' } : { facingMode: 'environment' }, audio: needAudio };
+    navigator.mediaDevices.getUserMedia(fallback).then(_onStreamSuccess).catch(function(err2) {
+      console.log('[CAMERA] Fallback error:', err2.name, err2.message);
+      _cameraError('No se pudo abrir la cámara: ' + err2.message);
+    });
   }
-  navigator.mediaDevices.getUserMedia(constraints)
-    .then(_onStreamSuccess)
-    .catch(_onStreamError);
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { _cameraError('Cámara no disponible'); return; }
+  navigator.mediaDevices.getUserMedia(constraints).then(_onStreamSuccess).catch(_onStreamError);
 }
+var _cameraStartToken = 0;
 
 function _stopCameraPreview() {
   var wasRecording = _cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording';
   if (wasRecording) {
     try { _cameraPreviewMediaRecorder.stop(); } catch (e) {}
   }
+  _cameraStartToken++;
   var container = document.getElementById('camera-preview-container');
   if (container) {
     var oldVideo = container.querySelector('video');
     if (oldVideo && oldVideo.srcObject) {
-      var tracks = oldVideo.srcObject.getTracks();
-      tracks.forEach(function(t) { t.stop(); });
+      oldVideo.srcObject.getTracks().forEach(function(t) { t.stop(); });
     }
     container.innerHTML = '';
   }
   if (_cameraActiveStream) {
-    var tracks = _cameraActiveStream.getTracks();
-    tracks.forEach(function(t) { t.stop(); });
+    _cameraActiveStream.getTracks().forEach(function(t) { t.stop(); });
     _cameraActiveStream = null;
   }
+  _stopCameraTimer();
   _cameraPreviewRecording = false;
   _cameraPreviewMediaRecorder = null;
   _cameraPreviewVideoChunks = [];
@@ -973,169 +1365,176 @@ function _stopCameraPreview() {
 
 function _flipCamera() {
   var container = document.getElementById('camera-preview-container');
-  if (!container) return;
-  var currentFacing = container.dataset.facing || 'environment';
-  var newFacing = currentFacing === 'environment' ? 'user' : 'environment';
-  container.dataset.facing = newFacing;
+  if (!container || _cameraPreviewRecording) return;
+  container.dataset.facing = (container.dataset.facing || 'environment') === 'environment' ? 'user' : 'environment';
   _stopCameraPreview();
-  var needAudio = _cameraPreviewMode === 'video';
-  var isFront = newFacing === 'user';
-  var constraints = {
-    video: isFront ? { facingMode: { exact: 'user' } } : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-    audio: needAudio
-  };
-  function _onStreamSuccess(stream) {
-    _cameraActiveStream = stream;
-    var video = document.createElement('video');
-    video.autoplay = true;
-    video.playsInline = true;
-    video.muted = true;
-    video.style.width = '100%';
-    video.style.height = '100%';
-    video.style.objectFit = 'cover';
-    video.srcObject = stream;
-    container.innerHTML = '';
-    container.appendChild(video);
-    video.play().catch(function(e) { console.log('[CAMERA] play error:', e.message); });
-    container.dataset.stream = 'active';
-    if (_cameraPreviewMode === 'video') {
-      _setupVideoRecorder(stream);
-    }
-  }
-  function _onStreamError(err) {
-    console.log('[CAMERA] Error flip ideal:', err.name, err.message);
-    var fallbackConstraints = {
-      video: isFront ? { facingMode: 'user' } : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: needAudio
-    };
-    navigator.mediaDevices.getUserMedia(fallbackConstraints)
-      .then(_onStreamSuccess)
-      .catch(function(err2) {
-        console.log('[CAMERA] Error flip fallback:', err2.name, err2.message);
-        var status = document.getElementById('camera-preview-status');
-        if (status) status.textContent = 'Error camara: ' + err2.message;
-      });
-  }
-  setTimeout(function() {
-    navigator.mediaDevices.getUserMedia(constraints)
-      .then(_onStreamSuccess)
-      .catch(_onStreamError);
-  }, 300);
+  setTimeout(_startCameraPreview, 300);
 }
 
-function _toggleCameraMode() {
-  _cameraPreviewMode = _cameraPreviewMode === 'photo' ? 'video' : 'photo';
+function _setCameraMode(mode) {
+  if (_cameraPreviewRecording || _cameraPreviewMode === mode) return;
+  _cameraPreviewMode = mode;
   _updateCameraPreviewUI();
   _stopCameraPreview();
   _startCameraPreview();
 }
+function _toggleCameraMode() { _setCameraMode(_cameraPreviewMode === 'photo' ? 'video' : 'photo'); }
+
+function _toggleTorch() {
+  var track = _cameraActiveStream && _cameraActiveStream.getVideoTracks()[0];
+  if (!track || typeof track.applyConstraints !== 'function') return;
+  var on = !_cameraTorchOn;
+  track.applyConstraints({ advanced: [{ torch: on }] }).then(function() {
+    _cameraTorchOn = on;
+    var b = document.getElementById('camera-btn-torch');
+    if (b) b.classList.toggle('on', on);
+  }).catch(function(e) { console.log('[CAMERA] Linterna:', e && e.message); });
+}
+
+function _startCameraTimer(limitSec) {
+  _stopCameraTimer();
+  var txt = document.getElementById('cam-timer-text');
+  var tick = function() {
+    var sec = Math.floor((Date.now() - _cameraVideoStartTime) / 1000);
+    if (txt) txt.textContent = ('0' + Math.floor(sec / 60)).slice(-2) + ':' + ('0' + (sec % 60)).slice(-2) + (limitSec - sec <= 10 ? ' (' + Math.max(0, limitSec - sec) + ')' : '');
+    if (sec >= limitSec && _cameraPreviewRecording) _handleCameraCapture(); // límite: se para sola
+  };
+  tick();
+  _cameraTimer = setInterval(tick, 500);
+}
+function _stopCameraTimer() { if (_cameraTimer) { clearInterval(_cameraTimer); _cameraTimer = null; } }
 
 function _capturePhoto() {
   var container = document.getElementById('camera-preview-container');
   if (!container) return;
   var video = container.querySelector('video');
-  if (!video) return;
+  if (!video || !video.videoWidth) { _cameraError('La cámara aún no está lista'); return; }
+  var cid = _getCurrentContactId();
+  var target = _photoTarget(cid);
+  var vw = video.videoWidth, vh = video.videoHeight;
+  var scale = Math.min(1, target.max / Math.max(vw, vh));
   var canvas = document.createElement('canvas');
-  var vw = video.videoWidth || 1280;
-  var vh = video.videoHeight || 720;
-  var maxDim = 480;
-  var scale = 1;
-  if (vw > maxDim || vh > maxDim) scale = Math.min(maxDim / vw, maxDim / vh);
   canvas.width = Math.max(1, Math.round(vw * scale));
   canvas.height = Math.max(1, Math.round(vh * scale));
   var ctx = canvas.getContext('2d');
+  var mirror = container.classList.contains('mirror');
+  if (mirror) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); } // igual que se ve (espejo)
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  var base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-  console.log('[CAMERA] Foto capturada', canvas.width + 'x' + canvas.height, 'b64len=' + base64.length);
-
-  // Cerrar cámara y reanudar BLE
-  _hideCameraPreviewOverlay();
-
-  // Esperar a que BLE esté realmente listo antes de enviar (evita race → !)
-  _waitForBLEReady(4500).then(function() {
-    _sendAttachment('image', base64, { format: 'jpeg', width: canvas.width, height: canvas.height });
-  });
+  var base64 = canvas.toDataURL('image/jpeg', target.q).split(',')[1];
+  console.log('[CAMERA] Foto ' + canvas.width + 'x' + canvas.height + ' ' + Math.round(base64.length * 3 / 4 / 1024) + ' KB' + (mirror ? ' (espejo)' : ''));
+  _stopCameraPreview();
+  _resumeBleFromCamera();
+  _showReview({ type: 'photo', b64: base64, w: canvas.width, h: canvas.height });
 }
 
 function _handleCameraCapture() {
-  if (_cameraPreviewMode === 'photo') {
-    _capturePhoto();
-  } else {
-    if (!_cameraPreviewRecording) {
-      if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'inactive') {
-        _cameraPreviewVideoChunks = [];
-        _cameraVideoStartTime = Date.now();
-        try {
-          try {
-            _cameraPreviewMediaRecorder.start(100);
-          } catch (tsErr) {
-            console.log('[CAMERA] Timeslice no soportado, usando sin timeslice');
-            _cameraPreviewMediaRecorder.start();
-          }
-          _cameraPreviewRecording = true;
-          _updateCameraPreviewUI();
-          console.log('[CAMERA] Grabacion iniciada');
-        } catch (startErr) {
-          console.log('[CAMERA] Error al iniciar grabacion:', startErr.message);
-          _cameraPreviewRecording = false;
-        }
-      }
-    } else {
-      if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
-        try { _cameraPreviewMediaRecorder.requestData(); } catch (e) {}
-        setTimeout(function() {
-          try {
-            if (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.state === 'recording') {
-              _cameraPreviewMediaRecorder.stop();
-            }
-          } catch (e) {}
-          setTimeout(function() {
-            var duration = 0;
-            if (_cameraVideoStartTime > 0) {
-              duration = Math.round((Date.now() - _cameraVideoStartTime) / 1000);
-            }
-            var mimeType = (_cameraPreviewMediaRecorder && _cameraPreviewMediaRecorder.mimeType) || 'video/webm';
-            var blob = new Blob(_cameraPreviewVideoChunks, { type: mimeType.split(';')[0] });
-            if (blob.size === 0) {
-              console.log('[CAMERA] Video blob vacio, grabacion fallo');
-              var status = document.getElementById('camera-preview-status');
-              if (status) status.textContent = 'Error: video vacio';
-              _cameraPreviewRecording = false;
-              _updateCameraPreviewUI();
-              return;
-            }
-            console.log('[CAMERA] Video listo ' + Math.round(blob.size / 1024) + ' KB dur=' + duration);
-            _hideCameraPreviewOverlay();
-            // v9.9.30: previa rápida + HD automático
-            _waitForBLEReady(4500).then(function() {
-              _sendVideo(blob, { format: _videoFormat(mimeType), duration: duration });
-            });
-          }, 1200);
-          _cameraPreviewRecording = false;
-          _updateCameraPreviewUI();
-        }, 1500);
-      }
+  if (_cameraReview) return;
+  if (_cameraPreviewMode === 'photo') { _capturePhoto(); return; }
+  var rec = _cameraPreviewMediaRecorder;
+  if (!_cameraPreviewRecording) {
+    if (!rec || rec.state !== 'inactive') return;
+    _cameraPreviewVideoChunks = [];
+    _cameraVideoStartTime = Date.now();
+    try {
+      try { rec.start(100); } catch (tsErr) { rec.start(); }
+      _cameraPreviewRecording = true;
+      _startCameraTimer(_videoLimitSec(_getCurrentContactId()));
+      _updateCameraPreviewUI();
+      console.log('[CAMERA] Grabación iniciada');
+    } catch (startErr) {
+      console.log('[CAMERA] Error al iniciar grabación:', startErr.message);
+      _cameraPreviewRecording = false;
     }
+    return;
   }
+  // Parar: se juntan los trozos y se pasa a revisar
+  if (!rec || rec.state !== 'recording') return;
+  _cameraPreviewRecording = false;
+  _stopCameraTimer();
+  _updateCameraPreviewUI();
+  var duration = Math.max(1, Math.round((Date.now() - _cameraVideoStartTime) / 1000));
+  var mimeType = (rec.mimeType || 'video/webm').split(';')[0];
+  rec.onstop = function() {
+    var blob = new Blob(_cameraPreviewVideoChunks, { type: mimeType });
+    if (!blob.size) { _cameraError('Error: el vídeo quedó vacío'); return; }
+    console.log('[CAMERA] Vídeo listo ' + Math.round(blob.size / 1024) + ' KB dur=' + duration);
+    _stopCameraPreview();
+    _resumeBleFromCamera();
+    _showReview({ type: 'video', blob: blob, mime: mimeType, duration: duration });
+  };
+  try { rec.requestData(); } catch (e) {}
+  try { rec.stop(); } catch (e) { rec.onstop(); }
+}
+
+function _resumeBleFromCamera() {
+  var ble = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
+  if (ble && typeof ble.resumeBLEAfterCamera === 'function') setTimeout(function() { ble.resumeBLEAfterCamera(); }, 300);
+}
+function _pauseBleForCamera() {
+  var ble = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
+  if (ble && typeof ble.pauseBLEForCamera === 'function') ble.pauseBLEForCamera();
+}
+
+// Revisión antes de enviar
+function _showReview(r) {
+  _cameraReview = r;
+  var box = document.getElementById('cam-review'), media = document.getElementById('cam-review-media');
+  if (!box || !media) return;
+  media.innerHTML = '';
+  if (r.type === 'photo') {
+    var img = document.createElement('img');
+    img.src = 'data:image/jpeg;base64,' + r.b64;
+    media.appendChild(img);
+  } else {
+    r.url = URL.createObjectURL(r.blob);
+    var v = document.createElement('video');
+    v.src = r.url; v.controls = true; v.autoplay = true; v.loop = true; v.playsInline = true;
+    media.appendChild(v);
+  }
+  box.classList.remove('hidden');
+}
+function _closeReview() {
+  var r = _cameraReview;
+  _cameraReview = null;
+  var box = document.getElementById('cam-review'), media = document.getElementById('cam-review-media');
+  if (media) { _releaseMedia(media); media.innerHTML = ''; }
+  if (box) box.classList.add('hidden');
+  if (r && r.url) { try { URL.revokeObjectURL(r.url); } catch (e) {} }
+}
+function _retakeReview() {
+  _closeReview();
+  _pauseBleForCamera();
+  setTimeout(_startCameraPreview, 200);
+}
+function _sendReview() {
+  var r = _cameraReview;
+  if (!r) return;
+  _cameraReview = null; // la URL del vídeo se libera al cerrar; el blob sigue vivo para enviarlo
+  var url = r.url;
+  _hideCameraPreviewOverlay();
+  if (url) { try { URL.revokeObjectURL(url); } catch (e) {} }
+  _waitForBLEReady(4500).then(function() {
+    if (r.type === 'photo') _sendAttachment('image', r.b64, { format: 'jpeg', width: r.w, height: r.h });
+    else _sendVideo(r.blob, { format: _videoFormat(r.mime), duration: r.duration });
+  });
 }
 
 function _bindCameraPreviewHandlers() {
-  var closeBtn = document.getElementById('camera-btn-close');
-  var flipBtn = document.getElementById('camera-btn-flip');
-  var captureBtn = document.getElementById('camera-btn-capture');
-  var modeBtn = document.getElementById('camera-btn-mode');
-  if (closeBtn) closeBtn.addEventListener('click', _hideCameraPreviewOverlay);
-  if (flipBtn) flipBtn.addEventListener('click', _flipCamera);
-  if (captureBtn) captureBtn.addEventListener('click', _handleCameraCapture);
-  if (modeBtn) modeBtn.addEventListener('click', _toggleCameraMode);
+  var on = function(id, fn) { var el = document.getElementById(id); if (el) el.addEventListener('click', function(e) { e.stopPropagation(); fn(); }); };
+  on('camera-btn-close', _hideCameraPreviewOverlay);
+  on('camera-btn-flip', _flipCamera);
+  on('camera-btn-capture', _handleCameraCapture);
+  on('camera-btn-torch', _toggleTorch);
+  on('camera-btn-gallery', function() { _hideCameraPreviewOverlay(); _handleGallery(); });
+  on('cam-mode-video', function() { _setCameraMode('video'); });
+  on('cam-mode-photo', function() { _setCameraMode('photo'); });
+  on('cam-review-retake', _retakeReview);
+  on('cam-review-send', _sendReview);
 }
 
 async function _handleCamera() {
   _closeAttachMenu();
-  var ble = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
-  if (ble && typeof ble.pauseBLEForCamera === 'function') {
-    ble.pauseBLEForCamera();
-  }
+  _pauseBleForCamera();
   await new Promise(function(r) { setTimeout(r, 200); });
   _showCameraPreviewOverlay();
   _startCameraPreview();
@@ -1197,7 +1596,8 @@ async function _handleGallery() {
       return;
     }
     _readFileBase64(file).then(function(base64) {
-      return _compressImageBase64(base64, 480, 0.5).then(function(res) {
+      var pt = _photoTarget(_getCurrentContactId());
+      return _compressImageBase64(base64, pt.max, pt.q).then(function(res) {
         _sendAttachment('image', res.base64, {
           name: file.name,
           size: res.base64.length,
@@ -1685,6 +2085,9 @@ function _handleIncomingMessage(msg) {
         } catch (e) {}
       }
     }
+    // v9.9.45: acción del chat (eliminar para todos): se aplica, no se muestra
+    var chatAct = _chatKind(msg.content);
+    if (chatAct && chatAct.type === 'nexo_act') { _applyChatAction(msg.senderNexoId || msg.deviceUUID, chatAct); return; }
     var bi = window.NEXO.app && window.NEXO.app.bleInterface;
     var localUUID = (bi && bi.localNexoId) || (bi && bi.localDeviceUUID) || '';
     var senderUUID = msg.senderNexoId || msg.deviceUUID || '';
@@ -1917,6 +2320,7 @@ async function initializeNexoApp() {
       }
     } catch (logErr) { console.warn('[MAIN] Log BLE error:', logErr); }
     _setupMessageInput();
+    _setupMessageActions();
     _setupVaultToggle();
     _setupChatHeader();
     _setupKeyboardShortcuts();
@@ -2016,11 +2420,15 @@ function _setupMessageInput() {
       // reabrir el chat y la cola de reenvío no lo veía).
       var chatContactId = _getCurrentContactId();
       if (chatContactId) _msgContactMap[msgId] = chatContactId;
+      // v9.9.45: respuesta a una burbuja (solo si el otro la entiende; si no, va el texto solo)
+      var wire = text;
+      if (_replyTo && _peerUnderstands(chatContactId)) wire = JSON.stringify({ type: 'nexo_txt', t: text, rp: _replyTo });
+      _cancelReply();
       var vaultMsg = {
         msgId: msgId,
         messageId: msgId,
         contactNexoId: chatContactId,
-        content: text,
+        content: wire,
         _own: true,
         status: 'sending',
         timestamp: Date.now(),
@@ -2031,7 +2439,7 @@ function _setupMessageInput() {
       _updateMessageStatus(msgId, 'sending');
       _updateMessageStorageStatus(msgId, 'sending');
       try {
-        await window.NEXO.app.sendMessage({ content: text, msgId: msgId, messageId: msgId, seq: seq });
+        await window.NEXO.app.sendMessage({ content: wire, msgId: msgId, messageId: msgId, seq: seq });
         window._sentFallbackTimers = window._sentFallbackTimers || {};
         window._sentFallbackTimers[msgId] = setTimeout(function() {
           _updateMessageStatus(msgId, 'sent');
@@ -2443,6 +2851,7 @@ function _renderMessage(msg, skipSave) {
   try {
     if (!msg) return;
     var msgIdDedup = msg.msgId || msg.messageId || msg.id || '';
+    if (msg.hidden) return; // v9.9.45: acciones del chat (eliminar para todos) guardadas para reenviarse
     if (msgIdDedup && _renderedMessageIds.has(msgIdDedup)) {
       if (msg.status) _updateMessageStatus(msgIdDedup, msg.status);
       return;
@@ -2500,6 +2909,7 @@ function _renderMessage(msg, skipSave) {
         }
       } catch (e) {}
     }
+    if (msg.deleted) attachment = null;
     // FIX v9.9.28: antes se descartaba un mensaje recibido si su texto era igual a uno de los 5 últimos
     // ("ok", "si", "hola"...): no se veía aunque el otro recibía ✓✓. Los duplicados reales ya se
     // filtran por id (_renderedMessageIds y data-msg-id).
@@ -2748,7 +3158,7 @@ function _renderMessage(msg, skipSave) {
         }, 0);
       }
     } else {
-      contentDiv.textContent = msg.content || msg.text || '';
+      _fillTextBubble(contentDiv, msg, isOwn);
     }
     div.appendChild(contentDiv);
     var metaDiv = document.createElement('div');
@@ -3686,6 +4096,7 @@ var _chatNavToken = 0;
 function _doChatBack() {
   try {
     var navToken = ++_chatNavToken;
+    _cancelReply();
     _cleanupObjectURLs();
     var app = document.getElementById('app');
     var contactsView = document.getElementById('contacts-view');

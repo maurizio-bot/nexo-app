@@ -89,22 +89,43 @@
     <svg viewBox="0 0 24 24" width="20" height="20" fill="#f59e0b"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
   </div>
 </div>
-<!-- Camera Preview Overlay -->
+<!-- Camera Preview Overlay (v9.9.46: tipo WhatsApp) -->
 <div id="camera-preview-overlay" class="camera-preview-overlay hidden">
   <div id="camera-preview-container" class="camera-preview-container"></div>
-  <div class="camera-preview-controls">
-    <button id="camera-btn-close" class="camera-btn camera-btn-close" type="button">
+  <div class="cam-top">
+    <button id="camera-btn-close" class="camera-btn" type="button" aria-label="Cerrar">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
     </button>
-    <button id="camera-btn-flip" class="camera-btn camera-btn-flip" type="button">
-      <svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg>
-    </button>
-    <button id="camera-btn-capture" class="camera-btn-capture" type="button"></button>
-    <button id="camera-btn-mode" class="camera-btn camera-btn-mode" type="button">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+    <div id="cam-timer" class="cam-timer hidden"><span class="cam-rec-dot"></span><span id="cam-timer-text">00:00</span></div>
+    <button id="camera-btn-torch" class="camera-btn hidden" type="button" aria-label="Linterna">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
     </button>
   </div>
   <div id="camera-preview-status" class="camera-preview-status"></div>
+  <div class="cam-bottom">
+    <div class="cam-modes">
+      <button id="cam-mode-video" class="cam-mode" type="button" data-mode="video">VÍDEO</button>
+      <button id="cam-mode-photo" class="cam-mode active" type="button" data-mode="photo">FOTO</button>
+    </div>
+    <div class="camera-preview-controls">
+      <button id="camera-btn-gallery" class="camera-btn" type="button" aria-label="Galería">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+      </button>
+      <button id="camera-btn-capture" class="camera-btn-capture" type="button" aria-label="Disparar"></button>
+      <button id="camera-btn-flip" class="camera-btn" type="button" aria-label="Girar cámara">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div id="cam-review" class="cam-review hidden">
+    <div id="cam-review-media" class="cam-review-media"></div>
+    <div class="cam-review-bar">
+      <button id="cam-review-retake" class="cam-review-retake" type="button">✕ Repetir</button>
+      <button id="cam-review-send" class="cam-review-send" type="button" aria-label="Enviar">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
+    </div>
+  </div>
 </div>
 <!-- BLE Panel (injected por JS) -->
 <!-- BLE Overlay (injected por JS) -->

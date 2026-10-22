@@ -5,8 +5,9 @@ import { createRelay } from './ble_relay.js';
 import { createWifiDirect } from './wifi_direct.js';
 import { createFenix } from '../fenix/fenix.js';
 /**
- * BLE Interface v6.8.0-NEXO
- * v6.8.0: Protocolo Fénix (src/fenix/fenix.js): el kx anuncia fx:1 (y 'rs' tras recuperar una cuenta: los
+ * BLE Interface v6.9.0-NEXO
+ * v6.9.0: chat tipo WhatsApp: textos con respuesta/reenviado ('nexo_txt') en la vista previa; las acciones
+ *         ('nexo_act', eliminar para todos) no se guardan como mensaje ni cuentan como no leídas. * v6.8.0: Protocolo Fénix (src/fenix/fenix.js): el kx anuncia fx:1 (y 'rs' tras recuperar una cuenta: los
  *         contactos borran las sesiones del protocolo 2 con ella); paquetes de control 'fp'/'fo'/'fq'/'fd'.
  * v6.7.0: Protocolo 2 de cifrado (como Signal): el kx y las tarjetas de contacto llevan el paquete de claves
  *         'b2'; solo se guarda si es de la clave aceptada del contacto (el de una clave pendiente espera a que
@@ -152,8 +153,17 @@ function _getOrCreateNexoId() {
 }
 
 // Texto corto del último mensaje para la lista de contactos
+// v6.9.0: texto con respuesta / reenviado ('nexo_txt') y acciones del chat ('nexo_act': eliminar para todos)
+function _chatKind(content) {
+  if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
+  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act')) ? p : null; } catch (e) { return null; }
+}
+
 function _messagePreview(content, attachmentType) {
   var t = attachmentType;
+  var k = !t ? _chatKind(content) : null;
+  if (k && k.type === 'nexo_act') return null;
+  if (k) return String(k.t || '').substring(0, 50);
   if (!t && typeof content === 'string' && content.charAt(0) === '{') {
     try { var p = JSON.parse(content); if (p && p.attachmentType) t = p.attachmentType; } catch (e) {}
   }
@@ -1763,6 +1773,9 @@ export class BLEInterface {
         var attachmentData = null;
         if (ctrl && ctrl.payload && ctrl.payload.attachment) attachmentData = ctrl.payload.attachment;
         var msgContent = attachmentData ? JSON.stringify(attachmentData) : content;
+        // Acción del chat (eliminar para todos): no es un mensaje; la aplica main.js
+        var chatAct = _chatKind(msgContent);
+        if (chatAct && chatAct.type === 'nexo_act') isControl = true;
         if (!isControl && senderUUID) {
           var vaultMsg = {
             messageId: messageId || ('recv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)),
@@ -1781,7 +1794,8 @@ export class BLEInterface {
           var idx3 = contacts3.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
           if (idx3 >= 0) { contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1; contacts3[idx3].lastSeen = Date.now(); _saveBLEContacts(contacts3); }
         }
-        if (senderUUID && !isControl) self.noteContactMessage(senderUUID, _messagePreview(content, attachmentData && attachmentData.attachmentType), data.timestamp || Date.now());
+        var pv = _messagePreview(content, attachmentData && attachmentData.attachmentType);
+        if (senderUUID && !isControl && pv !== null) self.noteContactMessage(senderUUID, pv, data.timestamp || Date.now());
         _safeDispatchEvent('nexo:ble:messageReceived', {
           deviceId: deviceId,
           deviceUUID: senderUUID,

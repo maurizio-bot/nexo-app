@@ -129,3 +129,13 @@ contactos; al llegar al mínimo reparte solo sus fragmentos (nadie los puede lee
 pingeo; E desaparece → perdido → su fragmento pasa a F; E vuelve → lo borra. Luego A pierde el teléfono: N
 pide recuperar, 3 contactos confirman en su pantalla, N vuelve con NEXO ID, identidad y contactos de A y sigue
 hablando cifrado con B (sesiones nuevas, sin aviso de clave). `--mirror`: 2 copias de cada fragmento.
+
+`chatactions.js` (A, B, C): menú al mantener pulsada una burbuja (clic derecho en jsdom): responder (desde el
+menú y deslizando la burbuja), la cita se ve en los dos y al reabrir; copiar; reenviar texto y archivo a C
+("↪ Reenviado", archivo idéntico); eliminar para mí; eliminar para todos (B ve "Se eliminó este mensaje", nada
+queda en su historial ni en la lista de chats); una acción falsa (B intenta borrar un mensaje de A) se ignora.
+
+`camera.js` (Chromium real con cámara simulada): interfaz nueva de la cámara (VÍDEO/FOTO, disparador,
+contador, girar), revisar antes de enviar (Repetir / Enviar), cámara liberada mientras se revisa, cámara
+frontal en espejo y la foto igual que se ve (imagen asimétrica: la izquierda debe salir del mismo color),
+foto y vídeo llegan.
