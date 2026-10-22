@@ -144,7 +144,12 @@ class NativePhone {
   }
 
   // ---- envío al aire ----
-  _air(fromAddress, toPhone, bytes, source) {
+  // tag = { mid, last }: trozo de qué mensaje (para la cola: no partir mensajes).
+  // opts.busyFail = probabilidad de que Android rechace una escritura por estar ocupado (ERROR_GATT_WRITE_REQUEST_BUSY,
+  // frecuente en teléfonos reales con la radio cargada). Kotlin hasta la 2722 (opts.kotlin2722): 3 intentos y
+  // descarta ESE trozo (el mensaje llega mutilado). Desde la 2723: reintenta con espera creciente y, si no puede,
+  // descarta el resto del mensaje entero (nunca un trozo del medio).
+  _air(fromAddress, toPhone, bytes, source, tag) {
     // Cola por enlace como processWriteQueue de Kotlin: una escritura cada 40 ms (cliente) u 80 ms
     // (notify de servidor). Con opts.realTiming=false entrega casi inmediata.
     // opts.pace = [ms por write de cliente, ms por notify de servidor]. Por defecto el Kotlin antiguo
@@ -161,26 +166,45 @@ class NativePhone {
     if (this.opts.loss && Math.random() < this.opts.loss) { this.stats.lost = (this.stats.lost || 0) + 1; return; }
     // Kotlin MAX_QUEUE_SIZE = 500: con la cola llena descarta
     if (q.items.length >= 500) { this.stats.dropped = (this.stats.dropped || 0) + 1; return; }
-    q.items.push(() => toPhone._processReceivedChunk(fromAddress, bytes, source));
+    const item = () => toPhone._processReceivedChunk(fromAddress, bytes, source);
+    item.tag = tag || {}; item.tries = 0;
+    q.items.push(item);
     this.stats.maxQueue = Math.max(this.stats.maxQueue || 0, q.items.length);
     if (/"t":"ba"/.test(bytes)) this.stats.acksOut = (this.stats.acksOut || 0) + 1; else if (/"t":"f"/.test(bytes)) this.stats.chunksOut = (this.stats.chunksOut || 0) + 1;
     const pump = () => {
       if (!q.items.length) { q.busy = false; return; }
       q.busy = true;
-      const fn = q.items.shift();
+      const fn = q.items[0];
+      if (this.opts.busyFail && Math.random() < this.opts.busyFail) {
+        fn.tries++;
+        this.stats.busy = (this.stats.busy || 0) + 1;
+        if (this.opts.kotlin2722) {
+          if (fn.tries >= 3) { q.items.shift(); this.stats.droppedMid = (this.stats.droppedMid || 0) + 1; }
+          setTimeout(pump, 15);
+        } else if (fn.tries >= 40) { // como el Kotlin 2723: 15 ms las 4 primeras, luego 50 ms; a los 40, fuera el mensaje
+          // No se puede escribir en ~5 s: fuera el resto de ESE mensaje (nunca un trozo suelto del medio)
+          const mid = fn.tag.mid;
+          const before = q.items.length;
+          q.items = q.items.filter((x) => !(mid && x.tag.mid === mid)); if (!mid) q.items.shift();
+          this.stats.droppedMsgs = (this.stats.droppedMsgs || 0) + 1; this.stats.droppedChunks = (this.stats.droppedChunks || 0) + before - q.items.length;
+          setTimeout(pump, 15);
+        } else setTimeout(pump, fn.tries < 5 ? 15 : 50);
+        return;
+      }
+      q.items.shift();
       // Un error al entregar no debe dejar la cola de ese enlace parada para siempre
       setTimeout(() => { try { fn(); } catch (e) { this.radio.log(this.name, 'ERROR entregando', e && e.stack); (this.stats.deliverErrors = (this.stats.deliverErrors || 0) + 1); } setTimeout(pump, delay); }, 10);
     };
     if (!q.busy) pump();
   }
 
-  _sendSingleChunk(macNorm, chunk) {
+  _sendSingleChunk(macNorm, chunk, tag) {
     // 1. Servidor (notify) si el otro está conectado a nosotros como cliente y activó notificaciones
     const srvPeer = this.serverConnected.get(macNorm);
     if (srvPeer && this.serverNotif.get(macNorm)) {
       this.sent.push({ to: macNorm, chunk, mode: 'gatt_server' });
       this._remLog('INFO', 'SEND', 'GATT Server chunk sent to ' + macNorm + ' len=' + chunk.length);
-      this._air(this.address, srvPeer, chunk, 'gatt_client'); // notify: el cliente nos ve por la dirección de anuncio
+      this._air(this.address, srvPeer, chunk, 'gatt_client', tag); // notify: el cliente nos ve por la dirección de anuncio
       return { sent: true, mode: 'gatt_server' };
     }
     // 2. Cliente (write) si estamos conectados como cliente
@@ -188,7 +212,7 @@ class NativePhone {
     if (cl && cl.state === 'connected' && cl.rxReady) {
       this.sent.push({ to: macNorm, chunk, mode: 'gatt_client' });
       this._remLog('INFO', 'SEND', 'GATT Client chunk sent (NO_RESPONSE) to ' + macNorm + ' len=' + chunk.length);
-      this._air(this.initAddress, cl.peer, chunk, 'gatt_server'); // write: el servidor nos ve por la de iniciador
+      this._air(this.initAddress, cl.peer, chunk, 'gatt_server', tag); // write: el servidor nos ve por la de iniciador
       return { sent: true, mode: 'gatt_client' };
     }
     return { sent: false, mode: '' };
@@ -197,12 +221,22 @@ class NativePhone {
   _sendChunkedOrSingle(macNorm, message) {
     const mtu = this.mtu.get(macNorm) || 23;
     const size = Math.max(mtu - 3 - 10, 20);
-    if (message.length <= size) return this._sendSingleChunk(macNorm, message);
+    const mid = (this._mid = (this._mid || 0) + 1);
+    if (message.length <= size) return this._sendSingleChunk(macNorm, message, { mid, last: true });
     const chunks = [];
     for (let i = 0; i < message.length; i += size) chunks.push(message.substring(i, i + size));
-    const first = this._sendSingleChunk(macNorm, chunks[0]);
+    // Kotlin 2723: el mensaje entra entero o no entra (con la cola llena espera; antes se partía)
+    if (!this.opts.kotlin2722) {
+      const peerAddr = (this.serverConnected.get(macNorm) || (this.clients.get(macNorm) || {}).peer || {}).address;
+      const q = peerAddr && this.writeQ && this.writeQ.get(norm(peerAddr));
+      if (q && q.items.length + chunks.length > 500) { this.stats.queueFullMsgs = (this.stats.queueFullMsgs || 0) + 1; return { sent: false, mode: '' }; }
+    }
+    const first = this._sendSingleChunk(macNorm, chunks[0], { mid, last: chunks.length === 1 });
     if (!first.sent) return { sent: false, mode: '' };
-    chunks.slice(1).forEach((c) => this._sendSingleChunk(macNorm, c));
+    // opts.dropMidEvery = N: cada N mensajes de varios trozos se pierde uno del medio (prueba la resincronización)
+    const lose = this.opts.dropMidEvery && chunks.length >= 3 && mid % this.opts.dropMidEvery === 0 ? 1 : -1;
+    if (lose > 0) this.stats.mutilated = (this.stats.mutilated || 0) + 1;
+    chunks.slice(1).forEach((c, k) => { if (k + 1 !== lose) this._sendSingleChunk(macNorm, c, { mid, last: k === chunks.length - 2 }); });
     return { sent: true, mode: first.mode };
   }
 
@@ -212,6 +246,15 @@ class NativePhone {
     if (this.offline || this.serverUp === false || (sender && sender.offline) || (sender && !this.radio.inRange(this, sender))) { this.stats.voidWrites = (this.stats.voidWrites || 0) + 1; return; }
     const mac = norm(fromAddress);
     this._remLog('INFO', source === 'gatt_client' ? 'GATT_CLIENT_CB' : 'GATT_SERVER', 'RX chunk from ' + mac + ': len=' + chunk.length);
+    // Como el Kotlin: el búfer se limpia tras 5 s SIN trozos nuevos; desde la 2723 además si lo pendiente lleva
+    // más de 10 s sin formar un mensaje (mutilado: se perdió un trozo)
+    if (!this.bufTimers) this.bufTimers = new Map();
+    if (!this.bufSince) this.bufSince = new Map();
+    clearTimeout(this.bufTimers.get(mac));
+    if (!this.opts.kotlin2722 && this.buffers.get(mac) && Date.now() - (this.bufSince.get(mac) || Date.now()) > 10000) {
+      this.buffers.delete(mac); this.stats.resyncs = (this.stats.resyncs || 0) + 1;
+    }
+    if (!this.buffers.get(mac)) this.bufSince.set(mac, Date.now());
     let buf = (this.buffers.get(mac) || '') + chunk;
     for (;;) {
       const ex = extractJson(buf);
@@ -219,8 +262,12 @@ class NativePhone {
       this.radio.log(this.name, 'RX de', fromAddress, ex.json.substring(0, 90));
       this.emit('onPayloadReceived', { deviceId: fromAddress, content: ex.json, data: ex.json, source, timestamp: Date.now(), reassembled: true });
       buf = ex.rest;
+      this.bufSince.set(mac, Date.now());
     }
-    if (buf) this.buffers.set(mac, buf); else this.buffers.delete(mac);
+    if (buf) {
+      this.buffers.set(mac, buf);
+      this.bufTimers.set(mac, setTimeout(() => { this.buffers.delete(mac); this.stats.bufTimeouts = (this.stats.bufTimeouts || 0) + 1; }, 5000));
+    } else this.buffers.delete(mac);
   }
 
   // ---- fuera de alcance (simula alejarse) ----

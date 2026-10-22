@@ -2,6 +2,8 @@ import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
+* v3.9.0: cada trozo lleva su comprobación (k): uno dañado por el camino se vuelve a pedir en vez de aceptarse
+*         (la foto acababa sin poder descifrarse). Tiempos de cada texto en el diagnóstico ([SEND]).
 * v3.8.0: Fénix: los archivos con meta.type 'fenix' van a fenix.onFile (no al chat ni a su progreso).
 * v3.7.1: Wi-Fi Direct fallido: WD_FAILED si no cabe por Bluetooth (antes quedaba pendiente para siempre);
 *         el HD de un vídeo (hasta BLE_HD_MAX_CHARS) sigue por Bluetooth como antes de Wi-Fi Direct.
@@ -74,6 +76,15 @@ function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
 function _newMsgId() { return 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6); }
+// v3.9.0: comprobación de cada trozo (FNV-1a de 32 bits de lo que importa). Si por Bluetooth se pierde un
+// pedazo de un paquete, lo que queda puede seguir siendo un JSON válido con los datos más cortos: el receptor lo
+// aceptaba y la foto entera acababa sin poder descifrarse (perdida en silencio). Builds anteriores no la mandan.
+function _chunkCheck(o) {
+  var s = [o.m, o.i, o.n, o.d, o.th || '', o.fn || ''].join('|');
+  var h = 0x811c9dc5;
+  for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36);
+}
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }
@@ -322,6 +333,14 @@ export class BleAckSystem {
     var seq = (typeof msg.seq === 'number') ? msg.seq : 0;
     if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
     if (total <= 0 || idx < 0 || idx >= total) return;
+    // Trozo dañado por el camino: se ignora (queda como hueco y se vuelve a pedir)
+    if (msg.k !== undefined && msg.k !== _chunkCheck(msg)) {
+      self.stats = self.stats || {}; self.stats.badChunks = (self.stats.badChunks || 0) + 1;
+      console.warn('[BleAckSystem] Trozo ' + idx + ' de ' + msgId + ' dañado: se vuelve a pedir');
+      // Se pide ya (sin esperar a notar el hueco): el emisor lo reenvía enseguida
+      if (!self.completedMessages.get(msgId)) self._sendNack(deviceId, msgId, [idx]);
+      return;
+    }
     var completed = self.completedMessages.get(msgId);
     if (completed) {
       self._sendFinalAck(deviceId, msgId, total);
@@ -1272,6 +1291,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.dst) obj.dt = this.meta.dst;
     if (this.meta.hp) obj.hp = this.meta.hp;
   }
+  obj.k = _chunkCheck(obj);
   return JSON.stringify(obj);
 };
 ChatStream.prototype._startWindowTimer = function() {

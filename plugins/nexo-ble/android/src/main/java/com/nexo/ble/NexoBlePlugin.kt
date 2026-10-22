@@ -94,6 +94,7 @@ class NexoBlePlugin : Plugin() {
         private const val MAX_RECONNECT_DELAY_MS = 30000L
         private const val MAX_RECONNECT_ATTEMPTS = 10
         private const val MESSAGE_REASSEMBLY_TIMEOUT_MS = 5000L
+        private const val MESSAGE_MAX_PENDING_MS = 10000L
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
         private const val MAX_QUEUE_SIZE = 500
@@ -138,6 +139,7 @@ class NexoBlePlugin : Plugin() {
     private var nexoAdvertisingId: String? = null
     private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
     private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
+    private val messageBufferSince = ConcurrentHashMap<String, Long>() // desde cuándo hay algo pendiente
     private val lastScanNotifyTime = ConcurrentHashMap<String, Long>()
     private val negotiatedMtu = ConcurrentHashMap<String, Int>()
     private val writeQueues = ConcurrentHashMap<String, MutableList<WriteQueueItem>>()
@@ -147,7 +149,9 @@ class NexoBlePlugin : Plugin() {
     private val nxidToMacMap = ConcurrentHashMap<String, String>()
     private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
     private var quickScanResultMac: String? = null
-    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String)
+    // msgId: de qué mensaje es el trozo (un mensaje nunca se parte: o salen todos sus trozos o ninguno más)
+    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String, val msgId: Long = 0L)
+    private val writeMsgCounter = java.util.concurrent.atomic.AtomicLong()
     private data class JsonExtraction(val json: String, val remainder: String)
     // Solo estas etiquetas cruzan a la app (diagnóstico). El resto (uno por cada trozo enviado o recibido) solo
     // va a logcat: la 2722 los escuchaba todos y miles de avisos por foto saturaban el puente (fotos paradas).
@@ -234,6 +238,15 @@ class NexoBlePlugin : Plugin() {
     private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
         val macNorm = normalizeMac(deviceId)
         messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
+        // v2723: si lo pendiente lleva más de 10 s sin formar un mensaje, es un mensaje mutilado (se perdió un
+        // trozo): fuera, y se sigue con lo que llega. Antes solo se limpiaba tras 5 s SIN trozos nuevos, y con
+        // los reenvíos llegando sin parar nunca se limpiaba: todo lo siguiente quedaba tragado (foto parada).
+        val pendingSince = messageBufferSince[macNorm]
+        if (pendingSince != null && System.currentTimeMillis() - pendingSince > MESSAGE_MAX_PENDING_MS && messageBuffers[macNorm]?.isNotEmpty() == true) {
+            remLog("WARN", "REASSEMBLY", "Mensaje incompleto de $macNorm descartado (resincronizado)")
+            messageBuffers.remove(macNorm)
+        }
+        if (messageBuffers[macNorm].isNullOrEmpty()) messageBufferSince[macNorm] = System.currentTimeMillis()
         val buffer = messageBuffers.getOrPut(macNorm) { StringBuilder() }
         buffer.append(chunk)
         var remaining = buffer.toString()
@@ -256,6 +269,7 @@ class NexoBlePlugin : Plugin() {
                 )
                 remaining = extraction.remainder
                 extractedCount++
+                messageBufferSince[macNorm] = System.currentTimeMillis()
             } else {
                 break
             }
@@ -263,6 +277,7 @@ class NexoBlePlugin : Plugin() {
         if (remaining.isEmpty()) {
             messageBuffers.remove(macNorm)
             messageBufferTimers.remove(macNorm)
+            messageBufferSince.remove(macNorm)
         } else {
             messageBuffers[macNorm] = StringBuilder(remaining)
             val timeoutRunnable = Runnable {
@@ -1364,37 +1379,20 @@ class NexoBlePlugin : Plugin() {
         return result
     }
 
+    // v2723: un mensaje entra entero en la cola o no entra (antes, con la cola llena se descartaban trozos del
+    // medio y el otro teléfono recibía un mensaje mutilado: "mensaje de código" en el chat y foto parada)
     private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
         val chunkSize = getChunkSize(macNorm)
-        if (message.length <= chunkSize) {
-            return enqueueWrite(macNorm, rawDeviceId, message)
-        }
-        val chunks = safeChunkString(message, chunkSize)
-        val firstResult = enqueueWrite(macNorm, rawDeviceId, chunks[0])
-        if (!firstResult.sent) {
-            return SendResult(false, "")
-        }
-        for (i in 1 until chunks.size) {
-            val item = WriteQueueItem(macNorm, rawDeviceId, chunks[i])
-            val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
-            if (queue.size >= MAX_QUEUE_SIZE) {
-                remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk $i")
-                continue
-            }
-            queue.add(item)
-        }
-        remLog("INFO", "SEND", "Mensaje fragmentado en ${chunks.size} chunks (size=$chunkSize) para $macNorm")
-        return SendResult(true, firstResult.mode)
-    }
-
-    private fun enqueueWrite(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
-        val item = WriteQueueItem(macNorm, rawDeviceId, chunk)
+        val chunks = if (message.length <= chunkSize) listOf(message) else safeChunkString(message, chunkSize)
         val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
-        if (queue.size >= MAX_QUEUE_SIZE) {
-            remLog("WARN", "SEND", "Cola llena para $macNorm, descartando chunk")
-            return SendResult(false, "")
+        val msgId = writeMsgCounter.incrementAndGet()
+        synchronized(queue) {
+            if (queue.size + chunks.size > MAX_QUEUE_SIZE) {
+                remLog("WARN", "SEND", "Cola llena para $macNorm: el mensaje espera (no se parte)")
+                return SendResult(false, "")
+            }
+            chunks.forEach { queue.add(WriteQueueItem(macNorm, rawDeviceId, it, msgId)) }
         }
-        queue.add(item)
         // La cola se procesa solo en el hilo principal (los callbacks de Android también llegan ahí)
         mainHandler.post { processWriteQueue(macNorm) }
         return SendResult(true, "queued")
@@ -1411,20 +1409,26 @@ class NexoBlePlugin : Plugin() {
         val item = synchronized(queue) { if (queue.isEmpty()) null else queue[0] } ?: return
         val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
         if (!result.sent) {
+            // Android rechaza la escritura si aún está ocupado con la anterior (muy frecuente con la radio
+            // cargada). v2723: se reintenta (15 ms las primeras veces, luego 50 ms) hasta ~1,8 s; si no se puede,
+            // fuera el RESTO DE ESE MENSAJE entero. Antes: 3 intentos y se descartaba ese trozo suelto (mensaje
+            // mutilado en el otro teléfono).
             val attempts = (writeRetryCount[macNorm] ?: 0) + 1
-            if (attempts < 3) {
+            var delay = if (attempts < 5) WRITE_RETRY_DELAY_MS else 50L
+            if (attempts < 40) {
                 writeRetryCount[macNorm] = attempts
             } else {
-                remLog("WARN", "SEND", "Write fallo para $macNorm tras 3 intentos, descartando chunk")
                 writeRetryCount.remove(macNorm)
-                removeHead(queue, item)
+                val dropped = synchronized(queue) { val before = queue.size; queue.removeAll { it.msgId == item.msgId }; before - queue.size }
+                remLog("WARN", "SEND", "Write fallo para $macNorm durante ~1,8 s: mensaje descartado entero ($dropped trozos)")
+                delay = WRITE_RETRY_DELAY_MS
             }
             // Bloquear la cola durante la espera: otras llamadas no deben gastar los reintentos de golpe
             writeQueueProcessing[macNorm] = true
             mainHandler.postDelayed({
                 writeQueueProcessing.remove(macNorm)
                 processWriteQueue(macNorm)
-            }, WRITE_RETRY_DELAY_MS)
+            }, delay)
             return
         }
         writeRetryCount.remove(macNorm)

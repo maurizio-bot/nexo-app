@@ -5,7 +5,8 @@ import { createRelay } from './ble_relay.js';
 import { createWifiDirect } from './wifi_direct.js';
 import { createFenix } from '../fenix/fenix.js';
 /**
- * BLE Interface v6.9.0-NEXO
+ * BLE Interface v6.9.1-NEXO
+ * v6.9.1: un paquete dañado (JSON roto o trozo suelto) se descarta; antes salía en el chat como texto.
  * v6.9.0: chat tipo WhatsApp: textos con respuesta/reenviado ('nexo_txt') en la vista previa; las acciones
  *         ('nexo_act', eliminar para todos) no se guardan como mensaje ni cuentan como no leídas. * v6.8.0: Protocolo Fénix (src/fenix/fenix.js): el kx anuncia fx:1 (y 'rs' tras recuperar una cuenta: los
  *         contactos borran las sesiones del protocolo 2 con ella); paquetes de control 'fp'/'fo'/'fq'/'fd'.
@@ -153,6 +154,12 @@ function _getOrCreateNexoId() {
 }
 
 // Texto corto del último mensaje para la lista de contactos
+// Todo lo que se manda por Bluetooth es un objeto JSON con v, t o type arriba; lo demás es un trozo de otro
+// mensaje (p. ej. un objeto de dentro que la recomposición nativa sacó suelto tras perderse un trozo)
+function _isProtocolShaped(s) {
+  try { var o = JSON.parse(s); return !!o && typeof o === 'object' && (o.v !== undefined || o.t !== undefined || o.type !== undefined); } catch (e) { return false; }
+}
+
 // v6.9.0: texto con respuesta / reenviado ('nexo_txt') y acciones del chat ('nexo_act': eliminar para todos)
 function _chatKind(content) {
   if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
@@ -1651,6 +1658,13 @@ export class BLEInterface {
         var content = data.content || data.data || data.message || '';
         var trimmedContent = (content || '').trim();
         var isProtocol = false;
+        // v6.9.1: paquete dañado (JSON roto o un trozo suelto de otro mensaje): se descarta. Antes se mostraba en
+        // el chat como "mensaje de código" (lo que llega por Bluetooth es siempre JSON completo)
+        var c0 = trimmedContent.charAt(0);
+        if (c0 === '"' || (c0 === '{' && !_isProtocolShaped(trimmedContent))) {
+          console.warn('[BLEInterface] Paquete dañado descartado (' + trimmedContent.length + ' car.)');
+          return;
+        }
         try {
           if (trimmedContent.charAt(0) === '{') {
             var protoCheck = JSON.parse(trimmedContent);

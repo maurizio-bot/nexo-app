@@ -6,6 +6,8 @@
 // --camera: al 20 % B abre la cámara de NEXO (pausa el Bluetooth), hace su foto y la envía.
 // --cut: la foto de A se corta al 20 % y durante el corte (--cut-ms) B manda la suya.
 // --bridge-ms=N: coste de cada aviso Android → app (en fila); --kotlin-2722: todos los registros cruzan.
+// --busy=P: Android rechaza escrituras por ocupado con probabilidad P; --mtu=N (23 = sin negociar).
+// --drop-mid=N: cada N mensajes de varios trozos se pierde uno del medio (resincronización del receptor).
 // Uso: node photos.js <dir_build> [--kb=300] [--wd] [--plugin-thread=150] [--off-thread] [--cut] [--io-delay=25]
 'use strict';
 const fs = require('fs');
@@ -15,8 +17,8 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 
 const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
-const kb = arg('kb', 300), wd = !!arg('wd', false), pt = arg('plugin-thread', 0), off = !!arg('off-thread', false), cut = !!arg('cut', false) || !!arg('camera', false), camera = !!arg('camera', false), cutMs = arg('cut-ms', 15000), bridgeMs = arg('bridge-ms', 0), k2722 = !!arg('kotlin-2722', false);
-const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 25), asymmetric: true, wifiDirect: wd, pluginThread: pt || undefined, ioOffThread: off, bridgeMs, remLogAll: k2722 };
+const kb = arg('kb', 300), wd = !!arg('wd', false), pt = arg('plugin-thread', 0), off = !!arg('off-thread', false), cut = !!arg('cut', false) || !!arg('camera', false), camera = !!arg('camera', false), inject = !!arg('inject', false), busyFail = arg('busy', 0), mtuArg = arg('mtu', 0), dropMid = arg('drop-mid', 0), cutMs = arg('cut-ms', 15000), bridgeMs = arg('bridge-ms', 0), k2722 = !!arg('kotlin-2722', false);
+const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 25), asymmetric: true, wifiDirect: wd, pluginThread: pt || undefined, ioOffThread: off, bridgeMs, remLogAll: k2722, kotlin2722: k2722, busyFail, mtu: mtuArg || undefined, dropMidEvery: dropMid || undefined };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
   constructor(dir) { super(); this.dir = dir; }
@@ -104,11 +106,23 @@ async function oneWay(S, R, label, bytesKb) {
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', opts);
   radio.add(nA); radio.add(nB); nA.load(); nB.load();
   const A = await boot('A', nA), B = await boot('B', nB);
-  const r = { build: path.basename(buildDir), kb, wifi_direct: wd, hilo_plugin_ms_mb: pt, archivos_en_otro_hilo: off, puente_ms_por_aviso: bridgeMs, kotlin: k2722 ? '2722' : '2723' };
+  const r = { build: path.basename(buildDir), kb, wifi_direct: wd, hilo_plugin_ms_mb: pt, archivos_en_otro_hilo: off, puente_ms_por_aviso: bridgeMs, kotlin: k2722 ? '2722' : '2723', escrituras_ocupado: busyFail, mtu: mtuArg || 512 };
   A.win.bleInterface.togglePanel(); const paired = await addFound(A, 'B'); A.win.bleInterface.togglePanel();
   if (!paired) { console.log('PHOTOS ' + JSON.stringify({ error: 'no empareja' })); process.exit(0); }
   await openChatWith(A, 'B'); sendText(A, 'hola B'); await sleep(3000);
   await openChatWith(B, 'A'); sendText(B, 'hola A'); await sleep(3000);
+  if (inject) {
+    // Paquetes mutilados como los que deja la cola nativa al descartar trozos del medio de un mensaje: ¿se ven
+    // como "mensaje de código"?
+    const before = codeBubbles(B).length;
+    const bad = ['{"t":"f","i":"msg1x","x":3,"d":"QUJDRUZHSElK"x":4,"d":"TU5PUFFS"}', '{"t":"f","i":"msg1x","x":5,"d":"QUJD{"v":1,"t":"ba","i":"msg1x","r":[1,2]}', '"x":9,"d":"QUJDRUZH"}'];
+    bad.forEach((c) => nB.emit('onPayloadReceived', { deviceId: nA.address, content: c, data: c, source: 'gatt_server', timestamp: Date.now(), reassembled: true }));
+    await sleep(2500);
+    r.burbujas_de_codigo_en_B = codeBubbles(B).slice(before);
+    r.historial_B_con_codigo = (await B.win.vaultLoadMessages(A.win.bleInterface.localNexoId)).filter((m) => /[{}]|"t":/.test(String(m.content))).map((m) => String(m.content).substring(0, 80));
+    console.log('PHOTOS ' + JSON.stringify(r, null, 1));
+    process.exit(0);
+  }
   if (!cut) {
     r.A_a_B = await oneWay(A, B, 'fotoA', kb);
     r.B_a_A = await oneWay(B, A, 'fotoB', kb);
@@ -155,6 +169,7 @@ async function oneWay(S, R, label, bytesKb) {
     const dA = (await A.win.vaultLoadMessages(idB)).find((m) => m.attachmentType && !m._own);
     r.identicas = [dB && (dB.attachmentPayload || nB.files.get(dB.attachmentRef)) === sentA.toString('base64'), dA && (dA.attachmentPayload || nA.files.get(dA.attachmentRef)) === sentB.toString('base64')];
   }
+  r.cola_nativa = { ocupado: (nA.stats.busy || 0) + (nB.stats.busy || 0), trozos_sueltos_descartados: (nA.stats.droppedMid || 0) + (nB.stats.droppedMid || 0), mensajes_enteros_descartados: (nA.stats.droppedMsgs || 0) + (nB.stats.droppedMsgs || 0), resincronizados: (nA.stats.resyncs || 0) + (nB.stats.resyncs || 0), mutilados_a_proposito: (nA.stats.mutilated || 0) + (nB.stats.mutilated || 0), bufer_limpiado_5s: (nA.stats.bufTimeouts || 0) + (nB.stats.bufTimeouts || 0) };
   r.avisos_por_el_puente = { A: nA.stats.bridgeEvents || 0, B: nB.stats.bridgeEvents || 0, registros_nativos: (nA.stats.remLogsToJs || 0) + (nB.stats.remLogsToJs || 0), espera_max_ms: Math.max(nA.stats.bridgeWaitMax || 0, nB.stats.bridgeWaitMax || 0) };
   r.codigo_a_la_vista_A = codeBubbles(A);
   r.codigo_a_la_vista_B = codeBubbles(B);
