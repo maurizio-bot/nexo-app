@@ -195,7 +195,7 @@ red (`opts.wifi`, `setWifi`, `lanSilent`, `lanBps`). La parte nativa (LanHub) se
 
 `ci.js` (GitHub, trabajo `tests` del workflow): textos/archivo/sin conexión, E2E (con emojis y acentos), impostor,
 Jump, Jump con internet por datos móviles (`jump.js --net`), escaneo de la red Wi-Fi, internet por relés y por Tor y
-Double Ratchet. Si alguna falla, no se compila la APK y la salida incluye los registros de la prueba. Por defecto los
+Double Ratchet y trozos binarios por Bluetooth. Si alguna falla, no se compila la APK y la salida incluye los registros de la prueba. Por defecto los
 "teléfonos" no usan relés de internet (`installWebCrypto` pone `NEXO_NET_RELAYS = []`): en GitHub hay salida a internet
 y se conectaban a los relés públicos de verdad.
 
@@ -205,7 +205,12 @@ plano y el chat abierto, cuenta, notifica (con el número) y NO manda "leído" h
 el chat y la quita; un mensaje repetido cuenta una vez; se pide el permiso de notificaciones. Con la 2744 falla:
 solo contaba el texto corto, sin notificaciones y "leído" en segundo plano.
 `jump.js --net`: todos con internet por datos móviles (relé local): la foto por Jump va al puente por Bluetooth.
-Kotlin: `UnreadBookTest` (cuentas de las notificaciones) y `NetBgTest` (escucha de internet en segundo plano contra
+`binary.js <build_A> [build_B] [--old-a|--old-b] [--mtu=247] [--loss=0.02] [--quick] [--wait=s]` (ronda 2753): foto en
+los dos sentidos, PDF de 150 KB y texto largo con emojis. Con las dos builds nuevas los trozos de datos van en binario
+(`bin_enviados` > 0) y todo llega; con una build anterior en un lado (`--old-b`: su nativo convierte todo a texto, como
+el Kotlin de antes) nadie manda binario y todo llega. Mide escrituras y bytes por la radio (`native_mock`: `airWrites`,
+`airBytes`, `binChunksOut/In`). En `ci.js` con 2 % de escrituras perdidas.
+Kotlin: `BinFrameTest` (trozos binarios: partir, juntar, convivir con el texto, resincronizar), `UnreadBookTest` (cuentas de las notificaciones) y `NetBgTest` (escucha de internet en segundo plano contra
 `netbg_helper.mjs`, que usa noble/WebCrypto como la app y arranca un relé que exige identificación).
 
 Reestructuración (ronda 2752, `docs/ESTRUCTURA.md`): `undef.js` (nombres sin definir en lo que entra en la APK; también

@@ -13,6 +13,50 @@ const classify = (id) => {
   return 'invalid';
 };
 
+// Ronda 2753: trozos binarios (BinFrame.kt): 0x01 | largo cabecera (2) | largo datos (4) | cabecera | datos
+const BIN = {
+  encode(header, data) {
+    const h = Buffer.from(header, 'utf8');
+    const out = Buffer.alloc(7 + h.length + data.length);
+    out[0] = 1; out.writeUInt16BE(h.length, 1); out.writeUInt32BE(data.length, 3);
+    h.copy(out, 7); data.copy(out, 7 + h.length);
+    return out;
+  },
+  split(frame, size) { const n = Math.max(size, 7), out = []; for (let i = 0; i < frame.length; i += n) out.push(frame.subarray(i, i + n)); return out; },
+};
+// Como BinAssembler (Kotlin): junta las escrituras por teléfono; lo que no es binario sale como texto
+class BinAssembler {
+  constructor(timeoutMs = 4000) { this.timeoutMs = timeoutMs; this.states = new Map(); }
+  reset(key) { this.states.delete(key); }
+  feed(key, bytes, now) {
+    const frames = []; let dropped = 0;
+    let st = this.states.get(key);
+    if (st && now - st.last > this.timeoutMs) { this.states.delete(key); st = null; dropped++; }
+    // Se perdió el final de un trozo: lo que llega empieza otro trozo o un mensaje de texto
+    const has = (at, p) => bytes.length >= at + p.length && bytes.toString('latin1', at, at + p.length) === p;
+    if (st && ((bytes[0] === 1 && has(7, '{"v":')) || has(0, '{"v":') || has(0, '{"type":'))) { this.states.delete(key); st = null; dropped++; }
+    let b = bytes;
+    while (b.length) {
+      if (!st) {
+        if (b[0] !== 1) return { frames, text: b, dropped };
+        if (b.length < 7) { dropped++; break; }
+        const h = b.readUInt16BE(1), d = b.readUInt32BE(3);
+        if (h <= 0 || h > 4096 || d > 65536) { dropped++; break; }
+        st = { hLen: h, total: 7 + h + d, buf: Buffer.alloc(7 + h + d), got: 0, last: now };
+        this.states.set(key, st);
+      }
+      const take = Math.min(st.total - st.got, b.length);
+      b.copy(st.buf, st.got, 0, take); st.got += take; st.last = now; b = b.subarray(take);
+      if (st.got === st.total) {
+        this.states.delete(key);
+        frames.push({ header: st.buf.toString('utf8', 7, 7 + st.hLen), data: st.buf.subarray(7 + st.hLen) });
+        st = null;
+      }
+    }
+    return { frames, text: null, dropped };
+  }
+}
+
 class Radio {
   constructor() { this.phones = []; this.trace = []; this.blocked = new Set(); }
   add(p) { this.phones.push(p); p.radio = this; }
@@ -25,7 +69,7 @@ class Radio {
     [[a, b], [b, a]].forEach(([x, y]) => {
       if (x.clients.has(norm(y.address))) { x.clients.delete(norm(y.address)); x.emit('onDeviceDisconnected', { deviceId: y.address }); }
       if (x.serverConnected.has(norm(y.initAddress))) { x.serverConnected.delete(norm(y.initAddress)); x.serverNotif.delete(norm(y.initAddress)); x.emit('onDeviceDisconnected', { deviceId: y.initAddress }); }
-      x.buffers.delete(norm(y.address)); x.buffers.delete(norm(y.initAddress));
+      x.buffers.delete(norm(y.address)); x.buffers.delete(norm(y.initAddress)); x.bin.reset(norm(y.address)); x.bin.reset(norm(y.initAddress));
     });
   }
   unblock(a, b) { this.blocked.delete(this._key(a, b)); }
@@ -53,6 +97,7 @@ class NativePhone {
     this.serverNotif = new Map(); // macNorm -> bool
     this.mtu = new Map(); // macNorm -> mtu
     this.buffers = new Map(); // macNorm -> string (processReceivedChunk)
+    this.bin = new BinAssembler(); // trozos binarios (processReceivedBytes)
     this.pendingQueue = new Map(); // macNorm -> [msg] (Kotlin pendingMessageQueue)
     this.sent = []; // registro de lo que salió por el aire
     this.calls = []; // registro de llamadas JS -> nativo
@@ -221,7 +266,10 @@ class NativePhone {
     item.tag = tag || {}; item.tries = 0;
     q.items.push(item);
     this.stats.maxQueue = Math.max(this.stats.maxQueue || 0, q.items.length);
-    if (/"t":"ba"/.test(bytes)) this.stats.acksOut = (this.stats.acksOut || 0) + 1; else if (/"t":"f"/.test(bytes)) this.stats.chunksOut = (this.stats.chunksOut || 0) + 1;
+    if (Buffer.isBuffer(bytes)) { this.stats.binWrites = (this.stats.binWrites || 0) + 1; this.stats.airBytes = (this.stats.airBytes || 0) + bytes.length; }
+    else this.stats.airBytes = (this.stats.airBytes || 0) + Buffer.byteLength(bytes, 'utf8');
+    this.stats.airWrites = (this.stats.airWrites || 0) + 1;
+    if (Buffer.isBuffer(bytes)) { if (bytes[0] === 1) this.stats.binChunksOut = (this.stats.binChunksOut || 0) + 1; } else if (/"t":"ba"/.test(bytes)) this.stats.acksOut = (this.stats.acksOut || 0) + 1; else if (/"t":"f"/.test(bytes)) this.stats.chunksOut = (this.stats.chunksOut || 0) + 1;
     const pump = () => {
       if (!q.items.length) { q.busy = false; return; }
       q.busy = true;
@@ -297,6 +345,17 @@ class NativePhone {
     if (this.offline || this.serverUp === false || (sender && sender.offline) || (sender && !this.radio.inRange(this, sender))) { this.stats.voidWrites = (this.stats.voidWrites || 0) + 1; return; }
     const mac = norm(fromAddress);
     this._remLog('INFO', source === 'gatt_client' ? 'GATT_CLIENT_CB' : 'GATT_SERVER', 'RX chunk from ' + mac + ': len=' + chunk.length);
+    // Kotlin processReceivedBytes: por la radio llegan bytes; un trozo binario se junta aparte
+    if (!this.opts.noBinNative) {
+      const out = this.bin.feed(mac, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf8'), Date.now());
+      if (out.dropped) this.stats.binDropped = (this.stats.binDropped || 0) + out.dropped;
+      out.frames.forEach((f) => {
+        this.stats.binChunksIn = (this.stats.binChunksIn || 0) + 1;
+        this.emit('onPayloadReceived', { deviceId: fromAddress, content: f.header, data: f.header, bin: f.data.toString('base64'), source, timestamp: Date.now(), reassembled: true });
+      });
+      if (!out.text) return;
+      chunk = out.text.toString('utf8');
+    } else if (Buffer.isBuffer(chunk)) chunk = chunk.toString('utf8'); // Kotlin anterior: todo a texto
     // Como el Kotlin: el búfer se limpia tras 5 s SIN trozos nuevos; desde la 2723 además si lo pendiente lleva
     // más de 10 s sin formar un mensaje (mutilado: se perdió un trozo)
     if (!this.bufTimers) this.bufTimers = new Map();
@@ -327,7 +386,7 @@ class NativePhone {
     if (!off) return;
     this.radio.phones.forEach((p) => {
       if (p === this) return;
-      const drop = (holder, otherAddr) => { holder.emit('onDeviceDisconnected', { deviceId: otherAddr }); holder.buffers.delete(norm(otherAddr)); };
+      const drop = (holder, otherAddr) => { holder.emit('onDeviceDisconnected', { deviceId: otherAddr }); holder.buffers.delete(norm(otherAddr)); holder.bin.reset(norm(otherAddr)); };
       p._dropLinkLater(norm(this.address), this.address, norm(this.initAddress), this.initAddress);
       if (this.clients.has(norm(p.address))) { this.clients.delete(norm(p.address)); drop(this, p.address); }
       if (this.serverConnected.has(norm(p.initAddress))) { this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress)); drop(this, p.initAddress); }
@@ -485,6 +544,26 @@ class NativePhone {
       }),
       forceReconnect: wrap('forceReconnect', (c) => c.resolve({ reconnecting: true })),
       reconnectDevice: wrap('reconnectDevice', (c) => c.resolve({ reconnecting: true })),
+      sendBinary: wrap('sendBinary', (c) => {
+        if (self.opts.noBinNative) return c.reject('"NexoBle.sendBinary()" is not implemented on android', 'UNIMPLEMENTED');
+        const raw = c.getString('deviceId') || '', header = c.getString('header') || '', data = c.getString('data');
+        if (!raw || !header || data == null) return c.reject('deviceId, header y data requeridos');
+        if (classify(raw) === 'invalid') return c.reject('ID invalido: no es NXID ni MAC', 'INVALID_DEVICE_ID');
+        setTimeout(() => {
+          const mac = self._resolveMac(raw);
+          if (!mac) return c.reject('NXID no resuelto a MAC: ' + raw, 'NXID_UNRESOLVED');
+          const mtu = self.mtu.get(mac) || 23;
+          const writes = BIN.split(BIN.encode(header, Buffer.from(data, 'base64')), mtu - 3);
+          const peerAddr = (self.serverConnected.get(mac) || (self.clients.get(mac) || {}).peer || {}).address;
+          const q = peerAddr && self.writeQ && self.writeQ.get(norm(peerAddr));
+          if (q && q.items.length > 0 && q.items.length + writes.length > 500) return c.reject('Cola de escritura llena', 'BLE_BUSY');
+          const mid = (self._mid = (self._mid || 0) + 1);
+          const first = self._sendSingleChunk(mac, writes[0], { mid, last: writes.length === 1 });
+          if (!first.sent) return c.reject('Sin enlace con ' + mac, 'BLE_BUSY');
+          writes.slice(1).forEach((w, k) => self._sendSingleChunk(mac, w, { mid, last: k === writes.length - 2 }));
+          c.resolve({ sent: true, mode: 'queued', deviceId: raw, mtu });
+        }, 0);
+      }),
       sendMessage: wrap('sendMessage', (c) => {
         const raw = c.getString('deviceId') || '';
         let message = c.getString('message');

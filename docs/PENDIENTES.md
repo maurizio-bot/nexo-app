@@ -40,7 +40,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   (mejor por Wi-Fi); pingeo por Jump (hoy solo con el contacto conectado).
 
 ## 3. Mejoras de lo que ya existe
-- **Velocidad**: archivos en binario (sin base64, −33 %); L2CAP; Wi-Fi Direct más rápido; detectar y renegociar MTU
+- **Velocidad**: archivos en binario hecho (2753); L2CAP; Wi-Fi Direct más rápido; detectar y renegociar MTU
   pequeño (algunos teléfonos se quedan en 20 bytes por escritura).
 - **Jump con más alcance**: hecho en la ronda 2731 (en el teléfono, por confirmar): Bluetooth de largo alcance (LE
   Coded PHY, ~4x distancia entre teléfonos que lo tengan; el diagnóstico dice `[JUMP] Largo alcance (LE Coded): sí/no`)
@@ -80,7 +80,9 @@ De lo más simple a lo más complejo. Estado:
    todavía no sabría reconocer un ID rotativo; también afecta a agregar desconocidos, a Jump con desconocidos y a
    teléfonos con builds viejas. Hace falta un diseño con pruebas de esos casos antes de decidir.
 5. ✅ (2749) AGP 9.4.0 / Gradle 9.6.0 / Kotlin 2.2.20 / compileSdk 37.1 y Tor 0.4.9.14 (targetSdk sigue en 34). 6. ✅ (2752) Dividir `main.js` (4.281 → 720 líneas) y `ble_interface.js` (3.732 → 847) en 30 módulos sin cambiar el
-   código (`docs/ESTRUCTURA.md`). 7. Bluetooth sin base64.
+   código (`docs/ESTRUCTURA.md`). 7. ✅ (2753) Bluetooth sin base64: los trozos de datos de fotos, vídeos y archivos
+   van en binario (−25 % de bytes por la radio, ~25–35 % más rápido en el simulador); solo con teléfonos que lo
+   anuncian (`bf`), con builds anteriores sigue el JSON de siempre.
 8. Detectar MTU pequeño. 9. Fénix para fotos/vídeos/archivos. 10. Jump por Wi-Fi.
 11. ✅ (2751) Recibir por internet en segundo plano (NetBg nativo) + notificaciones del teléfono + número en el icono
    + contadores de no leídos por todas las vías (pedido del dueño 23-10). 12. Recibir por Bluetooth con la app cerrada. 13. L2CAP.

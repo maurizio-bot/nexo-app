@@ -37,6 +37,7 @@ const SCENARIOS = [
     segundo_plano_cuenta: (v) => v === 2, notificacion: (v) => !!v && v.numero === 2, A_no_ve_leido_en_segundo_plano: isTrue,
     al_volver_cuenta: (v) => v === 0, al_volver_notificacion_quitada: isTrue, al_volver_A_ve_leido: isTrue,
     tocar_abre_chat: isTrue, tocar_cuenta: (v) => v === 0, tocar_notificacion_quitada: isTrue, repetido_cuenta_una_vez: isTrue, permiso_notificaciones_pedido: isTrue, errores: isEmpty } },
+  { name: 'trozos binarios por Bluetooth', args: ['binary.js', '--loss=0.02'], tag: 'BINARY', checks: { resultado: (v) => v === 'OK' } },
   { name: 'Double Ratchet y poscuántico', args: ['ratchet.js'], tag: null },
 ];
 

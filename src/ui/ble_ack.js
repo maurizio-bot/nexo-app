@@ -2,6 +2,8 @@ import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
+* v3.13.0: trozos de archivo en binario por Bluetooth (BinFrame.kt; sin el 33 % del base64) con quien lo anuncia
+*         ('bf' en kx, pings y acks); con builds anteriores, el JSON de siempre.
 * v3.12.1: el registro de arranque dice la versión real (decía v3.2.12).
 * v3.12.0: internet: enlace "net:" (trozos de 8-16 KB; archivos solo si los dos están en Wi-Fi).
 * v3.11.0: remitente sellado por Jump: el nombre y el NEXO ID de quien manda un flujo van en un sobre para el destino
@@ -91,6 +93,22 @@ const SHORT_MSG_BACKOFF_DELAYS = [1000, 1000, 1500, 2000, 2500, 3000];
 function _normMac(mac) {
   return (mac || '').toString().toLowerCase().replace(/[:-]/g, '').trim();
 }
+// v3.13.0 (ronda 2753): trozos de archivo en binario por Bluetooth (BinFrame.kt). Un trozo va así si es base64
+// canónico (al llegar, el nativo lo vuelve a poner en base64 y debe salir el mismo texto) y el otro teléfono avisó
+// con 'bf' de que lo entiende; si no, el trozo JSON de siempre. Se ahorra el 33 % del base64 por la radio.
+var _B64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+function _binOk(s) {
+  if (!s || s.length % 4 || !_B64_RE.test(s)) return false;
+  try { return btoa(atob(s)) === s; } catch (e) { return false; }
+}
+// Dónde empiezan los datos en base64 (tras la cabecera del cifrado "E2:…:"): los trozos se alinean a partir de ahí
+function _b64BodyStart(str) {
+  for (var i = Math.min(str.length, 16384) - 1; i >= 0; i--) {
+    var c = str.charCodeAt(i);
+    if (!((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 43 || c === 47 || c === 61)) return i + 1;
+  }
+  return 0;
+}
 function _newMsgId() { return 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6); }
 // v3.9.0: comprobación de cada trozo (FNV-1a de 32 bits de lo que importa). Si por Bluetooth se pierde un
 // pedazo de un paquete, lo que queda puede seguir siendo un JSON válido con los datos más cortos: el receptor lo
@@ -166,7 +184,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.12.1-NEXO iniciado');
+    console.log('[BleAckSystem] v3.13.0-NEXO iniciado');
   }
   _resolveNexoId(deviceId) {
     // Enlaces Wi-Fi e internet: el NEXO ID va en el propio identificador ("lan:nx…", "net:nx…")
@@ -291,6 +309,21 @@ export class BleAckSystem {
       if (rej) rej(e);
     });
   }
+  // v3.13.0: el otro teléfono entiende trozos binarios (lo dice con 'bf' en sus acks y pings)
+  markBin(deviceId, off) {
+    if (!deviceId || _isLanDevice(deviceId) || _isNetDevice(deviceId)) return;
+    if (!this._binPeers) this._binPeers = new Set();
+    var nx = this._resolveNexoId(deviceId), keys = [_normMac(deviceId)];
+    if (nx) keys.push(_normId(nx));
+    var set = this._binPeers;
+    keys.forEach(function(k) { if (off) set.delete(k); else set.add(k); });
+  }
+  peerBin(deviceId) {
+    if (!this._binPeers || !deviceId || _isLanDevice(deviceId) || _isNetDevice(deviceId)) return false;
+    if (this._binPeers.has(_normMac(deviceId))) return true;
+    var nx = this._resolveNexoId(deviceId);
+    return !!(nx && this._binPeers.has(_normId(nx)));
+  }
   // Datos de cabecera de un archivo (los mismos por Bluetooth y por Wi-Fi Direct)
   _fileMeta(meta, size) {
     var senderId = (this.ble && this.ble.localNexoId) || ((this.ble && this.ble.localDeviceUUID) ? this.ble.localDeviceUUID : 'unknown');
@@ -388,7 +421,7 @@ export class BleAckSystem {
       var type = msg.t || msg.type;
       if (type === 'ba' || type === 'block_ack') { this._handleBlockAck(msg); return true; }
       if (type === 'ack' || type === 'read_receipt') { this.processIncomingAck(content); return true; }
-      if (type === 'ping' || type === 'pong') { return false; }
+      if (type === 'ping' || type === 'pong') { if (msg.bf) this.markBin(deviceId); return false; } // 'bf': entiende trozos binarios
       if (type === 'n') { this._handleNack(msg); return true; }
       if (type === 'a') { this._handleLegacyChunkAck(msg); return true; }
       if (type === 'ss') { this._handleSessionSync(deviceId, msg); return true; }
@@ -570,7 +603,7 @@ export class BleAckSystem {
   }
   _sendNack(deviceId, msgId, indices) {
     var ranges = _compressRanges(indices);
-    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'n', m: msgId, r: ranges });
+    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'n', m: msgId, r: ranges, bf: 1 });
     if (this.ble && this.ble._sendMessageNative) {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
@@ -581,14 +614,14 @@ export class BleAckSystem {
       if (buf.chunks.has(i)) received.push(i);
     }
     var ranges = _compressRanges(received);
-    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, r: ranges, n: buf.total });
+    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, r: ranges, n: buf.total, bf: 1 });
     if (this.ble && this.ble._sendMessageNative) {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
   }
   _sendFinalAck(deviceId, msgId, total) {
     var ranges = (total <= 1) ? '0' : '0-' + (total - 1);
-    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, r: ranges, n: total, f: 1 });
+    var payload = JSON.stringify({ v: PROTOCOL_VERSION, t: 'ba', m: msgId, r: ranges, n: total, f: 1, bf: 1 });
     if (this.ble && this.ble._sendMessageNative) {
       this.ble._sendMessageNative(deviceId, payload, null).catch(function(){});
     }
@@ -602,6 +635,7 @@ export class BleAckSystem {
       indices = msg.k || [];
     }
     var stream = this.outgoingStreams.get(msgId);
+    if (stream && msg.bf) this.markBin(stream.deviceId);
     if (stream) stream.handleNack(indices);
   }
   _handleBlockAck(msg) {
@@ -610,6 +644,7 @@ export class BleAckSystem {
     var isFinal = msg.f === 1;
     var stream = this.outgoingStreams.get(msgId);
     if (!stream) return;
+    if (msg.bf) this.markBin(stream.deviceId);
     stream.lastAckAt = Date.now();
     if (isFinal) {
       console.log('[BleAckSystem] handleFinalAck msgId=' + msgId);
@@ -1213,6 +1248,9 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.writesPerPacket = perWrite ? Math.ceil((this.chunkSize + overhead) / perWrite) : 2;
   if (this.writesPerPacket > 2) this.windowSize = Math.min(this.windowSize, 4);
   this.windowTimeoutMs = Math.max(this.windowTimeoutMs, this.windowSize * this.writesPerPacket * 100 + 3000);
+  // v3.13.0: en binario caben 4/3 más caracteres de base64 en las mismas escrituras (múltiplo de 4)
+  this.bin = isFile && perWrite > 0 && !(meta && meta.dst) && ackSystem.peerBin(deviceId) && !!(this.ble && typeof this.ble._sendBinaryNative === 'function');
+  if (this.bin) this.chunkSize = Math.max(60, Math.floor((this.writesPerPacket * perWrite - overhead - 7) * 4 / 3 / 4) * 4);
   this.pacingDelayMs = isFile ? FILE_PACING_DELAY_MS : CHAT_PACING_DELAY_MS;
   this.baseTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : 45000;
   this.type = type || 'chat';
@@ -1322,10 +1360,13 @@ ChatStream.prototype._splitChunks = function() {
   var i = 0;
   // Chunk 0 lleva meta (fr, type, format…): limitar datos para no reventar MTU
   var firstChunkMax = (this.type === 'file') ? Math.min(size, 120) : Math.min(size, 200);
+  // v3.13.0: en binario, un trozo termina justo donde empiezan los datos en base64 y los siguientes van alineados
+  var body = this.bin ? _b64BodyStart(str) : -1;
   while (i < str.length) {
     var remaining = str.length - i;
     var chunkSize = (arr.length === 0) ? Math.min(firstChunkMax, remaining) : Math.min(size, remaining);
     var end = i + chunkSize;
+    if (body > i && body < end) end = body;
     if (end < str.length &&
         str.charCodeAt(end - 1) >= 0xD800 && str.charCodeAt(end - 1) <= 0xDBFF &&
         str.charCodeAt(end) >= 0xDC00 && str.charCodeAt(end) <= 0xDFFF) {
@@ -1373,8 +1414,7 @@ ChatStream.prototype._sendWindow = function() {
         return;
       }
       self.sentMask[idx] = true;
-      var payload = self._buildChunk(idx);
-      self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
+      self._sendChunk(idx)
         .then(function() {
           self._nativeFails = 0;
           setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
@@ -1402,6 +1442,21 @@ ChatStream.prototype._sendWindow = function() {
     }
     sendNext(self.windowStart);
   });
+};
+// v3.13.0: binario si se puede (no el trozo 0, que lleva los datos del archivo y la miniatura); si no, JSON
+ChatStream.prototype._sendChunk = function(idx) {
+  var d = this.chunks[idx];
+  if (this.bin && idx > 0 && this.ackSystem.peerBin(this.deviceId) && _binOk(d)) {
+    var head = JSON.parse(this._buildChunk(idx));
+    delete head.d;
+    var self = this;
+    return this.ble._sendBinaryNative(this.deviceId, JSON.stringify(head), d).catch(function(e) {
+      if (!e || e.code !== 'UNIMPLEMENTED') throw e;
+      self.bin = false; // nativo sin trozos binarios: el resto como siempre
+      return self.ble._sendMessageNative(self.deviceId, self._buildChunk(idx), self.msgId + '_' + idx);
+    });
+  }
+  return this.ble._sendMessageNative(this.deviceId, this._buildChunk(idx), this.msgId + '_' + idx);
 };
 ChatStream.prototype._buildChunk = function(idx) {
   var isFirst = idx === 0;
@@ -1490,8 +1545,7 @@ ChatStream.prototype._retransmitWindow = function() {
       setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
       return;
     }
-    var payload = self._buildChunk(idx);
-    self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
+    self._sendChunk(idx)
       .then(function() {
         setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
       })
@@ -1509,8 +1563,7 @@ ChatStream.prototype.handleNack = function(indices) {
   indices.forEach(function(idx) {
     if (idx >= 0 && idx < self.total) {
       self.sentMask[idx] = true;
-      var payload = self._buildChunk(idx);
-      promises.push(self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx));
+      promises.push(self._sendChunk(idx));
     }
   });
   Promise.all(promises).then(function() {

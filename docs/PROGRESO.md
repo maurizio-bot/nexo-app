@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-23 (build 2752)
+Última actualización: 2026-10-23 (build 2753)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -79,6 +79,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2750 | | Compilación de prueba en la rama de trabajo (Kotlin de notificaciones e internet en segundo plano): compila, pruebas en verde |
 | 2751 | `769c025` | Notificaciones de mensajes (una por chat, número en el icono), no leídos por todas las vías, "leído" solo con la app a la vista, internet en segundo plano (escucha nativa de los relés), permiso de notificaciones. APK verificada: firma 23d86688…, manifiesto igual que la 2749 + POST_NOTIFICATIONS, clases nuevas presentes |
 | 2752 | a468f31 | Reestructuración sin cambios de código: main.js 4.281 → 720 líneas, ble_interface.js 3.732 → 847, en 30 módulos (`docs/ESTRUCTURA.md`). Batería idéntica. APK comprobada: 24,4 MB, cert 23d86688…, sin copia de seguridad, manifiesto idéntico a 2751, clases nativas nuevas presentes. Falta probarla en teléfonos |
+| 2753 | (este commit) | Bluetooth sin base64: trozos de archivo en binario con quien lo anuncia (−25 % de bytes por la radio, fotos y PDF ~25–35 % más rápidos en el simulador); con builds anteriores, JSON de siempre. Falta verificar la APK y probarla en teléfonos |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -204,6 +205,37 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2753: Bluetooth sin base64 (plan del dueño, punto 7)
+- Antes cada trozo de un archivo viajaba como texto JSON con los datos en base64: ~450 bytes por la radio para 270
+  bytes reales. Ahora los trozos de datos van en binario (`BinFrame.kt`): `0x01` + largo de la cabecera (2 bytes) +
+  largo de los datos (4) + cabecera JSON + bytes. Un mensaje de texto nunca empieza por `0x01`: conviven en el mismo
+  canal. Al llegar, el nativo (`BinAssembler`) junta las escrituras y entrega cabecera + datos en base64; la app
+  (`_prePayload`) rehace el trozo de siempre, así que lo de arriba (comprobación `k`, cifrado, ensamblado) no cambia.
+- Solo con quien lo anuncia: `bf: 1` en `kx`, pings y acks (`ba`, `n`); un `kx` sin `bf` lo quita (build anterior).
+  Nunca por Jump (trozos con destino), Wi-Fi ni internet, ni el trozo 0 (lleva la miniatura). Un trozo va en binario
+  solo si es base64 canónico (al volver a base64 sale idéntico); los trozos se alinean donde empiezan los datos tras
+  la cabecera del cifrado. Si el nativo no tiene `sendBinary`, sigue en JSON.
+- Si se pierde el final de un trozo (el emisor descarta el resto tras no poder escribir), el siguiente trozo o mensaje
+  se reconoce por su inicio (`{"v":` / `{"type":`) y no se pega al roto; uno a medias más de 4 s se descarta.
+- Simulador (`tests/sim/binary.js`, en `ci.js` con 2 % de pérdidas; `native_mock` replica `BinFrame`/`BinAssembler`):
+
+  | Caso | Antes (2752) | Ahora |
+  |---|---|---|
+  | Foto 45 KB, MTU 512 / 247 / 185 | 6,1 / 10,6 / 15,6 s | 4,5 / 8,5 / 10,6 s |
+  | PDF 150 KB, MTU 512 / 247 / 185 (`perf.js`) | 44 / 87 / 125 s | 31 / 65 / 83 s |
+  | PDF 150 KB, bytes por la radio (MTU 247) | 254 KB | 190 KB |
+  | MTU 185 con 2 % de escrituras perdidas: fotos / PDF | 111 y 47 s / 184 s | 34 y 50 s / 131 s |
+  | MTU 23 (foto) | 252 s | 215 s (ahí pesan las cabeceras: punto 8) |
+
+  Nueva ↔ 2752 en los dos sentidos (`--old-a`/`--old-b`): nadie manda binario y todo llega; `mixed.js` y Jump con
+  puente 2752 también. Kotlin: `BinFrameTest` (8 pruebas: cualquier MTU, texto que pasa tal cual, datos que parecen
+  JSON, varios teléfonos, trozo cortado, trozo sin final, cabecera rota, acentos).
+- Batería completa (bat38, 58 ejecuciones): igual que bat37 salvo tiempos (HD de vídeo 42 → 30 s) y una vez la foto de
+  `jump.js --net` quedó en "enviando" con ~30 pruebas a la vez; no se repitió en 9 ejecuciones (6 en paralelo) ni
+  afecta a ese camino (Jump nunca usa binario). Las 11 pruebas de GitHub en verde.
+- Kotlin del plugin: `sendBinary`, la cola de escritura admite bytes, lo recibido se lee como bytes
+  (`processReceivedBytes`). Solo se compila en GitHub: falta probarlo en teléfonos.
 
 ## Ronda 2752: reestructuración (plan del dueño, punto 6: "con mucho cuidado de no romper nada") — `docs/ESTRUCTURA.md`
 - `src/main.js` 4.281 → 720 líneas (punto de entrada) y `src/ui/ble_interface.js` 3.732 → 847 (núcleo de la clase),

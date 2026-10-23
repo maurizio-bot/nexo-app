@@ -101,7 +101,7 @@ export const BLE_CONNECTION_METHODS = {
       var state = self._getDeviceState(deviceId);
       if (state.state !== BLE_STATES.READY_TO_CHAT && state.state !== BLE_STATES.NOTIFICATIONS_READY) { reject(new Error('Not ready')); return; }
       var pingId = 'ping_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-      var payload = JSON.stringify({ v: 1, type: 'ping', pingId: pingId, ts: Date.now(), fromNexoId: self.localNexoId || self.localDeviceUUID });
+      var payload = JSON.stringify({ v: 1, type: 'ping', pingId: pingId, ts: Date.now(), fromNexoId: self.localNexoId || self.localDeviceUUID, bf: 1 });
       var timer = setTimeout(function() {
         var p = self._pendingPings.get(pingId);
         if (p) { self._pendingPings.delete(pingId); reject(new Error('Ping timeout')); }

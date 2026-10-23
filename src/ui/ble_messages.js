@@ -75,6 +75,13 @@ export const BLE_MESSAGE_METHODS = {
 
   _prePayload(data) {
     var self = this;
+    // Ronda 2753: trozo binario (el nativo trae la cabecera y los datos en base64): se rehace el trozo JSON de siempre
+    if (data && typeof data.bin === 'string') {
+      var bh = String(data.content || '');
+      if (bh.charAt(0) !== '{' || bh.charAt(bh.length - 1) !== '}' || !/^[A-Za-z0-9+/]*={0,2}$/.test(data.bin)) return Promise.resolve(null);
+      var full = bh.slice(0, -1) + (bh.length > 2 ? ',' : '') + '"d":"' + data.bin + '"}';
+      data = Object.assign({}, data, { content: full, data: full, bin: undefined });
+    }
     var raw = (data && (data.content || data.data || data.message) || '').trim();
     if (raw.charAt(0) !== '{') return Promise.resolve(data);
     // Wi-Fi Direct: control de una transferencia (por Bluetooth)
@@ -148,6 +155,7 @@ export const BLE_MESSAGE_METHODS = {
       if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId, Number(p.fx) || 1);
       if (p.ss && p.from) self._noteSealPeer(p.from);
       if (p.nt && p.from) self._noteNetPeer(p.from);
+      if (self.ackSystem) self.ackSystem.markBin(data.deviceId, !p.bf); // ronda 2753: trozos binarios (una build anterior no los entiende)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._pqHave.set(_normId(p.from), Number(p.ph) || 0);
       // v6.11.1: ¿este vecino reenvía sobres 'sx' bien? (las builds anteriores los envolvían como texto suyo)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) { if (p.ss) self._sxHops.add(_normId(p.from)); else self._sxHops.delete(_normId(p.from)); }
@@ -427,6 +435,20 @@ export const BLE_MESSAGE_METHODS = {
         return;
       }
       send(outgoing);
+    });
+  },
+
+  // Ronda 2753: trozo de archivo en binario (BinFrame.kt). Solo Bluetooth directo
+  _sendBinaryNative(deviceId, header, b64) {
+    var self = this;
+    if (_lanNx(deviceId) || _netNx(deviceId) || !self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'sendBinary')) {
+      var e = new Error('sendBinary no disponible'); e.code = 'UNIMPLEMENTED';
+      return Promise.reject(e);
+    }
+    var targetId = self._nexoIdToMac.get(_normId(deviceId)) || deviceId;
+    return _safeNativeCall(self.nativePlugin, 'sendBinary', { deviceId: targetId, header: header, data: b64 }).then(function(r) {
+      if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._mtuByDevice.set(_normMac(targetId), r.mtu);
+      return r;
     });
   },
 

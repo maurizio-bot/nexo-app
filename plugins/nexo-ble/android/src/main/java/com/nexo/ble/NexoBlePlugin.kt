@@ -155,7 +155,9 @@ class NexoBlePlugin : Plugin() {
     private var quickScanLatch: java.util.concurrent.CountDownLatch? = null
     private var quickScanResultMac: String? = null
     // msgId: de qué mensaje es el trozo (un mensaje nunca se parte: o salen todos sus trozos o ninguno más)
-    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String, val msgId: Long = 0L)
+    private data class WriteQueueItem(val macNorm: String, val rawDeviceId: String, val chunk: String, val msgId: Long = 0L, val bytes: ByteArray? = null)
+    // Trozos binarios de archivos (BinFrame.kt): se juntan aparte de los mensajes de texto
+    private val binAssembler = BinAssembler()
     private val writeMsgCounter = java.util.concurrent.atomic.AtomicLong()
     private data class JsonExtraction(val json: String, val remainder: String)
     // Solo estas etiquetas cruzan a la app (diagnóstico). El resto (uno por cada trozo enviado o recibido) solo
@@ -245,6 +247,26 @@ class NexoBlePlugin : Plugin() {
         }
         return null
     }
+    // Ronda 2753: lo que llega por Bluetooth son bytes. Un trozo binario (BinFrame) se junta aparte y se entrega a la
+    // app como cabecera + datos en base64; lo demás es el texto de siempre (antes se convertía cada escritura a texto).
+    private fun processReceivedBytes(deviceId: String, value: ByteArray, source: String) {
+        val out = binAssembler.feed(normalizeMac(deviceId), value, System.currentTimeMillis())
+        if (out.dropped > 0) remLog("WARN", "REASSEMBLY", "Trozo binario incompleto de ${normalizeMac(deviceId)} descartado")
+        out.frames.forEach { f ->
+            notifyListeners("onPayloadReceived", JSObject()
+                .put("deviceId", deviceId)
+                .put("content", f.header)
+                .put("data", f.header)
+                .put("bin", Base64.encodeToString(f.data, Base64.NO_WRAP))
+                .put("source", source)
+                .put("timestamp", System.currentTimeMillis())
+                .put("reassembled", true),
+                true
+            )
+        }
+        out.text?.let { processReceivedChunk(deviceId, it.toString(Charsets.UTF_8), source) }
+    }
+
     private fun processReceivedChunk(deviceId: String, chunk: String, source: String) {
         val macNorm = normalizeMac(deviceId)
         messageBufferTimers[macNorm]?.let { mainHandler.removeCallbacks(it) }
@@ -479,6 +501,7 @@ class NexoBlePlugin : Plugin() {
         isAdvertisingActive = false
         try { stopAdvertisingInternal() } catch (e: Exception) { }
         messageBuffers.clear()
+        binAssembler.clearAll()
         messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         messageBufferTimers.clear()
         lastScanNotifyTime.clear()
@@ -608,6 +631,7 @@ class NexoBlePlugin : Plugin() {
         keepAliveTimers.clear()
         pendingMessageQueue.clear()
         messageBuffers.clear()
+        binAssembler.clearAll()
         messageBufferTimers.forEach { (_, runnable) -> mainHandler.removeCallbacks(runnable) }
         messageBufferTimers.clear()
         lastScanNotifyTime.clear()
@@ -782,7 +806,7 @@ class NexoBlePlugin : Plugin() {
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 serverConnectedDevices.remove(mac)
                 serverNotificationEnabled.remove(mac)
-                messageBuffers.remove(mac)
+                messageBuffers.remove(mac); binAssembler.reset(normalizeMac(mac))
                 messageBufferTimers.remove(mac)?.let { mainHandler.removeCallbacks(it) }
                 notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", device.address))
                 if (isAdvertisingActive) {
@@ -812,10 +836,9 @@ class NexoBlePlugin : Plugin() {
             value: ByteArray?
         ) {
             if (characteristic.uuid == NexoBleSpec.RX_CHARACTERISTIC_UUID) {
-                val chunk = value?.toString(Charsets.UTF_8) ?: ""
                 val mac = device.address
-                remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${chunk.length}")
-                processReceivedChunk(mac, chunk, "gatt_server")
+                remLog("INFO", "GATT_SERVER", "RX chunk from $mac: len=${value?.size ?: 0}")
+                processReceivedBytes(mac, value ?: ByteArray(0), "gatt_server")
                 if (responseNeeded) {
                     bluetoothGattServer?.sendResponse(
                         device,
@@ -1049,7 +1072,7 @@ class NexoBlePlugin : Plugin() {
                     clientRxCharacteristics.remove(macNorm)
                     clientTxCharacteristics.remove(macNorm)
                     clientConnectionStates.remove(macNorm)
-                    messageBuffers.remove(macNorm)
+                    messageBuffers.remove(macNorm); binAssembler.reset(macNorm)
                     messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
                     try { gatt.close() } catch (e: Exception) { }
                     startAutoReconnect(macNorm)
@@ -1135,10 +1158,9 @@ class NexoBlePlugin : Plugin() {
             @Suppress("DEPRECATION")
             override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
                 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
-                    val chunk = characteristic.value?.toString(Charsets.UTF_8) ?: ""
                     val address = gatt.device?.address ?: ""
-                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from $address: len=${chunk.length}")
-                    processReceivedChunk(address, chunk, "gatt_client")
+                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (legacy) from $address: len=${characteristic.value?.size ?: 0}")
+                    processReceivedBytes(address, characteristic.value ?: ByteArray(0), "gatt_client")
                 }
             }
 
@@ -1146,10 +1168,9 @@ class NexoBlePlugin : Plugin() {
             @Suppress("DEPRECATION")
             override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
                 if (characteristic.uuid == NexoBleSpec.TX_CHARACTERISTIC_UUID) {
-                    val chunk = value.toString(Charsets.UTF_8)
                     val address = gatt.device?.address ?: ""
-                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API 33+) from $address: len=${chunk.length}")
-                    processReceivedChunk(address, chunk, "gatt_client")
+                    remLog("INFO", "GATT_CLIENT_CB", "Received chunk (API 33+) from $address: len=${value.size}")
+                    processReceivedBytes(address, value, "gatt_client")
                 }
             }
         }
@@ -1264,7 +1285,7 @@ class NexoBlePlugin : Plugin() {
         clientRxCharacteristics.remove(macNorm)
         clientTxCharacteristics.remove(macNorm)
         clientConnectionStates.remove(macNorm)
-        messageBuffers.remove(macNorm)
+        messageBuffers.remove(macNorm); binAssembler.reset(macNorm)
         messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         pendingCalls.remove(macNorm)
         pendingMessageQueue.remove(macNorm)
@@ -1296,7 +1317,7 @@ class NexoBlePlugin : Plugin() {
         gattClients[macNorm]?.let { gatt -> try { gatt.disconnect(); gatt.close() } catch (e: Exception) { } }
         gattClients.remove(macNorm)
         clientConnectionStates.remove(macNorm)
-        messageBuffers.remove(macNorm)
+        messageBuffers.remove(macNorm); binAssembler.reset(macNorm)
         messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
         writeQueues.remove(macNorm)
         writeQueueProcessing.remove(macNorm)
@@ -1324,6 +1345,34 @@ class NexoBlePlugin : Plugin() {
         reconnectDelays.remove(macNorm)
         startAutoReconnect(macNorm)
         call.resolve(JSObject().put("reconnecting", true))
+    }
+
+    // Ronda 2753: un trozo de archivo en binario (BinFrame): cabecera JSON + datos (llegan en base64 por el puente de
+    // la app, pero por la radio van como bytes). La app solo lo usa si el otro teléfono avisó de que lo entiende.
+    @PluginMethod
+    fun sendBinary(call: PluginCall) {
+        val rawDeviceId = call.getString("deviceId") ?: ""
+        val header = call.getString("header") ?: ""
+        val data = try { Base64.decode(call.getString("data") ?: "", Base64.NO_WRAP) } catch (e: Exception) { null }
+        if (rawDeviceId.isEmpty() || header.isEmpty() || data == null) { call.reject("deviceId, header y data requeridos"); return }
+        if (classifyDeviceId(rawDeviceId) == "invalid") { call.reject("ID invalido: no es NXID ni MAC", "INVALID_DEVICE_ID"); return }
+        mainHandler.post {
+            val macNorm = if (classifyDeviceId(rawDeviceId) == "nxid") resolveMacForNexoId(rawDeviceId.trim()) else normalizeMac(rawDeviceId)
+            if (macNorm == null) { call.reject("NXID no resuelto a MAC: $rawDeviceId", "NXID_UNRESOLVED"); return@post }
+            val frame = try { BinFrame.encode(header, data) } catch (e: Exception) { call.reject(e.message ?: "trozo binario no válido"); return@post }
+            val mtu = negotiatedMtu[macNorm] ?: 23
+            val writes = BinFrame.split(frame, mtu - 3)
+            val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
+            val msgId = writeMsgCounter.incrementAndGet()
+            val ok = synchronized(queue) {
+                if (queue.isNotEmpty() && queue.size + writes.size > MAX_QUEUE_SIZE) false
+                else { writes.forEach { queue.add(WriteQueueItem(macNorm, rawDeviceId, "", msgId, it)) }; true }
+            }
+            if (!ok) { call.reject("Cola de escritura llena para $macNorm", "BLE_BUSY"); return@post }
+            remLog("INFO", "SEND", "sendBinary MAC='$macNorm' bytes=${frame.size} writes=${writes.size}")
+            processWriteQueue(macNorm)
+            call.resolve(JSObject().put("sent", true).put("mode", "queued").put("deviceId", rawDeviceId).put("mtu", mtu))
+        }
     }
 
     // === FIX vFIX-3: sendMessage corre SIEMPRE en mainHandler (single-threaded) ===
@@ -1426,7 +1475,7 @@ class NexoBlePlugin : Plugin() {
         if (writeQueueProcessing[macNorm] == true) return
         val queue = writeQueues[macNorm] ?: return
         val item = synchronized(queue) { if (queue.isEmpty()) null else queue[0] } ?: return
-        val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk)
+        val result = sendSingleChunk(item.macNorm, item.rawDeviceId, item.chunk, item.bytes)
         if (!result.sent) {
             // Android rechaza la escritura si aún está ocupado con la anterior (muy frecuente con la radio
             // cargada). v2723: se reintenta (15 ms las primeras veces, luego 50 ms) hasta ~1,8 s; si no se puede,
@@ -1476,8 +1525,8 @@ class NexoBlePlugin : Plugin() {
     // === FIN FIX F0 ===
 
     // === FIX F0: Timeout de client write reducido y chunk size con margen ===
-    private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String): SendResult {
-        val data = chunk.toByteArray(Charsets.UTF_8)
+    private fun sendSingleChunk(macNorm: String, rawDeviceId: String, chunk: String, bytes: ByteArray? = null): SendResult {
+        val data = bytes ?: chunk.toByteArray(Charsets.UTF_8)
 
         val remoteDevice = serverConnectedDevices[macNorm]
         val srvTx = serverTxCharacteristic
