@@ -25,6 +25,10 @@ const chainN = arg('chain', 0) === true ? 4 : Number(arg('chain', 0)) || 0;
 // --no-route-wait: A escribe justo después de perder el alcance directo con el destino (en GitHub la ruta
 //   estaba lista al instante y la foto se quedaba en "enviando")
 const noRouteWait = !!arg('no-route-wait', false);
+// --net: todos con internet por datos móviles (relé Nostr local): Jump no debe mandar archivos al puente por internet
+//   (con datos móviles los archivos no van por internet y se quedaban en "enviando"; visto en GitHub)
+const withNet = !!arg('net', false);
+let NET_RELAYS = null;
 const shared = !!arg('shared', false), chain = chainN >= 3, stranger = !!arg('stranger', false), lowBat = !!arg('low-battery', false);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
@@ -43,7 +47,7 @@ async function boot(name, native) {
   const dom = new JSDOM(fs.readFileSync(path.join(dir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously',
     resources: new DistLoader(path.join(dir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
-    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
+    beforeParse(win) { if (NET_RELAYS) win.NEXO_NET_RELAYS = NET_RELAYS; win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
   });
   const win = dom.window;
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);
@@ -69,6 +73,8 @@ const status = (p, text) => { const el = Array.from(p.win.document.querySelector
 async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return Math.round((Date.now() - t0) / 100) / 10; await sleep(250); } return null; }
 
 (async () => {
+  let netRelay = null;
+  if (withNet) { const { NostrRelay } = require('./nostr_relay'); netRelay = new NostrRelay(); NET_RELAYS = [await netRelay.start()]; }
   const radio = new Radio();
   const names = chain ? 'ABCDEFGHIJ'.substring(0, chainN).split('') : ['A', 'B', 'C'];
   const nat = {}, P = {};

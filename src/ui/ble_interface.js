@@ -2561,7 +2561,7 @@ export class BLEInterface {
               return;
             }
             // v6.3.0 Jump: por otro teléfono si hay ruta
-            var rh = self.relay && self.relay.relayHop(uuid);
+            var rh = self.relay && self.relay.relayHop(uuid, { files: true });
             if (rh) {
               deviceId = rh.deviceId;
               meta = Object.assign({}, meta || {}, { dst: uuid });

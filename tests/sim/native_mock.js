@@ -698,6 +698,9 @@ function extractJson(buffer) {
 // WebCrypto real (la de Node) en la ventana de jsdom: el cifrado E2E de la app funciona igual que en
 // el teléfono (sin esto e2eAvailable() es falso y la app no cifraría nada en las pruebas)
 function installWebCrypto(win) {
+  // Internet: sin relés salvo que la prueba ponga los suyos (en GitHub hay salida a internet y los "teléfonos"
+  // se conectaban a los relés públicos de verdad)
+  if (!win.NEXO_NET_RELAYS) win.NEXO_NET_RELAYS = [];
   const wc = require('crypto').webcrypto;
   Object.defineProperty(win, 'crypto', { configurable: true, value: wc });
   const util = require('util');

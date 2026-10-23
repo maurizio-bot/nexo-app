@@ -22,6 +22,7 @@ const SCENARIOS = [
   { name: 'impostor', args: ['impostor.js', '--io-delay=25'], tag: 'IMPOSTOR', checks: {
     A_muestra_mensaje_del_impostor: (v) => v === false, impostor_recibe_algo: (v) => v === false, clave_de_B_intacta: isTrue, errores: isEmpty } },
   { name: 'Jump', args: ['jump.js', '--io-delay=25'], tag: 'JUMP', checks: { estados_A: allDelivered, puentes_leen_algo: isEmpty } },
+  { name: 'Jump con internet por datos móviles', args: ['jump.js', '--io-delay=25', '--net'], tag: 'JUMP', checks: { estados_A: allDelivered, puentes_leen_algo: isEmpty } },
   { name: 'Wi-Fi (escaneo de la red)', args: ['lanscan.js'], tag: 'LANSCAN', checks: {
     encontrado_por: (v) => typeof v === 'string' && v.length > 0, escrituras_bluetooth: (v) => v === 0 } },
   { name: 'internet (relés)', args: ['net.js'], tag: 'NET', checks: {

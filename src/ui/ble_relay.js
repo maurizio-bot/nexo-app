@@ -24,6 +24,8 @@
  * El destino confirma de extremo a extremo con un ack dirigido al origen, que vuelve por las rutas.
  * v2.2: hasta 8 saltos (antes 4): más alcance encadenando teléfonos. Una build anterior en medio sigue
  * descartando lo que llega con más de 4.
+ * v2.3: un vecino conectado por Bluetooth o Wi-Fi local se usa antes que por internet, y los archivos de Jump no van
+ * por internet si este no admite archivos (datos móviles): se quedaban en "enviando" aunque el puente estaba al lado.
  * El contenido va cifrado para el destino (e2e_crypto). v2.1: con remitente sellado ('sx', ble_interface) los puentes
  * solo ven a quién va y los ids, no quién lo manda; el camino de una búsqueda lleva huellas, no NEXO IDs. El primer
  * puente sí sabe qué vecino le entregó el paquete (inevitable en una red de saltos).
@@ -49,6 +51,7 @@ var DEFAULT_HOP_BPS = 4400;       // velocidad útil medida en los teléfonos de
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _mac(m) { return (m || '').toString().toLowerCase().replace(/[:-]/g, '').trim(); }
+function _isNetDev(d) { return /^net/.test(_mac(d)); }
 function _isNx(id) { return /^nx[0-9a-z]{8}$/.test(_nid(id)); }
 // v2.1: el camino de una búsqueda ('rq') no lleva NEXO IDs sino huellas con sal (el id de la búsqueda): sirve para
 // no volver a preguntar a quien ya está en él, sin decir a toda la cadena quién busca. Builds anteriores ponían el
@@ -109,7 +112,8 @@ export class BleRelay {
     ble._deviceStates.forEach(function(st, key) {
       if (st.state !== 'ready_to_chat' && st.state !== 'notifications_ready') return;
       var nx = _nid(ble._macToNexoId && ble._macToNexoId.get(_mac(key)));
-      if (_isNx(nx) && nx !== me && !out.has(nx)) out.set(nx, key);
+      // Por internet solo si no hay otro enlace listo con ese vecino
+      if (_isNx(nx) && nx !== me && (!out.has(nx) || (_isNetDev(out.get(nx)) && !_isNetDev(key)))) out.set(nx, key);
     });
     return out;
   }
@@ -209,23 +213,31 @@ export class BleRelay {
   }
 
   // Siguiente salto hacia un destino: enlace directo si existe; si no, el vecino de la ruta
-  nextHop(dst) {
+  // opts.files: es un archivo; por internet solo si los dos están en Wi-Fi (net.filesOk), si no por Bluetooth
+  nextHop(dst, opts) {
     var d = _nid(dst);
     if (!d) return null;
-    var ble = this.ble;
-    var direct = ble && typeof ble._resolveDeviceIdForNexoId === 'function' ? ble._resolveDeviceIdForNexoId(d) : null;
-    if (direct && this._isReady(direct)) return { deviceId: direct, direct: true, hops: 1 };
+    var ble = this.ble, files = !!(opts && opts.files);
+    var self = this;
+    var usable = function(dev, nx) {
+      if (!dev || !self._isReady(dev)) return null;
+      if (!files || !_isNetDev(dev) || (ble && ble.net && ble.net.filesOk(nx))) return dev;
+      var b = ble && typeof ble._bleReadyFor === 'function' ? ble._bleReadyFor(nx) : null;
+      return b && self._isReady(b) ? b : null;
+    };
+    var direct = usable(ble && typeof ble._resolveDeviceIdForNexoId === 'function' ? ble._resolveDeviceIdForNexoId(d) : null, d);
+    if (direct) return { deviceId: direct, direct: true, hops: 1 };
     var rt = this.routes.get(d);
     if (!rt || Date.now() - rt.ts > ROUTE_TTL_MS) return null;
     if (rt.nearby) return null; // a la vista pero sin conectar: _connectNearby
-    var dev = this.neighbors.get(rt.via);
-    if (!dev || !this._isReady(dev)) return null;
+    var dev = usable(this.neighbors.get(rt.via), rt.via);
+    if (!dev) return null;
     return { deviceId: dev, direct: false, via: rt.via, hops: rt.hops };
   }
 
   // Ruta por otro teléfono (null si hay enlace directo o no hay ruta)
-  relayHop(dst) {
-    var h = this.nextHop(dst);
+  relayHop(dst, opts) {
+    var h = this.nextHop(dst, opts);
     return (h && !h.direct) ? h : null;
   }
 
@@ -378,7 +390,7 @@ export class BleRelay {
     var ack = self.ble && self.ble.ackSystem;
     var sk = item.kind + ':' + item.id + ':' + item.dst;
     if (self._sending.has(sk) || !ack) return;
-    var hop = self.nextHop(item.dst);
+    var hop = self.nextHop(item.dst, { files: item.kind === 'file' });
     // Sin camino: si está a la vista, conectar; si no, buscarlo (con espera creciente) y reintentar
     if (!hop) {
       if (self._seenRecently(item.dst)) self._connectNearby(item.dst);
