@@ -14,7 +14,8 @@ eligió: **relés públicos (opción 3) y Tor (opción 2)**, sin servidor propio
   - Cada evento va dirigido a una **etiqueta que cambia cada día** y que solo esa pareja sabe calcular. El relé no sabe
     quién es quién ni quién habla con quién, y no puede enlazar dos días distintos.
   - Cada evento lo firma una **clave distinta al azar**: no se puede saber que dos eventos son del mismo teléfono.
-  - **Sí ve**: la dirección IP de cada teléfono y cuándo se conecta. Para ocultarla: Tor (fase 2).
+  - **Sí ve**: la dirección IP de cada teléfono y cuándo se conecta. Con Tor (fase 2) los mensajes de la pareja ya no
+    pasan por los relés y el contacto no ve la IP del otro; los saludos y el buzón siguen yendo a los relés.
   - Los relés que piden identificarse para leer mensajes privados (NIP-42) se atienden con la clave de la etiqueta
     del día, no con el NEXO ID.
 - **Buzón**: los eventos quedan guardados en los relés (caducan: textos y confirmaciones 7 días, trozos de archivos
@@ -40,6 +41,29 @@ eligió: **relés públicos (opción 3) y Tor (opción 2)**, sin servidor propio
   - Desde el entorno de desarrollo no se alcanzan los relés públicos (política de red). Las pruebas usan un relé local
     con el mismo protocolo (`tests/sim/nostr_relay.js`). Con relés reales solo se puede confirmar en los teléfonos.
 
-## Fase 2: Tor (pendiente)
-Servicio oculto (.onion) por teléfono con la librería oficial `tor-android` (Guardian Project): los contactos se
-conectan directamente por Tor, sin relés y sin que nadie vea la IP. Más lento y con más batería; la APK crece ~7 MB.
+## Fase 2: Tor — `src/net/net_link.js` + `NexoBlePlugin.kt` (torStart/torConnect/torSend)
+- **Qué es**: cada teléfono arranca Tor (librería oficial `tor-android` del Guardian Project, versión 0.4.9.5) y
+  publica un **servicio oculto** con una dirección `.onion` fija (la clave se guarda en el teléfono, `nexo_tor_key.json`).
+- **Cómo se encuentran**: la `.onion` viaja **dentro del saludo cifrado** de la pareja (campos `o`/`op`). Nadie más la
+  ve. Si los dos tienen Tor, uno llama al otro por Tor y desde entonces todo lo de esa pareja (textos, fotos,
+  confirmaciones) va **directo por Tor**: los relés no reciben nada de esa conversación y **nadie ve la IP** de ninguno.
+- **Lo que siguen haciendo los relés**: saludos (saber quién está en línea y pasar la `.onion`) y buzón cuando el otro
+  no está.
+- **Anti-suplantación**: por Tor viaja el mismo sobre cifrado de la pareja. Un paquete que no se descifra con la clave
+  de ese contacto cierra la conexión (`torDrop`): conocer la `.onion` no basta para hacerse pasar por nadie.
+- **Cuándo**: Tor **arranca solo con Wi-Fi** (bajar el directorio de Tor gasta datos) y solo si hay contactos con
+  internet; si falla, reintenta cada 10 min. Se puede **apagar en Perfil → Internet**.
+- **Por dentro**: `LanHub` (el mismo enlace del Wi-Fi local) escucha solo en 127.0.0.1 y Tor le pasa las conexiones del
+  servicio oculto; para llamar usa el proxy SOCKS de Tor (sin resolver nombres fuera de Tor). Tiempo de conexión
+  hasta 90 s.
+- **Coste**: más lento que los relés (cada paquete da 6 saltos por la red Tor), algo más de batería, y la APK crece por
+  la librería nativa de Tor (solo ARM de 32 y 64 bits).
+- **Versión**: 0.4.9.5 es la más nueva que admite el Gradle del proyecto (AGP 8.2, compileSdk 34), comprobado versión
+  por versión: la 0.4.9.6 pide compileSdk 36, la 0.4.9.6.2 y la 0.4.9.8 piden 37, y desde la 0.4.9.9 (hasta la
+  0.4.9.14) las clases vienen compiladas con Java 24. Además se excluye del Jetifier (`android.jetifier.ignorelist`,
+  también en el workflow, que reescribe `gradle.properties`). Para usar un Tor más nuevo hay que actualizar AGP y
+  compileSdk.
+- **Pruebas** (`tests/sim/net.js --tor`, modelo de Tor en `native_mock.js` con arranque, latencia y ancho de banda):
+  Tor conectado en 1,6 s del modelo, 0 eventos a los relés durante el envío, impostor cerrado y la pareja sigue
+  hablando. `tests/kotlin/LanHubTorTest.kt` prueba `LanHub` con un proxy SOCKS real. **El Tor real solo se puede
+  confirmar en los teléfonos** (desde el entorno de desarrollo no hay salida a la red Tor).

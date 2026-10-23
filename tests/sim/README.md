@@ -175,6 +175,15 @@ A y B se encuentran y van por Wi-Fi sin Bluetooth; al volver a la red se reconec
 `--kotlin-2732` (`opts.lanNoScan`, solo mDNS): nunca se encuentran (el fallo). Kotlin del escaneo: `tests/kotlin`
 (`LanBeaconTest`, UDP real).
 
+`net.js` (A en el Wi-Fi de casa, B en el de la oficina: módems distintos, sin Bluetooth; impostor X): internet por
+relés públicos con un relé Nostr local (`nostr_relay.js`: NIP-01, caducidad NIP-40, identificación NIP-42, firma y id
+comprobados, límite de 64 KB). Comprueba: en línea por internet, textos, texto largo y foto sin Bluetooth, que los relés
+no ven nada (ni texto ni NEXO IDs), una clave distinta por evento, buzón (B cerrado: ✓ al guardarse, llega al volver,
+✓✓), con datos móviles solo textos (la foto espera al Wi-Fi) y que no salga contenido en los registros. `--tor`: los
+dos con Tor (modelo de `native_mock.js`: `torBootMs`, `torLatency`, `torBps`, `noTor`): se pasan la .onion en el saludo
+cifrado, todo va por Tor (0 eventos a los relés durante el envío) y el impostor que conoce la .onion es expulsado.
+Kotlin: `tests/kotlin/LanHubTorTest.kt` (LanHub a través de un proxy SOCKS real).
+
 `lan.js` (A, B, C y un impostor X; misma red Wi-Fi "casa"): Wi-Fi normal y cambio automático de camino. La
 conexión Wi-Fi se comprueba con el cifrado y pasa a ser el camino (textos y fotos sin Bluetooth, nada en claro
 por la red); C (no contacto) no se conecta; sin alcance Bluetooth sigue por Wi-Fi; B sale de la red a mitad de un

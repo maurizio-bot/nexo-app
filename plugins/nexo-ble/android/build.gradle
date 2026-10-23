@@ -51,5 +51,5 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.biometric:biometric:1.1.0'
     // Tor (librería oficial del Guardian Project). Sin su kotlin-stdlib 2.2: el proyecto compila con Kotlin 1.9
-    implementation('info.guardianproject:tor-android:0.4.9.8') { exclude group: 'org.jetbrains.kotlin' }
+    implementation('info.guardianproject:tor-android:0.4.9.5') { exclude group: 'org.jetbrains.kotlin' }
 }

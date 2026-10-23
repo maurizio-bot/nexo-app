@@ -30,7 +30,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Stream** (vídeos tipo TikTok + estados de contactos, gestos: tap arriba izq. vídeos, arriba der. estados, doble tap
   "me gusta", deslizar der→izq comentarios, izq→der volver): **SIN DECIDIR** (sí/no; solo cercanos o con servidor).
 - **Chats de grupo**: no existen todavía.
-- **Datos móviles / internet** (contactos lejos): requiere servidor de relevo (`server/` sin usar). Decisión pendiente.
+- **Internet** (contactos lejos, Wi-Fi de módems distintos): hecho en la ronda 2739 con relés públicos Nostr y Tor
+  (decisión del dueño 23-10, "2 y 3"; ver `docs/INTERNET.md`). Falta: confirmar en los teléfonos (los relés y Tor
+  reales no se alcanzan desde el entorno de desarrollo); recibir por internet con la app en segundo plano (pasar la
+  conexión a la parte nativa); servidor propio si los relés públicos fallan o limitan.
 - **iPhone**: plugin en Swift, cuenta Apple Developer (99 USD/año), Mac o runners macOS, iPhones para probar.
 - **Núcleos** (universidad, papelería, cafetería…) y **caso papelería** (PDF → imprimir → pagar).
 - **Fénix**: hecho en la ronda 2732 el respaldo de los mensajes de texto (fase 2). Falta: fotos, vídeos y archivos
@@ -51,8 +54,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 
 ## 4. Decisiones pendientes del dueño
 1. Stream: ¿sí o no? ¿solo cercanos o con servidor?
-2. Internet / datos móviles (y Wi-Fi entre módems distintos, pedido del dueño 23-10): hace falta un punto de encuentro
-   por internet: ¿servidor propio pequeño (recomendado), Tor como Briar, o relés públicos?
+2. ~~Internet: punto de encuentro~~ — decidido el 23-10: relés públicos + Tor, sin servidor propio por ahora
+   (ronda 2739). Queda abierto si más adelante se quiere un servidor propio.
 3. Pagos: modelo y país.
 4. iPhone: ¿cuenta de Apple?
 5. **Identificador Bluetooth rotativo** (seguridad, punto 9): hoy cualquiera con un escáner ve el NEXO ID en el

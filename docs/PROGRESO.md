@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-23 (build 2734)
+Última actualización: 2026-10-23 (build 2739)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -70,6 +70,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2732 | `fbeaaed` | Jump con más alcance (Bluetooth de largo alcance LE Coded y hasta 8 saltos), Fénix fase 2 (los mensajes de texto se respaldan en 2 contactos y vuelven al recuperar la cuenta), el "+" de agregar ya no falla. APK verificada (firma 23d86688…, sin copias) |
 | 2733 | `d20e1b6` | Compilación de prueba en la rama de trabajo (Kotlin del escaneo de la red), sin release |
 | 2734 | `a5f9d77` | Wi-Fi: escaneo activo de la red (idea del dueño): los teléfonos en el mismo Wi-Fi se encuentran aunque el router no deje pasar el anuncio mDNS. APK verificada (firma 23d86688…, sin copias) |
+| 2735–2738 | | Compilaciones de prueba en la rama de trabajo (Tor): la 2735 y la 2738 fallaron (versiones de tor-android que el Gradle del proyecto no admite), la 2737 compiló con la 0.4.9.5 |
+| 2739 | (este commit) | Internet: relés públicos Nostr (buzón cifrado, etiquetas diarias, sin NEXO IDs) y Tor (servicio oculto, directo y sin IP visible). Wi-Fi de módems distintos = internet antes que Bluetooth. `docs/INTERNET.md` |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -93,6 +95,12 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2739 (internet, decisión del dueño "2 y 3"): con los dos teléfonos en **Wi-Fi de casas distintas** (o uno con datos
+  móviles) y NEXO abierto, la cabecera debe pasar a "En línea · Internet" en menos de un minuto; textos y fotos deben
+  llegar (con datos móviles solo textos; las fotos esperan al Wi-Fi). Con uno cerrado, el texto queda en ✓ y llega al
+  abrirlo (✓✓). Perfil → Internet: estado de los relés y de Tor (Tor tarda hasta un par de minutos la primera vez).
+  Diagnóstico: líneas `[NET]` (relés conectados, "en línea por internet", "Tor listo", "conectado por Tor"). Si no
+  conecta: puede que la red bloquee los relés o Tor; pedir el diagnóstico de los dos.
 - 2734: los dos teléfonos en el mismo Wi-Fi (también con repetidor o red en malla): "En línea · Wi-Fi" en segundos,
   también al apagar y encender el Wi-Fi de uno. Diagnóstico: `[WIFI] nx… está en la misma red (escaneo de la red |
   anuncio mDNS)`. Entre módems distintos sigue sin Wi-Fi hasta decidir el punto de encuentro por internet.
@@ -181,6 +189,29 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2739: internet por relés públicos y Tor (decisión del dueño: "2 y 3 por ahora") — `docs/INTERNET.md`
+- Pedido: "si estoy en Wi-Fi y el otro también, sea el mismo módem o no, la conexión debe ser Wi-Fi" y "con Wi-Fi
+  debería poder llegar a cualquier lado". Entre módems distintos hace falta un punto de encuentro en internet; el dueño
+  eligió relés públicos y Tor, sin servidor propio.
+- `src/net/net_link.js` (nuevo): relés Nostr públicos (cuatro a la vez). Cada pareja tiene un secreto propio (ECDH de
+  las identidades); los eventos van cifrados (AES-GCM) encima del cifrado de siempre, a una etiqueta que cambia cada día
+  y firmados con una clave al azar: el relé no ve texto, tipo de mensaje ni NEXO IDs. Identificación NIP-42 con la
+  clave de la etiqueta. Saludos para saber quién está en línea; buzón con caducidad (✓ al guardarse, ✓✓ al confirmar).
+- Enlace `net:<NEXO ID>` en `ble_interface.js`/`ble_ack.js`: mismo protocolo que Bluetooth/Wi-Fi. Orden: Wi-Fi del
+  mismo router → internet si los dos están en Wi-Fi → Bluetooth → internet con datos móviles (solo textos) → Jump →
+  buzón → pendiente. Solo con contactos que lo anuncian (`nt:1`).
+- Tor (Kotlin, `tor-android` 0.4.9.5): servicio oculto por teléfono; la `.onion` va dentro del saludo cifrado; si los
+  dos tienen Tor, la pareja habla directo por Tor (los relés no reciben nada de la conversación). Lo que no se descifra
+  con la clave del contacto cierra la conexión. Arranca solo con Wi-Fi; se apaga en Perfil → Internet.
+- Compilación: la 0.4.9.13 (clases Java 24) y la 0.4.9.8 (pide compileSdk 37) no compilan con AGP 8.2; la 0.4.9.5 sí
+  (excluida del Jetifier, también en el workflow). Las CPU x86 no se incluyen (solo ARM) para no inflar la APK.
+- Pruebas: `net.js` con un relé Nostr local (`nostr_relay.js`): en línea 0,4 s, texto 0,2 s, foto de 300 KB 2,6 s, 0
+  escrituras Bluetooth, los relés no ven nada, buzón y datos móviles correctos. `net.js --tor`: Tor 1,6 s (modelo),
+  0 eventos a los relés durante el envío, impostor expulsado. JVM: `LanHubTorTest` (SOCKS real). Batería completa
+  (bat30, 53 ejecuciones) igual que la de la 2734.
+- **No comprobado**: relés públicos y red Tor reales (desde el entorno de desarrollo no se alcanzan); recibir por
+  internet con la app en segundo plano (pendiente).
 
 ## Ronda 2734: escaneo de la red Wi-Fi (idea del dueño: "en cuanto tenga Wi-Fi, escanear a través del módem")
 - El dueño pidió que, estando los dos en Wi-Fi, la conexión sea Wi-Fi. Reproducido en `tests/sim/lanscan.js`: con un
