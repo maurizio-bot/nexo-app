@@ -2332,11 +2332,11 @@ class NexoBlePlugin : Plugin() {
                 while (System.currentTimeMillis() - t0 < 180000L) {
                     ctl = svc.torControlConnection
                     val boot = try { ctl?.getInfo("status/bootstrap-phase") ?: "" } catch (e: Exception) { "" }
-                    if (ctl != null && boot.contains("PROGRESS=100") && svc.socksPort > 0) break
+                    if (ctl != null && boot.contains("PROGRESS=100") && svc.getSocksPort() > 0) break
                     Thread.sleep(1000)
                 }
-                if (ctl == null || svc.socksPort <= 0) throw Exception("Tor no terminó de arrancar")
-                val proxy = java.net.Proxy(java.net.Proxy.Type.SOCKS, java.net.InetSocketAddress("127.0.0.1", svc.socksPort))
+                if (ctl == null || svc.getSocksPort() <= 0) throw Exception("Tor no terminó de arrancar")
+                val proxy = java.net.Proxy(java.net.Proxy.Type.SOCKS, java.net.InetSocketAddress("127.0.0.1", svc.getSocksPort()))
                 val hub = torHub ?: LanHub({ nx }, object : LanHub.Listener {
                     override fun onUp(nx: String) { remLog("INFO", "TOR", "Conectado con $nx por Tor"); notifyListeners("onTorUp", JSObject().put("nx", nx), true) }
                     override fun onDown(nx: String) { notifyListeners("onTorDown", JSObject().put("nx", nx), true) }
