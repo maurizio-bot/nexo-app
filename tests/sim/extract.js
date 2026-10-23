@@ -16,8 +16,15 @@ const want = new Set(names), found = [];
 for (const node of ast.body) {
   let n = null;
   if (node.type === 'FunctionDeclaration') n = node.id.name;
-  else if (node.type === 'VariableDeclaration' && node.declarations.length === 1 && node.declarations[0].id.type === 'Identifier') n = node.declarations[0].id.name;
-  if (!n || !want.has(n)) continue;
+  else if (node.type === 'VariableDeclaration' && node.declarations.every((d) => d.id.type === 'Identifier')) {
+    const all = node.declarations.map((d) => d.id.name), some = all.filter((x) => want.has(x));
+    if (!some.length) continue;
+    // var a = 1, b = 2: la sentencia entera o nada
+    if (some.length < all.length) { console.error('La sentencia declara también ' + all.filter((x) => !want.has(x)).join(', ') + ': pídelos todos'); process.exit(1); }
+    n = all.join(',');
+    all.slice(1).forEach((x) => found.push({ n: x, alias: true }));
+  }
+  if (!n || (!want.has(n) && !n.includes(','))) continue;
   // Incluir los comentarios de línea inmediatamente encima (sin línea en blanco de por medio)
   let start = node.range[0];
   while (true) {
@@ -32,25 +39,26 @@ for (const node of ast.body) {
   if (code[end] === '\n') end++;
   found.push({ n, start, end, kind: node.type });
 }
-const missing = names.filter((n) => !found.some((f) => f.n === n));
+const missing = names.filter((n) => !found.some((f) => f.n === n || (f.n.includes(',') && f.n.split(',').includes(n))));
+for (let k = found.length - 1; k >= 0; k--) if (found[k].alias) found.splice(k, 1);
 if (missing.length) { console.error('No encontrados en el primer nivel: ' + missing.join(', ')); process.exit(1); }
 found.sort((a, b) => a.start - b.start);
 // Una variable importada no se puede reasignar: si el resto del origen la modifica, no se mueve
 {
   let rest = code;
   for (const f of found.slice().sort((a, b) => b.start - a.start)) rest = rest.substring(0, f.start) + rest.substring(f.end);
-  const bad = found.filter((f) => f.kind === 'VariableDeclaration').filter((f) => new RegExp('(^|[^\\w$.])' + f.n.replace(/\$/g, '\\$') + '\\s*(=(?!=)|\\+\\+|--|[-+*/%|&^]=)').test(rest) || new RegExp('(\\+\\+|--)' + f.n + '\\b').test(rest));
-  if (bad.length) { console.error('Se modifican en el origen (no se pueden mover solas): ' + bad.map((f) => f.n).join(', ')); process.exit(1); }
+  const bad = found.filter((f) => f.kind === 'VariableDeclaration').flatMap((f) => f.n.split(',')).filter((nm) => new RegExp('(^|[^\\w$.])' + nm.replace(/\$/g, '\\$') + '\\s*(=(?!=)|\\+\\+|--|[-+*/%|&^]=)').test(rest) || new RegExp('(\\+\\+|--)' + nm + '\\b').test(rest));
+  if (bad.length) { console.error('Se modifican en el origen (no se pueden mover solas): ' + bad.join(', ')); process.exit(1); }
 }
 const pieces = found.map((f) => code.substring(f.start, f.end).replace(/^((?:\s*(?:\/\/|\/\*|\*).*\n)*)(async function |function |var |const |let )/, '$1export $2'));
 for (const f of found.slice().reverse()) code = code.substring(0, f.start) + code.substring(f.end);
 // import en el origen, detrás del último import
 const rel = './' + path.relative(path.dirname(src), dst).replace(/\\/g, '/');
-const imp = `import { ${found.map((f) => f.n).join(', ')} } from '${rel.startsWith('./..') ? rel.substring(2) : rel}';\n`;
+const imp = `import { ${found.map((f) => f.n.split(',').join(', ')).join(', ')} } from '${rel.startsWith('./..') ? rel.substring(2) : rel}';\n`;
 const lastImp = [...code.matchAll(/^import .*;\n/gm)].pop();
 const at = lastImp ? lastImp.index + lastImp[0].length : 0;
 code = code.substring(0, at) + imp + code.substring(at);
 fs.writeFileSync(src, code);
 let out = fs.existsSync(dst) ? fs.readFileSync(dst, 'utf8').replace(/\n*$/, '\n\n') : (header ? header.replace(/\n*$/, '\n\n') : '');
 fs.writeFileSync(dst, out + pieces.join('\n'));
-console.log(`Movidos ${found.length} a ${dst}: ${found.map((f) => f.n).join(', ')}`);
+console.log(`Movidos a ${dst}: ${found.map((f) => f.n.split(',').join(', ')).join(', ')}`);
