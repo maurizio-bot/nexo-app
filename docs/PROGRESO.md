@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-23 (build 2739)
+Última actualización: 2026-10-23 (build 2744)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -72,6 +72,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2734 | `a5f9d77` | Wi-Fi: escaneo activo de la red (idea del dueño): los teléfonos en el mismo Wi-Fi se encuentran aunque el router no deje pasar el anuncio mDNS. APK verificada (firma 23d86688…, sin copias) |
 | 2735–2738 | | Compilaciones de prueba en la rama de trabajo (Tor): la 2735 y la 2738 fallaron (versiones de tor-android que el Gradle del proyecto no admite), la 2737 compiló con la 0.4.9.5 |
 | 2739 | `f51dec6` | Internet: relés públicos Nostr (buzón cifrado, etiquetas diarias, sin NEXO IDs) y Tor (servicio oculto, directo y sin IP visible). Wi-Fi de módems distintos = internet antes que Bluetooth. `docs/INTERNET.md`. APK verificada (firma 23d86688…, sin copias, TorService y libtor.so ARM 64/32); pesa 26,9 MB (la 2734, 10 MB) |
+| 2740–2743 | | Compilaciones de prueba en la rama de trabajo (pruebas automáticas en GitHub); la 2740–2742 pararon en las pruebas por el fallo de Jump con internet |
+| 2744 | (este commit) | Pruebas automáticas antes de cada APK, Jump: fotos ya no se atascan con el puente conectado por internet, vista previa sin medio emoji, limpieza (versiones, manifiesto, tarjetas de pago) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -190,6 +192,22 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## Ronda 2744: plan del dueño, puntos 1–3 (limpieza, pruebas en cada build, emojis) — `docs/PENDIENTES.md` §5
+- **Pruebas en cada build**: el workflow tiene un trabajo `tests` (Kotlin JVM, 25 pruebas, y `tests/sim/ci.js`, 9
+  escenarios del simulador en paralelo); si alguno falla no se compila ni se publica la APK y la salida trae los
+  registros. Comprobado que falla con una build vieja (`net.js` con la 40fe10c).
+- **Fallo real encontrado por GitHub**: allí hay salida a internet y los "teléfonos" se conectaban a los relés
+  públicos; Jump mandaba la foto al puente **por internet** (con datos móviles los archivos no van por internet) y
+  se quedaba en "enviando" aunque el puente estaba al lado por Bluetooth. Reproducido con `jump.js --net` (relé
+  local). `ble_relay.js` v2.3: el vecino por Bluetooth o Wi-Fi local antes que por internet, y los archivos de Jump
+  solo por internet si los dos están en Wi-Fi (si no, Bluetooth). Las pruebas ya no usan relés públicos.
+- **Emojis**: llegaban bien (los trozos ya respetaban los emojis), pero la vista previa de la lista y las citas cortaban
+  un emoji por la mitad (salía "�"). Reproducido en `e2e.js` y corregido (`_cut`).
+- **Limpieza**: registros con la versión real (decían v6.1.1 y v3.2.12), fuera `NordicMeshService` (no existe) del
+  manifiesto, tarjetas de pago (función antigua) con el texto escapado.
+- **ID Bluetooth rotativo**: no aplicado (ver PENDIENTES §5 punto 4).
+- Batería completa (bat32, 52 ejecuciones con `jump --net`) sin cambios respecto a la 2739.
+
 ## Ronda 2739: internet por relés públicos y Tor (decisión del dueño: "2 y 3 por ahora") — `docs/INTERNET.md`
 - Pedido: "si estoy en Wi-Fi y el otro también, sea el mismo módem o no, la conexión debe ser Wi-Fi" y "con Wi-Fi
   debería poder llegar a cualquier lado". Entre módems distintos hace falta un punto de encuentro en internet; el dueño
@@ -209,7 +227,7 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pruebas: `net.js` con un relé Nostr local (`nostr_relay.js`): en línea 0,4 s, texto 0,2 s, foto de 300 KB 2,6 s, 0
   escrituras Bluetooth, los relés no ven nada, buzón y datos móviles correctos. `net.js --tor`: Tor 1,6 s (modelo),
   0 eventos a los relés durante el envío, impostor expulsado. JVM: `LanHubTorTest` (SOCKS real). Batería completa
-  (bat30, 53 ejecuciones) igual que la de la 2734.
+  (bat30, 51 ejecuciones) igual que la de la 2734.
 - **No comprobado**: relés públicos y red Tor reales (desde el entorno de desarrollo no se alcanzan); recibir por
   internet con la app en segundo plano (pendiente).
 

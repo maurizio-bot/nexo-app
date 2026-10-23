@@ -8,6 +8,7 @@ reensamblado JSON de `processReceivedChunk`, eventos y su orden).
 cd tests/sim && npm install          # una vez (jsdom)
 ./build.sh            # compila el árbol de trabajo en builds/wip
 node run.js builds/wip --content-fallback
+node ci.js builds/wip                # las pruebas que corre GitHub antes de publicar (CI_ONLY=texto para algunas)
 ./build.sh 04960e2 && node run.js builds/04960e2   # comparar con otra versión
 ```
 
@@ -191,3 +192,10 @@ archivo y termina por Bluetooth idéntico; caída silenciosa detectada por el la
 la red devuelve el Wi-Fi; un impostor con la marca de A nunca se comprueba y se cierra. `native_mock` modela la
 red (`opts.wifi`, `setWifi`, `lanSilent`, `lanBps`). La parte nativa (LanHub) se prueba con sockets reales en
 `tests/kotlin`.
+
+`ci.js` (GitHub, trabajo `tests` del workflow): textos/archivo/sin conexión, E2E (con emojis y acentos), impostor,
+Jump, Jump con internet por datos móviles (`jump.js --net`), escaneo de la red Wi-Fi, internet por relés y por Tor y
+Double Ratchet. Si alguna falla, no se compila la APK y la salida incluye los registros de la prueba. Por defecto los
+"teléfonos" no usan relés de internet (`installWebCrypto` pone `NEXO_NET_RELAYS = []`): en GitHub hay salida a internet
+y se conectaban a los relés públicos de verdad.
+

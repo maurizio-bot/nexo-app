@@ -48,8 +48,9 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   Wi-Fi; Jump con la app en segundo plano o cerrada.
 - **Seguridad (resto de la fase 3)**: identificador Bluetooth rotativo (falta decisión, ver 4). Hechos en la
   ronda 2730: remitente oculto a los puentes, poscuántico (ML-KEM) y QR del número de seguridad.
-- **Fiabilidad**: recibir con la app cerrada del todo (servidor GATT en el BleService); limpiar el manifiesto
-  (`NordicMeshService` inexistente, falta `@capacitor/app`); emojis/acentos en trozos; escapar nombres en la lista.
+- **Fiabilidad**: recibir con la app cerrada del todo (servidor GATT en el BleService); falta `@capacitor/app`.
+  Hecho en la ronda 2744: fuera `NordicMeshService` del manifiesto, emojis y acentos (prueba en `e2e.js`; la vista
+  previa partía emojis), nombres ya iban como texto en la lista.
 - **Base estable nueva** (≥ 2725) cuando el dueño confirme.
 
 ## 4. Decisiones pendientes del dueño
@@ -67,3 +68,20 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
    ¿Te parece?
 6. Orden propuesto: lo que falle en sus pruebas → velocidad (binario, L2CAP) → llamadas de voz → Jump de más
    alcance → seguridad restante → grupos → videollamadas.
+
+## 5. Plan del dueño (23-10): completar lo que falta y mejorar los puntos débiles de la comparativa (sin iPhone)
+De lo más simple a lo más complejo. Estado:
+1. ✅ (2744) Limpieza: versiones reales en los registros, fuera `NordicMeshService`, tarjetas de pago escapadas.
+2. ✅ (2744) Pruebas en cada build: trabajo `tests` en el workflow (Kotlin JVM + `tests/sim/ci.js`, 9 escenarios); si
+   falla, no hay APK. Ya encontró un fallo real (Jump + internet, ver ronda 2744).
+3. ✅ (2744) Emojis y acentos: llegan idénticos; la vista previa ya no parte emojis.
+4. ID Bluetooth rotativo: **no aplicado**. El dueño lo autorizó solo si es seguro que no da problemas; no lo es:
+   la recuperación de Fénix busca a los contactos por el NEXO ID que anuncian y un teléfono recién recuperado
+   todavía no sabría reconocer un ID rotativo; también afecta a agregar desconocidos, a Jump con desconocidos y a
+   teléfonos con builds viejas. Hace falta un diseño con pruebas de esos casos antes de decidir.
+5. Actualizar AGP/compileSdk (Tor más nuevo). 6. Dividir `main.js` y `ble_interface.js`. 7. Bluetooth sin base64.
+8. Detectar MTU pequeño. 9. Fénix para fotos/vídeos/archivos. 10. Jump por Wi-Fi.
+11. Recibir por internet en segundo plano. 12. Recibir por Bluetooth con la app cerrada. 13. L2CAP.
+14. Grupos. 15. Varios dispositivos. 16. Llamadas de voz. 17. Videollamadas.
+18–20 (del dueño): pruebas reales con 3–4 teléfonos, auditoría externa, Play Store.
+
