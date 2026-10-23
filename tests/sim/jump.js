@@ -107,6 +107,13 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   // Rutas: esperar a que A tenga ruta al destino (con un desconocido en medio la busca al enviar)
   if (!stranger) r.ruta_lista_s = await waitFor(() => !!P.A.win.bleInterface.relay.relayHop(id(dest).toLowerCase()), 60000);
   const airBefore = Object.keys(air).reduce((o, k) => { o[k] = air[k].length; return o; }, {});
+  // Remitente sellado: todo lo que los puentes reciben a partir de aquí (paquetes completos)
+  const seenByBridge = {};
+  names.filter((n) => n !== 'A' && n !== dest).forEach((b) => {
+    const bi = P[b].win.bleInterface, orig = bi._prePayload.bind(bi);
+    seenByBridge[b] = [];
+    bi._prePayload = (d) => { seenByBridge[b].push(String((d && (d.content || d.data)) || '')); return orig(d); };
+  });
   const badgeB0 = P.B.win.bleInterface.newDevicesCount || 0;
 
   // A escribe al destino: corto, largo y foto
@@ -148,6 +155,21 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   // Los puentes no lo ven ni lo guardan
   const bridges = names.filter((n) => n !== 'A' && n !== dest);
   r.puentes_leen_algo = bridges.filter((b) => air[b].slice(airBefore[b] || 0).join('\n').match(/SECRETO|abcdefghijabcdefghij|respuesta de/));
+  // ¿Ven los puentes quién manda lo que va para el destino? (NEXO ID o nombre de A en paquetes para el destino)
+  {
+    const idAl = id('A').toLowerCase(), dl = id(dest).toLowerCase();
+    r.puentes_ven_remitente = [];
+    r.sobres_sellados_vistos = 0;
+    for (const b of Object.keys(seenByBridge)) {
+      for (const raw of seenByBridge[b]) {
+        let o = null; try { o = JSON.parse(raw); } catch (e) { continue; }
+        const forDest = String(o.to || o.dt || '').toLowerCase() === dl;
+        if (o.type === 'sx') r.sobres_sellados_vistos++;
+        if (forDest && (raw.toLowerCase().indexOf(idAl) >= 0 || /"f":"A"/.test(raw))) { r.puentes_ven_remitente.push(b + ':' + (o.type || o.t)); }
+      }
+    }
+    r.puentes_ven_remitente = Array.from(new Set(r.puentes_ven_remitente));
+  }
   r.puentes_muestran_algo = [];
   for (const b of bridges) {
     const all = [];

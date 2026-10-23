@@ -2,6 +2,8 @@ import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
+* v3.11.0: remitente sellado por Jump: el nombre y el NEXO ID de quien manda un flujo van en un sobre para el destino
+*         (meta.sealedFrom → fr "sx:…"); las confirmaciones dirigidas también (ble._sealObj).
 * v3.10.0: Wi-Fi normal (lan.js): por un enlace "lan:<NEXO ID>" van trozos grandes y los archivos sin Wi-Fi Direct;
 *         si el Wi-Fi se cae a mitad, el envío sigue por Bluetooth (useLink).
 * v3.9.0: cada trozo lleva su comprobación (k): uno dañado por el camino se vuelve a pedir en vez de aceptarse
@@ -181,11 +183,15 @@ export class BleAckSystem {
         .then(function(t) { return e2eSealText(t, content, self._outAd(t, cid)); }))
         .then(function(enc) { return self.sendChunkedMessage(deviceId, enc, meta, cid, seq); });
     }
+    if (dst && content.length > 150 && !(meta && 'sealedFrom' in meta)) {
+      return self._withSealedFrom(Object.assign({}, meta)).then(function(m2) { return self.sendChunkedMessage(deviceId, content, m2, messageId, seq); });
+    }
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
       var senderId = (self.ble && self.ble.localNexoId) || ((self.ble && self.ble.localDeviceUUID) ? self.ble.localDeviceUUID : 'unknown');
       var fromName = (self.ble && self.ble.localDeviceName) || 'NEXO';
       var ts = Date.now();
+      if (meta && meta.sealedFrom) { senderId = meta.sealedFrom; fromName = ''; }
       var finalMeta = Object.assign({}, meta || {}, { f: fromName, fr: senderId, ts: ts });
       if (typeof seq !== 'number') {
         seq = (self.ble && typeof self.ble.getNextSeq === 'function') ? self.ble.getNextSeq() : 0;
@@ -223,10 +229,32 @@ export class BleAckSystem {
         var em = Object.assign({}, m);
         if (r[1]) em.thumb = r[1];
         if (r[2]) em.name = r[2];
-        return self._sendFileBest(deviceId, fileId, r[0], em);
+        return self._withSealedFrom(em).then(function(em2) { return self._sendFileBest(deviceId, fileId, r[0], em2); });
       });
     }
     return self._sendFileBest(deviceId, fileId, base64Data, meta);
+  }
+  // v3.11.0: por Jump (meta.dst) a un contacto que entiende el remitente sellado: nombre y NEXO ID en sobre
+  _withSealedFrom(meta) {
+    var self = this, ble = self.ble;
+    if (!meta || !meta.dst || meta.sealedFrom || !ble || typeof ble.sealedFrom !== 'function') return Promise.resolve(meta || {});
+    return ble.sealedFrom(meta.dst, ble.localDeviceName || 'NEXO', ble.localNexoId).then(function(sf) {
+      meta.sealedFrom = sf || null;
+      return meta;
+    }).catch(function() { meta.sealedFrom = null; return meta; });
+  }
+  // Receptor: el remitente de un flujo llegó sellado ("sx:…"): se abre (una vez) y se pone en la cabecera
+  _unsealFrom(buf) {
+    var self = this, fr = buf && buf.meta && buf.meta.fr;
+    if (!fr || String(fr).indexOf('sx:') !== 0 || !self.ble || typeof self.ble.openSealedFrom !== 'function') return Promise.resolve(buf);
+    if (!buf._unsealing) {
+      buf._unsealing = self.ble.openSealedFrom(fr).then(function(o) {
+        buf.meta.fr = buf.meta.senderNexoId = buf.meta.fromNexoId = o.fr;
+        if (o.f) buf.meta.f = o.f;
+        return buf;
+      }).catch(function(e) { console.warn('[JUMP] Remitente sellado ilegible: ' + (e && e.message)); buf.meta.badSeal = true; return buf; });
+    }
+    return buf._unsealing;
   }
   // v3.10.0: se cayó el Wi-Fi con un contacto (oldId "lan:<nx>"). Lo que iba por él sigue por `next` (Bluetooth);
   // lo que no cabe por Bluetooth (vídeo original, archivo grande) o si no hay Bluetooth, se para con WD_FAILED /
@@ -253,6 +281,8 @@ export class BleAckSystem {
     var senderId = (this.ble && this.ble.localNexoId) || ((this.ble && this.ble.localDeviceUUID) ? this.ble.localDeviceUUID : 'unknown');
     var fromName = (this.ble && this.ble.localDeviceName) || 'NEXO';
     var seq = (this.ble && typeof this.ble.getNextSeq === 'function') ? this.ble.getNextSeq() : 0;
+    // v3.11.0: por Jump con remitente sellado, el nombre y el NEXO ID van en el sobre (meta.sealedFrom)
+    if (meta && meta.sealedFrom) { fromName = ''; senderId = meta.sealedFrom; }
     return Object.assign({}, meta || {}, {
       f: fromName,
       fr: senderId,
@@ -493,6 +523,18 @@ export class BleAckSystem {
     // Jump: va para otro teléfono → hacer de puente (no se muestra ni se descifra aquí)
     var relay = self.ble && self.ble.relay;
     if (relay && buf.meta.dst && relay.onStreamComplete(buf.isChat ? 'chat' : 'file', msgId, assembled, buf.meta, deviceId)) return;
+    // v3.11.0: remitente sellado: abrir antes de seguir
+    if (String(buf.meta.fr || '').indexOf('sx:') === 0) {
+      self._unsealFrom(buf).then(function() {
+        if (buf.meta.badSeal) return;
+        self._finishAssembly(buf, deviceId, buf.meta.fr, msgId, assembled);
+      });
+      return;
+    }
+    self._finishAssembly(buf, deviceId, senderId, msgId, assembled);
+  }
+  _finishAssembly(buf, deviceId, senderId, msgId, assembled) {
+    var self = this;
     // Llegó por otro teléfono: confirmación de extremo a extremo al origen
     if (buf.meta.hp > 0 && buf.meta.fr) self.sendAck(deviceId, msgId, buf.meta.fr);
     if (buf.isChat) {
@@ -914,6 +956,11 @@ export class BleAckSystem {
   }
   _sendRouted(obj, fallbackDeviceId) {
     var relay = this.ble && this.ble.relay;
+    // v3.11.0: en sobre sellado para el destino si lo entiende (el puente no ve de quién es la confirmación)
+    if (relay && this.ble && typeof this.ble._sealObj === 'function') {
+      this.ble._sealObj(obj.to, obj).then(function(o) { relay.sendRouted(o); }).catch(function() { relay.sendRouted(obj); });
+      return;
+    }
     if (relay) { relay.sendRouted(obj); return; }
     if (fallbackDeviceId && this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(fallbackDeviceId, JSON.stringify(obj), null).catch(function(){});
   }
@@ -1041,6 +1088,7 @@ export class BleAckSystem {
   // v3.3.2: progreso de recepción (cada 5 %) para mostrar "Recibiendo foto… N%" mientras llega
   _reportIncomingProgress(msgId, buf, status) {
     if (buf.isChat || buf.meta.type === 'fenix') return;
+    if (String(buf.meta.fr || '').indexOf('sx:') === 0) { this._unsealFrom(buf); return; } // aún sellado: se abre
     var me = _normId(this.ble && this.ble.localNexoId);
     if (buf.meta.dst && _normId(buf.meta.dst) !== me) return; // de paso (Jump): no es para este teléfono
     var pct = status === 'failed' ? 0 : Math.floor(buf.received * 100 / buf.total);

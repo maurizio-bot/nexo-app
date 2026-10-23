@@ -1,5 +1,5 @@
 /**
- * ble_relay.js v2.0 — Jump: mensajes de varios saltos (A → B → C) por cualquier teléfono NEXO a alcance.
+ * ble_relay.js v2.1 — Jump: mensajes de varios saltos (A → B → C) por cualquier teléfono NEXO a alcance.
  *
  * v2.0 (bajo demanda, cualquier teléfono NEXO): cada teléfono anota los NEXO que ve al escanear
  * (contactos o no). Si un mensaje no tiene camino, pregunta a los cercanos ('rq': ¿quién llega a X?,
@@ -22,7 +22,9 @@
  * número de saltos ('hp'). El puente confirma que lo guarda (custodia: 'rk' o el ack final del flujo),
  * lo apunta en una cola persistente y lo reenvía hacia el destino; si no hay ruta, espera (hasta 24 h).
  * El destino confirma de extremo a extremo con un ack dirigido al origen, que vuelve por las rutas.
- * El contenido va cifrado para el destino (e2e_crypto): los puentes solo ven quién, a quién y los ids.
+ * El contenido va cifrado para el destino (e2e_crypto). v2.1: con remitente sellado ('sx', ble_interface) los puentes
+ * solo ven a quién va y los ids, no quién lo manda; el camino de una búsqueda lleva huellas, no NEXO IDs. El primer
+ * puente sí sabe qué vecino le entregó el paquete (inevitable en una red de saltos).
  */
 var MAX_HOPS = 4;
 var AD_INTERVAL_MS = 30000;
@@ -46,6 +48,15 @@ var DEFAULT_HOP_BPS = 4400;       // velocidad útil medida en los teléfonos de
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _mac(m) { return (m || '').toString().toLowerCase().replace(/[:-]/g, '').trim(); }
 function _isNx(id) { return /^nx[0-9a-z]{8}$/.test(_nid(id)); }
+// v2.1: el camino de una búsqueda ('rq') no lleva NEXO IDs sino huellas con sal (el id de la búsqueda): sirve para
+// no volver a preguntar a quien ya está en él, sin decir a toda la cadena quién busca. Builds anteriores ponían el
+// NEXO ID: se aceptan los dos.
+function _pathTag(id, nx) {
+  var s = String(id) + '|' + _nid(nx), h = 0x811c9dc5;
+  for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return 'h' + h.toString(36);
+}
+function _inPath(path, id, nx) { return path.indexOf(_nid(nx)) >= 0 || path.indexOf(_pathTag(id, nx)) >= 0; }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 
 export class BleRelay {
@@ -257,7 +268,8 @@ export class BleRelay {
     if (!to || to === me || !_isNx(to)) return false;
     self._touch(deviceId);
     // Batería baja: no hace de puente para mensajes nuevos (sin custodia: el emisor buscará otro camino)
-    if (p.type === 'chat' && !self.canRelay()) { console.warn('[JUMP] Batería baja: no hago de puente para ' + p.msgId); return true; }
+    var isMsg = p.type === 'chat' || p.type === 'sx'; // 'sx': sobre sellado (remitente oculto)
+    if (isMsg && !self.canRelay()) { console.warn('[JUMP] Batería baja: no hago de puente para ' + p.msgId); return true; }
     // Paquete para otro teléfono: hacer de puente
     var hp = (Number(p.hp) || 0) + 1;
     var id = p.msgId || (p.type + ':' + (p.from || '') + ':' + (p.ts || ''));
@@ -266,14 +278,14 @@ export class BleRelay {
       if (p.type === 'ack' && self.ble.ackSystem) self.ble.ackSystem.resolveHopQuiet(p.msgId);
     }
     if (hp > MAX_HOPS) { console.warn('[JUMP] Descartado (demasiados saltos): ' + id); return true; }
-    var isChat = p.type === 'chat';
+    var isChat = isMsg;
     if (isChat) self._sendCustody(deviceId, p.msgId);
     var key = p.type + ':' + id;
     if (self.seen.has(key)) return true;
     self.seen.set(key, Date.now());
     p.hp = hp;
     var item = { id: id, kind: 'pkt', reliable: isChat, dst: to, origin: _nid(p.from), data: JSON.stringify(p), prev: _mac(deviceId), ts: Date.now(), tries: 0 };
-    console.log('[JUMP] Puente: ' + p.type + ' ' + id + ' de ' + item.origin + ' para ' + to + ' (salto ' + hp + ')');
+    console.log('[JUMP] Puente: ' + p.type + ' ' + id + (item.origin ? ' de ' + item.origin : '') + ' para ' + to + ' (salto ' + hp + ')');
     self._enqueue(item);
     return true;
   }
@@ -300,8 +312,9 @@ export class BleRelay {
     });
     m.dst = to;
     m.hp = hp;
-    var item = { id: msgId, kind: kind, dst: to, origin: _nid(meta.fr), meta: m, ref: 'nexo_relay_' + String(msgId).replace(/[^A-Za-z0-9_]/g, '') + '.dat', prev: _mac(deviceId), ts: Date.now(), tries: 0 };
-    console.log('[JUMP] Puente: ' + kind + ' ' + msgId + ' (' + Math.round(data.length / 1024) + ' KB) de ' + item.origin + ' para ' + to + ' (salto ' + hp + ')');
+    var sealed = String(meta.fr || '').indexOf('sx:') === 0;
+    var item = { id: msgId, kind: kind, dst: to, origin: sealed ? '' : _nid(meta.fr), meta: m, ref: 'nexo_relay_' + String(msgId).replace(/[^A-Za-z0-9_]/g, '') + '.dat', prev: _mac(deviceId), ts: Date.now(), tries: 0 };
+    console.log('[JUMP] Puente: ' + kind + ' ' + msgId + ' (' + Math.round(data.length / 1024) + ' KB)' + (item.origin ? ' de ' + item.origin : '') + ' para ' + to + ' (salto ' + hp + ')');
     item._data = data;
     item.size = data.length;
     var pl = _plugin();
@@ -527,7 +540,7 @@ export class BleRelay {
     // Espera creciente mientras no aparezca camino (45 s, 90 s, 3 min… máx. 10 min): no gastar batería
     self._discoverWait.set(d, Math.min(600000, wait * 2));
     var id = 'q' + now.toString(36) + Math.random().toString(36).substr(2, 5);
-    var disc = { dst: d, ts: now, sent: new Set(), ttl: MAX_HOPS - 1, path: [self.me()] };
+    var disc = { dst: d, ts: now, sent: new Set(), ttl: MAX_HOPS - 1, path: [_pathTag(id, self.me())] };
     self.discoveries.set(id, disc);
     self.seen.set('rq:' + id, now);
     console.log('[JUMP] Buscando camino hacia ' + d);
@@ -543,11 +556,11 @@ export class BleRelay {
     // ¿El destino está a la vista? Conectar directo (no hace falta puente)
     if (self._seenRecently(disc.dst)) { self._connectNearby(disc.dst); }
     self.neighbors = self._computeNeighbors();
-    self.neighbors.forEach(function(dev, nx) { if (disc.path.indexOf(nx) < 0) self._sendRq(id, disc, nx, dev); });
+    self.neighbors.forEach(function(dev, nx) { if (!_inPath(disc.path, id, nx)) self._sendRq(id, disc, nx, dev); });
     if (connectedOnly) return;
     var cands = [];
     self.nearby.forEach(function(n, nx) {
-      if (nx === disc.dst || disc.path.indexOf(nx) >= 0 || self.neighbors.has(nx) || Date.now() - n.ts > NEARBY_TTL_MS) return;
+      if (nx === disc.dst || _inPath(disc.path, id, nx) || self.neighbors.has(nx) || Date.now() - n.ts > NEARBY_TTL_MS) return;
       cands.push({ nx: nx, n: n });
     });
     cands.sort(function(a, b) { return b.n.rssi - a.n.rssi; });
@@ -556,7 +569,7 @@ export class BleRelay {
 
   _sendRq(id, disc, nx, dev) {
     var self = this;
-    if (!self.capable.has(nx) || disc.sent.has(nx) || nx === disc.dst || disc.path.indexOf(nx) >= 0) return;
+    if (!self.capable.has(nx) || disc.sent.has(nx) || nx === disc.dst || _inPath(disc.path, id, nx)) return;
     disc.sent.add(nx);
     self._touch(dev);
     var pkt = { v: 1, type: 'rq', id: id, from: self.me(), dst: disc.dst, ttl: disc.ttl, path: disc.path };
@@ -576,7 +589,7 @@ export class BleRelay {
     if (hops !== null) { self._sendRp(id, d, hops, deviceId); return; }
     var ttl = Number(p.ttl) || 0;
     if (ttl <= 1) return;
-    var path = (Array.isArray(p.path) ? p.path : []).map(_nid).concat([me]).slice(0, MAX_HOPS + 1);
+    var path = (Array.isArray(p.path) ? p.path : []).map(_nid).concat([_pathTag(id, me)]).slice(0, MAX_HOPS + 1);
     var disc = { dst: d, ts: now, sent: new Set(), ttl: ttl - 1, path: path };
     // Escanear (si hace falta) por si el destino está cerca de aquí; si no, preguntar más allá
     self._scan().then(function() {

@@ -1,4 +1,4 @@
-import { initE2E, e2eMyPublicKey } from '../vault/e2e_crypto.js';
+import { initE2E, e2eMyPublicKey, e2eSealAnon, e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eOpenText, e2eAllowsE1 } from '../vault/e2e_proto.js';
 import { ratchetInit, ratchetMyBundle, ratchetNotePeerBundle, ratchetForget, ratchetResetPeer } from '../vault/e2e_ratchet.js';
 import { createRelay } from './ble_relay.js';
@@ -6,7 +6,10 @@ import { createWifiDirect } from './wifi_direct.js';
 import { createLan } from './lan.js';
 import { createFenix } from '../fenix/fenix.js';
 /**
- * BLE Interface v6.10.0-NEXO
+ * BLE Interface v6.11.0-NEXO
+ * v6.11.0: remitente sellado (como el "sealed sender" de Signal): lo que va por Jump a un contacto que lo entiende
+ *         (kx ss:1) viaja en un sobre anónimo para el destino (S1, e2e_crypto): los puentes ven a quién va, no quién lo
+ *         manda. También las confirmaciones dirigidas, el kx dirigido y el remitente de los flujos.
  * v6.10.0: Wi-Fi normal (lan.js): un contacto en la misma red es el enlace "lan:<NEXO ID>", preferido sobre
  *         Bluetooth; si se cae, lo pendiente sigue por Bluetooth / Jump (_lanUp, _lanDown, _onLanPayload, linkOf).
  * v6.9.1: un paquete dañado (JSON roto o trozo suelto) se descarta; antes salía en el chat como texto.
@@ -1459,6 +1462,21 @@ export class BLEInterface {
       try { pf = JSON.parse(raw); } catch (e) {}
       if (pf && !pf.to && self.fenix.handle(pf, data.deviceId)) return Promise.resolve(null);
     }
+    // v6.11.0: sobre sellado para este teléfono (remitente oculto a los puentes): se abre y se procesa lo de dentro
+    if (raw.indexOf('"type":"sx"') >= 0) {
+      var ps = null;
+      try { ps = JSON.parse(raw); } catch (e) {}
+      if (ps && ps.type === 'sx' && _normId(ps.to) === _normId(self.localNexoId)) {
+        return e2eOpenAnon(ps.c).then(function(inner) {
+          var ip = null;
+          try { ip = JSON.parse(inner); } catch (e) {}
+          if (!ip || typeof ip !== 'object') return null;
+          if (Number(ps.hp) > 0) ip.hp = Number(ps.hp); // saltos del sobre (la confirmación vuelve por las rutas)
+          var txt = JSON.stringify(ip);
+          return self._prePayload(Object.assign({}, data, { content: txt, data: txt, sealed: true }));
+        }).catch(function(e) { console.warn('[JUMP] Sobre sellado ilegible: ' + (e && e.message)); return null; });
+      }
+    }
     var jump = /"to":"nx/i.test(raw) || /"type":"r[tkqp]"/.test(raw);
     if (!jump && raw.indexOf('"type":"kx"') < 0 && raw.indexOf('E1:') < 0 && raw.indexOf('E2:') < 0) return Promise.resolve(data);
     var p;
@@ -1473,6 +1491,7 @@ export class BLEInterface {
         // cambiar una clave ya conocida)
         if (p.from && p.pk && !self._contactKey(p.from)) self._noteSenderKey(p.from, p.pk);
         if (p.from && p.b2) self._notePeerBundle(p.from, p.b2);
+        if (p.ss && p.from) self._noteSealPeer(p.from);
         if (p.rq) self._sendKxRouted(p.from, false);
         return Promise.resolve(null);
       }
@@ -1483,6 +1502,7 @@ export class BLEInterface {
       if (p.j && self.relay) self.relay.markCapable(p.from);
       if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs);
       if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId);
+      if (p.ss && p.from) self._noteSealPeer(p.from);
       if (p.wd && self.wifiDirect) self.wifiDirect.markPeer(p.from);
       else if (self.wifiDirect) self.wifiDirect.unmarkPeer(p.from); // ya no lo anuncia (p.ej. sin permiso)
       // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
@@ -1531,6 +1551,7 @@ export class BLEInterface {
       var pkt = { v: 1, type: 'kx', from: self.localNexoId, pk: pk, j: 1 };
       if (b2) pkt.b2 = b2;
       pkt.fx = 1;
+      pkt.ss = 1; // entiende el remitente sellado (sobres 'sx' por Jump)
       var rs = self.fenix ? self.fenix.resetMark() : 0;
       if (rs) pkt.rs = rs;
       if (self.wifiDirect && self.wifiDirect.supported()) pkt.wd = 1;
@@ -1580,6 +1601,41 @@ export class BLEInterface {
     if (this._noteSenderKey(nx, key) === false) return 'hold';
     if (proto === 2) this._markProto2(nx, key);
     return 'ok';
+  }
+
+  // ===== v6.11.0: remitente sellado (Jump) =====
+  // El contacto entiende los sobres 'sx' (lo dijo en su kx)
+  _noteSealPeer(nexoId) {
+    var nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (c && !c.ss) { c.ss = 1; _saveBLEContacts(contacts); }
+  }
+  // Clave para sellar a este contacto (solo si lo entiende y su clave está aceptada)
+  _sealKeyFor(nexoId) {
+    var nx = _normId(nexoId);
+    var c = _getBLEContacts().find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    return (c && c.ss && c.publicKey && !c.pendingKey) ? c.publicKey : null;
+  }
+  // Paquete (texto JSON) en sobre para nexoId: { v, type:'sx', to, msgId, c } (msgId: el de dentro si es un mensaje,
+  // para la custodia del puente; si no, uno al azar). Sin clave o si no lo entiende, tal cual.
+  _sealString(nexoId, json, msgId) {
+    var nx = _normId(nexoId), key = this._sealKeyFor(nx);
+    if (!key) return Promise.resolve(json);
+    var id = msgId || ('sx' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6));
+    return e2eSealAnon(key, json).then(function(c) { return JSON.stringify({ v: 1, type: 'sx', to: nx, msgId: id, c: c }); });
+  }
+  _sealObj(nexoId, obj) {
+    return this._sealString(nexoId, JSON.stringify(obj), null).then(function(s) { return JSON.parse(s); });
+  }
+  // Remitente de un flujo (texto largo, foto, archivo) por Jump: "sx:" + sobre con { f, fr } (o null)
+  sealedFrom(nexoId, f, fr) {
+    var key = this._sealKeyFor(nexoId);
+    if (!key) return Promise.resolve(null);
+    return e2eSealAnon(key, JSON.stringify({ f: f || '', fr: fr || '' })).then(function(c) { return 'sx:' + c; });
+  }
+  openSealedFrom(sealed) {
+    return e2eOpenAnon(String(sealed).substring(3)).then(function(t) { var o = JSON.parse(t); return { f: String(o.f || ''), fr: _normId(o.fr) }; });
   }
 
   // Fénix: el contacto lo tiene (puede guardar fragmentos); se recuerda en el contacto
@@ -2053,13 +2109,23 @@ export class BLEInterface {
         }
         outgoing = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj });
       }
-      if (viaLan) { self.lan.send(viaLan, outgoing).then(resolve).catch(reject); return; }
-      _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: outgoing })
-        .then(function(r) {
-          if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._mtuByDevice.set(_normMac(targetId), r.mtu);
-          resolve(r);
-        })
-        .catch(reject);
+      var send = function(out) {
+        if (viaLan) { self.lan.send(viaLan, out).then(resolve).catch(reject); return; }
+        _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: out })
+          .then(function(r) {
+            if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._mtuByDevice.set(_normMac(targetId), r.mtu);
+            resolve(r);
+          })
+          .catch(reject);
+      };
+      // v6.11.0: por Jump (dst), en sobre sellado para el destino: los puentes no ven quién lo manda
+      if (dst && !_isControlPacket(content)) {
+        var mid = null;
+        try { mid = JSON.parse(outgoing).msgId; } catch (e) {}
+        self._sealString(dst, outgoing, mid).then(send).catch(function() { send(outgoing); });
+        return;
+      }
+      send(outgoing);
     });
   }
 
@@ -2163,10 +2229,10 @@ export class BLEInterface {
     initE2E().then(function() { return ratchetMyBundle().catch(function() { return null; }); }).then(function(b2) {
       var pk = e2eMyPublicKey();
       if (!pk || !self.localNexoId) return;
-      var pkt = { v: 1, type: 'kx', from: _normId(self.localNexoId), to: nx, pk: pk, msgId: 'kx_' + now };
+      var pkt = { v: 1, type: 'kx', from: _normId(self.localNexoId), to: nx, pk: pk, msgId: 'kx_' + now, ss: 1 };
       if (b2) pkt.b2 = b2;
       if (request) pkt.rq = 1;
-      self.relay.sendRouted(pkt);
+      return self._sealObj(nx, pkt).then(function(o) { self.relay.sendRouted(o); });
     }).catch(function() {});
   }
 

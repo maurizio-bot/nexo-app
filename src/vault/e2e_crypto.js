@@ -123,6 +123,41 @@ async function _decryptBytes(packed) {
   return { bytes: new Uint8Array(pt), senderKey: parts[1] };
 }
 
+// v2729 (remitente sellado, Jump): sobre anónimo para un destinatario. Clave efímera nueva en cada sobre + la clave
+// de identidad del destinatario (ECDH P-256 → HKDF → AES-256-GCM). A diferencia de E1, no lleva la clave del
+// remitente: quien lo ve pasar (un puente) no sabe quién lo manda. Formato "S1:<efímera>:<iv>:<cifrado>"; datos
+// adicionales: el destinatario (no se puede reenviar a otro).
+var SEAL_PREFIX = 'S1:';
+export function e2eIsSealed(s) { return typeof s === 'string' && s.indexOf(SEAL_PREFIX) === 0; }
+export async function e2eSealAnon(peerPubB64, text) {
+  var subtle = _subtle();
+  await initE2E();
+  var eph = await subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  var ephPub = new Uint8Array(await subtle.exportKey('raw', eph.publicKey));
+  var peer = await subtle.importKey('raw', _b64ToBytes(peerPubB64), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  var key = await _sealKey(await subtle.deriveBits({ name: 'ECDH', public: peer }, eph.privateKey, 256), _bytesToB64(ephPub), peerPubB64);
+  var iv = window.crypto.getRandomValues(new Uint8Array(12));
+  var ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: new TextEncoder().encode(peerPubB64) }, key, new TextEncoder().encode(String(text))));
+  return SEAL_PREFIX + _bytesToB64(ephPub) + ':' + _bytesToB64(iv) + ':' + _bytesToB64(ct);
+}
+export async function e2eOpenAnon(packed) {
+  var parts = String(packed || '').split(':');
+  if (parts.length !== 4 || parts[0] + ':' !== SEAL_PREFIX) throw new Error('Sobre no válido');
+  var subtle = _subtle();
+  await initE2E();
+  if (!_identity) throw new Error('E2E sin identidad');
+  var eph = await subtle.importKey('raw', _b64ToBytes(parts[1]), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  var key = await _sealKey(await subtle.deriveBits({ name: 'ECDH', public: eph }, _identity.priv, 256), parts[1], _identity.pubB64);
+  var pt = await subtle.decrypt({ name: 'AES-GCM', iv: _b64ToBytes(parts[2]), additionalData: new TextEncoder().encode(_identity.pubB64) }, key, _b64ToBytes(parts[3]));
+  return new TextDecoder().decode(pt);
+}
+async function _sealKey(secret, ephPubB64, recipientPubB64) {
+  var subtle = _subtle();
+  var hk = await subtle.importKey('raw', secret, 'HKDF', false, ['deriveKey']);
+  return subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new TextEncoder().encode('NEXO-SEAL-v1|' + ephPubB64 + '|' + recipientPubB64) },
+    hk, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+
 // Texto (UTF-8) ↔ paquete cifrado
 export function e2eEncryptText(peerPubB64, text) { return _encryptBytes(peerPubB64, new TextEncoder().encode(String(text))); }
 export async function e2eDecryptText(packed) {
