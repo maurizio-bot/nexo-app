@@ -46,6 +46,9 @@ jobs:
       - name: Compilar el bundle para el simulador
         run: bash tests/sim/build.sh wip
 
+      - name: Nada sin definir en el código de la app
+        run: node tests/sim/undef.js
+
       # Después de instalar las librerías del simulador: NetBgTest las usa para comparar con la app
       - name: Pruebas Kotlin (JVM)
         working-directory: ./tests/kotlin

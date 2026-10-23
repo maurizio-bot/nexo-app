@@ -208,3 +208,6 @@ solo contaba el texto corto, sin notificaciones y "leído" en segundo plano.
 Kotlin: `UnreadBookTest` (cuentas de las notificaciones) y `NetBgTest` (escucha de internet en segundo plano contra
 `netbg_helper.mjs`, que usa noble/WebCrypto como la app y arranca un relé que exige identificación).
 
+Reestructuración (ronda 2752, `docs/ESTRUCTURA.md`): `undef.js` (nombres sin definir en lo que entra en la APK; también
+en GitHub), `group_deps.js`, `extract.js`, `extract_methods.js`, `same_text.py`, `add_glue.py`, `auto_import.py`.
+

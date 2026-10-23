@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-23 (build 2751)
+Última actualización: 2026-10-23 (build 2752)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -78,6 +78,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2749 | `3180529` | Gradle moderno (AGP 9.4.0, Gradle 9.6.0, Kotlin 2.2.20, compileSdk 37.1) y Tor 0.4.9.14. APK verificada: firma 23d86688…, manifiesto igual que la 2744 (permisos, targetSdk 34, sin copias), Tor nuevo; pesa 24,4 MB (antes 26,9) |
 | 2750 | | Compilación de prueba en la rama de trabajo (Kotlin de notificaciones e internet en segundo plano): compila, pruebas en verde |
 | 2751 | `769c025` | Notificaciones de mensajes (una por chat, número en el icono), no leídos por todas las vías, "leído" solo con la app a la vista, internet en segundo plano (escucha nativa de los relés), permiso de notificaciones. APK verificada: firma 23d86688…, manifiesto igual que la 2749 + POST_NOTIFICATIONS, clases nuevas presentes |
+| 2752 | (este commit) | Reestructuración sin cambios de código: main.js 4.281 → 720 líneas, ble_interface.js 3.732 → 847, en 30 módulos (`docs/ESTRUCTURA.md`). Batería idéntica |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -203,6 +204,18 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2752: reestructuración (plan del dueño, punto 6: "con mucho cuidado de no romper nada") — `docs/ESTRUCTURA.md`
+- `src/main.js` 4.281 → 720 líneas (punto de entrada) y `src/ui/ble_interface.js` 3.732 → 847 (núcleo de la clase),
+  repartidos en 30 módulos por tema (chat, cámara, vídeo, archivos, perfil, Bluetooth: mensajes, conexiones, claves,
+  enlaces, interfaz…). Los métodos de la clase se añaden con `Object.assign(BLEInterface.prototype, …)`.
+- **Sin cambios de código**: todo se movió con herramientas (`tests/sim/extract.js`, `extract_methods.js`) que cortan
+  el texto exacto; en cada paso `same_text.py` comprobó que lo quitado es exactamente lo que está en el módulo y
+  `undef.js` que no queda nada sin definir (ahora también en GitHub). Lo que un módulo necesita de main.js se lo da
+  main.js al arrancar (pegamento marcado `[pegamento]`); nunca se mueve una variable que otro sitio reasigna.
+- Comprobado: 26 pasos; las 10 pruebas de GitHub tras cada tanda; batería completa en 3 puntos de control (bat35,
+  bat36, bat37; 53 ejecuciones): idéntica (bat37 sin ninguna diferencia con bat36; antes solo variaciones de tiempo).
+- Lo nativo (Kotlin) no cambia.
 
 ## Ronda 2751: notificaciones, no leídos e internet en segundo plano (pedido del dueño: puntos 11 + notificaciones + burbujas)
 - **No leídos**: reproducido en `tests/sim/unread.js` con la 2744: de texto corto, texto largo y foto solo contaba el
