@@ -104,6 +104,9 @@ import { createNotifier } from './ui/notify.js';
 import { initE2E } from './vault/e2e_crypto.js';
 import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq } from './vault/e2e_ratchet.js';
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './ui/qr_verify.js';
+import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE, HD_REENCODE_BPS, _videoFormat, _blobToB64, _makeVideoPreview, _previewAudioTracks, _b64ToBlob, _makeVideoThumb } from './ui/video_tools.js';
+import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
+import { _STATUS_RANK, _statusRank, _canUpgradeStatus, _getDomMessageStatus, _normId, _getCurrentContactId, _chatKind, _plainText, _myNexoId, _contactName, _peerUnderstands, _cut, _msgSummary, _findMessage, _PREVIEW_BY_TYPE } from './ui/chat_format.js';
 
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
@@ -144,8 +147,6 @@ initE2E().then(function() { return ratchetInit(); }).catch(function(e) { console
 // copiarlas: lo que pasa en el teléfono real sin necesidad de un PC.
 // v9.9.40 (seguridad): archivo nuevo; el anterior podía tener fragmentos de mensajes y se borra
 var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_OLD_FILE = 'nexo_diag_log.txt';
-// En los registros solo la extensión de un archivo (el nombre puede ser privado)
-function _extOf(name) { var m = /\.([A-Za-z0-9]{1,6})$/.exec(String(name || '')); return m ? '*.' + m[1].toLowerCase() : '(sin extensión)'; }
 var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
 var DIAG_KEY_RE = /\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
@@ -434,79 +435,10 @@ function _tooBigMessage(bytes, contactId) {
   return 'Archivo demasiado grande para Bluetooth (' + (bytes / 1048576).toFixed(1) + ' MB). Máximo ~' + (MAX_BLE_FILE_BYTES / 1048576).toFixed(1) + ' MB.' + hint;
 }
 
-var _STATUS_RANK = {
-  pending: 1, queued: 2, sending: 3, sent: 4, delivered: 5, read: 6, failed: 0
-};
 
-function _statusRank(s) {
-  return _STATUS_RANK[s] || 0;
-}
 
-function _canUpgradeStatus(fromStatus, toStatus) {
-  if (!toStatus) return false;
-  if (toStatus === 'failed') return true; // failed siempre se permite (es terminal)
-  if (!fromStatus) return true;
-  // Nunca degradar delivered/read a sent/sending/pending/failed
-  return _statusRank(toStatus) >= _statusRank(fromStatus);
-}
 
-function _getDomMessageStatus(messageId) {
-  try {
-    var el = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
-    if (!el) return null;
-    var cls = el.className || '';
-    var m = cls.match(/status-(pending|queued|sending|sent|delivered|read|failed)/);
-    return m ? m[1] : null;
-  } catch (e) { return null; }
-}
 
-function _compressImageBase64(base64, maxDim, quality) {
-  return new Promise(function(resolve) {
-    maxDim = maxDim || 480;
-    quality = quality || 0.5;
-    try {
-      var img = new Image();
-      img.onload = function() {
-        try {
-          var w = img.naturalWidth || img.width;
-          var h = img.naturalHeight || img.height;
-          var scale = 1;
-          if (w > maxDim || h > maxDim) {
-            scale = Math.min(maxDim / w, maxDim / h);
-          }
-          var tw = Math.max(1, Math.round(w * scale));
-          var th = Math.max(1, Math.round(h * scale));
-          var canvas = document.createElement('canvas');
-          canvas.width = tw;
-          canvas.height = th;
-          var ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, tw, th);
-          var out = canvas.toDataURL('image/jpeg', quality);
-          var b64 = out.split(',')[1] || '';
-          console.log('[ATTACH] compress image', w + 'x' + h, '->', tw + 'x' + th, 'b64', base64.length, '->', b64.length);
-          resolve({ base64: b64, width: tw, height: th, format: 'jpeg' });
-        } catch (e) {
-          console.warn('[ATTACH] compress fail, using original', e.message);
-          resolve({ base64: base64, width: 0, height: 0, format: 'jpeg' });
-        }
-      };
-      img.onerror = function() {
-        resolve({ base64: base64, width: 0, height: 0, format: 'jpeg' });
-      };
-      img.src = 'data:image/jpeg;base64,' + base64;
-    } catch (e) {
-      resolve({ base64: base64, width: 0, height: 0, format: 'jpeg' });
-    }
-  });
-}
-function _fmtTime(sec) {
-  var m = Math.floor(sec / 60);
-  var s = sec % 60;
-  return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
-}
-function _normId(id) {
-  return (id || '').toString().toLowerCase().trim();
-}
 function _getAttachmentPlugins() {
   var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
   return {
@@ -514,12 +446,6 @@ function _getAttachmentPlugins() {
     Filesystem: Plugins ? Plugins.Filesystem : null,
     Geolocation: Plugins ? Plugins.Geolocation : null
   };
-}
-function _getCurrentContactId() {
-  if (window.NEXO.app && window.NEXO.app.activeContact) {
-    return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
-  }
-  return null;
 }
 /**
  * Espera robusta a que BLE esté listo tras cerrar la cámara.
@@ -701,31 +627,6 @@ function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
 var _replyTo = null;               // { id, a: autor (NEXO ID), s: resumen, k: tipo }
 var DELETE_ALL_MS = 24 * 3600000;  // "eliminar para todos" hasta 24 h después de enviarlo
 
-function _chatKind(content) {
-  if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
-  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act')) ? p : null; } catch (e) { return null; }
-}
-function _plainText(content) { var k = _chatKind(content); return k ? String(k.t || '') : String(content || ''); }
-function _myNexoId() { var bi = window.bleInterface; return _normId(bi && bi.localNexoId); }
-function _contactName(nx) {
-  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(nx); });
-  return (c && c.name) || String(nx || '').toUpperCase();
-}
-function _peerUnderstands(cid) {
-  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(cid); });
-  return !!(c && c.fx);
-}
-// Recortar texto sin partir un emoji ni otro carácter de dos unidades (quedaría "�")
-function _cut(s, n) { s = String(s == null ? '' : s); if (s.length <= n) return s; var c = s.charCodeAt(n - 1); return s.substring(0, (c >= 0xD800 && c <= 0xDBFF) ? n - 1 : n); }
-function _msgSummary(msg) {
-  if (msg.attachmentType) return { k: msg.attachmentType, s: _PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo' };
-  return { k: 'text', s: _cut(_plainText(msg.content), 100) };
-}
-function _findMessage(cid, id) {
-  return vaultLoadMessages(cid).then(function(list) {
-    return (list || []).find(function(m) { return (m.msgId || m.messageId) === id; }) || null;
-  }).catch(function() { return null; });
-}
 
 // Burbuja de texto: eliminado, reenviado, respuesta citada (todo como texto: viene de otro teléfono)
 function _fillTextBubble(contentDiv, msg, isOwn) {
@@ -1645,18 +1546,6 @@ function _pickFile(accept, label, onFile) {
   input.click();
 }
 
-function _readFileBase64(file) {
-  return new Promise(function(resolve, reject) {
-    var reader = new FileReader();
-    reader.onload = function(evt) {
-      var r = String((evt.target && evt.target.result) || '');
-      var b64 = r.substring(r.indexOf(',') + 1);
-      if (!b64) reject(new Error('archivo vacío')); else resolve(b64);
-    };
-    reader.onerror = function() { reject((reader.error) || new Error('error de lectura')); };
-    reader.readAsDataURL(file);
-  });
-}
 
 function _readFailed(err) {
   var m = (err && (err.message || err.name)) || 'error de lectura';
@@ -1692,25 +1581,7 @@ async function _handleGallery() {
   });
 }
 
-function _isPdf(mime, name) { return mime === 'application/pdf' || /\.pdf$/i.test(name || ''); }
-var _MIME_BY_EXT = { pdf: 'application/pdf', apk: 'application/vnd.android.package-archive', txt: 'text/plain', zip: 'application/zip',
-  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
-function _mimeOf(mime, name) {
-  if (mime && mime.indexOf('/') > 0 && mime !== 'application/octet-stream') return mime;
-  var ext = String(name || '').split('.').pop().toLowerCase();
-  return _MIME_BY_EXT[ext] || mime || 'application/octet-stream';
-}
 
-// Primera página de un PDF (lector de PDF de Android, en el plugin). null si no se puede.
-function _pdfThumb(base64) {
-  var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
-  if (!pl || typeof pl.pdfThumbnail !== 'function') return Promise.resolve(null);
-  return Promise.race([
-    pl.pdfThumbnail({ base64: base64, width: 320 }).catch(function(e) { console.warn('[ATTACH] Miniatura PDF:', e && e.message); return null; }),
-    new Promise(function(r) { setTimeout(function() { r(null); }, 8000); })
-  ]);
-}
 
 function _handleFile() {
   _closeAttachMenu();
@@ -3339,170 +3210,14 @@ function _renderMessage(msg, skipSave) {
   }
 }
 
-// ===================== v9.9.30: vídeo previa + HD =====================
-var PREVIEW_MAX_SIDE = 426;          // 240p
-var PREVIEW_MAX_SECONDS = 60;
 var MAX_HD_B64_BYTES = 8000000;      // original de hasta ~6 MB (en segundo plano)
-var HD_DIRECT_MAX_BYTES = 2500000;   // original mayor (o >720p): se manda un HD recodificado
-var HD_MAX_SIDE = 1280;              // HD recodificado: 720p
-var HD_REENCODE_BPS = 1200000;       // ~750 KB por 5 s
 var CAMERA_HD_BPS = 1500000;         // grabación 720p a 1,5 Mbps (antes ~2,5 por defecto)
 var _videoTimes = {};                // msgId -> tiempos de previa/HD (registro de diagnóstico)
 var _hdOutbox = {};                  // msgId -> { cid, mime, b64 } (emisor, en memoria)
 var _hdInFlight = {};
 
-function _videoFormat(mime) { return /mp4/i.test(mime || '') ? 'mp4' : 'webm'; }
-function _blobToB64(blob) {
-  return new Promise(function(resolve, reject) {
-    var r = new FileReader();
-    r.onload = function() { resolve(String(r.result).split(',')[1] || ''); };
-    r.onerror = function() { reject(new Error('lectura')); };
-    r.readAsDataURL(blob);
-  });
-}
 
-// Recodifica a 240p y bitrate bajo reproduciendo el vídeo en un canvas (sin sonido audible: el audio
-// va por WebAudio solo a la grabación). Devuelve un Blob (con .thumb = miniatura JPEG en base64) o null
-// si el teléfono no puede; nunca se queda colgada (vigilante general).
-// v9.9.32: vídeo temporal dentro de la pantalla (Android no decodifica vídeos ocultos), AudioContext
-// reanudado o sin audio si sigue suspendido, vigilante de atascos y registro [VIDEO] de cada paso.
-function _makeVideoPreview(blob, knownDuration) {
-  return new Promise(function(resolve) {
-    var done = false, cleanup = [], t0 = Date.now();
-    function log(m) { console.log('[VIDEO] ' + m + ' (' + Math.round((Date.now() - t0) / 100) / 10 + ' s)'); }
-    function finish(res, why) {
-      if (done) return; done = true;
-      if (!res || res.tooLong) log('Previa no generada: ' + (why || (res && res.tooLong ? 'demasiado largo' : '?')));
-      cleanup.forEach(function(f) { try { f(); } catch (e) {} });
-      resolve(res);
-    }
-    try {
-      if (typeof MediaRecorder === 'undefined' || !window.HTMLCanvasElement || !HTMLCanvasElement.prototype.captureStream) return finish(null, 'sin MediaRecorder/captureStream');
-      log('Previa: inicio, original ' + Math.round(blob.size / 1024) + ' KB ' + (blob.type || '?'));
-      var url = URL.createObjectURL(blob);
-      cleanup.push(function() { URL.revokeObjectURL(url); });
-      var v = document.createElement('video');
-      v.playsInline = true; v.preload = 'auto';
-      v.style.cssText = 'position:fixed;right:0;bottom:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1;';
-      document.body.appendChild(v);
-      cleanup.push(function() { v.pause(); v.removeAttribute('src'); v.load(); v.remove(); });
-      var watchdog = setTimeout(function() { finish(null, 'sin metadatos en 15 s'); }, 15000);
-      cleanup.push(function() { clearTimeout(watchdog); });
-      v.onerror = function() { finish(null, 'el teléfono no puede leer el vídeo (código ' + (v.error && v.error.code) + ')'); };
-      v.onloadedmetadata = function() {
-        clearTimeout(watchdog);
-        var dur = isFinite(v.duration) && v.duration > 0 ? v.duration : (knownDuration || 0);
-        log('Previa: metadatos ' + v.videoWidth + 'x' + v.videoHeight + ' dur=' + (Math.round(dur * 10) / 10));
-        if (dur > PREVIEW_MAX_SECONDS) return finish({ tooLong: true, duration: dur });
-        // Vigilante general: nunca más de la duración + 25 s
-        watchdog = setTimeout(function() { finish(null, 'tiempo agotado'); }, ((dur || PREVIEW_MAX_SECONDS) + 25) * 1000);
-        var w = v.videoWidth || 640, h = v.videoHeight || 360;
-        var scale = Math.min(1, PREVIEW_MAX_SIDE / Math.max(w, h));
-        var cw = Math.max(2, Math.round(w * scale / 2) * 2), ch = Math.max(2, Math.round(h * scale / 2) * 2);
-        var canvas = document.createElement('canvas');
-        canvas.width = cw; canvas.height = ch;
-        var ctx = canvas.getContext('2d');
-        var tracks = canvas.captureStream(24).getVideoTracks().slice();
-        _previewAudioTracks(v, cleanup).then(function(audioTracks) {
-          if (done) return;
-          audioTracks.forEach(function(t) { tracks.push(t); });
-          if (!audioTracks.length) v.muted = true;
-          log('Previa: audio ' + (audioTracks.length ? 'sí' : 'no'));
-          var mime = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].filter(function(m) { return MediaRecorder.isTypeSupported(m); })[0] || '';
-          // ~250 KB de previa como objetivo, entre 60 y 200 kbps de vídeo
-          var vbps = Math.max(60000, Math.min(200000, Math.round(250000 * 8 / Math.max(dur || 10, 1)) - 24000));
-          var rec;
-          try { rec = new MediaRecorder(new MediaStream(tracks), Object.assign(mime ? { mimeType: mime } : {}, { videoBitsPerSecond: vbps, audioBitsPerSecond: 24000 })); }
-          catch (e) { return finish(null, 'MediaRecorder: ' + e.message); }
-          // v9.9.35: original grande (galería: 1080p/4K, decenas de MB) → en la misma pasada un HD 720p
-          // recodificado; antes ese HD superaba el límite y solo viajaba la previa
-          var needHd = blob.size > HD_DIRECT_MAX_BYTES || Math.max(w, h) > HD_MAX_SIDE;
-          var hdRec = null, hdParts = [], hdCanvas = null, hdCtx = null, hw = 0, hh = 0;
-          if (needHd) {
-            try {
-              var hs = Math.min(1, HD_MAX_SIDE / Math.max(w, h));
-              hw = Math.max(2, Math.round(w * hs / 2) * 2); hh = Math.max(2, Math.round(h * hs / 2) * 2);
-              hdCanvas = document.createElement('canvas'); hdCanvas.width = hw; hdCanvas.height = hh;
-              hdCtx = hdCanvas.getContext('2d');
-              var hdTracks = hdCanvas.captureStream(24).getVideoTracks().slice();
-              audioTracks.forEach(function(t) { hdTracks.push(t.clone()); });
-              hdRec = new MediaRecorder(new MediaStream(hdTracks), Object.assign(mime ? { mimeType: mime } : {}, { videoBitsPerSecond: HD_REENCODE_BPS, audioBitsPerSecond: 64000 }));
-              hdRec.ondataavailable = function(e) { if (e.data && e.data.size) hdParts.push(e.data); };
-              log('Previa: también HD ' + hw + 'x' + hh + ' (original ' + w + 'x' + h + ', ' + Math.round(blob.size / 1024) + ' KB)');
-            } catch (e) { hdRec = null; log('Previa: sin HD recodificado (' + e.message + ')'); }
-          }
-          var parts = [], thumb = null, frames = 0, lastT = -1, stuck = 0, pendingStops = hdRec ? 2 : 1, out = null;
-          rec.ondataavailable = function(e) { if (e.data && e.data.size) parts.push(e.data); };
-          rec.onerror = function(e) { finish(null, 'error del grabador'); };
-          var stopped = function() {
-            if (--pendingStops > 0) return;
-            if (hdRec) {
-              var hdBlob = new Blob(hdParts, { type: (hdRec.mimeType || mime || 'video/webm').split(';')[0] });
-              log('HD recodificado ' + hw + 'x' + hh + ' ' + Math.round(hdBlob.size / 1024) + ' KB');
-              if (hdBlob.size > 0 && hdBlob.size < blob.size * 0.9) out.hd = hdBlob;
-            }
-            finish(out);
-          };
-          rec.onstop = function() {
-            out = new Blob(parts, { type: (rec.mimeType || mime || 'video/webm').split(';')[0] });
-            log('Previa ' + cw + 'x' + ch + ' ' + Math.round(out.size / 1024) + ' KB (original ' + Math.round(blob.size / 1024) + ' KB), miniatura ' + (thumb ? 'sí' : 'no'));
-            if (!(out.size > 0 && out.size < blob.size * 0.8)) return finish(null, 'la previa no es más pequeña (' + Math.round(out.size / 1024) + ' KB)');
-            out.thumb = thumb;
-            stopped();
-          };
-          if (hdRec) { hdRec.onstop = stopped; hdRec.onerror = function() { hdRec = null; pendingStops = 1; if (out) finish(out); }; }
-          var stop = function(why) {
-            log('Previa: fin (' + why + ')');
-            try { if (hdRec && hdRec.state !== 'inactive') hdRec.stop(); } catch (e) {}
-            try { if (rec.state !== 'inactive') rec.stop(); else finish(null, 'grabador inactivo'); } catch (e) { finish(null, 'stop: ' + e.message); }
-          };
-          var draw = setInterval(function() {
-            try {
-              ctx.drawImage(v, 0, 0, cw, ch);
-              if (hdCtx) hdCtx.drawImage(v, 0, 0, hw, hh);
-              // Miniatura (poster) para la burbuja: un fotograma a ~0,3 s
-              if (!thumb && ++frames === 8) thumb = canvas.toDataURL('image/jpeg', 0.6).split(',')[1] || null;
-            } catch (e) {}
-            // Atasco: el vídeo no avanza en 5 s
-            if (v.currentTime === lastT) { if (++stuck > 120) { clearInterval(draw); stop('reproducción atascada en ' + Math.round(v.currentTime * 10) / 10 + ' s'); } }
-            else { stuck = 0; lastT = v.currentTime; }
-          }, 42);
-          cleanup.push(function() { clearInterval(draw); });
-          v.onended = function() { stop('vídeo terminado'); };
-          rec.start(500);
-          if (hdRec) { try { hdRec.start(500); } catch (e) { hdRec = null; pendingStops = 1; } }
-          var pp = v.play();
-          if (pp && pp.catch) pp.catch(function(e) { finish(null, 'play() rechazado: ' + (e && e.message)); });
-        });
-      };
-      v.src = url;
-    } catch (e) { finish(null, 'excepción: ' + (e && e.message)); }
-  });
-}
 
-// Pista de audio del vídeo para la grabación, por WebAudio (no suena). Si el AudioContext no arranca
-// (Android sin gesto del usuario) se devuelve [] y la previa va sin sonido en vez de colgarse.
-function _previewAudioTracks(v, cleanup) {
-  return new Promise(function(resolve) {
-    try {
-      var AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return resolve([]);
-      var ac = new AC();
-      cleanup.push(function() { try { ac.close(); } catch (e) {} });
-      var ready = function() {
-        try {
-          var dest = ac.createMediaStreamDestination();
-          ac.createMediaElementSource(v).connect(dest);
-          resolve(dest.stream.getAudioTracks());
-        } catch (e) { resolve([]); }
-      };
-      if (ac.state === 'running') return ready();
-      var p = ac.resume ? ac.resume() : null;
-      var t = setTimeout(function() { resolve([]); }, 800);
-      if (p && p.then) p.then(function() { if (ac.state === 'running') { clearTimeout(t); ready(); } }).catch(function() {});
-    } catch (e) { resolve([]); }
-  });
-}
 
 function _showOwnPreparing(show) {
   var container = document.getElementById('messages-container');
@@ -3714,63 +3429,9 @@ function _swapVideoInBubble(msgId, payload, mime) {
   } catch (e) { console.warn('[VIDEO] No se pudo poner el HD en la burbuja:', e && e.message); }
 }
 
-function _b64ToBlob(b64, mime) {
-  var bin = atob(b64 || ''), arr = new Uint8Array(bin.length);
-  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new Blob([arr], { type: mime || 'application/octet-stream' });
-}
 
-// Miniatura JPEG (base64) de un vídeo (Blob o URL): primer fotograma. null si no se puede.
-// El <video> temporal va dentro de la pantalla (1 px): Android no decodifica vídeos ocultos.
-function _makeVideoThumb(srcOrBlob, maxSide) {
-  return new Promise(function(resolve) {
-    var done = false, url = null, v = null;
-    function finish(r) {
-      if (done) return; done = true;
-      try { if (v) { v.pause(); v.removeAttribute('src'); v.load(); v.remove(); } } catch (e) {}
-      if (url) { try { URL.revokeObjectURL(url); } catch (e) {} }
-      resolve(r);
-    }
-    try {
-      url = (typeof srcOrBlob === 'string') ? null : URL.createObjectURL(srcOrBlob);
-      v = document.createElement('video');
-      v.muted = true; v.playsInline = true; v.preload = 'auto';
-      v.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1;';
-      document.body.appendChild(v);
-      var timer = setTimeout(function() { finish(null); }, 6000);
-      var grab = function() {
-        try {
-          var w = v.videoWidth, h = v.videoHeight;
-          if (!w || !h) return;
-          var sc = Math.min(1, (maxSide || 320) / Math.max(w, h));
-          var c = document.createElement('canvas');
-          c.width = Math.round(w * sc); c.height = Math.round(h * sc);
-          c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
-          clearTimeout(timer);
-          finish(c.toDataURL('image/jpeg', 0.6).split(',')[1] || null);
-        } catch (e) { clearTimeout(timer); finish(null); }
-      };
-      v.onloadeddata = function() { setTimeout(grab, 120); };
-      v.onerror = function() { clearTimeout(timer); finish(null); };
-      v.src = url || srcOrBlob;
-    } catch (e) { finish(null); }
-  });
-}
 
 var _thumbsInProgress = {};
-// v9.9.37: burbuja de archivo (PDF, APK, documentos…). Antes solo una etiqueta: no se podía abrir y el
-// nombre (lo manda el otro teléfono) se metía como HTML. Ahora: miniatura de la 1.ª página si es PDF,
-// nombre como texto, tamaño y, al tocar, se abre con la app que corresponda (plugin openFile).
-var _FILE_ICONS = [[/pdf/, '📄'], [/android\.package-archive/, '📦'], [/zip|rar|7z|compressed|tar/, '🗜️'],
-  [/sheet|excel|csv/, '📊'], [/presentation|powerpoint/, '📽️'], [/^text\/|word|document|rtf/, '📝'], [/^audio\//, '🎵']];
-function _fileIcon(mime) {
-  for (var i = 0; i < _FILE_ICONS.length; i++) if (_FILE_ICONS[i][0].test(mime)) return _FILE_ICONS[i][1];
-  return '📎';
-}
-function _fmtSize(b) {
-  b = Number(b) || 0;
-  return b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
-}
 function _buildFileCard(msg, attachment, mime) {
   var m = attachment.meta || {};
   var name = String(m.name || 'archivo');
@@ -3882,8 +3543,6 @@ function _setHdBadge(msgId, text) {
   b.textContent = text;
 }
 
-// v9.9.29: la lista de contactos se ordena por el último mensaje enviado o recibido
-var _PREVIEW_BY_TYPE = { contact: '👤 Contacto', image: '📷 Foto', video: '🎬 Vídeo', audio: '🎤 Audio', voice: '🎤 Audio', location: '📍 Ubicación', file: '📎 Archivo' };
 function _noteContactMessage(contactId, textOrType, ts) {
   var bi = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
   if (!contactId || !bi || typeof bi.noteContactMessage !== 'function') return;

@@ -1,0 +1,80 @@
+/**
+ * NEXO — Formato de los mensajes del chat (sacado de main.js en la ronda 2752, sin cambios): NEXO ID normalizado,
+ * chat abierto, tipo de mensaje (respuesta, reenviado, acción), texto plano y vista previa sin partir emojis, nombres,
+ * buscar un mensaje en pantalla y orden de los estados (enviando → enviado → entregado → leído).
+ */
+import { vaultLoadContacts, vaultLoadMessages } from '../vault/vault_manager.js';
+
+
+export var _STATUS_RANK = {
+  pending: 1, queued: 2, sending: 3, sent: 4, delivered: 5, read: 6, failed: 0
+};
+
+export function _statusRank(s) {
+  return _STATUS_RANK[s] || 0;
+}
+
+export function _canUpgradeStatus(fromStatus, toStatus) {
+  if (!toStatus) return false;
+  if (toStatus === 'failed') return true; // failed siempre se permite (es terminal)
+  if (!fromStatus) return true;
+  // Nunca degradar delivered/read a sent/sending/pending/failed
+  return _statusRank(toStatus) >= _statusRank(fromStatus);
+}
+
+export function _getDomMessageStatus(messageId) {
+  try {
+    var el = document.querySelector('.msg-status[data-msg-id="' + messageId + '"]');
+    if (!el) return null;
+    var cls = el.className || '';
+    var m = cls.match(/status-(pending|queued|sending|sent|delivered|read|failed)/);
+    return m ? m[1] : null;
+  } catch (e) { return null; }
+}
+
+export function _normId(id) {
+  return (id || '').toString().toLowerCase().trim();
+}
+
+export function _getCurrentContactId() {
+  if (window.NEXO.app && window.NEXO.app.activeContact) {
+    return window.NEXO.app.activeContact.nexoId || window.NEXO.app.activeContact.id;
+  }
+  return null;
+}
+
+export function _chatKind(content) {
+  if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"nexo_') < 0) return null;
+  try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act')) ? p : null; } catch (e) { return null; }
+}
+
+export function _plainText(content) { var k = _chatKind(content); return k ? String(k.t || '') : String(content || ''); }
+
+export function _myNexoId() { var bi = window.bleInterface; return _normId(bi && bi.localNexoId); }
+
+export function _contactName(nx) {
+  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(nx); });
+  return (c && c.name) || String(nx || '').toUpperCase();
+}
+
+export function _peerUnderstands(cid) {
+  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(cid); });
+  return !!(c && c.fx);
+}
+
+// Recortar texto sin partir un emoji ni otro carácter de dos unidades (quedaría "�")
+export function _cut(s, n) { s = String(s == null ? '' : s); if (s.length <= n) return s; var c = s.charCodeAt(n - 1); return s.substring(0, (c >= 0xD800 && c <= 0xDBFF) ? n - 1 : n); }
+
+export function _msgSummary(msg) {
+  if (msg.attachmentType) return { k: msg.attachmentType, s: _PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo' };
+  return { k: 'text', s: _cut(_plainText(msg.content), 100) };
+}
+
+export function _findMessage(cid, id) {
+  return vaultLoadMessages(cid).then(function(list) {
+    return (list || []).find(function(m) { return (m.msgId || m.messageId) === id; }) || null;
+  }).catch(function() { return null; });
+}
+
+// v9.9.29: la lista de contactos se ordena por el último mensaje enviado o recibido
+export var _PREVIEW_BY_TYPE = { contact: '👤 Contacto', image: '📷 Foto', video: '🎬 Vídeo', audio: '🎤 Audio', voice: '🎤 Audio', location: '📍 Ubicación', file: '📎 Archivo' };
