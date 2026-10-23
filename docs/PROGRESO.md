@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-23 (build 2730)
+Última actualización: 2026-10-23 (build 2732)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -66,6 +66,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2728 | `93dd9ad` | Wi-Fi normal (misma red) y cambio automático Wi-Fi / Bluetooth / Wi-Fi Direct / Jump (`docs/WIFI.md`). Cabecera del chat con el camino. Probado en simulador y JVM |
 | 2729 | `104dcc6` | Compilación de prueba en la rama de trabajo (latido nativo del Wi-Fi), sin release |
 | 2730 | `40fe10c` | Wi-Fi según las reglas del dueño (no pasa a Bluetooth por un corte breve ni en segundo plano; mala señal medida), remitente oculto a los puentes de Jump, poscuántico (ML-KEM), QR del número de seguridad. APK verificada (firma 23d86688…, sin copias) |
+| 2731 | `9b0250b` | Compilación de prueba en la rama de trabajo (Kotlin del largo alcance), sin release |
+| 2732 | (ver ronda) | Jump con más alcance (Bluetooth de largo alcance LE Coded y hasta 8 saltos), Fénix fase 2 (los mensajes de texto se respaldan en 2 contactos y vuelven al recuperar la cuenta), el "+" de agregar ya no falla |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -89,6 +91,10 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2732: (1) Diagnóstico: línea `[JUMP] Largo alcance (LE Coded): sí/no` en cada teléfono (si los dos dicen "sí",
+  probar Jump o un chat directo más lejos que antes). (2) Perfil → Fénix: con la cuenta protegida debe salir
+  "💬 Mensajes protegidos: N"; tras recuperar la cuenta en otro teléfono, "🔥 Fénix: N mensaje(s) recuperados".
+  (3) Agregar contactos: el "+" de un teléfono encontrado debe funcionar siempre.
 - 2730: (1) Wi-Fi: los dos en el mismo router, NEXO abierto → "En línea · Wi-Fi"; mandar fotos, también con uno en
   segundo plano: debe seguir "· Wi-Fi" (antes pasaba a Bluetooth). (2) Chat → tocar el aviso 🔒 → "Mostrar mi QR" en
   uno y "Escanear su QR" en el otro: debe salir "✔ Número de seguridad verificado". (3) Tras escribirse, el aviso
@@ -170,6 +176,21 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2732: Jump con más alcance y Fénix fase 2 (pedido del dueño: "termines la seguridad, fénix y mejores jump")
+- **Largo alcance** (Kotlin): además del anuncio normal, anuncio extendido en **LE Coded PHY** (~4x distancia) si el
+  teléfono lo tiene; el escaneo recibe los dos; se conecta en Coded solo a quien únicamente se ve por largo alcance (en
+  1M es más rápido) y ese enlace no pasa a 2M (tiene menos alcance). Sin teléfono no se puede medir la distancia:
+  compila (2731) y en el diagnóstico sale si el teléfono lo tiene.
+- **Hasta 8 saltos** (`ble_relay` v2.2; antes 4). `jump.js --chain=7` (6 saltos): texto 0,8 s, foto 12,8 s;
+  `--chain=9` (8 saltos): texto 1 s, foto 16,8 s; los puentes no ven el remitente.
+- **Fénix fase 2** (`docs/FENIX.md`): mensajes de texto en segmentos cifrados con K, cada uno en 2 contactos con
+  Fénix 2, pingeo de segmentos, y al recuperar la cuenta los contactos los devuelven (6 de 6 en `fenix.js` y
+  `--mirror`). Fotos y archivos: siguiente fase.
+- **Encontrado al probar 7 teléfonos**: el "+" de una fila de "dispositivos nuevos" no hacía nada si entretanto empezaba
+  otro escaneo automático (la lista interna se vaciaba y la fila seguía en pantalla). Corregido. En las pruebas, el
+  teléfono G tenía una dirección no hexadecimal (por eso no conectaba) y el emparejado no esperaba la clave.
+- Batería completa (bat27, 48 ejecuciones) sin cambios de tiempos respecto a la 2730.
 
 ## Ronda 2730: Wi-Fi con las reglas del dueño + seguridad (remitente oculto, poscuántico, QR)
 - **Informe del dueño con la 2728**: "estaba en Wi-Fi y al mandar una foto cambió a Bluetooth" (mismo router).
