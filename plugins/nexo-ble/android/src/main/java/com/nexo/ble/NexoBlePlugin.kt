@@ -2104,6 +2104,21 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("count", count))
     }
 
+    // Android 13+: pedir el permiso de notificaciones si falta (quien ya tenía los de Bluetooth no pasaba por aquí)
+    @PluginMethod
+    fun ensureNotificationPermission(call: PluginCall) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || getPermissionState("postNotifications") == com.getcapacitor.PermissionState.GRANTED) {
+            call.resolve(JSObject().put("granted", true)); return
+        }
+        requestPermissionForAlias("postNotifications", call, "notificationPermCallback")
+    }
+    @PermissionCallback
+    private fun notificationPermCallback(call: PluginCall) {
+        val ok = getPermissionState("postNotifications") == com.getcapacitor.PermissionState.GRANTED
+        remLog("INFO", "PERMISSIONS", "Notificaciones: " + if (ok) "permitidas" else "denegadas")
+        call.resolve(JSObject().put("granted", ok))
+    }
+
     @PluginMethod
     fun clearChatNotification(call: PluginCall) {
         val chatId = call.getString("chatId") ?: run { call.reject("falta chatId"); return }

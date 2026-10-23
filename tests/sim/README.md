@@ -199,3 +199,12 @@ Double Ratchet. Si alguna falla, no se compila la APK y la salida incluye los re
 "teléfonos" no usan relés de internet (`installWebCrypto` pone `NEXO_NET_RELAYS = []`): en GitHub hay salida a internet
 y se conectaban a los relés públicos de verdad.
 
+`unread.js` (A y B por Bluetooth): mensajes sin leer y notificaciones. Texto corto, largo y foto suman 3 en la
+burbuja; sin notificaciones con la app a la vista; al abrir el chat, a 0 y el otro ve "leído"; con la app en segundo
+plano y el chat abierto, cuenta, notifica (con el número) y NO manda "leído" hasta volver; tocar la notificación abre
+el chat y la quita; un mensaje repetido cuenta una vez; se pide el permiso de notificaciones. Con la 2744 falla:
+solo contaba el texto corto, sin notificaciones y "leído" en segundo plano.
+`jump.js --net`: todos con internet por datos móviles (relé local): la foto por Jump va al puente por Bluetooth.
+Kotlin: `UnreadBookTest` (cuentas de las notificaciones) y `NetBgTest` (escucha de internet en segundo plano contra
+`netbg_helper.mjs`, que usa noble/WebCrypto como la app y arranca un relé que exige identificación).
+

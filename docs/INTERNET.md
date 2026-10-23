@@ -36,8 +36,7 @@ eligió: **relés públicos (opción 3) y Tor (opción 2)**, sin servidor propio
 - **Límites**:
   - Un evento ocupa como mucho ~64 KB: las fotos y archivos van en trozos de 16 KB.
   - Los relés públicos pueden poner límites de ritmo o caerse; por eso se usan cuatro.
-  - Con la app en segundo plano Android no ejecuta el JavaScript: los mensajes esperan en el buzón hasta volver a la
-    app. Para recibir en segundo plano haría falta pasar la conexión a la parte nativa (pendiente).
+  - Segundo plano: ver la sección "Segundo plano" más abajo (ronda 2750).
   - Desde el entorno de desarrollo no se alcanzan los relés públicos (política de red). Las pruebas usan un relé local
     con el mismo protocolo (`tests/sim/nostr_relay.js`). Con relés reales solo se puede confirmar en los teléfonos.
 
@@ -65,3 +64,24 @@ eligió: **relés públicos (opción 3) y Tor (opción 2)**, sin servidor propio
   Tor conectado en 1,6 s del modelo, 0 eventos a los relés durante el envío, impostor cerrado y la pareja sigue
   hablando. `tests/kotlin/LanHubTorTest.kt` prueba `LanHub` con un proxy SOCKS real. **El Tor real solo se puede
   confirmar en los teléfonos** (desde el entorno de desarrollo no hay salida a la red Tor).
+
+## Segundo plano (ronda 2750) — `NetBg.kt`, `MsgNotifier.kt`, `src/ui/notify.js`
+- **Qué hace**: con la app en segundo plano (o cerrada mientras el servicio de Bluetooth mantiene vivo el proceso), la
+  parte nativa escucha los relés y pone una notificación "Mensaje nuevo" del contacto. El mensaje sigue cifrado de
+  extremo a extremo: la app lo descifra al abrirse (lo recoge del buzón de los relés como siempre).
+- **Cómo sabe que es un mensaje**: el emisor marca dentro del sobre de la pareja `n` = msgId cuando el paquete es un
+  mensaje nuevo que se ve (texto, primer trozo de un texto largo, foto, archivo). Saludos, confirmaciones, trozos
+  siguientes, el HD de un vídeo y las acciones (borrar para todos) no llevan marca. Los relés no la ven (va cifrada).
+- **Qué recibe la parte nativa** (`netBgConfig`, al pasar la app a segundo plano y cuando cambian los contactos): su
+  NEXO ID, los relés, desde cuándo leer y, por contacto, su nombre y el secreto de la pareja (el mismo que ya usa la
+  app; no sale del teléfono y no se guarda en disco). Con eso calcula las etiquetas del día (también al cambiar de
+  día), se identifica ante los relés (NIP-42, firma Schnorr propia: `Secp256k1.kt`) y abre solo el sobre exterior.
+- **Al volver a la app**: la escucha nativa se para; la app recoge los mensajes, los cuenta y sus contadores mandan
+  sobre las notificaciones (`syncUnread`).
+- **Pruebas**: `tests/kotlin/NetBgTest` compara con la app (noble y WebCrypto): firmas Schnorr, etiquetas del día,
+  sobres e ids de evento iguales; y de punta a punta con un relé local que exige identificación (avisa de los mensajes,
+  no de saludos ni confirmaciones ni de otra pareja). `tests/sim/net.js`: 3/3 mensajes con aviso, 0 en saludos o
+  confirmaciones, configuración correcta para la parte nativa.
+- **No comprobado**: en el teléfono real (relés públicos, Doze/ahorro de batería de cada marca). Si el sistema mata el
+  proceso, no hay escucha hasta abrir la app.
+

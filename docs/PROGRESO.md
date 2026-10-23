@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-23 (build 2749)
+Última actualización: 2026-10-23 (build 2751)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -76,6 +76,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2744 | `56f6991` | Pruebas automáticas antes de cada APK, Jump: fotos ya no se atascan con el puente conectado por internet, vista previa sin medio emoji, limpieza (versiones, manifiesto, tarjetas de pago). APK verificada (firma 23d86688…, sin copias, Tor incluido) |
 | 2745–2748 | | Compilaciones de prueba en la rama de trabajo (AGP 9): 2745 y 2746 fallaron (proguard-android.txt, compileSdk 37.1), 2747 (AGP 9.2) y 2748 (AGP 9.4) compilaron con la firma de siempre |
 | 2749 | `3180529` | Gradle moderno (AGP 9.4.0, Gradle 9.6.0, Kotlin 2.2.20, compileSdk 37.1) y Tor 0.4.9.14. APK verificada: firma 23d86688…, manifiesto igual que la 2744 (permisos, targetSdk 34, sin copias), Tor nuevo; pesa 24,4 MB (antes 26,9) |
+| 2750 | | Compilación de prueba en la rama de trabajo (Kotlin de notificaciones e internet en segundo plano): compila, pruebas en verde |
+| 2751 | (este commit) | Notificaciones de mensajes (una por chat, número en el icono), no leídos por todas las vías, "leído" solo con la app a la vista, internet en segundo plano (escucha nativa de los relés), permiso de notificaciones |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -99,6 +101,14 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2751: (1) Al abrir la app debe pedir permiso para notificaciones (Android 13+); aceptar. (2) Con NEXO en
+  segundo plano, que el otro mande texto y foto (Bluetooth, Wi-Fi o internet): debe salir una notificación con su
+  nombre y el número de mensajes, y el número en el icono de NEXO (si el lanzador lo admite). Tocarla abre ese chat.
+  (3) En la lista de chats, la burbuja numerada debe contar también textos largos y fotos, y ponerse a 0 al abrir el
+  chat. (4) Con la app en segundo plano el otro NO debe ver ✓✓ azul hasta que abras. (5) Internet en segundo plano:
+  los dos en Wi-Fi de casas distintas, cerrar NEXO en uno (sin quitarlo de recientes) y escribirle: debe llegar la
+  notificación "Mensaje nuevo". Diagnóstico: líneas `[NOTIF]`, `[NET]`. Con datos de ahorro de batería agresivos
+  (Xiaomi, Huawei…) el sistema puede cortar la escucha: decir la marca del teléfono.
 - 2739 (internet, decisión del dueño "2 y 3"): con los dos teléfonos en **Wi-Fi de casas distintas** (o uno con datos
   móviles) y NEXO abierto, la cabecera debe pasar a "En línea · Internet" en menos de un minuto; textos y fotos deben
   llegar (con datos móviles solo textos; las fotos esperan al Wi-Fi). Con uno cerrado, el texto queda en ✓ y llega al
@@ -193,6 +203,28 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2751: notificaciones, no leídos e internet en segundo plano (pedido del dueño: puntos 11 + notificaciones + burbujas)
+- **No leídos**: reproducido en `tests/sim/unread.js` con la 2744: de texto corto, texto largo y foto solo contaba el
+  corto (los largos y los archivos nunca sumaban); con el chat abierto en segundo plano mandaba "leído"; al abrir el
+  chat no confirmaba la lectura de lo pendiente. Nuevo `src/ui/notify.js`: un solo punto por el que pasan todos los
+  mensajes recibidos (`_handleIncomingMessage`), contador por chat (`bumpUnread/clearUnread/unreadSummary` en
+  `ble_interface.js`), "leído" solo con el chat abierto y la app a la vista, sin repetidos.
+- **Notificaciones del teléfono** (`MsgNotifier.kt` + `UnreadBook.kt`): una por chat con el nombre y el número
+  (el icono de la app muestra la suma en los lanzadores que lo admiten); con el bloqueo de la app activado sin texto;
+  en la pantalla de bloqueo solo "Mensaje nuevo"; tocarla abre el chat (también con la app ya abierta:
+  `handleOnNewIntent`). **Faltaba declarar `POST_NOTIFICATIONS` en el manifiesto** (en Android 13+ no se podía mostrar
+  ninguna) y quien ya tenía los permisos de Bluetooth nunca lo pedía: ahora se pide al arrancar.
+- **Internet en segundo plano** (`NetBg.kt`, `WsClient.kt`, `Secp256k1.kt`; `docs/INTERNET.md` § Segundo plano): el
+  emisor marca `n` = msgId dentro del sobre cifrado de los mensajes nuevos; con la app en segundo plano la parte nativa
+  escucha los relés con las etiquetas del día, se identifica (NIP-42) y avisa. JVM: firmas, etiquetas, sobres e ids
+  iguales que la app y de punta a punta con un relé que exige identificación. Sim: 3/3 mensajes con aviso, 0 en
+  saludos o confirmaciones.
+- Efecto en otras pruebas: varios estados pasan de ✓✓ "entregado" a "leído" (abrir el chat ahora confirma la lectura,
+  como debe ser) y en `chatactions` la burbuja de B ya no sube con el chat abierto a la vista (antes subía: fallo).
+- Pruebas en GitHub: 10 escenarios del simulador + 34 JVM. Batería completa (bat34, 53 ejecuciones) sin fallos.
+- **No comprobado en teléfonos**: la notificación real, el número del icono (depende del lanzador) y la escucha
+  nativa con el ahorro de batería de cada marca.
 
 ## Ronda 2749: plan del dueño, punto 5 (Gradle moderno y Tor más nuevo)
 - AGP 8.2.1 → **9.4.0**, Gradle 8.5 → **9.6.0**, Kotlin 1.9.20 → **2.2.20**, compileSdk 34 → **37.1**; `targetSdk` sigue

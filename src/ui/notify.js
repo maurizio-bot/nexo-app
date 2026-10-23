@@ -88,6 +88,14 @@ export class Notifier {
     if (this.notified.has(cid)) { this.notified.delete(cid); _call('clearChatNotification', { chatId: cid }); }
   }
 
+  // Android 13+: pedir el permiso de notificaciones si falta (una vez por arranque)
+  ensurePermission() {
+    return _call('ensureNotificationPermission').then(function(r) {
+      if (r && r.granted === false) console.warn('[NOTIF] Notificaciones no permitidas: no se avisará de mensajes con la app cerrada');
+      return r;
+    });
+  }
+
   // Los contadores de la app mandan: el teléfono ajusta o quita las notificaciones que haya (también las que puso
   // la parte nativa con la app en segundo plano) y el número del icono
   syncNative() {

@@ -130,7 +130,8 @@ initAppLock({ toast: function(t, ms) { _showInfoToast(t, ms); } });
 // v9.9.52: mensajes sin leer y notificaciones (todas las vías de llegada pasan por _handleIncomingMessage)
 var _notifier = createNotifier({
   ble: function() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; },
-  currentChat: function() { return _getCurrentContactId(); },
+  // El chat abierto según ble_interface (lo pone openChat y lo quita cualquier cierre del chat)
+  currentChat: function() { var b = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface); return b ? b._activeChatDeviceId : _getCurrentContactId(); },
   hidePreview: function() { return lockEnabled(); },
   sendRead: function(nexoId, msgId) {
     setTimeout(function() { window.dispatchEvent(new CustomEvent('nexo:ble:sendReadReceipt', { detail: { nexoId: nexoId, msgId: msgId } })); }, 400);
@@ -2380,7 +2381,7 @@ async function initializeNexoApp() {
       console.log('[MAIN] Notificacion listener no disponible:', notifErr);
     }
     // Al arrancar, los contadores de la app mandan sobre las notificaciones que hubiera en el teléfono
-    setTimeout(function() { _notifier.syncNative(); }, 4000);
+    setTimeout(function() { _notifier.syncNative(); _notifier.ensurePermission(); }, 4000);
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(resolve, reject) {
       setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);

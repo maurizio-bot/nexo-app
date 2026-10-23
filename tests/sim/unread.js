@@ -137,6 +137,7 @@ const status = (p, text) => { const el = Array.from(p.win.document.querySelector
   r.repetido_suma = unreadB() - before;
   r.repetido_cuenta_una_vez = r.repetido_suma === 1;
 
+  r.permiso_notificaciones_pedido = (nB.notifPermAsked || 0) >= 1;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css/.test(l)).slice(0, 5);
   console.log('UNREAD ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_unread.txt'), logs.join('\n'));

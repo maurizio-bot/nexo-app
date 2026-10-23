@@ -30,6 +30,8 @@
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Notificaciones de mensajes (Android 13+ hay que declararlo y pedirlo) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
     <!-- Permiso específico Nearby -->
