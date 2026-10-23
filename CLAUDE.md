@@ -4,7 +4,8 @@ App de mensajería P2P por Bluetooth LE (Capacitor 5 + plugin nativo Kotlin `plu
 El dueño habla español: responder en español.
 
 Antes de empezar, leer `docs/PROGRESO.md` (estado, historial de builds y pendientes) y
-actualizarlo al terminar cada bloque de trabajo.
+`docs/PENDIENTES.md` (todo lo que falta, decisiones pendientes y las reglas del dueño para elegir el
+camino de envío), y actualizarlos al terminar cada bloque de trabajo.
 
 - Rama principal: `NEXOCHAT`; cada push genera una APK (`.github/workflows/build-apk.yml`).
   El dueño autorizó subir cambios directamente a `NEXOCHAT`.
