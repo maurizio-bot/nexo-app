@@ -57,7 +57,7 @@ eligió: **relés públicos (opción 3) y Tor (opción 2)**, sin servidor propio
   servicio oculto; para llamar usa el proxy SOCKS de Tor (sin resolver nombres fuera de Tor). Tiempo de conexión
   hasta 90 s.
 - **Coste**: más lento que los relés (cada paquete da 6 saltos por la red Tor), algo más de batería, y la APK crece por
-  la librería nativa de Tor (solo ARM de 32 y 64 bits).
+  la librería nativa de Tor (solo ARM de 32 y 64 bits): de 10 MB (2734) a 26,9 MB (2739).
 - **Versión**: 0.4.9.5 es la más nueva que admite el Gradle del proyecto (AGP 8.2, compileSdk 34), comprobado versión
   por versión: la 0.4.9.6 pide compileSdk 36, la 0.4.9.6.2 y la 0.4.9.8 piden 37, y desde la 0.4.9.9 (hasta la
   0.4.9.14) las clases vienen compiladas con Java 24. Además se excluye del Jetifier (`android.jetifier.ignorelist`,

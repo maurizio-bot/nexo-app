@@ -71,7 +71,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2733 | `d20e1b6` | Compilación de prueba en la rama de trabajo (Kotlin del escaneo de la red), sin release |
 | 2734 | `a5f9d77` | Wi-Fi: escaneo activo de la red (idea del dueño): los teléfonos en el mismo Wi-Fi se encuentran aunque el router no deje pasar el anuncio mDNS. APK verificada (firma 23d86688…, sin copias) |
 | 2735–2738 | | Compilaciones de prueba en la rama de trabajo (Tor): la 2735 y la 2738 fallaron (versiones de tor-android que el Gradle del proyecto no admite), la 2737 compiló con la 0.4.9.5 |
-| 2739 | (este commit) | Internet: relés públicos Nostr (buzón cifrado, etiquetas diarias, sin NEXO IDs) y Tor (servicio oculto, directo y sin IP visible). Wi-Fi de módems distintos = internet antes que Bluetooth. `docs/INTERNET.md` |
+| 2739 | `f51dec6` | Internet: relés públicos Nostr (buzón cifrado, etiquetas diarias, sin NEXO IDs) y Tor (servicio oculto, directo y sin IP visible). Wi-Fi de módems distintos = internet antes que Bluetooth. `docs/INTERNET.md`. APK verificada (firma 23d86688…, sin copias, TorService y libtor.so ARM 64/32); pesa 26,9 MB (la 2734, 10 MB) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -205,7 +205,7 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   dos tienen Tor, la pareja habla directo por Tor (los relés no reciben nada de la conversación). Lo que no se descifra
   con la clave del contacto cierra la conexión. Arranca solo con Wi-Fi; se apaga en Perfil → Internet.
 - Compilación: la 0.4.9.13 (clases Java 24) y la 0.4.9.8 (pide compileSdk 37) no compilan con AGP 8.2; la 0.4.9.5 sí
-  (excluida del Jetifier, también en el workflow). Las CPU x86 no se incluyen (solo ARM) para no inflar la APK.
+  (excluida del Jetifier, también en el workflow). Las CPU x86 no se incluyen (solo ARM) para no inflar la APK: aun así pasa de 10 MB (2734) a 26,9 MB.
 - Pruebas: `net.js` con un relé Nostr local (`nostr_relay.js`): en línea 0,4 s, texto 0,2 s, foto de 300 KB 2,6 s, 0
   escrituras Bluetooth, los relés no ven nada, buzón y datos móviles correctos. `net.js --tor`: Tor 1,6 s (modelo),
   0 eventos a los relés durante el envío, impostor expulsado. JVM: `LanHubTorTest` (SOCKS real). Batería completa
