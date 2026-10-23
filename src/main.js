@@ -122,6 +122,9 @@ import { videoSendUse, MAX_HD_B64_BYTES, _videoTimes, _hdOutbox, _hdInFlight, _s
 import { _renderE2EBanner, _onSafetyQr } from './ui/e2e_banner.js';
 import { _msgContactMap } from './ui/chat_state.js';
 import { _closeFullscreenMedia, _openFullscreenMedia, _thumbsInProgress, _buildFileCard, _openingFile, _openAttachmentFile, _ensurePdfThumb, _ensureVideoThumb } from './ui/file_card.js';
+import { _clearMessageContainer, _setupBackButton, _setupSwipeBack, _chatNavToken, _doChatBack } from './ui/chat_nav.js';
+import { pickersUse, _pendingPicker, _pickFile, _readFailed, _handleGallery, _handleFile } from './ui/pickers.js';
+pickersUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
 videoSendUse({ /* [pegamento] */ _handleIncomingMessage: _handleIncomingMessage, _sendAttachment: _sendAttachment, _sendFileFor: _sendFileFor, _updateMessageStatus: _updateMessageStatus, _updateMessageStorageStatus: _updateMessageStorageStatus });
 chatActionsUse({ /* [pegamento] */ _renderMessage: _renderMessage, _sendAttachment: _sendAttachment, _sendTextTo: _sendTextTo });
 voiceUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
@@ -453,94 +456,12 @@ function _sendTextTo(cid, wire, plain, hidden) {
 
 
 
-// v9.9.37: selector de archivos. Antes el <input> se quitaba a los 30 s aunque el usuario siguiera
-// eligiendo en el selector de Android (buscar una APK en Descargas o un vídeo en la galería lleva más):
-// lo elegido después no hacía nada y sin aviso. Ahora vive hasta que se elige algo (o se abre otro).
-var _pendingPicker = null;
-function _pickFile(accept, label, onFile) {
-  if (_pendingPicker && _pendingPicker.parentNode) _pendingPicker.remove();
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = accept;
-  input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0;pointer-events:none;width:1px;height:1px;';
-  input.onchange = function(e) {
-    var file = e.target.files && e.target.files[0];
-    if (_pendingPicker === input) _pendingPicker = null;
-    input.remove();
-    if (!file) { console.log('[ATTACH] ' + label + ': nada elegido'); return; }
-    console.log('[ATTACH] ' + label + ' elegido: ' + _extOf(file.name) + ' ' + Math.round(file.size / 1024) + ' KB ' + (file.type || 'sin tipo'));
-    onFile(file);
-  };
-  _pendingPicker = input;
-  document.body.appendChild(input);
-  console.log('[ATTACH] Selector abierto: ' + label);
-  input.click();
-}
-
-
-function _readFailed(err) {
-  var m = (err && (err.message || err.name)) || 'error de lectura';
-  console.warn('[ATTACH] No se pudo leer el archivo: ' + m);
-  _showPermissionError('Archivo: no se pudo leer (' + m + ')');
-}
-
-async function _handleGallery() {
-  _closeAttachMenu();
-  _hideCameraPreviewOverlay();
-  _stopCameraPreview();
-  await new Promise(function(r) { setTimeout(r, 150); });
-  _pickFile('image/*,video/*', 'Galería', function(file) {
-    var isVideo = file.type.indexOf('video') === 0;
-    // v9.9.30: el vídeo no se lee entero: se recodifica una previa y el original va como HD si cabe
-    if (isVideo) {
-      _sendVideo(file, { name: file.name, size: file.size, mime: file.type });
-      return;
-    }
-    _readFileBase64(file).then(function(base64) {
-      var pt = _photoTarget(_getCurrentContactId());
-      return _compressImageBase64(base64, pt.max, pt.q).then(function(res) {
-        _sendAttachment('image', res.base64, {
-          name: file.name,
-          size: res.base64.length,
-          type: 'image/jpeg',
-          format: res.format || 'jpeg',
-          width: res.width,
-          height: res.height
-        });
-      });
-    }).catch(_readFailed);
-  });
-}
 
 
 
-function _handleFile() {
-  _closeAttachMenu();
-  _pickFile('*/*', 'Archivo', function(file) {
-    // Comprobar antes de leer: leer un archivo enorme ya congela el WebView
-    var cidF = _getCurrentContactId();
-    var maxB64 = _maxB64For(cidF);
-    if (file.size > Math.floor(maxB64 * 3 / 4)) {
-      console.warn('[ATTACH] Archivo demasiado grande: ' + file.size);
-      _showPermissionError(_tooBigMessage(file.size, cidF));
-      return;
-    }
-    _readFileBase64(file).then(function(base64) {
-      if (base64.length > maxB64) {
-        console.warn('[ATTACH] Archivo demasiado grande:', base64.length);
-        _showPermissionError(_tooBigMessage(Math.floor(base64.length * 3 / 4), cidF));
-        return;
-      }
-      var mime = _mimeOf(file.type, file.name);
-      var meta = { name: file.name, size: file.size, type: mime, mime: mime };
-      return (_isPdf(mime, file.name) ? _pdfThumb(base64) : Promise.resolve(null)).then(function(t) {
-        if (t && t.thumb) { meta.thumb = t.thumb; meta.pages = t.pages; }
-        _sendAttachment('file', base64, meta);
-        console.log('[ATTACH] Archivo:', _extOf(file.name), mime, t && t.thumb ? 'con miniatura' : '');
-      });
-    }).catch(_readFailed);
-  });
-}
+
+
+
 
 
 
@@ -1421,11 +1342,6 @@ window.addEventListener('nexo:e2e:held', function(e) {
   if (d.nexoId) _noteContactMessage(d.nexoId, '⚠️ Mensaje retenido: clave cambiada', Date.now());
 });
 
-function _clearMessageContainer() {
-  var container = document.getElementById('messages-container');
-  if (container) container.innerHTML = '';
-  _renderedMessageIds.clear();
-}
 
 // v9.9.34: un solo ajuste de scroll por fotograma (leer scrollHeight recalcula la maquetación de todo
 // el chat; antes se hacía una vez por mensaje dibujado)
@@ -2000,220 +1916,8 @@ function _enableFallbackMode() {
   }
 }
 
-function _setupBackButton() {
-  try {
-    var backBtn = document.getElementById('chat-back-btn');
-    if (!backBtn) return;
-    window.addEventListener('nexo:ble:openChat', function(e) {
-      _chatNavToken++;
-      backBtn.classList.add('visible');
-      document.body.classList.add('chat-view-active');
-      _clearMessageContainer();
-      var detail = e.detail || {};
-      if (detail.contactId && window.NEXO.app && !window.NEXO.app.activeContact) {
-        window.NEXO.app.activeContact = { nexoId: detail.contactId, name: detail.name || 'NEXO' };
-      }
-    });
-    window.addEventListener('nexo:ble:closeChat', function() {
-      backBtn.classList.remove('visible');
-      document.body.classList.remove('chat-view-active');
-    });
-    backBtn.addEventListener('click', function() {
-      _doChatBack();
-    });
-    _setupSwipeBack();
-  } catch (e) {
-    console.warn('[MAIN] _setupBackButton error:', e);
-  }
-}
 
-function _setupSwipeBack() {
-  try {
-    var SWIPE_EDGE_WIDTH = 40;
-    var SWIPE_THRESHOLD = 0.30;
-    var startX = 0;
-    var startY = 0;
-    var currentX = 0;
-    var isDragging = false;
-    var isHorizontal = false;
-    var winWidth = window.innerWidth;
-    var app = document.getElementById('app');
-    if (!app) return;
-    function onTouchStart(e) {
-      if (!document.body.classList.contains('chat-view-active')) return;
-      var touch = e.touches[0];
-      if (touch.clientX > SWIPE_EDGE_WIDTH) return;
-      startX = touch.clientX;
-      startY = touch.clientY;
-      currentX = startX;
-      isDragging = true;
-      isHorizontal = false;
-      winWidth = window.innerWidth;
-    }
-    function onTouchMove(e) {
-      if (!isDragging) return;
-      var touch = e.touches[0];
-      currentX = touch.clientX;
-      var deltaX = currentX - startX;
-      var deltaY = touch.clientY - startY;
-      if (!isHorizontal) {
-        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 10) {
-          isHorizontal = true;
-          document.body.classList.add('chat-swipe-dragging');
-          e.preventDefault();
-        } else if (Math.abs(deltaY) > 10) {
-          isDragging = false;
-          return;
-        }
-      }
-      if (!isHorizontal) return;
-      var translateX = Math.max(0, Math.min(deltaX, winWidth));
-      var progress = translateX / winWidth;
-      if (progress > 0.5) {
-        translateX = winWidth * 0.5 + (translateX - winWidth * 0.5) * 0.4;
-      }
-      app.style.transform = 'translateX(' + translateX + 'px)';
-      app.style.opacity = Math.max(0.4, 1 - (progress * 0.5));
-      var contactsView = document.getElementById('contacts-view');
-      if (contactsView) {
-        contactsView.style.display = 'flex';
-        contactsView.style.opacity = Math.min(1, progress * 2);
-        contactsView.style.transform = 'translateX(' + (-20 + progress * 20) + '%)';
-      }
-      e.preventDefault();
-    }
-    function onTouchEnd(e) {
-      if (!isDragging || !isHorizontal) {
-        isDragging = false;
-        isHorizontal = false;
-        return;
-      }
-      var deltaX = currentX - startX;
-      var progress = deltaX / winWidth;
-      var threshold = winWidth * SWIPE_THRESHOLD;
-      document.body.classList.remove('chat-swipe-dragging');
-      if (deltaX > threshold) {
-        document.body.classList.add('chat-swipe-complete');
-        document.body.classList.add('chat-swipe-transition');
-        setTimeout(function() {
-          _doChatBack();
-          app.style.transform = '';
-          app.style.opacity = '';
-          document.body.classList.remove('chat-swipe-complete');
-          document.body.classList.remove('chat-swipe-transition');
-          var contactsView = document.getElementById('contacts-view');
-          if (contactsView) {
-            contactsView.style.transform = '';
-            contactsView.style.opacity = '';
-          }
-        }, 350);
-      } else {
-        document.body.classList.add('chat-swipe-rebound');
-        document.body.classList.add('chat-swipe-transition');
-        setTimeout(function() {
-          document.body.classList.remove('chat-swipe-rebound');
-          document.body.classList.remove('chat-swipe-transition');
-          app.style.transform = '';
-          app.style.opacity = '';
-          var contactsView = document.getElementById('contacts-view');
-          if (contactsView) {
-            contactsView.style.transform = '';
-            contactsView.style.opacity = '';
-          }
-        }, 250);
-      }
-      isDragging = false;
-      isHorizontal = false;
-    }
-    function onTouchCancel(e) {
-      if (!isDragging) return;
-      isDragging = false;
-      isHorizontal = false;
-      document.body.classList.remove('chat-swipe-dragging');
-      app.style.transform = '';
-      app.style.opacity = '';
-      var contactsView = document.getElementById('contacts-view');
-      if (contactsView) {
-        contactsView.style.transform = '';
-        contactsView.style.opacity = '';
-      }
-    }
-    document.addEventListener('touchstart', onTouchStart, { passive: true });
-    document.addEventListener('touchmove', onTouchMove, { passive: false });
-    document.addEventListener('touchend', onTouchEnd, { passive: true });
-    document.addEventListener('touchcancel', onTouchCancel, { passive: true });
-  } catch (e) {
-    console.warn('[MAIN] _setupSwipeBack error:', e);
-  }
-}
 
-// v9.9.34: cada apertura de chat incrementa este contador; el cierre diferido de "atrás" solo limpia
-// el estado si no se abrió otro chat mientras tanto (antes, atrás + otro chat en <300 ms dejaba el
-// chat nuevo sin contacto activo: los mensajes se pintaban pero no se enviaban)
-var _chatNavToken = 0;
-function _doChatBack() {
-  try {
-    var navToken = ++_chatNavToken;
-    _cancelReply();
-    _cleanupObjectURLs();
-    var app = document.getElementById('app');
-    var contactsView = document.getElementById('contacts-view');
-    var backBtn = document.getElementById('chat-back-btn');
-    if (app) {
-      app.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
-      app.style.transform = 'translateX(100%)';
-      app.style.opacity = '0';
-    }
-    if (contactsView) {
-      contactsView.style.display = 'flex';
-      contactsView.style.opacity = '0';
-      contactsView.style.transform = 'translateX(-20%)';
-      contactsView.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-      void contactsView.offsetWidth;
-      contactsView.style.opacity = '1';
-      contactsView.style.transform = 'translateX(0)';
-    }
-    setTimeout(function() {
-      if (navToken !== _chatNavToken) {
-        // Se abrió otro chat durante la animación: solo deshacer los estilos de la animación
-        if (app) { app.style.transition = ''; app.style.transform = ''; app.style.opacity = ''; }
-        if (contactsView) { contactsView.style.transition = ''; contactsView.style.transform = ''; contactsView.style.opacity = ''; contactsView.style.display = ''; }
-        return;
-      }
-      if (backBtn) backBtn.classList.remove('visible');
-      document.body.classList.remove('chat-view-active');
-      var nameInput = document.getElementById('chat-contact-name');
-      var subtitle = document.getElementById('chat-contact-subtitle');
-      if (nameInput) nameInput.value = 'NEXO';
-      if (subtitle) subtitle.textContent = '';
-      var blePanel = document.getElementById('ble-panel');
-      var bleOverlay = document.getElementById('ble-overlay');
-      if (blePanel) blePanel.classList.remove('active');
-      if (bleOverlay) bleOverlay.classList.remove('active');
-      try {
-        window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }));
-      } catch (e) {}
-      if (window.NEXO.app) {
-        window.NEXO.app.activeContact = null;
-      }
-      if (window.NEXO.app && window.NEXO.app.bleInterface) {
-        window.NEXO.app.bleInterface._activeChatDeviceId = null;
-      }
-      if (app) {
-        app.style.transition = '';
-        app.style.transform = '';
-        app.style.opacity = '';
-      }
-      if (contactsView) {
-        contactsView.style.transition = '';
-        contactsView.style.transform = '';
-        contactsView.style.opacity = '';
-      }
-    }, 300);
-  } catch (e) {
-    console.warn('[MAIN] _doChatBack error:', e);
-  }
-}
 
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 window.NEXO_sendVideo = _sendVideo; // pruebas (tests/sim/video.js)
