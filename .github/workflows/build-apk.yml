@@ -39,16 +39,17 @@ jobs:
         with:
           gradle-version: '8.14.3'
 
-      - name: Pruebas Kotlin (JVM)
-        working-directory: ./tests/kotlin
-        run: gradle --no-daemon test
-
       - name: Dependencias del simulador
         working-directory: ./tests/sim
         run: npm ci --no-audit --no-fund
 
       - name: Compilar el bundle para el simulador
         run: bash tests/sim/build.sh wip
+
+      # Después de instalar las librerías del simulador: NetBgTest las usa para comparar con la app
+      - name: Pruebas Kotlin (JVM)
+        working-directory: ./tests/kotlin
+        run: gradle --no-daemon test
 
       - name: Pruebas del simulador
         working-directory: ./tests/sim

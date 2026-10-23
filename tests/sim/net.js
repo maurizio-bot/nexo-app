@@ -113,6 +113,19 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
   r.claves_distintas_por_evento = new Set(r1.events.map((e) => e.pubkey)).size === r1.events.length;
   r.rechazados_por_relés = r1.stats.rejected.concat(r2.stats.rejected).slice(0, 3);
   r.identificaciones_NIP42 = r2.stats.auths;
+  // 2c) Aviso para la escucha nativa en segundo plano (NetBg.kt): solo los mensajes nuevos llevan n = msgId dentro del sobre
+  {
+    const opened = [];
+    for (const ev of r1.events) { const o = await B.win.bleInterface.net._open(idA, ev.content); if (o) opened.push(o); }
+    const kind = (o) => { if (o.h) return 'saludo'; let p = null; try { p = JSON.parse(o.p); } catch (e) {} if (p && p.type === 'chat') return 'mensaje'; if (p && (p.t === 'c' || p.t === 'f') && p.i === 0 && !p.hf) return 'mensaje'; return 'otro'; };
+    const msgs = opened.filter((o) => kind(o) === 'mensaje'), rest = opened.filter((o) => kind(o) !== 'mensaje');
+    r.sobres_de_A_para_B = opened.length;
+    r.mensajes_con_aviso = msgs.filter((o) => typeof o.n === 'string' && o.n.length > 0).length + '/' + msgs.length;
+    r.avisos_en_saludos_o_confirmaciones = rest.filter((o) => o.n).length;
+    const cfg = nB.netBg || {};
+    const cA = (cfg.contacts || []).find((c) => c.nx === idA);
+    r.config_segundo_plano = { me_ok: cfg.me === idB, relés: (cfg.relays || []).length, contacto_A: !!cA, secreto_pareja: !!(cA && /^[0-9a-f]{64}$/.test(cA.kraw)), since: cfg.since > 0 };
+  }
   // 2b) Impostor con Tor que dice ser B (conoce la .onion de A: por ejemplo, la vio en otro teléfono)
   if (withTor) {
     const nX = new NativePhone('X', 'EE:EE:EE:EE:EE:09', Object.assign({}, base, { wifi: 'calle' }));

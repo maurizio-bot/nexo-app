@@ -27,10 +27,16 @@ const SCENARIOS = [
     encontrado_por: (v) => typeof v === 'string' && v.length > 0, escrituras_bluetooth: (v) => v === 0 } },
   { name: 'internet (relés)', args: ['net.js'], tag: 'NET', checks: {
     texto_estado_A: (v) => v === 'delivered', 'relés_ven_algo': isEmpty, escrituras_bluetooth: (v) => v === 0,
-    datos_moviles_foto_espera: isTrue, errores: isEmpty, contenido_en_registros: (v) => v === 0 } },
+    datos_moviles_foto_espera: isTrue, errores: isEmpty, contenido_en_registros: (v) => v === 0,
+    mensajes_con_aviso: (v) => typeof v === 'string' && /^(\d+)\/\1$/.test(v) && v !== '0/0', avisos_en_saludos_o_confirmaciones: (v) => v === 0 } },
   { name: 'internet (Tor)', args: ['net.js', '--tor'], tag: 'NET', checks: {
     texto_estado_A: (v) => v === 'delivered', 'eventos_a_los_relés_durante_el_envío': (v) => v === 0, impostor_cerrado: isTrue,
     errores: isEmpty, contenido_en_registros: (v) => v === 0 } },
+  { name: 'no leídos y notificaciones', args: ['unread.js', '--io-delay=25'], tag: 'UNREAD', checks: {
+    contador_corto_largo_foto: (v) => v === 3, notificaciones_con_app_a_la_vista: (v) => v === 0, al_abrir_chat: (v) => v === 0, A_ve_leido: isTrue,
+    segundo_plano_cuenta: (v) => v === 2, notificacion: (v) => !!v && v.numero === 2, A_no_ve_leido_en_segundo_plano: isTrue,
+    al_volver_cuenta: (v) => v === 0, al_volver_notificacion_quitada: isTrue, al_volver_A_ve_leido: isTrue,
+    tocar_abre_chat: isTrue, tocar_cuenta: (v) => v === 0, tocar_notificacion_quitada: isTrue, repetido_cuenta_una_vez: isTrue, errores: isEmpty } },
   { name: 'Double Ratchet y poscuántico', args: ['ratchet.js'], tag: null },
 ];
 

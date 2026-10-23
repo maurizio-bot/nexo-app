@@ -922,6 +922,8 @@ function _sendTextTo(cid, wire, plain, hidden) {
   _msgContactMap[msgId] = cid;
   var vm = { msgId: msgId, messageId: msgId, contactNexoId: cid, content: wire, _own: true, status: 'sending', timestamp: Date.now(), seq: seq };
   if (hidden) vm.hidden = true;
+  // v9.9.52: una acción (borrar para todos) no es un mensaje nuevo: sin notificación en el otro teléfono
+  if (hidden) { bi._quietOut = bi._quietOut || new Set(); bi._quietOut.add(msgId); }
   if (!hidden && _normId(cid) === _normId(_getCurrentContactId())) _renderMessage(vm);
   else vaultAppendMessage(cid, vm).catch(function() {});
   if (!hidden) _noteContactMessage(cid, plain, vm.timestamp);

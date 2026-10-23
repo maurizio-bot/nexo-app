@@ -672,6 +672,8 @@ class NativePhone {
         self.notifications.set(id, n); self.notifLog.push({ t: Date.now(), chatId: id, name: a.name, text: a.text || '', count: n.base + n.ids.size });
         c.resolve({ count: n.base + n.ids.size });
       }),
+      // Escucha nativa de internet en segundo plano (NetBg.kt; probada en tests/kotlin/NetBgTest): se guarda la configuración
+      netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),
       clearChatNotification: wrap('clearChatNotification', (c, a) => { self.notifications.delete(String(a.chatId || '').toLowerCase()); c.resolve({}); }),
       syncUnread: wrap('syncUnread', (c, a) => {
         const want = new Map((a.chats || []).map((x) => [String(x.chatId).toLowerCase(), x.count || 0]));

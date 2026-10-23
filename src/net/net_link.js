@@ -1,5 +1,5 @@
 /**
- * net_link.js v1.0 — Internet por relés públicos (Nostr): hablar con un contacto que está lejos (otra casa, otra
+ * net_link.js v1.1 — Internet por relés públicos (Nostr): hablar con un contacto que está lejos (otra casa, otra
  * ciudad) cuando los dos tienen internet. Decisión del dueño (23-10-2026): relés públicos ahora; Tor después.
  *
  * - Relés: servidores públicos de Nostr (WebSocket, protocolo NIP-01). Guardan y reparten "eventos"; no son de NEXO
@@ -25,6 +25,11 @@
  *   buzón y para saber quién está en línea. Por Tor viaja el mismo sobre cifrado de la pareja: lo que no se descifra
  *   con la clave de ese contacto se descarta y la conexión se cierra (nadie puede hacerse pasar por él).
  *   Se puede apagar en Perfil (state.tor = false).
+ * Segundo plano (v1.1, ronda 2750): el emisor marca dentro del sobre de la pareja 'n' = msgId cuando el paquete es un
+ *   mensaje nuevo que se ve (texto, primer trozo de un texto largo, foto o archivo; no confirmaciones, saludos ni
+ *   acciones como borrar). Con la app en segundo plano la parte nativa (NetBg.kt) escucha los relés con las mismas
+ *   etiquetas (le damos el secreto de cada pareja con netBgConfig) y, al ver 'n', pone la notificación. El mensaje
+ *   sigue cifrado de extremo a extremo hasta que la app lo recoge.
  * Relés de prueba: window.NEXO_NET_RELAYS.
  */
 import { schnorr } from '@noble/curves/secp256k1.js';
@@ -87,6 +92,8 @@ export class NetLink {
     self._inited = true;
     try { var r = pl && await pl.loadFromFile({ filename: STATE_FILE }); if (r && r.exists && r.content) self.state = JSON.parse(r.content) || self.state; } catch (e) {}
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() {
+      // A segundo plano: la parte nativa sigue desde lo último que vio la app
+      if (document.visibilityState === 'hidden') { self._bgSinceDirty = true; self._bgConfig(); }
       if (document.visibilityState === 'visible') {
         // Tras un rato en segundo plano las conexiones pueden haberse caído: reconectar ya (sin esperar la pausa)
         self.relays.forEach(function(r) { r.retryAt = 0; r.backoff = 2000; });
@@ -151,6 +158,7 @@ export class NetLink {
     if (!self.me()) return;
     try { var st = pl && typeof pl.lanStatus === 'function' ? await pl.lanStatus() : null; self.wifi = !!(st && st.wifi); } catch (e) {}
     var changed = await self._refreshTags();
+    if (changed) self._bgConfig();
     if (!self.inTags.size) { self._closeAll(); return; }
     var urls = self.relayUrls();
     urls.forEach(function(u) {
@@ -290,6 +298,36 @@ export class NetLink {
     if (typeof o.p === 'string' && this.ble && typeof this.ble._onNetPayload === 'function') this.ble._onNetPayload(nx, o.p);
   }
 
+  // msgId si el paquete es un mensaje nuevo que se ve (para la notificación en segundo plano del otro)
+  _newMsgId(p) {
+    if (typeof p !== 'string' || p.charAt(0) !== '{') return null;
+    var o; try { o = JSON.parse(p); } catch (e) { return null; }
+    var id = null;
+    if (o && o.type === 'chat' && typeof o.msgId === 'string') id = o.msgId;
+    else if (o && (o.t === 'c' || o.t === 'f') && o.i === 0 && !o.hf && typeof o.m === 'string') id = o.m;
+    if (!id) return null;
+    var quiet = this.ble && this.ble._quietOut;
+    return quiet && quiet.has(id) ? null : id;
+  }
+
+  // La parte nativa escucha los relés con la app en segundo plano (NetBg.kt): se le da lo justo para reconocer los
+  // sobres de cada pareja (el secreto de la pareja, que no sale del teléfono)
+  async _bgConfig() {
+    var pl = _plugin();
+    if (!pl || typeof pl.netBgConfig !== 'function' || !this.me()) return;
+    var cs = this._netContacts(), list = [];
+    for (var i = 0; i < cs.length; i++) {
+      var nx = _nid(cs[i].nexoId || cs[i].deviceUUID);
+      try { var pair = await this._pair(nx, cs[i].publicKey); list.push({ nx: nx, name: cs[i].name || '', kraw: bytesToHex(pair.kraw) }); } catch (e) {}
+    }
+    var sig = list.map(function(c) { return c.nx + c.kraw; }).join(',') + '|' + this.relayUrls().join(',');
+    // Desde justo después de lo último que recogió la app (lo ya visto no vuelve a avisar)
+    var since = this.state.lastSeen ? this.state.lastSeen + 1000 : Date.now() - 600000;
+    if (sig === this._bgSig && !this._bgSinceDirty) return;
+    this._bgSig = sig; this._bgSinceDirty = false;
+    try { await pl.netBgConfig({ me: this.me(), relays: this.relayUrls(), since: since, contacts: list }); } catch (e) {}
+  }
+
   _saveState() {
     var self = this, pl = _plugin();
     if (self._saveT || !pl) return;
@@ -359,7 +397,7 @@ export class NetLink {
     var pair = await this._pair(nx, c.publicKey);
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
     if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } }
-    else body.p = String(content);
+    else { body.p = String(content); var nid = this._newMsgId(body.p); if (nid) body.n = nid; }
     var iv = _rnd(12);
     var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: _utf8('NEXO-NET|' + me + '|' + nx) }, pair.aes, _utf8(JSON.stringify(body))));
     var b64 = _b64(_cat(iv, ct));

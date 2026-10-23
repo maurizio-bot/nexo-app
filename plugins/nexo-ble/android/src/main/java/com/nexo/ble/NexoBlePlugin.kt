@@ -88,6 +88,7 @@ import org.json.JSONObject
 class NexoBlePlugin : Plugin() {
 
     companion object {
+        @Volatile private var netBgShared: NetBg? = null
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
         private const val RECONNECT_DELAY_MS = 3000L
@@ -440,6 +441,8 @@ class NexoBlePlugin : Plugin() {
     }
     override fun handleOnResume() {
         super.handleOnResume()
+        appInBackground = false
+        try { netBgShared?.stop() } catch (e: Exception) { }
         checkNotificationIntent()
         remLog("INFO", "LIFECYCLE", "handleOnResume")
         val ctx = activity.applicationContext
@@ -457,6 +460,10 @@ class NexoBlePlugin : Plugin() {
     override fun handleOnPause() {
         super.handleOnPause()
         remLog("INFO", "LIFECYCLE", "handleOnPause")
+        appInBackground = true
+        // La app deja de estar a la vista: la escucha nativa de internet toma el relevo (la app la reconfigura al
+        // ocultarse con lo último que vio)
+        mainHandler.postDelayed({ if (appInBackground) try { netBg().start() } catch (e: Exception) { } }, 3000)
         notifyListeners("onAppStateChange", JSObject().put("isActive", false))
     }
     override fun handleOnDestroy() {
@@ -2069,6 +2076,26 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // ===== Internet en segundo plano (NetBg): escucha los relés mientras la app no está a la vista =====
+    // Una por proceso: sigue aunque se cierre la actividad mientras el servicio de Bluetooth mantiene el proceso
+    private fun netBg(): NetBg = netBgShared ?: synchronized(NexoBlePlugin::class.java) {
+        netBgShared ?: NetBg({ nx, name, msgId -> MsgNotifier.get(context).message(nx, name, msgId, "") }, { Log.i("NEXO_NET", it) }).also { netBgShared = it }
+    }
+
+    @PluginMethod
+    fun netBgConfig(call: PluginCall) {
+        val me = call.getString("me") ?: run { call.reject("falta me"); return }
+        val relays = ArrayList<String>(); val list = ArrayList<NetBg.Contact>()
+        try {
+            call.getArray("relays")?.let { for (i in 0 until it.length()) relays.add(it.getString(i)) }
+            call.getArray("contacts")?.let { for (i in 0 until it.length()) { val o = it.getJSONObject(i); list.add(NetBg.Contact(o.getString("nx").lowercase(), o.optString("name"), Secp256k1.unhex(o.getString("kraw")))) } }
+        } catch (e: Exception) { call.reject("configuración ilegible"); return }
+        val since = (call.getData().optLong("since", 0L))
+        netBg().configure(me, relays, since, list)
+        if (appInBackground && list.isNotEmpty()) netBg().start()
+        call.resolve(JSObject().put("contacts", list.size).put("running", netBg().running))
+    }
+
     // ===== Notificaciones de mensajes (MsgNotifier): las pide notify.js con la app en segundo plano =====
     @PluginMethod
     fun notifyMessage(call: PluginCall) {
@@ -2333,6 +2360,7 @@ class NexoBlePlugin : Plugin() {
     // LanHub de Tor (solo escucha en 127.0.0.1) y se avisa con onTorReady { onion }. torConnect conecta a la .onion
     // de un contacto por el SOCKS de Tor. Lo que viaja ya va cifrado por la app (sobre de pareja + E2E).
     private var torSvc: org.torproject.jni.TorService? = null
+    @Volatile private var appInBackground = false
     private var torBind: android.content.ServiceConnection? = null
     private var torHub: LanHub? = null
     @Volatile private var torOnion = ""
