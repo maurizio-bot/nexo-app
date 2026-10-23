@@ -56,6 +56,7 @@ dependencies {
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.biometric:biometric:1.1.0'
-    // Tor (librería oficial del Guardian Project). Sin su kotlin-stdlib 2.2: el proyecto compila con Kotlin 1.9
+    // Tor (librería oficial del Guardian Project; pide compileSdk 37.1 y trae clases de Java 24: AGP 9.4). Sin su
+    // kotlin-stdlib: las clases de Tor son Java puro
     implementation('info.guardianproject:tor-android:0.4.9.14') { exclude group: 'org.jetbrains.kotlin' }
 }

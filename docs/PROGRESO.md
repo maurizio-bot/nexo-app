@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-23 (build 2744)
+Última actualización: 2026-10-23 (build 2749)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -74,6 +74,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2739 | `f51dec6` | Internet: relés públicos Nostr (buzón cifrado, etiquetas diarias, sin NEXO IDs) y Tor (servicio oculto, directo y sin IP visible). Wi-Fi de módems distintos = internet antes que Bluetooth. `docs/INTERNET.md`. APK verificada (firma 23d86688…, sin copias, TorService y libtor.so ARM 64/32); pesa 26,9 MB (la 2734, 10 MB) |
 | 2740–2743 | | Compilaciones de prueba en la rama de trabajo (pruebas automáticas en GitHub); la 2740–2742 pararon en las pruebas por el fallo de Jump con internet |
 | 2744 | `56f6991` | Pruebas automáticas antes de cada APK, Jump: fotos ya no se atascan con el puente conectado por internet, vista previa sin medio emoji, limpieza (versiones, manifiesto, tarjetas de pago). APK verificada (firma 23d86688…, sin copias, Tor incluido) |
+| 2745–2748 | | Compilaciones de prueba en la rama de trabajo (AGP 9): 2745 y 2746 fallaron (proguard-android.txt, compileSdk 37.1), 2747 (AGP 9.2) y 2748 (AGP 9.4) compilaron con la firma de siempre |
+| 2749 | (este commit) | Gradle moderno (AGP 9.4.0, Gradle 9.6.0, Kotlin 2.2.20, compileSdk 37.1) y Tor 0.4.9.14 |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -191,6 +193,20 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2749: plan del dueño, punto 5 (Gradle moderno y Tor más nuevo)
+- AGP 8.2.1 → **9.4.0**, Gradle 8.5 → **9.6.0**, Kotlin 1.9.20 → **2.2.20**, compileSdk 34 → **37.1**; `targetSdk` sigue
+  en 34 (lo que cambia el comportamiento de la app en el teléfono no se toca). Tor 0.4.9.5 → **0.4.9.14** (misma API;
+  `socksPort` pasó a privado y el código ya usaba `getSocksPort()`).
+- Ajustes: `android.builtInKotlin=false` y `android.newDsl=false` (los módulos de Capacitor 5 usan el DSL antiguo y
+  `kotlin-android`); `kotlinOptions` → `kotlin { compilerOptions }`; `proguard-android.txt` → `-optimize` (la
+  reducción de código está apagada, no cambia la APK); `scripts/agp9-patch.sh` ajusta en GitHub los módulos de
+  Capacitor que vienen de npm (después de `cap sync`).
+- Comprobado en GitHub: compila (2747 con AGP 9.2, 2748 con AGP 9.4, sin avisos de versión), firma 23d86688…, y las
+  pruebas (Kotlin + simulador) pasan. El JavaScript no cambió respecto a la 2744.
+- **Riesgo**: compilar con otras herramientas puede cambiar detalles en tiempo de ejecución que el simulador no ve
+  (el simulador prueba el JavaScript, no el Kotlin compilado). Probar en los teléfonos: Bluetooth, Wi-Fi, Wi-Fi
+  Direct, huella y Tor (Perfil → Internet). Si algo nativo falla, volver a la 2744.
 
 ## Ronda 2744: plan del dueño, puntos 1–3 (limpieza, pruebas en cada build, emojis) — `docs/PENDIENTES.md` §5
 - **Pruebas en cada build**: el workflow tiene un trabajo `tests` (Kotlin JVM, 25 pruebas, y `tests/sim/ci.js`, 9

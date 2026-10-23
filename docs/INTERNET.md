@@ -42,7 +42,7 @@ eligió: **relés públicos (opción 3) y Tor (opción 2)**, sin servidor propio
     con el mismo protocolo (`tests/sim/nostr_relay.js`). Con relés reales solo se puede confirmar en los teléfonos.
 
 ## Fase 2: Tor — `src/net/net_link.js` + `NexoBlePlugin.kt` (torStart/torConnect/torSend)
-- **Qué es**: cada teléfono arranca Tor (librería oficial `tor-android` del Guardian Project, versión 0.4.9.5) y
+- **Qué es**: cada teléfono arranca Tor (librería oficial `tor-android` del Guardian Project, versión 0.4.9.14) y
   publica un **servicio oculto** con una dirección `.onion` fija (la clave se guarda en el teléfono, `nexo_tor_key.json`).
 - **Cómo se encuentran**: la `.onion` viaja **dentro del saludo cifrado** de la pareja (campos `o`/`op`). Nadie más la
   ve. Si los dos tienen Tor, uno llama al otro por Tor y desde entonces todo lo de esa pareja (textos, fotos,
@@ -58,11 +58,9 @@ eligió: **relés públicos (opción 3) y Tor (opción 2)**, sin servidor propio
   hasta 90 s.
 - **Coste**: más lento que los relés (cada paquete da 6 saltos por la red Tor), algo más de batería, y la APK crece por
   la librería nativa de Tor (solo ARM de 32 y 64 bits): de 10 MB (2734) a 26,9 MB (2739).
-- **Versión**: 0.4.9.5 es la más nueva que admite el Gradle del proyecto (AGP 8.2, compileSdk 34), comprobado versión
-  por versión: la 0.4.9.6 pide compileSdk 36, la 0.4.9.6.2 y la 0.4.9.8 piden 37, y desde la 0.4.9.9 (hasta la
-  0.4.9.14) las clases vienen compiladas con Java 24. Además se excluye del Jetifier (`android.jetifier.ignorelist`,
-  también en el workflow, que reescribe `gradle.properties`). Para usar un Tor más nuevo hay que actualizar AGP y
-  compileSdk.
+- **Versión**: 0.4.9.14 desde la ronda 2749 (antes 0.4.9.5). Pide compileSdk 37.1 y trae clases de Java 24, por eso el
+  proyecto pasó a AGP 9.4.0 / Gradle 9.6.0 / Kotlin 2.2.20 (el `targetSdk` sigue en 34: la app se comporta igual en el
+  teléfono). Sigue excluida del Jetifier (`android.jetifier.ignorelist`, también en el workflow).
 - **Pruebas** (`tests/sim/net.js --tor`, modelo de Tor en `native_mock.js` con arranque, latencia y ancho de banda):
   Tor conectado en 1,6 s del modelo, 0 eventos a los relés durante el envío, impostor cerrado y la pareja sigue
   hablando. `tests/kotlin/LanHubTorTest.kt` prueba `LanHub` con un proxy SOCKS real. **El Tor real solo se puede

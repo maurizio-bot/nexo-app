@@ -79,7 +79,7 @@ De lo más simple a lo más complejo. Estado:
    la recuperación de Fénix busca a los contactos por el NEXO ID que anuncian y un teléfono recién recuperado
    todavía no sabría reconocer un ID rotativo; también afecta a agregar desconocidos, a Jump con desconocidos y a
    teléfonos con builds viejas. Hace falta un diseño con pruebas de esos casos antes de decidir.
-5. Actualizar AGP/compileSdk (Tor más nuevo). 6. Dividir `main.js` y `ble_interface.js`. 7. Bluetooth sin base64.
+5. ✅ (2749) AGP 9.4.0 / Gradle 9.6.0 / Kotlin 2.2.20 / compileSdk 37.1 y Tor 0.4.9.14 (targetSdk sigue en 34). 6. Dividir `main.js` y `ble_interface.js`. 7. Bluetooth sin base64.
 8. Detectar MTU pequeño. 9. Fénix para fotos/vídeos/archivos. 10. Jump por Wi-Fi.
 11. Recibir por internet en segundo plano. 12. Recibir por Bluetooth con la app cerrada. 13. L2CAP.
 14. Grupos. 15. Varios dispositivos. 16. Llamadas de voz. 17. Videollamadas.

@@ -63,7 +63,7 @@ jobs:
           retention-days: 7
 
   build:
-    # needs: tests  (SOLO en la rama de prueba tmp-agp9)
+    needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
