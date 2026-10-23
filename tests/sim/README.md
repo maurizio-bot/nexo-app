@@ -170,6 +170,11 @@ mensajes se pierde un trozo del medio), `--kotlin-2722` (reglas antiguas de la c
 `--inject` (paquetes mutilados: no deben salir en el chat), `--camera` (el otro abre la cámara a mitad),
 `--bridge-ms` (coste de cada aviso Android → app).
 
+`lanscan.js`: router que no deja pasar el anuncio mDNS (`opts.lanNoMdns`): con el escaneo de la red (LanBeacon, 2733)
+A y B se encuentran y van por Wi-Fi sin Bluetooth; al volver a la red se reconectan; en redes distintas no hay camino.
+`--kotlin-2732` (`opts.lanNoScan`, solo mDNS): nunca se encuentran (el fallo). Kotlin del escaneo: `tests/kotlin`
+(`LanBeaconTest`, UDP real).
+
 `lan.js` (A, B, C y un impostor X; misma red Wi-Fi "casa"): Wi-Fi normal y cambio automático de camino. La
 conexión Wi-Fi se comprueba con el cifrado y pasa a ser el camino (textos y fotos sin Bluetooth, nada en claro
 por la red); C (no contacto) no se conecta; sin alcance Bluetooth sigue por Wi-Fi; B sale de la red a mitad de un

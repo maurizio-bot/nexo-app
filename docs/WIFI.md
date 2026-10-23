@@ -23,6 +23,25 @@ Pedido del dueño (23-10-2026): "implementa wifi normal y la parte de switcheo e
   Wi-Fi cuando mejora (<0,8 s dos veces).
 - La cabecera del chat dice por dónde va: "En línea · Wi-Fi", "En línea · Bluetooth" o "Por Jump".
 
+## Escaneo de la red (idea del dueño, ronda 2733)
+El anuncio mDNS no siempre llega: muchos routers de operadora, repetidores y redes en malla no dejan pasar ese tráfico
+entre teléfonos, y entonces los dos estaban en el mismo Wi-Fi sin encontrarse. Ahora, además, cada teléfono **pregunta
+a toda la red** "¿hay algún NEXO?" (Kotlin `LanBeacon`, UDP puerto 47824):
+- al conectarse a una red Wi-Fi (aviso de Android), al volver a la app y cada minuto: a la dirección de difusión;
+- al entrar en la red, al volver a la app y cada 5 min, también **dirección por dirección** (hasta 1022 direcciones,
+  redes /22 o más pequeñas), por si el router filtra también la difusión.
+Quien la oye contesta con su marca del día y su puerto. Mismas reglas que con mDNS: solo un contacto reconoce la marca y
+la conexión se comprueba con el cifrado antes de usarla. El diagnóstico dice cómo se encontró:
+`[WIFI] nx… está en la misma red (escaneo de la red | anuncio mDNS)`.
+No sirve si el router aísla a los clientes entre sí (redes de invitados): ahí tampoco pasa la conexión.
+
+## Módems distintos (cada uno en su casa)
+Dos teléfonos en redes Wi-Fi distintas no tienen camino local entre ellos: solo internet. Desde internet no se puede
+"escanear" la casa de otro (los teléfonos tienen direcciones privadas detrás de su módem, que no deja entrar conexiones
+que nadie pidió). Para hablar por internet hace falta un punto de encuentro donde cada teléfono diga "estoy aquí":
+servidor propio, Tor o relés públicos (decisión pendiente del dueño, `docs/PENDIENTES.md`). Hasta entonces, entre redes
+distintas NEXO va por Bluetooth o Jump.
+
 ## Privacidad y seguridad
 - En la red cada teléfono se anuncia (NSD/mDNS, `_nexo._tcp`) con una **marca del día**:
   SHA-256("nexo-lan|<NEXO ID>|<fecha UTC>") recortada. Solo quien ya conoce el NEXO ID (un contacto) la reconoce; un

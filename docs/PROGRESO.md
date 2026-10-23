@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-23 (build 2732)
+Última actualización: 2026-10-23 (build 2734)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -68,6 +68,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2730 | `40fe10c` | Wi-Fi según las reglas del dueño (no pasa a Bluetooth por un corte breve ni en segundo plano; mala señal medida), remitente oculto a los puentes de Jump, poscuántico (ML-KEM), QR del número de seguridad. APK verificada (firma 23d86688…, sin copias) |
 | 2731 | `9b0250b` | Compilación de prueba en la rama de trabajo (Kotlin del largo alcance), sin release |
 | 2732 | `fbeaaed` | Jump con más alcance (Bluetooth de largo alcance LE Coded y hasta 8 saltos), Fénix fase 2 (los mensajes de texto se respaldan en 2 contactos y vuelven al recuperar la cuenta), el "+" de agregar ya no falla. APK verificada (firma 23d86688…, sin copias) |
+| 2733 | `d20e1b6` | Compilación de prueba en la rama de trabajo (Kotlin del escaneo de la red), sin release |
+| 2734 | (ver ronda) | Wi-Fi: escaneo activo de la red (idea del dueño): los teléfonos en el mismo Wi-Fi se encuentran aunque el router no deje pasar el anuncio mDNS |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -91,6 +93,9 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2734: los dos teléfonos en el mismo Wi-Fi (también con repetidor o red en malla): "En línea · Wi-Fi" en segundos,
+  también al apagar y encender el Wi-Fi de uno. Diagnóstico: `[WIFI] nx… está en la misma red (escaneo de la red |
+  anuncio mDNS)`. Entre módems distintos sigue sin Wi-Fi hasta decidir el punto de encuentro por internet.
 - 2732: (1) Diagnóstico: línea `[JUMP] Largo alcance (LE Coded): sí/no` en cada teléfono (si los dos dicen "sí",
   probar Jump o un chat directo más lejos que antes). (2) Perfil → Fénix: con la cuenta protegida debe salir
   "💬 Mensajes protegidos: N"; tras recuperar la cuenta en otro teléfono, "🔥 Fénix: N mensaje(s) recuperados".
@@ -176,6 +181,18 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2734: escaneo de la red Wi-Fi (idea del dueño: "en cuanto tenga Wi-Fi, escanear a través del módem")
+- El dueño pidió que, estando los dos en Wi-Fi, la conexión sea Wi-Fi. Reproducido en `tests/sim/lanscan.js`: con un
+  router que no deja pasar el anuncio mDNS (habitual en repetidores, mallas y routers de operadora) la 2732 nunca los
+  encontraba y, lejos de Bluetooth, el texto no llegaba.
+- Kotlin `LanBeacon` (UDP 47824): pregunta a toda la red (difusión) al entrar en una red Wi-Fi (aviso de Android),
+  al volver a la app y cada minuto; dirección por dirección (hasta /22) al entrar, al volver y cada 5 min. Contesta
+  con la marca del día. 4 pruebas JVM con UDP real (pregunta/respuesta, basura y repetidos, direcciones de la red, del
+  escaneo a la conexión LanHub). `lan.js` v1.2: busca al entrar en la red; el diagnóstico dice cómo se encontró.
+- Resultado `lanscan.js`: encontrados en 0,2 s por escaneo; texto 0,2 s y foto de 300 KB 0,6 s sin Bluetooth; al volver
+  al Wi-Fi 0,2 s. Módems distintos: sin camino (hace falta internet con punto de encuentro; decisión del dueño).
+- Batería completa (bat28, 49 ejecuciones) sin cambios.
 
 ## Ronda 2732: Jump con más alcance y Fénix fase 2 (pedido del dueño: "termines la seguridad, fénix y mejores jump")
 - **Largo alcance** (Kotlin): además del anuncio normal, anuncio extendido en **LE Coded PHY** (~4x distancia) si el

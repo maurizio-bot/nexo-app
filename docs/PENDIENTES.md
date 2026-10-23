@@ -51,7 +51,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 
 ## 4. Decisiones pendientes del dueño
 1. Stream: ¿sí o no? ¿solo cercanos o con servidor?
-2. Internet / datos móviles: ¿servidor de relevo?
+2. Internet / datos móviles (y Wi-Fi entre módems distintos, pedido del dueño 23-10): hace falta un punto de encuentro
+   por internet: ¿servidor propio pequeño (recomendado), Tor como Briar, o relés públicos?
 3. Pagos: modelo y país.
 4. iPhone: ¿cuenta de Apple?
 5. **Identificador Bluetooth rotativo** (seguridad, punto 9): hoy cualquiera con un escáner ve el NEXO ID en el
