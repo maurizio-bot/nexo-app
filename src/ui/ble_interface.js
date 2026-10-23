@@ -197,11 +197,13 @@ function _chatKind(content) {
   try { var p = JSON.parse(content); return (p && (p.type === 'nexo_txt' || p.type === 'nexo_act')) ? p : null; } catch (e) { return null; }
 }
 
+// Recortar texto sin partir un emoji ni otro carácter de dos unidades (quedaría "�")
+function _cut(s, n) { s = String(s == null ? '' : s); if (s.length <= n) return s; var c = s.charCodeAt(n - 1); return s.substring(0, (c >= 0xD800 && c <= 0xDBFF) ? n - 1 : n); }
 function _messagePreview(content, attachmentType) {
   var t = attachmentType;
   var k = !t ? _chatKind(content) : null;
   if (k && k.type === 'nexo_act') return null;
-  if (k) return String(k.t || '').substring(0, 50);
+  if (k) return _cut(k.t, 50);
   if (!t && typeof content === 'string' && content.charAt(0) === '{') {
     try { var p = JSON.parse(content); if (p && p.attachmentType) t = p.attachmentType; } catch (e) {}
   }
@@ -211,7 +213,7 @@ function _messagePreview(content, attachmentType) {
   if (t === 'location') return '📍 Ubicación';
   if (t === 'contact') return '👤 Contacto';
   if (t) return '📎 Archivo';
-  return String(content || '').substring(0, 50);
+  return _cut(content, 50);
 }
 
 function _formatTime(ts) {
@@ -3325,7 +3327,7 @@ export class BLEInterface {
       if (!/^NX[0-9A-Z]{8}$/i.test(id)) return;
       var nx = _normId(id);
       if (nx === me) return;
-      var name = String((c && c.name) || '').replace(/[<>]/g, '').trim().substring(0, 40) || id.toUpperCase();
+      var name = _cut(String((c && c.name) || '').replace(/[<>]/g, '').trim(), 40) || id.toUpperCase();
       var cur = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
       if (cur) {
         if (!cur.publicKey && c && typeof c.publicKey === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(c.publicKey)) { cur.publicKey = c.publicKey; keyFilled = true; }

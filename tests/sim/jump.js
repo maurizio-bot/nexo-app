@@ -22,6 +22,9 @@ const directLater = !!arg('direct-later', false);
 const bridgeA = process.argv.find((x) => x.startsWith('--bridge-build='));
 const bridgeDir = bridgeA ? path.resolve(bridgeA.split('=')[1]) : buildDir;
 const chainN = arg('chain', 0) === true ? 4 : Number(arg('chain', 0)) || 0;
+// --no-route-wait: A escribe justo después de perder el alcance directo con el destino (en GitHub la ruta
+//   estaba lista al instante y la foto se quedaba en "enviando")
+const noRouteWait = !!arg('no-route-wait', false);
 const shared = !!arg('shared', false), chain = chainN >= 3, stranger = !!arg('stranger', false), lowBat = !!arg('low-battery', false);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
@@ -119,7 +122,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.A_recibe_contacto_C_con_clave = !!(cC && cC.publicKey);
   }
   // Rutas: esperar a que A tenga ruta al destino (con un desconocido en medio la busca al enviar)
-  if (!stranger) r.ruta_lista_s = await waitFor(() => !!P.A.win.bleInterface.relay.relayHop(id(dest).toLowerCase()), 60000);
+  if (!stranger && !noRouteWait) r.ruta_lista_s = await waitFor(() => !!P.A.win.bleInterface.relay.relayHop(id(dest).toLowerCase()), 60000);
   const airBefore = Object.keys(air).reduce((o, k) => { o[k] = air[k].length; return o; }, {});
   // Remitente sellado: todo lo que los puentes reciben a partir de aquí (paquetes completos)
   const seenByBridge = {};

@@ -18,7 +18,7 @@ const SCENARIOS = [
     corto_llega: isTrue, largo_llega: isTrue, corto_marca_entregado: isTrue, respuesta_B_llega: isTrue,
     archivo_llega_a_B: isTrue, offline_llega_al_volver: isTrue } },
   { name: 'cifrado de extremo a extremo', args: ['e2e.js', '--io-delay=25'], tag: 'E2E', checks: {
-    llega_corto: isTrue, llega_largo: isTrue, llega_foto_identica: isTrue, llega_respuesta: isTrue, en_el_aire_en_claro: isEmpty } },
+    llega_corto: isTrue, llega_largo: isTrue, llega_emojis_identico: isTrue, vista_previa_sin_medio_emoji: isTrue, llega_foto_identica: isTrue, llega_respuesta: isTrue, en_el_aire_en_claro: isEmpty } },
   { name: 'impostor', args: ['impostor.js', '--io-delay=25'], tag: 'IMPOSTOR', checks: {
     A_muestra_mensaje_del_impostor: (v) => v === false, impostor_recibe_algo: (v) => v === false, clave_de_B_intacta: isTrue, errores: isEmpty } },
   { name: 'Jump', args: ['jump.js', '--io-delay=25'], tag: 'JUMP', checks: { estados_A: allDelivered, puentes_leen_algo: isEmpty } },

@@ -58,6 +58,14 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   const largo = 'SECRETO-largo-' + 'abcdefghij'.repeat(40);
   await sendText(A, 'SECRETO-corto-123'); await sleep(2500);
   await sendText(A, largo); await sleep(4000);
+  // Emojis (2 y más unidades UTF-16, con modificadores y uniones) y acentos en todas las posiciones de los trozos
+  const emojis = 'SECRETO-emoji ' + 'ñandú café 😀👍🏽👨‍👩‍👧 ¿qué? '.repeat(40).trim();
+  await sendText(A, emojis); await sleep(4000);
+  // Vista previa de la lista (se corta a 50): el emoji cae justo en el corte, no debe quedar medio emoji (�)
+  await sendText(A, 'x'.repeat(49) + '😀 fin'); await sleep(3000);
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  const prevB = Array.from(B.win.document.querySelectorAll('.ble-contact-msg')).map((e) => e.textContent);
+  r.vista_previa_sin_medio_emoji = prevB.length > 0 && !prevB.some((t) => lone.test(t));
   // Foto (como archivo): contenido reconocible
   const foto = Buffer.alloc(30000); for (let i = 0; i < foto.length; i++) foto[i] = (i * 13 + 7) & 255;
   click(A.win, A.win.document.querySelector('.attach-menu-item[data-type="file"]')); await sleep(200);
@@ -81,6 +89,7 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   const fotoB64 = foto.toString('base64');
   r.llega_corto = vB.some((m) => m.content === 'SECRETO-corto-123');
   r.llega_largo = vB.some((m) => m.content === largo);
+  r.llega_emojis_identico = vB.some((m) => m.content === emojis);
   const fB = vB.find((m) => m.attachmentType === 'file' || m.attachmentType === 'image');
   let fotoRecibida = fB && (fB.attachmentPayload || (fB.attachmentRef && nB.files.get(fB.attachmentRef)));
   r.llega_foto_identica = fotoRecibida === fotoB64;

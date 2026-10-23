@@ -703,9 +703,11 @@ function _peerUnderstands(cid) {
   var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(cid); });
   return !!(c && c.fx);
 }
+// Recortar texto sin partir un emoji ni otro carácter de dos unidades (quedaría "�")
+function _cut(s, n) { s = String(s == null ? '' : s); if (s.length <= n) return s; var c = s.charCodeAt(n - 1); return s.substring(0, (c >= 0xD800 && c <= 0xDBFF) ? n - 1 : n); }
 function _msgSummary(msg) {
   if (msg.attachmentType) return { k: msg.attachmentType, s: _PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo' };
-  return { k: 'text', s: _plainText(msg.content).substring(0, 100) };
+  return { k: 'text', s: _cut(_plainText(msg.content), 100) };
 }
 function _findMessage(cid, id) {
   return vaultLoadMessages(cid).then(function(list) {
@@ -1003,7 +1005,7 @@ function _refreshChatPreview(cid) {
     var contacts = vaultLoadContacts() || [];
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(cid); });
     if (!c) return;
-    c.lastMessage = !last ? '' : last.deleted ? '🚫 Mensaje eliminado' : last.attachmentType ? (_PREVIEW_BY_TYPE[last.attachmentType] || '📎 Archivo') : _plainText(last.content).substring(0, 50);
+    c.lastMessage = !last ? '' : last.deleted ? '🚫 Mensaje eliminado' : last.attachmentType ? (_PREVIEW_BY_TYPE[last.attachmentType] || '📎 Archivo') : _cut(_plainText(last.content), 50);
     vaultSaveContacts(contacts);
     var bi = window.bleInterface;
     if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();
@@ -3866,7 +3868,7 @@ var _PREVIEW_BY_TYPE = { contact: '👤 Contacto', image: '📷 Foto', video: '�
 function _noteContactMessage(contactId, textOrType, ts) {
   var bi = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
   if (!contactId || !bi || typeof bi.noteContactMessage !== 'function') return;
-  bi.noteContactMessage(contactId, _PREVIEW_BY_TYPE[textOrType] || String(textOrType || '').substring(0, 50), ts);
+  bi.noteContactMessage(contactId, _PREVIEW_BY_TYPE[textOrType] || _cut(textOrType, 50), ts);
 }
 
 function _removeIncomingPlaceholder(fileId) {
