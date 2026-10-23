@@ -116,6 +116,14 @@ shareContactsUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
 import { locationUse, _lastLocationSent, _LOCATION_DEBOUNCE_MS, _isGettingLocation, _handleLocation, _sendLocation, _browserPosition } from './ui/location.js';
 locationUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
 import { voiceUse, _mediaRecorder, _audioChunks, _isRecording, _voiceStartTime, _voiceTimerInterval, _handleVoiceToggle, _updateMicIcon } from './ui/voice.js';
+import { chatActionsUse, _renderedMessageIds, _replyTo, DELETE_ALL_MS, _fillTextBubble, _scrollToMessage, _setupMessageActions, _openMsgMenu, _startReply, _cancelReply, _renderReplyBar, _copyText, _openForwardSheet, _forwardTo, _refreshChatPreview, _deleteForMe, _deleteForAll, _rerenderBlank, _applyChatAction } from './ui/chat_actions.js';
+import { _objectURLRegistry, MAX_BLE_B64_BYTES, MAX_BLE_FILE_BYTES, WD_MAX_B64_BYTES, _maxB64For, _tooBigMessage, _cleanupObjectURLs } from './ui/media_limits.js';
+import { videoSendUse, MAX_HD_B64_BYTES, _videoTimes, _hdOutbox, _hdInFlight, _showOwnPreparing, _sendVideo, _videoViaBle, _registerHd, _startHd, _onHdSent, _resumeHdForMsg, _resumeHdTransfers, _applyHdUpgrade, _swapVideoInBubble, _setHdBadge } from './ui/video_send.js';
+import { _renderE2EBanner, _onSafetyQr } from './ui/e2e_banner.js';
+import { _msgContactMap } from './ui/chat_state.js';
+import { _closeFullscreenMedia, _openFullscreenMedia, _thumbsInProgress, _buildFileCard, _openingFile, _openAttachmentFile, _ensurePdfThumb, _ensureVideoThumb } from './ui/file_card.js';
+videoSendUse({ /* [pegamento] */ _handleIncomingMessage: _handleIncomingMessage, _sendAttachment: _sendAttachment, _sendFileFor: _sendFileFor, _updateMessageStatus: _updateMessageStatus, _updateMessageStorageStatus: _updateMessageStorageStatus });
+chatActionsUse({ /* [pegamento] */ _renderMessage: _renderMessage, _sendAttachment: _sendAttachment, _sendTextTo: _sendTextTo });
 voiceUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
 profileUse({ /* [pegamento] */ _showInfoToast: _showInfoToast });
 cameraUse({ /* [pegamento] */ _wdReach: _wdReach, _waitForBLEReady: _waitForBLEReady, _sendAttachment: _sendAttachment, _closeAttachMenu: _closeAttachMenu, _releaseMedia: _releaseMedia, _handleGallery: _handleGallery, _sendVideo: _sendVideo });
@@ -200,26 +208,9 @@ var SAFETY_TIMEOUT = setTimeout(function() {
   }
 }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE ? NEXO_CONFIG.TIMEOUTS.SPLASH_HIDE : 3000) + 12000);
 
-var _objectURLRegistry = [];
 var _renderedMessageCount = 0;
-var _renderedMessageIds = new Set();
 var _autoScan = null;
-var _msgContactMap = {};
 
-/** Tope base64 para BLE (aprox. \~250KB binario). Fotos comprimidas suelen quedar bajo esto. */
-// v9.9.26: ~3 MB en base64 (~2,2 MB de archivo). A la velocidad real de BLE (unos KB/s) 8 MB eran
-// más de 20 minutos y bloqueaban la app; por encima de esto no se envía.
-var MAX_BLE_B64_BYTES = 3000000;
-var MAX_BLE_FILE_BYTES = Math.floor(MAX_BLE_B64_BYTES * 3 / 4);
-// v9.9.39: con Wi-Fi Direct (contacto a alcance que también lo tiene) el límite sube a ~22 MB
-var WD_MAX_B64_BYTES = 30000000;
-function _maxB64For(contactId) { return _wdReach(contactId) ? WD_MAX_B64_BYTES : MAX_BLE_B64_BYTES; }
-function _tooBigMessage(bytes, contactId) {
-  if (_wdReach(contactId)) return 'Archivo demasiado grande (' + (bytes / 1048576).toFixed(1) + ' MB). Máximo ~' + (WD_MAX_B64_BYTES * 3 / 4 / 1048576).toFixed(0) + ' MB.';
-  var bi = window.bleInterface;
-  var hint = (bi && bi.wifiDirect && bi.wifiDirect.supported()) ? ' Con Wi-Fi Direct (los dos con NEXO actualizado y cerca) se pueden enviar hasta ~22 MB.' : '';
-  return 'Archivo demasiado grande para Bluetooth (' + (bytes / 1048576).toFixed(1) + ' MB). Máximo ~' + (MAX_BLE_FILE_BYTES / 1048576).toFixed(1) + ' MB.' + hint;
-}
 
 
 
@@ -397,201 +388,13 @@ function _sendFileFor(contactId, msgId, type, payload, meta, opts) {
     });
 }
 
-// ===================== v9.9.45: chat tipo WhatsApp: responder, reenviar, eliminar, copiar =====================
-// Mantener pulsada una burbuja (o clic derecho) abre el menú; deslizarla a la derecha responde.
-// Formato (solo con contactos 2715+, que lo entienden; a los demás va el texto solo):
-//   texto con respuesta o reenviado: {"type":"nexo_txt","t":texto,"rp":{id,a,s,k},"fw":1}
-//   eliminar para todos:              {"type":"nexo_act","act":"del","id":msgId}  (no se muestra)
-var _replyTo = null;               // { id, a: autor (NEXO ID), s: resumen, k: tipo }
-var DELETE_ALL_MS = 24 * 3600000;  // "eliminar para todos" hasta 24 h después de enviarlo
 
 
-// Burbuja de texto: eliminado, reenviado, respuesta citada (todo como texto: viene de otro teléfono)
-function _fillTextBubble(contentDiv, msg, isOwn) {
-  if (msg.deleted) {
-    contentDiv.classList.add('msg-deleted');
-    contentDiv.style.fontStyle = 'italic';
-    contentDiv.style.opacity = '0.7';
-    contentDiv.textContent = isOwn ? '🚫 Eliminaste este mensaje' : '🚫 Se eliminó este mensaje';
-    return;
-  }
-  var raw = msg.content || msg.text || '';
-  var k = _chatKind(raw);
-  if (!k || k.type !== 'nexo_txt') { contentDiv.textContent = raw; return; }
-  if (k.fw) {
-    var fw = document.createElement('div');
-    fw.className = 'msg-forwarded';
-    fw.style.cssText = 'font-size:11px;font-style:italic;opacity:0.7;margin-bottom:2px;';
-    fw.textContent = '↪ Reenviado';
-    contentDiv.appendChild(fw);
-  }
-  if (k.rp && k.rp.id) {
-    var q = document.createElement('div');
-    q.className = 'msg-quote';
-    q.style.cssText = 'border-left:3px solid #00c8ff;background:rgba(0,0,0,0.25);border-radius:6px;padding:4px 8px;margin-bottom:4px;cursor:pointer;font-size:12px;';
-    var who = document.createElement('div');
-    who.style.cssText = 'color:#00c8ff;font-weight:600;';
-    who.textContent = _normId(k.rp.a) === _myNexoId() ? 'Tú' : _contactName(k.rp.a);
-    var what = document.createElement('div');
-    what.style.cssText = 'opacity:0.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;';
-    what.textContent = String(k.rp.s || '');
-    q.appendChild(who); q.appendChild(what);
-    q.onclick = function(e) { e.stopPropagation(); _scrollToMessage(k.rp.id); };
-    contentDiv.appendChild(q);
-  }
-  var t = document.createElement('span');
-  t.className = 'msg-text';
-  t.textContent = String(k.t || '');
-  contentDiv.appendChild(t);
-}
 
-function _scrollToMessage(id) {
-  var el = document.querySelector('.message[data-msg-id="' + id + '"]');
-  if (!el) { _showInfoToast('El mensaje citado ya no está en el chat', 2500); return; }
-  try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
-  el.classList.add('msg-highlight');
-  el.style.transition = 'background 0.4s';
-  el.style.background = 'rgba(0,200,255,0.25)';
-  setTimeout(function() { el.style.background = ''; el.classList.remove('msg-highlight'); }, 1400);
-}
 
-function _setupMessageActions() {
-  var mc = document.getElementById('messages-container');
-  if (!mc || mc._nexoActions) return;
-  mc._nexoActions = true;
-  mc.style.touchAction = 'pan-y';
-  var timer = null, startX = 0, startY = 0, target = null, swiping = false, fired = false;
-  var bubbleOf = function(e) {
-    var m = e.target && e.target.closest ? e.target.closest('.message') : null;
-    return (m && m.dataset.msgId && !m.classList.contains('progress-placeholder')) ? m : null;
-  };
-  mc.addEventListener('pointerdown', function(e) {
-    var m = bubbleOf(e);
-    if (!m) return;
-    target = m; startX = e.clientX; startY = e.clientY; swiping = false; fired = false;
-    clearTimeout(timer);
-    timer = setTimeout(function() { fired = true; _openMsgMenu(m); }, 500);
-  });
-  mc.addEventListener('pointermove', function(e) {
-    if (!target) return;
-    var dx = e.clientX - startX, dy = e.clientY - startY;
-    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(timer);
-    // Deslizar a la derecha = responder (lejos del borde izquierdo, que es "volver")
-    if (startX > 40 && dx > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      swiping = true;
-      target.style.transform = 'translateX(' + Math.min(dx, 80) + 'px)';
-    }
-  });
-  var end = function(e) {
-    clearTimeout(timer);
-    if (!target) return;
-    var t = target, dx = (typeof e.clientX === 'number' ? e.clientX : startX) - startX;
-    target = null;
-    if (swiping) {
-      swiping = false;
-      t.style.transition = 'transform 0.15s';
-      t.style.transform = '';
-      setTimeout(function() { t.style.transition = ''; }, 200);
-      if (dx > 60) _startReply(t.dataset.msgId);
-    }
-  };
-  mc.addEventListener('pointerup', end);
-  mc.addEventListener('pointercancel', end);
-  mc.addEventListener('contextmenu', function(e) {
-    var m = bubbleOf(e);
-    if (!m) return;
-    e.preventDefault();
-    if (!fired) _openMsgMenu(m);
-  });
-  // Tras abrir el menú con una pulsación larga no se abre además la foto o el vídeo
-  mc.addEventListener('click', function(e) { if (fired) { fired = false; e.stopPropagation(); e.preventDefault(); } }, true);
-}
 
-function _openMsgMenu(div) {
-  var id = div && div.dataset.msgId, cid = _getCurrentContactId();
-  if (!id || !cid) return;
-  _findMessage(cid, id).then(function(msg) {
-    if (!msg) return;
-    var old = document.getElementById('nexo-msg-menu');
-    if (old) old.remove();
-    var isOwn = !!msg._own, deleted = !!msg.deleted;
-    var box = document.createElement('div');
-    box.id = 'nexo-msg-menu';
-    box.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;';
-    var sheet = document.createElement('div');
-    sheet.style.cssText = 'background:#14152a;color:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:8px 0 14px;';
-    var close = function() { box.remove(); div.style.background = ''; };
-    var add = function(label, cls, fn, danger) {
-      var b = document.createElement('button');
-      b.className = 'mm-item ' + cls;
-      b.textContent = label;
-      b.style.cssText = 'display:block;width:100%;text-align:left;padding:14px 20px;background:none;border:none;font-size:16px;color:' + (danger ? '#ff6b6b' : '#fff') + ';';
-      b.onclick = function(e) { e.stopPropagation(); close(); fn(); };
-      sheet.appendChild(b);
-    };
-    if (!deleted) add('↩  Responder', 'mm-reply', function() { _startReply(id, msg); });
-    if (!deleted) add('↪  Reenviar', 'mm-forward', function() { _openForwardSheet(msg); });
-    if (!deleted && !msg.attachmentType) add('⧉  Copiar', 'mm-copy', function() { _copyText(_plainText(msg.content)); });
-    add('🗑  Eliminar para mí', 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
-    if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && _peerUnderstands(cid)) {
-      add('🗑  Eliminar para todos', 'mm-del-all', function() { _deleteForAll(cid, msg); }, true);
-    }
-    add('Cancelar', 'mm-cancel', function() {});
-    box.onclick = function(e) { if (e.target === box) close(); };
-    box.appendChild(sheet);
-    div.style.background = 'rgba(0,200,255,0.12)';
-    document.body.appendChild(box);
-  });
-}
 
-function _startReply(id, msg) {
-  var cid = _getCurrentContactId();
-  if (!id || !cid) return;
-  (msg ? Promise.resolve(msg) : _findMessage(cid, id)).then(function(m) {
-    if (!m || m.deleted) return;
-    var sum = _msgSummary(m);
-    _replyTo = { id: id, a: m._own ? _myNexoId() : _normId(m.senderNexoId || cid), s: sum.s, k: sum.k };
-    _renderReplyBar();
-    var input = document.getElementById('message-input');
-    if (input) input.focus();
-  });
-}
-function _cancelReply() { _replyTo = null; _renderReplyBar(); }
-function _renderReplyBar() {
-  var old = document.getElementById('reply-bar');
-  if (old) old.remove();
-  if (!_replyTo) return;
-  var area = document.getElementById('input-area');
-  if (!area || !area.parentNode) return;
-  var bar = document.createElement('div');
-  bar.id = 'reply-bar';
-  bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:3px solid #00c8ff;background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
-  var txt = document.createElement('div');
-  txt.style.cssText = 'flex:1;min-width:0;';
-  var who = document.createElement('div');
-  who.style.cssText = 'color:#00c8ff;font-weight:600;';
-  who.textContent = 'Respondiendo a ' + (_replyTo.a === _myNexoId() ? 'ti' : _contactName(_replyTo.a));
-  var what = document.createElement('div');
-  what.style.cssText = 'opacity:0.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-  what.textContent = _replyTo.s;
-  txt.appendChild(who); txt.appendChild(what);
-  var x = document.createElement('button');
-  x.className = 'reply-cancel';
-  x.textContent = '✕';
-  x.style.cssText = 'background:none;border:none;color:#fff;font-size:18px;padding:4px 8px;';
-  x.onclick = _cancelReply;
-  bar.appendChild(txt); bar.appendChild(x);
-  area.parentNode.insertBefore(bar, area);
-}
 
-function _copyText(text) {
-  var ok = function() { _showInfoToast('Copiado', 1500); };
-  var fallback = function() {
-    try { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); ok(); } catch (e) {}
-  };
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok).catch(fallback);
-  else fallback();
-}
 
 // Texto a cualquier chat (el abierto u otro). hidden: acción del chat (no se muestra ni cuenta como último)
 function _sendTextTo(cid, wire, plain, hidden) {
@@ -618,130 +421,6 @@ function _sendTextTo(cid, wire, plain, hidden) {
   return msgId;
 }
 
-function _openForwardSheet(msg) {
-  var old = document.getElementById('nexo-forward-sheet');
-  if (old) old.remove();
-  var all = (vaultLoadContacts() || []).filter(function(c) { return c && (c.nexoId || c.deviceUUID); });
-  var chosen = {};
-  var box = document.createElement('div');
-  box.id = 'nexo-forward-sheet';
-  box.style.cssText = 'position:fixed;inset:0;z-index:6000;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;';
-  var head = document.createElement('div');
-  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;';
-  var title = document.createElement('div');
-  title.style.cssText = 'font-size:18px;font-weight:700;';
-  title.textContent = 'Reenviar a…';
-  var cancel = document.createElement('button');
-  cancel.textContent = 'Cancelar';
-  cancel.style.cssText = 'background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:16px;padding:8px 14px;';
-  cancel.onclick = function() { box.remove(); };
-  head.appendChild(title); head.appendChild(cancel);
-  var list = document.createElement('div');
-  list.style.cssText = 'flex:1;overflow-y:auto;';
-  var send = document.createElement('button');
-  send.className = 'fw-send';
-  send.style.cssText = 'margin-top:12px;padding:12px;border:none;border-radius:12px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-size:15px;font-weight:600;';
-  var refresh = function() { var n = Object.keys(chosen).length; send.textContent = n ? 'Reenviar (' + n + ')' : 'Elige uno o más chats'; send.disabled = !n; };
-  all.forEach(function(c) {
-    var id = _normId(c.nexoId || c.deviceUUID);
-    var row = document.createElement('label');
-    row.className = 'fw-row';
-    row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,0.06);';
-    var cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.onchange = function() { if (cb.checked) chosen[id] = true; else delete chosen[id]; refresh(); };
-    var nm = document.createElement('span');
-    nm.className = 'fw-name';
-    nm.textContent = c.name || id.toUpperCase();
-    row.appendChild(cb); row.appendChild(nm);
-    list.appendChild(row);
-  });
-  send.onclick = function() {
-    var ids = Object.keys(chosen);
-    if (!ids.length) return;
-    box.remove();
-    Promise.all(ids.map(function(cid) { return _forwardTo(cid, msg); })).then(function() {
-      _showInfoToast('Reenviado a ' + ids.length + (ids.length === 1 ? ' chat' : ' chats'), 2000);
-    });
-  };
-  refresh();
-  box.appendChild(head); box.appendChild(list); box.appendChild(send);
-  document.body.appendChild(box);
-}
-
-async function _forwardTo(cid, msg) {
-  if (msg.attachmentType) {
-    var payload = msg.attachmentPayload;
-    if (!payload && msg.attachmentRef) payload = await vaultLoadFile(msg.attachmentRef);
-    var meta = Object.assign({}, msg.attachmentMeta || {});
-    // Vídeo propio: el original (HD) si está guardado
-    if (msg.attachmentType === 'video' && msg.hdRef) {
-      var hd = await vaultLoadFile(msg.hdRef);
-      if (hd) { payload = hd; if (msg.hdMime) { meta.mime = msg.hdMime; meta.format = _videoFormat(msg.hdMime); } }
-    }
-    ['preview', 'hdSize', 'hdFor', 'hd', 'wdOnly', 'fwd'].forEach(function(k) { delete meta[k]; });
-    if (!payload) { _showInfoToast('No se pudo reenviar: el archivo ya no está', 2500); return; }
-    console.log('[ATTACH] Reenviando ' + msg.attachmentType + ' a ' + cid);
-    _sendAttachment(msg.attachmentType, payload, meta, { contactId: cid });
-    return;
-  }
-  var text = _plainText(msg.content);
-  var wire = _peerUnderstands(cid) ? JSON.stringify({ type: 'nexo_txt', t: text, fw: 1 }) : text;
-  _sendTextTo(cid, wire, text);
-}
-
-// Vista previa de la lista de chats según el último mensaje que queda (lo eliminado no se ve ahí)
-function _refreshChatPreview(cid) {
-  return vaultLoadMessages(cid).then(function(list) {
-    var last = null;
-    (list || []).forEach(function(m) { if (!m.hidden && (!last || (m.timestamp || 0) >= (last.timestamp || 0))) last = m; });
-    var contacts = vaultLoadContacts() || [];
-    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === _normId(cid); });
-    if (!c) return;
-    c.lastMessage = !last ? '' : last.deleted ? '🚫 Mensaje eliminado' : last.attachmentType ? (_PREVIEW_BY_TYPE[last.attachmentType] || '📎 Archivo') : _cut(_plainText(last.content), 50);
-    vaultSaveContacts(contacts);
-    var bi = window.bleInterface;
-    if (bi && typeof bi.renderContactsList === 'function') bi.renderContactsList();
-  }).catch(function() {});
-}
-
-function _deleteForMe(cid, id) {
-  var el = document.querySelector('.message[data-msg-id="' + id + '"]');
-  if (el) el.remove();
-  _renderedMessageIds.delete(id);
-  if (_replyTo && _replyTo.id === id) _cancelReply();
-  vaultDeleteMessage(cid, id).then(function() { return _refreshChatPreview(cid); }).catch(function() {});
-  console.log('[CHAT] Mensaje eliminado para mí');
-}
-
-function _deleteForAll(cid, msg) {
-  var id = msg.msgId || msg.messageId;
-  _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'del', id: id }), '', true);
-  vaultBlankMessage(cid, id).then(function() { _rerenderBlank(id, msg); return _refreshChatPreview(cid); }).catch(function() {});
-  console.log('[CHAT] Mensaje eliminado para todos');
-}
-
-function _rerenderBlank(id, msg) {
-  var el = document.querySelector('.message[data-msg-id="' + id + '"]');
-  if (!el) return;
-  el.remove();
-  _renderedMessageIds.delete(id);
-  _renderMessage(Object.assign({}, msg, { deleted: true, content: '', attachmentType: null, attachmentPayload: null, attachmentRef: null, attachmentMeta: null }), true);
-}
-
-// Recibido: el contacto eliminó para todos uno de SUS mensajes
-function _applyChatAction(senderId, act) {
-  if (!act || act.act !== 'del' || !act.id) return;
-  var cid = _normId(senderId);
-  _findMessage(cid, act.id).then(function(m) {
-    if (!m || m._own || m.deleted) return; // solo mensajes que escribió quien lo pide
-    console.log('[CHAT] ' + cid + ' eliminó un mensaje para todos');
-    return vaultBlankMessage(cid, act.id).then(function() {
-      if (_normId(_getCurrentContactId()) === cid) _rerenderBlank(act.id, m);
-      return _refreshChatPreview(cid);
-    });
-  });
-}
 
 
 
@@ -750,46 +429,13 @@ function _applyChatAction(senderId, act) {
 
 
 
-function _closeFullscreenMedia() {
-  var ov = document.getElementById('fullscreen-media-overlay');
-  if (!ov) return;
-  _releaseMedia(ov);
-  ov.remove();
-}
 
-function _openFullscreenMedia(src, type) {
-  _closeFullscreenMedia();
-  if (!src) { console.warn('[VIDEO] Sin fuente para el visor'); return; }
-  var overlay = document.createElement('div');
-  overlay.id = 'fullscreen-media-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:5000;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;';
-  var closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="#fff"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
-  closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5001;';
-  // v9.9.31: no revocar src: es la misma URL que usa la burbuja (después no se podía volver a ver);
-  // se liberan al salir del chat (_cleanupObjectURLs)
-  closeBtn.onclick = function(e) { if (e) e.stopPropagation(); _closeFullscreenMedia(); };
-  overlay.appendChild(closeBtn);
-  if (type === 'image') {
-    var img = document.createElement('img');
-    img.src = src;
-    img.style.cssText = 'max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px;';
-    overlay.appendChild(img);
-  } else if (type === 'video') {
-    var video = document.createElement('video');
-    video.src = src;
-    video.controls = true;
-    video.autoplay = true;
-    video.playsInline = true;
-    video.style.cssText = 'max-width:95vw;max-height:85vh;border-radius:8px;background:#000;';
-    video.onerror = function() { console.warn('[VIDEO] El visor no pudo reproducir: código ' + (video.error && video.error.code)); };
-    overlay.appendChild(video);
-  }
-  overlay.addEventListener('click', function(e) {
-    if (e.target === overlay) _closeFullscreenMedia();
-  });
-  document.body.appendChild(overlay);
-}
+
+
+
+
+
+
 
 
 
@@ -1764,120 +1410,6 @@ async function _loadPersistedMessages() {
   }
 }
 
-// v9.9.36: aviso de cifrado al principio del chat (pulsar: huellas para comparar en persona)
-function _renderE2EBanner() {
-  var mc = document.getElementById('messages-container');
-  var cid = _normId(_getCurrentContactId());
-  if (!mc || !cid) return;
-  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === cid; }) || {};
-  var name = c.name || cid.toUpperCase();
-  var b = document.getElementById('e2e-banner');
-  if (!b) {
-    b = document.createElement('div');
-    b.id = 'e2e-banner';
-    mc.insertBefore(b, mc.firstChild);
-  }
-  b.innerHTML = '';
-  b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;cursor:pointer;white-space:pre-line;' +
-    (c.pendingKey ? 'background:rgba(255,59,48,0.15);color:#ff8a80;' : 'background:rgba(255,200,0,0.12);color:#ffd76a;');
-  var bi = window.bleInterface;
-  var txt;
-  if (c.pendingKey) {
-    // v9.9.40 (seguridad): clave nueva sin aceptar: puede ser un reinstalación o un impostor
-    var held = (bi && typeof bi.heldCount === 'function') ? bi.heldCount(cid) : 0;
-    txt = '⚠️ La clave de seguridad de ' + name + ' cambió (' + new Date(c.keyChangedAt || Date.now()).toLocaleString() + ').' +
-      (held ? ' ' + held + (held === 1 ? ' mensaje retenido.' : ' mensajes retenidos.') : '') +
-      ' Hasta que la aceptes no se muestran sus mensajes nuevos ni se le envía nada.' +
-      ' Si no reinstaló NEXO, puede ser un impostor: comparad las huellas en persona.';
-  } else if (c.publicKey && c.verified === c.publicKey) txt = '🔒✔ Cifrado de extremo a extremo. Verificaste el número de seguridad de ' + name + '.';
-  else if (c.publicKey && c.keyAcceptedAt) txt = '🔒 Cifrado de extremo a extremo. Aceptaste una clave nueva de ' + name + ' (' + new Date(c.keyAcceptedAt).toLocaleString() + '). Toca para verificar.';
-  else if (c.publicKey) txt = '🔒 Mensajes cifrados de extremo a extremo. Nadie fuera de este chat puede leerlos. Toca para verificar.';
-  else txt = '⏳ Esperando la clave de cifrado de ' + name + ': tus mensajes saldrán cifrados en cuanto conecte.';
-  // v9.9.49: sesión empezada con el acuerdo poscuántico (ML-KEM): protegida también ante ordenadores cuánticos
-  if (c.publicKey && !c.pendingKey && ratchetSessionPq(cid, c.publicKey)) txt += ' Protección poscuántica activa.';
-  var t = document.createElement('div');
-  t.className = 'e2e-text';
-  t.textContent = txt;
-  b.appendChild(t);
-  var fp = document.createElement('div');
-  fp.className = 'e2e-fp';
-  fp.style.cssText = 'margin-top:6px;font-family:monospace;';
-  b.appendChild(fp);
-  // v9.9.41: número de seguridad de 60 cifras (como Signal): el mismo en los dos teléfonos; comparadlo en persona
-  var me = _normId(window.bleInterface && window.bleInterface.localNexoId);
-  var showFp = function() {
-    if (fp.dataset.shown) return;
-    fp.dataset.shown = '1';
-    fp.textContent = 'Calculando…';
-    Promise.all([c.publicKey ? ratchetSafetyNumber(me, cid, c.publicKey) : Promise.resolve(''), c.pendingKey ? ratchetSafetyNumber(me, cid, c.pendingKey) : Promise.resolve('')]).then(function(n) {
-      var fmt = function(x) { var g = x.split(' '); return g.slice(0, 4).join(' ') + '\n' + g.slice(4, 8).join(' ') + '\n' + g.slice(8).join(' '); };
-      fp.textContent = c.pendingKey
-        ? 'Número de seguridad con la clave anterior:\n' + (n[0] ? fmt(n[0]) : '—') + '\nCon la clave NUEVA:\n' + fmt(n[1])
-        : (n[0] ? 'Número de seguridad (debe ser idéntico en el teléfono de ' + name + '):\n' + fmt(n[0]) : 'Sin clave aún');
-      if (!c.pendingKey && c.publicKey && bi && typeof bi.setContactVerified === 'function') {
-        var on = c.verified === c.publicKey;
-        var vb = document.createElement('button');
-        vb.className = 'e2e-verify';
-        vb.textContent = on ? 'Quitar verificado' : 'Marcar como verificado';
-        vb.style.cssText = 'display:block;margin:8px auto 0;padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;background:' + (on ? 'rgba(255,255,255,0.15)' : '#00c8ff') + ';color:#fff;';
-        vb.onclick = function(ev) { ev.stopPropagation(); bi.setContactVerified(cid, !on); };
-        fp.appendChild(vb);
-        // v9.9.49: o por QR (como Signal): uno lo muestra y el otro lo escanea desde este mismo chat
-        var qrow = document.createElement('div');
-        qrow.style.cssText = 'display:flex;gap:8px;justify-content:center;margin-top:8px;';
-        var qb = function(label, cls, fn) {
-          var x = document.createElement('button');
-          x.className = cls;
-          x.textContent = label;
-          x.style.cssText = 'padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;background:rgba(255,255,255,0.15);color:#fff;';
-          x.onclick = function(ev) { ev.stopPropagation(); fn(); };
-          qrow.appendChild(x);
-        };
-        qb('Mostrar mi QR', 'e2e-qr-show', function() {
-          showSafetyQr(safetyQrPayload(me, cid, n[0]), 'Que ' + name + ' lo escanee desde su chat contigo\n(Escanear su QR)');
-        });
-        qb('Escanear su QR', 'e2e-qr-scan', function() { openQrScanner(function(text) { _onSafetyQr(cid, name, text); }, 'Apunta al QR que muestra ' + name); });
-        fp.appendChild(qrow);
-      }
-    }).catch(function() { fp.textContent = ''; delete fp.dataset.shown; });
-  };
-  b.onclick = showFp;
-  if (c.pendingKey) {
-    showFp();
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:8px;justify-content:center;margin-top:8px;';
-    var mk = function(label, cls, fn) {
-      var btn = document.createElement('button');
-      btn.className = cls;
-      btn.textContent = label;
-      btn.style.cssText = 'padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;' + (cls === 'e2e-accept' ? 'background:#00c8ff;color:#fff;' : 'background:rgba(255,255,255,0.15);color:#fff;');
-      btn.onclick = function(ev) { ev.stopPropagation(); fn(); };
-      return btn;
-    };
-    row.appendChild(mk('Aceptar clave nueva', 'e2e-accept', function() { if (bi && bi.acceptContactKey) bi.acceptContactKey(cid); }));
-    row.appendChild(mk('Rechazar', 'e2e-reject', function() { if (bi && bi.rejectContactKey) bi.rejectContactKey(cid); }));
-    b.appendChild(row);
-  }
-}
-// Lo escaneado se compara con el número que calcula ESTE teléfono ahora (con la clave guardada en este momento)
-function _onSafetyQr(cid, name, text) {
-  var bi = window.bleInterface;
-  var me = _normId(bi && bi.localNexoId);
-  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === cid; });
-  if (!c || !c.publicKey || c.pendingKey) { _showInfoToast('Primero acepta o rechaza la clave nueva de ' + name, 3500); return; }
-  ratchetSafetyNumber(me, cid, c.publicKey).then(function(num) {
-    var r = checkSafetyQr(text, me, cid, num);
-    console.log('[E2E] QR del número de seguridad de ' + cid + ': ' + r);
-    if (r === 'ok') {
-      if (bi && typeof bi.setContactVerified === 'function') bi.setContactVerified(cid, true);
-      _showInfoToast('✔ Número de seguridad verificado: ' + name + ' es quien dice ser', 3500);
-    } else if (r === 'mismatch') {
-      _showInfoToast('⚠️ El número NO coincide: la clave de ' + name + ' no es la que tienes guardada. Puede haber un impostor: no lo marques como verificado.', 7000);
-    } else if (r === 'other') _showInfoToast('Ese QR es de otro contacto, no de ' + name, 3500);
-    else if (r === 'notme') _showInfoToast('Ese QR es para otra persona: pide a ' + name + ' que lo abra en su chat contigo', 4000);
-    else _showInfoToast('No es un QR de número de seguridad de NEXO', 3000);
-  }).catch(function() { _showInfoToast('No se pudo calcular el número de seguridad', 3000); });
-}
 window.addEventListener('nexo:e2e:key', function(e) {
   var d = (e && e.detail) || {};
   if (d.nexoId && d.nexoId === _normId(_getCurrentContactId())) _renderE2EBanner();
@@ -2281,337 +1813,26 @@ function _renderMessage(msg, skipSave) {
   }
 }
 
-var MAX_HD_B64_BYTES = 8000000;      // original de hasta ~6 MB (en segundo plano)
-var _videoTimes = {};                // msgId -> tiempos de previa/HD (registro de diagnóstico)
-var _hdOutbox = {};                  // msgId -> { cid, mime, b64 } (emisor, en memoria)
-var _hdInFlight = {};
 
 
 
 
-function _showOwnPreparing(show) {
-  var container = document.getElementById('messages-container');
-  var ph = document.getElementById('video-preparing');
-  if (!show) { if (ph) ph.remove(); return; }
-  if (!container || ph) return;
-  ph = document.createElement('div');
-  ph.id = 'video-preparing';
-  ph.className = 'message own progress-placeholder';
-  ph.innerHTML = '<div class="msg-content">🎬 Preparando vídeo…</div>';
-  container.appendChild(ph);
-}
-
-// Envía un vídeo: previa rápida + HD automático (o el original si no se puede recodificar)
-function _sendVideo(blob, meta) {
-  var contactId = _getCurrentContactId();
-  if (!contactId || !blob) return;
-  meta = Object.assign({}, meta || {});
-  var mime = (blob.type || meta.mime || 'video/webm').split(';')[0];
-  _showOwnPreparing(true);
-  var makePreview = (typeof window.NEXO_makeVideoPreview === 'function') ? window.NEXO_makeVideoPreview : _makeVideoPreview;
-  console.log('[VIDEO] Enviar vídeo ' + Math.round(blob.size / 1024) + ' KB ' + mime + ' dur=' + (meta.duration || '?'));
-  var tStart = Date.now();
-  // v9.9.39: con Wi-Fi Direct el original va directo en segundos (sin previa ni HD aparte)
-  // v9.9.42: si Wi-Fi Direct falla, el mismo mensaje sigue como previa + HD por Bluetooth (_videoViaBle)
-  if (_wdReach(contactId) && Math.ceil(blob.size / 3) * 4 <= WD_MAX_B64_BYTES) {
-    console.log('[VIDEO] Original por Wi-Fi Direct (' + Math.round(blob.size / 1024) + ' KB)');
-    return Promise.all([_blobToB64(blob), _makeVideoThumb(blob, 320)]).then(function(r) {
-      _showOwnPreparing(false);
-      _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null, wdOnly: true }), {
-        onWdFail: function(msgId) { _videoViaBle(contactId, msgId, blob, meta, mime, makePreview, tStart); }
-      });
-    }).catch(function(e) { _showOwnPreparing(false); console.warn('[VIDEO] Error preparando vídeo:', e && e.message); });
-  }
-  return makePreview(blob, meta.duration).then(function(preview) {
-    _showOwnPreparing(false);
-    if (preview && preview.tooLong) {
-      _showPermissionError('Vídeo demasiado largo para Bluetooth (' + Math.round(preview.duration) + ' s). Máximo ' + PREVIEW_MAX_SECONDS + ' s.');
-      return;
-    }
-    if (!preview) {
-      // Sin previa: se envía el original (como antes), con miniatura si se puede
-      if (blob.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(blob.size)); return; }
-      console.log('[VIDEO] Enviando el original sin previa (' + Math.round(blob.size / 1024) + ' KB)');
-      return Promise.all([_blobToB64(blob), _makeVideoThumb(blob, 320)]).then(function(r) {
-        _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null }));
-      });
-    }
-    var pMime = (preview.type || 'video/webm').split(';')[0];
-    // HD: el recodificado a 720p si el original era grande; si no, el original
-    var hdBlob = preview.hd || blob;
-    var hdMime = (hdBlob.type || mime).split(';')[0];
-    var withHd = Math.ceil(hdBlob.size / 3) * 4 <= MAX_HD_B64_BYTES;
-    if (!withHd) console.log('[VIDEO] Sin HD: ' + Math.round(hdBlob.size / 1024) + ' KB supera el límite');
-    var thumbP = preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320);
-    return Promise.all([_blobToB64(preview), withHd ? _blobToB64(hdBlob) : Promise.resolve(null), thumbP]).then(function(r) {
-      preview.thumb = r[2] || null;
-      // v9.9.35: la burbuja propia se pinta desde una URL del archivo (antes decodificaba el base64 del
-      // original en el hilo de la interfaz: ~1 s bloqueado al enviar)
-      var displayUrl = null;
-      try { displayUrl = URL.createObjectURL(hdBlob); _objectURLRegistry.push(displayUrl); } catch (e) {}
-      var msgId = _sendAttachment('video', r[0], Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? hdBlob.size : 0, thumb: preview.thumb || null }),
-        r[1] ? { displayUrl: displayUrl, displayMime: hdMime } : null);
-      if (msgId && r[1]) {
-        _videoTimes[msgId] = { t0: tStart, previewKB: Math.round(preview.size / 1024), hdKB: Math.round(hdBlob.size / 1024) };
-        _registerHd(contactId, msgId, r[1], hdMime);
-      }
-    });
-  }).catch(function(e) {
-    _showOwnPreparing(false);
-    console.warn('[VIDEO] Error preparando vídeo:', e && e.message);
-  });
-}
-
-// v9.9.42: el original no pudo ir por Wi-Fi Direct: el mensaje ya mostrado pasa a previa + HD por Bluetooth
-function _videoViaBle(cid, msgId, blob, meta, mime, makePreview, tStart) {
-  console.log('[VIDEO] Wi-Fi Direct no funcionó: previa + HD por Bluetooth');
-  var fail = function(txt) {
-    _updateMessageStatus(msgId, 'failed');
-    _updateMessageStorageStatus(msgId, 'failed', cid);
-    if (txt) _showPermissionError(txt);
-  };
-  makePreview(blob, meta.duration).then(function(preview) {
-    if (preview && preview.tooLong) { fail('Vídeo demasiado largo para Bluetooth (' + Math.round(preview.duration) + ' s). Máximo ' + PREVIEW_MAX_SECONDS + ' s.'); return; }
-    if (!preview) {
-      if (blob.size > MAX_BLE_FILE_BYTES) { fail(_tooBigMessage(blob.size)); return; }
-      return _blobToB64(blob).then(function(b64) {
-        var m0 = Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), wdOnly: false });
-        _sendFileFor(cid, msgId, 'video', b64, m0);
-      });
-    }
-    var pMime = (preview.type || 'video/webm').split(';')[0];
-    var hdBlob = preview.hd || blob;
-    var hdMime = (hdBlob.type || mime).split(';')[0];
-    var withHd = Math.ceil(hdBlob.size / 3) * 4 <= MAX_HD_B64_BYTES;
-    var thumbP = preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320);
-    return Promise.all([_blobToB64(preview), withHd ? _blobToB64(hdBlob) : Promise.resolve(null), thumbP]).then(function(r) {
-      var pm = Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? hdBlob.size : 0, thumb: r[2] || null, wdOnly: false });
-      return vaultReplaceAttachment(cid, msgId, r[0], pm).then(function() {
-        _sendFileFor(cid, msgId, 'video', r[0], pm);
-        if (r[1]) {
-          _videoTimes[msgId] = { t0: tStart, previewKB: Math.round(preview.size / 1024), hdKB: Math.round(hdBlob.size / 1024) };
-          _registerHd(cid, msgId, r[1], hdMime);
-        }
-      });
-    });
-  }).catch(function(e) {
-    console.warn('[VIDEO] Error preparando la previa:', e && e.message);
-    fail(null);
-  });
-}
-
-function _registerHd(cid, msgId, hdB64, mime) {
-  var ref = vaultHdFileName(msgId);
-  _hdOutbox[msgId] = { cid: cid, mime: mime, b64: hdB64 };
-  vaultSaveFile(ref, hdB64);
-  vaultSetMessageFields(cid, msgId, { hdRef: ref, hdStatus: 'pending', hdMime: mime });
-  _setHdBadge(msgId, 'HD en espera');
-}
-
-// Emisor: manda el original cuando la previa ya llegó (o al reconectar si quedó a medias)
-function _startHd(cid, msgId) {
-  var bi = window.bleInterface || (window.NEXO.app && window.NEXO.app.bleInterface);
-  if (!cid || !msgId || _hdInFlight[msgId] || !bi || typeof bi.sendFile !== 'function') return;
-  _hdInFlight[msgId] = true;
-  var entry = _hdOutbox[msgId] || {};
-  var getB64 = entry.b64 ? Promise.resolve(entry.b64) : vaultLoadFile(vaultHdFileName(msgId));
-  getB64.then(function(b64) {
-    if (!b64) { delete _hdInFlight[msgId]; return; }
-    var mime = entry.mime || 'video/webm';
-    console.log('[VIDEO] Enviando HD de ' + msgId + ' (' + Math.round(b64.length / 1024) + ' KB)');
-    vaultSetMessageFields(cid, msgId, { hdStatus: 'sending' });
-    if (_videoTimes[msgId]) _videoTimes[msgId].hdStart = Date.now();
-    _setHdBadge(msgId, 'HD 0%');
-    return bi.sendFile(cid, msgId + '_hd', b64, { type: 'video', hdFor: msgId, mime: mime, format: _videoFormat(mime), size: b64.length })
-      .then(function() { _onHdSent(cid, msgId); })
-      .catch(function(err) {
-        delete _hdInFlight[msgId];
-        console.warn('[VIDEO] HD interrumpido, se reintenta al reconectar:', err && err.message);
-        vaultSetMessageFields(cid, msgId, { hdStatus: 'pending' });
-        _setHdBadge(msgId, 'HD en espera');
-      });
-  }).catch(function() { delete _hdInFlight[msgId]; });
-}
-
-function _onHdSent(cid, msgId) {
-  var vt = _videoTimes[msgId];
-  if (vt && vt.hdStart && !vt.done) {
-    vt.done = true;
-    var hdS = Math.max(1, Math.round((Date.now() - vt.hdStart) / 1000));
-    console.log('[VIDEO] HD entregado en ' + hdS + ' s (' + vt.hdKB + ' KB, ' + Math.round(vt.hdKB * 4 / 3 / hdS * 10) / 10 + ' KB/s por radio); total ' + Math.round((Date.now() - vt.t0) / 1000) + ' s');
-  }
-  delete _hdInFlight[msgId];
-  if (_hdOutbox[msgId]) delete _hdOutbox[msgId];
-  vaultSetMessageFields(cid, msgId, { hdStatus: 'sent' });
-  _setHdBadge(msgId, 'HD ✓');
-}
-
-// La previa se entregó por un reenvío (p.ej. tras reabrir la app): buscar si tiene HD pendiente
-function _resumeHdForMsg(msgId) {
-  if (_hdInFlight[msgId]) return;
-  var contacts = (typeof vaultLoadContacts === 'function') ? vaultLoadContacts() : [];
-  (contacts || []).forEach(function(c) {
-    var cid = _normId(c.nexoId || c.deviceUUID);
-    if (!cid) return;
-    vaultLoadMessages(cid).then(function(msgs) {
-      var m = (msgs || []).find(function(x) { return x.msgId === msgId; });
-      if (m && m._own && m.hdRef && m.hdStatus !== 'sent') _startHd(cid, msgId);
-    }).catch(function() {});
-  });
-}
-
-function _resumeHdTransfers(cid) {
-  if (!cid) return;
-  vaultLoadMessages(cid).then(function(msgs) {
-    (msgs || []).forEach(function(m) {
-      if (m._own && m.hdRef && (m.hdStatus === 'pending' || m.hdStatus === 'sending') &&
-          (m.status === 'delivered' || m.status === 'read')) _startHd(cid, m.msgId);
-    });
-  }).catch(function() {});
-}
-
-// Receptor: el HD sustituye a la previa del mismo mensaje
-function _applyHdUpgrade(cid, msgId, payload, meta) {
-  var mime = (meta.mime || 'video/webm').split(';')[0];
-  vaultReplaceAttachment(cid, msgId, payload, { mime: mime, format: _videoFormat(mime), hd: true, preview: false }).then(function(ok) {
-    if (!ok) {
-      // Sin la previa guardada: se guarda como vídeo normal
-      _handleIncomingMessage({ msgId: msgId, messageId: msgId, attachmentType: 'video', attachmentPayload: payload,
-        attachmentMeta: Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), hd: true, hdFor: null }),
-        senderNexoId: cid, senderName: meta.f || 'NEXO', _own: false, status: 'delivered', timestamp: meta.ts || Date.now() });
-      return;
-    }
-    console.log('[VIDEO] HD recibido para ' + msgId);
-    _swapVideoInBubble(msgId, payload, mime);
-    _setHdBadge(msgId, 'HD');
-  });
-}
-
-function _swapVideoInBubble(msgId, payload, mime) {
-  var bubble = document.querySelector('.message[data-msg-id="' + msgId + '"]');
-  var wrap = bubble && bubble.querySelector('.video-attachment');
-  if (!wrap) return;
-  try {
-    var src = URL.createObjectURL(_b64ToBlob(payload, mime));
-    _objectURLRegistry.push(src);
-    wrap.dataset.src = src;
-    wrap.dataset.fullscreenSrc = src;
-  } catch (e) { console.warn('[VIDEO] No se pudo poner el HD en la burbuja:', e && e.message); }
-}
 
 
 
-var _thumbsInProgress = {};
-function _buildFileCard(msg, attachment, mime) {
-  var m = attachment.meta || {};
-  var name = String(m.name || 'archivo');
-  mime = _mimeOf(mime, name);
-  var card = document.createElement('div');
-  card.className = 'file-attachment';
-  card.style.cssText = 'width:220px;max-width:100%;background:rgba(0,0,0,0.3);border-radius:10px;overflow:hidden;cursor:pointer;';
-  if (_isPdf(mime, name)) {
-    var img = document.createElement('img');
-    img.className = 'file-thumb';
-    img.alt = '';
-    img.style.cssText = 'display:none;width:100%;max-height:260px;object-fit:cover;object-position:top;background:#fff;';
-    if (m.thumb) { img.src = 'data:image/jpeg;base64,' + m.thumb; img.style.display = 'block'; }
-    else _ensurePdfThumb(msg, attachment, img);
-    card.appendChild(img);
-  }
-  var row = document.createElement('div');
-  row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;';
-  var ic = document.createElement('div');
-  ic.style.cssText = 'font-size:26px;line-height:1;';
-  ic.textContent = _fileIcon(mime);
-  var txt = document.createElement('div');
-  txt.style.cssText = 'min-width:0;flex:1;';
-  var nm = document.createElement('div');
-  nm.className = 'file-name';
-  nm.style.cssText = 'font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-  nm.textContent = name;
-  var sub = document.createElement('div');
-  sub.className = 'file-sub';
-  sub.style.cssText = 'font-size:11px;opacity:0.7;';
-  var size = Number(m.size) || (attachment.payload ? Math.floor(attachment.payload.length * 3 / 4) : 0);
-  var parts = [];
-  if (m.pages) parts.push(m.pages + (m.pages == 1 ? ' página' : ' páginas'));
-  if (size) parts.push(_fmtSize(size));
-  parts.push('Toca para abrir');
-  sub.textContent = parts.join(' · ');
-  txt.appendChild(nm);
-  txt.appendChild(sub);
-  row.appendChild(ic);
-  row.appendChild(txt);
-  card.appendChild(row);
-  card.onclick = function(e) {
-    e.stopPropagation();
-    _openAttachmentFile(attachment.payload, name, mime);
-  };
-  return card;
-}
 
-var _openingFile = false;
-function _openAttachmentFile(b64, name, mime) {
-  var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
-  if (!b64) { _showPermissionError('Archivo: todavía no está disponible'); return; }
-  if (!pl || typeof pl.openFile !== 'function') { _showPermissionError('Archivo: esta versión no puede abrirlo'); return; }
-  if (_openingFile) return;
-  _openingFile = true;
-  console.log('[ATTACH] Abrir archivo ' + _extOf(name) + ' (' + mime + ')');
-  pl.openFile({ base64: b64, name: name, mime: mime }).then(function(r) {
-    if (r && r.opened === false) {
-      console.warn('[ATTACH] No abierto: ' + r.reason);
-      if (r.reason === 'install_permission') _showPermissionError('Archivo: permite a NEXO instalar apps y vuelve a tocar la APK');
-      else _showPermissionError('Archivo: no hay ninguna app en el teléfono para abrir este tipo de archivo');
-    }
-  }).catch(function(e) {
-    console.warn('[ATTACH] Error abriendo archivo: ' + (e && e.message));
-    _showPermissionError('Archivo: no se pudo abrir (' + ((e && e.message) || 'error') + ')');
-  }).then(function() { _openingFile = false; });
-}
 
-// Receptor (o mensajes antiguos): si el PDF llegó sin miniatura, se genera aquí y se guarda
-function _ensurePdfThumb(msg, attachment, img) {
-  var mid = msg.msgId || msg.messageId;
-  if (!attachment.payload || !mid || _thumbsInProgress[mid]) return;
-  _thumbsInProgress[mid] = true;
-  _pdfThumb(attachment.payload).then(function(t) {
-    delete _thumbsInProgress[mid];
-    if (!t || !t.thumb) return;
-    img.src = 'data:image/jpeg;base64,' + t.thumb;
-    img.style.display = 'block';
-    var cid = msg._own ? (msg.contactNexoId || _msgContactMap[mid] || _getCurrentContactId()) : (msg.senderNexoId || _getCurrentContactId());
-    vaultSetMessageFields(cid || null, mid, { metaMerge: { thumb: t.thumb, pages: t.pages } });
-  });
-}
 
-function _ensureVideoThumb(msg, attachment, src, img) {
-  var mid = msg.msgId || msg.messageId;
-  if (!src || !mid || _thumbsInProgress[mid]) return;
-  _thumbsInProgress[mid] = true;
-  _makeVideoThumb(src, 320).then(function(t) {
-    delete _thumbsInProgress[mid];
-    if (!t) return;
-    img.src = 'data:image/jpeg;base64,' + t;
-    img.style.display = 'block';
-    var cid = msg._own ? (msg.contactNexoId || _msgContactMap[mid] || _getCurrentContactId()) : (msg.senderNexoId || _getCurrentContactId());
-    vaultSetMessageFields(cid || null, mid, { metaMerge: { thumb: t } });
-  });
-}
 
-function _setHdBadge(msgId, text) {
-  var bubble = document.querySelector('.message[data-msg-id="' + msgId + '"]');
-  var wrap = bubble && bubble.querySelector('.video-attachment');
-  if (!wrap) return;
-  var b = wrap.querySelector('.hd-badge');
-  if (!b) {
-    b = document.createElement('span');
-    b.className = 'hd-badge';
-    b.style.cssText = 'position:absolute;top:6px;left:6px;padding:2px 6px;border-radius:8px;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;pointer-events:none;';
-    wrap.appendChild(b);
-  }
-  b.textContent = text;
-}
+
+
+
+
+
+
+
+
+
 
 function _noteContactMessage(contactId, textOrType, ts) {
   var bi = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface);
@@ -2707,17 +1928,6 @@ function _updateMessageStatus(messageId, status) {
   }
 }
 
-function _cleanupObjectURLs() {
-  try {
-    _objectURLRegistry.forEach(function(url) {
-      try { URL.revokeObjectURL(url); } catch (e) {}
-    });
-    _objectURLRegistry = [];
-    console.log('[MAIN] ObjectURLs limpiados');
-  } catch (e) {
-    console.warn('[MAIN] _cleanupObjectURLs error:', e);
-  }
-}
 
 function _toggleVaultUI(isOpen) {
   try {
