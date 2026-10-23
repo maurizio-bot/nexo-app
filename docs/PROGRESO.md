@@ -61,7 +61,9 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2721 | `e47a031` | Compilación de prueba en la rama de trabajo, sin release |
 | 2722 | `e47a031` | Envío fluido: la 2720 hacía lento hasta el texto (releía todos los adjuntos en cada arranque y los archivos bloqueaban la fila única del plugin). Archivos en hilos propios, tiempos de cada texto en el diagnóstico. APK verificada |
 | 2723–2724 | | Compilaciones de prueba en la rama de trabajo, sin release |
-| 2725 | (este commit) | Fotos paradas (20 % / ○) y "mensaje de código" con la 2722: cola nativa que nunca parte un mensaje, resincronización del receptor, comprobación por trozo, paquetes dañados fuera del chat, sin avalancha de avisos nativos. Reproducido y corregido en el simulador |
+| 2725 | `3e1d507` | Fotos paradas (20 % / ○) y "mensaje de código" con la 2722: cola nativa que nunca parte un mensaje, resincronización del receptor, comprobación por trozo, paquetes dañados fuera del chat, sin avalancha de avisos nativos. Reproducido y corregido en el simulador |
+| 2726–2727 | | Compilaciones de prueba en la rama de trabajo (Wi-Fi normal), sin release |
+| 2728 | (este commit) | Wi-Fi normal (misma red) y cambio automático Wi-Fi / Bluetooth / Wi-Fi Direct / Jump (`docs/WIFI.md`). Cabecera del chat con el camino. Probado en simulador y JVM |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -85,6 +87,10 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2728 (Wi-Fi normal): con los dos teléfonos en la **misma red Wi-Fi** y NEXO abierto, la cabecera del chat debe
+  pasar a "En línea · Wi-Fi" en unos segundos; fotos y vídeos mucho más rápidos. Probar a apagar el Wi-Fi de uno a
+  mitad de un envío: debe seguir por Bluetooth ("En línea · Bluetooth"). Si no aparece Wi-Fi: diagnóstico de los
+  dos (líneas `[WIFI]` y `LAN`); algunas redes de invitados bloquean hablar entre dispositivos.
 - 2725: el dueño probó la 2722 (dos teléfonos a <10 cm): una foto se paró en 20 % con un "mensaje de código" y
   la del otro nunca empezó (○). Reproducido en el simulador (ver ronda 2725) y corregido. Pedir que pruebe fotos
   en las dos direcciones; si algo se para, diagnóstico de los dos: líneas `Write fallo … mensaje descartado`,
@@ -157,6 +163,20 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2728: Wi-Fi normal y cambio automático de camino (pedido del dueño) — `docs/WIFI.md`
+- Kotlin `LanHub.kt` (TCP con marcos, saludo, una conexión si conectan los dos a la vez; 6 pruebas JVM con sockets
+  reales) + NSD en el plugin (`lanStart/Connect/Send/Drop/Stop`, avisos `onLan*`), permiso
+  `CHANGE_WIFI_MULTICAST_STATE`. `src/ui/lan.js`: marca del día (solo la reconocen contactos), comprobación con el
+  cifrado (`lv`/`lw`), latido 8 s / caída a 25 s, impostor cerrado a 30 s.
+- `ble_interface`: dispositivo `lan:<NEXO ID>` preferido; `_lanUp/_lanDown/_onLanPayload/linkOf`. `ble_ack`: trozos de
+  24 KB por Wi-Fi; `relink` + `ChatStream.useLink` (sigue por Bluetooth a mitad); reanudar por el mejor camino; un
+  envío sin camino ya no se reintenta para siempre cada 200 ms (busca otro y, a los ~2 min, queda pendiente).
+  Kotlin: un mensaje mayor que la cola entera entra con la cola vacía.
+- `tests/sim/lan.js` (modelo de red en `native_mock`): verificado 0,2 s; texto 0,2 s y foto de 400 KB en 1 s sin
+  Bluetooth; nada en claro por la red; sin alcance Bluetooth sigue por Wi-Fi; salir de la red a mitad de un archivo de
+  1,2 MB → termina por Bluetooth idéntico; caída silenciosa → texto por Bluetooth en 30 s; impostor nunca comprobado y
+  cerrado; cabecera "En línea · Wi-Fi" / "· Bluetooth". Batería completa (44) sin cambios.
 
 ## Ronda 2725: fotos paradas y "mensaje de código" (informe del dueño con la 2722)
 - Reproducido con un modelo fiel de la cola nativa (`native_mock`: `busyFail` = Android rechaza escrituras por
