@@ -1243,7 +1243,14 @@ export class BLEInterface {
   _loadLocalDeviceInfo() {
     var self = this;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'getLocalDeviceInfo')) return Promise.resolve();
-    return _safeNativeCall(self.nativePlugin, 'getLocalDeviceInfo', {}).then(function(info) { self.localDeviceName = (info && info.deviceName) || ''; }).catch(function() {});
+    return _safeNativeCall(self.nativePlugin, 'getLocalDeviceInfo', {}).then(function(info) {
+      self.localDeviceName = (info && info.deviceName) || '';
+      // v6.12.0: Bluetooth de largo alcance (LE Coded PHY) en este teléfono (Jump con más alcance); para el diagnóstico
+      if (info && typeof info.codedPhy === 'boolean' && self._codedPhy !== info.codedPhy) {
+        self._codedPhy = info.codedPhy;
+        console.log('[JUMP] Largo alcance (LE Coded): ' + (info.codedPhy ? 'sí' : 'no en este teléfono'));
+      }
+    }).catch(function() {});
   }
 
   _setupNativeScanListeners() {
@@ -2839,6 +2846,9 @@ export class BLEInterface {
     if (self.isScanning) return;
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'startScan')) return;
     console.log('[BLEInterface] Auto-scan iniciado');
+    // v6.12.0: lo que se ve en "dispositivos nuevos" sigue sirviendo hasta que el escaneo lo vuelva a encontrar
+    // (antes el "+" de esas filas no hacía nada: el dispositivo ya no estaba en foundDevices)
+    self._recentFound = new Map(self.foundDevices);
     self.foundDevices.clear();
     _safeNativeCall(self.nativePlugin, 'startScan', { filtered: !!(opts && opts.filtered) })
       .then(function() {
@@ -3419,7 +3429,7 @@ export class BLEInterface {
         deviceId = bar.dataset.deviceId || '';
       }
     }
-    var device = this.foundDevices.get(deviceId);
+    var device = this.foundDevices.get(deviceId) || (this._recentFound && this._recentFound.get(deviceId));
     if (!device) return;
     var name = device.name || device.deviceUUID || 'Nexo Device';
     var nexoId = device.deviceUUID || '';

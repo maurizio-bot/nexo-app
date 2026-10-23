@@ -1,5 +1,5 @@
 /**
- * ble_relay.js v2.1 — Jump: mensajes de varios saltos (A → B → C) por cualquier teléfono NEXO a alcance.
+ * ble_relay.js v2.2 — Jump: mensajes de varios saltos (A → B → C) por cualquier teléfono NEXO a alcance.
  *
  * v2.0 (bajo demanda, cualquier teléfono NEXO): cada teléfono anota los NEXO que ve al escanear
  * (contactos o no). Si un mensaje no tiene camino, pregunta a los cercanos ('rq': ¿quién llega a X?,
@@ -22,11 +22,13 @@
  * número de saltos ('hp'). El puente confirma que lo guarda (custodia: 'rk' o el ack final del flujo),
  * lo apunta en una cola persistente y lo reenvía hacia el destino; si no hay ruta, espera (hasta 24 h).
  * El destino confirma de extremo a extremo con un ack dirigido al origen, que vuelve por las rutas.
+ * v2.2: hasta 8 saltos (antes 4): más alcance encadenando teléfonos. Una build anterior en medio sigue
+ * descartando lo que llega con más de 4.
  * El contenido va cifrado para el destino (e2e_crypto). v2.1: con remitente sellado ('sx', ble_interface) los puentes
  * solo ven a quién va y los ids, no quién lo manda; el camino de una búsqueda lleva huellas, no NEXO IDs. El primer
  * puente sí sabe qué vecino le entregó el paquete (inevitable en una red de saltos).
  */
-var MAX_HOPS = 4;
+var MAX_HOPS = 8;
 var AD_INTERVAL_MS = 30000;
 var ROUTE_TTL_MS = 95000;
 var QUEUE_FILE = 'nexo_relay_queue.json';

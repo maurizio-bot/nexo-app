@@ -65,7 +65,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2726–2727 | | Compilaciones de prueba en la rama de trabajo (Wi-Fi normal), sin release |
 | 2728 | `93dd9ad` | Wi-Fi normal (misma red) y cambio automático Wi-Fi / Bluetooth / Wi-Fi Direct / Jump (`docs/WIFI.md`). Cabecera del chat con el camino. Probado en simulador y JVM |
 | 2729 | `104dcc6` | Compilación de prueba en la rama de trabajo (latido nativo del Wi-Fi), sin release |
-| 2730 | (ver ronda) | Wi-Fi según las reglas del dueño (no pasa a Bluetooth por un corte breve ni en segundo plano; mala señal medida), remitente oculto a los puentes de Jump, poscuántico (ML-KEM), QR del número de seguridad |
+| 2730 | `40fe10c` | Wi-Fi según las reglas del dueño (no pasa a Bluetooth por un corte breve ni en segundo plano; mala señal medida), remitente oculto a los puentes de Jump, poscuántico (ML-KEM), QR del número de seguridad. APK verificada (firma 23d86688…, sin copias) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el

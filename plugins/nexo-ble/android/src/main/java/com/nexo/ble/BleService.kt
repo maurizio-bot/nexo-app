@@ -5,7 +5,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.le.AdvertisingSet
+import android.bluetooth.le.AdvertisingSetCallback
+import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
@@ -34,6 +39,8 @@ class BleService : Service() {
     private var isAdvertising = false
     private var currentNexoId: String? = null
     private var advertiseCallback: AdvertiseCallback? = null
+    // Largo alcance (LE Coded PHY, ~4x distancia): anuncio extendido aparte del normal, si el teléfono lo tiene
+    private var codedCallback: AdvertisingSetCallback? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -166,9 +173,51 @@ class BleService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error startAdvertising: ${e.message}")
         }
+        startCodedAdvertising(adapter, manufacturerData)
+    }
+
+    // Mismo anuncio (NEXO ID) en LE Coded PHY: los teléfonos con largo alcance se encuentran y conectan desde ~4x
+    // más lejos (Jump con más alcance). Los que no lo tienen siguen con el anuncio normal; si falla, no pasa nada.
+    private fun startCodedAdvertising(adapter: BluetoothAdapter, manufacturerData: ByteArray) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        try {
+            if (!adapter.isLeCodedPhySupported || !adapter.isLeExtendedAdvertisingSupported) {
+                Log.i(TAG, "Largo alcance (LE Coded) no disponible en este teléfono")
+                return
+            }
+            val params = AdvertisingSetParameters.Builder()
+                .setLegacyMode(false)
+                .setConnectable(true)
+                .setScannable(false)
+                .setPrimaryPhy(BluetoothDevice.PHY_LE_CODED)
+                .setSecondaryPhy(BluetoothDevice.PHY_LE_CODED)
+                .setInterval(AdvertisingSetParameters.INTERVAL_MEDIUM)
+                .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
+                .build()
+            val data = AdvertiseData.Builder()
+                .setIncludeDeviceName(false)
+                .addManufacturerData(MANUFACTURER_ID, manufacturerData)
+                .build()
+            val cb = object : AdvertisingSetCallback() {
+                override fun onAdvertisingSetStarted(advertisingSet: AdvertisingSet?, txPower: Int, status: Int) {
+                    if (status == AdvertisingSetCallback.ADVERTISE_SUCCESS) Log.i(TAG, "Largo alcance (LE Coded) anunciando, tx=$txPower")
+                    else Log.w(TAG, "Largo alcance (LE Coded) no arrancó: status=$status")
+                }
+            }
+            codedCallback = cb
+            bluetoothLeAdvertiser?.startAdvertisingSet(params, data, null, null, null, cb)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Largo alcance: sin permiso (${e.message})")
+        } catch (e: Exception) {
+            Log.w(TAG, "Largo alcance: ${e.message}")
+        }
     }
 
     private fun stopAdvertisingInternal() {
+        codedCallback?.let { cb ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) try { bluetoothLeAdvertiser?.stopAdvertisingSet(cb) } catch (e: Exception) { }
+        }
+        codedCallback = null
         if (!isAdvertising) return
         advertiseCallback?.let { callback ->
             try {

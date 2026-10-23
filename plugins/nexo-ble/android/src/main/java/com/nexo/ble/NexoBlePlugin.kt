@@ -125,6 +125,10 @@ class NexoBlePlugin : Plugin() {
     private var bluetoothScanner: BluetoothLeScanner? = null
     private val scanResults = Collections.synchronizedList(mutableListOf<JSObject>())
     private val scannedDevices = ConcurrentHashMap<String, BluetoothDevice>()
+    // Largo alcance (LE Coded PHY): cuándo se vio por última vez cada dispositivo en 1M y en Coded
+    private val seen1M = ConcurrentHashMap<String, Long>()
+    private val seenCoded = ConcurrentHashMap<String, Long>()
+    private val codedLinks = ConcurrentHashMap.newKeySet<String>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scanTimeoutRunnable = Runnable { stopScanInternal() }
     private val reconnectTimers = ConcurrentHashMap<String, Runnable>()
@@ -395,9 +399,7 @@ class NexoBlePlugin : Plugin() {
             }
         }
         try {
-            val settings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .build()
+            val settings = scanSettings()
             scanner.startScan(emptyList(), settings, callback)
         } catch (e: SecurityException) {
             quickScanLatch?.countDown()
@@ -941,7 +943,7 @@ class NexoBlePlugin : Plugin() {
             pendingCalls[macNorm] = call
             call.setKeepAlive(true)
             val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
+                connectLe(ctx, device, macNorm)
             } else {
                 device.connectGatt(ctx, false, createGattClientCallback(macNorm))
             }
@@ -1013,7 +1015,8 @@ class NexoBlePlugin : Plugin() {
                             remLog("INFO", "GATT_CLIENT_CB", "ConnectionPriority HIGH set para $address")
                         }
                         // PHY 2M (2 Mbps) si ambos lo soportan; si no, Android se queda en 1M
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        // (no con un enlace de largo alcance: 2M tiene menos alcance y se cortaría)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !codedLinks.contains(normalizeMac(address))) {
                             gatt.setPreferredPhy(BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_OPTION_NO_PREFERRED)
                         }
                     } catch (e: Exception) {
@@ -1209,7 +1212,7 @@ class NexoBlePlugin : Plugin() {
                     try { old.disconnect(); old.close() } catch (e: Exception) { }
                 }
                 val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
+                    connectLe(ctx, device, macNorm)
                 } else {
                     device.connectGatt(ctx, false, createGattClientCallback(macNorm))
                 }
@@ -1624,7 +1627,7 @@ class NexoBlePlugin : Plugin() {
         scanResults.clear()
         scannedDevices.clear()
         lastScanNotifyTime.clear()
-        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
+        val settings = scanSettings()
         // filtered=true (re-búsqueda con la app oculta): solo anuncios NEXO. Sin filtro Android no
         // entrega resultados con la pantalla apagada.
         val filters = if (call.getBoolean("filtered", false) == true) listOf(
@@ -1675,6 +1678,34 @@ class NexoBlePlugin : Plugin() {
         return null
     }
 
+    private fun codedSupported(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        return try {
+            val bm = activity.applicationContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            bm.adapter?.isLeCodedPhySupported == true
+        } catch (e: Exception) { false }
+    }
+
+    // Escaneo: con largo alcance también los anuncios extendidos en LE Coded (setLegacy(false) entrega los dos)
+    private fun scanSettings(): ScanSettings {
+        val b = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+        if (codedSupported()) b.setLegacy(false).setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED)
+        return b.build()
+    }
+
+    // Conectar: en LE Coded solo si ese teléfono solo se ve por largo alcance (en 1M es más rápido)
+    private fun connectLe(ctx: Context, device: BluetoothDevice, macNorm: String): BluetoothGatt? {
+        val now = System.currentTimeMillis()
+        val coded = codedSupported() && now - (seenCoded[macNorm] ?: 0L) < 60000L && now - (seen1M[macNorm] ?: 0L) > 10000L
+        if (coded) codedLinks.add(macNorm) else codedLinks.remove(macNorm)
+        if (coded && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            remLog("INFO", "GATT_CLIENT", "Conectando a $macNorm por largo alcance (LE Coded)")
+            return device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE,
+                BluetoothDevice.PHY_LE_1M_MASK or BluetoothDevice.PHY_LE_CODED_MASK)
+        }
+        return device.connectGatt(ctx, false, createGattClientCallback(macNorm), BluetoothDevice.TRANSPORT_LE)
+    }
+
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result?.device?.let { device ->
@@ -1688,6 +1719,8 @@ class NexoBlePlugin : Plugin() {
                 }
 
                 scannedDevices[macNorm] = device
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && result.primaryPhy == BluetoothDevice.PHY_LE_CODED) seenCoded[macNorm] = System.currentTimeMillis()
+                else seen1M[macNorm] = System.currentTimeMillis()
 
                 val nexoId = extractNexoIdFromScanRecord(result.scanRecord)
 
@@ -1747,6 +1780,7 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject()
             .put("deviceName", adapter?.name ?: "NEXO Device")
             .put("deviceAddress", try { adapter?.address ?: "" } catch (e: SecurityException) { "" })
+            .put("codedPhy", codedSupported()) // largo alcance (LE Coded PHY)
         )
     }
 

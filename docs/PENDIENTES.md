@@ -38,9 +38,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 3. Mejoras de lo que ya existe
 - **Velocidad**: archivos en binario (sin base64, −33 %); L2CAP; Wi-Fi Direct más rápido; detectar y renegociar MTU
   pequeño (algunos teléfonos se quedan en 20 bytes por escritura).
-- **Jump con más alcance**: Bluetooth de largo alcance (LE Coded PHY, ~4x distancia en teléfonos compatibles); más
-  saltos (hoy máx. 4); guardar y reenviar (el puente entrega cuando se cruza con el destino); Jump también por Wi-Fi;
-  Jump con la app en segundo plano o cerrada.
+- **Jump con más alcance**: hecho en la ronda 2731 (en el teléfono, por confirmar): Bluetooth de largo alcance (LE
+  Coded PHY, ~4x distancia entre teléfonos que lo tengan; el diagnóstico dice `[JUMP] Largo alcance (LE Coded): sí/no`)
+  y hasta 8 saltos (antes 4). Ya existía guardar y reenviar (el puente guarda hasta 24 h). Falta: Jump también por
+  Wi-Fi; Jump con la app en segundo plano o cerrada.
 - **Seguridad (resto de la fase 3)**: identificador Bluetooth rotativo (falta decisión, ver 4). Hechos en la
   ronda 2730: remitente oculto a los puentes, poscuántico (ML-KEM) y QR del número de seguridad.
 - **Fiabilidad**: recibir con la app cerrada del todo (servidor GATT en el BleService); limpiar el manifiesto

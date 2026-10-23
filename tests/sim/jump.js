@@ -69,7 +69,9 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const radio = new Radio();
   const names = chain ? 'ABCDEFGHIJ'.substring(0, chainN).split('') : ['A', 'B', 'C'];
   const nat = {}, P = {};
-  names.forEach((n, i) => { nat[n] = new NativePhone(n, n.repeat(2) + ':' + n.repeat(2) + ':' + n.repeat(2) + ':' + n.repeat(2) + ':' + n.repeat(2) + ':0' + (i + 1), opts); radio.add(nat[n]); nat[n].load(); });
+  // Dirección Bluetooth válida (hexadecimal): A..F como antes (AA:AA:…), de G en adelante A6:A6:…
+  const hx = (n, i) => (/[A-F]/.test(n) ? n.repeat(2) : (0xA0 + i).toString(16).toUpperCase());
+  names.forEach((n, i) => { const h = hx(n, i); nat[n] = new NativePhone(n, [h, h, h, h, h, '0' + (i + 1)].join(':'), opts); radio.add(nat[n]); nat[n].load(); });
   if (lowBat) nat.B.battery = { level: 10, charging: false, powerSave: false };
   (await Promise.all(names.map((n) => boot(n, nat[n])))).forEach((p) => { P[p.name] = p; });
   const id = (n) => P[n].win.bleInterface.localNexoId;
@@ -80,14 +82,21 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   async function pair(x, y) {
     const others = names.filter((n) => n !== x && n !== y);
     others.forEach((o) => radio.block(nat[x], nat[o]));
+    if (process.env.JUMP_DEBUG) { const bi = P[x].win.bleInterface, o = bi._addNewDevice.bind(bi); bi._addNewDevice = (d) => { console.error('addNew', x, d, !!bi.foundDevices.get(d), Array.from(bi.foundDevices.keys()).join(',')); return o(d); }; }
     P[x].win.bleInterface.togglePanel(); const ok = await addFound(P[x], y); P[x].win.bleInterface.togglePanel();
+    if (process.env.JUMP_DEBUG) console.error('pair', x, y, ok, P[x].win.vaultLoadContacts().map((c) => c.name).join(','), Array.from(P[x].win.bleInterface.foundDevices.values()).map((d) => d.name + ':' + d.deviceUUID).join(','));
     await sleep(800);
-    await openChatWith(P[x], y); await sendText(P[x], 'hola ' + y); await sleep(2500); await closeChat(P[x]);
+    await openChatWith(P[x], y); await sendText(P[x], 'hola ' + y); await sleep(2500);
+    // Hasta tener la clave del otro (con muchos teléfonos el intercambio tarda más)
+    const keyOf = (a, b) => !!(P[a].win.vaultLoadContacts().find((c) => c.name === b) || {}).publicKey;
+    for (let i = 0; i < 40 && !keyOf(x, y); i++) await sleep(500);
+    await closeChat(P[x]);
     others.forEach((o) => radio.unblock(nat[x], nat[o]));
     return ok;
   }
   const links = chain ? names.slice(1).map((n, i) => [names[i], n]) : stranger ? [] : [['A', 'B'], ['B', 'C']];
   for (const [x, y] of links) if (!(await pair(x, y))) { console.log('JUMP ' + JSON.stringify({ error: 'no empareja ' + x + y })); process.exit(0); }
+  r.contactos_A = P.A.win.vaultLoadContacts().map((c) => c.name);
   if (!shared) { if (!(await pair('A', dest))) { console.log('JUMP ' + JSON.stringify({ error: 'no empareja A' + dest })); process.exit(0); } }
   // Alcance: solo los vecinos de la cadena se ven
   for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
@@ -122,7 +131,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const badgeB0 = P.B.win.bleInterface.newDevicesCount || 0;
 
   // A escribe al destino: corto, largo y foto
-  await openChatWith(P.A, dest);
+  r.contactos_A = P.A.win.vaultLoadContacts().map((c) => c.name);
+  if (!(await openChatWith(P.A, dest))) { console.log('JUMP ' + JSON.stringify(Object.assign(r, { error: 'A no tiene el chat de ' + dest }))); fs.writeFileSync(path.join(__dirname, 'last_logs_jump.txt'), logs.join('\n')); process.exit(0); }
   const largo = 'SECRETO-largo-' + 'abcdefghij'.repeat(30);
   await sendText(P.A, 'SECRETO-corto'); await sleep(300);
   r.estado_corto_en_A_al_enviar = status(P.A, 'SECRETO-corto');
