@@ -55,6 +55,7 @@ jobs:
           org.gradle.daemon=false
           android.useAndroidX=true
           android.enableJetifier=true
+          android.jetifier.ignorelist=tor-android,jtorctl
           org.gradle.java.home=$JAVA_HOME
           EOF
           chmod +x gradlew
