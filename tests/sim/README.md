@@ -153,3 +153,8 @@ llega idéntica, el estado final, burbujas con texto técnico a la vista y las e
 archivo. `--wd` (Wi-Fi Direct), `--plugin-thread=N --off-thread` (hilo único de Capacitor / 2722), `--cut`
 (la foto de A se corta al 20 % y durante el corte B manda la suya: A se queda en 20 %, B en "○ pendiente";
 al volver el alcance deben llegar las dos).
+
+`photos.js` además: `--busy=P` (Android rechaza escrituras por ocupado), `--mtu=N`, `--drop-mid=N` (cada N
+mensajes se pierde un trozo del medio), `--kotlin-2722` (reglas antiguas de la cola: reproduce las fotos paradas),
+`--inject` (paquetes mutilados: no deben salir en el chat), `--camera` (el otro abre la cámara a mitad),
+`--bridge-ms` (coste de cada aviso Android → app).

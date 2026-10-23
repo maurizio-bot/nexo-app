@@ -60,6 +60,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2720 | `a217b9e` | Seguridad fase 3: datos cifrados en el teléfono (Keystore), bloqueo opcional con huella/PIN y bloquear capturas (Perfil → Seguridad). APK verificada (firma 23d86688…, sin copias) |
 | 2721 | `e47a031` | Compilación de prueba en la rama de trabajo, sin release |
 | 2722 | `e47a031` | Envío fluido: la 2720 hacía lento hasta el texto (releía todos los adjuntos en cada arranque y los archivos bloqueaban la fila única del plugin). Archivos en hilos propios, tiempos de cada texto en el diagnóstico. APK verificada |
+| 2723–2724 | | Compilaciones de prueba en la rama de trabajo, sin release |
+| 2725 | (este commit) | Fotos paradas (20 % / ○) y "mensaje de código" con la 2722: cola nativa que nunca parte un mensaje, resincronización del receptor, comprobación por trozo, paquetes dañados fuera del chat, sin avalancha de avisos nativos. Reproducido y corregido en el simulador |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -83,6 +85,12 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2725: el dueño probó la 2722 (dos teléfonos a <10 cm): una foto se paró en 20 % con un "mensaje de código" y
+  la del otro nunca empezó (○). Reproducido en el simulador (ver ronda 2725) y corregido. Pedir que pruebe fotos
+  en las dos direcciones; si algo se para, diagnóstico de los dos: líneas `Write fallo … mensaje descartado`,
+  `REASSEMBLY … resincronizado`, `Trozo … dañado`, `Paquete dañado descartado`, `[SEND]`.
+- Después: Wi-Fi normal (misma red, NSD + TCP, verificado con E2E) y cambio automático Bluetooth / Wi-Fi Direct /
+  Wi-Fi (pedido del dueño). Pensarlo para que sirva también en iOS (explicado al dueño el 23-10).
 - 2722: el dueño dijo que con la 2720 "hasta enviar mensajes es lento". Corregido lo encontrado (ver ronda
   2722). Pedir el diagnóstico de los dos teléfonos tras mandar 5-6 textos: líneas `[SEND] Texto entregado en X
   ms (cifrar, salir por Bluetooth, reintentos)`, `[NATIVO] FILE_IO … lento` y `[LOCK] … migración`. Si sigue
@@ -149,6 +157,26 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2725: fotos paradas y "mensaje de código" (informe del dueño con la 2722)
+- Reproducido con un modelo fiel de la cola nativa (`native_mock`: `busyFail` = Android rechaza escrituras por
+  ocupado, `kotlin2722` = reglas antiguas, `mtu`, `dropMidEvery`, `bridgeMs`): con MTU 185 y 30 % de rechazos,
+  las fotos de A y B se quedan en 25 % / "!" para siempre (como en el teléfono); un paquete mutilado sale en el
+  chat como "mensaje de código" (y se guardaba dos veces).
+- Causas: (1) la cola nativa, tras 3 rechazos por ocupado, descartaba UN trozo del medio de un mensaje (y con la
+  cola llena, también); (2) el receptor solo limpiaba el búfer tras 5 s sin trozos nuevos (con reenvíos
+  llegando, nunca): todo lo siguiente quedaba tragado; (3) un trozo perdido dentro de los datos deja un JSON
+  válido con datos más cortos: se aceptaba y la foto no se podía descifrar (perdida en silencio, emisor con ✓);
+  (4) la 2722 escuchaba todos los registros nativos (uno por trozo): más carga en el hilo principal = más
+  rechazos por ocupado (por eso "antes no pasaba").
+- Correcciones: Kotlin — un mensaje entra entero en la cola o espera; rechazos: reintento 15/50 ms hasta ~1,8 s
+  y luego fuera el mensaje entero; receptor: lo pendiente con más de 10 s se descarta (resincroniza); solo
+  AT_REST/FILE_IO cruzan a la app. JS — cada trozo lleva comprobación `k` (FNV-1a; builds anteriores la
+  ignoran) y uno dañado se vuelve a pedir al momento; paquetes con JSON roto o sin v/t/type no van al chat.
+- Resultado (foto 150 KB, MTU 185): sin fallos 46 s; con 85 trozos mutilados 49 s; con 30 % de rechazos 59 s;
+  siempre idénticas y sin código. Batería completa sin cambios (43 pruebas).
+- Pruebas nuevas: `photos.js` (`--busy`, `--mtu`, `--drop-mid`, `--inject`, `--cut`, `--camera`, `--wd`),
+  `bridge.js` (Chromium; no llega a emparejar con la CPU frenada: pendiente).
 
 ## Ronda 2722: el envío de textos se volvió lento con la 2720 (informe del dueño)
 - Causa 1 (reproducida en `tests/kotlin`): la migración del cifrado en reposo releía enteros todos los
