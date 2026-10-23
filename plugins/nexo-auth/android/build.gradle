@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    compileSdk 34
+    compileSdk 37
     
     defaultConfig {
         minSdk 22
@@ -26,10 +26,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-    
     namespace 'com.nexo.auth'
 }
 
@@ -46,4 +42,8 @@ dependencies {
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
     
     compileOnly project(':capacitor-android')
+}
+
+kotlin {
+    compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 }
 }

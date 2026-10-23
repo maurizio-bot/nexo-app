@@ -1,6 +1,6 @@
 ext {
     minSdkVersion = 26
-    compileSdkVersion = 34
+    compileSdkVersion = 37
     targetSdkVersion = 34
     
     // CRÍTICO: AndroidX Activity 1.8.0+ para permisos runtime Android 14

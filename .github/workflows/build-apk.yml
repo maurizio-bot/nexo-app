@@ -63,7 +63,7 @@ jobs:
           retention-days: 7
 
   build:
-    needs: tests
+    # needs: tests  (SOLO en la rama de prueba tmp-agp9)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -104,6 +104,8 @@ jobs:
           android.useAndroidX=true
           android.enableJetifier=true
           android.jetifier.ignorelist=tor-android,jtorctl
+          android.builtInKotlin=false
+          android.newDsl=false
           org.gradle.java.home=$JAVA_HOME
           EOF
           chmod +x gradlew

@@ -1,11 +1,11 @@
 buildscript {
-    ext.kotlin_version = '1.9.20'
+    ext.kotlin_version = '2.2.20'
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.3.2'
+        classpath 'com.android.tools.build:gradle:9.2.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -15,7 +15,7 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace 'com.nexo.ble'
-    compileSdk 34
+    compileSdk 37
 
     defaultConfig {
         minSdk 24
@@ -31,9 +31,14 @@ android {
         }
     }
 
-    kotlinOptions {
-        jvmTarget = '1.8'
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+kotlin {
+    compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 }
 }
 
 repositories {
@@ -51,5 +56,5 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.biometric:biometric:1.1.0'
     // Tor (librería oficial del Guardian Project). Sin su kotlin-stdlib 2.2: el proyecto compila con Kotlin 1.9
-    implementation('info.guardianproject:tor-android:0.4.9.5') { exclude group: 'org.jetbrains.kotlin' }
+    implementation('info.guardianproject:tor-android:0.4.9.14') { exclude group: 'org.jetbrains.kotlin' }
 }
