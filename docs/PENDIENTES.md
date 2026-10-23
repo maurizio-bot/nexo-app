@@ -20,6 +20,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - 2730: Wi-Fi (seguir en Wi-Fi con la app en segundo plano y en cortes breves), QR del número de seguridad,
   aviso "Protección poscuántica activa", Jump con remitente oculto.
 - Wi-Fi Direct: falta el diagnóstico con tiempos para acelerarlo.
+- 2749: Tor nuevo (0.4.9.14) e internet en general (relés y Tor reales no se alcanzan desde el entorno de desarrollo).
+- 2751/2752: notificaciones (permiso, una por chat, número en el icono, tocar abre el chat), contadores de no leídos,
+  "leído" solo con la app a la vista, recibir por internet con la app en segundo plano.
+- 2754: fotos, vídeo y PDF por Bluetooth en binario (deben llegar enteros y algo más rápido); y con un teléfono en la
+  2752, que todo siga llegando.
 
 ## 2. Funciones nuevas
 - **Llamadas de voz**: posibles por Bluetooth (voz comprimida ~2 KB/s); por Wi-Fi / Wi-Fi Direct con calidad alta.
@@ -32,15 +37,15 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Chats de grupo**: no existen todavía.
 - **Internet** (contactos lejos, Wi-Fi de módems distintos): hecho en la ronda 2739 con relés públicos Nostr y Tor
   (decisión del dueño 23-10, "2 y 3"; ver `docs/INTERNET.md`). Falta: confirmar en los teléfonos (los relés y Tor
-  reales no se alcanzan desde el entorno de desarrollo); recibir por internet con la app en segundo plano (pasar la
-  conexión a la parte nativa); servidor propio si los relés públicos fallan o limitan.
+  reales no se alcanzan desde el entorno de desarrollo); servidor propio si los relés públicos fallan o limitan.
+  Recibir con la app en segundo plano: hecho en la 2751 (NetBg nativo).
 - **iPhone**: plugin en Swift, cuenta Apple Developer (99 USD/año), Mac o runners macOS, iPhones para probar.
 - **Núcleos** (universidad, papelería, cafetería…) y **caso papelería** (PDF → imprimir → pagar).
 - **Fénix**: hecho en la ronda 2732 el respaldo de los mensajes de texto (fase 2). Falta: fotos, vídeos y archivos
   (mejor por Wi-Fi); pingeo por Jump (hoy solo con el contacto conectado).
 
 ## 3. Mejoras de lo que ya existe
-- **Velocidad**: archivos en binario hecho (2753); L2CAP; Wi-Fi Direct más rápido; detectar y renegociar MTU
+- **Velocidad**: archivos en binario hecho (2754); L2CAP; Wi-Fi Direct más rápido; detectar y renegociar MTU
   pequeño (algunos teléfonos se quedan en 20 bytes por escritura).
 - **Jump con más alcance**: hecho en la ronda 2731 (en el teléfono, por confirmar): Bluetooth de largo alcance (LE
   Coded PHY, ~4x distancia entre teléfonos que lo tengan; el diagnóstico dice `[JUMP] Largo alcance (LE Coded): sí/no`)
@@ -79,8 +84,9 @@ De lo más simple a lo más complejo. Estado:
    la recuperación de Fénix busca a los contactos por el NEXO ID que anuncian y un teléfono recién recuperado
    todavía no sabría reconocer un ID rotativo; también afecta a agregar desconocidos, a Jump con desconocidos y a
    teléfonos con builds viejas. Hace falta un diseño con pruebas de esos casos antes de decidir.
-5. ✅ (2749) AGP 9.4.0 / Gradle 9.6.0 / Kotlin 2.2.20 / compileSdk 37.1 y Tor 0.4.9.14 (targetSdk sigue en 34). 6. ✅ (2752) Dividir `main.js` (4.281 → 720 líneas) y `ble_interface.js` (3.732 → 847) en 30 módulos sin cambiar el
-   código (`docs/ESTRUCTURA.md`). 7. ✅ (2753) Bluetooth sin base64: los trozos de datos de fotos, vídeos y archivos
+5. ✅ (2749) AGP 9.4.0 / Gradle 9.6.0 / Kotlin 2.2.20 / compileSdk 37.1 y Tor 0.4.9.14 (targetSdk sigue en 34).
+6. ✅ (2752) Dividir `main.js` (4.281 → 720 líneas) y `ble_interface.js` (3.732 → 847) en 30 módulos sin cambiar el
+   código (`docs/ESTRUCTURA.md`). 7. ✅ (2754) Bluetooth sin base64: los trozos de datos de fotos, vídeos y archivos
    van en binario (−25 % de bytes por la radio, ~25–35 % más rápido en el simulador); solo con teléfonos que lo
    anuncian (`bf`), con builds anteriores sigue el JSON de siempre.
 8. Detectar MTU pequeño. 9. Fénix para fotos/vídeos/archivos. 10. Jump por Wi-Fi.
