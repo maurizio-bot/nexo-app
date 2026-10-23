@@ -20,7 +20,7 @@ class DistLoader extends ResourceLoader {
 }
 const logs = [];
 async function boot(name, address, radio, buildDir, opts) {
-  const native = new NativePhone(name, address, Object.assign({ readsContentFallback: true, mtu, loss, pace: [15, 15], retain: ['onPayloadReceived'] }, opts));
+  const native = new NativePhone(name, address, Object.assign({ readsContentFallback: true, mtu, loss: 0, pace: [15, 15], retain: ['onPayloadReceived'] }, opts));
   radio.add(native); native.load();
   const vc = new VirtualConsole();
   ['log', 'info', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`[${name}] ${l}: ` + a.map(String).join(' ').substring(0, 300))));
@@ -63,6 +63,8 @@ const st = (p) => ({ bin_enviados: p.native.stats.binChunksOut || 0, bin_recibid
   await openChat(A);
   await sendText(A, 'hola'); await sleep(2500);
   await openChat(B); await sleep(500);
+  // Las pérdidas, solo durante los envíos (al conectar, otras pruebas ya cubren la pérdida del intercambio de claves)
+  A.native.opts.loss = B.native.opts.loss = loss;
   const r = { mtu, loss, a_anterior: oldA, b_anterior: oldB, pasos: {} };
   const wait = async (cond, s) => { const t0 = Date.now(); for (let i = 0; i < s * 5 && !cond(); i++) await sleep(200); return { llega: !!cond(), segundos: Math.round((Date.now() - t0) / 100) / 10 }; };
   const step = async (label, from, to, fn, cond, s) => {
