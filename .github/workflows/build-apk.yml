@@ -89,14 +89,15 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Ajustar módulos de Capacitor 5 para AGP 9
-        run: bash scripts/agp9-patch.sh
-
       - name: Build Web Only
         run: npm run build:web
 
       - name: Sync Capacitor
         run: npx cap sync android
+
+
+      - name: Ajustar módulos de Capacitor 5 para AGP 9
+        run: bash scripts/agp9-patch.sh
 
       - name: Configure gradle.properties
         working-directory: ./android
