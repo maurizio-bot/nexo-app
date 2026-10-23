@@ -50,7 +50,7 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   const r = { build: path.basename(buildDir), webcrypto_en_app: !!(A.win.crypto && A.win.crypto.subtle) };
   A.win.bleInterface.togglePanel();
   let add = null;
-  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
+  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device > div button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
   click(A.win, add); await sleep(2500);
   A.win.bleInterface.togglePanel();
   await openChat(A);

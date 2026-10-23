@@ -59,7 +59,7 @@ const fakePdf = (pages, kb) => { const head = '%PDF-1.4\n1 0 obj << /Type /Pages
   const r = { build: path.basename(buildDir) };
   A.win.bleInterface.togglePanel();
   let add = null;
-  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
+  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device > div button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
   if (!add) { console.log('FILES ' + JSON.stringify({ error: 'no empareja' })); process.exit(0); }
   click(A.win, add); await sleep(2500);
   A.win.bleInterface.togglePanel();

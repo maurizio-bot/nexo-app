@@ -31,7 +31,8 @@ async function phone(name) {
   const dir = path.join(tmp, name + '-' + (++copies));
   fs.mkdirSync(dir);
   fs.writeFileSync(path.join(dir, 'e2e_crypto.mjs'), fs.readFileSync(path.join(SRC, 'e2e_crypto.js')));
-  fs.writeFileSync(path.join(dir, 'e2e_ratchet.mjs'), fs.readFileSync(path.join(SRC, 'e2e_ratchet.js'), 'utf8').replace("'./e2e_crypto.js'", "'./e2e_crypto.mjs'"));
+  fs.writeFileSync(path.join(dir, 'e2e_ratchet.mjs'), fs.readFileSync(path.join(SRC, 'e2e_ratchet.js'), 'utf8').replace("'./e2e_crypto.js'", "'./e2e_crypto.mjs'")
+    .replace("'@noble/post-quantum/ml-kem.js'", "'" + pathToFileURL(path.join(__dirname, '.deps/node_modules/@noble/post-quantum/ml-kem.js')).href + "'"));
   const m = await import(pathToFileURL(path.join(dir, 'e2e_ratchet.mjs')).href);
   const c = await import(pathToFileURL(path.join(dir, 'e2e_crypto.mjs')).href);
   const p = { name, nx: 'nx' + name.toLowerCase(), m, c };
@@ -64,7 +65,7 @@ function check(name, ok, detail) { results.push({ name, ok: !!ok }); quiet((ok ?
   // Primer mensaje y varios antes de respuesta, recibidos en desorden
   const a = [];
   for (let i = 0; i < 4; i++) a.push(await enc(A, B, 'hola ' + i, 'm' + i));
-  check('formato E2 con cabecera inicial', a.every((x) => x.startsWith('E2:') && x.split(':')[1].split('.').length === 6));
+  check('formato E2 con cabecera inicial (poscuántica: 7 campos)', a.every((x) => x.startsWith('E2:') && x.split(':')[1].split('.').length === 7));
   const order = [0, 3, 1, 2];
   let okAll = true;
   for (const i of order) { const r = await dec(B, A, a[i], 'm' + i); if (r.text !== 'hola ' + i || r.senderKey !== A.ik) { okAll = false; quiet('   ', i, r); } }
@@ -189,9 +190,37 @@ function check(name, ok, detail) { results.push({ name, ok: !!ok }); quiet((ok ?
   check('estado perdido: lo iniciado antes no se descifra', (await dec(G2, F, f0, 'f0')).err === 'BAD');
   await F.run((m) => m.ratchetNotePeerBundle(G2.nx, G2.bundle));
   const f1 = await enc(F, G2, 'después', 'f1');
-  check('estado perdido: con el paquete nuevo se inicia otra sesión', f1.split(':')[1].split('.').length === 6 && (await dec(G2, F, f1, 'f1')).text === 'después');
+  check('estado perdido: con el paquete nuevo se inicia otra sesión', f1.split(':')[1].split('.').length === 7 && (await dec(G2, F, f1, 'f1')).text === 'después');
   const g1 = await enc(G2, F, 'ok', 'g1');
   check('estado perdido: y sigue la conversación', (await dec(F, G2, g1, 'g1')).text === 'ok');
+
+  // Poscuántico (ML-KEM-768 en el acuerdo inicial, como el PQXDH de Signal)
+  check('poscuántico: el paquete lleva la clave ML-KEM firmada', A.bundle.pq && A.bundle.pq.length === 1580 && A.bundle.pqSig);
+  check('poscuántico: sesión híbrida en los dos', JSON.parse(stores.B['nexo_ratchet.json']).sessions[A.nx].some((s) => s.pq) && JSON.parse(stores.A['nexo_ratchet.json']).sessions[B.nx].some((s) => s.pq));
+  check('poscuántico: ids de la clave (no repetirla en el kx)', A.m.ratchetMyPqId() === A.bundle.spkId && B.m.ratchetPeerPqId(A.nx) === A.bundle.spkId);
+  const H = await phone('H'), I = await phone('I'), J = await phone('J');
+  const noPq = Object.assign({}, I.bundle); delete noPq.pq; delete noPq.pqSig;
+  await H.run((m) => m.ratchetNotePeerBundle(I.nx, noPq));
+  const h0 = await enc(H, I, 'como antes', 'h0');
+  check('build anterior (sin clave ML-KEM): acuerdo clásico y se entiende', h0.split(':')[1].split('.').length === 6 && (await dec(I, H, h0, 'h0')).text === 'como antes');
+  const J0 = await phone('J0');
+  const forged = Object.assign({}, J0.bundle, { pq: J.bundle.pq });
+  check('clave ML-KEM con firma falsa: no se usa', (await J.run((m) => m.ratchetNotePeerBundle(J0.nx, forged))) && J.m.ratchetPeerPqId(J0.nx) === 0);
+  check('kx sin la clave ML-KEM (ya la tengo): se conserva', (await H.run((m) => m.ratchetNotePeerBundle(I.nx, I.bundle))) && (await H.run((m) => m.ratchetNotePeerBundle(I.nx, noPq))) && H.m.ratchetPeerPqId(I.nx) === I.bundle.spkId);
+  delete stores.I['nexo_ratchet.json'];
+  const I2 = await phone('I');
+  const i2NoPq = Object.assign({}, I2.bundle); delete i2NoPq.pq; delete i2NoPq.pqSig;
+  check('rebaja: paquete nuevo sin ML-KEM de quien ya la publicó → rechazado', (await H.run((m) => m.ratchetNotePeerBundle(I2.nx, i2NoPq))) === false);
+  check('rebaja: con su ML-KEM sí', (await H.run((m) => m.ratchetNotePeerBundle(I2.nx, I2.bundle))) === true);
+  const h1 = await enc(H, I2, 'híbrido', 'h1');
+  const hp = h1.split(':'), hh = hp[1].split('.');
+  const ctBad = Buffer.from(hh[6], 'base64'); ctBad[10] ^= 1; hh[6] = ctBad.toString('base64');
+  check('poscuántico: secreto encapsulado alterado → no se descifra', (await dec(I2, H, hp[0] + ':' + hh.join('.') + ':' + hp[2], 'h1')).err === 'BAD');
+  check('poscuántico: el bueno sí', (await dec(I2, H, h1, 'h1')).text === 'híbrido');
+  // Estado de una build anterior (claves previas sin ML-KEM): al arrancar se le añade
+  const st = JSON.parse(stores.J['nexo_ratchet.json']); st.spks.forEach((k) => { delete k.pq; delete k.pqPriv; delete k.pqSig; }); stores.J['nexo_ratchet.json'] = JSON.stringify(st);
+  const Jn = await phone('J');
+  check('actualizar desde una build anterior: se añade la clave ML-KEM', Jn.bundle.pq && Jn.bundle.pq.length === 1580 && Jn.bundle.spkId === st.spks[0].id);
 
   // Mensaje antiguo con cabecera inicial reenviado a un B "reinstalado" (identidad nueva) → no se descifra
   stores.B2 = {};

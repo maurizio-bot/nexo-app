@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-22 (build 2718)
+Última actualización: 2026-10-23 (build 2730)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -64,6 +64,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2725 | `3e1d507` | Fotos paradas (20 % / ○) y "mensaje de código" con la 2722: cola nativa que nunca parte un mensaje, resincronización del receptor, comprobación por trozo, paquetes dañados fuera del chat, sin avalancha de avisos nativos. Reproducido y corregido en el simulador |
 | 2726–2727 | | Compilaciones de prueba en la rama de trabajo (Wi-Fi normal), sin release |
 | 2728 | `93dd9ad` | Wi-Fi normal (misma red) y cambio automático Wi-Fi / Bluetooth / Wi-Fi Direct / Jump (`docs/WIFI.md`). Cabecera del chat con el camino. Probado en simulador y JVM |
+| 2729 | `104dcc6` | Compilación de prueba en la rama de trabajo (latido nativo del Wi-Fi), sin release |
+| 2730 | (ver ronda) | Wi-Fi según las reglas del dueño (no pasa a Bluetooth por un corte breve ni en segundo plano; mala señal medida), remitente oculto a los puentes de Jump, poscuántico (ML-KEM), QR del número de seguridad |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -87,6 +89,11 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   ```
 
 ## Siguiente paso (al retomar)
+- 2730: (1) Wi-Fi: los dos en el mismo router, NEXO abierto → "En línea · Wi-Fi"; mandar fotos, también con uno en
+  segundo plano: debe seguir "· Wi-Fi" (antes pasaba a Bluetooth). (2) Chat → tocar el aviso 🔒 → "Mostrar mi QR" en
+  uno y "Escanear su QR" en el otro: debe salir "✔ Número de seguridad verificado". (3) Tras escribirse, el aviso
+  debe decir "Protección poscuántica activa". (4) Jump con 3 teléfonos: debe llegar igual. Diagnóstico si algo
+  falla: líneas `[WIFI]`, `LAN`, `[E2E]`, `[JUMP]`.
 - 2728 (Wi-Fi normal): con los dos teléfonos en la **misma red Wi-Fi** y NEXO abierto, la cabecera del chat debe
   pasar a "En línea · Wi-Fi" en unos segundos; fotos y vídeos mucho más rápidos. Probar a apagar el Wi-Fi de uno a
   mitad de un envío: debe seguir por Bluetooth ("En línea · Bluetooth"). Si no aparece Wi-Fi: diagnóstico de los
@@ -163,6 +170,34 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2730: Wi-Fi con las reglas del dueño + seguridad (remitente oculto, poscuántico, QR)
+- **Informe del dueño con la 2728**: "estaba en Wi-Fi y al mandar una foto cambió a Bluetooth" (mismo router).
+  Reglas que dio (`docs/PENDIENTES.md`): Wi-Fi del mismo router primero; un corte breve no es motivo para cambiar; con
+  mala señal medida puede pasar a Bluetooth y volver. Reproducido en `lan.js`: con la app en segundo plano Android no
+  ejecuta el JavaScript, el latido de la app no salía y el otro daba el Wi-Fi por caído. Corregido: latido **nativo**
+  en `LanHub` (`h:0`/`h:2` cada 4 s, contestado desde Kotlin; caída a los 30 s, mide el tiempo de ida y vuelta),
+  margen de 8 s antes de cambiar de camino, mala señal = ida y vuelta >1,5 s o 12 s sin nada (dos veces seguidas;
+  vuelve con <0,8 s). Además: el último trozo de cada ventana esperaba 28 s cuando la cola nativa estaba llena (se
+  aparcaba): ahora la cola llena responde "ocupado" y se reintenta al momento.
+  Resultados `lan.js`: 40 s en segundo plano → sigue en Wi-Fi, foto en 1 s; corte breve → foto por Wi-Fi en 4,4 s,
+  0 trozos por Bluetooth; mala señal → Bluetooth en 5,6 s y vuelta al Wi-Fi en 8 s; salir de la red a mitad →
+  Bluetooth tras el margen (8,2 s), archivo completo; caída silenciosa → texto en 19 s.
+- **Seguridad** (`docs/SEGURIDAD.md`, fase 3 segunda parte): remitente oculto a los puentes de Jump (sobres `sx`),
+  acuerdo poscuántico híbrido ML-KEM-768 (`e2e_ratchet` v1.1; claves de los contactos en `nexo_ratchet_pq.json`
+  para no reescribirlas con cada mensaje) y QR del número de seguridad (`src/ui/qr_verify.js`). Librerías nuevas
+  (fijadas): `@noble/post-quantum` 0.5.4, `jsqr` 1.4.0, `qrcode-generator` 1.4.4.
+  Encontrado y corregido al probar: con un puente 2728 el texto corto sellado no llegaba (lo envolvía como texto
+  suyo) → solo se sella si el primer puente lo entiende y el destino desenvuelve ese caso; las confirmaciones
+  selladas se acumulaban en la cola del puente (22) → el destino confirma cada sobre al puente (`rk`).
+- Pruebas: `ratchet.js` 51/51; `jump.js` normal, cadena, compartido, desconocido, batería baja, reenvío directo y
+  puente 2728 (puentes sin ver el remitente salvo con el 2728; todo llega; cola del puente vacía al final);
+  `qr.js` en Chromium con cámara falsa; `mixed.js` con la 2728 y la b9c412f; batería completa (45 ejecuciones) sin
+  cambios de tiempos. Arreglado en las pruebas: 13 pulsaban el "+" vacío de la barra antes de que apareciera el
+  teléfono encontrado (por eso `bg_bg` fallaba a veces: no emparejaban); `bridge.js` y `qr.js` en Chromium ya
+  emparejan.
+- Visto y no tocado (ya pasaba con la 2728, 3 de 3): `jump.js --direct-later` no entrega la segunda foto en los
+  120 s de la prueba cuando A y C quedan a alcance directo. Pendiente de investigar.
 
 ## Ronda 2728: Wi-Fi normal y cambio automático de camino (pedido del dueño) — `docs/WIFI.md`
 - Kotlin `LanHub.kt` (TCP con marcos, saludo, una conexión si conectan los dos a la vez; 6 pruebas JVM con sockets

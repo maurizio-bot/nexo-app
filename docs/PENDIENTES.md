@@ -16,7 +16,9 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - 2720: los datos siguen tras actualizar; huella y bloqueo de capturas.
 - 2725: fotos en las dos direcciones sin quedarse paradas.
 - 2728: Wi-Fi normal y cambio de camino. **Informe del dueño: estando en Wi-Fi, al mandar una foto pasó a
-  Bluetooth (los dos en el mismo router)** → en corrección (ver PROGRESO).
+  Bluetooth (los dos en el mismo router)** → corregido en la ronda 2730 (reglas del dueño; ver PROGRESO).
+- 2730: Wi-Fi (seguir en Wi-Fi con la app en segundo plano y en cortes breves), QR del número de seguridad,
+  aviso "Protección poscuántica activa", Jump con remitente oculto.
 - Wi-Fi Direct: falta el diagnóstico con tiempos para acelerarlo.
 
 ## 2. Funciones nuevas
@@ -39,8 +41,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Jump con más alcance**: Bluetooth de largo alcance (LE Coded PHY, ~4x distancia en teléfonos compatibles); más
   saltos (hoy máx. 4); guardar y reenviar (el puente entrega cuando se cruza con el destino); Jump también por Wi-Fi;
   Jump con la app en segundo plano o cerrada.
-- **Seguridad (resto de la fase 3)**: identificador Bluetooth rotativo; ocultar el remitente a los puentes;
-  poscuántico; QR del número de seguridad.
+- **Seguridad (resto de la fase 3)**: identificador Bluetooth rotativo (falta decisión, ver 4). Hechos en la
+  ronda 2730: remitente oculto a los puentes, poscuántico (ML-KEM) y QR del número de seguridad.
 - **Fiabilidad**: recibir con la app cerrada del todo (servidor GATT en el BleService); limpiar el manifiesto
   (`NordicMeshService` inexistente, falta `@capacitor/app`); emojis/acentos en trozos; escapar nombres en la lista.
 - **Base estable nueva** (≥ 2725) cuando el dueño confirme.
@@ -50,5 +52,12 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 2. Internet / datos móviles: ¿servidor de relevo?
 3. Pagos: modelo y país.
 4. iPhone: ¿cuenta de Apple?
-5. Orden propuesto: lo que falle en sus pruebas → velocidad (binario, L2CAP) → llamadas de voz → Jump de más
+5. **Identificador Bluetooth rotativo** (seguridad, punto 9): hoy cualquiera con un escáner ve el NEXO ID en el
+   aire y puede seguir a una persona. Con un identificador que cambia cada pocos minutos y que solo los
+   contactos reconocen, un desconocido ya no puede. Pero ese NEXO ID visible es lo que hoy permite (a) agregar a
+   alguien que está cerca y (b) que un teléfono NEXO desconocido haga de puente en Jump. Propuesta: rotativo por
+   defecto; visible solo mientras se tiene abierto "Agregar" (unos minutos) y, para Jump con desconocidos, una
+   opción "Ayudar a la red (Jump)" activada por defecto que anuncia una marca anónima de la red, no el NEXO ID.
+   ¿Te parece?
+6. Orden propuesto: lo que falle en sus pruebas → velocidad (binario, L2CAP) → llamadas de voz → Jump de más
    alcance → seguridad restante → grupos → videollamadas.

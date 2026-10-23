@@ -4,10 +4,11 @@
 // También: C sale del alcance de B (B lo guarda y lo entrega al volver) y cadena de 3 saltos.
 // Uso: node jump.js <dir_build> [--io-delay=25] [--shared] [--chain] [--stranger [--low-battery]]
 //   --shared: A nunca ha visto a C (B le comparte el contacto con su clave)
-//   --chain:  cuatro teléfonos A–B–C–D; A escribe a D (3 saltos)
+//   --chain[=N]:  N teléfonos en fila (por defecto 4, A–B–C–D); A escribe al último (N-1 saltos)
 //   --stranger: B no es contacto de nadie (solo tiene NEXO y está en medio): camino bajo demanda
 //   --low-battery: (con --stranger) B al 10 % sin cargar: no debe hacer de puente; luego se enchufa
 //   --direct-later: la foto queda en B sin camino a C y luego A y C quedan a alcance: A la reenvía directo
+//   --bridge-build=<dir>: B (el puente) con otra build (p. ej. una anterior sin remitente sellado)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -18,7 +19,10 @@ const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
 const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 0), asymmetric: true };
 const directLater = !!arg('direct-later', false);
-const shared = !!arg('shared', false), chain = !!arg('chain', false), stranger = !!arg('stranger', false), lowBat = !!arg('low-battery', false);
+const bridgeA = process.argv.find((x) => x.startsWith('--bridge-build='));
+const bridgeDir = bridgeA ? path.resolve(bridgeA.split('=')[1]) : buildDir;
+const chainN = arg('chain', 0) === true ? 4 : Number(arg('chain', 0)) || 0;
+const shared = !!arg('shared', false), chain = chainN >= 3, stranger = !!arg('stranger', false), lowBat = !!arg('low-battery', false);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
   constructor(dir) { super(); this.dir = dir; }
@@ -30,11 +34,12 @@ const orig = NativePhone.prototype._processReceivedChunk;
 NativePhone.prototype._processReceivedChunk = function (from, chunk, source) { (air[this.name] = air[this.name] || []).push(String(chunk)); return orig.call(this, from, chunk, source); };
 const logs = [];
 async function boot(name, native) {
+  const dir = name === 'B' ? bridgeDir : buildDir;
   const vc = new VirtualConsole();
   ['log', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`${new Date().toISOString().substring(14, 23)} [${name}] ${l}: ` + a.map(String).join(' ').substring(0, 250))));
-  const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
+  const dom = new JSDOM(fs.readFileSync(path.join(dir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously',
-    resources: new DistLoader(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
+    resources: new DistLoader(path.join(dir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
   });
   const win = dom.window;
@@ -62,14 +67,14 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
 
 (async () => {
   const radio = new Radio();
-  const names = chain ? ['A', 'B', 'C', 'D'] : ['A', 'B', 'C'];
+  const names = chain ? 'ABCDEFGHIJ'.substring(0, chainN).split('') : ['A', 'B', 'C'];
   const nat = {}, P = {};
   names.forEach((n, i) => { nat[n] = new NativePhone(n, n.repeat(2) + ':' + n.repeat(2) + ':' + n.repeat(2) + ':' + n.repeat(2) + ':' + n.repeat(2) + ':0' + (i + 1), opts); radio.add(nat[n]); nat[n].load(); });
   if (lowBat) nat.B.battery = { level: 10, charging: false, powerSave: false };
   (await Promise.all(names.map((n) => boot(n, nat[n])))).forEach((p) => { P[p.name] = p; });
   const id = (n) => P[n].win.bleInterface.localNexoId;
-  const dest = chain ? 'D' : 'C';
-  const r = { build: path.basename(buildDir), modo: chain ? 'cadena A-B-C-D' : stranger ? ('B desconocido en medio' + (lowBat ? ', batería 10 %' : '')) : (shared ? 'A nunca vio a C (contacto compartido)' : 'A y C se conocían') };
+  const dest = chain ? names[names.length - 1] : 'C';
+  const r = { build: path.basename(buildDir), modo: chain ? 'cadena ' + names.join('-') : stranger ? ('B desconocido en medio' + (lowBat ? ', batería 10 %' : '')) : (shared ? 'A nunca vio a C (contacto compartido)' : 'A y C se conocían') };
 
   // Emparejar X con Y: X solo ve a Y mientras lo agrega; X saluda para que Y lo conozca
   async function pair(x, y) {
@@ -81,7 +86,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     others.forEach((o) => radio.unblock(nat[x], nat[o]));
     return ok;
   }
-  const links = chain ? [['A', 'B'], ['B', 'C'], ['C', 'D']] : stranger ? [] : [['A', 'B'], ['B', 'C']];
+  const links = chain ? names.slice(1).map((n, i) => [names[i], n]) : stranger ? [] : [['A', 'B'], ['B', 'C']];
   for (const [x, y] of links) if (!(await pair(x, y))) { console.log('JUMP ' + JSON.stringify({ error: 'no empareja ' + x + y })); process.exit(0); }
   if (!shared) { if (!(await pair('A', dest))) { console.log('JUMP ' + JSON.stringify({ error: 'no empareja A' + dest })); process.exit(0); } }
   // Alcance: solo los vecinos de la cadena se ven
@@ -202,6 +207,9 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
     r.llega_al_volver_C_s = await waitFor(() => has('C', (m) => (m.attachmentPayload === foto2.toString('base64') || (m.attachmentRef && nat.C.files.get(m.attachmentRef) === foto2.toString('base64')))), 120000);
     r.doble_check_al_volver_s = await waitFor(() => ['delivered', 'read'].includes(statusById(P.A, m2 && m2.msgId)), 30000);
     r.cola_en_B_final = P.B.win.bleInterface.relay.queue.length;
+    // Qué queda en la cola de B (tipo de paquete → cuántos): ayuda a ver acumulaciones
+    r.cola_en_B_tipos = {};
+    P.B.win.bleInterface.relay.queue.forEach((it) => { let t = it.kind; try { if (it.data) t += ':' + JSON.parse(it.data).type; } catch (e) {} t += '→' + (it.dst === P.A.win.bleInterface.localNexoId.toLowerCase() ? 'A' : 'C'); r.cola_en_B_tipos[t] = (r.cola_en_B_tipos[t] || 0) + 1; });
     if (directLater) r.reenviado_directo_por_A = logs.some((l) => /\[A\].*se reenvía directo/.test(l));
   }
   if (stranger) {

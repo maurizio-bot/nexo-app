@@ -16,7 +16,11 @@ Pedido del dueño (23-10-2026): "implementa wifi normal y la parte de switcheo e
   - textos esperando confirmación y envíos por trozos siguen por Bluetooth donde iban (sin empezar de cero);
   - un vídeo original o un archivo que no cabe por Bluetooth pasa a previa + HD (como cuando falla Wi-Fi Direct);
   - sin Bluetooth: pendiente hasta reconectar (se reanuda solo).
-  - Caída "silenciosa" (el otro no se entera, típico de TCP): latido cada 8 s, sin nada en 25 s se da por caída.
+  - Caída "silenciosa" (el otro no se entera, típico de TCP): latido nativo cada 4 s (lo contesta el Kotlin, también
+    con la app en segundo plano); sin nada en 30 s se da por caída.
+- **Reglas del dueño (ronda 2730)**: un corte breve no cambia de camino (8 s de margen para recuperar el Wi-Fi); con
+  mala señal medida (ida y vuelta >1,5 s o 12 s sin nada, dos veces seguidas) lo nuevo va por Bluetooth y vuelve al
+  Wi-Fi cuando mejora (<0,8 s dos veces).
 - La cabecera del chat dice por dónde va: "En línea · Wi-Fi", "En línea · Bluetooth" o "Por Jump".
 
 ## Privacidad y seguridad

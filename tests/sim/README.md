@@ -86,7 +86,8 @@ Protocolo 2 (como Signal, `src/vault/e2e_ratchet.js`): `node ratchet.js` prueba 
 (varios teléfonos en el mismo proceso con su copia del módulo y su almacenamiento): primeros mensajes en
 desorden, conversación, pérdidas, datos del sobre o cabecera manipulados, reinicio (repeticiones detectadas
 sin caché), inicio simultáneo, relleno, archivo de 1,5 MB, número de seguridad, impostor con dos claves que
-no echa la sesión buena y estado perdido del otro. En la app, `e2e.js` comprueba además que todo sale como
+no echa la sesión buena, estado perdido del otro y el acuerdo poscuántico (ML-KEM: híbrido, build anterior,
+firma falsa, rebaja rechazada, secreto alterado; necesita `.deps` con `@noble/post-quantum`). En la app, `e2e.js` comprueba además que todo sale como
 E2, la repetición de un paquete capturado (mismo id u otro) no se muestra, el protocolo 1 de quien ya usa el
 2 se descarta (y el mensaje llega después con el 2), el número de seguridad es igual en los dos teléfonos y
 "Marcar como verificado". `mixed.js --old=builds/5f3a1ad` (2711, protocolo 1): A nueva habla el 1 con B; al
@@ -103,7 +104,15 @@ contesta, que B no lee ni muestra nada y la custodia (C se aleja cuando B ya tie
 A nunca vio a C (B le comparte el contacto). `--chain`: A–B–C–D, 3 saltos. `--stranger`: B no es contacto
 de nadie (camino bajo demanda, conexiones de paso que se cierran solas, B sin chats ni contactos nuevos);
 con `--low-battery` B está al 10 % y no debe hacer de puente hasta que se enchufa. `--direct-later`: la foto
-queda en B sin camino y luego A y C quedan a alcance: A debe reenviarla directo.
+queda en B sin camino y luego A y C quedan a alcance: A debe reenviarla directo. `--bridge-build=<dir>`: B
+con otra build (p. ej. `builds/93dd9ad`, la 2728, sin remitente sellado). Remitente sellado: `puentes_ven_remitente`
+(paquetes para el destino en los que el puente ve quién lo manda; debe quedar vacío salvo con un puente anterior),
+`sobres_sellados_vistos` y `cola_en_B_tipos` (lo que queda en la cola del puente al final).
+
+`qr.js` (Chromium, `pw_harness`): número de seguridad por QR con una cámara falsa
+(`--use-file-for-fake-video-capture`: un vídeo y4m generado del QR que muestra A). B lo escanea con el lector de la
+app: correcto → verificado; con otro número (impostor), de otro contacto o algo que no es de NEXO → aviso, sin
+verificar.
 
 `wifidirect.js`: Wi-Fi Direct simulado (`opts.wifiDirect`, ~2 MB/s; `opts.wdFail` hace fallar la unión al
 grupo). Archivo grande por Wi-Fi Direct sin trozos por Bluetooth, pequeño por Bluetooth, 6 MB (más que el

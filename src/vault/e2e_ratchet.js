@@ -1,5 +1,5 @@
 /**
- * e2e_ratchet.js v1.0 — Protocolo 2 de cifrado de NEXO: el de Signal (X3DH + Double Ratchet) con WebCrypto.
+ * e2e_ratchet.js v1.1 — Protocolo 2 de cifrado de NEXO: el de Signal (X3DH + Double Ratchet) con WebCrypto.
  *
  * - Identidad: la de e2e_crypto.js (ECDH P-256, la del NEXO ID y las huellas ya aceptadas) + una clave de
  *   firma ECDSA P-256 que firma la "clave previa" (SPK). Paquete público (bundle): { ik, sk, spk, spkId, sig };
@@ -14,11 +14,18 @@
  *   efímera ya se vio. Un reintento idéntico se reconoce (DUP) para poder confirmarlo sin mostrarlo dos veces.
  * - Estado en nexo_ratchet.json (fase 3: cifrado en reposo). Se guarda ANTES de entregar un texto cifrado:
  *   tras un cierre nunca se reutiliza una clave.
- * Formato: "E2:" + cabecera + ":" + datos cifrados (base64). Cabecera: dh.pn.n[.ik.ek.spkId] (base64 y números).
+ * Formato: "E2:" + cabecera + ":" + datos cifrados (base64). Cabecera: dh.pn.n[.ik.ek.spkId[.ct]] (base64 y números).
+ * v1.1 — poscuántico (como el PQXDH de Signal): cada clave previa lleva también una clave ML-KEM-768 (estándar NIST
+ *   FIPS 203) firmada; quien empieza encapsula un secreto con ella (ct en la cabecera inicial) y ese secreto entra en
+ *   el acuerdo junto a los tres DH. Un ordenador cuántico futuro que rompa P-256 no puede descifrar lo grabado hoy
+ *   sin romper también ML-KEM. Solo si el otro publicó su clave ML-KEM (builds anteriores: X3DH como siempre); una
+ *   vez publicada no se vuelve al acuerdo clásico con esa identidad (un puente no puede quitarla para rebajarlo).
  */
 import { initE2E, e2eMyPublicKey, e2eIdentityDH } from './e2e_crypto.js';
+import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 
 var STORE_FILE = 'nexo_ratchet.json';
+var PQ_FILE = 'nexo_ratchet_pq.json'; // v1.1: claves ML-KEM de los contactos (1,6 KB cada una), aparte
 var PREFIX = 'E2:';
 var MAX_SKIP = 1000;          // mensajes saltados como máximo en una cadena
 var MAX_SKIPPED_KEYS = 300;   // claves de mensajes aún no recibidos guardadas por sesión
@@ -121,16 +128,41 @@ export function ratchetUnpad(bytes) {
 }
 
 // ---------- almacén ----------
+var _pqDirty = false;
+// El estado se guarda con cada mensaje: las claves ML-KEM de los contactos van en otro archivo que solo se escribe
+// cuando cambian (si no, cada mensaje reescribiría 1,6 KB por contacto)
 async function _save() {
   var pl = _plugin();
   if (!pl || typeof pl.saveToFile !== 'function') return;
-  await pl.saveToFile({ filename: STORE_FILE, content: JSON.stringify(_store) });
+  var peers = {}, pq = {};
+  Object.keys(_store.peers).forEach(function(nx) {
+    var p = _store.peers[nx];
+    if (!p.pq) { peers[nx] = p; return; }
+    pq[nx] = { spkId: p.spkId, pq: p.pq, pqSig: p.pqSig };
+    var c = Object.assign({}, p); delete c.pq; delete c.pqSig;
+    peers[nx] = c;
+  });
+  if (_pqDirty) { _pqDirty = false; await pl.saveToFile({ filename: PQ_FILE, content: JSON.stringify(pq) }); }
+  await pl.saveToFile({ filename: STORE_FILE, content: JSON.stringify(Object.assign({}, _store, { peers: peers })) });
 }
 
 async function _newSpk(id) {
   var kp = await _genDH();
   var sig = await _signSpk(id, kp.pub);
-  return { id: id, priv: kp.priv, pub: kp.pub, sig: sig, ts: Date.now() };
+  var spk = { id: id, priv: kp.priv, pub: kp.pub, sig: sig, ts: Date.now() };
+  await _addPq(spk);
+  return spk;
+}
+// v1.1: clave ML-KEM-768 de esta clave previa, firmada con la de firma (como la SPK)
+async function _addPq(spk) {
+  var k = ml_kem768.keygen();
+  spk.pq = _b64(k.publicKey);
+  spk.pqPriv = _b64(k.secretKey);
+  spk.pqSig = await _signData('NEXO-PQ|' + spk.id + '|' + spk.pq + '|' + e2eMyPublicKey());
+}
+async function _signData(text) {
+  var priv = await _subtle().importKey('jwk', _store.sign.priv, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  return _b64(new Uint8Array(await _subtle().sign({ name: 'ECDSA', hash: 'SHA-256' }, priv, _utf8(text))));
 }
 async function _signSpk(id, spkPub) {
   var priv = await _subtle().importKey('jwk', _store.sign.priv, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
@@ -150,6 +182,12 @@ export function ratchetInit() {
       if (pl && typeof pl.loadFromFile === 'function') {
         var r = await pl.loadFromFile({ filename: STORE_FILE });
         if (r && r.exists && r.content) _store = JSON.parse(r.content);
+        var rq = _store ? await pl.loadFromFile({ filename: PQ_FILE }) : null;
+        var pqs = (rq && rq.exists && rq.content) ? JSON.parse(rq.content) : {};
+        Object.keys(pqs).forEach(function(nx) {
+          var p = _store.peers && _store.peers[nx];
+          if (p && p.spkId === pqs[nx].spkId) { p.pq = pqs[nx].pq; p.pqSig = pqs[nx].pqSig; }
+        });
       }
     } catch (e) { console.warn('[E2E] No se pudo cargar el estado del protocolo 2:', e && e.message); }
     if (!_store || _store.v !== 1 || _store.ik !== e2eMyPublicKey()) {
@@ -163,6 +201,11 @@ export function ratchetInit() {
       _store.spks.push(await _newSpk(1));
       await _save();
       console.log('[E2E] Protocolo 2 listo (claves nuevas)');
+    } else if (!_store.spks[0].pq) {
+      // v1.1: estado de una build anterior: la clave previa actual recibe su clave ML-KEM
+      await _addPq(_store.spks[0]);
+      await _save();
+      console.log('[E2E] Clave poscuántica (ML-KEM-768) añadida');
     } else if (Date.now() - _store.spks[0].ts > SPK_ROTATE_MS) {
       // Clave previa nueva cada 30 días; las dos anteriores se guardan para primeros mensajes atrasados
       _store.spks.unshift(await _newSpk(_store.spks[0].id + 1));
@@ -174,12 +217,19 @@ export function ratchetInit() {
   return _initP;
 }
 
-export async function ratchetMyBundle() {
+// withPq: incluir la clave ML-KEM (1,6 KB): no hace falta repetirla a quien ya la tiene (ratchetPeerPqId)
+export async function ratchetMyBundle(withPq) {
   await ratchetInit();
   if (!_store) return null;
   var s = _store.spks[0];
-  return { v: 2, ik: _store.ik, sk: _store.sign.pub, spk: s.pub, spkId: s.id, sig: s.sig };
+  var b = { v: 2, ik: _store.ik, sk: _store.sign.pub, spk: s.pub, spkId: s.id, sig: s.sig };
+  if (s.pq && withPq !== false) { b.pq = s.pq; b.pqSig = s.pqSig; }
+  return b;
 }
+// Id de mi clave previa actual (la ML-KEM va con ella)
+export function ratchetMyPqId() { return _store && _store.spks[0] && _store.spks[0].pq ? _store.spks[0].id : 0; }
+// Id de la clave ML-KEM que tengo guardada de ese contacto (0: ninguna): se le dice en el kx para que no la repita
+export function ratchetPeerPqId(nexoId) { var p = _store && _store.peers[_nid(nexoId)]; return p && p.pq ? p.spkId : 0; }
 
 function _validBundle(b) {
   var k = /^[A-Za-z0-9+/=]{80,100}$/;
@@ -193,11 +243,27 @@ export function ratchetNotePeerBundle(nexoId, b) {
     var nx = _nid(nexoId);
     if (!_store || !nx || !_validBundle(b)) return false;
     var cur = _store.peers[nx];
-    if (cur && cur.ik === b.ik && cur.spk === b.spk && cur.spkId === b.spkId) return true;
+    var hasPq = typeof b.pq === 'string' && b.pq.length === 1580 && typeof b.pqSig === 'string' && b.pqSig.length < 200;
+    var same = cur && cur.ik === b.ik && cur.spk === b.spk && cur.spkId === b.spkId;
+    if (same && (cur.pq || !hasPq)) return true;
     var pub = await _subtle().importKey('raw', _unb64(b.sk), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-    var ok = await _subtle().verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, _unb64(b.sig), _utf8('NEXO-SPK|' + b.spkId + '|' + b.spk + '|' + b.ik));
+    var ok = same || await _subtle().verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, _unb64(b.sig), _utf8('NEXO-SPK|' + b.spkId + '|' + b.spk + '|' + b.ik));
     if (!ok) { console.warn('[E2E] Paquete de claves de ' + nx + ' con firma no válida: descartado'); return false; }
+    var pq = null;
+    if (hasPq && await _subtle().verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, _unb64(b.pqSig), _utf8('NEXO-PQ|' + b.spkId + '|' + b.pq + '|' + b.ik))) pq = b.pq;
+    else if (hasPq) console.warn('[E2E] Clave poscuántica de ' + nx + ' con firma no válida: no se usa');
+    // Sin la ML-KEM (paquete sin ella o de otra clave previa): si esa identidad ya la publicó, este paquete no sirve
+    // para empezar sesiones (rebaja al acuerdo clásico) salvo que sea la misma clave previa que ya teníamos
+    if (!pq && cur && cur.ik === b.ik && cur.pqSeen) {
+      if (same) return true;
+      console.warn('[E2E] Paquete de ' + nx + ' sin clave poscuántica (ya la había publicado): no se usa');
+      return false;
+    }
+    if (same && !pq) return true;
     _store.peers[nx] = { ik: b.ik, sk: b.sk, spk: b.spk, spkId: b.spkId, sig: b.sig, ts: Date.now() };
+    if (pq) { _store.peers[nx].pq = pq; _store.peers[nx].pqSig = b.pqSig; _store.peers[nx].pqSeen = 1; _pqDirty = true; }
+    else if (cur && cur.pq) _pqDirty = true; // la que había se va
+    else if (cur && cur.ik === b.ik && cur.pqSeen) _store.peers[nx].pqSeen = 1;
     // Sesiones iniciadas sin respuesta con otra clave previa (rotada, o el otro perdió su estado): ya no se
     // envía por ellas (podría no entenderlas); se empieza otra con el paquete nuevo. Se guardan para recibir.
     _sessionsFor(nx).forEach(function(x) { if (x.rik === b.ik && x.pending && x.dhr !== b.spk) x.stale = true; });
@@ -208,7 +274,17 @@ export function ratchetNotePeerBundle(nexoId, b) {
 
 export function ratchetPeerBundle(nexoId) {
   var p = _store && _store.peers[_nid(nexoId)];
-  return p ? { v: 2, ik: p.ik, sk: p.sk, spk: p.spk, spkId: p.spkId, sig: p.sig } : null;
+  if (!p) return null;
+  var b = { v: 2, ik: p.ik, sk: p.sk, spk: p.spk, spkId: p.spkId, sig: p.sig };
+  if (p.pq) { b.pq = p.pq; b.pqSig = p.pqSig; }
+  return b;
+}
+
+// ¿La sesión con la que se cifra ahora para ese contacto y clave empezó con el acuerdo poscuántico?
+export function ratchetSessionPq(nexoId, peerIk) {
+  var list = (_store && _store.sessions[_nid(nexoId)]) || [];
+  var s = list.filter(function(x) { return x.rik === peerIk && x.cks && !x.stale; })[0];
+  return !!(s && s.pq);
 }
 
 export function ratchetIsE2(s) { return typeof s === 'string' && s.indexOf(PREFIX) === 0; }
@@ -247,13 +323,17 @@ async function _initiate(nx, peer) {
   var dh1 = await e2eIdentityDH(peer.spk);
   var dh2 = await _dh(ek.priv, peer.ik);
   var dh3 = await _dh(ek.priv, peer.spk);
-  var sk = await _hkdf(_cat(new Uint8Array(32).fill(0xff), dh1, dh2, dh3), new Uint8Array(32), 'NEXO-X3DH-v2', 32);
+  // v1.1: con su clave ML-KEM, el secreto encapsulado entra también (híbrido: hay que romper los dos)
+  var kem = peer.pq ? ml_kem768.encapsulate(_unb64(peer.pq)) : null;
+  var sk = kem
+    ? await _hkdf(_cat(new Uint8Array(32).fill(0xff), dh1, dh2, dh3, kem.sharedSecret), new Uint8Array(32), 'NEXO-PQXDH-v1', 32)
+    : await _hkdf(_cat(new Uint8Array(32).fill(0xff), dh1, dh2, dh3), new Uint8Array(32), 'NEXO-X3DH-v2', 32);
   var dhs = await _genDH();
   var r = await _kdfRK(_b64(sk), await _dh(dhs.priv, peer.spk));
   return {
     id: 'i' + ek.pub.substring(0, 16), rik: peer.ik, ad: _store.ik + '|' + peer.ik,
     rk: r.rk, dhs: dhs, dhr: peer.spk, cks: r.ck, ckr: null, ns: 0, nr: 0, pn: 0,
-    skipped: {}, skippedOrder: [], pending: { ik: _store.ik, ek: ek.pub, spkId: peer.spkId }, ek: ek.pub, created: Date.now()
+    skipped: {}, skippedOrder: [], pending: { ik: _store.ik, ek: ek.pub, spkId: peer.spkId, ct: kem ? _b64(kem.cipherText) : undefined }, ek: ek.pub, created: Date.now(), pq: kem ? 1 : undefined
   };
 }
 
@@ -263,8 +343,14 @@ async function _respond(nx, h) {
   var dh1 = await _dh(spk.priv, h.ik);
   var dh2 = await e2eIdentityDH(h.ek);
   var dh3 = await _dh(spk.priv, h.ek);
-  var sk = await _hkdf(_cat(new Uint8Array(32).fill(0xff), dh1, dh2, dh3), new Uint8Array(32), 'NEXO-X3DH-v2', 32);
+  var sk;
+  if (h.ct) {
+    if (!spk.pqPriv) throw _err('Sin clave poscuántica para esa clave previa', 'BAD');
+    var ss = ml_kem768.decapsulate(_unb64(h.ct), _unb64(spk.pqPriv));
+    sk = await _hkdf(_cat(new Uint8Array(32).fill(0xff), dh1, dh2, dh3, ss), new Uint8Array(32), 'NEXO-PQXDH-v1', 32);
+  } else sk = await _hkdf(_cat(new Uint8Array(32).fill(0xff), dh1, dh2, dh3), new Uint8Array(32), 'NEXO-X3DH-v2', 32);
   return {
+    pq: h.ct ? 1 : undefined,
     id: 'r' + h.ek.substring(0, 16), rik: h.ik, ad: h.ik + '|' + _store.ik,
     rk: _b64(sk), dhs: { priv: spk.priv, pub: spk.pub }, dhr: null, cks: null, ckr: null, ns: 0, nr: 0, pn: 0,
     skipped: {}, skippedOrder: [], pending: null, ek: h.ek, created: Date.now()
@@ -274,6 +360,7 @@ async function _respond(nx, h) {
 function _headerStr(h) {
   var s = h.dh + '.' + h.pn + '.' + h.n;
   if (h.ik) s += '.' + h.ik + '.' + h.ek + '.' + h.spkId;
+  if (h.ik && h.ct) s += '.' + h.ct;
   return s;
 }
 function _parse(packed) {
@@ -281,9 +368,10 @@ function _parse(packed) {
   var parts = packed.substring(PREFIX.length).split(':');
   if (parts.length !== 2) throw _err('Formato no válido', 'BAD');
   var f = parts[0].split('.');
-  if (f.length !== 3 && f.length !== 6) throw _err('Cabecera no válida', 'BAD');
+  if (f.length !== 3 && f.length !== 6 && f.length !== 7) throw _err('Cabecera no válida', 'BAD');
   var h = { dh: f[0], pn: parseInt(f[1], 10), n: parseInt(f[2], 10) };
-  if (f.length === 6) { h.ik = f[3]; h.ek = f[4]; h.spkId = parseInt(f[5], 10); }
+  if (f.length >= 6) { h.ik = f[3]; h.ek = f[4]; h.spkId = parseInt(f[5], 10); }
+  if (f.length === 7) { h.ct = f[6]; if (h.ct.length !== 1452) throw _err('Cabecera no válida', 'BAD'); }
   if (!(h.pn >= 0) || !(h.n >= 0) || h.n > 1e7 || h.pn > 1e7) throw _err('Cabecera no válida', 'BAD');
   return { h: h, hs: parts[0], ct: _unb64(parts[1]) };
 }
@@ -353,7 +441,7 @@ export function ratchetEncrypt(nexoId, peerIk, bytes, outerAd) {
     var c = await _kdfCK(s.cks);
     s.cks = c.ck;
     var h = { dh: s.dhs.pub, pn: s.pn, n: s.ns };
-    if (s.pending) { h.ik = s.pending.ik; h.ek = s.pending.ek; h.spkId = s.pending.spkId; }
+    if (s.pending) { h.ik = s.pending.ik; h.ek = s.pending.ek; h.spkId = s.pending.spkId; if (s.pending.ct) h.ct = s.pending.ct; }
     s.ns++;
     s.sent = true;
     s.used = Date.now();

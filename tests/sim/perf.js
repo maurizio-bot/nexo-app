@@ -66,7 +66,7 @@ const delta = (a, b) => ({ perdidos: (b.lost || 0) - (a.lost || 0), cola_max: b.
   // Conectar: A busca y añade a B, ambos abren chat
   A.win.bleInterface.togglePanel();
   let add = null;
-  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
+  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device > div button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
   click(A.win, add); await sleep(1500);
   await openChat(A);
   // --absent: A tiene además un contacto que no está cerca (su re-búsqueda escanea durante las pruebas)

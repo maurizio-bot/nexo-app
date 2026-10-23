@@ -19,7 +19,10 @@
     "@capacitor/core": "^5.0.0",
     "@capacitor/filesystem": "^5.1.4",
     "@capacitor/geolocation": "^5.0.6",
-    "nexo-ble": "file:./plugins/nexo-ble"
+    "@noble/post-quantum": "0.5.4",
+    "jsqr": "1.4.0",
+    "nexo-ble": "file:./plugins/nexo-ble",
+    "qrcode-generator": "1.4.4"
   },
   "devDependencies": {
     "@capacitor/cli": "^5.7.8",

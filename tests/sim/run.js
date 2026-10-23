@@ -89,7 +89,7 @@ async function sendText(phone, text) {
   let addBtn = null;
   for (let i = 0; i < 100 && !addBtn; i++) {
     await sleep(100);
-    addBtn = A.win.document.querySelector('#ble-new-device button');
+    addBtn = A.win.document.querySelector('#ble-new-device > div button');
     if (!addBtn && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn'));
   }
   if (!addBtn) throw new Error('A no encontró a B en el escaneo');

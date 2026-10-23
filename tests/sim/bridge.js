@@ -37,8 +37,15 @@ async function sendPhoto(page, name, bytes) {
   const r = { build: path.basename(buildDir), kotlin: oldKotlin ? '2722 (todos los registros)' : '2723 (solo AT_REST y FILE_IO)', kb, cpu };
   await A.page.evaluate(() => window.bleInterface.togglePanel());
   let paired = false;
-  for (let i = 0; i < 200 && !paired; i++) { await sleep(200); paired = await click(A.page, '#ble-new-device button'); if (!paired && !(await A.page.evaluate(() => window.bleInterface.isScanning))) await click(A.page, '#ble-scan-btn'); }
-  await sleep(2500);
+  // El "+" de una fila de dispositivo encontrado (el '#ble-add-btn' vacío de la barra está siempre)
+  const nContacts = (p) => p.page.evaluate(() => window.bleInterface.getBLEContacts().length);
+  for (let i = 0; i < 300 && !paired; i++) {
+    await sleep(200);
+    if (await click(A.page, '#ble-new-device > div button')) { for (let k = 0; k < 20 && !paired; k++) { await sleep(500); paired = (await nContacts(A)) > 0; } }
+    else if (!(await A.page.evaluate(() => window.bleInterface.isScanning))) await click(A.page, '#ble-scan-btn');
+  }
+  for (let k = 0; k < 40 && paired && (await nContacts(B)) === 0; k++) await sleep(500);
+  await sleep(1500);
   await A.page.evaluate(() => window.bleInterface.togglePanel());
   if (!paired) { console.log('BRIDGE ' + JSON.stringify({ error: 'no empareja' })); process.exit(0); }
   const idA = await A.page.evaluate(() => window.bleInterface.localNexoId), idB = await B.page.evaluate(() => window.bleInterface.localNexoId);

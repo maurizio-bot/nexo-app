@@ -42,21 +42,21 @@ Cada punto está comprobado en el código o en la configuración (no son suposic
    contacto. Queda retenido hasta que el usuario compare huellas y acepte la clave nueva; mientras, no se
    le envía nada cifrado a la clave nueva (podría ser un impostor).
 
-### Fase 2 — protocolo al nivel de Signal — HECHA (build 2712, salvo el QR)
+### Fase 2 — protocolo al nivel de Signal — HECHA (build 2712; el QR, en la ronda 2730)
 4. **Double Ratchet** con acuerdo inicial tipo X3DH (prekey firmada en el `kx` y en la tarjeta de contacto,
    para poder escribir a quien nunca se ha conectado, como en Jump) → secreto hacia delante y renovación.
 5. **Datos del sobre atados al cifrado** (AAD: emisor, destino, id) y contador anti-repetición.
 6. **Relleno** de longitud por tramos.
 7. **Números de seguridad** (60 cifras + QR) con estado "verificado".
 
-### Fase 3 — en el teléfono y en el aire — EN CURSO (hecho: 8, bloqueo con huella y capturas; build 2720)
+### Fase 3 — en el teléfono y en el aire — EN CURSO (hecho: 8 y capturas en la 2720; 10 y 11 en la ronda 2730; falta 9)
 8. **Cifrado en reposo**: clave maestra en el Android Keystore (no extraíble); identidad, mensajes y
    adjuntos cifrados en disco. **Hecho**, más el **bloqueo opcional con huella** y la **opción de bloquear
    capturas** (decisiones del dueño, 22-10-2026: los dos opcionales, en Perfil).
 9. **Anuncios Bluetooth rotativos**: identificador que cambia cada pocos minutos y que solo los contactos
    saben reconocer (un desconocido no puede seguirte); Jump sigue funcionando.
-10. **Emisor oculto para los puentes** (solo ven el destino) y opción de bloquear capturas.
-11. **Poscuántico** (ML-KEM híbrido en el acuerdo inicial), como PQXDH.
+10. **Emisor oculto para los puentes** (solo ven el destino) y opción de bloquear capturas. **Hecho.**
+11. **Poscuántico** (ML-KEM híbrido en el acuerdo inicial), como PQXDH. **Hecho.**
 
 Dónde NEXO puede quedar por encima de Signal: sin servidor ni número de teléfono (ningún tercero ve la
 agenda ni los metadatos), funciona sin internet y, con la fase 3, sin identificador rastreable en el aire.
@@ -139,3 +139,47 @@ agenda ni los metadatos), funciona sin internet y, con la fase 3, sin identifica
   versión anterior solo se puede confirmar en el teléfono.
 - Pendiente de la fase 3: anuncios Bluetooth rotativos (9), emisor oculto para los puentes (10), poscuántico
   (11).
+
+## Fase 3 (segunda parte): qué se hizo y cómo se comprobó (ronda 2730)
+- **Remitente oculto a los puentes** (`sx`, como el "sealed sender" de Signal; `ble_interface` v6.11–6.12,
+  `e2e_crypto.e2eSealAnon/e2eOpenAnon`, `ble_relay` v2.1): lo que va por Jump a un contacto que lo entiende
+  viaja en un **sobre anónimo** para el destino: clave efímera ECDH P-256 + clave de identidad del destino →
+  HKDF → AES-GCM (datos adicionales: la clave del destino). El puente ve a quién va y un id, no quién lo manda
+  ni qué es (mensaje, confirmación, lectura o kx). Los textos largos, fotos y archivos llevan el remitente
+  dentro del sobre (`fr: "sx:…"`). La búsqueda de caminos (`rq`) lleva huellas con sal en vez de NEXO IDs.
+  - Solo si el primer puente reenvía bien los sobres (lo dice en su kx, `ss:1`): una build anterior los
+    envolvía como texto suyo y no llegaban; con un puente así va como antes (sin sellar) y llega igual. El
+    destino también sabe desenvolver ese caso.
+  - El destino confirma cada sobre al puente que se lo trae (`rk`): sin eso, las confirmaciones selladas se
+    quedaban en la cola del puente reintentándose.
+  - Cómo sabe que el otro lo entiende: kx (`ss:1`), el propio chat (`ss:1`, solo si se descifra bien) y la
+    tarjeta de contacto compartido (así el primer mensaje a un contacto compartido ya va sellado).
+  - Límites: el primer puente sabe qué vecino le entregó el paquete (inevitable en una red de saltos); por el
+    momento en que pasan las cosas un puente podría adivinar quién habla con quién (como en Signal con el
+    servidor).
+- **Poscuántico** (`e2e_ratchet` v1.1, como el PQXDH de Signal): cada clave previa lleva una clave
+  **ML-KEM-768** (estándar NIST FIPS 203, librería `@noble/post-quantum`) firmada con la clave de firma. Quien
+  empieza encapsula un secreto con ella (va en la cabecera del primer mensaje) y ese secreto entra en el acuerdo
+  junto a los tres DH: un ordenador cuántico futuro que rompa P-256 no puede descifrar lo grabado hoy sin romper
+  también ML-KEM.
+  - Con builds anteriores (sin clave ML-KEM), el acuerdo clásico de siempre. Una vez que un contacto la
+    publicó, un paquete suyo sin ella se rechaza (un puente no puede quitarla para rebajar el acuerdo).
+  - El kx dice qué clave ML-KEM del otro tengo (`ph`): los 1,6 KB solo viajan cuando hacen falta.
+  - El aviso de cifrado del chat dice "Protección poscuántica activa" cuando la sesión empezó así.
+  - Límite: protege el acuerdo inicial (lo que dura una sesión); los pasos del ratchet siguen siendo P-256,
+    como en el PQXDH de Signal.
+- **QR del número de seguridad** (`src/ui/qr_verify.js`): en el aviso de cifrado del chat, "Mostrar mi QR" /
+  "Escanear su QR". El QR lleva `NEXO-SN1|quien lo muestra|para quien|60 cifras` (nada secreto). Quien escanea
+  calcula el número con las claves que tiene: si coincide queda verificado; si no, avisa de posible impostor
+  y no lo marca. Lector con la cámara (`getUserMedia` + `jsQR`), todo en el teléfono, sin Google.
+- Pruebas: `ratchet.js` (51 comprobaciones, 11 nuevas del poscuántico: sesión híbrida, build anterior, firma
+  falsa, rebaja rechazada, secreto alterado, actualizar desde una build anterior); `jump.js` (normal, cadena de 3
+  saltos, contacto compartido, desconocido en medio, batería baja, reenvío directo y **puente con la 2728**):
+  los puentes no ven el remitente de nada salvo con el puente 2728 (como antes) y todo llega; `qr.js` en
+  Chromium con una cámara falsa que muestra el QR del otro (correcto → verificado; impostor, otro contacto y
+  algo que no es de NEXO → aviso, sin verificar; lectura en 0,3–0,4 s); `mixed.js` con la 2728 y la b9c412f;
+  batería completa.
+- Pendiente de la fase 3: anuncios Bluetooth rotativos (9). Necesita una decisión del dueño (ver
+  `docs/PENDIENTES.md`): hoy cualquiera ve el NEXO ID en el aire y eso es lo que permite agregar a alguien y
+  que un desconocido haga de puente en Jump.
+

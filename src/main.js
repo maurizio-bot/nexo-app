@@ -1,5 +1,8 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.48-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.49-NEXO
+ * v9.9.49: número de seguridad también por QR (src/ui/qr_verify.js): "Mostrar mi QR" / "Escanear su QR" en el
+ *   aviso de cifrado del chat; si coincide queda verificado, si no avisa de posible impostor. El aviso dice si la
+ *   sesión es poscuántica (e2e_ratchet v1.1). Las tarjetas de contacto llevan ss (remitente sellado).
  * v9.9.48: Wi-Fi normal (lan.js): fotos y vídeos grandes también por la misma red; la cabecera del chat dice por
  *   dónde va el contacto (Wi-Fi / Bluetooth / Jump). Avisos nativos de archivos en el diagnóstico.
  * v9.9.47: seguridad fase 3 — Perfil → Seguridad: bloqueo opcional con huella/PIN y bloquear capturas
@@ -95,7 +98,8 @@ import {
 import { initBLEInterface } from './ui/ble_interface.js';
 import { initAppLock, securitySectionHtml, renderSecuritySection } from './ui/app_lock.js';
 import { initE2E } from './vault/e2e_crypto.js';
-import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle } from './vault/e2e_ratchet.js';
+import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq } from './vault/e2e_ratchet.js';
+import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './ui/qr_verify.js';
 
 try {
   NEXO_CONFIG.assert(typeof NEXO_DIAG !== 'undefined', 'NEXO_DIAG debe estar importado');
@@ -1085,6 +1089,7 @@ function _handleShareContacts() {
           // v9.9.41: su paquete de claves del protocolo 2 (si es de su clave aceptada)
           var b2 = c.publicKey && !c.pendingKey ? ratchetPeerBundle(id) : null;
           if (b2 && b2.ik === c.publicKey) chosen[id].b2 = b2;
+          if (c.ss && c.publicKey && !c.pendingKey) chosen[id].ss = 1; // v9.9.49: entiende el remitente sellado
         } else delete chosen[id];
         refreshBtn();
       };
@@ -2792,6 +2797,8 @@ function _renderE2EBanner() {
   else if (c.publicKey && c.keyAcceptedAt) txt = '🔒 Cifrado de extremo a extremo. Aceptaste una clave nueva de ' + name + ' (' + new Date(c.keyAcceptedAt).toLocaleString() + '). Toca para verificar.';
   else if (c.publicKey) txt = '🔒 Mensajes cifrados de extremo a extremo. Nadie fuera de este chat puede leerlos. Toca para verificar.';
   else txt = '⏳ Esperando la clave de cifrado de ' + name + ': tus mensajes saldrán cifrados en cuanto conecte.';
+  // v9.9.49: sesión empezada con el acuerdo poscuántico (ML-KEM): protegida también ante ordenadores cuánticos
+  if (c.publicKey && !c.pendingKey && ratchetSessionPq(cid, c.publicKey)) txt += ' Protección poscuántica activa.';
   var t = document.createElement('div');
   t.className = 'e2e-text';
   t.textContent = txt;
@@ -2819,6 +2826,22 @@ function _renderE2EBanner() {
         vb.style.cssText = 'display:block;margin:8px auto 0;padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;background:' + (on ? 'rgba(255,255,255,0.15)' : '#00c8ff') + ';color:#fff;';
         vb.onclick = function(ev) { ev.stopPropagation(); bi.setContactVerified(cid, !on); };
         fp.appendChild(vb);
+        // v9.9.49: o por QR (como Signal): uno lo muestra y el otro lo escanea desde este mismo chat
+        var qrow = document.createElement('div');
+        qrow.style.cssText = 'display:flex;gap:8px;justify-content:center;margin-top:8px;';
+        var qb = function(label, cls, fn) {
+          var x = document.createElement('button');
+          x.className = cls;
+          x.textContent = label;
+          x.style.cssText = 'padding:6px 10px;border-radius:8px;border:none;font-size:12px;cursor:pointer;background:rgba(255,255,255,0.15);color:#fff;';
+          x.onclick = function(ev) { ev.stopPropagation(); fn(); };
+          qrow.appendChild(x);
+        };
+        qb('Mostrar mi QR', 'e2e-qr-show', function() {
+          showSafetyQr(safetyQrPayload(me, cid, n[0]), 'Que ' + name + ' lo escanee desde su chat contigo\n(Escanear su QR)');
+        });
+        qb('Escanear su QR', 'e2e-qr-scan', function() { openQrScanner(function(text) { _onSafetyQr(cid, name, text); }, 'Apunta al QR que muestra ' + name); });
+        fp.appendChild(qrow);
       }
     }).catch(function() { fp.textContent = ''; delete fp.dataset.shown; });
   };
@@ -2839,6 +2862,25 @@ function _renderE2EBanner() {
     row.appendChild(mk('Rechazar', 'e2e-reject', function() { if (bi && bi.rejectContactKey) bi.rejectContactKey(cid); }));
     b.appendChild(row);
   }
+}
+// Lo escaneado se compara con el número que calcula ESTE teléfono ahora (con la clave guardada en este momento)
+function _onSafetyQr(cid, name, text) {
+  var bi = window.bleInterface;
+  var me = _normId(bi && bi.localNexoId);
+  var c = (vaultLoadContacts() || []).find(function(x) { return _normId(x.nexoId || x.deviceUUID) === cid; });
+  if (!c || !c.publicKey || c.pendingKey) { _showInfoToast('Primero acepta o rechaza la clave nueva de ' + name, 3500); return; }
+  ratchetSafetyNumber(me, cid, c.publicKey).then(function(num) {
+    var r = checkSafetyQr(text, me, cid, num);
+    console.log('[E2E] QR del número de seguridad de ' + cid + ': ' + r);
+    if (r === 'ok') {
+      if (bi && typeof bi.setContactVerified === 'function') bi.setContactVerified(cid, true);
+      _showInfoToast('✔ Número de seguridad verificado: ' + name + ' es quien dice ser', 3500);
+    } else if (r === 'mismatch') {
+      _showInfoToast('⚠️ El número NO coincide: la clave de ' + name + ' no es la que tienes guardada. Puede haber un impostor: no lo marques como verificado.', 7000);
+    } else if (r === 'other') _showInfoToast('Ese QR es de otro contacto, no de ' + name, 3500);
+    else if (r === 'notme') _showInfoToast('Ese QR es para otra persona: pide a ' + name + ' que lo abra en su chat contigo', 4000);
+    else _showInfoToast('No es un QR de número de seguridad de NEXO', 3000);
+  }).catch(function() { _showInfoToast('No se pudo calcular el número de seguridad', 3000); });
 }
 window.addEventListener('nexo:e2e:key', function(e) {
   var d = (e && e.detail) || {};

@@ -76,7 +76,7 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
   const miss = opts.scanMiss; opts.scanMiss = 0;
   A.win.bleInterface.togglePanel();
   let add = null;
-  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
+  for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device > div button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
   if (!add) { console.log('BACKGROUND ' + JSON.stringify({ error: 'la prueba no pudo emparejar A con B' })); process.exit(2); }
   click(A.win, add); await sleep(1500);
   A.win.bleInterface.togglePanel();
