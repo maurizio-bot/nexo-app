@@ -15,7 +15,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Pruebas antes de publicar: si alguna falla, no se compila ni se publica la APK
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Pruebas Kotlin (JVM)
+        working-directory: ./tests/kotlin
+        run: gradle --no-daemon test
+
+      - name: Dependencias del simulador
+        working-directory: ./tests/sim
+        run: npm ci --no-audit --no-fund
+
+      - name: Compilar el bundle para el simulador
+        run: bash tests/sim/build.sh wip
+
+      - name: Pruebas del simulador
+        working-directory: ./tests/sim
+        run: node ci.js builds/wip
+
   build:
+    needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

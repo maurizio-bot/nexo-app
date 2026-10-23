@@ -8,6 +8,8 @@
 
 import { NEXO_CONFIG } from '../core/nexo_config.js';
 import { NEXO_DIAG } from '../core/nap.js';
+// Texto que viene de otro teléfono: nunca como HTML
+function _esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
 var DEBUG = window.DEBUG || {
   log: function() {},
@@ -286,8 +288,8 @@ export class NexoApp {
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
       modal.innerHTML = '<div style="background:#0a0a15;border:1px solid #00d4ff;border-radius:16px;padding:24px;max-width:320px;width:90%;text-align:center;color:#fff;">' +
         '<h3 style="margin:0 0 12px;color:#00d4ff;">Solicitud de Pago</h3>' +
-        '<p style="font-size:24px;font-weight:700;margin:8px 0;">' + (detail.amount || '0') + ' ' + (detail.currency || 'USD') + '</p>' +
-        '<p style="font-size:13px;color:#aaa;margin:0 0 16px;">' + (detail.note || '') + '</p>' +
+        '<p style="font-size:24px;font-weight:700;margin:8px 0;">' + _esc((detail.amount || '0') + ' ' + (detail.currency || 'USD')) + '</p>' +
+        '<p style="font-size:13px;color:#aaa;margin:0 0 16px;">' + _esc(detail.note || '') + '</p>' +
         '<div style="display:flex;gap:10px;">' +
         '<button id="pay-accept" style="flex:1;padding:12px;background:linear-gradient(135deg,#00d4ff,#0099cc);border:none;border-radius:10px;color:#000;font-weight:700;cursor:pointer;">Aceptar</button>' +
         '<button id="pay-decline" style="flex:1;padding:12px;background:rgba(255,59,48,0.3);border:1px solid #FF3B30;border-radius:10px;color:#fff;font-weight:600;cursor:pointer;">Rechazar</button>' +
@@ -423,19 +425,19 @@ export class NexoApp {
       var isPayment = msg.type === 'payment';
       var icon = isPayment ? '💸' : '💰';
       var title = isPayment ? 'Solicitud de Pago' : 'Transferencia';
-      var amount = (msg.amount || '0') + ' ' + (msg.currency || 'USD');
+      var amount = _esc((msg.amount || '0') + ' ' + (msg.currency || 'USD'));
       var html = '<div style="padding:12px 16px;background:rgba(0,0,0,0.3);border-radius:12px;min-width:200px;">';
       html += '<div style="font-size:20px;margin-bottom:4px;">' + icon + '</div>';
       html += '<div style="font-weight:700;font-size:16px;margin-bottom:4px;">' + title + '</div>';
       html += '<div style="font-size:22px;font-weight:700;color:#00d4ff;margin-bottom:8px;">' + amount + '</div>';
-      if (msg.note) html += '<div style="font-size:12px;color:#aaa;margin-bottom:8px;">' + msg.note + '</div>';
+      if (msg.note) html += '<div style="font-size:12px;color:#aaa;margin-bottom:8px;">' + _esc(msg.note) + '</div>';
       if (!isOwn && isPayment && msg.status === 'pending') {
         html += '<div style="display:flex;gap:8px;margin-top:8px;">';
-        html += '<button class="pay-btn-accept" data-id="' + (msg.paymentId || msg.transferId) + '" style="flex:1;padding:8px;background:linear-gradient(135deg,#00d4ff,#0099cc);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer;">Aceptar</button>';
-        html += '<button class="pay-btn-decline" data-id="' + (msg.paymentId || msg.transferId) + '" style="flex:1;padding:8px;background:rgba(255,59,48,0.3);border:1px solid #FF3B30;border-radius:8px;color:#fff;font-weight:600;font-size:13px;cursor:pointer;">Rechazar</button>';
+        html += '<button class="pay-btn-accept" data-id="' + _esc(msg.paymentId || msg.transferId) + '" style="flex:1;padding:8px;background:linear-gradient(135deg,#00d4ff,#0099cc);border:none;border-radius:8px;color:#000;font-weight:700;font-size:13px;cursor:pointer;">Aceptar</button>';
+        html += '<button class="pay-btn-decline" data-id="' + _esc(msg.paymentId || msg.transferId) + '" style="flex:1;padding:8px;background:rgba(255,59,48,0.3);border:1px solid #FF3B30;border-radius:8px;color:#fff;font-weight:600;font-size:13px;cursor:pointer;">Rechazar</button>';
         html += '</div>';
       } else {
-        html += '<div style="font-size:12px;color:#888;margin-top:8px;">' + (msg.status || 'pending') + '</div>';
+        html += '<div style="font-size:12px;color:#888;margin-top:8px;">' + _esc(msg.status || 'pending') + '</div>';
       }
       html += '</div>';
       contentDiv.innerHTML = html;

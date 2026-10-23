@@ -2,6 +2,8 @@ import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
+* v3.12.1: el registro de arranque dice la versión real (decía v3.2.12).
+* v3.12.0: internet: enlace "net:" (trozos de 8-16 KB; archivos solo si los dos están en Wi-Fi).
 * v3.11.0: remitente sellado por Jump: el nombre y el NEXO ID de quien manda un flujo van en un sobre para el destino
 *         (meta.sealedFrom → fr "sx:…"); las confirmaciones dirigidas también (ble._sealObj).
 * v3.10.0: Wi-Fi normal (lan.js): por un enlace "lan:<NEXO ID>" van trozos grandes y los archivos sin Wi-Fi Direct;
@@ -164,7 +166,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.2.12-NEXO iniciado');
+    console.log('[BleAckSystem] v3.12.1-NEXO iniciado');
   }
   _resolveNexoId(deviceId) {
     // Enlaces Wi-Fi e internet: el NEXO ID va en el propio identificador ("lan:nx…", "net:nx…")

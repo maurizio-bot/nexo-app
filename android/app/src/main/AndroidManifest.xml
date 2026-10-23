@@ -80,13 +80,6 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <!-- SERVICIO NORDIC MESH -->
-        <service
-            android:name=".mesh.NordicMeshService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
-
         <!-- Photo Picker service para compatibilidad galería en Android 11+ -->
         <service android:name="com.google.android.gms.metadata.ModuleDependencies"
             android:enabled="false"

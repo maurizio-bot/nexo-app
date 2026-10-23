@@ -7,7 +7,9 @@ import { createLan } from './lan.js';
 import { createNet } from '../net/net_link.js';
 import { createFenix } from '../fenix/fenix.js';
 /**
- * BLE Interface v6.12.0-NEXO
+ * BLE Interface v6.13.1-NEXO
+ * v6.13.1: el registro de arranque dice la versión real (decía v6.1.1 desde hace meses).
+ * v6.13.0: internet (net_link.js): enlace "net:<NEXO ID>" por relés públicos o Tor, buzón de textos, nt:1 en el kx.
  * v6.12.0: poscuántico (e2e_ratchet v1.1): el paquete de claves lleva la clave ML-KEM; el kx dice cuál del otro tengo
  *         ('ph') para no repetirla (1,6 KB) en cada conexión.
  * v6.11.1: solo se sella si el primer puente lo reenvía bien (kx ss:1; una build anterior envolvía el sobre como texto
@@ -605,7 +607,7 @@ export class BLEInterface {
     this._mtuByDevice = new Map(); // MAC normalizada -> MTU negociado (lo devuelve sendMessage nativo)
     this._reconnectScanTimer = null;
     this._reconnectScanAttempts = 0;
-    console.log('[BLEInterface] v6.1.1-NEXO iniciado');
+    console.log('[BLEInterface] v6.13.1-NEXO iniciado');
   }
 
   _detectMeshType() {
