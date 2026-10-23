@@ -73,7 +73,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2735–2738 | | Compilaciones de prueba en la rama de trabajo (Tor): la 2735 y la 2738 fallaron (versiones de tor-android que el Gradle del proyecto no admite), la 2737 compiló con la 0.4.9.5 |
 | 2739 | `f51dec6` | Internet: relés públicos Nostr (buzón cifrado, etiquetas diarias, sin NEXO IDs) y Tor (servicio oculto, directo y sin IP visible). Wi-Fi de módems distintos = internet antes que Bluetooth. `docs/INTERNET.md`. APK verificada (firma 23d86688…, sin copias, TorService y libtor.so ARM 64/32); pesa 26,9 MB (la 2734, 10 MB) |
 | 2740–2743 | | Compilaciones de prueba en la rama de trabajo (pruebas automáticas en GitHub); la 2740–2742 pararon en las pruebas por el fallo de Jump con internet |
-| 2744 | (este commit) | Pruebas automáticas antes de cada APK, Jump: fotos ya no se atascan con el puente conectado por internet, vista previa sin medio emoji, limpieza (versiones, manifiesto, tarjetas de pago) |
+| 2744 | `56f6991` | Pruebas automáticas antes de cada APK, Jump: fotos ya no se atascan con el puente conectado por internet, vista previa sin medio emoji, limpieza (versiones, manifiesto, tarjetas de pago). APK verificada (firma 23d86688…, sin copias, Tor incluido) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
