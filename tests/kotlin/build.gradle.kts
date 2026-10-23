@@ -2,9 +2,9 @@
 // Uso: cd tests/kotlin && gradle --no-daemon test
 plugins { kotlin("jvm") version "2.0.21" }
 repositories { mavenCentral() }
-dependencies { testImplementation(kotlin("test")) }
+dependencies { implementation("org.json:json:20240303"); testImplementation(kotlin("test")) }
 kotlin { jvmToolchain(21) }
 sourceSets {
-    main { kotlin.srcDir("../../plugins/nexo-ble/android/src/main/java/com/nexo/ble").also { kotlin.include("AtRestStore.kt") } }
+    main { kotlin.srcDir("../../plugins/nexo-ble/android/src/main/java/com/nexo/ble").also { kotlin.include("AtRestStore.kt", "LanHub.kt") } }
 }
 tasks.test { testLogging { events("passed", "failed"); showStandardStreams = true; exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL } }

@@ -454,6 +454,7 @@ class NexoBlePlugin : Plugin() {
     }
     override fun handleOnDestroy() {
         super.handleOnDestroy()
+        try { lanStopAll() } catch (e: Exception) {}
         remLog("INFO", "LIFECYCLE", "handleOnDestroy - limpiando DUAL GATT")
         cleanupAllConnections()
         try { unregisterServerReceivers() } catch (e: Exception) { }
@@ -2055,6 +2056,160 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) {
             call.reject("Error listando archivos: ${e.message}")
         }
+    }
+
+    // ===== Wi-Fi normal (misma red): LanHub (TCP) + NSD (mDNS, como Bonjour en iPhone) =====
+    // Cada teléfono se anuncia como "_nexo._tcp" con una marca del día (t) que solo sus contactos saben calcular
+    // (sin NEXO ID a la vista). Al encontrar la marca de un contacto, la app pide conectar; los mensajes son los
+    // mismos JSON que por Bluetooth (ya cifrados). La app comprueba cada conexión con el cifrado antes de usarla.
+    private var lanHub: LanHub? = null
+    private var nsdManager: android.net.nsd.NsdManager? = null
+    private var nsdReg: android.net.nsd.NsdManager.RegistrationListener? = null
+    private var nsdDisc: android.net.nsd.NsdManager.DiscoveryListener? = null
+    private var lanMcLock: WifiManager.MulticastLock? = null
+    @Volatile private var lanMyId = ""
+    private var lanToken = ""
+    private var lanServiceName = ""
+    private val nsdResolveQueue = java.util.concurrent.ConcurrentLinkedQueue<android.net.nsd.NsdServiceInfo>()
+    @Volatile private var nsdResolving = false
+    private val lanSendExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    private fun lanOnWifi(): Boolean = try {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        caps != null && (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET))
+    } catch (e: Exception) { false }
+
+    @PluginMethod
+    fun lanStatus(call: PluginCall) {
+        call.resolve(JSObject().put("supported", true).put("wifi", lanOnWifi()).put("running", lanHub != null).put("port", lanHub?.port ?: 0))
+    }
+
+    @PluginMethod
+    fun lanStart(call: PluginCall) {
+        val nx = call.getString("nexoId")?.lowercase() ?: run { call.reject("nexoId requerido"); return }
+        val token = call.getString("token") ?: run { call.reject("token requerido"); return }
+        try {
+            lanMyId = nx
+            val hub = lanHub ?: LanHub({ lanMyId }, object : LanHub.Listener {
+                override fun onUp(nx: String) { remLog("INFO", "LAN", "Conectado con $nx por Wi-Fi"); notifyListeners("onLanUp", JSObject().put("nx", nx), true) }
+                override fun onDown(nx: String) { remLog("INFO", "LAN", "Sin Wi-Fi con $nx"); notifyListeners("onLanDown", JSObject().put("nx", nx), true) }
+                override fun onMessage(nx: String, text: String) { notifyListeners("onLanMessage", JSObject().put("nx", nx).put("content", text), true) }
+                override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
+            }).also { lanHub = it }
+            val port = hub.start()
+            val nsd = nsdManager ?: (context.getSystemService(Context.NSD_SERVICE) as android.net.nsd.NsdManager).also { nsdManager = it }
+            if (lanMcLock == null) {
+                val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                lanMcLock = wm.createMulticastLock("nexo-lan").apply { setReferenceCounted(false); acquire() }
+            }
+            // Anuncio (se rehace si cambia la marca del día)
+            if (nsdReg == null || token != lanToken) {
+                nsdReg?.let { try { nsd.unregisterService(it) } catch (e: Exception) {} }
+                lanToken = token
+                lanServiceName = "NEXO-" + wdRandom(6)
+                val info = android.net.nsd.NsdServiceInfo().apply {
+                    serviceName = lanServiceName; serviceType = "_nexo._tcp"; setPort(port); setAttribute("t", token)
+                }
+                val reg = object : android.net.nsd.NsdManager.RegistrationListener {
+                    override fun onServiceRegistered(si: android.net.nsd.NsdServiceInfo) { lanServiceName = si.serviceName; remLog("INFO", "LAN", "Anunciado en la red (puerto $port)") }
+                    override fun onRegistrationFailed(si: android.net.nsd.NsdServiceInfo, code: Int) { remLog("WARN", "LAN", "No se pudo anunciar ($code)"); if (nsdReg === this) nsdReg = null }
+                    override fun onServiceUnregistered(si: android.net.nsd.NsdServiceInfo) {}
+                    override fun onUnregistrationFailed(si: android.net.nsd.NsdServiceInfo, code: Int) {}
+                }
+                nsdReg = reg
+                nsd.registerService(info, android.net.nsd.NsdManager.PROTOCOL_DNS_SD, reg)
+            }
+            // Búsqueda (se reinicia en cada llamada: Android a veces deja de informar)
+            nsdDisc?.let { try { nsd.stopServiceDiscovery(it) } catch (e: Exception) {} }
+            val disc = object : android.net.nsd.NsdManager.DiscoveryListener {
+                override fun onDiscoveryStarted(t: String) {}
+                override fun onDiscoveryStopped(t: String) {}
+                override fun onStartDiscoveryFailed(t: String, code: Int) { remLog("WARN", "LAN", "Búsqueda fallida ($code)"); if (nsdDisc === this) nsdDisc = null }
+                override fun onStopDiscoveryFailed(t: String, code: Int) {}
+                override fun onServiceFound(si: android.net.nsd.NsdServiceInfo) {
+                    if (si.serviceName == lanServiceName) return
+                    nsdResolveQueue.add(si); lanResolveNext()
+                }
+                override fun onServiceLost(si: android.net.nsd.NsdServiceInfo) {}
+            }
+            nsdDisc = disc
+            nsd.discoverServices("_nexo._tcp", android.net.nsd.NsdManager.PROTOCOL_DNS_SD, disc)
+            call.resolve(JSObject().put("port", port).put("wifi", lanOnWifi()))
+        } catch (e: Exception) {
+            call.reject("Wi-Fi no disponible: ${e.message}", "LAN_UNAVAILABLE")
+        }
+    }
+
+    // Android resuelve de uno en uno
+    @Suppress("DEPRECATION")
+    private fun lanResolveNext() {
+        val nsd = nsdManager ?: return
+        if (nsdResolving) return
+        val si = nsdResolveQueue.poll() ?: return
+        nsdResolving = true
+        try {
+            nsd.resolveService(si, object : android.net.nsd.NsdManager.ResolveListener {
+                override fun onServiceResolved(info: android.net.nsd.NsdServiceInfo) {
+                    nsdResolving = false
+                    val host = info.host?.hostAddress
+                    val t = info.attributes["t"]?.let { String(it, Charsets.UTF_8) }
+                    if (host != null && t != null && t != lanToken) {
+                        notifyListeners("onLanPeer", JSObject().put("token", t).put("host", host).put("port", info.port))
+                    }
+                    lanResolveNext()
+                }
+                override fun onResolveFailed(info: android.net.nsd.NsdServiceInfo, code: Int) {
+                    nsdResolving = false
+                    if (code == android.net.nsd.NsdManager.FAILURE_ALREADY_ACTIVE) { nsdResolveQueue.add(info); mainHandler.postDelayed({ lanResolveNext() }, 300) }
+                    else lanResolveNext()
+                }
+            })
+        } catch (e: Exception) { nsdResolving = false; lanResolveNext() }
+    }
+
+    @PluginMethod
+    fun lanConnect(call: PluginCall) {
+        val host = call.getString("host") ?: run { call.reject("host requerido"); return }
+        val port = call.getInt("port") ?: run { call.reject("port requerido"); return }
+        val hub = lanHub ?: run { call.reject("Wi-Fi no iniciado", "LAN_UNAVAILABLE"); return }
+        hub.connect(host, port)
+        call.resolve(JSObject().put("connecting", true))
+    }
+
+    // Fuera del hilo de los plugins (un archivo grande tarda en escribirse) y en orden
+    @PluginMethod
+    fun lanSend(call: PluginCall) {
+        val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
+        val content = call.getString("content") ?: run { call.reject("content requerido"); return }
+        val hub = lanHub ?: run { call.reject("Wi-Fi no iniciado", "LAN_DOWN"); return }
+        lanSendExec.execute {
+            if (hub.send(nx, content)) call.resolve(JSObject().put("sent", true))
+            else call.reject("Sin conexión Wi-Fi con $nx", "LAN_DOWN")
+        }
+    }
+
+    @PluginMethod
+    fun lanDrop(call: PluginCall) {
+        val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
+        lanHub?.close(nx)
+        call.resolve(JSObject().put("dropped", true))
+    }
+
+    @PluginMethod
+    fun lanStop(call: PluginCall) {
+        lanStopAll()
+        call.resolve(JSObject().put("stopped", true))
+    }
+
+    private fun lanStopAll() {
+        val nsd = nsdManager
+        nsdReg?.let { try { nsd?.unregisterService(it) } catch (e: Exception) {} }
+        nsdDisc?.let { try { nsd?.stopServiceDiscovery(it) } catch (e: Exception) {} }
+        nsdReg = null; nsdDisc = null
+        try { lanMcLock?.release() } catch (e: Exception) {}
+        lanMcLock = null
+        lanHub?.stop(); lanHub = null
     }
 
     // ===== Archivos recibidos: abrir con otra app y miniatura de PDF =====
