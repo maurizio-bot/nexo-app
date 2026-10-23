@@ -1531,7 +1531,7 @@ export class BLEInterface {
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
       if (p.j && self.relay) self.relay.markCapable(p.from);
       if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs);
-      if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId);
+      if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId, Number(p.fx) || 1);
       if (p.ss && p.from) self._noteSealPeer(p.from);
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._pqHave.set(_normId(p.from), Number(p.ph) || 0);
       // v6.11.1: ¿este vecino reenvía sobres 'sx' bien? (las builds anteriores los envolvían como texto suyo)
@@ -1585,7 +1585,7 @@ export class BLEInterface {
       // mostraría como mensajes de texto). b2: paquete de claves del protocolo 2.
       var pkt = { v: 1, type: 'kx', from: self.localNexoId, pk: pk, j: 1 };
       if (b2) pkt.b2 = b2;
-      pkt.fx = 1;
+      pkt.fx = 2; // Fénix: 1 = la cuenta; 2 = también guarda los mensajes (segmentos)
       pkt.ss = 1; // entiende el remitente sellado (sobres 'sx' por Jump)
       if (peerNx) pkt.ph = ratchetPeerPqId(peerNx); // v6.12.0: qué clave poscuántica suya tengo (no hace falta repetirla)
       var rs = self.fenix ? self.fenix.resetMark() : 0;
@@ -1688,12 +1688,12 @@ export class BLEInterface {
   }
 
   // Fénix: el contacto lo tiene (puede guardar fragmentos); se recuerda en el contacto
-  _noteFenixPeer(nexoId, deviceId) {
-    var nx = _normId(nexoId);
+  _noteFenixPeer(nexoId, deviceId, level) {
+    var nx = _normId(nexoId), lvl = Math.max(1, Math.min(9, Number(level) || 1));
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
-    if (c && !c.fx) { c.fx = 1; _saveBLEContacts(contacts); }
-    if (this.fenix) this.fenix.markPeer(nx, deviceId);
+    if (c && (c.fx || 0) !== lvl) { c.fx = lvl; _saveBLEContacts(contacts); }
+    if (this.fenix) this.fenix.markPeer(nx, deviceId, lvl);
   }
 
   // Fénix: el contacto recuperó su cuenta en otro teléfono (misma clave): sesiones del protocolo 2 nuevas

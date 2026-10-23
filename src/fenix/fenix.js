@@ -1,5 +1,12 @@
 /**
- * fenix.js v1.0 — Protocolo Fénix, fase 1: la cuenta (diseño y decisiones del dueño en docs/FENIX.md).
+ * fenix.js v2.0 — Protocolo Fénix, fase 1: la cuenta; fase 2: los mensajes (docs/FENIX.md).
+ *
+ * Fase 2 (mensajes de texto): los mensajes nuevos se juntan en segmentos (≤ CFG.segBytes) cifrados con la misma
+ * clave maestra K; cada segmento se guarda en 2 contactos distintos con Fénix 2 (kx fx:2): "dualidad de piezas".
+ * El pingeo diario pide también prueba de los segmentos ('fp' con sg → 'fo' con sp); si falta, se reenvía; si el
+ * contacto se pierde, el segmento pasa a otro. Tras recuperar la cuenta, el teléfono pide los segmentos a cada
+ * contacto que se conecta ('fq' con m:1; las builds anteriores lo ignoran) y rehace el historial. Los nodos no
+ * pueden leerlos (les falta K). Fotos y archivos: fase siguiente (aquí solo su nombre y tipo).
  *
  * Dueño: al tener CFG.min contactos con Fénix (kx con fx:1 y protocolo 2), crea la clave maestra K, cifra la
  * cuenta (NEXO ID, claves y contactos) con AES-256-GCM y parte K con Shamir (CFG.t de CFG.n). Cada contacto
@@ -16,12 +23,15 @@ import { e2eEncryptB64, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 
 var STATE_FILE = 'nexo_fenix.json';        // dueño: K, trozos, copia y nodos
 var STORE_FILE = 'nexo_fenix_store.json';  // nodo: lo que guarda de otros
+var MSGS_FILE = 'nexo_fenix_msgs.json';    // dueño: segmentos de mensajes (cifrados) y quién los guarda
 var IDENTITY_FILE = 'nexo_e2e_identity.json';
 var RATCHET_FILE = 'nexo_ratchet.json';
 var NEXO_ID_FILE = 'nexo_advertising_id.json';
 var DAY = 86400000;
 var CFG = { n: 10, t: 6, min: 10, mirror: 20, pingMs: DAY, lostMs: 7 * DAY, tickMs: 60000, rebuildMs: 600000,
-  maxOwners: 50, maxBlob: 400000, resetMs: 7 * DAY };
+  maxOwners: 50, maxBlob: 400000, resetMs: 7 * DAY,
+  // Fase 2: segmento con ≥ segMin mensajes nuevos o con alguno de hace > segMaxMs; tamaño y límites
+  segMin: 20, segMaxMs: DAY, segBytes: 48000, msgsMax: 2000000, nodeSegCap: 2500000, segCopies: 2 };
 
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -59,6 +69,9 @@ export class Fenix {
     this.inflight = new Set();     // nexoIds con una entrega en curso
     this.requests = new Map();     // rid → petición de recuperación recibida (nodo)
     this.recovery = null;          // recuperación en curso (teléfono nuevo)
+    this.msgs = null;              // fase 2, dueño: { lastTs, recent, segs: [{ id, ts, n, blob, bh, holders }] }
+    this.levels = new Map();       // nexoId → nivel de Fénix que anunció (fx del kx)
+    this.askedSegs = {};           // tras recuperar: a quién ya se le pidieron los segmentos
     this._busy = false;
     this._timer = null;
     this.ready = null;
@@ -67,10 +80,12 @@ export class Fenix {
   init() {
     var self = this;
     if (self.ready) return self.ready;
-    self.ready = Promise.all([_load(STATE_FILE), _load(STORE_FILE)]).then(function(r) {
+    self.ready = Promise.all([_load(STATE_FILE), _load(STORE_FILE), _load(MSGS_FILE)]).then(function(r) {
       try { if (r[0]) self.state = JSON.parse(r[0]); } catch (e) {}
       try { if (r[1]) self.store = JSON.parse(r[1]) || { owners: {} }; } catch (e) {}
+      try { if (r[2]) self.msgs = JSON.parse(r[2]); } catch (e) {}
       if (!self.store.owners) self.store.owners = {};
+      if (!self.store.segs) self.store.segs = {}; // fase 2, nodo: dueño → { id: { blob, bh, ts } }
       if (self.state) console.log('[FENIX] Activo: copia v' + self.state.ep + ', ' + Object.keys(self.state.nodes || {}).length + ' nodos');
       var n = Object.keys(self.store.owners).length;
       if (n) console.log('[FENIX] Guardo fragmentos de ' + n + ' contacto(s)');
@@ -96,16 +111,24 @@ export class Fenix {
   }
   _saveState() { return _save(STATE_FILE, JSON.stringify(this.state)); }
   _saveStore() { return _save(STORE_FILE, JSON.stringify(this.store)); }
+  _saveMsgs() { return _save(MSGS_FILE, JSON.stringify(this.msgs)); }
 
   // Para el kx: 'rs' durante unos días tras recuperar (los contactos empiezan sesiones nuevas del protocolo 2)
   resetMark() { var s = this.state; return (s && s.restoredAt && Date.now() - s.restoredAt < this.cfg.resetMs) ? s.restoredAt : 0; }
 
   // kx con fx:1 de un teléfono conectado
-  markPeer(nexoId, deviceId) {
+  markPeer(nexoId, deviceId, level) {
     var self = this, nx = _nid(nexoId);
     if (!_isNx(nx)) return;
     self.peers.add(nx);
+    self.levels.set(nx, Number(level) || 1);
     if (self.recovery) self._askForRecovery(nx, deviceId);
+    // Cuenta recién recuperada: pedirle los segmentos de mensajes que guarde (una vez por contacto)
+    if (self.resetMark() && (Number(level) || 1) >= 2 && !self.askedSegs[nx] && deviceId) {
+      self.askedSegs[nx] = Date.now();
+      self._ctl(deviceId, { type: 'fq', m: 1 });
+      console.log('[FENIX] Pido a ' + nx + ' los mensajes que guarde');
+    }
     setTimeout(function() { self.tick(); }, 1500);
   }
 
@@ -120,10 +143,15 @@ export class Fenix {
     var s = this.state, el = this._eligible().length;
     if (!s) return { active: false, eligible: el, min: this.cfg.min };
     var nodes = Object.keys(s.nodes || {}).map(function(k) { return s.nodes[k]; });
+    var segs = (this.msgs && this.msgs.segs) || [];
+    var copies = this.cfg.segCopies;
     return { active: true, eligible: el, ep: s.ep, n: s.n, t: s.t,
       copies: el >= this.cfg.mirror ? 2 : 1,
       delivered: nodes.filter(function(x) { return !x.lost && x.ep === s.ep; }).length,
-      lost: nodes.filter(function(x) { return x.lost; }).length, guarding: Object.keys(this.store.owners).length };
+      lost: nodes.filter(function(x) { return x.lost; }).length,
+      guarding: Object.keys(this.store.owners).length + Object.keys(this.store.segs || {}).filter(function(o) { return !this.store.owners[o]; }, this).length,
+      msgs: segs.reduce(function(a, g) { return a + (g.n || 0); }, 0), segs: segs.length,
+      segsSafe: segs.filter(function(g) { return Object.keys(g.holders || {}).filter(function(h) { return g.holders[h].ok; }).length >= copies; }).length };
   }
 
   tick() {
@@ -158,6 +186,7 @@ export class Fenix {
     });
     if (this._assign(el)) changed = true;
     if (changed) await this._saveState();
+    await this._msgTick(el);
     // Entregas, pingeos y aviso a los perdidos que vuelven
     var list = Object.keys(s.nodes);
     for (var i = 0; i < list.length; i++) {
@@ -259,7 +288,10 @@ export class Fenix {
     var nonce = _hex(_rand(12));
     this.pings.set(nonce, { nx: nx, idx: node.idx, at: Date.now() });
     node.lastPing = Date.now();
-    this._ctl(dev, { type: 'fp', n: nonce });
+    var pkt = { type: 'fp', n: nonce };
+    var sg = this._segsOf(nx).map(function(g) { return g.id; });
+    if (sg.length) pkt.sg = sg; // fase 2: prueba también de estos segmentos
+    this._ctl(dev, pkt);
   }
 
   // ---------- paquetes de control ('fp', 'fo', 'fq', 'fd'). true si era de Fénix ----------
@@ -272,6 +304,7 @@ export class Fenix {
       if (p.type === 'fp') return self._onPing(p, from, deviceId);
       if (p.type === 'fo') return self._onPong(p, from);
       if (p.type === 'fd') return self._onDelete(from);
+      if (p.type === 'fq' && p.m) return self._onSegsRequest(from, deviceId);
       if (p.type === 'fq') return self._onRecoveryRequest(p, from, deviceId);
     }).catch(function(e) { console.warn('[FENIX] ' + (e && e.message)); });
     return true;
@@ -279,10 +312,21 @@ export class Fenix {
 
   async _onPing(p, from, deviceId) {
     var rec = this.store.owners[from];
-    if (!rec) { this._ctl(deviceId, { type: 'fo', n: String(p.n || ''), miss: 1 }); return; }
-    rec.lastPing = Date.now();
-    var proof = await _sha(String(p.n || '') + '|' + rec.share + '|' + rec.bh);
-    this._ctl(deviceId, { type: 'fo', n: String(p.n || ''), pr: proof, ep: rec.ep });
+    var out = { type: 'fo', n: String(p.n || '') };
+    if (!rec) out.miss = 1;
+    else {
+      rec.lastPing = Date.now();
+      out.pr = await _sha(String(p.n || '') + '|' + rec.share + '|' + rec.bh);
+      out.ep = rec.ep;
+    }
+    // Fase 2: prueba de los segmentos que el dueño cree que guardo (y cuáles me faltan)
+    if (Array.isArray(p.sg) && p.sg.length) {
+      var mine = this.store.segs[from] || {}, have = [], miss = [];
+      p.sg.slice(0, 500).forEach(function(id) { if (mine[id]) have.push(mine[id].bh); else miss.push(String(id)); });
+      out.sp = await _sha(String(p.n || '') + '|' + have.join('|'));
+      if (miss.length) out.sm = miss;
+    }
+    this._ctl(deviceId, out);
     this._saveStore();
   }
 
@@ -290,6 +334,8 @@ export class Fenix {
     var s = this.state, ping = this.pings.get(p.n);
     if (!s || !ping || ping.nx !== from) return;
     this.pings.delete(p.n);
+    await this._onSegProof(p, from, ping);
+    if (ping.segOnly) return;
     var node = s.nodes[from];
     if (!node) return;
     var expect = await _sha(p.n + '|' + s.shares[node.idx - 1] + '|' + s.bh);
@@ -304,6 +350,7 @@ export class Fenix {
   }
 
   async _onDelete(from) {
+    // (solo el fragmento de la cuenta: los segmentos de mensajes se quedan; el dueño los reparte aparte)
     if (!this.store.owners[from]) return;
     delete this.store.owners[from];
     console.log('[FENIX] ' + from + ' me pidió borrar su fragmento');
@@ -319,6 +366,8 @@ export class Fenix {
       // El tipo va dentro del contenido cifrado (la cabecera del flujo solo lleva campos conocidos)
       if (p && p.k === 'put') return self._onPut(p, from);
       if (p && p.k === 'rec') return self._onRecoveryPiece(p, from);
+      if (p && p.k === 'seg') return self._onSeg(p, from);
+      if (p && p.k === 'segs') return self._onSegsBack(p, from);
     }).catch(function(e) { console.warn('[FENIX] Archivo no válido: ' + (e && e.message)); });
   }
 
@@ -335,6 +384,222 @@ export class Fenix {
       name: String(p.name || '').substring(0, 40), ts: Date.now(), lastPing: Date.now() };
     console.log('[FENIX] Guardo el fragmento ' + p.idx + ' de ' + from + ' (copia v' + p.ep + '; no puedo leerlo)');
     await this._saveStore();
+  }
+
+  // ---------- fase 2: mensajes (dueño) ----------
+  _segsOf(nx) { return ((this.msgs && this.msgs.segs) || []).filter(function(g) { return g.holders && g.holders[nx]; }); }
+
+  // Lo de un mensaje que se respalda: texto y datos del chat; de un adjunto solo tipo y nombre (no el contenido)
+  _slim(m) {
+    var o = { msgId: m.msgId, content: m.content || m.text || '', timestamp: m.timestamp || 0, seq: m.seq || 0, _own: !!m._own,
+      senderNexoId: m.senderNexoId || '', senderName: m.senderName || '', status: m.status || '', type: m.type || 'text' };
+    if (m.attachmentType) {
+      o.attachmentType = m.attachmentType;
+      var meta = m.attachmentMeta || {};
+      o.attachmentMeta = { name: meta.name || '', mime: meta.mime || '', size: meta.size || 0 };
+    }
+    ['replyTo', 'replyText', 'forwarded', 'deleted', 'edited'].forEach(function(k) { if (m[k] != null && typeof m[k] !== 'object') o[k] = m[k]; });
+    return o;
+  }
+
+  async _msgTick(el) {
+    var cfg = this.cfg, now = Date.now(), self = this;
+    if (!this.msgs) this.msgs = { v: 1, lastTs: 0, recent: [], segs: [], lastSegAt: now };
+    var M = this.msgs, changed = false;
+    // 1. Mensajes nuevos desde el último segmento (margen de 10 min para los que llegan con hora anterior)
+    if (now - (M.checkedAt || 0) >= cfg.rebuildMs && typeof window.vaultLoadMessages === 'function') {
+      M.checkedAt = now;
+      var since = Math.max(0, (M.lastTs || 0) - 600000), recent = {};
+      (M.recent || []).forEach(function(id) { recent[id] = true; });
+      var fresh = [];
+      var contacts = this._contacts();
+      for (var i = 0; i < contacts.length; i++) {
+        var cnx = _nid(contacts[i].nexoId || contacts[i].deviceUUID);
+        if (!_isNx(cnx)) continue;
+        var list = await window.vaultLoadMessages(cnx);
+        list.forEach(function(m) {
+          var ts = m.timestamp || 0;
+          if (!m.msgId || ts <= since || recent[m.msgId] || (!m.content && !m.text && !m.attachmentType)) return;
+          fresh.push({ c: cnx, m: self._slim(m) });
+        });
+      }
+      if (fresh.length && (fresh.length >= cfg.segMin || now - (M.lastSegAt || 0) > cfg.segMaxMs)) {
+        fresh.sort(function(a, b) { return a.m.timestamp - b.m.timestamp; });
+        while (fresh.length) {
+          var part = [], size = 2;
+          while (fresh.length && (size + JSON.stringify(fresh[0]).length < cfg.segBytes || !part.length)) { var f = fresh.shift(); size += JSON.stringify(f).length + 1; part.push(f); }
+          await this._newSeg(part);
+        }
+        changed = true;
+      }
+    }
+    // 2. Quién guarda cada segmento: segCopies contactos distintos con Fénix 2, que no se hayan perdido
+    var el2 = el.filter(function(c) { return (c.fx || 0) >= 2; }).map(function(c) { return _nid(c.nexoId || c.deviceUUID); });
+    var load = {};
+    el2.forEach(function(nx) { load[nx] = self._segsOf(nx).length; });
+    M.segs.forEach(function(g) {
+      Object.keys(g.holders).forEach(function(nx) {
+        var h = g.holders[nx], last = Math.max(h.proofAt || 0, h.at || 0);
+        if (el2.indexOf(nx) < 0 || now - last > cfg.lostMs) { delete g.holders[nx]; changed = true; console.warn('[FENIX] Segmento ' + g.id + ': ' + nx + ' perdido, pasa a otro contacto'); }
+      });
+      while (Object.keys(g.holders).length < cfg.segCopies) {
+        var cand = el2.filter(function(nx) { return !g.holders[nx]; }).sort(function(a, b) { return load[a] - load[b]; })[0];
+        if (!cand) break;
+        g.holders[cand] = { at: now, ok: false };
+        load[cand]++; changed = true;
+      }
+    });
+    if (changed) await this._saveMsgs();
+    // 3. Entregas y pingeo de los que solo guardan segmentos (los del fragmento de la cuenta ya tienen pingeo)
+    var nodes = (this.state && this.state.nodes) || {};
+    for (var j = 0; j < el2.length; j++) {
+      var nx = el2[j], dev = this._readyDevice(nx);
+      if (!dev || !this.peers.has(nx) || (this.levels.get(nx) || 1) < 2) continue;
+      var pend = this._segsOf(nx).filter(function(g) { return !g.holders[nx].ok; });
+      if (pend.length) { await this._putSeg(nx, dev, pend[0]); continue; }
+      var hs = this._segsOf(nx);
+      if (hs.length && !nodes[nx] && now - Math.max.apply(null, hs.map(function(g) { return g.holders[nx].pingAt || 0; })) > cfg.pingMs) {
+        hs.forEach(function(g) { g.holders[nx].pingAt = now; });
+        var nonce = _hex(_rand(12));
+        this.pings.set(nonce, { nx: nx, idx: 0, at: now, segOnly: true });
+        this._ctl(dev, { type: 'fp', n: nonce, sg: hs.map(function(g) { return g.id; }) });
+      }
+    }
+  }
+
+  async _newSeg(part) {
+    var M = this.msgs, now = Date.now();
+    var id = 's' + now.toString(36) + _hex(_rand(3));
+    var plain = { v: 1, o: this.me(), id: id, ts: now, items: part };
+    var key = await _subtle().importKey('raw', _unhex(this.state.k), 'AES-GCM', false, ['encrypt']);
+    var iv = _rand(12);
+    var ct = new Uint8Array(await _subtle().encrypt({ name: 'AES-GCM', iv: iv, additionalData: _aad(this.me(), 'seg:' + id) }, key, _utf8(JSON.stringify(plain))));
+    var blob = new Uint8Array(12 + ct.length); blob.set(iv); blob.set(ct, 12);
+    var b64 = _b64(blob);
+    M.segs.push({ id: id, ts: now, n: part.length, blob: b64, bh: await _sha(b64), holders: {} });
+    var maxTs = Math.max.apply(null, part.map(function(x) { return x.m.timestamp || 0; }));
+    M.lastTs = Math.max(M.lastTs || 0, maxTs);
+    M.recent = part.filter(function(x) { return (x.m.timestamp || 0) > M.lastTs - 600000; }).map(function(x) { return x.m.msgId; }).concat(M.recent || []).slice(0, 500);
+    M.lastSegAt = now;
+    // Límite: los más antiguos salen (los nodos también tienen el suyo)
+    var total = M.segs.reduce(function(a, g) { return a + g.blob.length; }, 0);
+    while (total > this.cfg.msgsMax && M.segs.length > 1) total -= M.segs.shift().blob.length;
+    console.log('[FENIX] Segmento de mensajes ' + id + ': ' + part.length + ' mensaje(s), ' + Math.round(blob.length / 1024) + ' KB');
+  }
+
+  async _putSeg(nx, dev, g) {
+    var self = this;
+    if (self.inflight.has(nx) || !self.ble.ackSystem) return;
+    self.inflight.add(nx);
+    var payload = { v: 1, k: 'seg', o: self.me(), id: g.id, ts: g.ts, blob: g.blob, bh: g.bh };
+    try {
+      await self.ble.ackSystem.sendFile(dev, 'fxs_' + g.id + '_' + _hex(_rand(2)), _jsonB64(payload), { type: 'fenix', fx: 'put' });
+      if (g.holders[nx]) { g.holders[nx].ok = true; g.holders[nx].proofAt = Date.now(); }
+      console.log('[FENIX] Segmento ' + g.id + ' entregado a ' + nx);
+      await self._saveMsgs();
+    } catch (e) {
+      console.warn('[FENIX] Entrega del segmento a ' + nx + ' fallida: ' + (e && e.message));
+    } finally { self.inflight.delete(nx); }
+  }
+
+  // Respuesta del pingeo con prueba de segmentos
+  async _onSegProof(p, from, ping) {
+    var hs = this._segsOf(from);
+    if (!hs.length || !ping || ping.nx !== from) return;
+    var miss = Array.isArray(p.sm) ? p.sm.map(String) : [];
+    var have = hs.filter(function(g) { return miss.indexOf(g.id) < 0; });
+    var ok = typeof p.sp === 'string' && p.sp === await _sha(p.n + '|' + have.map(function(g) { return g.bh; }).join('|'));
+    var now = Date.now();
+    hs.forEach(function(g) {
+      var h = g.holders[from];
+      if (ok && miss.indexOf(g.id) < 0) h.proofAt = now;
+      else h.ok = false; // le falta (o no lo prueba): se le vuelve a entregar
+    });
+    if (typeof p.sp === 'string') console.log('[FENIX] Pingeo: ' + from + ' conserva ' + (ok ? hs.length - miss.length : 0) + ' de ' + hs.length + ' segmentos de mensajes');
+    await this._saveMsgs();
+  }
+
+  // ---------- fase 2: mensajes (nodo) ----------
+  async _onSeg(p, from) {
+    if (!p || _nid(p.o) !== from || !/^s[0-9a-z]{6,20}$/.test(String(p.id || '')) || typeof p.blob !== 'string' || p.blob.length > this.cfg.segBytes * 3) {
+      console.warn('[FENIX] Segmento de ' + from + ' rechazado (no válido)');
+      return;
+    }
+    var segs = this.store.segs;
+    if (!segs[from] && Object.keys(segs).length >= this.cfg.maxOwners) { console.warn('[FENIX] Límite de contactos guardados'); return; }
+    var mine = segs[from] = segs[from] || {};
+    mine[p.id] = { blob: p.blob, bh: await _sha(p.blob), ts: Number(p.ts) || Date.now() };
+    // Límite por contacto: fuera los más antiguos
+    var ids = Object.keys(mine).sort(function(a, b) { return mine[a].ts - mine[b].ts; });
+    var total = ids.reduce(function(a, id) { return a + mine[id].blob.length; }, 0);
+    while (total > this.cfg.nodeSegCap && ids.length > 1) { var old = ids.shift(); total -= mine[old].blob.length; delete mine[old]; }
+    console.log('[FENIX] Guardo el segmento ' + p.id + ' de ' + from + ' (mensajes cifrados; no puedo leerlos)');
+    await this._saveStore();
+  }
+
+  // El dueño (con la cuenta recuperada en otro teléfono) pide sus segmentos: se le envían cifrados para él
+  async _onSegsRequest(from, deviceId) {
+    var mine = this.store.segs[from];
+    if (!mine || !this.ble.ackSystem) return;
+    var ids = Object.keys(mine).sort(function(a, b) { return mine[a].ts - mine[b].ts; });
+    if (!ids.length) return;
+    // En lotes de ~300 KB (cada lote, un archivo cifrado para el dueño)
+    var batches = [], cur = [], size = 0, sent = 0;
+    ids.forEach(function(id) {
+      var g = mine[id];
+      if (cur.length && size + g.blob.length > 300000) { batches.push(cur); cur = []; size = 0; }
+      cur.push({ id: id, blob: g.blob, ts: g.ts }); size += g.blob.length;
+    });
+    if (cur.length) batches.push(cur);
+    for (var i = 0; i < batches.length; i++) {
+      try {
+        await this.ble.ackSystem.sendFile(deviceId, 'fxm_' + Date.now() + '_' + _hex(_rand(2)), _jsonB64({ v: 1, k: 'segs', o: from, list: batches[i] }), { type: 'fenix', fx: 'rec' });
+        sent += batches[i].length;
+      } catch (e) { console.warn('[FENIX] Envío de segmentos a ' + from + ' fallido: ' + (e && e.message)); return; }
+    }
+    console.log('[FENIX] ' + from + ' recuperó su cuenta: le devuelvo ' + sent + ' segmento(s) de mensajes');
+  }
+
+  // ---------- fase 2: el dueño recibe sus segmentos tras recuperar ----------
+  async _onSegsBack(p, from) {
+    if (!this.state || !this.state.k || _nid(p.o) !== this.me() || !Array.isArray(p.list)) return;
+    var key = await _subtle().importKey('raw', _unhex(this.state.k), 'AES-GCM', false, ['decrypt']);
+    if (!this.msgs) this.msgs = { v: 1, lastTs: 0, recent: [], segs: [], lastSegAt: Date.now() };
+    var M = this.msgs, byChat = {}, nSegs = 0;
+    for (var i = 0; i < p.list.length; i++) {
+      var it = p.list[i];
+      if (!it || typeof it.blob !== 'string' || !/^s[0-9a-z]{6,20}$/.test(String(it.id || ''))) continue;
+      var plain = null;
+      try {
+        var raw = _unb64(it.blob);
+        var pt = await _subtle().decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12), additionalData: _aad(this.me(), 'seg:' + it.id) }, key, raw.subarray(12));
+        plain = JSON.parse(new TextDecoder().decode(new Uint8Array(pt)));
+      } catch (e) { console.warn('[FENIX] Segmento ' + it.id + ' de ' + from + ' no se descifra: descartado'); continue; }
+      if (!plain || plain.id !== it.id || !Array.isArray(plain.items)) continue;
+      nSegs++;
+      plain.items.forEach(function(x) { if (x && _isNx(_nid(x.c)) && x.m && x.m.msgId) (byChat[_nid(x.c)] = byChat[_nid(x.c)] || []).push(x.m); });
+      // Se sigue cuidando: el que lo devolvió lo tiene
+      var g = M.segs.filter(function(s) { return s.id === it.id; })[0];
+      if (!g) { g = { id: it.id, ts: Number(it.ts) || Date.now(), n: plain.items.length, blob: it.blob, bh: await _sha(it.blob), holders: {} }; M.segs.push(g); }
+      g.holders[from] = { at: Date.now(), ok: true, proofAt: Date.now() };
+      M.lastTs = Math.max(M.lastTs || 0, Math.max.apply(null, plain.items.map(function(x) { return (x.m && x.m.timestamp) || 0; })));
+    }
+    M.segs.sort(function(a, b) { return a.ts - b.ts; });
+    var added = 0;
+    var chats = Object.keys(byChat);
+    for (var c = 0; c < chats.length; c++) {
+      var cur = await window.vaultLoadMessages(chats[c]), have = {};
+      cur.forEach(function(m) { have[m.msgId] = true; });
+      var add = byChat[chats[c]].filter(function(m) { if (have[m.msgId]) return false; have[m.msgId] = true; return true; });
+      if (!add.length) continue;
+      add.forEach(function(m) { m.messageId = m.msgId; m.text = m.content; m.fenix = 1; });
+      var merged = cur.concat(add).sort(function(a, b) { return (a.timestamp || 0) - (b.timestamp || 0); });
+      await window.vaultSaveMessages(chats[c], merged);
+      added += add.length;
+    }
+    await this._saveMsgs();
+    console.log('[FENIX] ' + from + ' me devolvió ' + nSegs + ' segmento(s): ' + added + ' mensaje(s) recuperados');
+    if (added) try { window.dispatchEvent(new CustomEvent('nexo:fenix:messages', { detail: { added: added, chats: chats.length } })); } catch (e) {}
   }
 
   // ---------- recuperación: lado del contacto ----------

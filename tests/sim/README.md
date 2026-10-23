@@ -138,6 +138,8 @@ contactos; al llegar al mínimo reparte solo sus fragmentos (nadie los puede lee
 pingeo; E desaparece → perdido → su fragmento pasa a F; E vuelve → lo borra. Luego A pierde el teléfono: N
 pide recuperar, 3 contactos confirman en su pantalla, N vuelve con NEXO ID, identidad y contactos de A y sigue
 hablando cifrado con B (sesiones nuevas, sin aviso de clave). `--mirror`: 2 copias de cada fragmento.
+Fase 2: antes de perder el teléfono A escribe a C y D; sus mensajes van en segmentos (cada uno en 2 contactos, sin
+texto legible en sus archivos), pingeo de segmentos, y tras recuperar N recibe el historial (`historial_recuperado`).
 
 `chatactions.js` (A, B, C): menú al mantener pulsada una burbuja (clic derecho en jsdom): responder (desde el
 menú y deslizando la burbuja), la cita se ve en los dos y al reabrir; copiar; reenviar texto y archivo a C

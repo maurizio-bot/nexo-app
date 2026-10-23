@@ -33,7 +33,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Datos móviles / internet** (contactos lejos): requiere servidor de relevo (`server/` sin usar). Decisión pendiente.
 - **iPhone**: plugin en Swift, cuenta Apple Developer (99 USD/año), Mac o runners macOS, iPhones para probar.
 - **Núcleos** (universidad, papelería, cafetería…) y **caso papelería** (PDF → imprimir → pagar).
-- **Fénix fase 2**: respaldo de mensajes y archivos; pingeo por Jump.
+- **Fénix**: hecho en la ronda 2732 el respaldo de los mensajes de texto (fase 2). Falta: fotos, vídeos y archivos
+  (mejor por Wi-Fi); pingeo por Jump (hoy solo con el contacto conectado).
 
 ## 3. Mejoras de lo que ya existe
 - **Velocidad**: archivos en binario (sin base64, −33 %); L2CAP; Wi-Fi Direct más rápido; detectar y renegociar MTU

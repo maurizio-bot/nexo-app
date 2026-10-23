@@ -1,4 +1,4 @@
-# Protocolo Fénix — fase 1: la cuenta
+# Protocolo Fénix — fase 1: la cuenta; fase 2: los mensajes
 
 Definición del dueño: `docs/NEXO_CONTEXTO.md`, sección 7. Decisiones del 22-10-2026:
 
@@ -40,11 +40,31 @@ Definición del dueño: `docs/NEXO_CONTEXTO.md`, sección 7. Decisiones del 22-1
 - Pingeo y entrega solo con el contacto conectado directamente (no por Jump todavía).
 - Recuperación en persona (los contactos cerca del teléfono nuevo).
 - 6 contactos de acuerdo pueden recuperar la cuenta sin el dueño (es el precio de no tener servidor ni frase).
-- Mensajes y archivos: fase siguiente.
+- Mensajes y archivos: fase siguiente (los mensajes de texto, hechos en la fase 2; ver abajo).
+
+## Fase 2: los mensajes (ronda 2732)
+- **Qué**: los mensajes de texto de todos los chats (texto, hora, quién, estado, respuestas; de fotos y archivos solo
+  tipo y nombre, no el contenido).
+- **Cómo**: cada 10 min el teléfono junta los mensajes nuevos; con 20 o más, o con alguno de hace más de un día, hace
+  un **segmento** (≤ 48 KB) cifrado con la misma clave maestra K (AES-256-GCM, datos adicionales: dueño + id del
+  segmento). Cada segmento va a **2 contactos distintos** con Fénix 2 (kx `fx:2`): la "dualidad de piezas" del dueño,
+  desde el primer segmento (no hace falta llegar a 20 contactos: un segmento solo no sirve de nada sin K).
+- **Pingeo**: el diario pide también prueba de los segmentos (`fp` con `sg` → `fo` con `sp` = SHA-256 del número al
+  azar + las huellas de los segmentos; `sm` = los que le faltan). Si falta, se le reenvía; si el contacto se pierde
+  (`lostMs` sin prueba, o deja de ser contacto válido), el segmento pasa a otro.
+- **Recuperar**: tras recuperar la cuenta (fase 1), durante 7 días el teléfono pide a cada contacto con Fénix 2 que se
+  conecta sus segmentos (`fq` con `m:1`; las builds anteriores lo ignoran). El contacto se los devuelve en un archivo
+  cifrado de extremo a extremo para el dueño; el teléfono los descifra con K y los añade a cada chat (sin repetir).
+  Aviso "🔥 Fénix: N mensaje(s) recuperados".
+- **Límites**: 2 MB de segmentos por dueño (los más antiguos salen) en el dueño y en cada contacto; 50 dueños por
+  contacto. Lo que cambia después de respaldarse (leído, borrado para todos) no se actualiza en el respaldo.
+  Fotos, vídeos y archivos: siguiente fase (pesan mucho para Bluetooth; mejor por Wi-Fi).
+- Pruebas: `tests/sim/fenix.js` (y `--mirror`): segmentos en 2 contactos, nadie los lee, pingeo de segmentos,
+  historial recuperado 6 de 6 tras recuperar la cuenta en un teléfono nuevo.
 
 ## Archivos
-- `src/fenix/fenix.js` (nuevo, en la APK): todo lo anterior. Estado del dueño en `nexo_fenix.json`; lo que se
-  guarda de otros en `nexo_fenix_store.json`.
+- `src/fenix/fenix.js` (en la APK): todo lo anterior. Estado del dueño en `nexo_fenix.json` y sus segmentos de
+  mensajes en `nexo_fenix_msgs.json`; lo que se guarda de otros en `nexo_fenix_store.json` (`owners` y `segs`).
 - Paquetes de control: `fp`, `fo`, `fq`, `fd`. Entregas (`put`) y respuestas de recuperación (`rec`) van como
   archivo con `meta.type = 'fenix'` (flujo fiable de siempre; no se muestran en el chat).
 - Pruebas: `tests/sim/fenix.js`.

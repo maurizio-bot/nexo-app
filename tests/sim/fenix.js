@@ -3,6 +3,8 @@
 // fragmento pasa a F; E vuelve → borra el suyo. Después A "pierde el teléfono": un teléfono nuevo N pide
 // recuperar, 3 contactos confirman en pantalla, N vuelve con el NEXO ID, identidad y contactos de A y
 // sigue hablando cifrado con ellos.
+// Fase 2: A escribe a C y D; sus mensajes van en segmentos cifrados (cada uno en 2 contactos, que no pueden leerlos);
+// pingeo de los segmentos; tras recuperar, los contactos se los devuelven y vuelve el historial.
 // Uso: node fenix.js <dir_build> [--io-delay=25] [--mirror]  (--mirror: 2 copias de cada fragmento)
 'use strict';
 const fs = require('fs');
@@ -14,8 +16,9 @@ const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
 const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 0), asymmetric: true };
 const mirror = !!arg('mirror', false);
-const FX = mirror ? { n: 2, t: 2, min: 2, mirror: 4, pingMs: 15000, lostMs: 600000, tickMs: 3000, rebuildMs: 3000 }
-  : { n: 4, t: 3, min: 4, mirror: 8, pingMs: 15000, lostMs: 60000, tickMs: 3000, rebuildMs: 3000 };
+const SEG = { segMin: 3, segMaxMs: 20000 }; // fase 2: segmentos de mensajes pronto
+const FX = mirror ? Object.assign({ n: 2, t: 2, min: 2, mirror: 4, pingMs: 15000, lostMs: 600000, tickMs: 3000, rebuildMs: 3000 }, SEG)
+  : Object.assign({ n: 4, t: 3, min: 4, mirror: 8, pingMs: 15000, lostMs: 60000, tickMs: 3000, rebuildMs: 3000 }, SEG);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
   constructor(dir) { super(); this.dir = dir; }
@@ -110,6 +113,21 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
     r.E_borra_al_volver_s = idxE ? await waitFor(() => idxOf('E') === null, 120000) : null;
   }
 
+  // Fase 2: A escribe a C y D; sus mensajes van en segmentos cifrados, cada uno en 2 contactos
+  const hist = [];
+  for (const x of ['C', 'D']) {
+    await openChatWith(P.A, x);
+    for (let i = 1; i <= 3; i++) { const t = 'SECRETO-hist-' + x + '-' + i; hist.push([x, t]); await sendText(P.A, t); await sleep(700); }
+    await sleep(2000); await closeChat(P.A);
+  }
+  const segsOk = () => { const m = json(nat.A, 'nexo_fenix_msgs.json'); return !!(m && m.segs && m.segs.length && m.segs.every((g) => Object.values(g.holders || {}).filter((h) => h.ok).length >= 2)); };
+  const histInSegs = async () => { const m = json(nat.A, 'nexo_fenix_msgs.json'); return m && m.segs.reduce((a, g) => a + g.n, 0) >= contacts.length + hist.length; };
+  r.segmentos_en_2_contactos_s = await waitFor(async () => segsOk() && await histInSegs(), 120000);
+  const mA = json(nat.A, 'nexo_fenix_msgs.json') || { segs: [] };
+  r.segmentos = mA.segs.map((g) => g.n + 'msg→' + Object.keys(g.holders).map((h) => contacts.find((x) => id(x).toLowerCase() === h) || h).join('')).join(' ');
+  r.segmentos_legibles_en_nodos = contacts.some((x) => /SECRETO-hist/.test(nat[x].files.get('nexo_fenix_store.json') || ''));
+  r.pingeo_segmentos_s = await waitFor(() => logs.some((l) => /\[A\].*Pingeo: .* conserva \d+ de \d+ segmentos/.test(l)), 60000);
+
   // A pierde el teléfono; N (nuevo) pide recuperar
   const pubA = (json(nat.A, 'nexo_e2e_identity.json') || {}).pub;
   P.A.win.close(); nat.A.destroyActivity();
@@ -140,6 +158,10 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.N_es_A = N.win.bleInterface.localNexoId.toLowerCase() === idA;
   r.misma_identidad = (json(nN, 'nexo_e2e_identity.json') || {}).pub === pubA;
   r.contactos_recuperados = N.win.vaultLoadContacts().map((c) => c.name).sort().join('');
+  // Fase 2: los contactos le devuelven los segmentos y vuelve el historial
+  const histBack = async () => { let n = 0; for (const [x, t] of hist) if ((await N.win.vaultLoadMessages(id(x))).some((m) => m.content === t)) n++; return n; };
+  r.historial_recuperado_s = await waitFor(async () => (await histBack()) === hist.length, 120000);
+  r.historial_recuperado = (await histBack()) + ' de ' + hist.length;
   // Sigue hablando cifrado con un contacto (sesiones nuevas del protocolo 2) sin aviso de clave cambiada
   const B = P.B;
   await openChatWith(N, 'B'); await sendText(N, 'SECRETO-he vuelto');

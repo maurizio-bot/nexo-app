@@ -1,5 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.49-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.50-NEXO
+ * v9.9.50: Fénix fase 2: el estado dice cuántos mensajes están protegidos; aviso al recuperarlos.
  * v9.9.49: número de seguridad también por QR (src/ui/qr_verify.js): "Mostrar mi QR" / "Escanear su QR" en el
  *   aviso de cifrado del chat; si coincide queda verificado, si no avisa de posible impostor. El aviso dice si la
  *   sesión es poscuántica (e2e_ratchet v1.1). Las tarjetas de contacto llevan ss (remitente sellado).
@@ -258,6 +259,8 @@ function _renderFenixStatus() {
   if (fx.recovery) txt = _fenixRecoveryText || 'Buscando contactos cerca…';
   else if (!st.active) txt = 'Tu cuenta se protegerá sola cuando tengas ' + st.min + ' contactos con NEXO actualizado (tienes ' + st.eligible + ').';
   else txt = '🔥 Cuenta protegida: ' + st.delivered + ' de ' + (st.n * st.copies) + ' fragmentos entregados (' + st.copies + (st.copies > 1 ? ' copias' : ' copia') + '). Se recupera con ' + st.t + ' contactos.' + (st.lost ? ' ' + st.lost + ' contacto(s) perdidos: sus fragmentos pasan a otros.' : '');
+  // v9.9.50: Fénix fase 2 (mensajes de texto en segmentos, 2 copias)
+  if (st.active && st.segs) txt += '\n💬 Mensajes protegidos: ' + st.msgs + ' (' + st.segsSafe + ' de ' + st.segs + ' segmentos ya en 2 contactos).';
   if (st.guarding) txt += '\nGuardas fragmentos de ' + st.guarding + ' contacto(s) (no puedes leerlos).';
   el.textContent = txt;
   if (btn) btn.textContent = fx.recovery ? 'Cancelar la recuperación' : 'Recuperar mi cuenta (teléfono nuevo)';
@@ -265,6 +268,12 @@ function _renderFenixStatus() {
 window.addEventListener('nexo:fenix:recovery', function(e) {
   var d = (e && e.detail) || {};
   _fenixRecoveryText = d.state === 'cancelled' ? '' : 'Recuperando: ' + d.got + ' de ' + d.need + ' fragmentos (preguntados ' + d.asked + ' teléfonos cerca). Tus contactos deben confirmar en su pantalla.';
+  _renderFenixStatus();
+});
+window.addEventListener('nexo:fenix:messages', function(e) {
+  var d = (e && e.detail) || {};
+  _showInfoToast('🔥 Fénix: ' + (d.added || 0) + ' mensaje(s) recuperados', 3500);
+  if (window.bleInterface && typeof window.bleInterface.renderContactsList === 'function') window.bleInterface.renderContactsList();
   _renderFenixStatus();
 });
 window.addEventListener('nexo:fenix:restored', function(e) {
