@@ -1,5 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.50-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.51-NEXO
+ * v9.9.51: internet por relés públicos (src/net/net_link.js): la cabecera del chat dice "En línea · Internet".
  * v9.9.50: Fénix fase 2: el estado dice cuántos mensajes están protegidos; aviso al recuperarlos.
  * v9.9.49: número de seguridad también por QR (src/ui/qr_verify.js): "Mostrar mi QR" / "Escanear su QR" en el
  *   aviso de cifrado del chat; si coincide queda verificado, si no avisa de posible impostor. El aviso dice si la
@@ -135,7 +136,7 @@ var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_O
 function _extOf(name) { var m = /\.([A-Za-z0-9]{1,6})$/.exec(String(name || '')); return m ? '*.' + m[1].toLowerCase() : '(sin extensión)'; }
 var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
-var DIAG_KEY_RE = /\[VIDEO\]|\[SEND\]|\[WIFI\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
+var DIAG_KEY_RE = /\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
   function fmt(a) {
     if (typeof a === 'string') return a;
@@ -205,6 +206,10 @@ function _openProfileSheet() {
     '<div id="nexo-fenix-status" style="font-size:12px;opacity:0.8;margin-bottom:8px;white-space:pre-line;"></div>' +
     '<button id="nexo-fenix-recover" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;margin-bottom:12px;">Recuperar mi cuenta (teléfono nuevo)</button>' +
     securitySectionHtml() +
+    // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
+    '<div style="font-size:16px;font-weight:600;margin:8px 0;">Internet</div>' +
+    '<div id="nexo-net-status" style="font-size:12px;opacity:0.8;margin-bottom:8px;white-space:pre-line;"></div>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:12px;"><input type="checkbox" id="nexo-net-tor"> Usar Tor con Wi-Fi (oculta tu IP; más lento)</label>' +
     '<div style="font-size:16px;font-weight:600;margin:8px 0;">Diagnóstico</div>' +
     '<div style="font-size:12px;opacity:0.7;margin-bottom:8px;">Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.</div>' +
     '<button id="nexo-diag-copy" style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:600;margin-bottom:8px;">Copiar diagnóstico</button>' +
@@ -217,6 +222,12 @@ function _openProfileSheet() {
   sheet.querySelector('#nexo-profile-close').onclick = function() { sheet.remove(); };
   _renderFenixStatus();
   renderSecuritySection();
+  _renderNetStatus();
+  var torBox = sheet.querySelector('#nexo-net-tor');
+  if (torBox) {
+    torBox.checked = !!(bi.net && bi.net.torWanted());
+    torBox.onchange = function() { if (bi.net) { bi.net.setTor(torBox.checked); setTimeout(_renderNetStatus, 300); } };
+  }
   sheet.querySelector('#nexo-fenix-recover').onclick = function() {
     var fx = bi.fenix;
     if (!fx) return;
@@ -241,7 +252,7 @@ function _refreshLinkSubtitle() {
   var bi = window.bleInterface, cid = _getCurrentContactId();
   if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) return;
   var via = bi.linkOf(cid);
-  sub.textContent = via === 'wifi' ? 'En línea · Wi-Fi' : via === 'bluetooth' ? 'En línea · Bluetooth' : via === 'jump' ? 'Por Jump' : '';
+  sub.textContent = via === 'wifi' ? 'En línea · Wi-Fi' : via === 'internet' ? 'En línea · Internet' : via === 'bluetooth' ? 'En línea · Bluetooth' : via === 'jump' ? 'Por Jump' : '';
 }
 ['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {
   window.addEventListener(ev, function() { setTimeout(_refreshLinkSubtitle, 50); });
@@ -249,6 +260,18 @@ function _refreshLinkSubtitle() {
 
 // ===================== v9.9.44: Protocolo Fénix (src/fenix/fenix.js, docs/FENIX.md) =====================
 var _fenixRecoveryText = '';
+function _renderNetStatus() {
+  var el = document.getElementById('nexo-net-status');
+  var net = window.bleInterface && window.bleInterface.net;
+  if (!el || !net) return;
+  var open = net._openCount ? net._openCount() : 0, total = net.relayUrls ? net.relayUrls().length : 0;
+  var on = 0, tor = 0;
+  net.peers.forEach(function(p) { if (p.up) on++; if (p.torOk) tor++; });
+  var t = net.tor || {};
+  el.textContent = 'Relés públicos: ' + open + ' de ' + total + ' conectados' + (open ? '' : ' (sin internet o sin contactos con NEXO actualizado)') +
+    '\nContactos en línea por internet: ' + on +
+    '\nTor: ' + (!net.torWanted() ? 'apagado' : t.ready ? 'listo' + (tor ? ' · ' + tor + ' contacto(s) directo por Tor' : '') : t.starting ? 'arrancando…' : (net.wifi ? (t.error ? 'no disponible (' + t.error + ')' : 'en espera') : 'solo con Wi-Fi'));
+}
 function _renderFenixStatus() {
   var el = document.getElementById('nexo-fenix-status');
   var btn = document.getElementById('nexo-fenix-recover');
@@ -1099,6 +1122,7 @@ function _handleShareContacts() {
           var b2 = c.publicKey && !c.pendingKey ? ratchetPeerBundle(id) : null;
           if (b2 && b2.ik === c.publicKey) chosen[id].b2 = b2;
           if (c.ss && c.publicKey && !c.pendingKey) chosen[id].ss = 1; // v9.9.49: entiende el remitente sellado
+          if (c.nt && c.publicKey && !c.pendingKey) chosen[id].nt = 1; // v9.9.51: e internet por relés
         } else delete chosen[id];
         refreshBtn();
       };

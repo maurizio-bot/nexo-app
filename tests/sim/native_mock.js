@@ -100,6 +100,8 @@ class NativePhone {
       this.clients.delete(norm(p.address)); this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress));
     });
     this.pendingQueue.clear(); this.buffers.clear(); this.writeQ = new Map();
+    // Kotlin handleOnDestroy: torStopAll (se cierra el servicio oculto)
+    if (this.tor) { const me = this.tor.nx; this.tor.conns.forEach((p) => { if (p.tor) { p.tor.conns.delete(me); p.emit('onTorDown', { nx: me }); } }); this.tor = null; }
   }
 
   // Lectura/escritura de archivo: el Kotlin la hace en el hilo del plugin (en orden de llamada) y la
@@ -615,6 +617,51 @@ class NativePhone {
       }),
       lanDrop: wrap('lanDrop', (c, a) => { self._lanClose(String(a.nx || '').toLowerCase(), false); c.resolve({ dropped: true }); }),
       lanStop: wrap('lanStop', (c) => { if (self.lanConns) Array.from(self.lanConns.keys()).forEach((nx) => self._lanClose(nx, false)); self.lan = null; c.resolve({ stopped: true }); }),
+      // Tor (Kotlin: TorService + servicio oculto + LanHub por SOCKS). Modelo: torStart tarda opts.torBootMs y da una
+      // dirección .onion; torConnect a la .onion de otro teléfono con Tor lo conecta (onTorUp en los dos, con el NEXO ID
+      // que cada uno dice tener: un impostor puede decir otro); torSend llega en orden con latencia (opts.torLatency,
+      // por defecto 300 ms) y ~opts.torBps (50 KB/s). opts.noTor: Tor no arranca.
+      torStatus: wrap('torStatus', (c) => c.resolve({ supported: true, running: !!self.tor, onion: self.tor ? self.tor.onion : '', port: 9878, peers: [] })),
+      torStart: wrap('torStart', (c, a) => {
+        c.resolve({ starting: true });
+        self.stats.torStarts = (self.stats.torStarts || 0) + 1;
+        setTimeout(() => {
+          if (self.opts.noTor) { self.emit('onTorReady', { error: 'Tor no terminó de arrancar' }); return; }
+          const base = 'abcdefghijklmnopqrstuvwxyz234567';
+          let onion = ''; for (let i = 0; i < 56; i++) onion += base[(self.name.charCodeAt(0) * 7 + i * 13 + self.name.length) % 32];
+          self.tor = { onion: onion + '.onion', nx: String(a.nexoId || '').toLowerCase(), conns: new Map() };
+          self.emit('onTorReady', { onion: self.tor.onion, port: 9878 });
+        }, self.opts.torBootMs || 1500);
+      }),
+      torConnect: wrap('torConnect', (c, a) => {
+        if (!self.tor) return c.reject('Tor no listo', 'TOR_DOWN');
+        c.resolve({ connecting: true });
+        setTimeout(() => {
+          const t = self.radio.phones.find((p) => p.tor && p.tor.onion === a.host && !p.offline);
+          if (!t || !self.tor || t === self) return;
+          self.tor.conns.set(t.tor.nx, t); t.tor.conns.set(self.tor.nx, self);
+          self.emit('onTorUp', { nx: t.tor.nx }); t.emit('onTorUp', { nx: self.tor.nx });
+        }, self.opts.torLatency || 300);
+      }),
+      torSend: wrap('torSend', (c, a) => {
+        const peer = self.tor && self.tor.conns.get(String(a.nx || '').toLowerCase());
+        if (!peer || peer.offline || !peer.tor) return c.reject('Sin conexión Tor con ' + a.nx, 'TOR_DOWN');
+        const content = String(a.content || ''), from = self.tor.nx;
+        self.stats.torOut = (self.stats.torOut || 0) + 1;
+        // Una conexión TCP: los paquetes van seguidos (la latencia no se suma por paquete); llegan en orden
+        const now = Date.now(), lat = self.opts.torLatency || 300, xfer = content.length / ((self.opts.torBps || 50000) / 1000);
+        self._torFree = Math.max(self._torFree || 0, now) + xfer;
+        const at = Math.max(self._torFree + lat, self._torLast || 0);
+        self._torLast = at;
+        setTimeout(() => { if (peer.tor && peer.tor.conns.get(from) === self) peer.emit('onTorMessage', { nx: from, content }); }, at - now);
+        c.resolve({ sent: true });
+      }),
+      torDrop: wrap('torDrop', (c, a) => {
+        const nx = String(a.nx || '').toLowerCase(), peer = self.tor && self.tor.conns.get(nx);
+        if (peer) { self.tor.conns.delete(nx); self.emit('onTorDown', { nx }); if (peer.tor) { peer.tor.conns.delete(self.tor.nx); peer.emit('onTorDown', { nx: self.tor.nx }); } }
+        c.resolve({ dropped: true });
+      }),
+      torStop: wrap('torStop', (c) => { if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
       setSecureScreen: wrap('setSecureScreen', (c, a) => { self.secureScreen = a.on === true; c.resolve({ on: self.secureScreen }); }),
       startListeningMessages: wrap('startListeningMessages', (c) => c.resolve({ listening: true })),
     };

@@ -4,6 +4,7 @@ import { ratchetInit, ratchetMyBundle, ratchetNotePeerBundle, ratchetForget, rat
 import { createRelay } from './ble_relay.js';
 import { createWifiDirect } from './wifi_direct.js';
 import { createLan } from './lan.js';
+import { createNet } from '../net/net_link.js';
 import { createFenix } from '../fenix/fenix.js';
 /**
  * BLE Interface v6.12.0-NEXO
@@ -169,6 +170,15 @@ function _getOrCreateNexoId() {
 // mensaje (p. ej. un objeto de dentro que la recomposición nativa sacó suelto tras perderse un trozo)
 // v6.10.0: enlace Wi-Fi con un contacto = dispositivo "lan:<NEXO ID>" (normalizado: "lannx…")
 function _lanId(nx) { return 'lan:' + _normId(nx); }
+// v6.13.0: enlace por internet (relés públicos, net_link.js) = dispositivo "net:<NEXO ID>" (normalizado: "netnx…")
+function _netId(nx) { return 'net:' + _normId(nx); }
+function _netNx(deviceId) {
+  var d = (deviceId || '').toString().toLowerCase();
+  if (d.indexOf('net:') === 0) return d.substring(4);
+  return /^netnx[0-9a-z]{8}$/.test(d) ? d.substring(3) : null;
+}
+// NEXO ID de un enlace que no es Bluetooth (Wi-Fi o internet)
+function _vNx(deviceId) { return _lanNx(deviceId) || _netNx(deviceId); }
 function _lanNx(deviceId) {
   var d = (deviceId || '').toString().toLowerCase();
   if (d.indexOf('lan:') === 0) return d.substring(4);
@@ -570,6 +580,7 @@ export class BLEInterface {
     this.relay = createRelay(this);
     this.wifiDirect = createWifiDirect(this);
     this.lan = createLan(this);
+    this.net = createNet(this);
     this.fenix = createFenix(this);
     this._localSeqCounter = 0;
     this._seqCounterLoaded = false;
@@ -726,6 +737,7 @@ export class BLEInterface {
     if (self.relay) self.relay.start();
     if (self.fenix) self.fenix.init();
     if (self.lan) self.lan.init();
+    if (self.net) self.net.init();
     if (self.wifiDirect) self.wifiDirect.init().then(function(st) {
       // Los ya conectados aún no sabían que tenemos Wi-Fi Direct: repetir el kx con wd:1
       if (st && st.supported) self._deviceStates.forEach(function(v, k) {
@@ -871,6 +883,8 @@ export class BLEInterface {
 
     // v6.10.0: misma red Wi-Fi (enlace comprobado): por ahí, es lo más rápido
     if (this.lan && this.lan.canReach(nx)) return _lanId(nx);
+    // v6.13.0 (regla del dueño): los dos en Wi-Fi, aunque sean módems distintos → por internet antes que Bluetooth
+    if (this.net && this.net.canReach(nx) && this.net.bothWifi(nx)) return _netId(nx);
 
     // 0. v6.1.6: preferir un enlace YA LISTO con ese NEXO ID. Android usa direcciones distintas para
     // anunciarse y para conectarse como cliente: el otro puede estar conectado por una dirección
@@ -878,10 +892,12 @@ export class BLEInterface {
     var self = this;
     var ready = null;
     this._deviceStates.forEach(function(st, key) {
-      if (ready || /^lannx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
+      if (ready || /^(lan|net)nx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
       if (_normId(self._macToNexoId.get(key)) === nx) ready = key;
     });
     if (ready) return ready;
+    // Internet con datos móviles en alguno: después del Bluetooth listo (antes que una dirección sin conectar)
+    if (this.net && this.net.canReach(nx)) return _netId(nx);
 
     // 1. Mapeo vivo
     var mappedMac = this._nexoIdToMac.get(nx);
@@ -966,7 +982,7 @@ export class BLEInterface {
     if (!nx || !deviceId) return;
     var nd = _normMac(deviceId);
     if (!this._macToNexoId.get(nd)) this._macToNexoId.set(nd, nx);
-    if (!this._nexoIdToMac.get(nx) && !_lanNx(deviceId)) this._nexoIdToMac.set(nx, nd);
+    if (!this._nexoIdToMac.get(nx) && !_vNx(deviceId)) this._nexoIdToMac.set(nx, nd);
     if (!this._lastKick) this._lastKick = new Map();
     var now = Date.now();
     if (now - (this._lastKick.get(nx) || 0) < 4000) return;
@@ -1090,7 +1106,8 @@ export class BLEInterface {
     self._deviceStates.delete(nd);
     var next = self._resolveDeviceIdForNexoId(nx);
     var st = next ? self._getDeviceState(next) : {};
-    var direct = !!next && !_lanNx(next) && (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY);
+    var direct = !!next && !_vNx(next) && (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY);
+    if (!direct && next && _netNx(next) && this.net && this.net.canReach(nx)) direct = true; // sigue por internet
     // Textos esperando confirmación y envíos por trozos siguen por Bluetooth donde iban (ble_ack.relink)
     if (self.ackSystem && typeof self.ackSystem.relink === 'function') self.ackSystem.relink(_lanId(nx), direct ? next : null);
     if (!direct) self._markPeerLost(nx);
@@ -1101,7 +1118,7 @@ export class BLEInterface {
   _bleReadyFor(nexoId) {
     var self = this, nx = _normId(nexoId), found = null;
     this._deviceStates.forEach(function(st, key) {
-      if (found || /^lannx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
+      if (found || /^(lan|net)nx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
       if (_normId(self._macToNexoId.get(key)) === nx) found = key;
     });
     return found;
@@ -1125,11 +1142,67 @@ export class BLEInterface {
       .then(function(d) { if (d) self._handlePayload(d); })
       .catch(function(e) { console.warn('[BLEInterface] Error procesando paquete (Wi-Fi):', e && e.message); });
   }
+  // ===== v6.13.0: internet por relés públicos (net_link.js) =====
+  _netUp(nexoId) {
+    var nx = _normId(nexoId), id = _netId(nx), nd = _normMac(id);
+    this._deviceStates.set(nd, { state: BLE_STATES.READY_TO_CHAT, since: Date.now(), net: true });
+    this._macToNexoId.set(nd, nx);
+    this._lostPeers.delete(nx);
+    if (this.relay) this.relay.onLinkChange();
+    this._processPendingMessages(id);
+    this._resendPendingMessages(nx);
+    _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: this.linkOf(nx) });
+  }
+  _netDown(nexoId) {
+    var self = this, nx = _normId(nexoId), nd = _normMac(_netId(nx));
+    self._deviceStates.delete(nd);
+    var next = self._resolveDeviceIdForNexoId(nx);
+    var st = next ? self._getDeviceState(next) : {};
+    var direct = !!next && !_vNx(next) && (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY);
+    if (self.ackSystem && typeof self.ackSystem.relink === 'function') self.ackSystem.relink(_netId(nx), direct ? next : null);
+    if (!direct) self._markPeerLost(nx);
+    if (self.relay) self.relay.onLinkChange();
+    _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: self.linkOf(nx) });
+  }
+  _onNetPayload(nexoId, content) {
+    var self = this;
+    var data = { deviceId: _netId(nexoId), content: content, data: content, source: 'net', timestamp: Date.now(), reassembled: true };
+    self._payloadChain = (self._payloadChain || Promise.resolve())
+      .then(function() { return self._prePayload(data); })
+      .then(function(d) { if (d) self._handlePayload(d); })
+      .catch(function(e) { console.warn('[BLEInterface] Error procesando paquete (internet):', e && e.message); });
+  }
+  // El contacto entiende internet por relés (kx nt:1)
+  // (si aún no es contacto, p. ej. su primer mensaje crea el contacto justo después, se recuerda y se aplica luego)
+  _noteNetPeer(nexoId) {
+    var nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c) { this._ntKnown = this._ntKnown || new Set(); this._ntKnown.add(nx); return; }
+    if (!c.nt) { c.nt = 1; _saveBLEContacts(contacts); if (this.net) this.net.tick(); }
+  }
+  // Contactos creados después de saber que tienen internet (ver _noteNetPeer)
+  _applyNtKnown() {
+    if (!this._ntKnown || !this._ntKnown.size) return;
+    var self = this, contacts = _getBLEContacts(), changed = false;
+    contacts.forEach(function(c) { var nx = _normId(c.nexoId || c.deviceUUID); if (self._ntKnown.has(nx) && !c.nt) { c.nt = 1; changed = true; self._ntKnown.delete(nx); } });
+    if (changed) _saveBLEContacts(contacts);
+  }
+  // Texto al buzón de internet (el contacto no está en línea por ningún camino): ✓ al guardarlo un relé, ✓✓ cuando
+  // lo recoja y confirme
+  _sendViaNetMailbox(nexoId, content, msgId, seq) {
+    var nx = _normId(nexoId);
+    if (!this.net || !this.net.mailboxOk(nx) || !this.ackSystem) return Promise.reject(Object.assign(new Error('Sin internet'), { code: 'PEER_ABSENT' }));
+    console.log('[NET] ' + msgId + ' al buzón de internet de ' + nx);
+    return this.ackSystem.sendWithRetry(_netId(nx), content, msgId, seq);
+  }
+
   // Por dónde va ahora un contacto (para la interfaz y el diagnóstico)
   linkOf(nexoId) {
     var nx = _normId(nexoId);
     if (this.lan && this.lan.canReach(nx)) return 'wifi';
     var dev = this._resolveDeviceIdForNexoId(nx);
+    if (_netNx(dev)) return 'internet';
     var st = dev ? this._getDeviceState(dev).state : null;
     if (st === BLE_STATES.READY_TO_CHAT || st === BLE_STATES.NOTIFICATIONS_READY) return 'bluetooth';
     if (this.relay && this.relay.relayHop(nx)) return 'jump';
@@ -1521,6 +1594,7 @@ export class BLEInterface {
         if (p.from && p.pk && !self._contactKey(p.from)) self._noteSenderKey(p.from, p.pk);
         if (p.from && p.b2) self._notePeerBundle(p.from, p.b2);
         if (p.ss && p.from) self._noteSealPeer(p.from);
+        if (p.nt && p.from) self._noteNetPeer(p.from);
         if (p.from) self._pqHave.set(_normId(p.from), Number(p.ph) || 0);
         if (p.rq) self._sendKxRouted(p.from, false);
         return Promise.resolve(null);
@@ -1533,6 +1607,7 @@ export class BLEInterface {
       if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs);
       if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId, Number(p.fx) || 1);
       if (p.ss && p.from) self._noteSealPeer(p.from);
+      if (p.nt && p.from) self._noteNetPeer(p.from);
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._pqHave.set(_normId(p.from), Number(p.ph) || 0);
       // v6.11.1: ¿este vecino reenvía sobres 'sx' bien? (las builds anteriores los envolvían como texto suyo)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) { if (p.ss) self._sxHops.add(_normId(p.from)); else self._sxHops.delete(_normId(p.from)); }
@@ -1549,6 +1624,7 @@ export class BLEInterface {
         var v = self._checkSender(sender, r.senderKey, r.proto);
         if (v === 'drop') return null;
         if (p.ss && v === 'ok') self._noteSealPeer(sender); // v6.11.1: lo dice dentro de un mensaje que descifra bien
+        if (p.nt && v === 'ok') self._noteNetPeer(sender);  // v6.13.0: idem, internet por relés
         p.payload.text = r.text;
         p.payload.e2e = true;
         var out = Object.assign({}, data);
@@ -1577,7 +1653,7 @@ export class BLEInterface {
     if (!force && now - ((self._kxSentAt && self._kxSentAt[key]) || 0) < 15000) return;
     self._kxSentAt = self._kxSentAt || {};
     self._kxSentAt[key] = now;
-    var peerNx = _normId(self._macToNexoId.get(_normMac(deviceId)) || _lanNx(deviceId) || '');
+    var peerNx = _normId(self._macToNexoId.get(_normMac(deviceId)) || _vNx(deviceId) || '');
     initE2E().then(function() { return ratchetMyBundle(self._pqNeeded(peerNx)).catch(function() { return null; }); }).then(function(b2) {
       var pk = e2eMyPublicKey();
       if (!pk || !self.localNexoId) return;
@@ -1587,6 +1663,7 @@ export class BLEInterface {
       if (b2) pkt.b2 = b2;
       pkt.fx = 2; // Fénix: 1 = la cuenta; 2 = también guarda los mensajes (segmentos)
       pkt.ss = 1; // entiende el remitente sellado (sobres 'sx' por Jump)
+      pkt.nt = 1; // v6.13.0: internet por relés públicos
       if (peerNx) pkt.ph = ratchetPeerPqId(peerNx); // v6.12.0: qué clave poscuántica suya tengo (no hace falta repetirla)
       var rs = self.fenix ? self.fenix.resetMark() : 0;
       if (rs) pkt.rs = rs;
@@ -1654,7 +1731,7 @@ export class BLEInterface {
   }
   // v6.11.1: el vecino deviceId (el primer puente) reenvía sobres 'sx' tal cual (lo dijo en su kx)
   hopSeals(deviceId) {
-    var nx = _lanNx(deviceId) || this._macToNexoId.get(_normMac(deviceId));
+    var nx = _vNx(deviceId) || this._macToNexoId.get(_normMac(deviceId));
     return !!nx && this._sxHops.has(_normId(nx));
   }
   // Clave para sellar a este contacto (solo si lo entiende y su clave está aceptada)
@@ -2133,8 +2210,8 @@ export class BLEInterface {
   _sendMessageNative(deviceId, content, messageId, seq, dst) {
     var self = this;
     return new Promise(function(resolve, reject) {
-      var viaLan = _lanNx(deviceId);
-      if (!viaLan && (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'sendMessage'))) {
+      var viaLan = _lanNx(deviceId), viaNet = _netNx(deviceId);
+      if (!viaLan && !viaNet && (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'sendMessage'))) {
         reject(new Error('sendMessage nativo no disponible'));
         return;
       }
@@ -2156,10 +2233,19 @@ export class BLEInterface {
             if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent;
           } catch (e) {}
         }
-        outgoing = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1 });
+        outgoing = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1, nt: 1 });
       }
       var send = function(out) {
         if (viaLan) { self.lan.send(viaLan, out).then(resolve).catch(reject); return; }
+        if (viaNet) {
+          if (!self.net) { reject(new Error('Sin internet')); return; }
+          self.net.send(viaNet, out).then(function(r) {
+            // Un mensaje guardado en un relé ya está a salvo (buzón): ✓ y sin reintentos; ✓✓ cuando el otro confirme
+            if (!_isControlPacket(content) && messageId && self.ackSystem) self.ackSystem.handleCustody(messageId);
+            resolve(r);
+          }).catch(reject);
+          return;
+        }
         _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: out })
           .then(function(r) {
             if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._mtuByDevice.set(_normMac(targetId), r.mtu);
@@ -2182,6 +2268,7 @@ export class BLEInterface {
   _sendRawNative(deviceId, packet) {
     var self = this;
     if (_lanNx(deviceId) && self.lan) return self.lan.send(_lanNx(deviceId), packet);
+    if (_netNx(deviceId) && self.net) return self.net.send(_netNx(deviceId), packet);
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'sendMessage')) return Promise.reject(new Error('sendMessage nativo no disponible'));
     return _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: deviceId, message: packet });
   }
@@ -2278,7 +2365,7 @@ export class BLEInterface {
     initE2E().then(function() { return ratchetMyBundle(self._pqNeeded(nx)).catch(function() { return null; }); }).then(function(b2) {
       var pk = e2eMyPublicKey();
       if (!pk || !self.localNexoId) return;
-      var pkt = { v: 1, type: 'kx', from: _normId(self.localNexoId), to: nx, pk: pk, msgId: 'kx_' + now, ss: 1, ph: ratchetPeerPqId(nx) };
+      var pkt = { v: 1, type: 'kx', from: _normId(self.localNexoId), to: nx, pk: pk, msgId: 'kx_' + now, ss: 1, nt: 1, ph: ratchetPeerPqId(nx) };
       if (b2) pkt.b2 = b2;
       if (request) pkt.rq = 1;
       return self._sealObj(nx, pkt).then(function(o) { self.relay.sendRouted(o); });
@@ -2332,8 +2419,21 @@ export class BLEInterface {
             });
           return;
         }
+        // v6.13.0: sin camino ahora pero con internet: al buzón (lo recoge al conectarse)
+        var tryMailbox = function(onFail) {
+          if (!self.net || !self.net.mailboxOk(uuid)) return false;
+          self._sendViaNetMailbox(uuid, content, msgId, msgSeq)
+            .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
+            .catch(function(err) { console.warn('[NET] Buzón no disponible: ' + (err && err.message)); onFail(); });
+          return true;
+        };
         if (!deviceId) {
           if (self.relay) self.relay.discover(uuid);
+          if (tryMailbox(function() {
+            var qm = self._pendingMessageQueue.get('nx:' + uuid) || [];
+            qm.push({ content: content, messageId: msgId, seq: msgSeq, resolve: resolve, reject: reject });
+            self._pendingMessageQueue.set('nx:' + uuid, qm);
+          })) return;
           // v6.1.11: contacto aún no visto por radio (p.ej. compartido): en cola hasta encontrarlo
           var q0 = self._pendingMessageQueue.get('nx:' + uuid) || [];
           q0.push({ content: content, messageId: msgId, seq: msgSeq, resolve: resolve, reject: reject });
@@ -2382,6 +2482,10 @@ export class BLEInterface {
         }
 
         if (isReady) { doSend(); return; }
+        if (tryMailbox(enqueueMsg)) {
+          if (self.relay) self.relay.discover(uuid);
+          return;
+        }
         enqueueMsg();
         self._markPeerLost(uuid);
         // v6.4.0: sin enlace directo: buscar camino por otros teléfonos NEXO (Jump bajo demanda)
@@ -2443,8 +2547,11 @@ export class BLEInterface {
           var nudged = false;
           (function check() {
             var dev = self._resolveDeviceIdForNexoId(uuid) || deviceId;
+            // v6.13.0: por internet, archivos solo si los dos están en Wi-Fi (con datos móviles esperan)
+            var netNo = !!_netNx(dev) && !(self.net && self.net.filesOk(uuid));
+            if (netNo) dev = self._bleReadyFor(uuid) || dev;
             var st = self._getDeviceState(dev);
-            if (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY) {
+            if ((!netNo || !_netNx(dev)) && (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY)) {
               deviceId = dev;
               startTransfer();
               return;
@@ -3228,7 +3335,8 @@ export class BLEInterface {
       contacts.push({
         nexoId: nx, deviceUUID: nx, name: name, deviceId: null, addedAt: Date.now(), lastSeen: 0,
         online: false, unreadCount: 0, lastMessage: '', isNewShared: true, sharedBy: _normId(sharedBy) || null,
-        publicKey: pk, ss: pk && c.ss ? 1 : undefined // v6.11.1: así el primer mensaje ya puede ir sellado
+        publicKey: pk, ss: pk && c.ss ? 1 : undefined, // v6.11.1: así el primer mensaje ya puede ir sellado
+        nt: pk && c.nt ? 1 : undefined // v6.13.0: y por internet
       });
       if (pk && c.b2) bundles.push([nx, c.b2]);
       res.added.push(name);

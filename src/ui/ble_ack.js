@@ -71,6 +71,11 @@ const MAX_WINDOW_RETRIES = 8;
 const LAN_FILE_CHUNK = 24000;
 const LAN_CHAT_CHUNK = 8000;
 const LAN_PSEUDO_MTU = 65535;
+// v3.12.0: enlace por internet (relés públicos, net_link.js): "net:<NEXO ID>" (normalizado "netnx…")
+function _isNetDevice(deviceId) { var d = (deviceId || '').toString().toLowerCase(); return d.indexOf('net:') === 0 || /^netnx[0-9a-z]{8}$/.test(d); }
+const NET_FILE_CHUNK = 16000;   // un evento de relé admite ~64 KB (con cifrado y base64)
+const NET_CHAT_CHUNK = 8000;
+const NET_TEXT_ONE = 20000;     // un texto (ya cifrado) hasta este tamaño va en un solo paquete (buzón)
 function _isLanDevice(deviceId) { var d = (deviceId || '').toString().toLowerCase(); return d.indexOf('lan:') === 0 || /^lannx[0-9a-z]{8}$/.test(d); }
 const BLE_FILE_MAX_CHARS = 3100000; // tope por Bluetooth (main.js MAX_BLE_B64_BYTES + cabecera de cifrado)
 const BLE_HD_MAX_CHARS = 9500000;   // HD de vídeo (main.js MAX_HD_B64_BYTES + relleno y cabecera de cifrado)
@@ -162,6 +167,9 @@ export class BleAckSystem {
     console.log('[BleAckSystem] v3.2.12-NEXO iniciado');
   }
   _resolveNexoId(deviceId) {
+    // Enlaces Wi-Fi e internet: el NEXO ID va en el propio identificador ("lan:nx…", "net:nx…")
+    var v = (deviceId || '').toString().toLowerCase().match(/^(?:lan|net):?(nx[0-9a-z]{8})$/);
+    if (v) return v[1];
     var mac = _normMac(deviceId);
     if (this.ble && this.ble._macToNexoId) {
       var nx = this.ble._macToNexoId.get(mac);
@@ -182,6 +190,11 @@ export class BleAckSystem {
       return self._preparingFor(cid, self._ensurePeerKey(deviceId, dst)
         .then(function(t) { return e2eSealText(t, content, self._outAd(t, cid)); }))
         .then(function(enc) { return self.sendChunkedMessage(deviceId, enc, meta, cid, seq); });
+    }
+    // v3.12.0: por internet un texto va en un solo paquete: sirve de buzón (el otro puede no estar en línea; un flujo
+    // por trozos esperaría confirmaciones que no llegan)
+    if (_isNetDevice(deviceId) && !dst && content.length <= NET_TEXT_ONE && (!e2eAvailable() || e2eAnyEncrypted(content))) {
+      return self._sendWithRetryRaw(deviceId, content, messageId || _newMsgId(), seq);
     }
     if (dst && content.length > 150 && !(meta && 'sealedFrom' in meta)) {
       return self._withSealedFrom(Object.assign({}, meta)).then(function(m2) { return self.sendChunkedMessage(deviceId, content, m2, messageId, seq); });
@@ -298,6 +311,15 @@ export class BleAckSystem {
   _sendFileBest(deviceId, fileId, data, meta) {
     var self = this, wd = self.ble && self.ble.wifiDirect;
     // v3.10.0: misma red Wi-Fi: por ahí directamente (rápido, sin montar grupo; también el vídeo original)
+    if (_isNetDevice(deviceId)) {
+      // Por internet, archivos solo con los dos en Wi-Fi (con datos móviles cuestan dinero): si no, queda pendiente
+      var net = self.ble && self.ble.net;
+      if (!net || !net.filesOk(self._resolveNexoId(deviceId))) {
+        var en = new Error('Contacto no disponible: queda pendiente'); en.code = 'PEER_ABSENT';
+        return Promise.reject(en);
+      }
+      return self._sendFileJS(deviceId, fileId, data, meta);
+    }
     if (_isLanDevice(deviceId)) return self._sendFileJS(deviceId, fileId, data, meta);
     if (!data || !wd || (meta && meta.dst) || !wd.eligible(deviceId, data.length)) {
       // Vídeo original pensado para Wi-Fi Direct que ya no puede ir por ahí: la app lo manda como previa + HD
@@ -1019,6 +1041,9 @@ export class BleAckSystem {
           var best = (self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') ? self.ble._resolveDeviceIdForNexoId(cid) : null;
           var devId = best || tx.deviceId || contact.deviceId;
           if (_isLanDevice(devId) && !(self.ble && self.ble.lan && self.ble.lan.canReach(cid))) devId = contact.deviceId;
+          // Por internet: solo en línea, y archivos solo con los dos en Wi-Fi
+          var net = self.ble && self.ble.net;
+          if (_isNetDevice(devId) && !(net && (tx.type === 'file' ? net.filesOk(cid) : net.canReach(cid)))) devId = contact.deviceId;
           if (!devId) return;
           // FIX: respetar tx.type. Antes SIEMPRE se llamaba a sendChunkedMessage (tipo 'chat'),
           // así que una foto/video interrumpido se reenviaba como texto (t:'c') y el receptor
@@ -1173,10 +1198,11 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   // y esperar más (si no, timeouts espurios y la cola nativa de 500 se llena y descarta).
   var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
   // v3.10.0: por Wi-Fi (misma red) trozos grandes: no hay MTU ni escrituras de 20-500 bytes
-  if (_isLanDevice(deviceId)) mtu = LAN_PSEUDO_MTU;
+  if (_isLanDevice(deviceId) || _isNetDevice(deviceId)) mtu = LAN_PSEUDO_MTU;
   var perWrite = mtu ? Math.max(mtu - 13, 10) : 0;
   var overhead = 90; // cabecera JSON de un trozo ('v','t','m','i','n','d')
   if (_isLanDevice(deviceId)) { this.chunkSize = isFile ? LAN_FILE_CHUNK : LAN_CHAT_CHUNK; perWrite = this.chunkSize + overhead; }
+  if (_isNetDevice(deviceId)) { this.chunkSize = isFile ? NET_FILE_CHUNK : NET_CHAT_CHUNK; perWrite = this.chunkSize + overhead; }
   // Trozos grandes aunque ocupen 2-3 escrituras (menos paquetes y acks); solo se reducen si un
   // paquete necesitaría más de 3 escrituras (MTU pequeño). Medido: MTU 247 => 18 s/foto con 360
   // frente a 27 s ajustando a una sola escritura.
@@ -1214,7 +1240,7 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
 // así que se adapta el ritmo: ventana pequeña y esperas largas (un trozo de Wi-Fi son muchas escrituras Bluetooth)
 ChatStream.prototype.useLink = function(deviceId) {
   this.deviceId = deviceId;
-  if (_isLanDevice(deviceId)) return;
+  if (_isLanDevice(deviceId) || _isNetDevice(deviceId)) return;
   var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
   var perWrite = mtu ? Math.max(mtu - 13, 10) : 20;
   this.writesPerPacket = Math.ceil((this.chunkSize + 90) / perWrite);

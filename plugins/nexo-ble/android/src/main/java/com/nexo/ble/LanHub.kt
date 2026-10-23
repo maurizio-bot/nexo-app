@@ -4,7 +4,9 @@ import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
@@ -22,9 +24,12 @@ import org.json.JSONObject
  * Latido nativo (v2728+1): cada pingMs un {"h":0,"ts":…} que el otro contesta {"h":2,"ts":…} desde su hilo nativo
  * (no depende de que la app esté en primer plano: en segundo plano Android no ejecuta su JavaScript). Mide el tiempo
  * de ida y vuelta (calidad del Wi-Fi) y cierra la conexión si en deadMs no llega nada.
+ * Tor (ronda 2735): la misma pieza sirve para hablar por Tor: proxy = el SOCKS de Tor (las direcciones .onion se
+ * resuelven dentro de Tor) y bindHost = 127.0.0.1 (solo Tor entra por el servicio oculto).
  */
 class LanHub(private val myId: () -> String, private val listener: Listener,
-             private val pingMs: Long = 4000L, private val deadMs: Long = 30000L) {
+             private val pingMs: Long = 4000L, private val deadMs: Long = 30000L,
+             private val proxy: Proxy? = null, private val bindHost: InetAddress? = null) {
     interface Listener {
         fun onUp(nx: String)
         fun onDown(nx: String)
@@ -35,6 +40,7 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
     companion object {
         const val MAX_FRAME = 48 * 1024 * 1024
         const val CONNECT_TIMEOUT_MS = 5000
+        const val TOR_CONNECT_TIMEOUT_MS = 90000 // un circuito hasta un .onion puede tardar
         const val HELLO_TIMEOUT_MS = 8000
     }
 
@@ -59,7 +65,7 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
     @Synchronized
     fun start(): Int {
         server?.let { return it.localPort }
-        val s = ServerSocket(0)
+        val s = if (bindHost != null) ServerSocket(0, 50, bindHost) else ServerSocket(0)
         server = s
         running = true
         Thread({
@@ -83,8 +89,10 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
     fun connect(host: String, port: Int) {
         Thread({
             try {
-                val sock = Socket()
-                sock.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+                // Por Tor: la dirección no se resuelve aquí (createUnresolved): el SOCKS de Tor la lleva al .onion
+                val sock = if (proxy != null) Socket(proxy) else Socket()
+                val addr = if (proxy != null) InetSocketAddress.createUnresolved(host, port) else InetSocketAddress(host, port)
+                sock.connect(addr, if (proxy != null) TOR_CONNECT_TIMEOUT_MS else CONNECT_TIMEOUT_MS)
                 handle(Conn(sock, true))
             } catch (e: Exception) { listener.onLog("WARN", "conectar $host:$port: ${e.message}") }
         }, "nexo-lan-connect").apply { isDaemon = true }.start()
@@ -120,7 +128,7 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         Thread({
             try {
                 c.socket.tcpNoDelay = true
-                c.socket.soTimeout = HELLO_TIMEOUT_MS
+                c.socket.soTimeout = if (proxy != null || bindHost != null) HELLO_TIMEOUT_MS * 6 else HELLO_TIMEOUT_MS
                 c.write(JSONObject().put("h", 1).put("nx", myId()).toString())
                 val input = DataInputStream(BufferedInputStream(c.socket.getInputStream(), 65536))
                 val hello = JSONObject(readFrame(input))

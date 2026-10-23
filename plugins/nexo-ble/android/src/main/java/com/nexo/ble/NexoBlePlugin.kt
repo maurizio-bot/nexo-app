@@ -457,6 +457,7 @@ class NexoBlePlugin : Plugin() {
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         try { lanStopAll() } catch (e: Exception) {}
+        try { torStopAll() } catch (e: Exception) {}
         remLog("INFO", "LIFECYCLE", "handleOnDestroy - limpiando DUAL GATT")
         cleanupAllConnections()
         try { unregisterServerReceivers() } catch (e: Exception) { }
@@ -2289,6 +2290,130 @@ class NexoBlePlugin : Plugin() {
         try { lanMcLock?.release() } catch (e: Exception) {}
         lanMcLock = null
         lanHub?.stop(); lanHub = null
+    }
+
+    // ===== Tor (internet sin relés, sin que nadie vea la IP): TorService + servicio oculto + LanHub por SOCKS =====
+    // La app (net_link.js) pide torStart con su NEXO ID; aquí se arranca Tor (librería oficial tor-android), se crea
+    // el servicio oculto (.onion, clave guardada cifrada en nexo_tor_key.json: la dirección no cambia) que lleva al
+    // LanHub de Tor (solo escucha en 127.0.0.1) y se avisa con onTorReady { onion }. torConnect conecta a la .onion
+    // de un contacto por el SOCKS de Tor. Lo que viaja ya va cifrado por la app (sobre de pareja + E2E).
+    private var torSvc: org.torproject.jni.TorService? = null
+    private var torBind: android.content.ServiceConnection? = null
+    private var torHub: LanHub? = null
+    @Volatile private var torOnion = ""
+    @Volatile private var torStarting = false
+    private val torExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val torSendExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val TOR_PORT = 9878
+    private val TOR_KEY_FILE = "nexo_tor_key.json"
+
+    @PluginMethod
+    fun torStatus(call: PluginCall) {
+        val peers = JSArray()
+        torHub?.quality()?.forEach { (nx, rtt, idle) -> peers.put(JSObject().put("nx", nx).put("rtt", rtt).put("idle", idle)) }
+        call.resolve(JSObject().put("supported", true).put("running", torSvc != null).put("onion", torOnion).put("port", TOR_PORT)
+            .put("starting", torStarting).put("peers", peers))
+    }
+
+    @PluginMethod
+    fun torStart(call: PluginCall) {
+        val nx = call.getString("nexoId")?.lowercase() ?: run { call.reject("nexoId requerido"); return }
+        if (torOnion.isNotEmpty() && torHub != null) { call.resolve(JSObject().put("onion", torOnion).put("port", TOR_PORT)); return }
+        if (torStarting) { call.resolve(JSObject().put("starting", true)); return }
+        torStarting = true
+        call.resolve(JSObject().put("starting", true))
+        torExec.execute {
+            try {
+                remLog("INFO", "TOR", "Arrancando Tor…")
+                val svc = torBindService() ?: throw Exception("no arranca el servicio de Tor")
+                // Esperar a Tor listo (circuito armado) y a su puerto SOCKS
+                val t0 = System.currentTimeMillis()
+                var ctl = svc.torControlConnection
+                while (System.currentTimeMillis() - t0 < 180000L) {
+                    ctl = svc.torControlConnection
+                    val boot = try { ctl?.getInfo("status/bootstrap-phase") ?: "" } catch (e: Exception) { "" }
+                    if (ctl != null && boot.contains("PROGRESS=100") && svc.socksPort > 0) break
+                    Thread.sleep(1000)
+                }
+                if (ctl == null || svc.socksPort <= 0) throw Exception("Tor no terminó de arrancar")
+                val proxy = java.net.Proxy(java.net.Proxy.Type.SOCKS, java.net.InetSocketAddress("127.0.0.1", svc.socksPort))
+                val hub = torHub ?: LanHub({ nx }, object : LanHub.Listener {
+                    override fun onUp(nx: String) { remLog("INFO", "TOR", "Conectado con $nx por Tor"); notifyListeners("onTorUp", JSObject().put("nx", nx), true) }
+                    override fun onDown(nx: String) { notifyListeners("onTorDown", JSObject().put("nx", nx), true) }
+                    override fun onMessage(nx: String, text: String) { notifyListeners("onTorMessage", JSObject().put("nx", nx).put("content", text), true) }
+                    override fun onLog(level: String, message: String) { remLog(level, "TOR", message) }
+                }, 15000L, 90000L, proxy, java.net.InetAddress.getByName("127.0.0.1")).also { torHub = it }
+                val port = hub.start()
+                // Servicio oculto: misma dirección siempre (clave guardada cifrada)
+                val saved = try { atRest().read(TOR_KEY_FILE)?.let { org.json.JSONObject(it).optString("k") } } catch (e: Exception) { null }
+                val res = ctl.addOnion(if (saved.isNullOrEmpty()) "NEW:ED25519-V3" else saved, mapOf(TOR_PORT to "127.0.0.1:$port"))
+                res["PrivateKey"]?.let { atRest().write(TOR_KEY_FILE, org.json.JSONObject().put("k", it).toString()) }
+                torOnion = (res["ServiceID"] ?: throw Exception("sin dirección .onion")) + ".onion"
+                remLog("INFO", "TOR", "Tor listo en " + (System.currentTimeMillis() - t0) / 1000 + " s")
+                notifyListeners("onTorReady", JSObject().put("onion", torOnion).put("port", TOR_PORT), true)
+            } catch (e: Exception) {
+                remLog("WARN", "TOR", "Tor no disponible: ${e.message}")
+                notifyListeners("onTorReady", JSObject().put("error", e.message ?: "error"), true)
+            } finally { torStarting = false }
+        }
+    }
+
+    // Enlazar con TorService (en este proceso) y esperar a tenerlo
+    private fun torBindService(): org.torproject.jni.TorService? {
+        torSvc?.let { return it }
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val conn = object : android.content.ServiceConnection {
+            override fun onServiceConnected(name: android.content.ComponentName?, binder: android.os.IBinder?) {
+                torSvc = (binder as? org.torproject.jni.TorService.LocalBinder)?.service
+                latch.countDown()
+            }
+            override fun onServiceDisconnected(name: android.content.ComponentName?) { torSvc = null; torOnion = "" }
+        }
+        torBind = conn
+        mainHandler.post { context.bindService(Intent(context, org.torproject.jni.TorService::class.java), conn, Context.BIND_AUTO_CREATE) }
+        latch.await(60, java.util.concurrent.TimeUnit.SECONDS)
+        return torSvc
+    }
+
+    @PluginMethod
+    fun torConnect(call: PluginCall) {
+        val host = call.getString("host") ?: run { call.reject("host requerido"); return }
+        val port = call.getInt("port") ?: TOR_PORT
+        val hub = torHub ?: run { call.reject("Tor no listo", "TOR_DOWN"); return }
+        if (!host.endsWith(".onion")) { call.reject("solo direcciones .onion"); return }
+        hub.connect(host, port)
+        call.resolve(JSObject().put("connecting", true))
+    }
+
+    @PluginMethod
+    fun torSend(call: PluginCall) {
+        val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
+        val content = call.getString("content") ?: run { call.reject("content requerido"); return }
+        val hub = torHub ?: run { call.reject("Tor no listo", "TOR_DOWN"); return }
+        torSendExec.execute {
+            if (hub.send(nx, content)) call.resolve(JSObject().put("sent", true))
+            else call.reject("Sin conexión Tor con $nx", "TOR_DOWN")
+        }
+    }
+
+    @PluginMethod
+    fun torDrop(call: PluginCall) {
+        val nx = call.getString("nx") ?: run { call.reject("nx requerido"); return }
+        torHub?.close(nx)
+        call.resolve(JSObject().put("dropped", true))
+    }
+
+    @PluginMethod
+    fun torStop(call: PluginCall) {
+        torStopAll()
+        call.resolve(JSObject().put("stopped", true))
+    }
+
+    private fun torStopAll() {
+        torHub?.stop(); torHub = null
+        torOnion = ""
+        torBind?.let { try { context.unbindService(it) } catch (e: Exception) {} }
+        torBind = null; torSvc = null
     }
 
     // ===== Archivos recibidos: abrir con otra app y miniatura de PDF =====
