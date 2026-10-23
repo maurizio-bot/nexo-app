@@ -63,7 +63,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2723–2724 | | Compilaciones de prueba en la rama de trabajo, sin release |
 | 2725 | `3e1d507` | Fotos paradas (20 % / ○) y "mensaje de código" con la 2722: cola nativa que nunca parte un mensaje, resincronización del receptor, comprobación por trozo, paquetes dañados fuera del chat, sin avalancha de avisos nativos. Reproducido y corregido en el simulador |
 | 2726–2727 | | Compilaciones de prueba en la rama de trabajo (Wi-Fi normal), sin release |
-| 2728 | (este commit) | Wi-Fi normal (misma red) y cambio automático Wi-Fi / Bluetooth / Wi-Fi Direct / Jump (`docs/WIFI.md`). Cabecera del chat con el camino. Probado en simulador y JVM |
+| 2728 | `93dd9ad` | Wi-Fi normal (misma red) y cambio automático Wi-Fi / Bluetooth / Wi-Fi Direct / Jump (`docs/WIFI.md`). Cabecera del chat con el camino. Probado en simulador y JVM |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
