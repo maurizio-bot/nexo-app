@@ -75,6 +75,14 @@ function runOne(sc) {
   }));
   const bad = results.filter((r) => r.fails.length);
   for (const r of bad) console.log('\n--- ' + r.sc.name + ' (final de la salida) ---\n' + r.tail);
+  // Registros de la app de las pruebas que fallaron (en GitHub no se pueden descargar desde todas partes)
+  const fs = require('fs');
+  for (const r of bad) {
+    const f = path.join(__dirname, 'last_logs_' + r.sc.args[0].replace('.js', '') + '.txt');
+    if (!fs.existsSync(f)) continue;
+    const lines = fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/DIAG|Splash|JSDOMERROR/.test(l));
+    console.log('\n--- ' + r.sc.name + ': registros (' + lines.length + ' líneas, las últimas 400) ---\n' + lines.slice(-400).map((l) => l.substring(0, 260)).join('\n'));
+  }
   console.log('\n' + (bad.length ? bad.length + ' prueba(s) fallaron' : 'Todas las pruebas pasaron (' + results.length + ')'));
   process.exit(bad.length ? 1 : 0);
 })();
