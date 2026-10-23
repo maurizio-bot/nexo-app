@@ -75,7 +75,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2740–2743 | | Compilaciones de prueba en la rama de trabajo (pruebas automáticas en GitHub); la 2740–2742 pararon en las pruebas por el fallo de Jump con internet |
 | 2744 | `56f6991` | Pruebas automáticas antes de cada APK, Jump: fotos ya no se atascan con el puente conectado por internet, vista previa sin medio emoji, limpieza (versiones, manifiesto, tarjetas de pago). APK verificada (firma 23d86688…, sin copias, Tor incluido) |
 | 2745–2748 | | Compilaciones de prueba en la rama de trabajo (AGP 9): 2745 y 2746 fallaron (proguard-android.txt, compileSdk 37.1), 2747 (AGP 9.2) y 2748 (AGP 9.4) compilaron con la firma de siempre |
-| 2749 | (este commit) | Gradle moderno (AGP 9.4.0, Gradle 9.6.0, Kotlin 2.2.20, compileSdk 37.1) y Tor 0.4.9.14 |
+| 2749 | `3180529` | Gradle moderno (AGP 9.4.0, Gradle 9.6.0, Kotlin 2.2.20, compileSdk 37.1) y Tor 0.4.9.14. APK verificada: firma 23d86688…, manifiesto igual que la 2744 (permisos, targetSdk 34, sin copias), Tor nuevo; pesa 24,4 MB (antes 26,9) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
