@@ -44,6 +44,8 @@ class NativePhone {
     this.opts = opts;
     this.listeners = new Map();
     this.files = new Map();
+    this.notifications = new Map(); // chatId -> { name, ids, base, text } (notificaciones de mensajes)
+    this.notifLog = [];
     this.advertisingId = null;
     this.serviceRunning = false;
     this.clients = new Map(); // macNorm -> { state, peer }
@@ -662,6 +664,20 @@ class NativePhone {
         c.resolve({ dropped: true });
       }),
       torStop: wrap('torStop', (c) => { if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
+      // Notificaciones de mensajes (MsgNotifier.kt): una por chat con su número; el icono de la app suma los números
+      notifyMessage: wrap('notifyMessage', (c, a) => {
+        const id = String(a.chatId || '').toLowerCase();
+        const n = self.notifications.get(id) || { name: a.name, ids: new Set(), base: 0, text: '' };
+        n.ids.add(String(a.msgId)); n.name = a.name || n.name; n.text = a.text || ''; n.posts = (n.posts || 0) + 1;
+        self.notifications.set(id, n); self.notifLog.push({ t: Date.now(), chatId: id, name: a.name, text: a.text || '', count: n.base + n.ids.size });
+        c.resolve({ count: n.base + n.ids.size });
+      }),
+      clearChatNotification: wrap('clearChatNotification', (c, a) => { self.notifications.delete(String(a.chatId || '').toLowerCase()); c.resolve({}); }),
+      syncUnread: wrap('syncUnread', (c, a) => {
+        const want = new Map((a.chats || []).map((x) => [String(x.chatId).toLowerCase(), x.count || 0]));
+        for (const [id, n] of self.notifications) { const k = want.get(id) || 0; if (!k) self.notifications.delete(id); else { n.base = k; n.ids.clear(); } }
+        c.resolve({});
+      }),
       setSecureScreen: wrap('setSecureScreen', (c, a) => { self.secureScreen = a.on === true; c.resolve({ on: self.secureScreen }); }),
       startListeningMessages: wrap('startListeningMessages', (c) => c.resolve({ listening: true })),
     };

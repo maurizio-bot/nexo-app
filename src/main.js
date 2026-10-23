@@ -1,5 +1,6 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.51-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.52-NEXO
+ * v9.9.52: mensajes sin leer y notificaciones del teléfono (src/ui/notify.js) por todas las vías de llegada.
  * v9.9.51: internet por relés públicos (src/net/net_link.js): la cabecera del chat dice "En línea · Internet".
  * v9.9.50: Fénix fase 2: el estado dice cuántos mensajes están protegidos; aviso al recuperarlos.
  * v9.9.49: número de seguridad también por QR (src/ui/qr_verify.js): "Mostrar mi QR" / "Escanear su QR" en el
@@ -98,7 +99,8 @@ import {
   vaultDeleteMessage, vaultBlankMessage
 } from './vault/vault_manager.js';
 import { initBLEInterface } from './ui/ble_interface.js';
-import { initAppLock, securitySectionHtml, renderSecuritySection } from './ui/app_lock.js';
+import { initAppLock, securitySectionHtml, renderSecuritySection, lockEnabled } from './ui/app_lock.js';
+import { createNotifier } from './ui/notify.js';
 import { initE2E } from './vault/e2e_crypto.js';
 import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq } from './vault/e2e_ratchet.js';
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './ui/qr_verify.js';
@@ -125,6 +127,15 @@ window.vaultLoadContacts = vaultLoadContacts;
 // v9.9.41: y la del protocolo 2 (como Signal: claves que cambian con cada mensaje)
 // v9.9.47 (seguridad fase 3): bloqueo con huella y capturas (Perfil → Seguridad)
 initAppLock({ toast: function(t, ms) { _showInfoToast(t, ms); } });
+// v9.9.52: mensajes sin leer y notificaciones (todas las vías de llegada pasan por _handleIncomingMessage)
+var _notifier = createNotifier({
+  ble: function() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; },
+  currentChat: function() { return _getCurrentContactId(); },
+  hidePreview: function() { return lockEnabled(); },
+  sendRead: function(nexoId, msgId) {
+    setTimeout(function() { window.dispatchEvent(new CustomEvent('nexo:ble:sendReadReceipt', { detail: { nexoId: nexoId, msgId: msgId } })); }, 400);
+  }
+});
 initE2E().then(function() { return ratchetInit(); }).catch(function(e) { console.warn('[E2E] init:', e && e.message); });
 
 // ===================== v9.9.32: registro de diagnóstico =====================
@@ -2104,6 +2115,9 @@ function _openChatFromNotification(deviceId) {
       vaultSaveContact(contact);
     }
     if (!contact.name) contact.name = contact.displayName || 'NEXO';
+    // v9.9.52: por openChat (pone a 0 los no leídos y quita la notificación)
+    var obi = window.NEXO.app.bleInterface;
+    if (obi && typeof obi.openChat === 'function') { obi.openChat(_normId(deviceId)).catch(function() {}); return; }
     window.NEXO.app.activeContact = contact;
     if (window.NEXO.app.bleInterface) {
       window.NEXO.app.bleInterface._activeChatDeviceId = deviceId;
@@ -2169,15 +2183,15 @@ function _handleIncomingMessage(msg) {
     if (window.NEXO.app && typeof window.NEXO.app.onMessage === 'function') {
       try { window.NEXO.app.onMessage(msg); } catch (omErr) {}
     }
-    var activeId = _getCurrentContactId();
+    // v9.9.52: no leídos, notificación y confirmación de leído (solo con el chat abierto y la app a la vista)
     var senderId = msg.senderNexoId || msg.sender || '';
     var msgId = msg.messageId || msg.msgId || '';
-    if (activeId && senderId && msgId && _normId(activeId) === _normId(senderId)) {
-      setTimeout(function() {
-        window.dispatchEvent(new CustomEvent('nexo:ble:sendReadReceipt', {
-          detail: { nexoId: senderId, msgId: msgId }
-        }));
-      }, 400);
+    if (senderId) {
+      var sc = vaultFindContactByNexoId(senderId);
+      _notifier.incoming({
+        cid: senderId, msgId: msgId, name: (sc && (sc.name || sc.displayName)) || msg.senderName || 'NEXO',
+        preview: msg.attachmentType ? (_PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo') : _cut(_plainText(msg.content), 80)
+      });
     }
   } catch (err) {
     console.warn('[MAIN] _handleIncomingMessage error:', err && err.message);
@@ -2363,6 +2377,8 @@ async function initializeNexoApp() {
     } catch (notifErr) {
       console.log('[MAIN] Notificacion listener no disponible:', notifErr);
     }
+    // Al arrancar, los contadores de la app mandan sobre las notificaciones que hubiera en el teléfono
+    setTimeout(function() { _notifier.syncNative(); }, 4000);
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(resolve, reject) {
       setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);

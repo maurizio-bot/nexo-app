@@ -172,9 +172,14 @@ class NexoBlePlugin : Plugin() {
             )
         } catch (e: Exception) { }
     }
-    private fun checkNotificationIntent() {
+    // La actividad es singleTask: tocar una notificación con la app abierta llega aquí
+    override fun handleOnNewIntent(intent: Intent) {
+        super.handleOnNewIntent(intent)
+        checkNotificationIntent(intent)
+    }
+    private fun checkNotificationIntent(given: Intent? = null) {
         try {
-            val intent = activity.intent
+            val intent = given ?: activity.intent
             if (intent != null) {
                 val deviceId = intent.getStringExtra("nexo_chat_device_id")
                 if (deviceId != null) {
@@ -2062,6 +2067,36 @@ class NexoBlePlugin : Plugin() {
                 call.resolve(JSObject().put("ok", false).put("reason", e.message ?: "error"))
             }
         }
+    }
+
+    // ===== Notificaciones de mensajes (MsgNotifier): las pide notify.js con la app en segundo plano =====
+    @PluginMethod
+    fun notifyMessage(call: PluginCall) {
+        val chatId = call.getString("chatId") ?: run { call.reject("falta chatId"); return }
+        val count = MsgNotifier.get(context).message(chatId, call.getString("name") ?: "NEXO", call.getString("msgId") ?: System.currentTimeMillis().toString(), call.getString("text") ?: "")
+        call.resolve(JSObject().put("count", count))
+    }
+
+    @PluginMethod
+    fun clearChatNotification(call: PluginCall) {
+        val chatId = call.getString("chatId") ?: run { call.reject("falta chatId"); return }
+        MsgNotifier.get(context).clear(chatId)
+        call.resolve()
+    }
+
+    // Los contadores de la app mandan: ajusta o quita las notificaciones puestas (también las de segundo plano)
+    @PluginMethod
+    fun syncUnread(call: PluginCall) {
+        val counts = HashMap<String, Int>()
+        try {
+            val arr = call.getArray("chats")
+            if (arr != null) for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                counts[o.optString("chatId").lowercase()] = o.optInt("count", 0)
+            }
+        } catch (e: Exception) { }
+        MsgNotifier.get(context).sync(counts)
+        call.resolve()
     }
 
     // Bloquear capturas y grabación de pantalla (y ocultar NEXO en "recientes")

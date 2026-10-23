@@ -7,7 +7,8 @@ import { createLan } from './lan.js';
 import { createNet } from '../net/net_link.js';
 import { createFenix } from '../fenix/fenix.js';
 /**
- * BLE Interface v6.13.1-NEXO
+ * BLE Interface v6.14.0-NEXO
+ * v6.14.0: contadores de no leídos (bumpUnread/clearUnread/unreadSummary) para notify.js, por todas las vías.
  * v6.13.1: el registro de arranque dice la versión real (decía v6.1.1 desde hace meses).
  * v6.13.0: internet (net_link.js): enlace "net:<NEXO ID>" por relés públicos o Tor, buzón de textos, nt:1 en el kx.
  * v6.12.0: poscuántico (e2e_ratchet v1.1): el paquete de claves lleva la clave ML-KEM; el kx dice cuál del otro tengo
@@ -609,7 +610,7 @@ export class BLEInterface {
     this._mtuByDevice = new Map(); // MAC normalizada -> MTU negociado (lo devuelve sendMessage nativo)
     this._reconnectScanTimer = null;
     this._reconnectScanAttempts = 0;
-    console.log('[BLEInterface] v6.13.1-NEXO iniciado');
+    console.log('[BLEInterface] v6.14.0-NEXO iniciado');
   }
 
   _detectMeshType() {
@@ -2067,13 +2068,7 @@ export class BLEInterface {
           };
           _vaultAppendMessage(senderUUID, vaultMsg, false);
         }
-        var activeUUID = self._activeChatDeviceId;
-        var isChatActive = activeUUID && activeUUID === senderUUID;
-        if (senderUUID && !isControl && !isChatActive) {
-          var contacts3 = _getBLEContacts();
-          var idx3 = contacts3.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === _normId(senderUUID); });
-          if (idx3 >= 0) { contacts3[idx3].unreadCount = (contacts3[idx3].unreadCount || 0) + 1; contacts3[idx3].lastSeen = Date.now(); _saveBLEContacts(contacts3); }
-        }
+        // v6.14.0: el contador de no leídos lo lleva notify.js (todas las vías: texto largo, fotos, archivos…)
         var pv = _messagePreview(content, attachmentData && attachmentData.attachmentType);
         if (senderUUID && !isControl && pv !== null) self.noteContactMessage(senderUUID, pv, data.timestamp || Date.now());
         _safeDispatchEvent('nexo:ble:messageReceived', {
@@ -2662,6 +2657,7 @@ export class BLEInterface {
           var idx = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === uuid; });
           if (idx >= 0) { contacts[idx].unreadCount = 0; contacts[idx].isNewShared = false; _saveBLEContacts(contacts); self.renderContactsList(); self.renderOnlineStrip(); }
         }
+        _safeDispatchEvent('nexo:unread', { nexoId: uuid, count: 0 });
         var state = self._getDeviceState(deviceId);
         var isFullyReady = state.state === BLE_STATES.READY_TO_CHAT || state.state === BLE_STATES.NOTIFICATIONS_READY;
         var isConnecting = state.state === BLE_STATES.CONNECTING || state.state === BLE_STATES.DISCOVERING_SERVICES;
@@ -3297,6 +3293,32 @@ export class BLEInterface {
     var wait = 300 - (now - (self._lastContactsRender || 0));
     if (wait <= 0) { self._renderContactsListNow(); return; }
     self._contactsRenderTimer = setTimeout(function() { self._contactsRenderTimer = null; self._renderContactsListNow(); }, wait);
+  }
+
+  // v6.14.0: mensajes sin leer de cada chat (la burbuja numerada). Los usa notify.js
+  bumpUnread(nexoId) {
+    var nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c) return 0;
+    c.unreadCount = (c.unreadCount || 0) + 1;
+    c.lastSeen = Date.now();
+    _saveBLEContacts(contacts);
+    this.renderContactsList();
+    _safeDispatchEvent('nexo:unread', { nexoId: nx, count: c.unreadCount });
+    return c.unreadCount;
+  }
+  clearUnread(nexoId) {
+    var nx = _normId(nexoId);
+    var contacts = _getBLEContacts();
+    var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (c && c.unreadCount) { c.unreadCount = 0; _saveBLEContacts(contacts); this.renderContactsList(); }
+    _safeDispatchEvent('nexo:unread', { nexoId: nx, count: 0 });
+  }
+  unreadSummary() {
+    return _getBLEContacts().map(function(c) {
+      return { chatId: _normId(c.nexoId || c.deviceUUID), name: c.name || '', count: c.unreadCount || 0 };
+    }).filter(function(x) { return x.chatId; });
   }
 
   // v6.1.8: único punto que actualiza el último mensaje de un contacto (enviado o recibido)

@@ -152,6 +152,8 @@ export function initAppLock(opts) {
 }
 
 export function isAppLocked() { return _locked; }
+// Bloqueo activado: las notificaciones no llevan el texto del mensaje
+export function lockEnabled() { return !!_prefs.lock; }
 
 // ---------- Perfil → Seguridad ----------
 export function securitySectionHtml() {
