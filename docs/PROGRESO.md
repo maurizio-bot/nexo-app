@@ -78,7 +78,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2749 | `3180529` | Gradle moderno (AGP 9.4.0, Gradle 9.6.0, Kotlin 2.2.20, compileSdk 37.1) y Tor 0.4.9.14. APK verificada: firma 23d86688…, manifiesto igual que la 2744 (permisos, targetSdk 34, sin copias), Tor nuevo; pesa 24,4 MB (antes 26,9) |
 | 2750 | | Compilación de prueba en la rama de trabajo (Kotlin de notificaciones e internet en segundo plano): compila, pruebas en verde |
 | 2751 | `769c025` | Notificaciones de mensajes (una por chat, número en el icono), no leídos por todas las vías, "leído" solo con la app a la vista, internet en segundo plano (escucha nativa de los relés), permiso de notificaciones. APK verificada: firma 23d86688…, manifiesto igual que la 2749 + POST_NOTIFICATIONS, clases nuevas presentes |
-| 2752 | (este commit) | Reestructuración sin cambios de código: main.js 4.281 → 720 líneas, ble_interface.js 3.732 → 847, en 30 módulos (`docs/ESTRUCTURA.md`). Batería idéntica |
+| 2752 | a468f31 | Reestructuración sin cambios de código: main.js 4.281 → 720 líneas, ble_interface.js 3.732 → 847, en 30 módulos (`docs/ESTRUCTURA.md`). Batería idéntica. APK comprobada: 24,4 MB, cert 23d86688…, sin copia de seguridad, manifiesto idéntico a 2751, clases nativas nuevas presentes. Falta probarla en teléfonos |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
