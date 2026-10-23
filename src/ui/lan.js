@@ -1,23 +1,28 @@
 /**
- * lan.js v1.0 — Wi-Fi normal: hablar con un contacto que está en la misma red Wi-Fi (casa, oficina, un local),
+ * lan.js v1.1 — Wi-Fi normal: hablar con un contacto que está en la misma red Wi-Fi (casa, oficina, un local),
  * aunque no esté a alcance de Bluetooth. Mucho más rápido que Bluetooth y sin montar grupo como Wi-Fi Direct.
+ * v1.1 (reglas del dueño, docs/PENDIENTES.md): el Wi-Fi del mismo router manda. El latido y el corte los hace la
+ *   parte nativa (LanHub), que sigue aunque la app esté en segundo plano: antes el latido era de la app y, al elegir
+ *   una foto en la galería o con la pantalla bloqueada >25 s, el otro daba el Wi-Fi por caído y pasaba a Bluetooth.
+ *   Un corte no cambia de camino enseguida: se reconecta y hay un margen (GRACE_MS). Mala señal (ida y vuelta muy
+ *   lenta, medida por el latido nativo): lo nuevo va por Bluetooth hasta que mejora, y vuelve solo al Wi-Fi.
  *
  * - Cada teléfono se anuncia en la red (NSD/mDNS, lo mismo que Bonjour en iPhone) con una marca del día:
  *   SHA-256("nexo-lan|<NEXO ID>|<fecha UTC>") recortado. Solo quien ya conoce el NEXO ID (un contacto) la
  *   reconoce; un desconocido en la misma red no ve quién eres. Cambia cada día.
  * - Al ver la marca de un contacto se conecta (TCP, Kotlin LanHub). Antes de usar la conexión se comprueba con el
  *   cifrado de extremo a extremo: 'lv' lleva un número al azar cifrado para el contacto y solo el de verdad puede
- *   devolverlo ('lw'). Hasta entonces no se manda ni se acepta nada más por ella.
+ *   devolverlo ('lw'). Hasta entonces no se acepta nada más por ella.
  * - Comprobada, la conexión es un enlace más para la app (dispositivo "lan:<NEXO ID>"): textos, fotos, vídeos y
  *   archivos van por ella con el mismo protocolo (cifrado, confirmaciones, reenvíos) que por Bluetooth.
- * - Latido cada 8 s; sin nada recibido en 25 s se da por caída (con TCP, a veces el otro no se entera de que
- *   alguien salió de la red). Al caer, lo que estaba en camino sigue por Bluetooth (o Jump) sin perderse.
  */
 import { e2eSealText, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
 
-var HEARTBEAT_MS = 8000;
-var DEAD_MS = 25000;
+var TICK_MS = 4000;
 var REDISCOVER_MS = 60000;
+var GRACE_MS = 8000;          // tras un corte: tiempo para recuperar el Wi-Fi antes de pasar a Bluetooth
+var VERIFY_LIMIT_MS = 30000;  // una conexión sin comprobar se cierra (impostor)
+var BAD_RTT_MS = 1500, GOOD_RTT_MS = 800, BAD_IDLE_MS = 12000; // mala señal (latido nativo cada 4 s)
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
@@ -33,7 +38,10 @@ export async function lanToken(nexoId, day) {
 export class LanLink {
   constructor(ble) {
     this.ble = ble;
-    this.links = new Map();   // nx → { verified, nonce, lastRx, lastTx, upAt }
+    // nx → { up, verified (la conexión actual), routable (se usa como camino), graceUntil, degraded, bad, good,
+    //        nonce, upAt, verifyAt }
+    this.links = new Map();
+    this.addr = new Map();    // nx → { host, port } (última dirección conocida: reconectar sin esperar a la búsqueda)
     this.tokens = new Map();  // marca → nx de un contacto (hoy y ayer)
     this.status = null;
     this._myDay = null;
@@ -51,8 +59,10 @@ export class LanLink {
       pl.addListener('onLanUp', function(ev) { self._onUp(ev); });
       pl.addListener('onLanDown', function(ev) { self._onDown(ev); });
       pl.addListener('onLanMessage', function(ev) { self._onMessage(ev); });
+      // Al volver a la app: buscar ya (no esperar al minuto)
+      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') self.start(); });
     }
-    if (!self._timer) self._timer = setInterval(function() { self._tick(); }, HEARTBEAT_MS / 2);
+    if (!self._timer) self._timer = setInterval(function() { self._tick(); }, TICK_MS);
     return pl.lanStatus().then(function(st) {
       self.status = st || null;
       if (st && st.supported) self.start();
@@ -88,12 +98,19 @@ export class LanLink {
     this.tokens = map;
   }
 
-  canReach(nexoId) { var l = this.links.get(_nid(nexoId)); return !!(l && l.verified); }
+  // ¿Es el Wi-Fi el camino para este contacto? (también durante el margen tras un corte: se espera a que vuelva)
+  // Con mala señal solo se deja el Wi-Fi si hay Bluetooth listo (si no, un Wi-Fi lento es mejor que nada)
+  canReach(nexoId) {
+    var nx = _nid(nexoId), l = this.links.get(nx);
+    if (!l || !l.routable) return false;
+    if (l.degraded && this.ble && typeof this.ble._bleReadyFor === 'function' && this.ble._bleReadyFor(nx)) return false;
+    return true;
+  }
+  quality(nexoId) { var l = this.links.get(_nid(nexoId)); return l ? { rtt: l.rtt, idle: l.idle, degraded: !!l.degraded, up: !!l.up } : null; }
 
   send(nexoId, content) {
     var nx = _nid(nexoId), pl = _plugin(), l = this.links.get(nx);
-    if (!pl || !l) return Promise.reject(Object.assign(new Error('Sin Wi-Fi con ' + nx), { code: 'LAN_DOWN' }));
-    l.lastTx = Date.now();
+    if (!pl || !l || !l.up) return Promise.reject(Object.assign(new Error('Sin Wi-Fi con ' + nx), { code: 'LAN_DOWN' }));
     return pl.lanSend({ nx: nx, content: content });
   }
 
@@ -103,26 +120,49 @@ export class LanLink {
     if (!ev || !ev.token) return;
     var nx = this.tokens.get(ev.token);
     if (!nx) { await this.refreshTokens(); nx = this.tokens.get(ev.token); } // contacto añadido hace poco
-    if (!nx || this.links.has(nx)) return;
-    var pl = _plugin();
-    if (pl && typeof pl.lanConnect === 'function') pl.lanConnect({ host: ev.host, port: ev.port }).catch(function() {});
+    if (!nx) return;
+    this.addr.set(nx, { host: ev.host, port: ev.port });
+    var l = this.links.get(nx);
+    if (l && l.up) return;
+    this._connect(nx);
+  }
+
+  _connect(nx) {
+    var a = this.addr.get(nx), pl = _plugin();
+    if (a && pl && typeof pl.lanConnect === 'function') pl.lanConnect({ host: a.host, port: a.port }).catch(function() {});
   }
 
   _onUp(ev) {
     var nx = _nid(ev && ev.nx);
     if (!nx) return;
     var l = this.links.get(nx);
-    if (!l) { l = { verified: false, lastRx: Date.now(), lastTx: 0, upAt: Date.now() }; this.links.set(nx, l); }
-    l.lastRx = Date.now();
-    if (!l.verified) this._verify(nx);
+    if (!l) { l = { routable: false }; this.links.set(nx, l); }
+    l.up = true; l.verified = false; l.nonce = null; l.upAt = Date.now(); l.verifyAt = 0;
+    this._verify(nx);
   }
 
   _onDown(ev) {
     var nx = _nid(ev && ev.nx), l = this.links.get(nx);
     if (!l) return;
+    l.up = false; l.verified = false;
+    if (!l.routable) { this.links.delete(nx); return; }
+    // Corte: no se cambia de camino todavía; se intenta recuperar el Wi-Fi durante GRACE_MS
+    if (!l.graceUntil) {
+      l.graceUntil = Date.now() + GRACE_MS;
+      console.log('[WIFI] Corte con ' + nx + ': reconectando…');
+      this._connect(nx);
+      this.start();
+    }
+  }
+
+  // Sin Wi-Fi con este contacto: lo pendiente sigue por Bluetooth / Jump
+  _giveUp(nx, why) {
+    var l = this.links.get(nx);
     this.links.delete(nx);
-    if (l.verified) {
-      console.log('[WIFI] Sin Wi-Fi con ' + nx + ': sigue por Bluetooth');
+    var pl = _plugin();
+    if (l && l.up && pl && typeof pl.lanDrop === 'function') pl.lanDrop({ nx: nx }).catch(function() {});
+    if (l && l.routable) {
+      console.log('[WIFI] Sin Wi-Fi con ' + nx + (why ? ' (' + why + ')' : '') + ': sigue por Bluetooth');
       if (this.ble && typeof this.ble._lanDown === 'function') this.ble._lanDown(nx);
     }
   }
@@ -130,10 +170,11 @@ export class LanLink {
   // 'lv': un número al azar cifrado para el contacto (solo el de verdad lo lee y lo puede devolver)
   async _verify(nx) {
     var l = this.links.get(nx), ack = this.ble && this.ble.ackSystem, me = _nid(this.ble && this.ble.localNexoId);
-    if (!l || !ack || typeof ack._target !== 'function') return;
+    if (!l || !l.up || !ack || typeof ack._target !== 'function') return;
     var t = ack._target(null, nx);
     if (!t) { console.log('[WIFI] ' + nx + ' en la misma red, pero aún sin su clave: por Bluetooth'); return; }
     l.nonce = _rand();
+    l.verifyAt = Date.now();
     var id = 'lv' + _rand();
     try {
       var c = await e2eSealText(t, l.nonce, e2eOuterAd(me, nx, id));
@@ -144,10 +185,9 @@ export class LanLink {
   async _onMessage(ev) {
     var nx = _nid(ev && ev.nx), l = this.links.get(nx), content = (ev && ev.content) || '';
     if (!l) return;
-    l.lastRx = Date.now();
     var o = null;
     if (content.charAt(0) === '{' && /"type":"l[pvw]"/.test(content)) { try { o = JSON.parse(content); } catch (e) { o = null; } }
-    if (o && o.type === 'lp') return; // latido
+    if (o && o.type === 'lp') return; // latido de builds anteriores (ahora es nativo)
     var me = _nid(this.ble && this.ble.localNexoId), ack = this.ble && this.ble.ackSystem;
     if (o && o.type === 'lv') {
       try {
@@ -166,8 +206,14 @@ export class LanLink {
         var r2 = await e2eOpenText(nx, o.c, e2eOuterAd(nx, me, o.id));
         if (l.nonce && r2.text === l.nonce && !l.verified) {
           l.verified = true;
-          console.log('[WIFI] Conectado con ' + nx + ' por Wi-Fi (comprobado)');
-          if (this.ble && typeof this.ble._lanUp === 'function') this.ble._lanUp(nx);
+          var again = l.routable;
+          l.routable = true; l.graceUntil = 0;
+          if (again) {
+            console.log('[WIFI] Wi-Fi con ' + nx + ' recuperado');
+          } else {
+            console.log('[WIFI] Conectado con ' + nx + ' por Wi-Fi (comprobado)');
+            if (this.ble && typeof this.ble._lanUp === 'function') this.ble._lanUp(nx);
+          }
         }
       } catch (e) { console.warn('[WIFI] Respuesta de ' + nx + ' ilegible: ' + (e && e.message)); }
       return;
@@ -176,25 +222,40 @@ export class LanLink {
     if (this.ble && typeof this.ble._onLanPayload === 'function') this.ble._onLanPayload(nx, content);
   }
 
-  _tick() {
+  async _tick() {
     var self = this, now = Date.now(), pl = _plugin();
+    // Calidad medida por el latido nativo: ida y vuelta y tiempo sin recibir
+    var q = {};
+    if (pl && typeof pl.lanStatus === 'function' && self.links.size) {
+      try { var st = await pl.lanStatus(); (st && st.peers || []).forEach(function(p) { q[_nid(p.nx)] = p; }); } catch (e) {}
+    }
     self.links.forEach(function(l, nx) {
-      if (now - l.lastRx > DEAD_MS) {
-        console.log('[WIFI] ' + nx + ' no responde por Wi-Fi: se cierra');
-        if (pl && typeof pl.lanDrop === 'function') pl.lanDrop({ nx: nx }).catch(function() {});
-        self._onDown({ nx: nx });
+      if (!l.up) {
+        if (l.graceUntil && now > l.graceUntil) self._giveUp(nx, 'no volvió en ' + Math.round(GRACE_MS / 1000) + ' s');
+        else self._connect(nx);
         return;
       }
-      if (now - (l.lastTx || 0) >= HEARTBEAT_MS) self._raw(nx, { v: 1, type: 'lp' });
-      // Sin comprobar en 30 s (impostor, o el otro sin nuestra clave): se cierra y deja sitio a la de verdad
-      if (!l.verified && now - l.upAt > 30000) {
-        console.warn('[WIFI] Conexión con "' + nx + '" sin comprobar: se cierra');
-        if (pl && typeof pl.lanDrop === 'function') pl.lanDrop({ nx: nx }).catch(function() {});
-        self.links.delete(nx);
+      if (!l.verified) {
+        if (now - l.upAt > VERIFY_LIMIT_MS) { console.warn('[WIFI] Conexión con "' + nx + '" sin comprobar: se cierra'); self._giveUp(nx, 'sin comprobar'); return; }
+        if (now - (l.verifyAt || 0) > 10000) self._verify(nx); // sin respuesta (p. ej. el otro aún no tenía nuestra clave)
         return;
       }
-      // Comprobación sin respuesta (p. ej. el otro aún no tenía nuestra clave): repetir
-      if (!l.verified && now - l.upAt > 10000 && now - (l.verifyAt || 0) > 10000) { l.verifyAt = now; self._verify(nx); }
+      var p = q[nx];
+      if (!p) return;
+      l.rtt = p.rtt; l.idle = p.idle;
+      var bad = (p.rtt > BAD_RTT_MS) || (p.idle > BAD_IDLE_MS);
+      var good = p.rtt >= 0 && p.rtt < GOOD_RTT_MS && p.idle < BAD_IDLE_MS;
+      l.bad = bad ? (l.bad || 0) + 1 : 0;
+      l.good = good ? (l.good || 0) + 1 : 0;
+      if (!l.degraded && l.bad >= 2) {
+        l.degraded = true;
+        console.log('[WIFI] Señal Wi-Fi mala con ' + nx + ' (ida y vuelta ' + p.rtt + ' ms): lo nuevo por Bluetooth');
+        if (self.ble && typeof self.ble._lanDegraded === 'function') self.ble._lanDegraded(nx, true);
+      } else if (l.degraded && l.good >= 2) {
+        l.degraded = false;
+        console.log('[WIFI] Señal Wi-Fi buena otra vez con ' + nx + ': vuelve al Wi-Fi');
+        if (self.ble && typeof self.ble._lanDegraded === 'function') self.ble._lanDegraded(nx, false);
+      }
     });
     if (now - self._lastStart > REDISCOVER_MS || self._myDay !== _day(0)) self.start();
   }

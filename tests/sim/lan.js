@@ -3,11 +3,15 @@
 //  1) la conexión Wi-Fi se comprueba con el cifrado y pasa a ser el camino (textos y fotos por Wi-Fi, no por
 //     Bluetooth); C no se conecta con nadie; nada viaja en claro por la red;
 //  2) fuera de alcance de Bluetooth pero en la misma red: textos y fotos siguen llegando;
-//  3) B sale de la red a mitad de un archivo (Bluetooth a alcance): el archivo termina por Bluetooth, idéntico;
+//  0) B en segundo plano 40 s: el Wi-Fi sigue (latido nativo) y la foto va por Wi-Fi; 1b) corte breve del router a
+//     mitad de una foto: termina por Wi-Fi; 1c) mala señal: lo nuevo por Bluetooth y vuelve al Wi-Fi al mejorar;
+//  3) B sale de la red a mitad de un archivo (Bluetooth a alcance): tras el margen termina por Bluetooth, idéntico;
 //  4) caída silenciosa (el otro no se entera): el latido la detecta y el texto llega por Bluetooth;
 //  5) volver a la red: vuelve el Wi-Fi solo;
 //  6) un impostor en la red con la marca de A: B no lo usa (sigue por Bluetooth) y la cierra.
-// Uso: node lan.js <dir_build>
+// --solo-fondo: solo el caso del segundo plano (la app de B deja de ejecutar código 40 s, como en la galería o con
+// la pantalla bloqueada): el Wi-Fi debe seguir y la foto ir por Wi-Fi (informe del dueño con la 2728).
+// Uso: node lan.js <dir_build> [--solo-fondo]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -82,6 +86,25 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
   r.C_conectado_con_alguien = !!(nC.lanConns && nC.lanConns.size) || A.win.bleInterface.lan.links.has(idC) || B.win.bleInterface.lan.links.has(idC);
   const has = async (p, from, f) => (await p.win.vaultLoadMessages(from)).some(f);
 
+  // 0) B en segundo plano 40 s (Android no ejecuta su JavaScript: elegir la foto en la galería, pantalla bloqueada…)
+  //    y al volver A le manda una foto: debe seguir por Wi-Fi
+  {
+    const lanB = B.win.bleInterface.lan;
+    clearInterval(lanB._timer); lanB._timer = null;
+    const origOnMsg = lanB._onMessage.bind(lanB), held = [];
+    lanB._onMessage = (ev) => { held.push(ev); }; // lo que llega espera a que la app vuelva
+    await sleep(40000);
+    r.fondo_A_sigue_wifi = viaA();
+    lanB._onMessage = origOnMsg; held.forEach((ev) => origOnMsg(ev));
+    lanB._timer = setInterval(() => lanB._tick(), 4000);
+    await sleep(500);
+    const fotoF = await sendFile(A, 'fondo.jpg', 300000);
+    r.fondo_foto_llega_s = await waitFor(() => has(B, idA, (m) => m.attachmentType && !m._own && (m.attachmentPayload || nB.files.get(m.attachmentRef)) === fotoF.toString('base64')), 120000);
+    r.fondo_foto_fue_por = viaA();
+    r.fondo_cabecera_B = B.win.document.getElementById('chat-contact-subtitle').textContent;
+    if (process.argv.includes('--solo-fondo')) { console.log('LAN ' + JSON.stringify(r, null, 1)); fs.writeFileSync(path.join(__dirname, 'last_logs_lan.txt'), logs.join('\n')); process.exit(0); }
+  }
+
   // 1) Textos y foto por Wi-Fi (no por Bluetooth)
   const ble0 = nA.sent.length, lan0 = nA.stats.lanOut || 0;
   sendText(A, 'texto por wifi');
@@ -99,6 +122,29 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
   await waitFor(() => has(B, idA, (m) => m.content === 'SECRETO-wifi'), 15000);
   r.en_claro_por_la_red = lanTraffic.some((c) => c.indexOf('SECRETO-wifi') >= 0);
   nB.emit = origEmit;
+
+  // 1b) Corte breve del router (3 s) a mitad de una foto: no se pasa a Bluetooth, la foto termina por Wi-Fi
+  {
+    nA.opts.lanBps = 150000; nB.opts.lanBps = 150000;
+    const bleAntes = nA.sent.length;
+    const fotoC = await sendFile(A, 'corte.jpg', 400000);
+    await waitFor(() => (nA.stats.lanOutBytes || 0) > lan0 + 200000, 20000);
+    nA.setWifi(null); nB.setWifi(null);
+    await sleep(3000);
+    nA.setWifi('casa'); nB.setWifi('casa');
+    r.corte_breve_foto_llega_s = await waitFor(() => has(B, idA, (m) => m.attachmentType && !m._own && (m.attachmentPayload || nB.files.get(m.attachmentRef)) === fotoC.toString('base64')), 60000);
+    r.corte_breve_trozos_por_bluetooth = nA.sent.filter((x, i) => i >= bleAntes && /"t":"f"/.test(x.chunk)).length;
+    r.corte_breve_sigue_wifi = viaA() === 'wifi' && viaB() === 'wifi';
+    nA.opts.lanBps = 0; nB.opts.lanBps = 0;
+  }
+  // 1c) Mala señal: ida y vuelta de 2,5 s → lo nuevo por Bluetooth; al mejorar, vuelve al Wi-Fi
+  {
+    nA.opts.lanRtt = 2500; nB.opts.lanRtt = 2500;
+    r.mala_senal_pasa_a_bluetooth_s = await waitFor(() => viaA() === 'bluetooth', 30000);
+    r.mala_senal_cabecera_B = (await waitFor(() => viaB() === 'bluetooth', 15000)) !== null ? B.win.document.getElementById('chat-contact-subtitle').textContent : viaB();
+    nA.opts.lanRtt = 0; nB.opts.lanRtt = 0;
+    r.buena_senal_vuelve_wifi_s = await waitFor(() => viaA() === 'wifi' && viaB() === 'wifi', 30000);
+  }
 
   // 2) Fuera de alcance de Bluetooth, misma red
   radio.block(nA, nB); await sleep(1500);
@@ -119,8 +165,7 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
   const big = await sendFile(A, 'grande.bin', 1200000);
   await waitFor(() => (nA.stats.lanOutBytes || 0) > 600000, 20000);
   nB.setWifi(null);
-  await sleep(300);
-  r.cambio_a_bluetooth = viaA();
+  r.cambio_a_bluetooth_tras_margen_s = await waitFor(() => viaA() === 'bluetooth', 20000); // primero se intenta recuperar el Wi-Fi (8 s)
   r.archivo_termina_por_bluetooth_s = await waitFor(() => has(B, idA, (m) => m.attachmentType && !m._own && (m.attachmentPayload || nB.files.get(m.attachmentRef)) === big.toString('base64')), 240000);
   nA.opts.lanBps = 0; nB.opts.lanBps = 0;
   sendText(A, 'sin wifi por bluetooth');

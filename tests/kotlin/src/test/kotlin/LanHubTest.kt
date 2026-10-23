@@ -84,6 +84,34 @@ class LanHubTest {
         a.stop(); b.stop()
     }
 
+    // La app en segundo plano no manda nada: el latido nativo mantiene la conexión y mide la calidad
+    @Test fun latidoNativoMantieneLaConexionSinMensajesDeLaApp() {
+        val ra = Rec(); val rb = Rec()
+        val a = LanHub({ "nxaaaaaaaa" }, ra, pingMs = 100, deadMs = 600); val b = LanHub({ "nxbbbbbbbb" }, rb, pingMs = 100, deadMs = 600)
+        a.start(); a.connect("127.0.0.1", b.start())
+        assertTrue(waitFor { a.isUp("nxbbbbbbbb") && b.isUp("nxaaaaaaaa") })
+        Thread.sleep(2500) // 4 veces el tiempo de corte, sin ningún mensaje de la app
+        assertTrue(a.isUp("nxbbbbbbbb") && b.isUp("nxaaaaaaaa"), "sigue conectado")
+        assertTrue(ra.down.isEmpty() && rb.down.isEmpty())
+        assertTrue(ra.msgs.isEmpty() && rb.msgs.isEmpty(), "los latidos no llegan a la app")
+        val q = a.quality().single()
+        println("calidad: ${q.first} ida y vuelta ${q.second} ms, sin recibir ${q.third} ms")
+        assertEquals("nxbbbbbbbb", q.first); assertTrue(q.second in 0..200); assertTrue(q.third < 600)
+        a.stop(); b.stop()
+    }
+
+    // El otro deja de contestar sin cerrar (Wi-Fi perdido): se detecta por el latido
+    @Test fun otroMudoSeDetecta() {
+        val ra = Rec()
+        val a = LanHub({ "nxaaaaaaaa" }, ra, pingMs = 100, deadMs = 600)
+        val pa = a.start()
+        val s = Socket("127.0.0.1", pa)
+        val out = DataOutputStream(s.getOutputStream()); val h = """{"h":1,"nx":"nxcccccccc"}""".toByteArray(); out.writeInt(h.size); out.write(h); out.flush()
+        assertTrue(waitFor { a.isUp("nxcccccccc") })
+        assertTrue(waitFor(3000) { ra.down.contains("nxcccccccc") }, "detectado sin respuesta")
+        s.close(); a.stop()
+    }
+
     @Test fun saludoFalsoOPropioSeRechaza() {
         val ra = Rec()
         val a = LanHub({ "nxaaaaaaaa" }, ra)

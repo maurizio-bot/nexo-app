@@ -1171,7 +1171,7 @@ ChatStream.prototype.useLink = function(deviceId) {
   var perWrite = mtu ? Math.max(mtu - 13, 10) : 20;
   this.writesPerPacket = Math.ceil((this.chunkSize + 90) / perWrite);
   if (this.writesPerPacket > 3) {
-    this.windowSize = Math.max(1, Math.min(this.windowSize, Math.floor(400 / this.writesPerPacket) || 1));
+    this.windowSize = Math.max(1, Math.min(this.windowSize, Math.floor(300 / this.writesPerPacket) || 1)); // cola nativa: 500
     this.windowTimeoutMs = Math.max(this.windowTimeoutMs, this.windowSize * this.writesPerPacket * 60 + 5000);
   }
   console.log('[ChatStream] ' + this.msgId + ' sigue por Bluetooth: ventana ' + this.windowSize + ', espera ' + this.windowTimeoutMs + ' ms');

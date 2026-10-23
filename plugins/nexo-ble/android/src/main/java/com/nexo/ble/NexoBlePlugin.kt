@@ -1347,9 +1347,10 @@ class NexoBlePlugin : Plugin() {
             if (result.sent) {
                 call.resolve(JSObject().put("sent", true).put("mode", result.mode).put("deviceId", rawDeviceId).put("mtu", mtu))
             } else {
-                val queue = pendingMessageQueue.getOrPut(macNorm) { mutableListOf() }
-                queue.add(message)
-                call.resolve(JSObject().put("sent", false).put("queued", true).put("mode", "pending").put("deviceId", rawDeviceId).put("mtu", mtu))
+                // v2729: solo pasa con la cola de escritura llena (el mensaje entero no cabe). "Ocupado": la app lo
+                // reintenta en un momento. Antes se aparcaba en la cola de pendientes (solo se vaciaba al reconectar)
+                // y la app lo daba por enviado: el último trozo de cada ventana esperaba a que venciera su espera.
+                call.reject("Cola de escritura llena para $macNorm", "BLE_BUSY")
             }
         }
     }
@@ -2083,7 +2084,10 @@ class NexoBlePlugin : Plugin() {
 
     @PluginMethod
     fun lanStatus(call: PluginCall) {
-        call.resolve(JSObject().put("supported", true).put("wifi", lanOnWifi()).put("running", lanHub != null).put("port", lanHub?.port ?: 0))
+        // Calidad de cada conexión (latido nativo): ida y vuelta media y tiempo sin recibir
+        val peers = JSArray()
+        lanHub?.quality()?.forEach { (nx, rtt, idle) -> peers.put(JSObject().put("nx", nx).put("rtt", rtt).put("idle", idle)) }
+        call.resolve(JSObject().put("supported", true).put("wifi", lanOnWifi()).put("running", lanHub != null).put("port", lanHub?.port ?: 0).put("peers", peers))
     }
 
     @PluginMethod

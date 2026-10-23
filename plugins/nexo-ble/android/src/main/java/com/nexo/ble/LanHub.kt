@@ -19,8 +19,12 @@ import org.json.JSONObject
  * queda asociada a ese NEXO ID. La app no la usa hasta comprobarla con el cifrado (solo el contacto de verdad puede
  * responder), así que un saludo falso no sirve para leer ni para suplantar.
  * Si los dos se conectan a la vez queda una sola conexión: la que abrió el de NEXO ID menor.
+ * Latido nativo (v2728+1): cada pingMs un {"h":0,"ts":…} que el otro contesta {"h":2,"ts":…} desde su hilo nativo
+ * (no depende de que la app esté en primer plano: en segundo plano Android no ejecuta su JavaScript). Mide el tiempo
+ * de ida y vuelta (calidad del Wi-Fi) y cierra la conexión si en deadMs no llega nada.
  */
-class LanHub(private val myId: () -> String, private val listener: Listener) {
+class LanHub(private val myId: () -> String, private val listener: Listener,
+             private val pingMs: Long = 4000L, private val deadMs: Long = 30000L) {
     interface Listener {
         fun onUp(nx: String)
         fun onDown(nx: String)
@@ -37,6 +41,8 @@ class LanHub(private val myId: () -> String, private val listener: Listener) {
     private class Conn(val socket: Socket, val outbound: Boolean) {
         val out = DataOutputStream(BufferedOutputStream(socket.getOutputStream(), 65536))
         @Volatile var nx: String? = null
+        @Volatile var lastRx = System.currentTimeMillis()
+        @Volatile var rtt = -1L
         fun write(text: String) {
             val b = text.toByteArray(Charsets.UTF_8)
             synchronized(out) { out.writeInt(b.size); out.write(b); out.flush() }
@@ -56,6 +62,16 @@ class LanHub(private val myId: () -> String, private val listener: Listener) {
         val s = ServerSocket(0)
         server = s
         running = true
+        Thread({
+            while (running) {
+                try { Thread.sleep(pingMs) } catch (e: InterruptedException) { break }
+                val now = System.currentTimeMillis()
+                conns.values.toList().forEach { c ->
+                    if (now - c.lastRx > deadMs) { listener.onLog("INFO", "${c.nx} sin respuesta en ${deadMs / 1000} s: se cierra"); drop(c) }
+                    else try { c.write("{\"h\":0,\"ts\":$now}") } catch (e: Exception) { drop(c) }
+                }
+            }
+        }, "nexo-lan-ping").apply { isDaemon = true }.start()
         Thread({
             while (running && !s.isClosed) {
                 try { val sock = s.accept(); handle(Conn(sock, false)) } catch (e: Exception) { if (running) listener.onLog("WARN", "accept: ${e.message}") }
@@ -84,6 +100,12 @@ class LanHub(private val myId: () -> String, private val listener: Listener) {
     fun close(nx: String) { conns[nx.lowercase()]?.let { drop(it) } }
 
     fun isUp(nx: String): Boolean = conns.containsKey(nx.lowercase())
+
+    /** Calidad de cada conexión: NEXO ID, tiempo de ida y vuelta medio (ms, -1 si aún no hay) y ms sin recibir nada. */
+    fun quality(): List<Triple<String, Long, Long>> {
+        val now = System.currentTimeMillis()
+        return conns.entries.map { Triple(it.key, it.value.rtt, now - it.value.lastRx) }
+    }
     fun peers(): List<String> = conns.keys().toList()
 
     @Synchronized
@@ -108,7 +130,17 @@ class LanHub(private val myId: () -> String, private val listener: Listener) {
                 c.socket.soTimeout = 0
                 if (!adopt(nx, c)) { c.close(); return@Thread }
                 listener.onUp(nx)
-                while (true) listener.onMessage(nx, readFrame(input))
+                while (true) {
+                    val f = readFrame(input)
+                    c.lastRx = System.currentTimeMillis()
+                    if (f.startsWith("{\"h\":0,")) { c.write("{\"h\":2," + f.substring(7)); continue }
+                    if (f.startsWith("{\"h\":2,")) {
+                        val ts = f.substringAfter("\"ts\":").trimEnd('}').toLongOrNull()
+                        if (ts != null) { val r = c.lastRx - ts; c.rtt = if (c.rtt < 0) r else (c.rtt * 3 + r) / 4 }
+                        continue
+                    }
+                    listener.onMessage(nx, f)
+                }
             } catch (e: Exception) {
                 if (c.nx != null) listener.onLog("INFO", "conexión con ${c.nx} cerrada: ${e.message}")
             } finally {

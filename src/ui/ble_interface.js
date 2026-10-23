@@ -868,7 +868,7 @@ export class BLEInterface {
     var self = this;
     var ready = null;
     this._deviceStates.forEach(function(st, key) {
-      if (ready || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
+      if (ready || /^lannx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
       if (_normId(self._macToNexoId.get(key)) === nx) ready = key;
     });
     if (ready) return ready;
@@ -1086,6 +1086,25 @@ export class BLEInterface {
     if (!direct) self._markPeerLost(nx);
     if (self.relay) self.relay.onLinkChange();
     _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: direct ? 'bluetooth' : 'none' });
+  }
+  // ¿Hay enlace Bluetooth directo y listo con este contacto? (sin contar el Wi-Fi)
+  _bleReadyFor(nexoId) {
+    var self = this, nx = _normId(nexoId), found = null;
+    this._deviceStates.forEach(function(st, key) {
+      if (found || /^lannx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
+      if (_normId(self._macToNexoId.get(key)) === nx) found = key;
+    });
+    return found;
+  }
+  // Señal Wi-Fi mala (on) o buena otra vez (off). Con mala señal y Bluetooth listo, lo nuevo va por Bluetooth y lo
+  // que estaba saliendo por Wi-Fi sigue por Bluetooth; al mejorar, lo nuevo vuelve al Wi-Fi solo.
+  _lanDegraded(nexoId, on) {
+    var nx = _normId(nexoId);
+    if (on) {
+      var ble = this._bleReadyFor(nx);
+      if (ble && this.ackSystem && typeof this.ackSystem.relink === 'function') this.ackSystem.relink(_lanId(nx), ble);
+    }
+    _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: this.linkOf(nx) });
   }
   // Lo que llega por Wi-Fi entra por el mismo camino que lo de Bluetooth
   _onLanPayload(nexoId, content) {

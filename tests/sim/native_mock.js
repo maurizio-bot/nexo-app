@@ -164,6 +164,7 @@ class NativePhone {
     if (!t.lanConns) t.lanConns = new Map();
     if (this.lanConns.get(t.lan.nx) === t && t.lanConns.get(this.lan.nx) === this) return;
     this.lanConns.set(t.lan.nx, t); t.lanConns.set(this.lan.nx, this);
+    if (this.lanStale) delete this.lanStale[t.lan.nx]; if (t.lanStale) delete t.lanStale[this.lan.nx];
     this.emit('onLanUp', { nx: t.lan.nx }); t.emit('onLanUp', { nx: this.lan.nx });
   }
   // silent: el otro no se entera (cable cortado / Wi-Fi perdido sin cierre limpio)
@@ -172,7 +173,16 @@ class NativePhone {
     if (!peer) return;
     this.lanConns.delete(nx);
     this.emit('onLanDown', { nx });
-    if (!silent && peer.lanConns && this.lan && peer.lanConns.get(this.lan.nx) === this) { peer.lanConns.delete(this.lan.nx); peer.emit('onLanDown', { nx: this.lan.nx }); }
+    if (!peer.lanConns || !this.lan || peer.lanConns.get(this.lan.nx) !== this) return;
+    const me = this.lan.nx;
+    if (!silent) { peer.lanConns.delete(me); peer.emit('onLanDown', { nx: me }); return; }
+    // Sin aviso: el otro sigue creyendo que hay conexión hasta que su latido nativo no recibe nada en 30 s
+    peer.lanStale = peer.lanStale || {}; peer.lanStale[me] = Date.now();
+    setTimeout(() => {
+      if (peer.lanConns && peer.lanConns.get(me) === this && !(this.lanConns && this.lanConns.get(peer.lan && peer.lan.nx) === peer)) {
+        peer.lanConns.delete(me); delete peer.lanStale[me]; peer.emit('onLanDown', { nx: me });
+      }
+    }, 30000);
   }
 
   // ---- envío al aire ----
@@ -260,7 +270,7 @@ class NativePhone {
     if (!this.opts.kotlin2722) {
       const peerAddr = (this.serverConnected.get(macNorm) || (this.clients.get(macNorm) || {}).peer || {}).address;
       const q = peerAddr && this.writeQ && this.writeQ.get(norm(peerAddr));
-      if (q && q.items.length > 0 && q.items.length + chunks.length > 500) { this.stats.queueFullMsgs = (this.stats.queueFullMsgs || 0) + 1; return { sent: false, mode: '' }; }
+      if (q && q.items.length > 0 && q.items.length + chunks.length > 500) { this.stats.queueFullMsgs = (this.stats.queueFullMsgs || 0) + 1; return { sent: false, mode: '', full: true }; }
     }
     if (chunks.length <= 1) return this._sendSingleChunk(macNorm, message, { mid, last: true });
     const first = this._sendSingleChunk(macNorm, chunks[0], { mid, last: chunks.length === 1 });
@@ -480,6 +490,8 @@ class NativePhone {
           const r = self._sendChunkedOrSingle(mac, message);
           const mtu = self.mtu.get(mac) || 23;
           if (r.sent) c.resolve({ sent: true, mode: r.mode, deviceId: raw, mtu });
+          // Kotlin 2729: cola llena (lo único que da sent:false con enlace) → "ocupado", la app reintenta
+          else if (!self.opts.kotlin2722 && r.full) c.reject('Cola de escritura llena', 'BLE_BUSY');
           else { if (!self.pendingQueue.has(mac)) self.pendingQueue.set(mac, []); self.pendingQueue.get(mac).push(message); c.resolve({ sent: false, queued: true, mode: 'pending', deviceId: raw, mtu }); }
         }, 0);
       }),
@@ -556,7 +568,16 @@ class NativePhone {
       // descubren (onLanPeer con la marca del otro), conectan (onLanUp en los dos) y se mandan mensajes en orden
       // (~20 MB/s). setWifi(red|null) en la prueba: salir de la red cierra sus conexiones; el otro solo se entera
       // si opts.lanSilent es falso (con TCP real, a veces no se entera: lo detecta la app por falta de latido).
-      lanStatus: wrap('lanStatus', (c) => c.resolve({ supported: true, wifi: !!self.wifiNet, running: !!self.lan, port: self.lan ? self.lan.port : 0 })),
+      // peers: calidad que mide el latido nativo (opts.lanRtt = ida y vuelta simulada; un otro que se fue sin cerrar
+      // deja de contestar: "idle" crece y a los 30 s el nativo cierra)
+      lanStatus: wrap('lanStatus', (c) => {
+        const now = Date.now(), peers = [];
+        if (self.lanConns) self.lanConns.forEach((p, nx) => {
+          const alive = p.wifiNet && p.wifiNet === self.wifiNet && p.lanConns && self.lan && p.lanConns.get(self.lan.nx) === self;
+          peers.push({ nx, rtt: alive ? (self.opts.lanRtt || 5) : -1, idle: alive ? 0 : now - ((self.lanStale && self.lanStale[nx]) || now) });
+        });
+        c.resolve({ supported: true, wifi: !!self.wifiNet, running: !!self.lan, port: self.lan ? self.lan.port : 0, peers });
+      }),
       lanStart: wrap('lanStart', (c, a) => {
         const nx = String(a.nexoId || '').toLowerCase(), token = a.token;
         if (!nx || !token) return c.reject('nexoId y token requeridos');
