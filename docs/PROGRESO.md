@@ -80,7 +80,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2751 | `769c025` | Notificaciones de mensajes (una por chat, número en el icono), no leídos por todas las vías, "leído" solo con la app a la vista, internet en segundo plano (escucha nativa de los relés), permiso de notificaciones. APK verificada: firma 23d86688…, manifiesto igual que la 2749 + POST_NOTIFICATIONS, clases nuevas presentes |
 | 2752 | a468f31 | Reestructuración sin cambios de código: main.js 4.281 → 720 líneas, ble_interface.js 3.732 → 847, en 30 módulos (`docs/ESTRUCTURA.md`). Batería idéntica. APK comprobada: 24,4 MB, cert 23d86688…, sin copia de seguridad, manifiesto idéntico a 2751, clases nativas nuevas presentes. Falta probarla en teléfonos |
 | 2753 | `75772b8` | Sin APK: falló en GitHub la prueba nueva `binary.js` (las pérdidas simuladas se aplicaban también al conectar y se perdió el intercambio de claves; ahora solo durante los envíos). El Kotlin compiló bien en las pruebas JVM |
-| 2754 | (este commit) | Bluetooth sin base64: trozos de archivo en binario con quien lo anuncia (−25 % de bytes por la radio, fotos y PDF ~25–35 % más rápidos en el simulador); con builds anteriores, JSON de siempre. Falta verificar la APK y probarla en teléfonos |
+| 2754 | `9dac851` | Bluetooth sin base64: trozos de archivo en binario con quien lo anuncia (−25 % de bytes por la radio, fotos y PDF ~25–35 % más rápidos en el simulador); con builds anteriores, JSON de siempre. APK verificada: 24,5 MB, firma 23d86688…, manifiesto idéntico a la 2752, `BinFrame`/`BinAssembler`/`sendBinary` presentes. Falta probarla en teléfonos |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
