@@ -7,7 +7,7 @@ a = open(before).read().split('\n'); b = open(after).read().split('\n')
 d = list(difflib.unified_diff(a, b, lineterm='', n=0))
 removed = [l[1:] for l in d if l.startswith('-') and not l.startswith('---')]
 added = [l[1:] for l in d if l.startswith('+') and not l.startswith('+++')]
-bad_added = [l for l in added if l.strip() and not l.startswith('import ') and '[pegamento]' not in l]
+bad_added = [l for l in added if l.strip() and not l.startswith('import ') and '[pegamento]' not in l and not re.match(r'^Object\.assign\(\w+\.prototype, \w+\);$', l)]
 body = []
 for m in mods:
     t = open(m).read().split('\n')
@@ -17,7 +17,10 @@ for m in mods:
         if '[pegamento]' in l: glue = True
         if not glue: body.append(re.sub(r'^export ', '', l))
         if '[/pegamento]' in l: glue = False
-key = lambda xs: sorted(l for l in xs if l.strip() and not l.startswith('import '))
+# Métodos movidos a un objeto (extract_methods.js): sin las líneas del objeto ni las comas detrás de la llave
+norm = lambda l: re.sub(r'\},(\s*(//.*)?)$', r'}\1', l)
+skip = lambda l: re.match(r'^(export )?const \w+ = \{$', l) or l == '};' or (l.startswith('Object.assign(') and l.endswith('.prototype, ' + l.split(', ')[-1]))
+key = lambda xs: sorted(norm(l) for l in xs if l.strip() and not l.startswith('import ') and not skip(l))
 ok = key(removed) == key(body) and not bad_added
 print(('IDÉNTICO' if ok else 'DIFERENTE') + f': {len([l for l in removed if l.strip()])} líneas movidas, {len(added)} añadidas en el origen')
 if not ok:
