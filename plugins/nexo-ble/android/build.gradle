@@ -16,6 +16,7 @@ apply plugin: 'kotlin-android'
 android {
     namespace 'com.nexo.ble'
     compileSdk 37
+    compileSdkMinor 1
 
     defaultConfig {
         minSdk 24
