@@ -69,7 +69,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2731 | `9b0250b` | Compilación de prueba en la rama de trabajo (Kotlin del largo alcance), sin release |
 | 2732 | `fbeaaed` | Jump con más alcance (Bluetooth de largo alcance LE Coded y hasta 8 saltos), Fénix fase 2 (los mensajes de texto se respaldan en 2 contactos y vuelven al recuperar la cuenta), el "+" de agregar ya no falla. APK verificada (firma 23d86688…, sin copias) |
 | 2733 | `d20e1b6` | Compilación de prueba en la rama de trabajo (Kotlin del escaneo de la red), sin release |
-| 2734 | (ver ronda) | Wi-Fi: escaneo activo de la red (idea del dueño): los teléfonos en el mismo Wi-Fi se encuentran aunque el router no deje pasar el anuncio mDNS |
+| 2734 | `a5f9d77` | Wi-Fi: escaneo activo de la red (idea del dueño): los teléfonos en el mismo Wi-Fi se encuentran aunque el router no deje pasar el anuncio mDNS. APK verificada (firma 23d86688…, sin copias) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
