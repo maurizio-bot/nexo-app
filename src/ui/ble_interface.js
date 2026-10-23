@@ -3,9 +3,12 @@ import { e2eAnyEncrypted, e2eOuterAd, e2eOpenText, e2eAllowsE1 } from '../vault/
 import { ratchetInit, ratchetMyBundle, ratchetNotePeerBundle, ratchetForget, ratchetResetPeer } from '../vault/e2e_ratchet.js';
 import { createRelay } from './ble_relay.js';
 import { createWifiDirect } from './wifi_direct.js';
+import { createLan } from './lan.js';
 import { createFenix } from '../fenix/fenix.js';
 /**
- * BLE Interface v6.9.1-NEXO
+ * BLE Interface v6.10.0-NEXO
+ * v6.10.0: Wi-Fi normal (lan.js): un contacto en la misma red es el enlace "lan:<NEXO ID>", preferido sobre
+ *         Bluetooth; si se cae, lo pendiente sigue por Bluetooth / Jump (_lanUp, _lanDown, _onLanPayload, linkOf).
  * v6.9.1: un paquete dañado (JSON roto o trozo suelto) se descarta; antes salía en el chat como texto.
  * v6.9.0: chat tipo WhatsApp: textos con respuesta/reenviado ('nexo_txt') en la vista previa; las acciones
  *         ('nexo_act', eliminar para todos) no se guardan como mensaje ni cuentan como no leídas. * v6.8.0: Protocolo Fénix (src/fenix/fenix.js): el kx anuncia fx:1 (y 'rs' tras recuperar una cuenta: los
@@ -156,6 +159,14 @@ function _getOrCreateNexoId() {
 // Texto corto del último mensaje para la lista de contactos
 // Todo lo que se manda por Bluetooth es un objeto JSON con v, t o type arriba; lo demás es un trozo de otro
 // mensaje (p. ej. un objeto de dentro que la recomposición nativa sacó suelto tras perderse un trozo)
+// v6.10.0: enlace Wi-Fi con un contacto = dispositivo "lan:<NEXO ID>" (normalizado: "lannx…")
+function _lanId(nx) { return 'lan:' + _normId(nx); }
+function _lanNx(deviceId) {
+  var d = (deviceId || '').toString().toLowerCase();
+  if (d.indexOf('lan:') === 0) return d.substring(4);
+  return /^lannx[0-9a-z]{8}$/.test(d) ? d.substring(3) : null;
+}
+
 function _isProtocolShaped(s) {
   try { var o = JSON.parse(s); return !!o && typeof o === 'object' && (o.v !== undefined || o.t !== undefined || o.type !== undefined); } catch (e) { return false; }
 }
@@ -548,6 +559,7 @@ export class BLEInterface {
     this.ackSystem = null;
     this.relay = createRelay(this);
     this.wifiDirect = createWifiDirect(this);
+    this.lan = createLan(this);
     this.fenix = createFenix(this);
     this._localSeqCounter = 0;
     this._seqCounterLoaded = false;
@@ -703,6 +715,7 @@ export class BLEInterface {
     console.log('[BLEInterface] Supervisor iniciado');
     if (self.relay) self.relay.start();
     if (self.fenix) self.fenix.init();
+    if (self.lan) self.lan.init();
     if (self.wifiDirect) self.wifiDirect.init().then(function(st) {
       // Los ya conectados aún no sabían que tenemos Wi-Fi Direct: repetir el kx con wd:1
       if (st && st.supported) self._deviceStates.forEach(function(v, k) {
@@ -846,6 +859,9 @@ export class BLEInterface {
     var nx = _normId(nexoId);
     if (!nx) return null;
 
+    // v6.10.0: misma red Wi-Fi (enlace comprobado): por ahí, es lo más rápido
+    if (this.lan && this.lan.canReach(nx)) return _lanId(nx);
+
     // 0. v6.1.6: preferir un enlace YA LISTO con ese NEXO ID. Android usa direcciones distintas para
     // anunciarse y para conectarse como cliente: el otro puede estar conectado por una dirección
     // distinta de la del escaneo.
@@ -940,7 +956,7 @@ export class BLEInterface {
     if (!nx || !deviceId) return;
     var nd = _normMac(deviceId);
     if (!this._macToNexoId.get(nd)) this._macToNexoId.set(nd, nx);
-    if (!this._nexoIdToMac.get(nx)) this._nexoIdToMac.set(nx, nd);
+    if (!this._nexoIdToMac.get(nx) && !_lanNx(deviceId)) this._nexoIdToMac.set(nx, nd);
     if (!this._lastKick) this._lastKick = new Map();
     var now = Date.now();
     if (now - (this._lastKick.get(nx) || 0) < 4000) return;
@@ -1044,6 +1060,51 @@ export class BLEInterface {
     this._presenceUntil = Date.now() + (ms || 120000);
     if (this._reconnectScanTimer) { clearTimeout(this._reconnectScanTimer); this._reconnectScanTimer = null; }
     this._startReconnectScanLoop();
+  }
+
+  // ===== v6.10.0: Wi-Fi normal (lan.js) =====
+  // Enlace Wi-Fi comprobado: un dispositivo más, listo para chatear; lo pendiente sale por él
+  _lanUp(nexoId) {
+    var nx = _normId(nexoId), id = _lanId(nx), nd = _normMac(id);
+    this._deviceStates.set(nd, { state: BLE_STATES.READY_TO_CHAT, since: Date.now(), lan: true });
+    this._macToNexoId.set(nd, nx);
+    this._lostPeers.delete(nx);
+    if (this.relay) this.relay.onLinkChange();
+    this._processPendingMessages(id);
+    this._resendPendingMessages(nx);
+    _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: 'wifi' });
+  }
+  // Se cayó: lo que iba por Wi-Fi sigue por Bluetooth (o Jump, o queda en espera) sin perderse
+  _lanDown(nexoId) {
+    var self = this, nx = _normId(nexoId), nd = _normMac(_lanId(nx));
+    self._deviceStates.delete(nd);
+    var next = self._resolveDeviceIdForNexoId(nx);
+    var st = next ? self._getDeviceState(next) : {};
+    var direct = !!next && !_lanNx(next) && (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY);
+    // Textos esperando confirmación y envíos por trozos siguen por Bluetooth donde iban (ble_ack.relink)
+    if (self.ackSystem && typeof self.ackSystem.relink === 'function') self.ackSystem.relink(_lanId(nx), direct ? next : null);
+    if (!direct) self._markPeerLost(nx);
+    if (self.relay) self.relay.onLinkChange();
+    _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: direct ? 'bluetooth' : 'none' });
+  }
+  // Lo que llega por Wi-Fi entra por el mismo camino que lo de Bluetooth
+  _onLanPayload(nexoId, content) {
+    var self = this;
+    var data = { deviceId: _lanId(nexoId), content: content, data: content, source: 'lan', timestamp: Date.now(), reassembled: true };
+    self._payloadChain = (self._payloadChain || Promise.resolve())
+      .then(function() { return self._prePayload(data); })
+      .then(function(d) { if (d) self._handlePayload(d); })
+      .catch(function(e) { console.warn('[BLEInterface] Error procesando paquete (Wi-Fi):', e && e.message); });
+  }
+  // Por dónde va ahora un contacto (para la interfaz y el diagnóstico)
+  linkOf(nexoId) {
+    var nx = _normId(nexoId);
+    if (this.lan && this.lan.canReach(nx)) return 'wifi';
+    var dev = this._resolveDeviceIdForNexoId(nx);
+    var st = dev ? this._getDeviceState(dev).state : null;
+    if (st === BLE_STATES.READY_TO_CHAT || st === BLE_STATES.NOTIFICATIONS_READY) return 'bluetooth';
+    if (this.relay && this.relay.relayHop(nx)) return 'jump';
+    return 'none';
   }
 
   _notifyPeerReady(deviceId, nexoId) {
@@ -1948,7 +2009,8 @@ export class BLEInterface {
   _sendMessageNative(deviceId, content, messageId, seq, dst) {
     var self = this;
     return new Promise(function(resolve, reject) {
-      if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'sendMessage')) {
+      var viaLan = _lanNx(deviceId);
+      if (!viaLan && (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'sendMessage'))) {
         reject(new Error('sendMessage nativo no disponible'));
         return;
       }
@@ -1972,6 +2034,7 @@ export class BLEInterface {
         }
         outgoing = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj });
       }
+      if (viaLan) { self.lan.send(viaLan, outgoing).then(resolve).catch(reject); return; }
       _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: outgoing })
         .then(function(r) {
           if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._mtuByDevice.set(_normMac(targetId), r.mtu);
@@ -1984,6 +2047,7 @@ export class BLEInterface {
   // Jump: un paquete ya hecho (de otro teléfono) sale tal cual
   _sendRawNative(deviceId, packet) {
     var self = this;
+    if (_lanNx(deviceId) && self.lan) return self.lan.send(_lanNx(deviceId), packet);
     if (!self.nativePlugin || !_hasNativeMethod(self.nativePlugin, 'sendMessage')) return Promise.reject(new Error('sendMessage nativo no disponible'));
     return _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: deviceId, message: packet });
   }

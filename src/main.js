@@ -1,5 +1,7 @@
 /**
- * src/main.js - Punto de entrada NEXO v9.9.47-NEXO
+ * src/main.js - Punto de entrada NEXO v9.9.48-NEXO
+ * v9.9.48: Wi-Fi normal (lan.js): fotos y vídeos grandes también por la misma red; la cabecera del chat dice por
+ *   dónde va el contacto (Wi-Fi / Bluetooth / Jump). Avisos nativos de archivos en el diagnóstico.
  * v9.9.47: seguridad fase 3 — Perfil → Seguridad: bloqueo opcional con huella/PIN y bloquear capturas
  *   (src/ui/app_lock.js); los archivos de NEXO se cifran en el teléfono (Kotlin, AtRestStore + Keystore).
  * v9.9.46: cámara tipo WhatsApp (VÍDEO/FOTO, disparador grande, contador, linterna, galería, revisar antes
@@ -128,7 +130,7 @@ var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_O
 function _extOf(name) { var m = /\.([A-Za-z0-9]{1,6})$/.exec(String(name || '')); return m ? '*.' + m[1].toLowerCase() : '(sin extensión)'; }
 var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
-var DIAG_KEY_RE = /\[VIDEO\]|\[SEND\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
+var DIAG_KEY_RE = /\[VIDEO\]|\[SEND\]|\[WIFI\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
   function fmt(a) {
     if (typeof a === 'string') return a;
@@ -227,6 +229,18 @@ function _openProfileSheet() {
   };
 }
 window.addEventListener('nexo:ui:profile', _openProfileSheet);
+
+// v9.9.48: por dónde va el contacto del chat abierto (Wi-Fi de la misma red, Bluetooth, Jump)
+function _refreshLinkSubtitle() {
+  var sub = document.getElementById('chat-contact-subtitle');
+  var bi = window.bleInterface, cid = _getCurrentContactId();
+  if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) return;
+  var via = bi.linkOf(cid);
+  sub.textContent = via === 'wifi' ? 'En línea · Wi-Fi' : via === 'bluetooth' ? 'En línea · Bluetooth' : via === 'jump' ? 'Por Jump' : '';
+}
+['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {
+  window.addEventListener(ev, function() { setTimeout(_refreshLinkSubtitle, 50); });
+});
 
 // ===================== v9.9.44: Protocolo Fénix (src/fenix/fenix.js, docs/FENIX.md) =====================
 var _fenixRecoveryText = '';
@@ -358,9 +372,11 @@ var MAX_BLE_B64_BYTES = 3000000;
 var MAX_BLE_FILE_BYTES = Math.floor(MAX_BLE_B64_BYTES * 3 / 4);
 // v9.9.39: con Wi-Fi Direct (contacto a alcance que también lo tiene) el límite sube a ~22 MB
 var WD_MAX_B64_BYTES = 30000000;
+// v9.9.48: "camino rápido": Wi-Fi Direct o la misma red Wi-Fi (lan.js); por ellos fotos, vídeos y archivos grandes
 function _wdReach(contactId) {
   var bi = window.bleInterface;
-  return !!(bi && bi.wifiDirect && contactId && bi.wifiDirect.canReach(contactId));
+  if (!bi || !contactId) return false;
+  return !!((bi.lan && bi.lan.canReach(contactId)) || (bi.wifiDirect && bi.wifiDirect.canReach(contactId)));
 }
 function _maxB64For(contactId) { return _wdReach(contactId) ? WD_MAX_B64_BYTES : MAX_BLE_B64_BYTES; }
 function _tooBigMessage(bytes, contactId) {
@@ -2145,11 +2161,7 @@ function _registerCriticalListeners() {
           }
           // v9.9.30: vídeos HD que quedaron pendientes o a medias
           setTimeout(function() { _resumeHdTransfers(nx); }, 3000);
-          var activeId = _getCurrentContactId();
-          if (activeId && _normId(activeId) === nx) {
-            var subtitle = document.getElementById('chat-contact-subtitle');
-            if (subtitle) subtitle.textContent = 'En linea';
-          }
+          _refreshLinkSubtitle();
         }
       } catch (err) {
         console.warn('[MAIN] peerReady handler error:', err.message);

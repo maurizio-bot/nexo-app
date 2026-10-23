@@ -158,3 +158,11 @@ al volver el alcance deben llegar las dos).
 mensajes se pierde un trozo del medio), `--kotlin-2722` (reglas antiguas de la cola: reproduce las fotos paradas),
 `--inject` (paquetes mutilados: no deben salir en el chat), `--camera` (el otro abre la cámara a mitad),
 `--bridge-ms` (coste de cada aviso Android → app).
+
+`lan.js` (A, B, C y un impostor X; misma red Wi-Fi "casa"): Wi-Fi normal y cambio automático de camino. La
+conexión Wi-Fi se comprueba con el cifrado y pasa a ser el camino (textos y fotos sin Bluetooth, nada en claro
+por la red); C (no contacto) no se conecta; sin alcance Bluetooth sigue por Wi-Fi; B sale de la red a mitad de un
+archivo y termina por Bluetooth idéntico; caída silenciosa detectada por el latido (texto por Bluetooth); volver a
+la red devuelve el Wi-Fi; un impostor con la marca de A nunca se comprueba y se cierra. `native_mock` modela la
+red (`opts.wifi`, `setWifi`, `lanSilent`, `lanBps`). La parte nativa (LanHub) se prueba con sockets reales en
+`tests/kotlin`.

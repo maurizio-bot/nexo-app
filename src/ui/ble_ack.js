@@ -2,6 +2,8 @@ import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
+* v3.10.0: Wi-Fi normal (lan.js): por un enlace "lan:<NEXO ID>" van trozos grandes y los archivos sin Wi-Fi Direct;
+*         si el Wi-Fi se cae a mitad, el envío sigue por Bluetooth (useLink).
 * v3.9.0: cada trozo lleva su comprobación (k): uno dañado por el camino se vuelve a pedir en vez de aceptarse
 *         (la foto acababa sin poder descifrarse). Tiempos de cada texto en el diagnóstico ([SEND]).
 * v3.8.0: Fénix: los archivos con meta.type 'fenix' van a fenix.onFile (no al chat ni a su progreso).
@@ -63,6 +65,11 @@ const NACK_INTERVAL_MS = 1500;
 const FILE_WINDOW_TIMEOUT_MS = 8000;
 const FILE_PACING_DELAY_MS = 2; // el nativo ya regula el ritmo (control de flujo por callback)
 const MAX_WINDOW_RETRIES = 8;
+// v3.10.0: Wi-Fi normal (lan.js): trozos grandes por la misma red
+const LAN_FILE_CHUNK = 24000;
+const LAN_CHAT_CHUNK = 8000;
+const LAN_PSEUDO_MTU = 65535;
+function _isLanDevice(deviceId) { var d = (deviceId || '').toString().toLowerCase(); return d.indexOf('lan:') === 0 || /^lannx[0-9a-z]{8}$/.test(d); }
 const BLE_FILE_MAX_CHARS = 3100000; // tope por Bluetooth (main.js MAX_BLE_B64_BYTES + cabecera de cifrado)
 const BLE_HD_MAX_CHARS = 9500000;   // HD de vídeo (main.js MAX_HD_B64_BYTES + relleno y cabecera de cifrado)
 const ASSEMBLY_TIMEOUT_MS = 120000;
@@ -221,6 +228,26 @@ export class BleAckSystem {
     }
     return self._sendFileBest(deviceId, fileId, base64Data, meta);
   }
+  // v3.10.0: se cayó el Wi-Fi con un contacto (oldId "lan:<nx>"). Lo que iba por él sigue por `next` (Bluetooth);
+  // lo que no cabe por Bluetooth (vídeo original, archivo grande) o si no hay Bluetooth, se para con WD_FAILED /
+  // PEER_ABSENT y quien lo mandó decide (vídeo: previa + HD; lo demás: pendiente hasta que vuelva un camino).
+  relink(oldId, next) {
+    var self = this, nd = _normMac(oldId);
+    self.pendingAcks.forEach(function(e) { if (next && _normMac(e.deviceId) === nd) e.deviceId = next; });
+    self.outgoingStreams.forEach(function(st, id) {
+      if (!st || _normMac(st.deviceId) !== nd) return;
+      var limit = (st.meta && st.meta.hdFor) ? BLE_HD_MAX_CHARS : BLE_FILE_MAX_CHARS;
+      var tooBig = st.type === 'file' && ((st.meta && st.meta.wdOnly) || String(st.content || '').length > limit);
+      if (next && !tooBig) { st.useLink(next); return; }
+      var e = new Error(tooBig ? 'Wi-Fi caído y no cabe por Bluetooth' : 'Contacto no disponible: queda pendiente');
+      e.code = tooBig ? 'WD_FAILED' : 'PEER_ABSENT';
+      var rej = st.reject; st.reject = null;
+      st.abort();
+      self.outgoingStreams.delete(id);
+      if (st.type === 'file') self._dispatchFileProgress(id, 0, 1, tooBig ? 'failed' : 'sending', 0);
+      if (rej) rej(e);
+    });
+  }
   // Datos de cabecera de un archivo (los mismos por Bluetooth y por Wi-Fi Direct)
   _fileMeta(meta, size) {
     var senderId = (this.ble && this.ble.localNexoId) || ((this.ble && this.ble.localDeviceUUID) ? this.ble.localDeviceUUID : 'unknown');
@@ -240,6 +267,8 @@ export class BleAckSystem {
   // v3.6.0: Wi-Fi Direct primero si se puede (mucho más rápido); si falla, Bluetooth
   _sendFileBest(deviceId, fileId, data, meta) {
     var self = this, wd = self.ble && self.ble.wifiDirect;
+    // v3.10.0: misma red Wi-Fi: por ahí directamente (rápido, sin montar grupo; también el vídeo original)
+    if (_isLanDevice(deviceId)) return self._sendFileJS(deviceId, fileId, data, meta);
     if (!data || !wd || (meta && meta.dst) || !wd.eligible(deviceId, data.length)) {
       // Vídeo original pensado para Wi-Fi Direct que ya no puede ir por ahí: la app lo manda como previa + HD
       if (meta && meta.wdOnly) { var e0 = new Error('Wi-Fi Direct no disponible'); e0.code = 'WD_FAILED'; return Promise.reject(e0); }
@@ -939,7 +968,10 @@ export class BleAckSystem {
         list.forEach(function(tx) {
           if (tx.status !== 'sending' && tx.status !== 'pending') return;
           var content = tx.chunks.map(function(c) { return (typeof c === 'string') ? c : (c.data || c.d || ''); }).join('');
-          var devId = tx.deviceId || contact.deviceId;
+          // v3.10.0: por el mejor camino de ahora (Wi-Fi, Bluetooth); el guardado puede ser un Wi-Fi que ya no está
+          var best = (self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') ? self.ble._resolveDeviceIdForNexoId(cid) : null;
+          var devId = best || tx.deviceId || contact.deviceId;
+          if (_isLanDevice(devId) && !(self.ble && self.ble.lan && self.ble.lan.canReach(cid))) devId = contact.deviceId;
           if (!devId) return;
           // FIX: respetar tx.type. Antes SIEMPRE se llamaba a sendChunkedMessage (tipo 'chat'),
           // así que una foto/video interrumpido se reenviaba como texto (t:'c') y el receptor
@@ -1092,8 +1124,11 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   // 40-80 ms; con MTU pequeño un paquete grande ocupa muchas escrituras y la ventana debe ser menor
   // y esperar más (si no, timeouts espurios y la cola nativa de 500 se llena y descarta).
   var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
+  // v3.10.0: por Wi-Fi (misma red) trozos grandes: no hay MTU ni escrituras de 20-500 bytes
+  if (_isLanDevice(deviceId)) mtu = LAN_PSEUDO_MTU;
   var perWrite = mtu ? Math.max(mtu - 13, 10) : 0;
   var overhead = 90; // cabecera JSON de un trozo ('v','t','m','i','n','d')
+  if (_isLanDevice(deviceId)) { this.chunkSize = isFile ? LAN_FILE_CHUNK : LAN_CHAT_CHUNK; perWrite = this.chunkSize + overhead; }
   // Trozos grandes aunque ocupen 2-3 escrituras (menos paquetes y acks); solo se reducen si un
   // paquete necesitaría más de 3 escrituras (MTU pequeño). Medido: MTU 247 => 18 s/foto con 360
   // frente a 27 s ajustando a una sola escritura.
@@ -1127,6 +1162,20 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
     console.log('[ChatStream] MODO ARCHIVO. chunk=' + this.chunkSize + ' window=' + this.windowSize + ' pacing=' + this.pacingDelayMs + 'ms');
   }
 }
+// v3.10.0: el enlace cambió a mitad (Wi-Fi caído → Bluetooth): los trozos ya están hechos (el receptor espera esos),
+// así que se adapta el ritmo: ventana pequeña y esperas largas (un trozo de Wi-Fi son muchas escrituras Bluetooth)
+ChatStream.prototype.useLink = function(deviceId) {
+  this.deviceId = deviceId;
+  if (_isLanDevice(deviceId)) return;
+  var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
+  var perWrite = mtu ? Math.max(mtu - 13, 10) : 20;
+  this.writesPerPacket = Math.ceil((this.chunkSize + 90) / perWrite);
+  if (this.writesPerPacket > 3) {
+    this.windowSize = Math.max(1, Math.min(this.windowSize, Math.floor(400 / this.writesPerPacket) || 1));
+    this.windowTimeoutMs = Math.max(this.windowTimeoutMs, this.windowSize * this.writesPerPacket * 60 + 5000);
+  }
+  console.log('[ChatStream] ' + this.msgId + ' sigue por Bluetooth: ventana ' + this.windowSize + ', espera ' + this.windowTimeoutMs + ' ms');
+};
 ChatStream.prototype.start = function() {
   var self = this;
   return new Promise(function(resolve, reject) {
@@ -1251,11 +1300,28 @@ ChatStream.prototype._sendWindow = function() {
       var payload = self._buildChunk(idx);
       self.ble._sendMessageNative(self.deviceId, payload, self.msgId + '_' + idx)
         .then(function() {
+          self._nativeFails = 0;
           setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
         })
         .catch(function(err) {
-          console.warn('[ChatStream] Envio nativo fallo chunk', idx, err.message);
-          setTimeout(function() { sendNext(idx); }, 200);
+          if (self.aborted) return;
+          var fails = self._nativeFails = (self._nativeFails || 0) + 1;
+          if (fails === 1 || fails % 20 === 0) console.warn('[ChatStream] Envio nativo fallo chunk', idx, err.message, '(' + fails + ')');
+          // v3.10.0: el enlace ya no sirve (p. ej. Wi-Fi caído): seguir por el mejor camino de ahora. Antes se
+          // reintentaba para siempre cada 200 ms por el mismo enlace.
+          var bi = self.ble, nx = self.ackSystem._resolveNexoId(self.deviceId);
+          var best = (fails >= 3 && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx) : null;
+          if (best && _normMac(best) !== _normMac(self.deviceId)) self.useLink(best);
+          if (fails > 120) {
+            // ~2 min sin poder enviar: queda pendiente y se reanuda al volver a haber camino
+            var e = new Error('Contacto no disponible: queda pendiente'); e.code = 'PEER_ABSENT';
+            var rej = self.reject; self.reject = null;
+            self.abort();
+            self.ackSystem.outgoingStreams.delete(self.msgId);
+            if (rej) rej(e);
+            return;
+          }
+          setTimeout(function() { sendNext(idx); }, fails > 10 ? 1000 : 200);
         });
     }
     sendNext(self.windowStart);

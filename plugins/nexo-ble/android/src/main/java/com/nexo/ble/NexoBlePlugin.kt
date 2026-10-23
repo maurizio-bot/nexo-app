@@ -1388,7 +1388,8 @@ class NexoBlePlugin : Plugin() {
         val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
         val msgId = writeMsgCounter.incrementAndGet()
         synchronized(queue) {
-            if (queue.size + chunks.size > MAX_QUEUE_SIZE) {
+            // (un mensaje más grande que la cola entera entra cuando está vacía: si no, esperaría para siempre)
+            if (queue.isNotEmpty() && queue.size + chunks.size > MAX_QUEUE_SIZE) {
                 remLog("WARN", "SEND", "Cola llena para $macNorm: el mensaje espera (no se parte)")
                 return SendResult(false, "")
             }

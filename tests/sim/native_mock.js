@@ -143,6 +143,38 @@ class NativePhone {
     if ((this.listeners.get('onRemLog') || []).length) { this.stats.remLogsToJs = (this.stats.remLogsToJs || 0) + 1; this.emit('onRemLog', { level, tag, message, timestamp: Date.now() }); }
   }
 
+  // ---- Wi-Fi normal (modelo de LanHub + NSD) ----
+  get wifiNet() { return this._wifiNet === undefined ? (this.opts.wifi || null) : this._wifiNet; }
+  setWifi(net) {
+    const prev = this.wifiNet;
+    this._wifiNet = net || null;
+    if (prev && prev !== this._wifiNet && this.lanConns) Array.from(this.lanConns.keys()).forEach((nx) => this._lanClose(nx, !!this.opts.lanSilent));
+    if (this._wifiNet) setTimeout(() => this._lanAnnounce(), 30);
+  }
+  _lanAnnounce() {
+    if (!this.lan || !this.wifiNet) return;
+    this.radio.phones.forEach((p) => {
+      if (p === this || !p.lan || p.wifiNet !== this.wifiNet) return;
+      this.emit('onLanPeer', { token: p.lan.token, host: p.name, port: p.lan.port });
+      p.emit('onLanPeer', { token: this.lan.token, host: this.name, port: this.lan.port });
+    });
+  }
+  _lanLink(t) {
+    if (!this.lanConns) this.lanConns = new Map();
+    if (!t.lanConns) t.lanConns = new Map();
+    if (this.lanConns.get(t.lan.nx) === t && t.lanConns.get(this.lan.nx) === this) return;
+    this.lanConns.set(t.lan.nx, t); t.lanConns.set(this.lan.nx, this);
+    this.emit('onLanUp', { nx: t.lan.nx }); t.emit('onLanUp', { nx: this.lan.nx });
+  }
+  // silent: el otro no se entera (cable cortado / Wi-Fi perdido sin cierre limpio)
+  _lanClose(nx, silent) {
+    const peer = this.lanConns && this.lanConns.get(nx);
+    if (!peer) return;
+    this.lanConns.delete(nx);
+    this.emit('onLanDown', { nx });
+    if (!silent && peer.lanConns && this.lan && peer.lanConns.get(this.lan.nx) === this) { peer.lanConns.delete(this.lan.nx); peer.emit('onLanDown', { nx: this.lan.nx }); }
+  }
+
   // ---- envío al aire ----
   // tag = { mid, last }: trozo de qué mensaje (para la cola: no partir mensajes).
   // opts.busyFail = probabilidad de que Android rechace una escritura por estar ocupado (ERROR_GATT_WRITE_REQUEST_BUSY,
@@ -165,7 +197,7 @@ class NativePhone {
     // Pérdida simulada (radio real): se pierde la escritura entera
     if (this.opts.loss && Math.random() < this.opts.loss) { this.stats.lost = (this.stats.lost || 0) + 1; return; }
     // Kotlin MAX_QUEUE_SIZE = 500: con la cola llena descarta
-    if (q.items.length >= 500) { this.stats.dropped = (this.stats.dropped || 0) + 1; return; }
+    if (this.opts.kotlin2722 && q.items.length >= 500) { this.stats.dropped = (this.stats.dropped || 0) + 1; return; }
     const item = () => toPhone._processReceivedChunk(fromAddress, bytes, source);
     item.tag = tag || {}; item.tries = 0;
     q.items.push(item);
@@ -222,15 +254,15 @@ class NativePhone {
     const mtu = this.mtu.get(macNorm) || 23;
     const size = Math.max(mtu - 3 - 10, 20);
     const mid = (this._mid = (this._mid || 0) + 1);
-    if (message.length <= size) return this._sendSingleChunk(macNorm, message, { mid, last: true });
     const chunks = [];
     for (let i = 0; i < message.length; i += size) chunks.push(message.substring(i, i + size));
-    // Kotlin 2723: el mensaje entra entero o no entra (con la cola llena espera; antes se partía)
+    // Kotlin 2725: el mensaje entra entero o no entra (con la cola llena espera; antes se partía)
     if (!this.opts.kotlin2722) {
       const peerAddr = (this.serverConnected.get(macNorm) || (this.clients.get(macNorm) || {}).peer || {}).address;
       const q = peerAddr && this.writeQ && this.writeQ.get(norm(peerAddr));
-      if (q && q.items.length + chunks.length > 500) { this.stats.queueFullMsgs = (this.stats.queueFullMsgs || 0) + 1; return { sent: false, mode: '' }; }
+      if (q && q.items.length > 0 && q.items.length + chunks.length > 500) { this.stats.queueFullMsgs = (this.stats.queueFullMsgs || 0) + 1; return { sent: false, mode: '' }; }
     }
+    if (chunks.length <= 1) return this._sendSingleChunk(macNorm, message, { mid, last: true });
     const first = this._sendSingleChunk(macNorm, chunks[0], { mid, last: chunks.length === 1 });
     if (!first.sent) return { sent: false, mode: '' };
     // opts.dropMidEvery = N: cada N mensajes de varios trozos se pierde uno del medio (prueba la resincronización)
@@ -520,6 +552,43 @@ class NativePhone {
         if (typeof self.bioDuring === 'function') self.bioDuring();
         setTimeout(() => c.resolve(ok ? { ok: true } : { ok: false, reason: 'Cancelado', code: 13 }), 50);
       }),
+      // Wi-Fi normal (Kotlin: LanHub + NSD). opts.wifi = nombre de la red (o null). Mismo nombre = misma red: se
+      // descubren (onLanPeer con la marca del otro), conectan (onLanUp en los dos) y se mandan mensajes en orden
+      // (~20 MB/s). setWifi(red|null) en la prueba: salir de la red cierra sus conexiones; el otro solo se entera
+      // si opts.lanSilent es falso (con TCP real, a veces no se entera: lo detecta la app por falta de latido).
+      lanStatus: wrap('lanStatus', (c) => c.resolve({ supported: true, wifi: !!self.wifiNet, running: !!self.lan, port: self.lan ? self.lan.port : 0 })),
+      lanStart: wrap('lanStart', (c, a) => {
+        const nx = String(a.nexoId || '').toLowerCase(), token = a.token;
+        if (!nx || !token) return c.reject('nexoId y token requeridos');
+        self.lan = Object.assign(self.lan || { port: 40000 + Math.floor(Math.random() * 20000) }, { nx, token });
+        self.stats.lanStarts = (self.stats.lanStarts || 0) + 1;
+        c.resolve({ port: self.lan.port, wifi: !!self.wifiNet });
+        setTimeout(() => self._lanAnnounce(), 30);
+      }),
+      lanConnect: wrap('lanConnect', (c, a) => {
+        c.resolve({ connecting: true });
+        setTimeout(() => {
+          const t = self.radio.phones.find((p) => p.name === a.host && p.lan && p.lan.port === a.port);
+          if (!t || !self.lan || !self.wifiNet || t.wifiNet !== self.wifiNet) return;
+          self._lanLink(t);
+        }, 20);
+      }),
+      lanSend: wrap('lanSend', (c, a) => {
+        const peer = self.lanConns && self.lanConns.get(String(a.nx || '').toLowerCase());
+        const content = String(a.content || '');
+        if (!peer || !self.wifiNet) return c.reject('Sin conexión Wi-Fi con ' + a.nx, 'LAN_DOWN');
+        self.stats.lanOut = (self.stats.lanOut || 0) + 1; self.stats.lanOutBytes = (self.stats.lanOutBytes || 0) + content.length;
+        const from = self.lan.nx;
+        self._lanQ = (self._lanQ || Promise.resolve()).then(() => new Promise((done) => setTimeout(() => {
+          // Llega solo si los dos siguen en la misma red y el otro aún tiene la conexión
+          if (peer.wifiNet && peer.wifiNet === self.wifiNet && peer.lanConns && peer.lanConns.get(from) === self) peer.emit('onLanMessage', { nx: from, content });
+          else self.stats.lanLost = (self.stats.lanLost || 0) + 1;
+          done();
+        }, 2 + content.length / ((self.opts.lanBps || 20e6) / 1000))));
+        c.resolve({ sent: true });
+      }),
+      lanDrop: wrap('lanDrop', (c, a) => { self._lanClose(String(a.nx || '').toLowerCase(), false); c.resolve({ dropped: true }); }),
+      lanStop: wrap('lanStop', (c) => { if (self.lanConns) Array.from(self.lanConns.keys()).forEach((nx) => self._lanClose(nx, false)); self.lan = null; c.resolve({ stopped: true }); }),
       setSecureScreen: wrap('setSecureScreen', (c, a) => { self.secureScreen = a.on === true; c.resolve({ on: self.secureScreen }); }),
       startListeningMessages: wrap('startListeningMessages', (c) => c.resolve({ listening: true })),
     };
