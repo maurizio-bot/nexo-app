@@ -2103,6 +2103,10 @@ class NexoBlePlugin : Plugin() {
     private var nsdReg: android.net.nsd.NsdManager.RegistrationListener? = null
     private var nsdDisc: android.net.nsd.NsdManager.DiscoveryListener? = null
     private var lanMcLock: WifiManager.MulticastLock? = null
+    // Escaneo activo de la red (LanBeacon): por si el router no deja pasar el anuncio mDNS
+    private var lanBeacon: LanBeacon? = null
+    private var lanNetCb: android.net.ConnectivityManager.NetworkCallback? = null
+    @Volatile private var lanLastSweep = 0L
     @Volatile private var lanMyId = ""
     private var lanToken = ""
     private var lanServiceName = ""
@@ -2137,6 +2141,19 @@ class NexoBlePlugin : Plugin() {
                 override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
             }).also { lanHub = it }
             val port = hub.start()
+            // Escaneo activo: pregunta a toda la red (difusión) y, de vez en cuando o al entrar en una red, una a una
+            val beacon = lanBeacon ?: LanBeacon(object : LanBeacon.Listener {
+                override fun onPeer(token: String, host: String, port: Int) {
+                    notifyListeners("onLanPeer", JSObject().put("token", token).put("host", host).put("port", port).put("src", "scan"))
+                }
+                override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
+            }).also { lanBeacon = it }
+            beacon.start(token, port)
+            val now = System.currentTimeMillis()
+            val sweep = call.getBoolean("sweep", false) == true || now - lanLastSweep > 300000L
+            if (sweep) lanLastSweep = now
+            if (lanOnWifi()) beacon.scan(sweep)
+            lanWatchWifi()
             val nsd = nsdManager ?: (context.getSystemService(Context.NSD_SERVICE) as android.net.nsd.NsdManager).also { nsdManager = it }
             if (lanMcLock == null) {
                 val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -2194,7 +2211,7 @@ class NexoBlePlugin : Plugin() {
                     val host = info.host?.hostAddress
                     val t = info.attributes["t"]?.let { String(it, Charsets.UTF_8) }
                     if (host != null && t != null && t != lanToken) {
-                        notifyListeners("onLanPeer", JSObject().put("token", t).put("host", host).put("port", info.port))
+                        notifyListeners("onLanPeer", JSObject().put("token", t).put("host", host).put("port", info.port).put("src", "mdns"))
                     }
                     lanResolveNext()
                 }
@@ -2241,7 +2258,30 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("stopped", true))
     }
 
+    // Al conectarse a una red Wi-Fi: escanear ya (una a una) y avisar a la app (vuelve a anunciarse y buscar)
+    private fun lanWatchWifi() {
+        if (lanNetCb != null) return
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val req = android.net.NetworkRequest.Builder().addTransportType(android.net.NetworkCapabilities.TRANSPORT_WIFI).build()
+            val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    mainHandler.postDelayed({
+                        lanLastSweep = System.currentTimeMillis()
+                        lanBeacon?.scan(true)
+                        notifyListeners("onLanNet", JSObject().put("wifi", true))
+                    }, 1500)
+                }
+            }
+            cm.registerNetworkCallback(req, cb)
+            lanNetCb = cb
+        } catch (e: Exception) { remLog("WARN", "LAN", "Sin aviso de red Wi-Fi: ${e.message}") }
+    }
+
     private fun lanStopAll() {
+        lanNetCb?.let { cb -> try { (context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).unregisterNetworkCallback(cb) } catch (e: Exception) {} }
+        lanNetCb = null
+        lanBeacon?.stop(); lanBeacon = null
         val nsd = nsdManager
         nsdReg?.let { try { nsd?.unregisterService(it) } catch (e: Exception) {} }
         nsdDisc?.let { try { nsd?.stopServiceDiscovery(it) } catch (e: Exception) {} }

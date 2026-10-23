@@ -1,11 +1,14 @@
 /**
- * lan.js v1.1 — Wi-Fi normal: hablar con un contacto que está en la misma red Wi-Fi (casa, oficina, un local),
+ * lan.js v1.2 — Wi-Fi normal: hablar con un contacto que está en la misma red Wi-Fi (casa, oficina, un local),
  * aunque no esté a alcance de Bluetooth. Mucho más rápido que Bluetooth y sin montar grupo como Wi-Fi Direct.
  * v1.1 (reglas del dueño, docs/PENDIENTES.md): el Wi-Fi del mismo router manda. El latido y el corte los hace la
  *   parte nativa (LanHub), que sigue aunque la app esté en segundo plano: antes el latido era de la app y, al elegir
  *   una foto en la galería o con la pantalla bloqueada >25 s, el otro daba el Wi-Fi por caído y pasaba a Bluetooth.
  *   Un corte no cambia de camino enseguida: se reconecta y hay un margen (GRACE_MS). Mala señal (ida y vuelta muy
  *   lenta, medida por el latido nativo): lo nuevo va por Bluetooth hasta que mejora, y vuelve solo al Wi-Fi.
+ * v1.2 (idea del dueño): además del anuncio mDNS, escaneo activo de la red (Kotlin LanBeacon): al entrar en una red
+ *   Wi-Fi, al volver a la app y cada minuto pregunta a toda la red "¿hay algún NEXO?" (difusión y, al entrar o cada
+ *   5 min, dirección por dirección). Sirve con routers, repetidores y redes en malla que no dejan pasar el mDNS.
  *
  * - Cada teléfono se anuncia en la red (NSD/mDNS, lo mismo que Bonjour en iPhone) con una marca del día:
  *   SHA-256("nexo-lan|<NEXO ID>|<fecha UTC>") recortado. Solo quien ya conoce el NEXO ID (un contacto) la
@@ -59,8 +62,10 @@ export class LanLink {
       pl.addListener('onLanUp', function(ev) { self._onUp(ev); });
       pl.addListener('onLanDown', function(ev) { self._onDown(ev); });
       pl.addListener('onLanMessage', function(ev) { self._onMessage(ev); });
-      // Al volver a la app: buscar ya (no esperar al minuto)
-      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') self.start(); });
+      // Al entrar en una red Wi-Fi (el nativo ya escaneó): anunciarse y buscar ya
+      pl.addListener('onLanNet', function() { self.start(); });
+      // Al volver a la app: buscar ya (no esperar al minuto), también dirección por dirección
+      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') self.start(true); });
     }
     if (!self._timer) self._timer = setInterval(function() { self._tick(); }, TICK_MS);
     return pl.lanStatus().then(function(st) {
@@ -71,7 +76,7 @@ export class LanLink {
   }
 
   // Anunciarse y buscar (también sirve para volver a buscar y para cambiar la marca al cambiar el día)
-  async start() {
+  async start(sweep) {
     var pl = _plugin(), me = _nid(this.ble && this.ble.localNexoId);
     if (!pl || typeof pl.lanStart !== 'function' || !me) return;
     this._lastStart = Date.now();
@@ -79,7 +84,7 @@ export class LanLink {
       var day = _day(0);
       if (this._myDay !== day || !this._myToken) { this._myToken = await lanToken(me, day); this._myDay = day; }
       await this.refreshTokens();
-      var r = await pl.lanStart({ nexoId: me, token: this._myToken });
+      var r = await pl.lanStart({ nexoId: me, token: this._myToken, sweep: !!sweep });
       if (r && r.wifi && !this._announced) { this._announced = true; console.log('[WIFI] Buscando contactos en la misma red Wi-Fi'); }
       if (r && !r.wifi) this._announced = false;
     } catch (e) { console.warn('[WIFI] No disponible: ' + (e && e.message)); }
@@ -121,6 +126,8 @@ export class LanLink {
     var nx = this.tokens.get(ev.token);
     if (!nx) { await this.refreshTokens(); nx = this.tokens.get(ev.token); } // contacto añadido hace poco
     if (!nx) return;
+    var prev = this.addr.get(nx);
+    if (!prev || prev.host !== ev.host || prev.port !== ev.port) console.log('[WIFI] ' + nx + ' está en la misma red (' + (ev.src === 'scan' ? 'escaneo de la red' : 'anuncio mDNS') + ')');
     this.addr.set(nx, { host: ev.host, port: ev.port });
     var l = this.links.get(nx);
     if (l && l.up) return;

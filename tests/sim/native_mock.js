@@ -151,12 +151,17 @@ class NativePhone {
     if (prev && prev !== this._wifiNet && this.lanConns) Array.from(this.lanConns.keys()).forEach((nx) => this._lanClose(nx, !!this.opts.lanSilent));
     if (this._wifiNet) setTimeout(() => this._lanAnnounce(), 30);
   }
+  // Descubrimiento: anuncio mDNS (opts.lanNoMdns: el router no lo deja pasar, como muchos repetidores y mallas) y,
+  // desde la 2733, escaneo activo de la red (LanBeacon; opts.lanNoScan = Kotlin anterior, sin escaneo)
   _lanAnnounce() {
     if (!this.lan || !this.wifiNet) return;
     this.radio.phones.forEach((p) => {
       if (p === this || !p.lan || p.wifiNet !== this.wifiNet) return;
-      this.emit('onLanPeer', { token: p.lan.token, host: p.name, port: p.lan.port });
-      p.emit('onLanPeer', { token: this.lan.token, host: this.name, port: this.lan.port });
+      // Escaneo: hace falta que los dos lo tengan (uno pregunta, el otro escucha y contesta)
+      const src = (!this.opts.lanNoMdns && !p.opts.lanNoMdns) ? 'mdns' : (!this.opts.lanNoScan && !p.opts.lanNoScan ? 'scan' : null);
+      if (!src) return;
+      this.emit('onLanPeer', { token: p.lan.token, host: p.name, port: p.lan.port, src });
+      p.emit('onLanPeer', { token: this.lan.token, host: this.name, port: this.lan.port, src });
     });
   }
   _lanLink(t) {
