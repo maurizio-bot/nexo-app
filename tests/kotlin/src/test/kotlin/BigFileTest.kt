@@ -62,7 +62,7 @@ class BigFileTest {
         val token = BigFile.token()
         val server = ServerSocket(0, 5, InetAddress.getLoopbackAddress())
         var lastIn = 0L
-        val t = Thread { BigNet.serve(server, "msg1", token, dest, BigFile.MAX_BYTES * 2) { b, _ -> lastIn = b } }
+        val t = Thread { BigNet.serve(server, "msg1", token, dest, BigFile.MAX_BYTES * 2, progress = { b, _ -> lastIn = b }) }
         t.start()
         // Alguien en la misma red se conecta antes con un token falso: se le ignora y se sigue esperando
         Socket(InetAddress.getLoopbackAddress(), server.localPort).use { s ->

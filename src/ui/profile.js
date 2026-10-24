@@ -5,6 +5,7 @@
  */
 import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
+import { startReceiveAccount, startSendAccount } from './move_account.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _showInfoToast;
@@ -23,6 +24,11 @@ function _openProfileSheet() {
     '<div style="font-size:16px;font-weight:600;margin:8px 0;">Fénix</div>' +
     '<div id="nexo-fenix-status" style="font-size:12px;opacity:0.8;margin-bottom:8px;white-space:pre-line;"></div>' +
     '<button id="nexo-fenix-recover" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;margin-bottom:12px;">Recuperar mi cuenta (teléfono nuevo)</button>' +
+    // Ronda 2759: pasar la cuenta de un teléfono a otro (move_account.js)
+    '<div style="font-size:16px;font-weight:600;margin:8px 0;">Cambiar de teléfono</div>' +
+    '<div style="font-size:12px;opacity:0.7;margin-bottom:8px;">Con los dos teléfonos en el mismo Wi-Fi: en el nuevo, "Traer mi cuenta"; en este, "Pasar mi cuenta" y lee su código. Pasa todo (contactos, chats, fotos, grupos) y este queda vacío.</div>' +
+    '<button id="nexo-move-send" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;margin-bottom:8px;">Pasar mi cuenta a un teléfono nuevo</button>' +
+    '<button id="nexo-move-receive" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;margin-bottom:12px;">Traer mi cuenta de otro teléfono</button>' +
     securitySectionHtml() +
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
     '<div style="font-size:16px;font-weight:600;margin:8px 0;">Internet</div>' +
@@ -46,6 +52,11 @@ function _openProfileSheet() {
     torBox.checked = !!(bi.net && bi.net.torWanted());
     torBox.onchange = function() { if (bi.net) { bi.net.setTor(torBox.checked); setTimeout(_renderNetStatus, 300); } };
   }
+  sheet.querySelector('#nexo-move-send').onclick = function() { sheet.remove(); startSendAccount(); };
+  sheet.querySelector('#nexo-move-receive').onclick = function() {
+    if (!window.confirm('Traer tu cuenta de otro teléfono: lo que haya en ESTE teléfono se sustituye por tu cuenta. ¿Seguir?')) return;
+    sheet.remove(); startReceiveAccount();
+  };
   sheet.querySelector('#nexo-fenix-recover').onclick = function() {
     var fx = bi.fenix;
     if (!fx) return;

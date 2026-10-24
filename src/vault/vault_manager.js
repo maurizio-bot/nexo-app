@@ -527,15 +527,17 @@ function _writeMessagesFile(cid) {
   if (t) { clearTimeout(t); _persistTimers.delete(cid); }
   var plugin = _nativePlugin();
   var msgs = _msgCache.get(cid);
-  if (!plugin || !msgs) return;
-  _safeNativeCall(plugin, 'saveToFile', {
+  if (!plugin || !msgs) return Promise.resolve();
+  return _safeNativeCall(plugin, 'saveToFile', {
     filename: _msgFileName(cid),
     content: JSON.stringify({ messages: msgs, savedAt: Date.now() })
   }).catch(function(e) {});
 }
 function _flushPendingWrites() {
-  Array.from(_persistTimers.keys()).forEach(_writeMessagesFile);
+  return Promise.all(Array.from(_persistTimers.keys()).map(_writeMessagesFile));
 }
+// Ronda 2759 (pasar la cuenta): todo lo pendiente a disco antes de empaquetarlo
+export function vaultFlushAll() { return _flushPendingWrites().then(function() { return Promise.all(Object.keys(_pendingAttachments).map(function(f) { return vaultSaveFile(f, _pendingAttachments[f]); })); }); }
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushPendingWrites(); });
   window.addEventListener('pagehide', _flushPendingWrites);

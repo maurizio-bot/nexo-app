@@ -62,6 +62,8 @@ Ronda 2758: `ui/groups.js` (chats de grupo: almacén `nexo_groups.json`, sobre `
 estado conjunto) y `ui/groups_ui.js` (botón 👥, hoja para crear, abrir el chat del grupo, menú). `bleInterface.groups`.
 Llamadas de voz: `ui/calls.js` (señalización, cifrado y estados; `bleInterface.calls`), `ui/call_media.js` (micrófono,
 Opus/μ-law, reproducción) y `ui/calls_ui.js` (botón 📞, pantalla de llamada, línea en el chat).
+Ronda 2759: `ui/move_account.js` (pasar la cuenta a un teléfono nuevo: QR, progreso, pantallas) y `AccountMove.kt`
+(empaquetar / desempaquetar / borrar; lo usan `moveReceive` y `moveSend` de `NexoBlePlugin.kt`).
 
 Sin cambios: `ui/ble_ack.js` (protocolo de trozos), `ui/ble_relay.js` (Jump), `ui/lan.js`, `ui/wifi_direct.js`,
 `net/net_link.js` (internet), `vault/*`, `fenix/*`.

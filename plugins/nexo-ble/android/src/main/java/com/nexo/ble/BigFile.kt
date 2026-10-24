@@ -108,10 +108,11 @@ object BigNet {
     }
 
     // Lee una conexión: si la cabecera no es la esperada (id/token) devuelve false sin escribir nada
-    fun receive(sock: Socket, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null): Boolean =
-        receive(sock.getInputStream(), sock.getOutputStream(), id, token, dest, maxLen, progress)
+    fun receive(sock: Socket, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null, beforeAck: (() -> Unit)? = null): Boolean =
+        receive(sock.getInputStream(), sock.getOutputStream(), id, token, dest, maxLen, progress, beforeAck)
 
-    fun receive(rawIn: InputStream, rawOut: OutputStream, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null): Boolean {
+    // beforeAck (ronda 2759, pasar la cuenta): se hace antes de confirmar; si falla, no se confirma (el emisor no borra nada)
+    fun receive(rawIn: InputStream, rawOut: OutputStream, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null, beforeAck: (() -> Unit)? = null): Boolean {
         val input = DataInputStream(rawIn.buffered(1 shl 16))
         val h = JSONObject(input.readUTF())
         if (h.optInt("big") != 1 || h.optString("id") != id || h.optString("token") != token) return false
@@ -129,16 +130,17 @@ object BigNet {
             }
         }
         if (!tmp.renameTo(dest)) { tmp.copyTo(dest, true); tmp.delete() }
+        beforeAck?.invoke()
         rawOut.apply { write(1); flush() }
         return true
     }
 
     // Servidor de una sola recepción: acepta hasta que llega la buena (otras conexiones con id/token distintos se cierran)
-    fun serve(server: ServerSocket, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null) {
+    fun serve(server: ServerSocket, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null, beforeAck: (() -> Unit)? = null) {
         while (true) {
             server.accept().use { s ->
                 s.soTimeout = 30000
-                if (receive(s, id, token, dest, maxLen, progress)) return
+                if (receive(s, id, token, dest, maxLen, progress, beforeAck)) return
             }
         }
     }

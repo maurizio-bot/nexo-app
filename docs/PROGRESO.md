@@ -212,6 +212,20 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   con la app cerrada (servidor GATT en el `BleService`).
 
 ## Ronda 2759 (en curso)
+- **Pasar la cuenta a un teléfono nuevo** (plan punto 15, opción A elegida por el dueño; `AccountMove.kt`,
+  `move_account.js`): Perfil → "Cambiar de teléfono". En el nuevo, "Traer mi cuenta de otro teléfono" abre un puerto y
+  muestra un QR (IP, puerto y clave de un solo uso); en el viejo, "Pasar mi cuenta a un teléfono nuevo" lo lee. La
+  parte nativa empaqueta todo lo de NEXO (NEXO ID, identidad y claves, sesiones de cifrado, contactos, historial,
+  adjuntos, grupos, Fénix y archivos grandes), lo cifra con la clave del QR y lo manda por el Wi-Fi (mismo Wi-Fi o
+  punto de acceso de uno de los dos). El nuevo lo guarda con su propio cifrado en reposo y SOLO entonces confirma; el
+  viejo, al recibir la confirmación, borra lo suyo y deja de anunciarse. Mientras dura, la app no escribe nada
+  (congelado nativo); al terminar los dos se reinician (el nuevo con la cuenta, el viejo vacío). Para los contactos no
+  cambia nada (mismas claves): ni aviso de clave cambiada ni fallos al descifrar.
+- Simulado (`move.js`, en `ci.js`): código falso → no borra nada; 12 archivos (52 KB) pasan; N arranca como A (mismo
+  NEXO ID e identidad, contactos, historial con la foto, grupo); N escribe a B y B lo recibe como de A sin avisos, B
+  contesta y llega a N; A queda vacío con otro NEXO ID. JVM: `AccountMoveTest` (paquete cifrado por socket, en el
+  nuevo cifrado en reposo, nombres raros fuera, y si el nuevo no la guarda no confirma: el viejo conserva la cuenta).
+  Falta: probarlo en teléfonos; sin Wi-Fi común (por Bluetooth) aún no.
 - **Llamada con la app cerrada**: la oferta de llamada lleva la marca `cl:1` (en el sobre o en su primer trozo, que
   el nativo sí ve; el contenido sigue cifrado) y el aviso del teléfono dice "📞 Llamada entrante" en vez de "Mensaje
   nuevo"; al abrir la app antes de 60 s suena y se puede contestar (`calls.js --closed`: aviso, suena al abrir, en

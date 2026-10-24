@@ -113,7 +113,8 @@ De lo más simple a lo más complejo. Estado:
 14. Grupos ✅ (2758): textos, fotos, audio, ubicación y archivos de hasta ~1 MB; falta HD de vídeo y archivos
    grandes en grupos. 15. Varios dispositivos: decidido por el dueño el 24-10 → **opción A primero: pasar la cuenta a un teléfono nuevo**
    (QR en el nuevo, el viejo lo escanea y le pasa por Wi-Fi/L2CAP, cifrado, NEXO ID, claves, contactos, historial,
-   fotos y grupos; el viejo se desactiva). La B (varios dispositivos activos a la vez) queda para más adelante. 16. Llamadas de voz ✅ (2758, fase 1: con el
+   fotos y grupos; el viejo se desactiva). La B (varios dispositivos activos a la vez) queda para más adelante.
+   ✅ A hecha en la 2759 (Perfil → Cambiar de teléfono; mismo Wi-Fi). Falta: probar en teléfonos; sin Wi-Fi común. 16. Llamadas de voz ✅ (2758, fase 1: con el
    contacto cerca o en el mismo Wi-Fi; falta sonar con la app cerrada). 17. Videollamadas ✅ (2758, mismo Wi-Fi).
 - (Resuelto en la 2759: era la prueba) `fenix.js` a veces recuperaba 5 de 6 mensajes y 1 de 2 archivos.
 18–20 (del dueño): pruebas reales con 3–4 teléfonos, auditoría externa, Play Store.

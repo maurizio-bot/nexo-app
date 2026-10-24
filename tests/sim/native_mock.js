@@ -846,9 +846,49 @@ class NativePhone {
         const m = Buffer.from(b64, 'base64').toString('latin1').match(/\/Count (\d+)/);
         c.resolve({ thumb: Buffer.from('JPEG-1a-pagina').toString('base64'), pages: m ? Number(m[1]) : 1 });
       }),
-      saveToFile: wrap('saveToFile', (c) => { const f = c.getString('filename'); const t = c.getString('content'); if (f == null) return c.reject('filename requerido'); if (t == null) return c.reject('content requerido'); self.files.set(f, t); self.stats.saves++; self.stats.saveBytes += t.length; self.stats.maxSave = Math.max(self.stats.maxSave, t.length); self._io(() => c.resolve({ success: true, path: '/data/' + f })); }),
+      saveToFile: wrap('saveToFile', (c) => { const f = c.getString('filename'); const t = c.getString('content'); if (f == null) return c.reject('filename requerido'); if (t == null) return c.reject('content requerido'); if (self.moveFrozen) { self.stats.frozenSaves = (self.stats.frozenSaves || 0) + 1; return c.resolve({ success: true, frozen: true }); } self.files.set(f, t); self.stats.saves++; self.stats.saveBytes += t.length; self.stats.maxSave = Math.max(self.stats.maxSave, t.length); self._io(() => c.resolve({ success: true, path: '/data/' + f })); }),
       loadFromFile: wrap('loadFromFile', (c) => { const f = c.getString('filename'); if (f == null) return c.reject('filename requerido'); if (!self.files.has(f)) return self._io(() => c.resolve({ exists: false, content: '' })); const content = self.files.get(f); self._io(() => c.resolve({ exists: true, content, path: '/data/' + f })); }),
-      deleteFile: wrap('deleteFile', (c) => { c.resolve({ deleted: self.files.delete(c.getString('filename')) }); }),
+      deleteFile: wrap('deleteFile', (c) => { if (self.moveFrozen) return c.resolve({ deleted: false, frozen: true }); c.resolve({ deleted: self.files.delete(c.getString('filename')) }); }),
+      // ===== Pasar la cuenta a un teléfono nuevo (Kotlin moveReceive / moveSend + AccountMove.kt, ronda 2759; probado en
+      // tests/kotlin/AccountMoveTest). Mismo Wi-Fi; ~5 MB/s. El nuevo guarda antes de confirmar; el viejo borra lo suyo al
+      // confirmarse; los dos piden reiniciarse (self.restartWanted: la prueba los vuelve a arrancar)
+      moveReceive: wrap('moveReceive', (c) => {
+        if (!self.wifiNet) return c.reject('Conecta este teléfono a un Wi-Fi (el mismo que el otro)', 'NO_WIFI');
+        self.radio.moveServers = self.radio.moveServers || new Map();
+        const port = 40000 + Math.floor(Math.random() * 20000), hex = (n) => nodeCrypto.randomBytes(n).toString('hex');
+        const srv = { host: self, id: 'move' + hex(6), token: hex(16), key: hex(32) };
+        self.radio.moveServers.set(port, srv);
+        c.resolve({ ip: '192.168.1.' + (10 + self.radio.phones.indexOf(self)), port, id: srv.id, token: srv.token, key: srv.key });
+      }),
+      moveSend: wrap('moveSend', (c, a) => {
+        const srv = self.radio.moveServers && self.radio.moveServers.get(a.port);
+        if (!srv || !self.wifiNet || srv.host.wifiNet !== self.wifiNet || srv.id !== a.id || srv.token !== a.token || srv.key !== a.key || !String(a.ip).startsWith('192.168.1.')) {
+          return setTimeout(() => { self.emit('onMoveDone', { dir: 'out', ok: false, error: 'Connection refused' }); c.reject('No se pudo pasar la cuenta: Connection refused', 'MOVE_SEND'); }, 500);
+        }
+        const peer = srv.host, travels = (n) => /^nexo_/.test(n) && !/^nexo_diag|^nexo_bg_inbox|\.nxtmp$/.test(n);
+        self.moveFrozen = true;
+        const pack = Array.from(self.files.entries()).filter(([n]) => travels(n));
+        const bytes = pack.reduce((t, [, v]) => t + String(v).length, 0);
+        self.stats.moveFiles = pack.length; self.stats.moveBytes = bytes;
+        const ms = 300 + Math.round(bytes / 5000);
+        self.emit('onMoveProgress', { dir: 'out', bytes: Math.round(bytes / 2), total: bytes }); peer.emit('onMoveProgress', { dir: 'in', bytes: Math.round(bytes / 2), total: bytes });
+        setTimeout(() => {
+          self.radio.moveServers.delete(a.port);
+          peer.moveFrozen = true;
+          Array.from(peer.files.keys()).filter(travels).forEach((n) => peer.files.delete(n));
+          pack.forEach(([n, v]) => peer.files.set(n, v));
+          peer.big = new Map(self.big || []);
+          peer.restartWanted = true;
+          peer.emit('onMoveDone', { dir: 'in', ok: true, files: pack.length, bytes });
+          // Viejo: deja de anunciarse, suelta las conexiones y borra lo suyo
+          self.advertisingId = null;
+          Array.from(self.files.keys()).filter(travels).forEach((n) => self.files.delete(n));
+          self.big = new Map();
+          self.restartWanted = true;
+          self.emit('onMoveDone', { dir: 'out', ok: true, files: pack.length, bytes });
+          c.resolve({ ok: true, files: pack.length, bytes });
+        }, ms);
+      }),
       listFiles: wrap('listFiles', (c) => c.resolve({ files: Array.from(self.files.keys()) })),
       // Seguridad fase 3 (Kotlin: AtRestStore + Keystore, BiometricPrompt, FLAG_SECURE). Aquí los archivos ya se
       // guardan "cifrados" de forma transparente. opts.noBiometric: el teléfono no tiene huella ni PIN.
