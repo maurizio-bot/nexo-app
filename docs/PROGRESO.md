@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2761)
+Última actualización: 2026-10-24 (build 2762)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -87,7 +87,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2758 | 28b3a80 | Archivos grandes por Bluetooth L2CAP sin Wi-Fi (punto 13, fase 1), chats de grupo con textos, fotos, audio y archivos (punto 14), llamadas de voz (punto 16) y videollamadas en el mismo Wi-Fi (punto 17); arreglos: foto por Jump que no se completaba al reenviarse directa, acciones ocultas visibles al reabrir el chat. APK verificada (nightly-2758); falta probarla en teléfonos |
 | 2759 | aa54dbd3 | Corrección mínima sobre la 2758: botón 👤 arriba (junto al 👥) que abre Perfil, porque la barra de abajo (Chats · Gente · Mapa · Perfil) queda fuera de la pantalla y no había forma de copiar el diagnóstico; la cabecera tiene altura propia y los botones ya no se salen por arriba. En investigación: en teléfonos reales con la 2758 no llegan fotos ni archivos (falta el diagnóstico de los dos teléfonos) |
 | 2760 | | Compilación de prueba (lanzada a mano en la rama de trabajo, sin APK publicada): la 2761 + lo pendiente; Kotlin y pruebas en verde |
-| 2761 | (este commit) | Sobre la 2759 (sin las novedades pendientes): diagnóstico de los dos teléfonos del dueño → camino de envío con la regla nueva del dueño (Wi-Fi se mantiene; muy malo → internet; sin internet → Bluetooth; sin brincar), vigilante del Bluetooth que ya no corta enlaces vivos ni con un archivo en curso, enlace de MTU más alto, avisos nativos con la app en segundo plano aunque el teléfono la congele y avisos de Jump con la app cerrada. Ver "Ronda 2760" |
+| 2761 | a24a47f4 | Sobre la 2759 (sin las novedades pendientes): diagnóstico de los dos teléfonos del dueño → camino de envío con la regla nueva del dueño (Wi-Fi se mantiene; muy malo → internet; sin internet → Bluetooth; sin brincar), vigilante del Bluetooth que ya no corta enlaces vivos ni con un archivo en curso, enlace de MTU más alto, avisos nativos con la app en segundo plano aunque el teléfono la congele y avisos de Jump con la app cerrada. Ver "Ronda 2760" |
+| 2762 | (este commit) | La 2761 + lo que estaba pendiente: pasar la cuenta a un teléfono nuevo (punto 15 A), aviso "Llamada entrante" con la app cerrada, botón de altavoz; llamadas: códec real en oferta y respuesta (un teléfono sin Opus no oía nada), videollamada por altavoz, salida de audio Android 12+, diagnóstico `[CALL]`; pantalla de llamada y videollamada nueva (estilo WhatsApp + NEXO, girar cámara). ci.js local en verde |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el

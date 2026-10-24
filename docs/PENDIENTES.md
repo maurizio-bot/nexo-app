@@ -14,6 +14,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
+- **2762**: llamada y videollamada (que se oigan los dos; diagnóstico `[CALL]` de los dos teléfonos), pantalla de
+  llamada nueva (girar cámara, imagen propia arrastrable), pasar la cuenta a un teléfono nuevo (mismo Wi-Fi).
 - **2761**: fotos por Bluetooth entre los dos teléfonos (sin Wi-Fi ni internet), que el enlace no se rehaga cada ~30 s
   (diagnóstico de los dos: líneas `Enlace … desconectado` / `sin respuesta a 2 pings`), Wi-Fi sin brincar, avisos con
   la app en segundo plano en el Vivo (que congela la app) y con la app cerrada por Jump.
