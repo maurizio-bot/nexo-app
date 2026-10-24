@@ -111,7 +111,9 @@ De lo más simple a lo más complejo. Estado:
    cerrada: buzón nativo, ✓✓ al emisor y notificación; al abrir llega todo (`BgInbox.kt`). 13. L2CAP: fase 1 ✅
    (2758) archivos grandes por Bluetooth L2CAP sin Wi-Fi; fase 2: fotos, vídeo HD y archivos medianos por L2CAP.
 14. Grupos ✅ (2758): textos, fotos, audio, ubicación y archivos de hasta ~1 MB; falta HD de vídeo y archivos
-   grandes en grupos. 15. Varios dispositivos (falta decisión del dueño, ver abajo). 16. Llamadas de voz ✅ (2758, fase 1: con el
+   grandes en grupos. 15. Varios dispositivos: decidido por el dueño el 24-10 → **opción A primero: pasar la cuenta a un teléfono nuevo**
+   (QR en el nuevo, el viejo lo escanea y le pasa por Wi-Fi/L2CAP, cifrado, NEXO ID, claves, contactos, historial,
+   fotos y grupos; el viejo se desactiva). La B (varios dispositivos activos a la vez) queda para más adelante. 16. Llamadas de voz ✅ (2758, fase 1: con el
    contacto cerca o en el mismo Wi-Fi; falta sonar con la app cerrada). 17. Videollamadas ✅ (2758, mismo Wi-Fi).
 - (Resuelto en la 2759: era la prueba) `fenix.js` a veces recuperaba 5 de 6 mensajes y 1 de 2 archivos.
 18–20 (del dueño): pruebas reales con 3–4 teléfonos, auditoría externa, Play Store.
