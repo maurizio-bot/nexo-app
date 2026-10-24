@@ -15,7 +15,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
 - **2764**: **repetir la prueba de la tablet → S24 con el Vivo cerca** (archivos y llamada: solo debe sonar/avisar el S24)
-  y pasar el diagnóstico de los tres; borrar y volver a agregar (los dos con "Agregar" abierto); con el teléfono girado, que no salga la barra gris a la izquierda; en un grupo, un vídeo (llega el HD a
+  y pasar el diagnóstico de los tres; en la tablet, "Agregar": deben salir los teléfonos cercanos con su nombre (aunque
+  el otro no tenga "Agregar" abierto) y agregarse con "+"; con el teléfono girado, que no salga la barra gris a la izquierda; en un grupo, un vídeo (llega el HD a
   todos) y un archivo grande (con los demás en el mismo Wi-Fi).
 - **2763** (la 2762 no llegó a salir): llamada y videollamada (que se oigan los dos; diagnóstico `[CALL]` de los dos
   teléfonos), pantalla de llamada nueva (girar cámara, imagen propia arrastrable), llamada entrante con tono y

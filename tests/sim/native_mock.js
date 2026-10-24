@@ -691,7 +691,9 @@ class NativePhone {
         self.stats.scans = (self.stats.scans || 0) + 1;
         self.scanningUntil = now + 6000;
         if (self.opts.scanThrottle && self.scanStarts.length > 5) { self.stats.throttledScans = (self.stats.throttledScans || 0) + 1; return; }
-        setTimeout(() => self.radio.phones.forEach((p) => {
+        // Como Android (NexoBlePlugin.onScanResult, SCAN_DEBOUNCE_MS = 1 s): mientras dura el escaneo, el mismo
+        // teléfono se vuelve a avisar cada segundo con lo que anuncie entonces (p.ej. pasa de código rotativo a NEXO ID)
+        const tick = () => self.radio.phones.forEach((p) => {
           if (p === self || p.offline || !p.serviceRunning || !p.advertisingId || !self.radio.inRange(self, p)) return;
           if (self.opts.scanMiss && Math.random() < self.opts.scanMiss) { self.stats.scanMisses = (self.stats.scanMisses || 0) + 1; return; }
           // El nombre del teléfono va en la respuesta al escaneo solo si es visible (Kotlin 2755)
@@ -699,7 +701,9 @@ class NativePhone {
           (self.radio.airAds = self.radio.airAds || []).push({ by: p.name, adv, visible: p.advertisedVisible(), t: Date.now() });
           // (noAdvName: como en los teléfonos reales, el anuncio no trae el nombre y el nativo pone "Unknown")
           self.emit('onDeviceFound', { deviceId: p.address, name: p.opts.noAdvName ? 'Unknown' : (p.advertisedVisible() ? p.name : ''), rssi: -50, nexoId: adv });
-        }), 80);
+        });
+        setTimeout(tick, 80);
+        if (self.opts.scanRepeat !== false) { clearInterval(self._scanTick); self._scanTick = setInterval(() => { if (Date.now() >= self.scanningUntil || self.appActive === false && !(a && a.filtered)) { clearInterval(self._scanTick); return; } tick(); }, 1000); }
       }),
       stopScan: wrap('stopScan', (c) => { self.scanningUntil = 0; c.resolve({ stopped: true }); }),
       connectToDevice: wrap('connectToDevice', (c) => {

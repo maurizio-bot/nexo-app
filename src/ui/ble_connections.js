@@ -443,6 +443,8 @@ export const BLE_CONNECTION_METHODS = {
       }
     }
     this._autoConnectGATT(device.id || deviceId, device);
+    // Ronda 2764: si ya estaba conectado, su kx (clave y nombre del teléfono) no se repetía: se le pide
+    if (typeof this._sendKx === 'function' && device.id && !/^(lan|net)/i.test(String(device.id))) { var selfK = this; setTimeout(function() { selfK._sendKx(device.id, true, true); }, 800); }
     this.foundDevices.delete(deviceId);
     this.renderNewDeviceBar();
     this.renderContactsList();

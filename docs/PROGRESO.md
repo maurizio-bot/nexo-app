@@ -239,9 +239,14 @@ solo el del Vivo (sesión anterior, sin la prueba); falta el de la tablet para s
 - Escaneo (`tests/sim/readd.js`): el anuncio Bluetooth casi nunca trae el nombre y el nativo ponía "Unknown" (los
   "desconocidos"). Ahora "NEXO" + 4 letras del ID y, al conectar, el nombre del teléfono (kx `nm`). "Agregar" deja
   rastro en el diagnóstico (`[ADD]`) y, si ese teléfono ya no está en la lista, lo dice y vuelve a buscar (antes,
-  nada). En el simulador, borrar y volver a agregar funciona; no se reprodujo "no pasa nada": falta el diagnóstico de
-  la tablet. Recordatorio: tras borrar, el otro sigue anunciando su código rotativo (la tablet ya no lo reconoce):
-  para volver a agregarse, los dos abren "Agregar".
+  nada).
+- "No los ve" (el dueño no puede agregar a nadie en la tablet; reproducido en `readd.js`): tras borrar los contactos,
+  los demás siguen teniendo a la tablet y anuncian su código rotativo, que la tablet ya no reconoce: no salía nadie
+  (había que abrir "Agregar" en los dos). Ahora, con "Agregar" abierto, a cada NEXO cercano que no reconoce le pregunta
+  quién es (kx con `rq`; si no está conectado, se conecta de paso como Jump) y sale en la lista con el nombre de su
+  teléfono, aunque el otro no tenga "Agregar" abierto. Al borrar un contacto sus códigos dejan de reconocerse ya (antes,
+  hasta ~30 s después). El simulador avisa del mismo teléfono cada segundo mientras dura el escaneo (como Android;
+  antes una vez por escaneo).
 - Pruebas: misroute.js y readd.js (añadidas a ci.js), BgInboxTest.paraOtroTelefonoNada (Kotlin 63/63).
 
 ## Ronda 2764: grupos con vídeo HD y archivos grandes; pantalla girada

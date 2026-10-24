@@ -56,6 +56,18 @@ export const BLE_PRIVACY_METHODS = {
   // Lo que llega del escaneo: NEXO ID (visible o build anterior) tal cual; un código rotativo se traduce si es de
   // un contacto; si no, es un NEXO anónimo (Jump y Fénix pueden conectar con él y saber quién es al conectar).
   // Devuelve el NEXO ID a usar o null si no hay que seguir.
+  _identifyNearby(deviceId) {
+    var self = this, now = Date.now();
+    self._idAsked = self._idAsked || new Map();
+    if (!deviceId || now - (self._idAsked.get(deviceId) || 0) < 10000) return;
+    self._idAsked.set(deviceId, now);
+    var st = self._getDeviceState ? self._getDeviceState(deviceId) : null;
+    var ready = st && (st.state === 'ready_to_chat' || st.state === 'notifications_ready');
+    console.log('[ADD] NEXO cercano sin reconocer (' + deviceId + '): ' + (ready ? 'se le pregunta quién es' : 'conectando para saber quién es'));
+    if (ready && typeof self._sendKx === 'function') self._sendKx(deviceId, true, true);
+    else if (self.relay && typeof self.relay._connectAnon === 'function') self.relay._connectAnon(deviceId);
+  },
+
   _ridFound(data, retry) {
     var self = this, tok = data.nexoId || '';
     if (!ridIsToken(tok)) return tok;
@@ -66,7 +78,12 @@ export const BLE_PRIVACY_METHODS = {
       // La lista puede estar desfasada (época nueva, contacto recién agregado): se rehace y se mira otra vez
       self._ridBook.refresh(_getBLEContacts()).then(function() {
         if (self._ridBook.lookup(tok)) self._onScanFound(data, true);
-        else if (self.relay && typeof self.relay.noteAnon === 'function') self.relay.noteAnon(data.deviceId, tok, data.rssi);
+        else {
+          if (self.relay && typeof self.relay.noteAnon === 'function') self.relay.noteAnon(data.deviceId, tok, data.rssi);
+          // Ronda 2764 (informe del dueño: tras borrar contactos "no los ve"): con "Agregar" abierto, saber quién es este
+          // NEXO que no reconozco (sigue teniéndome como contacto y no anuncia su NEXO ID): su kx lo dice y sale en la lista
+          if (Date.now() < (self._visibleUntil || 0)) self._identifyNearby(data.deviceId);
+        }
       }).catch(function() {});
       return null;
     }

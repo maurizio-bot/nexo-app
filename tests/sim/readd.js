@@ -1,6 +1,7 @@
 // Informe del dueño (2763): en la tablet, tras borrar los contactos, al buscar salían "desconocidos" y al pulsar
 // agregar no pasaba nada. A (tablet) y B (S24) son contactos; A borra a B (B sigue teniendo a A). Luego:
-//  1. Solo A abre "Agregar": ¿qué ve? (B anuncia su código rotativo: A ya no lo reconoce)
+//  1. Solo A abre "Agregar" (B, que sigue teniendo a A, anuncia su código rotativo y A ya no lo reconoce): ronda 2764,
+//     A se conecta con los NEXO cercanos que no reconoce para saber quiénes son y los muestra (antes: nada).
 //  2. B abre también "Agregar": A lo ve (nunca "Unknown": el anuncio no trae el nombre), lo agrega con "+", el nombre
 //     del teléfono llega al conectar y se escriben.
 // Uso: node readd.js <dir_build>
@@ -35,18 +36,21 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   const r = { build: path.basename(buildDir) };
   A.win.bleInterface.togglePanel(); await scanFor(A, 40); click(A.win, A.win.document.querySelector('#ble-new-device > div button')); await sleep(2000);
   if (A.win.document.getElementById('ble-panel').classList.contains('active')) A.win.bleInterface.togglePanel();
+  // B también agrega a A (como en los teléfonos del dueño: los demás siguen teniendo a la tablet)
+  B.win.bleInterface.togglePanel(); await scanFor(B, 40); click(B.win, B.win.document.querySelector('#ble-new-device > div button')); await sleep(2000);
+  if (B.win.document.getElementById('ble-panel').classList.contains('active')) B.win.bleInterface.togglePanel();
   r.contactos_A_antes = contacts(A);
-  r.B_tiene_a_A = await wait(() => B.win.vaultLoadContacts().some((c) => (c.nexoId || '').toLowerCase() === idA), 30);
+  r.B_tiene_a_A = await wait(() => B.win.bleInterface.getContacts().some((c) => (c.nexoId || c.deviceUUID || '').toLowerCase() === idA), 30);
   // A borra a B (menú del contacto → Eliminar)
   A.win.bleInterface.removeContact(idB.toUpperCase()); await sleep(1000);
   r.contactos_A_tras_borrar = contacts(A);
-  // 1. Solo A abre Agregar
+  // 1. Solo A abre Agregar (B sigue con su código rotativo: tiene contactos). Ronda 2764: A lo identifica y lo ve
   A.win.bleInterface.togglePanel();
-  await scanFor(A, 25);
+  await scanFor(A, 40);
   r.solo_A_ve = found(A);
-  // 2. B abre Agregar también
-  B.win.bleInterface.togglePanel();
-  r.con_B_visible_ve = (await scanFor(A, 40)) ? found(A) : [];
+  // 2. Se agrega con "+" (si no salió, B abre también "Agregar", como antes)
+  if (!r.solo_A_ve.length) { B.win.bleInterface.togglePanel(); r.con_B_visible_ve = (await scanFor(A, 40)) ? found(A) : []; }
+  else r.con_B_visible_ve = r.solo_A_ve;
   click(A.win, A.win.document.querySelector('#ble-new-device > div button')); await sleep(3000);
   r.contactos_A_tras_agregar = contacts(A);
   r.agregado = A.win.bleInterface.getContacts().some((c) => (c.nexoId || c.deviceUUID || '').toLowerCase() === idB);
@@ -59,7 +63,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   const i = A.win.document.getElementById('message-input'); i.value = 'otra vez'; i.dispatchEvent(new A.win.Event('input', { bubbles: true })); click(A.win, A.win.document.getElementById('send-btn'));
   r.texto_llega = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'otra vez'), 60);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.agregado && r.nombre_no_unknown && r.nombre_de_verdad && r.texto_llega && !r.errores.length;
+  const ok = r.B_tiene_a_A && r.solo_A_ve.length > 0 && r.agregado && r.nombre_no_unknown && r.nombre_de_verdad && r.texto_llega && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('READD ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_readd.txt'), logs.join('\n'));

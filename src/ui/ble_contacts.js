@@ -110,6 +110,9 @@ export const BLE_CONTACT_METHODS = {
   removeContact(deviceUUID) {
     try {
       _removeBLEContact(deviceUUID);
+      // Ronda 2764: sus códigos rotativos dejan de reconocerse ya (antes, hasta la siguiente revisión, ~30 s)
+      if (this._ridBook) this._ridBook.refresh(_getBLEContacts(), true).catch(function() {});
+      console.log('[ADD] Contacto eliminado: ' + deviceUUID);
       this.renderContactsList();
       this.renderNewDeviceBar();
       this.renderOnlineStrip();
