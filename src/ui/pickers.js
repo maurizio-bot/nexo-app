@@ -89,7 +89,7 @@ export function _handleFile() {
       }
       console.warn('[ATTACH] Archivo demasiado grande: ' + file.size);
       _showPermissionError(file.size > BIG_MAX_BYTES ? 'Archivo demasiado grande (' + (file.size / 1048576).toFixed(0) + ' MB). Máximo 1 GB.'
-        : _tooBigMessage(file.size, cidF) + ' Hasta 1 GB con el contacto en el mismo Wi-Fi o con Wi-Fi Direct (los dos con NEXO actualizado).');
+        : _tooBigMessage(file.size, cidF) + ' Hasta 1 GB con el contacto en el mismo Wi-Fi, con Wi-Fi Direct o cerca por Bluetooth (Android 10 o más; los dos con NEXO actualizado).');
       return;
     }
     _readFileBase64(file).then(function(base64) {

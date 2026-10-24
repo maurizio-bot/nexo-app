@@ -792,6 +792,33 @@ class NativePhone {
         self.radio.bigServers.delete(a.port);
         self._bigPush(peer, b, a.id, 20e6, () => peer.wifiNet === self.wifiNet && !!self.wifiNet, c);
       }),
+      // ===== Archivos grandes por Bluetooth L2CAP (Kotlin bigServeL2 / bigSendL2, ronda 2758): canal de flujo sobre la
+      // conexión Bluetooth (Android 10+; opts.noL2 = teléfono anterior). ~100 KB/s (opts.l2Bps); se corta si se alejan.
+      l2Info: wrap('l2Info', (c) => c.resolve({ ok: !self.opts.noL2, sdk: self.opts.noL2 ? 28 : 33 })),
+      bigServeL2: wrap('bigServeL2', (c, a) => {
+        if (self.opts.noL2) return c.reject('L2CAP no disponible (Android 10+ y Bluetooth activo)', 'L2_NONE');
+        if (!a.id || String(a.token || '').length < 16) return c.reject('id y token requeridos');
+        self.radio.l2Servers = self.radio.l2Servers || new Map();
+        const psm = 0x80 + Math.floor(Math.random() * 0x7f);
+        self.radio.l2Servers.set(psm, { host: self, id: a.id, token: a.token });
+        c.resolve({ psm });
+        setTimeout(() => { if (self.radio.l2Servers.get(psm) && self.radio.l2Servers.get(psm).id === a.id) { self.radio.l2Servers.delete(psm); self.emit('onBigDone', { id: a.id, dir: 'in', ok: false, error: 'L2CAP: Accept timed out' }); } }, 60000);
+      }),
+      bigSendL2: wrap('bigSendL2', (c, a) => {
+        if (self.opts.noL2) return c.reject('L2CAP no disponible', 'L2_NONE');
+        const mac = norm(a.deviceId || '');
+        const peer = self.radio.phones.find((p) => p !== self && (norm(p.address) === mac || norm(p.initAddress) === mac));
+        const b = self.big && self.big.get(a.id);
+        if (!b || !b.done) return c.reject('Nada que enviar', 'BIG_NONE');
+        const srv = self.radio.l2Servers && self.radio.l2Servers.get(a.psm);
+        if (!peer || !srv || srv.host !== peer || srv.id !== a.id || srv.token !== a.token || !self.radio.inRange(self, peer) || peer.offline || self.offline) {
+          self.emit('onBigDone', { id: a.id, dir: 'out', ok: false, error: 'L2CAP: read failed, socket might closed or timeout' });
+          return setTimeout(() => c.reject('Envío fallido: read failed, socket might closed or timeout', 'BIG_SEND'), 1500);
+        }
+        self.radio.l2Servers.delete(a.psm);
+        self.stats.l2Sends = (self.stats.l2Sends || 0) + 1;
+        setTimeout(() => self._bigPush(peer, b, a.id, self.opts.l2Bps || 100e3, () => self.radio.inRange(self, peer) && !peer.offline && !self.offline, c, { l2: true }), 300);
+      }),
       bigOpen: wrap('bigOpen', (c, a) => {
         const b = self.big && self.big.get(a.id);
         if (!b || !b.done) return c.resolve({ opened: false, reason: 'missing' });

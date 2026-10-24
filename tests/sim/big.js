@@ -1,12 +1,12 @@
 // Archivos grandes (ronda 2756; informe del dueño: un APK de 24 MB no salía y luego no salía ningún archivo).
-// A y B contactos. Caso por defecto: los dos en el mismo Wi-Fi (--wd: sin Wi-Fi, con Wi-Fi Direct; --no-route: ni
-// uno ni otro, solo Bluetooth). Pasos:
+// A y B contactos. Caso por defecto: los dos en el mismo Wi-Fi (--wd: sin Wi-Fi, con Wi-Fi Direct; --l2: ni uno ni
+// otro, por Bluetooth L2CAP (ronda 2758, Android 10+); --no-route: ni Wi-Fi ni L2CAP (Android 9 o anterior)). Pasos:
 //  1. Foto pequeña: llega (como antes).
 //  2. "APK" de 24 MB: sale como archivo grande; la app nunca lo lee entero (trozos de 512 KB); llega y al tocarlo en
 //     B se abre idéntico (comprobado con su huella SHA-256); con --no-route sale el aviso y no se manda nada.
 //  3. Otro archivo pequeño y un texto después: llegan (nada se queda bloqueado).
 //  4. Corte a mitad (B sale del Wi-Fi o se aleja): la tarjeta de A dice "Toca para reintentar"; al volver, se toca y llega.
-// Uso: node big.js <build> [--wd] [--no-route] [--mb=24]
+// Uso: node big.js <build> [--wd] [--l2] [--no-route] [--b-no-l2] [--mb=24]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -15,15 +15,18 @@ const { JSDOM, VirtualConsole, ResourceLoader } = require('jsdom');
 const { Radio, NativePhone } = require('./native_mock');
 
 const buildDir = path.resolve(process.argv[2]);
-const WD = process.argv.includes('--wd'), NOROUTE = process.argv.includes('--no-route');
+const WD = process.argv.includes('--wd'), L2 = process.argv.includes('--l2');
+// --b-no-l2: solo Bluetooth, A con L2CAP y B sin (Android 9): no hay camino, como --no-route
+const B_NO_L2 = process.argv.includes('--b-no-l2'), NOROUTE = process.argv.includes('--no-route') || B_NO_L2;
 const MB = Number((process.argv.find((a) => a.startsWith('--mb=')) || '--mb=24').split('=')[1]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DL extends ResourceLoader { constructor(d) { super(); this.d = d; } fetch(u) { const f = path.join(this.d, decodeURIComponent(new URL(u).pathname)); return fs.existsSync(f) ? Promise.resolve(fs.readFileSync(f)) : Promise.reject(new Error('x')); } }
 const logs = [];
 async function boot(name, address, radio) {
   const o = { readsContentFallback: true, mtu: 512, pace: [15, 15], retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown', 'onBigDone'], asymmetric: true };
-  if (!NOROUTE && !WD) o.wifi = 'casa';
+  if (!NOROUTE && !WD && !L2) o.wifi = 'casa';
   if (WD) o.wifiDirect = true;
+  if (NOROUTE && (!B_NO_L2 || name === 'B')) o.noL2 = true;
   const native = new NativePhone(name, address, o);
   radio.add(native); native.load();
   const vc = new VirtualConsole(); ['log', 'info', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`[${name}] ${l}: ` + a.map(String).join(' ').substring(0, 250))));
@@ -57,7 +60,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5 && !c(); i++) await sle
   const nxB = B.win.bleInterface.localNexoId;
   // Esperar a que haya camino (Wi-Fi comprobado o Wi-Fi Direct anunciado)
   await wait(() => NOROUTE || !!A.win.bleInterface.bigFiles.route(nxB), 40);
-  const r = { modo: NOROUTE ? 'solo Bluetooth' : WD ? 'Wi-Fi Direct' : 'mismo Wi-Fi', mb: MB, camino: A.win.bleInterface.bigFiles.route(nxB) };
+  const r = { modo: B_NO_L2 ? 'solo Bluetooth, B sin L2CAP' : NOROUTE ? 'solo Bluetooth sin L2CAP' : WD ? 'Wi-Fi Direct' : L2 ? 'Bluetooth L2CAP' : 'mismo Wi-Fi', mb: MB, camino: A.win.bleInterface.bigFiles.route(nxB) };
   // 1. Foto pequeña
   await sendFile(A, 'uno.pdf', 'application/pdf', rnd(40 * 1024, 3)); r.pequeno_antes = await wait(() => got(B, 'uno.pdf'), 90);
   // 2. Archivo grande
@@ -77,6 +80,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5 && !c(); i++) await sle
     r.tarjeta_A = Array.from(subsA); r.tarjeta_B = Array.from(subsB);
     r.trozo_mayor_KB = Math.round((A.native.stats.bigMaxSlice || 0) / 1024);
     r.nunca_entero_en_la_app = (A.native.stats.bigMaxSlice || 0) <= 700 * 1024 && !A.native.calls.some((c) => c.name === 'sendFile' || (c.name === 'wifiDirectSend' && c.args.data && c.args.data.length > 1e6));
+    if (L2) r.por_l2cap = (A.native.stats.l2Sends || 0) >= 1 && !A.native.calls.some((c) => c.name === 'bigSendLan' || c.name === 'wifiDirectSend');
     // Abrir en B (y en A)
     const cb = card(B, 'nexo-2755', false); if (cb) click(B.win, cb); await sleep(1000);
     const ob = (B.native.opened || []).find((o) => o.big);
@@ -91,9 +95,9 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5 && !c(); i++) await sle
   if (!NOROUTE) {
     await sendFile(A, 'corte.zip', 'application/zip', rnd(MB * 1024 * 1024, 9));
     await wait(() => /Enviando [1-9]/.test(sub(card(A, 'corte.zip', true))), 60);
-    if (WD) B.native.setOffline(true); else B.native.setWifi(null);
+    if (WD || L2) B.native.setOffline(true); else B.native.setWifi(null);
     r.tras_corte_A = await wait(() => /Toca para reintentar/.test(sub(card(A, 'corte.zip', true))), 60) ? sub(card(A, 'corte.zip', true)) : sub(card(A, 'corte.zip', true));
-    if (WD) B.native.setOffline(false); else { B.native.setWifi('casa'); A.win.bleInterface.lan.start(); B.win.bleInterface.lan.start(); }
+    if (WD || L2) B.native.setOffline(false); else { B.native.setWifi('casa'); A.win.bleInterface.lan.start(); B.win.bleInterface.lan.start(); }
     await wait(() => !!A.win.bleInterface.bigFiles.route(nxB), 60);
     await sleep(1500);
     click(A.win, card(A, 'corte.zip', true));
@@ -101,7 +105,7 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5 && !c(); i++) await sle
   }
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css/.test(l)).slice(0, 5);
   const ok = r.pequeno_antes && r.pequeno_despues && r.texto_despues && (NOROUTE ? (!!r.aviso && r.no_hay_tarjeta) :
-    (r.grande_llega && r.nunca_entero_en_la_app && r.abre_en_B_identico && r.abre_en_A && /Toca para reintentar/.test(r.tras_corte_A) && r.tras_reintentar_llega));
+    (r.grande_llega && r.nunca_entero_en_la_app && (!L2 || r.por_l2cap) && r.abre_en_B_identico && r.abre_en_A && /Toca para reintentar/.test(r.tras_corte_A) && r.tras_reintentar_llega));
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('BIG ' + JSON.stringify(r));
   if (!ok) fs.writeFileSync(path.join(__dirname, 'last_logs_big.txt'), logs.join('\n'));

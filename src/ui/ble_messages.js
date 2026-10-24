@@ -172,7 +172,7 @@ export const BLE_MESSAGE_METHODS = {
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) { if (p.ss) self._sxHops.add(_normId(p.from)); else self._sxHops.delete(_normId(p.from)); }
       if (p.wd && self.wifiDirect) self.wifiDirect.markPeer(p.from);
       else if (self.wifiDirect) self.wifiDirect.unmarkPeer(p.from); // ya no lo anuncia (p.ej. sin permiso)
-      if (self.bigFiles) { if (p.bg) self.bigFiles.markPeer(p.from); else self.bigFiles.unmarkPeer(p.from); } // archivos grandes (2756)
+      if (self.bigFiles) { if (p.bg) self.bigFiles.markPeer(p.from); else self.bigFiles.unmarkPeer(p.from); self.bigFiles.markL2(p.from, !!p.l2); } // archivos grandes (2756; L2CAP 2758)
       // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
       if (p.rq || p.j) self._sendKx(data.deviceId, false, !!p.rq);
       return Promise.resolve(null);

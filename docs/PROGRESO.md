@@ -210,6 +210,18 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## Ronda 2758: archivos grandes por Bluetooth L2CAP (plan del dueño punto 13, fase 1)
+- Sin Wi-Fi ni Wi-Fi Direct, un archivo grande (más de ~2 MB, hasta 1 GB) ya no se rechaza: va por un canal L2CAP del
+  Bluetooth (Android 10+ en los dos; `l2` en el kx). Es un flujo directo sobre la conexión Bluetooth, sin GATT, sin
+  trozos con confirmación ni base64; usa lo mismo que el Wi-Fi (archivo cifrado en disco, `BigNet` ahora con flujos):
+  A → B `gq` { via:'l2' }, B abre el canal (`bigServeL2`) → `ga` { psm, token }, A lo manda (`bigSendL2`). Orden de
+  caminos: mismo Wi-Fi > Wi-Fi Direct > Bluetooth L2CAP. La tarjeta dice "(Bluetooth)"; el diagnóstico,
+  `[L2CAP] … KB/s`.
+- Simulado (`big.js --l2`, ~100 KB/s supuestos): 4 MB en 43 s, corte a mitad → "Toca para reintentar" → llega; con un
+  teléfono sin L2CAP (`--b-no-l2`) o ninguno (`--no-route`) sale el aviso como antes. JVM: `BigFileTest` por flujos.
+  La velocidad real del L2CAP no se puede simular: hay que medirla en los teléfonos (`[L2CAP]` en el diagnóstico).
+- Fase 2 (pendiente): usar el L2CAP también para fotos, vídeos HD y archivos medianos (hoy por GATT, ~20 KB/s).
+
 ## Ronda 2757: MTU pequeño (punto 8), Fénix con fotos y archivos (punto 9), Jump por Wi-Fi (punto 10), app cerrada (punto 12)
 - **Recibir por Bluetooth con la app cerrada** (`BgInbox.kt`): al cerrar la app (handleOnDestroy) el servidor GATT y
   las conexiones siguen (el proceso vive por el `BleService`; solo se deja de escanear). Lo que llega: un mensaje de

@@ -5,6 +5,7 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
@@ -85,9 +86,13 @@ object BigReader {
 object BigNet {
     fun interface Progress { fun on(bytes: Long, total: Long) }
 
-    fun send(sock: Socket, id: String, token: String, file: File, progress: Progress? = null) {
+    fun send(sock: Socket, id: String, token: String, file: File, progress: Progress? = null) =
+        send(sock.getInputStream(), sock.getOutputStream(), id, token, file, progress)
+
+    // Ronda 2758: con flujos, para el socket del Wi-Fi y para el canal L2CAP del Bluetooth (BluetoothSocket)
+    fun send(rawIn: InputStream, rawOut: OutputStream, id: String, token: String, file: File, progress: Progress? = null) {
         val total = file.length()
-        val out = DataOutputStream(sock.getOutputStream().buffered(1 shl 16))
+        val out = DataOutputStream(rawOut.buffered(1 shl 16))
         out.writeUTF(JSONObject().put("big", 1).put("id", id).put("token", token).put("len", total).toString())
         val buf = ByteArray(1 shl 16)
         var sent = 0L
@@ -99,12 +104,15 @@ object BigNet {
             }
         }
         out.flush()
-        if (sock.getInputStream().read() != 1) throw Exception("sin confirmación")
+        if (rawIn.read() != 1) throw Exception("sin confirmación")
     }
 
     // Lee una conexión: si la cabecera no es la esperada (id/token) devuelve false sin escribir nada
-    fun receive(sock: Socket, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null): Boolean {
-        val input = DataInputStream(sock.getInputStream().buffered(1 shl 16))
+    fun receive(sock: Socket, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null): Boolean =
+        receive(sock.getInputStream(), sock.getOutputStream(), id, token, dest, maxLen, progress)
+
+    fun receive(rawIn: InputStream, rawOut: OutputStream, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null): Boolean {
+        val input = DataInputStream(rawIn.buffered(1 shl 16))
         val h = JSONObject(input.readUTF())
         if (h.optInt("big") != 1 || h.optString("id") != id || h.optString("token") != token) return false
         val len = h.optLong("len")
@@ -121,7 +129,7 @@ object BigNet {
             }
         }
         if (!tmp.renameTo(dest)) { tmp.copyTo(dest, true); tmp.delete() }
-        sock.getOutputStream().apply { write(1); flush() }
+        rawOut.apply { write(1); flush() }
         return true
     }
 

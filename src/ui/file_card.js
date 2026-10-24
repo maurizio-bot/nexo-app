@@ -112,10 +112,11 @@ function _bigText(card) {
   var s = b && b.state(id);
   var pct = s && s.total ? Math.min(100, Math.floor((s.bytes || 0) * 100 / s.total)) : 0;
   var head = size ? size + ' · ' : '';
-  if (!s) return head + (own ? 'Toca para abrir' : 'Esperando el archivo (Wi-Fi) · Toca para pedirlo');
+  if (!s) return head + (own ? 'Toca para abrir' : 'Esperando el archivo · Toca para pedirlo');
   if (s.state === 'preparing') return head + 'Preparando ' + pct + ' %';
-  if (s.state === 'sending') return head + 'Enviando ' + pct + ' %' + (s.via === 'wd' ? ' (Wi-Fi Direct)' : ' (Wi-Fi)');
-  if (s.state === 'receiving') return head + 'Recibiendo ' + pct + ' %';
+  var via = ({ wd: ' (Wi-Fi Direct)', lan: ' (Wi-Fi)', l2: ' (Bluetooth)' })[s.via] || '';
+  if (s.state === 'sending') return head + 'Enviando ' + pct + ' %' + via;
+  if (s.state === 'receiving') return head + 'Recibiendo ' + pct + ' %' + via;
   if (s.state === 'waiting') return head + 'Pedido otra vez…';
   if (s.state === 'failed') return head + (s.dir === 'out' ? 'No se pudo enviar · Toca para reintentar' : 'No llegó entero · Toca para pedirlo');
   return head + 'Toca para abrir';

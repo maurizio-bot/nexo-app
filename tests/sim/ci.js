@@ -39,6 +39,7 @@ const SCENARIOS = [
     tocar_abre_chat: isTrue, tocar_cuenta: (v) => v === 0, tocar_notificacion_quitada: isTrue, repetido_cuenta_una_vez: isTrue, permiso_notificaciones_pedido: isTrue, errores: isEmpty } },
   { name: 'ID Bluetooth rotativo (no se ve el NEXO ID en el aire)', args: ['rid.js'], tag: 'RID', checks: { resultado: (v) => v === 'OK' } },
   { name: 'archivos grandes por Wi-Fi (24 MB, corte y reintento)', args: ['big.js'], tag: 'BIG', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'archivos grandes por Bluetooth L2CAP (4 MB, corte y reintento)', args: ['big.js', '--l2', '--mb=4'], tag: 'BIG', checks: { resultado: (v) => v === 'OK' } },
   { name: 'trozos binarios por Bluetooth', args: ['binary.js', '--loss=0.02'], tag: 'BINARY', checks: { resultado: (v) => v === 'OK' } },
   { name: 'recibir con la app cerrada (buzón, ✓✓ y aviso)', args: ['background.js', '--scenario=closed', '--io-delay=25', '--app-events'], tag: 'BACKGROUND', checks: {
     llegada_a_B_tras_volver: (v) => Array.isArray(v) && v.every((x) => !/NO LLEGÓ/.test(x)),

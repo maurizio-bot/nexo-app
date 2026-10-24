@@ -1,5 +1,6 @@
 /**
- * big_file.js v1.0 (ronda 2756) — Archivos grandes (más de ~22 MB, hasta 1 GB) por el mismo Wi-Fi o Wi-Fi Direct.
+ * big_file.js v1.1 (ronda 2756; 2758: también por Bluetooth L2CAP) — Archivos grandes (más de ~22 MB, hasta 1 GB) por
+ * el mismo Wi-Fi, Wi-Fi Direct o, sin ninguno de los dos, por un canal L2CAP del Bluetooth (plan del dueño punto 13).
  * Pedido del dueño: un APK de 24 MB no salía. Antes todo archivo pasaba entero por la memoria de la app (en base64,
  * cifrado y copiado varias veces): con más de ~22 MB el teléfono se colgaba, así que se rechazaba.
  * Ahora (como Signal/WhatsApp):
@@ -9,6 +10,8 @@
  *  3. El archivo cifrado va de disco a disco por un socket nativo:
  *       mismo Wi-Fi:  A → B 'gq' { id, size, via:'lan' }   B abre un puerto → 'ga' { id, port, token }   A lo manda
  *       Wi-Fi Direct: como wifi_direct.js ('wq' con big:1), B guarda en disco en vez de pasarlo a la app
+ *     Bluetooth:    como el mismo Wi-Fi con via:'l2': B abre un canal L2CAP → 'ga' { id, psm, token } (Android 10+,
+ *                   los dos con 'l2' en el kx; un flujo directo, sin GATT ni base64; más lento que el Wi-Fi)
  *     B → A 'gf' { id } al tenerlo entero. 'gn' = no puede; 'gr' { id } = B lo pide otra vez (si se cortó).
  *  4. Al tocarlo, la parte nativa lo descifra a un archivo temporal y lo abre (un APK se instala).
  * Solo con quien lo anuncia ('bg' en el kx); el estado de cada archivo se ve en su tarjeta del chat.
@@ -40,7 +43,9 @@ export class BigFiles {
     this.peers = new Set();     // NEXO ID que entienden archivos grandes (kx con bg:1)
     this.st = {};               // id → { dir:'out'|'in', state, bytes, total, nx } (en memoria) + persistente: done/failed
     this.saved = {};            // id → 'sent' | 'got' (persistente)
-    this.out = new Map();       // id → { onAccept, onNo } (ofertas propias por el mismo Wi-Fi)
+    this.out = new Map();       // id → { onAccept, onNo } (ofertas propias por el mismo Wi-Fi / L2CAP)
+    this.l2Ok = false;          // este teléfono puede usar L2CAP (Android 10+; nativo 2758)
+    this.l2Peers = new Set();   // NEXO ID que lo anuncian ('l2' en el kx)
     this._init();
   }
 
@@ -49,6 +54,7 @@ export class BigFiles {
     if (!pl || typeof pl.addListener !== 'function') return;
     pl.addListener('onBigProgress', function(ev) { self._progress(ev); });
     pl.addListener('onBigDone', function(ev) { self._done(ev); });
+    if (typeof pl.l2Info === 'function') pl.l2Info().then(function(r) { self.l2Ok = !!(r && r.ok); }).catch(function() {});
     if (typeof pl.loadFromFile === 'function') pl.loadFromFile({ filename: STATE_FILE }).then(function(r) {
       if (r && r.exists && r.content) try { self.saved = Object.assign(JSON.parse(r.content) || {}, self.saved); } catch (e) {}
     }).catch(function() {});
@@ -57,13 +63,21 @@ export class BigFiles {
 
   markPeer(nx) { if (nx) this.peers.add(_nid(nx)); }
   unmarkPeer(nx) { if (nx) this.peers.delete(_nid(nx)); }
+  markL2(nx, on) { if (!nx) return; if (on) this.l2Peers.add(_nid(nx)); else this.l2Peers.delete(_nid(nx)); }
 
-  // Camino para un archivo grande con este contacto ahora: 'lan' (prioridad, reglas del dueño), 'wd' o null
+  _bleReady(nx) {
+    var ble = this.ble, dev = ble && typeof ble._resolveDeviceIdForNexoId === 'function' ? ble._resolveDeviceIdForNexoId(nx) : null;
+    var st = dev && typeof ble._getDeviceState === 'function' ? ble._getDeviceState(dev) : null;
+    return !!(st && (st.state === 'ready_to_chat' || st.state === 'notifications_ready'));
+  }
+
+  // Camino para un archivo grande con este contacto ahora: 'lan' (prioridad, reglas del dueño), 'wd', 'l2' o null
   route(nexoId) {
     var nx = _nid(nexoId), ble = this.ble;
     if (!this.peers.has(nx) || !ble) return null;
     if (ble.lan && ble.lan.canReach(nx)) return 'lan';
     if (ble.wifiDirect && ble.wifiDirect.canReach(nx)) return 'wd';
+    if (this.l2Ok && this.l2Peers.has(nx) && this._bleReady(nx)) return 'l2';
     return null;
   }
 
@@ -120,11 +134,11 @@ export class BigFiles {
   // 3. Mandar el archivo ya cifrado (también para reintentar). Resuelve cuando el otro lo tiene.
   transfer(nexoId, id) {
     var self = this, nx = _nid(nexoId), via = self.route(nx), pl = _plugin();
-    if (!via) { self._set(id, { dir: 'out', state: 'failed', error: 'sin Wi-Fi con el contacto' }); return Promise.reject(new Error('sin Wi-Fi con el contacto')); }
+    if (!via) { self._set(id, { dir: 'out', state: 'failed', error: 'sin camino con el contacto' }); return Promise.reject(new Error('sin camino con el contacto')); }
     return pl.bigStatus({ id: id }).then(function(s) {
       if (!s || !s.have) throw new Error('ya no está en este teléfono');
       self._set(id, { dir: 'out', state: 'sending', bytes: 0, total: s.bytes, nx: nx, via: via });
-      console.log('[BIG] Enviando ' + id + ' a ' + nx + ' por ' + (via === 'lan' ? 'Wi-Fi' : 'Wi-Fi Direct') + ' (' + Math.round(s.bytes / 1048576) + ' MB)');
+      console.log('[BIG] Enviando ' + id + ' a ' + nx + ' por ' + ({ lan: 'Wi-Fi', wd: 'Wi-Fi Direct', l2: 'Bluetooth (L2CAP)' })[via] + ' (' + Math.round(s.bytes / 1048576) + ' MB)');
       if (via === 'wd') return self.ble.wifiDirect.sendBig(self._dev(nx, 'wd'), id, s.bytes);
       return new Promise(function(resolve, reject) {
         var t = setTimeout(function() { self.out.delete(id); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
@@ -132,10 +146,13 @@ export class BigFiles {
           onNo: function(why) { clearTimeout(t); self.out.delete(id); reject(new Error('el otro no puede (' + (why || '?') + ')')); },
           onAccept: function(p) {
             clearTimeout(t); self.out.delete(id);
-            pl.bigSendLan({ id: id, nx: nx, port: p.port, token: p.token }).then(resolve, reject);
+            if (via === 'l2') {
+              if (!(p.psm > 0)) { reject(new Error('el otro no abrió el canal')); return; }
+              pl.bigSendL2({ id: id, deviceId: self._dev(nx, 'l2'), psm: p.psm, token: p.token }).then(resolve, reject);
+            } else pl.bigSendLan({ id: id, nx: nx, port: p.port, token: p.token }).then(resolve, reject);
           }
         });
-        self._ctl(self._dev(nx, 'lan'), { type: 'gq', id: id, size: s.bytes, via: 'lan' }).catch(function(e) { clearTimeout(t); self.out.delete(id); reject(e); });
+        self._ctl(self._dev(nx, via), { type: 'gq', id: id, size: s.bytes, via: via }).catch(function(e) { clearTimeout(t); self.out.delete(id); reject(e); });
       });
     }).then(function() {
       // El socket confirmó que el otro tiene todos los bytes
@@ -156,7 +173,7 @@ export class BigFiles {
     var id = String(p.id || ''), from = _nid(p.from);
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return true;
     var o = self.out.get(id);
-    if (p.type === 'ga') { if (o && o.onAccept && p.port > 0 && typeof p.token === 'string') o.onAccept(p); return true; }
+    if (p.type === 'ga') { if (o && o.onAccept && (p.port > 0 || p.psm > 0) && typeof p.token === 'string') o.onAccept(p); return true; }
     if (p.type === 'gn') { if (o && o.onNo) o.onNo(p.why); return true; }
     if (p.type === 'gf') return true;
     if (p.type === 'gr') {
@@ -164,15 +181,16 @@ export class BigFiles {
       if (from && !(self.st[id] && self.st[id].state === 'sending')) self.transfer(from, id).catch(function() {});
       return true;
     }
-    // 'gq': nos ofrecen un archivo grande por el mismo Wi-Fi
+    // 'gq': nos ofrecen un archivo grande por el mismo Wi-Fi o (via 'l2') por un canal L2CAP del Bluetooth
     var no = function(why) { self._ctl(deviceId, { type: 'gn', id: id, why: why }).catch(function() {}); };
-    if (!pl || typeof pl.bigServe !== 'function') { no('no soportado'); return true; }
+    var l2 = p.via === 'l2';
+    if (!pl || typeof (l2 ? pl.bigServeL2 : pl.bigServe) !== 'function' || (l2 && !self.l2Ok)) { no('no soportado'); return true; }
     if (!(p.size > 0) || p.size > BIG_MAX_BYTES * 1.1) { no('tamaño'); return true; }
-    if (!self.ble.lan || !self.ble.lan.canReach(from)) { no('sin Wi-Fi'); return true; }
+    if (!l2 && (!self.ble.lan || !self.ble.lan.canReach(from))) { no('sin Wi-Fi'); return true; }
     var token = _hex(16);
-    self._set(id, { dir: 'in', state: 'receiving', bytes: 0, total: p.size, nx: from });
-    pl.bigServe({ id: id, token: token }).then(function(r) {
-      return self._ctl(deviceId, { type: 'ga', id: id, port: r.port, token: token });
+    self._set(id, { dir: 'in', state: 'receiving', bytes: 0, total: p.size, nx: from, via: l2 ? 'l2' : 'lan' });
+    (l2 ? pl.bigServeL2({ id: id, token: token }) : pl.bigServe({ id: id, token: token })).then(function(r) {
+      return self._ctl(deviceId, l2 ? { type: 'ga', id: id, psm: r.psm, token: token } : { type: 'ga', id: id, port: r.port, token: token });
     }).catch(function(e) { self._set(id, { state: 'failed', error: e && e.message }); no(e && e.message); });
     return true;
   }
@@ -182,7 +200,7 @@ export class BigFiles {
     var nx = _nid(nexoId), via = this.route(nx);
     if (!via) return false;
     this._set(id, { dir: 'in', state: 'waiting' });
-    this._ctl(this._dev(nx, via === 'lan' ? 'lan' : 'wd'), { type: 'gr', id: id }).catch(function() {});
+    this._ctl(this._dev(nx, via), { type: 'gr', id: id }).catch(function() {});
     return true;
   }
 

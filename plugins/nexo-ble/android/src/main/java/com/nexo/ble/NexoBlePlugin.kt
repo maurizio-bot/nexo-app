@@ -2801,6 +2801,89 @@ class NexoBlePlugin : Plugin() {
         }.start()
     }
 
+    // ===== Archivos grandes por Bluetooth L2CAP (ronda 2758, plan del dueño punto 13) =====
+    // Canal de flujo directo sobre la conexión Bluetooth (Android 10+): sin GATT, sin trozos con confirmación ni
+    // base64; lo mismo que por el Wi-Fi (BigNet), con un canal L2CAP en vez de un puerto. Más lento que el Wi-Fi.
+    private fun l2Adapter(): android.bluetooth.BluetoothAdapter? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val ctx = appCtx ?: activity.applicationContext
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isGranted(ctx, android.Manifest.permission.BLUETOOTH_CONNECT)) return null
+        val a = (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
+        return if (a != null && a.isEnabled) a else null
+    }
+
+    @PluginMethod
+    fun l2Info(call: PluginCall) {
+        call.resolve(JSObject().put("ok", l2Adapter() != null).put("sdk", Build.VERSION.SDK_INT))
+    }
+
+    // Receptor: abre un canal L2CAP para esta transferencia (solo acepta id + token) y devuelve su número (PSM)
+    @android.annotation.SuppressLint("MissingPermission", "NewApi") // comprobados en l2Adapter()
+    @PluginMethod
+    fun bigServeL2(call: PluginCall) {
+        val id = BigFile.safeId(call.getString("id") ?: "")
+        val token = call.getString("token") ?: ""
+        if (id.isEmpty() || token.length < 16) { call.reject("id y token requeridos"); return }
+        val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible (Android 10+ y Bluetooth activo)", "L2_NONE"); return }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        try {
+            val server = adapter.listenUsingInsecureL2capChannel()
+            val psm = server.psm
+            call.resolve(JSObject().put("psm", psm))
+            remLog("INFO", "FILE_IO", "[L2CAP] Esperando $id en el canal $psm")
+            Thread {
+                val until = System.currentTimeMillis() + 60000
+                try {
+                    while (true) {
+                        val left = until - System.currentTimeMillis()
+                        if (left <= 0) throw Exception("Accept timed out")
+                        val sock = server.accept(left.toInt())
+                        val ok = try { BigNet.receive(sock.inputStream, sock.outputStream, id, token, BigFile.encFile(bigDir(), id), BigFile.MAX_BYTES * 11 / 10, bigProgress(id, "in")) }
+                                 finally { try { sock.close() } catch (e: Exception) {} }
+                        if (ok) break
+                    }
+                    bigDone(id, "in", null)
+                } catch (e: Exception) { bigDone(id, "in", "L2CAP: " + (e.message ?: "error")) }
+                finally { try { server.close() } catch (e: Exception) {} }
+            }.start()
+        } catch (e: Exception) { call.reject("Canal L2CAP no disponible: ${e.message}", "L2_SOCKET") }
+    }
+
+    // Emisor: al teléfono de esa conexión Bluetooth, al canal que abrió
+    @android.annotation.SuppressLint("MissingPermission", "NewApi") // comprobados en l2Adapter()
+    @PluginMethod
+    fun bigSendL2(call: PluginCall) {
+        val id = BigFile.safeId(call.getString("id") ?: "")
+        val raw = call.getString("deviceId") ?: ""
+        val psm = call.getInt("psm") ?: 0
+        val token = call.getString("token") ?: ""
+        val file = BigFile.encFile(bigDir(), id)
+        val adapter = l2Adapter() ?: run { call.reject("L2CAP no disponible", "L2_NONE"); return }
+        if (!file.exists() || psm <= 0) { call.reject("Nada que enviar", "BIG_NONE"); return }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val mac = normalizeMac(raw)
+        val device = gattClients[mac]?.device ?: serverConnectedDevices[mac] ?: scannedDevices[mac]
+            ?: formatMacForAndroid(raw)?.let { try { adapter.getRemoteDevice(it.uppercase()) } catch (e: Exception) { null } }
+            ?: run { call.reject("Dirección no válida: $raw", "INVALID_MAC"); return }
+        Thread {
+            try {
+                val t0 = System.currentTimeMillis()
+                device.createInsecureL2capChannel(psm).use { s ->
+                    s.connect()
+                    remLog("INFO", "FILE_IO", "[L2CAP] Canal abierto con $mac en ${System.currentTimeMillis() - t0} ms")
+                    BigNet.send(s.inputStream, s.outputStream, id, token, file, bigProgress(id, "out"))
+                }
+                val ms = System.currentTimeMillis() - t0
+                remLog("INFO", "FILE_IO", "[L2CAP] $id: ${file.length() / 1024} KB en ${ms / 1000} s (${if (ms > 0) file.length() / ms else 0} KB/s)")
+                bigDone(id, "out", null)
+                call.resolve(JSObject().put("ok", true).put("bytes", file.length()).put("ms", ms))
+            } catch (e: Exception) {
+                bigDone(id, "out", "L2CAP: " + (e.message ?: "error"))
+                call.reject("Envío fallido: ${e.message}", "BIG_SEND")
+            }
+        }.start()
+    }
+
     // Abrir: se descifra a la caché y se abre como cualquier archivo (instalador de APK, lector de PDF…)
     @PluginMethod
     fun bigOpen(call: PluginCall) {

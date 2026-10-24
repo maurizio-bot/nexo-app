@@ -31,6 +31,7 @@ export const BLE_KEY_METHODS = {
       pkt.nt = 1; // v6.13.0: internet por relés públicos
       pkt.bf = 1; // ronda 2753: entiende trozos binarios de archivos por Bluetooth
       pkt.bg = 1; // ronda 2756: archivos grandes por Wi-Fi / Wi-Fi Direct (big_file.js)
+      if (self.bigFiles && self.bigFiles.l2Ok) pkt.l2 = 1; // ronda 2758: y por Bluetooth L2CAP (Android 10+)
       if (peerNx) pkt.ph = ratchetPeerPqId(peerNx); // v6.12.0: qué clave poscuántica suya tengo (no hace falta repetirla)
       var rs = self.fenix ? self.fenix.resetMark() : 0;
       if (rs) pkt.rs = rs;

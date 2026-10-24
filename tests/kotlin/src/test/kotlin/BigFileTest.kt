@@ -81,6 +81,31 @@ class BigFileTest {
         assertContentEquals(data, out.toByteArray())
     }
 
+    // Ronda 2758: por flujos (como el canal L2CAP del Bluetooth, BluetoothSocket): igual que por socket
+    @Test fun porFlujosComoL2cap() {
+        val data = Random(5).nextBytes(1024 * 1024 + 5)
+        val src = tmp("l"); write(src, data)
+        val dest = tmp("ld"); dest.delete()
+        val token = BigFile.token()
+        val aToB = java.io.PipedInputStream(1 shl 16); val aOut = java.io.PipedOutputStream(aToB)
+        val bToA = java.io.PipedInputStream(1 shl 16); val bOut = java.io.PipedOutputStream(bToA)
+        var ok = false
+        val t = Thread { ok = BigNet.receive(aToB, bOut, "msg1", token, dest, BigFile.MAX_BYTES * 2) }
+        t.start()
+        BigNet.send(bToA, aOut, "msg1", token, src)
+        t.join(10000)
+        assertTrue(ok)
+        val out = ByteArrayOutputStream()
+        BigReader.decrypt(dest, BigFile.key(keyHex), "msg1", out)
+        assertContentEquals(data, out.toByteArray())
+        // Otro token: no se escribe nada
+        val d2 = tmp("ld2"); d2.delete()
+        val i2 = java.io.PipedInputStream(1 shl 16); val o2 = java.io.PipedOutputStream(i2)
+        java.io.DataOutputStream(o2).apply { writeUTF("""{"big":1,"id":"msg1","token":"malo","len":10}"""); flush() }
+        assertEquals(false, BigNet.receive(i2, ByteArrayOutputStream(), "msg1", token, d2, 100))
+        assertTrue(!d2.exists())
+    }
+
     @Test fun limitesYNombres() {
         assertFailsWith<IllegalArgumentException> { BigFile.key("abc") }
         assertEquals("msg_12-ab", BigFile.safeId("msg_12-ab/../x".substring(0, 9)))
