@@ -5,7 +5,11 @@
  * Formato de cada paquete:  [códec 1 byte][n.º de tramas 1 byte]{[largo 2 bytes][trama]}…
  *   códec 1 = Opus 16 kb/s (WebCodecs, ~2 KB/s: cabe por Bluetooth)   códec 2 = μ-law 8 kHz (si no hay Opus: 8 KB/s)
  * El códec lo elige quien envía según lo que soporta él y lo que dijo el otro en la oferta (calls.js).
+ * Videollamada (opts.video): cámara a 320x240 y 15 fps, VP8 con WebCodecs (~300 kb/s, una imagen completa cada 2 s);
+ * cada imagen es un paquete [1 = completa / 0 = diferencia][datos]. Vista propia (media.localVideo) y la del otro
+ * (media.remoteCanvas): las coloca calls_ui.js.
  */
+var VW = 320, VH = 240, FPS = 15;
 var RATE = 48000;
 var PACKET_MS = 100;
 
@@ -52,8 +56,17 @@ export function unpackCallPacket(u8) {
   return { codec: codec, frames: frames };
 }
 
+function _hasVp8() {
+  if (typeof window.VideoEncoder !== 'function' || typeof window.VideoDecoder !== 'function' || typeof window.VideoFrame !== 'function') return Promise.resolve(false);
+  return window.VideoEncoder.isConfigSupported({ codec: 'vp8', width: VW, height: VH, bitrate: 300000, framerate: FPS })
+    .then(function(r) { return !!(r && r.supported); }).catch(function() { return false; });
+}
+
 export function createCallMedia(opts) {
   var onPacket = opts.onPacket, peerCodecs = String(opts.codecs || 'ulaw');
+  var wantVideo = !!opts.video, venc = null, vdec = null, vTimer = null, vN = 0, vIn = 0, vGotKey = false, camOn = true, vcanvas = null, vctx = null;
+  var vstats = window.NEXO_callVideoStats = { sent: 0, keys: 0, decoded: 0, bytes: 0 };
+  var media;
   var ctx = null, stream = null, src = null, proc = null, enc = null, dec = null, codec = 0, muted = false;
   var pending = [], pendingSince = 0, playAt = 0, ts = 0, decTs = 0;
   var ulawBuf = [];
@@ -85,11 +98,43 @@ export function createCallMedia(opts) {
     playAt += buf.duration;
   }
 
-  return {
+  function startVideo() {
+    return _hasVp8().then(function(ok) {
+      if (!ok || !stream || !stream.getVideoTracks().length) return false;
+      var v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.autoplay = true; v.setAttribute('playsinline', ''); v.srcObject = stream;
+      try { var pp = v.play(); if (pp && pp.catch) pp.catch(function() {}); } catch (e) {}
+      media.localVideo = v;
+      vcanvas = document.createElement('canvas'); vcanvas.width = VW; vcanvas.height = VH; vctx = vcanvas.getContext('2d');
+      venc = new window.VideoEncoder({
+        output: function(chunk) {
+          var b = new Uint8Array(1 + chunk.byteLength); b[0] = chunk.type === 'key' ? 1 : 0; chunk.copyTo(b.subarray(1));
+          vstats.sent++; vstats.bytes += b.length; if (b[0]) vstats.keys++;
+          if (opts.onVideoPacket) opts.onVideoPacket(b);
+        },
+        error: function(e) { console.warn('[CALL] Vídeo: ' + (e && e.message)); }
+      });
+      venc.configure({ codec: 'vp8', width: VW, height: VH, bitrate: 300000, framerate: FPS });
+      vTimer = setInterval(function() {
+        if (!camOn || !venc || venc.state !== 'configured' || v.readyState < 2) return;
+        try {
+          vctx.drawImage(v, 0, 0, VW, VH);
+          var f = new window.VideoFrame(vcanvas, { timestamp: Math.round(vN * 1e6 / FPS) });
+          venc.encode(f, { keyFrame: vN % (FPS * 2) === 0 }); f.close(); vN++;
+        } catch (e) {}
+      }, Math.round(1000 / FPS));
+      return true;
+    });
+  }
+
+  media = {
+    localVideo: null,
+    remoteCanvas: null,
     start: function() {
       return _hasOpus().then(function(opus) {
         codec = opus && peerCodecs.indexOf('opus') >= 0 ? 1 : 2;
-        return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        var a = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+        return navigator.mediaDevices.getUserMedia(wantVideo ? { audio: a, video: { width: { ideal: VW }, height: { ideal: VH }, frameRate: { ideal: FPS }, facingMode: 'user' } } : { audio: a });
       }).then(function(s) {
         stream = s;
         var AC = window.AudioContext || window.webkitAudioContext;
@@ -120,9 +165,29 @@ export function createCallMedia(opts) {
           flush(false);
         };
         src.connect(proc); proc.connect(ctx.destination); // el nodo necesita salida para funcionar (escribe silencio)
-        return { codec: codec === 1 ? 'opus' : 'ulaw' };
+        var info = { codec: codec === 1 ? 'opus' : 'ulaw' };
+        if (!wantVideo) return info;
+        return startVideo().then(function(vok) { info.video = vok; return info; }, function() { info.video = false; return info; });
       });
     },
+    // Imagen del otro (videollamada)
+    playVideo: function(bytes) {
+      if (!bytes || bytes.length < 2 || typeof window.VideoDecoder !== 'function') return;
+      var key = bytes[0] === 1;
+      if (!vGotKey && !key) return; // hasta la primera imagen completa no se puede decodificar
+      if (!media.remoteCanvas) { var rc = document.createElement('canvas'); rc.width = VW; rc.height = VH; media.remoteCanvas = rc; }
+      if (!vdec) {
+        var rctx = media.remoteCanvas.getContext('2d');
+        vdec = new window.VideoDecoder({
+          output: function(frame) { try { rctx.drawImage(frame, 0, 0, media.remoteCanvas.width, media.remoteCanvas.height); } catch (e) {} frame.close(); vstats.decoded++; },
+          error: function(e) { console.warn('[CALL] Vídeo (recibir): ' + (e && e.message)); vGotKey = false; }
+        });
+        vdec.configure({ codec: 'vp8' });
+      }
+      if (key) vGotKey = true;
+      try { vdec.decode(new window.EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: Math.round(vIn++ * 1e6 / FPS), data: bytes.subarray(1) })); } catch (e) { vGotKey = false; }
+    },
+    camera: function(on) { camOn = !!on; try { stream.getVideoTracks().forEach(function(t) { t.enabled = !!on; }); } catch (e) {} },
     play: function(bytes) {
       var p = unpackCallPacket(bytes);
       if (!p || !ctx) return;
@@ -151,6 +216,8 @@ export function createCallMedia(opts) {
     mute: function(on) { muted = !!on; },
     stop: function() {
       flush(true);
+      clearInterval(vTimer);
+      try { if (venc && venc.state !== 'closed') venc.close(); if (vdec && vdec.state !== 'closed') vdec.close(); } catch (e) {}
       try { if (proc) proc.disconnect(); if (src) src.disconnect(); } catch (e) {}
       try { if (enc && enc.state !== 'closed') enc.close(); if (dec && dec.state !== 'closed') dec.close(); } catch (e) {}
       try { if (stream) stream.getTracks().forEach(function(t) { t.stop(); }); } catch (e) {}
@@ -158,4 +225,5 @@ export function createCallMedia(opts) {
       ctx = null;
     }
   };
+  return media;
 }

@@ -7,6 +7,8 @@
 //  3. Sin contestar (timbre acortado a 6 s) → A "No contesta"; B "Llamada perdida".
 //  4. En llamada, B se aleja → a los ~12 s sin voz los dos cortan ("Se cortó").
 //  5. Sin el contacto cerca: aviso y nada sale.
+//  6. (--wifi) Videollamada: el vídeo va y vuelve; B sale del Wi-Fi → el vídeo se para y la voz sigue por Bluetooth;
+//     sin Wi-Fi, el botón 🎥 avisa de que hace falta el mismo Wi-Fi.
 // Uso: node calls.js <dir_build> [--io-delay=25] [--wifi]
 'use strict';
 const fs = require('fs');
@@ -28,7 +30,7 @@ const logs = [];
 async function boot(name, native) {
   const vc = new VirtualConsole();
   ['log', 'warn', 'error'].forEach((l) => vc.on(l, (...a) => logs.push(`${new Date().toISOString().substring(14, 23)} [${name}] ${l}: ` + a.map(String).join(' ').substring(0, 250))));
-  const media = { sent: 0, played: [], started: 0, stopped: 0 };
+  const media = { sent: 0, played: [], started: 0, stopped: 0, vSent: 0, vPlayed: 0 };
   const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously',
     resources: new DistLoader(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
@@ -37,12 +39,13 @@ async function boot(name, native) {
       win.NEXO_CALL_RING_MS = 6000;
       // Micrófono falso: cada 100 ms un paquete [códec 1][1 trama][largo][quién, n.º, 40 bytes de "voz"]
       win.NEXO_callMediaFactory = (o) => {
-        let t = null, n = 0;
+        let t = null, tv = null, n = 0;
         return {
-          start() { media.started++; t = setInterval(() => { const f = new Uint8Array(42); f[0] = name.charCodeAt(0); f[1] = n & 255; f.fill(0x5a, 2); n++; media.sent++; const p = new Uint8Array(4 + f.length); p[0] = 1; p[1] = 1; p[2] = 0; p[3] = f.length; p.set(f, 4); o.onPacket(p); }, 100); return Promise.resolve({ codec: 'opus' }); },
+          start() { media.started++; const info = { codec: 'opus', video: !!o.video }; if (o.video) tv = setInterval(() => { const f = new Uint8Array(600); f[0] = media.vSent % 30 === 0 ? 1 : 0; f.fill(0x33, 1); media.vSent++; o.onVideoPacket(f); }, 66); t = setInterval(() => { const f = new Uint8Array(42); f[0] = name.charCodeAt(0); f[1] = n & 255; f.fill(0x5a, 2); n++; media.sent++; const p = new Uint8Array(4 + f.length); p[0] = 1; p[1] = 1; p[2] = 0; p[3] = f.length; p.set(f, 4); o.onPacket(p); }, 100); return Promise.resolve(info); },
           play(bytes) { media.played.push({ from: String.fromCharCode(bytes[4]), n: bytes[5] }); },
+          playVideo() { media.vPlayed++; },
           mute() {},
-          stop() { media.stopped++; clearInterval(t); }
+          stop() { media.stopped++; clearInterval(t); clearInterval(tv); }
         };
       };
     },
@@ -57,7 +60,7 @@ async function openChat(p) { let row; for (let i = 0; i < 300 && !row; i++) { ro
 async function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
 const screen = (p) => { const s = p.win.document.getElementById('nexo-call-screen'); return s ? (s.querySelector('.call-status') || {}).textContent : null; };
 const wait = async (c, s) => { for (let i = 0; i < s * 5 && !c(); i++) await sleep(200); return !!c(); };
-const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-container .message .msg-content')).map((e) => e.textContent).filter((t) => /📞/.test(t));
+const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-container .message .msg-content')).map((e) => e.textContent).filter((t) => /📞|🎥/.test(t));
 
 (async () => {
   const radio = new Radio();
@@ -117,6 +120,40 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   r.se_corta_A = await wait(() => !A.win.bleInterface.calls.call, 25) ? Math.round((Date.now() - t0) / 1000) + ' s' : 'NO';
   r.se_corta_B = await wait(() => !B.win.bleInterface.calls.call, 25);
   await sleep(1500);
+  // 6. Videollamada (solo con Wi-Fi)
+  if (WIFI) {
+    nB.setOffline(false); if (!nB.wifiNet) nB.setWifi('casa'); A.win.bleInterface.lan.start(); B.win.bleInterface.lan.start();
+    // Wi-Fi y también el Bluetooth de vuelta (B estuvo lejos en el paso 4)
+    const btReady = (p, nx) => { const bi = p.win.bleInterface, d = bi._resolveDeviceIdForNexoId(nx); const st = d && bi._getDeviceState(d); return !!st && /ready_to_chat|notifications_ready/.test(st.state); };
+    r.bt_de_vuelta = await wait(() => A.win.bleInterface.calls.canVideo(idB.toLowerCase()) && btReady(A, idB.toLowerCase()) && btReady(B, A.win.bleInterface.localNexoId.toLowerCase()), 90);
+    await sleep(2000);
+    click(A.win, A.win.document.getElementById('nexo-video-btn'));
+    r.video_B_suena = await wait(() => screen(B) === 'Videollamada entrante', 20);
+    click(B.win, B.win.document.querySelector('#nexo-call-screen .call-accept'));
+    await wait(() => /^\d+:\d\d$/.test(screen(A) || ''), 10);
+    const v0 = [A.media.vPlayed, B.media.vPlayed];
+    await sleep(3000);
+    r.video_llega = [A.media.vPlayed - v0[0], B.media.vPlayed - v0[1]];
+    r.boton_camara = !!A.win.document.querySelector('#nexo-call-screen .call-camera');
+    // B sale del Wi-Fi (sigue a alcance de Bluetooth): vídeo parado, voz sigue
+    nB.setWifi(null); await sleep(4000);
+    r.lan_link_A = JSON.stringify(A.win.bleInterface.lan.links.get(idB.toLowerCase()) || null).substring(0, 300);
+    r.tras_salir_wifi = { A_lan: A.win.bleInterface.lan.canReach(idB.toLowerCase()), A_enlace: A.win.bleInterface.calls._link(idB.toLowerCase()), B_wifi: nB.wifiNet, A_conns: Array.from((nA.lanConns || new Map()).keys()) };
+    const vp = B.media.vPlayed, ap = B.media.played.length;
+    await sleep(3000);
+    r.sin_wifi_video_parado = B.media.vPlayed - vp <= 2;
+    r.sin_wifi_voz_sigue = B.media.played.length - ap >= 15;
+    r.sigue_en_llamada = !!A.win.bleInterface.calls.call && !!B.win.bleInterface.calls.call;
+    click(A.win, A.win.document.querySelector('#nexo-call-screen .call-hangup')); await sleep(2000);
+    r.linea_video = lines(A).filter((t) => /Videollamada/.test(t));
+    // Sin Wi-Fi: el botón 🎥 avisa
+    click(A.win, A.win.document.getElementById('nexo-video-btn')); await sleep(600);
+    r.video_sin_wifi_aviso = Array.from(A.win.document.querySelectorAll('div')).some((d) => /mismo Wi-Fi \(por Bluetooth solo voz\)/.test(d.textContent) && d.children.length === 0);
+    r.video_sin_wifi_no_llama = !A.win.bleInterface.calls.call;
+    r.B_se_entera_al_colgar = await wait(() => !B.win.bleInterface.calls.call, 5);
+    nB.setOffline(true);
+    await sleep(5000); // que A note que B ya no está (supervisión del Bluetooth)
+  }
   // 5. Sin el contacto cerca
   const before = nA.sent.length;
   click(A.win, A.win.document.getElementById('nexo-call-btn')); await sleep(800);
@@ -126,7 +163,9 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   const ok = r.boton && r.A_llamando && r.B_suena && r.en_llamada && r.voz_B_a_A >= 25 && r.voz_A_a_B >= 25 && r.en_orden && r.voz_en_el_aire && r.nada_en_claro && r.B_ve_fin &&
     r.linea_A.some((t) => /Llamada · 0:0\d/.test(t)) && r.linea_B.some((t) => /Llamada · 0:0\d/.test(t)) && r.micro_cerrado && r.senales_no_son_mensajes &&
     r.rechazada_A && r.lineas_A.some((t) => /rechazada/.test(t)) && r.lineas_B.some((t) => /rechazada/.test(t)) && r.sin_respuesta_A && r.lineas_B.some((t) => /perdida/.test(t)) &&
-    r.se_corta_A !== 'NO' && r.se_corta_B && r.sin_alcance_aviso && r.sin_alcance_no_llama && (!WIFI || r.camino === 'wifi') && !r.errores.length;
+    r.se_corta_A !== 'NO' && r.se_corta_B && r.sin_alcance_aviso && r.sin_alcance_no_llama && (!WIFI || r.camino === 'wifi') && !r.errores.length &&
+    (!WIFI || (r.video_B_suena && r.video_llega[0] >= 30 && r.video_llega[1] >= 30 && r.boton_camara && r.sin_wifi_video_parado && r.sin_wifi_voz_sigue && r.sigue_en_llamada &&
+      r.linea_video.length >= 1 && r.B_se_entera_al_colgar && r.video_sin_wifi_aviso && r.video_sin_wifi_no_llama));
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CALLS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_calls.txt'), logs.join('\n'));

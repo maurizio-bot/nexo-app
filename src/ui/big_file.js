@@ -65,11 +65,8 @@ export class BigFiles {
   unmarkPeer(nx) { if (nx) this.peers.delete(_nid(nx)); }
   markL2(nx, on) { if (!nx) return; if (on) this.l2Peers.add(_nid(nx)); else this.l2Peers.delete(_nid(nx)); }
 
-  _bleReady(nx) {
-    var ble = this.ble, dev = ble && typeof ble._resolveDeviceIdForNexoId === 'function' ? ble._resolveDeviceIdForNexoId(nx) : null;
-    var st = dev && typeof ble._getDeviceState === 'function' ? ble._getDeviceState(dev) : null;
-    return !!(st && (st.state === 'ready_to_chat' || st.state === 'notifications_ready'));
-  }
+  // Conexión Bluetooth lista con ese contacto (no lan:/net:, que también resuelve _resolveDeviceIdForNexoId)
+  _bleReady(nx) { var ble = this.ble; return ble && typeof ble._bleReadyFor === 'function' ? ble._bleReadyFor(nx) : null; }
 
   // Camino para un archivo grande con este contacto ahora: 'lan' (prioridad, reglas del dueño), 'wd', 'l2' o null
   route(nexoId) {
@@ -123,6 +120,7 @@ export class BigFiles {
 
   _dev(nx, via) {
     if (via === 'lan') return 'lan:' + _nid(nx);
+    if (via === 'l2') return this._bleReady(_nid(nx));
     var ble = this.ble;
     return ble && typeof ble._resolveDeviceIdForNexoId === 'function' ? ble._resolveDeviceIdForNexoId(nx) : null;
   }

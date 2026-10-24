@@ -210,6 +210,20 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## Ronda 2758: videollamadas (plan del dueño punto 17)
+- Botón 🎥 junto al 📞 (chat 1:1): la misma llamada con vídeo VP8 (WebCodecs, cámara frontal a 320x240 y 15 fps,
+  ~300 kb/s, imagen completa cada 2 s), cifrado igual que la voz. Solo con el contacto en el mismo Wi-Fi (por
+  Bluetooth no cabe: el botón lo avisa). Pantalla: la imagen del otro a pantalla completa, la propia en una esquina
+  (en espejo), botones silenciar, cámara y colgar. Si el Wi-Fi se pierde en plena videollamada, el vídeo se para y la
+  voz sigue por Bluetooth (si en 3 s no llega voz por el Wi-Fi se pasa al Bluetooth y, si no está conectado, se busca).
+- Encontrado al probarlo y arreglado: en una llamada se seguía usando el Wi-Fi durante el margen de espera de lan.js
+  tras un corte (silencio); el colgar iba por el chat y, sin Wi-Fi, el otro no se enteraba hasta 12 s después (ahora
+  también va cifrado por el canal de la voz); la ruta L2CAP de archivos grandes podía tomar `lan:`/`net:` como
+  dirección Bluetooth (ahora usa la conexión Bluetooth lista, `_bleReadyFor`).
+- Simulado: `calls.js --wifi` (vídeo 46 imágenes por lado en 3 s; sin Wi-Fi vídeo parado y voz sigue; B se entera al
+  colgar; sin Wi-Fi el 🎥 avisa). `calls_browser.js --video` (Chromium, cámara y micrófono de prueba): ~88 imágenes
+  decodificadas por lado en 6 s, imagen del otro visible, vista propia, ~22 KB/s, voz Opus a la vez.
+
 ## Ronda 2758: llamadas de voz (plan del dueño punto 16)
 - **Llamadas** (`calls.js`, `call_media.js`, `calls_ui.js`): botón 📞 en la cabecera de un chat 1:1. Solo con enlace
   directo: el mismo Wi-Fi / Wi-Fi Direct o Bluetooth a alcance (no por Jump ni internet: demasiado retraso). La

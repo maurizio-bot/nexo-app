@@ -40,6 +40,23 @@ function _stopTone() {
   _ring = null;
 }
 
+// Videollamada: la imagen del otro a pantalla completa y la propia en una esquina
+function _videoLayout(el, st) {
+  var calls = _calls();
+  if (!st.video || st.state !== 'active' || !calls) return;
+  var v = calls.videoViews();
+  if (v.remote && v.remote.parentNode !== el) {
+    v.remote.className = 'call-remote-video';
+    v.remote.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:-1;';
+    el.insertBefore(v.remote, el.firstChild);
+  }
+  if (v.local && v.local.parentNode !== el) {
+    v.local.className = 'call-local-video';
+    v.local.style.cssText = 'position:absolute;right:14px;top:14px;width:96px;height:128px;object-fit:cover;border-radius:10px;border:2px solid rgba(255,255,255,0.6);transform:scaleX(-1);background:#222;';
+    el.appendChild(v.local);
+  }
+}
+
 function _fmt(s) { return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
 
 function _screen() {
@@ -82,21 +99,23 @@ function _render(st) {
   el.querySelector('.call-name').textContent = _name(st.nx);
   var status = el.querySelector('.call-status'), note = el.querySelector('.call-note'), bt = el.querySelector('.call-buttons');
   bt.innerHTML = '';
-  note.textContent = st.micError ? 'Sin micrófono: ' + st.micError : (st.codec ? 'Cifrada de extremo a extremo · ' + (st.codec === 'opus' ? 'Opus' : 'μ-law') : 'Cifrada de extremo a extremo');
+  note.textContent = st.micError ? 'Sin micrófono: ' + st.micError : st.video && st.videoOk === false ? 'Sin cámara en este teléfono: solo voz' : (st.codec ? 'Cifrada de extremo a extremo · ' + (st.codec === 'opus' ? 'Opus' : 'μ-law') : 'Cifrada de extremo a extremo');
+  _videoLayout(el, st);
   if (st.state === 'calling') {
-    status.textContent = 'Llamando…';
+    status.textContent = st.video ? 'Videollamando…' : 'Llamando…';
     bt.appendChild(_btn('✕', '#e53935', 'call-hangup', function() { calls.hangup(); }));
     if (!_ring) _startTone(false);
   } else if (st.state === 'ringing') {
-    status.textContent = 'Llamada entrante';
+    status.textContent = st.video ? 'Videollamada entrante' : 'Llamada entrante';
     bt.appendChild(_btn('✕', '#e53935', 'call-reject', function() { calls.reject(); }));
     bt.appendChild(_btn('📞', '#43a047', 'call-accept', function() { calls.accept(); }));
     if (!_ring) _startTone(true);
   } else if (st.state === 'active') {
     _stopTone();
-    var upd = function() { status.textContent = _fmt(Math.max(0, Math.round((Date.now() - (st.startedAt || Date.now())) / 1000))); };
+    var upd = function() { status.textContent = _fmt(Math.max(0, Math.round((Date.now() - (st.startedAt || Date.now())) / 1000))); if (st.video) _videoLayout(el, st); };
     upd(); _tick = setInterval(upd, 1000);
     bt.appendChild(_btn(st.muted ? '🔇' : '🎤', st.muted ? '#555' : 'rgba(255,255,255,0.18)', 'call-mute', function() { calls.mute(!st.muted); }));
+    if (st.video) bt.appendChild(_btn(st.cameraOff ? '🚫' : '📷', st.cameraOff ? '#555' : 'rgba(255,255,255,0.18)', 'call-camera', function() { calls.camera(!!st.cameraOff); }));
     bt.appendChild(_btn('✕', '#e53935', 'call-hangup', function() { calls.hangup(); }));
     try { var pl2 = _plugin(); if (pl2 && typeof pl2.callAudio === 'function') pl2.callAudio({ on: true }).catch(function() {}); } catch (e) {}
   }
@@ -136,10 +155,23 @@ function _installButton() {
     calls.start(cid).catch(function(err) { _showInfoToast(err.message, 3500); });
   });
   header.appendChild(b);
+  // Videollamada (solo con el contacto en el mismo Wi-Fi)
+  var v = document.createElement('button');
+  v.id = 'nexo-video-btn';
+  v.title = 'Videollamada';
+  v.textContent = '🎥';
+  v.style.cssText = b.style.cssText;
+  v.addEventListener('click', function(e) {
+    e.stopPropagation();
+    var calls = _calls(), cid = _getCurrentContactId();
+    if (!calls || !cid) return;
+    calls.start(cid, true).catch(function(err) { _showInfoToast(err.message, 3500); });
+  });
+  header.appendChild(v);
 }
 function _refreshButton() {
-  var b = document.getElementById('nexo-call-btn'), cid = _getCurrentContactId(), gs = _bi() && _bi().groups;
-  if (b) b.style.display = cid && !(gs && gs.isGroup(cid)) ? '' : 'none';
+  var cid = _getCurrentContactId(), gs = _bi() && _bi().groups, show = cid && !(gs && gs.isGroup(cid)) ? '' : 'none';
+  ['nexo-call-btn', 'nexo-video-btn'].forEach(function(id) { var b = document.getElementById(id); if (b) b.style.display = show; });
 }
 
 export function installCallsUi() {

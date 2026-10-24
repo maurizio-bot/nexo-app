@@ -1,7 +1,8 @@
 // Llamada de voz con audio de verdad en Chromium (ronda 2758): micrófono falso de Chromium (un pitido), WebCodecs Opus,
 // cifrado, envío por la radio simulada y reproducción con WebAudio. Comprueba que en cada teléfono se reproduce audio
 // del otro (segundos y volumen), con qué códec y cuánto ocupa (KB/s en el aire).
-// Uso: node calls_browser.js <dir_build> [--seconds=6] [--ulaw]  (--ulaw: como un teléfono sin Opus)
+// Uso: node calls_browser.js <dir_build> [--seconds=6] [--ulaw] [--video]  (--ulaw: como un teléfono sin Opus;
+//      --video: videollamada en el mismo Wi-Fi con la cámara de prueba de Chromium: imágenes decodificadas en cada lado)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -11,8 +12,9 @@ const PW = (() => { try { return require('playwright'); } catch (e) { return req
 const buildDir = path.resolve(process.argv[2]);
 const dist = path.join(buildDir, 'dist');
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
-const seconds = arg('seconds', 6), ULAW = !!arg('ulaw', false);
+const seconds = arg('seconds', 6), ULAW = !!arg('ulaw', false), VIDEO = !!arg('video', false);
 const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 25), supervisionMs: 3000 };
+if (VIDEO) opts.wifi = 'casa';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const logs = [];
 const TYPES = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.woff2': 'font/woff2' };
@@ -79,14 +81,15 @@ async function sendText(page, t) {
   await click(A, '#main-contacts-list .ble-contact-row'); await sleep(400);
   await sendText(A, 'hola'); await sleep(2500);
   await click(B, '#main-contacts-list .ble-contact-row'); await sleep(600);
-  const r = { build: path.basename(buildDir), sin_opus: ULAW };
+  const r = { build: path.basename(buildDir), sin_opus: ULAW, video: VIDEO };
+  if (VIDEO) for (let i = 0; i < 200 && !(await A.evaluate(() => window.bleInterface.calls.canVideo(Array.from(window.bleInterface.lan.links.keys())[0] || ''))); i++) await sleep(200);
   const air0 = nA.stats.airBytes || 0, airB0 = nB.stats.airBytes || 0;
-  await click(A, '#nexo-call-btn');
+  await click(A, VIDEO ? '#nexo-video-btn' : '#nexo-call-btn');
   for (let i = 0; i < 100 && !(await B.evaluate(() => !!document.querySelector('#nexo-call-screen .call-accept'))); i++) await sleep(200);
   await click(B, '#nexo-call-screen .call-accept');
   const t0 = Date.now();
   await sleep(seconds * 1000);
-  const st = async (p) => p.evaluate(() => { const c = window.bleInterface.calls; const a = window.NEXO_callAudioStats || { samples: 0, seconds: 0, energy: 0 }; return { estado: c.call && c.call.state, codec: c.call && c.call.codec, mic: c.call && c.call.micError, enviados: c.stats.sent, recibidos: c.stats.got, malos: c.stats.bad, audio_s: Math.round(a.seconds * 10) / 10, volumen_rms: a.samples ? Math.round(Math.sqrt(a.energy / a.samples) * 1000) / 1000 : 0 }; });
+  const st = async (p) => p.evaluate(() => { const c = window.bleInterface.calls; const a = window.NEXO_callAudioStats || { samples: 0, seconds: 0, energy: 0 }; const v = window.NEXO_callVideoStats || {}; const rc = document.querySelector('#nexo-call-screen .call-remote-video'); let px = 0; if (rc) { const d = rc.getContext('2d').getImageData(0, 0, rc.width, rc.height).data; for (let i = 0; i < d.length; i += 400) px += d[i] + d[i + 1] + d[i + 2]; } return { video_enviado: v.sent || 0, video_decodificado: v.decoded || 0, video_KB: Math.round((v.bytes || 0) / 1024), imagen_otro: px > 0, vista_propia: !!document.querySelector('#nexo-call-screen .call-local-video'), estado: c.call && c.call.state, codec: c.call && c.call.codec, mic: c.call && c.call.micError, enviados: c.stats.sent, recibidos: c.stats.got, malos: c.stats.bad, audio_s: Math.round(a.seconds * 10) / 10, volumen_rms: a.samples ? Math.round(Math.sqrt(a.energy / a.samples) * 1000) / 1000 : 0 }; });
   r.A = await st(A); r.B = await st(B);
   const secs = (Date.now() - t0) / 1000;
   r.KB_por_segundo_aire = Math.round(((nA.stats.airBytes || 0) - air0) / secs / 102.4) / 10;
@@ -94,7 +97,8 @@ async function sendText(page, t) {
   r.fin = { A: await A.evaluate(() => !window.bleInterface.calls.call), B: await B.evaluate(() => !window.bleInterface.calls.call) };
   r.errores = logs.filter((l) => /PAGEERROR|\[CALL\] (Opus|Micr)/.test(l)).slice(0, 5);
   const want = ULAW ? 'ulaw' : 'opus';
-  const ok = ['A', 'B'].every((k) => r[k].estado === 'active' && r[k].codec === want && !r[k].mic && r[k].recibidos >= seconds * (ULAW ? 5 : 6) && !r[k].malos && r[k].audio_s >= seconds * 0.7 && r[k].volumen_rms > 0.005) && r.fin.A && r.fin.B && !r.errores.length;
+  const okVideo = !VIDEO || ['A', 'B'].every((k) => r[k].video_decodificado >= seconds * 8 && r[k].imagen_otro && r[k].vista_propia);
+  const ok = okVideo && ['A', 'B'].every((k) => r[k].estado === 'active' && r[k].codec === want && !r[k].mic && r[k].recibidos >= seconds * (ULAW ? 5 : 6) && !r[k].malos && r[k].audio_s >= seconds * 0.7 && r[k].volumen_rms > 0.005) && r.fin.A && r.fin.B && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CALLAUDIO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_calls_browser.txt'), logs.join('\n'));
