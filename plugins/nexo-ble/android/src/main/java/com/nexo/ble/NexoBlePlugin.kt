@@ -100,6 +100,7 @@ class NexoBlePlugin : Plugin() {
         private const val MESSAGE_MAX_PENDING_MS = 10000L
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
+        private const val BG_NOTIFY_DELAY_MS = 4000L
         private const val MAX_QUEUE_SIZE = 500
         // === FIX F0: Pacing conservador para evitar saturación del stack BLE nativo ===
         private const val WRITE_DELAY_MS = 40L               // Client writes: 40ms entre operaciones
@@ -269,6 +270,7 @@ class NexoBlePlugin : Plugin() {
         if (out.dropped > 0) btErr("bin_drop", "Trozo binario incompleto de ${normalizeMac(deviceId)} descartado")
         out.frames.forEach { f ->
             if (closedMode) { closedReceive(deviceId, f.header); return@forEach }
+            backgroundNotify(f.header)
             notifyListeners("onPayloadReceived", JSObject()
                 .put("deviceId", deviceId)
                 .put("content", f.header)
@@ -306,6 +308,7 @@ class NexoBlePlugin : Plugin() {
                 // retainUntilConsumed=true: si el JS aún no escucha (app recién abierta, WebView
                 // recargando), Capacitor guarda el mensaje y lo entrega al registrarse el listener.
                 // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.
+                if (!closedMode) backgroundNotify(extraction.json)
                 if (closedMode) closedReceive(deviceId, extraction.json)
                 else notifyListeners("onPayloadReceived", JSObject()
                     .put("deviceId", deviceId)
@@ -479,9 +482,34 @@ class NexoBlePlugin : Plugin() {
         super.notifyListeners(eventName, data, retainUntilConsumed)
     }
 
+    // Aviso de "solo notificación" (BgInbox.Kind.NOTIFY_ONLY): sin remitente (Jump con remitente oculto) va a un chat
+    // aparte que la app quita al abrirse (no es un contacto)
+    private fun notifyOnly(ctx: Context, info: BgInbox.Info) {
+        if (info.quiet) return
+        val chat = info.from.ifEmpty { "nexo_jump" }
+        MsgNotifier.get(ctx).message(chat, if (info.from.isEmpty()) "NEXO" else netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId,
+            when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "text" -> ""; else -> "📎 Archivo" })
+    }
+
+    // Ronda 2760: con la app en segundo plano el aviso lo da la app (notify.js), pero algunos teléfonos (Vivo del dueño)
+    // congelan la app en segundo plano y no avisaba nadie. Ahora el nativo mira lo que llega (Bluetooth o Wi-Fi) y, si
+    // a los 4 s la app no ha avisado de ese mensaje, avisa él (sin texto: va cifrado). Mismo msgId = un solo aviso.
+    private fun backgroundNotify(json: String) {
+        if (!appInBackground || closedMode) return
+        val ctx = appCtx ?: return
+        val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
+        if (info.msgId.isEmpty() || info.quiet) return
+        if (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY) return
+        mainHandler.postDelayed({
+            if (!appInBackground || MsgNotifier.get(ctx).book.hasMsg(info.msgId)) return@postDelayed
+            if (info.kind == BgInbox.Kind.MESSAGE) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, "")
+            else notifyOnly(ctx, info)
+        }, BG_NOTIFY_DELAY_MS)
+    }
+
     // Lo que llega con la app cerrada: al buzón, confirmación de entrega y notificación (ver BgInbox)
     private fun closedReceive(deviceId: String, json: String) {
-        val info = BgInbox.classify(json)
+        val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
         val ctx = appCtx ?: return
         when (info.kind) {
             BgInbox.Kind.MESSAGE -> {
@@ -494,8 +522,7 @@ class NexoBlePlugin : Plugin() {
                 if (!info.quiet) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, "")
             }
             BgInbox.Kind.RECEIPT -> inbox().add(deviceId, json)
-            BgInbox.Kind.NOTIFY_ONLY -> MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId,
-                when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "text" -> ""; else -> "📎 Archivo" })
+            BgInbox.Kind.NOTIFY_ONLY -> notifyOnly(ctx, info)
             BgInbox.Kind.IGNORE -> {}
         }
     }
@@ -2359,7 +2386,7 @@ class NexoBlePlugin : Plugin() {
             val hub = lanHub ?: LanHub({ lanMyId }, object : LanHub.Listener {
                 override fun onUp(nx: String) { remLog("INFO", "LAN", "Conectado con $nx por Wi-Fi"); notifyListeners("onLanUp", JSObject().put("nx", nx), true) }
                 override fun onDown(nx: String) { remLog("INFO", "LAN", "Sin Wi-Fi con $nx"); notifyListeners("onLanDown", JSObject().put("nx", nx), true) }
-                override fun onMessage(nx: String, text: String) { notifyListeners("onLanMessage", JSObject().put("nx", nx).put("content", text), true) }
+                override fun onMessage(nx: String, text: String) { backgroundNotify(text); notifyListeners("onLanMessage", JSObject().put("nx", nx).put("content", text), true) }
                 override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
             }).also { lanHub = it }
             val port = hub.start()

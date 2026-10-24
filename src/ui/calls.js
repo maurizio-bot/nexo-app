@@ -63,7 +63,10 @@ export class Calls {
     var ble = this.ble, c = this.call;
     var o = Object.assign({ type: 'nexo_call', op: op, id: (c && c.id) || (extra && extra.id), ts: Date.now() }, extra || {});
     if (!ble || typeof ble.sendChatMessage !== 'function') return Promise.resolve();
-    return ble.sendChatMessage(nx, JSON.stringify(o), 'cs' + _hex(6)).catch(function(e) { console.warn('[CALL] Señal ' + op + ' no enviada: ' + (e && e.message)); });
+    var mid = 'cs' + _hex(6);
+    // Ronda 2760: las señales (salvo la llamada entrante) no son mensajes: sin aviso en el otro teléfono
+    if (op !== 'offer') { ble._quietOut = ble._quietOut || new Set(); ble._quietOut.add(mid); }
+    return ble.sendChatMessage(nx, JSON.stringify(o), mid).catch(function(e) { console.warn('[CALL] Señal ' + op + ' no enviada: ' + (e && e.message)); });
   }
 
   _importKey(hex) { return crypto.subtle.importKey('raw', _fromHex(hex), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']); }

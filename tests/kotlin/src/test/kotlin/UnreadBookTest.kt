@@ -42,6 +42,21 @@ class UnreadBookTest {
         assertFalse(b.clear("nxaaaaaaaa"))
     }
 
+    // Ronda 2760: el nativo avisa en segundo plano con quien lo manda; la app, en el grupo: un solo aviso
+    @Test fun pasaDeChatSinRepetir() {
+        val b = UnreadBook()
+        b.add("nxaaaaaaaa", "Ana", "g1", ""); b.add("nxaaaaaaaa", "Ana", "m2", "")
+        assertTrue(b.hasMsg("g1")); assertFalse(b.hasMsg("zz"))
+        assertEquals(listOf("nxaaaaaaaa"), b.takeFromOthers("grabcdefgh", "g1"))
+        assertTrue(b.add("grabcdefgh", "Familia", "g1", "Ana: hola"))
+        assertEquals(1, b.get("nxaaaaaaaa")!!.count, "en el chat de Ana queda solo m2")
+        assertEquals(1, b.get("grabcdefgh")!!.count)
+        assertTrue(b.takeFromOthers("grabcdefgh", "g1").isEmpty(), "ya está en el grupo")
+        b.add("nxbbbbbbbb", "Beto", "g2", "")
+        assertEquals(listOf("nxbbbbbbbb"), b.takeFromOthers("grabcdefgh", "g2"))
+        assertNull(b.get("nxbbbbbbbb"), "sin nada más: fuera (se quita su aviso)")
+    }
+
     @Test fun losRecordadosTienenLimite() {
         val b = UnreadBook(maxSeen = 10)
         for (i in 0 until 20) b.add("nxaaaaaaaa", "Ana", "m$i", "")

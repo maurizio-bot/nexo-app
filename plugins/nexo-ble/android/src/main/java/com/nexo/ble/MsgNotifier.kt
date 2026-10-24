@@ -38,6 +38,11 @@ class MsgNotifier(private val ctx: Context) {
     private fun notifId(chatId: String) = 4000 + (chatId.hashCode() and 0x7ffff)
 
     fun message(chatId: String, name: String, msgId: String, text: String): Int {
+        // Ronda 2760: si ya se avisó en otro chat (el nativo, con quien lo manda), pasa a este (el grupo)
+        book.takeFromOthers(chatId, msgId).forEach { other ->
+            if (book.get(other) == null) try { NotificationManagerCompat.from(ctx).cancel(notifId(other)) } catch (e: Exception) { }
+            else post(other, alert = false)
+        }
         if (!book.add(chatId, name, msgId, text)) return book.get(chatId)?.count ?: 0
         post(chatId.lowercase(), alert = true)
         return book.get(chatId)?.count ?: 0

@@ -106,7 +106,7 @@ import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq }
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './ui/qr_verify.js';
 import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE, HD_REENCODE_BPS, _videoFormat, _blobToB64, _makeVideoPreview, _previewAudioTracks, _b64ToBlob, _makeVideoThumb } from './ui/video_tools.js';
 import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
-import { groupAttachment, parseGroupEnvelope } from './ui/groups.js';
+import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { parseCallSignal } from './ui/calls.js';
 import { installCallsUi } from './ui/calls_ui.js';
 import { groupSubtitle, installGroupButton, openGroupChat, openGroupMenu, sendGroupText } from './ui/groups_ui.js';
@@ -359,6 +359,10 @@ document.addEventListener('DOMContentLoaded', async function() {
 function _openChatFromNotification(deviceId) {
   try {
     if (!window.NEXO.app) return;
+    // Ronda 2760: aviso de un grupo → su chat; aviso sin remitente conocido (Jump con remitente oculto y la app
+    // cerrada) → solo se abre la app. Antes se guardaba un "contacto" con ese id
+    if (isGroupId(deviceId)) { openGroupChat(_normId(deviceId)); return; }
+    if (!/^nx[0-9a-z]{8}$/.test(_normId(deviceId))) return;
     _clearMessageContainer();
     var contact = vaultFindContactByNexoId(deviceId);
     if (!contact) {

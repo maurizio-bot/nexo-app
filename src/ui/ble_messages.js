@@ -77,6 +77,9 @@ export const BLE_MESSAGE_METHODS = {
 
   _prePayload(data) {
     var self = this;
+    // Ronda 2760: cualquier cosa que llega por un enlace Bluetooth demuestra que está vivo (el vigilante solo contaba
+    // la respuesta a su ping; si esa se retrasaba, cortaba un enlace que funcionaba)
+    if (data && data.deviceId && !/^(lan|net)/i.test(data.deviceId) && self._lastPongTime) self._lastPongTime.set(data.deviceId, Date.now());
     // Ronda 2753: trozo binario (el nativo trae la cabecera y los datos en base64): se rehace el trozo JSON de siempre
     if (data && typeof data.bin === 'string') {
       var bh = String(data.content || '');

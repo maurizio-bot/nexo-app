@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2759)
+Última actualización: 2026-10-24 (build 2760)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -85,7 +85,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2756 | `a7b3641` | Archivos grandes hasta 1 GB por el mismo Wi-Fi / Wi-Fi Direct (informe del dueño: un APK de 24 MB no salía) e ID Bluetooth rotativo (plan punto 4). APK verificada (24,5 MB, firma 23d86688…, manifiesto igual que la 2755, clases nuevas presentes). Falta probarla en teléfonos |
 | 2757 | ac3a670 | MTU pequeño (punto 8), Fénix para fotos y archivos (punto 9), Jump por Wi-Fi probado (punto 10), recibir por Bluetooth con la app cerrada (punto 12). APK verificada (nightly-2757); falta probarla en teléfonos |
 | 2758 | 28b3a80b | Archivos grandes por Bluetooth L2CAP sin Wi-Fi (punto 13, fase 1), chats de grupo con textos, fotos, audio y archivos (punto 14), llamadas de voz (punto 16) y videollamadas en el mismo Wi-Fi (punto 17); arreglos: foto por Jump que no se completaba al reenviarse directa, acciones ocultas visibles al reabrir el chat. Falta verificar la APK y probarla en teléfonos |
-| 2759 | (este commit) | Corrección mínima sobre la 2758: botón 👤 arriba (junto al 👥) que abre Perfil, porque la barra de abajo (Chats · Gente · Mapa · Perfil) queda fuera de la pantalla y no había forma de copiar el diagnóstico; la cabecera tiene altura propia y los botones ya no se salen por arriba. En investigación: en teléfonos reales con la 2758 no llegan fotos ni archivos (falta el diagnóstico de los dos teléfonos) |
+| 2759 | aa54dbd3 | Corrección mínima sobre la 2758: botón 👤 arriba (junto al 👥) que abre Perfil, porque la barra de abajo (Chats · Gente · Mapa · Perfil) queda fuera de la pantalla y no había forma de copiar el diagnóstico; la cabecera tiene altura propia y los botones ya no se salen por arriba. En investigación: en teléfonos reales con la 2758 no llegan fotos ni archivos (falta el diagnóstico de los dos teléfonos) |
+| 2760 | (este commit) | Sobre la 2759 (sin las novedades pendientes): diagnóstico de los dos teléfonos del dueño → camino de envío con la regla nueva del dueño (Wi-Fi se mantiene; muy malo → internet; sin internet → Bluetooth; sin brincar), vigilante del Bluetooth que ya no corta enlaces vivos ni con un archivo en curso, enlace de MTU más alto, avisos nativos con la app en segundo plano aunque el teléfono la congele y avisos de Jump con la app cerrada. Ver "Ronda 2760" |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -211,6 +212,40 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2760: fotos por Bluetooth, camino de envío y avisos (diagnóstico de los dos teléfonos con la 2758/2759)
+Diagnóstico (Vivo V2332 `NX1EBB23E7` y Samsung S24 Ultra `NX1N36C283`, Android 16):
+- Las fotos SÍ llegaban por Wi-Fi (0,2 s) y por internet (3 s). Por Bluetooth no: el enlace con cada contacto se rehacía
+  cada ~30 s (`Peer ready` una y otra vez, también con los dos en pantalla); al mandar, "contacto no listo
+  (disconnected)" y la foto quedaba pendiente; varios enlaces con MTU 23 (~20 veces más lento).
+- El vigilante (`_runSupervisorCycle`): ping cada 16 s, 3 s de espera, 2 fallos → corta y reconecta (~25–30 s). Su
+  protección "no cortar con un archivo en curso" llamaba a `hasActiveTransfer`/`getOutgoingTransfers`, que NO existían
+  en `ble_ack.js` (desde el principio): no protegía nada. No se ha podido reproducir en el simulador el corte cada 30 s
+  (allí los pong vuelven): lo que dice el diagnóstico es que los pong no volvían a tiempo.
+- El Vivo congela la app en segundo plano (31 min sin una línea; al volver, de golpe los trozos que le mandaron): ni
+  confirma ni avisa (el aviso en segundo plano lo daba la app).
+- Wi-Fi: a las 07:44 llevaba >12 s sin recibir (caído de verdad) y la app pasó a Bluetooth; la foto acabó saliendo por
+  internet en 3 s.
+Cambios:
+- Regla del dueño (24-10, `PENDIENTES.md`): Wi-Fi de la misma red se mantiene; mala señal solo tras ~12 s seguidos
+  (antes 8) y se vuelve tras ~30 s buenos (antes 8 s: "brincaba"); con mala señal → internet (los dos en Wi-Fi) y si no
+  hay → Bluetooth; tras un corte se espera 15 s (antes 8). `lan.js` v1.3, `_lanDegraded` pasa lo que va en curso a
+  internet. Con datos móviles, los textos siguen yendo por Bluetooth si está conectado y los archivos no van por datos.
+- Bluetooth: `hasActiveTransfer` (envío o recepción en curso con ese teléfono → el vigilante no corta); cualquier
+  paquete recibido cuenta como señal de vida; espera del pong 8 s (antes 3); cada corte del vigilante y cada
+  desconexión quedan en el diagnóstico (`Enlace … desconectado`, `sin respuesta a 2 pings`); con varios enlaces listos
+  con el mismo contacto se usa el de MTU más alto (`_bleReadyFor`).
+- Avisos: el nativo mira lo que llega por Bluetooth o Wi-Fi con la app en segundo plano y, si a los 4 s la app no avisó
+  de ese mensaje, avisa él (sin texto); el mismo mensaje no avisa dos veces y en un grupo el aviso pasa al grupo
+  (`UnreadBook.hasMsg/takeFromOthers`). Con la app cerrada también avisa de lo que llega por Jump (`BgInbox.classify`
+  con mi NEXO ID; con remitente oculto el aviso dice "NEXO" y al tocarlo solo abre la app). Señales de llamada (salvo la
+  entrante) y textos largos ocultos llevan `q:1` (sin aviso). Tocar el aviso de un grupo abre el grupo (antes se creaba
+  un "contacto" con el id del grupo).
+Pruebas nuevas: `notify.js --via=ble|lan|net|tor|jump|group` (segundo plano, app congelada y cerrada; el simulador
+congela la app con `setFrozen` y cierra el Wi-Fi al cerrar la app como el Kotlin), `route.js` (regla de camino),
+`BgInboxTest.jumpParaMi`, `UnreadBookTest.pasaDeChatSinRepetir`. Batería: bat48.
+Pendiente de confirmar en los teléfonos: si el enlace deja de rehacerse cada 30 s (el diagnóstico lo dirá con las líneas
+nuevas) y si las fotos llegan por Bluetooth.
 
 ## Ronda 2758: videollamadas (plan del dueño punto 17)
 - Botón 🎥 junto al 📞 (chat 1:1): la misma llamada con vídeo VP8 (WebCodecs, cámara frontal a 320x240 y 15 fps,

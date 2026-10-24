@@ -112,7 +112,8 @@ export class BLEInterface {
     this._lastPongTime = new Map();
     this._pingInterval = null;
     this._pingIntervalMs = 8000;
-    this._pingTimeoutMs = 3000;
+    // Ronda 2760: 8 s (antes 3): la respuesta sale detrás de lo que el otro tenga en su cola de escritura
+    this._pingTimeoutMs = 8000;
     this._pingMaxFails = 2;
     this._pingFailCount = new Map();
     this._supervisorStates = new Map();
@@ -249,12 +250,8 @@ export class BLEInterface {
     // 0. v6.1.6: preferir un enlace YA LISTO con ese NEXO ID. Android usa direcciones distintas para
     // anunciarse y para conectarse como cliente: el otro puede estar conectado por una dirección
     // distinta de la del escaneo.
-    var self = this;
-    var ready = null;
-    this._deviceStates.forEach(function(st, key) {
-      if (ready || /^(lan|net)nx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
-      if (_normId(self._macToNexoId.get(key)) === nx) ready = key;
-    });
+    // Ronda 2760: el de MTU más alto si hay varios (_bleReadyFor)
+    var ready = this._bleReadyFor(nx);
     if (ready) return ready;
     // Internet con datos móviles en alguno: después del Bluetooth listo (antes que una dirección sin conectar)
     if (this.net && this.net.canReach(nx)) return _netId(nx);
@@ -544,6 +541,8 @@ export class BLEInterface {
         var peerUUID = null;
         var contact = _getContactByDeviceId(deviceId);
         if (contact) peerUUID = contact.nexoId || contact.deviceUUID;
+        // Ronda 2760: al diagnóstico (con la dirección: puede haber varios enlaces con el mismo contacto)
+        console.log('[BLEInterface] Enlace ' + (peerUUID || '?') + ' (' + _normMac(deviceId).slice(-4) + ') desconectado' + (data.reason ? ': ' + data.reason : ''));
         self.connectedDevices.delete(deviceId);
         self._setDeviceState(deviceId, BLE_STATES.DISCONNECTED);
         self._supervisorStates.set(deviceId, { state: SUPERVISOR_STATES.OFFLINE, since: Date.now() });

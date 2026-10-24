@@ -205,6 +205,15 @@ export class BleAckSystem {
     }
     return mac;
   }
+  // Ronda 2760: ¿hay un archivo o texto largo yendo o viniendo con ese teléfono? (el vigilante de la conexión no la
+  // corta mientras tanto; lo preguntaba desde siempre pero no existía y cortaba enlaces a mitad de una foto)
+  hasActiveTransfer(deviceId) {
+    var nx = this._resolveNexoId(deviceId), now = Date.now(), self = this, busy = false;
+    var same = function(d) { return d && (_normMac(d) === _normMac(deviceId) || self._resolveNexoId(d) === nx); };
+    this.outgoingStreams.forEach(function(s) { if (!busy && s && !s.aborted && same(s.deviceId)) busy = true; });
+    this.incomingBuffers.forEach(function(b) { if (!busy && b && now - (b.lastActivity || 0) < 30000 && same(b.deviceId)) busy = true; });
+    return busy;
+  }
   sendChunkedMessage(deviceId, content, meta, messageId, seq) {
     var self = this;
     var dst = meta && meta.dst;
@@ -1503,6 +1512,9 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.pages) obj.pg = this.meta.pages;
     if (this.meta.dst) obj.dt = this.meta.dst;
     if (this.meta.hp) obj.hp = this.meta.hp;
+    // Ronda 2760: texto largo oculto (acción, señal de llamada): sin aviso en el otro teléfono (BgInbox.kt)
+    var bq = typeof window !== 'undefined' && window.bleInterface;
+    if (this.type === 'chat' && bq && bq._quietOut && bq._quietOut.has(this.msgId)) obj.q = 1;
   }
   obj.k = _chunkCheck(obj);
   return JSON.stringify(obj);
