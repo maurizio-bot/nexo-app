@@ -6,6 +6,7 @@
 import { e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
 import { groupAttachment, parseGroupEnvelope } from './groups.js';
+import { parseCallSignal } from './calls.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
 
 
@@ -93,6 +94,12 @@ export const BLE_MESSAGE_METHODS = {
       var pw = null;
       try { pw = JSON.parse(raw); } catch (e) {}
       if (pw && self.wifiDirect.handle(pw, data.deviceId)) return Promise.resolve(null);
+    }
+    // Llamadas de voz (ronda 2758, calls.js): paquete de voz cifrado con la clave de la llamada
+    if (/"type":"vf"/.test(raw) && self.calls) {
+      var pv0 = null;
+      try { pv0 = JSON.parse(raw); } catch (e) {}
+      if (pv0 && pv0.type === 'vf') { self.calls.onFrame(pv0); return Promise.resolve(null); }
     }
     // Archivos grandes (ronda 2756, big_file.js): control de una transferencia
     if (/"type":"g[qanfr]"/.test(raw) && self.bigFiles) {
@@ -380,6 +387,9 @@ export const BLE_MESSAGE_METHODS = {
           msgContent = grp.content;
           attachmentData = groupAttachment(msgContent); // foto, audio, archivo… dentro del sobre (fase 2)
         }
+        // Ronda 2758: señal de una llamada de voz (no es un mensaje: ni se guarda ni se muestra)
+        var csig = !grp && !attachmentData ? parseCallSignal(msgContent) : null;
+        if (csig) { if (self.calls && senderUUID) self.calls.onSignal(senderUUID, csig); return; }
         // Acción del chat (eliminar para todos): no es un mensaje; la aplica main.js
         var chatAct = _chatKind(msgContent);
         if (chatAct && chatAct.type === 'nexo_act') isControl = true;

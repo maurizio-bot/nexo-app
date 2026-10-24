@@ -107,6 +107,8 @@ import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './u
 import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE, HD_REENCODE_BPS, _videoFormat, _blobToB64, _makeVideoPreview, _previewAudioTracks, _b64ToBlob, _makeVideoThumb } from './ui/video_tools.js';
 import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
 import { groupAttachment, parseGroupEnvelope } from './ui/groups.js';
+import { parseCallSignal } from './ui/calls.js';
+import { installCallsUi } from './ui/calls_ui.js';
 import { groupSubtitle, installGroupButton, openGroupChat, openGroupMenu, sendGroupText } from './ui/groups_ui.js';
 import { _STATUS_RANK, _statusRank, _canUpgradeStatus, _getDomMessageStatus, _normId, _getCurrentContactId, _chatKind, _plainText, _myNexoId, _contactName, _peerUnderstands, _cut, _msgSummary, _findMessage, _PREVIEW_BY_TYPE } from './ui/chat_format.js';
 import { cameraUse, _cameraActiveStream, _cameraPreviewMode, _cameraPreviewRecording, _cameraPreviewMediaRecorder, _cameraPreviewVideoChunks, _cameraVideoStartTime, _cameraTimer, _cameraTorchOn, _cameraReview, _showCameraPreviewOverlay, _hideCameraPreviewOverlay, _photoTarget, _videoLimitSec, _updateCameraPreviewUI, _cameraError, _setupVideoRecorder, _startCameraPreview, _cameraStartToken, _stopCameraPreview, _flipCamera, _setCameraMode, _toggleCameraMode, _toggleTorch, _startCameraTimer, _stopCameraTimer, _capturePhoto, _handleCameraCapture, _resumeBleFromCamera, _pauseBleForCamera, _showReview, _closeReview, _retakeReview, _sendReview, _bindCameraPreviewHandlers, _handleCamera, CAMERA_HD_BPS } from './ui/camera.js';
@@ -197,6 +199,8 @@ window.addEventListener('nexo:groups', function() {
   _refreshLinkSubtitle();
 });
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installGroupButton); else installGroupButton();
+// Ronda 2758: llamadas de voz (calls.js / calls_ui.js)
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installCallsUi); else installCallsUi();
 
 window.vaultSaveContact = vaultSaveContact;
 // FIX v9.9.29: ble_interface guarda los contactos con window.vaultSaveContacts; no estaba expuesto y
@@ -411,6 +415,9 @@ function _handleIncomingMessage(msg) {
         } catch (e) {}
       }
     }
+    // Ronda 2758: señal de llamada que llegó por el camino de los textos largos
+    var csg = !msg.groupId ? parseCallSignal(msg.content) : null;
+    if (csg) { var bcs = window.bleInterface && window.bleInterface.calls; if (bcs) bcs.onSignal(msg.senderNexoId || msg.deviceUUID, csg); return; }
     // Ronda 2758: mensaje de grupo que llegó por el camino de los textos largos (los cortos ya vienen con groupId)
     var bgs = window.bleInterface && window.bleInterface.groups;
     if (!msg.groupId) {

@@ -27,8 +27,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   2752, que todo siga llegando.
 
 ## 2. Funciones nuevas
-- **Llamadas de voz**: posibles por Bluetooth (voz comprimida ~2 KB/s); por Wi-Fi / Wi-Fi Direct con calidad alta.
-  Captura y reproducción en tiempo real, pantalla de llamada, timbre (también en segundo plano), cifrado.
+- **Llamadas de voz**: hechas en la 2758 (Bluetooth a alcance o mismo Wi-Fi / Wi-Fi Direct, Opus cifrado). Falta: sonar
+  con la app cerrada, botón de altavoz, probar en teléfonos (eco, volumen, Bluetooth con MTU pequeño).
 - **Videollamadas**: solo por Wi-Fi o Wi-Fi Direct (Bluetooth no da el ancho). Sobre lo de voz.
 - **Pagos**: decidir modelo (saldo propio, tarjeta/banco, cripto); doble gasto sin conexión, conciliación,
   regulación del país (posible licencia). Asesoría legal antes de programar.
@@ -110,6 +110,7 @@ De lo más simple a lo más complejo. Estado:
    cerrada: buzón nativo, ✓✓ al emisor y notificación; al abrir llega todo (`BgInbox.kt`). 13. L2CAP: fase 1 ✅
    (2758) archivos grandes por Bluetooth L2CAP sin Wi-Fi; fase 2: fotos, vídeo HD y archivos medianos por L2CAP.
 14. Grupos ✅ (2758): textos, fotos, audio, ubicación y archivos de hasta ~1 MB; falta HD de vídeo y archivos
-   grandes en grupos. 15. Varios dispositivos. 16. Llamadas de voz. 17. Videollamadas.
+   grandes en grupos. 15. Varios dispositivos (falta decisión del dueño, ver abajo). 16. Llamadas de voz ✅ (2758, fase 1: con el
+   contacto cerca o en el mismo Wi-Fi; falta sonar con la app cerrada). 17. Videollamadas.
 18–20 (del dueño): pruebas reales con 3–4 teléfonos, auditoría externa, Play Store.
 

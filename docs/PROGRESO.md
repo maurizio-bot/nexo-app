@@ -210,6 +210,23 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## Ronda 2758: llamadas de voz (plan del dueño punto 16)
+- **Llamadas** (`calls.js`, `call_media.js`, `calls_ui.js`): botón 📞 en la cabecera de un chat 1:1. Solo con enlace
+  directo: el mismo Wi-Fi / Wi-Fi Direct o Bluetooth a alcance (no por Jump ni internet: demasiado retraso). La
+  señalización (llamar, contestar, rechazar, ocupado, colgar) va por el chat cifrada de extremo a extremo y no se
+  guarda; la voz va en paquetes de ~100 ms cifrados con una clave propia de cada llamada (AES-GCM). Audio: Opus con
+  WebCodecs (~3 KB/s en el aire: cabe de sobra por Bluetooth) o μ-law si el teléfono no tiene Opus (~11 KB/s);
+  micrófono con cancelación de eco y ruido; reproducción con un colchón de ~150 ms; en Android, modo llamada
+  (auricular, `callAudio`). Pantalla de llamada con timbre/vibración, tiempo, silenciar y colgar; sin contestar en
+  45 s → perdida; sin voz del otro 12 s → se corta. Queda una línea en el chat ("📞 Llamada · 1:23", "Llamada
+  perdida", "Llamada rechazada"…). Con la app en segundo plano: notificación "📞 Llamada entrante".
+- Simulado: `calls.js` (señalización y cifrado con micrófono falso, por Bluetooth y `--wifi`): contestada, voz en los
+  dos sentidos (40 de 41 paquetes cada 100 ms, en orden, nada en claro en el aire), rechazada, sin respuesta, se corta
+  al alejarse (13 s), sin alcance → aviso. `calls_browser.js` (Chromium con micrófono de prueba: audio de verdad):
+  Opus 5,9 s de audio del otro en 6 s, ~3 KB/s; `--ulaw` 5,8 s, ~11 KB/s.
+- Pendiente (fase 2): sonar con la app cerrada (hoy la oferta llega al buzón y se ve como llamada perdida al abrir),
+  altavoz/auricular con un botón, Bluetooth con MTU pequeño (μ-law no cabe; Opus sí).
+
 ## Ronda 2758: chats de grupo (plan del dueño punto 14: textos, fotos, audio y archivos)
 - **Grupos** (`groups.js`, `groups_ui.js`): botón 👥 arriba en la pantalla principal → nombre y contactos → "Crear
   grupo". Sin servidor: el grupo (id `gr…`, nombre, miembros) se guarda en cada teléfono y cada mensaje va a cada

@@ -2801,6 +2801,24 @@ class NexoBlePlugin : Plugin() {
         }.start()
     }
 
+    // ===== Llamadas de voz (ronda 2758, calls.js): audio en modo llamada (auricular y cancelación de eco del sistema) =====
+    @PluginMethod
+    fun callAudio(call: PluginCall) {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            if (call.getBoolean("on", false) == true) {
+                am.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+                @Suppress("DEPRECATION")
+                am.isSpeakerphoneOn = call.getBoolean("speaker", false) == true
+            } else {
+                am.mode = android.media.AudioManager.MODE_NORMAL
+                @Suppress("DEPRECATION")
+                am.isSpeakerphoneOn = false
+            }
+            call.resolve(JSObject().put("mode", am.mode))
+        } catch (e: Exception) { call.reject("Audio de llamada: ${e.message}") }
+    }
+
     // ===== Archivos grandes por Bluetooth L2CAP (ronda 2758, plan del dueño punto 13) =====
     // Canal de flujo directo sobre la conexión Bluetooth (Android 10+): sin GATT, sin trozos con confirmación ni
     // base64; lo mismo que por el Wi-Fi (BigNet), con un canal L2CAP en vez de un puerto. Más lento que el Wi-Fi.

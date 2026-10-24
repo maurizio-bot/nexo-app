@@ -480,7 +480,7 @@ export function _isControlPacket(content) {
     var obj = JSON.parse(content);
     if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'kx' || obj.type === 'rt' || obj.type === 'rk' || obj.type === 'rq' || obj.type === 'rp' ||
         obj.type === 'wq' || obj.type === 'wa' || obj.type === 'wn' || obj.type === 'wf' ||
-        obj.type === 'gq' || obj.type === 'ga' || obj.type === 'gn' || obj.type === 'gf' || obj.type === 'gr' ||
+        obj.type === 'gq' || obj.type === 'ga' || obj.type === 'gn' || obj.type === 'gf' || obj.type === 'gr' || obj.type === 'vf' ||
         obj.type === 'fp' || obj.type === 'fo' || obj.type === 'fq' || obj.type === 'fd' ||
         obj.type === 'chat_meta' || obj.type === 'chat_chunk' || obj.type === 'block_ack' ||
         obj.type === 'file_meta' || obj.type === 'file_chunk' || obj.type === 'file_resume') return true;
