@@ -48,6 +48,8 @@ const SCENARIOS = [
   { name: 'grupos: vídeo HD y archivo grande (24 MB, uno lo pide al llegar al Wi-Fi)', args: ['group_media.js'], tag: 'GROUP_MEDIA', checks: { resultado: (v) => v === 'OK' } },
   { name: 'envío al teléfono equivocado (informe del dueño: lo de la tablet para el S24 sonaba en el Vivo)', args: ['misroute.js'], tag: 'MISROUTE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'borrar y volver a agregar un contacto (sin "Unknown"; nombre al conectar)', args: ['readd.js'], tag: 'READD', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'avisos con la pantalla apagada (encender, ajustes, llamada sobre el bloqueo)', args: ['alerts.js'], tag: 'ALERTS', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'foto de perfil (elegir, llega a los contactos, al reiniciar, a uno nuevo, quitarla)', args: ['avatar.js'], tag: 'AVATAR', checks: { resultado: (v) => v === 'OK' } },
   { name: 'llamadas de voz (contestar, rechazar, sin respuesta, se corta)', args: ['calls.js', '--io-delay=25'], tag: 'CALLS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'pasar la cuenta a un teléfono nuevo', args: ['move.js', '--io-delay=25'], tag: 'MOVE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'avisos por Bluetooth: segundo plano, app congelada y cerrada', args: ['notify.js', '--via=ble'], tag: 'NOTIFY', checks: { resultado: (v) => v === 'OK' } },

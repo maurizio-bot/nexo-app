@@ -21,6 +21,9 @@ class MsgNotifier(private val ctx: Context) {
     companion object {
         const val CHANNEL_ID = "nexo_messages"
         const val EXTRA_CHAT = "nexo_chat_device_id"
+        // Ronda 2765: encender la pantalla con un mensaje nuevo (Perfil → Avisos con la pantalla apagada)
+        const val PREFS = "nexo_prefs"
+        const val PREF_WAKE = "wake_on_msg"
         // Ronda 2763: llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar)
         const val CALL_CHANNEL_ID = "nexo_calls"
         const val EXTRA_ANSWER = "nexo_call_answer"
@@ -99,9 +102,26 @@ class MsgNotifier(private val ctx: Context) {
             .build()
         n.flags = n.flags or Notification.FLAG_INSISTENT // el tono se repite hasta que se atiende
         try { nm.notify(CALL_NOTIF_ID, n) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
+        wakeScreen(20000) // por si el sistema no deja la pantalla completa (Android 14: permiso aparte)
     }
 
     fun cancelCall() { try { NotificationManagerCompat.from(ctx).cancel(CALL_NOTIF_ID) } catch (e: Exception) { } }
+
+    // Ronda 2765 (pedido del dueño: con la pantalla apagada, que llegue y se encienda): Android no enciende la pantalla
+    // por un aviso; se enciende unos segundos (un mensaje: si no se quitó en Perfil; una llamada: siempre)
+    fun wakeOnMsg(): Boolean = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(PREF_WAKE, true)
+    fun setWakeOnMsg(on: Boolean) { ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(PREF_WAKE, on).apply() }
+    fun wakeScreen(ms: Long) {
+        try {
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (pm.isInteractive) return
+            @Suppress("DEPRECATION")
+            val wl = pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                android.os.PowerManager.ON_AFTER_RELEASE, "nexo:aviso")
+            wl.acquire(ms)
+            Log.i(TAG, "Pantalla encendida por un aviso")
+        } catch (e: Exception) { Log.w(TAG, "No se pudo encender la pantalla: ${e.message}") }
+    }
 
     fun clear(chatId: String) {
         book.clear(chatId)
@@ -143,7 +163,8 @@ class MsgNotifier(private val ctx: Context) {
             .setAutoCancel(true)
             .setOnlyAlertOnce(!alert)
             .setContentIntent(pi)
-        try { nm.notify(notifId(chatId), b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
+        try { nm.notify(notifId(chatId), b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones"); return }
+        if (alert && wakeOnMsg()) wakeScreen(5000)
     }
 }
 

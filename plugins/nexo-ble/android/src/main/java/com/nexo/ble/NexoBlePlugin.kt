@@ -200,6 +200,9 @@ class NexoBlePlugin : Plugin() {
         try {
             val intent = given ?: activity.intent
             if (intent != null) {
+                // Ronda 2765: abierta por una llamada (pantalla completa, tocar el aviso o Contestar): se ve encima de la
+                // pantalla de bloqueo y la enciende, hasta que acaba la llamada (callScreenDone)
+                if (intent.getStringExtra(MsgNotifier.EXTRA_ANSWER) != null || intent.getStringExtra(MsgNotifier.EXTRA_CALL_FROM) != null) showOverLock(true)
                 // Ronda 2763: "Contestar" en el aviso de llamada
                 val answer = intent.getStringExtra(MsgNotifier.EXTRA_ANSWER)
                 if (answer != null) {
@@ -2316,6 +2319,57 @@ class NexoBlePlugin : Plugin() {
     }
     @PluginMethod
     fun clearCall(call: PluginCall) { MsgNotifier.get(context).cancelCall(); call.resolve() }
+
+    // ===== Ronda 2765: avisos con la pantalla apagada =====
+    private fun showOverLock(on: Boolean) {
+        val act = activity ?: return
+        act.runOnUiThread {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) { act.setShowWhenLocked(on); act.setTurnScreenOn(on) }
+                else {
+                    @Suppress("DEPRECATION")
+                    val f = android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                    if (on) act.window.addFlags(f) else act.window.clearFlags(f)
+                }
+            } catch (e: Exception) { Log.w(TAG, "Pantalla de bloqueo: ${e.message}") }
+        }
+    }
+    // Acabó la llamada (o no había ninguna): la app vuelve a quedar detrás de la pantalla de bloqueo (sin desbloquear no
+    // se ven los chats)
+    @PluginMethod
+    fun callScreenDone(call: PluginCall) { showOverLock(false); call.resolve() }
+
+    // Qué falta para que los avisos y las llamadas lleguen con la pantalla apagada (Perfil)
+    @PluginMethod
+    fun alertSettings(call: PluginCall) {
+        val ctx = context
+        val notif = androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+        val full = if (Build.VERSION.SDK_INT >= 34) (ctx.getSystemService(android.app.NotificationManager::class.java)?.canUseFullScreenIntent() ?: true) else true
+        val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        val battery = pm.isIgnoringBatteryOptimizations(ctx.packageName)
+        call.resolve(JSObject().put("notifications", notif).put("fullScreen", full).put("battery", battery)
+            .put("wakeOnMessage", MsgNotifier.get(ctx).wakeOnMsg()))
+    }
+    @PluginMethod
+    fun setWakeOnMessage(call: PluginCall) { MsgNotifier.get(context).setWakeOnMsg(call.getBoolean("on", true) == true); call.resolve() }
+    // Abre el ajuste del sistema que falta: what = notifications | fullScreen | battery
+    @PluginMethod
+    fun openAlertSetting(call: PluginCall) {
+        val ctx = context
+        val pkg = android.net.Uri.parse("package:" + ctx.packageName)
+        val i = when (call.getString("what")) {
+            "battery" -> Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
+            "fullScreen" -> if (Build.VERSION.SDK_INT >= 34) Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg) else null
+            else -> Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+        }
+        if (i == null) { call.resolve(JSObject().put("opened", false)); return }
+        try { activity.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); call.resolve(JSObject().put("opened", true)) }
+        catch (e: Exception) {
+            // Algunos fabricantes no tienen esa pantalla: la de la app
+            try { activity.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); call.resolve(JSObject().put("opened", true).put("fallback", true)) }
+            catch (e2: Exception) { call.resolve(JSObject().put("opened", false)) }
+        }
+    }
     // Lo que se tocó en el aviso (Contestar / Rechazar) en los últimos 90 s; se entrega una vez
     @PluginMethod
     fun callAction(call: PluginCall) {
@@ -2658,8 +2712,10 @@ class NexoBlePlugin : Plugin() {
                 // Servicio oculto: misma dirección siempre (clave guardada cifrada)
                 val saved = try { atRest().read(TOR_KEY_FILE)?.let { org.json.JSONObject(it).optString("k") } } catch (e: Exception) { null }
                 val res = ctl.addOnion(if (saved.isNullOrEmpty()) "NEW:ED25519-V3" else saved, mapOf(TOR_PORT to "127.0.0.1:$port"))
-                res["PrivateKey"]?.let { atRest().write(TOR_KEY_FILE, org.json.JSONObject().put("k", it).toString()) }
-                torOnion = (res["ServiceID"] ?: throw Exception("sin dirección .onion")) + ".onion"
+                // Ronda 2765: jtorctl devuelve "onionAddress"/"onionPrivKey" (TorOnion.kt); antes se leía ServiceID y nunca
+                // se encontraba la dirección ("sin dirección .onion" en los teléfonos)
+                TorOnion.privateKey(res)?.let { atRest().write(TOR_KEY_FILE, org.json.JSONObject().put("k", it).toString()) }
+                torOnion = TorOnion.address(res) ?: throw Exception("sin dirección .onion (respuesta: " + res.keys.joinToString() + ")")
                 remLog("INFO", "TOR", "Tor listo en " + (System.currentTimeMillis() - t0) / 1000 + " s")
                 notifyListeners("onTorReady", JSObject().put("onion", torOnion).put("port", TOR_PORT), true)
             } catch (e: Exception) {

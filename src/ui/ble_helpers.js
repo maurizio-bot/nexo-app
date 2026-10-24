@@ -116,10 +116,11 @@ export function _getGradientForUUID(uuid) {
 
 export function _getInitials(name) {
   name = (name || '').toString().trim();
-  if (!name) return '?';
-  var parts = name.split(/\s+/);
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  // Ronda 2765: la primera letra o número de cada palabra (un grupo "👥 Familia" salía "�F": se partía el emoji)
+  var parts = name.split(/\s+/).map(function(p) { return Array.from(p).find(function(c) { return /[\p{L}\p{N}]/u.test(c); }) || ''; }).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].toUpperCase();
+  return (parts[0] + parts[parts.length - 1]).toUpperCase();
 }
 
 export function _generateNexoId() {

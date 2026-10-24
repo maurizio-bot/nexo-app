@@ -109,6 +109,7 @@ import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE
 import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
 import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
 import { isGroupWire, startGroupMedia } from './ui/group_media.js';
+import { avatarInit } from './ui/avatar.js';
 import { parseCallSignal } from './ui/calls.js';
 import { installCallsUi } from './ui/calls_ui.js';
 import { groupSubtitle, installGroupButton, openGroupChat, openGroupMenu, sendGroupText } from './ui/groups_ui.js';
@@ -192,6 +193,19 @@ function _refreshLinkSubtitle() {
 });
 
 // Ronda 2758: chats de grupo (groups.js / groups_ui.js)
+// Ronda 2765: una vez, pedir que el ahorro de batería no congele NEXO (el Vivo del dueño la congelaba y los avisos
+// llegaban tarde); el resto de ajustes, en Perfil → Avisos con la pantalla apagada
+function _askBackgroundOnce() {
+  var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE, asked = false;
+  try { asked = localStorage.getItem('nexo_bg_asked') === '1'; } catch (e) {}
+  if (asked || !pl || typeof pl.alertSettings !== 'function') return;
+  pl.alertSettings().then(function(r) {
+    if (!r || r.battery !== false || r.notifications === false) return;
+    try { localStorage.setItem('nexo_bg_asked', '1'); } catch (e) {}
+    console.log('[NOTIF] Se pide que el ahorro de batería no congele NEXO');
+    pl.openAlertSetting({ what: 'battery' }).catch(function() {});
+  }).catch(function() {});
+}
 window.NEXO_openGroupChat = openGroupChat;
 window.NEXO_sendGroupText = sendGroupText;
 window.NEXO_openGroupMenu = openGroupMenu;
@@ -661,7 +675,7 @@ async function initializeNexoApp() {
       console.log('[MAIN] Notificacion listener no disponible:', notifErr);
     }
     // Al arrancar, los contadores de la app mandan sobre las notificaciones que hubiera en el teléfono
-    setTimeout(function() { _notifier.syncNative(); _notifier.ensurePermission(); }, 4000);
+    setTimeout(function() { _notifier.syncNative(); Promise.resolve(_notifier.ensurePermission()).then(_askBackgroundOnce).catch(function() {}); }, 4000);
     var initPromise = window.NEXO.app.init();
     var timeoutPromise = new Promise(function(resolve, reject) {
       setTimeout(function() { reject(new Error('INIT_TIMEOUT')); }, (NEXO_CONFIG && NEXO_CONFIG.TIMEOUTS && NEXO_CONFIG.TIMEOUTS.CONNECT) ? NEXO_CONFIG.TIMEOUTS.CONNECT + 3000 : 13000);
@@ -671,6 +685,8 @@ async function initializeNexoApp() {
     } catch (timeoutErr) {}
     window.NEXO.initialized = true;
     startGroupMedia(); // ronda 2764: HD y archivos grandes en grupos (reanudar lo pendiente)
+    avatarInit(); // ronda 2765: foto de perfil
+    window.addEventListener('nexo:avatar', function() { var b = window.bleInterface; if (b) { try { b.renderContactsList(); b.renderOnlineStrip(); } catch (e) {} } });
     clearTimeout(SAFETY_TIMEOUT);
     try {
       if (window.NEXO.app && window.NEXO.app.bleInterface) {

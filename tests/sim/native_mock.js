@@ -470,10 +470,13 @@ class NativePhone {
       return n.base + n.ids.size;
     }
     n.ids.add(mid); n.name = name || n.name; n.text = text || ''; n.posts = (n.posts || 0) + 1;
+    if (this.wakeOnMsg !== false) this._wake(); // Kotlin 2765: MsgNotifier.post enciende la pantalla (si se deja en Perfil)
     this.notifications.set(id, n); this.msgChat.set(mid, id);
     this.notifLog.push(Object.assign({ t: Date.now(), chatId: id, name: n.name, text: text || '', count: n.base + n.ids.size }, flags || {}));
     return n.base + n.ids.size;
   }
+  // Kotlin 2765 MsgNotifier.wakeScreen: con la pantalla apagada (screenOn === false) se enciende unos segundos
+  _wake() { if (this.screenOn === false) this.screenWakes = (this.screenWakes || 0) + 1; }
   // Kotlin 2763 groupName: nombre del grupo (nexo_groups.json)
   _groupName(gid) { if (!gid) return null; try { const g = (JSON.parse(this.files.get('nexo_groups.json') || '{}').groups || {})[gid]; return (g && g.name) || null; } catch (e) { return null; } }
   // Kotlin 2763 notifyMessage: en un grupo, en el chat del grupo con su nombre
@@ -490,7 +493,7 @@ class NativePhone {
     const info = NativePhone.classifyClosed(json, this.advertisingId);
     if (!info.msgId || info.quiet || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return;
     // Kotlin 2763: una llamada suena ya (aviso de llamada del teléfono)
-    if (info.call || info.what === 'call') { this.callNotif = { from: info.from, video: false }; this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, bg: true }); return; }
+    if (info.call || info.what === 'call') { this.callNotif = { from: info.from, video: false }; this._wake(); this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, bg: true }); return; }
     setTimeout(() => {
       if (this.appActive !== false || this.closedMode || (this.msgChat && this.msgChat.has(String(info.msgId)))) return;
       if (info.kind === 'MESSAGE') this._notifyMsg(info, { bg: true });
@@ -510,10 +513,10 @@ class NativePhone {
       this.bgInbox.push({ d: fromAddress, c: json });
       const me = String(this.advertisingId || '').toLowerCase();
       if (me) this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify({ v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() }));
-      if (info.call) { this.callNotif = { from: info.from, video: false }; this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
+      if (info.call) { this.callNotif = { from: info.from, video: false }; this._wake(); this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
       else if (!info.quiet) this._notifyMsg(info, { closed: true });
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json });
-    else if (info.kind === 'NOTIFY_ONLY' && info.what === 'call') { this.callNotif = { from: info.from, video: false }; this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
+    else if (info.kind === 'NOTIFY_ONLY' && info.what === 'call') { this.callNotif = { from: info.from, video: false }; this._wake(); this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
     else if (info.kind === 'NOTIFY_ONLY' && this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { closed: true }); }
     else if (info.kind === 'NOTIFY_ONLY') notify(NativePhone.whatText(info.what));
   }
@@ -1063,8 +1066,14 @@ class NativePhone {
       // Notificaciones de mensajes (MsgNotifier.kt): una por chat con su número; el icono de la app suma los números
       notifyMessage: wrap('notifyMessage', (c, a) => { c.resolve({ count: self._postNotif(a.chatId, a.name, a.msgId, a.text, {}) }); }),
       // Ronda 2763 (MsgNotifier.incomingCall): aviso de llamada con tono; Contestar / Rechazar quedan en pendingAnswer / pendingDecline
-      notifyCall: wrap('notifyCall', (c, a) => { self.callNotif = { from: String(a.chatId || '').toLowerCase(), video: !!a.video }; self.notifLog.push({ t: Date.now(), chatId: self.callNotif.from, name: a.name, text: '📞 Llamada entrante', call: true }); c.resolve({}); }),
+      notifyCall: wrap('notifyCall', (c, a) => { self.callNotif = { from: String(a.chatId || '').toLowerCase(), video: !!a.video }; self._wake(); self.notifLog.push({ t: Date.now(), chatId: self.callNotif.from, name: a.name, text: '📞 Llamada entrante', call: true }); c.resolve({}); }),
       clearCall: wrap('clearCall', (c) => { self.callNotif = null; c.resolve({}); }),
+      // Kotlin 2765: avisos con la pantalla apagada (opts.alerts = { notifications, fullScreen, battery } para empezar sin
+      // algún permiso; "Arreglar" lo concede como si el usuario lo aceptara en los ajustes)
+      alertSettings: wrap('alertSettings', (c) => { const a = Object.assign({ notifications: true, fullScreen: true, battery: true }, self.opts.alerts || {}, self.alertFix || {}); c.resolve(Object.assign({}, a, { wakeOnMessage: self.wakeOnMsg !== false })); }),
+      setWakeOnMessage: wrap('setWakeOnMessage', (c, a) => { self.wakeOnMsg = a.on !== false; c.resolve({}); }),
+      openAlertSetting: wrap('openAlertSetting', (c, a) => { (self.alertOpened = self.alertOpened || []).push(a.what); self.alertFix = Object.assign({}, self.alertFix, { [a.what]: true }); c.resolve({ opened: true }); }),
+      callScreenDone: wrap('callScreenDone', (c) => { self.overLock = false; c.resolve({}); }),
       callAction: wrap('callAction', (c) => { const o = {}; if (self.pendingAnswer) o.answer = self.pendingAnswer; if (self.pendingDecline) o.declined = self.pendingDecline; self.pendingAnswer = null; self.pendingDecline = null; c.resolve(o); }),
       // Escucha nativa de internet en segundo plano (NetBg.kt; probada en tests/kotlin/NetBgTest): se guarda la configuración
       netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),

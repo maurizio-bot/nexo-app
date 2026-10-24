@@ -6,6 +6,7 @@
 import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
 import { startReceiveAccount, startSendAccount } from './move_account.js';
+import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _showInfoToast;
@@ -23,7 +24,8 @@ function _openProfileSheet() {
   sheet.innerHTML = '<div class="nx-profile-in">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;">' +
     '<div style="font-size:26px;font-weight:800;">Perfil</div><button id="nexo-profile-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">Cerrar</button></div>' +
-    '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av"></div><div><div class="nx-idtxt">Mi NEXO ID</div><b id="nexo-profile-id"></b></div></div>' +
+    '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" title="Cambiar foto" style="cursor:pointer;"></div><div style="flex:1;"><div class="nx-idtxt">Mi NEXO ID</div><b id="nexo-profile-id"></b>' +
+    '<div><button id="nexo-av-pick" class="nx-link">Cambiar foto</button> <button id="nexo-av-clear" class="nx-link" style="display:none;">Quitar</button></div></div></div>' +
     card('🔥', 'Fénix', '<div id="nexo-fenix-status" class="nx-sub"></div>' +
       '<button id="nexo-fenix-recover" class="nx-btn">Recuperar mi cuenta (teléfono nuevo)</button>') +
     // Ronda 2759: pasar la cuenta de un teléfono a otro (move_account.js)
@@ -31,6 +33,10 @@ function _openProfileSheet() {
       '<button id="nexo-move-send" class="nx-btn">Pasar mi cuenta a un teléfono nuevo</button>' +
       '<button id="nexo-move-receive" class="nx-btn">Traer mi cuenta de otro teléfono</button>') +
     '<div class="nx-card">' + securitySectionHtml() + '</div>' +
+    // Ronda 2765 (pedido del dueño): que los avisos y las llamadas lleguen con la pantalla apagada y la enciendan
+    card('🔔', 'Avisos con la pantalla apagada', '<div class="nx-sub">Para que los mensajes y las llamadas lleguen con la app cerrada o la pantalla apagada.</div>' +
+      '<div id="nexo-alert-rows"></div>' +
+      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-top:6px;"><input type="checkbox" id="nexo-wake-msg"> Encender la pantalla con un mensaje nuevo</label>') +
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
     card('🌐', 'Internet', '<div id="nexo-net-status" class="nx-sub"></div>' +
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> Usar Tor con Wi-Fi (oculta tu IP; más lento)</label>') +
@@ -40,7 +46,32 @@ function _openProfileSheet() {
     '</div>';
   document.body.appendChild(sheet);
   sheet.querySelector('#nexo-profile-id').textContent = bi.localNexoId || '?';
-  sheet.querySelector('#nexo-profile-av').textContent = String(bi.localNexoId || '?').replace(/^NX/i, '').charAt(0).toUpperCase() || 'N';
+  // Ronda 2765: foto de perfil (avatar.js): tocar el círculo o "Cambiar foto"
+  var avEl = sheet.querySelector('#nexo-profile-av'), clr = sheet.querySelector('#nexo-av-clear');
+  var paintMine = function() {
+    avEl.style.backgroundImage = ''; avEl.textContent = String(bi.localNexoId || '?').replace(/^NX/i, '').charAt(0).toUpperCase() || 'N';
+    paintAvatar(avEl, 'me'); clr.style.display = myAvatar() ? '' : 'none';
+  };
+  paintMine();
+  var pick = function() {
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.style.display = 'none';
+    inp.onchange = function() {
+      var f = inp.files && inp.files[0];
+      inp.remove();
+      if (!f) return;
+      makeAvatar(f).then(function(url) {
+        if (!setMyAvatar(url)) throw new Error('foto no válida');
+        paintMine();
+        if (_showInfoToast) _showInfoToast('Foto de perfil lista: tus contactos la verán al conectar', 3000);
+      }).catch(function(e) { if (_showInfoToast) _showInfoToast('No se pudo usar esa foto: ' + ((e && e.message) || 'error'), 3500); });
+    };
+    document.body.appendChild(inp);
+    inp.click();
+  };
+  avEl.onclick = pick;
+  sheet.querySelector('#nexo-av-pick').onclick = pick;
+  clr.onclick = function() { clearMyAvatar(); paintMine(); };
   var ta = sheet.querySelector('#nexo-diag-text');
   ta.value = _diagnosticText();
   ta.scrollTop = ta.scrollHeight;
@@ -48,6 +79,7 @@ function _openProfileSheet() {
   _renderFenixStatus();
   renderSecuritySection();
   _renderNetStatus();
+  _renderAlertSettings();
   var torBox = sheet.querySelector('#nexo-net-tor');
   if (torBox) {
     torBox.checked = !!(bi.net && bi.net.torWanted());
@@ -90,6 +122,41 @@ export function installProfileButton() {
   b.addEventListener('click', function(e) { e.stopPropagation(); _openProfileSheet(); });
   header.appendChild(b);
 }
+
+// Ronda 2765: qué falta para que los avisos lleguen con la pantalla apagada (cada cosa con su botón para arreglarla)
+function _renderAlertSettings() {
+  var box = document.getElementById('nexo-alert-rows'), wake = document.getElementById('nexo-wake-msg');
+  var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
+  if (!box || !pl || typeof pl.alertSettings !== 'function') { if (box) box.textContent = 'Esta versión no lo permite.'; return; }
+  pl.alertSettings().then(function(r) {
+    var rows = [
+      { k: 'notifications', ok: r.notifications, t: 'Notificaciones', no: 'Desactivadas: no llega ningún aviso' },
+      { k: 'fullScreen', ok: r.fullScreen, t: 'Llamadas a pantalla completa', no: 'No permitidas: la llamada sale solo como aviso' },
+      { k: 'battery', ok: r.battery, t: 'Funcionar en segundo plano', no: 'El ahorro de batería puede congelar NEXO y retrasar los avisos' }
+    ];
+    box.innerHTML = '';
+    rows.forEach(function(x) {
+      var row = document.createElement('div');
+      row.className = 'nx-alert-row';
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08);';
+      var t = document.createElement('div');
+      t.style.cssText = 'font-size:14px;';
+      t.textContent = (x.ok ? '✅ ' : '⚠️ ') + x.t + (x.ok ? '' : ' — ' + x.no);
+      row.appendChild(t);
+      if (!x.ok) {
+        var b = document.createElement('button');
+        b.className = 'nx-btn'; b.style.cssText = 'width:auto;margin:0;padding:8px 14px;flex-shrink:0;';
+        b.textContent = 'Arreglar'; b.dataset.what = x.k;
+        b.onclick = function() { pl.openAlertSetting({ what: x.k }).catch(function() {}); setTimeout(_renderAlertSettings, 4000); };
+        row.appendChild(b);
+      }
+      box.appendChild(row);
+    });
+    if (wake) { wake.checked = r.wakeOnMessage !== false; wake.onchange = function() { pl.setWakeOnMessage({ on: wake.checked }).catch(function() {}); }; }
+  }).catch(function() { box.textContent = 'No se pudo comprobar.'; });
+}
+// Al volver de los ajustes del sistema, se vuelve a mirar
+document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible' && document.getElementById('nexo-alert-rows')) _renderAlertSettings(); });
 
 // ===================== v9.9.44: Protocolo Fénix (src/fenix/fenix.js, docs/FENIX.md) =====================
 var _fenixRecoveryText = '';

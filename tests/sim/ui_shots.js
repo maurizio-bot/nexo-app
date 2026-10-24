@@ -47,6 +47,20 @@ const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeO
   await shot(A, '06_lista_chats');
   await click(A, '#nexo-profile-btn'); await sleep(500);
   await shot(A, '07_perfil');
+  // Ronda 2765: foto de perfil con el recorte de verdad (Chromium tiene canvas): una imagen de 600x400 → círculo
+  await A.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 600; c.height = 400; const g = c.getContext('2d');
+    const gr = g.createLinearGradient(0, 0, 600, 400); gr.addColorStop(0, '#ff6b35'); gr.addColorStop(1, '#a855f7'); g.fillStyle = gr; g.fillRect(0, 0, 600, 400);
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(300, 170, 90, 0, 7); g.fill(); g.fillRect(170, 280, 260, 120);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    document.getElementById('nexo-av-pick').click();
+    await new Promise((r) => setTimeout(r, 100));
+    const inp = Array.from(document.querySelectorAll('input[type=file]')).find((i) => i.accept === 'image/*');
+    const dt = new DataTransfer(); dt.items.add(new File([blob], 'yo.png', { type: 'image/png' })); inp.files = dt.files;
+    inp.dispatchEvent(new Event('change'));
+  });
+  await sleep(1500);
+  await shot(A, '07b_perfil_con_foto');
   await A.evaluate(() => { const c = document.getElementById('nexo-profile-close'); if (c) c.click(); });
   await click(A, '#nexo-new-group-btn'); await sleep(500);
   await shot(A, '08_crear_grupo');
@@ -75,6 +89,9 @@ const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeO
   await sleep(600); await send(A, 'Hola a todos'); await sleep(2500);
   await shot(A, '12_chat_grupo');
   await A.evaluate(() => window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }))); await sleep(400);
+  // B ve la foto de A en su lista
+  await B.evaluate(() => window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }))); await sleep(4000);
+  await shot(B, '14_lista_B_con_foto_de_A');
   // Traer mi cuenta (pantalla con QR)
   await A.evaluate(() => window.NEXO_moveReceive && window.NEXO_moveReceive()); await sleep(1500);
   await shot(A, '13_traer_cuenta');

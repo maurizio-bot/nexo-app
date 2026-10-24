@@ -34,6 +34,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Ronda 2763: llamada entrante a pantalla completa (si el sistema lo permite; si no, aviso grande) -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Ronda 2765: encender la pantalla con un aviso y pedir que el sistema no congele NEXO (avisos con la pantalla apagada) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
     <!-- Permiso específico Nearby -->

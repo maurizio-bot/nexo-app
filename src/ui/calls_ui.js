@@ -8,6 +8,7 @@
  * esquina; tocarla cambia cuál se ve en grande), girar la cámara, y tocar la pantalla oculta o muestra los controles (se
  * ocultan solos a los 5 s). "Conexión inestable" si la voz del otro deja de llegar unos segundos.
  */
+import { paintAvatar } from './avatar.js';
 import { _normId, _getCurrentContactId } from './chat_format.js';
 import { _renderMessage } from './render.js';
 import { _showInfoToast } from './ui_bits.js';
@@ -242,7 +243,9 @@ function _render(st) {
   el.classList.toggle('nc-waiting', st.state === 'calling' || st.state === 'ringing');
   var av = el.querySelector('.nc-av');
   av.className = 'nc-av ' + _getGradientForUUID(String(st.nx || ''));
+  av.style.backgroundImage = '';
   av.textContent = _getInitials(name);
+  paintAvatar(av, st.nx); // ronda 2765: foto de perfil
   el.querySelector('.call-name').textContent = name;
   var status = el.querySelector('.call-status'), note = el.querySelector('.call-note'), bt = el.querySelector('.call-buttons'), mini = el.querySelector('.nc-mini');
   var lock = el.querySelector('.nc-lock span'), via = _linkText(st.nx);
@@ -294,6 +297,7 @@ function _notifyIncoming(st) {
   if (pl && typeof pl.notifyMessage === 'function') pl.notifyMessage({ chatId: st.nx, name: _name(st.nx), msgId: st.id, text: '📞 Llamada entrante', count: 1 }).catch(function() {});
 }
 var _callNotif = false;
+function _lockScreenDone() { var pl = _plugin(); if (pl && typeof pl.callScreenDone === 'function') pl.callScreenDone().catch(function() {}); }
 function _clearCallNotif() { var pl = _plugin(); if (pl && typeof pl.clearCall === 'function') pl.clearCall().catch(function() {}); _callNotif = false; }
 
 // Ronda 2763: lo que se tocó en el aviso de llamada (Contestar / Rechazar) se aplica a la llamada que está sonando
@@ -360,8 +364,12 @@ export function installCallsUi() {
     var st = e && e.detail;
     if (st && st.state === 'ringing') { _notifyIncoming(st); _checkCallAction(); }
     else _clearCallNotif(); // contestada, colgada, perdida…: fuera el aviso que suena
+    // Ronda 2765: acabó la llamada: si la app se abrió encima de la pantalla de bloqueo por ella, vuelve detrás
+    if (!st || st.state === 'ended') _lockScreenDone();
     _render(st);
   });
+  // Abierta por una llamada que ya no está (se cortó antes de abrir): detrás de la pantalla de bloqueo
+  setTimeout(function() { var c = _calls(); if (!c || !c.call) _lockScreenDone(); }, 8000);
   try { var pl = _plugin(); if (pl && typeof pl.addListener === 'function') pl.addListener('onCallAction', function(r) { setTimeout(function() { _applyCallAction(r); }, 300); }); } catch (e) {}
   window.addEventListener('nexo:callLog', function(e) { if (e && e.detail) _logLine(e.detail); });
   window.addEventListener('nexo:ble:openChat', function() { setTimeout(_refreshButton, 0); });

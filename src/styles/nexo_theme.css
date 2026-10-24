@@ -200,3 +200,7 @@ body::before {
 #ble-panel { background: radial-gradient(circle at 15% 0%, rgba(0, 200, 255, 0.14), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, 0.16), transparent 45%), #0a0a15 !important; }
 #ble-panel .ble-header { background: transparent !important; border-bottom: 1px solid var(--nx-line) !important; padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important; }
 #ble-panel-back { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
+
+/* Ronda 2765: foto de perfil (avatar.js) y enlaces pequeños en Perfil */
+.nx-has-photo { color: transparent; }
+.nx-link { background: none; border: none; color: var(--nx-cyan); font-size: 13px; padding: 4px 0; margin-top: 4px; cursor: pointer; }

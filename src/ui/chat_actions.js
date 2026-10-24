@@ -3,6 +3,7 @@
  * cita, menú de la burbuja (responder, reenviar, copiar, eliminar para mí / para todos), barra de respuesta, hoja de
  * reenvío y aplicar el "eliminar para todos" que llega. Lo que usa del resto de la app se lo da main.js.
  */
+import { applyAvatar } from './avatar.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
@@ -327,6 +328,7 @@ export function _rerenderBlank(id, msg) {
 
 // Recibido: el contacto eliminó para todos uno de SUS mensajes
 export function _applyChatAction(senderId, act) {
+  if (act && act.act === 'av') { applyAvatar(senderId, act); return; } // ronda 2765: foto de perfil (avatar.js)
   if (!act || act.act !== 'del' || !act.id) return;
   var cid = _normId(senderId);
   _findMessage(cid, act.id).then(function(m) {

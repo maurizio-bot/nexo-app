@@ -3,6 +3,7 @@
  * sin cambios): panel, botones de visibilidad y búsqueda, lista de chats, franja de en línea, menú de cada contacto,
  * barra de teléfonos nuevos, insignia y estado.
  */
+import { paintAvatar } from './avatar.js';
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
 
@@ -332,6 +333,7 @@ export const BLE_UI_METHODS = {
       var gradClass = _getGradientForUUID(uuid);
       item.innerHTML = '<div class="ble-online-avatar ' + gradClass + '"><span></span><div class="ble-online-dot"></div></div><span class="ble-online-name"></span>';
       item.querySelector('.ble-online-avatar span').textContent = initials;
+      paintAvatar(item.querySelector('.ble-online-avatar'), uuid, item.querySelector('.ble-online-avatar span')); // ronda 2765: foto de perfil
       item.querySelector('.ble-online-name').textContent = contact.name || '';
       item.addEventListener('click', function() { self.openChat(uuid); });
       strip.appendChild(item);
@@ -418,6 +420,7 @@ export const BLE_UI_METHODS = {
       var avatar = document.createElement('div');
       avatar.className = 'ble-contact-avatar ' + gradClass;
       avatar.textContent = initials;
+      if (!contact.isGroup) paintAvatar(avatar, uuid); // ronda 2765: foto de perfil
       row.appendChild(avatar);
       var info = document.createElement('div');
       info.className = 'ble-contact-info';
