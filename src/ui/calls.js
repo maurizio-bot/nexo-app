@@ -15,7 +15,10 @@
  */
 var RING_MS = 45000;
 var SILENCE_MS = 12000;
-var OFFER_MAX_AGE_MS = 60000;
+// Ronda 2768: solo para ofertas muy viejas; si una reciente sigue viva lo dice el que llama al recibir 'ring' (antes, con
+// el reloj del otro más de 60 s adelantado, nunca sonaba)
+var OFFER_MAX_AGE_MS = 600000;
+var DEAD_MS = 180000;
 
 var DIAG_EVERY_MS = 5000;
 
@@ -37,6 +40,21 @@ export class Calls {
     this.mediaFactory = mediaFactory;   // (opts) => media (call_media.js); se puede cambiar (pruebas)
     this.call = null;                   // { id, nx, dir:'out'|'in', state, key, startedAt, ... }
     this.stats = { sent: 0, got: 0, bad: 0 };
+    this._dead = new Map(); // ronda 2768: ids de llamadas ya terminadas (aquí o según el otro): no vuelven a sonar
+  }
+  _markDead(id) { var now = Date.now(), d = this._dead; d.set(id, now); d.forEach(function(t, k) { if (now - t > DEAD_MS) d.delete(k); }); }
+  _ignored(nx, why) { _emit('nexo:callIgnored', { nx: nx, why: why }); }
+  // Ronda 2768: la oferta de una llamada que terminó no sigue saliendo (en cola, a medias o reintentándose). Antes podía
+  // llegar más tarde, incluso tras reiniciar la app: "Llamada perdida" y un "Mensaje nuevo" que no existía
+  _dropOffer(mid) {
+    var ble = this.ble, ack = ble && ble.ackSystem;
+    if (!mid || !ble) return;
+    if (ble._pendingMessageQueue) ble._pendingMessageQueue.forEach(function(q, k) { var f = q.filter(function(it) { return it.messageId !== mid; }); if (f.length !== q.length) ble._pendingMessageQueue.set(k, f); });
+    if (!ack) return;
+    var st = ack.outgoingStreams && ack.outgoingStreams.get(mid);
+    if (st && !st.aborted) { st.abort(); ack.outgoingStreams.delete(mid); }
+    var pa = ack.pendingAcks && ack.pendingAcks.get(mid);
+    if (pa) { clearTimeout(pa.timer); ack.pendingAcks.delete(mid); }
   }
 
   // ¿Se puede llamar ahora? Devuelve el id del enlace directo (lan:nx o la dirección Bluetooth) o null
@@ -66,7 +84,7 @@ export class Calls {
     var o = Object.assign({ type: 'nexo_call', op: op, id: (c && c.id) || (extra && extra.id), ts: Date.now() }, extra || {});
     if (!ble || typeof ble.sendChatMessage !== 'function') return Promise.resolve();
     var mid = 'cs' + _hex(6);
-    if (op === 'offer') { ble._callOut = ble._callOut || new Set(); ble._callOut.add(mid); }
+    if (op === 'offer') { ble._callOut = ble._callOut || new Set(); ble._callOut.add(mid); if (c) c.offerMid = mid; }
     // Ronda 2760: las señales (salvo la llamada entrante) no son mensajes: sin aviso en el otro teléfono
     if (op !== 'offer') { ble._quietOut = ble._quietOut || new Set(); ble._quietOut.add(mid); }
     return ble.sendChatMessage(nx, JSON.stringify(o), mid).catch(function(e) { console.warn('[CALL] Señal ' + op + ' no enviada: ' + (e && e.message)); });
@@ -181,7 +199,7 @@ export class Calls {
   _sendPacket(bytes, kind) {
     var self = this, c = self.call;
     if (!c || c.state !== 'active' || !c.cryptoKey) return;
-    var link = self._link(c.nx, c.lastRx && Date.now() - c.lastRx > 3000);
+    var link = self._link(c.nx, (c.lastRx && Date.now() - c.lastRx > 3000) || (c.rxBleAt && Date.now() - c.rxBleAt < 2000));
     if (!link) {
       // Se fue el Wi-Fi y aún no hay Bluetooth: buscarlo ya (sin esperar al margen de espera del Wi-Fi de lan.js)
       if (!c.seeking && self.ble && typeof self.ble._markPeerLost === 'function') { c.seeking = true; console.log('[CALL] Sin enlace: buscando por Bluetooth'); self.ble._markPeerLost(c.nx); }
@@ -202,7 +220,7 @@ export class Calls {
   }
 
   // Paquete de voz recibido (ble_messages.js)
-  onFrame(p) {
+  onFrame(p, via) {
     var self = this, c = self.call;
     if (!c || c.state !== 'active' || p.c !== c.id || !c.cryptoKey || typeof p.d !== 'string') return;
     var raw;
@@ -213,7 +231,16 @@ export class Calls {
     crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12), additionalData: ad }, c.cryptoKey, raw.subarray(12)).then(function(pt) {
       var cc = self.call;
       if (!cc || cc.id !== c.id) return;
+      // Ronda 2768: un paquete ya oído no se vuelve a reproducir (se podían repetir paquetes grabados del aire)
+      var seenKey = (p.k || 'a') + p.s;
+      cc.seen = cc.seen || new Set();
+      if (cc.seen.has(seenKey)) return;
+      cc.seen.add(seenKey);
+      if (cc.seen.size > 1000) cc.seen.delete(cc.seen.values().next().value);
       cc.lastRx = Date.now();
+      // Ronda 2768: se sigue el camino por el que llega la voz del otro (si se le cayó el Wi-Fi sin cierre limpio, aquí
+      // aún parecía arriba y la voz seguía saliendo por él: el otro dejaba de oír y cortaba a los 12 s)
+      if (via && !/^(lan|net)/i.test(String(via))) cc.rxBleAt = Date.now(); else if (via) cc.rxBleAt = 0;
       if (fin) { self._finish('ended', false); return; } // el otro colgó (aviso por el canal de la voz)
       if (vid) { self.stats.gotV = (self.stats.gotV || 0) + 1; if (cc.media && cc.media.playVideo) cc.media.playVideo(new Uint8Array(pt)); return; }
       self.stats.got++;
@@ -225,18 +252,36 @@ export class Calls {
   onSignal(fromNexoId, o) {
     var self = this, nx = _nid(fromNexoId), c = self.call;
     if (o.op === 'offer') {
-      if (Date.now() - (o.ts || 0) > OFFER_MAX_AGE_MS) { self._log(nx, 'missed', 0, false); return; } // vieja (app cerrada)
+      if (self._dead.has(o.id)) { self._ignored(nx, 'terminada'); return; } // ya terminó (el 'end' llegó antes)
+      if (Date.now() - (o.ts || 0) > OFFER_MAX_AGE_MS) { self._log(nx, 'missed', 0, false); self._ignored(nx, 'vieja'); return; }
       if (c && c.id === o.id) return;
-      if (c) { self._signal(nx, 'busy', { id: o.id }); self._log(nx, 'missed', 0, false); return; }
+      // Los dos se llaman a la vez: gana el id menor; el otro deja la suya y contesta la que gana
+      if (c && c.nx === nx && c.dir === 'out' && c.state === 'calling') {
+        if (o.id > c.id) { self._ignored(nx, 'cruce'); return; } // la mía gana: el otro contestará la mía
+        if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
+        clearTimeout(self._ringTimer); self._signal(nx, 'end'); self._markDead(c.id);
+        self.call = { id: o.id, nx: nx, dir: 'in', state: 'ringing', key: o.k, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, peerCodecs: o.co || 'ulaw', video: o.v === 1 };
+        return self._importKey(o.k).then(function(k) { if (self.call && self.call.id === o.id) { self.call.cryptoKey = k; console.log('[CALL] Cruce de llamadas con ' + nx + ': se contesta la suya'); self.accept(); } });
+      }
+      // Del mismo contacto con otra llamada en curso: el otro la dejó (p.ej. reinició la app): fuera la vieja
+      if (c && c.nx === nx) { self._finish(c.state === 'active' ? 'lost' : 'missed', false); c = null; }
+      if (c) { self._signal(nx, 'busy', { id: o.id }); self._log(nx, 'missed', 0, false); self._ignored(nx, 'ocupado'); return; }
       if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
       self.call = { id: o.id, nx: nx, dir: 'in', state: 'ringing', key: o.k, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, peerCodecs: o.co || 'ulaw', video: o.v === 1 };
       self._importKey(o.k).then(function(k) { if (self.call && self.call.id === o.id) self.call.cryptoKey = k; });
       console.log('[CALL] Llamada entrante de ' + nx + ' (' + o.id + ')');
       _emit('nexo:call', self.state());
+      self._signal(nx, 'ring'); // ¿sigue llamando? (si no, contesta 'end' y deja de sonar)
       self._ringTimer = setTimeout(function() { if (self.call && self.call.id === o.id && self.call.state === 'ringing') self._finish('missed', true); }, window.NEXO_CALL_RING_MS || RING_MS);
       return;
     }
-    if (!c || c.id !== o.id || c.nx !== nx) return;
+    if (!c || c.id !== o.id || c.nx !== nx) {
+      // De una llamada que aquí ya no existe: se apunta y, si el otro la cree viva, se le dice que terminó
+      if (o.op !== 'end') { self._markDead(o.id); if (o.op === 'accept' || o.op === 'ring') self._signal(nx, 'end', { id: o.id }); }
+      else self._markDead(o.id);
+      return;
+    }
+    if (o.op === 'ring') return;
     if (o.op === 'accept' && c.dir === 'out' && c.state === 'calling') {
       clearTimeout(self._ringTimer);
       if (typeof o.co === 'string' && /^[a-z,]{1,40}$/.test(o.co)) c.peerCodecs = o.co; // (una build anterior no lo dice)
@@ -250,6 +295,8 @@ export class Calls {
   _finish(reason, notifyPeer) {
     var self = this, c = self.call;
     if (!c) return;
+    self._markDead(c.id);
+    self._dropOffer(c.offerMid);
     clearTimeout(self._ringTimer); clearInterval(self._silenceTimer);
     if (notifyPeer) self._signal(c.nx, 'end');
     var secs = c.startedAt ? Math.round((Date.now() - c.startedAt) / 1000) : 0;

@@ -20,7 +20,7 @@ function _calls() { var b = _bi(); return b && b.calls; }
 function _name(nx) { var c = vaultFindContactByNexoId(nx); return (c && (c.name || c.displayName)) || String(nx || '').toUpperCase(); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 
-var _tick = null, _ring = null, _speaker = false;
+var _tick = null, _ring = null, _speaker = false, _rmTimer = null;
 
 // Timbre (entrante) o tono de llamada (saliente) con WebAudio; vibración en la entrante
 function _startTone(incoming) {
@@ -232,12 +232,13 @@ function _render(st) {
       if (s0 && st) { s0.classList.remove('nc-warn'); s0.textContent = st.reason === 'busy' ? 'Ocupado' : st.reason === 'rejected' ? 'Rechazada' : st.reason === 'unanswered' ? 'No contesta' : st.reason === 'lost' ? 'Se cortó' : st.reason === 'missed' ? 'Llamada perdida' : 'Llamada terminada' + (st.seconds ? ' · ' + _fmt(st.seconds) : ''); }
       old.querySelector('.call-buttons').innerHTML = '';
       Array.prototype.forEach.call(old.querySelectorAll('.call-remote-video, .call-local-video'), function(n) { n.remove(); });
-      setTimeout(function() { old.remove(); }, 1400);
+      clearTimeout(_rmTimer); _rmTimer = setTimeout(function() { _rmTimer = null; old.remove(); }, 1400);
     }
     _render._modeFor = null; _speaker = false; _pip = { swapped: false, corner: 'tr' };
     _audioMode(false);
     return;
   }
+  clearTimeout(_rmTimer); _rmTimer = null; // ronda 2768: una llamada nueva no pierde su pantalla por el borrado de la anterior
   var el = _screen(), name = _name(st.nx);
   el.classList.toggle('nc-video', !!st.video);
   el.classList.toggle('nc-waiting', st.state === 'calling' || st.state === 'ringing');
@@ -370,7 +371,14 @@ export function installCallsUi() {
   });
   // Abierta por una llamada que ya no está (se cortó antes de abrir): detrás de la pantalla de bloqueo
   setTimeout(function() { var c = _calls(); if (!c || !c.call) _lockScreenDone(); }, 8000);
-  try { var pl = _plugin(); if (pl && typeof pl.addListener === 'function') pl.addListener('onCallAction', function(r) { setTimeout(function() { _applyCallAction(r); }, 300); }); } catch (e) {}
+  // Ronda 2768: una oferta que no suena (ocupado, vieja, ya terminada, cruce): fuera el aviso nativo que ya sonaba y, sin
+  // llamada, la app vuelve detrás de la pantalla de bloqueo (antes seguía sonando y NEXO se veía sin desbloquear)
+  window.addEventListener('nexo:callIgnored', function() { var c = _calls(); if (!c || !c.call || c.call.state !== 'ringing') _clearCallNotif(); if (!c || !c.call) _lockScreenDone(); });
+  // Ronda 2768: abierta por un aviso de llamada que ya no existe: a los 15 s sin llamada, detrás del bloqueo y se descarta
+  // lo que quedara de "Contestar"/"Rechazar" (si no, la siguiente llamada de ese contacto se contestaba sola)
+  var _orphanCheck = function() { setTimeout(function() { var c = _calls(); if (c && c.call) return; _lockScreenDone(); var pl = _plugin(); if (pl && typeof pl.callAction === 'function') pl.callAction().catch(function() {}); }, 15000); };
+  document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') _orphanCheck(); });
+  try { var pl = _plugin(); if (pl && typeof pl.addListener === 'function') pl.addListener('onCallAction', function(r) { setTimeout(function() { _applyCallAction(r); }, 300); _orphanCheck(); }); } catch (e) {}
   window.addEventListener('nexo:callLog', function(e) { if (e && e.detail) _logLine(e.detail); });
   window.addEventListener('nexo:ble:openChat', function() { setTimeout(_refreshButton, 0); });
 }

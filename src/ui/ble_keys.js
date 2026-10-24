@@ -48,6 +48,13 @@ export const BLE_KEY_METHODS = {
     return (c && c.publicKey) || null;
   },
 
+  // Ronda 2768: ¿es un contacto? Lo suyo siempre llega cifrado (sin su clave, el otro no manda nada: queda pendiente),
+  // así que algo sin cifrar que dice ser suyo lo escribió otro
+  _isKnownSender(nexoId) {
+    var nx = _normId(nexoId);
+    return /^nx[0-9a-z]{8}$/.test(nx) && _getBLEContacts().some(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+  },
+
   _noteSenderKey(nexoId, pk) {
     var nx = _normId(nexoId);
     if (!nx || !pk || !/^nx[0-9a-z]{8}$/.test(nx)) return true;

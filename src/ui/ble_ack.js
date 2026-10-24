@@ -1255,14 +1255,15 @@ export class BleAckSystem {
     });
   }
   // done(ok): ronda 2767, si se pudo leer (la confirmación final espera a esto)
-  _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId, done) {
+  // wasE2e: ronda 2768, el texto ya viene descifrado (llegó cifrado de extremo a extremo)
+  _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId, done, wasE2e) {
     var self = this;
     if (e2eAnyEncrypted(content)) {
       var from = meta.fr || senderId;
       e2eOpenText(from, content, self._inAd(from, msgId)).then(function(r) {
         if (done) done(true);
         if (r.dup) return;
-        var go = function() { self._dispatchChunkedMessageComplete(senderId, r.text, meta, deviceId, msgId); };
+        var go = function() { self._dispatchChunkedMessageComplete(senderId, r.text, meta, deviceId, msgId, null, true); };
         var v = self._checkSender(from, r);
         if (v === 'drop') return;
         if (v === 'hold') { self._hold(from, go, msgId); return; }
@@ -1275,13 +1276,15 @@ export class BleAckSystem {
       return;
     }
     if (done) done(true);
+    // Ronda 2768 (seguridad): sin cifrar y dice ser de un contacto: lo escribió otro (ver ble_messages._prePayload)
+    if (!wasE2e && self._plainFromContact(meta.fr || senderId)) { console.warn('[E2E] Texto largo sin cifrar que dice ser de ' + _normId(meta.fr || senderId) + ': descartado'); return; }
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: {
           deviceId: meta.hp > 0 ? null : deviceId, deviceUUID: meta.fr || senderId,
           content: content, senderName: meta.f || 'NEXO',
           senderNexoId: meta.fr || senderId, messageId: msgId || meta.msgId,
-          source: 'ble', timestamp: meta.rxTs || meta.ts || Date.now(), seq: meta.seq || 0
+          source: 'ble', timestamp: meta.rxTs || meta.ts || Date.now(), seq: meta.seq || 0, e2e: !!wasE2e
           // FIX v3.2.13: sin fromVault; con fromVault main.js no lo guardaba y se perdía si el chat estaba cerrado
         }
       }));
@@ -1313,7 +1316,12 @@ export class BleAckSystem {
       name: e2eAnyEncrypted(buf.meta.name) ? undefined : buf.meta.name, hdFor: buf.meta.hdFor
     });
   }
-  _dispatchFileComplete(fileId, data, meta, done) {
+  // Ronda 2768: ¿algo sin cifrar que dice ser de un contacto? (lo suyo siempre llega cifrado: lo escribió otro)
+  _plainFromContact(fr) {
+    return !!(this.ble && typeof this.ble._isKnownSender === 'function' && this.ble._isKnownSender(fr));
+  }
+  // wasE2e: ronda 2768, el archivo ya viene descifrado
+  _dispatchFileComplete(fileId, data, meta, done, wasE2e) {
     var self = this;
     if (e2eAnyEncrypted(data)) {
       var dm = Object.assign({}, meta || {});
@@ -1327,7 +1335,7 @@ export class BleAckSystem {
         if (r[0].dup) return;
         dm.thumb = r[1] || null;
         dm.name = r[2] || undefined;
-        var go = function() { self._dispatchFileComplete(fileId, r[0].b64, dm); };
+        var go = function() { self._dispatchFileComplete(fileId, r[0].b64, dm, null, true); };
         var v = self._checkSender(from, r[0]);
         if (v === 'drop') return;
         if (v === 'hold') { self._hold(from, go, fileId); return; }
@@ -1343,6 +1351,7 @@ export class BleAckSystem {
     try {
       var m = meta || {};
       var sender = m.senderNexoId || m.fromNexoId || m.fr || null;
+      if (!wasE2e && self._plainFromContact(sender)) { console.warn('[E2E] Archivo sin cifrar que dice ser de ' + _normId(sender) + ': descartado'); return; }
       // Fénix: fragmentos y respuestas de recuperación (no son mensajes del chat)
       if (m.type === 'fenix') { if (self.ble && self.ble.fenix) self.ble.fenix.onFile(fileId, data, m, sender); return; }
       window.dispatchEvent(new CustomEvent('nexo:ble:fileComplete', {
@@ -1479,7 +1488,9 @@ ChatStream.prototype.start = function() {
     var cap = (self.type === 'file') ? Math.min(3600000, Math.max(900000, Math.round(self.content.length / 1.5))) : 900000;
     if (self.globalTimeoutMs > cap) self.globalTimeoutMs = cap;
     console.log('[ChatStream] START msgId=' + self.msgId + ' type=' + self.type + ' totalChunks=' + self.total + ' totalWindows=' + estimatedWindows + ' timeout=' + self.globalTimeoutMs + 'ms');
-    if (window.vaultCreateOutgoingTransfer && !self.meta.fwd) {
+    // Ronda 2768: una señal de llamada no se guarda para reanudarla (al reiniciar la app se reenviaba la oferta de una
+    // llamada ya terminada)
+    if (window.vaultCreateOutgoingTransfer && !self.meta.fwd && !/^cs[0-9a-f]{12}$/.test(self.msgId)) {
       var cid = self.meta.dst || self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
     }

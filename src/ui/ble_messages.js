@@ -115,7 +115,7 @@ export const BLE_MESSAGE_METHODS = {
     if (/"type":"vf"/.test(raw) && self.calls) {
       var pv0 = null;
       try { pv0 = JSON.parse(raw); } catch (e) {}
-      if (pv0 && pv0.type === 'vf') { self.calls.onFrame(pv0); return Promise.resolve(null); }
+      if (pv0 && pv0.type === 'vf') { self.calls.onFrame(pv0, data.deviceId); return Promise.resolve(null); } // ronda 2768: y por dónde llegó
     }
     // Archivos grandes (ronda 2756, big_file.js): control de una transferencia
     if (/"type":"g[qanfr]"/.test(raw) && self.bigFiles) {
@@ -157,6 +157,19 @@ export const BLE_MESSAGE_METHODS = {
           var txt = JSON.stringify(ip);
           return self._prePayload(Object.assign({}, data, { content: txt, data: txt, sealed: true }));
         }).catch(function(e) { console.warn('[JUMP] Sobre sellado ilegible: ' + (e && e.message)); return null; });
+      }
+    }
+    // Ronda 2768 (revisión de llamadas, seguridad): un mensaje sin cifrar lo puede escribir cualquier teléfono cercano
+    // diciendo ser otro (el servidor Bluetooth acepta escrituras de cualquiera): se mostraba como suyo, sonaban llamadas
+    // falsas y la voz salía cifrada con una clave del intruso. Desde la 2702 todo lo de un contacto va cifrado: lo que
+    // dice ser de un contacto (o de alguien cuya clave tenemos) y no lo está, se descarta
+    if (raw.indexOf('"type":"chat"') >= 0 && raw.indexOf('E1:') < 0 && raw.indexOf('E2:') < 0) {
+      var pc = null;
+      try { pc = JSON.parse(raw); } catch (e) {}
+      var claimed = pc && pc.type === 'chat' && pc.payload ? _normId(pc.from || pc.payload.senderNexoId || '') : '';
+      if (claimed && self._isKnownSender(claimed)) {
+        console.warn('[E2E] Mensaje sin cifrar que dice ser de ' + claimed + ': descartado');
+        return Promise.resolve(null);
       }
     }
     var jump = /"to":"nx/i.test(raw) || /"type":"r[tkqp]"/.test(raw);
@@ -372,6 +385,12 @@ export const BLE_MESSAGE_METHODS = {
           var contactByDevice = _getContactByDeviceId(deviceId);
           if (contactByDevice) senderUUID = contactByDevice.nexoId || contactByDevice.deviceUUID;
         }
+        // Ronda 2768 (seguridad): un mensaje de un contacto que no llegó cifrado lo escribió otro (ver _prePayload): ni se
+        // guarda, ni se muestra, ni cambia la dirección del contacto (antes la pasaba a la del intruso)
+        if (!isControl && senderUUID && self._isKnownSender(senderUUID) && !(ctrl && ctrl.type === 'chat' && ctrl.payload && ctrl.payload.e2e === true)) {
+          console.warn('[E2E] Mensaje sin cifrar atribuido a ' + _normId(senderUUID) + ': descartado');
+          return;
+        }
         if (!senderName || senderName === '') {
           var contact = _getContactByUUID(senderUUID);
           var cname = contact ? contact.name : null;
@@ -416,7 +435,12 @@ export const BLE_MESSAGE_METHODS = {
         }
         // Ronda 2758: señal de una llamada de voz (no es un mensaje: ni se guarda ni se muestra)
         var csig = !grp && !attachmentData ? parseCallSignal(msgContent) : null;
-        if (csig) { if (self.calls && senderUUID) self.calls.onSignal(senderUUID, csig); return; }
+        // Ronda 2768: solo señales que llegaron cifradas de extremo a extremo (una sin cifrar la puede escribir cualquiera)
+        if (csig) {
+          if (self.calls && senderUUID && ctrl && ctrl.payload && ctrl.payload.e2e === true) self.calls.onSignal(senderUUID, csig);
+          else console.warn('[CALL] Señal sin cifrar descartada (de ' + senderUUID + ')');
+          return;
+        }
         // Acción del chat (eliminar para todos): no es un mensaje; la aplica main.js
         var chatAct = _chatKind(msgContent);
         if (chatAct && chatAct.type === 'nexo_act') isControl = true;

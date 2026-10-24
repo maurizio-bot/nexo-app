@@ -77,6 +77,8 @@ export function createCallMedia(opts) {
   var ulawBuf = [];
   // Ronda 2761: para el diagnóstico (calls.js lo escribe cada 5 s): nivel del micrófono y audio reproducido
   var mic = { blocks: 0, energy: 0, peak: 0 };
+  // Ronda 2768: colgada (lo que se abra después se cierra) y un solo "Girar" a la vez
+  var stopped = false, flipping = null;
 
   function flush(force) {
     if (!pending.length) return;
@@ -100,11 +102,13 @@ export function createCallMedia(opts) {
     var s = ctx.createBufferSource();
     s.buffer = buf; s.connect(ctx.destination);
     var now = ctx.currentTime;
-    if (playAt < now + 0.05 || playAt > now + 0.6) playAt = now + 0.15; // colchón; si se acumula retraso, se recorta
+    if (playAt > now + 0.6) return; // ronda 2768: demasiado adelantado (ráfaga tras un atasco): se descarta (antes sonaban varios a la vez)
+    if (playAt < now + 0.05) playAt = now + 0.15; // colchón
     s.start(playAt);
     playAt += buf.duration;
   }
 
+  function info0Stopped() { return stopped; }
   function startVideo() {
     return _hasVp8().then(function(ok) {
       if (!ok || !stream || !stream.getVideoTracks().length) return false;
@@ -141,8 +145,12 @@ export function createCallMedia(opts) {
       return _hasOpus().then(function(opus) {
         codec = opus && peerCodecs.indexOf('opus') >= 0 ? 1 : 2;
         var a = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
-        return navigator.mediaDevices.getUserMedia(wantVideo ? { audio: a, video: { width: { ideal: VW }, height: { ideal: VH }, frameRate: { ideal: FPS }, facingMode: 'user' } } : { audio: a });
+        var audioOnly = function() { return navigator.mediaDevices.getUserMedia({ audio: a }); };
+        // Ronda 2768: sin cámara (denegada, ocupada, no hay) la videollamada sigue con voz (antes no salía nada y se cortaba)
+        return wantVideo ? navigator.mediaDevices.getUserMedia({ audio: a, video: { width: { ideal: VW }, height: { ideal: VH }, frameRate: { ideal: FPS }, facingMode: 'user' } })
+          .catch(function(e) { console.warn('[CALL] Cámara: ' + (e && e.name) + ': solo voz'); return audioOnly(); }) : audioOnly();
       }).then(function(s) {
+        if (stopped) { try { s.getTracks().forEach(function(t) { t.stop(); }); } catch (e) {} return { codec: codec === 1 ? 'opus' : 'ulaw', video: false }; } // ronda 2768: se colgó mientras se abría
         stream = s;
         var AC = window.AudioContext || window.webkitAudioContext;
         ctx = new AC({ sampleRate: RATE });
@@ -176,6 +184,7 @@ export function createCallMedia(opts) {
         src.connect(proc); proc.connect(ctx.destination); // el nodo necesita salida para funcionar (escribe silencio)
         // Ronda 2761: si el sistema dejó el audio en pausa (sin un toque reciente), se activa; si no, ni suena ni graba
         if (ctx.state !== 'running' && ctx.resume) ctx.resume().catch(function() {});
+        if (info0Stopped()) return { codec: codec === 1 ? 'opus' : 'ulaw' };
         var info = { codec: codec === 1 ? 'opus' : 'ulaw' };
         if (!wantVideo) return info;
         return startVideo().then(function(vok) { info.video = vok; return info; }, function() { info.video = false; return info; });
@@ -202,17 +211,20 @@ export function createCallMedia(opts) {
     // abren dos a la vez); si la otra no abre, se vuelve a la de antes. Imagen completa al cambiar.
     facing: function() { return facing; },
     flip: function() {
-      if (!stream || !wantVideo || !navigator.mediaDevices) return Promise.resolve(facing);
+      if (!stream || !wantVideo || !navigator.mediaDevices || stopped) return Promise.resolve(facing);
+      if (flipping) return flipping; // ronda 2768: dos toques seguidos, un solo cambio (antes, dos cámaras abiertas)
       var next = facing === 'user' ? 'environment' : 'user';
       var open = function(f) { return navigator.mediaDevices.getUserMedia({ video: { width: { ideal: VW }, height: { ideal: VH }, frameRate: { ideal: FPS }, facingMode: f } }); };
       stream.getVideoTracks().forEach(function(t) { stream.removeTrack(t); t.stop(); });
-      return open(next).then(function(s2) { facing = next; return s2; }, function() { return open(facing); }).then(function(s2) {
+      flipping = open(next).then(function(s2) { facing = next; return s2; }, function() { return open(facing); }).then(function(s2) {
+        if (stopped) { s2.getTracks().forEach(function(t) { t.stop(); }); return facing; } // ronda 2768: se colgó mientras se abría (la cámara quedaba encendida)
         var nt = s2.getVideoTracks()[0];
         if (nt) { nt.enabled = camOn; stream.addTrack(nt); }
         if (localV) { localV.srcObject = new MediaStream(nt ? [nt] : []); try { var pp = localV.play(); if (pp && pp.catch) pp.catch(function() {}); } catch (e) {} }
         forceKey = true;
         return facing;
-      }).catch(function() { return facing; });
+      }).catch(function() { return facing; }).then(function(f) { flipping = null; return f; });
+      return flipping;
     },
     camera: function(on) { camOn = !!on; try { stream.getVideoTracks().forEach(function(t) { t.enabled = !!on; }); } catch (e) {} },
     play: function(bytes) {
@@ -248,6 +260,7 @@ export function createCallMedia(opts) {
         playedS: st.seconds || 0, playedLevel: st.samples ? Math.sqrt(st.energy / st.samples) : 0, mic: !!(stream && stream.getAudioTracks().some(function(t) { return t.readyState === 'live' && t.enabled && !t.muted; })) };
     },
     stop: function() {
+      stopped = true;
       flush(true);
       clearInterval(vTimer);
       try { if (venc && venc.state !== 'closed') venc.close(); if (vdec && vdec.state !== 'closed') vdec.close(); } catch (e) {}
