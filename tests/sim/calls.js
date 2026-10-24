@@ -171,12 +171,27 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
     r.cerrada_aviso = await wait(() => nB.notifLog.slice(n0).some((n) => n.text === '📞 Llamada entrante'), 20);
     r.cerrada_avisos = nB.notifLog.slice(n0).map((n) => n.text + '/' + n.closed); r.cerrada_buzon = (nB.bgInbox || []).map((x) => x.c.substring(0, 160));
     await sleep(3000);
+    // Ronda 2763: el dueño toca "Contestar" en el aviso de llamada: NEXO se abre y contesta sola
+    const idA = A.win.bleInterface.localNexoId.toLowerCase();
+    r.cerrada_aviso_es_llamada = !!nB.callNotif && nB.callNotif.from === idA;
+    nB.pendingAnswer = idA;
     nB.load(); const B2 = await boot('B', nB);
-    r.cerrada_suena_al_abrir = await wait(() => { const s = B2.win.document.getElementById('nexo-call-screen'); return !!s && /Llamada de voz entrante/.test(s.textContent); }, 30);
-    click(B2.win, B2.win.document.querySelector('#nexo-call-screen .call-accept'));
+    r.cerrada_suena_al_abrir = await wait(() => { const s = B2.win.document.getElementById('nexo-call-screen'); return !!s && /Llamada de voz entrante|\d:\d\d/.test(s.textContent); }, 30);
     r.cerrada_en_llamada = await wait(() => B2.win.bleInterface.calls.call && B2.win.bleInterface.calls.call.state === 'active' && A.win.bleInterface.calls.call && A.win.bleInterface.calls.call.state === 'active', 30);
+    r.cerrada_contestada_desde_aviso = r.cerrada_en_llamada && !B2.win.document.querySelector('#nexo-call-screen .call-accept');
+    r.cerrada_aviso_quitado = !nB.callNotif;
     if (A.win.bleInterface.calls.call) A.win.bleInterface.calls.hangup();
     await sleep(2000);
+    // Rechazar desde el aviso (app cerrada): al abrirse NEXO, la llamada se rechaza y A ve "Rechazada"
+    B2.win.close(); nB.destroyActivity(); await sleep(2000);
+    for (let i = 0; i < 100 && !A.win.bleInterface.calls.canCall(idB); i++) await sleep(200);
+    click(A.win, A.win.document.getElementById('nexo-call-btn'));
+    await wait(() => !!nB.callNotif, 20);
+    nB.pendingDecline = idA; nB.callNotif = null; // CallDeclineReceiver
+    nB.load(); const B3 = await boot('B', nB);
+    r.cerrada_rechazada_desde_aviso = await wait(() => screen(A) === 'Rechazada', 40);
+    if (A.win.bleInterface.calls.call) A.win.bleInterface.calls.hangup();
+    await sleep(1500);
     nB.setOffline(true); await sleep(5000);
   }
   // 5. Sin el contacto cerca
@@ -188,7 +203,7 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   const ok = r.boton && r.A_llamando && r.B_suena && r.en_llamada && r.voz_B_a_A >= 25 && r.voz_A_a_B >= 25 && r.en_orden && r.voz_en_el_aire && r.nada_en_claro && r.modo_llamada && r.altavoz && r.modo_normal_al_colgar && r.B_ve_fin &&
     r.linea_A.some((t) => /Llamada · 0:0\d/.test(t)) && r.linea_B.some((t) => /Llamada · 0:0\d/.test(t)) && r.micro_cerrado && r.senales_no_son_mensajes &&
     r.rechazada_A && r.lineas_A.some((t) => /rechazada/.test(t)) && r.lineas_B.some((t) => /rechazada/.test(t)) && r.sin_respuesta_A && r.lineas_B.some((t) => /perdida/.test(t)) &&
-    r.se_corta_A !== 'NO' && r.se_corta_B && (!arg('closed', false) || (r.cerrada_aviso && r.cerrada_suena_al_abrir && r.cerrada_en_llamada)) && r.sin_alcance_aviso && r.sin_alcance_no_llama && (!WIFI || r.camino === 'wifi') && !r.errores.length &&
+    r.se_corta_A !== 'NO' && r.se_corta_B && (!arg('closed', false) || (r.cerrada_aviso && r.cerrada_aviso_es_llamada && r.cerrada_suena_al_abrir && r.cerrada_en_llamada && r.cerrada_contestada_desde_aviso && r.cerrada_aviso_quitado && r.cerrada_rechazada_desde_aviso)) && r.sin_alcance_aviso && r.sin_alcance_no_llama && (!WIFI || r.camino === 'wifi') && !r.errores.length &&
     (!WIFI || (r.video_B_suena && r.video_llega[0] >= 30 && r.video_llega[1] >= 30 && r.boton_camara && r.sin_wifi_video_parado && r.sin_wifi_voz_sigue && r.sigue_en_llamada &&
       r.linea_video.length >= 1 && r.B_se_entera_al_colgar && r.video_sin_wifi_aviso && r.video_sin_wifi_no_llama));
   r.resultado = ok ? 'OK' : 'FALLO';

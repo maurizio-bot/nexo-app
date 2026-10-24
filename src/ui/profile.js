@@ -17,29 +17,30 @@ function _openProfileSheet() {
   var bi = window.bleInterface || {};
   var sheet = document.createElement('div');
   sheet.id = 'nexo-profile-sheet';
-  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#0a0a15;color:#fff;display:flex;flex-direction:column;padding:16px;box-sizing:border-box;font-family:inherit;overflow-y:auto;';
-  sheet.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-    '<div style="font-size:20px;font-weight:700;">Perfil</div><button id="nexo-profile-close" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-size:14px;">Cerrar</button></div>' +
-    '<div style="font-size:14px;opacity:0.85;margin-bottom:12px;">Mi NEXO ID: <b id="nexo-profile-id"></b></div>' +
-    '<div style="font-size:16px;font-weight:600;margin:8px 0;">Fénix</div>' +
-    '<div id="nexo-fenix-status" style="font-size:12px;opacity:0.8;margin-bottom:8px;white-space:pre-line;"></div>' +
-    '<button id="nexo-fenix-recover" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;margin-bottom:12px;">Recuperar mi cuenta (teléfono nuevo)</button>' +
+  sheet.style.cssText = 'position:fixed;inset:0;z-index:2147483646;color:#fff;box-sizing:border-box;font-family:inherit;overflow-y:auto;';
+  // Ronda 2763 (estilo NEXO, nexo_theme.css): tarjeta de identidad y una tarjeta por sección
+  var card = function(ico, title, body) { return '<div class="nx-card"><div class="nx-h"><span class="nx-ico">' + ico + '</span>' + title + '</div>' + body + '</div>'; };
+  sheet.innerHTML = '<div class="nx-profile-in">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;">' +
+    '<div style="font-size:26px;font-weight:800;">Perfil</div><button id="nexo-profile-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">Cerrar</button></div>' +
+    '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av"></div><div><div class="nx-idtxt">Mi NEXO ID</div><b id="nexo-profile-id"></b></div></div>' +
+    card('🔥', 'Fénix', '<div id="nexo-fenix-status" class="nx-sub"></div>' +
+      '<button id="nexo-fenix-recover" class="nx-btn">Recuperar mi cuenta (teléfono nuevo)</button>') +
     // Ronda 2759: pasar la cuenta de un teléfono a otro (move_account.js)
-    '<div style="font-size:16px;font-weight:600;margin:8px 0;">Cambiar de teléfono</div>' +
-    '<div style="font-size:12px;opacity:0.7;margin-bottom:8px;">Con los dos teléfonos en el mismo Wi-Fi: en el nuevo, "Traer mi cuenta"; en este, "Pasar mi cuenta" y lee su código. Pasa todo (contactos, chats, fotos, grupos) y este queda vacío.</div>' +
-    '<button id="nexo-move-send" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;margin-bottom:8px;">Pasar mi cuenta a un teléfono nuevo</button>' +
-    '<button id="nexo-move-receive" style="background:rgba(255,255,255,0.12);color:#fff;border:none;border-radius:12px;padding:10px;font-size:14px;margin-bottom:12px;">Traer mi cuenta de otro teléfono</button>' +
-    securitySectionHtml() +
+    card('📲', 'Cambiar de teléfono', '<div class="nx-sub">Con los dos teléfonos en el mismo Wi-Fi: en el nuevo, "Traer mi cuenta"; en este, "Pasar mi cuenta" y lee su código. Pasa todo (contactos, chats, fotos, grupos) y este queda vacío.</div>' +
+      '<button id="nexo-move-send" class="nx-btn">Pasar mi cuenta a un teléfono nuevo</button>' +
+      '<button id="nexo-move-receive" class="nx-btn">Traer mi cuenta de otro teléfono</button>') +
+    '<div class="nx-card">' + securitySectionHtml() + '</div>' +
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
-    '<div style="font-size:16px;font-weight:600;margin:8px 0;">Internet</div>' +
-    '<div id="nexo-net-status" style="font-size:12px;opacity:0.8;margin-bottom:8px;white-space:pre-line;"></div>' +
-    '<label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:12px;"><input type="checkbox" id="nexo-net-tor"> Usar Tor con Wi-Fi (oculta tu IP; más lento)</label>' +
-    '<div style="font-size:16px;font-weight:600;margin:8px 0;">Diagnóstico</div>' +
-    '<div style="font-size:12px;opacity:0.7;margin-bottom:8px;">Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.</div>' +
-    '<button id="nexo-diag-copy" style="background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:600;margin-bottom:8px;">Copiar diagnóstico</button>' +
-    '<textarea id="nexo-diag-text" readonly style="flex:1;min-height:220px;width:100%;box-sizing:border-box;background:#000;color:#9fe;border:1px solid #234;border-radius:8px;font-size:10px;font-family:monospace;padding:8px;"></textarea>';
+    card('🌐', 'Internet', '<div id="nexo-net-status" class="nx-sub"></div>' +
+      '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> Usar Tor con Wi-Fi (oculta tu IP; más lento)</label>') +
+    card('🩺', 'Diagnóstico', '<div class="nx-sub">Registro de lo que hace la app (incluye la sesión anterior). Cópialo y pégalo para revisar un fallo.</div>' +
+      '<button id="nexo-diag-copy" class="nx-btn nx-btn-primary">Copiar diagnóstico</button>' +
+      '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
+    '</div>';
   document.body.appendChild(sheet);
   sheet.querySelector('#nexo-profile-id').textContent = bi.localNexoId || '?';
+  sheet.querySelector('#nexo-profile-av').textContent = String(bi.localNexoId || '?').replace(/^NX/i, '').charAt(0).toUpperCase() || 'N';
   var ta = sheet.querySelector('#nexo-diag-text');
   ta.value = _diagnosticText();
   ta.scrollTop = ta.scrollHeight;
@@ -83,7 +84,7 @@ export function installProfileButton() {
   var b = document.createElement('button');
   b.id = 'nexo-profile-btn';
   b.title = 'Perfil';
-  b.textContent = '👤';
+  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
   b.style.cssText = 'position:absolute;right:62px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:20px;cursor:pointer;z-index:5;';
   if (getComputedStyle(header).position === 'static') header.style.position = 'relative';
   b.addEventListener('click', function(e) { e.stopPropagation(); _openProfileSheet(); });

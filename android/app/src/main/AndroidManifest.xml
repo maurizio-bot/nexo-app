@@ -32,6 +32,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Notificaciones de mensajes (Android 13+ hay que declararlo y pedirlo) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Ronda 2763: llamada entrante a pantalla completa (si el sistema lo permite; si no, aviso grande) -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     
     <!-- Permiso específico Nearby -->
@@ -76,6 +78,8 @@
         </activity>
 
         <!-- SERVICIO BLE FOREGROUND -->
+        <!-- Ronda 2763: "Rechazar" en el aviso de llamada -->
+        <receiver android:name="com.nexo.ble.CallDeclineReceiver" android:exported="false" />
         <service
             android:name="com.nexo.ble.BleService"
             android:enabled="true"

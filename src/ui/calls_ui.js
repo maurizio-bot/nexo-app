@@ -285,11 +285,27 @@ function _render(st) {
   }
 }
 
-// Llamada entrante con la app en segundo plano: aviso del teléfono
+// Llamada entrante con la app en segundo plano: aviso del teléfono (ronda 2763: como una llamada, con tono y
+// Contestar / Rechazar; builds anteriores del nativo: aviso de mensaje)
 function _notifyIncoming(st) {
   if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
   var pl = _plugin();
+  if (pl && typeof pl.notifyCall === 'function') { pl.notifyCall({ chatId: st.nx, name: _name(st.nx), video: !!st.video }).catch(function() {}); _callNotif = true; return; }
   if (pl && typeof pl.notifyMessage === 'function') pl.notifyMessage({ chatId: st.nx, name: _name(st.nx), msgId: st.id, text: '📞 Llamada entrante', count: 1 }).catch(function() {});
+}
+var _callNotif = false;
+function _clearCallNotif() { var pl = _plugin(); if (pl && typeof pl.clearCall === 'function') pl.clearCall().catch(function() {}); _callNotif = false; }
+
+// Ronda 2763: lo que se tocó en el aviso de llamada (Contestar / Rechazar) se aplica a la llamada que está sonando
+function _applyCallAction(r) {
+  var calls = _calls(), st = calls && calls.state();
+  if (!r || !st || st.state !== 'ringing') return;
+  if (r.answer && _normId(r.answer) === _normId(st.nx)) { console.log('[CALL] Contestada desde el aviso'); calls.accept(); }
+  else if (r.declined && _normId(r.declined) === _normId(st.nx)) { console.log('[CALL] Rechazada desde el aviso'); calls.reject(); }
+}
+function _checkCallAction() {
+  var pl = _plugin();
+  if (pl && typeof pl.callAction === 'function') pl.callAction().then(_applyCallAction).catch(function() {});
 }
 
 // Línea en el chat al terminar (solo en este teléfono)
@@ -310,7 +326,7 @@ function _installButton() {
   var b = document.createElement('button');
   b.id = 'nexo-call-btn';
   b.title = 'Llamar';
-  b.textContent = '📞';
+  b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
   b.style.cssText = 'width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:18px;cursor:pointer;flex-shrink:0;margin-left:6px;';
   b.addEventListener('click', function(e) {
     e.stopPropagation();
@@ -323,7 +339,7 @@ function _installButton() {
   var v = document.createElement('button');
   v.id = 'nexo-video-btn';
   v.title = 'Videollamada';
-  v.textContent = '🎥';
+  v.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 11l6-3v8l-6-3z"/></svg>'; // ronda 2763: icono dibujado (antes un emoji)
   v.style.cssText = b.style.cssText;
   v.addEventListener('click', function(e) {
     e.stopPropagation();
@@ -342,9 +358,11 @@ export function installCallsUi() {
   _installButton();
   window.addEventListener('nexo:call', function(e) {
     var st = e && e.detail;
-    if (st && st.state === 'ringing') _notifyIncoming(st);
+    if (st && st.state === 'ringing') { _notifyIncoming(st); _checkCallAction(); }
+    else _clearCallNotif(); // contestada, colgada, perdida…: fuera el aviso que suena
     _render(st);
   });
+  try { var pl = _plugin(); if (pl && typeof pl.addListener === 'function') pl.addListener('onCallAction', function(r) { setTimeout(function() { _applyCallAction(r); }, 300); }); } catch (e) {}
   window.addEventListener('nexo:callLog', function(e) { if (e && e.detail) _logLine(e.detail); });
   window.addEventListener('nexo:ble:openChat', function() { setTimeout(_refreshButton, 0); });
 }

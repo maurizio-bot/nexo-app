@@ -1,7 +1,11 @@
 package com.nexo.ble
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.BroadcastReceiver
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -17,6 +21,14 @@ class MsgNotifier(private val ctx: Context) {
     companion object {
         const val CHANNEL_ID = "nexo_messages"
         const val EXTRA_CHAT = "nexo_chat_device_id"
+        // Ronda 2763: llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar)
+        const val CALL_CHANNEL_ID = "nexo_calls"
+        const val EXTRA_ANSWER = "nexo_call_answer"
+        const val EXTRA_CALL_FROM = "nexo_call_from"
+        private const val CALL_NOTIF_ID = 3999
+        // Lo que el dueño tocó en el aviso; la app lo recoge al abrirse (NexoBlePlugin.callAction)
+        @Volatile var pendingAnswer: Pair<String, Long>? = null
+        @Volatile var pendingDecline: Pair<String, Long>? = null
         private const val GROUP = "nexo_msgs"
         private const val TAG = "NexoMsgNotifier"
         @Volatile private var shared: MsgNotifier? = null
@@ -32,6 +44,13 @@ class MsgNotifier(private val ctx: Context) {
             ch.description = "Mensajes nuevos de tus contactos"
             ch.setShowBadge(true)
             ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
+            val cc = NotificationChannel(CALL_CHANNEL_ID, "Llamadas", NotificationManager.IMPORTANCE_HIGH)
+            cc.description = "Llamadas y videollamadas entrantes"
+            cc.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
+                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+            cc.enableVibration(true); cc.vibrationPattern = longArrayOf(0, 900, 700, 900)
+            cc.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(cc)
         }
     }
 
@@ -47,6 +66,39 @@ class MsgNotifier(private val ctx: Context) {
         post(chatId.lowercase(), alert = true)
         return book.get(chatId)?.count ?: 0
     }
+
+    // Llamada entrante: suena con el tono de llamada hasta contestar, rechazar o 45 s; a pantalla completa si el sistema
+    // lo permite (si no, aviso grande arriba). Contestar abre NEXO y contesta; Rechazar quita el aviso y, al abrirse
+    // NEXO, la llamada se rechaza.
+    fun incomingCall(from: String, name: String, video: Boolean) {
+        val nm = NotificationManagerCompat.from(ctx)
+        if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: llamada sin aviso"); return }
+        val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return
+        val fl = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        val pf = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        val openPi = PendingIntent.getActivity(ctx, 3990, Intent(launch).putExtra(EXTRA_CALL_FROM, from).addFlags(fl), pf)
+        val answerPi = PendingIntent.getActivity(ctx, 3991, Intent(launch).putExtra(EXTRA_ANSWER, from).addFlags(fl), pf)
+        val declinePi = PendingIntent.getBroadcast(ctx, 3992, Intent(ctx, CallDeclineReceiver::class.java).putExtra(EXTRA_CALL_FROM, from), pf)
+        val n = NotificationCompat.Builder(ctx, CALL_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+            .setContentTitle(name.ifBlank { "NEXO" })
+            .setContentText(if (video) "Videollamada entrante · NEXO" else "Llamada entrante · NEXO")
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(true)
+            .setTimeoutAfter(45000)
+            .setContentIntent(openPi)
+            .setFullScreenIntent(openPi, true)
+            .addAction(0, "Rechazar", declinePi)
+            .addAction(0, "Contestar", answerPi)
+            .build()
+        n.flags = n.flags or Notification.FLAG_INSISTENT // el tono se repite hasta que se atiende
+        try { nm.notify(CALL_NOTIF_ID, n) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
+    }
+
+    fun cancelCall() { try { NotificationManagerCompat.from(ctx).cancel(CALL_NOTIF_ID) } catch (e: Exception) { } }
 
     fun clear(chatId: String) {
         book.clear(chatId)
@@ -89,5 +141,14 @@ class MsgNotifier(private val ctx: Context) {
             .setOnlyAlertOnce(!alert)
             .setContentIntent(pi)
         try { nm.notify(notifId(chatId), b.build()) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
+    }
+}
+
+// "Rechazar" en el aviso de llamada (sin abrir la app): se quita el aviso y se apunta para rechazarla al abrir NEXO
+class CallDeclineReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+        val from = intent.getStringExtra(MsgNotifier.EXTRA_CALL_FROM) ?: return
+        MsgNotifier.pendingDecline = from.lowercase() to System.currentTimeMillis()
+        MsgNotifier.get(ctx).cancelCall()
     }
 }

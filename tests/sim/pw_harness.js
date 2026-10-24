@@ -11,7 +11,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // opts: { cpuThrottle, logs: [] , quiet }
 async function bootPhone(browser, name, native, dist, opts = {}) {
-  const page = await browser.newPage();
+  const page = await browser.newPage(opts.phone ? { viewport: { width: 393, height: 851 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : undefined);
   const logs = opts.logs || [];
   page.on('console', (m) => { if (!opts.quiet) logs.push(`${new Date().toISOString().substring(14, 23)} [${name}] ${m.text()}`.substring(0, 300)); });
   page.on('pageerror', (e) => logs.push(`[${name}] PAGEERROR ${e.message}`));

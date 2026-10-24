@@ -215,6 +215,25 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## Ronda 2763 (rama de trabajo): toda la app con el estilo NEXO y la llamada entrante como una llamada del teléfono
+- Estilo (pedido del dueño: como la pantalla de llamadas): `src/styles/nexo_theme.css` (se carga tras critical.css):
+  fondo oscuro con brillo cian/violeta, superficies de cristal, degradado NEXO en lo principal, hojas que suben desde
+  abajo con asa, menú de adjuntar como WhatsApp (iconos redondos de color con su nombre), burbujas con esquina,
+  barra de escribir y cabecera del chat de cristal, Perfil en tarjetas (identidad con avatar, Fénix, Cambiar de
+  teléfono, Seguridad, Internet, Diagnóstico), panel de agregar contactos (BUSCAR / PARAR), Nuevo grupo, Enviar
+  contactos, Reenviar, avisos cortos y Pasar la cuenta. Botones de la cabecera con iconos dibujados (antes emojis).
+  La barra de abajo (Chats · Gente · Mapa · Perfil), que no cabía en la pantalla, se oculta: Perfil y grupos están
+  arriba. Capturas: `node tests/sim/ui_shots.js <build> <carpeta>` (13 pantallas en Chromium a 393x851).
+- Arreglos vistos al revisar: en un chat de grupo salían los botones 📞/🎥; el aviso de cifrado del grupo decía
+  "Esperando la clave de cifrado de GR…" (ahora "Mensajes del grupo cifrados…"); tocar el aviso de un grupo creaba
+  un "contacto" con el id del grupo (ronda 2760).
+- Llamada entrante como una llamada del teléfono (PENDIENTES §2 "sonar como una llamada"): canal "Llamadas" con el
+  tono de llamada y vibración, aviso a pantalla completa si el sistema lo permite (USE_FULL_SCREEN_INTENT; si no,
+  aviso grande), el tono se repite hasta atenderla (45 s), botones Contestar (abre NEXO y contesta sola) y Rechazar
+  (`CallDeclineReceiver`: quita el aviso; al abrir NEXO la llamada se rechaza). Con la app cerrada (BgInbox `cl`),
+  en segundo plano (nativo o la app) y congelada. Se quita al contestar, colgar o perderse. Pruebas: calls.js
+  --closed (contestar y rechazar desde el aviso con la app cerrada).
+
 ## Ronda 2762 (rama de trabajo): videollamada en la que un teléfono no oía nada
 Informe del dueño (2758/2759, videollamada, mismo Wi-Fi): lo que se decía en el Samsung se oía en el Vivo; en el Samsung no
 se oía nada (ni pegado a la oreja). El vídeo mantiene la llamada viva aunque no llegue voz (no se cortó).

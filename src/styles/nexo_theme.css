@@ -1,0 +1,202 @@
+/*
+ * nexo_theme.css (ronda 2763, pedido del dueño: toda la app con el estilo de la pantalla de llamadas)
+ * Se carga después de critical.css. Fondo oscuro con brillo cian/violeta, superficies de "cristal", degradado NEXO
+ * (#00c8ff → #a855f7) en lo principal, esquinas redondeadas y hojas que suben desde abajo. Algunas pantallas se crean
+ * desde JS con estilos en línea: aquí se igualan con !important (los colores y formas; la lógica no cambia).
+ */
+:root {
+  --nx-bg: #070812;
+  --nx-surface: rgba(255, 255, 255, 0.06);
+  --nx-surface-2: rgba(255, 255, 255, 0.1);
+  --nx-glass: rgba(16, 17, 34, 0.72);
+  --nx-sheet: rgba(14, 15, 30, 0.94);
+  --nx-line: rgba(255, 255, 255, 0.08);
+  --nx-text: #f4f5fb;
+  --nx-muted: rgba(235, 238, 255, 0.55);
+  --nx-cyan: #00c8ff;
+  --nx-purple: #a855f7;
+  --nx-grad: linear-gradient(135deg, #00c8ff, #a855f7);
+  --nx-radius: 18px;
+}
+
+/* ---------- Fondo ---------- */
+html, body { background: var(--nx-bg) !important; color: var(--nx-text); }
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(0, 200, 255, 0.16), transparent 42%),
+    radial-gradient(circle at 88% 92%, rgba(168, 85, 247, 0.18), transparent 46%),
+    linear-gradient(170deg, #0a0a15 0%, #10112a 55%, #0b1428 100%);
+}
+#app { background: transparent !important; }
+
+/* ---------- Pantalla principal ---------- */
+#main-header { min-height: 64px !important; padding: 0 116px 0 18px !important; }
+#main-title { font-size: 26px !important; font-weight: 800 !important; letter-spacing: -0.3px;
+  background: linear-gradient(90deg, #fff 30%, #b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
+#nexo-profile-btn, #nexo-new-group-btn {
+  width: 42px !important; height: 42px !important; background: var(--nx-surface-2) !important;
+  border: 1px solid var(--nx-line) !important; display: flex !important; align-items: center; justify-content: center; padding: 0 !important;
+}
+#nexo-profile-btn:active, #nexo-new-group-btn:active { transform: translateY(-50%) scale(0.92) !important; }
+#nexo-profile-btn svg, #nexo-new-group-btn svg { width: 21px; height: 21px; }
+
+#main-contacts-online-strip { border-bottom: 1px solid var(--nx-line) !important; }
+#main-contacts-list { padding: 6px 10px 96px !important; }
+.ble-contact-row { border-radius: var(--nx-radius); padding: 10px 10px !important; margin: 2px 0; transition: background 0.15s, transform 0.12s; }
+.ble-contact-row:hover, .ble-contact-row:active { background: var(--nx-surface) !important; }
+.ble-contact-avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 6px 18px rgba(0, 0, 0, 0.35); }
+.ble-contact-name { font-size: 15.5px !important; letter-spacing: 0.1px; }
+.ble-contact-msg { color: var(--nx-muted) !important; }
+.ble-contact-time { color: var(--nx-muted) !important; }
+.ble-unread-badge { background: var(--nx-grad) !important; color: #fff !important; box-shadow: 0 3px 10px rgba(0, 200, 255, 0.35); }
+.ble-divider { background: transparent !important; }
+.ble-online-avatar { box-shadow: 0 0 0 2px #0a0a15, 0 0 0 4px var(--nx-cyan); }
+#main-contacts-empty-msg, .ble-empty { color: var(--nx-muted) !important; }
+.ble-btn-menu { opacity: 0.6; }
+#ble-fab-btn { background: var(--nx-grad) !important; box-shadow: 0 10px 30px rgba(0, 200, 255, 0.35), 0 4px 12px rgba(168, 85, 247, 0.35) !important; border: none !important; }
+/* La barra de abajo (Chats · Gente · Mapa · Perfil) no cabía en la pantalla: Perfil y grupos están arriba */
+#ble-bottom-nav { display: none !important; }
+
+/* ---------- Chat ---------- */
+#chat-header {
+  background: var(--nx-glass) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--nx-line) !important; min-height: 60px;
+}
+.chat-back-btn { background: var(--nx-surface-2) !important; box-shadow: none !important; border: 1px solid var(--nx-line) !important; }
+#chat-contact-name { font-size: 17px !important; font-weight: 700 !important; }
+#chat-contact-subtitle { color: var(--nx-cyan) !important; font-weight: 600; letter-spacing: 0.6px; }
+#nexo-call-btn, #nexo-video-btn {
+  width: 40px !important; height: 40px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 !important; /* sin !important: en un grupo se ocultan */
+}
+#nexo-call-btn svg, #nexo-video-btn svg { width: 20px; height: 20px; }
+#messages-container { background: transparent !important; }
+.message { border-radius: 20px !important; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22); }
+.message.own { background: var(--nx-grad) !important; border-bottom-right-radius: 6px !important; }
+.message.other {
+  background: rgba(255, 255, 255, 0.08) !important; border: 1px solid var(--nx-line) !important;
+  border-bottom-left-radius: 6px !important; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.msg-time { color: rgba(255, 255, 255, 0.55) !important; }
+.message.other .msg-time { color: var(--nx-muted) !important; }
+.msg-status.status-delivered { color: #e0f7ff !important; }
+.msg-status.status-read { color: #fff !important; text-shadow: 0 0 6px rgba(255, 255, 255, 0.6); }
+.system-msg { background: var(--nx-surface) !important; border: 1px solid var(--nx-line); color: var(--nx-muted) !important; border-radius: 999px !important; }
+#e2e-banner {
+  background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; color: var(--nx-muted) !important;
+  border-radius: 14px !important; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+#jump-to-bottom { background: var(--nx-glass) !important; border: 1px solid var(--nx-line) !important; color: #fff !important; }
+
+/* Barra de escribir */
+#input-area {
+  background: var(--nx-glass) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--nx-line) !important;
+}
+.input-wrapper { background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 24px !important; }
+#message-input { background: transparent !important; color: var(--nx-text) !important; }
+#message-input::placeholder { color: var(--nx-muted) !important; }
+.attach-btn { background: var(--nx-surface-2) !important; color: #fff !important; border: 1px solid var(--nx-line) !important; }
+.send-btn { background: var(--nx-grad) !important; box-shadow: 0 6px 18px rgba(0, 200, 255, 0.35); border: none !important; }
+
+/* Adjuntar: como WhatsApp (iconos redondos de color con su nombre) */
+.attach-menu {
+  background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; border-radius: 22px !important;
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5) !important;
+  padding: 16px 12px 12px !important; gap: 6px !important;
+}
+.attach-menu-item { flex-direction: column; gap: 6px; background: none !important; width: 64px !important; height: auto !important; }
+.attach-menu-item svg { width: 50px !important; height: 50px !important; padding: 13px; box-sizing: border-box; border-radius: 50%; fill: #fff !important; }
+.attach-menu-item[data-type="camera"] svg { background: linear-gradient(135deg, #ff5f6d, #ff3b30); }
+.attach-menu-item[data-type="gallery"] svg { background: linear-gradient(135deg, #00c8ff, #3b82f6); }
+.attach-menu-item[data-type="file"] svg { background: linear-gradient(135deg, #7c3aed, #a855f7); }
+.attach-menu-item[data-type="location"] svg { background: linear-gradient(135deg, #22c55e, #10b981); }
+.attach-menu-item[data-type="contact"] svg { background: linear-gradient(135deg, #f59e0b, #ff6b35); }
+.attach-menu-item::after { font-size: 11px; color: var(--nx-muted); }
+.attach-menu-item[data-type="camera"]::after { content: 'Cámara'; }
+.attach-menu-item[data-type="gallery"]::after { content: 'Galería'; }
+.attach-menu-item[data-type="file"]::after { content: 'Archivo'; }
+.attach-menu-item[data-type="location"]::after { content: 'Ubicación'; }
+.attach-menu-item[data-type="contact"]::after { content: 'Contacto'; }
+
+/* ---------- Hojas (menú de un mensaje, reenviar, compartir, grupo) ---------- */
+/* Menús que suben desde abajo (fondo oscuro translúcido + hoja de cristal) */
+#nexo-msg-menu, #nexo-group-menu { background: rgba(3, 4, 12, 0.55) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+#nexo-msg-menu > div, #nexo-group-menu > div, .ble-contact-menu {
+  position: relative; background: var(--nx-sheet) !important; color: var(--nx-text) !important;
+  border: 1px solid var(--nx-line) !important; border-bottom: none !important; border-radius: 26px 26px 0 0 !important;
+  padding: 24px 10px calc(14px + env(safe-area-inset-bottom, 0px)) !important; box-shadow: 0 -16px 50px rgba(0, 0, 0, 0.55) !important;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); animation: nxUp 0.22s ease-out;
+}
+#nexo-msg-menu > div::before, #nexo-group-menu > div::before {
+  content: ''; position: absolute; top: 9px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: rgba(255, 255, 255, 0.25);
+}
+@keyframes nxUp { from { transform: translateY(40px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.mm-item { border-radius: 14px !important; padding: 13px 14px !important; font-size: 15px !important; }
+.mm-item:active { background: var(--nx-surface-2) !important; }
+/* Pantallas completas (nuevo grupo, enviar contactos, reenviar) */
+#nexo-share-sheet, #nexo-group-sheet, #nexo-forward-sheet {
+  background: radial-gradient(circle at 15% 0%, rgba(0, 200, 255, 0.14), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, 0.16), transparent 45%), #0a0a15 !important;
+  padding-top: calc(16px + env(safe-area-inset-top, 0px)) !important;
+}
+#nexo-share-sheet input, #nexo-group-sheet input, #nexo-forward-sheet input, #nexo-share-search, #nexo-group-name {
+  background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; color: var(--nx-text) !important;
+}
+#nexo-share-sheet input[type="checkbox"], #nexo-group-sheet input[type="checkbox"], #nexo-forward-sheet input[type="checkbox"] { accent-color: #00c8ff; width: 20px; height: 20px; }
+#nexo-group-name:focus, #nexo-share-search:focus { border-color: var(--nx-cyan) !important; outline: none; box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.15); }
+.nexo-pick-row, .fw-row { border-radius: 14px !important; border-bottom: none !important; padding: 10px 8px !important; }
+.nexo-pick-row:active, .fw-row:active { background: var(--nx-surface) !important; }
+#nexo-group-create, #nexo-share-send, .fw-send { background: var(--nx-grad) !important; border-radius: 16px !important; box-shadow: 0 8px 24px rgba(0, 200, 255, 0.3); }
+#nexo-group-create:disabled, #nexo-share-send:disabled { opacity: 0.4; box-shadow: none; }
+#nexo-group-cancel, #nexo-share-cancel { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
+
+/* Perfil */
+#nexo-profile-sheet { background: transparent !important; padding: 0 !important; }
+#nexo-profile-sheet::before { content: ''; position: fixed; inset: 0; z-index: -1; background: inherit; }
+#nexo-profile-sheet .nx-profile-in { padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 24px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; background:
+  radial-gradient(circle at 20% 0%, rgba(0, 200, 255, 0.16), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, 0.18), transparent 45%), #0a0a15; }
+.nx-card { background: var(--nx-surface); border: 1px solid var(--nx-line); border-radius: 20px; padding: 14px 14px 12px; margin-bottom: 12px; }
+.nx-h { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; margin: 0 0 8px; }
+.nx-h .nx-ico { width: 30px; height: 30px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--nx-grad); font-size: 15px; }
+.nx-sub { font-size: 12px; color: var(--nx-muted); margin-bottom: 10px; white-space: pre-line; line-height: 1.45; }
+.nx-btn { width: 100%; padding: 12px; border-radius: 14px; border: 1px solid var(--nx-line); background: var(--nx-surface-2); color: #fff; font-size: 14px; font-weight: 600; margin-bottom: 8px; cursor: pointer; }
+.nx-btn:active { transform: scale(0.98); }
+.nx-btn-primary { background: var(--nx-grad); border: none; box-shadow: 0 8px 22px rgba(0, 200, 255, 0.3); }
+.nx-id-card { display: flex; align-items: center; gap: 14px; }
+.nx-id-card .nx-av { width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; background: var(--nx-grad); box-shadow: 0 8px 24px rgba(0, 200, 255, 0.3); }
+.nx-id-card .nx-idtxt { font-size: 12px; color: var(--nx-muted); }
+.nx-id-card b { display: block; font-size: 19px; color: #fff; letter-spacing: 0.6px; margin-top: 2px; }
+#nexo-profile-sheet label { color: var(--nx-text); }
+#nexo-profile-sheet input[type="checkbox"] { accent-color: #00c8ff; width: 18px; height: 18px; }
+#nexo-diag-text { background: rgba(0, 0, 0, 0.45) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
+
+/* Panel de agregar contactos */
+#ble-panel { background: #0a0a15 !important; }
+#ble-panel .ble-search-bar { background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; border-radius: 14px !important; }
+.ble-new-device { background: var(--nx-surface) !important; border: 1px solid rgba(0, 200, 255, 0.35) !important; border-radius: 18px !important; box-shadow: 0 0 0 4px rgba(0, 200, 255, 0.06); }
+.ble-btn-add-small { background: var(--nx-grad) !important; }
+.ble-bottom-bar, .ble-status-bar { background: var(--nx-glass) !important; border-top: 1px solid var(--nx-line) !important; color: var(--nx-muted) !important; }
+.ble-btn-scan-round { background: var(--nx-grad) !important; box-shadow: 0 8px 24px rgba(0, 200, 255, 0.35) !important; border: none !important; }
+.ble-btn-scan-round.scanning { background: linear-gradient(135deg, #ef4444, #f97316) !important; box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4) !important; }
+.ble-btn-scan-round::before { content: 'BUSCAR' !important; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+.ble-btn-scan-round.scanning::before { content: 'PARAR' !important; }
+.ble-btn-visibility-round { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
+.ble-btn-visibility-round.active { background: var(--nx-grad) !important; }
+.ble-btn-visibility-round::before { content: 'VER' !important; }
+.ble-section-label { color: var(--nx-muted) !important; letter-spacing: 1px; }
+#ble-panel-back { box-shadow: none !important; }
+
+/* Avisos cortos */
+.info-toast, #perm-error-toast {
+  background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; color: var(--nx-text) !important;
+  border-radius: 16px !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Pasar la cuenta / Fénix */
+#nexo-move-screen { background: radial-gradient(circle at 20% 10%, rgba(0, 200, 255, 0.18), transparent 40%), radial-gradient(circle at 85% 90%, rgba(168, 85, 247, 0.2), transparent 45%), #0a0a15 !important; }
+#nexo-move-screen .move-close { border-radius: 14px !important; background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }
+#nexo-fenix-ask { background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; border-radius: 22px !important; }
+#ble-panel { background: radial-gradient(circle at 15% 0%, rgba(0, 200, 255, 0.14), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, 0.16), transparent 45%), #0a0a15 !important; }
+#ble-panel .ble-header { background: transparent !important; border-bottom: 1px solid var(--nx-line) !important; padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important; }
+#ble-panel-back { background: var(--nx-surface-2) !important; border: 1px solid var(--nx-line) !important; }

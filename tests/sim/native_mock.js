@@ -495,8 +495,10 @@ class NativePhone {
       this.bgInbox.push({ d: fromAddress, c: json });
       const me = String(this.advertisingId || '').toLowerCase();
       if (me) this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify({ v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() }));
-      if (!info.quiet) notify(info.call ? '📞 Llamada entrante' : '');
+      if (info.call) { this.callNotif = { from: info.from, video: false }; this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
+      else if (!info.quiet) notify('');
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json });
+    else if (info.kind === 'NOTIFY_ONLY' && info.what === 'call') { this.callNotif = { from: info.from, video: false }; this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
     else if (info.kind === 'NOTIFY_ONLY') notify(NativePhone.whatText(info.what));
   }
 
@@ -1039,6 +1041,10 @@ class NativePhone {
       torStop: wrap('torStop', (c) => { if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
       // Notificaciones de mensajes (MsgNotifier.kt): una por chat con su número; el icono de la app suma los números
       notifyMessage: wrap('notifyMessage', (c, a) => { c.resolve({ count: self._postNotif(a.chatId, a.name, a.msgId, a.text, {}) }); }),
+      // Ronda 2763 (MsgNotifier.incomingCall): aviso de llamada con tono; Contestar / Rechazar quedan en pendingAnswer / pendingDecline
+      notifyCall: wrap('notifyCall', (c, a) => { self.callNotif = { from: String(a.chatId || '').toLowerCase(), video: !!a.video }; self.notifLog.push({ t: Date.now(), chatId: self.callNotif.from, name: a.name, text: '📞 Llamada entrante', call: true }); c.resolve({}); }),
+      clearCall: wrap('clearCall', (c) => { self.callNotif = null; c.resolve({}); }),
+      callAction: wrap('callAction', (c) => { const o = {}; if (self.pendingAnswer) o.answer = self.pendingAnswer; if (self.pendingDecline) o.declined = self.pendingDecline; self.pendingAnswer = null; self.pendingDecline = null; c.resolve(o); }),
       // Escucha nativa de internet en segundo plano (NetBg.kt; probada en tests/kotlin/NetBgTest): se guarda la configuración
       netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),
       ensureNotificationPermission: wrap('ensureNotificationPermission', (c) => { self.notifPermAsked = (self.notifPermAsked || 0) + 1; c.resolve({ granted: !self.opts.noNotifPerm }); }),

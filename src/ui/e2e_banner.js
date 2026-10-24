@@ -2,6 +2,7 @@
  * NEXO — Aviso de cifrado del chat (sacado de main.js en la ronda 2752, sin cambios): estado del cifrado (poscuántico,
  * número de seguridad, clave cambiada) y verificación con QR.
  */
+import { isGroupId } from './groups.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './qr_verify.js';
@@ -23,6 +24,14 @@ export function _renderE2EBanner() {
     mc.insertBefore(b, mc.firstChild);
   }
   b.innerHTML = '';
+  // Ronda 2763: en un grupo no hay "clave del contacto" (cada mensaje va cifrado para cada persona); antes decía
+  // "Esperando la clave de cifrado de GR…"
+  if (isGroupId(cid)) {
+    b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;white-space:pre-line;';
+    b.onclick = null;
+    b.textContent = '🔒 Mensajes del grupo cifrados de extremo a extremo: cada mensaje va cifrado para cada persona del grupo.';
+    return;
+  }
   b.style.cssText = 'margin:8px auto 12px;max-width:300px;padding:8px 12px;border-radius:10px;font-size:12px;text-align:center;cursor:pointer;white-space:pre-line;' +
     (c.pendingKey ? 'background:rgba(255,59,48,0.15);color:#ff8a80;' : 'background:rgba(255,200,0,0.12);color:#ffd76a;');
   var bi = window.bleInterface;

@@ -200,6 +200,14 @@ class NexoBlePlugin : Plugin() {
         try {
             val intent = given ?: activity.intent
             if (intent != null) {
+                // Ronda 2763: "Contestar" en el aviso de llamada
+                val answer = intent.getStringExtra(MsgNotifier.EXTRA_ANSWER)
+                if (answer != null) {
+                    MsgNotifier.pendingAnswer = answer.lowercase() to System.currentTimeMillis()
+                    MsgNotifier.get(activity.applicationContext).cancelCall()
+                    notifyListeners("onCallAction", JSObject().put("answer", answer.lowercase()), true)
+                    intent.removeExtra(MsgNotifier.EXTRA_ANSWER)
+                }
                 val deviceId = intent.getStringExtra("nexo_chat_device_id")
                 if (deviceId != null) {
                     notifyListeners("onNotificationOpened", JSObject()
@@ -486,6 +494,7 @@ class NexoBlePlugin : Plugin() {
     // aparte que la app quita al abrirse (no es un contacto)
     private fun notifyOnly(ctx: Context, info: BgInbox.Info) {
         if (info.quiet) return
+        if (info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false); return }
         val chat = info.from.ifEmpty { "nexo_jump" }
         MsgNotifier.get(ctx).message(chat, if (info.from.isEmpty()) "NEXO" else netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId,
             when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "call" -> "📞 Llamada entrante"; "text" -> ""; else -> "📎 Archivo" })
@@ -500,6 +509,8 @@ class NexoBlePlugin : Plugin() {
         val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
         if (info.msgId.isEmpty() || info.quiet) return
         if (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY) return
+        // Llamada: suena ya (si la app está viva también la avisa: es el mismo aviso, no sale dos veces)
+        if (info.call || info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false); return }
         mainHandler.postDelayed({
             if (!appInBackground || MsgNotifier.get(ctx).book.hasMsg(info.msgId)) return@postDelayed
             if (info.kind == BgInbox.Kind.MESSAGE) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, "")
@@ -519,7 +530,9 @@ class NexoBlePlugin : Plugin() {
                     val ack = JSONObject().put("v", 1).put("type", "ack").put("msgId", info.msgId).put("from", me).put("ts", System.currentTimeMillis()).toString()
                     sendChunkedOrSingle(normalizeMac(deviceId), deviceId, ack)
                 }
-                if (!info.quiet) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, if (info.call) "📞 Llamada entrante" else "")
+                // Ronda 2763: una llamada suena como una llamada del teléfono (aviso con tono, Contestar / Rechazar)
+                if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false)
+                else if (!info.quiet) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, "")
             }
             BgInbox.Kind.RECEIPT -> inbox().add(deviceId, json)
             BgInbox.Kind.NOTIFY_ONLY -> notifyOnly(ctx, info)
@@ -2267,6 +2280,29 @@ class NexoBlePlugin : Plugin() {
         netBg().configure(me, relays, since, list)
         if (appInBackground && list.isNotEmpty()) netBg().start()
         call.resolve(JSObject().put("contacts", list.size).put("running", netBg().running))
+    }
+
+    // ===== Ronda 2763: llamada entrante como una llamada del teléfono (calls_ui.js) =====
+    @PluginMethod
+    fun notifyCall(call: PluginCall) {
+        val from = (call.getString("chatId") ?: "").lowercase()
+        if (from.isEmpty()) { call.reject("chatId requerido"); return }
+        MsgNotifier.get(context).incomingCall(from, call.getString("name") ?: "NEXO", call.getBoolean("video", false) == true)
+        call.resolve()
+    }
+    @PluginMethod
+    fun clearCall(call: PluginCall) { MsgNotifier.get(context).cancelCall(); call.resolve() }
+    // Lo que se tocó en el aviso (Contestar / Rechazar) en los últimos 90 s; se entrega una vez
+    @PluginMethod
+    fun callAction(call: PluginCall) {
+        val now = System.currentTimeMillis()
+        val a = MsgNotifier.pendingAnswer?.takeIf { now - it.second < 90000 }
+        val d = MsgNotifier.pendingDecline?.takeIf { now - it.second < 90000 }
+        MsgNotifier.pendingAnswer = null; MsgNotifier.pendingDecline = null
+        val out = JSObject()
+        if (a != null) out.put("answer", a.first)
+        if (d != null) out.put("declined", d.first)
+        call.resolve(out)
     }
 
     // ===== Notificaciones de mensajes (MsgNotifier): las pide notify.js con la app en segundo plano =====

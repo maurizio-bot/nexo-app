@@ -159,13 +159,13 @@ export function lockEnabled() { return !!_prefs.lock; }
 export function securitySectionHtml() {
   var opts = AFTER_OPTIONS.map(function(o) { return '<option value="' + o.ms + '">' + o.label + '</option>'; }).join('');
   var row = 'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:14px;';
-  return '<div style="font-size:16px;font-weight:600;margin:8px 0;">Seguridad</div>' +
+  return '<div class="nx-h"><span class="nx-ico">🔐</span>Seguridad</div>' +
     '<div id="nexo-sec-atrest" style="font-size:12px;opacity:0.8;margin-bottom:8px;"></div>' +
     '<label style="' + row + '"><span>Bloquear NEXO con huella o PIN</span><input type="checkbox" id="nexo-sec-lock" style="width:22px;height:22px;"></label>' +
-    '<label id="nexo-sec-after-row" style="' + row + '"><span>Pedirla</span><select id="nexo-sec-after" style="background:#1a1b2e;color:#fff;border:1px solid #334;border-radius:8px;padding:6px;">' + opts + '</select></label>' +
+    '<label id="nexo-sec-after-row" style="' + row + '"><span>Pedirla</span><select id="nexo-sec-after" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:7px;">' + opts + '</select></label>' +
     '<label style="' + row + '"><span>Bloquear capturas de pantalla</span><input type="checkbox" id="nexo-sec-secure" style="width:22px;height:22px;"></label>' +
     '<div id="nexo-sec-msg" style="font-size:13px;color:#7fdcff;min-height:0;margin-bottom:4px;"></div>' +
-    '<div style="font-size:11px;opacity:0.6;margin-bottom:12px;">Con las capturas bloqueadas NEXO tampoco se ve en "recientes" ni en grabaciones. Con el bloqueo los mensajes siguen llegando.</div>';
+    '<div style="font-size:11px;opacity:0.6;margin-bottom:2px;">Con las capturas bloqueadas NEXO tampoco se ve en "recientes" ni en grabaciones. Con el bloqueo los mensajes siguen llegando.</div>';
 }
 
 // Aviso dentro de Perfil (la hoja tapa los avisos normales) o, si no está abierto, aviso normal
