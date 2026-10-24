@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2764)
+Última actualización: 2026-10-24 (build 2765)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -90,7 +90,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2761 | a24a47f4 | Sobre la 2759 (sin las novedades pendientes): diagnóstico de los dos teléfonos del dueño → camino de envío con la regla nueva del dueño (Wi-Fi se mantiene; muy malo → internet; sin internet → Bluetooth; sin brincar), vigilante del Bluetooth que ya no corta enlaces vivos ni con un archivo en curso, enlace de MTU más alto, avisos nativos con la app en segundo plano aunque el teléfono la congele y avisos de Jump con la app cerrada. Ver "Ronda 2760" |
 | 2762 | 4634f69e | La 2761 + lo que estaba pendiente: pasar la cuenta a un teléfono nuevo (punto 15 A), aviso "Llamada entrante" con la app cerrada, botón de altavoz; llamadas: códec real en oferta y respuesta (un teléfono sin Opus no oía nada), videollamada por altavoz, salida de audio Android 12+, diagnóstico `[CALL]`; pantalla de llamada y videollamada nueva (estilo WhatsApp + NEXO, girar cámara). **Sin APK**: en GitHub falló una prueba Kotlin de tiempos (`AtRestStoreTest.migrarArchivoGrandeNoBloqueaOtros`: un guardado tardó 394 ms por una pausa de la máquina; el código no tenía fallo). Todo pasa a la 2763 |
 | 2763 | 5c215c86 | La 2762 + toda la app con el estilo NEXO (como la pantalla de llamadas), llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar), avisos de grupo con el nombre del grupo con la app cerrada o congelada, y la prueba de tiempos rehecha (determinista). Ver "Ronda 2763". APK verificada (nightly-2763, 24,5 MB) |
-| 2764 | (este commit) | **Informe grave del dueño (tablet + S24 + Vivo): lo que la tablet mandaba al S24 (archivos, llamadas) sonaba y avisaba en el Vivo**: cada paquete directo dice a quién va y el que no es lo ignora (no suena, no avisa, no ✓✓), avisa "no soy yo" y el emisor corrige la conexión; un sobre de Jump de paso ya no avisa en el siguiente teléfono; al buscar ya no sale "Unknown" (nombre del teléfono al conectar) y "Agregar" nunca falla en silencio. Además: grupos con vídeo HD y archivos grandes; pantalla girada sin barra gris. Ver "Ronda 2764" |
+| 2764 | 7c9afbaa | **Informe grave del dueño (tablet + S24 + Vivo): lo que la tablet mandaba al S24 (archivos, llamadas) sonaba y avisaba en el Vivo**: cada paquete directo dice a quién va y el que no es lo ignora (no suena, no avisa, no ✓✓), avisa "no soy yo" y el emisor corrige la conexión; un sobre de Jump de paso ya no avisa en el siguiente teléfono; al buscar ya no sale "Unknown" (nombre del teléfono al conectar) y "Agregar" nunca falla en silencio. Además: grupos con vídeo HD y archivos grandes; pantalla girada sin barra gris. Ver "Ronda 2764". **Sin APK**: el comentario de `nexo_colors.xml` llevaba "--" (no permitido en XML) y falló la compilación de Android. Todo pasa a la 2765 |
+| 2765 | (este commit) | La 2764 con el XML corregido (todos los XML de Android revisados con un analizador) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el

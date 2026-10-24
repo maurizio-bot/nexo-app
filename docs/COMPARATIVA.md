@@ -1,6 +1,6 @@
 # NEXO — Comparativa con la competencia y estado de avance
 
-Hecha el 24-10-2026 (build 2763 publicada; 2764 en pruebas). Actualizar cuando cambie algo importante.
+Hecha el 24-10-2026 (build 2763 publicada; 2765 en camino). Actualizar cuando cambie algo importante.
 Los datos de NEXO salen del código; los de la competencia, de sus páginas y noticias (enlaces al final). Lo que no se
 pudo confirmar va marcado con "?".
 
@@ -42,10 +42,10 @@ perfil, estados, buscar en los chats).
 
 | Parte | Código | Simulador | Teléfonos |
 |---|---|---|---|
-| Escaneo y agregar | ✅ | ✅ | ⚠️ no se veía a nadie tras borrar (2764) |
+| Escaneo y agregar | ✅ | ✅ | ⚠️ no se veía a nadie tras borrar (2765) |
 | Conexión Bluetooth | ✅ | ✅ | ⚠️ enlace rehecho cada 30 s (2761) |
 | Textos cortos y largos | ✅ | ✅ | ✅ (2713) |
-| Envío al teléfono correcto | ✅ | ✅ | ⚠️ llegaba al Vivo (2764) |
+| Envío al teléfono correcto | ✅ | ✅ | ⚠️ llegaba al Vivo (2765) |
 | Fotos y archivos por Bluetooth | ✅ | ✅ | ⚠️ no llegaban (2761) |
 | Archivos grandes hasta 1 GB | ✅ | ✅ | ⏳ |
 | Wi-Fi Direct | ✅ | ✅ | ✅ (2713) |
@@ -60,7 +60,7 @@ perfil, estados, buscar en los chats).
 | Videollamadas (mismo Wi-Fi) | ✅ | ✅ | ⚠️ (2762) |
 | Fénix | ✅ | ✅ | ⏳ |
 | Pasar la cuenta | ✅ | ✅ | ⏳ |
-| Interfaz estilo NEXO | ✅ | ✅ | ⚠️ barra gris al girar (2764) |
+| Interfaz estilo NEXO | ✅ | ✅ | ⚠️ barra gris al girar (2765) |
 
 Plan del dueño (23-10, PENDIENTES §5): puntos 1–17 hechos en código (13 L2CAP y 17 videollamadas con una segunda
 fase pendiente; 15 B, varios dispositivos a la vez, para después). Faltan 18 (pruebas con 3–4 teléfonos), 19
