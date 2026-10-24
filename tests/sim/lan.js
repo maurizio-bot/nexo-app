@@ -137,13 +137,14 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
     r.corte_breve_sigue_wifi = viaA() === 'wifi' && viaB() === 'wifi';
     nA.opts.lanBps = 0; nB.opts.lanBps = 0;
   }
-  // 1c) Mala señal: ida y vuelta de 2,5 s → lo nuevo por Bluetooth; al mejorar, vuelve al Wi-Fi
+  // 1c) Mala señal: ida y vuelta de 2,5 s → lo nuevo por Bluetooth (aquí no hay internet); al mejorar, vuelve al Wi-Fi
+  //     (2760, regla del dueño: sin brincar, tras ~30 s buenos)
   {
     nA.opts.lanRtt = 2500; nB.opts.lanRtt = 2500;
     r.mala_senal_pasa_a_bluetooth_s = await waitFor(() => viaA() === 'bluetooth', 30000);
     r.mala_senal_cabecera_B = (await waitFor(() => viaB() === 'bluetooth', 15000)) !== null ? B.win.document.getElementById('chat-contact-subtitle').textContent : viaB();
     nA.opts.lanRtt = 0; nB.opts.lanRtt = 0;
-    r.buena_senal_vuelve_wifi_s = await waitFor(() => viaA() === 'wifi' && viaB() === 'wifi', 30000);
+    r.buena_senal_vuelve_wifi_s = await waitFor(() => viaA() === 'wifi' && viaB() === 'wifi', 60000);
   }
 
   // 2) Fuera de alcance de Bluetooth, misma red
