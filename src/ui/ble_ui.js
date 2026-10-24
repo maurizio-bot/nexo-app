@@ -3,7 +3,7 @@
  * sin cambios): panel, botones de visibilidad y búsqueda, lista de chats, franja de en línea, menú de cada contacto,
  * barra de teléfonos nuevos, insignia y estado.
  */
-import { BLE_STATES, _formatTime, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
+import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
 
 export const BLE_UI_METHODS = {
@@ -498,7 +498,7 @@ export const BLE_UI_METHODS = {
     newDevices.forEach(function(item) {
       var device = item.device;
       var deviceId = item.deviceId;
-      var displayName = device.name || device.deviceUUID || 'Nexo Device';
+      var displayName = _niceName(device.name, device.deviceUUID);
       var row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px 20px;border:2px solid #00c8ff;border-radius:16px;background:rgba(0,20,40,0.9);box-sizing:border-box;';
       var nameSpan = document.createElement('span');

@@ -1450,10 +1450,11 @@ ChatStream.prototype._sendWindow = function() {
           if (fails === 1 || fails % 20 === 0) console.warn('[ChatStream] Envio nativo fallo chunk', idx, err.message, '(' + fails + ')');
           // v3.10.0: el enlace ya no sirve (p. ej. Wi-Fi caído): seguir por el mejor camino de ahora. Antes se
           // reintentaba para siempre cada 200 ms por el mismo enlace.
-          var bi = self.ble, nx = self.ackSystem._resolveNexoId(self.deviceId);
-          var best = (fails >= 3 && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx) : null;
+          var bi = self.ble, nx = self._dn || self.ackSystem._resolveNexoId(self.deviceId);
+          var wrong = err && err.code === 'WRONG_PEER';
+          var best = ((fails >= 3 || wrong) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx) : null;
           if (best && _normMac(best) !== _normMac(self.deviceId)) self.useLink(best);
-          if (fails > 120) {
+          if (fails > 120 || (wrong && !best)) {
             // ~2 min sin poder enviar: queda pendiente y se reanuda al volver a haber camino
             var e = new Error('Contacto no disponible: queda pendiente'); e.code = 'PEER_ABSENT';
             var rej = self.reject; self.reject = null;
@@ -1471,6 +1472,11 @@ ChatStream.prototype._sendWindow = function() {
 // v3.13.0: binario si se puede (no el trozo 0, que lleva los datos del archivo y la miniatura); si no, JSON
 ChatStream.prototype._sendChunk = function(idx) {
   var d = this.chunks[idx];
+  // Ronda 2764: la conexión resultó ser de otro (ver _remapDevice): no seguir por ella
+  if (this._dn && this.ble && typeof this.ble._destNx === 'function') {
+    var cur = this.ble._destNx(this.deviceId);
+    if (cur && cur !== this._dn) { var ew = new Error('la conexión es de otro contacto'); ew.code = 'WRONG_PEER'; return Promise.reject(ew); }
+  }
   if (this.bin && idx > 0 && this.ackSystem.peerBin(this.deviceId) && _binOk(d)) {
     var head = JSON.parse(this._buildChunk(idx));
     delete head.d;
@@ -1512,6 +1518,10 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.pages) obj.pg = this.meta.pages;
     if (this.meta.dst) obj.dt = this.meta.dst;
     if (this.meta.hp) obj.hp = this.meta.hp;
+    // Ronda 2764: a quién va (directo; se fija la primera vez: aunque la conexión resulte ser de otro, sigue siendo
+    // para el mismo); el que lo recibe lo ignora si no es él
+    var bdn = this.ble;
+    if (!this.meta.dst && bdn && typeof bdn._destNx === 'function') { if (this._dn === undefined) this._dn = bdn._destNx(this.deviceId); if (this._dn) obj.dn = this._dn; }
     // Ronda 2759: oferta de llamada troceada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
     var bi0 = typeof window !== 'undefined' && window.bleInterface;
     if (this.type === 'chat' && bi0 && bi0._callOut && bi0._callOut.has(this.msgId)) obj.cl = 1;

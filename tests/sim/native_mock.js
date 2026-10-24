@@ -444,6 +444,7 @@ class NativePhone {
     const NX = /^nx[0-9a-z]{8}$/;
     const from = String(o.from || o.fr || '').toLowerCase();
     me = String(me || '').toLowerCase(); const mine = NX.test(me);
+    if (mine && NX.test(String(o.dn || '').toLowerCase()) && String(o.dn).toLowerCase() !== me) return { kind: 'IGNORE' }; // Kotlin 2764
     const what = () => (o.t === 'c' ? (o.cl === 1 ? 'call' : 'text') : (o.tp || 'file'));
     if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1, group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
     if (mine && o.type === 'chat' && o.msgId && NX.test(from) && String(o.to).toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from, msgId: o.msgId, quiet: o.q === 1, what: 'text' };
@@ -488,6 +489,8 @@ class NativePhone {
     if (this.appActive !== false || this.closedMode || this.opts.noBgNotify) return;
     const info = NativePhone.classifyClosed(json, this.advertisingId);
     if (!info.msgId || info.quiet || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return;
+    // Kotlin 2763: una llamada suena ya (aviso de llamada del teléfono)
+    if (info.call || info.what === 'call') { this.callNotif = { from: info.from, video: false }; this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, bg: true }); return; }
     setTimeout(() => {
       if (this.appActive !== false || this.closedMode || (this.msgChat && this.msgChat.has(String(info.msgId)))) return;
       if (info.kind === 'MESSAGE') this._notifyMsg(info, { bg: true });
@@ -694,7 +697,8 @@ class NativePhone {
           // El nombre del teléfono va en la respuesta al escaneo solo si es visible (Kotlin 2755)
           const adv = p.advertised();
           (self.radio.airAds = self.radio.airAds || []).push({ by: p.name, adv, visible: p.advertisedVisible(), t: Date.now() });
-          self.emit('onDeviceFound', { deviceId: p.address, name: p.advertisedVisible() ? p.name : '', rssi: -50, nexoId: adv });
+          // (noAdvName: como en los teléfonos reales, el anuncio no trae el nombre y el nativo pone "Unknown")
+          self.emit('onDeviceFound', { deviceId: p.address, name: p.opts.noAdvName ? 'Unknown' : (p.advertisedVisible() ? p.name : ''), rssi: -50, nexoId: adv });
         }), 80);
       }),
       stopScan: wrap('stopScan', (c) => { self.scanningUntil = 0; c.resolve({ stopped: true }); }),

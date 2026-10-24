@@ -16,6 +16,7 @@ import org.json.JSONObject
  *    app en menos de 60 s suena)
  *  - ronda 2760: lo que llega por Jump para este teléfono (sobre sellado 'sx', mensaje o primer trozo con destino = mi
  *    NEXO ID): solo notificación (el puente lo guarda y lo vuelve a mandar; con remitente oculto, sin nombre)
+ *  - ronda 2764: lo que dice ir a otro NEXO ID ('dn'): nada (la conexión estaba apuntada como de otro en el emisor)
  *  - lo demás (control, trozos, rutas…): nada (al abrir la app se rehace)
  * Al abrir la app, el buzón se entrega en orden como si acabara de llegar (la app descifra y quita repetidos).
  * Sin dependencias de Android: se prueba en JVM (BgInboxTest).
@@ -33,6 +34,10 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             val type = o.optString("type"); val t = o.optString("t")
             val from = (o.optString("from").ifEmpty { o.optString("fr") }).lowercase()
             val mine = me.isNotEmpty() && NX.matches(me.lowercase())
+            // Ronda 2764 (informe del dueño: lo de la tablet para el S24 sonaba en el Vivo): un paquete directo dice a
+            // quién va ('dn'); si no es este teléfono, nada (ni aviso, ni llamada, ni ✓✓, ni buzón)
+            val dn = o.optString("dn").lowercase()
+            if (mine && NX.matches(dn) && dn != me.lowercase()) return Info(Kind.IGNORE, from, "", false, "")
             if (type == "chat" && o.optString("msgId").isNotEmpty() && NX.matches(from)) {
                 val to = o.optString("to").lowercase()
                 // ronda 2763: mensaje de grupo directo: el id del grupo (para el nombre en el aviso)

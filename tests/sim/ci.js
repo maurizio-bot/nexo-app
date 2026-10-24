@@ -46,6 +46,8 @@ const SCENARIOS = [
     con_B_cerrada: (v) => !!v && v.estado_en_A.every((x) => /delivered|read/.test(x)) && v.notificaciones_B.length >= 1 && v.oculta_en_buzon_sin_aviso === true } },
   { name: 'chats de grupo (crear, escribir, texto largo, salir)', args: ['groups.js', '--io-delay=25'], tag: 'GROUPS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'grupos: vídeo HD y archivo grande (24 MB, uno lo pide al llegar al Wi-Fi)', args: ['group_media.js'], tag: 'GROUP_MEDIA', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'envío al teléfono equivocado (informe del dueño: lo de la tablet para el S24 sonaba en el Vivo)', args: ['misroute.js'], tag: 'MISROUTE', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'borrar y volver a agregar un contacto (sin "Unknown"; nombre al conectar)', args: ['readd.js'], tag: 'READD', checks: { resultado: (v) => v === 'OK' } },
   { name: 'llamadas de voz (contestar, rechazar, sin respuesta, se corta)', args: ['calls.js', '--io-delay=25'], tag: 'CALLS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'pasar la cuenta a un teléfono nuevo', args: ['move.js', '--io-delay=25'], tag: 'MOVE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'avisos por Bluetooth: segundo plano, app congelada y cerrada', args: ['notify.js', '--via=ble'], tag: 'NOTIFY', checks: { resultado: (v) => v === 'OK' } },

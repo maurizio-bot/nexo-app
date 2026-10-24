@@ -3,7 +3,7 @@
  * supervisor de enlaces, pings, reconexión, búsqueda de contactos perdidos, teléfonos encontrados al escanear y
  * esperar a que un enlace esté listo.
  */
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _getBLEContacts, _isGenericName, _niceName, _showToast, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _isBLEContact, _isResendable, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _vNx, _vaultGetOrCreateContact, _vaultLoadMessages } from './ble_helpers.js';
 
 
 export const BLE_CONNECTION_METHODS = {
@@ -365,7 +365,7 @@ export const BLE_CONNECTION_METHODS = {
         contacts[idx].online = true;
         contacts[idx].lastSeen = Date.now();
         contacts[idx].deviceId = deviceId;
-        if (device.name && !contacts[idx].name) {
+        if (device.name && !_isGenericName(device.name) && _isGenericName(contacts[idx].name)) {
           contacts[idx].name = device.name;
         }
         _saveBLEContacts(contacts);
@@ -389,7 +389,7 @@ export const BLE_CONNECTION_METHODS = {
       this.renderNewDeviceBar();
     } else {
       existing.id = deviceId;
-      existing.name = device.name || existing.name || '';
+      existing.name = !_isGenericName(device.name) ? device.name : (existing.name || device.name || '');
       existing.rssi = device.rssi;
       existing.lastSeen = Date.now();
       existing.deviceUUID = nexoId;
@@ -407,13 +407,22 @@ export const BLE_CONNECTION_METHODS = {
       }
     }
     var device = this.foundDevices.get(deviceId) || (this._recentFound && this._recentFound.get(deviceId));
-    if (!device) return;
-    var name = device.name || device.deviceUUID || 'Nexo Device';
-    var nexoId = device.deviceUUID || '';
-    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
-      console.warn('[BLEInterface] Sin NEXO ID');
+    // Ronda 2764 (informe del dueño: "al pulsar agregar no pasaba nada"): nunca en silencio
+    if (!device) {
+      console.warn('[ADD] Agregar ' + deviceId + ': ya no está en la lista (se dejó de ver); se vuelve a buscar');
+      _showToast('Ya no se ve ese teléfono. Buscando otra vez…', 'warn');
+      this.foundDevices.delete(deviceId); this.renderNewDeviceBar();
+      if (!this.isScanning && typeof this.toggleScan === 'function') this.toggleScan();
       return;
     }
+    var name = _niceName(device.name, device.deviceUUID);
+    var nexoId = device.deviceUUID || '';
+    if (!nexoId || nexoId.length !== 10 || nexoId.indexOf('NX') !== 0) {
+      console.warn('[ADD] Agregar: sin NEXO ID (' + nexoId + ')');
+      _showToast('No se pudo agregar: ese teléfono no dijo su NEXO ID. Que abra "Agregar" y vuelve a buscar.', 'warn');
+      return;
+    }
+    console.log('[ADD] Agregar ' + _normId(nexoId) + ' (' + name + ') por ' + (device.id || deviceId));
     if (!_isBLEContact(nexoId)) {
       _addBLEContact({
         deviceUUID: nexoId,

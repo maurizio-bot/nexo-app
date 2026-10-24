@@ -27,6 +27,19 @@ class BgInboxTest {
         assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("no es json").kind)
     }
 
+    // Ronda 2764 (informe del dueño: lo de la tablet para el S24 sonaba y avisaba en el Vivo): lo que dice ir a otro
+    // ('dn') no avisa, no suena y no va al buzón (ni ✓✓)
+    @Test fun paraOtroTelefonoNada() {
+        val me = "NX99999999"
+        val paraMi = chat.replace("\"to\":\"\"", "\"to\":\"\",\"dn\":\"nx99999999\"")
+        assertEquals(BgInbox.Kind.MESSAGE, BgInbox.classify(paraMi, me).kind, "para mí: como siempre")
+        val otro = chat.replace("\"to\":\"\"", "\"to\":\"\",\"dn\":\"nx88888888\",\"cl\":1")
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify(otro, me).kind, "llamada para otro: nada")
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":2,"t":"f","m":"f2","i":0,"n":9,"d":"x","fr":"NX12345678","dn":"nx88888888","tp":"image","k":"a"}""", me).kind, "archivo para otro: nada")
+        assertEquals(BgInbox.Kind.NOTIFY_ONLY, BgInbox.classify("""{"v":2,"t":"f","m":"f2","i":0,"n":9,"d":"x","fr":"NX12345678","dn":"nx99999999","tp":"image","k":"a"}""", me).kind)
+        assertEquals(BgInbox.Kind.MESSAGE, BgInbox.classify(otro).kind, "sin saber mi NEXO ID: como antes")
+    }
+
     // Ronda 2760: lo que llega por Jump para mí (el puente lo guarda y lo vuelve a mandar): solo aviso
     @Test fun jumpParaMi() {
         val me = "NX99999999"

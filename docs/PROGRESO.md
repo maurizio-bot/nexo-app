@@ -90,7 +90,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2761 | a24a47f4 | Sobre la 2759 (sin las novedades pendientes): diagnóstico de los dos teléfonos del dueño → camino de envío con la regla nueva del dueño (Wi-Fi se mantiene; muy malo → internet; sin internet → Bluetooth; sin brincar), vigilante del Bluetooth que ya no corta enlaces vivos ni con un archivo en curso, enlace de MTU más alto, avisos nativos con la app en segundo plano aunque el teléfono la congele y avisos de Jump con la app cerrada. Ver "Ronda 2760" |
 | 2762 | 4634f69e | La 2761 + lo que estaba pendiente: pasar la cuenta a un teléfono nuevo (punto 15 A), aviso "Llamada entrante" con la app cerrada, botón de altavoz; llamadas: códec real en oferta y respuesta (un teléfono sin Opus no oía nada), videollamada por altavoz, salida de audio Android 12+, diagnóstico `[CALL]`; pantalla de llamada y videollamada nueva (estilo WhatsApp + NEXO, girar cámara). **Sin APK**: en GitHub falló una prueba Kotlin de tiempos (`AtRestStoreTest.migrarArchivoGrandeNoBloqueaOtros`: un guardado tardó 394 ms por una pausa de la máquina; el código no tenía fallo). Todo pasa a la 2763 |
 | 2763 | 5c215c86 | La 2762 + toda la app con el estilo NEXO (como la pantalla de llamadas), llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar), avisos de grupo con el nombre del grupo con la app cerrada o congelada, y la prueba de tiempos rehecha (determinista). Ver "Ronda 2763". APK verificada (nightly-2763, 24,5 MB) |
-| 2764 | (este commit) | Grupos: vídeo HD y archivos grandes (hasta 1 GB) a cada miembro; con el teléfono girado, la franja de la cámara frontal ya no sale gris. Ver "Ronda 2764" |
+| 2764 | (este commit) | **Informe grave del dueño (tablet + S24 + Vivo): lo que la tablet mandaba al S24 (archivos, llamadas) sonaba y avisaba en el Vivo**: cada paquete directo dice a quién va y el que no es lo ignora (no suena, no avisa, no ✓✓), avisa "no soy yo" y el emisor corrige la conexión; un sobre de Jump de paso ya no avisa en el siguiente teléfono; al buscar ya no sale "Unknown" (nombre del teléfono al conectar) y "Agregar" nunca falla en silencio. Además: grupos con vídeo HD y archivos grandes; pantalla girada sin barra gris. Ver "Ronda 2764" |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -216,6 +216,33 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2764: lo de la tablet para el S24 llegaba al Vivo (informe grave del dueño)
+Informe (2763, tablet + S24 + Vivo): al mandar archivos o llamar desde la tablet al S24, llegaba al Vivo; tras borrar
+los contactos en la tablet, al buscar salían "desconocidos" y al pulsar agregar no pasaba nada. Diagnóstico recibido:
+solo el del Vivo (sesión anterior, sin la prueba); falta el de la tablet para saber cómo se torció en ella.
+- Causa (reproducida en `tests/sim/misroute.js`): cada conexión Bluetooth se identifica por su dirección (apuntada al
+  escanear o guardada en el contacto); si en la tablet la conexión del Vivo quedaba apuntada como la del S24, lo del S24
+  salía por la del Vivo, y el kx (que dice quién es) no lo corregía (solo apuntaba si no había nada). En el Vivo, la parte
+  nativa (avisos con la app en segundo plano o cerrada, 2761–2763) avisaba "Mensaje nuevo" / "📎 Archivo" y **hacía sonar
+  la llamada** de cualquier paquete directo, aunque no pudiera leerlo (va cifrado para el S24); y confirmaba ✓✓ a la
+  tablet. En el simulador con el código anterior: C (el "Vivo") avisa del texto, del archivo y le suena la llamada; a B
+  no le llega nada.
+- Arreglo: cada mensaje y primer trozo directo lleva a quién va (`dn`, fijado la primera vez: un reintento sigue siendo
+  para el mismo). El que no es: lo ignora (app: `_prePayload`; nativo: `BgInbox.classify` → nada: ni aviso, ni llamada,
+  ni buzón, ni ✓✓) y contesta `ni` ("no soy yo"); el emisor corrige la conexión (`_remapDevice`) y lo manda por la buena
+  (o queda pendiente). El kx corrige también a quién está apuntada la conexión (si su clave es la conocida). El buscador
+  de conexiones no usa una dirección que consta como de otro contacto. Un trozo que sigue por una conexión que resultó
+  de otro se corta y sigue por la buena.
+- Visto al probarlo: un puente de Jump metía el sobre sellado de paso dentro de un mensaje suyo y el siguiente teléfono
+  avisaba "Mensaje nuevo" (también podía pasar en el Vivo). Ahora el sobre va tal cual a quien lo entiende (kx ss:1).
+- Escaneo (`tests/sim/readd.js`): el anuncio Bluetooth casi nunca trae el nombre y el nativo ponía "Unknown" (los
+  "desconocidos"). Ahora "NEXO" + 4 letras del ID y, al conectar, el nombre del teléfono (kx `nm`). "Agregar" deja
+  rastro en el diagnóstico (`[ADD]`) y, si ese teléfono ya no está en la lista, lo dice y vuelve a buscar (antes,
+  nada). En el simulador, borrar y volver a agregar funciona; no se reprodujo "no pasa nada": falta el diagnóstico de
+  la tablet. Recordatorio: tras borrar, el otro sigue anunciando su código rotativo (la tablet ya no lo reconoce):
+  para volver a agregarse, los dos abren "Agregar".
+- Pruebas: misroute.js y readd.js (añadidas a ci.js), BgInboxTest.paraOtroTelefonoNada (Kotlin 63/63).
 
 ## Ronda 2764: grupos con vídeo HD y archivos grandes; pantalla girada
 - Grupos (PENDIENTES §2, faltaban): `src/ui/group_media.js`.

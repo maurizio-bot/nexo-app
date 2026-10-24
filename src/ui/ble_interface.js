@@ -259,14 +259,15 @@ export class BLEInterface {
     if (this.net && this.net.canReach(nx)) return _netId(nx);
 
     // 1. Mapeo vivo
+    // (ronda 2764: no una dirección que consta como de otro contacto)
     var mappedMac = this._nexoIdToMac.get(nx);
-    if (mappedMac) return mappedMac;
+    if (mappedMac && !this._macOfOther(mappedMac, nx)) return mappedMac;
 
     // 2. Contacto en vault
     var contact = _getContactByUUID(nx);
     if (contact && contact.deviceId) {
       var nd = _normMac(contact.deviceId);
-      if (nd) {
+      if (nd && !this._macOfOther(nd, nx)) {
         this._nexoIdToMac.set(nx, nd);
         this._macToNexoId.set(nd, nx);
         return nd;

@@ -7,7 +7,7 @@ import { e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
 import { groupAttachment, parseGroupEnvelope } from './groups.js';
 import { parseCallSignal } from './calls.js';
-import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
+import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
 
 
 export const BLE_MESSAGE_METHODS = {
@@ -92,6 +92,18 @@ export const BLE_MESSAGE_METHODS = {
     }
     var raw = (data && (data.content || data.data || data.message) || '').trim();
     if (raw.charAt(0) !== '{') return Promise.resolve(data);
+    if (raw.indexOf('"type":"ni"') >= 0) {
+      var pni = null;
+      try { pni = JSON.parse(raw); } catch (e) {}
+      if (pni && pni.type === 'ni') { self._wrongPeer(data.deviceId, pni.from, pni.x); return Promise.resolve(null); }
+    }
+    // Ronda 2764 (informe del dueño: lo que la tablet mandaba al S24 sonaba y avisaba en el Vivo): un paquete directo
+    // lleva a quién va ('dn'); si no es para este teléfono no se procesa (ni aviso, ni ✓✓) y se le dice al otro ('ni')
+    // para que corrija a quién tiene apuntada esta conexión
+    if (raw.indexOf('"dn":"') >= 0) {
+      var dnm = /"dn":"(nx[0-9a-z]{8})"/i.exec(raw), me0 = _normId(self.localNexoId);
+      if (dnm && me0 && _normId(dnm[1]) !== me0) { self._notMine(data.deviceId, _normId(dnm[1])); return Promise.resolve(null); }
+    }
     // Wi-Fi Direct: control de una transferencia (por Bluetooth)
     if (/"type":"w[qanf]"/.test(raw) && self.wifiDirect) {
       var pw = null;
@@ -168,11 +180,16 @@ export const BLE_MESSAGE_METHODS = {
       }
       if (p.from && p.pk) self._noteSenderKey(p.from, p.pk);
       if (p.from && p.b2) self._notePeerBundle(p.from, p.b2);
+      // Ronda 2764: el kx dice quién está al otro lado de esta conexión: si la tenía apuntada como de otro, se corrige
+      // (solo si su clave es la que conozco de él: un impostor no se lleva lo de otro)
+      if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && p.pk && (!self._contactKey(p.from) || self._contactKey(p.from) === p.pk)) self._remapDevice(data.deviceId, p.from, 'kx');
       // Asociar la dirección (un teléfono que se conectó a nosotros y no es contacto no tenía mapeo)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
       // Ronda 2755: si era un NEXO anónimo (código rotativo), ya se sabe quién es
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && self.relay && typeof self.relay.identify === 'function') self.relay.identify(data.deviceId, p.from);
       if (p.j && self.relay) self.relay.markCapable(p.from);
+      // Ronda 2764: su nombre (el anuncio no lo trae: salía "Unknown"); solo si el que tengo es genérico
+      if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && typeof p.nm === 'string' && p.nm.trim()) self._notePeerName(p.from, p.nm);
       if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs);
       if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId, Number(p.fx) || 1);
       if (p.ss && p.from) self._noteSealPeer(p.from);
@@ -431,6 +448,69 @@ export const BLE_MESSAGE_METHODS = {
     })();
   },
 
+  _notePeerName(nexoId, nm) {
+    var nx = _normId(nexoId), name = String(nm).replace(/[\u0000-\u001f<>]/g, '').trim().substring(0, 40);
+    if (!name || _isGenericName(name)) return;
+    var found = this.foundDevices && this.foundDevices.get(nx);
+    if (found && _isGenericName(found.name)) { found.name = name; this.renderNewDeviceBar(); }
+    var contacts = _getBLEContacts(), c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
+    if (!c || !_isGenericName(c.name)) return;
+    c.name = name;
+    _saveBLEContacts(contacts);
+    console.log('[ADD] Nombre de ' + nx + ': ' + name);
+    this.renderContactsList(); this.renderOnlineStrip();
+  },
+
+  // ===== Ronda 2764: cada conexión, de quien es de verdad =====
+  // NEXO ID al que va lo que sale por esta conexión ('' si no se sabe)
+  _destNx(deviceId) {
+    var d = String(deviceId || '');
+    var nx = _lanNx(d) || _netNx(d) || (/^nx[0-9a-z]{8}$/i.test(d) ? d : this._macToNexoId.get(_normMac(d)));
+    nx = _normId(nx || '');
+    return /^nx[0-9a-z]{8}$/.test(nx) ? nx : '';
+  },
+  // ¿Esta dirección consta como de otro contacto (no de nx)?
+  _macOfOther(mac, nx) {
+    var owner = _normId(this._macToNexoId.get(_normMac(mac)) || '');
+    return !!owner && /^nx[0-9a-z]{8}$/.test(_normId(nx)) && owner !== _normId(nx);
+  },
+  // Esta conexión es de nx (lo dijo su kx o su 'ni'): fuera de cualquier otro contacto que la tuviera apuntada
+  _remapDevice(deviceId, nexoId, why) {
+    var nd = _normMac(deviceId), nx = _normId(nexoId || '');
+    if (!nd || /^(lan|net)/i.test(String(deviceId)) || !/^nx[0-9a-z]{8}$/.test(nx)) return;
+    var old = _normId(this._macToNexoId.get(nd) || '');
+    if (old === nx) return;
+    if (old) {
+      console.warn('[SEND] La conexión ' + deviceId + ' estaba apuntada como de ' + old + ' y es de ' + nx + ' (' + why + '): corregido');
+      if (_normMac(this._nexoIdToMac.get(old) || '') === nd) this._nexoIdToMac.delete(old);
+      var contacts = _getBLEContacts(), changed = false;
+      contacts.forEach(function(c) { if (_normId(c.nexoId || c.deviceUUID) === old && _normMac(c.deviceId || '') === nd) { c.deviceId = null; changed = true; } });
+      if (changed) _saveBLEContacts(contacts);
+    }
+    this._macToNexoId.set(nd, nx);
+    if (!this._nexoIdToMac.get(nx) || this._macOfOther(this._nexoIdToMac.get(nx), nx)) this._nexoIdToMac.set(nx, nd);
+    var cd = this.connectedDevices.get(deviceId);
+    if (cd) cd.deviceUUID = nx.toUpperCase();
+    if (old) { var self = this; setTimeout(function() { self._resendPendingMessages(old); }, 500); }
+  },
+  // Llegó algo que va a otro (dn): no se procesa; se le dice al que lo mandó (una vez cada 5 s por conexión)
+  _notMine(deviceId, dn) {
+    var me = _normId(this.localNexoId), now = Date.now();
+    this._niSent = this._niSent || new Map();
+    if (now - (this._niSent.get(deviceId) || 0) < 5000) return;
+    this._niSent.set(deviceId, now);
+    console.warn('[SEND] Llegó por ' + deviceId + ' algo que va a ' + dn + ': no es para este teléfono (se ignora y se avisa)');
+    this._sendMessageNative(deviceId, JSON.stringify({ v: 1, type: 'ni', from: me, x: dn }), null).catch(function() {});
+  },
+  // El otro dice que no es dn: esta conexión es suya, no de dn
+  _wrongPeer(deviceId, from, dn) {
+    var nd = _normMac(deviceId), wrong = _normId(dn || ''), real = _normId(from || '');
+    if (!nd || /^(lan|net)/i.test(String(deviceId))) return;
+    console.warn('[SEND] ' + (real || 'El otro') + ' dice que lo enviado por ' + deviceId + ' (para ' + wrong + ') no es para él');
+    if (/^nx[0-9a-z]{8}$/.test(real)) { if (_normId(this._macToNexoId.get(nd) || '') !== real) this._remapDevice(deviceId, real, 'no era él'); }
+    else if (_normId(this._macToNexoId.get(nd) || '') === wrong) { this._macToNexoId.delete(nd); if (_normMac(this._nexoIdToMac.get(wrong) || '') === nd) this._nexoIdToMac.delete(wrong); }
+  },
+
   _sendMessageNative(deviceId, content, messageId, seq, dst) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -444,9 +524,15 @@ export const BLE_MESSAGE_METHODS = {
       // los paquetes de control (ack, ping, chunks, sync) van tal cual.
       var targetId = deviceId;
       var knownMac = self._nexoIdToMac.get(_normId(deviceId));
-      if (knownMac) targetId = knownMac;
+      if (knownMac && !self._macOfOther(knownMac, deviceId)) targetId = knownMac;
       var outgoing = content;
-      if (!_isControlPacket(content)) {
+      // Ronda 2764: un sobre sellado de Jump va tal cual a quien lo entiende (kx ss:1). Antes el puente lo metía en un
+      // mensaje suyo y el teléfono siguiente (su parte nativa, con la app en segundo plano o cerrada) avisaba de
+      // "Mensaje nuevo" por un paquete que solo estaba de paso
+      var sxIn = null;
+      if (content && content.indexOf('"type":"sx"') >= 0) { try { sxIn = JSON.parse(content); } catch (e) {} if (!sxIn || sxIn.type !== 'sx') sxIn = null; }
+      var sxRaw = !!(sxIn && !dst && self.hopSeals(deviceId));
+      if (!sxRaw && !_isControlPacket(content)) {
         var senderId = self.localNexoId || self.localDeviceUUID;
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
         var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
@@ -465,6 +551,29 @@ export const BLE_MESSAGE_METHODS = {
         if (!dst && self._groupOut && self._groupOut.has(msgId)) env.g = self._groupOut.get(msgId);
         // Ronda 2759: oferta de llamada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
         if (self._callOut && self._callOut.has(msgId)) env.cl = 1;
+        // Sobre de paso hacia una build anterior (lo desenvuelve como texto del puente): sin aviso si no es para ella
+        if (sxIn && _normId(sxIn.to) !== self._destNx(deviceId)) env.q = 1;
+        // Ronda 2764: a quién va (el que lo recibe lo ignora si no es él; ver _prePayload). Se fija la primera vez: un
+        // reintento sigue siendo para el mismo aunque la conexión resultara ser de otro (entonces va por la buena)
+        var dn0 = '';
+        if (!dst) {
+          self._msgDest = self._msgDest || new Map();
+          dn0 = self._msgDest.get(msgId) || self._destNx(deviceId);
+          if (dn0) { self._msgDest.set(msgId, dn0); if (self._msgDest.size > 2000) self._msgDest.delete(self._msgDest.keys().next().value); }
+          var curDn = (!viaLan && !viaNet) ? self._destNx(deviceId) : '';
+          if (dn0 && curDn && curDn !== dn0) {
+            var right = self._resolveDeviceIdForNexoId(dn0);
+            if (right && _normMac(right) !== _normMac(deviceId) && self._destNx(right) !== curDn) {
+              console.log('[SEND] ' + msgId + ' es para ' + dn0 + ': por su conexión, no por la de ' + curDn);
+              self._sendMessageNative(right, content, msgId, msgSeq, dst).then(resolve, reject);
+              return;
+            }
+            var ePa = new Error('Contacto no disponible: queda pendiente'); ePa.code = 'PEER_ABSENT';
+            reject(ePa);
+            return;
+          }
+        }
+        if (dn0) env.dn = dn0;
         outgoing = JSON.stringify(env);
       }
       var send = function(out) {

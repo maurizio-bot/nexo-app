@@ -337,6 +337,16 @@ export function _addBLEContact(contact) {
   return true;
 }
 
+// Ronda 2764 (informe del dueño: al buscar salían "desconocidos"): el anuncio Bluetooth casi nunca trae el nombre del
+// teléfono y el nativo ponía "Unknown". Nombre a mostrar: el del teléfono si se sabe; si no, "NEXO" y 4 letras del ID
+// (el nombre de verdad llega con su kx al conectar: nm)
+export function _isGenericName(name) { return !name || /^(unknown|nexo peer|nexo device|nexo [0-9a-z]{4})$/i.test(String(name).trim()); }
+export function _niceName(name, nexoId) {
+  if (!_isGenericName(name)) return String(name).trim();
+  var nx = String(nexoId || '').toUpperCase();
+  return nx ? 'NEXO ' + nx.slice(-4) : 'NEXO';
+}
+
 export function _removeBLEContact(deviceUUID) {
   var uuid = _normId(deviceUUID);
   var contacts = _getBLEContacts().filter(function(c) { return _normId(c.nexoId || c.deviceUUID) !== uuid; });
@@ -478,7 +488,7 @@ export function _isControlPacket(content) {
   if (!content || typeof content !== 'string' || content.charAt(0) !== '{') return false;
   try {
     var obj = JSON.parse(content);
-    if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'kx' || obj.type === 'rt' || obj.type === 'rk' || obj.type === 'rq' || obj.type === 'rp' ||
+    if (obj.type === 'ack' || obj.type === 'read_receipt' || obj.type === 'ping' || obj.type === 'pong' || obj.type === 'kx' || obj.type === 'ni' || obj.type === 'rt' || obj.type === 'rk' || obj.type === 'rq' || obj.type === 'rp' ||
         obj.type === 'wq' || obj.type === 'wa' || obj.type === 'wn' || obj.type === 'wf' ||
         obj.type === 'gq' || obj.type === 'ga' || obj.type === 'gn' || obj.type === 'gf' || obj.type === 'gr' || obj.type === 'vf' ||
         obj.type === 'fp' || obj.type === 'fo' || obj.type === 'fq' || obj.type === 'fd' ||
