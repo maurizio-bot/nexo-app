@@ -27,8 +27,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   2752, que todo siga llegando.
 
 ## 2. Funciones nuevas
-- **Llamadas de voz**: hechas en la 2758 (Bluetooth a alcance o mismo Wi-Fi / Wi-Fi Direct, Opus cifrado). Falta: sonar
-  con la app cerrada, botón de altavoz, probar en teléfonos (eco, volumen, Bluetooth con MTU pequeño).
+- **Llamadas de voz**: hechas en la 2758 (Bluetooth a alcance o mismo Wi-Fi / Wi-Fi Direct, Opus cifrado); con la app
+  cerrada avisa "Llamada entrante" (2759). Falta: sonar como una llamada del teléfono (pantalla completa), botón de altavoz, probar en teléfonos (eco, volumen, Bluetooth con MTU pequeño).
 - **Videollamadas**: hechas en la 2758 (mismo Wi-Fi). Falta: por Wi-Fi Direct (hoy su enlace es por transferencia,
   no continuo), cambiar a la cámara trasera, probar en teléfonos.
 - **Pagos**: decidir modelo (saldo propio, tarjeta/banco, cripto); doble gasto sin conexión, conciliación,
@@ -113,7 +113,6 @@ De lo más simple a lo más complejo. Estado:
 14. Grupos ✅ (2758): textos, fotos, audio, ubicación y archivos de hasta ~1 MB; falta HD de vídeo y archivos
    grandes en grupos. 15. Varios dispositivos (falta decisión del dueño, ver abajo). 16. Llamadas de voz ✅ (2758, fase 1: con el
    contacto cerca o en el mismo Wi-Fi; falta sonar con la app cerrada). 17. Videollamadas ✅ (2758, mismo Wi-Fi).
-- Visto en la batería (intermitente, también con la 2757): `fenix.js --mirror` a veces recupera 5 de 6 mensajes y 1
-  de 2 archivos (1 de 4 repeticiones); sin investigar todavía.
+- (Resuelto en la 2759: era la prueba) `fenix.js` a veces recuperaba 5 de 6 mensajes y 1 de 2 archivos.
 18–20 (del dueño): pruebas reales con 3–4 teléfonos, auditoría externa, Play Store.
 

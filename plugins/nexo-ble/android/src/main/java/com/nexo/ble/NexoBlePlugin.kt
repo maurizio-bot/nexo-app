@@ -491,11 +491,11 @@ class NexoBlePlugin : Plugin() {
                     val ack = JSONObject().put("v", 1).put("type", "ack").put("msgId", info.msgId).put("from", me).put("ts", System.currentTimeMillis()).toString()
                     sendChunkedOrSingle(normalizeMac(deviceId), deviceId, ack)
                 }
-                if (!info.quiet) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, "")
+                if (!info.quiet) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, if (info.call) "📞 Llamada entrante" else "")
             }
             BgInbox.Kind.RECEIPT -> inbox().add(deviceId, json)
             BgInbox.Kind.NOTIFY_ONLY -> MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId,
-                when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "text" -> ""; else -> "📎 Archivo" })
+                when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "call" -> "📞 Llamada entrante"; "text" -> ""; else -> "📎 Archivo" })
             BgInbox.Kind.IGNORE -> {}
         }
     }

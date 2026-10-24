@@ -63,7 +63,9 @@ export class Calls {
     var ble = this.ble, c = this.call;
     var o = Object.assign({ type: 'nexo_call', op: op, id: (c && c.id) || (extra && extra.id), ts: Date.now() }, extra || {});
     if (!ble || typeof ble.sendChatMessage !== 'function') return Promise.resolve();
-    return ble.sendChatMessage(nx, JSON.stringify(o), 'cs' + _hex(6)).catch(function(e) { console.warn('[CALL] Señal ' + op + ' no enviada: ' + (e && e.message)); });
+    var mid = 'cs' + _hex(6);
+    if (op === 'offer') { ble._callOut = ble._callOut || new Set(); ble._callOut.add(mid); }
+    return ble.sendChatMessage(nx, JSON.stringify(o), mid).catch(function(e) { console.warn('[CALL] Señal ' + op + ' no enviada: ' + (e && e.message)); });
   }
 
   _importKey(hex) { return crypto.subtle.importKey('raw', _fromHex(hex), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']); }

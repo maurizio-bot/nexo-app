@@ -457,6 +457,8 @@ export const BLE_MESSAGE_METHODS = {
         var env = { v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1, nt: 1 };
         // Ronda 2758: acción oculta (borrar para todos…): si el otro tiene la app cerrada, sin notificación
         if (self._quietOut && self._quietOut.has(msgId)) env.q = 1;
+        // Ronda 2759: oferta de llamada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
+        if (self._callOut && self._callOut.has(msgId)) env.cl = 1;
         outgoing = JSON.stringify(env);
       }
       var send = function(out) {

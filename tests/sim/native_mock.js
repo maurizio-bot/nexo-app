@@ -431,9 +431,9 @@ class NativePhone {
     let o; try { o = JSON.parse(json); } catch (e) { return { kind: 'IGNORE' }; }
     const NX = /^nx[0-9a-z]{8}$/;
     const from = String(o.from || o.fr || '').toLowerCase();
-    if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1 };
+    if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1 };
     if ((o.type === 'ack' || o.type === 'read_receipt') && o.msgId && !o.to) return { kind: 'RECEIPT', from, msgId: o.msgId };
-    if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, what: o.t === 'c' ? 'text' : (o.tp || 'file') };
+    if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, what: o.t === 'c' ? (o.cl === 1 ? 'call' : 'text') : (o.tp || 'file') };
     return { kind: 'IGNORE' };
   }
   _closedReceive(fromAddress, json) {
@@ -452,9 +452,9 @@ class NativePhone {
       this.bgInbox.push({ d: fromAddress, c: json });
       const me = String(this.advertisingId || '').toLowerCase();
       if (me) this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify({ v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() }));
-      if (!info.quiet) notify('');
+      if (!info.quiet) notify(info.call ? '📞 Llamada entrante' : '');
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json });
-    else if (info.kind === 'NOTIFY_ONLY') notify(({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', text: '' })[info.what] ?? '📎 Archivo');
+    else if (info.kind === 'NOTIFY_ONLY') notify(({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', call: '📞 Llamada entrante', text: '' })[info.what] ?? '📎 Archivo');
   }
 
   // ---- fuera de alcance (simula alejarse) ----

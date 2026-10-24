@@ -1503,6 +1503,9 @@ ChatStream.prototype._buildChunk = function(idx) {
     if (this.meta.pages) obj.pg = this.meta.pages;
     if (this.meta.dst) obj.dt = this.meta.dst;
     if (this.meta.hp) obj.hp = this.meta.hp;
+    // Ronda 2759: oferta de llamada troceada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
+    var bi0 = typeof window !== 'undefined' && window.bleInterface;
+    if (this.type === 'chat' && bi0 && bi0._callOut && bi0._callOut.has(this.msgId)) obj.cl = 1;
   }
   obj.k = _chunkCheck(obj);
   return JSON.stringify(obj);

@@ -130,7 +130,9 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
     await sleep(2000); await closeChat(P.A);
   }
   const segsOk = () => { const m = json(nat.A, 'nexo_fenix_msgs.json'); return !!(m && m.segs && m.segs.length && m.segs.every((g) => Object.values(g.holders || {}).filter((h) => h.ok).length >= 2)); };
-  const histInSegs = async () => { const m = json(nat.A, 'nexo_fenix_msgs.json'); return m && m.segs.reduce((a, g) => a + g.n, 0) >= contacts.length + hist.length; };
+  // Todos los mensajes ya en segmentos: los saludos, los textos y también los 2 mensajes de archivo (antes no se
+  // contaban y a veces A "perdía el teléfono" con el último sin copiar: 5 de 6 / 1 de 2, intermitente)
+  const histInSegs = async () => { const m = json(nat.A, 'nexo_fenix_msgs.json'); return m && m.segs.filter((g) => !g.med).reduce((a, g) => a + g.n, 0) >= contacts.length + hist.length + files.length; };
   r.segmentos_en_2_contactos_s = await waitFor(async () => segsOk() && await histInSegs(), 120000);
   const mA = json(nat.A, 'nexo_fenix_msgs.json') || { segs: [] };
   r.segmentos = mA.segs.map((g) => g.n + 'msg→' + Object.keys(g.holders).map((h) => contacts.find((x) => id(x).toLowerCase() === h) || h).join('')).join(' ');

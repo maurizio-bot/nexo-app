@@ -7,9 +7,11 @@
 //  3. Sin contestar (timbre acortado a 6 s) → A "No contesta"; B "Llamada perdida".
 //  4. En llamada, B se aleja → a los ~12 s sin voz los dos cortan ("Se cortó").
 //  5. Sin el contacto cerca: aviso y nada sale.
+//  7. (--closed) B tiene la app cerrada: A llama → B recibe el aviso "📞 Llamada entrante" (nativo); B abre la app antes
+//     de 60 s → suena → contesta → en llamada.
 //  6. (--wifi) Videollamada: el vídeo va y vuelve; B sale del Wi-Fi → el vídeo se para y la voz sigue por Bluetooth;
 //     sin Wi-Fi, el botón 🎥 avisa de que hace falta el mismo Wi-Fi.
-// Uso: node calls.js <dir_build> [--io-delay=25] [--wifi]
+// Uso: node calls.js <dir_build> [--io-delay=25] [--wifi] [--closed]
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -154,6 +156,24 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
     nB.setOffline(true);
     await sleep(5000); // que A note que B ya no está (supervisión del Bluetooth)
   }
+  // 7. App cerrada
+  if (arg('closed', false)) {
+    nB.setOffline(false); await sleep(6000);
+    B.win.close(); nB.destroyActivity(); await sleep(2000);
+    const n0 = nB.notifLog.length;
+    for (let i = 0; i < 100 && !A.win.bleInterface.calls.canCall(idB); i++) await sleep(200);
+    click(A.win, A.win.document.getElementById('nexo-call-btn'));
+    r.cerrada_aviso = await wait(() => nB.notifLog.slice(n0).some((n) => n.text === '📞 Llamada entrante'), 20);
+    r.cerrada_avisos = nB.notifLog.slice(n0).map((n) => n.text + '/' + n.closed); r.cerrada_buzon = (nB.bgInbox || []).map((x) => x.c.substring(0, 160));
+    await sleep(3000);
+    nB.load(); const B2 = await boot('B', nB);
+    r.cerrada_suena_al_abrir = await wait(() => { const s = B2.win.document.getElementById('nexo-call-screen'); return !!s && /Llamada entrante/.test(s.textContent); }, 30);
+    click(B2.win, B2.win.document.querySelector('#nexo-call-screen .call-accept'));
+    r.cerrada_en_llamada = await wait(() => B2.win.bleInterface.calls.call && B2.win.bleInterface.calls.call.state === 'active' && A.win.bleInterface.calls.call && A.win.bleInterface.calls.call.state === 'active', 30);
+    if (A.win.bleInterface.calls.call) A.win.bleInterface.calls.hangup();
+    await sleep(2000);
+    nB.setOffline(true); await sleep(5000);
+  }
   // 5. Sin el contacto cerca
   const before = nA.sent.length;
   click(A.win, A.win.document.getElementById('nexo-call-btn')); await sleep(800);
@@ -163,7 +183,7 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   const ok = r.boton && r.A_llamando && r.B_suena && r.en_llamada && r.voz_B_a_A >= 25 && r.voz_A_a_B >= 25 && r.en_orden && r.voz_en_el_aire && r.nada_en_claro && r.B_ve_fin &&
     r.linea_A.some((t) => /Llamada · 0:0\d/.test(t)) && r.linea_B.some((t) => /Llamada · 0:0\d/.test(t)) && r.micro_cerrado && r.senales_no_son_mensajes &&
     r.rechazada_A && r.lineas_A.some((t) => /rechazada/.test(t)) && r.lineas_B.some((t) => /rechazada/.test(t)) && r.sin_respuesta_A && r.lineas_B.some((t) => /perdida/.test(t)) &&
-    r.se_corta_A !== 'NO' && r.se_corta_B && r.sin_alcance_aviso && r.sin_alcance_no_llama && (!WIFI || r.camino === 'wifi') && !r.errores.length &&
+    r.se_corta_A !== 'NO' && r.se_corta_B && (!arg('closed', false) || (r.cerrada_aviso && r.cerrada_suena_al_abrir && r.cerrada_en_llamada)) && r.sin_alcance_aviso && r.sin_alcance_no_llama && (!WIFI || r.camino === 'wifi') && !r.errores.length &&
     (!WIFI || (r.video_B_suena && r.video_llega[0] >= 30 && r.video_llega[1] >= 30 && r.boton_camara && r.sin_wifi_video_parado && r.sin_wifi_voz_sigue && r.sigue_en_llamada &&
       r.linea_video.length >= 1 && r.B_se_entera_al_colgar && r.video_sin_wifi_aviso && r.video_sin_wifi_no_llama));
   r.resultado = ok ? 'OK' : 'FALLO';

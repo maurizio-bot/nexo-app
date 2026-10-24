@@ -211,6 +211,15 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## Ronda 2759 (en curso)
+- **Llamada con la app cerrada**: la oferta de llamada lleva la marca `cl:1` (en el sobre o en su primer trozo, que
+  el nativo sí ve; el contenido sigue cifrado) y el aviso del teléfono dice "📞 Llamada entrante" en vez de "Mensaje
+  nuevo"; al abrir la app antes de 60 s suena y se puede contestar (`calls.js --closed`: aviso, suena al abrir, en
+  llamada). JVM: `BgInboxTest`.
+- **Prueba de Fénix**: el fallo intermitente (5 de 6 mensajes / 1 de 2 archivos) era de la prueba: daba la copia por
+  hecha sin contar los 2 mensajes de archivo y a veces "perdía el teléfono" con el último sin copiar. Ahora espera a
+  todos: 6/6 y 2/2 (espejo y normal).
+
 ## Ronda 2758: videollamadas (plan del dueño punto 17)
 - Botón 🎥 junto al 📞 (chat 1:1): la misma llamada con vídeo VP8 (WebCodecs, cámara frontal a 320x240 y 15 fps,
   ~300 kb/s, imagen completa cada 2 s), cifrado igual que la voz. Solo con el contacto en el mismo Wi-Fi (por
