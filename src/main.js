@@ -125,10 +125,10 @@ import { _closeFullscreenMedia, _openFullscreenMedia, _thumbsInProgress, _buildF
 import { _clearMessageContainer, _setupBackButton, _setupSwipeBack, _chatNavToken, _doChatBack } from './ui/chat_nav.js';
 import { pickersUse, _pendingPicker, _pickFile, _readFailed, _handleGallery, _handleFile } from './ui/pickers.js';
 import { _renderedMessageCount, _getContactStorageKey, _saveMessageToStorage, _updateMessageStorageStatus, HISTORY_PAGE, _olderMessages, _olderContactId, _loadingOlder, _suppressAutoScroll, _olderArmed, _bindOlderMessagesScroll, _loadOlderMessages, _loadPersistedMessages, _scrollPending, _scheduleScrollToBottom, _renderMessage, _removeIncomingPlaceholder, _hdProgress, _onFileProgress, _updateMessageStatus } from './ui/render.js';
-import { _waitForBLEReady, _sendAttachment, _sendFileFor, _sendTextTo, _noteContactMessage } from './ui/send.js';
+import { _waitForBLEReady, _sendAttachment, _sendFileFor, _sendTextTo, _noteContactMessage, _sendBigFile } from './ui/send.js';
 import { appSetupUse, _bindAttachmentHandlers, _showPermissionOverlay, _hidePermissionOverlay, _ensureDOMStructure, _fixLogoPath, _setupMessageInput, _setupVaultToggle, _setupChatHeader, _setupKeyboardShortcuts, _setupJumpButton, _setupFABButton, _toggleVaultUI, _focusInput, _forceHideSplash, _enableFallbackMode } from './ui/app_setup.js';
 appSetupUse({ /* [pegamento] */ initializeNexoApp: initializeNexoApp });
-pickersUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
+pickersUse({ /* [pegamento] */ _sendAttachment: _sendAttachment, _sendBigFile: _sendBigFile });
 videoSendUse({ /* [pegamento] */ _handleIncomingMessage: _handleIncomingMessage, _sendAttachment: _sendAttachment, _sendFileFor: _sendFileFor, _updateMessageStatus: _updateMessageStatus, _updateMessageStorageStatus: _updateMessageStorageStatus });
 chatActionsUse({ /* [pegamento] */ _renderMessage: _renderMessage, _sendAttachment: _sendAttachment, _sendTextTo: _sendTextTo });
 voiceUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });

@@ -274,6 +274,7 @@ export async function _forwardTo(cid, msg) {
       var hd = await vaultLoadFile(msg.hdRef);
       if (hd) { payload = hd; if (msg.hdMime) { meta.mime = msg.hdMime; meta.format = _videoFormat(msg.hdMime); } }
     }
+    if (meta.big) { _showInfoToast('Los archivos grandes todavía no se pueden reenviar', 2500); return; }
     ['preview', 'hdSize', 'hdFor', 'hd', 'wdOnly', 'fwd'].forEach(function(k) { delete meta[k]; });
     if (!payload) { _showInfoToast('No se pudo reenviar: el archivo ya no está', 2500); return; }
     console.log('[ATTACH] Reenviando ' + msg.attachmentType + ' a ' + cid);

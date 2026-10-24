@@ -93,6 +93,12 @@ export const BLE_MESSAGE_METHODS = {
       try { pw = JSON.parse(raw); } catch (e) {}
       if (pw && self.wifiDirect.handle(pw, data.deviceId)) return Promise.resolve(null);
     }
+    // Archivos grandes (ronda 2756, big_file.js): control de una transferencia
+    if (/"type":"g[qanfr]"/.test(raw) && self.bigFiles) {
+      var pg = null;
+      try { pg = JSON.parse(raw); } catch (e) {}
+      if (pg && self.bigFiles.handle(pg, data.deviceId)) return Promise.resolve(null);
+    }
     // Fénix: pingeo, borrado y petición de recuperación (directos, sin 'to')
     if (/"type":"f[poqd]"/.test(raw) && self.fenix) {
       var pf = null;
@@ -166,6 +172,7 @@ export const BLE_MESSAGE_METHODS = {
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) { if (p.ss) self._sxHops.add(_normId(p.from)); else self._sxHops.delete(_normId(p.from)); }
       if (p.wd && self.wifiDirect) self.wifiDirect.markPeer(p.from);
       else if (self.wifiDirect) self.wifiDirect.unmarkPeer(p.from); // ya no lo anuncia (p.ej. sin permiso)
+      if (self.bigFiles) { if (p.bg) self.bigFiles.markPeer(p.from); else self.bigFiles.unmarkPeer(p.from); } // archivos grandes (2756)
       // Responder con el nuestro (cada lado sabe así que el otro entiende Jump; máx. 1 cada 15 s)
       if (p.rq || p.j) self._sendKx(data.deviceId, false, !!p.rq);
       return Promise.resolve(null);
@@ -761,10 +768,15 @@ export const BLE_MESSAGE_METHODS = {
 
         var msgSeq = (typeof msg.seq === 'number') ? msg.seq : undefined;
         var doSend;
+        // Ronda 2756: archivo grande (big_file.js): el mensaje es pequeño (nombre, tamaño, clave) y va como texto; el
+        // archivo va aparte por Wi-Fi. Sin clave aún se está preparando: nada que reenviar todavía.
+        var bigMeta = attachmentMeta && attachmentMeta.big;
+        if (bigMeta && !bigMeta.key) { sendNext(); return; }
 
         if (
           attachmentType &&
           attachmentPayload &&
+          !bigMeta &&
           (attachmentType === 'image' ||
            attachmentType === 'video' ||
            attachmentType === 'file')
@@ -795,7 +807,7 @@ export const BLE_MESSAGE_METHODS = {
           };
           console.log('[BLEInterface] Reenviando ADJUNTO:', attachmentType, mid);
         } else {
-          var txt = msg.content || msg.text || '';
+          var txt = bigMeta ? JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: attachmentMeta }) : (msg.content || msg.text || '');
           if (
             txt.length > 180 &&
             self.ackSystem &&

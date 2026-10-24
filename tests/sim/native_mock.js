@@ -451,6 +451,30 @@ class NativePhone {
     q.forEach((m) => this._sendChunkedOrSingle(macNorm, m));
   }
 
+  // Paso de un archivo grande de disco a disco (bytes/s) con avisos de progreso; alive() falso = se corta
+  _bigPush(peer, b, id, bps, alive, call, extra, code) {
+    const total = b.parts.reduce((n, x) => n + x.length, 0) + b.parts.length * 33;
+    const t0 = Date.now();
+    peer.big = peer.big || new Map();
+    const tick = () => {
+      const sent = Math.min(total, Math.round((Date.now() - t0) / 1000 * bps));
+      if (!alive()) {
+        peer.emit('onBigDone', { id, dir: 'in', ok: false, error: 'conexión cortada (' + sent + ' de ' + total + ' bytes)' });
+        this.emit('onBigDone', { id, dir: 'out', ok: false, error: 'Broken pipe' });
+        return call.reject('Envío fallido: Broken pipe', code || 'BIG_SEND');
+      }
+      this.emit('onBigProgress', { id, dir: 'out', bytes: sent, total });
+      peer.emit('onBigProgress', { id, dir: 'in', bytes: sent, total });
+      if (sent < total) return setTimeout(tick, 400);
+      peer.big.set(id, { key: b.key, parts: b.parts, done: true });
+      this.stats.bigSent = (this.stats.bigSent || 0) + total;
+      peer.emit('onBigDone', { id, dir: 'in', ok: true, error: '' });
+      this.emit('onBigDone', { id, dir: 'out', ok: true, error: '' });
+      call.resolve(Object.assign({ ok: true, bytes: total }, extra || {}));
+    };
+    setTimeout(tick, 50);
+  }
+
   advertisedVisible() { return !this.ridKey || Date.now() < (this.ridVisibleUntil || 0); }
   advertised() {
     if (!this.advertisingId) return null;
@@ -633,10 +657,10 @@ class NativePhone {
         const rnd = (n) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
         const ssid = 'DIRECT-' + rnd(2) + '-NEXO', pass = rnd(16), port = 40000 + Math.floor(Math.random() * 20000);
         self.radio.wdGroups = self.radio.wdGroups || new Map();
-        self.radio.wdGroups.set(ssid, { host: self, pass, port, id: a.transferId });
+        self.radio.wdGroups.set(ssid, { host: self, pass, port, id: a.transferId, bigToken: a.bigToken || null });
         self.stats.wdGroups = (self.stats.wdGroups || 0) + 1;
         setTimeout(() => c.resolve({ ssid, passphrase: pass, port }), 1500);
-        setTimeout(() => { if (self.radio.wdGroups.get(ssid)) { self.radio.wdGroups.delete(ssid); self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 90000);
+        setTimeout(() => { if (self.radio.wdGroups.get(ssid)) { self.radio.wdGroups.delete(ssid); if (a.bigToken) self.emit('onBigDone', { id: a.transferId, dir: 'in', ok: false, error: 'Accept timed out' }); else self.emit('onWifiDirectReceived', { transferId: a.transferId, error: 'Accept timed out' }); } }, 90000);
       }),
       wifiDirectSend: wrap('wifiDirectSend', (c, a) => {
         if (!self.opts.wifiDirect || self.opts.wdNoPerm) return c.reject('Wi-Fi Direct no disponible', 'WD_UNAVAILABLE');
@@ -645,6 +669,13 @@ class NativePhone {
         if (!g || g.pass !== a.passphrase || g.port !== a.port || g.id !== a.transferId || !self.radio.inRange(self, g.host) || self.opts.wdFail || g.host.opts.wdFail) {
           return setTimeout(() => c.reject('No se pudo conectar (2)', 'WD_CONNECT'), 3000);
         }
+        if (a.bigToken) {
+          const b = self.big && self.big.get(a.transferId);
+          if (!b || !b.done) return c.reject('Nada que enviar', 'BIG_NONE');
+          if (g.bigToken !== a.bigToken) return setTimeout(() => c.reject('Envío fallido: sin confirmación', 'WD_SEND'), 2000);
+          self.radio.wdGroups.delete(a.ssid);
+          return setTimeout(() => self._bigPush(g.host, b, a.transferId, 2e6, () => self.radio.inRange(self, g.host) && !self.offline && !g.host.offline, c, { joinMs: 2000 }, 'WD_SEND'), 2000);
+        }
         const ms = 2000 + Math.round(data.length / 2000);
         setTimeout(() => {
           self.radio.wdGroups.delete(a.ssid);
@@ -652,6 +683,57 @@ class NativePhone {
           g.host.emit('onWifiDirectReceived', { transferId: a.transferId, data, bytes: data.length, readMs: ms - 2000, ts: Date.now() });
           c.resolve({ ok: true, ms, bytes: data.length, joinMs: 2000, xferMs: ms - 2000, bridgeMs: 0 });
         }, ms);
+      }),
+      // ===== Archivos grandes (Kotlin BigFile.kt, ronda 2756): "cifrado" a disco por trozos y paso de disco a disco.
+      // Aquí se guardan los trozos en claro junto con la clave (bigOpen comprueba que la clave es la del emisor).
+      // Mismo Wi-Fi ~20 MB/s, Wi-Fi Direct ~2 MB/s; se corta si el otro sale de la red / de alcance.
+      bigBegin: wrap('bigBegin', (c, a) => {
+        if (!/^[0-9a-f]{64}$/.test(String(a.key || ''))) return c.reject('clave no válida');
+        self.big = self.big || new Map();
+        self.big.set(a.id, { key: a.key, parts: [], done: false });
+        c.resolve({ ok: true });
+      }),
+      bigAppend: wrap('bigAppend', (c, a) => {
+        const b = self.big && self.big.get(a.id);
+        if (!b || b.done) return c.reject('sin preparar', 'BIG_NONE');
+        b.parts.push(Buffer.from(String(a.data || ''), 'base64'));
+        if (a.last) b.done = true;
+        const bytes = b.parts.reduce((n, x) => n + x.length, 0);
+        self.stats.bigAppends = (self.stats.bigAppends || 0) + 1;
+        self.stats.bigMaxSlice = Math.max(self.stats.bigMaxSlice || 0, String(a.data || '').length);
+        c.resolve({ bytes, enc: bytes + b.parts.length * 33 });
+      }),
+      bigStatus: wrap('bigStatus', (c, a) => {
+        const b = self.big && self.big.get(a.id);
+        c.resolve({ have: !!(b && b.done), bytes: b ? b.parts.reduce((n, x) => n + x.length, 0) + b.parts.length * 33 : 0 });
+      }),
+      bigDelete: wrap('bigDelete', (c, a) => { if (self.big) self.big.delete(a.id); c.resolve({ ok: true }); }),
+      bigServe: wrap('bigServe', (c, a) => {
+        if (!a.id || String(a.token || '').length < 16) return c.reject('id y token requeridos');
+        self.radio.bigServers = self.radio.bigServers || new Map();
+        const port = 30000 + Math.floor(Math.random() * 20000);
+        self.radio.bigServers.set(port, { host: self, id: a.id, token: a.token });
+        c.resolve({ port });
+        setTimeout(() => { if (self.radio.bigServers.get(port)) { self.radio.bigServers.delete(port); self.emit('onBigDone', { id: a.id, dir: 'in', ok: false, error: 'Accept timed out' }); } }, 60000);
+      }),
+      bigSendLan: wrap('bigSendLan', (c, a) => {
+        const peer = self.lanConns && self.lanConns.get(String(a.nx || '').toLowerCase());
+        const srv = self.radio.bigServers && self.radio.bigServers.get(a.port);
+        const b = self.big && self.big.get(a.id);
+        if (!peer || !self.wifiNet || peer.wifiNet !== self.wifiNet) return c.reject('Sin Wi-Fi con ' + a.nx, 'LAN_DOWN');
+        if (!b || !b.done) return c.reject('Nada que enviar', 'BIG_NONE');
+        if (!srv || srv.host !== peer || srv.id !== a.id || srv.token !== a.token) return setTimeout(() => c.reject('Envío fallido: Connection refused', 'BIG_SEND'), 500);
+        self.radio.bigServers.delete(a.port);
+        self._bigPush(peer, b, a.id, 20e6, () => peer.wifiNet === self.wifiNet && !!self.wifiNet, c);
+      }),
+      bigOpen: wrap('bigOpen', (c, a) => {
+        const b = self.big && self.big.get(a.id);
+        if (!b || !b.done) return c.resolve({ opened: false, reason: 'missing' });
+        if (a.key !== b.key) return c.reject('No se pudo abrir: archivo dañado o clave incorrecta', 'BIG_OPEN');
+        const all = Buffer.concat(b.parts);
+        self.opened = self.opened || [];
+        self.opened.push({ name: a.name, mime: a.mime, bytes: all.length, sha: nodeCrypto.createHash('sha256').update(all).digest('hex'), big: true });
+        c.resolve({ opened: true });
       }),
       // Batería (opts.battery = { level, charging, powerSave }; por defecto 80 %, sin cargar)
       getPowerStatus: wrap('getPowerStatus', (c) => { const b = self.battery || self.opts.battery || { level: 80, charging: false, powerSave: false }; c.resolve({ level: b.level, charging: !!b.charging, powerSave: !!b.powerSave }); }),

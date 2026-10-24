@@ -293,7 +293,8 @@ export function _renderMessage(msg, skipSave) {
         var fileType = fileMime.toLowerCase();
         var isImageFile = fileType.indexOf('image') === 0;
         var isVideoFile = fileType.indexOf('video') === 0;
-        if (isImageFile || isVideoFile) {
+        // Ronda 2756: un archivo grande (meta.big) no viene en el mensaje: siempre tarjeta
+        if ((isImageFile || isVideoFile) && !attachment.meta.big) {
           var mediaWrapper = document.createElement('div');
           mediaWrapper.style.cssText = 'position:relative;max-width:220px;max-height:280px;overflow:hidden;background:#000;cursor:pointer;';
           if (isImageFile) {

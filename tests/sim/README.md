@@ -210,7 +210,11 @@ los dos sentidos, PDF de 150 KB y texto largo con emojis. Con las dos builds nue
 (`bin_enviados` > 0) y todo llega; con una build anterior en un lado (`--old-b`: su nativo convierte todo a texto, como
 el Kotlin de antes) nadie manda binario y todo llega. Mide escrituras y bytes por la radio (`native_mock`: `airWrites`,
 `airBytes`, `binChunksOut/In`). En `ci.js` con 2 % de escrituras perdidas.
-Kotlin: `BinFrameTest` (trozos binarios: partir, juntar, convivir con el texto, resincronizar), `UnreadBookTest` (cuentas de las notificaciones) y `NetBgTest` (escucha de internet en segundo plano contra
+`big.js <build> [--wd] [--no-route] [--mb=24]` (ronda 2756, informe del dueño: un APK de 24 MB no salía): foto, "APK" de
+24 MB como archivo grande (mismo Wi-Fi; `--wd` por Wi-Fi Direct; `--no-route` solo Bluetooth: aviso y nada enviado),
+otro archivo y un texto después (nada bloqueado), corte a mitad y reintento. Comprueba que la app nunca tiene el archivo
+entero (trozos de 512 KB) y que se abre idéntico en el otro teléfono (SHA-256). En `ci.js`.
+Kotlin: `BigFileTest` (archivos grandes: cifrado por trozos, cortado/tocado, socket de disco a disco), `RidTokenTest`, `BinFrameTest` (trozos binarios: partir, juntar, convivir con el texto, resincronizar), `UnreadBookTest` (cuentas de las notificaciones) y `NetBgTest` (escucha de internet en segundo plano contra
 `netbg_helper.mjs`, que usa noble/WebCrypto como la app y arranca un relé que exige identificación).
 
 Reestructuración (ronda 2752, `docs/ESTRUCTURA.md`): `undef.js` (nombres sin definir en lo que entra en la APK; también

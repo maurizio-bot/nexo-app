@@ -87,18 +87,74 @@ export function _buildFileCard(msg, attachment, mime) {
   var parts = [];
   if (m.pages) parts.push(m.pages + (m.pages == 1 ? ' página' : ' páginas'));
   if (size) parts.push(_fmtSize(size));
-  parts.push('Toca para abrir');
+  var bigId = m.big && /^[A-Za-z0-9_-]{1,64}$/.test(String(m.big.id || '')) ? String(m.big.id) : '';
+  if (bigId) { card.dataset.bigId = bigId; card.dataset.bigOwn = msg && msg._own ? '1' : ''; card.dataset.bigSize = _fmtSize(size); _bigWatch(); }
+  else parts.push('Toca para abrir');
   sub.textContent = parts.join(' · ');
   txt.appendChild(nm);
   txt.appendChild(sub);
   row.appendChild(ic);
   row.appendChild(txt);
   card.appendChild(row);
+  if (bigId) _bigSub(card);
   card.onclick = function(e) {
     e.stopPropagation();
+    if (bigId) { _bigTap(msg, m.big, name, mime); return; }
     _openAttachmentFile(attachment.payload, name, mime);
   };
   return card;
+}
+
+// ===== Archivos grandes (ronda 2756, big_file.js): la tarjeta enseña en qué va y qué pasa al tocarla =====
+function _bigs() { return window.bleInterface && window.bleInterface.bigFiles; }
+function _bigText(card) {
+  var b = _bigs(), id = card.dataset.bigId, own = card.dataset.bigOwn === '1', size = card.dataset.bigSize || '';
+  var s = b && b.state(id);
+  var pct = s && s.total ? Math.min(100, Math.floor((s.bytes || 0) * 100 / s.total)) : 0;
+  var head = size ? size + ' · ' : '';
+  if (!s) return head + (own ? 'Toca para abrir' : 'Esperando el archivo (Wi-Fi) · Toca para pedirlo');
+  if (s.state === 'preparing') return head + 'Preparando ' + pct + ' %';
+  if (s.state === 'sending') return head + 'Enviando ' + pct + ' %' + (s.via === 'wd' ? ' (Wi-Fi Direct)' : ' (Wi-Fi)');
+  if (s.state === 'receiving') return head + 'Recibiendo ' + pct + ' %';
+  if (s.state === 'waiting') return head + 'Pedido otra vez…';
+  if (s.state === 'failed') return head + (s.dir === 'out' ? 'No se pudo enviar · Toca para reintentar' : 'No llegó entero · Toca para pedirlo');
+  return head + 'Toca para abrir';
+}
+function _bigSub(card) { var sub = card.querySelector('.file-sub'); if (sub) sub.textContent = _bigText(card); }
+var _bigWatching = false;
+function _bigWatch() {
+  if (_bigWatching) return;
+  _bigWatching = true;
+  window.addEventListener('nexo:big', function(ev) {
+    var id = ev && ev.detail && ev.detail.id;
+    if (!id) return;
+    document.querySelectorAll('.file-attachment[data-big-id="' + id + '"]').forEach(_bigSub);
+  });
+}
+function _bigTap(msg, big, name, mime) {
+  var b = _bigs(), id = String(big.id), cid = (msg && (_msgContactMap[msg.msgId || msg.messageId] || msg.contactNexoId)) || _getCurrentContactId();
+  if (!b) { _showPermissionError('Archivo: esta versión no puede abrirlo'); return; }
+  var s = b.state(id) || {};
+  var own = !!(msg && msg._own);
+  if (s.state === 'preparing' || s.state === 'sending' || s.state === 'receiving' || s.state === 'waiting') return;
+  if (s.state === 'failed' && s.dir === 'out') { b.transfer(cid, id).catch(function() {}); return; }
+  if (!own && s.state !== 'done') {
+    if (!b.request(cid, id)) _showPermissionError('Archivo grande: hace falta estar en el mismo Wi-Fi que el contacto o con Wi-Fi Direct');
+    return;
+  }
+  if (!big.key) { _showPermissionError('Archivo: todavía no está listo'); return; }
+  if (_openingFile) return;
+  _openingFile = true;
+  console.log('[BIG] Abrir ' + id + ' (' + _extOf(name) + ')');
+  b.open(id, big.key, name, mime).then(function(r) {
+    if (r && r.opened === false) {
+      if (r.reason === 'install_permission') _showPermissionError('Archivo: permite a NEXO instalar apps y vuelve a tocar la APK');
+      else if (r.reason === 'missing') _showPermissionError('Archivo: ya no está en este teléfono' + (own ? '' : ' · Toca otra vez para pedirlo'));
+      else _showPermissionError('Archivo: no hay ninguna app en el teléfono para abrir este tipo de archivo');
+      if (r.reason === 'missing' && !own) { b.saved[id] = undefined; b._set(id, { dir: 'in', state: 'failed' }); }
+    }
+  }).catch(function(e) { _showPermissionError('Archivo: no se pudo abrir (' + ((e && e.message) || 'error') + ')'); })
+    .then(function() { _openingFile = false; });
 }
 
 export var _openingFile = false;

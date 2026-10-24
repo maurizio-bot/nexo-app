@@ -50,6 +50,10 @@ clase con `Object.assign(BLEInterface.prototype, …)` (mismo `this`, mismos nom
 | `ui/ble_ui.js` | panel, lista de chats, franja de en línea, menú de contacto, insignia |
 | `ui/ble_jump_send.js` | envíos por Jump |
 | `ui/ble_camera_pause.js` | pausa del Bluetooth con la cámara abierta |
+| `ui/ble_privacy.js` | ID rotativo (ronda 2756): qué se anuncia (NEXO ID visible o código) y traducir los códigos de los contactos |
+
+Ronda 2756: `ui/ble_rid.js` (cálculo del código rotativo; igual que `RidToken.kt`) y `ui/big_file.js` (archivos grandes:
+trozos a disco, paso por Wi-Fi / Wi-Fi Direct, estado de la tarjeta; nativo en `BigFile.kt`).
 
 Sin cambios: `ui/ble_ack.js` (protocolo de trozos), `ui/ble_relay.js` (Jump), `ui/lan.js`, `ui/wifi_direct.js`,
 `net/net_link.js` (internet), `vault/*`, `fenix/*`.

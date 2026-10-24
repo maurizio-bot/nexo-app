@@ -2616,12 +2616,7 @@ class NexoBlePlugin : Plugin() {
                 return
             }
             val file = writeCacheFile("nexo_open", name, b64)
-            val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
-            val intent = Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, mime)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            activity.startActivity(intent)
-            remLog("INFO", "FILE", "Abriendo archivo ($mime, ${file.length()} bytes)")
+            launchView(file, mime)
             call.resolve(JSObject().put("opened", true))
         } catch (e: ActivityNotFoundException) {
             call.resolve(JSObject().put("opened", false).put("reason", "no_app"))
@@ -2629,6 +2624,150 @@ class NexoBlePlugin : Plugin() {
             remLog("WARN", "FILE", "No se pudo abrir el archivo: ${e.message}")
             call.reject("Error abriendo archivo: ${e.message}")
         }
+    }
+
+    private fun launchView(file: File, mime: String) {
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, mime)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        activity.startActivity(intent)
+        remLog("INFO", "FILE", "Abriendo archivo ($mime, ${file.length()} bytes)")
+    }
+
+    // ===== Archivos grandes (ronda 2756, BigFile.kt): nunca enteros en la memoria de la app =====
+    private val bigWriters = ConcurrentHashMap<String, BigWriter>()
+    private fun bigDir() = File(context.filesDir, "nexo_big").also { it.mkdirs() }
+    private fun bigProgress(id: String, dir: String): BigNet.Progress {
+        var last = 0L
+        return BigNet.Progress { b, t ->
+            val now = System.currentTimeMillis()
+            if (now - last >= 400 || b >= t) { last = now; notifyListeners("onBigProgress", JSObject().put("id", id).put("dir", dir).put("bytes", b).put("total", t)) }
+        }
+    }
+    private fun bigDone(id: String, dir: String, error: String?) {
+        if (error != null) remLog("WARN", "FILE_IO", "Archivo grande $id ($dir): $error")
+        else remLog("INFO", "FILE_IO", "Archivo grande $id ($dir): completo")
+        notifyListeners("onBigDone", JSObject().put("id", id).put("dir", dir).put("ok", error == null).put("error", error ?: ""), true)
+    }
+
+    // Emisor: la app pasa el archivo a trozos (base64) y aquí se cifra a disco con la clave del archivo
+    @PluginMethod
+    fun bigBegin(call: PluginCall) {
+        val id = BigFile.safeId(call.getString("id") ?: "")
+        val key = try { BigFile.key(call.getString("key") ?: "") } catch (e: Exception) { call.reject("clave no válida"); return }
+        if (id.isEmpty()) { call.reject("id requerido"); return }
+        bigWriters.remove(id)?.abort()
+        bigWriters[id] = BigWriter(BigFile.encFile(bigDir(), id), key, id)
+        call.resolve(JSObject().put("ok", true))
+    }
+
+    @PluginMethod
+    fun bigAppend(call: PluginCall) {
+        val id = BigFile.safeId(call.getString("id") ?: "")
+        val w = bigWriters[id] ?: run { call.reject("sin preparar", "BIG_NONE"); return }
+        try {
+            val last = call.getBoolean("last", false) == true
+            w.append(Base64.decode(call.getString("data") ?: "", Base64.NO_WRAP), last)
+            if (last) bigWriters.remove(id)
+            call.resolve(JSObject().put("bytes", w.plainBytes).put("enc", w.file.length()))
+        } catch (e: Exception) {
+            bigWriters.remove(id); w.abort()
+            call.reject("No se pudo preparar: ${e.message}", "BIG_WRITE")
+        }
+    }
+
+    @PluginMethod
+    fun bigStatus(call: PluginCall) {
+        val f = BigFile.encFile(bigDir(), call.getString("id") ?: "")
+        call.resolve(JSObject().put("have", f.exists() && !bigWriters.containsKey(BigFile.safeId(call.getString("id") ?: ""))).put("bytes", if (f.exists()) f.length() else 0))
+    }
+
+    @PluginMethod
+    fun bigDelete(call: PluginCall) {
+        val id = BigFile.safeId(call.getString("id") ?: "")
+        bigWriters.remove(id)?.abort()
+        BigFile.encFile(bigDir(), id).delete()
+        call.resolve(JSObject().put("ok", true))
+    }
+
+    // Receptor por el mismo Wi-Fi: abre un puerto para esta transferencia (solo acepta id + token) y devuelve el puerto
+    @PluginMethod
+    fun bigServe(call: PluginCall) {
+        val id = BigFile.safeId(call.getString("id") ?: "")
+        val token = call.getString("token") ?: ""
+        if (id.isEmpty() || token.length < 16) { call.reject("id y token requeridos"); return }
+        try {
+            val server = java.net.ServerSocket(0)
+            server.soTimeout = 60000
+            call.resolve(JSObject().put("port", server.localPort))
+            Thread {
+                try { BigNet.serve(server, id, token, BigFile.encFile(bigDir(), id), BigFile.MAX_BYTES * 11 / 10, bigProgress(id, "in")); bigDone(id, "in", null) }
+                catch (e: Exception) { bigDone(id, "in", e.message ?: "error") }
+                finally { try { server.close() } catch (e: Exception) {} }
+            }.start()
+        } catch (e: Exception) { call.reject("Puerto no disponible: ${e.message}", "BIG_SOCKET") }
+    }
+
+    // Emisor por el mismo Wi-Fi: a la dirección del contacto en la conexión Wi-Fi (LanHub) y al puerto que abrió
+    @PluginMethod
+    fun bigSendLan(call: PluginCall) {
+        val id = BigFile.safeId(call.getString("id") ?: "")
+        val nx = (call.getString("nx") ?: "").lowercase()
+        val port = call.getInt("port") ?: 0
+        val token = call.getString("token") ?: ""
+        val file = BigFile.encFile(bigDir(), id)
+        val addr = lanHub?.address(nx) ?: run { call.reject("Sin Wi-Fi con $nx", "LAN_DOWN"); return }
+        if (!file.exists() || port <= 0) { call.reject("Nada que enviar", "BIG_NONE"); return }
+        Thread {
+            try {
+                java.net.Socket().use { s ->
+                    s.connect(java.net.InetSocketAddress(addr, port), 10000)
+                    s.soTimeout = 60000
+                    BigNet.send(s, id, token, file, bigProgress(id, "out"))
+                }
+                bigDone(id, "out", null)
+                call.resolve(JSObject().put("ok", true).put("bytes", file.length()))
+            } catch (e: Exception) {
+                bigDone(id, "out", e.message ?: "error")
+                call.reject("Envío fallido: ${e.message}", "BIG_SEND")
+            }
+        }.start()
+    }
+
+    // Abrir: se descifra a la caché y se abre como cualquier archivo (instalador de APK, lector de PDF…)
+    @PluginMethod
+    fun bigOpen(call: PluginCall) {
+        val id = BigFile.safeId(call.getString("id") ?: "")
+        val name = safeFileName(call.getString("name"))
+        var mime = call.getString("mime") ?: ""
+        if (!mime.contains('/')) mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
+        val enc = BigFile.encFile(bigDir(), id)
+        if (!enc.exists()) { call.resolve(JSObject().put("opened", false).put("reason", "missing")); return }
+        val key = try { BigFile.key(call.getString("key") ?: "") } catch (e: Exception) { call.reject("clave no válida"); return }
+        val isApk = mime == "application/vnd.android.package-archive" || name.lowercase().endsWith(".apk")
+        if (isApk) mime = "application/vnd.android.package-archive"
+        if (isApk && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            call.resolve(JSObject().put("opened", false).put("reason", "install_permission")); return
+        }
+        Thread {
+            try {
+                val dir = File(activity.cacheDir, "nexo_open").also { it.mkdirs() }
+                val old = System.currentTimeMillis() - 86400000L
+                dir.listFiles()?.forEach { if (it.lastModified() < old) it.delete() }
+                val out = File(dir, name)
+                FileOutputStream(out).use { BigReader.decrypt(enc, key, id, it) }
+                mainHandler.post {
+                    try { launchView(out, mime); call.resolve(JSObject().put("opened", true)) }
+                    catch (e: ActivityNotFoundException) { call.resolve(JSObject().put("opened", false).put("reason", "no_app")) }
+                    catch (e: Exception) { call.reject("Error abriendo archivo: ${e.message}") }
+                }
+            } catch (e: Exception) {
+                remLog("WARN", "FILE_IO", "Archivo grande $id no se pudo abrir: ${e.message}")
+                call.reject("No se pudo abrir: ${e.message}", "BIG_OPEN")
+            }
+        }.start()
     }
 
     // Primera página de un PDF como JPEG (base64) con el lector de PDF de Android, y número de páginas
@@ -2742,6 +2881,7 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun wifiDirectHost(call: PluginCall) {
         val transferId = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
+        val bigToken = call.getString("bigToken")?.takeIf { it.length >= 16 }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !p2pInit() || !wdPermissionGranted()) {
             call.reject("Wi-Fi Direct no disponible", "WD_UNAVAILABLE"); return
         }
@@ -2761,7 +2901,13 @@ class NexoBlePlugin : Plugin() {
                         wdServer = server
                         remLog("INFO", "WIFI_DIRECT", "Grupo creado para $transferId, puerto ${server.localPort}")
                         call.resolve(JSObject().put("ssid", name).put("passphrase", pass).put("port", server.localPort))
-                        Thread { wdReceive(server, transferId) }.start()
+                        // Archivo grande (ronda 2756): del socket al disco, sin pasar por la app
+                        if (bigToken != null) Thread {
+                            try { BigNet.serve(server, BigFile.safeId(transferId), bigToken, BigFile.encFile(bigDir(), transferId), BigFile.MAX_BYTES * 11 / 10, bigProgress(BigFile.safeId(transferId), "in")); bigDone(BigFile.safeId(transferId), "in", null) }
+                            catch (e: Exception) { bigDone(BigFile.safeId(transferId), "in", e.message ?: "error") }
+                            finally { try { server.close() } catch (e: Exception) {}; if (wdServer === server) wdServer = null; wdTearDown() }
+                        }.start()
+                        else Thread { wdReceive(server, transferId) }.start()
                     } catch (e: Exception) {
                         wdTearDown()
                         call.reject("Socket no disponible: ${e.message}", "WD_SOCKET")
@@ -2813,7 +2959,11 @@ class NexoBlePlugin : Plugin() {
         val pass = call.getString("passphrase") ?: run { call.reject("passphrase requerido"); return }
         val port = call.getInt("port") ?: run { call.reject("port requerido"); return }
         val transferId = call.getString("transferId") ?: run { call.reject("transferId requerido"); return }
-        val data = call.getString("data") ?: run { call.reject("data requerido"); return }
+        // Archivo grande (ronda 2756): se manda el archivo cifrado del disco (bigToken) en vez de "data"
+        val bigToken = call.getString("bigToken")?.takeIf { it.length >= 16 }
+        val bigFile = if (bigToken != null) BigFile.encFile(bigDir(), transferId) else null
+        if (bigFile != null && !bigFile.exists()) { call.reject("Nada que enviar", "BIG_NONE"); return }
+        val data = if (bigFile != null) "" else (call.getString("data") ?: run { call.reject("data requerido"); return })
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !p2pInit() || !wdPermissionGranted()) {
             call.reject("Wi-Fi Direct no disponible", "WD_UNAVAILABLE"); return
         }
@@ -2827,7 +2977,20 @@ class NexoBlePlugin : Plugin() {
         fun push(addr: java.net.InetAddress) {
             val tJoined = System.currentTimeMillis()
             Thread {
-                try {
+                if (bigFile != null) {
+                    try {
+                        java.net.Socket().use { s ->
+                            s.connect(java.net.InetSocketAddress(addr, port), 10000)
+                            s.soTimeout = 60000
+                            BigNet.send(s, BigFile.safeId(transferId), bigToken!!, bigFile, bigProgress(BigFile.safeId(transferId), "out"))
+                        }
+                        bigDone(BigFile.safeId(transferId), "out", null)
+                        call.resolve(JSObject().put("ok", true).put("bytes", bigFile.length()).put("joinMs", tJoined - t0).put("xferMs", System.currentTimeMillis() - tJoined))
+                    } catch (e: Exception) {
+                        bigDone(BigFile.safeId(transferId), "out", e.message ?: "error")
+                        call.reject("Envío fallido: ${e.message}", "WD_SEND")
+                    } finally { wdTearDown() }
+                } else try {
                     val bytes = data.toByteArray(Charsets.UTF_8)
                     java.net.Socket().use { s ->
                         s.connect(java.net.InetSocketAddress(addr, port), 10000)

@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-23 (build 2754)
+Última actualización: 2026-10-24 (build 2756)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -82,6 +82,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2753 | `75772b8` | Sin APK: falló en GitHub la prueba nueva `binary.js` (las pérdidas simuladas se aplicaban también al conectar y se perdió el intercambio de claves; ahora solo durante los envíos). El Kotlin compiló bien en las pruebas JVM |
 | 2754 | `9dac851` | Bluetooth sin base64: trozos de archivo en binario con quien lo anuncia (−25 % de bytes por la radio, fotos y PDF ~25–35 % más rápidos en el simulador); con builds anteriores, JSON de siempre. APK verificada: 24,5 MB, firma 23d86688…, manifiesto idéntico a la 2752, `BinFrame`/`BinAssembler`/`sendBinary` presentes. Falta probarla en teléfonos |
 | 2755 | `c035890` | Solo diagnóstico (el dueño dice que los archivos no llegan; sin cambio de comportamiento): en Perfil → Copiar diagnóstico salen los errores de Bluetooth del nativo (`BT_ERR`: escritura o notificación fallida, mensaje descartado, trozo binario incompleto; uno por tipo cada 5 s) y una línea `[BIN]` por cada envío/recepción en binario. APK verificada (firma 23d86688…, manifiesto igual que la 2754) |
+| 2756 | (este commit) | Archivos grandes hasta 1 GB por el mismo Wi-Fi / Wi-Fi Direct (informe del dueño: un APK de 24 MB no salía) e ID Bluetooth rotativo (plan punto 4). Falta verificar la APK y probarla en teléfonos |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -207,6 +208,41 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2756: archivos grandes (pedido del dueño 24-10) e ID Bluetooth rotativo (plan punto 4)
+**Archivos grandes.** Informe del dueño con la 2755: una foto llega; un APK de 24 MB "nunca salió ni llegó" y después
+no llegaban más archivos. En el simulador (`big.js` con la 2755) el APK se rechaza con el aviso "demasiado grande" (el
+máximo era ~22 MB) y lo siguiente sí llega: el bloqueo de después no se reproduce (pendiente del diagnóstico de los
+teléfonos). El límite existía porque todo archivo pasaba entero por la memoria de la app (base64, cifrado y copias).
+- Ahora, por encima de ~22 MB y con el contacto en el mismo Wi-Fi o con Wi-Fi Direct (hasta 1 GB), como Signal: la app
+  lee el archivo a trozos de 512 KB y el nativo (`BigFile.kt`) los cifra a disco con una clave al azar del archivo
+  (AES-GCM por trozo, con número de trozo y "último" en los datos asociados: no se pueden quitar, reordenar ni cortar);
+  un mensaje normal cifrado lleva nombre, tamaño y la clave; el archivo cifrado va de disco a disco por un socket
+  (mismo Wi-Fi: el receptor abre un puerto con un token; Wi-Fi Direct: como siempre, con el token en las credenciales
+  cifradas). Al tocarlo se descifra a la caché y se abre (un APK se instala). `big_file.js`, `wifi_direct.js` v1.4.
+- La tarjeta del chat dice en qué va: Preparando / Enviando / Recibiendo N %, "Toca para abrir"; si se corta,
+  "No se pudo enviar · Toca para reintentar" (emisor) o "Toca para pedirlo" (receptor). Nada se queda bloqueado.
+- Sin Wi-Fi ni Wi-Fi Direct con el contacto: aviso claro y no se manda nada. No se pueden reenviar todavía.
+- Encontrado al probar: el reenvío automático de pendientes mandaba el mensaje del archivo grande como archivo normal
+  (llegaba una tarjeta que no abría nada); y un corte a mitad dejaba Wi-Fi Direct 10 min sin usar con ese contacto
+  (ahora solo si falla al conectar). Corregidos.
+- Pruebas: `big.js` (mismo Wi-Fi, `--wd`, `--no-route`; en `ci.js`): 24 MB llegan y se abren idénticos (SHA-256) en los
+  dos, la app nunca tiene más de un trozo (683 KB en base64), lo pequeño sigue llegando, corte y reintento. Con la
+  2755 el archivo no sale. Kotlin: `BigFileTest` (5: idéntico, otra clave/id, cortado/tocado, socket de disco a disco
+  con un intruso con token falso, nombres). El Kotlin del plugin solo se compila en GitHub: falta el teléfono.
+
+**ID Bluetooth rotativo** (decidido por el dueño: "empieza por el 4"; diseño de `PENDIENTES.md`):
+- En el aire, en vez del NEXO ID, "R" + 9 caracteres: HMAC-SHA256(SHA-256("nexo-rid-key|" + clave pública), época de
+  15 min). Solo quien tiene la clave pública (los contactos) lo reconoce; cambia cada 15 min también con la app cerrada
+  (lo calcula `BleService` con `RidToken.kt`, idéntico a `ble_rid.js`). El nombre del teléfono deja de anunciarse.
+- NEXO ID visible solo con "Agregar" abierto (5 min) o sin contactos. Una build anterior ignora el código ("NX…" o nada).
+- Jump y Fénix: los NEXO no reconocidos son "anónimos"; se conecta de paso y el kx dice quién es (`relay.identify`).
+  El 'rq' lleva los códigos de ahora del destino ('dk'): un puente que no lo conoce lo reconoce al escanear.
+- Pruebas: `rid.js` (épocas de 20 s; en `ci.js`): en el aire solo códigos que cambian, ni NEXO ID ni nombre; un
+  desconocido no los ve; tras 2 cambios de código se reconectan y llega lo pendiente; con "Agregar" abierto visible.
+  Con la 2752 falla (el NEXO ID sale 6 veces y el desconocido los ve). Kotlin: `RidTokenTest` (vectores de la app).
+  `run`, `jump` (desconocidos, cadena), `fenix` (recupera con 5 contactos) y mezcla con la 2752 en verde.
+- Diagnóstico (2755, también aquí): `BT_ERR` y `[BIN]`.
 
 ## Ronda 2753–2754: Bluetooth sin base64 (plan del dueño, punto 7)
 - Antes cada trozo de un archivo viajaba como texto JSON con los datos en base64: ~450 bytes por la radio para 270

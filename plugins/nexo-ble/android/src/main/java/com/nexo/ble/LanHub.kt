@@ -115,6 +115,8 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         return conns.entries.map { Triple(it.key, it.value.rtt, now - it.value.lastRx) }
     }
     fun peers(): List<String> = conns.keys().toList()
+    // Dirección del contacto en la red (archivos grandes: BigFile va por un socket aparte, no por esta conexión)
+    fun address(nx: String): InetAddress? = conns[nx.lowercase()]?.socket?.inetAddress
 
     @Synchronized
     fun stop() {

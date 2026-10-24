@@ -30,6 +30,7 @@ export const BLE_KEY_METHODS = {
       pkt.ss = 1; // entiende el remitente sellado (sobres 'sx' por Jump)
       pkt.nt = 1; // v6.13.0: internet por relés públicos
       pkt.bf = 1; // ronda 2753: entiende trozos binarios de archivos por Bluetooth
+      pkt.bg = 1; // ronda 2756: archivos grandes por Wi-Fi / Wi-Fi Direct (big_file.js)
       if (peerNx) pkt.ph = ratchetPeerPqId(peerNx); // v6.12.0: qué clave poscuántica suya tengo (no hace falta repetirla)
       var rs = self.fenix ? self.fenix.resetMark() : 0;
       if (rs) pkt.rs = rs;

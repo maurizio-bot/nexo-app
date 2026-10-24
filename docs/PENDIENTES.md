@@ -45,13 +45,16 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   (mejor por Wi-Fi); pingeo por Jump (hoy solo con el contacto conectado).
 
 ## 3. Mejoras de lo que ya existe
+- **Archivos grandes** (pedido del dueño 24-10, un APK de 24 MB no salía): hecho en la 2756, hasta 1 GB por el mismo
+  Wi-Fi o Wi-Fi Direct, a disco por trozos y con clave propia por archivo. Falta: reenviarlos, y por Bluetooth/Jump
+  (demasiado lento) o internet (relés: no admiten archivos así).
 - **Velocidad**: archivos en binario hecho (2754); L2CAP; Wi-Fi Direct más rápido; detectar y renegociar MTU
   pequeño (algunos teléfonos se quedan en 20 bytes por escritura).
 - **Jump con más alcance**: hecho en la ronda 2731 (en el teléfono, por confirmar): Bluetooth de largo alcance (LE
   Coded PHY, ~4x distancia entre teléfonos que lo tengan; el diagnóstico dice `[JUMP] Largo alcance (LE Coded): sí/no`)
   y hasta 8 saltos (antes 4). Ya existía guardar y reenviar (el puente guarda hasta 24 h). Falta: Jump también por
   Wi-Fi; Jump con la app en segundo plano o cerrada.
-- **Seguridad (resto de la fase 3)**: identificador Bluetooth rotativo (falta decisión, ver 4). Hechos en la
+- **Seguridad (resto de la fase 3)**: identificador Bluetooth rotativo hecho (2756). Hechos en la
   ronda 2730: remitente oculto a los puentes, poscuántico (ML-KEM) y QR del número de seguridad.
 - **Fiabilidad**: recibir con la app cerrada del todo (servidor GATT en el BleService); falta `@capacitor/app`.
   Hecho en la ronda 2744: fuera `NordicMeshService` del manifiesto, emojis y acentos (prueba en `e2e.js`; la vista
@@ -64,13 +67,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
    (ronda 2739). Queda abierto si más adelante se quiere un servidor propio.
 3. Pagos: modelo y país.
 4. iPhone: ¿cuenta de Apple?
-5. **Identificador Bluetooth rotativo** (seguridad, punto 9): hoy cualquiera con un escáner ve el NEXO ID en el
-   aire y puede seguir a una persona. Con un identificador que cambia cada pocos minutos y que solo los
-   contactos reconocen, un desconocido ya no puede. Pero ese NEXO ID visible es lo que hoy permite (a) agregar a
-   alguien que está cerca y (b) que un teléfono NEXO desconocido haga de puente en Jump. Propuesta: rotativo por
-   defecto; visible solo mientras se tiene abierto "Agregar" (unos minutos) y, para Jump con desconocidos, una
-   opción "Ayudar a la red (Jump)" activada por defecto que anuncia una marca anónima de la red, no el NEXO ID.
-   ¿Te parece?
+5. ~~Identificador Bluetooth rotativo~~ — decidido el 24-10 ("empieza por el 4"): hecho en la ronda 2756 con la
+   propuesta (ver §5 punto 4). La opción "Ayudar a la red" no hizo falta como interruptor: el código rotativo ya es
+   la marca anónima de la red; queda pendiente decidir si se quiere un interruptor para no contestar a desconocidos
+   (ver los límites en §5 punto 4).
 6. Orden propuesto: lo que falle en sus pruebas → velocidad (binario, L2CAP) → llamadas de voz → Jump de más
    alcance → seguridad restante → grupos → videollamadas.
 
@@ -80,10 +80,13 @@ De lo más simple a lo más complejo. Estado:
 2. ✅ (2744) Pruebas en cada build: trabajo `tests` en el workflow (Kotlin JVM + `tests/sim/ci.js`, 9 escenarios); si
    falla, no hay APK. Ya encontró un fallo real (Jump + internet, ver ronda 2744).
 3. ✅ (2744) Emojis y acentos: llegan idénticos; la vista previa ya no parte emojis.
-4. ID Bluetooth rotativo: **no aplicado**. El dueño lo autorizó solo si es seguro que no da problemas; no lo es:
-   la recuperación de Fénix busca a los contactos por el NEXO ID que anuncian y un teléfono recién recuperado
-   todavía no sabría reconocer un ID rotativo; también afecta a agregar desconocidos, a Jump con desconocidos y a
-   teléfonos con builds viejas. Hace falta un diseño con pruebas de esos casos antes de decidir.
+4. ✅ (2756) ID Bluetooth rotativo: en el aire, un código que cambia cada 15 min y que solo reconocen los contactos
+   (sale de su clave pública); ni NEXO ID ni nombre del teléfono. El NEXO ID solo con "Agregar" abierto (5 min) o sin
+   contactos todavía: **para agregarse cerca, los dos abren "Agregar"**. Jump y Fénix conectan de paso con los NEXO
+   "anónimos" y saben quién es cada uno al conectar; quien busca camino manda los códigos del destino ('dk').
+   Límites (honestos): quien se conecta a tu teléfono sí recibe tu NEXO ID (lo necesitan Jump y Fénix); el Wi-Fi
+   local sigue usando la marca del día sacada del NEXO ID; Android cambia la dirección Bluetooth por su cuenta (no
+   siempre a la vez que el código); una build anterior no reconoce el código (nosotros sí nos conectamos con ella).
 5. ✅ (2749) AGP 9.4.0 / Gradle 9.6.0 / Kotlin 2.2.20 / compileSdk 37.1 y Tor 0.4.9.14 (targetSdk sigue en 34).
 6. ✅ (2752) Dividir `main.js` (4.281 → 720 líneas) y `ble_interface.js` (3.732 → 847) en 30 módulos sin cambiar el
    código (`docs/ESTRUCTURA.md`). 7. ✅ (2754) Bluetooth sin base64: los trozos de datos de fotos, vídeos y archivos

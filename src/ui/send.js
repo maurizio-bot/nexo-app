@@ -8,7 +8,7 @@ import { _PREVIEW_BY_TYPE, _canUpgradeStatus, _cut, _getCurrentContactId, _getDo
 import { _msgContactMap } from './chat_state.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
 import { _showPermissionError } from './ui_bits.js';
-import { vaultAppendMessage } from '../vault/vault_manager.js';
+import { vaultAppendMessage, vaultSetMessageFields } from '../vault/vault_manager.js';
 
 
 /**
@@ -135,6 +135,38 @@ export function _sendAttachment(type, payload, meta, opts) {
   } else {
     console.log('[ATTACH] Sistema de mensajes no disponible');
   }
+}
+
+// Ronda 2756: archivo grande (big_file.js). Se cifra a disco por trozos, luego va un mensaje normal con nombre,
+// tamaño y la clave del archivo, y el archivo cifrado sigue por el mismo Wi-Fi o Wi-Fi Direct (la tarjeta enseña el %)
+export function _sendBigFile(contactId, file, mime) {
+  var bi = window.bleInterface, bigs = bi && bi.bigFiles;
+  if (!bigs || !contactId) return null;
+  var msgId = 'msg' + Date.now() + Math.random().toString(36).substr(2, 5);
+  _msgContactMap[msgId] = contactId;
+  _noteContactMessage(contactId, 'file', Date.now());
+  var meta = { name: file.name, size: file.size, type: 'file', mime: mime, big: { id: msgId, size: file.size } };
+  var localMsg = { msgId: msgId, messageId: msgId, content: JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: meta }),
+    _own: true, status: 'sending', timestamp: Date.now(), attachmentType: 'file', attachmentPayload: 'big', attachmentMeta: meta };
+  if (_normId(contactId) === _normId(_getCurrentContactId())) _renderMessage(localMsg, true);
+  try { vaultAppendMessage(contactId, localMsg); } catch (e) {}
+  console.log('[BIG] Archivo grande ' + msgId + ': ' + Math.round(file.size / 1048576) + ' MB a ' + contactId);
+  bigs.prepare(file, msgId).then(function(key) {
+    meta.big.key = key;
+    vaultSetMessageFields(contactId, msgId, { metaMerge: { big: meta.big } }).catch(function() {});
+    var wire = JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: meta });
+    return bi.sendChatMessage(contactId, wire, msgId).then(function() {
+      var current = _getDomMessageStatus(msgId);
+      if (_canUpgradeStatus(current, 'sent')) { _updateMessageStatus(msgId, 'sent'); _updateMessageStorageStatus(msgId, 'sent', contactId); }
+    }, function(err) { console.warn('[BIG] Mensaje de ' + msgId + ' no enviado aún: ' + (err && err.message)); });
+  }).then(function() {
+    return bigs.transfer(contactId, msgId).catch(function() {}); // la tarjeta dice "Toca para reintentar"
+  }).catch(function(e) {
+    console.warn('[BIG] ' + msgId + ': ' + (e && e.message));
+    _updateMessageStatus(msgId, 'failed'); _updateMessageStorageStatus(msgId, 'failed', contactId);
+    _showPermissionError('Archivo: no se pudo preparar (' + ((e && e.message) || 'error') + ')');
+  });
+  return msgId;
 }
 
 // v9.9.42: envío de un adjunto ya guardado (también lo reusa el vídeo cuando falla Wi-Fi Direct)

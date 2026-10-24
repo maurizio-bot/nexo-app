@@ -16,6 +16,8 @@
  * Si algo falla, el archivo sigue por Bluetooth como siempre. Solo con teléfonos que anuncian que lo
  * tienen (kx con wd:1, Android 10+) y para contenidos de más de WD_MIN_BYTES (para poco no compensa
  * montar el grupo). Una transferencia a la vez.
+ * v1.4 (ronda 2756): archivos grandes (big_file.js): 'wq' con big:1; el receptor abre el socket con un token (va en
+ *       las credenciales cifradas) y lo recibido va a disco (BigFile.kt), no a la app; el emisor manda desde el disco.
  */
 import { e2eEncryptText, e2eDecryptText, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted } from '../vault/e2e_proto.js';
@@ -164,6 +166,41 @@ export class WifiDirect {
     });
   }
 
+  // Archivo grande ya cifrado en disco (big_file.js): misma negociación; el contenido va de disco a disco
+  sendBig(deviceId, fileId, size) {
+    var self = this, peer = self._nexoOf(deviceId);
+    if (self.busy) return Promise.reject(new Error('Wi-Fi Direct ocupado'));
+    self.busy = true;
+    return self._ensurePermission().then(function(ok) {
+      if (!ok) throw new Error('sin permiso de Wi-Fi Direct');
+      return new Promise(function(resolve, reject) {
+        var st = {};
+        var offerTimer = setTimeout(function() { self.out.delete(fileId); reject(new Error('sin respuesta')); }, OFFER_TIMEOUT_MS);
+        st.onNo = function(why) { clearTimeout(offerTimer); self.out.delete(fileId); reject(new Error('el otro no puede (' + (why || '?') + ')')); };
+        st.onCreds = function(c) {
+          clearTimeout(offerTimer);
+          st.onDone = function() {};
+          e2eDecryptText(c).then(function(r) {
+            var cr = JSON.parse(r.text);
+            if (!cr.t) throw new Error('sin token');
+            return _plugin().wifiDirectSend({ ssid: cr.s, passphrase: cr.p, port: cr.o, transferId: fileId, bigToken: cr.t, jsTs: Date.now() });
+          }).then(function(res) { self.out.delete(fileId); resolve(res); }, function(e) { self.out.delete(fileId); reject(e); });
+        };
+        self.out.set(fileId, st);
+        self._ctl(deviceId, { type: 'wq', id: fileId, size: size, big: 1, meta: {}, pk: e2eMyPublicKey() }).catch(function(e) { clearTimeout(offerTimer); self.out.delete(fileId); reject(e); });
+      });
+    }).then(function(r) { self.busy = false; return r; }, function(e) {
+      self.busy = false;
+      console.warn('[WIFI-DIRECT] Archivo grande ' + fileId + ': ' + (e && e.message));
+      // Cortado a mitad (WD_SEND: se alejó, se apagó…): Wi-Fi Direct sí funciona con él; se puede reintentar ya
+      if (!(e && e.code === 'WD_SEND')) self.noteFail(peer);
+      throw e;
+    });
+  }
+
+  // Fin de un archivo grande recibido (lo avisa big_file.js): libera Wi-Fi Direct para otra transferencia
+  bigFinished(id) { if (this.incoming.delete(id)) this.busy = false; }
+
   // Paquetes de control (llegan por Bluetooth). true si era de Wi-Fi Direct.
   handle(p, deviceId) {
     var self = this;
@@ -179,20 +216,28 @@ export class WifiDirect {
     var no = function(why) { self._ctl(deviceId, { type: 'wn', id: id, why: why }).catch(function() {}); };
     if (!self.supported()) { no('no soportado'); return true; }
     if (self.busy || self.incoming.size) { no('ocupado'); return true; }
-    if (!(p.size > 0) || p.size > WD_MAX_BYTES) { no('tamaño'); return true; }
+    var big = p.big === 1 && self.ble.bigFiles;
+    if (!(p.size > 0) || p.size > (big ? 1.1 * 1024 * 1024 * 1024 : WD_MAX_BYTES)) { no('tamaño'); return true; }
     // Clave para cifrar las credenciales: la guardada del contacto o, si aún no es contacto, la que trae la
     // oferta (las credenciales solo sirven para mandarnos datos, que igualmente deben venir cifrados)
     var key = (self.ble.ackSystem && self.ble.ackSystem._peerKey(deviceId, from)) ||
       ((typeof p.pk === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(p.pk)) ? p.pk : null);
     if (!key) { no('sin clave'); return true; }
     self.busy = true;
+    var bigToken = big ? Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join('') : null;
     self._ensurePermission().then(function(ok) {
       if (!ok) throw new Error('sin permiso');  // (denied ya marcado: el próximo kx no lo anuncia)
-      return _plugin().wifiDirectHost({ transferId: id, size: p.size });
+      var args = { transferId: id, size: p.size };
+      if (big) args.bigToken = bigToken;
+      return _plugin().wifiDirectHost(args);
     }).then(function(cr) {
-      self.incoming.set(id, { meta: p.meta || {}, deviceId: deviceId, from: from, ts: Date.now() });
-      setTimeout(function() { if (self.incoming.delete(id)) self.busy = false; }, 120000);
-      return e2eEncryptText(key, JSON.stringify({ s: cr.ssid, p: cr.passphrase, o: cr.port }));
+      self.incoming.set(id, { meta: p.meta || {}, deviceId: deviceId, from: from, ts: Date.now(), big: !!big });
+      // Un archivo grande puede tardar: el tope lo pone el propio socket (sin datos 60 s → error → bigFinished)
+      if (big) self.ble.bigFiles._set(id, { dir: 'in', state: 'receiving', bytes: 0, total: p.size, nx: from });
+      else setTimeout(function() { if (self.incoming.delete(id)) self.busy = false; }, 120000);
+      var creds = { s: cr.ssid, p: cr.passphrase, o: cr.port };
+      if (big) creds.t = bigToken;
+      return e2eEncryptText(key, JSON.stringify(creds));
     }).then(function(c) {
       return self._ctl(deviceId, { type: 'wa', id: id, c: c });
     }).catch(function(e) {
