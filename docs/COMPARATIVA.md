@@ -1,6 +1,6 @@
 # NEXO — Comparativa con la competencia y estado de avance
 
-Hecha el 24-10-2026 con la build 2763; actualizada el mismo día con la 2767 publicada y la 2768 (llamadas) en curso.
+Hecha el 24-10-2026 con la build 2763; actualizada el mismo día con la 2767 y la 2768 (revisión de las llamadas).
 Actualizar cuando cambie algo importante. Los datos de NEXO salen del código y del simulador; los de la competencia,
 de sus páginas y noticias (enlaces al final). Lo que no se pudo confirmar va marcado con "?".
 
@@ -17,7 +17,7 @@ de sus páginas y noticias (enlaces al final). Lo que no se pudo confirmar va ma
 | Llamadas de voz sin internet | ✅ Bluetooth / Wi-Fi (Bluetooth lento: voz con segundos de retraso, pendiente) | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Videollamadas sin internet | ✅ mismo Wi-Fi | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Grupos | ✅ | ✅ | ✅ | ✅ | ✅ canales | difusión sin cifrar |
-| Cifrado | Double Ratchet + poscuántico + remitente oculto (suplantación por un teléfono cercano: arreglo en la 2768) | Signal | referencia | ✅ (auditado 2017) | Noise (sin auditoría al lanzar) | críticas 2020–21 |
+| Cifrado | Double Ratchet + poscuántico + remitente oculto (suplantación por un teléfono cercano: arreglada en la 2768) | Signal | referencia | ✅ (auditado 2017) | Noise (sin auditoría al lanzar) | críticas 2020–21 |
 | ID Bluetooth que cambia (no te rastrean) | ✅ | — | — | — | efímero | ? |
 | Recibir con la app cerrada | ✅ Bluetooth e internet | ✅ | ✅ | servicio fijo | ? | ? |
 | Copia de seguridad | ✅ Fénix (en tus contactos, sin servidor) | nube | sí | ❌ | ❌ | ❌ |
@@ -36,20 +36,20 @@ y Jump) y cambia sola; la única que hace llamadas y videollamadas sin internet;
 internet; cifrado al nivel de Signal y con poscuántico; copia de la cuenta sin servidores (Fénix).
 
 **Dónde pierde (puntos débiles):** solo Android y fuera de las tiendas; muy pocas pruebas reales (2–3 teléfonos) y
-cada prueba del dueño ha sacado fallos graves; sin auditoría externa (la revisión de la 2768 encontró que un teléfono
-cercano con un NEXO modificado podía hacerse pasar por un contacto: textos y llamadas sin cifrar se aceptaban);
+cada prueba del dueño ha sacado fallos graves; sin auditoría externa (la revisión de las llamadas encontró, y la 2768
+arregla, que un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto: textos, archivos y
+llamadas sin cifrar se aceptaban);
 consumo de batería sin medir; voz con segundos de retraso por un Bluetooth lento; faltan estados y buscar en los
 chats (en "Agregar", "Buscar contacto…" es solo un dibujo).
 
-**Qué cambió desde la tabla anterior (2763 → 2767, 2768 en curso):** foto de perfil (2766); avisos y llamadas que
-encienden la pantalla y se ven encima del bloqueo (2766); la causa de "sin dirección .onion" en Tor, corregida (2766,
-sin confirmar); el agujero de suplantación, encontrado y con arreglo en la 2768; el retraso de la voz por un
-Bluetooth lento, medido (pendiente).
+**Qué cambió desde la tabla anterior (2763 → 2768):** foto de perfil (2766); avisos y llamadas que encienden la
+pantalla y se ven encima del bloqueo (2766); la causa de "sin dirección .onion" en Tor, corregida (2766, sin confirmar);
+el agujero de suplantación y otros 12 fallos de las llamadas, arreglados (2768); el retraso de la voz por un Bluetooth
+lento, medido (pendiente).
 
 ## 2. Estado de avance
 
-✅ hecho / probado · ⚠️ probado en teléfonos con fallos (arreglo sin confirmar) · ⏳ sin probar en teléfonos ·
-🔧 arreglo en curso (2768)
+✅ hecho / probado · ⚠️ probado en teléfonos con fallos (arreglo sin confirmar) · ⏳ sin probar en teléfonos
 
 | Parte | Código | Simulador | Teléfonos |
 |---|---|---|---|
@@ -66,10 +66,10 @@ Bluetooth lento, medido (pendiente).
 | Jump | ✅ | ✅ | ⏳ |
 | Avisos en segundo plano / app cerrada | ✅ | ✅ | ⏳ |
 | Pantalla apagada: avisos y llamadas que la encienden | ✅ | ✅ | ⏳ (2766) |
-| Cifrado de extremo a extremo | ✅ | ✅ | ✅; suplantación cercana 🔧 |
+| Cifrado de extremo a extremo | ✅ | ✅ | ✅ (suplantación cercana: arreglo 2768, sin confirmar) |
 | Grupos (con HD y archivos grandes) | ✅ | ✅ | ⏳ |
-| Llamadas de voz | ✅ | ✅ | ⚠️ un teléfono no oía (arreglo 2762); 🔧 14 fallos de la revisión |
-| Videollamadas (mismo Wi-Fi) | ✅ | ✅ | ⚠️ (2762); 🔧 |
+| Llamadas de voz | ✅ | ✅ | ⚠️ un teléfono no oía (arreglo 2762); otros 12 fallos arreglados en la 2768 |
+| Videollamadas (mismo Wi-Fi) | ✅ | ✅ | ⚠️ (2762); sin cámara sigue con voz, cámara que se apaga al colgar (2768) |
 | Fénix | ✅ | ✅ | ⏳ |
 | Pasar la cuenta | ✅ | ✅ | ⏳ |
 | Foto de perfil | ✅ | ✅ | ⏳ (2766) |
@@ -84,10 +84,10 @@ fase pendiente; 15 B, varios dispositivos a la vez, para después). Faltan 18 (p
 | Qué se mide | Avance |
 |---|---|
 | Plan del dueño: funciones hechas en código y probadas en el simulador | 17 de 20 puntos: 85 % |
-| Revisión completa por partes | 2 de 4 hechas, la 3.ª (llamadas) a medias: ~60 % |
+| Revisión completa por partes | 3 de 4 hechas (falta la interfaz): 75 % |
 | Confirmado en teléfonos reales | 4 de 21 partes: ~20 % |
 | Salida al público (pruebas con 3–4 teléfonos, auditoría externa, Play Store) | 0 de 3 |
-| **En conjunto** (pesos: funciones 40 %, revisión 20 %, teléfonos 25 %, salida 15 %) | **~50 %** |
+| **En conjunto** (pesos: funciones 40 %, revisión 20 %, teléfonos 25 %, salida 15 %) | **~55 %** |
 
 ## Fuentes
 

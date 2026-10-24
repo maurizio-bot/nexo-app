@@ -294,19 +294,22 @@ function _render(st) {
 function _notifyIncoming(st) {
   if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
   var pl = _plugin();
-  if (pl && typeof pl.notifyCall === 'function') { pl.notifyCall({ chatId: st.nx, name: _name(st.nx), video: !!st.video }).catch(function() {}); _callNotif = true; return; }
+  if (pl && typeof pl.notifyCall === 'function') { pl.notifyCall({ chatId: st.nx, name: _name(st.nx), video: !!st.video, offerId: st.offerMid || '' }).catch(function() {}); _callNotif = true; return; }
   if (pl && typeof pl.notifyMessage === 'function') pl.notifyMessage({ chatId: st.nx, name: _name(st.nx), msgId: st.id, text: '📞 Llamada entrante', count: 1 }).catch(function() {});
 }
 var _callNotif = false;
 function _lockScreenDone() { var pl = _plugin(); if (pl && typeof pl.callScreenDone === 'function') pl.callScreenDone().catch(function() {}); }
 function _clearCallNotif() { var pl = _plugin(); if (pl && typeof pl.clearCall === 'function') pl.clearCall().catch(function() {}); _callNotif = false; }
 
-// Ronda 2763: lo que se tocó en el aviso de llamada (Contestar / Rechazar) se aplica a la llamada que está sonando
+// Ronda 2763: lo que se tocó en el aviso de llamada (Contestar / Rechazar) se aplica a la llamada que está sonando.
+// Ronda 2768: solo si es la misma oferta (si el nativo la dice): lo tocado en el aviso de una llamada ya colgada no
+// contesta ni rechaza la siguiente de ese contacto
 function _applyCallAction(r) {
   var calls = _calls(), st = calls && calls.state();
   if (!r || !st || st.state !== 'ringing') return;
-  if (r.answer && _normId(r.answer) === _normId(st.nx)) { console.log('[CALL] Contestada desde el aviso'); calls.accept(); }
-  else if (r.declined && _normId(r.declined) === _normId(st.nx)) { console.log('[CALL] Rechazada desde el aviso'); calls.reject(); }
+  var mine = function(nx, offer) { return nx && _normId(nx) === _normId(st.nx) && (!offer || offer === st.offerMid); };
+  if (r.answer && mine(r.answer, r.answerOffer)) { console.log('[CALL] Contestada desde el aviso'); calls.accept(); }
+  else if (r.declined && mine(r.declined, r.declinedOffer)) { console.log('[CALL] Rechazada desde el aviso'); calls.reject(); }
 }
 function _checkCallAction() {
   var pl = _plugin();

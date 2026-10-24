@@ -91,6 +91,11 @@ class NexoBlePlugin : Plugin() {
         // Ronda 2758 (punto 12): la instancia que siguió recibiendo con la app cerrada; la nueva la releva al abrir
         @Volatile private var orphan: NexoBlePlugin? = null
         @Volatile private var netBgShared: NetBg? = null
+        // Ronda 2768: la instancia con la app viva (abierta o en segundo plano), para avisarle de "Rechazar"
+        @Volatile private var live: NexoBlePlugin? = null
+        // "Rechazar" en el aviso de llamada (CallDeclineReceiver): con la app viva, la app rechaza ya, cifrado (antes el
+        // que llama seguía en "Llamando…" hasta "No contesta"); con la app cerrada queda apuntado para cuando se abra
+        fun declinedFromNotification(tap: CallTap) { live?.onDeclineTapped(tap) }
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
         private const val RECONNECT_DELAY_MS = 3000L
@@ -205,13 +210,15 @@ class NexoBlePlugin : Plugin() {
                 // Ronda 2765: abierta por una llamada (pantalla completa, tocar el aviso o Contestar): se ve encima de la
                 // pantalla de bloqueo y la enciende, hasta que acaba la llamada (callScreenDone)
                 if (intent.getStringExtra(MsgNotifier.EXTRA_ANSWER) != null || intent.getStringExtra(MsgNotifier.EXTRA_CALL_FROM) != null) showOverLock(true)
-                // Ronda 2763: "Contestar" en el aviso de llamada
+                // Ronda 2763: "Contestar" en el aviso de llamada (ronda 2768: solo para esa oferta)
                 val answer = intent.getStringExtra(MsgNotifier.EXTRA_ANSWER)
                 if (answer != null) {
-                    MsgNotifier.pendingAnswer = answer.lowercase() to System.currentTimeMillis()
+                    val offer = intent.getStringExtra(MsgNotifier.EXTRA_CALL_OFFER) ?: ""
+                    MsgNotifier.pendingAnswer = CallTap(answer.lowercase(), System.currentTimeMillis(), offer)
                     MsgNotifier.get(activity.applicationContext).cancelCall()
-                    notifyListeners("onCallAction", JSObject().put("answer", answer.lowercase()), true)
+                    notifyListeners("onCallAction", JSObject().put("answer", answer.lowercase()).put("answerOffer", offer), true)
                     intent.removeExtra(MsgNotifier.EXTRA_ANSWER)
+                    intent.removeExtra(MsgNotifier.EXTRA_CALL_OFFER)
                 }
                 val deviceId = intent.getStringExtra("nexo_chat_device_id")
                 if (deviceId != null) {
@@ -521,7 +528,7 @@ class NexoBlePlugin : Plugin() {
     // aparte que la app quita al abrirse (no es un contacto)
     private fun notifyOnly(ctx: Context, info: BgInbox.Info) {
         if (info.quiet) return
-        if (info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false); return }
+        if (info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId); return }
         val chat = info.from.ifEmpty { "nexo_jump" }
         val what = when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "call" -> "📞 Llamada entrante"; "text" -> ""; else -> "📎 Archivo" }
         val gname = groupName(info.group) // ronda 2763: de un grupo, en el chat del grupo con su nombre
@@ -539,7 +546,7 @@ class NexoBlePlugin : Plugin() {
         if (info.msgId.isEmpty() || info.quiet) return
         if (info.kind != BgInbox.Kind.MESSAGE && info.kind != BgInbox.Kind.NOTIFY_ONLY) return
         // Llamada: suena ya (si la app está viva también la avisa: es el mismo aviso, no sale dos veces)
-        if (info.call || info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false); return }
+        if (info.call || info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId); return }
         mainHandler.postDelayed({
             if (!appInBackground || MsgNotifier.get(ctx).book.hasMsg(info.msgId)) return@postDelayed
             if (info.kind == BgInbox.Kind.MESSAGE) notifyMessage(ctx, info)
@@ -560,7 +567,7 @@ class NexoBlePlugin : Plugin() {
                     sendChunkedOrSingle(normalizeMac(deviceId), deviceId, ack)
                 }
                 // Ronda 2763: una llamada suena como una llamada del teléfono (aviso con tono, Contestar / Rechazar)
-                if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false)
+                if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId)
                 else if (!info.quiet) notifyMessage(ctx, info)
             }
             BgInbox.Kind.RECEIPT -> inbox().add(deviceId, json)
@@ -599,6 +606,7 @@ class NexoBlePlugin : Plugin() {
     override fun load() {
         super.load()
         appCtx = activity.applicationContext
+        live = this
         takeOverFromClosed()
         // Seguridad fase 3: cifrar en segundo plano lo que aún esté en claro (archivos de versiones anteriores)
         // (prioridad baja; de lo ya cifrado solo se lee la cabecera)
@@ -645,6 +653,7 @@ class NexoBlePlugin : Plugin() {
     }
     override fun handleOnDestroy() {
         super.handleOnDestroy()
+        if (live === this) live = null
         try { lanStopAll() } catch (e: Exception) {}
         try { torStopAll() } catch (e: Exception) {}
         // Ronda 2758: con permisos y el servidor en marcha, el Bluetooth sigue recibiendo con la app cerrada
@@ -2326,8 +2335,14 @@ class NexoBlePlugin : Plugin() {
     fun notifyCall(call: PluginCall) {
         val from = (call.getString("chatId") ?: "").lowercase()
         if (from.isEmpty()) { call.reject("chatId requerido"); return }
-        MsgNotifier.get(context).incomingCall(from, call.getString("name") ?: "NEXO", call.getBoolean("video", false) == true)
+        MsgNotifier.get(context).incomingCall(from, call.getString("name") ?: "NEXO", call.getBoolean("video", false) == true, call.getString("offerId") ?: "")
         call.resolve()
+    }
+    // Ronda 2768: "Rechazar" tocado con la app viva (ver declinedFromNotification). Sigue apuntado (pendingDecline): si la
+    // app aún no tenía la llamada sonando (oferta a medias, app congelada), lo recoge al sonar; va atado a esa oferta
+    private fun onDeclineTapped(tap: CallTap) {
+        if (closedMode) return
+        notifyListeners("onCallAction", JSObject().put("declined", tap.from).put("declinedOffer", tap.offer), true)
     }
     @PluginMethod
     fun clearCall(call: PluginCall) { MsgNotifier.get(context).cancelCall(); call.resolve() }
@@ -2386,12 +2401,12 @@ class NexoBlePlugin : Plugin() {
     @PluginMethod
     fun callAction(call: PluginCall) {
         val now = System.currentTimeMillis()
-        val a = MsgNotifier.pendingAnswer?.takeIf { now - it.second < 90000 }
-        val d = MsgNotifier.pendingDecline?.takeIf { now - it.second < 90000 }
+        val a = MsgNotifier.pendingAnswer?.takeIf { now - it.at < 90000 }
+        val d = MsgNotifier.pendingDecline?.takeIf { now - it.at < 90000 }
         MsgNotifier.pendingAnswer = null; MsgNotifier.pendingDecline = null
         val out = JSObject()
-        if (a != null) out.put("answer", a.first)
-        if (d != null) out.put("declined", d.first)
+        if (a != null) out.put("answer", a.from).put("answerOffer", a.offer)
+        if (d != null) out.put("declined", d.from).put("declinedOffer", d.offer)
         call.resolve(out)
     }
 

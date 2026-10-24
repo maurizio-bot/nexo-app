@@ -249,7 +249,8 @@ export class Calls {
   }
 
   // Señal recibida (ble_messages.js / main.js)
-  onSignal(fromNexoId, o) {
+  // mid: id del mensaje que la trajo (ronda 2768: el aviso nativo y lo tocado en él se atan a esa oferta)
+  onSignal(fromNexoId, o, mid) {
     var self = this, nx = _nid(fromNexoId), c = self.call;
     if (o.op === 'offer') {
       if (self._dead.has(o.id)) { self._ignored(nx, 'terminada'); return; } // ya terminó (el 'end' llegó antes)
@@ -260,14 +261,14 @@ export class Calls {
         if (o.id > c.id) { self._ignored(nx, 'cruce'); return; } // la mía gana: el otro contestará la mía
         if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
         clearTimeout(self._ringTimer); self._signal(nx, 'end'); self._markDead(c.id);
-        self.call = { id: o.id, nx: nx, dir: 'in', state: 'ringing', key: o.k, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, peerCodecs: o.co || 'ulaw', video: o.v === 1 };
+        self.call = { id: o.id, nx: nx, dir: 'in', state: 'ringing', key: o.k, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, peerCodecs: o.co || 'ulaw', video: o.v === 1, offerMid: mid || '' };
         return self._importKey(o.k).then(function(k) { if (self.call && self.call.id === o.id) { self.call.cryptoKey = k; console.log('[CALL] Cruce de llamadas con ' + nx + ': se contesta la suya'); self.accept(); } });
       }
       // Del mismo contacto con otra llamada en curso: el otro la dejó (p.ej. reinició la app): fuera la vieja
       if (c && c.nx === nx) { self._finish(c.state === 'active' ? 'lost' : 'missed', false); c = null; }
       if (c) { self._signal(nx, 'busy', { id: o.id }); self._log(nx, 'missed', 0, false); self._ignored(nx, 'ocupado'); return; }
       if (typeof o.k !== 'string' || !/^[0-9a-f]{64}$/.test(o.k)) return;
-      self.call = { id: o.id, nx: nx, dir: 'in', state: 'ringing', key: o.k, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, peerCodecs: o.co || 'ulaw', video: o.v === 1 };
+      self.call = { id: o.id, nx: nx, dir: 'in', state: 'ringing', key: o.k, createdAt: Date.now(), sendSeq: 0, vSeq: 0, lastRx: 0, peerCodecs: o.co || 'ulaw', video: o.v === 1, offerMid: mid || '' };
       self._importKey(o.k).then(function(k) { if (self.call && self.call.id === o.id) self.call.cryptoKey = k; });
       console.log('[CALL] Llamada entrante de ' + nx + ' (' + o.id + ')');
       _emit('nexo:call', self.state());

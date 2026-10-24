@@ -28,10 +28,12 @@ class MsgNotifier(private val ctx: Context) {
         const val CALL_CHANNEL_ID = "nexo_calls"
         const val EXTRA_ANSWER = "nexo_call_answer"
         const val EXTRA_CALL_FROM = "nexo_call_from"
+        const val EXTRA_CALL_OFFER = "nexo_call_offer"
         private const val CALL_NOTIF_ID = 3999
-        // Lo que el dueño tocó en el aviso; la app lo recoge al abrirse (NexoBlePlugin.callAction)
-        @Volatile var pendingAnswer: Pair<String, Long>? = null
-        @Volatile var pendingDecline: Pair<String, Long>? = null
+        // Lo que el dueño tocó en el aviso; la app lo recoge al abrirse (NexoBlePlugin.callAction). Ronda 2768: con la
+        // oferta a la que se refiere (si no, valía para la siguiente llamada de ese contacto y se contestaba sola)
+        @Volatile var pendingAnswer: CallTap? = null
+        @Volatile var pendingDecline: CallTap? = null
         private const val GROUP = "nexo_msgs"
         private const val TAG = "NexoMsgNotifier"
         @Volatile private var shared: MsgNotifier? = null
@@ -40,6 +42,7 @@ class MsgNotifier(private val ctx: Context) {
     }
 
     val book = UnreadBook()
+    private val calls = CallDedupe()
 
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -75,16 +78,17 @@ class MsgNotifier(private val ctx: Context) {
 
     // Llamada entrante: suena con el tono de llamada hasta contestar, rechazar o 45 s; a pantalla completa si el sistema
     // lo permite (si no, aviso grande arriba). Contestar abre NEXO y contesta; Rechazar quita el aviso y, al abrirse
-    // NEXO, la llamada se rechaza.
-    fun incomingCall(from: String, name: String, video: Boolean) {
+    // NEXO, la llamada se rechaza. Ronda 2768: offerId = id del mensaje de la oferta; un aviso por oferta (CallDedupe).
+    fun incomingCall(from: String, name: String, video: Boolean, offerId: String = "") {
+        if (!calls.first(from, offerId)) { Log.i(TAG, "Oferta de llamada ya avisada: sin aviso nuevo"); return }
         val nm = NotificationManagerCompat.from(ctx)
         if (!nm.areNotificationsEnabled()) { Log.w(TAG, "Notificaciones desactivadas: llamada sin aviso"); return }
         val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return
         val fl = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         val pf = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        val openPi = PendingIntent.getActivity(ctx, 3990, Intent(launch).putExtra(EXTRA_CALL_FROM, from).addFlags(fl), pf)
-        val answerPi = PendingIntent.getActivity(ctx, 3991, Intent(launch).putExtra(EXTRA_ANSWER, from).addFlags(fl), pf)
-        val declinePi = PendingIntent.getBroadcast(ctx, 3992, Intent(ctx, CallDeclineReceiver::class.java).putExtra(EXTRA_CALL_FROM, from), pf)
+        val openPi = PendingIntent.getActivity(ctx, 3990, Intent(launch).putExtra(EXTRA_CALL_FROM, from).putExtra(EXTRA_CALL_OFFER, offerId).addFlags(fl), pf)
+        val answerPi = PendingIntent.getActivity(ctx, 3991, Intent(launch).putExtra(EXTRA_ANSWER, from).putExtra(EXTRA_CALL_OFFER, offerId).addFlags(fl), pf)
+        val declinePi = PendingIntent.getBroadcast(ctx, 3992, Intent(ctx, CallDeclineReceiver::class.java).putExtra(EXTRA_CALL_FROM, from).putExtra(EXTRA_CALL_OFFER, offerId), pf)
         val n = NotificationCompat.Builder(ctx, CALL_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_phone_call)
             .setContentTitle(name.ifBlank { "NEXO" })
@@ -168,11 +172,17 @@ class MsgNotifier(private val ctx: Context) {
     }
 }
 
-// "Rechazar" en el aviso de llamada (sin abrir la app): se quita el aviso y se apunta para rechazarla al abrir NEXO
+// Lo tocado en el aviso de llamada: de quién, cuándo y de qué oferta (vacío: build anterior de la app)
+class CallTap(val from: String, val at: Long, val offer: String)
+
+// "Rechazar" en el aviso de llamada (sin abrir la app): se quita el aviso y se apunta para rechazarla al abrir NEXO.
+// Ronda 2768: si la app sigue viva en segundo plano, se le dice ya (rechaza cifrado y el que llama lo ve al momento).
 class CallDeclineReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         val from = intent.getStringExtra(MsgNotifier.EXTRA_CALL_FROM) ?: return
-        MsgNotifier.pendingDecline = from.lowercase() to System.currentTimeMillis()
+        val tap = CallTap(from.lowercase(), System.currentTimeMillis(), intent.getStringExtra(MsgNotifier.EXTRA_CALL_OFFER) ?: "")
+        MsgNotifier.pendingDecline = tap
         MsgNotifier.get(ctx).cancelCall()
+        NexoBlePlugin.declinedFromNotification(tap)
     }
 }

@@ -439,7 +439,7 @@ function _handleIncomingMessage(msg) {
     }
     // Ronda 2758: señal de llamada que llegó por el camino de los textos largos
     var csg = !msg.groupId ? parseCallSignal(msg.content) : null;
-    if (csg) { var bcs = window.bleInterface && window.bleInterface.calls; if (bcs && msg.e2e === true) bcs.onSignal(msg.senderNexoId || msg.deviceUUID, csg); else console.warn('[CALL] Señal sin cifrar descartada'); return; }
+    if (csg) { var bcs = window.bleInterface && window.bleInterface.calls; if (bcs && msg.e2e === true) bcs.onSignal(msg.senderNexoId || msg.deviceUUID, csg, msg.messageId); else console.warn('[CALL] Señal sin cifrar descartada'); return; }
     // Ronda 2758: mensaje de grupo que llegó por el camino de los textos largos (los cortos ya vienen con groupId)
     var bgs = window.bleInterface && window.bleInterface.groups;
     if (!msg.groupId) {

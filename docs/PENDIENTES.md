@@ -14,9 +14,16 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
-- **Qué APK probar (24-10)**: la 2767 (nightly-2767) para todo menos las llamadas; las llamadas, mejor con la 2768 (en
-  curso: arregla la suplantación y 12 fallos más de las llamadas). Desde la 2763 no hay pruebas en teléfonos: todo lo de abajo
-  desde la 2765 está sin confirmar.
+- **Qué APK probar (24-10)**: la 2768 (nightly-2768) para todo. Desde la 2763 no hay pruebas en teléfonos: todo lo de
+  abajo desde la 2765 está sin confirmar.
+- **2768** (revisión, parte 3: llamadas): (1) con la app del otro cerrada (quitada de recientes), llamarle y que toque
+  "Rechazar": su teléfono suena una sola vez (antes volvía a sonar cada pocos segundos). (2) Con su app en segundo
+  plano, "Rechazar" en el aviso: en el que llama sale "Rechazada" al momento. (3) Llamarse los dos a la vez: quedan en
+  llamada. (4) Videollamada con el permiso de cámara quitado (Ajustes → Apps → NEXO → Permisos): sigue con voz. (5) En
+  una videollamada, girar la cámara y colgar: se apaga la luz de la cámara. (6) Llamada por Wi-Fi y apagar el Wi-Fi de
+  uno: la voz sigue por Bluetooth. (7) Llamada de 1–2 min con la pantalla apagada (el teléfono en la oreja, sin tocarlo):
+  decir si el otro dejó de oír (riesgo de Android 11+; en el diagnóstico `[CALL]`, el micrófono a 0 %). Diagnóstico de
+  los dos teléfonos.
 - **2767** (revisión, parte 2: mensajes y archivos): con el otro teléfono lejos (o con su Bluetooth apagado), escribir
   varios textos cortos y largos y grabar una nota de voz; cerrar NEXO (quitarla de recientes) y volver a abrirla; acercar
   el otro teléfono: todo debe llegar una sola vez, legible, en el orden en que se escribió y como nota de voz (no
@@ -117,8 +124,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
    pero un teléfono cercano con un NEXO modificado podría hacer que sus llamadas salgan "Rechazada". (3) Aviso al
    momento firmado: con la app abierta, cada pareja de contactos se pasa (cifrada) una clave pequeña solo para estos
    avisos y la parte nativa la usa sin abrir la app; nadie lo puede falsificar y sirve también para que el aviso deje
-   de sonar en cuanto el otro cuelga de verdad. Es más trabajo (una build más). Propuesta: la 2768 con la (1) y
-   después la (3). **Decidir con el dueño.**
+   de sonar en cuanto el otro cuelga de verdad. Es más trabajo (una build más). Propuesta: la (3); mientras
+   tanto, la 2768 va con la (1). **Decidir con el dueño.**
 8. **Texto durante el margen de 15 s del Wi-Fi**: ver §6 punto 1 (propuesta: si el Bluetooth está listo, mandar los
    textos por él al momento). **Decidir con el dueño.**
 
@@ -188,12 +195,16 @@ mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simu
      memoria con varios vídeos HD).
    - Si se perdió la confirmación final de un archivo, al reconectar se manda entero otra vez (el receptor solo
      recuerda 60 s lo recibido) y sale otra notificación.
-3. **Llamadas y videollamadas** — en curso, 2768 (ver PROGRESO, "Ronda 2768 (en curso)"): 14 fallos, el más grave de
-   seguridad (un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto en textos y llamadas).
-   Escrita la parte web del arreglo de 13 (sin probar todavía junta; el código a medias está en la rama
-   `claude/repo-file-access-9bwl60`, no en `NEXOCHAT`). Falta: la parte nativa del punto 4 (un aviso por oferta, que
-   tras "Rechazar" no vuelva a sonar), pasar los escenarios a `tests/sim`, la batería y subir. Después: el punto 2
-   (carril de voz para un Bluetooth lento y aviso "Bluetooth lento") y los riesgos del teléfono (micrófono con la
-   pantalla apagada en Android 11+, sensor de proximidad, tono con el teléfono en silencio, foco de audio).
+3. **Llamadas y videollamadas** — hecha en la 2768 (ver PROGRESO, "Ronda 2768"): 14 fallos, arreglados 13, entre ellos
+   el de seguridad (un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto en textos, archivos y
+   llamadas). Queda: el punto 2 (voz por Bluetooth con MTU pequeño: "carril de voz" nativo y aviso "Bluetooth lento");
+   los riesgos que solo se ven en el teléfono (micrófono con la pantalla apagada en Android 11+, sensor de proximidad,
+   tono con el teléfono en silencio, foco de audio); la decisión §4.7. Puntos débiles sin fallo visto todavía:
+   - Con la app cerrada, si el que llama cuelga, el aviso sigue sonando hasta 45 s (lo arreglaría la opción (3) de §4.7).
+   - Sin micrófono (permiso denegado) la llamada se corta a los 12 s en el otro.
+   - Con la app cerrada, el aviso dice siempre "Llamada" (también en videollamada) y el nombre sale "NEXO" si el nativo no
+     lo conoce.
+   - La identidad de una conexión aún se deduce de lo que dice el paquete (el arreglo de la 2768 cubre lo que llega sin
+     cifrar diciendo ser de un contacto; las confirmaciones y el `ni` siguen sin firmar, ver punto 1).
 4. **Interfaz** — por hacer. Visto ya: en "Agregar", "Buscar contacto…" es solo un dibujo (no busca).
 Mejoras pendientes: la foto del contacto en sus notificaciones (como icono grande).

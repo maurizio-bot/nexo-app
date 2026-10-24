@@ -278,7 +278,10 @@ export const BLE_MESSAGE_METHODS = {
             var from0 = p0.fr || p0.fromNexoId || p0.from || (p0.payload && p0.payload.senderNexoId) || '';
             // Jump: lo que llega por otro teléfono no es del dueño de esta dirección
             var passing = data.viaRelay || p0.dt || (p0.to && Number(p0.hp) > 0);
-            if (!passing && /^nx[0-9a-z]{8}$/i.test(from0)) self._kickPeer(deviceId, from0);
+            // Ronda 2768 (seguridad): el primer trozo sin cifrar de un texto largo o un archivo que dice ser de un
+            // contacto lo escribió otro (se descarta al juntarse): no apunta esta conexión como suya
+            var plainChunk = (p0.t === 'c' || p0.t === 'f') && typeof p0.d === 'string' && !/^E[12]:/.test(p0.d) && self._isKnownSender(from0);
+            if (!passing && !plainChunk && /^nx[0-9a-z]{8}$/i.test(from0)) self._kickPeer(deviceId, from0);
           }
         } catch (kickErr) {}
         var source = data.source || 'unknown';
@@ -437,7 +440,7 @@ export const BLE_MESSAGE_METHODS = {
         var csig = !grp && !attachmentData ? parseCallSignal(msgContent) : null;
         // Ronda 2768: solo señales que llegaron cifradas de extremo a extremo (una sin cifrar la puede escribir cualquiera)
         if (csig) {
-          if (self.calls && senderUUID && ctrl && ctrl.payload && ctrl.payload.e2e === true) self.calls.onSignal(senderUUID, csig);
+          if (self.calls && senderUUID && ctrl && ctrl.payload && ctrl.payload.e2e === true) self.calls.onSignal(senderUUID, csig, messageId);
           else console.warn('[CALL] Señal sin cifrar descartada (de ' + senderUUID + ')');
           return;
         }

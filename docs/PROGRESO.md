@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2767 publicada; 2768, llamadas, en curso)
+Última actualización: 2026-10-24 (build 2768)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -94,6 +94,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2765 | d9366857 | La 2764 con el XML corregido (todos los XML de Android revisados con un analizador). APK publicada (nightly-2765) |
 | 2766 | 3f309571 | Revisión completa, parte 1 (escaneo, agregar, conexión): los pings nunca se contestaban (el enlace se rehacía cada ~30 s), un archivo podía salir cifrado para el teléfono equivocado, el Wi-Fi se perdía al volver a la app, BUSCAR se quedaba colgado, reconexión sin esperas, caídas del Bluetooth sin avisar, Tor sin dirección .onion. Mejoras: foto de perfil, avisos y llamadas que encienden la pantalla y se ven sobre el bloqueo, Perfil → "Avisos con la pantalla apagada". Ver "Ronda 2766". APK publicada (nightly-2766, 24,5 MB) |
 | 2767 | ed848800 | Revisión completa, parte 2 (mensajes y archivos): textos largos pendientes que se perdían mostrando "entregado" (al reconectar tras reiniciarse la app), nota de voz pendiente que llegaba como "[adjunto]", transferencias de más de 10 min cortadas aunque avanzaran, Wi-Fi caído a mitad de una foto con un Bluetooth lento, orden en el chat (relojes desfasados; lo recibido con la app cerrada salía "ahora"), "!" durante un corte del Wi-Fi. Ver "Ronda 2767". Batería 32/32, Kotlin 65/65. APK publicada (nightly-2767, 24,5 MB) |
+| 2768 | (este commit) | Revisión completa, parte 3 (llamadas y videollamadas): un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto (textos, archivos y llamadas sin cifrar; oír la voz, colgar llamadas reales): ya no; con la app cerrada "Rechazar" volvía a sonar con cada reenvío de la oferta (ahora un aviso por llamada); la siguiente llamada de ese contacto se contestaba sola; una oferta vieja sonaba al reiniciar la app; relojes desfasados; los dos a la vez; Wi-Fi caído en uno; micrófono y cámara encendidos tras colgar; videollamada sin cámara; voz repetida. Ver "Ronda 2768". Batería 43/43, Kotlin 68/68 |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -220,50 +221,50 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
-## Ronda 2768 (en curso): revisión completa, parte 3 (llamadas y videollamadas)
+## Ronda 2768: revisión completa, parte 3 (llamadas y videollamadas)
 Un agente revisó `calls.js`, `calls_ui.js`, `call_media.js`, el camino de las señales y el nativo con 20 escenarios
-nuevos (en el scratchpad de la sesión; pasarán a `tests/sim` al cerrar la ronda). Todo se reprodujo con la 2767; el
-punto 1 lo comprobé además yo. Estado: la parte web de los arreglos está escrita pero sin probar todavía junta (los de
-llamadas se probaron uno a uno en una copia aparte); falta la parte nativa del punto 4, pasar los escenarios a
-`tests/sim`, la batería y subir.
-1. **Suplantación (seguridad, grave)**: el servidor Bluetooth acepta escrituras de cualquiera y un mensaje sin cifrar se
-   tomaba como del contacto que decía ser. Con la 2767, desde un teléfono ajeno (M): un texto sin cifrar se guardó y se
-   mostró en el chat de A; una oferta de llamada falsa sonó con el nombre de A, la voz de B salió cifrada con la clave de
-   M (M descifró 10 de 10 paquetes), un "colgar" falso cortó la llamada y la conexión de A quedó apuntada a M. Arreglo
-   (escrito): lo que llega sin cifrar diciendo ser de un contacto se descarta (textos cortos y largos, archivos) y no
-   cambia su conexión; las señales de llamada solo valen si llegaron cifradas.
-2. **Voz por Bluetooth con MTU pequeño** (pendiente): con MTU 23 la voz llega con 6,8 s de retraso (mediana) y solo 32 de
-   161 paquetes; con MTU 185 bien (66 ms); un teléfono sin Opus (μ-law) con MTU 185, 3,2 s. Hace falta un "carril de voz"
-   nativo (un paquete de voz nuevo sustituye a los que aún no empezaron a salir) y avisar "Bluetooth lento".
-3. **El aviso de llamada seguía sonando y NEXO quedaba encima del bloqueo** cuando la app no hacía sonar la oferta
-   (vieja, ocupado, repetida): ahora se quita y NEXO vuelve detrás del bloqueo; también si a los 15 s de abrirse no hay
-   llamada (escrito).
-4. **Con la app cerrada, "Rechazar" no servía**: el aviso volvía a sonar con cada reenvío de la oferta (9 veces por una
-   llamada) y el que llama acababa en "No contesta"; si el que llama colgaba, el aviso seguía hasta 45 s y "Contestar"
-   llevaba a una llamada vacía. Parte web escrita (las llamadas terminadas se recuerdan y quien recibe pregunta al que
-   llama si sigue: señal `ring`). Falta la nativa (un aviso por oferta; quitarlo cuando el otro cuelga) y la decisión del
-   dueño sobre avisar al que llama (PENDIENTES §4).
-5. **Una oferta que no salió se reenviaba al reiniciar la app** ("Llamada perdida" con la hora de ese momento y un
-   "Mensaje nuevo" que no existía): las señales de llamada ya no se guardan para reanudarlas y la oferta se cancela al
-   colgar (escrito).
-6. **"Contestar" pendiente**: tocado en el aviso de una llamada ya colgada, la siguiente llamada de ese contacto se
-   contestaba sola a los 0,4 s con el micrófono abierto. Ahora se descarta a los 15 s si no hay llamada (escrito).
-7. **Wi-Fi caído en un solo teléfono sin cierre limpio**: la voz iba en un solo sentido y se cortaba a los 12 s; ahora
-   cada lado sigue el camino por el que le llega la voz del otro (escrito).
-8. **Micrófono o cámara encendidos tras colgar** (colgar mientras se abre el micrófono, girar y colgar, dos toques en
-   Girar: dos cámaras abiertas) (escrito).
-9. **Videollamada con la cámara denegada u ocupada**: tampoco salía la voz y se cortaba a los 12 s; ahora sigue solo con
-   voz (escrito).
-10. **Relojes desfasados más de 60 s** (teléfonos sin hora de red): la llamada no sonaba nunca; ahora la señal `ring`
-    sustituye a comparar relojes (escrito).
-11. **Los dos se llaman a la vez**: "Ocupado" en los dos; ahora gana una de las dos llamadas y los dos quedan en ella
-    (escrito).
-12. **Una llamada menos de 1,4 s después de otra** sonaba sin botón "Contestar" (escrito).
-13. **Ráfaga de voz tras un atasco**: sonaban hasta 4 trozos a la vez; ahora se descarta lo que sobra (escrito).
-14. **Paquetes de voz grabados del aire y repetidos** se volvían a oír; ahora se ignoran (escrito).
-- Riesgos para probar en el teléfono: con la pantalla apagada en plena llamada, Android 11+ silencia el micrófono de una
-  app en segundo plano (haría falta un servicio de tipo micrófono y el sensor de proximidad); el tono suena aunque el
-  teléfono esté en silencio; la música de otras apps sigue sonando (no se pide el foco de audio).
+nuevos. Cada fallo se reprodujo con la 2767 y se comprobó con el arreglo (las cifras son de esas dos corridas; los
+escenarios clave pasaron a `tests/sim`: `spoof.js`, `callmedia.js` y `calls2.js`, que fallan con la 2767 y pasan ahora).
+1. **Suplantación (seguridad, grave)** (`spoof.js`): el servidor Bluetooth acepta escrituras de cualquiera y un mensaje
+   sin cifrar se tomaba como del contacto que decía ser. Con la 2767, desde un teléfono ajeno M: un texto corto, un
+   texto largo y una foto, sin cifrar y "de A", se guardaron como de A (los textos, además, se veían en su chat); una
+   oferta de llamada falsa sonó con el nombre de A (si B contestaba, su voz salía cifrada con la clave de M: M descifró
+   10 de 10 paquetes); un "colgar" falso cortó una llamada real; la conexión de M quedó apuntada como de A. Ahora lo
+   que llega sin cifrar diciendo ser de un contacto se descarta (con aviso `[E2E] … descartado` en el registro), no
+   apunta la conexión, las señales de llamada solo valen cifradas, y lo de verdad de A sigue llegando.
+2. **"Rechazar" con la app cerrada** (`calls2.js rechazar-cerrada`; Kotlin `CallDedupe`, prueba JVM): el aviso volvía a
+   sonar con cada reenvío de la oferta (9 avisos por una llamada); ahora un aviso por oferta (por el id de su mensaje) y
+   no vuelve a sonar. Con la app viva en segundo plano, "Rechazar" le llega a la app, que rechaza cifrado: el que llama
+   ve "Rechazada" en 0,6 s (`rechazar-viva`; antes, "Llamando…" hasta "No contesta"). Con la app cerrada el que llama
+   sigue sin enterarse (no hay claves sin la app): decisión del dueño (PENDIENTES §4.7).
+3. **Se contestaba sola** (`contestar-viejo`): "Contestar" tocado en el aviso de una llamada ya colgada hacía que la
+   siguiente de ese contacto se contestara sola con el micrófono abierto. Ahora lo tocado va atado a esa oferta (el
+   nativo guarda su id) y se descarta a los 15 s sin llamada.
+4. **El aviso seguía sonando y NEXO quedaba encima del bloqueo** (`bloqueo`) cuando la app no hacía sonar la oferta
+   (ocupado, vieja, repetida): con la 2767, una llamada durante otra hacía sonar el aviso encima de la llamada en curso
+   y seguía a los 11 s; NEXO abierto por el aviso de una llamada que ya no existía seguía encima del bloqueo. Ahora el
+   aviso se quita y, sin llamada, NEXO vuelve detrás del bloqueo (también a los 15 s de abrirse).
+5. **Oferta guardada** (`oferta-vieja`): la oferta que no salió quedaba en el registro de envíos y, al reiniciar el que
+   llamaba la app, al otro le sonaba una llamada que ya no existía (o "Llamada perdida" y un "Mensaje nuevo" falso).
+   Ahora las señales de llamada no se guardan y la oferta se cancela al colgar.
+6. **Relojes desfasados** (`reloj`): con el reloj del otro 90 s adelantado (sin hora de red) nunca sonaba; ahora quien
+   recibe pregunta al que llama si sigue (señal `ring`) en vez de comparar relojes.
+7. **Los dos se llaman a la vez** (`cruce`): "Ocupado" en los dos; ahora gana una y los dos quedan en llamada.
+8. **Wi-Fi caído en un solo teléfono sin cierre limpio** (`wifi-uno`): el otro dejaba de oír y cortaba a los 12 s; ahora
+   cada lado sigue el camino por el que le llega la voz y vuelve en ~0,3 s.
+9. **Paquetes de voz grabados y repetidos** (`repetida`): 20 de 20 se volvían a oír; ahora 0.
+10. **Micrófono y cámara** (`callmedia.js`, con el `call_media.js` real): colgar mientras se abría el micrófono lo
+    dejaba abierto (12 paquetes de voz después de colgar); girar la cámara y colgar la dejaba encendida; dos toques en
+    "Girar" abrían 2 cámaras; una videollamada sin cámara (denegada u ocupada) no tenía ni voz; una ráfaga de voz tras
+    un atasco sonaba con hasta 4 trozos a la vez. Ahora: nada abierto, solo voz si no hay cámara, 1 trozo a la vez.
+11. Una llamada que llega menos de 1,4 s después de otra sonaba sin botón "Contestar": arreglado.
+- Pendiente (PENDIENTES §6): la voz por Bluetooth con MTU pequeño (con MTU 23, 6,8 s de retraso y solo 32 de 161
+  paquetes; con MTU 185, 66 ms; un teléfono sin Opus con MTU 185, 3,2 s): hace falta un "carril de voz" nativo; y los
+  riesgos que solo se ven en el teléfono (micrófono con la pantalla apagada en Android 11+, sensor de proximidad, tono
+  con el teléfono en silencio, foco de audio).
+- Pruebas: `spoof.js`, `callmedia.js` y `calls2.js` (9 casos) en `ci.js`; Kotlin `CallDedupeTest`. Batería 43/43,
+  Kotlin 68/68; `fenix.js` (fuera de `ci.js`) también pasa con el descarte de lo no cifrado (cuenta, 6 de 6 mensajes y
+  2 de 2 archivos recuperados). La parte nativa (avisos de llamada) solo se compila en GitHub.
 
 ## Ronda 2767: revisión completa, parte 2 (mensajes y archivos)
 Revisión de los envíos y la recepción (cortos, largos, archivos, lo pendiente). Cada fallo se reprodujo primero en el

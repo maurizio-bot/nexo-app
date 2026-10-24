@@ -108,10 +108,9 @@ export function createCallMedia(opts) {
     playAt += buf.duration;
   }
 
-  function info0Stopped() { return stopped; }
   function startVideo() {
     return _hasVp8().then(function(ok) {
-      if (!ok || !stream || !stream.getVideoTracks().length) return false;
+      if (!ok || stopped || !stream || !stream.getVideoTracks().length) return false; // ronda 2768: colgada mientras tanto
       var v = document.createElement('video');
       v.muted = true; v.playsInline = true; v.autoplay = true; v.setAttribute('playsinline', ''); v.srcObject = stream; localV = v;
       try { var pp = v.play(); if (pp && pp.catch) pp.catch(function() {}); } catch (e) {}
@@ -184,7 +183,6 @@ export function createCallMedia(opts) {
         src.connect(proc); proc.connect(ctx.destination); // el nodo necesita salida para funcionar (escribe silencio)
         // Ronda 2761: si el sistema dejó el audio en pausa (sin un toque reciente), se activa; si no, ni suena ni graba
         if (ctx.state !== 'running' && ctx.resume) ctx.resume().catch(function() {});
-        if (info0Stopped()) return { codec: codec === 1 ? 'opus' : 'ulaw' };
         var info = { codec: codec === 1 ? 'opus' : 'ulaw' };
         if (!wantVideo) return info;
         return startVideo().then(function(vok) { info.video = vok; return info; }, function() { info.video = false; return info; });
