@@ -2929,20 +2929,41 @@ class NexoBlePlugin : Plugin() {
     }
 
     // ===== Llamadas de voz (ronda 2758, calls.js): audio en modo llamada (auricular y cancelación de eco del sistema) =====
+    // Ronda 2761 (informe del dueño: en una videollamada el Samsung no oía nada): en Android 12+ la salida se elige con
+    // setCommunicationDevice (isSpeakerphoneOn está obsoleto y algunos fabricantes lo ignoran); se devuelve por dónde
+    // sale y los volúmenes (llamada y multimedia: el audio de la app sale como multimedia) para el diagnóstico.
     @PluginMethod
     fun callAudio(call: PluginCall) {
         try {
             val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-            if (call.getBoolean("on", false) == true) {
+            val on = call.getBoolean("on", false) == true
+            val speaker = on && call.getBoolean("speaker", false) == true
+            if (on) {
                 am.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
+                if (Build.VERSION.SDK_INT >= 31) {
+                    val want = if (speaker) android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER else android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                    val dev = am.availableCommunicationDevices.firstOrNull { it.type == want }
+                    if (dev != null) am.setCommunicationDevice(dev)
+                }
                 @Suppress("DEPRECATION")
-                am.isSpeakerphoneOn = call.getBoolean("speaker", false) == true
+                am.isSpeakerphoneOn = speaker
             } else {
+                if (Build.VERSION.SDK_INT >= 31) try { am.clearCommunicationDevice() } catch (e: Exception) { }
                 am.mode = android.media.AudioManager.MODE_NORMAL
                 @Suppress("DEPRECATION")
                 am.isSpeakerphoneOn = false
             }
-            call.resolve(JSObject().put("mode", am.mode))
+            val out = JSObject().put("mode", am.mode)
+            @Suppress("DEPRECATION")
+            out.put("speakerOn", am.isSpeakerphoneOn)
+            if (Build.VERSION.SDK_INT >= 31) out.put("device", when (am.communicationDevice?.type) {
+                android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "altavoz"; android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "auricular"
+                android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO, android.media.AudioDeviceInfo.TYPE_BLE_HEADSET -> "Bluetooth"
+                android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET, android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES, android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "cascos"
+                null -> "ninguno"; else -> "otro (${am.communicationDevice?.type})" })
+            val vc = android.media.AudioManager.STREAM_VOICE_CALL; val mu = android.media.AudioManager.STREAM_MUSIC
+            out.put("volCall", "${am.getStreamVolume(vc)}/${am.getStreamMaxVolume(vc)}").put("volMedia", "${am.getStreamVolume(mu)}/${am.getStreamMaxVolume(mu)}")
+            call.resolve(out)
         } catch (e: Exception) { call.reject("Audio de llamada: ${e.message}") }
     }
 

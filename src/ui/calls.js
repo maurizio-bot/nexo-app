@@ -17,6 +17,8 @@ var RING_MS = 45000;
 var SILENCE_MS = 12000;
 var OFFER_MAX_AGE_MS = 60000;
 
+var DIAG_EVERY_MS = 5000;
+
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _emit(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) {} }
 function _hex(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a).map(function(b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
@@ -83,11 +85,17 @@ export class Calls {
     _emit('nexo:call', self.state());
     console.log('[CALL] Llamando a ' + nx + ' (' + id + ')');
     self._ringTimer = setTimeout(function() { if (self.call && self.call.id === id && self.call.state === 'calling') self._finish('unanswered', true); }, window.NEXO_CALL_RING_MS || RING_MS);
-    return self._importKey(key).then(function(k) {
+    return Promise.all([self._importKey(key), self._codecs()]).then(function(r) {
       if (!self.call || self.call.id !== id) return;
-      self.call.cryptoKey = k;
-      return self._signal(nx, 'offer', video ? { k: key, co: 'opus,ulaw', v: 1 } : { k: key, co: 'opus,ulaw' });
+      self.call.cryptoKey = r[0];
+      return self._signal(nx, 'offer', video ? { k: key, co: r[1], v: 1 } : { k: key, co: r[1] });
     });
+  }
+
+  // Ronda 2761: lo que este teléfono puede recibir (antes la oferta decía Opus siempre y la respuesta no decía nada)
+  _codecs() {
+    var f = this.mediaFactory && this.mediaFactory.codecs;
+    return typeof f === 'function' ? Promise.resolve(f()).catch(function() { return 'opus,ulaw'; }) : Promise.resolve('opus,ulaw');
   }
 
   // Contestar la llamada entrante
@@ -95,7 +103,7 @@ export class Calls {
     var self = this, c = self.call;
     if (!c || c.dir !== 'in' || c.state !== 'ringing') return;
     clearTimeout(self._ringTimer);
-    self._signal(c.nx, 'accept');
+    self._codecs().then(function(co) { if (self.call === c) self._signal(c.nx, 'accept', { co: co }); });
     self._begin();
   }
 
@@ -128,6 +136,7 @@ export class Calls {
     var self = this, c = self.call;
     if (!c) return;
     c.startedAt = Date.now(); c.lastRx = Date.now();
+    self.stats = { sent: 0, got: 0, bad: 0 }; // por llamada (el diagnóstico de cada una)
     self._set({ state: 'active', startedAt: c.startedAt });
     console.log('[CALL] En llamada con ' + c.nx + ' (' + c.id + ')');
     var media;
@@ -145,8 +154,21 @@ export class Calls {
     self._silenceTimer = setInterval(function() {
       var cc = self.call;
       if (!cc || cc.id !== c.id) return;
-      if (Date.now() - (cc.lastRx || 0) > SILENCE_MS) { self._signal(cc.nx, 'end'); self._finish('lost', false); }
+      if (Date.now() - (cc.lastRx || 0) > SILENCE_MS) { self._signal(cc.nx, 'end'); self._finish('lost', false); return; }
+      if (Date.now() - (cc.diagAt || cc.startedAt) >= DIAG_EVERY_MS) { cc.diagAt = Date.now(); self._diag(cc, ''); }
     }, 1000);
+  }
+
+  // Ronda 2761 (informe del dueño: en una videollamada un teléfono no oía nada): al diagnóstico cada 5 s y al colgar,
+  // para ver dónde se pierde la voz: enviada / recibida / reproducida, nivel del micrófono, camino y estado del audio
+  _diag(c, prefix) {
+    var m = c.media && typeof c.media.stats === 'function' ? c.media.stats() : null, st = this.stats;
+    var link = this._link(c.nx), pct = function(x) { return Math.round((x || 0) * 1000) / 10 + ' %'; };
+    console.log('[CALL] ' + (prefix || Math.round((Date.now() - c.startedAt) / 1000) + ' s') + ': voz enviada ' + st.sent + ', recibida ' + st.got +
+      (st.bad ? ' (' + st.bad + ' ilegibles)' : '') + (c.video ? ', vídeo enviado ' + (st.sentV || 0) + ' / recibido ' + (st.gotV || 0) : '') +
+      (m ? ', reproducido ' + Math.round(m.playedS) + ' s (nivel ' + pct(m.playedLevel) + '), micrófono ' + (m.mic ? 'activo' : 'NO') + ' nivel ' + pct(m.micLevel) +
+        ' pico ' + pct(m.micPeak) + ', audio ' + m.ctx + ', ' + m.codec + (c.peerCodecs ? ' (el otro: ' + c.peerCodecs + ')' : '') : ', sin audio') +
+      ', por ' + (link ? (link.indexOf('lan:') === 0 ? 'Wi-Fi' : 'Bluetooth') : 'ningún camino'));
   }
 
   _sendPacket(bytes, kind) {
@@ -165,7 +187,7 @@ export class Calls {
     var ad = new TextEncoder().encode(c.id + '|' + (c.dir === 'out' ? 'o' : 'i') + '|' + (kind === 'v' || kind === 'e' ? kind : '') + seq);
     crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: ad }, c.cryptoKey, bytes).then(function(ct) {
       var out = new Uint8Array(12 + ct.byteLength); out.set(iv, 0); out.set(new Uint8Array(ct), 12);
-      self.stats.sent++;
+      if (kind === 'v') self.stats.sentV = (self.stats.sentV || 0) + 1; else self.stats.sent++;
       var pk = { type: 'vf', c: c.id, s: seq, d: _b64(out) };
       if (kind === 'v' || kind === 'e') pk.k = kind;
       return self.ble._sendMessageNative(link, JSON.stringify(pk), null);
@@ -208,7 +230,11 @@ export class Calls {
       return;
     }
     if (!c || c.id !== o.id || c.nx !== nx) return;
-    if (o.op === 'accept' && c.dir === 'out' && c.state === 'calling') { clearTimeout(self._ringTimer); self._begin(); return; }
+    if (o.op === 'accept' && c.dir === 'out' && c.state === 'calling') {
+      clearTimeout(self._ringTimer);
+      if (typeof o.co === 'string' && /^[a-z,]{1,40}$/.test(o.co)) c.peerCodecs = o.co; // (una build anterior no lo dice)
+      self._begin(); return;
+    }
     if (o.op === 'reject') { self._finish('rejected', false); return; }
     if (o.op === 'busy') { self._finish('busy', false); return; }
     if (o.op === 'end') { self._finish(c.state === 'active' ? 'ended' : (c.dir === 'in' ? 'missed' : 'cancelled'), false); }
@@ -219,8 +245,9 @@ export class Calls {
     if (!c) return;
     clearTimeout(self._ringTimer); clearInterval(self._silenceTimer);
     if (notifyPeer) self._signal(c.nx, 'end');
-    if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }
     var secs = c.startedAt ? Math.round((Date.now() - c.startedAt) / 1000) : 0;
+    if (c.startedAt) try { self._diag(c, 'Al colgar (' + secs + ' s)'); } catch (e) {}
+    if (c.media && c.media.stop) { try { c.media.stop(); } catch (e) {} }
     self.call = null;
     console.log('[CALL] Fin (' + reason + ', ' + secs + ' s; voz enviada ' + self.stats.sent + ', recibida ' + self.stats.got + ')');
     _emit('nexo:call', { id: c.id, nx: c.nx, dir: c.dir, state: 'ended', reason: reason, seconds: secs });

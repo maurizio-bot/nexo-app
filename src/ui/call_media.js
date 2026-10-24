@@ -62,14 +62,20 @@ function _hasVp8() {
     .then(function(r) { return !!(r && r.supported); }).catch(function() { return false; });
 }
 
+// Ronda 2761: lo que este teléfono puede recibir (va en la oferta y en la respuesta; antes se anunciaba Opus siempre)
+export function callCodecs() { return _hasOpus().then(function(o) { return o ? 'opus,ulaw' : 'ulaw'; }); }
+
 export function createCallMedia(opts) {
   var onPacket = opts.onPacket, peerCodecs = String(opts.codecs || 'ulaw');
   var wantVideo = !!opts.video, venc = null, vdec = null, vTimer = null, vN = 0, vIn = 0, vGotKey = false, camOn = true, vcanvas = null, vctx = null;
   var vstats = window.NEXO_callVideoStats = { sent: 0, keys: 0, decoded: 0, bytes: 0 };
+  window.NEXO_callAudioStats = { samples: 0, seconds: 0, energy: 0 }; // por llamada
   var media;
   var ctx = null, stream = null, src = null, proc = null, enc = null, dec = null, codec = 0, muted = false;
   var pending = [], pendingSince = 0, playAt = 0, ts = 0, decTs = 0;
   var ulawBuf = [];
+  // Ronda 2761: para el diagnóstico (calls.js lo escribe cada 5 s): nivel del micrófono y audio reproducido
+  var mic = { blocks: 0, energy: 0, peak: 0 };
 
   function flush(force) {
     if (!pending.length) return;
@@ -151,6 +157,8 @@ export function createCallMedia(opts) {
         proc.onaudioprocess = function(ev) {
           var inp = ev.inputBuffer.getChannelData(0);
           var data = muted ? new Float32Array(inp.length) : new Float32Array(inp);
+          var e1 = 0; for (var q = 0; q < inp.length; q++) e1 += inp[q] * inp[q];
+          e1 = Math.sqrt(e1 / (inp.length || 1)); mic.blocks++; mic.energy += e1; if (e1 > mic.peak) mic.peak = e1;
           if (codec === 1) {
             try {
               var ad = new window.AudioData({ format: 'f32', sampleRate: RATE, numberOfFrames: data.length, numberOfChannels: 1, timestamp: ts, data: data });
@@ -165,6 +173,8 @@ export function createCallMedia(opts) {
           flush(false);
         };
         src.connect(proc); proc.connect(ctx.destination); // el nodo necesita salida para funcionar (escribe silencio)
+        // Ronda 2761: si el sistema dejó el audio en pausa (sin un toque reciente), se activa; si no, ni suena ni graba
+        if (ctx.state !== 'running' && ctx.resume) ctx.resume().catch(function() {});
         var info = { codec: codec === 1 ? 'opus' : 'ulaw' };
         if (!wantVideo) return info;
         return startVideo().then(function(vok) { info.video = vok; return info; }, function() { info.video = false; return info; });
@@ -214,6 +224,12 @@ export function createCallMedia(opts) {
       }
     },
     mute: function(on) { muted = !!on; },
+    // Para el diagnóstico: estado del audio, micrófono (nivel medio y pico, 0–1) y lo reproducido del otro
+    stats: function() {
+      var st = window.NEXO_callAudioStats || { seconds: 0, samples: 0, energy: 0 };
+      return { ctx: ctx ? ctx.state : 'sin audio', codec: codec === 1 ? 'opus' : codec === 2 ? 'ulaw' : '?', micLevel: mic.blocks ? mic.energy / mic.blocks : 0, micPeak: mic.peak,
+        playedS: st.seconds || 0, playedLevel: st.samples ? Math.sqrt(st.energy / st.samples) : 0, mic: !!(stream && stream.getAudioTracks().some(function(t) { return t.readyState === 'live' && t.enabled && !t.muted; })) };
+    },
     stop: function() {
       flush(true);
       clearInterval(vTimer);

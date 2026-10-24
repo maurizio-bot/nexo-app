@@ -213,6 +213,23 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## Ronda 2762 (rama de trabajo): videollamada en la que un teléfono no oía nada
+Informe del dueño (2758/2759, videollamada, mismo Wi-Fi): lo que se decía en el Samsung se oía en el Vivo; en el Samsung no
+se oía nada (ni pegado a la oreja). El vídeo mantiene la llamada viva aunque no llegue voz (no se cortó).
+Causas encontradas y corregidas (no se sabe cuál fue en sus teléfonos: el diagnóstico no guardaba las líneas [CALL]):
+- Códec: la oferta decía siempre "Opus" (sin comprobarlo) y la respuesta no decía nada: si un teléfono no puede
+  reproducir Opus, el otro se lo mandaba igual y no oía nada. Reproducido con `calls_browser.js --b-sin-opus` en la 2759
+  (B: 0 s de audio). Ahora la oferta y la respuesta llevan lo que cada teléfono puede recibir (`callCodecs`).
+- Salida de audio: la 2758/2759 ponía el modo llamada con el altavoz apagado también en videollamada; cada fabricante
+  decide por dónde sale el audio de la app en ese modo. Ahora la videollamada va por altavoz (botón para cambiar) y en
+  Android 12+ la salida se elige con `setCommunicationDevice` (callAudio devuelve salida y volúmenes).
+- El audio se activa explícitamente (`ctx.resume`) si el sistema lo dejó en pausa.
+- Diagnóstico: `[CALL]` entra en los eventos clave; cada 5 s y al colgar: voz enviada/recibida, vídeo, segundos
+  reproducidos y nivel, micrófono activo y nivel, estado del audio, códecs de los dos y camino; al empezar, salida del
+  teléfono y volúmenes de llamada y multimedia.
+Pruebas: `calls_browser.js --b-sin-opus` y comprobación del altavoz en voz/vídeo; calls.js y calls_browser (voz, μ-law,
+vídeo) en verde.
+
 ## Ronda 2760: fotos por Bluetooth, camino de envío y avisos (diagnóstico de los dos teléfonos con la 2758/2759)
 Diagnóstico (Vivo V2332 `NX1EBB23E7` y Samsung S24 Ultra `NX1N36C283`, Android 16):
 - Las fotos SÍ llegaban por Wi-Fi (0,2 s) y por internet (3 s). Por Bluetooth no: el enlace con cada contacto se rehacía

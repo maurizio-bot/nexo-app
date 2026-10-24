@@ -13,6 +13,9 @@ const buildDir = path.resolve(process.argv[2]);
 const dist = path.join(buildDir, 'dist');
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
 const seconds = arg('seconds', 6), ULAW = !!arg('ulaw', false), VIDEO = !!arg('video', false);
+// --b-sin-opus (ronda 2761): solo B sin Opus: A debe mandarle μ-law (antes la oferta decía Opus siempre y la respuesta
+// no decía nada: A mandaba Opus y B no oía nada)
+const B_ULAW = !!arg('b-sin-opus', false);
 const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 25), supervisionMs: 3000 };
 if (VIDEO) opts.wifi = 'casa';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -74,6 +77,7 @@ async function sendText(page, t) {
   radio.add(nA); radio.add(nB); nA.load(); nB.load();
   const [A, B] = await Promise.all([boot(browser, 'A', nA), boot(browser, 'B', nB)]);
   if (ULAW) for (const p of [A, B]) await p.evaluate(() => { window.AudioEncoder = undefined; window.AudioDecoder = undefined; });
+  if (B_ULAW) await B.evaluate(() => { window.AudioEncoder = undefined; window.AudioDecoder = undefined; });
   await A.evaluate(() => window.bleInterface.togglePanel());
   for (let i = 0; i < 100; i++) { await sleep(150); const ok = await click(A, '#ble-new-device button'); if (ok) break; const scanning = await A.evaluate(() => window.bleInterface.isScanning); if (!scanning) await click(A, '#ble-scan-btn'); }
   await sleep(1500);
@@ -81,7 +85,7 @@ async function sendText(page, t) {
   await click(A, '#main-contacts-list .ble-contact-row'); await sleep(400);
   await sendText(A, 'hola'); await sleep(2500);
   await click(B, '#main-contacts-list .ble-contact-row'); await sleep(600);
-  const r = { build: path.basename(buildDir), sin_opus: ULAW, video: VIDEO };
+  const r = { build: path.basename(buildDir), sin_opus: ULAW ? 'los dos' : B_ULAW ? 'B' : 'ninguno', video: VIDEO };
   if (VIDEO) for (let i = 0; i < 200 && !(await A.evaluate(() => window.bleInterface.calls.canVideo(Array.from(window.bleInterface.lan.links.keys())[0] || ''))); i++) await sleep(200);
   const air0 = nA.stats.airBytes || 0, airB0 = nB.stats.airBytes || 0;
   await click(A, VIDEO ? '#nexo-video-btn' : '#nexo-call-btn');
@@ -93,12 +97,15 @@ async function sendText(page, t) {
   r.A = await st(A); r.B = await st(B);
   const secs = (Date.now() - t0) / 1000;
   r.KB_por_segundo_aire = Math.round(((nA.stats.airBytes || 0) - air0) / secs / 102.4) / 10;
+  // Videollamada: altavoz de entrada; voz: auricular (ronda 2761)
+  r.altavoz = { A: !!nA.callSpeaker, B: !!nB.callSpeaker };
   await click(A, '#nexo-call-screen .call-hangup'); await sleep(1500);
   r.fin = { A: await A.evaluate(() => !window.bleInterface.calls.call), B: await B.evaluate(() => !window.bleInterface.calls.call) };
   r.errores = logs.filter((l) => /PAGEERROR|\[CALL\] (Opus|Micr)/.test(l)).slice(0, 5);
-  const want = ULAW ? 'ulaw' : 'opus';
+  const want = ULAW || B_ULAW ? 'ulaw' : 'opus';
   const okVideo = !VIDEO || ['A', 'B'].every((k) => r[k].video_decodificado >= seconds * 8 && r[k].imagen_otro && r[k].vista_propia);
-  const ok = okVideo && ['A', 'B'].every((k) => r[k].estado === 'active' && r[k].codec === want && !r[k].mic && r[k].recibidos >= seconds * (ULAW ? 5 : 6) && !r[k].malos && r[k].audio_s >= seconds * 0.7 && r[k].volumen_rms > 0.005) && r.fin.A && r.fin.B && !r.errores.length;
+  const okSpeaker = r.altavoz.A === VIDEO && r.altavoz.B === VIDEO;
+  const ok = okVideo && okSpeaker && ['A', 'B'].every((k) => r[k].estado === 'active' && r[k].codec === want && !r[k].mic && r[k].recibidos >= seconds * (ULAW || B_ULAW ? 5 : 6) && !r[k].malos && r[k].audio_s >= seconds * 0.7 && r[k].volumen_rms > 0.005) && r.fin.A && r.fin.B && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CALLAUDIO ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_calls_browser.txt'), logs.join('\n'));

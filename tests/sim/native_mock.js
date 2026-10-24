@@ -838,7 +838,7 @@ class NativePhone {
       // ===== Archivos grandes por Bluetooth L2CAP (Kotlin bigServeL2 / bigSendL2, ronda 2758): canal de flujo sobre la
       // conexión Bluetooth (Android 10+; opts.noL2 = teléfono anterior). ~100 KB/s (opts.l2Bps); se corta si se alejan.
       // Llamadas de voz (Kotlin callAudio, ronda 2758): solo se anota el modo
-      callAudio: wrap('callAudio', (c, a) => { self.callAudioOn = a.on === true; self.callSpeaker = a.on === true && a.speaker === true; c.resolve({ mode: a.on ? 3 : 0 }); }),
+      callAudio: wrap('callAudio', (c, a) => { self.callAudioOn = a.on === true; self.callSpeaker = a.on === true && a.speaker === true; c.resolve({ mode: a.on ? 3 : 0, speakerOn: self.callSpeaker, device: a.on ? (self.callSpeaker ? 'altavoz' : 'auricular') : 'ninguno', volCall: '5/7', volMedia: '9/15' }); }),
       l2Info: wrap('l2Info', (c) => c.resolve({ ok: !self.opts.noL2, sdk: self.opts.noL2 ? 28 : 33 })),
       bigServeL2: wrap('bigServeL2', (c, a) => {
         if (self.opts.noL2) return c.reject('L2CAP no disponible (Android 10+ y Bluetooth activo)', 'L2_NONE');

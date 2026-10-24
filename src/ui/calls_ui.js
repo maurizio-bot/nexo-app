@@ -59,7 +59,13 @@ function _videoLayout(el, st) {
 
 // Modo de audio del teléfono en llamada (Kotlin callAudio): auricular o altavoz
 function _audioMode(on) {
-  try { var pl = _plugin(); if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _speaker }).catch(function() {}); } catch (e) {}
+  try {
+    var pl = _plugin();
+    if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _speaker }).then(function(r) {
+      // Ronda 2761: al diagnóstico por dónde sale el sonido y con qué volumen (el audio de la llamada sale como multimedia)
+      if (on && r) console.log('[CALL] Sonido del teléfono: ' + (r.device || (r.speakerOn ? 'altavoz' : 'auricular')) + ', volumen llamada ' + (r.volCall || '?') + ', multimedia ' + (r.volMedia || '?'));
+    }).catch(function(e) { console.warn('[CALL] Modo llamada: ' + (e && e.message)); });
+  } catch (e) {}
 }
 
 function _fmt(s) { return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
