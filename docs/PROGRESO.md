@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2762)
+Última actualización: 2026-10-24 (build 2763)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -88,7 +88,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2759 | aa54dbd3 | Corrección mínima sobre la 2758: botón 👤 arriba (junto al 👥) que abre Perfil, porque la barra de abajo (Chats · Gente · Mapa · Perfil) queda fuera de la pantalla y no había forma de copiar el diagnóstico; la cabecera tiene altura propia y los botones ya no se salen por arriba. En investigación: en teléfonos reales con la 2758 no llegan fotos ni archivos (falta el diagnóstico de los dos teléfonos) |
 | 2760 | | Compilación de prueba (lanzada a mano en la rama de trabajo, sin APK publicada): la 2761 + lo pendiente; Kotlin y pruebas en verde |
 | 2761 | a24a47f4 | Sobre la 2759 (sin las novedades pendientes): diagnóstico de los dos teléfonos del dueño → camino de envío con la regla nueva del dueño (Wi-Fi se mantiene; muy malo → internet; sin internet → Bluetooth; sin brincar), vigilante del Bluetooth que ya no corta enlaces vivos ni con un archivo en curso, enlace de MTU más alto, avisos nativos con la app en segundo plano aunque el teléfono la congele y avisos de Jump con la app cerrada. Ver "Ronda 2760" |
-| 2762 | (este commit) | La 2761 + lo que estaba pendiente: pasar la cuenta a un teléfono nuevo (punto 15 A), aviso "Llamada entrante" con la app cerrada, botón de altavoz; llamadas: códec real en oferta y respuesta (un teléfono sin Opus no oía nada), videollamada por altavoz, salida de audio Android 12+, diagnóstico `[CALL]`; pantalla de llamada y videollamada nueva (estilo WhatsApp + NEXO, girar cámara). ci.js local en verde |
+| 2762 | 4634f69e | La 2761 + lo que estaba pendiente: pasar la cuenta a un teléfono nuevo (punto 15 A), aviso "Llamada entrante" con la app cerrada, botón de altavoz; llamadas: códec real en oferta y respuesta (un teléfono sin Opus no oía nada), videollamada por altavoz, salida de audio Android 12+, diagnóstico `[CALL]`; pantalla de llamada y videollamada nueva (estilo WhatsApp + NEXO, girar cámara). **Sin APK**: en GitHub falló una prueba Kotlin de tiempos (`AtRestStoreTest.migrarArchivoGrandeNoBloqueaOtros`: un guardado tardó 394 ms por una pausa de la máquina; el código no tenía fallo). Todo pasa a la 2763 |
+| 2763 | (este commit) | La 2762 + toda la app con el estilo NEXO (como la pantalla de llamadas), llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar), avisos de grupo con el nombre del grupo con la app cerrada o congelada, y la prueba de tiempos rehecha (determinista). Ver "Ronda 2763" |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -215,7 +216,7 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
-## Ronda 2763 (rama de trabajo): toda la app con el estilo NEXO y la llamada entrante como una llamada del teléfono
+## Ronda 2763: toda la app con el estilo NEXO y la llamada entrante como una llamada del teléfono
 - Estilo (pedido del dueño: como la pantalla de llamadas): `src/styles/nexo_theme.css` (se carga tras critical.css):
   fondo oscuro con brillo cian/violeta, superficies de cristal, degradado NEXO en lo principal, hojas que suben desde
   abajo con asa, menú de adjuntar como WhatsApp (iconos redondos de color con su nombre), burbujas con esquina,
@@ -233,6 +234,18 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   (`CallDeclineReceiver`: quita el aviso; al abrir NEXO la llamada se rechaza). Con la app cerrada (BgInbox `cl`),
   en segundo plano (nativo o la app) y congelada. Se quita al contestar, colgar o perderse. Pruebas: calls.js
   --closed (contestar y rechazar desde el aviso con la app cerrada).
+
+- Avisos de grupo con el nombre del grupo (con la app cerrada, congelada o en segundo plano): el sobre de un mensaje de
+  grupo lleva el id del grupo (`g`, también en el primer trozo de una foto); BgInbox.kt lo lee y el nativo busca el
+  nombre en `nexo_groups.json` (`groupName`, 60 s de caché): "Familia: A: Mensaje nuevo" en vez de "A". Si el aviso
+  nativo ya salió ("Mensaje nuevo") y luego la app sabe qué es ("📎 Archivo", "📷 Foto"), cambia el texto del mismo
+  aviso sin sonar ni contar otra vez (`UnreadBook.refreshText`). Pruebas: notify.js en las 5 vías (grupo, Bluetooth,
+  Jump, Wi-Fi, internet) en verde; Kotlin 62/62.
+- La 2762 no salió: en GitHub falló `AtRestStoreTest.migrarArchivoGrandeNoBloqueaOtros` (mide que un guardado pequeño
+  no espere a la migración de otro archivo; un guardado tardó 394 ms con el límite en 100 ms, por una pausa de la
+  máquina). Rehecha sin depender de la velocidad: la migración del primer archivo se alarga 1,5 s con su candado puesto
+  y los 40 guardados de otro archivo tienen que acabar mientras tanto. Comprobado que falla si el candado fuera común
+  a todos los archivos (espera 5,5 s).
 
 ## Ronda 2762 (rama de trabajo): videollamada en la que un teléfono no oía nada
 Informe del dueño (2758/2759, videollamada, mismo Wi-Fi): lo que se decía en el Samsung se oía en el Vivo; en el Samsung no

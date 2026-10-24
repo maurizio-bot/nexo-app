@@ -14,8 +14,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
-- **2762**: llamada y videollamada (que se oigan los dos; diagnóstico `[CALL]` de los dos teléfonos), pantalla de
-  llamada nueva (girar cámara, imagen propia arrastrable), pasar la cuenta a un teléfono nuevo (mismo Wi-Fi).
+- **2763** (la 2762 no llegó a salir): llamada y videollamada (que se oigan los dos; diagnóstico `[CALL]` de los dos
+  teléfonos), pantalla de llamada nueva (girar cámara, imagen propia arrastrable), llamada entrante con tono y
+  Contestar / Rechazar (también con la app cerrada), estilo NEXO en toda la app, avisos de grupo con su nombre,
+  pasar la cuenta a un teléfono nuevo (mismo Wi-Fi).
 - **2761**: fotos por Bluetooth entre los dos teléfonos (sin Wi-Fi ni internet), que el enlace no se rehaga cada ~30 s
   (diagnóstico de los dos: líneas `Enlace … desconectado` / `sin respuesta a 2 pings`), Wi-Fi sin brincar, avisos con
   la app en segundo plano en el Vivo (que congela la app) y con la app cerrada por Jump.
@@ -36,7 +38,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 2. Funciones nuevas
 - **Llamadas de voz**: hechas en la 2758 (Bluetooth a alcance o mismo Wi-Fi / Wi-Fi Direct, Opus cifrado); con la app
   cerrada avisa "Llamada entrante" y botón de altavoz (2759); suena como una llamada del teléfono con Contestar /
-  Rechazar (rama de trabajo, 2763). Falta: probar en teléfonos (eco, volumen, Bluetooth con MTU pequeño).
+  Rechazar (2763). Falta: probar en teléfonos (eco, volumen, Bluetooth con MTU pequeño).
 - **Videollamadas**: hechas en la 2758 (mismo Wi-Fi). Falta: por Wi-Fi Direct (hoy su enlace es por transferencia,
   no continuo), probar en teléfonos. Cámara trasera: hecho (botón Girar, 2762).
 - **Pagos**: decidir modelo (saldo propio, tarjeta/banco, cripto); doble gasto sin conexión, conciliación,

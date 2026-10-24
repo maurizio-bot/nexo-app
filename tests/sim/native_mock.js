@@ -445,12 +445,12 @@ class NativePhone {
     const from = String(o.from || o.fr || '').toLowerCase();
     me = String(me || '').toLowerCase(); const mine = NX.test(me);
     const what = () => (o.t === 'c' ? (o.cl === 1 ? 'call' : 'text') : (o.tp || 'file'));
-    if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1 };
+    if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1, group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
     if (mine && o.type === 'chat' && o.msgId && NX.test(from) && String(o.to).toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from, msgId: o.msgId, quiet: o.q === 1, what: 'text' };
     if (mine && o.type === 'sx' && o.msgId && String(o.to).toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from: '', msgId: o.msgId, what: 'text' };
     if (mine && (o.t === 'c' || o.t === 'f') && o.i === 0 && String(o.dt || '').toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from: NX.test(from) ? from : '', msgId: o.m, quiet: o.q === 1, what: what() };
     if ((o.type === 'ack' || o.type === 'read_receipt') && o.msgId && !o.to) return { kind: 'RECEIPT', from, msgId: o.msgId };
-    if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, quiet: o.q === 1, what: what() };
+    if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, quiet: o.q === 1, what: what(), group: /^gr[0-9a-z]{8}$/.test(String(o.g || '').toLowerCase()) ? String(o.g).toLowerCase() : '' };
     return { kind: 'IGNORE' };
   }
   // MsgNotifier.message + UnreadBook (Kotlin): un aviso por chat; el mismo msgId no avisa dos veces; si ya se avisó en
@@ -464,11 +464,22 @@ class NativePhone {
       if (o && o.ids.delete(mid) && o.base + o.ids.size <= 0) this.notifications.delete(prev);
     }
     const n = this.notifications.get(id) || { name, ids: new Set(), base: 0, text: '' };
-    if (n.ids.has(mid)) return n.base + n.ids.size;
+    if (n.ids.has(mid)) { // UnreadBook.refreshText: la app cambia el texto del aviso nativo, sin sonar
+      if (text && n.text !== text) { n.text = text; this.notifLog.push(Object.assign({ t: Date.now(), chatId: id, name: n.name, text, count: n.base + n.ids.size, update: true }, flags || {})); }
+      return n.base + n.ids.size;
+    }
     n.ids.add(mid); n.name = name || n.name; n.text = text || ''; n.posts = (n.posts || 0) + 1;
     this.notifications.set(id, n); this.msgChat.set(mid, id);
     this.notifLog.push(Object.assign({ t: Date.now(), chatId: id, name: n.name, text: text || '', count: n.base + n.ids.size }, flags || {}));
     return n.base + n.ids.size;
+  }
+  // Kotlin 2763 groupName: nombre del grupo (nexo_groups.json)
+  _groupName(gid) { if (!gid) return null; try { const g = (JSON.parse(this.files.get('nexo_groups.json') || '{}').groups || {})[gid]; return (g && g.name) || null; } catch (e) { return null; } }
+  // Kotlin 2763 notifyMessage: en un grupo, en el chat del grupo con su nombre
+  _notifyMsg(info, flags) {
+    const gname = this._groupName(info.group), who = this._notifName(info.from);
+    if (gname) this._postNotif(info.group, gname, info.msgId, who !== 'NEXO' ? who + ': Mensaje nuevo' : '', flags);
+    else this._postNotif(info.from, who, info.msgId, '', flags);
   }
   _notifName(nx) { const c = this.netBg && (this.netBg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === nx); return (c && c.name) || 'NEXO'; }
   static whatText(w) { return ({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', call: '📞 Llamada entrante', text: '' })[w] ?? '📎 Archivo'; }
@@ -479,7 +490,8 @@ class NativePhone {
     if (!info.msgId || info.quiet || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return;
     setTimeout(() => {
       if (this.appActive !== false || this.closedMode || (this.msgChat && this.msgChat.has(String(info.msgId)))) return;
-      if (info.kind === 'MESSAGE') this._postNotif(info.from, this._notifName(info.from), info.msgId, '', { bg: true });
+      if (info.kind === 'MESSAGE') this._notifyMsg(info, { bg: true });
+      else if (this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { bg: true }); }
       else this._postNotif(info.from || 'nexo_jump', info.from ? this._notifName(info.from) : 'NEXO', info.msgId, NativePhone.whatText(info.what), { bg: true });
     }, 4000);
   }
@@ -496,9 +508,10 @@ class NativePhone {
       const me = String(this.advertisingId || '').toLowerCase();
       if (me) this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify({ v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() }));
       if (info.call) { this.callNotif = { from: info.from, video: false }; this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
-      else if (!info.quiet) notify('');
+      else if (!info.quiet) this._notifyMsg(info, { closed: true });
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json });
     else if (info.kind === 'NOTIFY_ONLY' && info.what === 'call') { this.callNotif = { from: info.from, video: false }; this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
+    else if (info.kind === 'NOTIFY_ONLY' && this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { closed: true }); }
     else if (info.kind === 'NOTIFY_ONLY') notify(NativePhone.whatText(info.what));
   }
 

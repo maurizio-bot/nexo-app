@@ -43,6 +43,13 @@ class BgInboxTest {
         assertTrue(BgInbox.classify("""{"v":2,"t":"c","m":"cs1","i":0,"n":3,"d":"x","fr":"NX12345678","q":1,"k":"a"}""").quiet)
     }
 
+    // Ronda 2763: mensaje de grupo directo: el id del grupo (para poner su nombre en el aviso)
+    @Test fun grupo() {
+        assertEquals("grabcd1234", BgInbox.classify(chat.replace("\"nt\":1", "\"nt\":1,\"g\":\"grABCD1234\"")).group)
+        assertEquals("", BgInbox.classify(chat).group)
+        assertEquals("", BgInbox.classify(chat.replace("\"nt\":1", "\"nt\":1,\"g\":\"../x\"")).group, "id raro: no")
+    }
+
     @Test fun guardaYEntregaEnOrden() {
         val f = File.createTempFile("inbox", ".jsonl"); f.delete()
         val box = BgInbox(f)

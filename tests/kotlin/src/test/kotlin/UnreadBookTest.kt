@@ -57,6 +57,18 @@ class UnreadBookTest {
         assertNull(b.get("nxbbbbbbbb"), "sin nada más: fuera (se quita su aviso)")
     }
 
+    @Test fun laAppCambiaElTextoSinContar() {
+        val b = UnreadBook()
+        assertTrue(b.add("grabcdefgh", "Familia", "f1", "Ana: Mensaje nuevo"))
+        assertFalse(b.add("grabcdefgh", "Familia", "f1", "Ana: 📷 Foto"), "mismo mensaje: no cuenta otra vez")
+        assertTrue(b.refreshText("grabcdefgh", "f1", "Ana: 📷 Foto"))
+        assertEquals("Ana: 📷 Foto", b.get("grabcdefgh")!!.last)
+        assertEquals(1, b.get("grabcdefgh")!!.count)
+        assertFalse(b.refreshText("grabcdefgh", "f1", "Ana: 📷 Foto"), "sin cambio: no se vuelve a publicar")
+        assertFalse(b.refreshText("grabcdefgh", "f1", ""))
+        assertFalse(b.refreshText("nxaaaaaaaa", "f1", "otro"), "otro chat: no")
+    }
+
     @Test fun losRecordadosTienenLimite() {
         val b = UnreadBook(maxSeen = 10)
         for (i in 0 until 20) b.add("nxaaaaaaaa", "Ana", "m$i", "")

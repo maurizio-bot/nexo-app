@@ -124,6 +124,9 @@ export class Groups {
       // Copia oculta en el chat del miembro: la cola de reenvío de ese contacto la reintenta si no está a alcance
       var vm = { msgId: wid, messageId: wid, contactNexoId: nx, content: env, _own: true, status: 'sending', timestamp: Date.now(), seq: s, hidden: true };
       if (window.vaultAppendMessage) window.vaultAppendMessage(nx, vm).catch(function() {});
+      // Ronda 2763: el id del grupo va por fuera del sobre (directo) para el aviso con la app cerrada (ble_messages.js)
+      bi._groupOut = bi._groupOut || new Map(); bi._groupOut.set(wid, g.id);
+      if (bi._groupOut.size > 500) bi._groupOut.delete(bi._groupOut.keys().next().value);
       bi.sendChatMessage(nx, env, wid, s).then(function() {
         self._onMemberStatus(wid, 'sent');
       }).catch(function(err) {

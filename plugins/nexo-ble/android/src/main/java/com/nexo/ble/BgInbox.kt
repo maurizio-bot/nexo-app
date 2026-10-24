@@ -7,7 +7,7 @@ import org.json.JSONObject
 /**
  * Recibir por Bluetooth con la app cerrada (ronda 2758, plan del dueño punto 12). Al cerrar la app el servidor GATT
  * sigue (el proceso vive por el BleService) pero no hay app que procese lo que llega. Lo que llega se clasifica aquí:
- *  - mensaje ('chat' con msgId y remitente): al buzón (disco), confirmación de entrega al emisor (✓✓: ya está a salvo
+ *  - mensaje ('chat' con msgId y remitente; ronda 2763: si es de un grupo, con su id 'g'): al buzón (disco), confirmación de entrega al emisor (✓✓: ya está a salvo
  *    en este teléfono) y notificación "Mensaje nuevo" (sin texto: va cifrado; no si viene marcado q:1 = acción oculta)
  *  - confirmaciones ('ack', 'read_receipt'): al buzón
  *  - primer trozo de un texto largo o de un archivo de un NEXO ID conocido: solo notificación (el emisor lo tiene
@@ -22,10 +22,11 @@ import org.json.JSONObject
  */
 class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
     enum class Kind { MESSAGE, RECEIPT, NOTIFY_ONLY, IGNORE }
-    class Info(val kind: Kind, val from: String, val msgId: String, val quiet: Boolean, val what: String, val call: Boolean = false)
+    class Info(val kind: Kind, val from: String, val msgId: String, val quiet: Boolean, val what: String, val call: Boolean = false, val group: String = "")
 
     companion object {
         private val NX = Regex("^nx[0-9a-z]{8}$")
+        private val GID = Regex("^gr[0-9a-z]{8}$")
         // me: mi NEXO ID (para reconocer lo que llega por Jump); vacío = no se mira
         fun classify(json: String, me: String = ""): Info {
             val o = try { JSONObject(json) } catch (e: Exception) { return Info(Kind.IGNORE, "", "", false, "") }
@@ -34,7 +35,9 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             val mine = me.isNotEmpty() && NX.matches(me.lowercase())
             if (type == "chat" && o.optString("msgId").isNotEmpty() && NX.matches(from)) {
                 val to = o.optString("to").lowercase()
-                if (to.isEmpty()) return Info(Kind.MESSAGE, from, o.optString("msgId"), o.optInt("q") == 1, "text", o.optInt("cl") == 1)
+                // ronda 2763: mensaje de grupo directo: el id del grupo (para el nombre en el aviso)
+                if (to.isEmpty()) return Info(Kind.MESSAGE, from, o.optString("msgId"), o.optInt("q") == 1, "text", o.optInt("cl") == 1,
+                    o.optString("g").lowercase().takeIf { GID.matches(it) } ?: "")
                 if (mine && to == me.lowercase()) return Info(Kind.NOTIFY_ONLY, from, o.optString("msgId"), o.optInt("q") == 1, "text")
             }
             if (mine && type == "sx" && o.optString("to").lowercase() == me.lowercase() && o.optString("msgId").isNotEmpty())
@@ -44,7 +47,8 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
             if ((type == "ack" || type == "read_receipt") && o.optString("msgId").isNotEmpty() && o.optString("to").isEmpty())
                 return Info(Kind.RECEIPT, from, o.optString("msgId"), true, type)
             if ((t == "c" || t == "f") && o.optInt("i", -1) == 0 && NX.matches(from) && o.optString("dt").isEmpty())
-                return Info(Kind.NOTIFY_ONLY, from, o.optString("m"), o.optInt("q") == 1, if (t == "c") (if (o.optInt("cl") == 1) "call" else "text") else o.optString("tp").ifEmpty { "file" })
+                return Info(Kind.NOTIFY_ONLY, from, o.optString("m"), o.optInt("q") == 1, if (t == "c") (if (o.optInt("cl") == 1) "call" else "text") else o.optString("tp").ifEmpty { "file" },
+                    group = o.optString("g").lowercase().takeIf { GID.matches(it) } ?: "")
             return Info(Kind.IGNORE, from, "", false, "")
         }
     }

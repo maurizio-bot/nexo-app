@@ -62,7 +62,10 @@ class MsgNotifier(private val ctx: Context) {
             if (book.get(other) == null) try { NotificationManagerCompat.from(ctx).cancel(notifId(other)) } catch (e: Exception) { }
             else post(other, alert = false)
         }
-        if (!book.add(chatId, name, msgId, text)) return book.get(chatId)?.count ?: 0
+        if (!book.add(chatId, name, msgId, text)) {
+            if (book.refreshText(chatId, msgId, text)) post(chatId.lowercase(), alert = false)
+            return book.get(chatId)?.count ?: 0
+        }
         post(chatId.lowercase(), alert = true)
         return book.get(chatId)?.count ?: 0
     }

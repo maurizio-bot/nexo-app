@@ -114,7 +114,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   if (via === 'jump') radio.block(nA, nB);
   if (via === 'group') {
     gid = A.win.bleInterface.groups.create('Familia', [idB, P.C.win.bleInterface.localNexoId.toLowerCase()]).id;
-    r.grupo_en_B_s = await waitFor(() => !!B.win.bleInterface.groups.get(gid), 60000);
+    // (B conoce el grupo con su primer mensaje: crear no avisa a nadie)
   }
   await sleep(1500);
   const chat = gid || idA;                       // chat de B donde cae lo de A
@@ -181,6 +181,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.cerrada_avisos = fmt(nc);
   r.cerrada_aviso_texto = nc.length >= 1;
   r.cerrada_aviso_foto = gid ? nc.length >= 2 : nc.some((n) => /📷 Foto|📎 Archivo/.test(n.text));
+  // Ronda 2763: con la app cerrada, el aviso de un grupo lleva su nombre (el texto corto va directo con el id del grupo)
+  if (gid) r.cerrada_nombre_grupo = nc.some((n) => n.chatId === gid && n.name === 'Familia');
   r.cerrada_buzon = (nB.bgInbox || []).length;
   // Al abrir la app llega todo
   nB.load(); B = await boot('B', nB);
@@ -190,7 +192,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const closedOk = ['ble', 'jump', 'group'].indexOf(via) >= 0; // Wi-Fi sin Bluetooth ni internet: nada sigue vivo
   const ok = r.fondo_texto_llega_s !== null && r.fondo_foto_llega_s !== null && r.fondo_aviso_texto && r.fondo_aviso_foto && r.fondo_no_leidos >= 2 && !r.fondo_avisos_repetidos &&
     (!frozenOk || (r.congelada_aviso_texto && r.congelada_aviso_foto && r.congelada_sin_repetir)) && r.congelada_texto_llega_s !== null && r.congelada_foto_llega_s !== null &&
-    (!closedOk || (r.cerrada_aviso_texto && r.cerrada_aviso_foto)) && r.al_abrir_texto_s !== null && r.al_abrir_foto_s !== null && !r.errores.length;
+    (!closedOk || (r.cerrada_aviso_texto && r.cerrada_aviso_foto && (!gid || r.cerrada_nombre_grupo))) && r.al_abrir_texto_s !== null && r.al_abrir_foto_s !== null && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOTIFY ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_notify_' + via + '.txt'), logs.join('\n'));

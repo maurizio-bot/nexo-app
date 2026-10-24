@@ -490,14 +490,38 @@ class NexoBlePlugin : Plugin() {
         super.notifyListeners(eventName, data, retainUntilConsumed)
     }
 
+    // Ronda 2763: nombre de un grupo (nexo_groups.json, cifrado en reposo) para el aviso con la app cerrada
+    @Volatile private var groupNames: Pair<Long, Map<String, String>>? = null
+    private fun groupName(gid: String): String? {
+        if (gid.isEmpty()) return null
+        val now = System.currentTimeMillis()
+        val cached = groupNames
+        val map = if (cached != null && now - cached.first < 60000) cached.second else try {
+            val g = JSONObject(atRest().read("nexo_groups.json") ?: "{}").optJSONObject("groups")
+            val m = HashMap<String, String>()
+            g?.keys()?.forEach { k -> g.optJSONObject(k)?.optString("name")?.takeIf { it.isNotEmpty() }?.let { m[k.lowercase()] = it } }
+            groupNames = now to m; m
+        } catch (e: Exception) { emptyMap() }
+        return map[gid.lowercase()]
+    }
+    // Aviso de un mensaje (con la app cerrada o en segundo plano): en un grupo, en el chat del grupo con su nombre
+    private fun notifyMessage(ctx: Context, info: BgInbox.Info) {
+        val who = netBgShared?.nameOf(info.from)
+        val gname = groupName(info.group)
+        if (gname != null) MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: Mensaje nuevo" else "")
+        else MsgNotifier.get(ctx).message(info.from, who ?: "NEXO", info.msgId, "")
+    }
+
     // Aviso de "solo notificación" (BgInbox.Kind.NOTIFY_ONLY): sin remitente (Jump con remitente oculto) va a un chat
     // aparte que la app quita al abrirse (no es un contacto)
     private fun notifyOnly(ctx: Context, info: BgInbox.Info) {
         if (info.quiet) return
         if (info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false); return }
         val chat = info.from.ifEmpty { "nexo_jump" }
-        MsgNotifier.get(ctx).message(chat, if (info.from.isEmpty()) "NEXO" else netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId,
-            when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "call" -> "📞 Llamada entrante"; "text" -> ""; else -> "📎 Archivo" })
+        val what = when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "call" -> "📞 Llamada entrante"; "text" -> ""; else -> "📎 Archivo" }
+        val gname = groupName(info.group) // ronda 2763: de un grupo, en el chat del grupo con su nombre
+        if (gname != null) { val who = netBgShared?.nameOf(info.from); MsgNotifier.get(ctx).message(info.group, gname, info.msgId, if (who != null) "$who: ${what.ifEmpty { "Mensaje nuevo" }}" else what); return }
+        MsgNotifier.get(ctx).message(chat, if (info.from.isEmpty()) "NEXO" else netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, what)
     }
 
     // Ronda 2760: con la app en segundo plano el aviso lo da la app (notify.js), pero algunos teléfonos (Vivo del dueño)
@@ -513,7 +537,7 @@ class NexoBlePlugin : Plugin() {
         if (info.call || info.what == "call") { MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false); return }
         mainHandler.postDelayed({
             if (!appInBackground || MsgNotifier.get(ctx).book.hasMsg(info.msgId)) return@postDelayed
-            if (info.kind == BgInbox.Kind.MESSAGE) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, "")
+            if (info.kind == BgInbox.Kind.MESSAGE) notifyMessage(ctx, info)
             else notifyOnly(ctx, info)
         }, BG_NOTIFY_DELAY_MS)
     }
@@ -532,7 +556,7 @@ class NexoBlePlugin : Plugin() {
                 }
                 // Ronda 2763: una llamada suena como una llamada del teléfono (aviso con tono, Contestar / Rechazar)
                 if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false)
-                else if (!info.quiet) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, "")
+                else if (!info.quiet) notifyMessage(ctx, info)
             }
             BgInbox.Kind.RECEIPT -> inbox().add(deviceId, json)
             BgInbox.Kind.NOTIFY_ONLY -> notifyOnly(ctx, info)

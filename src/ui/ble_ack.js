@@ -1518,6 +1518,8 @@ ChatStream.prototype._buildChunk = function(idx) {
     // Ronda 2760: texto largo oculto (acción, señal de llamada): sin aviso en el otro teléfono (BgInbox.kt)
     var bq = typeof window !== 'undefined' && window.bleInterface;
     if (this.type === 'chat' && bq && bq._quietOut && bq._quietOut.has(this.msgId)) obj.q = 1;
+    // Ronda 2763: foto o texto largo de un grupo (directo): el id del grupo para el aviso con la app cerrada
+    if (!this.meta.dst && bq && bq._groupOut && bq._groupOut.has(this.msgId)) obj.g = bq._groupOut.get(this.msgId);
   }
   obj.k = _chunkCheck(obj);
   return JSON.stringify(obj);

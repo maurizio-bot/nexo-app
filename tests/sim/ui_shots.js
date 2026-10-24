@@ -71,8 +71,8 @@ const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeO
   await A.evaluate(() => { Array.from(document.querySelectorAll('div')).filter((d) => /position: fixed/.test(d.getAttribute('style') || '') && /QR|número de seguridad|Verificar/i.test(d.textContent || '') && d.id !== 'app').forEach((d) => d.remove()); });
   await A.evaluate(() => window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }))); await sleep(400);
   // Grupo
-  await A.evaluate((nx) => { const g = window.bleInterface.groups.create('Familia', [nx]); window.NEXO_sendGroupText(g.id, 'Hola a todos', 'Hola a todos'); window.NEXO_openGroupChat(g.id); }, await B.evaluate(() => window.bleInterface.localNexoId.toLowerCase()));
-  await sleep(2500);
+  await A.evaluate((nx) => { const g = window.bleInterface.groups.create('Familia', [nx]); window.NEXO_openGroupChat(g.id); }, await B.evaluate(() => window.bleInterface.localNexoId.toLowerCase()));
+  await sleep(600); await send(A, 'Hola a todos'); await sleep(2500);
   await shot(A, '12_chat_grupo');
   await A.evaluate(() => window.dispatchEvent(new CustomEvent('nexo:ble:closeChat', { detail: {} }))); await sleep(400);
   // Traer mi cuenta (pantalla con QR)

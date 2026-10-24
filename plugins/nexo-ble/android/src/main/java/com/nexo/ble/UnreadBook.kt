@@ -40,6 +40,17 @@ class UnreadBook(private val maxSeen: Int = 3000) {
 
     @Synchronized fun hasMsg(msgId: String): Boolean = msgChat.containsKey(msgId)
 
+    // Ronda 2763: el aviso nativo ya salió en este chat ("Mensaje nuevo") y la app sabe qué es (📷 Foto…): cambia el
+    // texto sin contar otra vez. true si cambió (hay que actualizar el aviso, sin sonar)
+    @Synchronized fun refreshText(chatId: String, msgId: String, text: String): Boolean {
+        val id = chatId.lowercase()
+        if (text.isBlank() || msgChat[msgId] != id) return false
+        val c = chats[id] ?: return false
+        if (!c.ids.contains(msgId) || c.last == text) return false
+        c.last = text
+        return true
+    }
+
     // Quita el mensaje de los otros chats donde se avisó; devuelve esos chats (para actualizar o quitar su aviso)
     @Synchronized fun takeFromOthers(chatId: String, msgId: String): List<String> {
         val id = chatId.lowercase()

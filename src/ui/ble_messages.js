@@ -460,6 +460,9 @@ export const BLE_MESSAGE_METHODS = {
         var env = { v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1, nt: 1 };
         // Ronda 2758: acción oculta (borrar para todos…): si el otro tiene la app cerrada, sin notificación
         if (self._quietOut && self._quietOut.has(msgId)) env.q = 1;
+        // Ronda 2763: mensaje de grupo directo (no por Jump): el id del grupo (al azar, sin nombre) va por fuera para que
+        // el aviso con la app cerrada lleve el nombre del grupo (BgInbox.kt)
+        if (!dst && self._groupOut && self._groupOut.has(msgId)) env.g = self._groupOut.get(msgId);
         // Ronda 2759: oferta de llamada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
         if (self._callOut && self._callOut.has(msgId)) env.cl = 1;
         outgoing = JSON.stringify(env);
