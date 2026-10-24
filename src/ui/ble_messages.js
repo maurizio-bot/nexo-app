@@ -80,6 +80,9 @@ export const BLE_MESSAGE_METHODS = {
       var bh = String(data.content || '');
       if (bh.charAt(0) !== '{' || bh.charAt(bh.length - 1) !== '}' || !/^[A-Za-z0-9+/]*={0,2}$/.test(data.bin)) return Promise.resolve(null);
       var full = bh.slice(0, -1) + (bh.length > 2 ? ',' : '') + '"d":"' + data.bin + '"}';
+      // Diagnóstico: una línea por transferencia (no por trozo)
+      var bm = (bh.match(/"m":"([^"]+)"/) || [])[1];
+      if (bm && self._binSeen !== bm) { self._binSeen = bm; console.log('[BIN] Llegan trozos binarios de ' + bm); }
       data = Object.assign({}, data, { content: full, data: full, bin: undefined });
     }
     var raw = (data && (data.content || data.data || data.message) || '').trim();

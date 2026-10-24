@@ -162,7 +162,16 @@ class NexoBlePlugin : Plugin() {
     private data class JsonExtraction(val json: String, val remainder: String)
     // Solo estas etiquetas cruzan a la app (diagnóstico). El resto (uno por cada trozo enviado o recibido) solo
     // va a logcat: la 2722 los escuchaba todos y miles de avisos por foto saturaban el puente (fotos paradas).
-    private val remLogToJs = setOf("AT_REST", "FILE_IO")
+    private val remLogToJs = setOf("AT_REST", "FILE_IO", "BT_ERR")
+    // Errores de Bluetooth al enviar o recibir (ronda 2755): al diagnóstico, como mucho uno de cada tipo cada 5 s
+    // (si fallan seguidas serían miles y saturarían el puente con la app, como en la 2722)
+    private val btErrLast = ConcurrentHashMap<String, Long>()
+    private fun btErr(kind: String, message: String) {
+        val now = System.currentTimeMillis()
+        if (now - (btErrLast[kind] ?: 0L) < 5000) { Log.w("NEXO_REM", "[WARN][SEND] $message"); return }
+        btErrLast[kind] = now
+        remLog("WARN", "BT_ERR", message)
+    }
     private fun remLog(level: String, tag: String, message: String) {
         Log.i("NEXO_REM", "[$level][$tag] $message")
         if (tag !in remLogToJs) return
@@ -251,7 +260,7 @@ class NexoBlePlugin : Plugin() {
     // app como cabecera + datos en base64; lo demás es el texto de siempre (antes se convertía cada escritura a texto).
     private fun processReceivedBytes(deviceId: String, value: ByteArray, source: String) {
         val out = binAssembler.feed(normalizeMac(deviceId), value, System.currentTimeMillis())
-        if (out.dropped > 0) remLog("WARN", "REASSEMBLY", "Trozo binario incompleto de ${normalizeMac(deviceId)} descartado")
+        if (out.dropped > 0) btErr("bin_drop", "Trozo binario incompleto de ${normalizeMac(deviceId)} descartado")
         out.frames.forEach { f ->
             notifyListeners("onPayloadReceived", JSObject()
                 .put("deviceId", deviceId)
@@ -1488,7 +1497,7 @@ class NexoBlePlugin : Plugin() {
             } else {
                 writeRetryCount.remove(macNorm)
                 val dropped = synchronized(queue) { val before = queue.size; queue.removeAll { it.msgId == item.msgId }; before - queue.size }
-                remLog("WARN", "SEND", "Write fallo para $macNorm durante ~1,8 s: mensaje descartado entero ($dropped trozos)")
+                btErr("drop", "Write fallo para $macNorm durante ~1,8 s: mensaje descartado entero ($dropped trozos" + (if (item.bytes != null) ", binario ${item.bytes.size} B" else "") + ")")
                 delay = WRITE_RETRY_DELAY_MS
             }
             // Bloquear la cola durante la espera: otras llamadas no deben gastar los reintentos de golpe
@@ -1548,7 +1557,7 @@ class NexoBlePlugin : Plugin() {
                     return SendResult(true, "gatt_server")
                 }
             } catch (e: Exception) {
-                remLog("WARN", "SEND", "Server notify failed for $macNorm: ${e.message}")
+                btErr("notify_ex", "Server notify failed for $macNorm (${data.size} B): ${e.message}")
             }
         }
 
@@ -1595,7 +1604,7 @@ class NexoBlePlugin : Plugin() {
                     return SendResult(true, "gatt_client")
                 }
             } catch (e: Exception) {
-                remLog("WARN", "SEND", "GATT Client write exception: ${e.message}")
+                btErr("write_ex", "GATT Client write exception (${data.size} B): ${e.message}")
             }
         }
 

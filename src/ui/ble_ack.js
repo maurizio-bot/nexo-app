@@ -1251,6 +1251,7 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   // v3.13.0: en binario caben 4/3 más caracteres de base64 en las mismas escrituras (múltiplo de 4)
   this.bin = isFile && perWrite > 0 && !(meta && meta.dst) && ackSystem.peerBin(deviceId) && !!(this.ble && typeof this.ble._sendBinaryNative === 'function');
   if (this.bin) this.chunkSize = Math.max(60, Math.floor((this.writesPerPacket * perWrite - overhead - 7) * 4 / 3 / 4) * 4);
+  if (this.bin) console.log('[BIN] ' + msgId + ' en binario: MTU ' + mtu + ', trozos de ' + this.chunkSize + ' caracteres');
   this.pacingDelayMs = isFile ? FILE_PACING_DELAY_MS : CHAT_PACING_DELAY_MS;
   this.baseTimeoutMs = isFile ? GLOBAL_TIMEOUT_MS : 45000;
   this.type = type || 'chat';
