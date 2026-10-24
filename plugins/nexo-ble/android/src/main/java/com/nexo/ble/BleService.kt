@@ -41,6 +41,15 @@ class BleService : Service() {
     private var advertiseCallback: AdvertiseCallback? = null
     // Largo alcance (LE Coded PHY, ~4x distancia): anuncio extendido aparte del normal, si el teléfono lo tiene
     private var codedCallback: AdvertisingSetCallback? = null
+    // ID rotativo (ronda 2755, RidToken.kt): con clave se anuncia el código de la época (cambia solo cada 15 min,
+    // también con la app cerrada) y el NEXO ID solo hasta visibleUntil (pantalla "Agregar" abierta)
+    private var ridKey: String? = null
+    private var visibleUntil = 0L
+    private var ridEpochS = 900L
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val rotate = Runnable {
+        if (!currentNexoId.isNullOrEmpty()) { stopAdvertisingInternal(); startAdvertisingInternal(currentNexoId!!) }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -57,6 +66,11 @@ class BleService : Service() {
         if (!nexoId.isNullOrEmpty()) {
             currentNexoId = nexoId
             Log.i(TAG, "NEXO ID actualizado: $nexoId")
+        }
+        if (intent?.hasExtra("rid_key") == true) {
+            ridKey = intent.getStringExtra("rid_key")
+            visibleUntil = intent.getLongExtra("visible_until", 0L)
+            ridEpochS = intent.getLongExtra("rid_epoch_s", 900L).coerceAtLeast(1L)
         }
 
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -78,6 +92,7 @@ class BleService : Service() {
 
     override fun onDestroy() {
         Log.i(TAG, "onDestroy")
+        handler.removeCallbacks(rotate)
         stopAdvertisingInternal()
         super.onDestroy()
     }
@@ -132,7 +147,14 @@ class BleService : Service() {
             return
         }
 
-        val nexoIdBytes = nexoId.toByteArray(Charset.forName("UTF-8"))
+        // Lo que se anuncia: el NEXO ID (visible / sin clave) o el código rotativo; y cuándo cambiarlo
+        val now = System.currentTimeMillis()
+        val visible = ridKey.isNullOrEmpty() || now < visibleUntil
+        val advertised = RidToken.advertised(nexoId, ridKey, visibleUntil, now, ridEpochS)
+        handler.removeCallbacks(rotate)
+        val next = RidToken.nextChangeMs(ridKey, visibleUntil, now, ridEpochS)
+        if (next > 0) handler.postDelayed(rotate, next + 50)
+        val nexoIdBytes = advertised.toByteArray(Charset.forName("UTF-8"))
         val manufacturerData = ByteArray(2 + nexoIdBytes.size)
         manufacturerData[0] = NEXO_MAGIC_HIGH
         manufacturerData[1] = NEXO_MAGIC_LOW
@@ -150,15 +172,16 @@ class BleService : Service() {
             .addManufacturerData(MANUFACTURER_ID, manufacturerData)
             .build()
 
-        // Scan Response: nombre completo del dispositivo (31 bytes extra)
+        // Scan Response: nombre completo del dispositivo (31 bytes extra). Solo visible: el nombre del teléfono
+        // ("Teléfono de …") también sirve para seguir a alguien
         val scanResponse = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
+            .setIncludeDeviceName(visible)
             .build()
 
         advertiseCallback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                 isAdvertising = true
-                Log.i(TAG, "Advertising iniciado con NEXO ID: $nexoId")
+                Log.i(TAG, if (visible) "Advertising iniciado con NEXO ID: $nexoId" else "Advertising iniciado con código rotativo")
             }
             override fun onStartFailure(errorCode: Int) {
                 isAdvertising = false

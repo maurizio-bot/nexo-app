@@ -111,7 +111,8 @@ export const BLE_UI_METHODS = {
       '</div>' +
       '<button id="ble-scan-btn" class="ble-btn-scan-round"></button>' +
       '</div>' +
-      '<div id="ble-status-bar" class="ble-status-bar"><span id="ble-status-text"></span></div>';
+      '<div id="ble-status-bar" class="ble-status-bar"><span id="ble-status-text"></span></div>' +
+      '<div id="ble-visible-note" style="font-size:11px;opacity:.7;text-align:center;padding:0 12px 6px"></div>';
     document.body.appendChild(panel);
     this.elements.panel = panel;
     var overlay = document.createElement('div');
@@ -233,6 +234,8 @@ export const BLE_UI_METHODS = {
   togglePanel() {
     this.elements.panel.classList.toggle('active');
     this.elements.overlay.classList.toggle('active');
+    // Ronda 2755: con "Agregar" abierto se anuncia el NEXO ID (los demás pueden encontrarte); al cerrar, código rotativo
+    if (typeof this.setVisible === 'function') this.setVisible(this.elements.panel.classList.contains('active'));
     if (this.elements.panel.classList.contains('active')) {
       this.newDevicesCount = 0;
       this.updateBadge();

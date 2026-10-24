@@ -15,6 +15,7 @@ import { BLE_CAMERA_METHODS } from './ble_camera_pause.js';
 import { BLE_JUMP_METHODS } from './ble_jump_send.js';
 import { BLE_MESSAGE_METHODS } from './ble_messages.js';
 import { BLE_CONNECTION_METHODS } from './ble_connections.js';
+import { BLE_PRIVACY_METHODS } from './ble_privacy.js';
 
 
 
@@ -349,9 +350,8 @@ export class BLEInterface {
     _getOrCreateNexoId().then(function(nexoId) {
       self.localNexoId = nexoId;
       console.log('[BLEInterface] NEXO ID:', nexoId);
-      if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'setAdvertisingData')) {
-        _safeNativeCall(self.nativePlugin, 'setAdvertisingData', { nexoId: nexoId }).catch(function() {});
-      }
+      // Ronda 2755: el anuncio (NEXO ID visible o código rotativo) lo decide ble_privacy.js
+      self._startPrivacy();
     });
   }
 
@@ -443,26 +443,31 @@ export class BLEInterface {
     if (!this.nativePlugin) return;
     if (!_hasNativeMethod(this.nativePlugin, 'addListener')) return;
     var self = this;
-    this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) {
-      try {
-        var deviceId = data.deviceId || '';
-        var name = data.name || '';
-        var nexoId = data.nexoId || '';
-        if (!deviceId) return;
-        if (self._cameraBlePaused) {
-          console.log('[BLEInterface] Scan event ignorado (cámara pausada):', deviceId);
-          return;
-        }
-        var nd = _normMac(deviceId);
-        var nx = _normId(nexoId);
-        if (nd && nx) { self._nexoIdToMac.set(nx, nd); self._macToNexoId.set(nd, nx); }
-        if (nx && self.relay) self.relay.noteSeen(nx, deviceId, data.rssi);
-        self.onDeviceFound({ id: deviceId, name: name, rssi: data.rssi, nexoId: nexoId });
-      } catch (e) {}
-    });
+    this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) { self._onScanFound(data); });
     this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', function(data) {
       try { self.isScanning = false; self.updateScanButton(); } catch (e) {}
     });
+  }
+
+  _onScanFound(data, retried) {
+    var self = this;
+    try {
+      var deviceId = data.deviceId || '';
+      var name = data.name || '';
+      if (!deviceId) return;
+      // Ronda 2755: código rotativo → NEXO ID del contacto, o NEXO anónimo (relay.noteAnon) y nada más
+      var nexoId = self._ridFound(data, retried);
+      if (nexoId === null) return;
+      if (self._cameraBlePaused) {
+        console.log('[BLEInterface] Scan event ignorado (cámara pausada):', deviceId);
+        return;
+      }
+      var nd = _normMac(deviceId);
+      var nx = _normId(nexoId);
+      if (nd && nx) { self._nexoIdToMac.set(nx, nd); self._macToNexoId.set(nd, nx); }
+      if (nx && self.relay) self.relay.noteSeen(nx, deviceId, data.rssi);
+      self.onDeviceFound({ id: deviceId, name: name, rssi: data.rssi, nexoId: nexoId });
+    } catch (e) {}
   }
 
   _setupNativeServerReadyListener() {
@@ -840,6 +845,7 @@ Object.assign(BLEInterface.prototype, BLE_KEY_METHODS);
 Object.assign(BLEInterface.prototype, BLE_LINK_METHODS);
 Object.assign(BLEInterface.prototype, BLE_CONTACT_METHODS);
 Object.assign(BLEInterface.prototype, BLE_UI_METHODS);
+Object.assign(BLEInterface.prototype, BLE_PRIVACY_METHODS);
 export function initBLEInterface(bleMesh) {
   var instance = new BLEInterface(bleMesh).init();
   window.bleInterface = instance;

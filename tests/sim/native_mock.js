@@ -57,6 +57,16 @@ class BinAssembler {
   }
 }
 
+// ID rotativo (RidToken.kt / ble_rid.js, ronda 2755): lo que el teléfono anuncia ahora mismo
+const nodeCrypto = require('crypto');
+function ridToken(keyHex, epoch) {
+  const h = nodeCrypto.createHmac('sha256', Buffer.from(keyHex, 'hex')).update('nexo-rid|' + epoch).digest();
+  const B32 = 'abcdefghijklmnopqrstuvwxyz234567';
+  let out = 'R', acc = 0, bits = 0, i = 0;
+  while (out.length < 10) { acc = (acc << 8) | h[i++]; bits += 8; while (bits >= 5 && out.length < 10) { bits -= 5; out += B32[(acc >> bits) & 31]; } acc &= (1 << bits) - 1; }
+  return out;
+}
+
 class Radio {
   constructor() { this.phones = []; this.trace = []; this.blocked = new Set(); }
   add(p) { this.phones.push(p); p.radio = this; }
@@ -319,6 +329,7 @@ class NativePhone {
 
   _sendChunkedOrSingle(macNorm, message) {
     const mtu = this.mtu.get(macNorm) || 23;
+    // (mismo límite de 512 bytes para el texto: con MTU 517 los trozos son de 504 caracteres)
     const size = Math.max(mtu - 3 - 10, 20);
     const mid = (this._mid = (this._mid || 0) + 1);
     const chunks = [];
@@ -440,10 +451,18 @@ class NativePhone {
     q.forEach((m) => this._sendChunkedOrSingle(macNorm, m));
   }
 
+  advertisedVisible() { return !this.ridKey || Date.now() < (this.ridVisibleUntil || 0); }
+  advertised() {
+    if (!this.advertisingId) return null;
+    if (this.advertisedVisible()) return this.advertisingId;
+    return ridToken(this.ridKey, Math.floor(Date.now() / 1000 / this.ridEpochS));
+  }
+
   _resolveMac(raw) {
     const t = classify(raw);
     if (t === 'nxid') {
-      const p = this.radio.phones.find((x) => x !== this && x.advertisingId && x.advertisingId.toLowerCase() === String(raw).trim().toLowerCase());
+      // Kotlin quickScanForNexoId: solo lo encuentra si anuncia su NEXO ID ahora (no con código rotativo)
+      const p = this.radio.phones.find((x) => x !== this && x.advertised() && x.advertised().toLowerCase() === String(raw).trim().toLowerCase());
       return p ? norm(p.address) : null;
     }
     return norm(raw);
@@ -499,7 +518,16 @@ class NativePhone {
       isAdvertising: wrap('isAdvertising', (c) => c.resolve({ isAdvertising: self.serviceRunning })),
       startAdvertising: wrap('startAdvertising', (c) => { self.serviceRunning = true; c.resolve({ started: true }); }),
       stopAdvertising: wrap('stopAdvertising', (c) => { self.serviceRunning = false; c.resolve({ stopped: true }); }),
-      setAdvertisingData: wrap('setAdvertisingData', (c, a) => { const id = c.getString('nexoId'); if (!id) return c.reject('nexoId requerido'); self.advertisingId = id; self.serviceRunning = true; c.resolve({ set: true, nexoId: id }); }),
+      setAdvertisingData: wrap('setAdvertisingData', (c, a) => {
+        const id = c.getString('nexoId'); if (!id) return c.reject('nexoId requerido');
+        self.advertisingId = id; self.serviceRunning = true;
+        // Kotlin 2755: clave del código rotativo, hasta cuándo se anuncia el NEXO ID y la época (opts.noRid: build anterior)
+        const rk = c.getString('ridKey');
+        if (!self.opts.noRid && rk && /^[0-9a-f]{64}$/.test(rk)) { self.ridKey = rk; self.ridVisibleUntil = Number(a.visibleUntil) || 0; self.ridEpochS = Math.max(1, Number(a.epochS) || 900); }
+        else if (rk != null) self.ridKey = null;
+        self.advLog = self.advLog || []; self.advLog.push({ t: Date.now(), visible: self.advertisedVisible() });
+        c.resolve({ set: true, nexoId: id });
+      }),
       getLocalDeviceInfo: wrap('getLocalDeviceInfo', (c) => c.resolve({ deviceName: self.name, deviceAddress: '' })),
       startScan: wrap('startScan', (c, a) => {
         c.resolve({ started: true });
@@ -515,7 +543,10 @@ class NativePhone {
         setTimeout(() => self.radio.phones.forEach((p) => {
           if (p === self || p.offline || !p.serviceRunning || !p.advertisingId || !self.radio.inRange(self, p)) return;
           if (self.opts.scanMiss && Math.random() < self.opts.scanMiss) { self.stats.scanMisses = (self.stats.scanMisses || 0) + 1; return; }
-          self.emit('onDeviceFound', { deviceId: p.address, name: p.name, rssi: -50, nexoId: p.advertisingId });
+          // El nombre del teléfono va en la respuesta al escaneo solo si es visible (Kotlin 2755)
+          const adv = p.advertised();
+          (self.radio.airAds = self.radio.airAds || []).push({ by: p.name, adv, visible: p.advertisedVisible(), t: Date.now() });
+          self.emit('onDeviceFound', { deviceId: p.address, name: p.advertisedVisible() ? p.name : '', rssi: -50, nexoId: adv });
         }), 80);
       }),
       stopScan: wrap('stopScan', (c) => { self.scanningUntil = 0; c.resolve({ stopped: true }); }),
@@ -553,7 +584,10 @@ class NativePhone {
           const mac = self._resolveMac(raw);
           if (!mac) return c.reject('NXID no resuelto a MAC: ' + raw, 'NXID_UNRESOLVED');
           const mtu = self.mtu.get(mac) || 23;
-          const writes = BIN.split(BIN.encode(header, Buffer.from(data, 'base64')), mtu - 3);
+          const writes = BIN.split(BIN.encode(header, Buffer.from(data, 'base64')), self._binWriteSize ? self._binWriteSize(mtu) : mtu - 3);
+          // Android 13+: una escritura o notificación de más de 512 bytes (máximo de un atributo) lanza
+          // IllegalArgumentException; el Kotlin reintenta ~1,8 s y descarta el mensaje entero (ya respondió "en cola")
+          if (writes.some((w) => w.length > 512)) { self.stats.tooLongDropped = (self.stats.tooLongDropped || 0) + 1; return c.resolve({ sent: true, mode: 'queued', deviceId: raw, mtu }); }
           const peerAddr = (self.serverConnected.get(mac) || (self.clients.get(mac) || {}).peer || {}).address;
           const q = peerAddr && self.writeQ && self.writeQ.get(norm(peerAddr));
           if (q && q.items.length > 0 && q.items.length + writes.length > 500) return c.reject('Cola de escritura llena', 'BLE_BUSY');

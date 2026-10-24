@@ -142,6 +142,10 @@ class NexoBlePlugin : Plugin() {
     private var bluetoothStateReceiver: BroadcastReceiver? = null
     private var isAdvertisingActive = false
     private var nexoAdvertisingId: String? = null
+    // ID rotativo (ronda 2755): clave de los códigos, hasta cuándo se anuncia el NEXO ID y duración de la época
+    private var ridKey: String? = null
+    private var ridVisibleUntil = 0L
+    private var ridEpochS = 900L
     private val messageBuffers = ConcurrentHashMap<String, StringBuilder>()
     private val messageBufferTimers = ConcurrentHashMap<String, Runnable>()
     private val messageBufferSince = ConcurrentHashMap<String, Long>() // desde cuándo hay algo pendiente
@@ -366,8 +370,16 @@ class NexoBlePlugin : Plugin() {
             remLog("WARN", "NXID_MAP", "Error guardando mapeos: ${e.message}")
         }
     }
+    private fun putRidExtras(intent: Intent) {
+        intent.putExtra("rid_key", ridKey ?: "")
+        intent.putExtra("visible_until", ridVisibleUntil)
+        intent.putExtra("rid_epoch_s", ridEpochS)
+    }
+
     private fun registerNexoMapping(nexoId: String, mac: String) {
         val nid = nexoId.lowercase().trim()
+        // Solo NEXO ID: los códigos rotativos ("R…") cambian cada 15 min y llenarían el archivo de mapeos
+        if (!nid.startsWith("nx")) return
         val nmac = normalizeMac(mac)
         if (nid.isEmpty() || nmac.isEmpty()) return
         val existing = nxidToMacMap[nid]
@@ -604,6 +616,7 @@ class NexoBlePlugin : Plugin() {
                 nexoAdvertisingId?.let { id ->
                     intent.putExtra("nexo_advertising_id", id)
                 }
+                putRidExtras(intent)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     ctx.startForegroundService(intent)
                 } else {
@@ -1643,10 +1656,17 @@ class NexoBlePlugin : Plugin() {
             return
         }
         nexoAdvertisingId = nexoId
-        remLog("INFO", "ADVERTISING", "NEXO ID set: $nexoId")
+        val rk = call.getString("ridKey")
+        if (rk != null && rk.length == 64 && rk.all { it in '0'..'9' || it in 'a'..'f' }) {
+            ridKey = rk
+            ridVisibleUntil = (call.getDouble("visibleUntil") ?: 0.0).toLong()
+            ridEpochS = (call.getInt("epochS") ?: 900).toLong().coerceAtLeast(1L)
+        } else if (rk != null) ridKey = null
+        remLog("INFO", "ADVERTISING", "NEXO ID set: $nexoId" + if (ridKey != null) (if (System.currentTimeMillis() < ridVisibleUntil) " (visible ${(ridVisibleUntil - System.currentTimeMillis()) / 1000} s)" else " (código rotativo)") else "")
         val ctx = activity.applicationContext
         val intent = Intent(ctx, BleService::class.java)
         intent.putExtra("nexo_advertising_id", nexoId)
+        putRidExtras(intent)
         intent.putExtra("action", "UPDATE_ADVERTISING_DATA")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             ctx.startForegroundService(intent)

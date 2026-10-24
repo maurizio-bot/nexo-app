@@ -29,6 +29,10 @@
  * El contenido va cifrado para el destino (e2e_crypto). v2.1: con remitente sellado ('sx', ble_interface) los puentes
  * solo ven a quién va y los ids, no quién lo manda; el camino de una búsqueda lleva huellas, no NEXO IDs. El primer
  * puente sí sabe qué vecino le entregó el paquete (inevitable en una red de saltos).
+ * v2.4 (ronda 2755, ID rotativo, ble_rid.js): los teléfonos ya no anuncian su NEXO ID sino un código que solo sus
+ * contactos reconocen. Un NEXO desconocido es "anónimo" (anon: dirección → código): para buscar camino se conecta con
+ * él de paso y al conectar (kx) se sabe quién es (identify). Quien busca camino hacia un contacto manda en el 'rq' sus
+ * códigos de ahora ('dk', válidos 15 min): un puente que no lo conoce lo reconoce al escanear.
  */
 var MAX_HOPS = 8;
 var AD_INTERVAL_MS = 30000;
@@ -78,6 +82,8 @@ export class BleRelay {
     this._discoverAt = new Map();// dst → ts
     this._discoverWait = new Map();// dst → espera actual (crece mientras no aparezca camino)
     this.rqFrom = new Map();     // id → { deviceId, ts } (por dónde volver con la respuesta)
+    this.anon = new Map();       // dirección → { deviceId, tok, ts, rssi } (NEXO con código rotativo que no reconozco)
+    this.wantTok = new Map();    // código → { nx, ts } (códigos de un destino buscado, llegados en un 'rq')
     this.power = { level: 100, charging: true, powerSave: false, ts: 0 };
     this.hopBps = DEFAULT_HOP_BPS;
     this._lastScanAt = 0;
@@ -433,6 +439,50 @@ export class BleRelay {
     if (!had) this._connectNearbyIfWanted(nx);
   }
 
+  // Ronda 2755: NEXO con código rotativo que no es de un contacto. Si es el de un destino buscado ('dk'), es él.
+  noteAnon(deviceId, tok, rssi) {
+    if (!deviceId || !tok) return;
+    var now = Date.now(), m = _mac(deviceId);
+    this.anon.set(m, { deviceId: deviceId, tok: tok, ts: now, rssi: typeof rssi === 'number' ? rssi : -100 });
+    var self = this;
+    this.anon.forEach(function(a, k) { if (now - a.ts > NEARBY_TTL_MS) self.anon.delete(k); });
+    var w = this.wantTok.get(tok);
+    if (w && now - w.ts < DISCOVER_WAIT_MS * 2) this.noteSeen(w.nx, deviceId, rssi);
+  }
+
+  // Al conectar (kx) se sabe quién era un anónimo
+  identify(deviceId, nexoId) {
+    var nx = _nid(nexoId), m = _mac(deviceId);
+    if (!_isNx(nx) || !m) return;
+    var a = this.anon.get(m);
+    var t = this.transient.get('anon:' + m);
+    if (t) { this.transient.delete('anon:' + m); if (!this._isContact(nx)) this.transient.set(nx, t); }
+    if (a) { this.anon.delete(m); this.noteSeen(nx, deviceId, a.rssi); }
+  }
+
+  _connectAnon(deviceId) {
+    var self = this, ble = self.ble, key = 'anon:' + _mac(deviceId);
+    if (!deviceId || !ble || !ble.nativePlugin || self._isReady(deviceId)) return false;
+    var t = self.transient.get(key);
+    if (t && Date.now() - t.since < 15000) return true;
+    if (t) self.transient.delete(key);
+    if (self.transient.size >= MAX_TRANSIENT) self._closeIdleTransient(true);
+    if (self.transient.size >= MAX_TRANSIENT) return false;
+    self.transient.set(key, { deviceId: deviceId, since: Date.now(), lastUse: Date.now() });
+    console.log('[JUMP] Conectando con un NEXO anónimo (de paso) para saber quién es');
+    var pl = ble.nativePlugin;
+    if (pl && typeof pl.connectToDevice === 'function') pl.connectToDevice({ deviceId: deviceId }).catch(function() {});
+    return true;
+  }
+
+  // Códigos de ahora de un contacto (para el 'rq'); [] si no lo es o no hay clave
+  _dstTokens(d) {
+    var ble = this.ble, book = ble && ble._ridBook;
+    var c = (ble && typeof ble.getBLEContacts === 'function' ? ble.getBLEContacts() : []).find(function(x) { return _nid(x.nexoId || x.deviceUUID) === d; });
+    if (!book || !c || !c.publicKey) return Promise.resolve([]);
+    return book.tokensFor(c.publicKey).catch(function() { return []; });
+  }
+
   _seenRecently(nx, maxAge) {
     var n = this.nearby.get(_nid(nx));
     return (n && Date.now() - n.ts < (maxAge || NEARBY_TTL_MS)) ? n : null;
@@ -558,9 +608,13 @@ export class BleRelay {
     self.discoveries.set(id, disc);
     self.seen.set('rq:' + id, now);
     console.log('[JUMP] Buscando camino hacia ' + d);
-    self._scan().then(function() { self._spreadRq(id, disc); });
-    // Vecinos ya conectados: sin esperar al escaneo
-    self._spreadRq(id, disc, true);
+    // Ronda 2755: con sus códigos de ahora ('dk') un puente que no lo conoce lo reconoce al escanear
+    self._dstTokens(d).then(function(dk) {
+      if (dk.length) { disc.dk = dk; dk.forEach(function(t) { self.wantTok.set(t, { nx: d, ts: Date.now() }); }); }
+      self._scan().then(function() { self._spreadRq(id, disc); });
+      // Vecinos ya conectados: sin esperar al escaneo
+      self._spreadRq(id, disc, true);
+    });
   }
 
   // Pregunta a vecinos conectados que entienden Jump y, si hace falta, conecta con cercanos
@@ -579,6 +633,11 @@ export class BleRelay {
     });
     cands.sort(function(a, b) { return b.n.rssi - a.n.rssi; });
     cands.slice(0, MAX_TRANSIENT).forEach(function(c) { self._connect(c.nx, c.n.deviceId); });
+    // Ronda 2755: NEXO anónimos (código rotativo): de paso, para saber quién es y preguntarle
+    var anon = [];
+    self.anon.forEach(function(a) { if (Date.now() - a.ts <= NEARBY_TTL_MS && !self._isReady(a.deviceId)) anon.push(a); });
+    anon.sort(function(a, b) { return b.rssi - a.rssi; });
+    anon.slice(0, Math.max(0, MAX_TRANSIENT - cands.length)).forEach(function(a) { self._connectAnon(a.deviceId); });
   }
 
   _sendRq(id, disc, nx, dev) {
@@ -587,6 +646,7 @@ export class BleRelay {
     disc.sent.add(nx);
     self._touch(dev);
     var pkt = { v: 1, type: 'rq', id: id, from: self.me(), dst: disc.dst, ttl: disc.ttl, path: disc.path };
+    if (disc.dk) pkt.dk = disc.dk;
     self.ble._sendMessageNative(dev, JSON.stringify(pkt), null).catch(function() {});
   }
 
@@ -599,12 +659,20 @@ export class BleRelay {
     if (from) self.capable.add(from);
     if (d !== me && !self.canRelay()) return; // batería baja: no hago de puente
     self.rqFrom.set(id, { deviceId: deviceId, ts: now });
+    // Ronda 2755: códigos del destino ('dk'): ¿alguno de los anónimos que veo es él?
+    var dk = Array.isArray(p.dk) ? p.dk.filter(function(t) { return typeof t === 'string' && /^R[a-z2-7]{9}$/.test(t); }).slice(0, 3) : [];
+    dk.forEach(function(t) {
+      self.wantTok.set(t, { nx: d, ts: now });
+      self.anon.forEach(function(a) { if (a.tok === t && now - a.ts <= NEARBY_FRESH_MS) self.noteSeen(d, a.deviceId, a.rssi); });
+    });
+    self.wantTok.forEach(function(w, t) { if (now - w.ts > DISCOVER_WAIT_MS * 2) self.wantTok.delete(t); });
     var hops = self._distanceTo(d);
     if (hops !== null) { self._sendRp(id, d, hops, deviceId); return; }
     var ttl = Number(p.ttl) || 0;
     if (ttl <= 1) return;
     var path = (Array.isArray(p.path) ? p.path : []).map(_nid).concat([_pathTag(id, me)]).slice(0, MAX_HOPS + 1);
     var disc = { dst: d, ts: now, sent: new Set(), ttl: ttl - 1, path: path };
+    if (dk.length) disc.dk = dk;
     // Escanear (si hace falta) por si el destino está cerca de aquí; si no, preguntar más allá
     self._scan().then(function() {
       var h = self._distanceTo(d);

@@ -153,6 +153,8 @@ export const BLE_MESSAGE_METHODS = {
       if (p.from && p.b2) self._notePeerBundle(p.from, p.b2);
       // Asociar la dirección (un teléfono que se conectó a nosotros y no es contacto no tenía mapeo)
       if (/^nx[0-9a-z]{8}$/i.test(p.from || '')) self._kickPeer(data.deviceId, p.from);
+      // Ronda 2755: si era un NEXO anónimo (código rotativo), ya se sabe quién es
+      if (/^nx[0-9a-z]{8}$/i.test(p.from || '') && self.relay && typeof self.relay.identify === 'function') self.relay.identify(data.deviceId, p.from);
       if (p.j && self.relay) self.relay.markCapable(p.from);
       if (p.from && p.rs) self._noteRestored(p.from, p.pk, p.rs);
       if (p.fx && p.from) self._noteFenixPeer(p.from, data.deviceId, Number(p.fx) || 1);

@@ -671,6 +671,11 @@ export class Fenix {
           if (self.peers.has(nx)) self._askForRecovery(nx, n.deviceId);
         } else relay._connect(nx, n.deviceId);
       });
+      // Ronda 2755: los contactos ya no anuncian su NEXO ID (código rotativo que este teléfono nuevo no reconoce):
+      // se conecta de paso con los NEXO anónimos y al conectar se sabe quién es
+      if (relay && relay.anon && typeof relay._connectAnon === 'function') relay.anon.forEach(function(a) {
+        if (Date.now() - a.ts <= 120000) relay._connectAnon(a.deviceId);
+      });
       // Mantener abiertas las conexiones con quien ya preguntamos (le toca confirmar a una persona)
       Object.keys(self.recovery.asked).forEach(function(nx) { var t = relay && relay.transient.get(nx); if (t) t.lastUse = Date.now(); });
       self.recovery.timer = setTimeout(loop, 4000);
