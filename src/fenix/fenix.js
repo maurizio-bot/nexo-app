@@ -6,7 +6,14 @@
  * El pingeo diario pide también prueba de los segmentos ('fp' con sg → 'fo' con sp); si falta, se reenvía; si el
  * contacto se pierde, el segmento pasa a otro. Tras recuperar la cuenta, el teléfono pide los segmentos a cada
  * contacto que se conecta ('fq' con m:1; las builds anteriores lo ignoran) y rehace el historial. Los nodos no
- * pueden leerlos (les falta K). Fotos y archivos: fase siguiente (aquí solo su nombre y tipo).
+ * pueden leerlos (les falta K).
+ *
+ * Fase 3 (ronda 2757, plan del dueño punto 9: fotos, notas de voz, previas de vídeo y archivos de hasta ~1 MB): cada
+ * uno es un "segmento de medio" (id 'd…', cifrado con K) guardado en 2 contactos con Fénix 3 (kx fx:3), en un archivo
+ * aparte (no dentro del JSON). Los de más de medBleMax solo se entregan por el mismo Wi-Fi (por Bluetooth tardarían
+ * minutos). El pingeo los prueba igual que los de texto. Al recuperar, vuelven con los mensajes y cada contenido vuelve
+ * a su mensaje (vaultReplaceAttachment). No van: el vídeo HD ni los archivos grandes (big_file.js). Límites: medMax
+ * del dueño, nodeMedCap por contacto en quien guarda.
  *
  * Dueño: al tener CFG.min contactos con Fénix (kx con fx:1 y protocolo 2), crea la clave maestra K, cifra la
  * cuenta (NEXO ID, claves y contactos) con AES-256-GCM y parte K con Shamir (CFG.t de CFG.n). Cada contacto
@@ -20,6 +27,7 @@
  */
 import { ShardCrypto } from './shard_crypto.js';
 import { e2eEncryptB64, e2eMyPublicKey } from '../vault/e2e_crypto.js';
+import { vaultLoadFile, vaultReplaceAttachment } from '../vault/vault_manager.js';
 
 var STATE_FILE = 'nexo_fenix.json';        // dueño: K, trozos, copia y nodos
 var STORE_FILE = 'nexo_fenix_store.json';  // nodo: lo que guarda de otros
@@ -31,7 +39,13 @@ var DAY = 86400000;
 var CFG = { n: 10, t: 6, min: 10, mirror: 20, pingMs: DAY, lostMs: 7 * DAY, tickMs: 60000, rebuildMs: 600000,
   maxOwners: 50, maxBlob: 400000, resetMs: 7 * DAY,
   // Fase 2: segmento con ≥ segMin mensajes nuevos o con alguno de hace > segMaxMs; tamaño y límites
-  segMin: 20, segMaxMs: DAY, segBytes: 48000, msgsMax: 2000000, nodeSegCap: 2500000, segCopies: 2 };
+  segMin: 20, segMaxMs: DAY, segBytes: 48000, msgsMax: 2000000, nodeSegCap: 2500000, segCopies: 2,
+  // Fase 3: un medio de hasta medItemMax (base64), entre todos medMax; quien guarda, hasta nodeMedCap por contacto
+  medItemMax: 1500000, medMax: 30000000, nodeMedCap: 20000000, medBleMax: 300000 };
+var MED_TYPES = { image: 1, video: 1, audio: 1, file: 1 };
+function _medFile(id) { return 'nexo_fenix_d_' + String(id).replace(/[^A-Za-z0-9_-]/g, '_') + '.b64'; }
+function _nodeMedFile(owner, id) { return 'nexo_fenix_n_' + _nid(owner) + '_' + String(id).replace(/[^A-Za-z0-9_-]/g, '_') + '.b64'; }
+function _del(name) { var pl = _plugin(); if (pl && typeof pl.deleteFile === 'function') pl.deleteFile({ filename: name }).catch(function() {}); }
 
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
@@ -411,7 +425,7 @@ export class Fenix {
       M.checkedAt = now;
       var since = Math.max(0, (M.lastTs || 0) - 600000), recent = {};
       (M.recent || []).forEach(function(id) { recent[id] = true; });
-      var fresh = [];
+      var fresh = [], medFresh = [];
       var contacts = this._contacts();
       for (var i = 0; i < contacts.length; i++) {
         var cnx = _nid(contacts[i].nexoId || contacts[i].deviceUUID);
@@ -419,6 +433,10 @@ export class Fenix {
         var list = await window.vaultLoadMessages(cnx);
         list.forEach(function(m) {
           var ts = m.timestamp || 0;
+          // Fase 3: el contenido (foto, voz, previa de vídeo, archivo pequeño) va aparte de los textos: cada uno una vez
+          // (medDone), de los últimos 30 días; si aún no está en disco, se mira en la próxima vuelta
+          if (m.msgId && MED_TYPES[m.attachmentType] && !(m.attachmentMeta && m.attachmentMeta.big) && (m.attachmentRef || m.attachmentPayload) &&
+            !(M.medDone && M.medDone[m.msgId]) && ts > now - 30 * DAY) medFresh.push({ c: cnx, m: m });
           if (!m.msgId || ts <= since || recent[m.msgId] || (!m.content && !m.text && !m.attachmentType)) return;
           fresh.push({ c: cnx, m: self._slim(m) });
         });
@@ -432,18 +450,23 @@ export class Fenix {
         }
         changed = true;
       }
+      for (var mi = 0; mi < medFresh.length; mi++) {
+        if (await this._newMed(medFresh[mi].c, medFresh[mi].m)) changed = true;
+      }
     }
     // 2. Quién guarda cada segmento: segCopies contactos distintos con Fénix 2, que no se hayan perdido
     var el2 = el.filter(function(c) { return (c.fx || 0) >= 2; }).map(function(c) { return _nid(c.nexoId || c.deviceUUID); });
+    var el3 = el.filter(function(c) { return (c.fx || 0) >= 3; }).map(function(c) { return _nid(c.nexoId || c.deviceUUID); });
     var load = {};
     el2.forEach(function(nx) { load[nx] = self._segsOf(nx).length; });
     M.segs.forEach(function(g) {
+      var pool = g.med ? el3 : el2;
       Object.keys(g.holders).forEach(function(nx) {
         var h = g.holders[nx], last = Math.max(h.proofAt || 0, h.at || 0);
-        if (el2.indexOf(nx) < 0 || now - last > cfg.lostMs) { delete g.holders[nx]; changed = true; console.warn('[FENIX] Segmento ' + g.id + ': ' + nx + ' perdido, pasa a otro contacto'); }
+        if (pool.indexOf(nx) < 0 || now - last > cfg.lostMs) { delete g.holders[nx]; changed = true; console.warn('[FENIX] Segmento ' + g.id + ': ' + nx + ' perdido, pasa a otro contacto'); }
       });
       while (Object.keys(g.holders).length < cfg.segCopies) {
-        var cand = el2.filter(function(nx) { return !g.holders[nx]; }).sort(function(a, b) { return load[a] - load[b]; })[0];
+        var cand = pool.filter(function(nx) { return !g.holders[nx]; }).sort(function(a, b) { return (load[a] || 0) - (load[b] || 0); })[0];
         if (!cand) break;
         g.holders[cand] = { at: now, ok: false };
         load[cand]++; changed = true;
@@ -455,8 +478,10 @@ export class Fenix {
     for (var j = 0; j < el2.length; j++) {
       var nx = el2[j], dev = this._readyDevice(nx);
       if (!dev || !this.peers.has(nx) || (this.levels.get(nx) || 1) < 2) continue;
-      var pend = this._segsOf(nx).filter(function(g) { return !g.holders[nx].ok; });
-      if (pend.length) { await this._putSeg(nx, dev, pend[0]); continue; }
+      // Fase 3: un medio grande solo por el mismo Wi-Fi: si ahora no hay, primero lo demás
+      var lanOk = !!(this.ble.lan && this.ble.lan.canReach(nx));
+      var pend = this._segsOf(nx).filter(function(g) { return !g.holders[nx].ok && (!g.med || (g.size || 0) <= cfg.medBleMax || lanOk) && (!g.med || (self.levels.get(nx) || 1) >= 3); });
+      if (pend.length) { await this._putSeg(nx, pend[0].med && (pend[0].size || 0) > cfg.medBleMax ? 'lan:' + nx : dev, pend[0]); continue; }
       var hs = this._segsOf(nx);
       if (hs.length && !nodes[nx] && now - Math.max.apply(null, hs.map(function(g) { return g.holders[nx].pingAt || 0; })) > cfg.pingMs) {
         hs.forEach(function(g) { g.holders[nx].pingAt = now; });
@@ -482,16 +507,50 @@ export class Fenix {
     M.recent = part.filter(function(x) { return (x.m.timestamp || 0) > M.lastTs - 600000; }).map(function(x) { return x.m.msgId; }).concat(M.recent || []).slice(0, 500);
     M.lastSegAt = now;
     // Límite: los más antiguos salen (los nodos también tienen el suyo)
-    var total = M.segs.reduce(function(a, g) { return a + g.blob.length; }, 0);
-    while (total > this.cfg.msgsMax && M.segs.length > 1) total -= M.segs.shift().blob.length;
+    // (solo los de texto: los medios tienen su propio límite, medMax)
+    var texts = M.segs.filter(function(g) { return !g.med; });
+    var total = texts.reduce(function(a, g) { return a + g.blob.length; }, 0);
+    while (total > this.cfg.msgsMax && texts.length > 1) { var old = texts.shift(); total -= old.blob.length; M.segs.splice(M.segs.indexOf(old), 1); }
     console.log('[FENIX] Segmento de mensajes ' + id + ': ' + part.length + ' mensaje(s), ' + Math.round(blob.length / 1024) + ' KB');
+  }
+
+  // Fase 3: el contenido de un mensaje (cifrado con K) como segmento de medio, en un archivo propio
+  async _newMed(c, m) {
+    var M = this.msgs, cfg = this.cfg, now = Date.now();
+    M.medDone = M.medDone || {};
+    if (M.medDone[m.msgId]) return false;
+    var payload = m.attachmentPayload || (m.attachmentRef ? await vaultLoadFile(m.attachmentRef) : null);
+    if (!payload || typeof payload !== 'string' || payload.length <= 4) return false; // aún no está (o es un archivo grande)
+    M.medDone[m.msgId] = now;
+    var ids = Object.keys(M.medDone);
+    if (ids.length > 6000) ids.sort(function(a, b) { return M.medDone[a] - M.medDone[b]; }).slice(0, ids.length - 5000).forEach(function(k) { delete M.medDone[k]; });
+    if (payload.length > cfg.medItemMax) { console.log('[FENIX] ' + m.msgId + ': demasiado grande para respaldarlo (' + Math.round(payload.length / 1024) + ' KB)'); return true; }
+    var meta = m.attachmentMeta || {}, keep = {};
+    ['name', 'mime', 'size', 'type', 'format', 'width', 'height', 'duration', 'pages', 'thumb'].forEach(function(k) { if (meta[k] != null && (k !== 'thumb' || String(meta[k]).length < 60000)) keep[k] = meta[k]; });
+    var id = 'd' + now.toString(36) + _hex(_rand(3));
+    var plain = { v: 1, kind: 'med', o: this.me(), id: id, c: c, msgId: m.msgId, type: m.attachmentType, meta: keep, payload: payload };
+    var key = await _subtle().importKey('raw', _unhex(this.state.k), 'AES-GCM', false, ['encrypt']);
+    var iv = _rand(12);
+    var ct = new Uint8Array(await _subtle().encrypt({ name: 'AES-GCM', iv: iv, additionalData: _aad(this.me(), 'seg:' + id) }, key, _utf8(JSON.stringify(plain))));
+    var blob = new Uint8Array(12 + ct.length); blob.set(iv); blob.set(ct, 12);
+    var b64 = _b64(blob);
+    await _save(_medFile(id), b64);
+    M.segs.push({ id: id, ts: now, n: 1, med: 1, ref: _medFile(id), size: b64.length, bh: await _sha(b64), holders: {} });
+    // Límite: fuera los medios más antiguos
+    var meds = M.segs.filter(function(g) { return g.med; }), total = meds.reduce(function(a, g) { return a + (g.size || 0); }, 0);
+    while (total > cfg.medMax && meds.length > 1) { var old = meds.shift(); total -= old.size || 0; M.segs.splice(M.segs.indexOf(old), 1); _del(old.ref); }
+    console.log('[FENIX] Medio ' + id + ' (' + m.attachmentType + '): ' + Math.round(b64.length / 1024) + ' KB');
+    return true;
   }
 
   async _putSeg(nx, dev, g) {
     var self = this;
     if (self.inflight.has(nx) || !self.ble.ackSystem) return;
+    var blob = g.med ? await _load(g.ref) : g.blob;
+    if (!blob) { console.warn('[FENIX] ' + g.id + ': ya no está en este teléfono'); return; }
     self.inflight.add(nx);
-    var payload = { v: 1, k: 'seg', o: self.me(), id: g.id, ts: g.ts, blob: g.blob, bh: g.bh };
+    var payload = { v: 1, k: 'seg', o: self.me(), id: g.id, ts: g.ts, blob: blob, bh: g.bh };
+    if (g.med) payload.med = 1;
     try {
       await self.ble.ackSystem.sendFile(dev, 'fxs_' + g.id + '_' + _hex(_rand(2)), _jsonB64(payload), { type: 'fenix', fx: 'put' });
       if (g.holders[nx]) { g.holders[nx].ok = true; g.holders[nx].proofAt = Date.now(); }
@@ -521,19 +580,28 @@ export class Fenix {
 
   // ---------- fase 2: mensajes (nodo) ----------
   async _onSeg(p, from) {
-    if (!p || _nid(p.o) !== from || !/^s[0-9a-z]{6,20}$/.test(String(p.id || '')) || typeof p.blob !== 'string' || p.blob.length > this.cfg.segBytes * 3) {
+    var med = p && p.med === 1;
+    var okId = med ? /^d[0-9a-z]{6,20}$/ : /^s[0-9a-z]{6,20}$/;
+    var maxLen = med ? Math.ceil(this.cfg.medItemMax * 1.5) + 4096 : this.cfg.segBytes * 3;
+    if (!p || _nid(p.o) !== from || !okId.test(String(p.id || '')) || typeof p.blob !== 'string' || p.blob.length > maxLen) {
       console.warn('[FENIX] Segmento de ' + from + ' rechazado (no válido)');
       return;
     }
     var segs = this.store.segs;
     if (!segs[from] && Object.keys(segs).length >= this.cfg.maxOwners) { console.warn('[FENIX] Límite de contactos guardados'); return; }
     var mine = segs[from] = segs[from] || {};
-    mine[p.id] = { blob: p.blob, bh: await _sha(p.blob), ts: Number(p.ts) || Date.now() };
-    // Límite por contacto: fuera los más antiguos
-    var ids = Object.keys(mine).sort(function(a, b) { return mine[a].ts - mine[b].ts; });
-    var total = ids.reduce(function(a, id) { return a + mine[id].blob.length; }, 0);
-    while (total > this.cfg.nodeSegCap && ids.length > 1) { var old = ids.shift(); total -= mine[old].blob.length; delete mine[old]; }
-    console.log('[FENIX] Guardo el segmento ' + p.id + ' de ' + from + ' (mensajes cifrados; no puedo leerlos)');
+    if (med) {
+      // Fase 3: el medio en un archivo propio; en el JSON solo su huella
+      var ref = _nodeMedFile(from, p.id);
+      await _save(ref, p.blob);
+      mine[p.id] = { ref: ref, size: p.blob.length, bh: await _sha(p.blob), ts: Number(p.ts) || Date.now() };
+    } else mine[p.id] = { blob: p.blob, bh: await _sha(p.blob), ts: Number(p.ts) || Date.now() };
+    // Límite por contacto (textos y medios por separado): fuera los más antiguos
+    var ids = Object.keys(mine).filter(function(id) { return !!mine[id].ref === med; }).sort(function(a, b) { return mine[a].ts - mine[b].ts; });
+    var sz = function(id) { return med ? (mine[id].size || 0) : mine[id].blob.length; };
+    var total = ids.reduce(function(a, id) { return a + sz(id); }, 0), cap = med ? this.cfg.nodeMedCap : this.cfg.nodeSegCap;
+    while (total > cap && ids.length > 1) { var old = ids.shift(); total -= sz(old); if (mine[old].ref) _del(mine[old].ref); delete mine[old]; }
+    console.log('[FENIX] Guardo el ' + (med ? 'medio ' : 'segmento ') + p.id + ' de ' + from + ' (' + (med ? Math.round(p.blob.length / 1024) + ' KB, ' : '') + 'cifrado; no puedo leerlo)');
     await this._saveStore();
   }
 
@@ -545,11 +613,12 @@ export class Fenix {
     if (!ids.length) return;
     // En lotes de ~300 KB (cada lote, un archivo cifrado para el dueño)
     var batches = [], cur = [], size = 0, sent = 0;
-    ids.forEach(function(id) {
-      var g = mine[id];
-      if (cur.length && size + g.blob.length > 300000) { batches.push(cur); cur = []; size = 0; }
-      cur.push({ id: id, blob: g.blob, ts: g.ts }); size += g.blob.length;
-    });
+    for (var k = 0; k < ids.length; k++) {
+      var g = mine[ids[k]], blob = g.ref ? await _load(g.ref) : g.blob;
+      if (!blob) continue;
+      if (cur.length && size + blob.length > 300000) { batches.push(cur); cur = []; size = 0; }
+      cur.push({ id: ids[k], blob: blob, ts: g.ts }); size += blob.length;
+    }
     if (cur.length) batches.push(cur);
     for (var i = 0; i < batches.length; i++) {
       try {
@@ -565,16 +634,25 @@ export class Fenix {
     if (!this.state || !this.state.k || _nid(p.o) !== this.me() || !Array.isArray(p.list)) return;
     var key = await _subtle().importKey('raw', _unhex(this.state.k), 'AES-GCM', false, ['decrypt']);
     if (!this.msgs) this.msgs = { v: 1, lastTs: 0, recent: [], segs: [], lastSegAt: Date.now() };
-    var M = this.msgs, byChat = {}, nSegs = 0;
+    var M = this.msgs, byChat = {}, nSegs = 0, meds = [];
     for (var i = 0; i < p.list.length; i++) {
       var it = p.list[i];
-      if (!it || typeof it.blob !== 'string' || !/^s[0-9a-z]{6,20}$/.test(String(it.id || ''))) continue;
+      if (!it || typeof it.blob !== 'string' || !/^[sd][0-9a-z]{6,20}$/.test(String(it.id || ''))) continue;
       var plain = null;
       try {
         var raw = _unb64(it.blob);
         var pt = await _subtle().decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12), additionalData: _aad(this.me(), 'seg:' + it.id) }, key, raw.subarray(12));
         plain = JSON.parse(new TextDecoder().decode(new Uint8Array(pt)));
       } catch (e) { console.warn('[FENIX] Segmento ' + it.id + ' de ' + from + ' no se descifra: descartado'); continue; }
+      if (plain && plain.id === it.id && plain.kind === 'med' && it.id.charAt(0) === 'd') {
+        // Fase 3: el contenido de un mensaje; vuelve a su mensaje cuando los textos ya estén
+        meds.push(plain);
+        var gm = M.segs.filter(function(s) { return s.id === it.id; })[0];
+        if (!gm) { await _save(_medFile(it.id), it.blob); gm = { id: it.id, ts: Number(it.ts) || Date.now(), n: 1, med: 1, ref: _medFile(it.id), size: it.blob.length, bh: await _sha(it.blob), holders: {} }; M.segs.push(gm); }
+        gm.holders[from] = { at: Date.now(), ok: true, proofAt: Date.now() };
+        (M.medDone = M.medDone || {})[plain.msgId] = Date.now();
+        continue;
+      }
       if (!plain || plain.id !== it.id || !Array.isArray(plain.items)) continue;
       nSegs++;
       plain.items.forEach(function(x) { if (x && _isNx(_nid(x.c)) && x.m && x.m.msgId) (byChat[_nid(x.c)] = byChat[_nid(x.c)] || []).push(x.m); });
@@ -597,9 +675,37 @@ export class Fenix {
       await window.vaultSaveMessages(chats[c], merged);
       added += add.length;
     }
+    // Fase 3: cada contenido a su mensaje (si el mensaje aún no está, se guarda para cuando llegue)
+    M.pendMed = (M.pendMed || []).concat(meds.map(function(x) { return { c: x.c, msgId: x.msgId, id: x.id }; }));
+    var medsOk = await this._applyMeds();
     await this._saveMsgs();
-    console.log('[FENIX] ' + from + ' me devolvió ' + nSegs + ' segmento(s): ' + added + ' mensaje(s) recuperados');
-    if (added) try { window.dispatchEvent(new CustomEvent('nexo:fenix:messages', { detail: { added: added, chats: chats.length } })); } catch (e) {}
+    console.log('[FENIX] ' + from + ' me devolvió ' + nSegs + ' segmento(s): ' + added + ' mensaje(s) recuperados' + (meds.length ? ', ' + meds.length + ' foto(s)/archivo(s)' : '') + (medsOk ? ' (' + medsOk + ' en su mensaje)' : ''));
+    if (added || medsOk) try { window.dispatchEvent(new CustomEvent('nexo:fenix:messages', { detail: { added: added, media: medsOk, chats: chats.length } })); } catch (e) {}
+  }
+
+  // Fase 3: pone el contenido recuperado en su mensaje (los que aún no tienen mensaje esperan)
+  async _applyMeds() {
+    var M = this.msgs, left = [], done = 0;
+    if (!M || !M.pendMed || !M.pendMed.length) return 0;
+    var key = await _subtle().importKey('raw', _unhex(this.state.k), 'AES-GCM', false, ['decrypt']);
+    for (var i = 0; i < M.pendMed.length; i++) {
+      var x = M.pendMed[i], g = M.segs.filter(function(s) { return s.id === x.id; })[0], blob = g && await _load(g.ref);
+      if (!blob) { console.warn('[FENIX] Medio ' + x.id + ': no está guardado'); continue; }
+      var plain = null;
+      try {
+        var raw = _unb64(blob);
+        var pt = await _subtle().decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12), additionalData: _aad(this.me(), 'seg:' + x.id) }, key, raw.subarray(12));
+        plain = JSON.parse(new TextDecoder().decode(new Uint8Array(pt)));
+      } catch (e) { console.warn('[FENIX] Medio ' + x.id + ': no se descifra'); continue; }
+      if (!plain || !plain.payload || !_isNx(_nid(plain.c))) continue;
+      if (await vaultReplaceAttachment(plain.c, plain.msgId, plain.payload, plain.meta || {})) done++;
+      else {
+        console.log('[FENIX] Medio ' + x.id + ': su mensaje aún no ha vuelto (espera)');
+        if (Date.now() - (x.at || (x.at = Date.now())) < 7 * DAY) left.push(x);
+      }
+    }
+    M.pendMed = left;
+    return done;
   }
 
   // ---------- recuperación: lado del contacto ----------

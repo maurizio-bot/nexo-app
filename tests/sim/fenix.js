@@ -48,6 +48,11 @@ async function openChatWith(p, name) {
   click(p.win, row); await sleep(600); return !!row;
 }
 async function closeChat(p) { p.win.dispatchEvent(new p.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(300); }
+async function sendFile(p, name, type, bytes) {
+  click(p.win, p.win.document.querySelector('.attach-menu-item[data-type="file"]')); await sleep(100);
+  const fin = Array.from(p.win.document.querySelectorAll('input[type=file]')).pop();
+  Object.defineProperty(fin, 'files', { value: [new p.win.File([bytes], name, { type })] }); fin.dispatchEvent(new p.win.Event('change'));
+}
 async function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
 async function addFound(p, name) {
   let add = null;
@@ -114,10 +119,14 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   }
 
   // Fase 2: A escribe a C y D; sus mensajes van en segmentos cifrados, cada uno en 2 contactos
-  const hist = [];
+  const hist = [], files = [];
   for (const x of ['C', 'D']) {
     await openChatWith(P.A, x);
     for (let i = 1; i <= 3; i++) { const t = 'SECRETO-hist-' + x + '-' + i; hist.push([x, t]); await sendText(P.A, t); await sleep(700); }
+    // Fase 3 (ronda 2757): también un archivo a cada uno; tras recuperar debe volver idéntico a su mensaje
+    const name = 'secreto-' + x + '.pdf', bytes = Buffer.concat([Buffer.from('%PDF-1.4 SECRETO-ARCHIVO-' + x + ' '), Buffer.alloc(30000, x.charCodeAt(0))]);
+    files.push([x, name, bytes.toString('base64')]);
+    await sendFile(P.A, name, 'application/pdf', bytes); await sleep(6000);
     await sleep(2000); await closeChat(P.A);
   }
   const segsOk = () => { const m = json(nat.A, 'nexo_fenix_msgs.json'); return !!(m && m.segs && m.segs.length && m.segs.every((g) => Object.values(g.holders || {}).filter((h) => h.ok).length >= 2)); };
@@ -127,6 +136,11 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.segmentos = mA.segs.map((g) => g.n + 'msg→' + Object.keys(g.holders).map((h) => contacts.find((x) => id(x).toLowerCase() === h) || h).join('')).join(' ');
   r.segmentos_legibles_en_nodos = contacts.some((x) => /SECRETO-hist/.test(nat[x].files.get('nexo_fenix_store.json') || ''));
   r.pingeo_segmentos_s = await waitFor(() => logs.some((l) => /\[A\].*Pingeo: .* conserva \d+ de \d+ segmentos/.test(l)), 60000);
+  // Fase 3: los dos archivos como medios, cada uno en 2 contactos; nadie puede leerlos
+  const medsOk = () => { const m = json(nat.A, 'nexo_fenix_msgs.json'); const meds = ((m && m.segs) || []).filter((g) => g.med); return meds.length >= files.length && meds.every((g) => Object.values(g.holders || {}).filter((h) => h.ok).length >= 2); };
+  r.medios_en_2_contactos_s = await waitFor(medsOk, 120000);
+  r.medios = ((json(nat.A, 'nexo_fenix_msgs.json') || { segs: [] }).segs.filter((g) => g.med)).map((g) => Math.round(g.size / 1024) + 'KB→' + Object.keys(g.holders).map((h) => contacts.find((x) => id(x).toLowerCase() === h) || h).join('')).join(' ');
+  r.medios_legibles_en_nodos = contacts.some((x) => Array.from(nat[x].files.entries()).some(([k, v]) => /^nexo_fenix_n_/.test(k) && /SECRETO-ARCHIVO/.test(Buffer.from(String(v), 'base64').toString('latin1'))));
 
   // A pierde el teléfono; N (nuevo) pide recuperar
   const pubA = (json(nat.A, 'nexo_e2e_identity.json') || {}).pub;
@@ -162,6 +176,10 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   const histBack = async () => { let n = 0; for (const [x, t] of hist) if ((await N.win.vaultLoadMessages(id(x))).some((m) => m.content === t)) n++; return n; };
   r.historial_recuperado_s = await waitFor(async () => (await histBack()) === hist.length, 120000);
   r.historial_recuperado = (await histBack()) + ' de ' + hist.length;
+  // Fase 3: cada archivo vuelve a su mensaje, idéntico
+  const filesBack = async () => { let n = 0; for (const [x, name, b64] of files) { const m = (await N.win.vaultLoadMessages(id(x))).find((mm) => mm.attachmentMeta && mm.attachmentMeta.name === name); const pay = m && (m.attachmentPayload || (m.attachmentRef && nN.files.get(m.attachmentRef))); if (pay === b64) n++; } return n; };
+  r.archivos_recuperados_s = await waitFor(async () => (await filesBack()) === files.length, 120000);
+  r.archivos_recuperados = (await filesBack()) + ' de ' + files.length;
   // Sigue hablando cifrado con un contacto (sesiones nuevas del protocolo 2) sin aviso de clave cambiada
   const B = P.B;
   await openChatWith(N, 'B'); await sendText(N, 'SECRETO-he vuelto');

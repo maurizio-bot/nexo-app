@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2756)
+Última actualización: 2026-10-24 (build 2757)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -83,6 +83,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2754 | `9dac851` | Bluetooth sin base64: trozos de archivo en binario con quien lo anuncia (−25 % de bytes por la radio, fotos y PDF ~25–35 % más rápidos en el simulador); con builds anteriores, JSON de siempre. APK verificada: 24,5 MB, firma 23d86688…, manifiesto idéntico a la 2752, `BinFrame`/`BinAssembler`/`sendBinary` presentes. Falta probarla en teléfonos |
 | 2755 | `c035890` | Solo diagnóstico (el dueño dice que los archivos no llegan; sin cambio de comportamiento): en Perfil → Copiar diagnóstico salen los errores de Bluetooth del nativo (`BT_ERR`: escritura o notificación fallida, mensaje descartado, trozo binario incompleto; uno por tipo cada 5 s) y una línea `[BIN]` por cada envío/recepción en binario. APK verificada (firma 23d86688…, manifiesto igual que la 2754) |
 | 2756 | `a7b3641` | Archivos grandes hasta 1 GB por el mismo Wi-Fi / Wi-Fi Direct (informe del dueño: un APK de 24 MB no salía) e ID Bluetooth rotativo (plan punto 4). APK verificada (24,5 MB, firma 23d86688…, manifiesto igual que la 2755, clases nuevas presentes). Falta probarla en teléfonos |
+| 2757 | (este commit) | MTU pequeño (punto 8), Fénix para fotos y archivos (punto 9), Jump por Wi-Fi probado (punto 10). Falta verificar la APK y probarla en teléfonos |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -208,6 +209,25 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2757: MTU pequeño (punto 8), Fénix con fotos y archivos (punto 9), Jump por Wi-Fi (punto 10)
+- **MTU**: al conectar, el Kotlin pedía el MTU (512) y en el acto activaba las notificaciones; Android hace una sola
+  operación GATT a la vez y a menudo se perdía la petición del MTU: la conexión se quedaba en 23 bytes (20 por
+  escritura, todo ~20 veces más lento). Ahora: MTU primero, notificaciones al contestar (o a los 2 s); si queda en 23,
+  se pide otra vez. No se puede simular (Android): el diagnóstico dice `[MTU] nx…: N` y `BT_ERR` si queda en 23.
+- Trozos de texto por bytes reales (`Utf8Split`, MTU − 3, máx. 512) en vez de caracteres con 10 de margen; cada
+  escritura sigue siendo UTF-8 válido (las builds anteriores la leen igual). Trozo mínimo con MTU pequeño 240 (antes
+  60: con 20 bytes por escritura el 60 % de la radio eran cabeceras). Medido (foto 45 KB): MTU 23 215 → ~95 s;
+  con 2 % de pérdidas, 120 → 1018 s, 240 → 423 s, 360 → 567 s (por eso 240); MTU 185/247/512 algo mejor que la 2756.
+- **Fénix fase 3** (`fenix.js` v3): fotos, notas de voz, previas de vídeo y archivos de hasta ~1 MB de cada chat, cada
+  uno cifrado con K en 2 contactos con Fénix 3 (kx fx:3), en archivos aparte; los de más de 300 KB solo por el mismo
+  Wi-Fi; límites 30 MB del dueño y 20 MB por contacto en quien guarda; el pingeo los prueba. Al recuperar vuelven a su
+  mensaje (`vaultReplaceAttachment`). No van el vídeo HD ni los archivos grandes. `fenix.js` (sim): 2 archivos en 2
+  contactos cada uno, ilegibles para ellos; tras recuperar, historial 6 de 6 y los 2 archivos idénticos. Encontrado al
+  probar: un medio se perdía si el archivo aún no estaba en disco al armar el segmento de texto (ahora aparte, con
+  reintento) y el límite de los segmentos de texto contaba los de medios (error tras recuperar).
+- **Jump por Wi-Fi**: `jump.js --wifi-ab` (A–B solo por Wi-Fi, B–C por Bluetooth): todo llega (foto en 3 s), los
+  puentes no leen nada. Ya funcionaba en la 2756: no hizo falta cambiar código.
 
 ## Ronda 2756: archivos grandes (pedido del dueño 24-10) e ID Bluetooth rotativo (plan punto 4)
 **Archivos grandes.** Informe del dueño con la 2755: una foto llega; un APK de 24 MB "nunca salió ni llegó" y después

@@ -9,6 +9,8 @@
 //   --low-battery: (con --stranger) B al 10 % sin cargar: no debe hacer de puente; luego se enchufa
 //   --direct-later: la foto queda en B sin camino a C y luego A y C quedan a alcance: A la reenvía directo
 //   --bridge-build=<dir>: B (el puente) con otra build (p. ej. una anterior sin remitente sellado)
+//   --wifi-ab: (plan punto 10, Jump por Wi-Fi) A y B en el mismo Wi-Fi y FUERA de alcance de Bluetooth: el primer salto
+//              va por Wi-Fi (A–B) y el segundo por Bluetooth (B–C)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -28,6 +30,7 @@ const noRouteWait = !!arg('no-route-wait', false);
 // --net: todos con internet por datos móviles (relé Nostr local): Jump no debe mandar archivos al puente por internet
 //   (con datos móviles los archivos no van por internet y se quedaban en "enviando"; visto en GitHub)
 const withNet = !!arg('net', false);
+const wifiAB = !!arg('wifi-ab', false);
 let NET_RELAYS = null;
 const shared = !!arg('shared', false), chain = chainN >= 3, stranger = !!arg('stranger', false), lowBat = !!arg('low-battery', false);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -80,7 +83,7 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const nat = {}, P = {};
   // Dirección Bluetooth válida (hexadecimal): A..F como antes (AA:AA:…), de G en adelante A6:A6:…
   const hx = (n, i) => (/[A-F]/.test(n) ? n.repeat(2) : (0xA0 + i).toString(16).toUpperCase());
-  names.forEach((n, i) => { const h = hx(n, i); nat[n] = new NativePhone(n, [h, h, h, h, h, '0' + (i + 1)].join(':'), opts); radio.add(nat[n]); nat[n].load(); });
+  names.forEach((n, i) => { const h = hx(n, i); nat[n] = new NativePhone(n, [h, h, h, h, h, '0' + (i + 1)].join(':'), Object.assign({}, opts, wifiAB && (n === 'A' || n === 'B') ? { wifi: 'casa' } : {})); radio.add(nat[n]); nat[n].load(); });
   if (lowBat) nat.B.battery = { level: 10, charging: false, powerSave: false };
   (await Promise.all(names.map((n) => boot(n, nat[n])))).forEach((p) => { P[p.name] = p; });
   const id = (n) => P[n].win.bleInterface.localNexoId;
@@ -110,6 +113,12 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   // Alcance: solo los vecinos de la cadena se ven
   for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
     if (j !== i + 1) radio.block(nat[names[i]], nat[names[j]]);
+  }
+  if (wifiAB) {
+    // A y B solo por Wi-Fi: esperar al enlace Wi-Fi comprobado y cortar su Bluetooth
+    r.wifi_AB_s = await waitFor(() => !!(P.A.win.bleInterface.lan && P.A.win.bleInterface.lan.canReach(id('B').toLowerCase())), 60000);
+    radio.block(nat.A, nat.B);
+    r.modo += ', A–B solo por Wi-Fi';
   }
   if (shared) {
     // B comparte C con A (tarjeta de contacto con su clave pública)

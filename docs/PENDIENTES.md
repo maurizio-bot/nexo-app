@@ -92,7 +92,11 @@ De lo más simple a lo más complejo. Estado:
    código (`docs/ESTRUCTURA.md`). 7. ✅ (2754) Bluetooth sin base64: los trozos de datos de fotos, vídeos y archivos
    van en binario (−25 % de bytes por la radio, ~25–35 % más rápido en el simulador); solo con teléfonos que lo
    anuncian (`bf`), con builds anteriores sigue el JSON de siempre.
-8. Detectar MTU pequeño. 9. Fénix para fotos/vídeos/archivos. 10. Jump por Wi-Fi.
+8. ✅ (2757) MTU pequeño: el Kotlin pedía el MTU y activaba las notificaciones a la vez (Android hace una operación
+   GATT a la vez: a menudo se perdía el MTU y la conexión quedaba en 23 bytes); ahora en orden, con un reintento y
+   `[MTU]` en el diagnóstico. Trozos por bytes reales (MTU − 3) y trozo mínimo 240 con MTU pequeño (foto con MTU 23:
+   215 → ~95 s). 9. ✅ (2757) Fénix para fotos, notas de voz, previas de vídeo y archivos de hasta ~1 MB (fase 3).
+   10. ✅ Jump por Wi-Fi: ya funcionaba (el enlace Wi-Fi es un vecino más); ahora probado (`jump.js --wifi-ab`).
 11. ✅ (2751) Recibir por internet en segundo plano (NetBg nativo) + notificaciones del teléfono + número en el icono
    + contadores de no leídos por todas las vías (pedido del dueño 23-10). 12. Recibir por Bluetooth con la app cerrada. 13. L2CAP.
 14. Grupos. 15. Varios dispositivos. 16. Llamadas de voz. 17. Videollamadas.

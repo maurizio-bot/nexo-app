@@ -64,8 +64,8 @@ const CHAT_WINDOW_TIMEOUT_MS = 3000;
 const CHAT_PACING_DELAY_MS = 2;
 const FILE_CHUNK_SIZE = 360;
 // Ronda 2757: con MTU pequeño (20 bytes por escritura) un trozo de 60 era 60 de datos + 90 de cabecera: el 60 % de la
-// radio en cabeceras. Mínimo medido en el simulador (tests/sim/mtu.js)
-function SMALL_MTU_MIN_CHUNK() { return (typeof window !== 'undefined' && Number(window.NEXO_SMALL_CHUNK)) || 60; }
+// radio en cabeceras. Medido (MTU 23, foto 45 KB): 60 → 191 s, 240 → 95 s; con 2 % de pérdidas 240 → 423 s, 360 → 567 s
+function SMALL_MTU_MIN_CHUNK() { return (typeof window !== 'undefined' && Number(window.NEXO_SMALL_CHUNK)) || 240; }
 const FILE_WINDOW_SIZE = 12;
 // Receptor: confirma cada ACK_EVERY trozos o tras ACK_DEBOUNCE_MS sin más trozos (antes, uno por trozo)
 const ACK_EVERY = 4;

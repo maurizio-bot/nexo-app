@@ -26,7 +26,7 @@ export const BLE_KEY_METHODS = {
       // mostraría como mensajes de texto). b2: paquete de claves del protocolo 2.
       var pkt = { v: 1, type: 'kx', from: self.localNexoId, pk: pk, j: 1 };
       if (b2) pkt.b2 = b2;
-      pkt.fx = 2; // Fénix: 1 = la cuenta; 2 = también guarda los mensajes (segmentos)
+      pkt.fx = 3; // Fénix: 1 = la cuenta; 2 = también los mensajes (segmentos); 3 = también fotos y archivos (2757)
       pkt.ss = 1; // entiende el remitente sellado (sobres 'sx' por Jump)
       pkt.nt = 1; // v6.13.0: internet por relés públicos
       pkt.bf = 1; // ronda 2753: entiende trozos binarios de archivos por Bluetooth
