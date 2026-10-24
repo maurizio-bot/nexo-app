@@ -3,7 +3,8 @@
 // - escaneos que no ven al otro (--scan-miss) y límite de Android de 5 escaneos / 30 s
 // Escenarios (--scenario):
 //   bg     : B pasa a segundo plano, se pierde el enlace, A escribe, el enlace vuelve, B vuelve a la app
-//   closed : B cierra la app, A escribe, B la reabre (el nativo arranca antes que el JS)
+//   closed : B cierra la app, A escribe, B la reabre (el nativo arranca antes que el JS). Desde la 2758 el
+//            Bluetooth de B sigue recibiendo cerrada: m1/m2 a su buzón, ✓✓ en A y notificación (--old-kotlin: no)
 // --a-bg     : A pasa a segundo plano justo después de escribir (pantalla bloqueada)
 // --app-events : el nativo avisa al JS de onResume/onPause (Kotlin nuevo)
 // --off=25000 : tiempo sin enlace / con B cerrada (ms)
@@ -24,7 +25,7 @@ const withVideo = !!arg('video', false); // closed: A manda un vídeo (300 KB) a
 const opts = {
   readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, asymmetric: true,
   supervisionMs: arg('supervision', 8000), scanMiss: arg('scan-miss', 0), scanThrottle: true,
-  rotateOnRestart: !!arg('rotate', false), appStateEvents: !!arg('app-events', false), pace: [15, 15], ioDelay: arg('io-delay', 0),
+  rotateOnRestart: !!arg('rotate', false), noClosedRx: !!arg('old-kotlin', false), appStateEvents: !!arg('app-events', false), pace: [15, 15], ioDelay: arg('io-delay', 0),
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
@@ -94,7 +95,7 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
     process.exit(0);
   }
   const want = noM3 ? ['m1', 'm2'] : ['m1', 'm2', 'm3'];
-  let tBack;
+  let tBack; const cerrada = {};
   if (scenario === 'bg') {
     B.setActive(false); await sleep(1000);
     nB.setOffline(true);
@@ -114,8 +115,16 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
     if (withVideo) { A.win.NEXO_sendVideo(new A.win.Blob([new Uint8Array(300 * 1024).fill(3)], { type: 'video/mp4' }), { name: 'clip.mp4', duration: 5 }); await sleep(2000); }
     await sendText(A, 'm1'); await sleep(3000);
     await sendText(A, 'm2'); await sleep(3000);
+    // Acción oculta (borrar para todos…): al buzón pero sin notificación
+    const biA = A.win.bleInterface, idB = B.win.bleInterface.localNexoId;
+    if (biA.localNexoId && idB) { biA._quietOut = biA._quietOut || new Set(); biA._quietOut.add('msg_oculta_1'); biA.sendChatMessage(idB, 'oculta', 'msg_oculta_1', biA.getNextSeq()).catch(() => {}); }
     if (aBg) A.setActive(false);
     await sleep(Math.max(0, offMs - 6000));
+    cerrada.oculta_en_buzon_sin_aviso = (nB.bgInbox || []).some((x) => /"msgId":"msg_oculta_1"/.test(x.c) && /"q":1/.test(x.c)) && !Array.from(nB.notifications.values()).some((n) => n.ids.has('msg_oculta_1'));
+    // Kotlin 2758: con B cerrada, su Bluetooth sigue recibiendo (buzón, ✓✓ y notificación)
+    cerrada.estado_en_A = ['m1', 'm2'].map((w) => w + ': ' + statusOf(A, w));
+    cerrada.notificaciones_B = nB.notifLog.filter((n) => n.closed).map((n) => (n.text || 'mensaje') + ' x' + n.count);
+    cerrada.en_buzon = (nB.bgInbox || []).length;
     tBack = Date.now();
     nB.load();
     if (!noM3) setTimeout(() => sendText(A, 'm3'), 1500);
@@ -141,6 +150,7 @@ const statusOf = (p, t) => { const m = Array.from(p.win.document.querySelectorAl
     build: path.basename(buildDir), scenario, a_en_segundo_plano: aBg, app_events: opts.appStateEvents, scan_miss: opts.scanMiss,
     llegada_a_B_tras_volver: want.map((w) => w + ': ' + (llegada[w] || 'NO LLEGÓ')).concat(withVideo ? ['video: ' + (llegada.VIDEO || 'NO LLEGÓ'), 'HD: ' + (llegada.HD || 'NO LLEGÓ')] : []),
     estado_en_A: want.map((w) => w + ': ' + statusOf(A, w)),
+    con_B_cerrada: scenario === 'closed' ? cerrada : undefined, entregados_desde_buzon: nB.stats.closedDelivered || 0,
     escaneos_A: nA.stats.scans || 0, escaneos_B: nB.stats.scans || 0,
     escaneos_bloqueados_por_android: (nA.stats.throttledScans || 0) + (nB.stats.throttledScans || 0),
     escaneos_sin_resultado_pantalla_apagada: (nA.stats.screenOffScans || 0) + (nB.stats.screenOffScans || 0),

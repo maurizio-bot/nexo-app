@@ -1,0 +1,46 @@
+import com.nexo.ble.BgInbox
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+// Recibir con la app cerrada: qué se guarda, qué se confirma y qué se avisa (BgInbox.kt)
+class BgInboxTest {
+    private val chat = """{"v":1,"type":"chat","from":"NX12345678","to":"","ts":1,"seq":3,"msgId":"msg_1","payload":{"text":"E2:abc"},"ss":1,"nt":1}"""
+
+    @Test fun clasifica() {
+        val m = BgInbox.classify(chat)
+        assertEquals(BgInbox.Kind.MESSAGE, m.kind); assertEquals("nx12345678", m.from); assertEquals("msg_1", m.msgId); assertFalse(m.quiet)
+        assertTrue(BgInbox.classify(chat.replace("\"nt\":1", "\"nt\":1,\"q\":1")).quiet, "acción oculta: sin aviso")
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify(chat.replace("\"to\":\"\"", "\"to\":\"nx99999999\"")).kind, "de paso para otro (Jump): no")
+        assertEquals(BgInbox.Kind.RECEIPT, BgInbox.classify("""{"v":1,"type":"ack","msgId":"m9","from":"nx12345678","ts":1}""").kind)
+        assertEquals(BgInbox.Kind.RECEIPT, BgInbox.classify("""{"v":1,"type":"read_receipt","msgId":"m9","from":"nx12345678"}""").kind)
+        val c0 = BgInbox.classify("""{"v":2,"t":"f","m":"f1","i":0,"n":9,"d":"x","fr":"NX12345678","tp":"image","k":"a"}""")
+        assertEquals(BgInbox.Kind.NOTIFY_ONLY, c0.kind); assertEquals("image", c0.what)
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":2,"t":"f","m":"f1","i":3,"n":9,"d":"x","k":"a"}""").kind, "trozo intermedio")
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":2,"t":"c","m":"c1","i":0,"n":2,"d":"x","fr":"sx:abc","k":"a"}""").kind, "remitente sellado")
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":1,"type":"kx","from":"nx12345678","pk":"x"}""").kind)
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("no es json").kind)
+    }
+
+    @Test fun guardaYEntregaEnOrden() {
+        val f = File.createTempFile("inbox", ".jsonl"); f.delete()
+        val box = BgInbox(f)
+        assertTrue(box.add("AA:BB", chat))
+        assertTrue(box.add("CC:DD", """{"type":"ack","msgId":"m9"}"""))
+        assertEquals(2, box.size())
+        val got = box.drain()
+        assertEquals(listOf("AA:BB" to chat, "CC:DD" to """{"type":"ack","msgId":"m9"}"""), got)
+        assertEquals(0, box.size()); assertTrue(box.drain().isEmpty())
+    }
+
+    @Test fun limiteDeTamano() {
+        val f = File.createTempFile("inbox", ".jsonl"); f.delete()
+        val box = BgInbox(f, maxBytes = 1000)
+        var n = 0
+        while (box.add("AA", chat)) n++
+        assertTrue(n in 2..6, "se para al llenarse ($n)")
+        assertTrue(f.length() <= 1000 + chat.length + 64)
+    }
+}

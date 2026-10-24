@@ -145,9 +145,16 @@ class NativePhone {
   // anunciando con el último NEXO ID. Los demás ven caer sus conexiones con este teléfono.
   destroyActivity() {
     this.destroyed = true;
-    this.serverUp = false;
     this.listeners = new Map();
     this.retained = new Map();
+    // Kotlin 2758 (BgInbox.kt): con el servidor en marcha, el Bluetooth sigue recibiendo con la app cerrada (sin
+    // escanear); opts.noClosedRx = Kotlin anterior (se cierra todo)
+    if (!this.opts.noClosedRx && this.serverUp !== false) {
+      this.closedMode = true; this.scanningUntil = 0;
+      if (this.tor) { const me = this.tor.nx; this.tor.conns.forEach((p) => { if (p.tor) { p.tor.conns.delete(me); p.emit('onTorDown', { nx: me }); } }); this.tor = null; }
+      return;
+    }
+    this.serverUp = false;
     const meAdv = norm(this.address), meInit = norm(this.initAddress);
     this.radio.phones.forEach((p) => {
       if (p === this) return;
@@ -182,6 +189,21 @@ class NativePhone {
 
   // ---- ciclo de vida (Kotlin load(): autoStartGattServerAndAdvertising) ----
   load() {
+    // Kotlin 2758 takeOverFromClosed: la instancia vieja suelta sus conexiones; lo guardado llega a la app (retenido)
+    if (this.closedMode) {
+      this.closedMode = false;
+      const meAdv = norm(this.address), meInit = norm(this.initAddress);
+      this.radio.phones.forEach((p) => {
+        if (p === this) return;
+        p._dropLinkLater(meAdv, this.address, meInit, this.initAddress);
+        this.clients.delete(norm(p.address)); this.serverConnected.delete(norm(p.initAddress)); this.serverNotif.delete(norm(p.initAddress));
+      });
+      this.pendingQueue.clear(); this.buffers.clear(); this.writeQ = new Map();
+      const box = this.bgInbox || []; this.bgInbox = [];
+      if (!this.retained) this.retained = new Map();
+      if (box.length) this.retained.set('onPayloadReceived', (this.retained.get('onPayloadReceived') || []).concat(box.map((x) => ({ deviceId: x.d, content: x.c, data: x.c, source: 'closed', timestamp: Date.now(), reassembled: true }))));
+      this.stats.closedDelivered = (this.stats.closedDelivered || 0) + box.length;
+    }
     // Android reinicia el anuncio al reabrir la app: dirección aleatoria nueva (opts.rotateOnRestart)
     if (this.destroyed && this.opts.rotateOnRestart) {
       this.restarts = (this.restarts || 0) + 1;
@@ -373,6 +395,7 @@ class NativePhone {
       if (out.dropped) this.stats.binDropped = (this.stats.binDropped || 0) + out.dropped;
       out.frames.forEach((f) => {
         this.stats.binChunksIn = (this.stats.binChunksIn || 0) + 1;
+        if (this.closedMode) { this._closedReceive(fromAddress, f.header); return; }
         this.emit('onPayloadReceived', { deviceId: fromAddress, content: f.header, data: f.header, bin: f.data.toString('base64'), source, timestamp: Date.now(), reassembled: true });
       });
       if (!out.text) return;
@@ -392,7 +415,8 @@ class NativePhone {
       const ex = extractJson(buf);
       if (!ex) break;
       this.radio.log(this.name, 'RX de', fromAddress, ex.json.substring(0, 90));
-      this.emit('onPayloadReceived', { deviceId: fromAddress, content: ex.json, data: ex.json, source, timestamp: Date.now(), reassembled: true });
+      if (this.closedMode) this._closedReceive(fromAddress, ex.json);
+      else this.emit('onPayloadReceived', { deviceId: fromAddress, content: ex.json, data: ex.json, source, timestamp: Date.now(), reassembled: true });
       buf = ex.rest;
       this.bufSince.set(mac, Date.now());
     }
@@ -400,6 +424,37 @@ class NativePhone {
       this.buffers.set(mac, buf);
       this.bufTimers.set(mac, setTimeout(() => { this.buffers.delete(mac); this.stats.bufTimeouts = (this.stats.bufTimeouts || 0) + 1; }, 5000));
     } else this.buffers.delete(mac);
+  }
+
+  // ---- app cerrada (Kotlin closedReceive + BgInbox.classify; probado en tests/kotlin/BgInboxTest) ----
+  static classifyClosed(json) {
+    let o; try { o = JSON.parse(json); } catch (e) { return { kind: 'IGNORE' }; }
+    const NX = /^nx[0-9a-z]{8}$/;
+    const from = String(o.from || o.fr || '').toLowerCase();
+    if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1 };
+    if ((o.type === 'ack' || o.type === 'read_receipt') && o.msgId && !o.to) return { kind: 'RECEIPT', from, msgId: o.msgId };
+    if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, what: o.t === 'c' ? 'text' : (o.tp || 'file') };
+    return { kind: 'IGNORE' };
+  }
+  _closedReceive(fromAddress, json) {
+    const info = NativePhone.classifyClosed(json);
+    this.stats.closedRx = (this.stats.closedRx || 0) + 1;
+    if (!this.bgInbox) this.bgInbox = [];
+    const notify = (text) => {
+      const c = this.netBg && (this.netBg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === info.from);
+      const name = (c && c.name) || 'NEXO';
+      const n = this.notifications.get(info.from) || { name, ids: new Set(), base: 0, text: '' };
+      if (n.ids.has(String(info.msgId))) return; // UnreadBook.add: el mismo mensaje no avisa dos veces
+      n.ids.add(String(info.msgId)); n.text = text; n.posts = (n.posts || 0) + 1;
+      this.notifications.set(info.from, n); this.notifLog.push({ t: Date.now(), chatId: info.from, name, text, count: n.base + n.ids.size, closed: true });
+    };
+    if (info.kind === 'MESSAGE') {
+      this.bgInbox.push({ d: fromAddress, c: json });
+      const me = String(this.advertisingId || '').toLowerCase();
+      if (me) this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify({ v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() }));
+      if (!info.quiet) notify('');
+    } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json });
+    else if (info.kind === 'NOTIFY_ONLY') notify(({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', text: '' })[info.what] ?? '📎 Archivo');
   }
 
   // ---- fuera de alcance (simula alejarse) ----

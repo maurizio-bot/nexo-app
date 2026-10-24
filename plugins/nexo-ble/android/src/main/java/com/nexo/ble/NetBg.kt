@@ -92,6 +92,8 @@ class NetBg(
         if (running) synchronized(lock) { lock.notifyAll() }
     }
     fun configured() = me.isNotEmpty() && contacts.isNotEmpty() && relays.isNotEmpty()
+    // Nombre de un contacto (para la notificación de lo que llega por Bluetooth con la app cerrada)
+    fun nameOf(nx: String): String? = contacts.firstOrNull { it.nx == nx.lowercase() }?.name?.takeIf { it.isNotEmpty() }
 
     fun start() {
         if (running || !configured()) return

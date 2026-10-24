@@ -88,6 +88,8 @@ import org.json.JSONObject
 class NexoBlePlugin : Plugin() {
 
     companion object {
+        // Ronda 2758 (punto 12): la instancia que siguió recibiendo con la app cerrada; la nueva la releva al abrir
+        @Volatile private var orphan: NexoBlePlugin? = null
         @Volatile private var netBgShared: NetBg? = null
         private const val TAG = "NexoBlePlugin"
         private const val SCAN_TIMEOUT_MS = 15000L
@@ -266,6 +268,7 @@ class NexoBlePlugin : Plugin() {
         val out = binAssembler.feed(normalizeMac(deviceId), value, System.currentTimeMillis())
         if (out.dropped > 0) btErr("bin_drop", "Trozo binario incompleto de ${normalizeMac(deviceId)} descartado")
         out.frames.forEach { f ->
+            if (closedMode) { closedReceive(deviceId, f.header); return@forEach }
             notifyListeners("onPayloadReceived", JSObject()
                 .put("deviceId", deviceId)
                 .put("content", f.header)
@@ -303,7 +306,8 @@ class NexoBlePlugin : Plugin() {
                 // retainUntilConsumed=true: si el JS aún no escucha (app recién abierta, WebView
                 // recargando), Capacitor guarda el mensaje y lo entrega al registrarse el listener.
                 // Sin esto Capacitor lo DESCARTA (Plugin.notifyListeners) y el mensaje se perdía.
-                notifyListeners("onPayloadReceived", JSObject()
+                if (closedMode) closedReceive(deviceId, extraction.json)
+                else notifyListeners("onPayloadReceived", JSObject()
                     .put("deviceId", deviceId)
                     .put("content", extraction.json)
                     .put("data", extraction.json)
@@ -464,8 +468,68 @@ class NexoBlePlugin : Plugin() {
 
         return if (found) quickScanResultMac else null
     }
+    // ===== Recibir por Bluetooth con la app cerrada (ronda 2758, plan del dueño punto 12; BgInbox.kt) =====
+    @Volatile private var closedMode = false
+    private var appCtx: Context? = null
+    private fun inbox(): BgInbox = BgInbox(File((appCtx ?: activity.applicationContext).filesDir, "nexo_bg_inbox.jsonl"))
+
+    // Con la app cerrada no hay a quién avisar (el puente con la app ya no existe)
+    override fun notifyListeners(eventName: String?, data: JSObject?, retainUntilConsumed: Boolean) {
+        if (closedMode) return
+        super.notifyListeners(eventName, data, retainUntilConsumed)
+    }
+
+    // Lo que llega con la app cerrada: al buzón, confirmación de entrega y notificación (ver BgInbox)
+    private fun closedReceive(deviceId: String, json: String) {
+        val info = BgInbox.classify(json)
+        val ctx = appCtx ?: return
+        when (info.kind) {
+            BgInbox.Kind.MESSAGE -> {
+                if (!inbox().add(deviceId, json)) { Log.w("NEXO_REM", "Buzón lleno: mensaje de ${info.from} sin guardar"); return }
+                val me = (nexoAdvertisingId ?: "").lowercase()
+                if (me.isNotEmpty()) {
+                    val ack = JSONObject().put("v", 1).put("type", "ack").put("msgId", info.msgId).put("from", me).put("ts", System.currentTimeMillis()).toString()
+                    sendChunkedOrSingle(normalizeMac(deviceId), deviceId, ack)
+                }
+                if (!info.quiet) MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId, "")
+            }
+            BgInbox.Kind.RECEIPT -> inbox().add(deviceId, json)
+            BgInbox.Kind.NOTIFY_ONLY -> MsgNotifier.get(ctx).message(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", info.msgId,
+                when (info.what) { "image" -> "📷 Foto"; "video" -> "🎥 Vídeo"; "audio" -> "🎤 Nota de voz"; "text" -> ""; else -> "📎 Archivo" })
+            BgInbox.Kind.IGNORE -> {}
+        }
+    }
+
+    // La app se abre: la instancia anterior (si siguió recibiendo) se retira y lo guardado se entrega a la app
+    private fun takeOverFromClosed() {
+        val old = orphan
+        if (old != null && old !== this) {
+            orphan = null
+            try { old.endClosedMode() } catch (e: Exception) { }
+        }
+        val list = try { inbox().drain() } catch (e: Exception) { emptyList() }
+        if (list.isNotEmpty()) remLog("INFO", "FILE_IO", "Con la app cerrada llegaron ${list.size} mensaje(s)/confirmación(es) por Bluetooth")
+        list.forEach { (dev, json) ->
+            notifyListeners("onPayloadReceived", JSObject().put("deviceId", dev).put("content", json).put("data", json)
+                .put("source", "closed").put("timestamp", System.currentTimeMillis()).put("reassembled", true), true)
+        }
+    }
+
+    // La instancia vieja deja el Bluetooth a la nueva (cierra sus conexiones y su servidor; el anuncio sigue en el servicio)
+    private fun endClosedMode() {
+        closedMode = false
+        cleanupAllConnections()
+        try { unregisterServerReceivers() } catch (e: Exception) { }
+        try { unregisterBluetoothStateReceiver() } catch (e: Exception) { }
+        try { stopGattServer() } catch (e: Exception) { }
+        writeQueues.clear(); writeQueueProcessing.clear()
+        writeQueueTimeouts.forEach { (_, r) -> mainHandler.removeCallbacks(r) }; writeQueueTimeouts.clear()
+    }
+
     override fun load() {
         super.load()
+        appCtx = activity.applicationContext
+        takeOverFromClosed()
         // Seguridad fase 3: cifrar en segundo plano lo que aún esté en claro (archivos de versiones anteriores)
         // (prioridad baja; de lo ya cifrado solo se lee la cabecera)
         Thread {
@@ -513,6 +577,14 @@ class NexoBlePlugin : Plugin() {
         super.handleOnDestroy()
         try { lanStopAll() } catch (e: Exception) {}
         try { torStopAll() } catch (e: Exception) {}
+        // Ronda 2758: con permisos y el servidor en marcha, el Bluetooth sigue recibiendo con la app cerrada
+        if (bluetoothGattServer != null && appCtx != null && checkCoreBLEPermissions(appCtx!!)) {
+            try { stopScanInternal() } catch (e: Exception) { }
+            closedMode = true
+            orphan = this
+            remLog("INFO", "LIFECYCLE", "handleOnDestroy - el Bluetooth sigue recibiendo con la app cerrada")
+            return
+        }
         remLog("INFO", "LIFECYCLE", "handleOnDestroy - limpiando DUAL GATT")
         cleanupAllConnections()
         try { unregisterServerReceivers() } catch (e: Exception) { }

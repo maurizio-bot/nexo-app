@@ -180,7 +180,11 @@ export const BLE_MESSAGE_METHODS = {
     if (viaRelay) data = Object.assign({}, data, { viaRelay: true, relayOrigin: _normId(p.from) });
     if (p && p.v === 1 && p.type === 'chat' && p.payload && e2eAnyEncrypted(p.payload.text)) {
       var sender = p.from || p.payload.senderNexoId;
-      return e2eOpenText(sender, p.payload.text, e2eOuterAd(sender, self.localNexoId, p.msgId)).then(function(r) {
+      // Ronda 2758: lo que llega al abrir la app (buzón de la app cerrada, eventos retenidos) puede llegar antes de
+      // cargar el NEXO ID propio, que va en los datos autenticados: sin esperar, el descifrado fallaba y se perdía
+      return self._whenLocalId().then(function() {
+        return e2eOpenText(sender, p.payload.text, e2eOuterAd(sender, self.localNexoId, p.msgId));
+      }).then(function(r) {
         var v = self._checkSender(sender, r.senderKey, r.proto);
         if (v === 'drop') return null;
         if (p.ss && v === 'ok') self._noteSealPeer(sender); // v6.11.1: lo dice dentro de un mensaje que descifra bien
@@ -202,6 +206,16 @@ export const BLE_MESSAGE_METHODS = {
       });
     }
     return Promise.resolve(data);
+  },
+
+  // El NEXO ID propio (se carga al arrancar); como mucho 20 s
+  _whenLocalId() {
+    var self = this;
+    if (self.localNexoId) return Promise.resolve(self.localNexoId);
+    return new Promise(function(resolve) {
+      var n = 0;
+      (function wait() { if (self.localNexoId || ++n > 400) resolve(self.localNexoId); else setTimeout(wait, 50); })();
+    });
   },
 
   _handlePayload(data) {
@@ -419,7 +433,10 @@ export const BLE_MESSAGE_METHODS = {
             if (parsedContent && parsedContent.type === 'attachment') payloadObj.attachment = parsedContent;
           } catch (e) {}
         }
-        outgoing = JSON.stringify({ v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1, nt: 1 });
+        var env = { v: 1, type: 'chat', from: senderId, to: dst ? _normId(dst) : '', ts: Date.now(), seq: msgSeq, msgId: msgId, payload: payloadObj, ss: 1, nt: 1 };
+        // Ronda 2758: acción oculta (borrar para todos…): si el otro tiene la app cerrada, sin notificación
+        if (self._quietOut && self._quietOut.has(msgId)) env.q = 1;
+        outgoing = JSON.stringify(env);
       }
       var send = function(out) {
         if (viaLan) { self.lan.send(viaLan, out).then(resolve).catch(reject); return; }
