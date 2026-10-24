@@ -374,6 +374,11 @@ export const BLE_UI_METHODS = {
       }
     });
     contacts = deduped;
+    // Ronda 2758: los grupos en la misma lista (groups.js)
+    var groupRows = self.groups ? self.groups.all().map(function(g) {
+      return { nexoId: g.id, name: '👥 ' + g.name, lastMessage: g.lastMessage || '', lastMessageAt: g.lastMessageAt || 0, addedAt: g.createdAt || 0, unreadCount: g.unreadCount || 0, isGroup: true };
+    }) : [];
+    contacts = contacts.concat(groupRows);
     if (contacts.length === 0) {
       list.innerHTML = '';
       if (this.elements.mainEmptyMsg) this.elements.mainEmptyMsg.classList.add('visible');
@@ -401,7 +406,7 @@ export const BLE_UI_METHODS = {
       var isOnline = contact.online && (Date.now() - (contact.lastSeen || 0)) < 60000;
       var initials = _getInitials(contact.name);
       var gradClass = _getGradientForUUID(uuid);
-      var lastMsg = contact.lastMessage || (contact.isNewShared ? 'Nuevo contacto · listo para escribir' : (isOnline ? 'En linea' : 'Offline'));
+      var lastMsg = contact.isGroup ? (contact.lastMessage || 'Grupo') : contact.lastMessage || (contact.isNewShared ? 'Nuevo contacto · listo para escribir' : (isOnline ? 'En linea' : 'Offline'));
       var timeStr = _formatTime(contact.lastMessageAt);
       var unread = contact.unreadCount || 0;
       var row = document.createElement('div');
@@ -433,6 +438,7 @@ export const BLE_UI_METHODS = {
       menuBtn.style.cssText = 'width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0;margin-left:8px;';
       menuBtn.addEventListener('click', function(e) {
         e.stopPropagation();
+        if (contact.isGroup && typeof window.NEXO_openGroupMenu === 'function') { window.NEXO_openGroupMenu(uuid); return; }
         self._toggleContactMenu(uuid, menuBtn);
       });
       row.appendChild(menuBtn);

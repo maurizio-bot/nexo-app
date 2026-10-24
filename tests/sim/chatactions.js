@@ -150,6 +150,9 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   await openChatWith(B, 'A'); await sleep(1500);
   r.reabrir_B_cita = !!(bubbleWith(B, 'esta es mi respuesta') || { querySelector: () => null }).querySelector('.msg-quote');
   r.reabrir_B_eliminado = !!bubbleWith(B, 'Se eliminó este mensaje');
+  // Ronda 2758: A (quien borró) reabre el chat: su acción oculta no aparece como texto
+  await closeChat(B); await openChatWith(A, 'B'); await sleep(1500);
+  r.reabrir_A_json_visible = shown(A).filter((t) => /"type":"nexo_/.test(t)).length;
   r.errores = logs.filter((l) => / error: /.test(l)).slice(0, 4);
   console.log('CHATACT ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_chatactions.txt'), logs.join('\n'));

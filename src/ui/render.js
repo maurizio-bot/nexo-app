@@ -14,6 +14,7 @@ import { _objectURLRegistry } from './media_limits.js';
 import { _renderContactCard } from './share_contacts.js';
 import { _renderE2EBanner } from './e2e_banner.js';
 import { _setHdBadge } from './video_send.js';
+import { isGroupId } from './groups.js';
 import { vaultAppendMessage, vaultHydrateAttachments, vaultLoadMessages, vaultUpdateMessageStatus } from '../vault/vault_manager.js';
 
 
@@ -41,7 +42,7 @@ export function _saveMessageToStorage(msg, contactId) {
       if (msg._own) {
         contactId = msg.contactNexoId || msg.contactId || null;
       } else {
-        contactId = msg.senderNexoId || msg.from || msg.sender || null;
+        contactId = msg.groupId || msg.senderNexoId || msg.from || msg.sender || null;
       }
     }
     if (contactId) {
@@ -92,7 +93,7 @@ export async function _loadOlderMessages() {
     if (_getCurrentContactId() !== cid) return;
     var h0 = mc.scrollHeight, t0 = mc.scrollTop;
     _suppressAutoScroll = true;
-    for (var i = batch.length - 1; i >= 0; i--) _renderMessage(batch[i], true);
+    for (var i = batch.length - 1; i >= 0; i--) { if (isGroupId(cid)) batch[i].groupId = cid; _renderMessage(batch[i], true); }
     _suppressAutoScroll = false;
     mc.scrollTop = t0 + (mc.scrollHeight - h0);
   } catch (e) {
@@ -120,6 +121,7 @@ export async function _loadPersistedMessages() {
       var mid = msg.msgId || msg.messageId || msg.id || ('msg' + (msg.timestamp || Date.now()));
       msg.msgId = mid;
       msg.messageId = mid;
+      if (isGroupId(contactId)) msg.groupId = contactId; // ronda 2758: historial de un grupo
       _renderMessage(msg, true);
     });
     _bindOlderMessagesScroll();
@@ -150,6 +152,8 @@ export function _renderMessage(msg, skipSave) {
     if (!msg) return;
     var msgIdDedup = msg.msgId || msg.messageId || msg.id || '';
     if (msg.hidden) return; // v9.9.45: acciones del chat (eliminar para todos) guardadas para reenviarse
+    // Ronda 2758: las copias propias de acciones y de mensajes de grupo tampoco (guardadas antes sin la marca)
+    if (msg._own && typeof msg.content === 'string' && /^\{"type":"nexo_(act|grp)"/.test(msg.content)) return;
     if (msgIdDedup && _renderedMessageIds.has(msgIdDedup)) {
       if (msg.status) _updateMessageStatus(msgIdDedup, msg.status);
       return;
@@ -162,7 +166,8 @@ export function _renderMessage(msg, skipSave) {
     }
     if (!msg._own) {
       var activeId = _getCurrentContactId();
-      var senderId = msg.senderNexoId || msg.from || msg.sender || '';
+      // Ronda 2758: un mensaje de grupo va al chat del grupo
+      var senderId = msg.groupId || msg.senderNexoId || msg.from || msg.sender || '';
       if (activeId && senderId && _normId(activeId) !== _normId(senderId)) {
         if (!skipSave) _saveMessageToStorage(msg);
         return;
@@ -458,6 +463,15 @@ export function _renderMessage(msg, skipSave) {
       }
     } else {
       _fillTextBubble(contentDiv, msg, isOwn);
+    }
+    // Ronda 2758: en un grupo, quién lo escribió
+    if (!isOwn && isGroupId(_getCurrentContactId())) {
+      var who = document.createElement('div');
+      who.className = 'msg-group-sender';
+      who.style.cssText = 'font-size:12px;font-weight:600;color:#00c8ff;margin:0 0 2px 4px;';
+      var gs = window.bleInterface && window.bleInterface.groups;
+      who.textContent = gs ? gs.memberName(msg.senderNexoId) : (msg.senderName || '');
+      div.appendChild(who);
     }
     div.appendChild(contentDiv);
     var metaDiv = document.createElement('div');

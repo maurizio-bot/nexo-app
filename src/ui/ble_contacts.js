@@ -10,6 +10,7 @@ export const BLE_CONTACT_METHODS = {
 
   bumpUnread(nexoId) {
     var nx = _normId(nexoId);
+    if (this.groups && this.groups.isGroup(nx)) { var gn = this.groups.bumpUnread(nx); this.renderContactsList(); _safeDispatchEvent('nexo:unread', { nexoId: nx, count: gn }); return gn; } // ronda 2758
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (!c) return 0;
@@ -23,6 +24,7 @@ export const BLE_CONTACT_METHODS = {
 
   clearUnread(nexoId) {
     var nx = _normId(nexoId);
+    if (this.groups && this.groups.isGroup(nx)) { this.groups.clearUnread(nx); this.renderContactsList(); _safeDispatchEvent('nexo:unread', { nexoId: nx, count: 0 }); return; }
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (c && c.unreadCount) { c.unreadCount = 0; _saveBLEContacts(contacts); this.renderContactsList(); }
@@ -32,12 +34,13 @@ export const BLE_CONTACT_METHODS = {
   unreadSummary() {
     return _getBLEContacts().map(function(c) {
       return { chatId: _normId(c.nexoId || c.deviceUUID), name: c.name || '', count: c.unreadCount || 0 };
-    }).filter(function(x) { return x.chatId; });
+    }).filter(function(x) { return x.chatId; }).concat(this.groups ? this.groups.all().map(function(g) { return { chatId: g.id, name: g.name, count: g.unreadCount || 0 }; }) : []);
   },
 
   noteContactMessage(nexoId, preview, ts) {
     var nx = _normId(nexoId);
     if (!nx) return;
+    if (this.groups && this.groups.isGroup(nx)) { this.groups.noteMessage(nx, preview ? 'Tú: ' + preview : '', ts); this.renderContactsList(); return; } // propios en un grupo
     var contacts = _getBLEContacts();
     var c = contacts.find(function(x) { return _normId(x.nexoId || x.deviceUUID) === nx; });
     if (!c) return;
@@ -49,7 +52,8 @@ export const BLE_CONTACT_METHODS = {
     this.renderContactsList();
   },
 
-  addSharedContacts(list, sharedBy) {
+  // opts.quiet (ronda 2758, miembros de un grupo): sin resaltarlos como "nuevo contacto"
+  addSharedContacts(list, sharedBy, opts) {
     var self = this;
     var res = { added: [], existing: [] }, keyFilled = false, bundles = [];
     var me = _normId(self.localNexoId);
@@ -70,7 +74,7 @@ export const BLE_CONTACT_METHODS = {
       var pk = (c && typeof c.publicKey === 'string' && /^[A-Za-z0-9+/=]{80,100}$/.test(c.publicKey)) ? c.publicKey : '';
       contacts.push({
         nexoId: nx, deviceUUID: nx, name: name, deviceId: null, addedAt: Date.now(), lastSeen: 0,
-        online: false, unreadCount: 0, lastMessage: '', isNewShared: true, sharedBy: _normId(sharedBy) || null,
+        online: false, unreadCount: 0, lastMessage: '', isNewShared: !(opts && opts.quiet), sharedBy: _normId(sharedBy) || null,
         publicKey: pk, ss: pk && c.ss ? 1 : undefined, // v6.11.1: así el primer mensaje ya puede ir sellado
         nt: pk && c.nt ? 1 : undefined // v6.13.0: y por internet
       });

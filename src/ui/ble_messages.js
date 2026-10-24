@@ -5,6 +5,7 @@
  */
 import { e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
+import { parseGroupEnvelope } from './groups.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
 
 
@@ -371,6 +372,13 @@ export const BLE_MESSAGE_METHODS = {
         var attachmentData = null;
         if (ctrl && ctrl.payload && ctrl.payload.attachment) attachmentData = ctrl.payload.attachment;
         var msgContent = attachmentData ? JSON.stringify(attachmentData) : content;
+        // Ronda 2758: mensaje de grupo (sobre nexo_grp): va al chat del grupo; si no vale (no es miembro), fuera
+        var grp = null, genv = !attachmentData ? parseGroupEnvelope(msgContent) : null;
+        if (genv) {
+          grp = senderUUID && self.groups ? self.groups.receive(genv, senderUUID, messageId) : null;
+          if (!grp) { console.warn('[GROUP] Sobre de grupo descartado (de ' + senderUUID + ')'); return; }
+          msgContent = grp.content;
+        }
         // Acción del chat (eliminar para todos): no es un mensaje; la aplica main.js
         var chatAct = _chatKind(msgContent);
         if (chatAct && chatAct.type === 'nexo_act') isControl = true;
@@ -383,12 +391,14 @@ export const BLE_MESSAGE_METHODS = {
             attachmentPayload: attachmentData ? attachmentData.payload : null,
             attachmentMeta: attachmentData ? attachmentData.meta : null
           };
-          _vaultAppendMessage(senderUUID, vaultMsg, false);
+          _vaultAppendMessage(grp ? grp.gid : senderUUID, vaultMsg, false);
         }
         // v6.14.0: el contador de no leídos lo lleva notify.js (todas las vías: texto largo, fotos, archivos…)
         var pv = _messagePreview(content, attachmentData && attachmentData.attachmentType);
-        if (senderUUID && !isControl && pv !== null) self.noteContactMessage(senderUUID, pv, data.timestamp || Date.now());
+        if (grp) { var gpv = _messagePreview(msgContent, null); if (gpv !== null && !isControl) self.groups.noteMessage(grp.gid, self.groups.memberName(senderUUID) + ': ' + gpv, data.timestamp || Date.now()); }
+        else if (senderUUID && !isControl && pv !== null) self.noteContactMessage(senderUUID, pv, data.timestamp || Date.now());
         _safeDispatchEvent('nexo:ble:messageReceived', {
+          groupId: grp ? grp.gid : undefined,
           deviceId: deviceId,
           deviceUUID: senderUUID,
           content: msgContent,

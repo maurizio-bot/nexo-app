@@ -106,6 +106,8 @@ import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq }
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './ui/qr_verify.js';
 import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE, HD_REENCODE_BPS, _videoFormat, _blobToB64, _makeVideoPreview, _previewAudioTracks, _b64ToBlob, _makeVideoThumb } from './ui/video_tools.js';
 import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
+import { parseGroupEnvelope } from './ui/groups.js';
+import { groupSubtitle, installGroupButton, openGroupChat, openGroupMenu, sendGroupText } from './ui/groups_ui.js';
 import { _STATUS_RANK, _statusRank, _canUpgradeStatus, _getDomMessageStatus, _normId, _getCurrentContactId, _chatKind, _plainText, _myNexoId, _contactName, _peerUnderstands, _cut, _msgSummary, _findMessage, _PREVIEW_BY_TYPE } from './ui/chat_format.js';
 import { cameraUse, _cameraActiveStream, _cameraPreviewMode, _cameraPreviewRecording, _cameraPreviewMediaRecorder, _cameraPreviewVideoChunks, _cameraVideoStartTime, _cameraTimer, _cameraTorchOn, _cameraReview, _showCameraPreviewOverlay, _hideCameraPreviewOverlay, _photoTarget, _videoLimitSec, _updateCameraPreviewUI, _cameraError, _setupVideoRecorder, _startCameraPreview, _cameraStartToken, _stopCameraPreview, _flipCamera, _setCameraMode, _toggleCameraMode, _toggleTorch, _startCameraTimer, _stopCameraTimer, _capturePhoto, _handleCameraCapture, _resumeBleFromCamera, _pauseBleForCamera, _showReview, _closeReview, _retakeReview, _sendReview, _bindCameraPreviewHandlers, _handleCamera, CAMERA_HD_BPS } from './ui/camera.js';
 import { _diagnosticText } from './ui/diag.js';
@@ -164,6 +166,9 @@ var _notifier = createNotifier({
   currentChat: function() { var b = window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface); return b ? b._activeChatDeviceId : _getCurrentContactId(); },
   hidePreview: function() { return lockEnabled(); },
   sendRead: function(nexoId, msgId) {
+    // Ronda 2758: en un grupo el "leído" va a quien escribió el mensaje
+    var gs = window.bleInterface && window.bleInterface.groups;
+    if (gs && gs.isGroup(nexoId)) { nexoId = gs.senderOf(msgId); if (!nexoId) return; }
     setTimeout(function() { window.dispatchEvent(new CustomEvent('nexo:ble:sendReadReceipt', { detail: { nexoId: nexoId, msgId: msgId } })); }, 400);
   }
 });
@@ -173,6 +178,7 @@ initE2E().then(function() { return ratchetInit(); }).catch(function(e) { console
 function _refreshLinkSubtitle() {
   var sub = document.getElementById('chat-contact-subtitle');
   var bi = window.bleInterface, cid = _getCurrentContactId();
+  if (sub && bi && bi.groups && bi.groups.isGroup(cid)) { sub.textContent = groupSubtitle(bi.groups.get(cid)); return; } // ronda 2758
   if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) return;
   var via = bi.linkOf(cid);
   sub.textContent = via === 'wifi' ? 'En línea · Wi-Fi' : via === 'internet' ? 'En línea · Internet' : via === 'bluetooth' ? 'En línea · Bluetooth' : via === 'jump' ? 'Por Jump' : '';
@@ -180,6 +186,17 @@ function _refreshLinkSubtitle() {
 ['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {
   window.addEventListener(ev, function() { setTimeout(_refreshLinkSubtitle, 50); });
 });
+
+// Ronda 2758: chats de grupo (groups.js / groups_ui.js)
+window.NEXO_openGroupChat = openGroupChat;
+window.NEXO_sendGroupText = sendGroupText;
+window.NEXO_openGroupMenu = openGroupMenu;
+window.addEventListener('nexo:groups', function() {
+  var b = window.bleInterface;
+  if (b && typeof b.renderContactsList === 'function') b.renderContactsList();
+  _refreshLinkSubtitle();
+});
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installGroupButton); else installGroupButton();
 
 window.vaultSaveContact = vaultSaveContact;
 // FIX v9.9.29: ble_interface guarda los contactos con window.vaultSaveContacts; no estaba expuesto y
@@ -394,6 +411,18 @@ function _handleIncomingMessage(msg) {
         } catch (e) {}
       }
     }
+    // Ronda 2758: mensaje de grupo que llegó por el camino de los textos largos (los cortos ya vienen con groupId)
+    var bgs = window.bleInterface && window.bleInterface.groups;
+    if (!msg.groupId) {
+      var genv = parseGroupEnvelope(msg.content);
+      if (genv) {
+        var gr = bgs ? bgs.receive(genv, msg.senderNexoId || msg.deviceUUID, msg.messageId || msg.msgId) : null;
+        if (!gr) return;
+        msg.groupId = gr.gid; msg.content = gr.content;
+        var gpv = _plainText(gr.content);
+        bgs.noteMessage(gr.gid, bgs.memberName(msg.senderNexoId) + ': ' + _cut(gpv, 50), msg.timestamp || Date.now());
+      }
+    }
     // v9.9.45: acción del chat (eliminar para todos): se aplica, no se muestra
     var chatAct = _chatKind(msg.content);
     if (chatAct && chatAct.type === 'nexo_act') { _applyChatAction(msg.senderNexoId || msg.deviceUUID, chatAct); return; }
@@ -416,10 +445,11 @@ function _handleIncomingMessage(msg) {
     var msgId = msg.messageId || msg.msgId || '';
     if (senderId) {
       var sc = vaultFindContactByNexoId(senderId);
-      _notifier.incoming({
-        cid: senderId, msgId: msgId, name: (sc && (sc.name || sc.displayName)) || msg.senderName || 'NEXO',
-        preview: msg.attachmentType ? (_PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo') : _cut(_plainText(msg.content), 80)
-      });
+      var who = (sc && (sc.name || sc.displayName)) || msg.senderName || 'NEXO';
+      var pvw = msg.attachmentType ? (_PREVIEW_BY_TYPE[msg.attachmentType] || '📎 Archivo') : _cut(_plainText(msg.content), 80);
+      var grpN = msg.groupId && bgs ? bgs.get(msg.groupId) : null;
+      _notifier.incoming(grpN ? { cid: grpN.id, msgId: msgId, name: grpN.name, preview: who + ': ' + pvw }
+        : { cid: senderId, msgId: msgId, name: who, preview: pvw });
     }
   } catch (err) {
     console.warn('[MAIN] _handleIncomingMessage error:', err && err.message);
@@ -503,6 +533,13 @@ function _registerCriticalListeners() {
     });
     window.addEventListener('nexo:ble:fileProgress', function(e) {
       try { _onFileProgress(e && e.detail); } catch (err) {}
+    });
+    // Ronda 2758: estado de un mensaje de grupo (el menor de los de cada miembro, groups.js)
+    window.addEventListener('nexo:groups:status', function(e) {
+      var d = (e && e.detail) || {};
+      if (!d.msgId || !d.status) return;
+      _updateMessageStatus(d.msgId, d.status);
+      _updateMessageStorageStatus(d.msgId, d.status, d.gid);
     });
     window.addEventListener('nexo:ble:ackStatus', function(e) {
       try {

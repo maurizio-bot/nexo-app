@@ -602,6 +602,9 @@ async function _appendMessageNow(cid, message) {
     attachmentMeta: message.attachmentMeta || null,
     attachmentRef: message.attachmentRef || null
   };
+  // Ronda 2758: copia oculta (acciones del chat, copias de los mensajes de grupo para cada miembro): se guarda para
+  // reenviarse pero no se dibuja (antes se perdía la marca al guardar y al reabrir el chat salía como texto)
+  if (message.hidden) normalized.hidden = true;
   var existingIdx = messages.findIndex(function(m) { return m.msgId === normalized.msgId; });
   var existing = existingIdx >= 0 ? messages[existingIdx] : null;
   _externalizeAttachment(normalized, existing);

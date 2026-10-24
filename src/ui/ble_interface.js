@@ -5,6 +5,7 @@ import { createRelay } from './ble_relay.js';
 import { createWifiDirect } from './wifi_direct.js';
 import { createLan } from './lan.js';
 import { createBigFiles } from './big_file.js';
+import { createGroups } from './groups.js';
 import { createNet } from '../net/net_link.js';
 import { createFenix } from '../fenix/fenix.js';
 import { BLE_NEXO_ID_VAULT_FILE, BLE_PINNED_VAULT_FILE, BLE_UUID_VAULT_FILE, BLE_SEQ_COUNTER_FILE, GRADIENTS, _blePinnedCache, _bleUUIDCache, _getGradientForUUID, _getInitials, _generateNexoId, _saveNexoIdToVault, _loadNexoIdFromVault, _getOrCreateNexoId, _lanId, _netId, _netNx, _vNx, _lanNx, _isProtocolShaped, _chatKind, _cut, _messagePreview, _formatTime, _generateUUID, _loadDeviceUUID, _normId, _normMac, _getBLEContacts, _saveBLEContacts, _addBLEContact, _removeBLEContact, _isBLEContact, _getContactByUUID, _getContactByDeviceId, _getPinnedContacts, _togglePinnedContact, _loadPinnedFromVault, _loadSeqCounter, _saveSeqCounter, _isPinned, BLE_STATES, SUPERVISOR_STATES, _hasNativeMethod, _safeNativeCall, _safeDispatchEvent, _showToast, _isControlPacket, _isResendable, _failStatus, _vaultUpdateMessageStatus, _vaultGetOrCreateContact, _vaultAppendMessage, _hydrateAttachments, _vaultLoadMessages, _autoScanRegister, _autoScanUnregister, _autoScanStart } from './ble_helpers.js';
@@ -98,6 +99,7 @@ export class BLEInterface {
     this.wifiDirect = createWifiDirect(this);
     this.lan = createLan(this);
     this.bigFiles = createBigFiles(this);
+    this.groups = createGroups(this); // ronda 2758: chats de grupo
     this.net = createNet(this);
     this.fenix = createFenix(this);
     this._localSeqCounter = 0;
@@ -718,6 +720,8 @@ export class BLEInterface {
       try {
         var uuid = _normId(deviceUUID);
         if (!uuid) { reject(new Error('ID invalido')); return; }
+        // Ronda 2758: un grupo no es un teléfono (groups_ui.js)
+        if (self.groups && self.groups.isGroup(uuid) && typeof window.NEXO_openGroupChat === 'function') { window.NEXO_openGroupChat(uuid); resolve(); return; }
         var contact = _getContactByUUID(uuid);
         var deviceId = contact ? contact.deviceId : null;
         if (!deviceId) {

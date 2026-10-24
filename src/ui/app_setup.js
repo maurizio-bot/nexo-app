@@ -193,6 +193,14 @@ export function _setupMessageInput() {
       // reabrir el chat y la cola de reenvío no lo veía).
       var chatContactId = _getCurrentContactId();
       if (chatContactId) _msgContactMap[msgId] = chatContactId;
+      // Ronda 2758: en un grupo, a cada miembro (groups_ui.js)
+      var gsx = window.bleInterface && window.bleInterface.groups;
+      if (gsx && gsx.isGroup(chatContactId) && typeof window.NEXO_sendGroupText === 'function') {
+        var gwire = _replyTo ? JSON.stringify({ type: 'nexo_txt', t: text, rp: _replyTo }) : text;
+        _cancelReply();
+        window.NEXO_sendGroupText(chatContactId, gwire, text, 'gm' + msgId.substring(3));
+        return;
+      }
       // v9.9.45: respuesta a una burbuja (solo si el otro la entiende; si no, va el texto solo)
       var wire = text;
       if (_replyTo && _peerUnderstands(chatContactId)) wire = JSON.stringify({ type: 'nexo_txt', t: text, rp: _replyTo });
@@ -317,6 +325,8 @@ export function _setupChatHeader() {
         }
         try {
           var activeId = window.NEXO.app && window.NEXO.app.activeContact ? window.NEXO.app.activeContact.nexoId : null;
+          var gsn = window.bleInterface && window.bleInterface.groups;
+          if (activeId && gsn && gsn.isGroup(activeId)) { gsn.rename(activeId, newName); activeId = null; } // ronda 2758
           if (activeId) {
             var c = vaultFindContactByNexoId(activeId);
             if (c) {
