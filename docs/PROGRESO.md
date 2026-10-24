@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2758)
+Última actualización: 2026-10-24 (build 2759)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -84,7 +84,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2755 | `c035890` | Solo diagnóstico (el dueño dice que los archivos no llegan; sin cambio de comportamiento): en Perfil → Copiar diagnóstico salen los errores de Bluetooth del nativo (`BT_ERR`: escritura o notificación fallida, mensaje descartado, trozo binario incompleto; uno por tipo cada 5 s) y una línea `[BIN]` por cada envío/recepción en binario. APK verificada (firma 23d86688…, manifiesto igual que la 2754) |
 | 2756 | `a7b3641` | Archivos grandes hasta 1 GB por el mismo Wi-Fi / Wi-Fi Direct (informe del dueño: un APK de 24 MB no salía) e ID Bluetooth rotativo (plan punto 4). APK verificada (24,5 MB, firma 23d86688…, manifiesto igual que la 2755, clases nuevas presentes). Falta probarla en teléfonos |
 | 2757 | ac3a670 | MTU pequeño (punto 8), Fénix para fotos y archivos (punto 9), Jump por Wi-Fi probado (punto 10), recibir por Bluetooth con la app cerrada (punto 12). APK verificada (nightly-2757); falta probarla en teléfonos |
-| 2758 | (este commit) | Archivos grandes por Bluetooth L2CAP sin Wi-Fi (punto 13, fase 1), chats de grupo con textos, fotos, audio y archivos (punto 14), llamadas de voz (punto 16) y videollamadas en el mismo Wi-Fi (punto 17); arreglos: foto por Jump que no se completaba al reenviarse directa, acciones ocultas visibles al reabrir el chat. Falta verificar la APK y probarla en teléfonos |
+| 2758 | 28b3a80b | Archivos grandes por Bluetooth L2CAP sin Wi-Fi (punto 13, fase 1), chats de grupo con textos, fotos, audio y archivos (punto 14), llamadas de voz (punto 16) y videollamadas en el mismo Wi-Fi (punto 17); arreglos: foto por Jump que no se completaba al reenviarse directa, acciones ocultas visibles al reabrir el chat. Falta verificar la APK y probarla en teléfonos |
+| 2759 | (este commit) | Corrección mínima sobre la 2758: botón 👤 arriba (junto al 👥) que abre Perfil, porque la barra de abajo (Chats · Gente · Mapa · Perfil) queda fuera de la pantalla y no había forma de copiar el diagnóstico; la cabecera tiene altura propia y los botones ya no se salen por arriba. En investigación: en teléfonos reales con la 2758 no llegan fotos ni archivos (falta el diagnóstico de los dos teléfonos) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el

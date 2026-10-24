@@ -113,7 +113,7 @@ import { groupSubtitle, installGroupButton, openGroupChat, openGroupMenu, sendGr
 import { _STATUS_RANK, _statusRank, _canUpgradeStatus, _getDomMessageStatus, _normId, _getCurrentContactId, _chatKind, _plainText, _myNexoId, _contactName, _peerUnderstands, _cut, _msgSummary, _findMessage, _PREVIEW_BY_TYPE } from './ui/chat_format.js';
 import { cameraUse, _cameraActiveStream, _cameraPreviewMode, _cameraPreviewRecording, _cameraPreviewMediaRecorder, _cameraPreviewVideoChunks, _cameraVideoStartTime, _cameraTimer, _cameraTorchOn, _cameraReview, _showCameraPreviewOverlay, _hideCameraPreviewOverlay, _photoTarget, _videoLimitSec, _updateCameraPreviewUI, _cameraError, _setupVideoRecorder, _startCameraPreview, _cameraStartToken, _stopCameraPreview, _flipCamera, _setCameraMode, _toggleCameraMode, _toggleTorch, _startCameraTimer, _stopCameraTimer, _capturePhoto, _handleCameraCapture, _resumeBleFromCamera, _pauseBleForCamera, _showReview, _closeReview, _retakeReview, _sendReview, _bindCameraPreviewHandlers, _handleCamera, CAMERA_HD_BPS } from './ui/camera.js';
 import { _diagnosticText } from './ui/diag.js';
-import { profileUse } from './ui/profile.js';
+import { profileUse, installProfileButton } from './ui/profile.js';
 import { _wdReach, _getAttachmentPlugins, _toggleAttachMenu, _closeAttachMenu, _releaseMedia, _showPermissionError, _showInfoToast, _hideInfoToast } from './ui/ui_bits.js';
 import { shareContactsUse, _contactsStyles, _handleShareContacts, _renderContactCard } from './ui/share_contacts.js';
 shareContactsUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
@@ -199,6 +199,8 @@ window.addEventListener('nexo:groups', function() {
   _refreshLinkSubtitle();
 });
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installGroupButton); else installGroupButton();
+// Ronda 2759: botón 👤 (Perfil) en la cabecera
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installProfileButton); else installProfileButton();
 // Ronda 2758: llamadas de voz (calls.js / calls_ui.js)
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installCallsUi); else installCallsUi();
 

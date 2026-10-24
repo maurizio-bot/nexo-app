@@ -50,6 +50,21 @@ Consolidado: inline + main.css + ble_styles
    height: 100dvh;
    background: #000;
    }
+   /* Ronda 2759: cabecera de la pantalla principal con altura propia; antes medía lo que el título (20 px) y los
+      botones 👥 y 👤 (40 px) se salían por arriba */
+   #main-header {
+   position: relative;
+   display: flex;
+   align-items: center;
+   flex-shrink: 0;
+   min-height: 60px;
+   padding: 0 116px 0 16px;
+   box-sizing: border-box;
+   }
+   #main-title {
+   font-size: 20px;
+   font-weight: 700;
+   }
    /* Status indicator */
    #status-indicator {
    position: fixed;

@@ -64,6 +64,21 @@ function _openProfileSheet() {
 }
 window.addEventListener('nexo:ui:profile', _openProfileSheet);
 
+// Ronda 2759: botón 👤 en la cabecera (junto al 👥). La barra de abajo (Chats · Gente · Mapa · Perfil) queda fuera de la
+// pantalla en los teléfonos y Perfil (con el diagnóstico) no se podía abrir.
+export function installProfileButton() {
+  var header = document.getElementById('main-header');
+  if (!header || document.getElementById('nexo-profile-btn')) return;
+  var b = document.createElement('button');
+  b.id = 'nexo-profile-btn';
+  b.title = 'Perfil';
+  b.textContent = '👤';
+  b.style.cssText = 'position:absolute;right:62px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.1);color:#fff;border:none;font-size:20px;cursor:pointer;z-index:5;';
+  if (getComputedStyle(header).position === 'static') header.style.position = 'relative';
+  b.addEventListener('click', function(e) { e.stopPropagation(); _openProfileSheet(); });
+  header.appendChild(b);
+}
+
 // ===================== v9.9.44: Protocolo Fénix (src/fenix/fenix.js, docs/FENIX.md) =====================
 var _fenixRecoveryText = '';
 function _renderNetStatus() {
