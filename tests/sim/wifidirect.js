@@ -13,7 +13,8 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 
 const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
-const opts = { wifiDirect: true, readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 0), asymmetric: true };
+// noL2: sin L2CAP (Android 9), para ver el límite de Wi-Fi Direct / Bluetooth de siempre (ronda 2758)
+const opts = { wifiDirect: true, readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 0), asymmetric: true, noL2: true };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 class DistLoader extends ResourceLoader {
   constructor(dir) { super(); this.dir = dir; }

@@ -44,6 +44,7 @@ const SCENARIOS = [
   { name: 'recibir con la app cerrada (buzón, ✓✓ y aviso)', args: ['background.js', '--scenario=closed', '--io-delay=25', '--app-events'], tag: 'BACKGROUND', checks: {
     llegada_a_B_tras_volver: (v) => Array.isArray(v) && v.every((x) => !/NO LLEGÓ/.test(x)),
     con_B_cerrada: (v) => !!v && v.estado_en_A.every((x) => /delivered|read/.test(x)) && v.notificaciones_B.length >= 1 && v.oculta_en_buzon_sin_aviso === true } },
+  { name: 'chats de grupo (crear, escribir, texto largo, salir)', args: ['groups.js', '--io-delay=25'], tag: 'GROUPS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'Double Ratchet y poscuántico', args: ['ratchet.js'], tag: null },
 ];
 

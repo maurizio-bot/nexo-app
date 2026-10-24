@@ -58,6 +58,9 @@ trozos a disco, paso por Wi-Fi / Wi-Fi Direct, estado de la tarjeta; nativo en `
 Ronda 2757: `BgInbox.kt` (nativo): con la app cerrada, qué se guarda en el buzón, qué se confirma y qué se avisa;
 lo usa `NexoBlePlugin.kt` (closedReceive / takeOverFromClosed).
 
+Ronda 2758: `ui/groups.js` (chats de grupo: almacén `nexo_groups.json`, sobre `nexo_grp`, envío a cada miembro y
+estado conjunto) y `ui/groups_ui.js` (botón 👥, hoja para crear, abrir el chat del grupo, menú). `bleInterface.groups`.
+
 Sin cambios: `ui/ble_ack.js` (protocolo de trozos), `ui/ble_relay.js` (Jump), `ui/lan.js`, `ui/wifi_direct.js`,
 `net/net_link.js` (internet), `vault/*`, `fenix/*`.
 

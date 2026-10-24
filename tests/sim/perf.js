@@ -27,7 +27,7 @@ setInterval(() => { const now = Date.now(); const lag = now - last - 20; if (lag
 function resetLag() { maxLag = 0; lagSamples = []; }
 
 async function boot(name, address, radio) {
-  const native = new NativePhone(name, address, { readsContentFallback: true, mtu, loss, pace, retain: ['onPayloadReceived'], scanPenalty: argNum('scan-penalty', 0) });
+  const native = new NativePhone(name, address, { readsContentFallback: true, mtu, loss, pace, retain: ['onPayloadReceived'], scanPenalty: argNum('scan-penalty', 0), noL2: true /* límite del GATT: sin L2CAP (2758) */ });
   radio.add(native); native.load();
   const logs = [];
   const vc = new VirtualConsole();

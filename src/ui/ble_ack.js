@@ -2,6 +2,7 @@ import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
+* v3.14.0: el mismo mensaje troceado distinto por otro camino (puente cortado y reenvío directo) ya no se queda sin completar
 * v3.13.0: trozos de archivo en binario por Bluetooth (BinFrame.kt; sin el 33 % del base64) con quien lo anuncia
 *         ('bf' en kx, pings y acks); con builds anteriores, el JSON de siempre.
 * v3.12.1: el registro de arranque dice la versión real (decía v3.2.12).
@@ -187,7 +188,7 @@ export class BleAckSystem {
     this.blockAckTimers = new Map();
     this.completedMessages = new Map();
     this._startCleanupInterval();
-    console.log('[BleAckSystem] v3.13.0-NEXO iniciado');
+    console.log('[BleAckSystem] v3.14.0-NEXO iniciado');
   }
   _resolveNexoId(deviceId) {
     // Enlaces Wi-Fi e internet: el NEXO ID va en el propio identificador ("lan:nx…", "net:nx…")
@@ -466,6 +467,16 @@ export class BleAckSystem {
       return;
     }
     var buf = self.incomingBuffers.get(msgId);
+    // Ronda 2758: el mismo mensaje llega por otro camino troceado distinto (el puente Jump lo empezó y se cortó, y el
+    // emisor lo manda directo): si lo que había a medias está parado, se empieza con el nuevo (antes se mezclaban los
+    // trozos y no se completaba nunca); si los dos siguen activos, se sigue con el primero
+    if (buf && buf.total !== total) {
+      if (Date.now() - (buf.lastActivity || 0) < 4000) return;
+      console.warn('[BleAckSystem] ' + msgId + ' llega troceado distinto (' + buf.total + ' → ' + total + ' trozos): se empieza de nuevo');
+      if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
+      self.incomingBuffers.delete(msgId);
+      buf = null;
+    }
     if (!buf && idx !== 0) {
       var missing = [];
       for (var i = 0; i <= Math.min(idx, total - 1); i++) missing.push(i);

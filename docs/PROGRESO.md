@@ -210,6 +210,24 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## Ronda 2758: chats de grupo (plan del dueño punto 14, fase 1: textos)
+- **Grupos** (`groups.js`, `groups_ui.js`): botón 👥 arriba en la pantalla principal → nombre y contactos → "Crear
+  grupo". Sin servidor: el grupo (id `gr…`, nombre, miembros) se guarda en cada teléfono y cada mensaje va a cada
+  miembro por su chat de siempre (cifrado de extremo a extremo, por Bluetooth, Jump, Wi-Fi o internet) dentro de un
+  sobre `nexo_grp`; quien lo recibe crea o actualiza el grupo (solo si él y el remitente son miembros). El primer
+  mensaje lleva las tarjetas de los miembros (como compartir contactos): así se pueden escribir aunque no se
+  conocieran (se añaden como contactos sin resaltarlos). En el chat del grupo cada burbuja dice quién la escribió;
+  la propia pasa a ✓✓ cuando les llegó a todos (y a leído cuando todos lo leyeron). Lista de chats: "👥 Nombre",
+  último mensaje "B: …" y no leídos; notificación con el nombre del grupo. Menú ⋮: miembros y salir del grupo.
+  Cada copia queda oculta en el chat 1:1 del miembro y se reenvía sola si no está a alcance. Fase 2: fotos, notas de
+  voz y archivos en grupos (hoy el clip avisa "por ahora solo textos"); avisar con la app cerrada con el nombre del
+  grupo (hoy el aviso nativo dice el del remitente).
+- Simulado (`groups.js`, en `ci.js`): A crea el grupo con B y C (que no se conocían): aparece en los tres, B y C se
+  pueden escribir, ✓✓ en A; B escribe → llega a A (no leído 1, "B: hola grupo…") y a C (burbuja "B: …"), no en los
+  chats 1:1; un texto largo de C llega a los dos; C sale → A y B lo ven y ya no le mandan.
+- **Arreglado de paso**: la copia oculta de "eliminar para todos" perdía la marca al guardarse y, al reabrir el chat,
+  quien borró veía una burbuja con el JSON de la acción (comprobado en `chatactions.js`: 1 burbuja antes, 0 ahora).
+
 ## Ronda 2758: archivos grandes por Bluetooth L2CAP (plan del dueño punto 13, fase 1)
 - Sin Wi-Fi ni Wi-Fi Direct, un archivo grande (más de ~2 MB, hasta 1 GB) ya no se rechaza: va por un canal L2CAP del
   Bluetooth (Android 10+ en los dos; `l2` en el kx). Es un flujo directo sobre la conexión Bluetooth, sin GATT, sin
