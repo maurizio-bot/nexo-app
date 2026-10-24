@@ -243,6 +243,9 @@ teléfonos). El límite existía porque todo archivo pasaba entero por la memori
   Con la 2752 falla (el NEXO ID sale 6 veces y el desconocido los ve). Kotlin: `RidTokenTest` (vectores de la app).
   `run`, `jump` (desconocidos, cadena), `fenix` (recupera con 5 contactos) y mezcla con la 2752 en verde.
 - Diagnóstico (2755, también aquí): `BT_ERR` y `[BIN]`.
+- Batería completa (bat39, 62 ejecuciones): igual que bat38 salvo tiempos y textos; nuevas en verde (`rid`, `big`,
+  `big --wd`, `big --no-route`); `jump --net` (que en bat38 dejó una foto en "enviando") en verde. Las 13 pruebas de
+  GitHub en verde (con `rid.js` y `big.js`).
 
 ## Ronda 2753–2754: Bluetooth sin base64 (plan del dueño, punto 7)
 - Antes cada trozo de un archivo viajaba como texto JSON con los datos en base64: ~450 bytes por la radio para 270
