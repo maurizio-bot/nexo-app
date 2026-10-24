@@ -91,7 +91,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2762 | 4634f69e | La 2761 + lo que estaba pendiente: pasar la cuenta a un teléfono nuevo (punto 15 A), aviso "Llamada entrante" con la app cerrada, botón de altavoz; llamadas: códec real en oferta y respuesta (un teléfono sin Opus no oía nada), videollamada por altavoz, salida de audio Android 12+, diagnóstico `[CALL]`; pantalla de llamada y videollamada nueva (estilo WhatsApp + NEXO, girar cámara). **Sin APK**: en GitHub falló una prueba Kotlin de tiempos (`AtRestStoreTest.migrarArchivoGrandeNoBloqueaOtros`: un guardado tardó 394 ms por una pausa de la máquina; el código no tenía fallo). Todo pasa a la 2763 |
 | 2763 | 5c215c86 | La 2762 + toda la app con el estilo NEXO (como la pantalla de llamadas), llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar), avisos de grupo con el nombre del grupo con la app cerrada o congelada, y la prueba de tiempos rehecha (determinista). Ver "Ronda 2763". APK verificada (nightly-2763, 24,5 MB) |
 | 2764 | 7c9afbaa | **Informe grave del dueño (tablet + S24 + Vivo): lo que la tablet mandaba al S24 (archivos, llamadas) sonaba y avisaba en el Vivo**: cada paquete directo dice a quién va y el que no es lo ignora (no suena, no avisa, no ✓✓), avisa "no soy yo" y el emisor corrige la conexión; un sobre de Jump de paso ya no avisa en el siguiente teléfono; al buscar ya no sale "Unknown" (nombre del teléfono al conectar) y "Agregar" nunca falla en silencio. Además: grupos con vídeo HD y archivos grandes; pantalla girada sin barra gris. Ver "Ronda 2764". **Sin APK**: el comentario de `nexo_colors.xml` llevaba "--" (no permitido en XML) y falló la compilación de Android. Todo pasa a la 2765 |
-| 2765 | (este commit) | La 2764 con el XML corregido (todos los XML de Android revisados con un analizador) |
+| 2765 | d9366857 | La 2764 con el XML corregido (todos los XML de Android revisados con un analizador). APK publicada (nightly-2765) |
+| 2766 | (este commit) | Revisión completa, parte 1 (escaneo, agregar, conexión): los pings nunca se contestaban (el enlace se rehacía cada ~30 s), un archivo podía salir cifrado para el teléfono equivocado, el Wi-Fi se perdía al volver a la app, BUSCAR se quedaba colgado, reconexión sin esperas, caídas del Bluetooth sin avisar, Tor sin dirección .onion. Mejoras: foto de perfil, avisos y llamadas que encienden la pantalla y se ven sobre el bloqueo, Perfil → "Avisos con la pantalla apagada". Ver "Ronda 2766" |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -217,6 +218,51 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2766: revisión completa, parte 1 (escaneo, agregar, conexión) y mejoras pedidas
+Pedido del dueño (24-10): revisar la app por partes (escaneo → agregar → conexión → mensajes y archivos → llamadas →
+interfaz) y, de paso, mejorar (foto de perfil; avisos y llamadas con la app en segundo plano o cerrada y con la pantalla
+apagada, que la enciendan). Cada fallo se reprodujo primero en el simulador con el código de la 2765 y se comprobó
+después con el arreglo (las cifras son de esas dos corridas).
+- **Ningún ping se contestaba** (`idle.js`): el ping y el pong se descartaban antes de llegar a su respuesta, así que el
+  vigilante cortaba cada ~30 s todo enlace Bluetooth sin tráfico ("sin respuesta a 2 pings") y lo rehacía: el "Peer
+  ready cada ~30 s" del diagnóstico de la ronda 2760 y los enlaces de MTU 23 al rehacerse. 2765, 80 s sin escribirse:
+  7 pings, 0 pongs, 3 cortes; ahora 7 pongs, ningún corte y el mismo enlace (por Bluetooth y con Wi-Fi).
+- **El arreglo de la 2764 no bastaba** (`misroute.js`, caso 4 nuevo): con el chat del S24 abierto por la conexión que
+  resultó ser del Vivo y el S24 ya lejos, un archivo salía por ella **cifrado para el Vivo**: el Vivo lo guardaba y avisaba
+  "📎 Archivo". Ahora cada texto y archivo dice desde el principio para quién es: se cifra para él y solo sale por una
+  conexión suya; si no la hay, queda pendiente (llegó al S24 al volver).
+- **Envíos por trozos que se reintentaban sin fin** por una conexión que ya no servía o que era de otro (hasta el tiempo
+  máximo: 45 s un texto largo, hasta 15 min un archivo): ahora siguen por el camino bueno o quedan pendientes. En
+  `misroute.js`, la llamada hecha con la conexión equivocada ahora suena en el teléfono correcto (antes no sonaba en
+  ninguno).
+- **Volver a la app borraba el enlace Wi-Fi** (`resume.js`; p. ej. tras elegir una foto en la galería): ya no se mandaba
+  nada por Wi-Fi; un texto tardó 17 s (por Bluetooth) y un archivo de 120 KB no llegó en 60 s. Ahora: 0,2 s y 0,8 s.
+- **BUSCAR se quedaba colgado**: el nativo para solo a los 15 s sin avisar y la app seguía "buscando" (botón en PARAR,
+  "Agregar" sin nadie nuevo y ninguna búsqueda automática más). Ahora el nativo lo avisa (`onScanStopped`) y, por si
+  acaso, la app lo da por parado a los 16 s.
+- **Reconexión sin esperas**: con el otro fuera de alcance se reintentaba cada ~3 s sin fin y se buscaba en cuanto
+  acababa la búsqueda anterior (Android ignora más de 5 búsquedas en 30 s). En 40 s: 21 intentos y 7 búsquedas con la
+  2765; ahora 5 y 4 (esperas de 2, 4, 8, 16 y 30 s; se deja a los ~2,5 min o si ya está por otro camino; la búsqueda de
+  contactos perdidos sigue aparte).
+- **Caídas reales del Bluetooth** (Kotlin): las que llegan como error (fuera de alcance, el otro la cerró) no se
+  avisaban a la app, que seguía viendo al contacto "en línea" y mandándole por ahí hasta que el vigilante cortaba. Ahora
+  se avisa y se limpia como una desconexión normal. Solo se compila en GitHub (no hay Android aquí).
+- **Tor** ("sin dirección .onion" en el diagnóstico del Vivo): la librería jtorctl devuelve `onionAddress` /
+  `onionPrivKey` y se leían otros nombres. `TorOnion.kt` + prueba con la jtorctl de verdad (`TorOnionTest`).
+- Mejoras pedidas:
+  - **Foto de perfil** (`avatar.js`): Perfil → tocar el círculo → Cambiar foto / Quitar. Se recorta cuadrada (160 px,
+    ~10–15 KB) y va cifrada a cada contacto por cualquier camino, sin aviso ni "no leído"; a un contacto nuevo, al
+    conectar. Sale en la lista, en la fila de conectados, en la llamada y en Perfil.
+  - **Pantalla apagada** (`alerts.js`): un mensaje nuevo enciende la pantalla (se puede quitar en Perfil); una llamada,
+    siempre, y se ve encima de la pantalla de bloqueo hasta colgar. Perfil → "Avisos con la pantalla apagada":
+    notificaciones, llamadas a pantalla completa y funcionar en segundo plano, con "Arreglar" si falta algo; al
+    arrancar se pide una vez que el ahorro de batería no congele NEXO (el Vivo la congela). Lo nativo se comprueba en
+    el teléfono.
+  - Iniciales: un grupo "👥 Familia" salía "�F".
+- Pruebas: `idle.js` (Bluetooth y Wi-Fi), `resume.js`, `misroute.js` con el caso 4, `alerts.js`, `avatar.js`, todas en
+  `ci.js`. Batería completa 29/29 y Kotlin 65/65. Visto en la revisión y pendiente: `docs/PENDIENTES.md` §6 (lo más
+  grave, para la 2767: textos largos pendientes que se pierden mostrando "entregado", reproducido en el simulador).
 
 ## Ronda 2764: lo de la tablet para el S24 llegaba al Vivo (informe grave del dueño)
 Informe (2763, tablet + S24 + Vivo): al mandar archivos o llamar desde la tablet al S24, llegaba al Vivo; tras borrar

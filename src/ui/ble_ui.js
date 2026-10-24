@@ -275,6 +275,9 @@ export const BLE_UI_METHODS = {
           self.isScanning = true;
           self._autoScanActive = false;
           self.updateScanButton();
+          // Ronda 2766: el nativo para solo a los 15 s; si no avisa (versión anterior), se da por parada igual
+          clearTimeout(self._userScanTimer);
+          self._userScanTimer = setTimeout(function() { if (self.isScanning && !self._autoScanActive) { self.isScanning = false; self.updateScanButton(); } }, 16000);
         });
       }
       self.isScanning = true;

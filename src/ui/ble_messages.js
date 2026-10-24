@@ -295,7 +295,10 @@ export const BLE_MESSAGE_METHODS = {
             var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: trimmedContent });
             if (fragmentHandled) return;
           }
-          return;
+          // Ronda 2766 (revisión): el ping y el pong siguen hasta su respuesta, más abajo. Este return los descartaba
+          // desde siempre: ningún ping se contestaba y el vigilante cortaba cada ~30 s todo enlace parado (lo que el
+          // dueño vio en la ronda 2760: el enlace se rehacía cada ~30 s y las fotos por Bluetooth no llegaban)
+          if (!(protoCheck && (protoCheck.type === 'ping' || protoCheck.type === 'pong'))) return;
         }
         if (self.ackSystem) {
           var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: content });
@@ -671,6 +674,8 @@ export const BLE_MESSAGE_METHODS = {
         if (!uuid) { reject(new Error('deviceUUID vacio')); return; }
         var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
         var msgSeq = (typeof seq === 'number') ? seq : self.getNextSeq();
+        // Ronda 2766: a quién va, desde el principio (dn del paquete y para quién se cifra)
+        if (/^nx[0-9a-z]{8}$/.test(uuid)) { self._msgDest = self._msgDest || new Map(); self._msgDest.set(msgId, uuid); }
 
         var deviceId = self._resolveDeviceIdForNexoId(uuid);
         // v6.3.0 Jump: sin enlace directo pero con ruta por otro teléfono → sale por él
@@ -725,14 +730,14 @@ export const BLE_MESSAGE_METHODS = {
         function doSend() {
           var isLong = content.length > 180;
           if (isLong && self.ackSystem && typeof self.ackSystem.sendChunkedMessage === 'function') {
-            self.ackSystem.sendChunkedMessage(deviceId, content, {}, msgId, msgSeq)
+            self.ackSystem.sendChunkedMessage(deviceId, content, { to: uuid }, msgId, msgSeq)
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
               .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, _failStatus(err)); reject(err); });
             return;
           } else if (self.ackSystem && typeof self.ackSystem.sendWithRetry === 'function') {
             // v6.1.5: con confirmación y reintentos; antes un paquete perdido en el aire se perdía
             // para siempre aunque mostrara ✓ (el receptor descarta duplicados por id)
-            self.ackSystem.sendWithRetry(deviceId, content, msgId, msgSeq)
+            self.ackSystem.sendWithRetry(deviceId, content, msgId, msgSeq, { to: uuid })
               .then(function() { _vaultUpdateMessageStatus(uuid, msgId, 'sent'); resolve(); })
               .catch(function(err) { _vaultUpdateMessageStatus(uuid, msgId, _failStatus(err)); reject(err); });
           } else {
@@ -776,8 +781,8 @@ export const BLE_MESSAGE_METHODS = {
 
         var deviceId = self._resolveDeviceIdForNexoId(uuid);
         if (!deviceId) {
-          // Último intento: active chat
-          if (self._activeChatDeviceId === uuid && self._activeChatDeviceIdNative) {
+          // Último intento: active chat (ronda 2766: no si esa dirección consta como de otro contacto)
+          if (self._activeChatDeviceId === uuid && self._activeChatDeviceIdNative && !self._macOfOther(self._activeChatDeviceIdNative, uuid)) {
             deviceId = self._activeChatDeviceIdNative;
           }
         }
@@ -799,7 +804,9 @@ export const BLE_MESSAGE_METHODS = {
 
         function startTransfer() {
           console.log('[BLEInterface] sendFile START fileId=' + fileId + ' deviceId=' + deviceId + ' b64len=' + base64Data.length);
-          self.ackSystem.sendFile(deviceId, fileId, base64Data, meta || {})
+          // Ronda 2766: a quién va (se cifra para él y solo sale por una conexión suya)
+          var m2 = (meta && meta.dst) ? meta : Object.assign({}, meta || {}, { to: uuid });
+          self.ackSystem.sendFile(deviceId, fileId, base64Data, m2)
             .then(function() { resolve(); })
             .catch(function(err) { reject(err); });
         }
@@ -811,7 +818,7 @@ export const BLE_MESSAGE_METHODS = {
           var deadline = Date.now() + 8000;
           var nudged = false;
           (function check() {
-            var dev = self._resolveDeviceIdForNexoId(uuid) || deviceId;
+            var dev = self._resolveDeviceIdForNexoId(uuid) || (self._macOfOther(deviceId, uuid) ? null : deviceId);
             // v6.13.0: por internet, archivos solo si los dos están en Wi-Fi (con datos móviles esperan)
             var netNo = !!_netNx(dev) && !(self.net && self.net.filesOk(uuid));
             if (netNo) dev = self._bleReadyFor(uuid) || dev;
@@ -836,7 +843,7 @@ export const BLE_MESSAGE_METHODS = {
               nudged = true;
               console.log('[BLEInterface] sendFile: contacto no listo (' + (st.state || '?') + '), buscando…');
               self._markPeerLost(uuid);
-              if (self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice') && st.state !== BLE_STATES.CONNECTING) {
+              if (dev && self.nativePlugin && _hasNativeMethod(self.nativePlugin, 'connectToDevice') && st.state !== BLE_STATES.CONNECTING) {
                 _safeNativeCall(self.nativePlugin, 'connectToDevice', { deviceId: dev }).catch(function() {});
               }
             }

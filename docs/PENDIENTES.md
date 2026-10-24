@@ -14,6 +14,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
+- **2766** (revisión, parte 1): (1) dejar un chat abierto 1–2 min sin escribir y luego escribir: debe llegar al momento;
+  en el diagnóstico no deben salir `sin respuesta a 2 pings` ni `Peer ready` cada ~30 s. (2) Repetir tablet → S24 con
+  el Vivo cerca (archivo y llamada): solo el S24. (3) En el mismo Wi-Fi, mandar una foto elegida de la galería: debe ir
+  por Wi-Fi (rápida). (4) BUSCAR: a los ~15 s el botón vuelve solo a BUSCAR. (5) Foto de perfil: Perfil → tocar el
+  círculo → Cambiar foto; en el otro teléfono sale en la lista y en la llamada. (6) Con la pantalla apagada: un mensaje
+  la enciende y una llamada suena a pantalla completa encima del bloqueo; Perfil → "Avisos con la pantalla apagada"
+  todo en ✅ (con "Arreglar"). (7) Perfil → Internet: Tor con su dirección .onion (antes "sin dirección .onion").
 - **2765** (la 2764 no salió): **repetir la prueba de la tablet → S24 con el Vivo cerca** (archivos y llamada: solo debe sonar/avisar el S24)
   y pasar el diagnóstico de los tres; en la tablet, "Agregar": deben salir los teléfonos cercanos con su nombre (aunque
   el otro no tenga "Agregar" abierto) y agregarse con "+"; con el teléfono girado, que no salga la barra gris a la izquierda; en un grupo, un vídeo (llega el HD a
@@ -133,3 +140,35 @@ De lo más simple a lo más complejo. Estado:
 - (Resuelto en la 2759: era la prueba) `fenix.js` a veces recuperaba 5 de 6 mensajes y 1 de 2 archivos.
 18–20 (del dueño): pruebas reales con 3–4 teléfonos, auditoría externa, Play Store.
 
+
+## 6. Revisión completa por partes (pedida por el dueño el 24-10)
+Orden: escaneo → agregar → conexión → mensajes cortos y largos y archivos → llamadas y videollamadas → interfaz; con
+mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simulador antes de corregirlo.
+1. **Escaneo, agregar y conexión** — hecha en la 2766 (ver PROGRESO, "Ronda 2766"). Quedan puntos débiles, sin fallo
+   visto todavía en las pruebas:
+   - Varios enlaces con el mismo contacto a la vez (Android usa direcciones distintas) y conexiones de paso que no
+     llegan a identificarse; en algunos sitios la identidad aún se deduce de la dirección.
+   - Nativo: `disconnectDevice` solo cierra los enlaces en los que este teléfono es el cliente (si el otro es el
+     cliente, el enlace sigue: no se usa `cancelConnection`). Señalado por la revisión, sin comprobar aún: la
+     reconexión nativa necesita haberlo visto al escanear.
+   - El "no soy yo" (`ni`) y las confirmaciones no van firmados (un teléfono cercano malicioso podría desviar o marcar
+     ✓✓); el código rotativo se puede calcular con la clave pública (quien la tenga reconoce el código).
+   - Android 8–11 necesita la ubicación activada para escanear y el nativo no lo comprueba: falta avisar si está
+     apagada.
+   - Wi-Fi (visto con una sonda): si se va el Wi-Fi, un texto en el margen de 15 s (regla del dueño: no brincar) sale
+     como fallido y llega por Bluetooth a los ~21 s. Propuesta: mostrarlo como pendiente y, si el Bluetooth está listo,
+     mandar los textos por él sin cambiar el camino (las fotos esperan al Wi-Fi). **Decidir con el dueño.**
+2. **Mensajes y archivos** — revisión hecha (24-10); lo encontrado, a confirmar en el simulador y corregir en la 2767:
+   - Textos largos pendientes que se pierden mostrando "entregado" (al reconectar tras reiniciarse la app, varios
+     reenvíos del mismo texto a la vez se mezclan en el receptor; luego la burbuja pasa a "!").
+   - Una nota de voz pendiente llega como el texto "[adjunto]".
+   - Una transferencia de más de 10 min se corta aunque avance (vídeo HD o archivo grande por Bluetooth lento).
+   - Si se cae el Wi-Fi a mitad de una foto y el Bluetooth es lento (MTU 23), la foto no termina.
+   - Orden en el receptor (textos cortos con la hora de llegada, largos con la del emisor; con la app cerrada, todo
+     "ahora").
+   - Un reintento pisa la entrada pendiente del mismo mensaje (reintentos gastados el doble de rápido).
+   - Puntos débiles: reenvíos sin cola única por contacto, NACK sin límite, buzón con la app cerrada que confirma ✓✓
+     antes de descifrar, registro de envíos en un solo JSON grande.
+3. **Llamadas y videollamadas** — por hacer.
+4. **Interfaz** — por hacer.
+Mejoras pendientes: la foto del contacto en sus notificaciones (como icono grande).

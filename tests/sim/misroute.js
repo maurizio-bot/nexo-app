@@ -4,6 +4,8 @@
 // no está lista. Después A manda a B un texto, un archivo y una llamada.
 // Debe pasar: C no avisa ni suena (no es para él) y le dice a A "no soy yo"; A corrige la dirección y todo llega a B
 // (B avisa y suena), no a C.
+// 4 (ronda 2766): con el chat de B abierto por la conexión de C y B ya fuera de alcance, un archivo para B no sale por C
+// (antes salía cifrado para C, C lo guardaba y A lo daba por entregado) y llega a B cuando vuelve.
 // --sin-fallo: sin estropear nada (lo de siempre).
 // Uso: node misroute.js <dir_build> [--sin-fallo]
 'use strict';
@@ -105,6 +107,36 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   click(A.win, A.win.document.getElementById('nexo-call-btn'));
   r.llamada_suena_en_B = await wait(() => !!(nB.callNotif && nB.callNotif.from === idA) || !!(B.win.bleInterface.calls && B.win.bleInterface.calls.call), 60);
   await sleep(3000);
+  if (A.win.bleInterface.calls && A.win.bleInterface.calls.call) A.win.bleInterface.calls.hangup();
+  await wait(() => !(A.win.bleInterface.calls && A.win.bleInterface.calls.call), 20);
+  if (!NOFAULT) {
+    // 4. (ronda 2766, revisión) El chat de B se abrió cuando la conexión de C constaba como de B; después se corrigió y
+    //    B se fue (sin Jump). Antes el archivo salía por la conexión que recordaba el chat, cifrado para C: C lo guardaba
+    //    y A lo daba por entregado. Debe: no sale por C (queda pendiente) y llega a B cuando vuelve.
+    await closeChat(A);
+    radio.block(nA, nB); radio.block(nB, nC);
+    await wait(() => !biA._bleReadyFor(idB), 20);
+    // Como en el informe: la conexión de C apuntada como de B y guardada como la dirección del contacto B
+    const cLinks = devOf(idC);
+    cLinks.forEach((k) => { biA._macToNexoId.set(k, idB); });
+    const cs4 = A.win.vaultLoadContacts(); const cb4 = cs4.find((c) => (c.nexoId || '').toLowerCase() === idB); cb4.deviceId = cLinks[0]; A.win.vaultSaveContacts(cs4);
+    await openChatWith(A, 'B');
+    r.chat_B_por_la_conexion_de_C = cLinks.indexOf(biA._activeChatDeviceIdNative) >= 0;
+    // ... y se corrige (lo que hace el "no soy yo" de C)
+    cLinks.forEach((k) => biA._remapDevice(k, idC, 'prueba'));
+    if (biA.relay) { biA.relay.relayHop = () => null; biA.relay.discover = () => {}; }
+    await sendFile(A, 'solo_para_B.pdf', 20000);
+    // Y por debajo: algo para B por la conexión de C no se cifra para C ni sale
+    let directo = 'salió';
+    try { await biA.ackSystem.sendFile(cLinks[0], 'fx' + Date.now(), Buffer.alloc(3000, 5).toString('base64'), { type: 'file', name: 'directo_para_B.bin', to: idB }); } catch (e) { directo = (e && e.code) || 'error'; }
+    r.por_la_conexion_de_C_para_B = directo;
+    await sleep(15000);
+    const st4 = (await A.win.vaultLoadMessages(idB)).filter((m) => m._own && (m.attachmentMeta || {}).name === 'solo_para_B.pdf').map((m) => m.status);
+    r.archivo_ausente_estado_en_A = st4;
+    r.C_no_guarda_el_archivo_de_B = !(await C.win.vaultLoadMessages(idA)).some((m) => /^(solo|directo)_para_B/.test((m.attachmentMeta || {}).name || ''));
+    radio.unblock(nA, nB); radio.unblock(nB, nC);
+    r.llega_a_B_al_volver = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.attachmentType && !m._own && (m.attachmentMeta || {}).name === 'solo_para_B.pdf'), 150);
+  }
   const cn = nC.notifLog.slice(c0);
   r.C_avisos = cn.map((n) => (n.call ? 'LLAMADA ' : '') + n.name + ': ' + (n.text || 'Mensaje nuevo'));
   r.C_suena = !!nC.callNotif;
@@ -115,7 +147,9 @@ const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) 
   r.A_corrige = NOFAULT || (biA._bleReadyFor(idC) !== null && devOf(idC).length > 0);
   r.no_soy_yo_en_registro = logs.filter((l) => /no es para (mí|este teléfono)|era de otro/i.test(l)).slice(0, 3);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.B_y_C_tienen_a_A && !r.C_suena_con_el_fallo && r.texto_llega_a_B && r.archivo_llega_a_B && r.llamada_suena_en_B && r.C_no_avisa && r.C_no_lo_guarda && r.A_corrige && !r.errores.length;
+  const ok4 = NOFAULT || (r.chat_B_por_la_conexion_de_C && r.por_la_conexion_de_C_para_B === 'PEER_ABSENT' && r.archivo_ausente_estado_en_A.length === 1 &&
+    !/delivered|read/.test(r.archivo_ausente_estado_en_A[0]) && r.C_no_guarda_el_archivo_de_B && r.llega_a_B_al_volver);
+  const ok = r.B_y_C_tienen_a_A && !r.C_suena_con_el_fallo && r.texto_llega_a_B && r.archivo_llega_a_B && r.llamada_suena_en_B && r.C_no_avisa && r.C_no_lo_guarda && r.A_corrige && ok4 && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('MISROUTE ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_misroute.txt'), logs.join('\n'));

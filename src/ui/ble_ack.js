@@ -216,11 +216,11 @@ export class BleAckSystem {
   }
   sendChunkedMessage(deviceId, content, meta, messageId, seq) {
     var self = this;
-    var dst = meta && meta.dst;
+    var dst = meta && meta.dst, to = meta && meta.to;
     if (e2eAvailable() && content && !e2eAnyEncrypted(content)) {
-      if (content.length <= 150) return self.sendWithRetry(deviceId, content, messageId, seq, dst ? { dst: dst } : undefined);
+      if (content.length <= 150) return self.sendWithRetry(deviceId, content, messageId, seq, { dst: dst, to: to });
       var cid = messageId || _newMsgId();
-      return self._preparingFor(cid, self._ensurePeerKey(deviceId, dst)
+      return self._preparingFor(cid, self._ensurePeerKey(deviceId, dst, to)
         .then(function(t) { return e2eSealText(t, content, self._outAd(t, cid)); }))
         .then(function(enc) { return self.sendChunkedMessage(deviceId, enc, meta, cid, seq); });
     }
@@ -244,7 +244,7 @@ export class BleAckSystem {
       }
       finalMeta.seq = seq;
       if (content.length <= 150) {
-        self.sendWithRetry(deviceId, content, msgId, seq, dst ? { dst: dst } : undefined).then(resolve).catch(reject);
+        self.sendWithRetry(deviceId, content, msgId, seq, { dst: dst, to: to }).then(resolve).catch(reject);
         return;
       }
       var stream = new ChatStream(self, deviceId, msgId, content, finalMeta, 'chat');
@@ -265,7 +265,7 @@ export class BleAckSystem {
     if (e2eAvailable() && base64Data && !e2eAnyEncrypted(base64Data)) {
       // También el nombre y la miniatura del vídeo, que van en la cabecera
       var m = meta || {};
-      return self._preparingFor(fileId, self._ensurePeerKey(deviceId, m.dst).then(function(t) {
+      return self._preparingFor(fileId, self._ensurePeerKey(deviceId, m.dst, m.to).then(function(t) {
         return Promise.all([
           e2eSealB64(t, base64Data, self._outAd(t, fileId)),
           (m.thumb && !e2eAnyEncrypted(m.thumb)) ? e2eSealB64(t, m.thumb, self._outAd(t, fileId + '#t')) : m.thumb,
@@ -798,10 +798,11 @@ export class BleAckSystem {
         if (idx >= pending.length) return;
         var m = pending[idx++];
         var txt = m.content || m.text || '';
+        // Ronda 2766: son mensajes del chat de ese contacto: van a él (si la conexión es de otro, no salen)
         if (txt.length <= 150) {
-          self.sendWithRetry(deviceId, txt, m.msgId, m.seq).then(sendNext).catch(sendNext);
+          self.sendWithRetry(deviceId, txt, m.msgId, m.seq, { to: peerNexoId }).then(sendNext).catch(sendNext);
         } else {
-          self.sendChunkedMessage(deviceId, txt, {}, m.msgId, m.seq).then(sendNext).catch(sendNext);
+          self.sendChunkedMessage(deviceId, txt, { to: peerNexoId }, m.msgId, m.seq).then(sendNext).catch(sendNext);
         }
       }
       sendNext();
@@ -843,12 +844,23 @@ export class BleAckSystem {
   }
   _outAd(t, id) { return e2eOuterAd(this.ble && this.ble.localNexoId, t.nx, id); }
   _inAd(from, id) { return e2eOuterAd(from, this.ble && this.ble.localNexoId, id); }
-  // Destino para cifrar; si falta su clave (o su paquete del protocolo 2) se pide (kx) y se espera hasta 5 s
-  _ensurePeerKey(deviceId, dst) {
-    var self = this;
-    var k = self._target(deviceId, dst);
+  // Destino para cifrar; si falta su clave (o su paquete del protocolo 2) se pide (kx) y se espera hasta 5 s.
+  // to: el contacto al que va (directo). Ronda 2766 (revisión: el arreglo de la 2764 no bastaba): se cifra para él y
+  // solo si la conexión es suya; si resulta ser de otro, ni se cifra ni se manda (queda pendiente). Antes se cifraba
+  // para quien dijera la conexión: un archivo para el S24 salía cifrado para el Vivo y el Vivo lo leía.
+  _ensurePeerKey(deviceId, dst, to) {
+    var self = this, who = dst || to || null;
+    if (to && !dst && self.ble && typeof self.ble._destNx === 'function') {
+      var owner = self.ble._destNx(deviceId);
+      if (owner && owner !== _normId(to)) {
+        console.warn('[SEND] No se cifra para ' + _normId(to) + ' por la conexión de ' + owner + ': queda pendiente');
+        var ew = new Error('La conexión es de otro contacto: queda pendiente'); ew.code = 'PEER_ABSENT';
+        return Promise.reject(ew);
+      }
+    }
+    var k = self._target(deviceId, who);
     if (k) return Promise.resolve(k);
-    var c = self._contactOf(deviceId, dst);
+    var c = self._contactOf(deviceId, who);
     if (c && c.pendingKey) {
       // Clave cambiada sin aceptar: no se cifra para la nueva (podría ser un impostor) ni para la vieja
       var ek = new Error('La clave del contacto cambió: acéptala en el chat para enviar');
@@ -861,12 +873,12 @@ export class BleAckSystem {
     return new Promise(function(resolve, reject) {
       var t0 = Date.now();
       (function poll() {
-        var key = self._target(deviceId, dst);
+        var key = self._target(deviceId, who);
         if (key) return resolve(key);
         if (Date.now() - t0 > 5000) {
           var e = new Error('Sin clave de cifrado del contacto');
           e.code = 'NO_KEY';
-          console.warn('[E2E] Sin clave pública de ' + (dst || self._resolveNexoId(deviceId)) + ': el mensaje queda pendiente');
+          console.warn('[E2E] Sin clave pública de ' + (who || self._resolveNexoId(deviceId)) + ': el mensaje queda pendiente');
           return reject(e);
         }
         setTimeout(poll, 250);
@@ -895,14 +907,16 @@ export class BleAckSystem {
   // opts.dst: destino final (Jump) si deviceId es un puente
   sendWithRetry(deviceId, content, messageId, seq, opts) {
     var self = this;
-    var dst = opts && opts.dst;
+    var dst = opts && opts.dst, to = opts && opts.to;
     if (content && content.length > 150 && !e2eAnyEncrypted(content)) {
-      return self.sendChunkedMessage(deviceId, content, dst ? { dst: dst } : {}, messageId, seq);
+      return self.sendChunkedMessage(deviceId, content, dst ? { dst: dst } : (to ? { to: to } : {}), messageId, seq);
     }
-    if (!e2eAvailable() || e2eAnyEncrypted(content)) return self._sendWithRetryRaw(deviceId, content, messageId, seq, dst);
     var mid = messageId || _newMsgId();
+    // Ronda 2766: a quién va (el 'dn' del paquete), fijado desde ya para este id
+    if (to && !dst && self.ble) { self.ble._msgDest = self.ble._msgDest || new Map(); self.ble._msgDest.set(mid, _normId(to)); }
+    if (!e2eAvailable() || e2eAnyEncrypted(content)) return self._sendWithRetryRaw(deviceId, content, mid, seq, dst);
     var t0 = Date.now();
-    return self._preparingFor(mid, self._ensurePeerKey(deviceId, dst)
+    return self._preparingFor(mid, self._ensurePeerKey(deviceId, dst, to)
       .then(function(t) { return e2eSealText(t, content, self._outAd(t, mid)); }))
       .then(function(enc) { return self._sendWithRetryRaw(deviceId, enc, mid, seq, dst, { t0: t0, seal: Date.now() - t0 }); });
   }
@@ -1109,9 +1123,11 @@ export class BleAckSystem {
           // así que una foto/video interrumpido se reenviaba como texto (t:'c') y el receptor
           // lo entregaba como mensaje de texto plano en vez de adjunto.
           var isFileTx = tx.type === 'file';
+          // Ronda 2766: a quién va (es su chat): si la conexión resulta ser de otro, no sale por ella
+          var txMeta = Object.assign({}, tx.meta || {}, (tx.meta && tx.meta.dst) ? {} : { to: cid });
           var resumePromise = isFileTx
-            ? self.sendFile(devId, tx.transferId, content, tx.meta || {})
-            : self.sendChunkedMessage(devId, content, tx.meta, tx.transferId, (tx.meta && tx.meta.seq));
+            ? self.sendFile(devId, tx.transferId, content, txMeta)
+            : self.sendChunkedMessage(devId, content, txMeta, tx.transferId, (tx.meta && tx.meta.seq));
           resumePromise
             .then(function() {
               if (window.vaultRemoveOutgoingTransfer) window.vaultRemoveOutgoingTransfer(cid, tx.transferId).catch(function(){});
@@ -1446,28 +1462,33 @@ ChatStream.prototype._sendWindow = function() {
         })
         .catch(function(err) {
           if (self.aborted) return;
-          var fails = self._nativeFails = (self._nativeFails || 0) + 1;
-          if (fails === 1 || fails % 20 === 0) console.warn('[ChatStream] Envio nativo fallo chunk', idx, err.message, '(' + fails + ')');
-          // v3.10.0: el enlace ya no sirve (p. ej. Wi-Fi caído): seguir por el mejor camino de ahora. Antes se
-          // reintentaba para siempre cada 200 ms por el mismo enlace.
-          var bi = self.ble, nx = self._dn || self.ackSystem._resolveNexoId(self.deviceId);
-          var wrong = err && err.code === 'WRONG_PEER';
-          var best = ((fails >= 3 || wrong) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx) : null;
-          if (best && _normMac(best) !== _normMac(self.deviceId)) self.useLink(best);
-          if (fails > 120 || (wrong && !best)) {
-            // ~2 min sin poder enviar: queda pendiente y se reanuda al volver a haber camino
-            var e = new Error('Contacto no disponible: queda pendiente'); e.code = 'PEER_ABSENT';
-            var rej = self.reject; self.reject = null;
-            self.abort();
-            self.ackSystem.outgoingStreams.delete(self.msgId);
-            if (rej) rej(e);
-            return;
-          }
-          setTimeout(function() { sendNext(idx); }, fails > 10 ? 1000 : 200);
+          if (self._sendFailed(idx, err)) setTimeout(function() { sendNext(idx); }, self._nativeFails > 10 ? 1000 : 200);
         });
     }
     sendNext(self.windowStart);
   });
+};
+// Un trozo no salió. true: reintentar (quizá por otro enlace); false: el envío queda pendiente (PEER_ABSENT)
+ChatStream.prototype._sendFailed = function(idx, err) {
+  var self = this;
+  var fails = self._nativeFails = (self._nativeFails || 0) + 1;
+  if (fails === 1 || fails % 20 === 0) console.warn('[ChatStream] Envio nativo fallo chunk', idx, err && err.message, '(' + fails + ')');
+  // v3.10.0: el enlace ya no sirve (p. ej. Wi-Fi caído): seguir por el mejor camino de ahora. Antes se
+  // reintentaba para siempre cada 200 ms por el mismo enlace.
+  var bi = self.ble, nx = self._dn || self.ackSystem._resolveNexoId(self.deviceId);
+  var wrong = err && err.code === 'WRONG_PEER';
+  var best = ((fails >= 3 || wrong) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx) : null;
+  if (best && _normMac(best) !== _normMac(self.deviceId)) self.useLink(best);
+  if (fails > 120 || (wrong && !best)) {
+    // ~2 min sin poder enviar: queda pendiente y se reanuda al volver a haber camino
+    var e = new Error('Contacto no disponible: queda pendiente'); e.code = 'PEER_ABSENT';
+    var rej = self.reject; self.reject = null;
+    self.abort();
+    self.ackSystem.outgoingStreams.delete(self.msgId);
+    if (rej) rej(e);
+    return false;
+  }
+  return true;
 };
 // v3.13.0: binario si se puede (no el trozo 0, que lleva los datos del archivo y la miniatura); si no, JSON
 ChatStream.prototype._sendChunk = function(idx) {
@@ -1521,7 +1542,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     // Ronda 2764: a quién va (directo; se fija la primera vez: aunque la conexión resulte ser de otro, sigue siendo
     // para el mismo); el que lo recibe lo ignora si no es él
     var bdn = this.ble;
-    if (!this.meta.dst && bdn && typeof bdn._destNx === 'function') { if (this._dn === undefined) this._dn = bdn._destNx(this.deviceId); if (this._dn) obj.dn = this._dn; }
+    if (!this.meta.dst && bdn && typeof bdn._destNx === 'function') { if (this._dn === undefined) this._dn = (this.meta.to && _normId(this.meta.to)) || bdn._destNx(this.deviceId); if (this._dn) obj.dn = this._dn; }
     // Ronda 2759: oferta de llamada troceada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
     var bi0 = typeof window !== 'undefined' && window.bleInterface;
     if (this.type === 'chat' && bi0 && bi0._callOut && bi0._callOut.has(this.msgId)) obj.cl = 1;
@@ -1580,7 +1601,8 @@ ChatStream.prototype._retransmitWindow = function() {
   var end = Math.min(self.windowStart + self.windowSize, self.total);
   console.log('[ChatStream] _retransmitWindow: [' + self.windowStart + ',' + end + ') msgId=' + self.msgId);
   function sendNext(idx) {
-    if (idx >= end || self.aborted) {
+    if (self.aborted) return;
+    if (idx >= end) {
       self._startWindowTimer();
       return;
     }
@@ -1590,16 +1612,21 @@ ChatStream.prototype._retransmitWindow = function() {
     }
     self._sendChunk(idx)
       .then(function() {
+        self._nativeFails = 0;
         setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
       })
       .catch(function(err) {
-        setTimeout(function() { sendNext(idx); }, 200);
+        // Ronda 2766 (revisión): como al enviar la ventana. Antes se reintentaba cada 200 ms por el mismo enlace hasta el
+        // tiempo máximo (45 s un texto, hasta 15 min un archivo), también por una conexión que resultó ser de otro
+        if (self.aborted) return;
+        if (self._sendFailed(idx, err)) setTimeout(function() { sendNext(idx); }, self._nativeFails > 10 ? 1000 : 200);
       });
   }
   sendNext(self.windowStart);
 };
 ChatStream.prototype.handleNack = function(indices) {
   var self = this;
+  if (self.aborted) return;
   console.log('[ChatStream] handleNack: ' + indices.join(',') + ' msgId=' + self.msgId);
   if (self.timer) clearTimeout(self.timer);
   var promises = [];
@@ -1610,9 +1637,9 @@ ChatStream.prototype.handleNack = function(indices) {
     }
   });
   Promise.all(promises).then(function() {
-    self._startWindowTimer();
+    if (!self.aborted) self._startWindowTimer();
   }).catch(function() {
-    setTimeout(function() { self._retransmitWindow(); }, 500);
+    setTimeout(function() { if (!self.aborted) self._retransmitWindow(); }, 500);
   });
 };
 ChatStream.prototype.handleFinalAck = function() {

@@ -134,18 +134,23 @@ export const BLE_CONNECTION_METHODS = {
   _attemptAutoReconnect(deviceId) {
     var self = this;
     var nx = self._macToNexoId.get(_normMac(deviceId));
-    self._autoScanForKnownContacts();
+    if ((self._reconnectAttempts.get(deviceId) || 0) % 2 === 0) self._autoScanForKnownContacts(); // una vuelta sí y otra no
     if (nx) {
       var contact = _getContactByUUID(nx);
       if (contact && contact.deviceId) setTimeout(function() { self._autoConnectGATT(contact.deviceId, { name: contact.name, deviceUUID: nx }); }, 800);
     }
+    // Ronda 2766 (revisión): la espera crece de verdad (2, 4, 8, 16, 30 s…): antes el contador se borraba antes de
+    // cada reintento, siempre eran 2 s y cada vuelta lanzaba una búsqueda (Android ignora más de 5 en 30 s: a partir de
+    // ahí las búsquedas llegaban vacías). Se deja de insistir con esta dirección si el contacto ya está conectado por
+    // otro camino o tras ~2,5 min (la búsqueda de contactos perdidos sigue aparte)
     var attempt = self._reconnectAttempts.get(deviceId) || 0;
+    if (attempt >= 8 || (nx && (self._bleReadyFor(nx) || (self.lan && self.lan.canReach(nx))))) { self._reconnectAttempts.delete(deviceId); self._backoffTimers.delete(deviceId); return; }
     var delay = Math.min(2000 * Math.pow(2, attempt), 30000);
     self._reconnectAttempts.set(deviceId, attempt + 1);
     var timer = setTimeout(function() {
-      self._reconnectAttempts.delete(deviceId);
       var currentState = self._getDeviceState(deviceId);
       if (currentState.state === BLE_STATES.DISCONNECTED || currentState.state === BLE_STATES.ERROR) self._attemptAutoReconnect(deviceId);
+      else self._reconnectAttempts.delete(deviceId);
     }, delay);
     self._backoffTimers.set(deviceId, timer);
   },

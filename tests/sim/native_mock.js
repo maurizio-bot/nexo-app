@@ -707,6 +707,9 @@ class NativePhone {
         });
         setTimeout(tick, 80);
         if (self.opts.scanRepeat !== false) { clearInterval(self._scanTick); self._scanTick = setInterval(() => { if (Date.now() >= self.scanningUntil || self.appActive === false && !(a && a.filtered)) { clearInterval(self._scanTick); return; } tick(); }, 1000); }
+        // Kotlin 2766: al pararse sola, avisa (onScanStopped)
+        clearTimeout(self._scanStopT); const until = self.scanningUntil;
+        self._scanStopT = setTimeout(() => { if (self.scanningUntil === until) { self.scanningUntil = 0; self.emit('onScanStopped', { reason: 'timeout' }); } }, until - Date.now());
       }),
       stopScan: wrap('stopScan', (c) => { self.scanningUntil = 0; c.resolve({ stopped: true }); }),
       connectToDevice: wrap('connectToDevice', (c) => {

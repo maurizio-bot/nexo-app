@@ -134,7 +134,9 @@ class NexoBlePlugin : Plugin() {
     private val seenCoded = ConcurrentHashMap<String, Long>()
     private val codedLinks = ConcurrentHashMap.newKeySet<String>()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val scanTimeoutRunnable = Runnable { stopScanInternal() }
+    // Ronda 2766 (revisión): al pararse sola a los 15 s, se avisa a la app (antes seguía creyendo que buscaba y ya no
+    // volvía a buscar: "Agregar" sin nadie y el botón en PARAR)
+    private val scanTimeoutRunnable = Runnable { stopScanInternal(); notifyListeners("onScanStopped", JSObject().put("reason", "timeout")) }
     private val reconnectTimers = ConcurrentHashMap<String, Runnable>()
     private val reconnectAttempts = ConcurrentHashMap<String, Int>()
     private val reconnectDelays = ConcurrentHashMap<String, Long>()
@@ -1187,8 +1189,17 @@ class NexoBlePlugin : Plugin() {
                         it.resolve(JSObject().put("connected", false).put("deviceId", address).put("error", "Connection error $status"))
                         pendingCalls.remove(macNorm)
                     }
+                    // Ronda 2766 (revisión): las caídas de verdad llegan así (8 = fuera de alcance, 19 = el otro la cerró):
+                    // se avisa a la app y se limpia como en una desconexión normal. Antes la app seguía viendo el enlace
+                    // listo (contacto "en línea", se le mandaba por ahí) hasta que el vigilante lo cortaba
+                    notifyListeners("onDeviceDisconnected", JSObject().put("deviceId", address).put("status", status))
+                    stopKeepAlive(macNorm)
                     gattClients.remove(macNorm)
+                    clientRxCharacteristics.remove(macNorm)
+                    clientTxCharacteristics.remove(macNorm)
                     clientConnectionStates.remove(macNorm)
+                    messageBuffers.remove(macNorm); binAssembler.reset(macNorm)
+                    messageBufferTimers.remove(macNorm)?.let { mainHandler.removeCallbacks(it) }
                     try { gatt.close() } catch (e: Exception) { }
                     startAutoReconnect(macNorm)
                     return

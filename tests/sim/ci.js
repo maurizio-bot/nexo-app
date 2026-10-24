@@ -47,6 +47,9 @@ const SCENARIOS = [
   { name: 'chats de grupo (crear, escribir, texto largo, salir)', args: ['groups.js', '--io-delay=25'], tag: 'GROUPS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'grupos: vídeo HD y archivo grande (24 MB, uno lo pide al llegar al Wi-Fi)', args: ['group_media.js'], tag: 'GROUP_MEDIA', checks: { resultado: (v) => v === 'OK' } },
   { name: 'envío al teléfono equivocado (informe del dueño: lo de la tablet para el S24 sonaba en el Vivo)', args: ['misroute.js'], tag: 'MISROUTE', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'enlace parado 80 s: pings contestados, sin cortes (Bluetooth)', args: ['idle.js'], tag: 'IDLE', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'enlace parado 80 s: pings contestados, sin cortes (Wi-Fi)', args: ['idle.js', '--wifi'], tag: 'IDLE', logs: 'last_logs_idle_wifi.txt', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'volver a la app (Wi-Fi sigue), BUSCAR se para solo y reconexión sin ráfagas', args: ['resume.js'], tag: 'RESUME', checks: { resultado: (v) => v === 'OK' } },
   { name: 'borrar y volver a agregar un contacto (sin "Unknown"; nombre al conectar)', args: ['readd.js'], tag: 'READD', checks: { resultado: (v) => v === 'OK' } },
   { name: 'avisos con la pantalla apagada (encender, ajustes, llamada sobre el bloqueo)', args: ['alerts.js'], tag: 'ALERTS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'foto de perfil (elegir, llega a los contactos, al reiniciar, a uno nuevo, quitarla)', args: ['avatar.js'], tag: 'AVATAR', checks: { resultado: (v) => v === 'OK' } },
@@ -103,7 +106,7 @@ function runOne(sc) {
   // Registros de la app de las pruebas que fallaron (en GitHub no se pueden descargar desde todas partes)
   const fs = require('fs');
   for (const r of bad) {
-    const f = path.join(__dirname, 'last_logs_' + r.sc.args[0].replace('.js', '') + '.txt');
+    const f = path.join(__dirname, r.sc.logs || ('last_logs_' + r.sc.args[0].replace('.js', '') + '.txt'));
     if (!fs.existsSync(f)) continue;
     const lines = fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/DIAG|Splash|JSDOMERROR/.test(l));
     console.log('\n--- ' + r.sc.name + ': registros (' + lines.length + ' líneas, las últimas 400) ---\n' + lines.slice(-400).map((l) => l.substring(0, 260)).join('\n'));

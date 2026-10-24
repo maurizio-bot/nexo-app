@@ -212,7 +212,10 @@ export class BLEInterface {
     var self = this;
     var now = Date.now();
     var keysToDelete = [];
-    self._deviceStates.forEach(function(state, deviceId) { if (now - (state.timestamp || 0) > 10000) keysToDelete.push(deviceId); });
+    // Ronda 2766 (revisión): los enlaces Wi-Fi e internet (lan…/net…) los llevan lan.js y net_link.js (suben y bajan
+    // solos); antes se borraban aquí al volver a la app (guardan 'since', no 'timestamp') y ya no se mandaba nada por
+    // Wi-Fi hasta que se caía y volvía (p.ej. una foto elegida en la galería se quedaba en "enviando")
+    self._deviceStates.forEach(function(state, deviceId) { if (/^(lan|net)nx/.test(deviceId)) return; if (now - (state.timestamp || state.since || 0) > 10000) keysToDelete.push(deviceId); });
     keysToDelete.forEach(function(key) {
       self._deviceStates.delete(key);
       // connectedDevices y supervisor usan el deviceId nativo (con ':'), no la clave normalizada
@@ -454,6 +457,11 @@ export class BLEInterface {
     this._nativeDeviceFoundListener = this.nativePlugin.addListener('onDeviceFound', function(data) { self._onScanFound(data); });
     this._nativeScanFailedListener = this.nativePlugin.addListener('onScanFailed', function(data) {
       try { self.isScanning = false; self.updateScanButton(); } catch (e) {}
+    });
+    // Ronda 2766: el nativo paró la búsqueda (a los 15 s): la app ya no busca (antes se quedaba en "buscando" y ninguna
+    // búsqueda automática volvía a arrancar)
+    this._nativeScanStoppedListener = this.nativePlugin.addListener('onScanStopped', function() {
+      try { if (self.isScanning) { self.isScanning = false; self._autoScanActive = false; self.updateScanButton(); } } catch (e) {}
     });
   }
 
