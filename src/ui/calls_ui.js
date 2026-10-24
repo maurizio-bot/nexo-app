@@ -13,7 +13,7 @@ function _calls() { var b = _bi(); return b && b.calls; }
 function _name(nx) { var c = vaultFindContactByNexoId(nx); return (c && (c.name || c.displayName)) || String(nx || '').toUpperCase(); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
 
-var _tick = null, _ring = null;
+var _tick = null, _ring = null, _speaker = false;
 
 // Timbre (entrante) o tono de llamada (saliente) con WebAudio; vibración en la entrante
 function _startTone(incoming) {
@@ -57,6 +57,11 @@ function _videoLayout(el, st) {
   }
 }
 
+// Modo de audio del teléfono en llamada (Kotlin callAudio): auricular o altavoz
+function _audioMode(on) {
+  try { var pl = _plugin(); if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _speaker }).catch(function() {}); } catch (e) {}
+}
+
 function _fmt(s) { return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
 
 function _screen() {
@@ -92,7 +97,8 @@ function _render(st) {
       old.querySelector('.call-buttons').innerHTML = '';
       setTimeout(function() { old.remove(); }, 1200);
     }
-    try { var pl = _plugin(); if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: false }).catch(function() {}); } catch (e) {}
+    _render._modeFor = null; _speaker = false;
+    _audioMode(false);
     return;
   }
   var el = _screen();
@@ -115,9 +121,11 @@ function _render(st) {
     var upd = function() { status.textContent = _fmt(Math.max(0, Math.round((Date.now() - (st.startedAt || Date.now())) / 1000))); if (st.video) _videoLayout(el, st); };
     upd(); _tick = setInterval(upd, 1000);
     bt.appendChild(_btn(st.muted ? '🔇' : '🎤', st.muted ? '#555' : 'rgba(255,255,255,0.18)', 'call-mute', function() { calls.mute(!st.muted); }));
+    // Altavoz / auricular (en la videollamada, altavoz de entrada)
+    bt.appendChild(_btn(_speaker ? '🔊' : '🔈', _speaker ? '#1e88e5' : 'rgba(255,255,255,0.18)', 'call-speaker', function() { _speaker = !_speaker; _audioMode(true); _render(calls.state()); }));
     if (st.video) bt.appendChild(_btn(st.cameraOff ? '🚫' : '📷', st.cameraOff ? '#555' : 'rgba(255,255,255,0.18)', 'call-camera', function() { calls.camera(!!st.cameraOff); }));
     bt.appendChild(_btn('✕', '#e53935', 'call-hangup', function() { calls.hangup(); }));
-    try { var pl2 = _plugin(); if (pl2 && typeof pl2.callAudio === 'function') pl2.callAudio({ on: true }).catch(function() {}); } catch (e) {}
+    if (!_render._modeFor || _render._modeFor !== st.id) { _render._modeFor = st.id; _speaker = !!st.video; _audioMode(true); }
   }
 }
 

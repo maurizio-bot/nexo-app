@@ -28,7 +28,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 
 ## 2. Funciones nuevas
 - **Llamadas de voz**: hechas en la 2758 (Bluetooth a alcance o mismo Wi-Fi / Wi-Fi Direct, Opus cifrado); con la app
-  cerrada avisa "Llamada entrante" (2759). Falta: sonar como una llamada del teléfono (pantalla completa), botón de altavoz, probar en teléfonos (eco, volumen, Bluetooth con MTU pequeño).
+  cerrada avisa "Llamada entrante" y botón de altavoz (2759). Falta: sonar como una llamada del teléfono (pantalla completa), probar en teléfonos (eco, volumen, Bluetooth con MTU pequeño).
 - **Videollamadas**: hechas en la 2758 (mismo Wi-Fi). Falta: por Wi-Fi Direct (hoy su enlace es por transferencia,
   no continuo), cambiar a la cámara trasera, probar en teléfonos.
 - **Pagos**: decidir modelo (saldo propio, tarjeta/banco, cripto); doble gasto sin conexión, conciliación,

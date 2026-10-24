@@ -92,11 +92,16 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   r.camino = WIFI ? (nA.calls.some((c) => c.name === 'lanSend' || c.name === 'lanSendTo') ? 'wifi' : '?') : 'bluetooth';
   r.voz_en_el_aire = nA.sent.slice(air0).some((s) => /"type":"vf"/.test(String(s.chunk))) || WIFI;
   r.nada_en_claro = !nA.sent.slice(air0).some((s) => /WlpaWlpaWlpa/.test(String(s.chunk)));
+  // Modo llamada (auricular) y botón de altavoz
+  r.modo_llamada = nA.callAudioOn === true && nA.callSpeaker === false;
+  click(A.win, A.win.document.querySelector('#nexo-call-screen .call-speaker')); await sleep(300);
+  r.altavoz = nA.callSpeaker === true && /🔊/.test((A.win.document.querySelector('#nexo-call-screen .call-speaker') || {}).textContent || '');
   click(A.win, A.win.document.querySelector('#nexo-call-screen .call-hangup'));
   r.B_ve_fin = await wait(() => !B.win.bleInterface.calls.call, 10);
   await sleep(1500);
   r.linea_A = lines(A); r.linea_B = lines(B);
   r.micro_cerrado = A.media.stopped >= 1 && B.media.stopped >= 1;
+  r.modo_normal_al_colgar = nA.callAudioOn === false && nB.callAudioOn === false;
   r.senales_no_son_mensajes = !(await A.win.vaultLoadMessages(idB)).some((m) => /nexo_call/.test(m.content || '')) && !(await B.win.vaultLoadMessages(A.win.bleInterface.localNexoId)).some((m) => /nexo_call/.test(m.content || ''));
   await sleep(2500);
   // 2. Rechazada
@@ -180,7 +185,7 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   r.sin_alcance_aviso = Array.from(A.win.document.querySelectorAll('div')).some((d) => /hace falta tener al contacto cerca/.test(d.textContent) && d.children.length === 0);
   r.sin_alcance_no_llama = !A.win.bleInterface.calls.call;
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css/.test(l)).slice(0, 5);
-  const ok = r.boton && r.A_llamando && r.B_suena && r.en_llamada && r.voz_B_a_A >= 25 && r.voz_A_a_B >= 25 && r.en_orden && r.voz_en_el_aire && r.nada_en_claro && r.B_ve_fin &&
+  const ok = r.boton && r.A_llamando && r.B_suena && r.en_llamada && r.voz_B_a_A >= 25 && r.voz_A_a_B >= 25 && r.en_orden && r.voz_en_el_aire && r.nada_en_claro && r.modo_llamada && r.altavoz && r.modo_normal_al_colgar && r.B_ve_fin &&
     r.linea_A.some((t) => /Llamada · 0:0\d/.test(t)) && r.linea_B.some((t) => /Llamada · 0:0\d/.test(t)) && r.micro_cerrado && r.senales_no_son_mensajes &&
     r.rechazada_A && r.lineas_A.some((t) => /rechazada/.test(t)) && r.lineas_B.some((t) => /rechazada/.test(t)) && r.sin_respuesta_A && r.lineas_B.some((t) => /perdida/.test(t)) &&
     r.se_corta_A !== 'NO' && r.se_corta_B && (!arg('closed', false) || (r.cerrada_aviso && r.cerrada_suena_al_abrir && r.cerrada_en_llamada)) && r.sin_alcance_aviso && r.sin_alcance_no_llama && (!WIFI || r.camino === 'wifi') && !r.errores.length &&

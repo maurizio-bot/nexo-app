@@ -216,6 +216,8 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   el nativo sí ve; el contenido sigue cifrado) y el aviso del teléfono dice "📞 Llamada entrante" en vez de "Mensaje
   nuevo"; al abrir la app antes de 60 s suena y se puede contestar (`calls.js --closed`: aviso, suena al abrir, en
   llamada). JVM: `BgInboxTest`.
+- **Altavoz en llamadas**: botón 🔈/🔊 (auricular por defecto; en videollamada, altavoz); al colgar, el audio del
+  teléfono vuelve a normal (`calls.js` lo comprueba).
 - **Prueba de Fénix**: el fallo intermitente (5 de 6 mensajes / 1 de 2 archivos) era de la prueba: daba la copia por
   hecha sin contar los 2 mensajes de archivo y a veces "perdía el teléfono" con el último sin copiar. Ahora espera a
   todos: 6/6 y 2/2 (espejo y normal).
