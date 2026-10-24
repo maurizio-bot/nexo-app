@@ -147,6 +147,9 @@ class NativePhone {
     this.destroyed = true;
     this.listeners = new Map();
     this.retained = new Map();
+    // Kotlin handleOnDestroy: lanStopAll (el Wi-Fi de la misma red se cierra; los demás ven caer la conexión)
+    if (this.lanConns) Array.from(this.lanConns.keys()).forEach((nx) => this._lanClose(nx, false));
+    this.lan = null;
     // Kotlin 2758 (BgInbox.kt): con el servidor en marcha, el Bluetooth sigue recibiendo con la app cerrada (sin
     // escanear); opts.noClosedRx = Kotlin anterior (se cierra todo)
     if (!this.opts.noClosedRx && this.serverUp !== false) {
