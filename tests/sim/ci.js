@@ -40,6 +40,9 @@ const SCENARIOS = [
   { name: 'ID Bluetooth rotativo (no se ve el NEXO ID en el aire)', args: ['rid.js'], tag: 'RID', checks: { resultado: (v) => v === 'OK' } },
   { name: 'archivos grandes por Wi-Fi (24 MB, corte y reintento)', args: ['big.js'], tag: 'BIG', checks: { resultado: (v) => v === 'OK' } },
   { name: 'trozos binarios por Bluetooth', args: ['binary.js', '--loss=0.02'], tag: 'BINARY', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'recibir con la app cerrada (buzón, ✓✓ y aviso)', args: ['background.js', '--scenario=closed', '--io-delay=25', '--app-events'], tag: 'BACKGROUND', checks: {
+    llegada_a_B_tras_volver: (v) => Array.isArray(v) && v.every((x) => !/NO LLEGÓ/.test(x)),
+    con_B_cerrada: (v) => !!v && v.estado_en_A.every((x) => /delivered|read/.test(x)) && v.notificaciones_B.length >= 1 && v.oculta_en_buzon_sin_aviso === true } },
   { name: 'Double Ratchet y poscuántico', args: ['ratchet.js'], tag: null },
 ];
 
