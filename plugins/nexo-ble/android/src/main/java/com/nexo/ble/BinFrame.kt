@@ -33,6 +33,33 @@ object BinFrame {
     }
 }
 
+// Ronda 2757 (plan punto 8): trozos de texto por bytes reales (UTF-8) y no por caracteres con 10 de margen: con MTU 23
+// se usaban 10 de los 20 bytes de cada escritura. Nunca se corta un carácter (ni un emoji): cada escritura es UTF-8
+// válido por sí sola (las builds anteriores convierten cada escritura a texto por separado).
+object Utf8Split {
+    fun bytesOf(c: Char, next: Char?): Int = when {
+        Character.isHighSurrogate(c) && next != null && Character.isLowSurrogate(next) -> 4
+        c.code < 0x80 -> 1
+        c.code < 0x800 -> 2
+        else -> 3
+    }
+
+    fun split(str: String, maxBytes: Int): List<String> {
+        val max = maxBytes.coerceAtLeast(4)
+        val out = mutableListOf<String>()
+        var start = 0; var bytes = 0; var i = 0
+        while (i < str.length) {
+            val next = if (i + 1 < str.length) str[i + 1] else null
+            val len = bytesOf(str[i], next)
+            val chars = if (len == 4) 2 else 1
+            if (bytes + len > max && i > start) { out.add(str.substring(start, i)); start = i; bytes = 0 }
+            bytes += len; i += chars
+        }
+        if (start < str.length) out.add(str.substring(start))
+        return out
+    }
+}
+
 // Junta las escrituras de cada teléfono. Lo que no es un trozo binario se devuelve tal cual (texto de siempre).
 class BinAssembler(private val timeoutMs: Long = 4000) {
     class Frame(val header: String, val data: ByteArray)

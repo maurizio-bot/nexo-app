@@ -1109,14 +1109,6 @@ class NexoBlePlugin : Plugin() {
                     closeClientWithoutService(gatt, macNorm, address)
                     return
                 }
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        gatt.requestMtu(MTU_REQUEST)
-                        remLog("INFO", "GATT_CLIENT_CB", "MTU request $MTU_REQUEST para $address")
-                    }
-                } catch (e: Exception) {
-                    remLog("WARN", "GATT_CLIENT_CB", "No se pudo request MTU: ${e.message}")
-                }
                 val service = gatt.getService(NexoBleSpec.NEXO_SERVICE_UUID) ?: run {
                     // El otro teléfono tiene la app cerrada (su servidor GATT no está). Antes la conexión
                     // quedaba abierta sin servicio y "ya conectado" impedía reconectar al reabrir.
@@ -1128,6 +1120,22 @@ class NexoBlePlugin : Plugin() {
                 val rxChar = service.getCharacteristic(NexoBleSpec.RX_CHARACTERISTIC_UUID)
                 clientTxCharacteristics[macNorm] = txChar
                 clientRxCharacteristics[macNorm] = rxChar
+                // Ronda 2757 (plan punto 8): Android hace UNA operación GATT a la vez. Antes se pedía el MTU y en el
+                // acto se activaban las notificaciones: a menudo se perdía la petición de MTU y la conexión se quedaba
+                // en 23 bytes (20 por escritura: todo ~20 veces más lento). Ahora: MTU primero; las notificaciones
+                // cuando contesta (o a los 2 s si no contesta).
+                val asked = try { Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && gatt.requestMtu(MTU_REQUEST) } catch (e: Exception) { false }
+                remLog("INFO", "GATT_CLIENT_CB", "MTU request $MTU_REQUEST para $address: " + if (asked) "pedido" else "no se pudo pedir")
+                if (asked) mainHandler.postDelayed({ startNotifications(gatt, address) }, 2000) else startNotifications(gatt, address)
+            }
+
+            private var setupDone = false
+            private var mtuRetries = 0
+            // Activar las notificaciones del otro (una sola vez por conexión) y avisar de que está listo
+            private fun startNotifications(gatt: BluetoothGatt, address: String) {
+                if (setupDone) return
+                setupDone = true
+                val txChar = clientTxCharacteristics[macNorm]
                 txChar?.let { characteristic ->
                     try {
                         gatt.setCharacteristicNotification(characteristic, true)
@@ -1155,6 +1163,8 @@ class NexoBlePlugin : Plugin() {
                 val effectiveMtu = if (status == BluetoothGatt.GATT_SUCCESS && mtu > 23) mtu else 23
                 negotiatedMtu[macNorm] = effectiveMtu
                 remLog("INFO", "GATT_CLIENT_CB", "MTU changed $address mtu=$effectiveMtu status=$status")
+                if (effectiveMtu <= 23) btErr("mtu_small", "MTU mínimo (23) con $macNorm (status=$status)" + if (mtuRetries > 0) " tras reintentar" else "")
+                mainHandler.post { startNotifications(gatt, address) }
             }
 
             override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
@@ -1162,6 +1172,12 @@ class NexoBlePlugin : Plugin() {
                 if (status == BluetoothGatt.GATT_SUCCESS && descriptor.uuid == NexoBleSpec.CCCD_UUID) {
                     notifyListeners("onNotificationsEnabled", JSObject().put("deviceId", address).put("notificationsEnabled", true))
                     startKeepAlive(macNorm)
+                    // MTU aún mínimo: se pide otra vez (una), ya sin nada más en curso
+                    if ((negotiatedMtu[macNorm] ?: 23) <= 23 && mtuRetries < 1) {
+                        mtuRetries++
+                        val again = try { gatt.requestMtu(MTU_REQUEST) } catch (e: Exception) { false }
+                        remLog("INFO", "GATT_CLIENT_CB", "MTU otra vez para $address: $again")
+                    }
                 }
             }
 
@@ -1383,7 +1399,7 @@ class NexoBlePlugin : Plugin() {
             if (macNorm == null) { call.reject("NXID no resuelto a MAC: $rawDeviceId", "NXID_UNRESOLVED"); return@post }
             val frame = try { BinFrame.encode(header, data) } catch (e: Exception) { call.reject(e.message ?: "trozo binario no válido"); return@post }
             val mtu = negotiatedMtu[macNorm] ?: 23
-            val writes = BinFrame.split(frame, mtu - 3)
+            val writes = BinFrame.split(frame, (mtu - 3).coerceIn(20, 512))
             val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
             val msgId = writeMsgCounter.incrementAndGet()
             val ok = synchronized(queue) {
@@ -1445,34 +1461,12 @@ class NexoBlePlugin : Plugin() {
 
     private data class SendResult(val sent: Boolean, val mode: String)
 
-    // === FIX F0: Margen de seguridad para UTF-8 multibyte ===
-    private fun getChunkSize(macNorm: String): Int {
-        val mtu = negotiatedMtu[macNorm] ?: 23
-        // Margen de 10 bytes para overhead JSON + acentos UTF-8 (2 bytes) + emojis (4 bytes)
-        return (mtu - 3 - 10).coerceAtLeast(20)
-    }
-    // === FIN FIX F0 ===
-
-    // FIX: Chunking que respeta surrogate pairs UTF-16 (no parte emojis)
-    private fun safeChunkString(str: String, chunkSize: Int): List<String> {
-        val result = mutableListOf<String>()
-        var i = 0
-        while (i < str.length) {
-            var end = minOf(i + chunkSize, str.length)
-            if (end < str.length && Character.isHighSurrogate(str[end - 1]) && Character.isLowSurrogate(str[end])) {
-                end--
-            }
-            result.add(str.substring(i, end))
-            i = end
-        }
-        return result
-    }
-
     // v2723: un mensaje entra entero en la cola o no entra (antes, con la cola llena se descartaban trozos del
     // medio y el otro teléfono recibía un mensaje mutilado: "mensaje de código" en el chat y foto parada)
     private fun sendChunkedOrSingle(macNorm: String, rawDeviceId: String, message: String): SendResult {
-        val chunkSize = getChunkSize(macNorm)
-        val chunks = if (message.length <= chunkSize) listOf(message) else safeChunkString(message, chunkSize)
+        // Ronda 2757: por bytes reales (MTU - 3, máx. 512 por atributo), sin cortar caracteres (Utf8Split, BinFrame.kt)
+        val maxBytes = ((negotiatedMtu[macNorm] ?: 23) - 3).coerceIn(20, 512)
+        val chunks = Utf8Split.split(message, maxBytes)
         val queue = writeQueues.getOrPut(macNorm) { java.util.Collections.synchronizedList(mutableListOf()) }
         val msgId = writeMsgCounter.incrementAndGet()
         synchronized(queue) {

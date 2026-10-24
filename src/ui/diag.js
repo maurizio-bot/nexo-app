@@ -9,7 +9,7 @@
 var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_OLD_FILE = 'nexo_diag_log.txt';
 var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
-var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
+var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
   function fmt(a) {
     if (typeof a === 'string') return a;

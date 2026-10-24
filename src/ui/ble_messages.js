@@ -434,7 +434,7 @@ export const BLE_MESSAGE_METHODS = {
         }
         _safeNativeCall(self.nativePlugin, 'sendMessage', { deviceId: targetId, message: out })
           .then(function(r) {
-            if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._mtuByDevice.set(_normMac(targetId), r.mtu);
+            if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._noteMtu(targetId, r.mtu);
             resolve(r);
           })
           .catch(reject);
@@ -459,9 +459,19 @@ export const BLE_MESSAGE_METHODS = {
     }
     var targetId = self._nexoIdToMac.get(_normId(deviceId)) || deviceId;
     return _safeNativeCall(self.nativePlugin, 'sendBinary', { deviceId: targetId, header: header, data: b64 }).then(function(r) {
-      if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._mtuByDevice.set(_normMac(targetId), r.mtu);
+      if (r && typeof r.mtu === 'number' && r.mtu >= 23) self._noteMtu(targetId, r.mtu);
       return r;
     });
+  },
+
+  // Ronda 2757 (plan punto 8): MTU de cada enlace; al diagnóstico cuando cambia (23 = mínimo: todo ~20 veces más lento)
+  _noteMtu(targetId, mtu) {
+    var nd = _normMac(targetId), prev = this._mtuByDevice.get(nd);
+    this._mtuByDevice.set(nd, mtu);
+    if (prev === mtu) return;
+    var nx = this._macToNexoId.get(nd) || nd;
+    if (mtu <= 23) console.warn('[MTU] ' + nx + ': ' + mtu + ' (mínimo: Bluetooth muy lento con este teléfono)');
+    else console.log('[MTU] ' + nx + ': ' + mtu);
   },
 
   _sendRawNative(deviceId, packet) {

@@ -27,7 +27,7 @@ async function boot(name, address, radio, buildDir, opts) {
   const dom = new JSDOM(fs.readFileSync(path.join(buildDir, 'dist', 'index.html'), 'utf8'), {
     url: 'https://' + name.toLowerCase() + '.nexo.test/index.html', runScripts: 'dangerously',
     resources: new DistLoader(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
-    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; require('./native_mock').installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
+    beforeParse(win) { win.CapacitorCustomPlatform = { name: 'android' }; if (argNum('small-chunk', 0)) win.NEXO_SMALL_CHUNK = argNum('small-chunk', 0); require('./native_mock').installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } }; win.HTMLElement.prototype.scrollTo = function () {}; },
   });
   const win = dom.window;
   for (let i = 0; i < 100 && !(win.NEXO && win.NEXO.initialized); i++) await sleep(100);

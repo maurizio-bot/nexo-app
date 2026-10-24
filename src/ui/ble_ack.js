@@ -63,6 +63,9 @@ const CHAT_WINDOW_SIZE = 8;
 const CHAT_WINDOW_TIMEOUT_MS = 3000;
 const CHAT_PACING_DELAY_MS = 2;
 const FILE_CHUNK_SIZE = 360;
+// Ronda 2757: con MTU pequeño (20 bytes por escritura) un trozo de 60 era 60 de datos + 90 de cabecera: el 60 % de la
+// radio en cabeceras. Mínimo medido en el simulador (tests/sim/mtu.js)
+function SMALL_MTU_MIN_CHUNK() { return (typeof window !== 'undefined' && Number(window.NEXO_SMALL_CHUNK)) || 60; }
 const FILE_WINDOW_SIZE = 12;
 // Receptor: confirma cada ACK_EVERY trozos o tras ACK_DEBOUNCE_MS sin más trozos (antes, uno por trozo)
 const ACK_EVERY = 4;
@@ -1236,7 +1239,8 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
   // v3.10.0: por Wi-Fi (misma red) trozos grandes: no hay MTU ni escrituras de 20-500 bytes
   if (_isLanDevice(deviceId) || _isNetDevice(deviceId)) mtu = LAN_PSEUDO_MTU;
-  var perWrite = mtu ? Math.max(mtu - 13, 10) : 0;
+  // v3.14.0 (ronda 2757): el nativo escribe (MTU - 3) bytes reales por escritura (máx. 512), no MTU - 13 caracteres
+  var perWrite = mtu ? Math.min(Math.max(mtu - 3, 20), 512) : 0;
   var overhead = 90; // cabecera JSON de un trozo ('v','t','m','i','n','d')
   if (_isLanDevice(deviceId)) { this.chunkSize = isFile ? LAN_FILE_CHUNK : LAN_CHAT_CHUNK; perWrite = this.chunkSize + overhead; }
   if (_isNetDevice(deviceId)) { this.chunkSize = isFile ? NET_FILE_CHUNK : NET_CHAT_CHUNK; perWrite = this.chunkSize + overhead; }
@@ -1244,7 +1248,7 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   // paquete necesitaría más de 3 escrituras (MTU pequeño). Medido: MTU 247 => 18 s/foto con 360
   // frente a 27 s ajustando a una sola escritura.
   if (!perWrite) this.chunkSize = Math.min(this.chunkSize, 200);
-  else if (Math.ceil((this.chunkSize + overhead) / perWrite) > 3) this.chunkSize = Math.max(60, 3 * perWrite - overhead);
+  else if (Math.ceil((this.chunkSize + overhead) / perWrite) > 3) this.chunkSize = Math.max(SMALL_MTU_MIN_CHUNK(), 3 * perWrite - overhead);
   this.writesPerPacket = perWrite ? Math.ceil((this.chunkSize + overhead) / perWrite) : 2;
   if (this.writesPerPacket > 2) this.windowSize = Math.min(this.windowSize, 4);
   this.windowTimeoutMs = Math.max(this.windowTimeoutMs, this.windowSize * this.writesPerPacket * 100 + 3000);
@@ -1283,7 +1287,7 @@ ChatStream.prototype.useLink = function(deviceId) {
   this.deviceId = deviceId;
   if (_isLanDevice(deviceId) || _isNetDevice(deviceId)) return;
   var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
-  var perWrite = mtu ? Math.max(mtu - 13, 10) : 20;
+  var perWrite = mtu ? Math.min(Math.max(mtu - 3, 20), 512) : 20;
   this.writesPerPacket = Math.ceil((this.chunkSize + 90) / perWrite);
   if (this.writesPerPacket > 3) {
     this.windowSize = Math.max(1, Math.min(this.windowSize, Math.floor(300 / this.writesPerPacket) || 1)); // cola nativa: 500

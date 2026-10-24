@@ -329,11 +329,22 @@ class NativePhone {
 
   _sendChunkedOrSingle(macNorm, message) {
     const mtu = this.mtu.get(macNorm) || 23;
-    // (mismo límite de 512 bytes para el texto: con MTU 517 los trozos son de 504 caracteres)
-    const size = Math.max(mtu - 3 - 10, 20);
     const mid = (this._mid = (this._mid || 0) + 1);
+    // Kotlin 2757 (Utf8Split): por bytes reales, MTU - 3 (máx. 512), sin cortar caracteres; opts.kotlin2756: como
+    // antes (caracteres, MTU - 13)
     const chunks = [];
-    for (let i = 0; i < message.length; i += size) chunks.push(message.substring(i, i + size));
+    if (this.opts.kotlin2756) { const size = Math.max(mtu - 3 - 10, 20); for (let i = 0; i < message.length; i += size) chunks.push(message.substring(i, i + size)); }
+    else {
+      const max = Math.min(Math.max(mtu - 3, 20), 512);
+      let start = 0, bytes = 0, i = 0;
+      while (i < message.length) {
+        const c = message.charCodeAt(i), n = message.charCodeAt(i + 1);
+        const len = (c >= 0xD800 && c <= 0xDBFF && n >= 0xDC00 && n <= 0xDFFF) ? 4 : c < 0x80 ? 1 : c < 0x800 ? 2 : 3;
+        if (bytes + len > max && i > start) { chunks.push(message.substring(start, i)); start = i; bytes = 0; }
+        bytes += len; i += len === 4 ? 2 : 1;
+      }
+      if (start < message.length) chunks.push(message.substring(start));
+    }
     // Kotlin 2725: el mensaje entra entero o no entra (con la cola llena espera; antes se partía)
     if (!this.opts.kotlin2722) {
       const peerAddr = (this.serverConnected.get(macNorm) || (this.clients.get(macNorm) || {}).peer || {}).address;
@@ -608,7 +619,7 @@ class NativePhone {
           const mac = self._resolveMac(raw);
           if (!mac) return c.reject('NXID no resuelto a MAC: ' + raw, 'NXID_UNRESOLVED');
           const mtu = self.mtu.get(mac) || 23;
-          const writes = BIN.split(BIN.encode(header, Buffer.from(data, 'base64')), self._binWriteSize ? self._binWriteSize(mtu) : mtu - 3);
+          const writes = BIN.split(BIN.encode(header, Buffer.from(data, 'base64')), Math.min(Math.max(mtu - 3, 20), 512));
           // Android 13+: una escritura o notificación de más de 512 bytes (máximo de un atributo) lanza
           // IllegalArgumentException; el Kotlin reintenta ~1,8 s y descarta el mensaje entero (ya respondió "en cola")
           if (writes.some((w) => w.length > 512)) { self.stats.tooLongDropped = (self.stats.tooLongDropped || 0) + 1; return c.resolve({ sent: true, mode: 'queued', deviceId: raw, mtu }); }

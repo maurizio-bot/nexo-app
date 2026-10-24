@@ -96,6 +96,20 @@ class BinFrameTest {
         assertContentEquals(raro, BinFrame.split(BinFrame.encode(header, raro), 100).flatMap { a.feed("q", it, 0).frames }.single().data)
     }
 
+    @Test fun textoPorBytesSinCortarCaracteres() {
+        val txt = "{\"v\":1,\"t\":\"ñandú 📷 ü€\"}" + "a".repeat(100) + "📷".repeat(30) + "é".repeat(40)
+        for (max in listOf(20, 21, 22, 23, 244, 509)) {
+            val parts = com.nexo.ble.Utf8Split.split(txt, max)
+            assertEquals(txt, parts.joinToString(""), "max $max")
+            parts.forEach { p ->
+                val b = p.toByteArray(Charsets.UTF_8)
+                assertTrue(b.size <= max, "max $max: ${b.size}")
+                assertEquals(p, String(b, Charsets.UTF_8), "cada trozo es UTF-8 válido")
+            }
+            if (max == 20) assertTrue(parts.dropLast(1).all { it.toByteArray(Charsets.UTF_8).size >= 17 }, "aprovecha la escritura")
+        }
+    }
+
     @Test fun cabeceraRotaNoBloquea() {
         val a = BinAssembler()
         val bad = byteArrayOf(1, 0x7f, 0x7f, 0, 0, 0, 1)
