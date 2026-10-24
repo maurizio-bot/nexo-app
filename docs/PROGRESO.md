@@ -82,7 +82,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2753 | `75772b8` | Sin APK: falló en GitHub la prueba nueva `binary.js` (las pérdidas simuladas se aplicaban también al conectar y se perdió el intercambio de claves; ahora solo durante los envíos). El Kotlin compiló bien en las pruebas JVM |
 | 2754 | `9dac851` | Bluetooth sin base64: trozos de archivo en binario con quien lo anuncia (−25 % de bytes por la radio, fotos y PDF ~25–35 % más rápidos en el simulador); con builds anteriores, JSON de siempre. APK verificada: 24,5 MB, firma 23d86688…, manifiesto idéntico a la 2752, `BinFrame`/`BinAssembler`/`sendBinary` presentes. Falta probarla en teléfonos |
 | 2755 | `c035890` | Solo diagnóstico (el dueño dice que los archivos no llegan; sin cambio de comportamiento): en Perfil → Copiar diagnóstico salen los errores de Bluetooth del nativo (`BT_ERR`: escritura o notificación fallida, mensaje descartado, trozo binario incompleto; uno por tipo cada 5 s) y una línea `[BIN]` por cada envío/recepción en binario. APK verificada (firma 23d86688…, manifiesto igual que la 2754) |
-| 2756 | (este commit) | Archivos grandes hasta 1 GB por el mismo Wi-Fi / Wi-Fi Direct (informe del dueño: un APK de 24 MB no salía) e ID Bluetooth rotativo (plan punto 4). Falta verificar la APK y probarla en teléfonos |
+| 2756 | `a7b3641` | Archivos grandes hasta 1 GB por el mismo Wi-Fi / Wi-Fi Direct (informe del dueño: un APK de 24 MB no salía) e ID Bluetooth rotativo (plan punto 4). APK verificada (24,5 MB, firma 23d86688…, manifiesto igual que la 2755, clases nuevas presentes). Falta probarla en teléfonos |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
