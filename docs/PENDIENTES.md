@@ -14,6 +14,9 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
+- **Qué APK probar (24-10)**: la 2767 (nightly-2767) para todo menos las llamadas; las llamadas, mejor con la 2768 (en
+  curso: arregla la suplantación y 12 fallos más de las llamadas). Desde la 2763 no hay pruebas en teléfonos: todo lo de abajo
+  desde la 2765 está sin confirmar.
 - **2767** (revisión, parte 2: mensajes y archivos): con el otro teléfono lejos (o con su Bluetooth apagado), escribir
   varios textos cortos y largos y grabar una nota de voz; cerrar NEXO (quitarla de recientes) y volver a abrirla; acercar
   el otro teléfono: todo debe llegar una sola vez, legible, en el orden en que se escribió y como nota de voz (no
@@ -108,6 +111,16 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
    (ver los límites en §5 punto 4).
 6. Orden propuesto: lo que falle en sus pruebas → velocidad (binario, L2CAP) → llamadas de voz → Jump de más
    alcance → seguridad restante → grupos → videollamadas.
+7. **"Rechazar" con la app cerrada** (revisión de llamadas, 2768): la parte nativa no tiene las claves (están en la
+   app), así que no puede mandar nada cifrado. Opciones: (1) solo deja de sonar en este teléfono y el que llama ve "No
+   contesta" a los 45 s; nada sale sin cifrar. (2) Aviso al momento sin cifrar: el que llama ve "Rechazada" enseguida,
+   pero un teléfono cercano con un NEXO modificado podría hacer que sus llamadas salgan "Rechazada". (3) Aviso al
+   momento firmado: con la app abierta, cada pareja de contactos se pasa (cifrada) una clave pequeña solo para estos
+   avisos y la parte nativa la usa sin abrir la app; nadie lo puede falsificar y sirve también para que el aviso deje
+   de sonar en cuanto el otro cuelga de verdad. Es más trabajo (una build más). Propuesta: la 2768 con la (1) y
+   después la (3). **Decidir con el dueño.**
+8. **Texto durante el margen de 15 s del Wi-Fi**: ver §6 punto 1 (propuesta: si el Bluetooth está listo, mandar los
+   textos por él al momento). **Decidir con el dueño.**
 
 ## 5. Plan del dueño (23-10): completar lo que falta y mejorar los puntos débiles de la comparativa (sin iPhone)
 De lo más simple a lo más complejo. Estado:
@@ -175,6 +188,12 @@ mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simu
      memoria con varios vídeos HD).
    - Si se perdió la confirmación final de un archivo, al reconectar se manda entero otra vez (el receptor solo
      recuerda 60 s lo recibido) y sale otra notificación.
-3. **Llamadas y videollamadas** — por hacer.
-4. **Interfaz** — por hacer.
+3. **Llamadas y videollamadas** — en curso, 2768 (ver PROGRESO, "Ronda 2768 (en curso)"): 14 fallos, el más grave de
+   seguridad (un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto en textos y llamadas).
+   Escrita la parte web del arreglo de 13 (sin probar todavía junta; el código a medias está en la rama
+   `claude/repo-file-access-9bwl60`, no en `NEXOCHAT`). Falta: la parte nativa del punto 4 (un aviso por oferta, que
+   tras "Rechazar" no vuelva a sonar), pasar los escenarios a `tests/sim`, la batería y subir. Después: el punto 2
+   (carril de voz para un Bluetooth lento y aviso "Bluetooth lento") y los riesgos del teléfono (micrófono con la
+   pantalla apagada en Android 11+, sensor de proximidad, tono con el teléfono en silencio, foco de audio).
+4. **Interfaz** — por hacer. Visto ya: en "Agregar", "Buscar contacto…" es solo un dibujo (no busca).
 Mejoras pendientes: la foto del contacto en sus notificaciones (como icono grande).

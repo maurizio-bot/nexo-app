@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2765)
+Última actualización: 2026-10-24 (build 2767 publicada; 2768, llamadas, en curso)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -93,7 +93,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2764 | 7c9afbaa | **Informe grave del dueño (tablet + S24 + Vivo): lo que la tablet mandaba al S24 (archivos, llamadas) sonaba y avisaba en el Vivo**: cada paquete directo dice a quién va y el que no es lo ignora (no suena, no avisa, no ✓✓), avisa "no soy yo" y el emisor corrige la conexión; un sobre de Jump de paso ya no avisa en el siguiente teléfono; al buscar ya no sale "Unknown" (nombre del teléfono al conectar) y "Agregar" nunca falla en silencio. Además: grupos con vídeo HD y archivos grandes; pantalla girada sin barra gris. Ver "Ronda 2764". **Sin APK**: el comentario de `nexo_colors.xml` llevaba "--" (no permitido en XML) y falló la compilación de Android. Todo pasa a la 2765 |
 | 2765 | d9366857 | La 2764 con el XML corregido (todos los XML de Android revisados con un analizador). APK publicada (nightly-2765) |
 | 2766 | 3f309571 | Revisión completa, parte 1 (escaneo, agregar, conexión): los pings nunca se contestaban (el enlace se rehacía cada ~30 s), un archivo podía salir cifrado para el teléfono equivocado, el Wi-Fi se perdía al volver a la app, BUSCAR se quedaba colgado, reconexión sin esperas, caídas del Bluetooth sin avisar, Tor sin dirección .onion. Mejoras: foto de perfil, avisos y llamadas que encienden la pantalla y se ven sobre el bloqueo, Perfil → "Avisos con la pantalla apagada". Ver "Ronda 2766". APK publicada (nightly-2766, 24,5 MB) |
-| 2767 | (este commit) | Revisión completa, parte 2 (mensajes y archivos): textos largos pendientes que se perdían mostrando "entregado" (al reconectar tras reiniciarse la app), nota de voz pendiente que llegaba como "[adjunto]", transferencias de más de 10 min cortadas aunque avanzaran, Wi-Fi caído a mitad de una foto con un Bluetooth lento, orden en el chat (relojes desfasados; lo recibido con la app cerrada salía "ahora"), "!" durante un corte del Wi-Fi. Ver "Ronda 2767". Batería 32/32, Kotlin 65/65 |
+| 2767 | ed848800 | Revisión completa, parte 2 (mensajes y archivos): textos largos pendientes que se perdían mostrando "entregado" (al reconectar tras reiniciarse la app), nota de voz pendiente que llegaba como "[adjunto]", transferencias de más de 10 min cortadas aunque avanzaran, Wi-Fi caído a mitad de una foto con un Bluetooth lento, orden en el chat (relojes desfasados; lo recibido con la app cerrada salía "ahora"), "!" durante un corte del Wi-Fi. Ver "Ronda 2767". Batería 32/32, Kotlin 65/65. APK publicada (nightly-2767, 24,5 MB) |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -219,6 +219,51 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2768 (en curso): revisión completa, parte 3 (llamadas y videollamadas)
+Un agente revisó `calls.js`, `calls_ui.js`, `call_media.js`, el camino de las señales y el nativo con 20 escenarios
+nuevos (en el scratchpad de la sesión; pasarán a `tests/sim` al cerrar la ronda). Todo se reprodujo con la 2767; el
+punto 1 lo comprobé además yo. Estado: la parte web de los arreglos está escrita pero sin probar todavía junta (los de
+llamadas se probaron uno a uno en una copia aparte); falta la parte nativa del punto 4, pasar los escenarios a
+`tests/sim`, la batería y subir.
+1. **Suplantación (seguridad, grave)**: el servidor Bluetooth acepta escrituras de cualquiera y un mensaje sin cifrar se
+   tomaba como del contacto que decía ser. Con la 2767, desde un teléfono ajeno (M): un texto sin cifrar se guardó y se
+   mostró en el chat de A; una oferta de llamada falsa sonó con el nombre de A, la voz de B salió cifrada con la clave de
+   M (M descifró 10 de 10 paquetes), un "colgar" falso cortó la llamada y la conexión de A quedó apuntada a M. Arreglo
+   (escrito): lo que llega sin cifrar diciendo ser de un contacto se descarta (textos cortos y largos, archivos) y no
+   cambia su conexión; las señales de llamada solo valen si llegaron cifradas.
+2. **Voz por Bluetooth con MTU pequeño** (pendiente): con MTU 23 la voz llega con 6,8 s de retraso (mediana) y solo 32 de
+   161 paquetes; con MTU 185 bien (66 ms); un teléfono sin Opus (μ-law) con MTU 185, 3,2 s. Hace falta un "carril de voz"
+   nativo (un paquete de voz nuevo sustituye a los que aún no empezaron a salir) y avisar "Bluetooth lento".
+3. **El aviso de llamada seguía sonando y NEXO quedaba encima del bloqueo** cuando la app no hacía sonar la oferta
+   (vieja, ocupado, repetida): ahora se quita y NEXO vuelve detrás del bloqueo; también si a los 15 s de abrirse no hay
+   llamada (escrito).
+4. **Con la app cerrada, "Rechazar" no servía**: el aviso volvía a sonar con cada reenvío de la oferta (9 veces por una
+   llamada) y el que llama acababa en "No contesta"; si el que llama colgaba, el aviso seguía hasta 45 s y "Contestar"
+   llevaba a una llamada vacía. Parte web escrita (las llamadas terminadas se recuerdan y quien recibe pregunta al que
+   llama si sigue: señal `ring`). Falta la nativa (un aviso por oferta; quitarlo cuando el otro cuelga) y la decisión del
+   dueño sobre avisar al que llama (PENDIENTES §4).
+5. **Una oferta que no salió se reenviaba al reiniciar la app** ("Llamada perdida" con la hora de ese momento y un
+   "Mensaje nuevo" que no existía): las señales de llamada ya no se guardan para reanudarlas y la oferta se cancela al
+   colgar (escrito).
+6. **"Contestar" pendiente**: tocado en el aviso de una llamada ya colgada, la siguiente llamada de ese contacto se
+   contestaba sola a los 0,4 s con el micrófono abierto. Ahora se descarta a los 15 s si no hay llamada (escrito).
+7. **Wi-Fi caído en un solo teléfono sin cierre limpio**: la voz iba en un solo sentido y se cortaba a los 12 s; ahora
+   cada lado sigue el camino por el que le llega la voz del otro (escrito).
+8. **Micrófono o cámara encendidos tras colgar** (colgar mientras se abre el micrófono, girar y colgar, dos toques en
+   Girar: dos cámaras abiertas) (escrito).
+9. **Videollamada con la cámara denegada u ocupada**: tampoco salía la voz y se cortaba a los 12 s; ahora sigue solo con
+   voz (escrito).
+10. **Relojes desfasados más de 60 s** (teléfonos sin hora de red): la llamada no sonaba nunca; ahora la señal `ring`
+    sustituye a comparar relojes (escrito).
+11. **Los dos se llaman a la vez**: "Ocupado" en los dos; ahora gana una de las dos llamadas y los dos quedan en ella
+    (escrito).
+12. **Una llamada menos de 1,4 s después de otra** sonaba sin botón "Contestar" (escrito).
+13. **Ráfaga de voz tras un atasco**: sonaban hasta 4 trozos a la vez; ahora se descarta lo que sobra (escrito).
+14. **Paquetes de voz grabados del aire y repetidos** se volvían a oír; ahora se ignoran (escrito).
+- Riesgos para probar en el teléfono: con la pantalla apagada en plena llamada, Android 11+ silencia el micrófono de una
+  app en segundo plano (haría falta un servicio de tipo micrófono y el sensor de proximidad); el tono suena aunque el
+  teléfono esté en silencio; la música de otras apps sigue sonando (no se pide el foco de audio).
 
 ## Ronda 2767: revisión completa, parte 2 (mensajes y archivos)
 Revisión de los envíos y la recepción (cortos, largos, archivos, lo pendiente). Cada fallo se reprodujo primero en el
