@@ -14,6 +14,8 @@ import org.json.JSONObject
  *    pendiente y lo manda al abrir la app: sin la app no se pueden confirmar trozos)
  *  - oferta de llamada (marca cl:1, ronda 2759): como un mensaje, pero el aviso dice "📞 Llamada entrante" (al abrir la
  *    app en menos de 60 s suena)
+ *  - ronda 2760: lo que llega por Jump para este teléfono (sobre sellado 'sx', mensaje o primer trozo con destino = mi
+ *    NEXO ID): solo notificación (el puente lo guarda y lo vuelve a mandar; con remitente oculto, sin nombre)
  *  - lo demás (control, trozos, rutas…): nada (al abrir la app se rehace)
  * Al abrir la app, el buzón se entrega en orden como si acabara de llegar (la app descifra y quita repetidos).
  * Sin dependencias de Android: se prueba en JVM (BgInboxTest).
@@ -24,18 +26,25 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
 
     companion object {
         private val NX = Regex("^nx[0-9a-z]{8}$")
-        fun classify(json: String): Info {
+        // me: mi NEXO ID (para reconocer lo que llega por Jump); vacío = no se mira
+        fun classify(json: String, me: String = ""): Info {
             val o = try { JSONObject(json) } catch (e: Exception) { return Info(Kind.IGNORE, "", "", false, "") }
             val type = o.optString("type"); val t = o.optString("t")
             val from = (o.optString("from").ifEmpty { o.optString("fr") }).lowercase()
+            val mine = me.isNotEmpty() && NX.matches(me.lowercase())
             if (type == "chat" && o.optString("msgId").isNotEmpty() && NX.matches(from)) {
-                val toMe = o.optString("to").isEmpty()
-                if (toMe) return Info(Kind.MESSAGE, from, o.optString("msgId"), o.optInt("q") == 1, "text", o.optInt("cl") == 1)
+                val to = o.optString("to").lowercase()
+                if (to.isEmpty()) return Info(Kind.MESSAGE, from, o.optString("msgId"), o.optInt("q") == 1, "text", o.optInt("cl") == 1)
+                if (mine && to == me.lowercase()) return Info(Kind.NOTIFY_ONLY, from, o.optString("msgId"), o.optInt("q") == 1, "text")
             }
+            if (mine && type == "sx" && o.optString("to").lowercase() == me.lowercase() && o.optString("msgId").isNotEmpty())
+                return Info(Kind.NOTIFY_ONLY, "", o.optString("msgId"), false, "text")
+            if (mine && (t == "c" || t == "f") && o.optInt("i", -1) == 0 && o.optString("dt").lowercase() == me.lowercase())
+                return Info(Kind.NOTIFY_ONLY, if (NX.matches(from)) from else "", o.optString("m"), o.optInt("q") == 1, if (t == "c") "text" else o.optString("tp").ifEmpty { "file" })
             if ((type == "ack" || type == "read_receipt") && o.optString("msgId").isNotEmpty() && o.optString("to").isEmpty())
                 return Info(Kind.RECEIPT, from, o.optString("msgId"), true, type)
             if ((t == "c" || t == "f") && o.optInt("i", -1) == 0 && NX.matches(from) && o.optString("dt").isEmpty())
-                return Info(Kind.NOTIFY_ONLY, from, o.optString("m"), false, if (t == "c") (if (o.optInt("cl") == 1) "call" else "text") else o.optString("tp").ifEmpty { "file" })
+                return Info(Kind.NOTIFY_ONLY, from, o.optString("m"), o.optInt("q") == 1, if (t == "c") (if (o.optInt("cl") == 1) "call" else "text") else o.optString("tp").ifEmpty { "file" })
             return Info(Kind.IGNORE, from, "", false, "")
         }
     }

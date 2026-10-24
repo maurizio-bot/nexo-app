@@ -1,8 +1,10 @@
 // Notificaciones por todas las vías de llegada (pedido del dueño: que avisen sea cual sea la red). B recibe de A:
 //  1. con la app en segundo plano (en la lista de chats): un texto y una foto → notificación del teléfono con el
 //     nombre de A (o del grupo) y el texto / "📷 Foto"; la burbuja numerada de la lista sube;
+//  1b. (2760) con la app en segundo plano y CONGELADA (el Vivo del dueño no ejecuta la app en segundo plano): avisa la
+//     parte nativa (sin texto) y, al volver, llega todo; sin avisos repetidos (en un grupo el aviso pasa al grupo);
 //  2. con la app cerrada: un texto y una foto → notificación (sin texto: va cifrado) si la vía sigue viva con la app
-//     cerrada; al abrir la app llega todo.
+//     cerrada (Bluetooth, grupo y, desde la 2760, Jump); al abrir la app llega todo.
 // --via=ble     A y B a alcance de Bluetooth
 // --via=lan     A y B en el mismo Wi-Fi, fuera de alcance de Bluetooth
 // --via=net     A y B en redes distintas, sin Bluetooth: internet (relés locales)
@@ -118,7 +120,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const chat = gid || idA;                       // chat de B donde cae lo de A
   const has = async (f) => (await B.win.vaultLoadMessages(chat)).some(f);
   // Con la app cerrada la parte nativa no sabe de grupos: avisa con el remitente
-  const notifs = (since, closed) => nB.notifLog.filter((n) => n.t >= since && (n.chatId === chat || (closed && n.chatId === idA)) && !!n.closed === !!closed);
+  const notifs = (since, closed) => nB.notifLog.filter((n) => n.t >= since && [chat, idA, 'nexo_jump'].indexOf(n.chatId) >= 0 && !!n.closed === !!closed);
+  const fmt = (list) => list.map((n) => n.name + ': ' + (n.text || '(sin texto)') + ' #' + n.count + (n.bg ? ' (nativo)' : ''));
   const unreadB = () => { const b = B.win.bleInterface; const s = typeof b.unreadSummary === 'function' ? b.unreadSummary() : []; return (s.find((x) => String(x.chatId).toLowerCase() === chat) || {}).count || 0; };
   async function openSendChat() { if (gid) { A.win.NEXO_openGroupChat(gid); await sleep(600); } else await openChatWith(A, 'B'); }
 
@@ -134,11 +137,35 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.fondo_foto_llega_s = await waitFor(() => has((m) => m.attachmentType && !m._own && (m.attachmentMeta || {}).name === 'foto11.jpg'), 120000);
   await sleep(1500);
   const nf = notifs(t0, false);
-  r.fondo_avisos = nf.map((n) => n.name + ': ' + (n.text || '(sin texto)') + ' #' + n.count);
+  r.fondo_avisos = fmt(nf);
   r.fondo_aviso_texto = nf.some((n) => n.text.indexOf('fondo-' + via) >= 0);
   r.fondo_aviso_foto = nf.some((n) => /📷 Foto|📎 Archivo/.test(n.text));
+  // (en un grupo el aviso nativo sale con quien escribe y pasa al grupo cuando avisa la app: al final, uno)
+  r.fondo_avisos_repetidos = gid ? nB.notifications.has(idA) : nf.length > 2;
   r.fondo_no_leidos = unreadB();
   r.fondo_aviso_pendiente = nB.notifications.has(chat);
+  await closeChat(A);
+
+  // 1b. B en segundo plano con la app congelada (lo que llega espera; su vigilante tampoco corre)
+  const frozenOk = ['ble', 'lan', 'jump', 'group'].indexOf(via) >= 0; // internet: lo avisa NetBg.kt (no está en el simulador)
+  B.win.bleInterface._stopConnectionSupervisor(); nB.setFrozen(true);
+  t0 = Date.now();
+  await openSendChat();
+  sendText(A, 'congelada-' + via);
+  await sleep(1500);
+  await sendPhoto(A, 30, 12);
+  await waitFor(() => notifs(t0, false).length >= 2, 30000);
+  const nz = notifs(t0, false);
+  r.congelada_avisos = fmt(nz);
+  r.congelada_aviso_texto = nz.length >= 1;
+  // (en un grupo la foto va como texto largo: el aviso nativo no sabe que es una foto)
+  r.congelada_aviso_foto = gid ? nz.length >= 2 : nz.some((n) => /📷 Foto|📎 Archivo/.test(n.text));
+  nB.setFrozen(false); { const bi = B.win.bleInterface; bi._supervisorTimer = B.win.setInterval(() => bi._runSupervisorCycle(), bi._supervisorIntervalMs); }
+  r.congelada_texto_llega_s = await waitFor(() => has((m) => m.content === 'congelada-' + via), 120000);
+  r.congelada_foto_llega_s = await waitFor(() => has((m) => m.attachmentType && !m._own && (m.attachmentMeta || {}).name === 'foto12.jpg'), 180000);
+  await sleep(2000);
+  r.congelada_avisos_final = Object.fromEntries(Array.from(nB.notifications.entries()).map(([k, n]) => [k === chat ? 'chat' : k === idA ? 'A' : k, n.base + n.ids.size]));
+  r.congelada_sin_repetir = !(gid && nB.notifications.has(idA)) && !nB.notifications.has('nexo_jump');
   await closeChat(A);
 
   // 2. B cerrada (la app se cierra; el Bluetooth sigue recibiendo, ver BgInbox.kt)
@@ -151,17 +178,19 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   await waitFor(() => notifs(t0, true).length >= 2, 45000);
   await sleep(3000);
   const nc = notifs(t0, true);
-  r.cerrada_avisos = nc.map((n) => n.name + ': ' + (n.text || '(sin texto)') + ' #' + n.count);
+  r.cerrada_avisos = fmt(nc);
   r.cerrada_aviso_texto = nc.length >= 1;
-  r.cerrada_aviso_foto = nc.some((n) => /📷 Foto|📎 Archivo/.test(n.text));
+  r.cerrada_aviso_foto = gid ? nc.length >= 2 : nc.some((n) => /📷 Foto|📎 Archivo/.test(n.text));
   r.cerrada_buzon = (nB.bgInbox || []).length;
   // Al abrir la app llega todo
   nB.load(); B = await boot('B', nB);
   r.al_abrir_texto_s = await waitFor(() => has((m) => m.content === 'cerrada-' + via), 120000);
   r.al_abrir_foto_s = await waitFor(() => has((m) => m.attachmentType && !m._own && (m.attachmentMeta || {}).name === 'foto13.jpg'), 180000);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.fondo_texto_llega_s !== null && r.fondo_foto_llega_s !== null && r.fondo_aviso_texto && r.fondo_aviso_foto && r.fondo_no_leidos >= 2 &&
-    r.al_abrir_texto_s !== null && r.al_abrir_foto_s !== null;
+  const closedOk = ['ble', 'jump', 'group'].indexOf(via) >= 0; // Wi-Fi sin Bluetooth ni internet: nada sigue vivo
+  const ok = r.fondo_texto_llega_s !== null && r.fondo_foto_llega_s !== null && r.fondo_aviso_texto && r.fondo_aviso_foto && r.fondo_no_leidos >= 2 && !r.fondo_avisos_repetidos &&
+    (!frozenOk || (r.congelada_aviso_texto && r.congelada_aviso_foto && r.congelada_sin_repetir)) && r.congelada_texto_llega_s !== null && r.congelada_foto_llega_s !== null &&
+    (!closedOk || (r.cerrada_aviso_texto && r.cerrada_aviso_foto)) && r.al_abrir_texto_s !== null && r.al_abrir_foto_s !== null && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOTIFY ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_notify_' + via + '.txt'), logs.join('\n'));

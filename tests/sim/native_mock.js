@@ -115,6 +115,8 @@ class NativePhone {
   }
 
   emit(event, data) {
+    // Algunos teléfonos (el Vivo del dueño) congelan la app en segundo plano: lo que llega espera a que vuelva
+    if (this.jsFrozen) { (this.frozenQ = this.frozenQ || []).push([event, data]); return; }
     const cbs = this.listeners.get(event) || [];
     // Capacitor (Plugin.notifyListeners): sin listener JS el evento se DESCARTA, salvo que el nativo lo
     // emita con retainUntilConsumed=true (opts.retain = lista de eventos que el Kotlin retiene).
@@ -185,6 +187,10 @@ class NativePhone {
 
   // Volver a la app / pasar a segundo plano (Activity onResume/onPause). Solo el Kotlin nuevo lo avisa
   // al JS (opts.appStateEvents); el JS ve además visibilitychange si el WebView lo emite.
+  setFrozen(on) {
+    this.jsFrozen = !!on;
+    if (!on && this.frozenQ) { const q = this.frozenQ; this.frozenQ = []; q.forEach(([e, d]) => this.emit(e, d)); }
+  }
   setAppActive(active) {
     this.appActive = !!active;
     if (this.opts.appStateEvents) this.emit('onAppStateChange', { isActive: !!active });
@@ -399,6 +405,7 @@ class NativePhone {
       out.frames.forEach((f) => {
         this.stats.binChunksIn = (this.stats.binChunksIn || 0) + 1;
         if (this.closedMode) { this._closedReceive(fromAddress, f.header); return; }
+        this._bgNotify(f.header);
         this.emit('onPayloadReceived', { deviceId: fromAddress, content: f.header, data: f.header, bin: f.data.toString('base64'), source, timestamp: Date.now(), reassembled: true });
       });
       if (!out.text) return;
@@ -418,6 +425,7 @@ class NativePhone {
       const ex = extractJson(buf);
       if (!ex) break;
       this.radio.log(this.name, 'RX de', fromAddress, ex.json.substring(0, 90));
+      if (!this.closedMode) this._bgNotify(ex.json);
       if (this.closedMode) this._closedReceive(fromAddress, ex.json);
       else this.emit('onPayloadReceived', { deviceId: fromAddress, content: ex.json, data: ex.json, source, timestamp: Date.now(), reassembled: true });
       buf = ex.rest;
@@ -430,26 +438,58 @@ class NativePhone {
   }
 
   // ---- app cerrada (Kotlin closedReceive + BgInbox.classify; probado en tests/kotlin/BgInboxTest) ----
-  static classifyClosed(json) {
+  // me: mi NEXO ID (Kotlin 2760: lo que llega por Jump para mí → solo aviso)
+  static classifyClosed(json, me) {
     let o; try { o = JSON.parse(json); } catch (e) { return { kind: 'IGNORE' }; }
     const NX = /^nx[0-9a-z]{8}$/;
     const from = String(o.from || o.fr || '').toLowerCase();
+    me = String(me || '').toLowerCase(); const mine = NX.test(me);
+    const what = () => (o.t === 'c' ? (o.cl === 1 ? 'call' : 'text') : (o.tp || 'file'));
     if (o.type === 'chat' && o.msgId && NX.test(from) && !o.to) return { kind: 'MESSAGE', from, msgId: o.msgId, quiet: o.q === 1, call: o.cl === 1 };
+    if (mine && o.type === 'chat' && o.msgId && NX.test(from) && String(o.to).toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from, msgId: o.msgId, quiet: o.q === 1, what: 'text' };
+    if (mine && o.type === 'sx' && o.msgId && String(o.to).toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from: '', msgId: o.msgId, what: 'text' };
+    if (mine && (o.t === 'c' || o.t === 'f') && o.i === 0 && String(o.dt || '').toLowerCase() === me) return { kind: 'NOTIFY_ONLY', from: NX.test(from) ? from : '', msgId: o.m, quiet: o.q === 1, what: what() };
     if ((o.type === 'ack' || o.type === 'read_receipt') && o.msgId && !o.to) return { kind: 'RECEIPT', from, msgId: o.msgId };
-    if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, what: o.t === 'c' ? (o.cl === 1 ? 'call' : 'text') : (o.tp || 'file') };
+    if ((o.t === 'c' || o.t === 'f') && o.i === 0 && NX.test(from) && !o.dt) return { kind: 'NOTIFY_ONLY', from, msgId: o.m, quiet: o.q === 1, what: what() };
     return { kind: 'IGNORE' };
   }
+  // MsgNotifier.message + UnreadBook (Kotlin): un aviso por chat; el mismo msgId no avisa dos veces; si ya se avisó en
+  // otro chat (el nativo, con quien lo manda) pasa a este (el grupo). flags: { closed, bg }
+  _postNotif(chatId, name, msgId, text, flags) {
+    const id = String(chatId || '').toLowerCase(), mid = String(msgId);
+    if (!this.msgChat) this.msgChat = new Map();
+    const prev = this.msgChat.get(mid);
+    if (prev && prev !== id) {
+      const o = this.notifications.get(prev);
+      if (o && o.ids.delete(mid) && o.base + o.ids.size <= 0) this.notifications.delete(prev);
+    }
+    const n = this.notifications.get(id) || { name, ids: new Set(), base: 0, text: '' };
+    if (n.ids.has(mid)) return n.base + n.ids.size;
+    n.ids.add(mid); n.name = name || n.name; n.text = text || ''; n.posts = (n.posts || 0) + 1;
+    this.notifications.set(id, n); this.msgChat.set(mid, id);
+    this.notifLog.push(Object.assign({ t: Date.now(), chatId: id, name: n.name, text: text || '', count: n.base + n.ids.size }, flags || {}));
+    return n.base + n.ids.size;
+  }
+  _notifName(nx) { const c = this.netBg && (this.netBg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === nx); return (c && c.name) || 'NEXO'; }
+  static whatText(w) { return ({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', call: '📞 Llamada entrante', text: '' })[w] ?? '📎 Archivo'; }
+  // Kotlin 2760 backgroundNotify: app en segundo plano (puede estar congelada): si a los 4 s la app no avisó, avisa el nativo
+  _bgNotify(json) {
+    if (this.appActive !== false || this.closedMode || this.opts.noBgNotify) return;
+    const info = NativePhone.classifyClosed(json, this.advertisingId);
+    if (!info.msgId || info.quiet || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return;
+    setTimeout(() => {
+      if (this.appActive !== false || this.closedMode || (this.msgChat && this.msgChat.has(String(info.msgId)))) return;
+      if (info.kind === 'MESSAGE') this._postNotif(info.from, this._notifName(info.from), info.msgId, '', { bg: true });
+      else this._postNotif(info.from || 'nexo_jump', info.from ? this._notifName(info.from) : 'NEXO', info.msgId, NativePhone.whatText(info.what), { bg: true });
+    }, 4000);
+  }
   _closedReceive(fromAddress, json) {
-    const info = NativePhone.classifyClosed(json);
+    const info = NativePhone.classifyClosed(json, this.advertisingId);
     this.stats.closedRx = (this.stats.closedRx || 0) + 1;
     if (!this.bgInbox) this.bgInbox = [];
     const notify = (text) => {
-      const c = this.netBg && (this.netBg.contacts || []).find((x) => String(x.nx || '').toLowerCase() === info.from);
-      const name = (c && c.name) || 'NEXO';
-      const n = this.notifications.get(info.from) || { name, ids: new Set(), base: 0, text: '' };
-      if (n.ids.has(String(info.msgId))) return; // UnreadBook.add: el mismo mensaje no avisa dos veces
-      n.ids.add(String(info.msgId)); n.text = text; n.posts = (n.posts || 0) + 1;
-      this.notifications.set(info.from, n); this.notifLog.push({ t: Date.now(), chatId: info.from, name, text, count: n.base + n.ids.size, closed: true });
+      if (info.quiet) return;
+      this._postNotif(info.from || 'nexo_jump', info.from ? this._notifName(info.from) : 'NEXO', info.msgId, text, { closed: true });
     };
     if (info.kind === 'MESSAGE') {
       this.bgInbox.push({ d: fromAddress, c: json });
@@ -457,7 +497,7 @@ class NativePhone {
       if (me) this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify({ v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() }));
       if (!info.quiet) notify(info.call ? '📞 Llamada entrante' : '');
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json });
-    else if (info.kind === 'NOTIFY_ONLY') notify(({ image: '📷 Foto', video: '🎥 Vídeo', audio: '🎤 Nota de voz', call: '📞 Llamada entrante', text: '' })[info.what] ?? '📎 Archivo');
+    else if (info.kind === 'NOTIFY_ONLY') notify(NativePhone.whatText(info.what));
   }
 
   // ---- fuera de alcance (simula alejarse) ----
@@ -944,7 +984,7 @@ class NativePhone {
         const from = self.lan.nx;
         self._lanQ = (self._lanQ || Promise.resolve()).then(() => new Promise((done) => setTimeout(() => {
           // Llega solo si los dos siguen en la misma red y el otro aún tiene la conexión
-          if (peer.wifiNet && peer.wifiNet === self.wifiNet && peer.lanConns && peer.lanConns.get(from) === self) peer.emit('onLanMessage', { nx: from, content });
+          if (peer.wifiNet && peer.wifiNet === self.wifiNet && peer.lanConns && peer.lanConns.get(from) === self) { peer._bgNotify(content); peer.emit('onLanMessage', { nx: from, content }); }
           else self.stats.lanLost = (self.stats.lanLost || 0) + 1;
           done();
         }, 2 + content.length / ((self.opts.lanBps || 20e6) / 1000))));
@@ -998,13 +1038,7 @@ class NativePhone {
       }),
       torStop: wrap('torStop', (c) => { if (self.tor) self.tor.conns.forEach((p, nx) => { if (p.tor) { p.tor.conns.delete(self.tor.nx); p.emit('onTorDown', { nx: self.tor.nx }); } }); self.tor = null; c.resolve({ stopped: true }); }),
       // Notificaciones de mensajes (MsgNotifier.kt): una por chat con su número; el icono de la app suma los números
-      notifyMessage: wrap('notifyMessage', (c, a) => {
-        const id = String(a.chatId || '').toLowerCase();
-        const n = self.notifications.get(id) || { name: a.name, ids: new Set(), base: 0, text: '' };
-        n.ids.add(String(a.msgId)); n.name = a.name || n.name; n.text = a.text || ''; n.posts = (n.posts || 0) + 1;
-        self.notifications.set(id, n); self.notifLog.push({ t: Date.now(), chatId: id, name: a.name, text: a.text || '', count: n.base + n.ids.size });
-        c.resolve({ count: n.base + n.ids.size });
-      }),
+      notifyMessage: wrap('notifyMessage', (c, a) => { c.resolve({ count: self._postNotif(a.chatId, a.name, a.msgId, a.text, {}) }); }),
       // Escucha nativa de internet en segundo plano (NetBg.kt; probada en tests/kotlin/NetBgTest): se guarda la configuración
       netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),
       ensureNotificationPermission: wrap('ensureNotificationPermission', (c) => { self.notifPermAsked = (self.notifPermAsked || 0) + 1; c.resolve({ granted: !self.opts.noNotifPerm }); }),

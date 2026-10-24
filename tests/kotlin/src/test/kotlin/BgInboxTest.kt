@@ -27,6 +27,22 @@ class BgInboxTest {
         assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("no es json").kind)
     }
 
+    // Ronda 2760: lo que llega por Jump para mí (el puente lo guarda y lo vuelve a mandar): solo aviso
+    @Test fun jumpParaMi() {
+        val me = "NX99999999"
+        val j = BgInbox.classify(chat.replace("\"to\":\"\"", "\"to\":\"nx99999999\""), me)
+        assertEquals(BgInbox.Kind.NOTIFY_ONLY, j.kind); assertEquals("nx12345678", j.from); assertEquals("msg_1", j.msgId)
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify(chat.replace("\"to\":\"\"", "\"to\":\"nx88888888\""), me).kind, "para otro: nada")
+        val sx = BgInbox.classify("""{"v":1,"type":"sx","to":"nx99999999","msgId":"msg_7","c":"S1:abc"}""", me)
+        assertEquals(BgInbox.Kind.NOTIFY_ONLY, sx.kind); assertEquals("", sx.from, "remitente oculto"); assertEquals("msg_7", sx.msgId)
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":1,"type":"sx","to":"nx88888888","msgId":"msg_7","c":"S1:abc"}""", me).kind)
+        val f0 = BgInbox.classify("""{"v":2,"t":"f","m":"f2","i":0,"n":9,"d":"x","fr":"sx:abc","dt":"nx99999999","tp":"image","k":"a"}""", me)
+        assertEquals(BgInbox.Kind.NOTIFY_ONLY, f0.kind); assertEquals("", f0.from); assertEquals("image", f0.what)
+        assertEquals(BgInbox.Kind.IGNORE, BgInbox.classify("""{"v":2,"t":"f","m":"f2","i":0,"n":9,"d":"x","fr":"sx:abc","dt":"nx99999999","k":"a"}""").kind, "sin mi NEXO ID: como antes")
+        // Texto largo oculto (señal de llamada, acción): el primer trozo lleva q:1
+        assertTrue(BgInbox.classify("""{"v":2,"t":"c","m":"cs1","i":0,"n":3,"d":"x","fr":"NX12345678","q":1,"k":"a"}""").quiet)
+    }
+
     @Test fun guardaYEntregaEnOrden() {
         val f = File.createTempFile("inbox", ".jsonl"); f.delete()
         val box = BgInbox(f)

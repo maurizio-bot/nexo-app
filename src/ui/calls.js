@@ -65,6 +65,8 @@ export class Calls {
     if (!ble || typeof ble.sendChatMessage !== 'function') return Promise.resolve();
     var mid = 'cs' + _hex(6);
     if (op === 'offer') { ble._callOut = ble._callOut || new Set(); ble._callOut.add(mid); }
+    // Ronda 2760: las señales (salvo la llamada entrante) no son mensajes: sin aviso en el otro teléfono
+    if (op !== 'offer') { ble._quietOut = ble._quietOut || new Set(); ble._quietOut.add(mid); }
     return ble.sendChatMessage(nx, JSON.stringify(o), mid).catch(function(e) { console.warn('[CALL] Señal ' + op + ' no enviada: ' + (e && e.message)); });
   }
 

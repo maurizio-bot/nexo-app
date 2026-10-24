@@ -6,6 +6,9 @@ package com.nexo.ble
 // - sync: los contadores de la app mandan (al volver a la app o cuando cambian): lo que la app ya contó pasa a ser la
 //   base y lo visto hasta ahora no vuelve a contar.
 // - clear: chat abierto.
+// - ronda 2760: el aviso nativo en segundo plano llega antes que el de la app y no sabe de grupos (avisa con quien lo
+//   manda). hasMsg: ¿ya se avisó de este mensaje en algún chat?; takeFromOthers: la app lo avisa en otro chat (el grupo)
+//   → se quita de donde estaba (no sale dos veces).
 class UnreadBook(private val maxSeen: Int = 3000) {
     class Chat(var name: String) {
         var base = 0
@@ -16,6 +19,9 @@ class UnreadBook(private val maxSeen: Int = 3000) {
     private val chats = HashMap<String, Chat>()
     private val seen = object : LinkedHashMap<String, Boolean>(256, 0.75f, false) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) = size > maxSeen
+    }
+    private val msgChat = object : LinkedHashMap<String, String>(256, 0.75f, false) { // msgId → chat donde se avisó
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > maxSeen
     }
 
     // true si es nuevo (hay que avisar)
@@ -28,7 +34,21 @@ class UnreadBook(private val maxSeen: Int = 3000) {
         if (name.isNotBlank()) c.name = name
         c.ids.add(msgId)
         c.last = text
+        msgChat[msgId] = id
         return true
+    }
+
+    @Synchronized fun hasMsg(msgId: String): Boolean = msgChat.containsKey(msgId)
+
+    // Quita el mensaje de los otros chats donde se avisó; devuelve esos chats (para actualizar o quitar su aviso)
+    @Synchronized fun takeFromOthers(chatId: String, msgId: String): List<String> {
+        val id = chatId.lowercase()
+        val prev = msgChat[msgId] ?: return emptyList()
+        if (prev == id) return emptyList()
+        val c = chats[prev] ?: return emptyList()
+        if (!c.ids.remove(msgId)) return emptyList()
+        if (c.count <= 0) chats.remove(prev)
+        return listOf(prev)
     }
 
     @Synchronized fun clear(chatId: String): Boolean = chats.remove(chatId.lowercase()) != null

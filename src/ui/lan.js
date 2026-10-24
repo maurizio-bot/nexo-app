@@ -9,6 +9,9 @@
  * v1.2 (idea del dueño): además del anuncio mDNS, escaneo activo de la red (Kotlin LanBeacon): al entrar en una red
  *   Wi-Fi, al volver a la app y cada minuto pregunta a toda la red "¿hay algún NEXO?" (difusión y, al entrar o cada
  *   5 min, dirección por dirección). Sirve con routers, repetidores y redes en malla que no dejan pasar el mDNS.
+ * v1.3 (ronda 2760, regla del dueño: el Wi-Fi se mantiene, sin brincar): mala señal solo tras ~12 s seguidos y se vuelve
+ *   tras ~30 s buenos; con mala señal lo nuevo va por internet (los dos en Wi-Fi) y, si no hay, por Bluetooth; tras un
+ *   corte se espera 15 s a que vuelva.
  *
  * - Cada teléfono se anuncia en la red (NSD/mDNS, lo mismo que Bonjour en iPhone) con una marca del día:
  *   SHA-256("nexo-lan|<NEXO ID>|<fecha UTC>") recortado. Solo quien ya conoce el NEXO ID (un contacto) la
@@ -23,9 +26,11 @@ import { e2eSealText, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
 
 var TICK_MS = 4000;
 var REDISCOVER_MS = 60000;
-var GRACE_MS = 8000;          // tras un corte: tiempo para recuperar el Wi-Fi antes de pasar a Bluetooth
+var GRACE_MS = 15000;         // tras un corte: tiempo para recuperar el Wi-Fi antes de pasar a otro camino (2760: 15 s)
 var VERIFY_LIMIT_MS = 30000;  // una conexión sin comprobar se cierra (impostor)
 var BAD_RTT_MS = 1500, GOOD_RTT_MS = 800, BAD_IDLE_MS = 12000; // mala señal (latido nativo cada 4 s)
+// Ronda 2760 (regla del dueño: que no brinque): mala 3 latidos seguidos (~12 s) para dejarlo; buena 8 (~30 s) para volver
+var BAD_TICKS = 3, GOOD_TICKS = 8;
 
 function _nid(id) { return (id || '').toString().toLowerCase().trim(); }
 function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE) || null; }
@@ -104,11 +109,15 @@ export class LanLink {
   }
 
   // ¿Es el Wi-Fi el camino para este contacto? (también durante el margen tras un corte: se espera a que vuelva)
-  // Con mala señal solo se deja el Wi-Fi si hay Bluetooth listo (si no, un Wi-Fi lento es mejor que nada)
+  // Con mala señal se deja el Wi-Fi solo si hay otro camino (2760, regla del dueño: internet; si no, Bluetooth); si no,
+  // un Wi-Fi lento es mejor que nada
   canReach(nexoId) {
     var nx = _nid(nexoId), l = this.links.get(nx);
     if (!l || !l.routable) return false;
-    if (l.degraded && this.ble && typeof this.ble._bleReadyFor === 'function' && this.ble._bleReadyFor(nx)) return false;
+    if (l.degraded && this.ble) {
+      if (this.ble.net && this.ble.net.canReach(nx)) return false;
+      if (typeof this.ble._bleReadyFor === 'function' && this.ble._bleReadyFor(nx)) return false;
+    }
     return true;
   }
   quality(nexoId) { var l = this.links.get(_nid(nexoId)); return l ? { rtt: l.rtt, idle: l.idle, degraded: !!l.degraded, up: !!l.up } : null; }
@@ -254,11 +263,11 @@ export class LanLink {
       var good = p.rtt >= 0 && p.rtt < GOOD_RTT_MS && p.idle < BAD_IDLE_MS;
       l.bad = bad ? (l.bad || 0) + 1 : 0;
       l.good = good ? (l.good || 0) + 1 : 0;
-      if (!l.degraded && l.bad >= 2) {
+      if (!l.degraded && l.bad >= BAD_TICKS) {
         l.degraded = true;
-        console.log('[WIFI] Señal Wi-Fi mala con ' + nx + ' (ida y vuelta ' + p.rtt + ' ms): lo nuevo por Bluetooth');
+        console.log('[WIFI] Señal Wi-Fi mala con ' + nx + ' (ida y vuelta ' + p.rtt + ' ms, ' + Math.round(p.idle / 1000) + ' s sin recibir): lo nuevo por otro camino');
         if (self.ble && typeof self.ble._lanDegraded === 'function') self.ble._lanDegraded(nx, true);
-      } else if (l.degraded && l.good >= 2) {
+      } else if (l.degraded && l.good >= GOOD_TICKS) {
         l.degraded = false;
         console.log('[WIFI] Señal Wi-Fi buena otra vez con ' + nx + ': vuelve al Wi-Fi');
         if (self.ble && typeof self.ble._lanDegraded === 'function') self.ble._lanDegraded(nx, false);

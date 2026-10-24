@@ -32,11 +32,15 @@ export const BLE_LINK_METHODS = {
     _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: direct ? 'bluetooth' : 'none' });
   },
 
+  // Ronda 2760: con varios enlaces listos con el mismo contacto (Android usa direcciones distintas), el de MTU más alto
+  // (en los teléfonos del dueño convivían uno de 23 y otro de 512: la foto salía por el de 23, ~20 veces más lento)
   _bleReadyFor(nexoId) {
-    var self = this, nx = _normId(nexoId), found = null;
+    var self = this, nx = _normId(nexoId), found = null, best = -1;
     this._deviceStates.forEach(function(st, key) {
-      if (found || /^(lan|net)nx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
-      if (_normId(self._macToNexoId.get(key)) === nx) found = key;
+      if (/^(lan|net)nx/.test(key) || (st.state !== BLE_STATES.READY_TO_CHAT && st.state !== BLE_STATES.NOTIFICATIONS_READY)) return;
+      if (_normId(self._macToNexoId.get(key)) !== nx) return;
+      var mtu = (self._mtuByDevice && self._mtuByDevice.get(key)) || 185; // sin medir: entre el mínimo y el bueno
+      if (mtu > best) { best = mtu; found = key; }
     });
     return found;
   },
@@ -44,8 +48,9 @@ export const BLE_LINK_METHODS = {
   _lanDegraded(nexoId, on) {
     var nx = _normId(nexoId);
     if (on) {
-      var ble = this._bleReadyFor(nx);
-      if (ble && this.ackSystem && typeof this.ackSystem.relink === 'function') this.ackSystem.relink(_lanId(nx), ble);
+      // Ronda 2760 (regla del dueño): Wi-Fi muy malo → internet (los dos en Wi-Fi); si no, Bluetooth
+      var to = (this.net && this.net.canReach(nx) && this.net.bothWifi(nx)) ? _netId(nx) : this._bleReadyFor(nx);
+      if (to && this.ackSystem && typeof this.ackSystem.relink === 'function') this.ackSystem.relink(_lanId(nx), to);
     }
     _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: this.linkOf(nx) });
   },

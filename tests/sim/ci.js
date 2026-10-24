@@ -47,6 +47,9 @@ const SCENARIOS = [
   { name: 'chats de grupo (crear, escribir, texto largo, salir)', args: ['groups.js', '--io-delay=25'], tag: 'GROUPS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'llamadas de voz (contestar, rechazar, sin respuesta, se corta)', args: ['calls.js', '--io-delay=25'], tag: 'CALLS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'pasar la cuenta a un teléfono nuevo', args: ['move.js', '--io-delay=25'], tag: 'MOVE', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'avisos por Bluetooth: segundo plano, app congelada y cerrada', args: ['notify.js', '--via=ble'], tag: 'NOTIFY', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'avisos por Jump: segundo plano, app congelada y cerrada', args: ['notify.js', '--via=jump'], tag: 'NOTIFY', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'camino de envío (regla del dueño: Wi-Fi, internet, Bluetooth; sin brincar)', args: ['route.js'], tag: 'ROUTE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'Double Ratchet y poscuántico', args: ['ratchet.js'], tag: null },
 ];
 
