@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2763)
+Última actualización: 2026-10-24 (build 2764)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -89,7 +89,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2760 | | Compilación de prueba (lanzada a mano en la rama de trabajo, sin APK publicada): la 2761 + lo pendiente; Kotlin y pruebas en verde |
 | 2761 | a24a47f4 | Sobre la 2759 (sin las novedades pendientes): diagnóstico de los dos teléfonos del dueño → camino de envío con la regla nueva del dueño (Wi-Fi se mantiene; muy malo → internet; sin internet → Bluetooth; sin brincar), vigilante del Bluetooth que ya no corta enlaces vivos ni con un archivo en curso, enlace de MTU más alto, avisos nativos con la app en segundo plano aunque el teléfono la congele y avisos de Jump con la app cerrada. Ver "Ronda 2760" |
 | 2762 | 4634f69e | La 2761 + lo que estaba pendiente: pasar la cuenta a un teléfono nuevo (punto 15 A), aviso "Llamada entrante" con la app cerrada, botón de altavoz; llamadas: códec real en oferta y respuesta (un teléfono sin Opus no oía nada), videollamada por altavoz, salida de audio Android 12+, diagnóstico `[CALL]`; pantalla de llamada y videollamada nueva (estilo WhatsApp + NEXO, girar cámara). **Sin APK**: en GitHub falló una prueba Kotlin de tiempos (`AtRestStoreTest.migrarArchivoGrandeNoBloqueaOtros`: un guardado tardó 394 ms por una pausa de la máquina; el código no tenía fallo). Todo pasa a la 2763 |
-| 2763 | (este commit) | La 2762 + toda la app con el estilo NEXO (como la pantalla de llamadas), llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar), avisos de grupo con el nombre del grupo con la app cerrada o congelada, y la prueba de tiempos rehecha (determinista). Ver "Ronda 2763" |
+| 2763 | 5c215c86 | La 2762 + toda la app con el estilo NEXO (como la pantalla de llamadas), llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar), avisos de grupo con el nombre del grupo con la app cerrada o congelada, y la prueba de tiempos rehecha (determinista). Ver "Ronda 2763". APK verificada (nightly-2763, 24,5 MB) |
+| 2764 | (este commit) | Grupos: vídeo HD y archivos grandes (hasta 1 GB) a cada miembro; con el teléfono girado, la franja de la cámara frontal ya no sale gris. Ver "Ronda 2764" |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -215,6 +216,22 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2764: grupos con vídeo HD y archivos grandes; pantalla girada
+- Grupos (PENDIENTES §2, faltaban): `src/ui/group_media.js`.
+  - Archivo grande (más de ~1 MB en un grupo): se cifra a disco una vez (big_file.js, id del mensaje del grupo); el
+    sobre del grupo lleva nombre, tamaño, la clave y quién lo manda (`big.from`); luego va a cada miembro con camino
+    (mismo Wi-Fi, Wi-Fi Direct o L2CAP), en cola (una oferta a la vez por archivo). Quien no tiene camino ve "Toca para
+    pedirlo" y la petición va a quien lo mandó. Reintentar en el emisor lo manda a quien falte.
+  - Vídeo: la previa va al grupo como siempre; el HD va a cada miembro (como en un chat normal) cuando le llega la
+    previa, y al reconectar si quedó pendiente; el receptor lo pone en el chat del grupo. Etiqueta "HD n/m" → "HD ✓".
+  - Prueba: `tests/sim/group_media.js` (A, B en el mismo Wi-Fi, C solo Bluetooth: vídeo con HD a los dos; 24 MB a B
+    al momento y a C cuando entra en el Wi-Fi y toca la tarjeta; idénticos por SHA-256). Añadida a ci.js.
+- Pantalla girada (informe del dueño con captura, Samsung): a la izquierda salía una barra gris. Es la franja de la
+  cámara frontal: Android no deja dibujar ahí a la app y la pinta con el fondo de la ventana, que en el tema del
+  sistema (DayNight oscuro) es gris. Ahora el fondo de la ventana es el de NEXO (#070812, `nexo_colors.xml`,
+  `styles.xml` y `MainActivity`). La parte web ya ocupaba todo el ancho (comprobado en Chromium a 851x393). No se
+  puede reproducir en el simulador (es de Android): falta confirmarlo en el teléfono.
 
 ## Ronda 2763: toda la app con el estilo NEXO y la llamada entrante como una llamada del teléfono
 - Estilo (pedido del dueño: como la pantalla de llamadas): `src/styles/nexo_theme.css` (se carga tras critical.css):

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fondo de NEXO (--nx-bg en src/styles/nexo_theme.css): también el de la ventana, que se ve en la franja de la
+         cámara frontal con el teléfono girado (antes gris) -->
+    <color name="nexo_bg">#070812</color>
+</resources>

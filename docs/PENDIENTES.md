@@ -14,6 +14,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
+- **2764**: con el teléfono girado, que no salga la barra gris a la izquierda; en un grupo, un vídeo (llega el HD a
+  todos) y un archivo grande (con los demás en el mismo Wi-Fi).
 - **2763** (la 2762 no llegó a salir): llamada y videollamada (que se oigan los dos; diagnóstico `[CALL]` de los dos
   teléfonos), pantalla de llamada nueva (girar cámara, imagen propia arrastrable), llamada entrante con tono y
   Contestar / Rechazar (también con la app cerrada), estilo NEXO en toda la app, avisos de grupo con su nombre,
@@ -45,8 +47,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   regulación del país (posible licencia). Asesoría legal antes de programar.
 - **Stream** (vídeos tipo TikTok + estados de contactos, gestos: tap arriba izq. vídeos, arriba der. estados, doble tap
   "me gusta", deslizar der→izq comentarios, izq→der volver): **SIN DECIDIR** (sí/no; solo cercanos o con servidor).
-- **Chats de grupo**: hechos en la 2758 (textos y adjuntos de hasta ~1 MB); faltan el HD de vídeo y los archivos
-  grandes en grupos. Nombre del grupo en el aviso con la app cerrada o congelada: hecho (2763).
+- **Chats de grupo**: hechos en la 2758 (textos y adjuntos de hasta ~1 MB); HD de vídeo y archivos grandes (hasta
+  1 GB) en grupos: hechos en la 2764. Nombre del grupo en el aviso con la app cerrada o congelada: hecho (2763).
 - **Internet** (contactos lejos, Wi-Fi de módems distintos): hecho en la ronda 2739 con relés públicos Nostr y Tor
   (decisión del dueño 23-10, "2 y 3"; ver `docs/INTERNET.md`). Falta: confirmar en los teléfonos (los relés y Tor
   reales no se alcanzan desde el entorno de desarrollo); servidor propio si los relés públicos fallan o limitan.
@@ -120,8 +122,8 @@ De lo más simple a lo más complejo. Estado:
    + contadores de no leídos por todas las vías (pedido del dueño 23-10). 12. ✅ (2757) Recibir por Bluetooth con la app
    cerrada: buzón nativo, ✓✓ al emisor y notificación; al abrir llega todo (`BgInbox.kt`). 13. L2CAP: fase 1 ✅
    (2758) archivos grandes por Bluetooth L2CAP sin Wi-Fi; fase 2: fotos, vídeo HD y archivos medianos por L2CAP.
-14. Grupos ✅ (2758): textos, fotos, audio, ubicación y archivos de hasta ~1 MB; falta HD de vídeo y archivos
-   grandes en grupos. 15. Varios dispositivos: decidido por el dueño el 24-10 → **opción A primero: pasar la cuenta a un teléfono nuevo**
+14. Grupos ✅ (2758): textos, fotos, audio, ubicación y archivos de hasta ~1 MB; HD de vídeo y archivos grandes ✅
+   (2764). 15. Varios dispositivos: decidido por el dueño el 24-10 → **opción A primero: pasar la cuenta a un teléfono nuevo**
    (QR en el nuevo, el viejo lo escanea y le pasa por Wi-Fi/L2CAP, cifrado, NEXO ID, claves, contactos, historial,
    fotos y grupos; el viejo se desactiva). La B (varios dispositivos activos a la vez) queda para más adelante.
    ✅ A hecha en la 2759 (Perfil → Cambiar de teléfono; mismo Wi-Fi). Falta: probar en teléfonos; sin Wi-Fi común. 16. Llamadas de voz ✅ (2758, fase 1: con el
