@@ -41,6 +41,9 @@ export function _waitForBLEReady(maxMs) {
   });
 }
 
+// Ronda 2758: tope de un adjunto en un grupo (va una vez a cada miembro dentro del sobre, como texto largo)
+var GROUP_MAX_CHARS = 1400000;
+
 export function _sendAttachment(type, payload, meta, opts) {
   // FIX v9.9.26: meta.type llega con el MIME del archivo ('image/jpeg', 'text/plain'...) y pisaba
   // el tipo de adjunto en Object.assign({type}, meta): el receptor no sabía dibujarlo.
@@ -62,7 +65,9 @@ export function _sendAttachment(type, payload, meta, opts) {
     return;
   }
 
-  var msgId = 'msg' + Date.now() + Math.random().toString(36).substr(2, 5);
+  // Ronda 2758: en un grupo va dentro del sobre a cada miembro (groups.js); id 'gm…' para juntar las confirmaciones
+  var gsA = window.bleInterface && window.bleInterface.groups, inGroup = !!(gsA && gsA.isGroup(contactId));
+  var msgId = (inGroup ? 'gm' : 'msg') + Date.now() + Math.random().toString(36).substr(2, 5);
   _msgContactMap[msgId] = contactId;
   _noteContactMessage(contactId, type, Date.now());
 
@@ -84,6 +89,18 @@ export function _sendAttachment(type, payload, meta, opts) {
     attachmentPayload: payload,
     attachmentMeta: meta || {}
   };
+
+  if (inGroup) {
+    var gstr = JSON.stringify(attachmentData);
+    if (gstr.length > GROUP_MAX_CHARS) {
+      _showPermissionError('Demasiado grande para un grupo (' + (gstr.length * 3 / 4 / 1048576).toFixed(1) + ' MB). Máximo ~' + (GROUP_MAX_CHARS * 3 / 4 / 1048576).toFixed(1) + ' MB por ahora.');
+      return;
+    }
+    if (showHere) _renderMessage(localMsg, true);
+    try { if (window.vaultAppendMessage) vaultAppendMessage(contactId, localMsg); } catch (e) {}
+    gsA.sendText(contactId, gstr, msgId);
+    return msgId;
+  }
 
   // Tope BLE: video/archivo/imagen grandes → failed limpio (sin romper flujo)
   if ((type === 'video' || type === 'file' || type === 'image') && typeof payload === 'string' && payload.length > _maxB64For(contactId)) {

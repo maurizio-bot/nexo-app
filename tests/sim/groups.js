@@ -4,7 +4,8 @@
 // 2. B escribe en el grupo: llega a A y a C en el chat del grupo (con el nombre de quien escribe), no en el chat 1:1;
 //    con el chat cerrado cuenta como no leído y el último mensaje de la lista es "B: …".
 // 3. Una respuesta larga de C (texto de más de un trozo) también llega a los dos.
-// 4. Las copias de cada miembro no se ven en los chats 1:1 (ni al reabrirlos).
+// 4. Las copias de cada miembro no se ven en los chats 1:1 (ni al reabrirlos) y se borran al entregarse.
+// 4b. (fase 2) A manda un archivo al grupo: llega a B y a C como tarjeta en el chat del grupo.
 // 5. C sale del grupo: A y B lo ven y ya no le mandan.
 // Uso: node groups.js <dir_build> [--io-delay=25]
 'use strict';
@@ -101,6 +102,19 @@ const vaultHas = async (p, cid, re) => (await p.win.vaultLoadMessages(cid)).some
   r.chat_1a1_B_A = bubbles(B).map((b) => b.text.substring(0, 30));
   r.sin_sobres_en_1a1 = !bubbles(B).some((b) => /nexo_grp|hola grupo/.test(b.text));
   await closeChat(B);
+  // 4b. Archivo al grupo (fase 2)
+  await closeChat(A); await openChatWith(A, '👥 Amigos');
+  click(A.win, A.win.document.querySelector('.attach-menu-item[data-type="file"]')); await sleep(150);
+  const fin = Array.from(A.win.document.querySelectorAll('input[type=file]')).pop();
+  const doc = Buffer.alloc(30 * 1024); for (let i = 0; i < doc.length; i++) doc[i] = (i * 31 + 7) & 255;
+  Object.defineProperty(fin, 'files', { value: [new A.win.File([doc], 'plan.pdf', { type: 'application/pdf' })] }); fin.dispatchEvent(new A.win.Event('change'));
+  const fileIn = async (p) => { for (let i = 0; i < 300; i++) { if ((await p.win.vaultLoadMessages(gid)).some((m) => m.attachmentType === 'file' && m.attachmentMeta && m.attachmentMeta.name === 'plan.pdf' && !m._own)) return true; await sleep(300); } return false; };
+  r.archivo_llega_a_B = await fileIn(B);
+  r.archivo_llega_a_C = await fileIn(C);
+  r.archivo_entregado_en_A = await wait(() => bubbles(A).some((b) => b.own && /plan\.pdf/.test(b.text) && /delivered|read/.test(b.st)), 60);
+  await sleep(1000);
+  r.copias_borradas = !(await A.win.vaultLoadMessages(id(B))).some((m) => /plan\.pdf/.test(m.content || '')) && !(await A.win.vaultLoadMessages(id(C))).some((m) => /plan\.pdf/.test(m.content || ''));
+  await closeChat(A);
   // 5. C sale del grupo
   await closeChat(C);
   C.win.NEXO_openGroupMenu(gid); await sleep(300);
@@ -113,7 +127,7 @@ const vaultHas = async (p, cid, re) => (await p.win.vaultLoadMessages(cid)).some
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css/.test(l)).slice(0, 5);
   const ok = r.grupo_en_B && r.grupo_en_C && r.creado_entregado_en_A === true && r.B_conoce_a_C_despues && r.C_conoce_a_B_despues && r.llega_a_A && r.no_leido_A === 1 &&
     r.llega_a_C && r.no_va_al_chat_1a1_de_C && r.estado_en_B === 'entregado a todos' && r.burbuja_en_C.some((x) => /^B: hola grupo/.test(x)) && r.largo_llega_a_A && r.largo_llega_a_B &&
-    r.sin_sobres_en_1a1 && r.C_ya_no_lo_tiene && r.A_ve_que_salio && r.B_ve_que_salio && r.no_se_manda_a_C && !r.errores.length;
+    r.sin_sobres_en_1a1 && r.archivo_llega_a_B && r.archivo_llega_a_C && r.archivo_entregado_en_A && r.copias_borradas && r.C_ya_no_lo_tiene && r.A_ve_que_salio && r.B_ve_que_salio && r.no_se_manda_a_C && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('GROUPS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_groups.txt'), logs.join('\n'));

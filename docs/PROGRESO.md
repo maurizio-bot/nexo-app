@@ -210,7 +210,7 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
-## Ronda 2758: chats de grupo (plan del dueño punto 14, fase 1: textos)
+## Ronda 2758: chats de grupo (plan del dueño punto 14: textos, fotos, audio y archivos)
 - **Grupos** (`groups.js`, `groups_ui.js`): botón 👥 arriba en la pantalla principal → nombre y contactos → "Crear
   grupo". Sin servidor: el grupo (id `gr…`, nombre, miembros) se guarda en cada teléfono y cada mensaje va a cada
   miembro por su chat de siempre (cifrado de extremo a extremo, por Bluetooth, Jump, Wi-Fi o internet) dentro de un
@@ -219,14 +219,25 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   conocieran (se añaden como contactos sin resaltarlos). En el chat del grupo cada burbuja dice quién la escribió;
   la propia pasa a ✓✓ cuando les llegó a todos (y a leído cuando todos lo leyeron). Lista de chats: "👥 Nombre",
   último mensaje "B: …" y no leídos; notificación con el nombre del grupo. Menú ⋮: miembros y salir del grupo.
-  Cada copia queda oculta en el chat 1:1 del miembro y se reenvía sola si no está a alcance. Fase 2: fotos, notas de
-  voz y archivos en grupos (hoy el clip avisa "por ahora solo textos"); avisar con la app cerrada con el nombre del
-  grupo (hoy el aviso nativo dice el del remitente).
+  Cada copia queda oculta en el chat 1:1 del miembro y se reenvía sola si no está a alcance; se borra en cuanto ese
+  miembro confirma que le llegó. Fotos, notas de voz, ubicación, contactos y archivos de hasta ~1 MB van igual, dentro
+  del sobre; el vídeo, solo la previa (sin HD). Pendiente: el HD de vídeo y los archivos grandes en grupos; avisar con
+  la app cerrada con el nombre del grupo (hoy el aviso nativo dice el del remitente).
 - Simulado (`groups.js`, en `ci.js`): A crea el grupo con B y C (que no se conocían): aparece en los tres, B y C se
   pueden escribir, ✓✓ en A; B escribe → llega a A (no leído 1, "B: hola grupo…") y a C (burbuja "B: …"), no en los
-  chats 1:1; un texto largo de C llega a los dos; C sale → A y B lo ven y ya no le mandan.
+  chats 1:1; un texto largo de C llega a los dos; A manda un PDF al grupo → llega a B y a C, ✓✓ en A y las copias
+  ocultas se borran; C sale → A y B lo ven y ya no le mandan.
 - **Arreglado de paso**: la copia oculta de "eliminar para todos" perdía la marca al guardarse y, al reabrir el chat,
   quien borró veía una burbuja con el JSON de la acción (comprobado en `chatactions.js`: 1 burbuja antes, 0 ahora).
+
+## Ronda 2758: arreglos encontrados en la batería
+- **Jump, foto que se queda sin llegar**: si el puente empezaba a pasarle una foto al destino y se cortaba, y luego el
+  emisor la mandaba directo, el destino mezclaba los trozos de los dos envíos (mismo mensaje troceado distinto) y no
+  la completaba nunca (`jump.js --direct-later`: falló 3 de 3 también con la 2757; depende de si llegó algún trozo del
+  puente antes del corte). Ahora, si lo que había a medias lleva 4 s parado, se empieza con el nuevo (`ble_ack.js`
+  v3.14.0): llega en 12 s (2 de 2).
+- Pruebas que miden el límite del Bluetooth de siempre (`files.js`, `perf.js`, `wifidirect.js`) se hacen con teléfonos
+  sin L2CAP: con L2CAP esos archivos ya no se rechazan, van como archivo grande (`big.js --l2`).
 
 ## Ronda 2758: archivos grandes por Bluetooth L2CAP (plan del dueño punto 13, fase 1)
 - Sin Wi-Fi ni Wi-Fi Direct, un archivo grande (más de ~2 MB, hasta 1 GB) ya no se rechaza: va por un canal L2CAP del

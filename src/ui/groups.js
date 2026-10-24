@@ -9,8 +9,11 @@
  * claves, como al compartir contactos): así cada miembro puede escribir cifrado a los demás aunque no se conocieran. El id que viaja a cada miembro es i + '_' + 8 letras del miembro: así las confirmaciones (✓, ✓✓,
  * leído) de cada uno se juntan en la burbuja del grupo (✓✓ cuando les llegó a todos; leído cuando todos lo leyeron).
  * Cada copia queda (oculta) en el chat del miembro: si no está a alcance se reenvía sola como cualquier mensaje.
- * Fase 1: textos (fotos, audio y archivos en un grupo: fase 2).
+ * Fotos, notas de voz, ubicación, contactos y archivos (hasta ~1 MB) van igual, dentro del sobre (fase 2, 2758); el
+ * vídeo, solo la previa. La copia oculta de cada miembro se borra al confirmarse que le llegó.
  */
+import { vaultDeleteMessage } from '../vault/vault_manager.js';
+
 var STORE_FILE = 'nexo_groups.json';
 var GID_RE = /^gr[0-9a-z]{8}$/;
 var NX_RE = /^nx[0-9a-z]{8}$/;
@@ -23,6 +26,12 @@ function _rnd(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return 
 function _emit(name, detail) { try { window.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) {} }
 
 export function isGroupId(id) { return GID_RE.test(_nid(id)); }
+
+// Contenido de un mensaje de grupo: si es un adjunto (foto, audio, archivo…), el objeto; si no, null
+export function groupAttachment(content) {
+  if (typeof content !== 'string' || content.charAt(0) !== '{' || content.indexOf('"attachmentType"') < 0) return null;
+  try { var a = JSON.parse(content); return a && a.type === 'attachment' && a.attachmentType ? a : null; } catch (e) { return null; }
+}
 
 // ¿Es un sobre de grupo? Devuelve el objeto o null
 export function parseGroupEnvelope(content) {
@@ -133,6 +142,8 @@ export class Groups {
     if (!(nx in per)) return;
     if ((STATUS_RANK[status] || 0) <= (STATUS_RANK[per[nx]] || 0) && !(per[nx] === 'failed' && status !== 'failed')) return;
     per[nx] = status;
+    // Ya le llegó: la copia oculta de su chat sobra (con fotos o archivos ocuparía el tamaño una vez por miembro)
+    if (STATUS_RANK[status] >= STATUS_RANK.delivered) vaultDeleteMessage(nx, wid).catch(function() {});
     var all = Object.keys(per).map(function(k) { return per[k]; });
     var min = all.reduce(function(a, b) { return STATUS_RANK[a] <= STATUS_RANK[b] ? a : b; }, 'read');
     // Con alguno fallido pero otros entregados, la burbuja no se pone roja: queda en ✓ (se reintenta)

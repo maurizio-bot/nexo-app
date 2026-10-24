@@ -22,9 +22,6 @@ export function _getAttachmentPlugins() {
 
 export function _toggleAttachMenu() {
   var menu = document.getElementById('attach-menu');
-  // Ronda 2758: en un grupo, por ahora solo textos
-  var gs = window.bleInterface && window.bleInterface.groups, cur = window.bleInterface && window.bleInterface._activeChatDeviceId;
-  if (gs && cur && gs.isGroup(cur)) { _showInfoToast('En los grupos, por ahora solo textos (fotos y archivos: próxima versión)', 3500); return; }
   if (menu) {
     menu.classList.toggle('hidden');
     menu.classList.toggle('visible');

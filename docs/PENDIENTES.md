@@ -34,7 +34,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   regulación del país (posible licencia). Asesoría legal antes de programar.
 - **Stream** (vídeos tipo TikTok + estados de contactos, gestos: tap arriba izq. vídeos, arriba der. estados, doble tap
   "me gusta", deslizar der→izq comentarios, izq→der volver): **SIN DECIDIR** (sí/no; solo cercanos o con servidor).
-- **Chats de grupo**: fase 1 (textos) hecha en la 2758; faltan fotos, audio y archivos en grupos.
+- **Chats de grupo**: hechos en la 2758 (textos y adjuntos de hasta ~1 MB); faltan el HD de vídeo y los archivos
+  grandes en grupos, y el nombre del grupo en el aviso con la app cerrada.
 - **Internet** (contactos lejos, Wi-Fi de módems distintos): hecho en la ronda 2739 con relés públicos Nostr y Tor
   (decisión del dueño 23-10, "2 y 3"; ver `docs/INTERNET.md`). Falta: confirmar en los teléfonos (los relés y Tor
   reales no se alcanzan desde el entorno de desarrollo); servidor propio si los relés públicos fallan o limitan.
@@ -108,6 +109,7 @@ De lo más simple a lo más complejo. Estado:
    + contadores de no leídos por todas las vías (pedido del dueño 23-10). 12. ✅ (2757) Recibir por Bluetooth con la app
    cerrada: buzón nativo, ✓✓ al emisor y notificación; al abrir llega todo (`BgInbox.kt`). 13. L2CAP: fase 1 ✅
    (2758) archivos grandes por Bluetooth L2CAP sin Wi-Fi; fase 2: fotos, vídeo HD y archivos medianos por L2CAP.
-14. Grupos: fase 1 ✅ (2758) textos; fase 2: fotos, audio y archivos en grupos. 15. Varios dispositivos. 16. Llamadas de voz. 17. Videollamadas.
+14. Grupos ✅ (2758): textos, fotos, audio, ubicación y archivos de hasta ~1 MB; falta HD de vídeo y archivos
+   grandes en grupos. 15. Varios dispositivos. 16. Llamadas de voz. 17. Videollamadas.
 18–20 (del dueño): pruebas reales con 3–4 teléfonos, auditoría externa, Play Store.
 

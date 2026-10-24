@@ -106,7 +106,7 @@ import { ratchetInit, ratchetSafetyNumber, ratchetPeerBundle, ratchetSessionPq }
 import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './ui/qr_verify.js';
 import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE, HD_REENCODE_BPS, _videoFormat, _blobToB64, _makeVideoPreview, _previewAudioTracks, _b64ToBlob, _makeVideoThumb } from './ui/video_tools.js';
 import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
-import { parseGroupEnvelope } from './ui/groups.js';
+import { groupAttachment, parseGroupEnvelope } from './ui/groups.js';
 import { groupSubtitle, installGroupButton, openGroupChat, openGroupMenu, sendGroupText } from './ui/groups_ui.js';
 import { _STATUS_RANK, _statusRank, _canUpgradeStatus, _getDomMessageStatus, _normId, _getCurrentContactId, _chatKind, _plainText, _myNexoId, _contactName, _peerUnderstands, _cut, _msgSummary, _findMessage, _PREVIEW_BY_TYPE } from './ui/chat_format.js';
 import { cameraUse, _cameraActiveStream, _cameraPreviewMode, _cameraPreviewRecording, _cameraPreviewMediaRecorder, _cameraPreviewVideoChunks, _cameraVideoStartTime, _cameraTimer, _cameraTorchOn, _cameraReview, _showCameraPreviewOverlay, _hideCameraPreviewOverlay, _photoTarget, _videoLimitSec, _updateCameraPreviewUI, _cameraError, _setupVideoRecorder, _startCameraPreview, _cameraStartToken, _stopCameraPreview, _flipCamera, _setCameraMode, _toggleCameraMode, _toggleTorch, _startCameraTimer, _stopCameraTimer, _capturePhoto, _handleCameraCapture, _resumeBleFromCamera, _pauseBleForCamera, _showReview, _closeReview, _retakeReview, _sendReview, _bindCameraPreviewHandlers, _handleCamera, CAMERA_HD_BPS } from './ui/camera.js';
@@ -419,8 +419,10 @@ function _handleIncomingMessage(msg) {
         var gr = bgs ? bgs.receive(genv, msg.senderNexoId || msg.deviceUUID, msg.messageId || msg.msgId) : null;
         if (!gr) return;
         msg.groupId = gr.gid; msg.content = gr.content;
-        var gpv = _plainText(gr.content);
-        bgs.noteMessage(gr.gid, bgs.memberName(msg.senderNexoId) + ': ' + _cut(gpv, 50), msg.timestamp || Date.now());
+        var gat = groupAttachment(gr.content);
+        if (gat) { msg.attachmentType = gat.attachmentType; msg.attachmentPayload = gat.payload; msg.attachmentMeta = gat.meta || {}; }
+        var gpv = gat ? (_PREVIEW_BY_TYPE[gat.attachmentType] || '📎 Archivo') : _cut(_plainText(gr.content), 50);
+        bgs.noteMessage(gr.gid, bgs.memberName(msg.senderNexoId) + ': ' + gpv, msg.timestamp || Date.now());
       }
     }
     // v9.9.45: acción del chat (eliminar para todos): se aplica, no se muestra

@@ -5,7 +5,7 @@
  */
 import { e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
-import { parseGroupEnvelope } from './groups.js';
+import { groupAttachment, parseGroupEnvelope } from './groups.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
 
 
@@ -378,6 +378,7 @@ export const BLE_MESSAGE_METHODS = {
           grp = senderUUID && self.groups ? self.groups.receive(genv, senderUUID, messageId) : null;
           if (!grp) { console.warn('[GROUP] Sobre de grupo descartado (de ' + senderUUID + ')'); return; }
           msgContent = grp.content;
+          attachmentData = groupAttachment(msgContent); // foto, audio, archivo… dentro del sobre (fase 2)
         }
         // Acción del chat (eliminar para todos): no es un mensaje; la aplica main.js
         var chatAct = _chatKind(msgContent);
@@ -395,7 +396,7 @@ export const BLE_MESSAGE_METHODS = {
         }
         // v6.14.0: el contador de no leídos lo lleva notify.js (todas las vías: texto largo, fotos, archivos…)
         var pv = _messagePreview(content, attachmentData && attachmentData.attachmentType);
-        if (grp) { var gpv = _messagePreview(msgContent, null); if (gpv !== null && !isControl) self.groups.noteMessage(grp.gid, self.groups.memberName(senderUUID) + ': ' + gpv, data.timestamp || Date.now()); }
+        if (grp) { var gpv = _messagePreview(msgContent, attachmentData && attachmentData.attachmentType); if (gpv !== null && !isControl) self.groups.noteMessage(grp.gid, self.groups.memberName(senderUUID) + ': ' + gpv, data.timestamp || Date.now()); }
         else if (senderUUID && !isControl && pv !== null) self.noteContactMessage(senderUUID, pv, data.timestamp || Date.now());
         _safeDispatchEvent('nexo:ble:messageReceived', {
           groupId: grp ? grp.gid : undefined,

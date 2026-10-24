@@ -74,6 +74,9 @@ export function _sendVideo(blob, meta) {
     var hdBlob = preview.hd || blob;
     var hdMime = (hdBlob.type || mime).split(';')[0];
     var withHd = Math.ceil(hdBlob.size / 3) * 4 <= MAX_HD_B64_BYTES;
+    // Ronda 2758: en un grupo solo la previa (el HD aparte aún no va a grupos)
+    var gsV = window.bleInterface && window.bleInterface.groups;
+    if (gsV && gsV.isGroup(contactId)) withHd = false;
     if (!withHd) console.log('[VIDEO] Sin HD: ' + Math.round(hdBlob.size / 1024) + ' KB supera el límite');
     var thumbP = preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320);
     return Promise.all([_blobToB64(preview), withHd ? _blobToB64(hdBlob) : Promise.resolve(null), thumbP]).then(function(r) {
