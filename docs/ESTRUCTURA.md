@@ -55,6 +55,9 @@ clase con `Object.assign(BLEInterface.prototype, …)` (mismo `this`, mismos nom
 Ronda 2756: `ui/ble_rid.js` (cálculo del código rotativo; igual que `RidToken.kt`) y `ui/big_file.js` (archivos grandes:
 trozos a disco, paso por Wi-Fi / Wi-Fi Direct, estado de la tarjeta; nativo en `BigFile.kt`).
 
+Ronda 2757: `BgInbox.kt` (nativo): con la app cerrada, qué se guarda en el buzón, qué se confirma y qué se avisa;
+lo usa `NexoBlePlugin.kt` (closedReceive / takeOverFromClosed).
+
 Sin cambios: `ui/ble_ack.js` (protocolo de trozos), `ui/ble_relay.js` (Jump), `ui/lan.js`, `ui/wifi_direct.js`,
 `net/net_link.js` (internet), `vault/*`, `fenix/*`.
 

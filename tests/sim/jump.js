@@ -9,6 +9,7 @@
 //   --low-battery: (con --stranger) B al 10 % sin cargar: no debe hacer de puente; luego se enchufa
 //   --direct-later: la foto queda en B sin camino a C y luego A y C quedan a alcance: A la reenvía directo
 //   --bridge-build=<dir>: B (el puente) con otra build (p. ej. una anterior sin remitente sellado)
+//   --kotlin2756: el nativo trocea como la 2756 (caracteres, MTU − 13) en vez de por bytes
 //   --wifi-ab: (plan punto 10, Jump por Wi-Fi) A y B en el mismo Wi-Fi y FUERA de alcance de Bluetooth: el primer salto
 //              va por Wi-Fi (A–B) y el segundo por Bluetooth (B–C)
 'use strict';
@@ -19,7 +20,7 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 
 const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : Number(v); };
-const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 0), asymmetric: true };
+const opts = { readsContentFallback: true, retain: ['onPayloadReceived'], closeOnNoService: true, pace: [15, 15], ioDelay: arg('io-delay', 0), asymmetric: true, kotlin2756: !!arg('kotlin2756', false) };
 const directLater = !!arg('direct-later', false);
 const bridgeA = process.argv.find((x) => x.startsWith('--bridge-build='));
 const bridgeDir = bridgeA ? path.resolve(bridgeA.split('=')[1]) : buildDir;

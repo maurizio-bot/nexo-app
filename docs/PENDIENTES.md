@@ -56,7 +56,14 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
   Wi-Fi; Jump con la app en segundo plano o cerrada.
 - **Seguridad (resto de la fase 3)**: identificador Bluetooth rotativo hecho (2756). Hechos en la
   ronda 2730: remitente oculto a los puentes, poscuántico (ML-KEM) y QR del número de seguridad.
-- **Fiabilidad**: recibir con la app cerrada del todo (servidor GATT en el BleService); falta `@capacitor/app`.
+- **Compatibilidad (visto en la batería de la 2757)**: con un puente Jump en una build anterior a la 2755
+  (`jump.js --bridge-build=builds/93dd9ad`), lo que el puente guarda tarda ~80 s en llegar al destino cuando vuelve
+  (antes de la 2756, ~14 s; con el puente en la build actual, ~14 s). Pasa igual con el código de la 2756: no lo
+  causan los cambios de la 2757. Causa sin confirmar (probablemente el ID rotativo: la build vieja no reconoce el
+  código del destino y sus reintentos van al enlace anterior hasta que aborta y vuelve a empezar). Solo afecta si
+  algún teléfono sigue en una build vieja.
+- **Fiabilidad**: recibir por Bluetooth con la app cerrada hecho (2757; falta comprobar en teléfonos que Android no
+  cierre el proceso); falta `@capacitor/app`.
   Hecho en la ronda 2744: fuera `NordicMeshService` del manifiesto, emojis y acentos (prueba en `e2e.js`; la vista
   previa partía emojis), nombres ya iban como texto en la lista.
 - **Base estable nueva** (≥ 2725) cuando el dueño confirme.
@@ -98,7 +105,8 @@ De lo más simple a lo más complejo. Estado:
    215 → ~95 s). 9. ✅ (2757) Fénix para fotos, notas de voz, previas de vídeo y archivos de hasta ~1 MB (fase 3).
    10. ✅ Jump por Wi-Fi: ya funcionaba (el enlace Wi-Fi es un vecino más); ahora probado (`jump.js --wifi-ab`).
 11. ✅ (2751) Recibir por internet en segundo plano (NetBg nativo) + notificaciones del teléfono + número en el icono
-   + contadores de no leídos por todas las vías (pedido del dueño 23-10). 12. Recibir por Bluetooth con la app cerrada. 13. L2CAP.
+   + contadores de no leídos por todas las vías (pedido del dueño 23-10). 12. ✅ (2757) Recibir por Bluetooth con la app
+   cerrada: buzón nativo, ✓✓ al emisor y notificación; al abrir llega todo (`BgInbox.kt`). 13. L2CAP.
 14. Grupos. 15. Varios dispositivos. 16. Llamadas de voz. 17. Videollamadas.
 18–20 (del dueño): pruebas reales con 3–4 teléfonos, auditoría externa, Play Store.
 

@@ -83,7 +83,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2754 | `9dac851` | Bluetooth sin base64: trozos de archivo en binario con quien lo anuncia (−25 % de bytes por la radio, fotos y PDF ~25–35 % más rápidos en el simulador); con builds anteriores, JSON de siempre. APK verificada: 24,5 MB, firma 23d86688…, manifiesto idéntico a la 2752, `BinFrame`/`BinAssembler`/`sendBinary` presentes. Falta probarla en teléfonos |
 | 2755 | `c035890` | Solo diagnóstico (el dueño dice que los archivos no llegan; sin cambio de comportamiento): en Perfil → Copiar diagnóstico salen los errores de Bluetooth del nativo (`BT_ERR`: escritura o notificación fallida, mensaje descartado, trozo binario incompleto; uno por tipo cada 5 s) y una línea `[BIN]` por cada envío/recepción en binario. APK verificada (firma 23d86688…, manifiesto igual que la 2754) |
 | 2756 | `a7b3641` | Archivos grandes hasta 1 GB por el mismo Wi-Fi / Wi-Fi Direct (informe del dueño: un APK de 24 MB no salía) e ID Bluetooth rotativo (plan punto 4). APK verificada (24,5 MB, firma 23d86688…, manifiesto igual que la 2755, clases nuevas presentes). Falta probarla en teléfonos |
-| 2757 | (este commit) | MTU pequeño (punto 8), Fénix para fotos y archivos (punto 9), Jump por Wi-Fi probado (punto 10). Falta verificar la APK y probarla en teléfonos |
+| 2757 | (este commit) | MTU pequeño (punto 8), Fénix para fotos y archivos (punto 9), Jump por Wi-Fi probado (punto 10), recibir por Bluetooth con la app cerrada (punto 12). Falta verificar la APK y probarla en teléfonos |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -210,7 +210,19 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
-## Ronda 2757: MTU pequeño (punto 8), Fénix con fotos y archivos (punto 9), Jump por Wi-Fi (punto 10)
+## Ronda 2757: MTU pequeño (punto 8), Fénix con fotos y archivos (punto 9), Jump por Wi-Fi (punto 10), app cerrada (punto 12)
+- **Recibir por Bluetooth con la app cerrada** (`BgInbox.kt`): al cerrar la app (handleOnDestroy) el servidor GATT y
+  las conexiones siguen (el proceso vive por el `BleService`; solo se deja de escanear). Lo que llega: un mensaje de
+  un NEXO ID va al buzón en disco (`nexo_bg_inbox.jsonl`, máx. 3 MB), el Kotlin manda la confirmación de entrega
+  (✓✓ en el emisor) y avisa "Mensaje nuevo" (sin texto: va cifrado; con el nombre si la escucha de internet lo tiene);
+  las acciones ocultas (borrar para todos…) van marcadas `q:1` y no avisan; el primer trozo de una foto/vídeo/archivo
+  solo avisa ("📷 Foto"…; el emisor lo manda al abrir). Al abrir la app, la instancia nueva retira a la vieja y
+  entrega el buzón en orden. Simulado en `background.js --scenario=closed` (`--old-kotlin` = antes): antes A veía
+  m1/m2 en rojo (fallido) y B nada; ahora A los ve entregados con B cerrada, B tiene la notificación (2 mensajes, sin
+  duplicar) y al abrir llegan. Encontrado al probarlo: lo que llegaba al abrir la app antes de cargar el NEXO ID
+  propio no se podía descifrar (va en los datos autenticados) y se perdía; ahora espera (también arregla mensajes
+  retenidos al reabrir). Falta probar en teléfonos: que Android no mate el proceso con la app cerrada (depende del
+  fabricante y del ahorro de batería).
 - **MTU**: al conectar, el Kotlin pedía el MTU (512) y en el acto activaba las notificaciones; Android hace una sola
   operación GATT a la vez y a menudo se perdía la petición del MTU: la conexión se quedaba en 23 bytes (20 por
   escritura, todo ~20 veces más lento). Ahora: MTU primero, notificaciones al contestar (o a los 2 s); si queda en 23,
