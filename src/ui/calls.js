@@ -129,6 +129,13 @@ export class Calls {
   // Cámara apagada / encendida en una videollamada
   camera(on) { var c = this.call; if (!c) return; c.cameraOff = !on; if (c.media && c.media.camera) c.media.camera(!!on); _emit('nexo:call', this.state()); }
 
+  // Ronda 2762: girar la cámara (videollamada)
+  flipCamera() {
+    var self = this, c = this.call;
+    if (!c || !c.media || typeof c.media.flip !== 'function') return Promise.resolve(null);
+    return c.media.flip().then(function(f) { if (self.call === c) self._set({ facing: f }); return f; });
+  }
+
   mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on); _emit('nexo:call', this.state()); }
 
   // La llamada empieza: micrófono y altavoz

@@ -23,7 +23,8 @@ const logs = [];
 const TYPES = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.woff2': 'font/woff2' };
 
 async function boot(browser, name, native) {
-  const page = await browser.newPage();
+  // CALL_SHOTS=<carpeta>: tamaño de teléfono y capturas de la pantalla de llamada (llamando, entrante, en llamada)
+  const page = await browser.newPage(process.env.CALL_SHOTS ? { viewport: { width: 393, height: 851 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : {});
   page.on('console', (m) => logs.push(`${new Date().toISOString().substring(14, 23)} [${name}] ${m.text()}`.substring(0, 400)));
   page.on('pageerror', (e) => logs.push(`[${name}] PAGEERROR ${e.message}`));
   await page.route('https://' + name.toLowerCase() + '.nexo.test/**', (route) => {
@@ -90,13 +91,25 @@ async function sendText(page, t) {
   const air0 = nA.stats.airBytes || 0, airB0 = nB.stats.airBytes || 0;
   await click(A, VIDEO ? '#nexo-video-btn' : '#nexo-call-btn');
   for (let i = 0; i < 100 && !(await B.evaluate(() => !!document.querySelector('#nexo-call-screen .call-accept'))); i++) await sleep(200);
+  const SHOTS = process.env.CALL_SHOTS, tag = VIDEO ? 'video' : 'voz';
+  if (SHOTS) { await sleep(900); await A.screenshot({ path: path.join(SHOTS, tag + '_1_llamando.png') }); await B.screenshot({ path: path.join(SHOTS, tag + '_2_entrante.png') }); }
   await click(B, '#nexo-call-screen .call-accept');
   const t0 = Date.now();
-  await sleep(seconds * 1000);
+  if (SHOTS) { await sleep(2500); await A.screenshot({ path: path.join(SHOTS, tag + '_3_en_llamada.png') }); await sleep(seconds * 1000 - 2500); } else await sleep(seconds * 1000);
+  if (SHOTS) {
+    if (VIDEO) { await A.evaluate(() => document.getElementById('nexo-call-screen').classList.add('nc-hide')); await sleep(400); await A.screenshot({ path: path.join(SHOTS, tag + '_4_sin_controles.png') }); }
+  }
   const st = async (p) => p.evaluate(() => { const c = window.bleInterface.calls; const a = window.NEXO_callAudioStats || { samples: 0, seconds: 0, energy: 0 }; const v = window.NEXO_callVideoStats || {}; const rc = document.querySelector('#nexo-call-screen .call-remote-video'); let px = 0; if (rc) { const d = rc.getContext('2d').getImageData(0, 0, rc.width, rc.height).data; for (let i = 0; i < d.length; i += 400) px += d[i] + d[i + 1] + d[i + 2]; } return { video_enviado: v.sent || 0, video_decodificado: v.decoded || 0, video_KB: Math.round((v.bytes || 0) / 1024), imagen_otro: px > 0, vista_propia: !!document.querySelector('#nexo-call-screen .call-local-video'), estado: c.call && c.call.state, codec: c.call && c.call.codec, mic: c.call && c.call.micError, enviados: c.stats.sent, recibidos: c.stats.got, malos: c.stats.bad, audio_s: Math.round(a.seconds * 10) / 10, volumen_rms: a.samples ? Math.round(Math.sqrt(a.energy / a.samples) * 1000) / 1000 : 0 }; });
   r.A = await st(A); r.B = await st(B);
   const secs = (Date.now() - t0) / 1000;
   r.KB_por_segundo_aire = Math.round(((nA.stats.airBytes || 0) - air0) / secs / 102.4) / 10;
+  // Girar la cámara (ronda 2762): el vídeo de A sigue llegando a B (en el simulador hay una sola cámara: vuelve a ella)
+  if (VIDEO) {
+    const dec0 = await B.evaluate(() => (window.NEXO_callVideoStats || {}).decoded || 0);
+    await click(A, '#nexo-call-screen .call-flip'); await sleep(2500);
+    const dec1 = await B.evaluate(() => (window.NEXO_callVideoStats || {}).decoded || 0);
+    r.girar_sigue_video = dec1 - dec0 >= 10;
+  }
   // Videollamada: altavoz de entrada; voz: auricular (ronda 2761)
   r.altavoz = { A: !!nA.callSpeaker, B: !!nB.callSpeaker };
   await click(A, '#nexo-call-screen .call-hangup'); await sleep(1500);
@@ -104,7 +117,7 @@ async function sendText(page, t) {
   r.errores = logs.filter((l) => /PAGEERROR|\[CALL\] (Opus|Micr)/.test(l)).slice(0, 5);
   const want = ULAW || B_ULAW ? 'ulaw' : 'opus';
   const okVideo = !VIDEO || ['A', 'B'].every((k) => r[k].video_decodificado >= seconds * 8 && r[k].imagen_otro && r[k].vista_propia);
-  const okSpeaker = r.altavoz.A === VIDEO && r.altavoz.B === VIDEO;
+  const okSpeaker = r.altavoz.A === VIDEO && r.altavoz.B === VIDEO && (!VIDEO || r.girar_sigue_video);
   const ok = okVideo && okSpeaker && ['A', 'B'].every((k) => r[k].estado === 'active' && r[k].codec === want && !r[k].mic && r[k].recibidos >= seconds * (ULAW || B_ULAW ? 5 : 6) && !r[k].malos && r[k].audio_s >= seconds * 0.7 && r[k].volumen_rms > 0.005) && r.fin.A && r.fin.B && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('CALLAUDIO ' + JSON.stringify(r));

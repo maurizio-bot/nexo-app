@@ -1,11 +1,17 @@
 /**
- * calls_ui.js v1.0 (ronda 2758) — Pantallas de las llamadas de voz (la lógica en calls.js): botón 📞 en la cabecera
- * del chat (solo chats 1:1), pantalla de llamada (saliente, entrante con timbre, en curso con tiempo y silencio) y la
- * línea que queda en el chat al terminar.
+ * calls_ui.js v2.0 — Pantallas de las llamadas (la lógica en calls.js): botones 📞 y 🎥 en la cabecera del chat (solo
+ * chats 1:1), pantalla de llamada y la línea que queda en el chat al terminar.
+ * v2.0 (ronda 2762, pedido del dueño: como WhatsApp con el estilo de NEXO): fondo oscuro con brillo cian/violeta, avatar
+ * del contacto (sus iniciales y colores) con ondas mientras suena, nombre y estado; arriba "Cifrada de extremo a
+ * extremo" y por dónde va (Wi-Fi / Bluetooth); abajo un panel de cristal con botones con icono y nombre. Entrante:
+ * Rechazar / Contestar. Videollamada: la imagen del otro a pantalla completa, la propia pequeña (se arrastra a cualquier
+ * esquina; tocarla cambia cuál se ve en grande), girar la cámara, y tocar la pantalla oculta o muestra los controles (se
+ * ocultan solos a los 5 s). "Conexión inestable" si la voz del otro deja de llegar unos segundos.
  */
 import { _normId, _getCurrentContactId } from './chat_format.js';
 import { _renderMessage } from './render.js';
 import { _showInfoToast } from './ui_bits.js';
+import { _getGradientForUUID, _getInitials } from './ble_helpers.js';
 import { vaultAppendMessage, vaultFindContactByNexoId } from '../vault/vault_manager.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
@@ -40,23 +46,6 @@ function _stopTone() {
   _ring = null;
 }
 
-// Videollamada: la imagen del otro a pantalla completa y la propia en una esquina
-function _videoLayout(el, st) {
-  var calls = _calls();
-  if (!st.video || st.state !== 'active' || !calls) return;
-  var v = calls.videoViews();
-  if (v.remote && v.remote.parentNode !== el) {
-    v.remote.className = 'call-remote-video';
-    v.remote.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:-1;';
-    el.insertBefore(v.remote, el.firstChild);
-  }
-  if (v.local && v.local.parentNode !== el) {
-    v.local.className = 'call-local-video';
-    v.local.style.cssText = 'position:absolute;right:14px;top:14px;width:96px;height:128px;object-fit:cover;border-radius:10px;border:2px solid rgba(255,255,255,0.6);transform:scaleX(-1);background:#222;';
-    el.appendChild(v.local);
-  }
-}
-
 // Modo de audio del teléfono en llamada (Kotlin callAudio): auricular o altavoz
 function _audioMode(on) {
   try {
@@ -70,68 +59,229 @@ function _audioMode(on) {
 
 function _fmt(s) { return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
 
+// Iconos (trazo blanco, 24x24)
+var _IC = {
+  mic: '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/>',
+  micOff: '<path d="M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V6a3 3 0 0 0-5.7-1.3"/><path d="M19 11a7 7 0 0 1-1.2 3.9M5 11a7 7 0 0 0 10.6 6M12 18v3M3 3l18 18"/>',
+  speaker: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
+  ear: '<path d="M6 8.5a6 6 0 0 1 12 0c0 3.5-3 4.5-3 7.5a3 3 0 0 1-6 0"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-1.5 2-1.5 3.5"/>',
+  cam: '<rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 11l6-3v8l-6-3z"/>',
+  camOff: '<rect x="3" y="7" width="12" height="10" rx="2"/><path d="M15 11l6-3v8l-6-3zM3 3l18 18"/>',
+  flip: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9.5 13.5a2.5 2.5 0 0 0 4.6 1.3M14.5 12.5a2.5 2.5 0 0 0-4.6-1.3"/><path d="M14 15l.3-1.8 1.7.6M10 11l-.3 1.8-1.7-.6"/>',
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'
+};
+function _svg(name, size) {
+  return '<svg width="' + (size || 26) + '" height="' + (size || 26) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + _IC[name] + '</svg>';
+}
+
+// Estilos (una vez)
+function _style() {
+  if (document.getElementById('nexo-call-style')) return;
+  var st = document.createElement('style');
+  st.id = 'nexo-call-style';
+  st.textContent = [
+    '#nexo-call-screen{position:fixed;inset:0;z-index:2147483645;color:#fff;overflow:hidden;background:#05060d;user-select:none;-webkit-user-select:none;font-family:inherit}',
+    '#nexo-call-screen .nc-bg{position:absolute;inset:-20%;z-index:0;background:radial-gradient(circle at 28% 22%,rgba(0,200,255,.30),transparent 45%),radial-gradient(circle at 76% 72%,rgba(168,85,247,.32),transparent 50%),linear-gradient(160deg,#0a0a15,#14152a 60%,#0b1a33);animation:ncAurora 14s ease-in-out infinite alternate}',
+    '@keyframes ncAurora{from{transform:translate(0,0) scale(1)}to{transform:translate(-4%,3%) scale(1.08)}}',
+    '#nexo-call-screen .nc-top{position:absolute;top:0;left:0;right:0;z-index:3;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 36px;display:flex;flex-direction:column;align-items:center;gap:8px;transition:opacity .3s}',
+    '#nexo-call-screen .nc-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);font-size:11.5px;opacity:.85}',
+    '#nexo-call-screen .nc-center{position:absolute;top:19%;left:0;right:0;z-index:2;display:flex;flex-direction:column;align-items:center;transition:opacity .3s}',
+    '#nexo-call-screen .nc-av-wrap{position:relative;width:132px;height:132px;margin-bottom:24px}',
+    '#nexo-call-screen .nc-av{position:relative;z-index:1;width:132px;height:132px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:700;color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.12),0 14px 44px rgba(0,200,255,.28)}',
+    '#nexo-call-screen .nc-ring{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(0,200,255,.6);opacity:0}',
+    '#nexo-call-screen.nc-waiting .nc-ring{animation:ncPulse 2.4s ease-out infinite}',
+    '#nexo-call-screen .nc-ring.r2{animation-delay:.8s;border-color:rgba(168,85,247,.6)}#nexo-call-screen .nc-ring.r3{animation-delay:1.6s}',
+    '@keyframes ncPulse{0%{transform:scale(1);opacity:.9}100%{transform:scale(1.85);opacity:0}}',
+    '#nexo-call-screen .call-name{font-size:28px;font-weight:700;text-align:center;padding:0 24px;text-shadow:0 2px 12px rgba(0,0,0,.4)}',
+    '#nexo-call-screen .call-status{font-size:15px;opacity:.82;margin-top:8px;font-variant-numeric:tabular-nums;text-align:center}',
+    '#nexo-call-screen .call-status.nc-warn{color:#fbbf24;opacity:1}',
+    '#nexo-call-screen .call-note{font-size:12px;opacity:.6;margin-top:6px;text-align:center;padding:0 24px}',
+    '#nexo-call-screen .nc-bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:0 14px calc(26px + env(safe-area-inset-bottom,0px));transition:transform .3s,opacity .3s}',
+    '#nexo-call-screen .call-buttons{margin:0 auto;max-width:440px;display:flex;justify-content:space-around;align-items:flex-start;padding:16px 6px 12px;border-radius:30px;background:rgba(20,21,42,.55);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 40px rgba(0,0,0,.35)}',
+    '#nexo-call-screen .call-buttons.nc-incoming{background:none;border:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;justify-content:space-between;max-width:320px;padding:0 18px}',
+    '#nexo-call-screen .call-buttons:empty{display:none}',
+    '#nexo-call-screen .nc-btn{display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:none;color:#fff;font-size:11.5px;cursor:pointer;padding:0;min-width:62px;-webkit-tap-highlight-color:transparent}',
+    '#nexo-call-screen .nc-btn .nc-ic{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.13);transition:transform .15s,background .2s,color .2s}',
+    '#nexo-call-screen .nc-btn:active .nc-ic{transform:scale(.9)}',
+    '#nexo-call-screen .nc-btn.nc-on .nc-ic{background:#fff;color:#14152a}',
+    '#nexo-call-screen .nc-btn.nc-red .nc-ic{background:#ef4444;box-shadow:0 8px 24px rgba(239,68,68,.45)}',
+    '#nexo-call-screen .nc-btn.nc-red .nc-ic svg{transform:rotate(135deg)}',
+    '#nexo-call-screen .nc-btn.nc-big .nc-ic{width:72px;height:72px}',
+    '#nexo-call-screen .nc-btn.nc-green .nc-ic{background:linear-gradient(135deg,#22c55e,#00c8ff);box-shadow:0 10px 30px rgba(34,197,94,.5);animation:ncBounce 1.4s ease-in-out infinite}',
+    '@keyframes ncBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}',
+    '#nexo-call-screen .call-remote-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:1}',
+    '#nexo-call-screen .call-local-video{object-fit:cover;background:#1a1b2e}',
+    '#nexo-call-screen .nc-pip{position:absolute;z-index:4;width:104px;height:148px;border-radius:16px;border:2px solid rgba(255,255,255,.75);box-shadow:0 8px 26px rgba(0,0,0,.5);touch-action:none;transition:left .22s,top .22s}',
+    '#nexo-call-screen .nc-full{position:absolute;inset:0;width:100%;height:100%;z-index:1;border-radius:0;border:none}',
+    '#nexo-call-screen.nc-video .nc-top{background:linear-gradient(rgba(0,0,0,.6),transparent)}',
+    '#nexo-call-screen.nc-video .nc-bottom{background:linear-gradient(transparent,rgba(0,0,0,.5))}',
+    '#nexo-call-screen.nc-video.nc-live .nc-center{opacity:0;pointer-events:none}',
+    '#nexo-call-screen .nc-mini{display:none;font-size:17px;font-weight:600;text-shadow:0 1px 8px rgba(0,0,0,.6)}',
+    '#nexo-call-screen.nc-video.nc-live .nc-mini{display:block}',
+    '#nexo-call-screen.nc-hide .nc-top,#nexo-call-screen.nc-hide .nc-bottom{opacity:0;pointer-events:none}',
+    '#nexo-call-screen.nc-hide .nc-bottom{transform:translateY(40%)}'
+  ].join('\n');
+  document.head.appendChild(st);
+}
+
 function _screen() {
   var el = document.getElementById('nexo-call-screen');
   if (el) return el;
+  _style();
   el = document.createElement('div');
   el.id = 'nexo-call-screen';
-  el.style.cssText = 'position:fixed;inset:0;z-index:2147483645;background:linear-gradient(160deg,#0a0a15,#14152a 60%,#0f3460);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:64px 24px 56px;box-sizing:border-box;';
-  el.innerHTML = '<div style="text-align:center;"><div style="width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,#00c8ff,#a855f7);display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 18px;">📞</div>' +
-    '<div class="call-name" style="font-size:24px;font-weight:700;"></div><div class="call-status" style="font-size:15px;opacity:0.8;margin-top:8px;"></div><div class="call-note" style="font-size:12px;opacity:0.6;margin-top:6px;"></div></div>' +
-    '<div class="call-buttons" style="display:flex;gap:36px;align-items:center;"></div>';
+  el.innerHTML = '<div class="nc-bg"></div>' +
+    '<div class="nc-top"><div class="nc-pill nc-lock">' + _svg('lock', 13) + '<span>Cifrada de extremo a extremo</span></div><div class="nc-mini"></div></div>' +
+    '<div class="nc-center"><div class="nc-av-wrap"><div class="nc-ring"></div><div class="nc-ring r2"></div><div class="nc-ring r3"></div><div class="nc-av"></div></div>' +
+    '<div class="call-name"></div><div class="call-status"></div><div class="call-note"></div></div>' +
+    '<div class="nc-bottom"><div class="call-buttons"></div></div>';
+  // Videollamada: tocar la pantalla muestra / oculta los controles
+  el.addEventListener('click', function(e) {
+    if (!el.classList.contains('nc-live') || (e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip'))) return;
+    el.classList.toggle('nc-hide');
+    _autoHide(el);
+  });
   document.body.appendChild(el);
   return el;
 }
-function _btn(label, color, cls, fn) {
+
+var _hideTimer = null;
+function _autoHide(el) {
+  clearTimeout(_hideTimer);
+  if (!el.classList.contains('nc-live') || el.classList.contains('nc-hide')) return;
+  _hideTimer = setTimeout(function() { if (el.classList.contains('nc-live')) el.classList.add('nc-hide'); }, 5000);
+}
+
+function _btn(icon, label, cls, fn, extra) {
   var b = document.createElement('button');
-  b.className = cls;
-  b.textContent = label;
-  b.style.cssText = 'width:68px;height:68px;border-radius:50%;border:none;font-size:26px;color:#fff;background:' + color + ';cursor:pointer;';
-  b.onclick = function(e) { e.stopPropagation(); fn(); };
+  b.className = 'nc-btn ' + cls + (extra ? ' ' + extra : '');
+  b.innerHTML = '<span class="nc-ic">' + _svg(icon, extra && extra.indexOf('nc-big') >= 0 ? 32 : 26) + '</span><span>' + label + '</span>';
+  b.onclick = function(e) { e.stopPropagation(); fn(); var sc = document.getElementById('nexo-call-screen'); if (sc) _autoHide(sc); };
   return b;
+}
+
+// Imagen pequeña (la propia o, si se cambió, la del otro): se arrastra y queda en la esquina más cercana
+var _pip = { swapped: false, corner: 'tr' };
+function _placePip(el, node) {
+  var W = el.clientWidth || window.innerWidth, H = el.clientHeight || window.innerHeight, w = 104, h = 148, m = 14;
+  var top = _pip.corner.charAt(0) === 't' ? 84 : H - h - 150, left = _pip.corner.charAt(1) === 'l' ? m : W - w - m;
+  node.style.left = left + 'px'; node.style.top = top + 'px';
+}
+function _makeDraggable(el, node) {
+  if (node._ncDrag) return;
+  node._ncDrag = true;
+  var sx = 0, sy = 0, ox = 0, oy = 0, moved = false, down = false;
+  node.addEventListener('pointerdown', function(e) {
+    if (!node.classList.contains('nc-pip')) return;
+    down = true; moved = false; sx = e.clientX; sy = e.clientY; ox = node.offsetLeft; oy = node.offsetTop;
+    node.style.transition = 'none';
+    try { node.setPointerCapture(e.pointerId); } catch (x) {}
+  });
+  node.addEventListener('pointermove', function(e) {
+    if (!down) return;
+    var dx = e.clientX - sx, dy = e.clientY - sy;
+    if (Math.abs(dx) + Math.abs(dy) > 6) moved = true;
+    node.style.left = (ox + dx) + 'px'; node.style.top = (oy + dy) + 'px';
+  });
+  var up = function(e) {
+    if (!down) return;
+    down = false; node.style.transition = '';
+    if (moved) {
+      var W = el.clientWidth || window.innerWidth, H = el.clientHeight || window.innerHeight;
+      _pip.corner = (node.offsetTop + 74 < H / 2 ? 't' : 'b') + (node.offsetLeft + 52 < W / 2 ? 'l' : 'r');
+      _placePip(el, node);
+    } else { _pip.swapped = !_pip.swapped; _videoLayout(el, _calls() && _calls().state()); }
+    e.stopPropagation();
+  };
+  node.addEventListener('pointerup', up);
+  node.addEventListener('pointercancel', up);
+  node.addEventListener('click', function(e) { e.stopPropagation(); });
+}
+
+// Videollamada: la imagen del otro a pantalla completa y la propia pequeña (o al revés si se tocó la pequeña)
+function _videoLayout(el, st) {
+  var calls = _calls();
+  if (!st || !st.video || st.state !== 'active' || !calls) return;
+  var v = calls.videoViews();
+  if (v.remote && v.remote.parentNode !== el) { v.remote.classList.add('call-remote-video'); el.insertBefore(v.remote, el.querySelector('.nc-top')); }
+  if (v.local && v.local.parentNode !== el) { v.local.classList.add('call-local-video'); el.appendChild(v.local); }
+  var big = _pip.swapped ? v.local : v.remote, small = _pip.swapped ? v.remote : v.local;
+  if (big) { big.classList.remove('nc-pip'); big.classList.add('nc-full'); big.style.left = ''; big.style.top = ''; }
+  if (small) { small.classList.remove('nc-full'); small.classList.add('nc-pip'); _placePip(el, small); _makeDraggable(el, small); }
+  if (v.local) v.local.style.transform = (st.facing || 'user') === 'user' ? 'scaleX(-1)' : 'none'; // la de delante, como un espejo
+  if (v.local) v.local.style.visibility = st.cameraOff ? 'hidden' : '';
+  el.classList.add('nc-live');
+}
+
+function _linkText(nx) {
+  var calls = _calls(), l = calls && typeof calls._link === 'function' ? calls._link(nx) : null;
+  return l ? (l.indexOf('lan:') === 0 ? 'por Wi-Fi' : 'por Bluetooth') : '';
 }
 
 function _render(st) {
   var calls = _calls();
   clearInterval(_tick);
   if (!st || st.state === 'ended') {
-    _stopTone();
+    _stopTone(); clearTimeout(_hideTimer);
     var old = document.getElementById('nexo-call-screen');
     if (old) {
+      old.classList.remove('nc-live', 'nc-hide', 'nc-waiting');
       var s0 = old.querySelector('.call-status');
-      if (s0 && st) s0.textContent = st.reason === 'busy' ? 'Ocupado' : st.reason === 'rejected' ? 'Rechazada' : st.reason === 'unanswered' ? 'No contesta' : st.reason === 'lost' ? 'Se cortó' : 'Llamada terminada';
+      if (s0 && st) { s0.classList.remove('nc-warn'); s0.textContent = st.reason === 'busy' ? 'Ocupado' : st.reason === 'rejected' ? 'Rechazada' : st.reason === 'unanswered' ? 'No contesta' : st.reason === 'lost' ? 'Se cortó' : st.reason === 'missed' ? 'Llamada perdida' : 'Llamada terminada' + (st.seconds ? ' · ' + _fmt(st.seconds) : ''); }
       old.querySelector('.call-buttons').innerHTML = '';
-      setTimeout(function() { old.remove(); }, 1200);
+      Array.prototype.forEach.call(old.querySelectorAll('.call-remote-video, .call-local-video'), function(n) { n.remove(); });
+      setTimeout(function() { old.remove(); }, 1400);
     }
-    _render._modeFor = null; _speaker = false;
+    _render._modeFor = null; _speaker = false; _pip = { swapped: false, corner: 'tr' };
     _audioMode(false);
     return;
   }
-  var el = _screen();
-  el.querySelector('.call-name').textContent = _name(st.nx);
-  var status = el.querySelector('.call-status'), note = el.querySelector('.call-note'), bt = el.querySelector('.call-buttons');
-  bt.innerHTML = '';
-  note.textContent = st.micError ? 'Sin micrófono: ' + st.micError : st.video && st.videoOk === false ? 'Sin cámara en este teléfono: solo voz' : (st.codec ? 'Cifrada de extremo a extremo · ' + (st.codec === 'opus' ? 'Opus' : 'μ-law') : 'Cifrada de extremo a extremo');
-  _videoLayout(el, st);
+  var el = _screen(), name = _name(st.nx);
+  el.classList.toggle('nc-video', !!st.video);
+  el.classList.toggle('nc-waiting', st.state === 'calling' || st.state === 'ringing');
+  var av = el.querySelector('.nc-av');
+  av.className = 'nc-av ' + _getGradientForUUID(String(st.nx || ''));
+  av.textContent = _getInitials(name);
+  el.querySelector('.call-name').textContent = name;
+  var status = el.querySelector('.call-status'), note = el.querySelector('.call-note'), bt = el.querySelector('.call-buttons'), mini = el.querySelector('.nc-mini');
+  var lock = el.querySelector('.nc-lock span'), via = _linkText(st.nx);
+  lock.textContent = 'Cifrada de extremo a extremo' + (via ? ' · ' + via : '');
+  bt.innerHTML = ''; bt.classList.remove('nc-incoming');
+  note.textContent = st.micError ? 'Sin micrófono: ' + st.micError : st.video && st.videoOk === false ? 'Sin cámara en este teléfono: solo voz' : '';
   if (st.state === 'calling') {
-    status.textContent = st.video ? 'Videollamando…' : 'Llamando…';
-    bt.appendChild(_btn('✕', '#e53935', 'call-hangup', function() { calls.hangup(); }));
+    status.classList.remove('nc-warn');
+    status.textContent = st.video ? 'Videollamada…' : 'Llamando…';
+    bt.appendChild(_btn('phone', 'Colgar', 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
     if (!_ring) _startTone(false);
   } else if (st.state === 'ringing') {
-    status.textContent = st.video ? 'Videollamada entrante' : 'Llamada entrante';
-    bt.appendChild(_btn('✕', '#e53935', 'call-reject', function() { calls.reject(); }));
-    bt.appendChild(_btn('📞', '#43a047', 'call-accept', function() { calls.accept(); }));
+    status.classList.remove('nc-warn');
+    status.textContent = st.video ? 'Videollamada entrante' : 'Llamada de voz entrante';
+    bt.classList.add('nc-incoming');
+    bt.appendChild(_btn('phone', 'Rechazar', 'call-reject', function() { calls.reject(); }, 'nc-red nc-big'));
+    bt.appendChild(_btn(st.video ? 'cam' : 'phone', 'Contestar', 'call-accept', function() { calls.accept(); }, 'nc-green nc-big'));
     if (!_ring) _startTone(true);
   } else if (st.state === 'active') {
     _stopTone();
-    var upd = function() { status.textContent = _fmt(Math.max(0, Math.round((Date.now() - (st.startedAt || Date.now())) / 1000))); if (st.video) _videoLayout(el, st); };
+    var upd = function() {
+      var cur = (calls && calls.state()) || st, t = _fmt(Math.max(0, Math.round((Date.now() - (st.startedAt || Date.now())) / 1000)));
+      var weak = cur.lastRx && Date.now() - cur.lastRx > 3000;
+      status.textContent = weak ? 'Conexión inestable…' : t;
+      status.classList.toggle('nc-warn', !!weak);
+      mini.textContent = name + ' · ' + (weak ? 'Conexión inestable…' : t);
+      var via2 = _linkText(st.nx);
+      lock.textContent = 'Cifrada de extremo a extremo' + (via2 ? ' · ' + via2 : '');
+      if (st.video) _videoLayout(el, cur);
+    };
     upd(); _tick = setInterval(upd, 1000);
-    bt.appendChild(_btn(st.muted ? '🔇' : '🎤', st.muted ? '#555' : 'rgba(255,255,255,0.18)', 'call-mute', function() { calls.mute(!st.muted); }));
+    if (st.video) bt.appendChild(_btn('flip', 'Girar', 'call-flip', function() { calls.flipCamera(); }));
+    if (st.video) bt.appendChild(_btn(st.cameraOff ? 'camOff' : 'cam', st.cameraOff ? 'Cámara no' : 'Cámara', 'call-camera', function() { calls.camera(!!st.cameraOff); }, st.cameraOff ? 'nc-on' : ''));
+    bt.appendChild(_btn(st.muted ? 'micOff' : 'mic', st.muted ? 'Silenciado' : 'Silenciar', 'call-mute', function() { calls.mute(!st.muted); }, st.muted ? 'nc-on' : ''));
     // Altavoz / auricular (en la videollamada, altavoz de entrada)
-    bt.appendChild(_btn(_speaker ? '🔊' : '🔈', _speaker ? '#1e88e5' : 'rgba(255,255,255,0.18)', 'call-speaker', function() { _speaker = !_speaker; _audioMode(true); _render(calls.state()); }));
-    if (st.video) bt.appendChild(_btn(st.cameraOff ? '🚫' : '📷', st.cameraOff ? '#555' : 'rgba(255,255,255,0.18)', 'call-camera', function() { calls.camera(!!st.cameraOff); }));
-    bt.appendChild(_btn('✕', '#e53935', 'call-hangup', function() { calls.hangup(); }));
-    if (!_render._modeFor || _render._modeFor !== st.id) { _render._modeFor = st.id; _speaker = !!st.video; _audioMode(true); }
+    bt.appendChild(_btn(_speaker ? 'speaker' : 'ear', _speaker ? 'Altavoz' : 'Auricular', 'call-speaker', function() { _speaker = !_speaker; _audioMode(true); _render(calls.state()); }, _speaker ? 'nc-on' : ''));
+    bt.appendChild(_btn('phone', 'Colgar', 'call-hangup', function() { calls.hangup(); }, 'nc-red'));
+    if (!_render._modeFor || _render._modeFor !== st.id) { _render._modeFor = st.id; _speaker = !!st.video; _audioMode(true); _render(calls.state()); return; }
+    if (st.video) _autoHide(el);
   }
 }
 

@@ -229,6 +229,14 @@ Causas encontradas y corregidas (no se sabe cuál fue en sus teléfonos: el diag
   teléfono y volúmenes de llamada y multimedia.
 Pruebas: `calls_browser.js --b-sin-opus` y comprobación del altavoz en voz/vídeo; calls.js y calls_browser (voz, μ-law,
 vídeo) en verde.
+Pantalla de llamada nueva (pedido del dueño: como WhatsApp con el estilo de NEXO, `calls_ui.js` v2.0): fondo oscuro con
+brillo cian/violeta, avatar del contacto (iniciales y colores de la lista) con ondas mientras suena, arriba "Cifrada de
+extremo a extremo · por Wi-Fi / Bluetooth", abajo panel de cristal con iconos y nombres (Girar, Cámara, Silenciar,
+Altavoz/Auricular, Colgar; entrante: Rechazar / Contestar). Videollamada: la imagen del otro a pantalla completa, la propia
+pequeña (se arrastra a una esquina; tocarla cambia cuál va en grande), girar la cámara (`media.flip`), tocar la pantalla
+oculta/muestra los controles (solos a los 5 s), "Conexión inestable…" si la voz no llega 3 s. Capturas en Chromium
+(`CALL_SHOTS=<carpeta> node calls_browser.js …`); calls.js (Bluetooth, Wi-Fi, app cerrada) y calls_browser (voz, μ-law,
+B sin Opus, vídeo + girar) en verde.
 
 ## Ronda 2760: fotos por Bluetooth, camino de envío y avisos (diagnóstico de los dos teléfonos con la 2758/2759)
 Diagnóstico (Vivo V2332 `NX1EBB23E7` y Samsung S24 Ultra `NX1N36C283`, Android 16):

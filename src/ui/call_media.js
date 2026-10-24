@@ -68,6 +68,7 @@ export function callCodecs() { return _hasOpus().then(function(o) { return o ? '
 export function createCallMedia(opts) {
   var onPacket = opts.onPacket, peerCodecs = String(opts.codecs || 'ulaw');
   var wantVideo = !!opts.video, venc = null, vdec = null, vTimer = null, vN = 0, vIn = 0, vGotKey = false, camOn = true, vcanvas = null, vctx = null;
+  var facing = 'user', forceKey = false, localV = null;
   var vstats = window.NEXO_callVideoStats = { sent: 0, keys: 0, decoded: 0, bytes: 0 };
   window.NEXO_callAudioStats = { samples: 0, seconds: 0, energy: 0 }; // por llamada
   var media;
@@ -108,7 +109,7 @@ export function createCallMedia(opts) {
     return _hasVp8().then(function(ok) {
       if (!ok || !stream || !stream.getVideoTracks().length) return false;
       var v = document.createElement('video');
-      v.muted = true; v.playsInline = true; v.autoplay = true; v.setAttribute('playsinline', ''); v.srcObject = stream;
+      v.muted = true; v.playsInline = true; v.autoplay = true; v.setAttribute('playsinline', ''); v.srcObject = stream; localV = v;
       try { var pp = v.play(); if (pp && pp.catch) pp.catch(function() {}); } catch (e) {}
       media.localVideo = v;
       vcanvas = document.createElement('canvas'); vcanvas.width = VW; vcanvas.height = VH; vctx = vcanvas.getContext('2d');
@@ -126,7 +127,7 @@ export function createCallMedia(opts) {
         try {
           vctx.drawImage(v, 0, 0, VW, VH);
           var f = new window.VideoFrame(vcanvas, { timestamp: Math.round(vN * 1e6 / FPS) });
-          venc.encode(f, { keyFrame: vN % (FPS * 2) === 0 }); f.close(); vN++;
+          venc.encode(f, { keyFrame: forceKey || vN % (FPS * 2) === 0 }); f.close(); vN++; forceKey = false;
         } catch (e) {}
       }, Math.round(1000 / FPS));
       return true;
@@ -196,6 +197,22 @@ export function createCallMedia(opts) {
       }
       if (key) vGotKey = true;
       try { vdec.decode(new window.EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: Math.round(vIn++ * 1e6 / FPS), data: bytes.subarray(1) })); } catch (e) { vGotKey = false; }
+    },
+    // Ronda 2762: cámara de delante / de detrás (se suelta la actual antes de abrir la otra: muchos teléfonos no
+    // abren dos a la vez); si la otra no abre, se vuelve a la de antes. Imagen completa al cambiar.
+    facing: function() { return facing; },
+    flip: function() {
+      if (!stream || !wantVideo || !navigator.mediaDevices) return Promise.resolve(facing);
+      var next = facing === 'user' ? 'environment' : 'user';
+      var open = function(f) { return navigator.mediaDevices.getUserMedia({ video: { width: { ideal: VW }, height: { ideal: VH }, frameRate: { ideal: FPS }, facingMode: f } }); };
+      stream.getVideoTracks().forEach(function(t) { stream.removeTrack(t); t.stop(); });
+      return open(next).then(function(s2) { facing = next; return s2; }, function() { return open(facing); }).then(function(s2) {
+        var nt = s2.getVideoTracks()[0];
+        if (nt) { nt.enabled = camOn; stream.addTrack(nt); }
+        if (localV) { localV.srcObject = new MediaStream(nt ? [nt] : []); try { var pp = localV.play(); if (pp && pp.catch) pp.catch(function() {}); } catch (e) {} }
+        forceKey = true;
+        return facing;
+      }).catch(function() { return facing; });
     },
     camera: function(on) { camOn = !!on; try { stream.getVideoTracks().forEach(function(t) { t.enabled = !!on; }); } catch (e) {} },
     play: function(bytes) {

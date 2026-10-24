@@ -81,7 +81,7 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   const air0 = nA.sent.length;
   click(A.win, A.win.document.getElementById('nexo-call-btn'));
   r.A_llamando = await wait(() => screen(A) === 'Llamando…', 5);
-  r.B_suena = await wait(() => screen(B) === 'Llamada entrante', 20);
+  r.B_suena = await wait(() => screen(B) === 'Llamada de voz entrante', 20);
   click(B.win, B.win.document.querySelector('#nexo-call-screen .call-accept'));
   r.en_llamada = await wait(() => /^\d+:\d\d$/.test(screen(A) || '') && /^\d+:\d\d$/.test(screen(B) || ''), 10);
   await sleep(4000);
@@ -95,7 +95,7 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   // Modo llamada (auricular) y botón de altavoz
   r.modo_llamada = nA.callAudioOn === true && nA.callSpeaker === false;
   click(A.win, A.win.document.querySelector('#nexo-call-screen .call-speaker')); await sleep(300);
-  r.altavoz = nA.callSpeaker === true && /🔊/.test((A.win.document.querySelector('#nexo-call-screen .call-speaker') || {}).textContent || '');
+  { const sb = A.win.document.querySelector('#nexo-call-screen .call-speaker'); r.altavoz = nA.callSpeaker === true && !!sb && sb.classList.contains('nc-on') && /Altavoz/.test(sb.textContent); }
   click(A.win, A.win.document.querySelector('#nexo-call-screen .call-hangup'));
   r.B_ve_fin = await wait(() => !B.win.bleInterface.calls.call, 10);
   await sleep(1500);
@@ -106,19 +106,19 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
   await sleep(2500);
   // 2. Rechazada
   click(A.win, A.win.document.getElementById('nexo-call-btn'));
-  await wait(() => screen(B) === 'Llamada entrante', 20);
+  await wait(() => screen(B) === 'Llamada de voz entrante', 20);
   click(B.win, B.win.document.querySelector('#nexo-call-screen .call-reject'));
   r.rechazada_A = await wait(() => screen(A) === 'Rechazada', 10);
   await sleep(2000);
   // 3. Sin contestar
   click(A.win, A.win.document.getElementById('nexo-call-btn'));
-  await wait(() => screen(B) === 'Llamada entrante', 20);
+  await wait(() => screen(B) === 'Llamada de voz entrante', 20);
   r.sin_respuesta_A = await wait(() => screen(A) === 'No contesta', 12);
   await sleep(2000);
   r.lineas_A = lines(A); r.lineas_B = lines(B);
   // 4. Se corta: B se aleja en plena llamada
   click(A.win, A.win.document.getElementById('nexo-call-btn'));
-  await wait(() => screen(B) === 'Llamada entrante', 20);
+  await wait(() => screen(B) === 'Llamada de voz entrante', 20);
   click(B.win, B.win.document.querySelector('#nexo-call-screen .call-accept'));
   await wait(() => /^\d+:\d\d$/.test(screen(A) || ''), 10);
   await sleep(2000);
@@ -172,7 +172,7 @@ const lines = (p) => Array.from(p.win.document.querySelectorAll('#messages-conta
     r.cerrada_avisos = nB.notifLog.slice(n0).map((n) => n.text + '/' + n.closed); r.cerrada_buzon = (nB.bgInbox || []).map((x) => x.c.substring(0, 160));
     await sleep(3000);
     nB.load(); const B2 = await boot('B', nB);
-    r.cerrada_suena_al_abrir = await wait(() => { const s = B2.win.document.getElementById('nexo-call-screen'); return !!s && /Llamada entrante/.test(s.textContent); }, 30);
+    r.cerrada_suena_al_abrir = await wait(() => { const s = B2.win.document.getElementById('nexo-call-screen'); return !!s && /Llamada de voz entrante/.test(s.textContent); }, 30);
     click(B2.win, B2.win.document.querySelector('#nexo-call-screen .call-accept'));
     r.cerrada_en_llamada = await wait(() => B2.win.bleInterface.calls.call && B2.win.bleInterface.calls.call.state === 'active' && A.win.bleInterface.calls.call && A.win.bleInterface.calls.call.state === 'active', 30);
     if (A.win.bleInterface.calls.call) A.win.bleInterface.calls.hangup();
