@@ -9,6 +9,9 @@ import { _hideCameraPreviewOverlay, _photoTarget, _stopCameraPreview } from './c
 import { _maxB64For, _tooBigMessage } from './media_limits.js';
 import { _sendVideo } from './video_send.js';
 import { BIG_MAX_BYTES } from './big_file.js';
+import { groupBigRoute } from './group_media.js';
+import { isGroupId } from './groups.js';
+import { GROUP_MAX_BYTES } from './send.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _sendAttachment, _sendBigFile;
@@ -80,16 +83,19 @@ export function _handleFile() {
     // Comprobar antes de leer: leer un archivo enorme ya congela el WebView
     var cidF = _getCurrentContactId();
     var maxB64 = _maxB64For(cidF);
-    if (file.size > Math.floor(maxB64 * 3 / 4)) {
+    // Ronda 2764: en un grupo, lo que no cabe en el sobre (~1 MB) va como archivo grande a cada miembro
+    var inGroup = isGroupId(cidF);
+    if (file.size > Math.floor(maxB64 * 3 / 4) || (inGroup && file.size > GROUP_MAX_BYTES)) {
       // Ronda 2756: más grande que lo de siempre: como archivo grande (a disco por trozos) si hay Wi-Fi con el contacto
       var bigs = window.bleInterface && window.bleInterface.bigFiles;
-      if (file.size <= BIG_MAX_BYTES && bigs && bigs.route(cidF) && typeof _sendBigFile === 'function') {
+      if (file.size <= BIG_MAX_BYTES && bigs && (inGroup ? groupBigRoute(cidF) : bigs.route(cidF)) && typeof _sendBigFile === 'function') {
         _sendBigFile(cidF, file, _mimeOf(file.type, file.name));
         return;
       }
       console.warn('[ATTACH] Archivo demasiado grande: ' + file.size);
       _showPermissionError(file.size > BIG_MAX_BYTES ? 'Archivo demasiado grande (' + (file.size / 1048576).toFixed(0) + ' MB). Máximo 1 GB.'
-        : _tooBigMessage(file.size, cidF) + ' Hasta 1 GB con el contacto en el mismo Wi-Fi, con Wi-Fi Direct o cerca por Bluetooth (Android 10 o más; los dos con NEXO actualizado).');
+        : (inGroup ? 'Demasiado grande para mandarlo por Bluetooth al grupo (' + (file.size / 1048576).toFixed(1) + ' MB).' : _tooBigMessage(file.size, cidF)) +
+          ' Hasta 1 GB con ' + (inGroup ? 'alguien del grupo' : 'el contacto') + ' en el mismo Wi-Fi, con Wi-Fi Direct o cerca por Bluetooth (Android 10 o más; ' + (inGroup ? 'con' : 'los dos con') + ' NEXO actualizado).');
       return;
     }
     _readFileBase64(file).then(function(base64) {

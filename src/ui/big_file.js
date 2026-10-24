@@ -1,5 +1,5 @@
 /**
- * big_file.js v1.1 (ronda 2756; 2758: también por Bluetooth L2CAP) — Archivos grandes (más de ~22 MB, hasta 1 GB) por
+ * big_file.js v1.2 (ronda 2756; 2758: también por Bluetooth L2CAP; 2764: en grupos, a cada miembro en cola) — Archivos grandes (más de ~22 MB, hasta 1 GB) por
  * el mismo Wi-Fi, Wi-Fi Direct o, sin ninguno de los dos, por un canal L2CAP del Bluetooth (plan del dueño punto 13).
  * Pedido del dueño: un APK de 24 MB no salía. Antes todo archivo pasaba entero por la memoria de la app (en base64,
  * cifrado y copiado varias veces): con más de ~22 MB el teléfono se colgaba, así que se rechazaba.
@@ -130,7 +130,16 @@ export class BigFiles {
   }
 
   // 3. Mandar el archivo ya cifrado (también para reintentar). Resuelve cuando el otro lo tiene.
+  // Ronda 2764 (grupos): el mismo archivo a varios, uno tras otro (una oferta a la vez por id)
   transfer(nexoId, id) {
+    var self = this;
+    self._q = self._q || {};
+    var p = (self._q[id] || Promise.resolve()).catch(function() {}).then(function() { return self._transfer(nexoId, id); });
+    self._q[id] = p;
+    p.catch(function() {}).then(function() { if (self._q[id] === p) delete self._q[id]; });
+    return p;
+  }
+  _transfer(nexoId, id) {
     var self = this, nx = _nid(nexoId), via = self.route(nx), pl = _plugin();
     if (!via) { self._set(id, { dir: 'out', state: 'failed', error: 'sin camino con el contacto' }); return Promise.reject(new Error('sin camino con el contacto')); }
     return pl.bigStatus({ id: id }).then(function(s) {
@@ -157,6 +166,7 @@ export class BigFiles {
       self.saved[id] = 'sent'; self._save();
       self._set(id, { state: 'done' });
       console.log('[BIG] ' + id + ' entregado');
+      if (typeof self.onSent === 'function') self.onSent(nx, id); // grupos (group_media.js)
     }, function(e) {
       self._set(id, { dir: 'out', state: 'failed', error: e && e.message });
       console.warn('[BIG] ' + id + ' no se pudo enviar: ' + (e && e.message));
@@ -175,8 +185,9 @@ export class BigFiles {
     if (p.type === 'gn') { if (o && o.onNo) o.onNo(p.why); return true; }
     if (p.type === 'gf') return true;
     if (p.type === 'gr') {
-      // El otro lo pide otra vez (se cortó): solo si es nuestro y aún lo tenemos
-      if (from && !(self.st[id] && self.st[id].state === 'sending')) self.transfer(from, id).catch(function() {});
+      // El otro lo pide otra vez (se cortó) o, en un grupo, lo pide quien no tenía camino: solo si es nuestro y aún lo
+      // tenemos; si ya va hacia él, nada (si va hacia otro miembro, se pone en cola)
+      if (from && !(self.st[id] && self.st[id].state === 'sending' && self.st[id].nx === from)) self.transfer(from, id).catch(function() {});
       return true;
     }
     // 'gq': nos ofrecen un archivo grande por el mismo Wi-Fi o (via 'l2') por un canal L2CAP del Bluetooth

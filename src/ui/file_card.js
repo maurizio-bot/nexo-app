@@ -8,6 +8,8 @@ import { _makeVideoThumb } from './video_tools.js';
 import { _msgContactMap } from './chat_state.js';
 import { _releaseMedia, _showPermissionError } from './ui_bits.js';
 import { vaultSetMessageFields } from '../vault/vault_manager.js';
+import { isGroupId } from './groups.js';
+import { bigToGroup } from './group_media.js';
 
 
 export function _closeFullscreenMedia() {
@@ -138,7 +140,10 @@ function _bigTap(msg, big, name, mime) {
   var s = b.state(id) || {};
   var own = !!(msg && msg._own);
   if (s.state === 'preparing' || s.state === 'sending' || s.state === 'receiving' || s.state === 'waiting') return;
-  if (s.state === 'failed' && s.dir === 'out') { b.transfer(cid, id).catch(function() {}); return; }
+  // Ronda 2764: en un grupo, reintentar es mandarlo a quien falte y pedirlo es pedírselo a quien lo mandó
+  var inGroup = isGroupId(cid);
+  if (s.state === 'failed' && s.dir === 'out') { if (inGroup) bigToGroup(cid, id); else b.transfer(cid, id).catch(function() {}); return; }
+  if (!own && inGroup) cid = (msg && msg.senderNexoId) || big.from || cid;
   if (!own && s.state !== 'done') {
     if (!b.request(cid, id)) _showPermissionError('Archivo grande: hace falta estar en el mismo Wi-Fi que el contacto o con Wi-Fi Direct');
     return;

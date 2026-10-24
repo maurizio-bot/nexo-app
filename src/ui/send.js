@@ -9,6 +9,7 @@ import { _msgContactMap } from './chat_state.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
 import { _showPermissionError } from './ui_bits.js';
 import { vaultAppendMessage, vaultSetMessageFields } from '../vault/vault_manager.js';
+import { bigToGroup } from './group_media.js';
 
 
 /**
@@ -43,6 +44,7 @@ export function _waitForBLEReady(maxMs) {
 
 // Ronda 2758: tope de un adjunto en un grupo (va una vez a cada miembro dentro del sobre, como texto largo)
 var GROUP_MAX_CHARS = 1400000;
+export var GROUP_MAX_BYTES = Math.floor(GROUP_MAX_CHARS * 3 / 4) - 4096; // lo que cabe en el sobre (con su JSON)
 
 export function _sendAttachment(type, payload, meta, opts) {
   // FIX v9.9.26: meta.type llega con el MIME del archivo ('image/jpeg', 'text/plain'...) y pisaba
@@ -156,13 +158,17 @@ export function _sendAttachment(type, payload, meta, opts) {
 
 // Ronda 2756: archivo grande (big_file.js). Se cifra a disco por trozos, luego va un mensaje normal con nombre,
 // tamaño y la clave del archivo, y el archivo cifrado sigue por el mismo Wi-Fi o Wi-Fi Direct (la tarjeta enseña el %)
+// Ronda 2764: en un grupo el mensaje va en el sobre del grupo (con quién lo manda, big.from: a él se le pide) y el
+// archivo a cada miembro (group_media.js)
 export function _sendBigFile(contactId, file, mime) {
   var bi = window.bleInterface, bigs = bi && bi.bigFiles;
   if (!bigs || !contactId) return null;
-  var msgId = 'msg' + Date.now() + Math.random().toString(36).substr(2, 5);
+  var gs = bi.groups, inGroup = !!(gs && gs.isGroup(contactId));
+  var msgId = (inGroup ? 'gm' : 'msg') + Date.now() + Math.random().toString(36).substr(2, 5);
   _msgContactMap[msgId] = contactId;
   _noteContactMessage(contactId, 'file', Date.now());
   var meta = { name: file.name, size: file.size, type: 'file', mime: mime, big: { id: msgId, size: file.size } };
+  if (inGroup) meta.big.from = _normId(bi.localNexoId);
   var localMsg = { msgId: msgId, messageId: msgId, content: JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: meta }),
     _own: true, status: 'sending', timestamp: Date.now(), attachmentType: 'file', attachmentPayload: 'big', attachmentMeta: meta };
   if (_normId(contactId) === _normId(_getCurrentContactId())) _renderMessage(localMsg, true);
@@ -172,11 +178,13 @@ export function _sendBigFile(contactId, file, mime) {
     meta.big.key = key;
     vaultSetMessageFields(contactId, msgId, { metaMerge: { big: meta.big } }).catch(function() {});
     var wire = JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: meta });
+    if (inGroup) { gs.sendText(contactId, wire, msgId); return; }
     return bi.sendChatMessage(contactId, wire, msgId).then(function() {
       var current = _getDomMessageStatus(msgId);
       if (_canUpgradeStatus(current, 'sent')) { _updateMessageStatus(msgId, 'sent'); _updateMessageStorageStatus(msgId, 'sent', contactId); }
     }, function(err) { console.warn('[BIG] Mensaje de ' + msgId + ' no enviado aún: ' + (err && err.message)); });
   }).then(function() {
+    if (inGroup) return bigToGroup(contactId, msgId);
     return bigs.transfer(contactId, msgId).catch(function() {}); // la tarjeta dice "Toca para reintentar"
   }).catch(function(e) {
     console.warn('[BIG] ' + msgId + ': ' + (e && e.message));

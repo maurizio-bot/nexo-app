@@ -108,6 +108,7 @@ import { safetyQrPayload, checkSafetyQr, showSafetyQr, openQrScanner } from './u
 import { PREVIEW_MAX_SIDE, PREVIEW_MAX_SECONDS, HD_DIRECT_MAX_BYTES, HD_MAX_SIDE, HD_REENCODE_BPS, _videoFormat, _blobToB64, _makeVideoPreview, _previewAudioTracks, _b64ToBlob, _makeVideoThumb } from './ui/video_tools.js';
 import { _extOf, _compressImageBase64, _fmtTime, _readFileBase64, _isPdf, _MIME_BY_EXT, _mimeOf, _pdfThumb, _FILE_ICONS, _fileIcon, _fmtSize } from './ui/file_tools.js';
 import { groupAttachment, isGroupId, parseGroupEnvelope } from './ui/groups.js';
+import { isGroupWire, startGroupMedia } from './ui/group_media.js';
 import { parseCallSignal } from './ui/calls.js';
 import { installCallsUi } from './ui/calls_ui.js';
 import { groupSubtitle, installGroupButton, openGroupChat, openGroupMenu, sendGroupText } from './ui/groups_ui.js';
@@ -566,7 +567,8 @@ function _registerCriticalListeners() {
           }
           var sid = e.detail.msgId, st = e.detail.status;
           if (/_hd$/.test(sid)) {
-            if (st === 'delivered' || st === 'read') { var base = sid.replace(/_hd$/, ''); _onHdSent(_msgContactMap[base] || (_hdOutbox[base] && _hdOutbox[base].cid), base); }
+            // (el HD de un vídeo de grupo lo lleva group_media.js)
+            if ((st === 'delivered' || st === 'read') && !isGroupWire(sid.replace(/_hd$/, ''))) { var base = sid.replace(/_hd$/, ''); _onHdSent(_msgContactMap[base] || (_hdOutbox[base] && _hdOutbox[base].cid), base); }
             return;
           }
           _updateMessageStatus(sid, st);
@@ -668,6 +670,7 @@ async function initializeNexoApp() {
       await Promise.race([initPromise, timeoutPromise]);
     } catch (timeoutErr) {}
     window.NEXO.initialized = true;
+    startGroupMedia(); // ronda 2764: HD y archivos grandes en grupos (reanudar lo pendiente)
     clearTimeout(SAFETY_TIMEOUT);
     try {
       if (window.NEXO.app && window.NEXO.app.bleInterface) {

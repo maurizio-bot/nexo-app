@@ -46,7 +46,7 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 - **Stream** (vídeos tipo TikTok + estados de contactos, gestos: tap arriba izq. vídeos, arriba der. estados, doble tap
   "me gusta", deslizar der→izq comentarios, izq→der volver): **SIN DECIDIR** (sí/no; solo cercanos o con servidor).
 - **Chats de grupo**: hechos en la 2758 (textos y adjuntos de hasta ~1 MB); faltan el HD de vídeo y los archivos
-  grandes en grupos, y el nombre del grupo en el aviso con la app cerrada.
+  grandes en grupos. Nombre del grupo en el aviso con la app cerrada o congelada: hecho (2763).
 - **Internet** (contactos lejos, Wi-Fi de módems distintos): hecho en la ronda 2739 con relés públicos Nostr y Tor
   (decisión del dueño 23-10, "2 y 3"; ver `docs/INTERNET.md`). Falta: confirmar en los teléfonos (los relés y Tor
   reales no se alcanzan desde el entorno de desarrollo); servidor propio si los relés públicos fallan o limitan.
@@ -125,7 +125,7 @@ De lo más simple a lo más complejo. Estado:
    (QR en el nuevo, el viejo lo escanea y le pasa por Wi-Fi/L2CAP, cifrado, NEXO ID, claves, contactos, historial,
    fotos y grupos; el viejo se desactiva). La B (varios dispositivos activos a la vez) queda para más adelante.
    ✅ A hecha en la 2759 (Perfil → Cambiar de teléfono; mismo Wi-Fi). Falta: probar en teléfonos; sin Wi-Fi común. 16. Llamadas de voz ✅ (2758, fase 1: con el
-   contacto cerca o en el mismo Wi-Fi; falta sonar con la app cerrada). 17. Videollamadas ✅ (2758, mismo Wi-Fi).
+   contacto cerca o en el mismo Wi-Fi; suena como una llamada del teléfono, también con la app cerrada: 2763). 17. Videollamadas ✅ (2758, mismo Wi-Fi).
 - (Resuelto en la 2759: era la prueba) `fenix.js` a veces recuperaba 5 de 6 mensajes y 1 de 2 archivos.
 18–20 (del dueño): pruebas reales con 3–4 teléfonos, auditoría externa, Play Store.
 

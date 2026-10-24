@@ -7,6 +7,7 @@ import { MAX_BLE_FILE_BYTES, WD_MAX_B64_BYTES, _objectURLRegistry, _tooBigMessag
 import { PREVIEW_MAX_SECONDS, _b64ToBlob, _blobToB64, _makeVideoPreview, _makeVideoThumb, _videoFormat } from './video_tools.js';
 import { _getCurrentContactId, _normId } from './chat_format.js';
 import { _showPermissionError, _wdReach } from './ui_bits.js';
+import { isGroupWire, registerGroupHd, videoGroupChatOf } from './group_media.js';
 import { vaultHdFileName, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReplaceAttachment, vaultSaveFile, vaultSetMessageFields } from '../vault/vault_manager.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
@@ -74,9 +75,8 @@ export function _sendVideo(blob, meta) {
     var hdBlob = preview.hd || blob;
     var hdMime = (hdBlob.type || mime).split(';')[0];
     var withHd = Math.ceil(hdBlob.size / 3) * 4 <= MAX_HD_B64_BYTES;
-    // Ronda 2758: en un grupo solo la previa (el HD aparte aún no va a grupos)
-    var gsV = window.bleInterface && window.bleInterface.groups;
-    if (gsV && gsV.isGroup(contactId)) withHd = false;
+    // Ronda 2764: en un grupo el HD va a cada miembro cuando le llega la previa (group_media.js)
+    var gsV = window.bleInterface && window.bleInterface.groups, inGroupV = !!(gsV && gsV.isGroup(contactId));
     if (!withHd) console.log('[VIDEO] Sin HD: ' + Math.round(hdBlob.size / 1024) + ' KB supera el límite');
     var thumbP = preview.thumb ? Promise.resolve(preview.thumb) : _makeVideoThumb(blob, 320);
     return Promise.all([_blobToB64(preview), withHd ? _blobToB64(hdBlob) : Promise.resolve(null), thumbP]).then(function(r) {
@@ -87,7 +87,8 @@ export function _sendVideo(blob, meta) {
       try { displayUrl = URL.createObjectURL(hdBlob); _objectURLRegistry.push(displayUrl); } catch (e) {}
       var msgId = _sendAttachment('video', r[0], Object.assign({}, meta, { mime: pMime, format: _videoFormat(pMime), preview: !!r[1], hdSize: r[1] ? hdBlob.size : 0, thumb: preview.thumb || null }),
         r[1] ? { displayUrl: displayUrl, displayMime: hdMime } : null);
-      if (msgId && r[1]) {
+      if (msgId && r[1] && inGroupV) registerGroupHd(contactId, msgId, r[1], hdMime);
+      else if (msgId && r[1]) {
         _videoTimes[msgId] = { t0: tStart, previewKB: Math.round(preview.size / 1024), hdKB: Math.round(hdBlob.size / 1024) };
         _registerHd(contactId, msgId, r[1], hdMime);
       }
@@ -207,9 +208,12 @@ export function _resumeHdTransfers(cid) {
 }
 
 // Receptor: el HD sustituye a la previa del mismo mensaje
+// Ronda 2764: el HD de un vídeo de grupo (msgId = la copia 'gm…_xxxxxxxx') va al chat del grupo
 export function _applyHdUpgrade(cid, msgId, payload, meta) {
   var mime = (meta.mime || 'video/webm').split(';')[0];
-  vaultReplaceAttachment(cid, msgId, payload, { mime: mime, format: _videoFormat(mime), hd: true, preview: false }).then(function(ok) {
+  (isGroupWire(msgId) ? videoGroupChatOf(cid, msgId) : Promise.resolve(null)).then(function(gid) {
+    return vaultReplaceAttachment(gid || cid, msgId, payload, { mime: mime, format: _videoFormat(mime), hd: true, preview: false });
+  }).then(function(ok) {
     if (!ok) {
       // Sin la previa guardada: se guarda como vídeo normal
       _handleIncomingMessage({ msgId: msgId, messageId: msgId, attachmentType: 'video', attachmentPayload: payload,
