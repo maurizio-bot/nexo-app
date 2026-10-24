@@ -7,20 +7,27 @@ Pedido del dueño (23-10-2026): "implementa wifi normal y la parte de switcheo e
   acceso de un móvil), se encuentran solos y se hablan por la red: mucho más rápido que Bluetooth (una foto de
   400 KB en ~1 s en el simulador; por Bluetooth ~60 s) y sin montar grupo como Wi-Fi Direct. Funciona aunque no estén
   a alcance de Bluetooth (otra habitación, otra planta).
-- **Cambio automático** (por contacto, en cada envío):
+- **Cambio automático** (por contacto, en cada envío; orden de `_resolveDeviceIdForNexoId`, al día con la 2768):
   1. Wi-Fi de la misma red, si hay enlace comprobado con ese contacto.
-  2. Bluetooth directo; para archivos grandes, Wi-Fi Direct si los dos lo tienen (como hasta ahora).
-  3. Jump (por otros teléfonos NEXO).
-  4. Si no hay ninguno: queda pendiente y sale solo cuando aparece un camino.
+  2. Internet, si los dos están en Wi-Fi (aunque sean módems distintos; ronda 2739, `docs/INTERNET.md`).
+  3. Bluetooth directo (si hay varias conexiones, la de MTU más alto); un archivo de ~110 KB a ~22 MB va por Wi-Fi
+     Direct si los dos lo tienen. Archivos grandes (hasta 1 GB, `big_file.js`): Wi-Fi común, Wi-Fi Direct o L2CAP.
+  4. Internet con datos móviles en alguno: solo textos (fotos y archivos esperan al Wi-Fi o van por Bluetooth).
+  5. Jump (por otros teléfonos NEXO).
+  6. Si no hay ninguno: queda pendiente y sale solo cuando aparece un camino.
 - **Si el Wi-Fi se cae a mitad** (se sale de la red, se apaga el Wi-Fi o el router):
   - textos esperando confirmación y envíos por trozos siguen por Bluetooth donde iban (sin empezar de cero);
   - un vídeo original o un archivo que no cabe por Bluetooth pasa a previa + HD (como cuando falla Wi-Fi Direct);
   - sin Bluetooth: pendiente hasta reconectar (se reanuda solo).
   - Caída "silenciosa" (el otro no se entera, típico de TCP): latido nativo cada 4 s (lo contesta el Kotlin, también
     con la app en segundo plano); sin nada en 30 s se da por caída.
-- **Reglas del dueño (ronda 2730)**: un corte breve no cambia de camino (8 s de margen para recuperar el Wi-Fi); con
-  mala señal medida (ida y vuelta >1,5 s o 12 s sin nada, dos veces seguidas) lo nuevo va por Bluetooth y vuelve al
-  Wi-Fi cuando mejora (<0,8 s dos veces).
+- **Reglas del dueño (rondas 2730 y 2760; `lan.js`)**: un corte no cambia de camino enseguida: 15 s para recuperar el
+  Wi-Fi (lo escrito queda pendiente, sin "!"). Mala señal medida por el latido nativo (cada 4 s): ida y vuelta >1,5 s
+  o 12 s sin recibir nada, 3 latidos seguidos (~12 s) → lo nuevo y lo que está saliendo van por internet (los dos en
+  Wi-Fi) o, si no, por Bluetooth; sin otro camino, sigue por el Wi-Fi lento. Vuelve al Wi-Fi tras 8 latidos buenos
+  seguidos (~30 s, ida y vuelta <0,8 s); tras un corte, en cuanto vuelve y se comprueba.
+- Llamadas (`calls.js`): la voz no espera el margen: con el Wi-Fi caído o sin voz del otro en 3 s pasa al Bluetooth, y
+  sigue el camino por el que llega la voz del otro (2768). No van por internet; el vídeo, solo por Wi-Fi.
 - La cabecera del chat dice por dónde va: "En línea · Wi-Fi", "En línea · Bluetooth" o "Por Jump".
 
 ## Escaneo de la red (idea del dueño, ronda 2733)
@@ -39,8 +46,8 @@ No sirve si el router aísla a los clientes entre sí (redes de invitados): ahí
 Dos teléfonos en redes Wi-Fi distintas no tienen camino local entre ellos: solo internet. Desde internet no se puede
 "escanear" la casa de otro (los teléfonos tienen direcciones privadas detrás de su módem, que no deja entrar conexiones
 que nadie pidió). Para hablar por internet hace falta un punto de encuentro donde cada teléfono diga "estoy aquí":
-servidor propio, Tor o relés públicos (decisión pendiente del dueño, `docs/PENDIENTES.md`). Hasta entonces, entre redes
-distintas NEXO va por Bluetooth o Jump.
+servidor propio, Tor o relés públicos. Decidido por el dueño y hecho en la ronda 2739: relés públicos y Tor
+(`docs/INTERNET.md`).
 
 ## Privacidad y seguridad
 - En la red cada teléfono se anuncia (NSD/mDNS, `_nexo._tcp`) con una **marca del día**:
@@ -69,6 +76,6 @@ distintas NEXO va por Bluetooth o Jump.
 ## Límites
 - Hace falta que la red deje hablar a los dispositivos entre sí: algunas redes públicas o de invitados lo bloquean
   ("aislamiento de clientes"); entonces sigue por Bluetooth.
-- Datos móviles / redes distintas: no (haría falta un servidor de relevo; decisión pendiente).
+- Redes distintas o datos móviles: por internet (relés y Tor, ronda 2739); con datos móviles, solo textos.
 - Probado en el simulador (`tests/sim/lan.js`) y la parte de sockets en JVM; el descubrimiento NSD solo se puede
   confirmar en teléfonos reales.
