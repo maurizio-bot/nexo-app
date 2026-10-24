@@ -10,6 +10,7 @@ import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } fro
 import { _showPermissionError } from './ui_bits.js';
 import { vaultAppendMessage, vaultSetMessageFields } from '../vault/vault_manager.js';
 import { bigToGroup } from './group_media.js';
+import { _failStatus } from './ble_helpers.js';
 
 
 /**
@@ -258,7 +259,7 @@ export function _sendTextTo(cid, wire, plain, hidden) {
     if (_canUpgradeStatus(_getDomMessageStatus(msgId), 'sent')) _updateMessageStatus(msgId, 'sent');
     _updateMessageStorageStatus(msgId, 'sent', cid);
   }).catch(function(err) {
-    var st = (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT')) ? 'pending' : 'failed';
+    var st = _failStatus(err); // ronda 2767: también con el Wi-Fi cortado (se espera a que vuelva): pendiente
     _updateMessageStatus(msgId, st);
     _updateMessageStorageStatus(msgId, st, cid);
   });

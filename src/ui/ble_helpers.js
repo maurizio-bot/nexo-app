@@ -514,7 +514,9 @@ export function _isResendable(m) {
 
 // v6.2.0: sin clave de cifrado del contacto (aún no la envió) o contacto ausente → sigue pendiente, no fallido
 export function _failStatus(err) {
-  return (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT')) ? 'pending' : 'failed';
+  // Ronda 2767: 'LAN_DOWN' (el Wi-Fi se cortó y se espera a que vuelva, regla del dueño): pendiente, no "!" (al acabar
+  // la espera sale por Bluetooth o por el Wi-Fi que volvió)
+  return (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT' || err.code === 'LAN_DOWN')) ? 'pending' : 'failed';
 }
 
 export function _vaultUpdateMessageStatus(nexoId, msgId, status) {

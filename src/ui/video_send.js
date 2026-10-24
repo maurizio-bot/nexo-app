@@ -218,7 +218,7 @@ export function _applyHdUpgrade(cid, msgId, payload, meta) {
       // Sin la previa guardada: se guarda como vídeo normal
       _handleIncomingMessage({ msgId: msgId, messageId: msgId, attachmentType: 'video', attachmentPayload: payload,
         attachmentMeta: Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), hd: true, hdFor: null }),
-        senderNexoId: cid, senderName: meta.f || 'NEXO', _own: false, status: 'delivered', timestamp: meta.ts || Date.now() });
+        senderNexoId: cid, senderName: meta.f || 'NEXO', _own: false, status: 'delivered', timestamp: meta.rxTs || meta.ts || Date.now() });
       return;
     }
     console.log('[VIDEO] HD recibido para ' + msgId);

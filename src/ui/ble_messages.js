@@ -50,6 +50,7 @@ export const BLE_MESSAGE_METHODS = {
     if (ack && ack.pendingAcks && ack.pendingAcks.has(msgId)) return true;
     if (ack && ack.outgoingStreams && ack.outgoingStreams.has(msgId)) return true;
     if (ack && ack.preparing && ack.preparing.has(msgId)) return true;
+    if (ack && ack._chatPrep && ack._chatPrep.has(msgId)) return true;
     if (this.wifiDirect && this.wifiDirect.out.has(msgId)) return true;
     return false;
   },
@@ -292,7 +293,7 @@ export const BLE_MESSAGE_METHODS = {
         } catch (e) {}
         if (isProtocol) {
           if (self.ackSystem) {
-            var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: trimmedContent });
+            var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: trimmedContent, ts: data.timestamp });
             if (fragmentHandled) return;
           }
           // Ronda 2766 (revisión): el ping y el pong siguen hasta su respuesta, más abajo. Este return los descartaba
@@ -301,7 +302,7 @@ export const BLE_MESSAGE_METHODS = {
           if (!(protoCheck && (protoCheck.type === 'ping' || protoCheck.type === 'pong'))) return;
         }
         if (self.ackSystem) {
-          var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: content });
+          var fragmentHandled = self.ackSystem.processIncomingFragment({ deviceId: deviceId, content: content, ts: data.timestamp });
           if (fragmentHandled) return;
         }
         var ctrl = null;
@@ -878,16 +879,32 @@ export const BLE_MESSAGE_METHODS = {
   _resendPendingMessages(nexoId) {
     var self = this;
     if (!nexoId) return;
+    // Ronda 2767 (revisión): una sola vuelta a la vez por contacto. Al reconectar se pedía 4–6 veces seguidas (enlace
+    // listo, clave, chat abierto…) y cada vuelta mandaba su lista sin mirar las demás: un texto largo salía varias veces
+    // a la vez. Si ya hay una en marcha (con avances en los últimos 30 s), se repite al acabar
+    var nxKey = _normId(nexoId);
+    self._resendRun = self._resendRun || new Map();
+    var cur = self._resendRun.get(nxKey);
+    if (cur && Date.now() - cur.at < 30000) { cur.again = true; return; }
+    var run = { at: Date.now(), again: false };
+    self._resendRun.set(nxKey, run);
+    var finish = function() {
+      if (self._resendRun.get(nxKey) !== run) return;
+      self._resendRun.delete(nxKey);
+      if (run.again) setTimeout(function() { self._resendPendingMessages(nexoId); }, 300);
+    };
+    var idOf = function(m) { return m.msgId || m.messageId || m.id; };
     var getPending = (window.vaultGetPendingMessages && typeof window.vaultGetPendingMessages === 'function')
       ? window.vaultGetPendingMessages(nexoId)
       : _vaultLoadMessages(nexoId).then(function(msgs) {
           return msgs.filter(_isResendable);
         });
-    getPending = getPending.then(_hydrateAttachments);
+    // No reenviar lo que sigue en vuelo en esta sesión (cola JS, ACK pendiente o stream activo); se mira antes de cargar
+    // los adjuntos de disco (antes se cargaban todos en cada vuelta)
+    getPending = getPending.then(function(list) { return _hydrateAttachments((list || []).filter(function(m) { return !self._isMsgInFlight(idOf(m)); })); });
     getPending.then(function(pending) {
-      // No reenviar lo que sigue en vuelo en esta sesión (cola JS, ACK pendiente o stream activo)
-      pending = (pending || []).filter(function(m) { return !self._isMsgInFlight(m.msgId || m.messageId || m.id); });
-      if (pending.length === 0) return;
+      pending = pending || [];
+      if (pending.length === 0) { finish(); return; }
       var deviceId = self._resolveDeviceIdForNexoId(nexoId);
       var st = deviceId ? self._getDeviceState(deviceId) : {};
       var direct = st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY;
@@ -898,6 +915,7 @@ export const BLE_MESSAGE_METHODS = {
         if (!rh) {
           console.log('[BLEInterface] ' + pending.length + ' pending para ' + nexoId + ': sin enlace ni ruta, quedan en espera');
           if (self.relay) self.relay.discover(nexoId);
+          finish();
           return;
         }
         deviceId = rh.deviceId;
@@ -912,10 +930,12 @@ export const BLE_MESSAGE_METHODS = {
       }
       var idx = 0;
       function sendNext() {
-        if (idx >= pending.length) return;
+        run.at = Date.now();
+        if (idx >= pending.length) { finish(); return; }
         var msg = pending[idx++];
-        var mid = msg.msgId || msg.messageId || msg.id;
-        if (!mid) {
+        var mid = idOf(msg);
+        // Ronda 2767: se vuelve a mirar justo antes de mandarlo (otra vuelta o un envío nuevo pudo mandarlo ya)
+        if (!mid || self._isMsgInFlight(mid) || (self.ackSystem && typeof self.ackSystem.isDone === 'function' && self.ackSystem.isDone(mid))) {
           sendNext();
           return;
         }
@@ -930,7 +950,7 @@ export const BLE_MESSAGE_METHODS = {
         var attachmentPayload = msg.attachmentPayload || null;
         var attachmentMeta = msg.attachmentMeta || null;
 
-        if (!attachmentType && msg.content && typeof msg.content === 'string') {
+        if ((!attachmentType || !attachmentPayload) && msg.content && typeof msg.content === 'string' && msg.content.charAt(0) === '{') {
           try {
             var parsed = JSON.parse(msg.content);
             if (parsed && parsed.type === 'attachment') {
@@ -967,10 +987,11 @@ export const BLE_MESSAGE_METHODS = {
             sendNext();
             return;
           }
+          // Ronda 2767: directo, a quién va (como al enviarlo: se cifra para él y solo sale por una conexión suya)
           var fileMeta = Object.assign(
             { type: attachmentType },
             attachmentMeta || {},
-            relayDst ? { dst: relayDst } : {}
+            relayDst ? { dst: relayDst } : { to: nxKey }
           );
           doSend = function() {
             return self.ackSystem.sendFile(
@@ -982,7 +1003,19 @@ export const BLE_MESSAGE_METHODS = {
           };
           console.log('[BLEInterface] Reenviando ADJUNTO:', attachmentType, mid);
         } else {
-          var txt = bigMeta ? JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: attachmentMeta }) : (msg.content || msg.text || '');
+          var txt;
+          if (bigMeta) txt = JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: attachmentMeta });
+          // Ronda 2767 (revisión): nota de voz, ubicación… van como texto con el adjunto dentro, como al enviarlos. El
+          // historial guarda el adjunto aparte y el texto como "[adjunto]": antes llegaba ese texto, no la nota de voz
+          else if (attachmentType && attachmentPayload) txt = JSON.stringify({ type: 'attachment', attachmentType: attachmentType, payload: attachmentPayload, meta: attachmentMeta || {} });
+          else if (attachmentType) {
+            console.warn('[BLEInterface] Adjunto pendiente sin sus datos (no se pudo leer del teléfono): no se reenvía', mid);
+            _vaultUpdateMessageStatus(nexoId, mid, 'failed');
+            try { if (window.NEXO_updateMessageStatus) window.NEXO_updateMessageStatus(mid, 'failed'); } catch (e3) {}
+            sendNext();
+            return;
+          }
+          else txt = msg.content || msg.text || '';
           if (
             txt.length > 180 &&
             self.ackSystem &&
@@ -992,7 +1025,7 @@ export const BLE_MESSAGE_METHODS = {
               return self.ackSystem.sendChunkedMessage(
                 deviceId,
                 txt,
-                relayDst ? { dst: relayDst } : {},
+                relayDst ? { dst: relayDst } : { to: nxKey },
                 mid,
                 msgSeq
               );
@@ -1004,7 +1037,7 @@ export const BLE_MESSAGE_METHODS = {
                 txt,
                 mid,
                 msgSeq,
-                relayDst ? { dst: relayDst } : undefined
+                relayDst ? { dst: relayDst } : { to: nxKey }
               );
             };
           } else {

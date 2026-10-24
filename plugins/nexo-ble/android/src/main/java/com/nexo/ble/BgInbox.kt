@@ -64,11 +64,15 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
         return true
     }
 
-    // Todo lo guardado, en orden, y el buzón queda vacío
-    @Synchronized fun drain(): List<Pair<String, String>> {
+    // Lo guardado: de qué conexión, el paquete y cuándo llegó
+    data class Item(val deviceId: String, val json: String, val ts: Long)
+
+    // Todo lo guardado, en orden, y el buzón queda vacío. Ronda 2767: con la hora a la que llegó (antes se perdía y en
+    // el chat todo lo recibido con la app cerrada salía con la hora de abrirla)
+    @Synchronized fun drain(): List<Item> {
         if (!file.exists()) return emptyList()
-        val out = mutableListOf<Pair<String, String>>()
-        file.readLines().forEach { line -> try { val o = JSONObject(line); out.add(o.getString("d") to o.getString("c")) } catch (e: Exception) {} }
+        val out = mutableListOf<Item>()
+        file.readLines().forEach { line -> try { val o = JSONObject(line); out.add(Item(o.getString("d"), o.getString("c"), o.optLong("ts", 0L))) } catch (e: Exception) {} }
         file.delete()
         return out
     }

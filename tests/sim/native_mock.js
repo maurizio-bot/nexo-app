@@ -210,7 +210,7 @@ class NativePhone {
       this.pendingQueue.clear(); this.buffers.clear(); this.writeQ = new Map();
       const box = this.bgInbox || []; this.bgInbox = [];
       if (!this.retained) this.retained = new Map();
-      if (box.length) this.retained.set('onPayloadReceived', (this.retained.get('onPayloadReceived') || []).concat(box.map((x) => ({ deviceId: x.d, content: x.c, data: x.c, source: 'closed', timestamp: Date.now(), reassembled: true }))));
+      if (box.length) this.retained.set('onPayloadReceived', (this.retained.get('onPayloadReceived') || []).concat(box.map((x) => ({ deviceId: x.d, content: x.c, data: x.c, source: 'closed', timestamp: x.t || Date.now(), reassembled: true })) /* Kotlin 2767: con la hora a la que llegó */));
       this.stats.closedDelivered = (this.stats.closedDelivered || 0) + box.length;
     }
     // Android reinicia el anuncio al reabrir la app: dirección aleatoria nueva (opts.rotateOnRestart)
@@ -510,12 +510,12 @@ class NativePhone {
       this._postNotif(info.from || 'nexo_jump', info.from ? this._notifName(info.from) : 'NEXO', info.msgId, text, { closed: true });
     };
     if (info.kind === 'MESSAGE') {
-      this.bgInbox.push({ d: fromAddress, c: json });
+      this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
       const me = String(this.advertisingId || '').toLowerCase();
       if (me) this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify({ v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() }));
       if (info.call) { this.callNotif = { from: info.from, video: false }; this._wake(); this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
       else if (!info.quiet) this._notifyMsg(info, { closed: true });
-    } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json });
+    } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
     else if (info.kind === 'NOTIFY_ONLY' && info.what === 'call') { this.callNotif = { from: info.from, video: false }; this._wake(); this.notifLog.push({ t: Date.now(), chatId: info.from, name: this._notifName(info.from), text: '📞 Llamada entrante', call: true, closed: true }); }
     else if (info.kind === 'NOTIFY_ONLY' && this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { closed: true }); }
     else if (info.kind === 'NOTIFY_ONLY') notify(NativePhone.whatText(info.what));

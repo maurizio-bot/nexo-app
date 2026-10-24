@@ -126,6 +126,11 @@ function _chunkCheck(o) {
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
 }
+// Un NEXO ID válido o '' (ronda 2767: 'to' solo cuenta si es un NEXO ID, no una dirección)
+function _nxOf(id) {
+  var n = _normId(id);
+  return /^nx[0-9a-z]{8}$/.test(n) ? n : '';
+}
 // Mayor seq de los mensajes RECIBIDOS del otro (su contador); los propios usan nuestro contador
 function _maxSeqFromPeer(msgs) {
   var max = 0;
@@ -180,6 +185,8 @@ export class BleAckSystem {
     this.windowTimeoutMs = CHAT_WINDOW_TIMEOUT_MS;
     this.outgoingStreams = new Map();
     this.preparing = new Set(); // ids cifrándose (aún sin ack pendiente ni flujo): cuentan como en vuelo
+    this._chatPrep = new Map(); // id → envío de un texto en curso (cifrándose, en flujo o esperando ✓✓): no sale dos veces a la vez
+    this._done = new Map();     // id → cuándo se confirmó (entregado o leído): no se reenvía
     this.incomingBuffers = new Map();
     this.pendingFragments = new Map();
     this.maxFragmentAge = 300000;
@@ -214,15 +221,28 @@ export class BleAckSystem {
     this.incomingBuffers.forEach(function(b) { if (!busy && b && now - (b.lastActivity || 0) < 30000 && same(b.deviceId)) busy = true; });
     return busy;
   }
-  sendChunkedMessage(deviceId, content, meta, messageId, seq) {
+  // _fromPrep: llamada interna con el texto ya cifrado por este mismo envío
+  sendChunkedMessage(deviceId, content, meta, messageId, seq, _fromPrep) {
     var self = this;
     var dst = meta && meta.dst, to = meta && meta.to;
+    // Ronda 2767 (revisión): el mismo texto largo no sale dos veces a la vez. Al reconectar arrancaban varios reenvíos
+    // de lo pendiente y cada uno lo cifraba otra vez (distinto): el otro mezclaba los trozos de los dos, no lo podía
+    // descifrar y se perdía, mientras aquí constaba como entregado
+    if (messageId) {
+      var running = self.outgoingStreams.get(messageId);
+      if (running && !running.aborted && running._promise) return running._promise;
+      if (!_fromPrep && self._chatPrep.has(messageId)) return self._chatPrep.get(messageId);
+    }
     if (e2eAvailable() && content && !e2eAnyEncrypted(content)) {
       if (content.length <= 150) return self.sendWithRetry(deviceId, content, messageId, seq, { dst: dst, to: to });
       var cid = messageId || _newMsgId();
-      return self._preparingFor(cid, self._ensurePeerKey(deviceId, dst, to)
+      var p = self._preparingFor(cid, self._ensurePeerKey(deviceId, dst, to)
         .then(function(t) { return e2eSealText(t, content, self._outAd(t, cid)); }))
-        .then(function(enc) { return self.sendChunkedMessage(deviceId, enc, meta, cid, seq); });
+        .then(function(enc) { return self.sendChunkedMessage(deviceId, enc, meta, cid, seq, true); });
+      self._chatPrep.set(cid, p);
+      var clear = function() { if (self._chatPrep.get(cid) === p) self._chatPrep.delete(cid); };
+      p.then(clear, clear);
+      return p;
     }
     // v3.12.0: por internet un texto va en un solo paquete: sirve de buzón (el otro puede no estar en línea; un flujo
     // por trozos esperaría confirmaciones que no llegan)
@@ -230,7 +250,7 @@ export class BleAckSystem {
       return self._sendWithRetryRaw(deviceId, content, messageId || _newMsgId(), seq);
     }
     if (dst && content.length > 150 && !(meta && 'sealedFrom' in meta)) {
-      return self._withSealedFrom(Object.assign({}, meta)).then(function(m2) { return self.sendChunkedMessage(deviceId, content, m2, messageId, seq); });
+      return self._withSealedFrom(Object.assign({}, meta)).then(function(m2) { return self.sendChunkedMessage(deviceId, content, m2, messageId, seq, _fromPrep); });
     }
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
@@ -249,11 +269,12 @@ export class BleAckSystem {
       }
       var stream = new ChatStream(self, deviceId, msgId, content, finalMeta, 'chat');
       self.outgoingStreams.set(msgId, stream);
-      stream.start().then(function() {
-        self.outgoingStreams.delete(msgId);
+      stream._promise = stream.start();
+      stream._promise.then(function() {
+        if (self.outgoingStreams.get(msgId) === stream) self.outgoingStreams.delete(msgId);
         resolve();
       }).catch(function(err) {
-        self.outgoingStreams.delete(msgId);
+        if (self.outgoingStreams.get(msgId) === stream) self.outgoingStreams.delete(msgId);
         reject(err);
       });
     });
@@ -312,13 +333,37 @@ export class BleAckSystem {
       if (!st || _normMac(st.deviceId) !== nd) return;
       var limit = (st.meta && st.meta.hdFor) ? BLE_HD_MAX_CHARS : BLE_FILE_MAX_CHARS;
       var tooBig = st.type === 'file' && ((st.meta && st.meta.wdOnly) || String(st.content || '').length > limit);
-      if (next && !tooBig) { st.useLink(next); return; }
+      if (next && !tooBig) {
+        if (st.tooBigFor(next)) self._restartStream(st, id, next); else st.useLink(next);
+        return;
+      }
       var e = new Error(tooBig ? 'Wi-Fi caído y no cabe por Bluetooth' : 'Contacto no disponible: queda pendiente');
       e.code = tooBig ? 'WD_FAILED' : 'PEER_ABSENT';
       var rej = st.reject; st.reject = null;
       st.abort();
       self.outgoingStreams.delete(id);
       if (st.type === 'file') self._dispatchFileProgress(id, 0, 1, tooBig ? 'failed' : 'sending', 0);
+      if (rej) rej(e);
+    });
+  }
+  // Ronda 2767 (revisión): el envío sigue por otro enlace en el que sus trozos no caben (trozos de Wi-Fi de 24 KB por
+  // un Bluetooth de MTU 23: cada uno tarda más de lo que el nativo del otro espera a completarlo y lo descarta; la foto
+  // no terminaba nunca). Se vuelve a empezar por el enlace nuevo, el mismo contenido en trozos a su medida (el otro
+  // ve otro intento y empieza de nuevo); quien lo mandó sigue esperando la misma promesa
+  _restartStream(st, id, next) {
+    var self = this, res = st.resolve, rej = st.reject;
+    st.resolve = null; st.reject = null;
+    st.abort();
+    if (self.outgoingStreams.get(id) === st) self.outgoingStreams.delete(id);
+    console.log('[ChatStream] ' + id + ': sus trozos no caben por el enlace nuevo: se vuelve a empezar con trozos a su medida');
+    var ns = new ChatStream(self, next, id, st.content, st.meta, st.type);
+    self.outgoingStreams.set(id, ns);
+    ns._promise = ns.start();
+    ns._promise.then(function() {
+      if (self.outgoingStreams.get(id) === ns) self.outgoingStreams.delete(id);
+      if (res) res();
+    }, function(e) {
+      if (self.outgoingStreams.get(id) === ns) self.outgoingStreams.delete(id);
       if (rej) rej(e);
     });
   }
@@ -440,7 +485,7 @@ export class BleAckSystem {
       if (type === 'ss') { this._handleSessionSync(deviceId, msg); return true; }
       if (type === 'sr') { this._handleSessionSyncResponse(deviceId, msg); return true; }
       if (type === 'c' || type === 'f') {
-        this._handleIncomingChunk(deviceId, msg, type);
+        this._handleIncomingChunk(deviceId, msg, type, dataObj.ts);
         return true;
       }
       if (type === 'fm' || type === 'fd') {
@@ -452,7 +497,8 @@ export class BleAckSystem {
       return false;
     }
   }
-  _handleIncomingChunk(deviceId, msg, type) {
+  // rxTs: cuándo llegó este trozo (con la app cerrada, cuándo lo guardó la parte nativa)
+  _handleIncomingChunk(deviceId, msg, type, rxTs) {
     var self = this;
     var msgId = msg.m || msg.msgId;
     var idx = (typeof msg.i === 'number') ? msg.i : msg.idx;
@@ -472,10 +518,21 @@ export class BleAckSystem {
     }
     var completed = self.completedMessages.get(msgId);
     if (completed) {
-      self._sendFinalAck(deviceId, msgId, total);
+      // Ronda 2767: mientras se descifra no se confirma (si no se puede descifrar, el emisor no lo da por entregado)
+      if (!completed.pending) self._sendFinalAck(deviceId, msgId, total);
       return;
     }
     var buf = self.incomingBuffers.get(msgId);
+    // Ronda 2767: otro intento del mismo mensaje (marca 'a' distinta: cifrado otra vez, distinto). Sus trozos no se
+    // mezclan con los del anterior (antes salía ilegible y se perdía): si el anterior está parado, se empieza de nuevo
+    if (buf && (msg.a || '') !== (buf.a || '')) {
+      if (Date.now() - (buf.lastActivity || 0) < 4000) return;
+      console.warn('[BleAckSystem] ' + msgId + ': llega otro intento: se empieza de nuevo');
+      if (buf.assemblyTimer) clearTimeout(buf.assemblyTimer);
+      if (buf.ackTimer) clearTimeout(buf.ackTimer);
+      self.incomingBuffers.delete(msgId);
+      buf = null;
+    }
     // Ronda 2758: el mismo mensaje llega por otro camino troceado distinto (el puente Jump lo empezó y se cortó, y el
     // emisor lo manda directo): si lo que había a medias está parado, se empieza con el nuevo (antes se mezclaban los
     // trozos y no se completaba nunca); si los dos siguen activos, se sigue con el primero
@@ -503,6 +560,10 @@ export class BleAckSystem {
           senderNexoId: resolvedFrom,
           fromNexoId: resolvedFrom,
           ts: msg.ts || Date.now(),
+          // Ronda 2767 (revisión): la hora del mensaje en este teléfono es la de su llegada (la del primer trozo), como la
+          // de un texto corto. Antes un texto largo o un archivo llevaba la hora del otro teléfono al mandarlo: con los
+          // relojes desfasados (lo normal sin red) o al reenviarse, salían desordenados con los textos cortos
+          rxTs: (typeof rxTs === 'number' && rxTs > 0) ? rxTs : Date.now(),
           seq: seq,
           type: resolvedType,
           name: msg.fn || msg.name,
@@ -519,7 +580,7 @@ export class BleAckSystem {
           hp: msg.hp || 0
         },
         received: 0, deviceId: deviceId, lastActivity: Date.now(),
-        isChat: type === 'c', nackSent: false
+        isChat: type === 'c', nackSent: false, a: msg.a || ''
       };
       self.incomingBuffers.set(msgId, buf);
       if (!buf.isChat && self.ble && typeof self.ble._stopAutoScan === 'function') self.ble._stopAutoScan();
@@ -597,30 +658,44 @@ export class BleAckSystem {
     for (var i = 0; i < buf.total; i++) {
       assembled += buf.chunks.has(i) ? buf.chunks.get(i) : '';
     }
-    self._sendFinalAck(deviceId, msgId, buf.total);
-    self.completedMessages.set(msgId, { total: buf.total, expireAt: Date.now() + COMPLETED_TTL_MS });
     self.incomingBuffers.delete(msgId);
+    // Ronda 2767 (revisión): la confirmación final sale cuando ya se ha podido descifrar. Antes salía al juntar los
+    // trozos: si no se podía descifrar, se perdía y el emisor lo daba por entregado. Mientras se descifra, los trozos
+    // repetidos no se confirman; si no se puede, se olvida y el emisor lo reintenta (o lo marca como no enviado)
+    var entry = { total: buf.total, expireAt: Date.now() + COMPLETED_TTL_MS, pending: true };
+    self.completedMessages.set(msgId, entry);
+    var finalAck = function(ok) {
+      if (self.completedMessages.get(msgId) !== entry) return;
+      if (!ok) { self.completedMessages.delete(msgId); return; }
+      entry.pending = false;
+      self._sendFinalAck(deviceId, msgId, buf.total);
+    };
     // Jump: va para otro teléfono → hacer de puente (no se muestra ni se descifra aquí)
     var relay = self.ble && self.ble.relay;
-    if (relay && buf.meta.dst && relay.onStreamComplete(buf.isChat ? 'chat' : 'file', msgId, assembled, buf.meta, deviceId)) return;
+    if (relay && buf.meta.dst && relay.onStreamComplete(buf.isChat ? 'chat' : 'file', msgId, assembled, buf.meta, deviceId)) { finalAck(true); return; }
     // v3.11.0: remitente sellado: abrir antes de seguir
     if (String(buf.meta.fr || '').indexOf('sx:') === 0) {
       self._unsealFrom(buf).then(function() {
-        if (buf.meta.badSeal) return;
-        self._finishAssembly(buf, deviceId, buf.meta.fr, msgId, assembled);
-      });
+        if (buf.meta.badSeal) { finalAck(true); return; }
+        self._finishAssembly(buf, deviceId, buf.meta.fr, msgId, assembled, finalAck);
+      }, function() { finalAck(false); });
       return;
     }
-    self._finishAssembly(buf, deviceId, senderId, msgId, assembled);
+    self._finishAssembly(buf, deviceId, senderId, msgId, assembled, finalAck);
   }
-  _finishAssembly(buf, deviceId, senderId, msgId, assembled) {
-    var self = this;
-    // Llegó por otro teléfono: confirmación de extremo a extremo al origen
-    if (buf.meta.hp > 0 && buf.meta.fr) self.sendAck(deviceId, msgId, buf.meta.fr);
+  _finishAssembly(buf, deviceId, senderId, msgId, assembled, finalAck) {
+    var self = this, called = false;
+    var done = function(ok) {
+      if (called) return; // una sola vez (un fallo después de leerlo no lo deshace)
+      called = true;
+      if (finalAck) finalAck(ok);
+      // Llegó por otro teléfono: confirmación de extremo a extremo al origen (ronda 2767: cuando ya se pudo leer)
+      if (ok && buf.meta.hp > 0 && buf.meta.fr) self.sendAck(deviceId, msgId, buf.meta.fr);
+    };
     if (buf.isChat) {
-      self._dispatchChunkedMessageComplete(senderId, assembled, buf.meta, deviceId, msgId);
+      self._dispatchChunkedMessageComplete(senderId, assembled, buf.meta, deviceId, msgId, done);
     } else {
-      self._dispatchFileComplete(msgId, assembled, buf.meta);
+      self._dispatchFileComplete(msgId, assembled, buf.meta, done);
       self._dispatchFileProgress(msgId, buf.total, buf.total, 'received', 100);
     }
   }
@@ -784,11 +859,15 @@ export class BleAckSystem {
       // ambos teléfonos y dejaba sin reenviar). Se reenvía lo propio sin confirmar: pendiente/fallido
       // siempre; 'sent' (sin ack) si su seq es mayor que lo que el otro tiene. Máx. 7 días y 50 mensajes.
       var cutoff = Date.now() - 7 * 86400000;
+      // Ronda 2767: lo pendiente lo manda la vuelta de reenvíos del contacto (una sola a la vez y en orden); antes esta
+      // lista lo mandaba también, a la vez que ella. Aquí solo lo que salió (✓) y el otro dice no tener
+      var bi = self.ble;
+      if (bi && typeof bi._resendPendingMessages === 'function') bi._resendPendingMessages(peerNexoId);
       var pending = msgs.filter(function(m) {
         if (m._own !== true || m.attachmentType || (m.timestamp || 0) < cutoff) return false;
         var mid = m.msgId || m.messageId;
-        if (self.ble && typeof self.ble._isMsgInFlight === 'function' && self.ble._isMsgInFlight(mid)) return false;
-        if (m.status === 'pending' || m.status === 'sending' || m.status === 'queued' || m.status === 'failed') return true;
+        if (bi && typeof bi._isMsgInFlight === 'function' && bi._isMsgInFlight(mid)) return false;
+        if (self.isDone(mid)) return false;
         return m.status === 'sent' && (m.seq || 0) > peerLastSeq;
       }).slice(-50);
       if (pending.length === 0) return;
@@ -849,6 +928,7 @@ export class BleAckSystem {
   // solo si la conexión es suya; si resulta ser de otro, ni se cifra ni se manda (queda pendiente). Antes se cifraba
   // para quien dijera la conexión: un archivo para el S24 salía cifrado para el Vivo y el Vivo lo leía.
   _ensurePeerKey(deviceId, dst, to) {
+    to = _nxOf(to) || null; // solo un NEXO ID (no una dirección)
     var self = this, who = dst || to || null;
     if (to && !dst && self.ble && typeof self.ble._destNx === 'function') {
       var owner = self.ble._destNx(deviceId);
@@ -913,12 +993,20 @@ export class BleAckSystem {
     }
     var mid = messageId || _newMsgId();
     // Ronda 2766: a quién va (el 'dn' del paquete), fijado desde ya para este id
-    if (to && !dst && self.ble) { self.ble._msgDest = self.ble._msgDest || new Map(); self.ble._msgDest.set(mid, _normId(to)); }
+    if (_nxOf(to) && !dst && self.ble) { self.ble._msgDest = self.ble._msgDest || new Map(); self.ble._msgDest.set(mid, _nxOf(to)); }
     if (!e2eAvailable() || e2eAnyEncrypted(content)) return self._sendWithRetryRaw(deviceId, content, mid, seq, dst);
+    // Ronda 2767: si ya se está mandando (cifrándose o esperando su confirmación), se espera con ese envío
+    if (self._chatPrep.has(mid)) return self._chatPrep.get(mid);
+    var pend = self.pendingAcks.get(mid);
+    if (pend && !pend.raw) return self._sendWithRetryRaw(deviceId, content, mid, seq, dst);
     var t0 = Date.now();
-    return self._preparingFor(mid, self._ensurePeerKey(deviceId, dst, to)
+    var p = self._preparingFor(mid, self._ensurePeerKey(deviceId, dst, to)
       .then(function(t) { return e2eSealText(t, content, self._outAd(t, mid)); }))
       .then(function(enc) { return self._sendWithRetryRaw(deviceId, enc, mid, seq, dst, { t0: t0, seal: Date.now() - t0 }); });
+    self._chatPrep.set(mid, p);
+    var clear = function() { if (self._chatPrep.get(mid) === p) self._chatPrep.delete(mid); };
+    p.then(clear, clear);
+    return p;
   }
   // Jump: un puente reenvía un paquete tal cual y espera la confirmación del siguiente salto
   sendRawWithRetry(deviceId, packet, msgId) {
@@ -954,6 +1042,16 @@ export class BleAckSystem {
     var self = this;
     return new Promise(function(resolve, reject) {
       var msgId = messageId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+      // Ronda 2767 (revisión): si ese mismo mensaje ya está esperando su confirmación, se espera con él. Antes se
+      // pisaba su entrada sin parar su temporizador: los reintentos se gastaban el doble de rápido y quien lo mandó
+      // primero se quedaba esperando para siempre (y con él el resto de su lista de pendientes)
+      var prev = self.pendingAcks.get(msgId);
+      if (prev && !prev.raw) {
+        var r0 = prev.resolve, j0 = prev.reject;
+        prev.resolve = function(v) { r0(v); resolve(v); };
+        prev.reject = function(e) { j0(e); reject(e); };
+        return;
+      }
       var entry = {
         msgId: msgId, deviceId: deviceId, content: content, dst: dst || null,
         resolve: resolve, reject: reject, retries: 0, timer: null, sentAt: Date.now(),
@@ -989,7 +1087,9 @@ export class BleAckSystem {
         } else {
           self.pendingAcks.delete(entry.msgId);
           entry.reject(err);
-          if (!entry.quiet) self._dispatchStatus(entry.msgId, 'failed');
+          // Ronda 2767: si es que se espera a un camino (Wi-Fi cortado, contacto ausente), pendiente y no "!"
+          var waiting = err && (err.code === 'LAN_DOWN' || err.code === 'PEER_ABSENT' || err.code === 'NO_KEY');
+          if (!entry.quiet) self._dispatchStatus(entry.msgId, waiting ? 'pending' : 'failed');
         }
       });
   }
@@ -1154,35 +1254,48 @@ export class BleAckSystem {
       });
     });
   }
-  _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId) {
+  // done(ok): ronda 2767, si se pudo leer (la confirmación final espera a esto)
+  _dispatchChunkedMessageComplete(senderId, content, meta, deviceId, msgId, done) {
     var self = this;
     if (e2eAnyEncrypted(content)) {
       var from = meta.fr || senderId;
       e2eOpenText(from, content, self._inAd(from, msgId)).then(function(r) {
+        if (done) done(true);
         if (r.dup) return;
         var go = function() { self._dispatchChunkedMessageComplete(senderId, r.text, meta, deviceId, msgId); };
         var v = self._checkSender(from, r);
         if (v === 'drop') return;
         if (v === 'hold') { self._hold(from, go, msgId); return; }
         go();
-      }).catch(function(e) { if (!e || e.code !== 'DUP') console.warn('[E2E] No se pudo descifrar el mensaje ' + msgId + ':', e && e.message); });
+      }).catch(function(e) {
+        if (e && e.code === 'DUP') { if (done) done(true); return; }
+        console.warn('[E2E] No se pudo descifrar el mensaje ' + msgId + ':', e && e.message);
+        if (done) done(false);
+      });
       return;
     }
+    if (done) done(true);
     try {
       window.dispatchEvent(new CustomEvent('nexo:ble:messageReceived', {
         detail: {
           deviceId: meta.hp > 0 ? null : deviceId, deviceUUID: meta.fr || senderId,
           content: content, senderName: meta.f || 'NEXO',
           senderNexoId: meta.fr || senderId, messageId: msgId || meta.msgId,
-          source: 'ble', timestamp: meta.ts || Date.now(), seq: meta.seq || 0
+          source: 'ble', timestamp: meta.rxTs || meta.ts || Date.now(), seq: meta.seq || 0
           // FIX v3.2.13: sin fromVault; con fromVault main.js no lo guardaba y se perdía si el chat estaba cerrado
         }
       }));
     } catch (e) {}
   }
   _dispatchStatus(msgId, status) {
+    if (msgId && (status === 'delivered' || status === 'read')) {
+      this._done.set(msgId, Date.now());
+      if (this._done.size > 3000) this._done.delete(this._done.keys().next().value);
+    }
     try { window.dispatchEvent(new CustomEvent('nexo:ble:ackStatus', { detail: { msgId: msgId, status: status } })); } catch (e) {}
   }
+  // Ronda 2767: ya confirmado en esta sesión (un reenvío que arrancó antes no lo vuelve a mandar)
+  isDone(msgId) { return !!msgId && this._done.has(msgId); }
   _dispatchFileProgress(fileId, sent, total, status, percent, extra) {
     try { window.dispatchEvent(new CustomEvent('nexo:ble:fileProgress', { detail: Object.assign({ fileId: fileId, sent: sent, total: total, status: status, percent: percent || 0, direction: 'out' }, extra || {}) })); } catch (e) {}
   }
@@ -1200,7 +1313,7 @@ export class BleAckSystem {
       name: e2eAnyEncrypted(buf.meta.name) ? undefined : buf.meta.name, hdFor: buf.meta.hdFor
     });
   }
-  _dispatchFileComplete(fileId, data, meta) {
+  _dispatchFileComplete(fileId, data, meta, done) {
     var self = this;
     if (e2eAnyEncrypted(data)) {
       var dm = Object.assign({}, meta || {});
@@ -1210,6 +1323,7 @@ export class BleAckSystem {
         e2eAnyEncrypted(dm.thumb) ? e2eOpenToB64(from, dm.thumb, self._inAd(from, fileId + '#t')).then(function(t) { return t.b64; }, function() { return null; }) : dm.thumb,
         e2eAnyEncrypted(dm.name) ? e2eOpenText(from, dm.name, self._inAd(from, fileId + '#n')).then(function(t) { return t.text; }, function() { return null; }) : dm.name
       ]).then(function(r) {
+        if (done) done(true);
         if (r[0].dup) return;
         dm.thumb = r[1] || null;
         dm.name = r[2] || undefined;
@@ -1218,9 +1332,14 @@ export class BleAckSystem {
         if (v === 'drop') return;
         if (v === 'hold') { self._hold(from, go, fileId); return; }
         go();
-      }).catch(function(e) { if (!e || e.code !== 'DUP') console.warn('[E2E] No se pudo descifrar el archivo ' + fileId + ':', e && e.message); });
+      }).catch(function(e) {
+        if (e && e.code === 'DUP') { if (done) done(true); return; }
+        console.warn('[E2E] No se pudo descifrar el archivo ' + fileId + ':', e && e.message);
+        if (done) done(false);
+      });
       return;
     }
+    if (done) done(true);
     try {
       var m = meta || {};
       var sender = m.senderNexoId || m.fromNexoId || m.fr || null;
@@ -1246,8 +1365,10 @@ export class BleAckSystem {
           self.incomingBuffers.delete(msgId);
         }
       });
+      // Ronda 2767 (revisión): por inactividad (10 min sin confirmaciones), no por el tiempo desde el principio: un vídeo
+      // HD o un archivo grande por un Bluetooth lento se cortaba a los 10 min aunque avanzara (se quedaba en "○ 44%")
       self.outgoingStreams.forEach(function(stream, msgId) {
-        if (now - stream.startTime > self.maxFragmentAge * 2) { stream.abort(); self.outgoingStreams.delete(msgId); }
+        if (now - (stream.lastAckAt || stream.startTime) > self.maxFragmentAge * 2) { stream.abort(); self.outgoingStreams.delete(msgId); }
       });
       self.pendingAcks.forEach(function(entry, msgId) {
         if (now - entry.sentAt > self.maxFragmentAge) { clearTimeout(entry.timer); self.pendingAcks.delete(msgId); try { entry.reject(new Error('Timeout global')); } catch(e) {} }
@@ -1309,6 +1430,9 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
   this.maxWindowRetries = MAX_WINDOW_RETRIES;
   this.globalTimeout = null;
   this.globalTimeoutMs = this.baseTimeoutMs;
+  // Ronda 2767: marca de este intento en cada trozo ('a'): otro intento del mismo mensaje va cifrado distinto y el
+  // receptor no debe mezclar sus trozos
+  this.att = Math.random().toString(36).substr(2, 3);
   this._windowResolve = null;
   this._windowReject = null;
   this._windowStartAtSend = 0;
@@ -1319,6 +1443,14 @@ function ChatStream(ackSystem, deviceId, msgId, content, meta, type) {
 }
 // v3.10.0: el enlace cambió a mitad (Wi-Fi caído → Bluetooth): los trozos ya están hechos (el receptor espera esos),
 // así que se adapta el ritmo: ventana pequeña y esperas largas (un trozo de Wi-Fi son muchas escrituras Bluetooth)
+// Ronda 2767: ¿sus trozos son demasiado grandes para ese enlace Bluetooth? (más de 100 escrituras por trozo: con MTU 23,
+// un trozo de Wi-Fi tarda más de los 10 s que el nativo del otro espera a completarlo)
+ChatStream.prototype.tooBigFor = function(deviceId) {
+  if (_isLanDevice(deviceId) || _isNetDevice(deviceId)) return false;
+  var mtu = (this.ble && typeof this.ble.getMtu === 'function') ? this.ble.getMtu(deviceId) : 0;
+  var perWrite = mtu ? Math.min(Math.max(mtu - 3, 20), 512) : 20;
+  return Math.ceil((this.chunkSize + 90) / perWrite) > 100;
+};
 ChatStream.prototype.useLink = function(deviceId) {
   this.deviceId = deviceId;
   if (_isLanDevice(deviceId) || _isNetDevice(deviceId)) return;
@@ -1351,14 +1483,19 @@ ChatStream.prototype.start = function() {
       var cid = self.meta.dst || self.ackSystem._resolveNexoId(self.deviceId);
       window.vaultCreateOutgoingTransfer(cid, self.msgId, self.type, self.total, self.chunks, self.meta, self.deviceId).catch(function(){});
     }
-    self.globalTimeout = setTimeout(function() {
-      if (!self.aborted) {
+    var armGlobal = function(ms) {
+      self.globalTimeout = setTimeout(function() {
+        if (self.aborted) return;
+        // Ronda 2767 (revisión): si sigue avanzando (confirmaciones en el último minuto) se le da más tiempo, hasta 2 h:
+        // un vídeo HD o un archivo grande por un Bluetooth lento no terminaba nunca
+        if (Date.now() - (self.lastAckAt || 0) < 60000 && Date.now() - self.startTime < 7200000) { armGlobal(300000); return; }
         console.error('[ChatStream] GLOBAL TIMEOUT msgId=' + self.msgId);
         self.abort();
         reject(new Error('Timeout global ' + (self.type === 'file' ? '3min+' : '45s+')));
         self.ackSystem._dispatchStatus(self.msgId, 'failed');
-      }
-    }, self.globalTimeoutMs);
+      }, ms);
+    };
+    armGlobal(self.globalTimeoutMs);
     self._runWindowLoop();
   });
 };
@@ -1478,7 +1615,10 @@ ChatStream.prototype._sendFailed = function(idx, err) {
   var bi = self.ble, nx = self._dn || self.ackSystem._resolveNexoId(self.deviceId);
   var wrong = err && err.code === 'WRONG_PEER';
   var best = ((fails >= 3 || wrong) && bi && typeof bi._resolveDeviceIdForNexoId === 'function') ? bi._resolveDeviceIdForNexoId(nx) : null;
-  if (best && _normMac(best) !== _normMac(self.deviceId)) self.useLink(best);
+  if (best && _normMac(best) !== _normMac(self.deviceId)) {
+    if (self.tooBigFor(best)) { self.ackSystem._restartStream(self, self.msgId, best); return false; }
+    self.useLink(best);
+  }
   if (fails > 120 || (wrong && !best)) {
     // ~2 min sin poder enviar: queda pendiente y se reanuda al volver a haber camino
     var e = new Error('Contacto no disponible: queda pendiente'); e.code = 'PEER_ABSENT';
@@ -1518,7 +1658,8 @@ ChatStream.prototype._buildChunk = function(idx) {
     m: this.msgId,
     i: idx,
     n: this.total,
-    d: this.chunks[idx]
+    d: this.chunks[idx],
+    a: this.att
   };
   if (isFirst) {
     obj.f = (this.meta.f || 'NEXO').substring(0, 12);
@@ -1542,7 +1683,7 @@ ChatStream.prototype._buildChunk = function(idx) {
     // Ronda 2764: a quién va (directo; se fija la primera vez: aunque la conexión resulte ser de otro, sigue siendo
     // para el mismo); el que lo recibe lo ignora si no es él
     var bdn = this.ble;
-    if (!this.meta.dst && bdn && typeof bdn._destNx === 'function') { if (this._dn === undefined) this._dn = (this.meta.to && _normId(this.meta.to)) || bdn._destNx(this.deviceId); if (this._dn) obj.dn = this._dn; }
+    if (!this.meta.dst && bdn && typeof bdn._destNx === 'function') { if (this._dn === undefined) this._dn = _nxOf(this.meta.to) || bdn._destNx(this.deviceId); if (this._dn) obj.dn = this._dn; }
     // Ronda 2759: oferta de llamada troceada: con la app del otro cerrada, su aviso dice "Llamada entrante" (BgInbox.kt)
     var bi0 = typeof window !== 'undefined' && window.bleInterface;
     if (this.type === 'chat' && bi0 && bi0._callOut && bi0._callOut.has(this.msgId)) obj.cl = 1;

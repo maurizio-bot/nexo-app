@@ -71,13 +71,21 @@ export const BLE_JUMP_METHODS = {
     }).then(function(list) {
       (list || []).forEach(function(m) {
         var id = m.msgId || m.messageId || m.id;
+        // Ronda 2767: un adjunto sin sus datos (no se pudo leer) no sale como el texto "[adjunto]"
+        if (m.attachmentType && !m.attachmentPayload) return;
         self._relayedOut.delete(id);
         console.log('[JUMP] ' + id + ' salió por un puente sin ✓✓: se reenvía directo a ' + nx);
-        var p = (m.attachmentType && m.attachmentPayload)
-          ? self.ackSystem.sendFile(deviceId, id, m.attachmentPayload, Object.assign({ type: m.attachmentType }, m.attachmentMeta || {}))
-          : (String(m.content || '').length > 180
-            ? self.ackSystem.sendChunkedMessage(deviceId, m.content, {}, id, m.seq)
-            : self.ackSystem.sendWithRetry(deviceId, m.content || '', id, m.seq));
+        // Como al enviarlo: fotos, vídeos y archivos como archivo; nota de voz, ubicación… como texto con el adjunto
+        // dentro (antes la nota de voz salía como archivo); y a quién va (ronda 2766)
+        var big = m.attachmentMeta && m.attachmentMeta.big;
+        var asFile = m.attachmentPayload && !big && /^(image|video|file)$/.test(m.attachmentType || '');
+        var txt = big ? JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: m.attachmentMeta })
+          : (m.attachmentType ? JSON.stringify({ type: 'attachment', attachmentType: m.attachmentType, payload: m.attachmentPayload, meta: m.attachmentMeta || {} }) : (m.content || ''));
+        var p = asFile
+          ? self.ackSystem.sendFile(deviceId, id, m.attachmentPayload, Object.assign({ type: m.attachmentType }, m.attachmentMeta || {}, { to: nx }))
+          : (txt.length > 180
+            ? self.ackSystem.sendChunkedMessage(deviceId, txt, { to: nx }, id, m.seq)
+            : self.ackSystem.sendWithRetry(deviceId, txt, id, m.seq, { to: nx }));
         p.catch(function() {});
       });
     }).catch(function() {});

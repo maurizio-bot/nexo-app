@@ -578,9 +578,10 @@ class NexoBlePlugin : Plugin() {
         }
         val list = try { inbox().drain() } catch (e: Exception) { emptyList() }
         if (list.isNotEmpty()) remLog("INFO", "FILE_IO", "Con la app cerrada llegaron ${list.size} mensaje(s)/confirmación(es) por Bluetooth")
-        list.forEach { (dev, json) ->
-            notifyListeners("onPayloadReceived", JSObject().put("deviceId", dev).put("content", json).put("data", json)
-                .put("source", "closed").put("timestamp", System.currentTimeMillis()).put("reassembled", true), true)
+        val now = System.currentTimeMillis()
+        list.forEach { item ->
+            notifyListeners("onPayloadReceived", JSObject().put("deviceId", item.deviceId).put("content", item.json).put("data", item.json)
+                .put("source", "closed").put("timestamp", if (item.ts in 1..now) item.ts else now).put("reassembled", true), true)
         }
     }
 

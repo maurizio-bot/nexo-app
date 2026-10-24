@@ -14,6 +14,7 @@ import { _handleVoiceToggle } from './voice.js';
 import { _msgContactMap } from './chat_state.js';
 import { _noteContactMessage } from './send.js';
 import { _renderMessage, _updateMessageStatus, _updateMessageStorageStatus } from './render.js';
+import { _failStatus } from './ble_helpers.js';
 import { getPermissionShim } from '../core/NexoPermissionShim.js';
 import { rem } from './rem.js';
 import { vaultFindContactByNexoId, vaultSaveContact } from '../vault/vault_manager.js';
@@ -233,7 +234,8 @@ export function _setupMessageInput() {
           clearTimeout(window._sentFallbackTimers[msgId]);
           delete window._sentFallbackTimers[msgId];
         }
-        var st = (e && e.code === 'NO_KEY') ? 'pending' : 'failed';
+        // Ronda 2767: si se espera a un camino (sin clave aún, contacto ausente, Wi-Fi cortado) queda pendiente, sin "!"
+        var st = _failStatus(e);
         _updateMessageStatus(msgId, st);
         _updateMessageStorageStatus(msgId, st);
       }

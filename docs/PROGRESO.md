@@ -92,7 +92,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2763 | 5c215c86 | La 2762 + toda la app con el estilo NEXO (como la pantalla de llamadas), llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar), avisos de grupo con el nombre del grupo con la app cerrada o congelada, y la prueba de tiempos rehecha (determinista). Ver "Ronda 2763". APK verificada (nightly-2763, 24,5 MB) |
 | 2764 | 7c9afbaa | **Informe grave del dueño (tablet + S24 + Vivo): lo que la tablet mandaba al S24 (archivos, llamadas) sonaba y avisaba en el Vivo**: cada paquete directo dice a quién va y el que no es lo ignora (no suena, no avisa, no ✓✓), avisa "no soy yo" y el emisor corrige la conexión; un sobre de Jump de paso ya no avisa en el siguiente teléfono; al buscar ya no sale "Unknown" (nombre del teléfono al conectar) y "Agregar" nunca falla en silencio. Además: grupos con vídeo HD y archivos grandes; pantalla girada sin barra gris. Ver "Ronda 2764". **Sin APK**: el comentario de `nexo_colors.xml` llevaba "--" (no permitido en XML) y falló la compilación de Android. Todo pasa a la 2765 |
 | 2765 | d9366857 | La 2764 con el XML corregido (todos los XML de Android revisados con un analizador). APK publicada (nightly-2765) |
-| 2766 | (este commit) | Revisión completa, parte 1 (escaneo, agregar, conexión): los pings nunca se contestaban (el enlace se rehacía cada ~30 s), un archivo podía salir cifrado para el teléfono equivocado, el Wi-Fi se perdía al volver a la app, BUSCAR se quedaba colgado, reconexión sin esperas, caídas del Bluetooth sin avisar, Tor sin dirección .onion. Mejoras: foto de perfil, avisos y llamadas que encienden la pantalla y se ven sobre el bloqueo, Perfil → "Avisos con la pantalla apagada". Ver "Ronda 2766" |
+| 2766 | 3f309571 | Revisión completa, parte 1 (escaneo, agregar, conexión): los pings nunca se contestaban (el enlace se rehacía cada ~30 s), un archivo podía salir cifrado para el teléfono equivocado, el Wi-Fi se perdía al volver a la app, BUSCAR se quedaba colgado, reconexión sin esperas, caídas del Bluetooth sin avisar, Tor sin dirección .onion. Mejoras: foto de perfil, avisos y llamadas que encienden la pantalla y se ven sobre el bloqueo, Perfil → "Avisos con la pantalla apagada". Ver "Ronda 2766". APK publicada (nightly-2766, 24,5 MB) |
+| 2767 | (este commit) | Revisión completa, parte 2 (mensajes y archivos): textos largos pendientes que se perdían mostrando "entregado" (al reconectar tras reiniciarse la app), nota de voz pendiente que llegaba como "[adjunto]", transferencias de más de 10 min cortadas aunque avanzaran, Wi-Fi caído a mitad de una foto con un Bluetooth lento, orden en el chat (relojes desfasados; lo recibido con la app cerrada salía "ahora"), "!" durante un corte del Wi-Fi. Ver "Ronda 2767". Batería 32/32, Kotlin 65/65 |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -218,6 +219,44 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2767: revisión completa, parte 2 (mensajes y archivos)
+Revisión de los envíos y la recepción (cortos, largos, archivos, lo pendiente). Cada fallo se reprodujo primero en el
+simulador con el código de la 2766 y se comprobó después con el arreglo.
+- **Textos largos que se perdían mostrando "entregado"** (`pending.js`, nueva). B lejos; A escribe textos cortos y largos
+  y graba una nota de voz; la app de A se reinicia (como cuando el Vivo la cierra) y B vuelve. Con la 2766: el texto
+  largo L3 no llegó nunca y en A constaba como entregado; B no pudo descifrar uno; cada texto largo salió 4–6 veces a
+  la vez; al rato dos burbujas pasaron a "!" (una sí había llegado). Causa: al reconectar se pedía 4–6 veces seguidas
+  reenviar lo pendiente y cada vuelta lo mandaba sin mirar las demás; cada envío cifraba el texto otra vez (distinto)
+  y B mezclaba los trozos de los dos, no lo podía descifrar, pero ya había confirmado. Arreglo: una sola vuelta de
+  reenvíos a la vez por contacto, que mira justo antes de cada mensaje si ya está saliendo o entregado; el mismo
+  mensaje no sale dos veces a la vez (se espera al envío en curso); cada intento marca sus trozos y B no mezcla dos
+  intentos; **B confirma un mensaje o un archivo cuando ya lo ha podido descifrar** (si no puede, A no lo da por
+  entregado); la sincronización al reconectar deja lo pendiente a esa vuelta (antes lo mandaba a la vez). Con el
+  arreglo: todo llega en 3,4 s, una sola vez y legible, en el orden en que se escribió, ✓✓ en A y ninguna "!".
+- **Nota de voz pendiente que llegaba como el texto "[adjunto]"** (misma prueba): el historial guarda el audio aparte y
+  el texto como "[adjunto]", y al reenviarla se mandaba ese texto. Ahora va como nota de voz (también la ubicación). Un
+  adjunto cuyo archivo no se puede leer ya no sale como "[adjunto]": queda como no enviado. Al reenviar directo lo que
+  había salido por Jump, la nota de voz iba como archivo: ahora como nota de voz.
+- **Transferencias de más de 10 min cortadas aunque avanzaran**: 700 KB por un Bluetooth de MTU 23 se cortaban a los
+  631 s (al 44 %, "○ 44%") y volvían a empezar. Ahora cuenta el tiempo sin confirmaciones (no desde el principio) y el
+  tiempo máximo se alarga mientras avanza (hasta 2 h): llegó a los 1.380 s sin cortes.
+- **Wi-Fi caído a mitad de una foto con un Bluetooth lento**: seguía con los trozos del Wi-Fi (24 KB), que por un
+  Bluetooth de MTU 23 tardan más de lo que la parte nativa del otro espera a juntarlos (los descartaba): 300 KB no
+  llegaban ni en 600 s (43 paquetes descartados en el otro). Ahora empieza de nuevo por el Bluetooth con trozos a su
+  medida: con MTU 23 llega en 587 s (lo que da un Bluetooth así); con MTU 185, en 55 s (antes 64 s).
+- **Corte largo del Wi-Fi** (`wificut.js`, nueva): durante los 15 s que se espera a que vuelva (regla del dueño), un
+  texto escrito en ese momento salía con "!" unos 10 s, aunque luego llegaba por Bluetooth. Ahora queda pendiente (con
+  el reloj) y llega igual (a los 15 s). En un corte breve, como antes: llega en cuanto vuelve el Wi-Fi.
+- **Orden en el chat** (`order.js`, nueva): un texto largo o un archivo llevaba la hora del reloj del otro teléfono y uno
+  corto la de llegada; con el reloj de A 2 min adelantado (sin red los relojes no se ajustan), en B salía "respuesta,
+  corto, largo". Ahora todo lleva la hora de llegada (la del primer trozo): "largo, respuesta, corto". Con la app
+  cerrada, lo guardado por la parte nativa salía con la hora de abrir la app: ahora con la hora a la que llegó
+  (`BgInbox.drain` la conserva; Kotlin, `BgInboxTest`).
+- Un reintento que pisaba la entrada pendiente del mismo mensaje (los reintentos se gastaban el doble de rápido y el
+  primero se quedaba esperando para siempre): ahora espera con el envío en curso. Los reenvíos de lo pendiente dicen a
+  quién van (en la 2766 faltaba en ese camino).
+- Pruebas: `pending.js`, `order.js` y `wificut.js` (en `ci.js`); Kotlin: `BgInboxTest` con la hora (65/65).
 
 ## Ronda 2766: revisión completa, parte 1 (escaneo, agregar, conexión) y mejoras pedidas
 Pedido del dueño (24-10): revisar la app por partes (escaneo → agregar → conexión → mensajes y archivos → llamadas →

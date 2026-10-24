@@ -13,6 +13,7 @@
  * vídeo, solo la previa. La copia oculta de cada miembro se borra al confirmarse que le llegó.
  */
 import { vaultDeleteMessage } from '../vault/vault_manager.js';
+import { _failStatus } from './ble_helpers.js';
 
 var STORE_FILE = 'nexo_groups.json';
 var GID_RE = /^gr[0-9a-z]{8}$/;
@@ -130,7 +131,7 @@ export class Groups {
       bi.sendChatMessage(nx, env, wid, s).then(function() {
         self._onMemberStatus(wid, 'sent');
       }).catch(function(err) {
-        self._onMemberStatus(wid, (err && (err.code === 'NO_KEY' || err.code === 'PEER_ABSENT')) ? 'pending' : 'failed');
+        self._onMemberStatus(wid, _failStatus(err));
       });
     });
     console.log('[GROUP] ' + msgId + ' a ' + to.length + ' persona(s) del grupo ' + g.id);

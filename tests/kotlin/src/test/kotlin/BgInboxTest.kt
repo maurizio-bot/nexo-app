@@ -66,11 +66,14 @@ class BgInboxTest {
     @Test fun guardaYEntregaEnOrden() {
         val f = File.createTempFile("inbox", ".jsonl"); f.delete()
         val box = BgInbox(f)
+        val t0 = System.currentTimeMillis()
         assertTrue(box.add("AA:BB", chat))
         assertTrue(box.add("CC:DD", """{"type":"ack","msgId":"m9"}"""))
+        val t1 = System.currentTimeMillis()
         assertEquals(2, box.size())
         val got = box.drain()
-        assertEquals(listOf("AA:BB" to chat, "CC:DD" to """{"type":"ack","msgId":"m9"}"""), got)
+        assertEquals(listOf("AA:BB" to chat, "CC:DD" to """{"type":"ack","msgId":"m9"}"""), got.map { it.deviceId to it.json })
+        assertTrue(got.all { it.ts in t0..t1 }, "con la hora a la que llegó (ronda 2767)")
         assertEquals(0, box.size()); assertTrue(box.drain().isEmpty())
     }
 

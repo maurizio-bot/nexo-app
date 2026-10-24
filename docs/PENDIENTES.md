@@ -14,6 +14,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
+- **2767** (revisión, parte 2: mensajes y archivos): con el otro teléfono lejos (o con su Bluetooth apagado), escribir
+  varios textos cortos y largos y grabar una nota de voz; cerrar NEXO (quitarla de recientes) y volver a abrirla; acercar
+  el otro teléfono: todo debe llegar una sola vez, legible, en el orden en que se escribió y como nota de voz (no
+  "[adjunto]"); ninguna burbuja debe pasar a "!" al rato. Un vídeo o archivo grande por Bluetooth debe avanzar hasta el
+  final aunque tarde más de 10 min.
 - **2766** (revisión, parte 1): (1) dejar un chat abierto 1–2 min sin escribir y luego escribir: debe llegar al momento;
   en el diagnóstico no deben salir `sin respuesta a 2 pings` ni `Peer ready` cada ~30 s. (2) Repetir tablet → S24 con
   el Vivo cerca (archivo y llamada): solo el S24. (3) En el mismo Wi-Fi, mandar una foto elegida de la galería: debe ir
@@ -155,20 +160,21 @@ mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simu
      ✓✓); el código rotativo se puede calcular con la clave pública (quien la tenga reconoce el código).
    - Android 8–11 necesita la ubicación activada para escanear y el nativo no lo comprueba: falta avisar si está
      apagada.
-   - Wi-Fi (visto con una sonda): si se va el Wi-Fi, un texto en el margen de 15 s (regla del dueño: no brincar) sale
-     como fallido y llega por Bluetooth a los ~21 s. Propuesta: mostrarlo como pendiente y, si el Bluetooth está listo,
-     mandar los textos por él sin cambiar el camino (las fotos esperan al Wi-Fi). **Decidir con el dueño.**
-2. **Mensajes y archivos** — revisión hecha (24-10); lo encontrado, a confirmar en el simulador y corregir en la 2767:
-   - Textos largos pendientes que se pierden mostrando "entregado" (al reconectar tras reiniciarse la app, varios
-     reenvíos del mismo texto a la vez se mezclan en el receptor; luego la burbuja pasa a "!").
-   - Una nota de voz pendiente llega como el texto "[adjunto]".
-   - Una transferencia de más de 10 min se corta aunque avance (vídeo HD o archivo grande por Bluetooth lento).
-   - Si se cae el Wi-Fi a mitad de una foto y el Bluetooth es lento (MTU 23), la foto no termina.
-   - Orden en el receptor (textos cortos con la hora de llegada, largos con la del emisor; con la app cerrada, todo
-     "ahora").
-   - Un reintento pisa la entrada pendiente del mismo mensaje (reintentos gastados el doble de rápido).
-   - Puntos débiles: reenvíos sin cola única por contacto, NACK sin límite, buzón con la app cerrada que confirma ✓✓
-     antes de descifrar, registro de envíos en un solo JSON grande.
+   - Wi-Fi: si se va el Wi-Fi, un texto escrito en el margen de 15 s (regla del dueño: no brincar) espera a que acabe
+     y llega por Bluetooth a los ~15 s (desde la 2767 ya no sale "!" mientras tanto). Propuesta: si el Bluetooth está
+     listo, mandar los textos por él al momento sin cambiar el camino (las fotos seguirían esperando al Wi-Fi).
+     **Decidir con el dueño.**
+2. **Mensajes y archivos** — hecha en la 2767 (ver PROGRESO, "Ronda 2767"): textos largos que se perdían mostrando
+   "entregado", nota de voz como "[adjunto]", transferencias de más de 10 min cortadas, Wi-Fi caído a mitad de una foto
+   con un Bluetooth lento, orden en el chat (también lo recibido con la app cerrada), reintento que pisaba la entrada
+   pendiente. Quedan puntos débiles, sin fallo visto todavía en las pruebas:
+   - Con la app cerrada, la parte nativa confirma ✓✓ en cuanto guarda el mensaje, antes de que la app lo descifre; si
+     la app falla al arrancar, ese mensaje se pierde con ✓✓ en el otro.
+   - Si el receptor perdió lo que llevaba (se reinició), pide de nuevo todos los trozos sin límite de ritmo (NACK).
+   - El registro de envíos guarda el cifrado de hasta 50 transferencias en un solo archivo por contacto (riesgo de
+     memoria con varios vídeos HD).
+   - Si se perdió la confirmación final de un archivo, al reconectar se manda entero otra vez (el receptor solo
+     recuerda 60 s lo recibido) y sale otra notificación.
 3. **Llamadas y videollamadas** — por hacer.
 4. **Interfaz** — por hacer.
 Mejoras pendientes: la foto del contacto en sus notificaciones (como icono grande).

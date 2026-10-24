@@ -555,7 +555,7 @@ function _registerCriticalListeners() {
           senderName: meta.fromName || meta.f || 'NEXO',
           _own: false,
           status: 'delivered',
-          timestamp: meta.ts || Date.now()
+          timestamp: meta.rxTs || meta.ts || Date.now() // ronda 2767: la de llegada (ble_ack.js)
         };
         _handleIncomingMessage(recvMsg);
       } catch (err) {
