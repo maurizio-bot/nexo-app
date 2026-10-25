@@ -734,7 +734,7 @@
    },
    "revision": {
     "n": 1,
-    "fallos": 8
+    "fallos": 9
    },
    "modos": [
     {
@@ -775,13 +775,13 @@
     {
      "fallo": "C2 Grupos: un miembro reescribía la lista entera y colaba la clave de un tercero",
      "prueba": "seguridad de grupos"
+    },
+    {
+     "fallo": "C1 confirmaciones (✓✓) sin autenticar: una falsa paraba los reintentos y el mensaje se perdía con ✓✓",
+     "prueba": "auditoría C1"
     }
    ],
    "debiles": [
-    {
-     "g": "grave",
-     "d": "C1: las confirmaciones (✓✓) no están autenticadas; una falsa puede hacer perder un mensaje mostrando ✓✓ (necesita cambio de protocolo; P0)"
-    },
     {
      "g": "media",
      "d": "H3: las tarjetas de contacto fijan la clave de un contacto nuevo sin verificar (de oídas)"

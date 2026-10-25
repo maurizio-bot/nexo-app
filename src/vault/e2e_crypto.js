@@ -80,6 +80,21 @@ export async function e2eIdentityDH(peerPubB64) {
   return new Uint8Array(await subtle.deriveBits({ name: 'ECDH', public: peer }, _identity.priv, 256));
 }
 
+// Firma corta (MAC) de una confirmación (✓✓/leído) con el secreto de la pareja (ECDH de las dos identidades, igual en
+// los dos teléfonos). Auditoría C1 (ronda 2777): las confirmaciones viajaban sin firmar y cualquiera que supiera el
+// msgId podía mandar una falsa, haciendo que el emisor dejara de reintentar y el mensaje se perdiera mostrando ✓✓.
+// `fields` liga la firma al tipo, al msgId y a los dos NEXO ID, así que no se puede reusar en otro mensaje ni al revés.
+export async function e2eAckTag(peerPubB64, fields) {
+  var subtle = _subtle();
+  if (!subtle || !peerPubB64) return '';
+  try {
+    var secret = await e2eIdentityDH(peerPubB64);
+    var key = await subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    var mac = new Uint8Array(await subtle.sign('HMAC', key, new TextEncoder().encode('nexo-ack|' + fields)));
+    return _bytesToB64(mac.subarray(0, 12));
+  } catch (e) { return ''; }
+}
+
 // Huella legible de una clave pública (para comparar en persona): 5 grupos de 4 cifras hex
 export async function e2eFingerprint(pubB64) {
   var subtle = _subtle();

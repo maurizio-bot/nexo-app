@@ -104,7 +104,7 @@ Robustez (no es un ataque, es que la app no se caiga):
 
 | # | Gravedad | Hallazgo | Arreglo propuesto |
 |---|---|---|---|
-| **C1** | **Alta** | **Confirmaciones (✓✓) sin autenticar.** El `msgId` viaja en claro; quien lo conoce (por radio, LAN o un relé) puede mandar una confirmación falsa de «entregado» → el emisor deja de reintentar y el mensaje puede **perderse mostrando ✓✓** (censura/truncado). También «leído» falso. | Autenticar las confirmaciones: llevarlas dentro del canal cifrado, o firmarlas con un MAC de la clave de la pareja (como E1/internet). Es un cambio de protocolo con compatibilidad entre versiones → ronda propia, probado en los dos teléfonos. **Es la prioridad P0 de seguridad.** |
+| **C1** | **Alta** | ✅ **ARREGLADO (ronda 2777).** Confirmaciones (✓✓) sin autenticar: el `msgId` viaja en claro; quien lo conoce (por radio, LAN o un relé) podía mandar una confirmación falsa de «entregado» → el emisor dejaba de reintentar y el mensaje podía **perderse mostrando ✓✓**. | Ahora, con un contacto moderno (protocolo 2), la confirmación debe venir firmada con un MAC del secreto de la pareja (`e2eAckTag`: HMAC sobre ECDH de las dos identidades, igual en los dos teléfonos), ligado al tipo+msgId+los dos NEXO ID; una falsa (sin firma o con firma que no cuadra) se ignora y el reintento sigue. Aditivo (campo `a`) y compatible con contactos antiguos. Reproducido y verificado en `tests/sim/ackforge.js`. Pendiente: confirmar en los dos teléfonos del dueño. (Los block-ack de archivos quedan para una iteración siguiente.) |
 | **H3** | **Media-Alta** | **Tarjetas de contacto fijan claves sin verificar.** Una tarjeta compartida establece la clave pública de un contacto nuevo sin que el usuario la verifique (de palabra). En la **creación** de un grupo, un miembro que llegue antes que el creador podría fijar la clave de un tercero. | Marcar las claves de tarjeta como «de oídas» (pendientes): se usan solo tras el flujo normal de aceptación / número de seguridad. Toca el estado de claves (delicado) → ronda propia. |
 | **H4** | **Media** | **Fénix: petición de recuperación sin autenticar.** La `fq` llega como control sin cifrar; el `from` y el nombre son del atacante y se le muestran al usuario. Cada confirmación engañada filtra **un** fragmento (hacen falta 6 para restaurar). | Exigir que la `fq` llegue por sesión E2E con el contacto; mostrar solo la identidad verificada y avisar «este teléfono no tiene historial de claves contigo»; limitar más las peticiones. |
 | **M5** | **Baja-Media** | **Control sin autenticar (`ni`/`kx`/`nm`).** Reasignan el enlace o ponen el nombre mostrado de un contacto aún sin nombre. El contenido sigue cifrado; se puede estorbar el enlace o reetiquetar. | Exigir una señal autenticada antes de reasignar un enlace vivo; no aceptar `nm` que no esté ligado a la clave del contacto. |
@@ -142,7 +142,9 @@ detalle y las herramientas comprobadas están en la investigación guardada; aqu
 **Por prioridad (lo que falta):**
 - **P0-1** Repetir/restaurar el estado del ratchet (copia, Fénix, pasar la cuenta sin apagar el viejo) → que nunca se
   repita una (clave, IV) y que el teléfono viejo deje de servir.
-- **P0 (C1)** Autenticar las confirmaciones (arreglo de C1) con su prueba de «confirmación falsa no marca entregado».
+- ✅ **P0 (C1) HECHO (ronda 2777):** confirmaciones firmadas con el secreto de la pareja; prueba `tests/sim/ackforge.js`
+  (una confirmación falsa no marca entregado; la real sí). Falta: confirmarlo en los dos teléfonos y hacer lo mismo con
+  los block-ack de archivos.
 - **P0-4** XSS en mensajes, nombres, archivos, grupos, QR, contactos y ubicaciones (hoy se usa `textContent`; dejar una
   prueba que lo vigile y revisar la CSP).
 - **P1** «VOPR de NEXO»: mundo determinista (reloj virtual + PRNG con semilla) con fallos inyectados (pérdida en

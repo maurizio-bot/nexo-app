@@ -60,6 +60,7 @@ const SCENARIOS = [
   { name: 'foto de perfil (elegir, llega a los contactos, al reiniciar, a uno nuevo, quitarla)', args: ['avatar.js'], tag: 'AVATAR', checks: { resultado: (v) => v === 'OK' } },
   { name: 'llamadas de voz (contestar, rechazar, sin respuesta, se corta)', args: ['calls.js', '--io-delay=25'], tag: 'CALLS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'suplantación: textos, archivos y llamadas sin cifrar de un teléfono ajeno que dice ser un contacto', args: ['spoof.js'], tag: 'SPOOF', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'confirmación (✓✓) falsa no marca entregado: acks firmados con la pareja (auditoría C1)', args: ['ackforge.js', '--io-delay=25'], tag: 'ACKFORGE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'llamadas: micrófono y cámara (al colgar, ocupados, cortados, sin imágenes, sin permiso; codificadores y decodificadores que fallan; girar el teléfono; eco)', args: ['callmedia.js'], tag: 'CALLMEDIA', checks: { resultado: (v) => v === 'OK' } },
   { name: 'videollamada: imagen con su forma, sin estirar ni recortar, entera y en espejo con la cámara de delante (Chromium)', args: ['videoframe.js'], tag: 'VIDEOFRAME', logs: 'last_logs_videoframe.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'filtros del micrófono: eco, los dos a la vez, ruido, zumbido, saturación', args: ['voicefx.js'], tag: 'VOICEFX', checks: { resultado: (v) => v === 'OK' } },

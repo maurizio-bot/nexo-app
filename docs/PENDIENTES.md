@@ -40,10 +40,9 @@ Informe completo, modelo de amenazas y plan: `docs/AUDITORIA.md`. En la 2774 se 
 gigante, avalancha, archivo abortado, inundación de escaneo; JSON anidado que cerraba la app; intent de llamada
 exportado; anuncio con ID mal formado; grupos que reescribían la lista y colaban claves) y la recuperación del WebView.
 Queda, por prioridad (cada uno necesita un cambio de protocolo y probarse en los dos teléfonos del dueño):
-1. **C1 (grave, P0): autenticar las confirmaciones (✓✓).** El `msgId` viaja en claro; una confirmación falsa hace que el
-   emisor deje de reintentar y el mensaje puede perderse mostrando ✓✓. Arreglo: llevar las confirmaciones dentro del
-   canal cifrado o firmarlas con un MAC de la clave de la pareja. Dejar una prueba «confirmación falsa no marca
-   entregado» en `tests/sim`.
+1. ✅ **C1 HECHO (ronda 2777): confirmaciones (✓✓) firmadas con el secreto de la pareja.** Una confirmación falsa ya
+   no marca entregado (el reintento sigue). Prueba: `tests/sim/ackforge.js`. Falta confirmarlo en los dos teléfonos y
+   hacer lo mismo con los block-ack de archivos.
 2. **P0-1 ratchet: repetir (clave, IV)** al restaurar un estado viejo (copia, Fénix, pasar la cuenta sin apagar el
    teléfono viejo). Probar que nunca se repite y que el teléfono viejo deja de servir.
 3. **H3 (media): tarjetas de contacto** fijan la clave de un contacto nuevo sin verificar. Marcarlas «de oídas»
