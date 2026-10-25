@@ -59,12 +59,15 @@ const SCENARIOS = [
   { name: 'foto de perfil (elegir, llega a los contactos, al reiniciar, a uno nuevo, quitarla)', args: ['avatar.js'], tag: 'AVATAR', checks: { resultado: (v) => v === 'OK' } },
   { name: 'llamadas de voz (contestar, rechazar, sin respuesta, se corta)', args: ['calls.js', '--io-delay=25'], tag: 'CALLS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'suplantación: textos, archivos y llamadas sin cifrar de un teléfono ajeno que dice ser un contacto', args: ['spoof.js'], tag: 'SPOOF', checks: { resultado: (v) => v === 'OK' } },
-  { name: 'llamadas: micrófono y cámara (al colgar, ocupados, cortados, sin imágenes, sin permiso; codificadores y decodificadores que fallan)', args: ['callmedia.js'], tag: 'CALLMEDIA', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'llamadas: micrófono y cámara (al colgar, ocupados, cortados, sin imágenes, sin permiso; codificadores y decodificadores que fallan; girar el teléfono; eco)', args: ['callmedia.js'], tag: 'CALLMEDIA', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'videollamada: imagen con su forma, sin estirar ni recortar, entera y en espejo con la cámara de delante (Chromium)', args: ['videoframe.js'], tag: 'VIDEOFRAME', logs: 'last_logs_videoframe.txt', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'filtros del micrófono: eco, los dos a la vez, ruido, zumbido, saturación', args: ['voicefx.js'], tag: 'VOICEFX', checks: { resultado: (v) => v === 'OK' } },
   ...['rechazar-cerrada', 'rechazar-viva', 'contestar-viejo', 'cruce', 'reloj', 'oferta-vieja', 'bloqueo', 'repetida', 'wifi-uno', 'video-estado', 'sin-micro', 'timbre'].map((c) => (
     { name: 'llamadas: ' + c, args: ['calls2.js', '--case=' + c], tag: 'CALLS2', logs: 'last_logs_calls2_' + c + '.txt', checks: { resultado: (v) => v === 'OK' } })),
   { name: 'pasar la cuenta a un teléfono nuevo', args: ['move.js', '--io-delay=25'], tag: 'MOVE', checks: { resultado: (v) => v === 'OK' } },
-  { name: 'avisos por Bluetooth: segundo plano, app congelada y cerrada', args: ['notify.js', '--via=ble'], tag: 'NOTIFY', checks: { resultado: (v) => v === 'OK' } },
-  { name: 'avisos por Jump: segundo plano, app congelada y cerrada', args: ['notify.js', '--via=jump'], tag: 'NOTIFY', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'avisos por Bluetooth: segundo plano, app congelada, pantalla apagada y cerrada', args: ['notify.js', '--via=ble'], tag: 'NOTIFY', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'avisos por Wi-Fi: segundo plano, app congelada, pantalla apagada (informe del dueño) y cerrada', args: ['notify.js', '--via=lan'], tag: 'NOTIFY', logs: 'last_logs_notify_lan.txt', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'avisos por Jump: segundo plano, app congelada, pantalla apagada y cerrada', args: ['notify.js', '--via=jump'], tag: 'NOTIFY', logs: 'last_logs_notify_jump.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'camino de envío (regla del dueño: Wi-Fi, internet, Bluetooth; sin brincar)', args: ['route.js'], tag: 'ROUTE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'Double Ratchet y poscuántico', args: ['ratchet.js'], tag: null },
 ];

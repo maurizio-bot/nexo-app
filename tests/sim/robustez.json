@@ -93,17 +93,19 @@
         { "fallo": "Jump con el puente por internet (datos móviles)", "prueba": "Jump con internet" },
         { "fallo": "Internet por relés públicos", "prueba": "internet (relés)" },
         { "fallo": "Internet por Tor (dirección .onion)", "prueba": "internet (Tor)" },
-        { "fallo": "Wi-Fi normal y cambio automático de camino con un tercero", "prueba": null, "fuera": "lan.js" }
+        { "fallo": "Wi-Fi normal y cambio automático de camino con un tercero", "prueba": null, "fuera": "lan.js" },
+        { "fallo": "Al despertar con la pantalla apagada, el latido del Wi-Fi cortaba enlaces sanos (2772)", "prueba": null, "fuera": "Kotlin LanHubTest (en la compilación)" }
       ],
       "debiles": [
         { "g": "media", "d": "Internet (relés y Tor) nunca comprobado en teléfonos" },
+        { "g": "media", "d": "El latido del Wi-Fi (cada 4 s) despierta al otro teléfono con la pantalla apagada: gasta batería" },
         { "g": "leve", "d": "Un texto escrito en los 15 s de espera del Wi-Fi tarda ~15 s (decisión del dueño §4.8)" },
         { "g": "leve", "d": "Jump con un puente en una build vieja: ~80 s" }
       ]
     },
     {
       "id": "llamadas", "nombre": "Llamadas de voz", "peso": 10,
-      "telefono": { "estado": "falla", "por": "2768: en videollamada a veces no se oía (arreglado en la 2769–2770, sin probar)" },
+      "telefono": { "estado": "falla", "por": "25-10 (2771): interferencias en el micrófono (eco); 2768: en videollamada a veces no se oía (arreglos en la 2769, 2770 y 2772, sin probar)" },
       "revision": { "n": 1, "fallos": 20 },
       "modos": [
         { "fallo": "Contestar, rechazar, sin respuesta, se corta", "prueba": "llamadas de voz (contestar" },
@@ -118,6 +120,10 @@
         { "fallo": "Sin micrófono: el otro cortaba a los 12 s", "prueba": "llamadas: sin-micro" },
         { "fallo": "Micrófono abierto tras colgar, ráfagas, codificador y decodificador de voz que fallan, audio en pausa", "prueba": "llamadas: micrófono y cámara" },
         { "fallo": "Tono en silencio y dos tonos a la vez", "prueba": "llamadas: timbre" },
+        { "fallo": "Eco e interferencias: el micrófono no bajaba con la voz del otro (informe del dueño 25-10)", "prueba": "filtros del micrófono" },
+        { "fallo": "Eco dentro de la llamada: lo que suena vuelve al micrófono", "prueba": "girar el teléfono; eco" },
+        { "fallo": "Ruido de fondo, retumbo y saturación del micrófono", "prueba": "filtros del micrófono" },
+        { "fallo": "Salida de audio creada antes del micrófono: Android la trataba como música y su cancelador de eco podía no usarla", "prueba": null },
         { "fallo": "Llamada de verdad en Chromium (Opus, μ-law)", "prueba": null, "fuera": "calls_browser.js" },
         { "fallo": "Micrófono con la pantalla bloqueada u otra app (Android 11+)", "prueba": null },
         { "fallo": "Pantalla encendida y sensor de proximidad", "prueba": null }
@@ -126,12 +132,14 @@
         { "g": "media", "d": "Voz por un Bluetooth lento (MTU 23: ~7 s de retraso; sin Opus: 3,2 s); solo teléfonos viejos" },
         { "g": "leve", "d": "Con la app cerrada, si el que llama cuelga, sigue sonando hasta 45 s" },
         { "g": "leve", "d": "«Rechazar» con la app cerrada: el que llama no se entera (decisión §4.7)" },
-        { "g": "leve", "d": "Con la app cerrada el aviso dice «Llamada» también en videollamada" }
+        { "g": "leve", "d": "Con la app cerrada el aviso dice «Llamada» también en videollamada" },
+        { "g": "media", "d": "El audio del micrófono se procesa en el hilo de la interfaz (ScriptProcessor): si se atasca, cortes (pasar a AudioWorklet)" },
+        { "g": "leve", "d": "Sin DTX: se manda voz también en los silencios (batería y datos)" }
       ]
     },
     {
       "id": "video", "nombre": "Videollamadas", "peso": 7,
-      "telefono": { "estado": "falla", "por": "2768 (Vivo ↔ S24): a veces sin cámara, negro y sin voz (arreglado en la 2769, sin probar)" },
+      "telefono": { "estado": "falla", "por": "25-10 (2771): imagen muy cerca y deformada, y al revés que la propia; 2768 (Vivo ↔ S24): a veces sin cámara, negro y sin voz (arreglos en la 2769 y la 2772, sin probar)" },
       "revision": { "n": 1, "fallos": 14 },
       "modos": [
         { "fallo": "Cámara ocupada, cortada o sin imágenes: negro", "prueba": "llamadas: micrófono y cámara" },
@@ -142,27 +150,32 @@
         { "fallo": "Sin Wi-Fi: imagen congelada", "prueba": "llamadas: video-estado" },
         { "fallo": "La cámara del chat ocupaba la cámara", "prueba": "llamadas: video-estado" },
         { "fallo": "Videollamada de verdad en Chromium (VP8, imagen en los dos sentidos)", "prueba": null, "fuera": "calls_browser.js --video" },
-        { "fallo": "La pantalla se apagaba a media videollamada", "prueba": null }
+        { "fallo": "La pantalla se apagaba a media videollamada", "prueba": null },
+        { "fallo": "Imagen muy cerca y deformada: la cámara en vertical se metía en 320x240 apaisado y el otro veía el 35 % (informe del dueño 25-10)", "prueba": "videollamada: imagen con su forma" },
+        { "fallo": "El otro se veía al revés que la vista propia (espejo; informe del dueño 25-10)", "prueba": "videollamada: imagen con su forma" },
+        { "fallo": "Girar el teléfono en plena videollamada (la imagen cambia de forma)", "prueba": "girar el teléfono" }
       ],
       "debiles": [
         { "g": "media", "d": "Solo en el mismo Wi-Fi (no por Wi-Fi Direct ni Bluetooth)" },
+        { "g": "leve", "d": "Cada imagen se copia por un lienzo antes de codificarla (más batería; MediaStreamTrackProcessor lo evitaría)" },
         { "g": "leve", "d": "Con NEXO en segundo plano se para la imagen (vuelve al regresar)" }
       ]
     },
     {
       "id": "avisos", "nombre": "Avisos, segundo plano y app cerrada", "peso": 10,
-      "telefono": { "estado": "nunca", "por": "Pedido probar desde la 2751 (notificaciones) y la 2761/2766 (congelada, cerrada, pantalla apagada); sin respuesta aún" },
+      "telefono": { "estado": "falla", "por": "25-10 (2771): con Wi-Fi y la pantalla apagada no llegaban mensajes ni avisos hasta encenderla (arreglado en la 2772, sin probar)" },
       "revision": { "n": 0, "fallos": 0 },
       "modos": [
         { "fallo": "No leídos y notificaciones", "prueba": "no leídos y notificaciones" },
         { "fallo": "Recibir con la app cerrada (buzón, ✓✓ y aviso)", "prueba": "recibir con la app cerrada" },
         { "fallo": "Avisos con la pantalla apagada y llamada sobre el bloqueo", "prueba": "avisos con la pantalla apagada" },
-        { "fallo": "Avisos por Bluetooth: segundo plano, app congelada y cerrada", "prueba": "avisos por Bluetooth" },
-        { "fallo": "Avisos por Jump: segundo plano, app congelada y cerrada", "prueba": "avisos por Jump" },
+        { "fallo": "Avisos por Bluetooth: segundo plano, app congelada, pantalla apagada y cerrada", "prueba": "avisos por Bluetooth" },
+        { "fallo": "Avisos por Jump: segundo plano, app congelada, pantalla apagada y cerrada", "prueba": "avisos por Jump" },
+        { "fallo": "Pantalla apagada (Wi-Fi): el teléfono dormía a medio recibir; no llegaba ni avisaba hasta encenderla (informe del dueño 25-10)", "prueba": "avisos por Wi-Fi" },
         { "fallo": "Fabricantes que congelan la app (Vivo)", "prueba": null }
       ],
       "debiles": [
-        { "g": "media", "d": "Con la app congelada (Vivo) depende del permiso de batería" },
+        { "g": "media", "d": "Vivo: si congela la app, solo lo evitan sus ajustes (inicio automático, alto consumo en segundo plano); NEXO los abre (Perfil) pero no puede comprobarlos" },
         { "g": "media", "d": "Recibir con la app cerrada: sin comprobar que Android no cierre el proceso" }
       ]
     },

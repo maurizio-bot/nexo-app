@@ -26,10 +26,14 @@ import org.json.JSONObject
  * de ida y vuelta (calidad del Wi-Fi) y cierra la conexión si en deadMs no llega nada.
  * Tor (ronda 2735): la misma pieza sirve para hablar por Tor: proxy = el SOCKS de Tor (las direcciones .onion se
  * resuelven dentro de Tor) y bindHost = 127.0.0.1 (solo Tor entra por el servicio oculto).
+ * Ronda 2772 (pantalla apagada): los tiempos se miden con clock (en Android, elapsedRealtime: sigue contando con el
+ * teléfono dormido y no salta si se cambia la hora) y el latido sabe que el teléfono durmió (ver tick).
  */
 class LanHub(private val myId: () -> String, private val listener: Listener,
              private val pingMs: Long = 4000L, private val deadMs: Long = 30000L,
-             private val proxy: Proxy? = null, private val bindHost: InetAddress? = null) {
+             private val proxy: Proxy? = null, private val bindHost: InetAddress? = null,
+             private val clock: () -> Long = { System.nanoTime() / 1_000_000L },
+             private val autoPing: Boolean = true) { // (autoPing = false: sin hilo del latido; las pruebas llaman a tick)
     interface Listener {
         fun onUp(nx: String)
         fun onDown(nx: String)
@@ -42,12 +46,14 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         const val CONNECT_TIMEOUT_MS = 5000
         const val TOR_CONNECT_TIMEOUT_MS = 90000 // un circuito hasta un .onion puede tardar
         const val HELLO_TIMEOUT_MS = 8000
+        const val WAKE_GRACE_MS = 8000L // ronda 2772: al despertar, margen para que el otro conteste antes de cerrar
     }
 
     private class Conn(val socket: Socket, val outbound: Boolean) {
         val out = DataOutputStream(BufferedOutputStream(socket.getOutputStream(), 65536))
         @Volatile var nx: String? = null
-        @Volatile var lastRx = System.currentTimeMillis()
+        @Volatile var lastRx = 0L
+        @Volatile var graceUntil = 0L
         @Volatile var rtt = -1L
         fun write(text: String) {
             val b = text.toByteArray(Charsets.UTF_8)
@@ -68,14 +74,13 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         val s = if (bindHost != null) ServerSocket(0, 50, bindHost) else ServerSocket(0)
         server = s
         running = true
-        Thread({
+        if (autoPing) Thread({
+            var last = clock()
             while (running) {
                 try { Thread.sleep(pingMs) } catch (e: InterruptedException) { break }
-                val now = System.currentTimeMillis()
-                conns.values.toList().forEach { c ->
-                    if (now - c.lastRx > deadMs) { listener.onLog("INFO", "${c.nx} sin respuesta en ${deadMs / 1000} s: se cierra"); drop(c) }
-                    else try { c.write("{\"h\":0,\"ts\":$now}") } catch (e: Exception) { drop(c) }
-                }
+                val now = clock()
+                tick(now, now - last)
+                last = now
             }
         }, "nexo-lan-ping").apply { isDaemon = true }.start()
         Thread({
@@ -98,6 +103,24 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         }, "nexo-lan-connect").apply { isDaemon = true }.start()
     }
 
+    /**
+     * Una vuelta del latido (la hace el hilo del latido cada pingMs; las pruebas la llaman con horas simuladas): cierra lo
+     * que lleva deadMs sin recibir nada y manda un ping a lo demás. Ronda 2772: con la pantalla apagada el teléfono
+     * duerme y este hilo no corre (Thread.sleep no avanza dormido), pero clock sí; la vuelta llega mucho más tarde de lo
+     * normal (gap) y el silencio puede ser solo eso: antes de cerrar se manda un ping y se espera un margen a que el otro
+     * conteste. Antes se cerraban enlaces sanos al despertar.
+     */
+    fun tick(now: Long, gap: Long) {
+        val slept = gap > pingMs * 3
+        val grace = maxOf(WAKE_GRACE_MS, pingMs * 2)
+        conns.values.toList().forEach { c ->
+            val quiet = now - c.lastRx
+            if (slept && quiet > deadMs - grace) c.graceUntil = maxOf(c.graceUntil, now + grace)
+            if (quiet > deadMs && now >= c.graceUntil) { listener.onLog("INFO", "${c.nx} sin respuesta en ${quiet / 1000} s: se cierra"); drop(c) }
+            else try { c.write("{\"h\":0,\"ts\":$now}") } catch (e: Exception) { drop(c) }
+        }
+    }
+
     /** Manda un mensaje al contacto. false si no hay conexión (o se acaba de caer). */
     fun send(nx: String, text: String): Boolean {
         val c = conns[nx.lowercase()] ?: return false
@@ -111,7 +134,7 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
 
     /** Calidad de cada conexión: NEXO ID, tiempo de ida y vuelta medio (ms, -1 si aún no hay) y ms sin recibir nada. */
     fun quality(): List<Triple<String, Long, Long>> {
-        val now = System.currentTimeMillis()
+        val now = clock()
         return conns.entries.map { Triple(it.key, it.value.rtt, now - it.value.lastRx) }
     }
     fun peers(): List<String> = conns.keys().toList()
@@ -127,6 +150,7 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
     }
 
     private fun handle(c: Conn) {
+        c.lastRx = clock()
         Thread({
             try {
                 c.socket.tcpNoDelay = true
@@ -142,7 +166,7 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
                 listener.onUp(nx)
                 while (true) {
                     val f = readFrame(input)
-                    c.lastRx = System.currentTimeMillis()
+                    c.lastRx = clock()
                     if (f.startsWith("{\"h\":0,")) { c.write("{\"h\":2," + f.substring(7)); continue }
                     if (f.startsWith("{\"h\":2,")) {
                         val ts = f.substringAfter("\"ts\":").trimEnd('}').toLongOrNull()

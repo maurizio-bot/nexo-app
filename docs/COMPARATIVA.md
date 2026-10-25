@@ -1,7 +1,8 @@
 # NEXO — Comparativa con la competencia y estado de avance
 
 Hecha el 24-10-2026 con la build 2763; actualizada el mismo día con la 2767 y la 2768 (revisión de las llamadas) y el
-25-10 con la 2769 (videollamada robusta), la 2770 (llamadas con la pantalla bloqueada) y la 2771 (interfaz).
+25-10 con la 2769 (videollamada robusta), la 2770 (llamadas con la pantalla bloqueada), la 2771 (interfaz) y la 2772
+(informe del dueño: espejo y encuadre del vídeo, filtros del micrófono, pantalla apagada).
 Actualizar cuando cambie algo importante. Los datos de NEXO salen del código y del simulador; los de la competencia,
 de sus páginas y noticias (enlaces al final). Lo que no se pudo confirmar va marcado con "?".
 
@@ -43,6 +44,13 @@ llamadas sin cifrar se aceptaban);
 consumo de batería sin medir; voz con segundos de retraso por un Bluetooth lento; faltan estados y buscar en los
 chats (en "Agregar", "Buscar contacto…" es solo un dibujo).
 
+**Qué cambió con la 2772 (informe del dueño del 25-10):** el otro se ve en espejo si usa su cámara de delante, y se
+puede quitar en Perfil (las grandes solo ponen en espejo la vista propia y no dejan elegir); la imagen llega con su
+forma y se ve entera o a toda la pantalla según quepa (antes recortada: se veía el 35 %); el micrófono baja mientras
+suena el otro, salvo si se habla a la vez (como el cancelador de WebRTC), y no actúa con cascos; la salida de audio va
+como voz de llamada (para el cancelador del teléfono); con Wi-Fi y la pantalla apagada se recibe y se avisa sin
+servidor (WhatsApp y Signal usan el aviso de Google, FCM). Todo sin probar aún en teléfonos.
+
 **Qué cambió desde la tabla anterior (2763 → 2768):** foto de perfil (2766); avisos y llamadas que encienden la
 pantalla y se ven encima del bloqueo (2766); la causa de "sin dirección .onion" en Tor, corregida (2766, sin confirmar);
 el agujero de suplantación y otros 12 fallos de las llamadas, arreglados (2768); el retraso de la voz por un Bluetooth
@@ -65,12 +73,12 @@ lento, medido (pendiente).
 | Internet por relés | ✅ | ✅ | ✅ (diagnóstico del Vivo) |
 | Internet por Tor | ✅ | ✅ | ⚠️ sin dirección .onion (arreglo 2766) |
 | Jump | ✅ | ✅ | ⏳ |
-| Avisos en segundo plano / app cerrada | ✅ | ✅ | ⏳ |
+| Avisos en segundo plano / app cerrada | ✅ | ✅ | ⚠️ con Wi-Fi y la pantalla apagada no llegaban (informe 25-10; arreglo 2772) |
 | Pantalla apagada: avisos y llamadas que la encienden | ✅ | ✅ | ⏳ (2766) |
 | Cifrado de extremo a extremo | ✅ | ✅ | ✅ (suplantación cercana: arreglo 2768, sin confirmar) |
 | Grupos (con HD y archivos grandes) | ✅ | ✅ | ⏳ |
-| Llamadas de voz | ✅ | ✅ | ⚠️ un teléfono no oía (arreglo 2762); otros 12 fallos arreglados en la 2768; con la pantalla bloqueada, foco de audio y tono en silencio (2770, sin probar) |
-| Videollamadas (mismo Wi-Fi) | ✅ | ✅ | ⚠️ con la 2768 el S24 a veces sin cámara, negra y sin voz (informe del dueño); cámara y micrófono que se recuperan solos (2769, sin probar) |
+| Llamadas de voz | ✅ | ✅ | ⚠️ un teléfono no oía (arreglo 2762); otros 12 fallos arreglados en la 2768; con la pantalla bloqueada, foco de audio y tono en silencio (2770, sin probar); interferencias en el micrófono (informe 25-10; filtros 2772) |
+| Videollamadas (mismo Wi-Fi) | ✅ | ✅ | ⚠️ con la 2768 el S24 a veces sin cámara, negra y sin voz (informe del dueño); cámara y micrófono que se recuperan solos (2769, sin probar); imagen muy cerca y deformada, sin espejo (informe 25-10; arreglo 2772) |
 | Fénix | ✅ | ✅ | ⏳ |
 | Pasar la cuenta | ✅ | ✅ | ⏳ |
 | Foto de perfil | ✅ | ✅ | ⏳ (2766) |

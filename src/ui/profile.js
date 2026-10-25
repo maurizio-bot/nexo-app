@@ -7,6 +7,7 @@ import { securitySectionHtml, renderSecuritySection } from './app_lock.js';
 import { _diagnosticText } from './diag.js';
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
+import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _showInfoToast;
@@ -38,6 +39,9 @@ function _openProfileSheet() {
     card('🔔', 'Avisos con la pantalla apagada', '<div class="nx-sub">Para que los mensajes y las llamadas lleguen con la app cerrada o la pantalla apagada.</div>' +
       '<div id="nexo-alert-rows"></div>' +
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-top:6px;"><input type="checkbox" id="nexo-wake-msg"> Encender la pantalla con un mensaje nuevo</label>') +
+    // Ronda 2772 (pedido del dueño): ver al otro como en un espejo (con su cámara de delante)
+    card('🎥', 'Videollamadas', '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-call-mirror"> Ver al otro como en un espejo (su cámara de delante)</label>' +
+      '<div class="nx-sub" style="margin-top:6px;">Sin espejo lo ves como te vería en persona: un papel con letras se lee bien.</div>') +
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
     card('🌐', 'Internet', '<div id="nexo-net-status" class="nx-sub"></div>' +
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> Usar Tor con Wi-Fi (oculta tu IP; más lento)</label>') +
@@ -86,6 +90,8 @@ function _openProfileSheet() {
   renderSecuritySection();
   _renderNetStatus();
   _renderAlertSettings();
+  var mirBox = sheet.querySelector('#nexo-call-mirror');
+  if (mirBox) { mirBox.checked = mirrorPeerPref(); mirBox.onchange = function() { setMirrorPeerPref(mirBox.checked); }; }
   var torBox = sheet.querySelector('#nexo-net-tor');
   if (torBox) {
     torBox.checked = !!(bi.net && bi.net.torWanted());
@@ -140,6 +146,14 @@ function _renderAlertSettings() {
       { k: 'fullScreen', ok: r.fullScreen, t: 'Llamadas a pantalla completa', no: 'No permitidas: la llamada sale solo como aviso' },
       { k: 'battery', ok: r.battery, t: 'Funcionar en segundo plano', no: 'El ahorro de batería puede congelar NEXO y retrasar los avisos' }
     ];
+    // Ronda 2772: lo que cada fabricante esconde aparte y Android no deja comprobar (con su pantalla, si se encuentra)
+    var VEND = { vivo: 'Vivo: activa «Inicio automático» y «Alto consumo en segundo plano» para NEXO', iqoo: 'iQOO: activa «Inicio automático» y «Alto consumo en segundo plano» para NEXO',
+      samsung: 'Samsung: batería de NEXO «Sin restricciones» y que no esté en «Apps en suspensión»', xiaomi: 'Xiaomi: activa «Inicio automático» para NEXO',
+      redmi: 'Redmi: activa «Inicio automático» para NEXO', poco: 'Poco: activa «Inicio automático» para NEXO', oppo: 'Oppo: permite el inicio automático de NEXO',
+      realme: 'Realme: permite el inicio automático de NEXO', oneplus: 'OnePlus: permite el inicio automático de NEXO', huawei: 'Huawei: en «Inicio de apps», NEXO a mano y todo activado',
+      honor: 'Honor: en «Inicio de apps», NEXO a mano y todo activado' };
+    var vk = Object.keys(VEND).filter(function(k) { return String(r.vendor || '').indexOf(k) >= 0; })[0];
+    if (vk) rows.push({ k: 'vendor', info: true, t: VEND[vk] });
     box.innerHTML = '';
     rows.forEach(function(x) {
       var row = document.createElement('div');
@@ -147,12 +161,12 @@ function _renderAlertSettings() {
       row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08);';
       var t = document.createElement('div');
       t.style.cssText = 'font-size:14px;';
-      t.textContent = (x.ok ? '✅ ' : '⚠️ ') + x.t + (x.ok ? '' : ' — ' + x.no);
+      t.textContent = x.info ? '📱 ' + x.t : (x.ok ? '✅ ' : '⚠️ ') + x.t + (x.ok ? '' : ' — ' + x.no);
       row.appendChild(t);
       if (!x.ok) {
         var b = document.createElement('button');
         b.className = 'nx-btn'; b.style.cssText = 'width:auto;margin:0;padding:8px 14px;flex-shrink:0;';
-        b.textContent = 'Arreglar'; b.dataset.what = x.k;
+        b.textContent = x.info ? 'Abrir' : 'Arreglar'; b.dataset.what = x.k;
         b.onclick = function() { pl.openAlertSetting({ what: x.k }).catch(function() {}); setTimeout(_renderAlertSettings, 4000); };
         row.appendChild(b);
       }

@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-25 (build 2771)
+Última actualización: 2026-10-25 (build 2772)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -223,6 +223,61 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2772: informe del dueño del 25-10 (videollamada, micrófono, pantalla apagada) y plan de negocio
+Pedido del dueño (25-10): primero un plan de negocio (cómo gana dinero la competencia y un plan para NEXO con pagos sin
+licencia): `docs/PLAN_NEGOCIO.md` (subido aparte, sin APK). Después, uno a uno, investigando cómo lo hace la
+competencia (código de Chrome, WebRTC, Signal, Telegram y Android) y "mejor que la competencia si puedes":
+1. **El vídeo del otro no estaba en espejo** ("si volteo la cara a la derecha, en el otro se ve al lado contrario").
+   Reproducido en `videoframe.js` (nueva): videollamada de verdad en Chromium con una cámara falsa en vertical (480x640,
+   como un teléfono en la mano) que muestra rojo | azul y un cuadrado blanco. Lo que hacen las demás: todas (Zoom,
+   Webex, Meet, FaceTime, Signal, Telegram) ponen en espejo solo la vista propia y al otro le llega la imagen real
+   (por eso, con los dos teléfonos juntos, una se mueve al revés que la otra); mandarla en espejo haría que un papel o
+   una camiseta se leyeran al revés. NEXO ahora: el espejo lo pone el que recibe, solo si la cámara del otro es la de
+   delante (lo dice su estado `c`, con `front`), activado por defecto como pidió el dueño y con interruptor en
+   **Perfil → Videollamadas**; con la cámara de detrás, nunca. Ninguna de las grandes deja elegirlo.
+2. **"La imagen se ve muy cerca, un poco deformada"**. Causa: la imagen se metía a la fuerza en 320x240 apaisado; con
+   el teléfono en vertical el navegador recortaba la de la cámara (o se estiraba) y el otro, para llenar su pantalla
+   vertical, solo veía el 35 % (como un zoom de casi 3 veces). Ahora la cámara se pide sin recortes
+   (`resizeMode: 'none'`), la imagen conserva su forma (en vertical, 360x480; si se gira el teléfono, el codificador
+   se rehace con la forma nueva y la imagen siguiente es completa), el que recibe la dibuja con su forma y la muestra
+   entera salvo que a toda la pantalla se vea al menos el 78 % (dos toques la cambian). Batería: codificador en modo
+   tiempo real y una imagen completa cada 5 s (antes 2 s); 15 fps (Signal y Telegram capturan 1280x720 a 30 fps).
+3. **Micrófono: "aplicar filtros" y "si uno habla, el micrófono del otro se baja un porcentaje"**. Investigación:
+   Chrome en Android usa el cancelador de eco del teléfono si lo tiene, y solo trata como voz de llamada la salida de
+   audio creada después de abrir el micrófono; NEXO la creaba antes (como música): el cancelador podía no tenerla en
+   cuenta. Ahora: primero el micrófono y luego la salida; filtros nuevos (`call_voice_fx.js`): mientras suena el otro
+   el micrófono baja 12 dB (al 25 %), salvo que se hable a la vez claramente por encima del eco (entonces solo 3 dB
+   durante 200 ms: la "conversación completa a la vez" de la norma P.340, como el cancelador de WebRTC); mide solo el
+   retraso y la fuerza del eco; con cascos o Bluetooth no baja; puerta de ruido suave (−10 dB en silencio, abre en
+   5 ms); paso alto a 60 Hz (Chrome ya pone uno a 100 Hz); limitador. Opus en modo voz y complejidad 5. Diagnóstico:
+   `[CALL] Al colgar: … filtros: bajado X %, los dos Y %, silencio Z %, eco N dB a M ms, cancelador de eco …, Opus voz`.
+   Pruebas: `voicefx.js` (nueva: eco −12 dB; hablando los dos, la voz propia −2,5 dB; con cascos y sin el otro, 0 dB;
+   ruido −10 dB; principio de palabra al 99 %; retumbo de 30 Hz −12 dB; voz grave de 120 Hz −0,3 dB; ~3,5 ms de
+   proceso por segundo de audio) y `callmedia.js` caso 22 (dentro de la llamada: eco −12 dB, voz propia −2 dB; con la
+   2771, sin filtros: 0 dB).
+4. **Con Wi-Fi y la pantalla apagada no llegaban mensajes ni avisos** (llegaban al encenderla). Investigación (código de
+   Android): con la pantalla apagada el teléfono duerme en cuanto nada lo mantiene despierto; un paquete lo despierta un
+   instante y NEXO no pedía seguir despierto: la app no llegaba a descifrar, confirmar (✓✓) ni avisar; el aviso de
+   respaldo del nativo (4 s) usaba un reloj que no avanza dormido. Reproducido en `notify.js` (fase nueva "pantalla
+   apagada", con el teléfono dormido modelado en `native_mock.js`): con el comportamiento anterior, ni llega, ni avisa, ni
+   ✓✓ hasta encender la pantalla; ahora, aviso en 0,2 s y entregado. Arreglo (Kotlin): al llegar un mensaje con la app
+   en segundo plano, el teléfono se queda despierto 15 s (se renueva con cada mensaje; Android lo permite en reposo a
+   las apps con servicio en primer plano; Google Play vigila que no pase de 2 h al día). Además, el latido del Wi-Fi
+   mezclaba un reloj que se para dormido con otro que no: al despertar cortaba enlaces sanos; ahora mide con
+   `elapsedRealtime` y, si el teléfono durmió, pregunta antes de cortar (ping y margen de 8 s): Kotlin `LanHubTest`, 3
+   pruebas nuevas. Perfil → "Avisos con la pantalla apagada" muestra los ajustes propios del fabricante (Vivo: inicio
+   automático y alto consumo en segundo plano; Samsung: batería sin restricciones; también Xiaomi, Oppo, Huawei) con
+   "Abrir". Diagnóstico `[ENERGIA]` al pasar a segundo plano y al volver (segundo plano permitido, reposo, restricción,
+   grupo de uso de Android, despertares por mensajes, fabricante).
+5. **Escaneo**: el dueño no lo ha probado con la última versión: en sus pruebas de la 2772.
+- Pruebas nuevas en la batería: `videoframe.js`, `voicefx.js` y `notify.js --via=lan` (avisos por Wi-Fi: segundo plano,
+  congelada, pantalla apagada y cerrada); la fase de pantalla apagada también en `--via=ble` y `--via=jump`;
+  `callmedia.js` casos 21 (girar el teléfono) y 22 (eco); `alerts.js` (fila del fabricante). Llamadas de verdad en
+  Chromium (`calls_browser.js`: voz Opus, vídeo y μ-law) con los filtros: bien. Kotlin 71/71. Batería: ver la fila de
+  la 2772 en el historial.
+- No se puede comprobar aquí (en el teléfono): que el cancelador de eco del teléfono funcione mejor con la salida nueva;
+  el consumo de batería; si el Vivo congela NEXO con la pantalla apagada aunque se mantenga despierto.
 
 ## 25-10-2026: registro y medición de robustez (sin build; pedido del dueño)
 Al cerrar la revisión 1 (builds 2766–2771), el dueño pidió un registro, una medición del estado de robustez y tareas

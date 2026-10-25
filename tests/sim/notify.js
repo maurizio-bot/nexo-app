@@ -3,8 +3,13 @@
 //     nombre de A (o del grupo) y el texto / "📷 Foto"; la burbuja numerada de la lista sube;
 //  1b. (2760) con la app en segundo plano y CONGELADA (el Vivo del dueño no ejecuta la app en segundo plano): avisa la
 //     parte nativa (sin texto) y, al volver, llega todo; sin avisos repetidos (en un grupo el aviso pasa al grupo);
+//  1c. (2772; informe del dueño: "aunque ambos teléfonos tienen Wi-Fi, si mando un mensaje y el otro tiene la pantalla
+//     apagada no llegan los mensajes, y lo mismo con las notificaciones") con la app en segundo plano y la PANTALLA
+//     APAGADA: el teléfono duerme salvo que el nativo lo mantenga despierto (native_mock setScreenOff); el mensaje
+//     debe llegar, avisar y marcarse entregado sin encender la pantalla; al encenderla, sin avisos repetidos;
 //  2. con la app cerrada: un texto y una foto → notificación (sin texto: va cifrado) si la vía sigue viva con la app
 //     cerrada (Bluetooth, grupo y, desde la 2760, Jump); al abrir la app llega todo.
+// --sin-despertar: el Kotlin de antes de la 2772 (no mantenía el teléfono despierto al recibir)
 // --via=ble     A y B a alcance de Bluetooth
 // --via=lan     A y B en el mismo Wi-Fi, fuera de alcance de Bluetooth
 // --via=net     A y B en redes distintas, sin Bluetooth: internet (relés locales)
@@ -21,7 +26,7 @@ const { Radio, NativePhone, installWebCrypto } = require('./native_mock');
 const buildDir = path.resolve(process.argv[2]);
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith('--' + k)); if (!a) return d; const v = a.split('=')[1]; return v === undefined ? true : v; };
 const via = arg('via', 'ble');
-const opts = { readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: Number(arg('io-delay', 25)), asymmetric: true };
+const opts = { readsContentFallback: true, retain: ['onPayloadReceived', 'onLanMessage', 'onLanUp', 'onLanDown'], closeOnNoService: true, pace: [15, 15], ioDelay: Number(arg('io-delay', 25)), asymmetric: true, noRxWake: !!arg('sin-despertar', false) };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let RELAYS = [];
 class DistLoader extends ResourceLoader {
@@ -168,6 +173,25 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.congelada_sin_repetir = !(gid && nB.notifications.has(idA)) && !nB.notifications.has('nexo_jump');
   await closeChat(A);
 
+  // 1c. B en segundo plano con la pantalla apagada (ronda 2772)
+  {
+    B.win.bleInterface._stopConnectionSupervisor(); nB.setScreenOff(true);
+    await sleep(800);
+    t0 = Date.now();
+    await openSendChat();
+    const txt = 'apagada-' + via;
+    sendText(A, txt);
+    r.apagada_aviso_s = await waitFor(() => notifs(t0, false).length >= 1, 20000);
+    r.apagada_llega_s = await waitFor(() => has((m) => m.content === txt), 20000);
+    r.apagada_entregado_s = await waitFor(async () => /delivered|read/.test(((await A.win.vaultLoadMessages(gid || idB)).find((m) => m.content === txt) || {}).status || ''), 20000);
+    r.apagada_despertares = nB.stats.rxWakes || 0;
+    nB.setScreenOff(false); { const bi = B.win.bleInterface; bi._supervisorTimer = B.win.setInterval(() => bi._runSupervisorCycle(), bi._supervisorIntervalMs); }
+    await sleep(3000);
+    r.apagada_avisos = fmt(notifs(t0, false));
+    r.apagada_sin_repetir = notifs(t0, false).filter((n) => !n.update).length <= 1;
+    await closeChat(A);
+  }
+
   // 2. B cerrada (la app se cierra; el Bluetooth sigue recibiendo, ver BgInbox.kt)
   B.win.close(); nB.destroyActivity(); await sleep(1000);
   t0 = Date.now();
@@ -192,7 +216,8 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   const closedOk = ['ble', 'jump', 'group'].indexOf(via) >= 0; // Wi-Fi sin Bluetooth ni internet: nada sigue vivo
   const ok = r.fondo_texto_llega_s !== null && r.fondo_foto_llega_s !== null && r.fondo_aviso_texto && r.fondo_aviso_foto && r.fondo_no_leidos >= 2 && !r.fondo_avisos_repetidos &&
     (!frozenOk || (r.congelada_aviso_texto && r.congelada_aviso_foto && r.congelada_sin_repetir)) && r.congelada_texto_llega_s !== null && r.congelada_foto_llega_s !== null &&
-    (!closedOk || (r.cerrada_aviso_texto && r.cerrada_aviso_foto && (!gid || r.cerrada_nombre_grupo))) && r.al_abrir_texto_s !== null && r.al_abrir_foto_s !== null && !r.errores.length;
+    (!closedOk || (r.cerrada_aviso_texto && r.cerrada_aviso_foto && (!gid || r.cerrada_nombre_grupo))) && r.al_abrir_texto_s !== null && r.al_abrir_foto_s !== null && !r.errores.length &&
+    (!frozenOk || (r.apagada_aviso_s !== null && r.apagada_aviso_s <= 8 && r.apagada_llega_s !== null && r.apagada_llega_s <= 8 && r.apagada_entregado_s !== null && r.apagada_entregado_s <= 10 && r.apagada_sin_repetir));
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('NOTIFY ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_notify_' + via + '.txt'), logs.join('\n'));

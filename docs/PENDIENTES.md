@@ -20,8 +20,21 @@ el dueño de sus pruebas con la 2771.
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
-- **Qué APK probar (25-10)**: la 2771 (nightly-2771) para todo. Desde la 2763 no hay pruebas en teléfonos: todo lo de
-  abajo desde la 2765 está sin confirmar (salvo el informe de videollamada Vivo ↔ S24 con la 2768, ver 2769).
+- **Qué APK probar (25-10)**: la 2772 (nightly-2772) para todo. Desde la 2763 no hay pruebas completas en teléfonos:
+  todo lo de abajo desde la 2765 está sin confirmar (salvo los informes de videollamada con la 2768 y del 25-10 con la
+  2771, ver 2769 y 2772).
+- **2772** (informe del dueño del 25-10; actualizar los dos teléfonos): (1) **Pantalla apagada con Wi-Fi**: los dos en
+  el mismo Wi-Fi, uno con la pantalla apagada 2–3 min; mandarle un texto y una foto: debe sonar el aviso sin encender
+  la pantalla y en el que manda salir ✓✓ enseguida. Si no, en el que tenía la pantalla apagada: Perfil → "Avisos con
+  la pantalla apagada" → todo en ✅ y, en el Vivo, "Abrir" en su fila (activar «Inicio automático» y «Alto consumo en
+  segundo plano»), y repetir; si sigue, diagnóstico de los dos (líneas `[ENERGIA]`). (2) **Videollamada**: girar la
+  cara a la derecha: en el otro teléfono se ve como en un espejo (igual que tu vista pequeña); la imagen se ve entera y
+  no estirada; dos toques en la imagen la ponen a toda la pantalla (y otros dos la devuelven); con la cámara de detrás,
+  sin espejo; Perfil → Videollamadas → quitar "Ver al otro como en un espejo" lo deja al derecho. (3) **Micrófono**:
+  llamada con altavoz, uno habla 10 s y el otro calla: ¿se oye eco? Hablar los dos a la vez: ¿se cortan? Con cascos,
+  igual. Mejor con los teléfonos en habitaciones distintas: juntos en la misma sala y con altavoz siempre hay eco entre
+  ellos (en cualquier app). Diagnóstico de los dos (`[CALL] Al colgar: … filtros: …, cancelador de eco …`). (4)
+  **Escaneo**: "Agregar" con la tablet y los dos teléfonos (el dueño no lo ha probado desde la 2765).
 - **2771** (revisión, parte 4: interfaz): (1) "Agregar" (botón redondo): salen tus contactos y los teléfonos cerca;
   escribir en el buscador un nombre o parte del NEXO ID los filtra. (2) En la lista, ⋮ de un contacto → "Cambiar
   nombre": se abre su chat con el nombre listo para escribir; el nombre nuevo se queda. (3) Perfil: tus iniciales y
@@ -132,6 +145,19 @@ el dueño de sus pruebas con la 2771.
   Hecho en la ronda 2744: fuera `NordicMeshService` del manifiesto, emojis y acentos (prueba en `e2e.js`; la vista
   previa partía emojis), nombres ya iban como texto en la lista.
 - **Base estable nueva** (≥ 2725) cuando el dueño confirme.
+- **Llamadas (de la investigación del 25-10, ronda 2772)**: pasar el micrófono a un AudioWorklet (hoy ScriptProcessor en
+  el hilo de la interfaz: si se atasca, cortes de voz); DTX en Opus (no mandar voz en los silencios: batería y datos;
+  hace falta que el que recibe rellene los huecos); avisar al otro de "estoy hablando" en cada paquete (mejor detección
+  de los dos hablando a la vez); vídeo sin pasar por el lienzo (MediaStreamTrackProcessor: menos copias y batería);
+  probar el codificador de vídeo por hardware en los dos teléfonos; calidad de vídeo según la conexión (240x320 a
+  10 fps si va mal).
+- **Batería con la pantalla apagada (2772)**: el latido del Wi-Fi (cada 4 s) despierta al otro teléfono aunque tenga la
+  pantalla apagada; que el despierto mande menos latidos cuando el otro está en segundo plano (hace falta avisarlo sin
+  romper las versiones anteriores).
+- **Google Play (de la investigación del 25-10)**: desde el 31-08-2026 las apps nuevas y actualizaciones en Play deben
+  apuntar a Android 16 (target 36; prórroga posible hasta el 1-11-2026); NEXO apunta a 34. Pasar a 36 antes de subir a
+  Play (cambios de comportamiento que revisar). Además, desde 2027 Android exigirá desarrolladores verificados también
+  para instalar APK fuera de Play (ya en Brasil, Indonesia, Singapur y Tailandia desde el 30-09-2026).
 
 ## 4. Decisiones pendientes del dueño
 1. Stream: ¿sí o no? ¿solo cercanos o con servidor?

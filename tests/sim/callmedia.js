@@ -9,6 +9,9 @@
 //        completa al otro, fallo del codificador de voz (Opus; quedaba sin voz hasta colgar) y del decodificador de voz,
 //        sin micrófono (permiso quitado: no salía nada y el otro cortaba a los 12 s), codificador de vídeo que falla
 //        siempre (se rehacía sin parar y llenaba el registro), decodificador parado (llega vídeo y no sale imagen).
+//  2772: girar el teléfono en plena videollamada (la imagen de la cámara cambia de forma: codificador nuevo con la
+//        forma nueva y la siguiente imagen completa); eco en la llamada (la voz del otro que suena vuelve al micrófono:
+//        con los filtros de voz, lo que se manda baja; si uno habla a la vez, su voz pasa).
 // Uso: node callmedia.js <dir_build>   (lee <dir_build>/src/ui/call_media.js)
 'use strict';
 const fs = require('fs');
@@ -49,11 +52,14 @@ function env(o) {
     }, delay));
   } } };
   class AC {
-    constructor() { this.state = o.suspended ? 'suspended' : 'running'; this.closed = false; this.currentTime = 10; this.destination = {}; this.resumes = 0; ctxs.push(this); }
+    constructor() {
+      this.state = o.suspended ? 'suspended' : 'running'; this.closed = false; this.destination = {}; this.resumes = 0; ctxs.push(this);
+      if (o.clock) Object.defineProperty(this, 'currentTime', { get: () => 10 + (Date.now() - t0) / 1000 }); else this.currentTime = 10; // (2772: o.clock, reloj que avanza)
+    }
     createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
     createScriptProcessor() { const p = { onaudioprocess: null, connect() {}, disconnect() {} }; this.proc = p; return p; }
-    createBuffer(ch, n, rate) { return { duration: n / rate, copyToChannel() {}, getChannelData() { return new Float32Array(n); } }; }
-    createBufferSource() { const s = { buffer: null, connect() {}, start(t) { starts.push({ t, d: s.buffer ? s.buffer.duration : 0 }); } }; return s; }
+    createBuffer(ch, n, rate) { const d = new Float32Array(n); return { duration: n / rate, rate, data: d, copyToChannel(f) { d.set(f); }, getChannelData() { return d; } }; }
+    createBufferSource() { const s = { buffer: null, connect() {}, start(t) { starts.push({ t, d: s.buffer ? s.buffer.duration : 0, buf: s.buffer }); } }; return s; }
     resume() { this.resumes++; if (!o.suspended || this.resumes >= 2) this.state = 'running'; return Promise.resolve(); }
     close() { this.closed = true; this.state = 'closed'; return Promise.resolve(); }
   }
@@ -69,7 +75,7 @@ function env(o) {
     let encN = 0;
     window.VideoEncoder = class {
       constructor(init) { this.state = 'unconfigured'; this.init = init; this.encodeQueueSize = 0; window._encs = (window._encs || 0) + 1; }
-      configure() { this.state = 'configured'; }
+      configure(c) { this.state = 'configured'; (window._cfgs = window._cfgs || []).push(c || {}); }
       encode(f, opt) {
         if (this.state !== 'configured') { const e = new Error('InvalidStateError'); e.name = 'InvalidStateError'; throw e; }
         encN++;
@@ -127,7 +133,7 @@ function env(o) {
     window.AudioData = class { constructor(i) { Object.assign(this, i); } close() {} };
     window.EncodedAudioChunk = class { constructor(i) { Object.assign(this, i); } };
   }
-  const mod = new Function('window', 'navigator', 'document', 'MediaStream', src + '\nreturn { createCallMedia };')(window, navigator, document, FakeStream);
+  const mod = new Function('window', 'navigator', 'document', 'MediaStream', src + '\nreturn { createCallMedia, unpackCallPacket };')(window, navigator, document, FakeStream);
   const live = (kind) => tracks.filter((t) => t.kind === kind && !t.stopped && t.readyState === 'live').length;
   return { mod, tracks, ctxs, starts, encoded, decoded, videos, live, endTrack, window, document };
 }
@@ -373,6 +379,64 @@ const mk = (e, extra) => e.mod.createCallMedia(Object.assign({ onPacket() {}, co
     r.decodificador_parado = { pide_completa_ms: keyAt, decodificadores: e.window._decs || 0, se_ve: e.decoded.length > 0, en_vivo: typeof m.remoteLive === 'function' ? m.remoteLive() : null };
     m.stop();
   }
+  // --- 2772 ---
+  // 21. Girar el teléfono en plena videollamada: la imagen de la cámara pasa de vertical (480x640) a apaisada (640x480):
+  //     codificador nuevo con la forma nueva (antes siempre 320x240: recortada o estirada) y la siguiente imagen completa
+  {
+    const e = env({ vp8: true });
+    const m = mk(e, { video: true, onVideoPacket() {} });
+    await m.start();
+    const vid = e.videos[e.videos.length - 1];
+    vid.videoWidth = 480; vid.videoHeight = 640;
+    await sleep(400);
+    const cfg1 = (e.window._cfgs || []).slice(-1)[0] || {};
+    const n0 = e.encoded.length;
+    vid.videoWidth = 640; vid.videoHeight = 480;
+    await sleep(400);
+    const cfg2 = (e.window._cfgs || []).slice(-1)[0] || {};
+    r.girar_telefono = { vertical: cfg1.width + 'x' + cfg1.height, apaisada: cfg2.width + 'x' + cfg2.height, siguiente_completa: !!(e.encoded[n0] && e.encoded[n0].key), tiempo_real: cfg2.latencyMode || null };
+    m.stop();
+  }
+  // 22. Eco en la llamada: suena la voz del otro (μ-law, como la manda su teléfono) y vuelve al micrófono a los 80 ms con
+  //     la mitad de fuerza (altavoz). Con los filtros de voz (call_voice_fx.js), lo que se manda baja al menos 10 dB
+  //     frente a la misma llamada sin filtros; desde los 5 s uno habla a la vez y su voz pasa (como mucho −6 dB).
+  {
+    const fxFile = path.join(path.resolve(process.argv[2]), 'src', 'ui', 'call_voice_fx.js');
+    const fxMod = fs.existsSync(fxFile) ? new Function(fs.readFileSync(fxFile, 'utf8').replace(/^export /gm, '') + '\nreturn { createVoiceFx };')() : null;
+    const ulawEnc = (x) => { x = Math.max(-1, Math.min(1, x)) * 32635; const sign = x < 0 ? 0x80 : 0; if (sign) x = -x; x += 132; let ex = 7; for (let mk2 = 0x4000; (x & mk2) === 0 && ex > 0; mk2 >>= 1) ex--; return ~(sign | (ex << 4) | ((x >> (ex + 3)) & 0x0f)) & 0xff; };
+    const ulawDec = (u) => { u = ~u & 0xff; const sign = u & 0x80, ex = (u >> 4) & 7, man = u & 0x0f; let x = ((man << 3) + 132) << ex; x -= 132; return (sign ? -x : x) / 32635; };
+    // Voz sintética con sílabas al azar (como voicefx.js)
+    const voice = (f0, amp, seed) => {
+      let x = Math.floor(seed * 1e6) % 2147483646 + 1; const rnd = () => (x = (x * 48271) % 2147483647) / 2147483647; const segs = [];
+      for (let t = 0; t < 30;) { const d = 0.08 + 0.22 * rnd(), on = rnd() > 0.25; segs.push([t, t + d, on ? 0.5 + 0.5 * rnd() : 0]); t += d; }
+      return (t) => { if (t < 0) return 0; const g = segs.find((q) => t >= q[0] && t < q[1]); if (!g || !g[2]) return 0; const env1 = g[2] * Math.sin(Math.PI * (t - g[0]) / (g[1] - g[0])); let sm = 0; for (let k = 1; k <= 12; k++) sm += Math.sin(2 * Math.PI * f0 * k * t + k * seed) / k; return amp * 0.6 * sm * env1; };
+    };
+    const echoCall = async (withFx) => {
+      const e = env({ clock: true });
+      const sent = [];
+      const m = mk(e, { onPacket: (b) => sent.push({ at: Date.now(), b }), voiceFx: withFx && fxMod ? fxMod.createVoiceFx : undefined });
+      await m.start();
+      const ctx = e.ctxs[e.ctxs.length - 1];
+      const T0 = Date.now(), farV = voice(140, 0.5, 0.31), nearV = voice(220, 0.4, 0.77), NEAR_AT = 5;
+      // Lo que sonaba en el altavoz en el instante τ (reloj del audio): de lo que call_media.js programó de verdad
+      const played = (tau) => { for (let i = e.starts.length - 1; i >= 0; i--) { const q = e.starts[i]; if (q.t <= tau && tau < q.t + q.d && q.buf && q.buf.data) return q.buf.data[Math.floor((tau - q.t) * q.buf.rate)] || 0; } return 0; };
+      let farT = 0, nearE = 0, nearN = 0;
+      while (Date.now() - T0 < 9000) {
+        const el = (Date.now() - T0) / 1000;
+        while (farT <= el + 0.1) { const pk = new Uint8Array(804); pk[0] = 2; pk[1] = 1; pk[2] = 800 >> 8; pk[3] = 800 & 255; for (let i = 0; i < 800; i++) pk[4 + i] = ulawEnc(farV(farT + i / 8000)); m.play(pk); farT += 0.1; }
+        const now = ctx.currentTime, inp = new Float32Array(2048);
+        for (let i = 0; i < 2048; i++) { const w = el - (2048 - i) / 48000, nv = w >= NEAR_AT ? nearV(w) : 0; inp[i] = 0.5 * played(now - (2048 - i) / 48000 - 0.08) + nv; if (w >= NEAR_AT + 0.5) { nearE += nv * nv; nearN++; } }
+        ctx.proc.onaudioprocess({ inputBuffer: { getChannelData: () => inp } });
+        await sleep(43);
+      }
+      m.stop();
+      const lvl = (a, b) => { let e2 = 0, n = 0; sent.forEach((x) => { const t = (x.at - T0) / 1000; if (t < a || t >= b) return; const p = e.mod.unpackCallPacket(x.b); if (!p || p.codec !== 2) return; p.frames.forEach((f) => { for (let i = 0; i < f.length; i++) { const v2 = ulawDec(f[i]); e2 += v2 * v2; n++; } }); }); return Math.sqrt(e2 / (n || 1)); };
+      return { eco: lvl(2, 5), ambos: lvl(NEAR_AT + 0.5, 9), voz: Math.sqrt(nearE / (nearN || 1)) };
+    };
+    const sinF = await echoCall(false), conF = await echoCall(true);
+    const dbr = (a, b) => (a > 0 && b > 0 ? Math.round(20 * Math.log10(a / b) * 10) / 10 : null);
+    r.eco_en_llamada = { filtros: !!fxMod, eco_baja_dB: dbr(sinF.eco, conF.eco), voz_propia_dB: dbr(conF.ambos, conF.voz) };
+  }
   const c1 = r.colgar_mientras_abre_el_micro, v = r.video_sin_camara, p6 = r.camara_ocupada_un_momento, p7 = r.camara_ocupada_5s;
   const checks = {
     colgar_mientras_abre_el_micro: c1.micros_abiertos === 0 && c1.audio_abierto === 0 && c1.voz_tras_colgar === 0,
@@ -394,6 +458,8 @@ const mk = (e, extra) => e.mod.createCallMedia(Object.assign({ onPacket() {}, co
     opus_recibir_falla: r.opus_recibir_falla.suenan_tras_el_fallo >= 4 && r.opus_recibir_falla.decodificadores >= 2,
     codificador_siempre_falla: r.codificador_siempre_falla.empieza && r.codificador_siempre_falla.codificadores_en_3s <= 4 && r.codificador_siempre_falla.avisos <= 5 && r.codificador_siempre_falla.micros >= 1,
     decodificador_parado: r.decodificador_parado.pide_completa_ms !== null && r.decodificador_parado.pide_completa_ms < 4500 && r.decodificador_parado.decodificadores >= 2 && r.decodificador_parado.se_ve && r.decodificador_parado.en_vivo === true,
+    girar_telefono: r.girar_telefono.vertical === '360x480' && r.girar_telefono.apaisada === '480x360' && r.girar_telefono.siguiente_completa,
+    eco_en_llamada: r.eco_en_llamada.eco_baja_dB >= 9 && r.eco_en_llamada.voz_propia_dB >= -6,
     sin_micro: r.sin_micro.empieza && r.sin_micro.mic === false && r.sin_micro.estado === 'none' && r.sin_micro.sigo_aqui >= 2 && r.sin_micro.hueco_max_ms !== null && r.sin_micro.hueco_max_ms < 3500,
   };
   r.fallan = Object.keys(checks).filter((k) => !checks[k]);

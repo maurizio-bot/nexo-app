@@ -2,7 +2,8 @@
 // pantalla apagada, y que la enciendan. A y B por Bluetooth; B empieza sin "funcionar en segundo plano" ni "llamadas a
 // pantalla completa" (como un teléfono con ahorro de batería, p.ej. el Vivo del dueño).
 //  1. Al arrancar, B pide una vez que el ahorro de batería no congele NEXO.
-//  2. Perfil → "Avisos con la pantalla apagada": lo que falta sale con "Arreglar"; al arreglarlo, ✅.
+//  2. Perfil → "Avisos con la pantalla apagada": lo que falta sale con "Arreglar"; al arreglarlo, ✅. (2772) En un Vivo,
+//     además, sus ajustes propios (inicio automático y alto consumo en segundo plano) con "Abrir".
 //  3. B en segundo plano con la pantalla apagada: un mensaje de A la enciende; sin "Encender la pantalla con un
 //     mensaje nuevo", no; una llamada de A, siempre.
 //  4. Al acabar la llamada, la app vuelve detrás de la pantalla de bloqueo (callScreenDone).
@@ -46,11 +47,11 @@ async function openChatWith(p, name) {
 }
 function sendText(p, t) { const i = p.win.document.getElementById('message-input'); i.value = t; i.dispatchEvent(new p.win.Event('input', { bubbles: true })); click(p.win, p.win.document.getElementById('send-btn')); }
 const wait = async (c, s) => { for (let i = 0; i < s * 5; i++) { if (await c()) return true; await sleep(200); } return false; };
-const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows .nx-alert-row')).map((r) => r.textContent.replace('Arreglar', '').trim());
+const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows .nx-alert-row')).map((r) => r.textContent.replace(/Arreglar$|Abrir$/, '').trim());
 
 (async () => {
   const radio = new Radio();
-  const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', Object.assign({}, opts, { alerts: { battery: false, fullScreen: false } }));
+  const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', Object.assign({}, opts, { alerts: { battery: false, fullScreen: false }, vendor: 'vivo' }));
   [nA, nB].forEach((n) => { radio.add(n); n.load(); });
   const [A, B] = await Promise.all([boot('A', nA), boot('B', nB)]);
   const idA = A.win.bleInterface.localNexoId.toLowerCase(), idB = B.win.bleInterface.localNexoId.toLowerCase();
@@ -67,8 +68,13 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   r.contactos = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'hola'), 30);
   // 2. Perfil
   B.win.dispatchEvent(new B.win.CustomEvent('nexo:ui:profile'));
-  await wait(() => rows(B).length === 3, 10);
+  await wait(() => rows(B).length === 4, 10);
   r.perfil_antes = rows(B);
+  // (2772) los ajustes del Vivo, con su botón
+  const vend = B.win.document.querySelector('#nexo-alert-rows button[data-what="vendor"]');
+  r.fabricante = { fila: r.perfil_antes.filter((t) => /^📱 Vivo/.test(t)).length === 1, boton: vend ? vend.textContent : null };
+  if (vend) click(B.win, vend);
+  r.fabricante.abre = (nB.alertOpened || []).indexOf('vendor') >= 0;
   const fix = B.win.document.querySelector('#nexo-alert-rows button[data-what="fullScreen"]');
   r.boton_arreglar = !!fix;
   click(B.win, fix);
@@ -98,8 +104,9 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   if (A.win.bleInterface.calls.call) A.win.bleInterface.calls.hangup();
   r.vuelve_tras_el_bloqueo = await wait(() => nB.calls.filter((c) => c.name === 'callScreenDone').length > d0, 30);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.pide_segundo_plano && r.A_no_pide && r.contactos && r.perfil_antes.length === 3 && r.perfil_antes.filter((t) => /^⚠️/.test(t)).length === 1 && r.boton_arreglar &&
-    r.abre_ajuste && r.perfil_despues.every((t) => /^✅/.test(t)) && r.encender_por_defecto && r.mensaje_enciende && r.sin_opcion_no_enciende && r.llamada_suena && r.llamada_enciende &&
+  const ok = r.pide_segundo_plano && r.A_no_pide && r.contactos && r.perfil_antes.length === 4 && r.perfil_antes.filter((t) => /^⚠️/.test(t)).length === 1 && r.boton_arreglar &&
+    r.fabricante.fila && r.fabricante.boton === 'Abrir' && r.fabricante.abre &&
+    r.abre_ajuste && r.perfil_despues.filter((t) => !/^📱/.test(t)).every((t) => /^✅/.test(t)) && r.encender_por_defecto && r.mensaje_enciende && r.sin_opcion_no_enciende && r.llamada_suena && r.llamada_enciende &&
     r.vuelve_tras_el_bloqueo && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('ALERTS ' + JSON.stringify(r));

@@ -18,8 +18,28 @@
  *  - imagen del otro: el decodificador que falla se rehace (antes quedaba cerrado: negro hasta colgar) y, si llega vídeo
  *    sin imagen, se pide una imagen completa al otro (opts.onNeedKey → media.requestKey en el otro);
  *  - el estado de la cámara y del micrófono se avisa (opts.onState) para la pantalla de los dos.
+ * Ronda 2772 (informe del dueño: "el vídeo recibido no está en espejo: si volteo la cara a la derecha, en el otro se ve al
+ * lado contrario" y "la imagen se ve muy cerca, un poco deformada"). Reproducido en tests/sim/videoframe.js (cámara en
+ * vertical, como un teléfono en la mano): la imagen se metía a la fuerza en 320x240 apaisado (el navegador recortaba
+ * la de la cámara, o se estiraba) y el otro, para llenar su pantalla vertical, solo veía el 35 % de ella. Ahora:
+ *  - la imagen que se manda conserva la forma de la cámara (en vertical, 360x480) y la cámara se pide sin recortes
+ *    (resizeMode: 'none'); si cambia (girar el teléfono, la otra cámara) se rehace el codificador con el tamaño nuevo;
+ *  - el espejo lo pone el que recibe (calls_ui.js, con la cámara de delante del otro: lo sabe por su estado 'c'), no
+ *    los píxeles: así se puede quitar (Perfil) y lo que se enseña a la cámara de detrás nunca sale al revés;
+ *  - el que recibe dibuja la imagen con su forma (calls_ui.js la muestra entera o a toda la pantalla según quepa;
+ *    dos toques para cambiarlo);
+ *  - una imagen completa cada 5 s (antes cada 2 s; si falta una, el otro la pide igual: menos datos y batería);
+ *  - codificador en modo tiempo real (latencyMode 'realtime': menos trabajo por imagen, menos batería).
+ * Ronda 2772 (pedido del dueño: "filtros" en el micrófono y "si uno habla, el micrófono del otro se baja un
+ * porcentaje"): la voz que sale pasa por call_voice_fx.js (paso alto, bajar el micrófono mientras suena el otro salvo
+ * que se hable a la vez, puerta de ruido y limitador; opts.voiceFx, lo pone ble_interface.js). Lo que suena del otro se
+ * le avisa con su nivel y su hora en el reloj del audio. Opus en modo voz ('voip', complejidad 5: menos batería).
+ * Ronda 2772 (eco): primero se abre el micrófono y después la salida de audio. Chrome pone el teléfono en modo
+ * llamada al abrir el micrófono y solo la salida creada después va como voz de llamada; la de antes iba como música y el
+ * cancelador de eco del teléfono podía no tenerla en cuenta. Con cascos o Bluetooth no se baja el micrófono (no hay eco).
  */
 var VW = 320, VH = 240, FPS = 15;
+var VLONG = 480;                               // ronda 2772: lado largo de la imagen que se manda (la otra, según la cámara)
 var RATE = 48000;
 var PACKET_MS = 100;
 // Ronda 2769
@@ -30,6 +50,19 @@ var WATCH_MS = 1000;
 var NO_FRAMES_MS = 2000;                       // cámara abierta sin imágenes: se reanuda; el doble: se vuelve a abrir
 var STALL_MS = 3000;                           // llega vídeo del otro pero no sale imagen
 var KEY_REQ_MS = 1500;                         // pedir imagen completa al otro, como mucho cada 1,5 s
+
+// Ronda 2772: Opus en modo voz si el navegador lo admite (si no, como antes)
+var OPUS_BASE = { codec: 'opus', sampleRate: RATE, numberOfChannels: 1, bitrate: 16000 };
+var _opusCfgP = null;
+function _opusConfig() {
+  if (!_opusCfgP) {
+    var rich = Object.assign({}, OPUS_BASE, { opus: { application: 'voip', signal: 'voice', complexity: 5 } });
+    _opusCfgP = window.AudioEncoder && typeof window.AudioEncoder.isConfigSupported === 'function'
+      ? Promise.resolve(window.AudioEncoder.isConfigSupported(rich)).then(function(r) { return r && r.supported ? rich : OPUS_BASE; }, function() { return OPUS_BASE; })
+      : Promise.resolve(OPUS_BASE);
+  }
+  return _opusCfgP;
+}
 
 function _hasOpus() {
   if (typeof window.AudioEncoder !== 'function' || typeof window.AudioDecoder !== 'function') return Promise.resolve(false);
@@ -98,6 +131,7 @@ export function createCallMedia(opts) {
   window.NEXO_callAudioStats = { samples: 0, seconds: 0, energy: 0 }; // por llamada
   var media;
   var ctx = null, stream = null, src = null, proc = null, enc = null, dec = null, codec = 0, muted = false;
+  var vfx = null, opusCfg = OPUS_BASE, aecInfo = ''; // ronda 2772: filtros de voz (call_voice_fx.js), Opus, cancelador de eco
   var pending = [], pendingSince = 0, playAt = 0, ts = 0, decTs = 0, lastSentAt = 0;
   var ulawBuf = [];
   // Ronda 2761: para el diagnóstico (calls.js lo escribe cada 5 s): nivel del micrófono y audio reproducido
@@ -143,6 +177,8 @@ export function createCallMedia(opts) {
     if (playAt > now + 0.6) return; // ronda 2768: demasiado adelantado (ráfaga tras un atasco): se descarta (antes sonaban varios a la vez)
     if (playAt < now + 0.05) playAt = now + 0.15; // colchón
     s.start(playAt);
+    // Ronda 2772: el filtro del micrófono sabe cuándo y cuán fuerte suena el otro (para bajar su eco)
+    if (vfx) try { vfx.far(Math.sqrt(e2 / (f32.length || 1)), playAt, playAt + buf.duration); } catch (e) {}
     playAt += buf.duration;
   }
 
@@ -162,7 +198,8 @@ export function createCallMedia(opts) {
     return attempt();
   }
   function openCamStream(f) {
-    return gum({ video: { width: { ideal: VW }, height: { ideal: VH }, frameRate: { ideal: FPS }, facingMode: f } }, 'Cámara ocupada').catch(function(e) {
+    // Ronda 2772: sin recortes ni estirados del navegador (antes 320x240 "ideal": en vertical recortaba la imagen)
+    return gum({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: FPS }, facingMode: f, resizeMode: 'none' } }, 'Cámara ocupada').catch(function(e) {
       if (e && (e.name === 'OverconstrainedError' || e.name === 'ConstraintNotSatisfiedError')) return gum({ video: { facingMode: f } }, 'Cámara ocupada');
       throw e;
     });
@@ -172,7 +209,11 @@ export function createCallMedia(opts) {
   function setupAudio() {
     var AC = window.AudioContext || window.webkitAudioContext;
     ctx = new AC({ sampleRate: RATE });
+    if (typeof opts.voiceFx === 'function') try { vfx = opts.voiceFx({ rate: RATE }); } catch (e) { vfx = null; }
     proc = ctx.createScriptProcessor(2048, 1, 1);
+    // Ronda 2772: el micrófono ya está abierto (va antes): se conecta aquí
+    var at0 = stream && stream.getAudioTracks()[0];
+    if (at0 && at0.readyState === 'live') { try { src = ctx.createMediaStreamSource(new MediaStream([at0])); src.connect(proc); } catch (e) {} }
     if (codec === 1) makeAudioEncoder();
     proc.onaudioprocess = function(ev) {
       if (stopped) return;
@@ -181,6 +222,8 @@ export function createCallMedia(opts) {
       var data = muted ? new Float32Array(inp.length) : new Float32Array(inp);
       var e1 = 0; for (var q = 0; q < inp.length; q++) e1 += inp[q] * inp[q];
       e1 = Math.sqrt(e1 / (inp.length || 1)); mic.blocks++; mic.energy += e1; if (e1 > mic.peak) mic.peak = e1;
+      // Ronda 2772: filtros de voz (el bloque acaba de grabarse: termina "ahora" en el reloj del audio)
+      if (vfx && !muted) try { var tEnd = ctx.currentTime; vfx.process(data, tEnd - data.length / RATE, tEnd); } catch (e) {}
       if (codec === 1) {
         try {
           var ad = new window.AudioData({ format: 'f32', sampleRate: RATE, numberOfFrames: data.length, numberOfChannels: 1, timestamp: ts, data: data });
@@ -206,7 +249,7 @@ export function createCallMedia(opts) {
       output: function(chunk) { var b = new Uint8Array(chunk.byteLength); chunk.copyTo(b); queueFrame(b); },
       error: function(e) { if (me === enc && ++mic.encErr <= 5) console.warn('[CALL] Opus: ' + (e && e.message) + ': se rehace'); }
     });
-    enc.configure({ codec: 'opus', sampleRate: RATE, numberOfChannels: 1, bitrate: 16000 });
+    enc.configure(opusCfg); // ronda 2772: en modo voz si se puede (_opusConfig)
   }
 
   function openMic(first) {
@@ -219,6 +262,8 @@ export function createCallMedia(opts) {
       if (!t) { _stopAll(s); throw Object.assign(new Error('sin micrófono'), { name: 'NotFoundError' }); }
       stream.getAudioTracks().forEach(function(o) { stream.removeTrack(o); try { o.stop(); } catch (e) {} });
       stream.addTrack(t);
+      // Ronda 2772: ¿el teléfono tiene su propio cancelador de eco? (para el diagnóstico)
+      try { var cps = t.getCapabilities ? t.getCapabilities() : {}, sts = t.getSettings ? t.getSettings() : {}; aecInfo = String(sts.echoCancellation) + (cps.echoCancellation ? ' (puede: ' + [].concat(cps.echoCancellation).join('/') + ')' : ''); } catch (e) {}
       try { if (src) src.disconnect(); } catch (e) {}
       if (ctx) { src = ctx.createMediaStreamSource(new MediaStream([t])); src.connect(proc); }
       micErr = ''; micNextTry = 0;
@@ -270,6 +315,16 @@ export function createCallMedia(opts) {
     try { var pp = localV.play(); if (pp && pp.catch) pp.catch(function() {}); } catch (e) {}
   }
 
+  // Ronda 2772: tamaño de la imagen que se manda: la forma de la cámara (vertical u horizontal) con el lado largo en
+  // VLONG (sin cámara aún, el de antes); el VP8 pide medidas pares
+  function sendSize() {
+    var sw = localV && localV.videoWidth, sh = localV && localV.videoHeight;
+    if (!sw || !sh) return { w: VW, h: VH };
+    var k = Math.min(1, VLONG / Math.max(sw, sh));
+    return { w: Math.max(2, Math.round(sw * k / 2) * 2), h: Math.max(2, Math.round(sh * k / 2) * 2) };
+  }
+  function _vbitrate(w, h) { return Math.round(Math.max(300000, Math.min(600000, w * h * FPS * 0.16))); }
+
   var vencMadeAt = 0;
   function makeEncoder() {
     vencMadeAt = Date.now();
@@ -282,7 +337,8 @@ export function createCallMedia(opts) {
       },
       error: function(e) { if (me === venc) { vstats.encErr++; if (vstats.encErr <= 5) console.warn('[CALL] Vídeo (codificar): ' + (e && e.message) + ': se rehace'); } }
     });
-    venc.configure({ codec: 'vp8', width: VW, height: VH, bitrate: 300000, framerate: FPS });
+    var w = vcanvas ? vcanvas.width : VW, h = vcanvas ? vcanvas.height : VH;
+    venc.configure({ codec: 'vp8', width: w, height: h, bitrate: _vbitrate(w, h), framerate: FPS, latencyMode: 'realtime' });
     forceKey = true;
   }
 
@@ -290,11 +346,14 @@ export function createCallMedia(opts) {
     if (stopped || !camOn) return;
     if (!venc || venc.state === 'closed') { if (Date.now() - vencMadeAt > 1000) makeEncoder(); return; } // ronda 2769: falló: uno nuevo (como mucho uno por segundo)
     if (venc.state !== 'configured' || !localV || localV.readyState < 2 || venc.encodeQueueSize > 3) return;
+    // Ronda 2772: la cámara cambió de forma o de tamaño (al abrir, girar el teléfono, la otra cámara): codificador nuevo
+    var sz = sendSize();
+    if (sz.w !== vcanvas.width || sz.h !== vcanvas.height) { vcanvas.width = sz.w; vcanvas.height = sz.h; makeEncoder(); return; }
     var f = null;
     try {
-      vctx.drawImage(localV, 0, 0, VW, VH);
+      vctx.drawImage(localV, 0, 0, vcanvas.width, vcanvas.height);
       f = new window.VideoFrame(vcanvas, { timestamp: Math.round(vN * 1e6 / FPS) });
-      venc.encode(f, { keyFrame: forceKey || vN % (FPS * 2) === 0 }); vN++; forceKey = false;
+      venc.encode(f, { keyFrame: forceKey || vN % (FPS * 5) === 0 }); vN++; forceKey = false; // ronda 2772: completa cada 5 s
       lastFrameAt = Date.now(); vstats.frames++;
     } catch (e) {}
     try { if (f) f.close(); } catch (e) {}
@@ -380,14 +439,15 @@ export function createCallMedia(opts) {
     localVideo: null,
     remoteCanvas: null,
     start: function() {
-      return _hasOpus().then(function(opus) {
-        codec = opus && peerCodecs.indexOf('opus') >= 0 ? 1 : 2;
+      return Promise.all([_hasOpus(), _opusConfig()]).then(function(r) {
+        codec = r[0] && peerCodecs.indexOf('opus') >= 0 ? 1 : 2;
+        opusCfg = r[1] || OPUS_BASE;
         if (stopped) return false;
         stream = new MediaStream([]);
-        setupAudio();
         watchTimer = setInterval(watch, WATCH_MS);
-        // Ronda 2769: primero el micrófono y luego la cámara, por separado (antes juntos: si la cámara fallaba, sin voz)
-        return openMic(true);
+        // Ronda 2769: primero el micrófono y luego la cámara, por separado (antes juntos: si la cámara fallaba, sin voz).
+        // Ronda 2772: y el audio de salida después del micrófono (ver arriba: eco); sin micrófono, igual (se oye al otro)
+        return openMic(true).then(function(ok) { if (!stopped) setupAudio(); return ok; });
       }).then(function(micOk) {
         var info = { codec: codec === 1 ? 'opus' : 'ulaw', mic: !!micOk, micError: micOk ? '' : micErr, video: false };
         if (stopped || !wantVideo) { if (!wantVideo) setState('none'); return info; }
@@ -406,7 +466,15 @@ export function createCallMedia(opts) {
       if (!vdec) {
         var rctx = media.remoteCanvas.getContext('2d');
         var d = vdec = new window.VideoDecoder({
-          output: function(frame) { try { rctx.drawImage(frame, 0, 0, media.remoteCanvas.width, media.remoteCanvas.height); } catch (e) {} frame.close(); vstats.decoded++; lastDecodedAt = Date.now(); },
+          output: function(frame) {
+            try {
+              // Ronda 2772: la imagen del otro con su forma (vertical u horizontal), sin estirarla a 320x240
+              var c = media.remoteCanvas, fw = frame.displayWidth, fh = frame.displayHeight;
+              if (fw && fh && (c.width !== fw || c.height !== fh)) { c.width = fw; c.height = fh; }
+              rctx.drawImage(frame, 0, 0, c.width, c.height);
+            } catch (e) {}
+            frame.close(); vstats.decoded++; lastDecodedAt = Date.now();
+          },
           error: function(e) { if (d !== vdec) return; vstats.decErr++; console.warn('[CALL] Vídeo (recibir): ' + (e && e.message) + ': se rehace'); resetDecoder(); needKey('fallo al decodificar'); }
         });
         vdec.configure({ codec: 'vp8' });
@@ -484,6 +552,8 @@ export function createCallMedia(opts) {
       }
     },
     mute: function(on) { muted = !!on; },
+    // Ronda 2772: con cascos o Bluetooth no hay eco del altavoz: no se baja el micrófono
+    headset: function(on) { if (vfx && vfx.setHeadset) vfx.setHeadset(!!on); },
     // Para el diagnóstico: estado del audio, micrófono (nivel medio y pico, 0–1) y lo reproducido del otro; ronda 2769:
     // estado de las pistas, de la cámara y del vídeo de los dos sentidos
     stats: function() {
@@ -492,11 +562,15 @@ export function createCallMedia(opts) {
       var trk = function(t) { return t ? (t.readyState !== 'live' ? 'cortada' : t.muted ? 'muda' : t.enabled ? 'viva' : 'apagada') : 'no'; };
       var out = { ctx: ctx ? ctx.state : 'sin audio', codec: codec === 1 ? 'opus' : codec === 2 ? 'ulaw' : '?', micLevel: mic.blocks ? mic.energy / mic.blocks : 0, micPeak: mic.peak,
         playedS: st.seconds || 0, playedLevel: st.samples ? Math.sqrt(st.energy / st.samples) : 0, mic: !!(at && at.readyState === 'live' && at.enabled && !at.muted),
-        micTrack: trk(at), micState: micState, micErr: micErr, micReopens: micReopens };
+        micTrack: trk(at), micState: micState, micErr: micErr, micReopens: micReopens, fx: vfx ? vfx.stats() : null, aec: aecInfo,
+        opus: codec === 1 ? (opusCfg.opus ? 'voz' : 'normal') : '' };
       if (wantVideo || rxVideoAt) {
         out.video = { cam: wantVideo ? camState : 'none', track: trk(vt), local: localV ? localV.readyState : -1, enc: venc ? venc.state : 'no', frames: vstats.frames,
           sent: vstats.sent, keys: vstats.keys, decoded: vstats.decoded, dec: vdec ? vdec.state : 'no', keyReq: vstats.keyReq, encErr: vstats.encErr,
-          decErr: vstats.decErr, err: camErr, reopens: camReopens, facing: facing };
+          decErr: vstats.decErr, err: camErr, reopens: camReopens, facing: facing,
+          // ronda 2772: tamaños (cámara → lo que se manda; lo que llega del otro)
+          camSize: localV && localV.videoWidth ? localV.videoWidth + 'x' + localV.videoHeight : '', size: vcanvas ? vcanvas.width + 'x' + vcanvas.height : '',
+          rxSize: media.remoteCanvas && lastDecodedAt ? media.remoteCanvas.width + 'x' + media.remoteCanvas.height : '' };
       }
       return out;
     },

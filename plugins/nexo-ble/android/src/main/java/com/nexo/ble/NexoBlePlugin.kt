@@ -106,6 +106,8 @@ class NexoBlePlugin : Plugin() {
         private const val KEEPALIVE_INTERVAL_MS = 10000L
         private const val MTU_REQUEST = 512
         private const val BG_NOTIFY_DELAY_MS = 4000L
+        private const val RX_WAKE_MS = 15000L // ronda 2772: despierto tras recibir con la app en segundo plano (rxWake)
+        private val RX_EVENTS = setOf("onPayloadReceived", "onLanMessage", "onTorMessage", "onWifiDirectReceived", "onBigProgress", "onBigDone")
         private const val MAX_QUEUE_SIZE = 500
         // === FIX F0: Pacing conservador para evitar saturación del stack BLE nativo ===
         private const val WRITE_DELAY_MS = 40L               // Client writes: 40ms entre operaciones
@@ -499,7 +501,47 @@ class NexoBlePlugin : Plugin() {
     // Con la app cerrada no hay a quién avisar (el puente con la app ya no existe)
     override fun notifyListeners(eventName: String?, data: JSObject?, retainUntilConsumed: Boolean) {
         if (closedMode) return
+        // Ronda 2772: llega un mensaje con la app en segundo plano (o la pantalla apagada): despierto 15 s (rxWake)
+        if (appInBackground && eventName != null && eventName in RX_EVENTS) rxWake()
         super.notifyListeners(eventName, data, retainUntilConsumed)
+    }
+
+    // ===== Ronda 2772: recibir con la pantalla apagada (informe del dueño: "aunque ambos teléfonos tienen Wi-Fi, si mando
+    // un mensaje y el otro tiene la pantalla apagada no llegan los mensajes, y lo mismo con las notificaciones") =====
+    // Con la pantalla apagada el teléfono duerme en cuanto nada lo mantiene despierto: el paquete que llega lo despierta
+    // un instante (lo justo para leerlo) y la app no llegaba a descifrarlo, confirmarlo (✓✓) ni avisar; el aviso de
+    // respaldo (BG_NOTIFY_DELAY_MS, Handler.postDelayed) usa un reloj que no avanza dormido: salía al encender la
+    // pantalla. Ahora, al llegar un mensaje con la app en segundo plano, el teléfono se queda despierto 15 s (se renueva
+    // con cada mensaje). Android lo permite en reposo (Doze) a las apps con servicio en primer plano (BleService); Google
+    // Play vigila que no pase de 2 h al día: aquí son 15 s por mensaje. Reproducido en tests/sim/notify.js (fase 1c).
+    private var rxWakeLock: android.os.PowerManager.WakeLock? = null
+    @Volatile private var rxWakes = 0
+    @Synchronized private fun rxWake() {
+        val ctx = appCtx ?: return
+        try {
+            val wl = rxWakeLock ?: (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+                .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "nexo:recibir").also { it.setReferenceCounted(false); rxWakeLock = it }
+            wl.acquire(RX_WAKE_MS)
+            rxWakes++
+        } catch (e: Exception) { Log.w(TAG, "Despertar al recibir: ${e.message}") }
+    }
+
+    // Ronda 2772: estado de energía para el diagnóstico (lo que puede impedir recibir con la pantalla apagada)
+    private fun energyLog(why: String) {
+        try {
+            val ctx = appCtx ?: return
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val sb = StringBuilder("$why: segundo plano permitido ").append(if (pm.isIgnoringBatteryOptimizations(ctx.packageName)) "sí" else "NO")
+                .append(", reposo del sistema ").append(if (pm.isDeviceIdleMode) "sí" else "no")
+            if (Build.VERSION.SDK_INT >= 28) {
+                val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val b = (ctx.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager).appStandbyBucket
+                sb.append(", restringida por el sistema ").append(if (am.isBackgroundRestricted) "SÍ" else "no")
+                    .append(", grupo ").append(when (b) { 5 -> "exenta"; 10 -> "activa"; 20 -> "de uso"; 30 -> "frecuente"; 40 -> "rara"; 45 -> "RESTRINGIDA"; else -> "$b" })
+            }
+            sb.append(", despertares por mensajes ").append(rxWakes).append(", fabricante ").append(Build.MANUFACTURER)
+            remLog("INFO", "ENERGIA", sb.toString())
+        } catch (e: Exception) { }
     }
 
     // Ronda 2763: nombre de un grupo (nexo_groups.json, cifrado en reposo) para el aviso con la app cerrada
@@ -634,6 +676,7 @@ class NexoBlePlugin : Plugin() {
         try { netBgShared?.stop() } catch (e: Exception) { }
         checkNotificationIntent()
         remLog("INFO", "LIFECYCLE", "handleOnResume")
+        energyLog("Al volver")
         val ctx = activity.applicationContext
         val granted = checkCoreBLEPermissions(ctx)
         if (granted) {
@@ -650,6 +693,7 @@ class NexoBlePlugin : Plugin() {
         super.handleOnPause()
         remLog("INFO", "LIFECYCLE", "handleOnPause")
         appInBackground = true
+        energyLog("En segundo plano")
         // La app deja de estar a la vista: la escucha nativa de internet toma el relevo (la app la reconfigura al
         // ocultarse con lo último que vio)
         mainHandler.postDelayed({ if (appInBackground) try { netBg().start() } catch (e: Exception) { } }, 3000)
@@ -2392,15 +2436,39 @@ class NexoBlePlugin : Plugin() {
         val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         val battery = pm.isIgnoringBatteryOptimizations(ctx.packageName)
         call.resolve(JSObject().put("notifications", notif).put("fullScreen", full).put("battery", battery)
-            .put("wakeOnMessage", MsgNotifier.get(ctx).wakeOnMsg()))
+            .put("wakeOnMessage", MsgNotifier.get(ctx).wakeOnMsg()).put("vendor", Build.MANUFACTURER.lowercase()))
     }
     @PluginMethod
     fun setWakeOnMessage(call: PluginCall) { MsgNotifier.get(context).setWakeOnMsg(call.getBoolean("on", true) == true); call.resolve() }
-    // Abre el ajuste del sistema que falta: what = notifications | fullScreen | battery
+    // Abre el ajuste del sistema que falta: what = notifications | fullScreen | battery | vendor
     @PluginMethod
     fun openAlertSetting(call: PluginCall) {
         val ctx = context
         val pkg = android.net.Uri.parse("package:" + ctx.packageName)
+        // Ronda 2772: ajustes propios del fabricante para dejar a NEXO en segundo plano (Vivo: inicio automático y alto
+        // consumo en segundo plano; Samsung: batería; Xiaomi, Oppo, Huawei: inicio automático). Cada fabricante los
+        // esconde en un sitio; si ninguno abre, la ficha de la app
+        if (call.getString("what") == "vendor") {
+            val m = Build.MANUFACTURER.lowercase()
+            val comps = when {
+                m.contains("vivo") || m.contains("iqoo") -> listOf("com.vivo.permissionmanager/.activity.BgStartUpManagerActivity",
+                    "com.iqoo.secure/.ui.phoneoptimize.AddWhiteListActivity", "com.iqoo.secure/.ui.phoneoptimize.BgStartUpManager")
+                m.contains("samsung") -> listOf("com.samsung.android.lool/com.samsung.android.sm.ui.battery.BatteryActivity")
+                m.contains("xiaomi") || m.contains("redmi") || m.contains("poco") -> listOf("com.miui.securitycenter/com.miui.permcenter.autostart.AutoStartManagementActivity")
+                m.contains("oppo") || m.contains("realme") || m.contains("oneplus") -> listOf("com.coloros.safecenter/.permission.startup.StartupAppListActivity")
+                m.contains("huawei") || m.contains("honor") -> listOf("com.huawei.systemmanager/.startupmgr.ui.StartupNormalAppListActivity")
+                else -> emptyList()
+            }
+            for (cn in comps) {
+                try {
+                    activity.startActivity(Intent().setComponent(android.content.ComponentName.unflattenFromString(cn)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    call.resolve(JSObject().put("opened", true).put("screen", cn)); return
+                } catch (e: Exception) { }
+            }
+            try { activity.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); call.resolve(JSObject().put("opened", true).put("fallback", true)) }
+            catch (e: Exception) { call.resolve(JSObject().put("opened", false)) }
+            return
+        }
         val i = when (call.getString("what")) {
             "battery" -> Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
             "fullScreen" -> if (Build.VERSION.SDK_INT >= 34) Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg) else null
@@ -2543,12 +2611,13 @@ class NexoBlePlugin : Plugin() {
         val token = call.getString("token") ?: run { call.reject("token requerido"); return }
         try {
             lanMyId = nx
+            // (ronda 2772: tiempos con elapsedRealtime, que cuenta con el teléfono dormido; ver LanHub.tick)
             val hub = lanHub ?: LanHub({ lanMyId }, object : LanHub.Listener {
                 override fun onUp(nx: String) { remLog("INFO", "LAN", "Conectado con $nx por Wi-Fi"); notifyListeners("onLanUp", JSObject().put("nx", nx), true) }
                 override fun onDown(nx: String) { remLog("INFO", "LAN", "Sin Wi-Fi con $nx"); notifyListeners("onLanDown", JSObject().put("nx", nx), true) }
                 override fun onMessage(nx: String, text: String) { backgroundNotify(text); notifyListeners("onLanMessage", JSObject().put("nx", nx).put("content", text), true) }
                 override fun onLog(level: String, message: String) { remLog(level, "LAN", message) }
-            }).also { lanHub = it }
+            }, clock = { android.os.SystemClock.elapsedRealtime() }).also { lanHub = it }
             val port = hub.start()
             // Escaneo activo: pregunta a toda la red (difusión) y, de vez en cuando o al entrar en una red, una a una
             val beacon = lanBeacon ?: LanBeacon(object : LanBeacon.Listener {
@@ -2751,7 +2820,7 @@ class NexoBlePlugin : Plugin() {
                     override fun onDown(nx: String) { notifyListeners("onTorDown", JSObject().put("nx", nx), true) }
                     override fun onMessage(nx: String, text: String) { notifyListeners("onTorMessage", JSObject().put("nx", nx).put("content", text), true) }
                     override fun onLog(level: String, message: String) { remLog(level, "TOR", message) }
-                }, 15000L, 90000L, proxy, java.net.InetAddress.getByName("127.0.0.1")).also { torHub = it }
+                }, 15000L, 90000L, proxy, java.net.InetAddress.getByName("127.0.0.1"), { android.os.SystemClock.elapsedRealtime() }).also { torHub = it }
                 val port = hub.start()
                 // Servicio oculto: misma dirección siempre (clave guardada cifrada)
                 val saved = try { atRest().read(TOR_KEY_FILE)?.let { org.json.JSONObject(it).optString("k") } } catch (e: Exception) { null }

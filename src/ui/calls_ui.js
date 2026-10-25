@@ -73,6 +73,9 @@ function _audioMode(on) {
       // tiene el foco de audio (la música de otra app se para)
       if (on && r) console.log('[CALL] Sonido del teléfono: ' + (r.device || (r.speakerOn ? 'altavoz' : 'auricular')) + ', volumen llamada ' + (r.volCall || '?') + ', multimedia ' + (r.volMedia || '?') +
         (r.fgs ? '; en segundo plano: ' + r.fgs : '') + (r.focus ? '; foco de audio: ' + r.focus : ''));
+      // Ronda 2772: con cascos o Bluetooth no hay eco del altavoz: los filtros no bajan el micrófono
+      var cm = on && r && _calls() && _calls().call && _calls().call.media;
+      if (cm && typeof cm.headset === 'function') cm.headset(r.device === 'cascos' || r.device === 'Bluetooth');
     }).catch(function(e) { console.warn('[CALL] Modo llamada: ' + (e && e.message)); });
   } catch (e) {}
 }
@@ -133,7 +136,10 @@ function _style() {
     '#nexo-call-screen .call-remote-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:1}',
     '#nexo-call-screen .call-local-video{object-fit:cover;background:#1a1b2e}',
     '#nexo-call-screen .nc-pip{position:absolute;z-index:4;width:104px;height:148px;border-radius:16px;border:2px solid rgba(255,255,255,.75);box-shadow:0 8px 26px rgba(0,0,0,.5);touch-action:none;transition:left .22s,top .22s}',
-    '#nexo-call-screen .nc-full{position:absolute;inset:0;width:100%;height:100%;z-index:1;border-radius:0;border:none}',
+    '#nexo-call-screen .nc-full{position:absolute;inset:0;width:100%;height:100%;z-index:1;border-radius:0;border:none;object-fit:contain}',
+    // Ronda 2772 (informe del dueño: "la imagen se ve muy cerca"): la imagen grande se ve entera salvo que a toda la
+    // pantalla se vea casi toda (≥ 78 %); dos toques, al revés
+    '#nexo-call-screen.nc-fill .nc-full{object-fit:cover}',
     '#nexo-call-screen.nc-video .nc-top{background:linear-gradient(rgba(0,0,0,.6),transparent)}',
     '#nexo-call-screen.nc-video .nc-bottom{background:linear-gradient(transparent,rgba(0,0,0,.5))}',
     '#nexo-call-screen.nc-video.nc-live .nc-center{opacity:0;pointer-events:none}',
@@ -166,6 +172,17 @@ function _screen() {
     if (!el.classList.contains('nc-live') || (e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip'))) return;
     el.classList.toggle('nc-hide');
     _autoHide(el);
+  });
+  // Ronda 2772: dos toques en la imagen grande: entera (cabe en la pantalla) ↔ a toda la pantalla (se recorta). El
+  // doble toque se mira también a mano (no todos los WebView mandan dblclick); un cambio por doble toque
+  var lastTap = 0, lastFill = 0;
+  var onVideo = function(e) { return el.classList.contains('nc-live') && !(e.target && e.target.closest && e.target.closest('.nc-btn, .nc-pip')); };
+  var fill = function() { var now = Date.now(); if (now - lastFill < 250) return; lastFill = now; _fit.user = el.classList.contains('nc-fill') ? 'fit' : 'fill'; el.classList.toggle('nc-fill', _fit.user === 'fill'); };
+  el.addEventListener('dblclick', function(e) { if (onVideo(e)) fill(); });
+  el.addEventListener('pointerup', function(e) {
+    if (e.pointerType !== 'touch' || !onVideo(e)) return;
+    var now = Date.now();
+    if (now - lastTap < 350) { lastTap = 0; fill(); } else lastTap = now;
   });
   document.body.appendChild(el);
   return el;
@@ -224,6 +241,20 @@ function _makeDraggable(el, node) {
   node.addEventListener('click', function(e) { e.stopPropagation(); });
 }
 
+// Ronda 2772: ¿la imagen grande llena la pantalla? Sí si así se ve al menos el 78 % de ella (si no, se ve entera con
+// bandas: en vertical, una imagen 3:4 en un teléfono alargado solo enseñaría el 62 %); dos toques lo cambian
+var _fit = { user: null };
+function _autoFill(el, node) {
+  var w = node && (node.videoWidth || node.width), h = node && (node.videoHeight || node.height), W = el.clientWidth, H = el.clientHeight;
+  if (!w || !h || !W || !H) return false;
+  var k = Math.max(W / w, H / h);
+  return Math.min(1, W / (w * k)) * Math.min(1, H / (h * k)) >= 0.78;
+}
+// Ronda 2772 (pedido del dueño: ver al otro como en un espejo): con su cámara de delante, la imagen del otro se pone en
+// espejo aquí (como uno se ve a sí mismo); se quita en Perfil. Su cámara de detrás, nunca.
+export function mirrorPeerPref() { try { return localStorage.getItem('nexo_call_mirror') !== '0'; } catch (e) { return true; } }
+export function setMirrorPeerPref(on) { try { localStorage.setItem('nexo_call_mirror', on ? '1' : '0'); } catch (e) {} }
+
 // Videollamada: la imagen del otro a pantalla completa y la propia pequeña (o al revés si se tocó la pequeña)
 function _videoLayout(el, st) {
   var calls = _calls();
@@ -235,6 +266,8 @@ function _videoLayout(el, st) {
   if (big) { big.classList.remove('nc-pip'); big.classList.add('nc-full'); big.style.left = ''; big.style.top = ''; }
   if (small) { small.classList.remove('nc-full'); small.classList.add('nc-pip'); _placePip(el, small); _makeDraggable(el, small); }
   if (v.local) v.local.style.transform = (st.facing || 'user') === 'user' ? 'scaleX(-1)' : 'none'; // la de delante, como un espejo
+  if (v.remote) v.remote.style.transform = st.peerFront === true && mirrorPeerPref() ? 'scaleX(-1)' : 'none';
+  el.classList.toggle('nc-fill', _fit.user ? _fit.user === 'fill' : _autoFill(el, big));
   if (v.local) v.local.style.visibility = st.cameraOff || (st.camState && st.camState !== 'on') ? 'hidden' : '';
   el.classList.add('nc-live');
   // Ronda 2769: sin imagen del otro, su foto y el motivo (antes la pantalla quedaba negra)

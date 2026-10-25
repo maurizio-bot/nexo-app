@@ -115,6 +115,9 @@ class NativePhone {
   }
 
   emit(event, data) {
+    // Ronda 2772 (Kotlin rxWake): llega un mensaje con la app en segundo plano: el nativo mantiene el teléfono despierto
+    // 15 s para que la app lo descifre, lo confirme y avise (opts.noRxWake: el Kotlin de antes, sin esto)
+    if (NativePhone.RX_EVENTS.has(event) && this.appActive === false && !this.opts.noRxWake) this._rxWake();
     // Algunos teléfonos (el Vivo del dueño) congelan la app en segundo plano: lo que llega espera a que vuelva
     if (this.jsFrozen) { (this.frozenQ = this.frozenQ || []).push([event, data]); return; }
     const cbs = this.listeners.get(event) || [];
@@ -190,6 +193,30 @@ class NativePhone {
   setFrozen(on) {
     this.jsFrozen = !!on;
     if (!on && this.frozenQ) { const q = this.frozenQ; this.frozenQ = []; q.forEach(([e, d]) => this.emit(e, d)); }
+  }
+  // Ronda 2772 (informe del dueño: con Wi-Fi, si el otro tiene la pantalla apagada no llegan los mensajes ni los
+  // avisos): con la pantalla apagada el teléfono duerme salvo que algo lo mantenga despierto. Dormido, lo que llega
+  // espera (como con la app congelada) y los temporizadores del nativo no avanzan (Handler.postDelayed usa un reloj que
+  // se para al dormir: el aviso de respaldo de 4 s). Un paquete lo despierta solo un instante (lo justo para leerlo).
+  // Kotlin 2772: al recibir con la app en segundo plano, 15 s despierto (rxWake). (Los temporizadores del JS de jsdom
+  // siguen corriendo: en el teléfono también se pararían.)
+  setScreenOff(on) {
+    this.screenOff = !!on;
+    if (on && !this._sleepTimer) this._sleepTimer = setInterval(() => this._sleepTick(), 100);
+    this._sleepTick();
+  }
+  _awake() { return !this.screenOff || Date.now() < (this.rxWakeUntil || 0); }
+  _sleepTick() {
+    const asleep = !this._awake();
+    if (asleep && !this.cpuAsleep) { this.cpuAsleep = true; this.jsFrozen = true; this.stats.sleeps = (this.stats.sleeps || 0) + 1; }
+    else if (!asleep && this.cpuAsleep) { this.cpuAsleep = false; this.setFrozen(false); }
+    if (!this.screenOff && this._sleepTimer) { clearInterval(this._sleepTimer); this._sleepTimer = null; }
+  }
+  _rxWake() { this.rxWakeUntil = Date.now() + 15000; this.stats.rxWakes = (this.stats.rxWakes || 0) + 1; this._sleepTick(); }
+  // Temporizador del nativo (Handler.postDelayed): solo cuenta con el teléfono despierto
+  _uptimeTimeout(fn, ms) {
+    let left = ms, last = Date.now();
+    const iv = setInterval(() => { const now = Date.now(); if (this._awake()) left -= now - last; last = now; if (left <= 0) { clearInterval(iv); fn(); } }, 50);
   }
   setAppActive(active) {
     this.appActive = !!active;
@@ -518,7 +545,7 @@ class NativePhone {
     if (!info.msgId || info.quiet || (info.kind !== 'MESSAGE' && info.kind !== 'NOTIFY_ONLY')) return;
     // Kotlin 2763: una llamada suena ya (aviso de llamada del teléfono)
     if (info.call || info.what === 'call') { this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { bg: true }); return; }
-    setTimeout(() => {
+    this._uptimeTimeout(() => {
       if (this.appActive !== false || this.closedMode || (this.msgChat && this.msgChat.has(String(info.msgId)))) return;
       if (info.kind === 'MESSAGE') this._notifyMsg(info, { bg: true });
       else if (this._groupName(info.group)) { const who = this._notifName(info.from), w = NativePhone.whatText(info.what); this._postNotif(info.group, this._groupName(info.group), info.msgId, who !== 'NEXO' ? who + ': ' + (w || 'Mensaje nuevo') : w, { bg: true }); }
@@ -1099,7 +1126,7 @@ class NativePhone {
       clearCall: wrap('clearCall', (c) => { self.callNotif = null; c.resolve({}); }),
       // Kotlin 2765: avisos con la pantalla apagada (opts.alerts = { notifications, fullScreen, battery } para empezar sin
       // algún permiso; "Arreglar" lo concede como si el usuario lo aceptara en los ajustes)
-      alertSettings: wrap('alertSettings', (c) => { const a = Object.assign({ notifications: true, fullScreen: true, battery: true }, self.opts.alerts || {}, self.alertFix || {}); c.resolve(Object.assign({}, a, { wakeOnMessage: self.wakeOnMsg !== false })); }),
+      alertSettings: wrap('alertSettings', (c) => { const a = Object.assign({ notifications: true, fullScreen: true, battery: true }, self.opts.alerts || {}, self.alertFix || {}); c.resolve(Object.assign({}, a, { wakeOnMessage: self.wakeOnMsg !== false, vendor: self.opts.vendor || '' })); }), // (2772: fabricante)
       setWakeOnMessage: wrap('setWakeOnMessage', (c, a) => { self.wakeOnMsg = a.on !== false; c.resolve({}); }),
       openAlertSetting: wrap('openAlertSetting', (c, a) => { (self.alertOpened = self.alertOpened || []).push(a.what); self.alertFix = Object.assign({}, self.alertFix, { [a.what]: true }); c.resolve({ opened: true }); }),
       callScreenDone: wrap('callScreenDone', (c) => { self.overLock = false; c.resolve({}); }),
@@ -1164,5 +1191,8 @@ function installWebCrypto(win) {
   if (!win.TextEncoder) win.TextEncoder = util.TextEncoder;
   if (!win.TextDecoder) win.TextDecoder = util.TextDecoder;
 }
+
+// Ronda 2772: eventos que traen un mensaje (el nativo mantiene el teléfono despierto al recibirlos en segundo plano)
+NativePhone.RX_EVENTS = new Set(['onPayloadReceived', 'onLanMessage', 'onTorMessage', 'onWifiDirectReceived', 'onBigProgress', 'onBigDone']);
 
 module.exports = { Radio, NativePhone, norm, installWebCrypto };

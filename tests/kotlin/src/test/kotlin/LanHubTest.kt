@@ -112,6 +112,56 @@ class LanHubTest {
         s.close(); a.stop()
     }
 
+    // Ronda 2772 (pantalla apagada): el teléfono durmió más que el tiempo de corte (el hilo del latido no corrió, el reloj
+    // sí). Al despertar no cierra un enlace sano sin preguntar: manda un ping y, si el otro contesta, sigue
+    @Test fun alDespertarPreguntaAntesDeCerrar() {
+        var t = 1_000_000L
+        val ra = Rec(); val rb = Rec()
+        val a = LanHub({ "nxaaaaaaaa" }, ra, pingMs = 4_000L, deadMs = 30_000L, clock = { t }, autoPing = false)
+        val b = LanHub({ "nxbbbbbbbb" }, rb, pingMs = 4_000L, deadMs = 30_000L, autoPing = false)
+        a.start(); a.connect("127.0.0.1", b.start())
+        assertTrue(waitFor { a.isUp("nxbbbbbbbb") && b.isUp("nxaaaaaaaa") })
+        t += 60_000 // A durmió 60 s sin recibir nada
+        a.tick(t, 60_000)
+        assertTrue(a.isUp("nxbbbbbbbb"), "no cierra sin preguntar")
+        assertTrue(waitFor { a.quality().single().third < 1000 }, "el otro contesta al ping")
+        t += 4_000; a.tick(t, 4_000)
+        assertTrue(a.isUp("nxbbbbbbbb") && ra.down.isEmpty(), "sigue conectado")
+        a.stop(); b.stop()
+    }
+
+    // Ronda 2772: al despertar, si el otro no contesta dentro del margen, se cierra
+    @Test fun alDespertarSiNoContestaCierra() {
+        var t = 1_000_000L
+        val ra = Rec()
+        val a = LanHub({ "nxaaaaaaaa" }, ra, pingMs = 4_000L, deadMs = 30_000L, clock = { t }, autoPing = false)
+        val pa = a.start()
+        val s = Socket("127.0.0.1", pa) // saluda y no contesta nada más
+        val out = DataOutputStream(s.getOutputStream()); val h = """{"h":1,"nx":"nxcccccccc"}""".toByteArray(); out.writeInt(h.size); out.write(h); out.flush()
+        assertTrue(waitFor { a.isUp("nxcccccccc") })
+        t += 60_000; a.tick(t, 60_000)
+        assertTrue(a.isUp("nxcccccccc"), "primero pregunta")
+        t += 4_000; a.tick(t, 4_000)
+        assertTrue(a.isUp("nxcccccccc"), "dentro del margen sigue")
+        t += 5_000; a.tick(t, 4_000)
+        assertTrue(waitFor { ra.down.contains("nxcccccccc") }, "sin respuesta tras el margen: se cierra")
+        s.close(); a.stop()
+    }
+
+    // Despierto (sin dormir), lo de antes: el que no contesta en deadMs se cierra en la primera vuelta que lo ve
+    @Test fun despiertoSinRespuestaCierraEnSeguida() {
+        var t = 1_000_000L
+        val ra = Rec()
+        val a = LanHub({ "nxaaaaaaaa" }, ra, pingMs = 4_000L, deadMs = 30_000L, clock = { t }, autoPing = false)
+        val pa = a.start()
+        val s = Socket("127.0.0.1", pa)
+        val out = DataOutputStream(s.getOutputStream()); val h = """{"h":1,"nx":"nxdddddddd"}""".toByteArray(); out.writeInt(h.size); out.write(h); out.flush()
+        assertTrue(waitFor { a.isUp("nxdddddddd") })
+        repeat(8) { t += 4_000; a.tick(t, 4_000) } // 32 s despierto, cada 4 s, sin respuesta
+        assertTrue(waitFor { ra.down.contains("nxdddddddd") }, "cerrado sin margen")
+        s.close(); a.stop()
+    }
+
     @Test fun saludoFalsoOPropioSeRechaza() {
         val ra = Rec()
         val a = LanHub({ "nxaaaaaaaa" }, ra)

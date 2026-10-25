@@ -151,7 +151,8 @@ export class Calls {
   flipCamera() {
     var self = this, c = this.call;
     if (!c || !c.media || typeof c.media.flip !== 'function') return Promise.resolve(null);
-    return c.media.flip().then(function(f) { if (self.call === c) self._set({ facing: f }); return f; });
+    // (ronda 2772: el otro sabe enseguida si es la de delante, para ponerla en espejo o no)
+    return c.media.flip().then(function(f) { if (self.call === c) { self._set({ facing: f }); if (c.camState) self._sendState(c); } return f; });
   }
 
   mute(on) { var c = this.call; if (!c) return; c.muted = !!on; if (c.media && c.media.mute) c.media.mute(!!on); _emit('nexo:call', this.state()); }
@@ -202,7 +203,8 @@ export class Calls {
   // Ronda 2769: mi cámara y mi micrófono, para la pantalla del otro ('c', cifrado como la voz)
   _sendState(c) {
     c.stateAt = Date.now();
-    this._sendPacket(new TextEncoder().encode(JSON.stringify({ cam: c.camState || 'none', mic: c.micState || 'on' })), 'c');
+    // (ronda 2772: front = cámara de delante: el otro la ve en espejo, si lo tiene puesto)
+    this._sendPacket(new TextEncoder().encode(JSON.stringify({ cam: c.camState || 'none', mic: c.micState || 'on', front: (c.facing || 'user') === 'user' })), 'c');
   }
 
   // ¿Se ve la imagen del otro? (si no, la pantalla muestra su foto y el motivo en vez de negro)
@@ -216,7 +218,10 @@ export class Calls {
     console.log('[CALL] ' + (prefix || Math.round((Date.now() - c.startedAt) / 1000) + ' s') + ': voz enviada ' + st.sent + ', recibida ' + st.got +
       (st.bad ? ' (' + st.bad + ' ilegibles)' : '') + (st.sentKeep || st.gotKeep ? ', sin voz ("sigo aquí") enviados ' + (st.sentKeep || 0) + ' / recibidos ' + (st.gotKeep || 0) : '') + (c.video ? ', vídeo enviado ' + (st.sentV || 0) + ' / recibido ' + (st.gotV || 0) : '') +
       (m ? ', reproducido ' + Math.round(m.playedS) + ' s (nivel ' + pct(m.playedLevel) + '), micrófono ' + (m.mic ? 'activo' : 'NO') + ' nivel ' + pct(m.micLevel) +
-        ' pico ' + pct(m.micPeak) + ', audio ' + m.ctx + ', ' + m.codec + (c.peerCodecs ? ' (el otro: ' + c.peerCodecs + ')' : '') : ', sin audio') +
+        ' pico ' + pct(m.micPeak) + ', audio ' + m.ctx + ', ' + m.codec + (c.peerCodecs ? ' (el otro: ' + c.peerCodecs + ')' : '') +
+        // ronda 2772: filtros de voz: tiempo con el micrófono bajado por la voz del otro, hablando los dos, en silencio; eco medido
+        (m.fx ? ', filtros: bajado ' + pct(m.fx.duck) + ', los dos ' + pct(m.fx.dt) + ', silencio ' + pct(m.fx.gate) + ', eco ' + Math.round(20 * Math.log10(m.fx.echo || 1e-3)) + ' dB' + (m.fx.delayMs >= 0 ? ' a ' + m.fx.delayMs + ' ms' : '') + (m.fx.headset ? ', con cascos' : '') : '') +
+        (m.aec ? ', cancelador de eco ' + m.aec : '') + (m.opus ? ', Opus ' + m.opus : '') : ', sin audio') +
       ', por ' + (link ? (link.indexOf('lan:') === 0 ? 'Wi-Fi' : 'Bluetooth') : 'ningún camino'));
     // Ronda 2769: pistas y vídeo de los dos sentidos (para ver en el diagnóstico por qué no se ve o no se oye)
     if (m && (m.micTrack || m.video)) {
@@ -224,8 +229,8 @@ export class Calls {
       // (ronda 2771: "Estado", para no confundirla con los avisos "[CALL] Micrófono: <error>")
       console.log('[CALL] Estado: micrófono con pista ' + m.micTrack + (m.micErr ? ' (' + m.micErr + ')' : '') + (m.micReopens ? ', reabierto ' + m.micReopens : '') +
         (v ? '; cámara ' + v.cam + ', pista ' + v.track + (v.err ? ' (' + v.err + ')' : '') + ', imagen local ' + v.local + ', codificador ' + v.enc +
-          ', imágenes ' + v.frames + ' (completas ' + v.keys + ')' + (v.reopens ? ', reabierta ' + v.reopens : '') + (v.encErr ? ', fallos al codificar ' + v.encErr : '') +
-          '; del otro: decodificadas ' + v.decoded + ', decodificador ' + v.dec + (v.decErr ? ', fallos ' + v.decErr : '') + (v.keyReq ? ', pedidas completas ' + v.keyReq : '') +
+          ', imágenes ' + v.frames + ' (completas ' + v.keys + ')' + (v.size ? ' de ' + v.size + (v.camSize ? ' (cámara ' + v.camSize + ')' : '') : '') + (v.reopens ? ', reabierta ' + v.reopens : '') + (v.encErr ? ', fallos al codificar ' + v.encErr : '') +
+          '; del otro: decodificadas ' + v.decoded + (v.rxSize ? ' de ' + v.rxSize : '') + ', decodificador ' + v.dec + (v.decErr ? ', fallos ' + v.decErr : '') + (v.keyReq ? ', pedidas completas ' + v.keyReq : '') +
           (c.peerCam ? ', su cámara ' + c.peerCam : '') + (c.peerMic && c.peerMic !== 'on' ? ', su micrófono ' + c.peerMic : '') : ''));
     }
   }
@@ -286,7 +291,8 @@ export class Calls {
         var s2 = null;
         try { s2 = JSON.parse(new TextDecoder().decode(new Uint8Array(pt))); } catch (e) {}
         var okv = function(v) { return /^(on|off|retry|none)$/.test(String(v)) ? v : null; };
-        if (s2 && (okv(s2.cam) !== cc.peerCam || okv(s2.mic) !== cc.peerMic)) { cc.peerCam = okv(s2.cam); cc.peerMic = okv(s2.mic); _emit('nexo:call', self.state()); }
+        var front = s2 && typeof s2.front === 'boolean' ? s2.front : null; // ronda 2772 (las versiones anteriores no lo mandan)
+        if (s2 && (okv(s2.cam) !== cc.peerCam || okv(s2.mic) !== cc.peerMic || front !== cc.peerFront)) { cc.peerCam = okv(s2.cam); cc.peerMic = okv(s2.mic); cc.peerFront = front; _emit('nexo:call', self.state()); }
         return;
       }
       if (vid) { self.stats.gotV = (self.stats.gotV || 0) + 1; if (cc.media && cc.media.playVideo) cc.media.playVideo(new Uint8Array(pt)); return; }

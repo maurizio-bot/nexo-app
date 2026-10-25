@@ -191,7 +191,7 @@ comprar y vender cripto sí está regulado, el fraude no se puede deshacer y ace
 
 | Etapa | Cuándo | Qué | Cómo se mide |
 |---|---|---|---|
-| 0. Certeza técnica y salida | Hasta dic-2026 | Robustez (índice ≥ 70, `ROBUSTEZ.md`), pruebas con 3–4 teléfonos, auditoría externa, empresa constituida, búsqueda de marca, Google Play (política de privacidad, seguridad de datos, declaración financiera "ninguna"); pedir subvenciones (OTF, NLnet si hay licencia libre, OpenSats) | Mensajes entregados ≥ 99 %, sin cierres, primeras 1.000 instalaciones |
+| 0. Certeza técnica y salida | Hasta dic-2026 | Robustez (índice ≥ 70, `ROBUSTEZ.md`), pruebas con 3–4 teléfonos, auditoría externa, empresa constituida, búsqueda de marca, Google Play (política de privacidad, seguridad de datos, declaración financiera "ninguna"; la app debe apuntar a Android 16, target 36: hoy apunta a 34, ver `PENDIENTES.md` §3); pedir subvenciones (OTF, NLnet si hay licencia libre, OpenSats) | Mensajes entregados ≥ 99 %, sin cierres, primeras 1.000 instalaciones |
 | 1. Núcleos y cobros | Ene–mar 2027 | "Cobros" sin licencia; piloto de NEXO Negocios en 5–10 locales junto a una universidad (papelería, cafetería); botón "Apoya NEXO" | Locales activos, cobros por semana, usuarios que siguen a los 30 días |
 | 2. Ingresos | Abr–sep 2027 | NEXO Plus; NEXO Equipos (piloto en un evento y una obra); socio de pagos para comercios | % que paga Plus, usuarios de Equipos, comisión cobrada |
 | 3. Escala | 2028 | iPhone (sin él no hay adopción masiva), SDK, licencia propia de pagos si hace falta | Ingreso recurrente al mes |
