@@ -274,8 +274,8 @@ competencia (código de Chrome, WebRTC, Signal, Telegram y Android) y "mejor que
 - Pruebas nuevas en la batería: `videoframe.js`, `voicefx.js` y `notify.js --via=lan` (avisos por Wi-Fi: segundo plano,
   congelada, pantalla apagada y cerrada); la fase de pantalla apagada también en `--via=ble` y `--via=jump`;
   `callmedia.js` casos 21 (girar el teléfono) y 22 (eco); `alerts.js` (fila del fabricante). Llamadas de verdad en
-  Chromium (`calls_browser.js`: voz Opus, vídeo y μ-law) con los filtros: bien. Kotlin 71/71. Batería: ver la fila de
-  la 2772 en el historial.
+  Chromium (`calls_browser.js`: voz Opus, vídeo y μ-law) con los filtros: bien. Batería 50/50 (antes 47), Kotlin 71/71
+  (antes 68). Índice de robustez 44 (`ROBUSTEZ.md` §4).
 - No se puede comprobar aquí (en el teléfono): que el cancelador de eco del teléfono funcione mejor con la salida nueva;
   el consumo de batería; si el Vivo congela NEXO con la pantalla apagada aunque se mantenga despierto.
 

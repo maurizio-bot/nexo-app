@@ -6,7 +6,8 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 0. Robustez: medición y tareas diarias (pedido del dueño 25-10)
 `docs/ROBUSTEZ.md`: registro de la revisión 1 (24 y 25-10, builds 2766–2771: 63 fallos encontrados, 62 arreglados),
 índice de robustez (medición inicial **45,3 sobre 100**; lo que más baja: casi nada confirmado en los teléfonos desde la
-2765) y rutina diaria. **Siguiente: revisión 2, día 1 (avisos, segundo plano y app cerrada)**, después de lo que traiga
+2765) y rutina diaria. Con la 2772: **44** (arreglos del informe del dueño sin confirmar y 4 puntos débiles nuevos; si
+confirma videollamadas, llamadas y avisos: 53,5). **Siguiente: revisión 2, día 1 (avisos, segundo plano y app cerrada)**, después de lo que traiga
 el dueño de sus pruebas con la 2771.
 
 ## Reglas para elegir el camino de envío (decididas por el dueño, 23-10-2026; revisadas el 24-10-2026, build 2761)

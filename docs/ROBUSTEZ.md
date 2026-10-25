@@ -96,6 +96,7 @@ Una línea por medición (al terminar cada día de trabajo, con la batería del 
 | Fecha | Build | Batería | Índice | A | B | C | D | Nota |
 |---|---|---|---|---|---|---|---|---|
 | 25-10-2026 | 2771 | 47/47 | 45,3 | 23,9 | 6 | 12,9 | 2,5 | Medición inicial, al cerrar la revisión 1 |
+| 25-10-2026 | 2772 | 50/50 | 44 | 23,8 | 6 | 11,7 | 2,5 | Informe del dueño: 8 fallos arreglados (sin probar en teléfonos: B igual) y 4 puntos débiles nuevos que sacó la investigación (latido del Wi-Fi que gasta batería, audio en el hilo de la interfaz, sin DTX, copia de cada imagen por un lienzo): baja C. Si el dueño confirma videollamadas, llamadas y avisos: 53,5 |
 
 ## 5. Rutina diaria
 Cada día de trabajo, en este orden:
