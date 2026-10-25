@@ -59,7 +59,7 @@ const SCENARIOS = [
   { name: 'llamadas de voz (contestar, rechazar, sin respuesta, se corta)', args: ['calls.js', '--io-delay=25'], tag: 'CALLS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'suplantación: textos, archivos y llamadas sin cifrar de un teléfono ajeno que dice ser un contacto', args: ['spoof.js'], tag: 'SPOOF', checks: { resultado: (v) => v === 'OK' } },
   { name: 'llamadas: micrófono y cámara (al colgar, ocupados, cortados, sin imágenes, sin permiso; codificadores y decodificadores que fallan)', args: ['callmedia.js'], tag: 'CALLMEDIA', checks: { resultado: (v) => v === 'OK' } },
-  ...['rechazar-cerrada', 'rechazar-viva', 'contestar-viejo', 'cruce', 'reloj', 'oferta-vieja', 'bloqueo', 'repetida', 'wifi-uno', 'video-estado', 'sin-micro'].map((c) => (
+  ...['rechazar-cerrada', 'rechazar-viva', 'contestar-viejo', 'cruce', 'reloj', 'oferta-vieja', 'bloqueo', 'repetida', 'wifi-uno', 'video-estado', 'sin-micro', 'timbre'].map((c) => (
     { name: 'llamadas: ' + c, args: ['calls2.js', '--case=' + c], tag: 'CALLS2', logs: 'last_logs_calls2_' + c + '.txt', checks: { resultado: (v) => v === 'OK' } })),
   { name: 'pasar la cuenta a un teléfono nuevo', args: ['move.js', '--io-delay=25'], tag: 'MOVE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'avisos por Bluetooth: segundo plano, app congelada y cerrada', args: ['notify.js', '--via=ble'], tag: 'NOTIFY', checks: { resultado: (v) => v === 'OK' } },

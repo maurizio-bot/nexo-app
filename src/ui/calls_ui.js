@@ -24,14 +24,13 @@ function _plugin() { return (window.Capacitor && window.Capacitor.Plugins && win
 var _tick = null, _ring = null, _speaker = false, _rmTimer = null;
 
 // Timbre (entrante) o tono de llamada (saliente) con WebAudio; vibración en la entrante
-function _startTone(incoming) {
+function _startTone(incoming, vibrateOnly) {
   _stopTone();
   var AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return;
-  var ctx;
-  try { ctx = new AC(); } catch (e) { return; }
+  var ctx = null;
+  if (!vibrateOnly) { if (!AC) return; try { ctx = new AC(); } catch (e) { return; } }
   var beep = function() {
-    try {
+    if (ctx) try {
       var o = ctx.createOscillator(), g = ctx.createGain();
       o.frequency.value = incoming ? 880 : 425; g.gain.value = incoming ? 0.25 : 0.12;
       o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + (incoming ? 0.4 : 1.0));
@@ -44,8 +43,24 @@ function _startTone(incoming) {
 function _stopTone() {
   if (!_ring) return;
   clearInterval(_ring.timer);
-  try { _ring.ctx.close(); } catch (e) {}
+  try { if (_ring.ctx) _ring.ctx.close(); } catch (e) {}
   _ring = null;
+}
+// Ronda 2770: el tono de una llamada entrante respeta el modo del teléfono (antes sonaba como multimedia aunque estuviera
+// en silencio o en "No molestar"); con vibración, solo vibra. Con la app oculta ya suena el aviso del sistema (que lo
+// respeta): no se suma el de la app (antes sonaban los dos).
+function _startIncomingTone() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden' && _callNotif) return;
+  var pl = _plugin();
+  var ringing = function() { var c = _calls(), s = c && c.state(); return !!(s && s.state === 'ringing') && !_ring; };
+  if (!pl || typeof pl.ringerMode !== 'function') { _startTone(true); return; }
+  _ring = { ctx: null, timer: null, pending: true }; // (mientras se pregunta el modo: que no se pida dos veces)
+  Promise.resolve(pl.ringerMode()).then(function(r) {
+    if (_ring && _ring.pending) _ring = null;
+    if (!ringing()) return;
+    if (r && (r.mode === 'silent' || r.dnd)) { console.log('[CALL] Teléfono en silencio' + (r.dnd ? ' (No molestar)' : '') + ': llamada sin tono'); return; }
+    _startTone(true, !!(r && r.mode === 'vibrate'));
+  }).catch(function() { if (_ring && _ring.pending) _ring = null; if (ringing()) _startTone(true); });
 }
 
 // Modo de audio del teléfono en llamada (Kotlin callAudio): auricular o altavoz
@@ -53,8 +68,11 @@ function _audioMode(on) {
   try {
     var pl = _plugin();
     if (pl && typeof pl.callAudio === 'function') pl.callAudio({ on: !!on, speaker: !!on && _speaker }).then(function(r) {
-      // Ronda 2761: al diagnóstico por dónde sale el sonido y con qué volumen (el audio de la llamada sale como multimedia)
-      if (on && r) console.log('[CALL] Sonido del teléfono: ' + (r.device || (r.speakerOn ? 'altavoz' : 'auricular')) + ', volumen llamada ' + (r.volCall || '?') + ', multimedia ' + (r.volMedia || '?'));
+      // Ronda 2761: al diagnóstico por dónde sale el sonido y con qué volumen (el audio de la llamada sale como multimedia);
+      // ronda 2770: si el micrófono sigue con la pantalla bloqueada u otra app (servicio de micrófono del nativo) y si
+      // tiene el foco de audio (la música de otra app se para)
+      if (on && r) console.log('[CALL] Sonido del teléfono: ' + (r.device || (r.speakerOn ? 'altavoz' : 'auricular')) + ', volumen llamada ' + (r.volCall || '?') + ', multimedia ' + (r.volMedia || '?') +
+        (r.fgs ? '; en segundo plano: ' + r.fgs : '') + (r.focus ? '; foco de audio: ' + r.focus : ''));
     }).catch(function(e) { console.warn('[CALL] Modo llamada: ' + (e && e.message)); });
   } catch (e) {}
 }
@@ -302,7 +320,7 @@ function _render(st) {
     bt.classList.add('nc-incoming');
     bt.appendChild(_btn('phone', 'Rechazar', 'call-reject', function() { calls.reject(); }, 'nc-red nc-big'));
     bt.appendChild(_btn(st.video ? 'cam' : 'phone', 'Contestar', 'call-accept', function() { calls.accept(); }, 'nc-green nc-big'));
-    if (!_ring) _startTone(true);
+    if (!_ring) _startIncomingTone();
   } else if (st.state === 'active') {
     _stopTone();
     var upd = function() {

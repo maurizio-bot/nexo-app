@@ -14,8 +14,14 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
-- **Qué APK probar (25-10)**: la 2769 (nightly-2769) para todo. Desde la 2763 no hay pruebas en teléfonos: todo lo de
+- **Qué APK probar (25-10)**: la 2770 (nightly-2770) para todo. Desde la 2763 no hay pruebas en teléfonos: todo lo de
   abajo desde la 2765 está sin confirmar (salvo el informe de videollamada Vivo ↔ S24 con la 2768, ver 2769).
+- **2770** (llamadas con la pantalla bloqueada): (1) en una llamada de voz y en una videollamada, bloquear la pantalla
+  con el botón 30 s y luego ir a otra app 30 s: el otro debe seguir oyendo todo el rato (diagnóstico: `en segundo plano:
+  micrófono`); en la videollamada la imagen se para mientras (el otro ve tu foto) y vuelve al regresar a NEXO. (2) Con música o un vídeo sonando en otra app, hacer o recibir una llamada: se para y vuelve al colgar.
+  (3) En una llamada con el teléfono en la oreja, cerrar NEXO (quitarla de recientes): al tapar el sensor ya no se apaga
+  la pantalla y la música vuelve. (4) Recibir una llamada con NEXO abierto y el teléfono en silencio (no suena), en
+  vibración (solo vibra) y normal (suena); y con NEXO en segundo plano: suena solo el aviso del sistema, una vez.
 - **2769** (videollamada robusta; informe del dueño: el S24 a veces salía sin cámara, negro en el Vivo y no se le oía):
   (1) varias videollamadas Vivo ↔ S24 seguidas (colgar y volver a llamar enseguida; contestar con la app en segundo
   plano y con la pantalla bloqueada): imagen y voz en los dos. Si falla, sin apagar ni encender nada, decir qué se ve
@@ -210,9 +216,9 @@ mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simu
    avisos de los dos, sin micrófono la llamada sigue, pantalla encendida en llamada y sensor de proximidad (ver
    PROGRESO, "Ronda 2769"); falta el diagnóstico de una videollamada que falle para confirmar la causa.
    Queda: el punto 2 (voz por Bluetooth con MTU pequeño: "carril de voz" nativo y aviso "Bluetooth lento");
-   los riesgos que solo se ven en el teléfono (micrófono con la pantalla apagada en Android 11+: servicio en primer
-   plano de tipo micrófono; tono con el teléfono en silencio; foco de audio; la pantalla encendida y el sensor de
-   proximidad de la 2769, sin probar); la decisión §4.7. Puntos débiles sin fallo visto todavía:
+   lo que solo se ve en el teléfono, sin probar aún: la pantalla encendida y el sensor de proximidad de la 2769; el
+   micrófono con la pantalla bloqueada, el foco de audio y el tono según el modo del teléfono de la 2770; la decisión
+   §4.7. Puntos débiles sin fallo visto todavía:
    - Con la app cerrada, si el que llama cuelga, el aviso sigue sonando hasta 45 s (lo arreglaría la opción (3) de §4.7).
    - Con la app cerrada, el aviso dice siempre "Llamada" (también en videollamada) y el nombre sale "NEXO" si el nativo no
      lo conoce.

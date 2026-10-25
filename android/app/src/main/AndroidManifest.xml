@@ -16,6 +16,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Ronda 2770: micrófono con la pantalla bloqueada u otra app durante una llamada (BleService.foreground) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     
     <!-- UBICACIÓN: FINE sin maxSdkVersion (requerido por Capacitor Geolocation en Android 12+) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -46,6 +48,8 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Ronda 2770: vibrar con una llamada entrante con el teléfono en modo vibración (navigator.vibrate) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     
     <!-- Almacenamiento para grabar video persistente -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -87,7 +91,7 @@
             android:name="com.nexo.ble.BleService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|microphone" />
 
         <!-- Photo Picker service para compatibilidad galería en Android 11+ -->
         <service android:name="com.google.android.gms.metadata.ModuleDependencies"

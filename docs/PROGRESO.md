@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-25 (build 2769)
+Última actualización: 2026-10-25 (build 2770)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -95,7 +95,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2766 | 3f309571 | Revisión completa, parte 1 (escaneo, agregar, conexión): los pings nunca se contestaban (el enlace se rehacía cada ~30 s), un archivo podía salir cifrado para el teléfono equivocado, el Wi-Fi se perdía al volver a la app, BUSCAR se quedaba colgado, reconexión sin esperas, caídas del Bluetooth sin avisar, Tor sin dirección .onion. Mejoras: foto de perfil, avisos y llamadas que encienden la pantalla y se ven sobre el bloqueo, Perfil → "Avisos con la pantalla apagada". Ver "Ronda 2766". APK publicada (nightly-2766, 24,5 MB) |
 | 2767 | ed848800 | Revisión completa, parte 2 (mensajes y archivos): textos largos pendientes que se perdían mostrando "entregado" (al reconectar tras reiniciarse la app), nota de voz pendiente que llegaba como "[adjunto]", transferencias de más de 10 min cortadas aunque avanzaran, Wi-Fi caído a mitad de una foto con un Bluetooth lento, orden en el chat (relojes desfasados; lo recibido con la app cerrada salía "ahora"), "!" durante un corte del Wi-Fi. Ver "Ronda 2767". Batería 32/32, Kotlin 65/65. APK publicada (nightly-2767, 24,5 MB) |
 | 2768 | 6e8d6a84 | Revisión completa, parte 3 (llamadas y videollamadas): un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto (textos, archivos y llamadas sin cifrar; oír la voz, colgar llamadas reales): ya no; con la app cerrada "Rechazar" volvía a sonar con cada reenvío de la oferta (ahora un aviso por llamada); la siguiente llamada de ese contacto se contestaba sola; una oferta vieja sonaba al reiniciar la app; relojes desfasados; los dos a la vez; Wi-Fi caído en uno; micrófono y cámara encendidos tras colgar; videollamada sin cámara; voz repetida. Ver "Ronda 2768". Batería 43/43, Kotlin 68/68. APK publicada (nightly-2768, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
-| 2769 | (este commit) | Videollamada robusta (informe del dueño: en videollamadas Vivo ↔ S24 a veces el S24 salía sin cámara, el otro veía negro y no se le oía): cámara y micrófono por separado con reintentos y vigilante (ocupados, cortados por el sistema, sin imágenes, audio en pausa), codificadores y decodificadores de voz y vídeo que se rehacen (antes, sin voz o negro hasta colgar), foto y motivo en vez de negro, avisos de los dos, sin micrófono la llamada sigue (antes se cortaba a los 12 s), pantalla encendida en llamada y sensor de proximidad. Ver "Ronda 2769". Batería 45/45, Kotlin 68/68 |
+| 2769 | 6b5b5088 | Videollamada robusta (informe del dueño: en videollamadas Vivo ↔ S24 a veces el S24 salía sin cámara, el otro veía negro y no se le oía): cámara y micrófono por separado con reintentos y vigilante (ocupados, cortados por el sistema, sin imágenes, audio en pausa), codificadores y decodificadores de voz y vídeo que se rehacen (antes, sin voz o negro hasta colgar), foto y motivo en vez de negro, avisos de los dos, sin micrófono la llamada sigue (antes se cortaba a los 12 s), pantalla encendida en llamada y sensor de proximidad. Ver "Ronda 2769". Batería 45/45, Kotlin 68/68. APK publicada (nightly-2769, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
+| 2770 | (este commit) | Llamadas con la pantalla bloqueada o en otra app: el micrófono sigue (servicio de tipo micrófono, Android 11+; antes el otro dejaba de oír), foco de audio (la música de otras apps se para y vuelve al colgar), todo se suelta si NEXO se cierra en plena llamada, tono de llamada según el modo del teléfono (silencio, vibración, "No molestar"; con la app oculta solo el aviso del sistema). Ver "Ronda 2770". Batería 46/46, Kotlin 68/68 |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -221,6 +222,30 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2770: llamadas con la pantalla bloqueada o en otra app (micrófono), foco de audio y tono en silencio
+Android 11 y posteriores (NEXO apunta a Android 14) solo dejan usar el micrófono a una app que no está a la vista si su
+servicio en primer plano es de tipo micrófono; si no, la app graba silencio. El servicio de NEXO (`BleService`) era solo
+de tipo "dispositivo conectado": durante una llamada, al bloquear la pantalla con el botón o ir a otra app, el otro
+dejaba de oír, sin ningún aviso. (Es el comportamiento documentado de Android; en el teléfono aún no se ha comprobado:
+era la prueba (7) de la 2768.)
+1. Manifiesto: el servicio también puede ser de tipo micrófono (y su permiso). `BleService.foreground()`: en llamada,
+   "dispositivo conectado + micrófono"; fuera de ella, solo "dispositivo conectado", siempre con el tipo explícito (con
+   el micrófono en el manifiesto, arrancar sin tipo lo pediría también y fallaría cuando el servicio se reinicia solo en
+   segundo plano). Si la llamada empieza con NEXO en segundo plano (Android no lo deja), se reintenta al volver a la app.
+   En Android 8–10 basta con el servicio. Diagnóstico: `[CALL] Sonido del teléfono: …; en segundo plano: micrófono`.
+2. Foco de audio: durante la llamada la música o el vídeo de otra app se paran y vuelven al colgar (antes seguían
+   sonando encima de la llamada). Diagnóstico: `foco de audio: sí`.
+3. Si NEXO se cierra con una llamada en curso, se suelta todo lo de la llamada: el modo de audio, el foco, el servicio
+   de micrófono y el sensor de proximidad (con la 2769 este podía seguir apagando la pantalla al taparlo hasta 4 h).
+4. **Tono de una llamada entrante** (`calls2.js timbre`): con la 2769 la app pitaba siempre (como multimedia), también
+   con el teléfono en silencio, en vibración o en "No molestar", y con la app en segundo plano sonaba a la vez que el
+   aviso del sistema. Ahora pregunta el modo al nativo (`ringerMode`): en silencio o "No molestar", sin tono; en
+   vibración, solo vibra (se añade el permiso `VIBRATE`: sin él, el navegador de la app no vibra); con la app oculta suena
+   solo el aviso del sistema.
+- Pruebas: en el simulador se comprueba que la app pide el servicio de micrófono y el foco al empezar y los quita al
+  colgar, y que salen en el diagnóstico (`calls2.js sin-micro`), y el tono en los cinco casos (`calls2.js timbre`,
+  falla con la 2769); el efecto en Android, solo en el teléfono (PENDIENTES §1). Batería 46/46, Kotlin 68/68.
 
 ## Ronda 2769: videollamada robusta (informe del dueño: Vivo ↔ S24)
 Informe con la 2768: en videollamadas entre el Vivo y el S24, a veces el S24 salía como sin cámara, el Vivo veía negro

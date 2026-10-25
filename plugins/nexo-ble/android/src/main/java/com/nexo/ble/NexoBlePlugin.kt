@@ -627,6 +627,10 @@ class NexoBlePlugin : Plugin() {
     override fun handleOnResume() {
         super.handleOnResume()
         appInBackground = false
+        if (BleService.inCall && !BleService.fgsState.startsWith("micrófono")) {
+            callFgs = callForeground(true)
+            remLog("INFO", "CALL", "Servicio en llamada al volver a la app: $callFgs")
+        }
         try { netBgShared?.stop() } catch (e: Exception) { }
         checkNotificationIntent()
         remLog("INFO", "LIFECYCLE", "handleOnResume")
@@ -654,6 +658,19 @@ class NexoBlePlugin : Plugin() {
     override fun handleOnDestroy() {
         super.handleOnDestroy()
         if (live === this) live = null
+        // Ronda 2770: la app se cierra con una llamada en curso: se suelta todo lo de la llamada (si no, el sensor de
+        // proximidad seguía apagando la pantalla hasta 4 h, la música de otras apps no volvía y el audio quedaba en modo
+        // llamada)
+        if (BleService.inCall || focusReq != null || proximityLock != null) {
+            try {
+                val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                if (Build.VERSION.SDK_INT >= 31) try { am.clearCommunicationDevice() } catch (e: Exception) { }
+                am.mode = android.media.AudioManager.MODE_NORMAL
+                callFocus(am, false)
+            } catch (e: Exception) { }
+            callScreen(false, false)
+            callFgs = callForeground(false)
+        }
         try { lanStopAll() } catch (e: Exception) {}
         try { torStopAll() } catch (e: Exception) {}
         // Ronda 2758: con permisos y el servidor en marcha, el Bluetooth sigue recibiendo con la app cerrada
@@ -3071,6 +3088,23 @@ class NexoBlePlugin : Plugin() {
         }.start()
     }
 
+    // Ronda 2770: modo del timbre (normal / vibrar / silencio) y "No molestar": el tono de llamada de la app lo respeta
+    // (antes sonaba como multimedia aunque el teléfono estuviera en silencio)
+    @PluginMethod
+    fun ringerMode(call: PluginCall) {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            val mode = when (am.ringerMode) {
+                android.media.AudioManager.RINGER_MODE_SILENT -> "silent"
+                android.media.AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
+                else -> "normal"
+            }
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            val dnd = nm.currentInterruptionFilter > android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+            call.resolve(JSObject().put("mode", mode).put("dnd", dnd))
+        } catch (e: Exception) { call.reject("Timbre: ${e.message}") }
+    }
+
     // ===== Llamadas de voz (ronda 2758, calls.js): audio en modo llamada (auricular y cancelación de eco del sistema) =====
     // Ronda 2761 (informe del dueño: en una videollamada el Samsung no oía nada): en Android 12+ la salida se elige con
     // setCommunicationDevice (isSpeakerphoneOn está obsoleto y algunos fabricantes lo ignoran); se devuelve por dónde
@@ -3091,14 +3125,18 @@ class NexoBlePlugin : Plugin() {
                 @Suppress("DEPRECATION")
                 am.isSpeakerphoneOn = speaker
                 callScreen(true, !speaker)
+                callFgs = callForeground(true)
+                callFocus(am, true)
             } else {
                 if (Build.VERSION.SDK_INT >= 31) try { am.clearCommunicationDevice() } catch (e: Exception) { }
                 am.mode = android.media.AudioManager.MODE_NORMAL
                 @Suppress("DEPRECATION")
                 am.isSpeakerphoneOn = false
                 callScreen(false, false)
+                callFgs = callForeground(false)
+                callFocus(am, false)
             }
-            val out = JSObject().put("mode", am.mode)
+            val out = JSObject().put("mode", am.mode).put("fgs", callFgs).put("focus", callFocusState)
             @Suppress("DEPRECATION")
             out.put("speakerOn", am.isSpeakerphoneOn)
             if (Build.VERSION.SDK_INT >= 31) out.put("device", when (am.communicationDevice?.type) {
@@ -3117,6 +3155,39 @@ class NexoBlePlugin : Plugin() {
     // le quitaba la cámara y silenciaba el micrófono. Con el auricular, el sensor de proximidad apaga la pantalla al
     // acercarla a la oreja sin sacar a NEXO de primer plano (como el teléfono). Se quita al colgar.
     @Volatile private var proximityLock: android.os.PowerManager.WakeLock? = null
+
+    // Ronda 2770: durante la llamada el servicio en primer plano también es de micrófono (BleService.foreground): con la
+    // pantalla bloqueada o en otra app, el micrófono sigue (antes Android 11+ daba silencio y el otro dejaba de oír)
+    @Volatile private var callFgs = ""
+    private fun callForeground(on: Boolean): String {
+        BleService.inCall = on
+        val svc = BleService.live ?: return if (on) "sin servicio" else ""
+        return try { svc.foreground() } catch (e: Exception) { Log.w(TAG, "Servicio en llamada: ${e.message}"); "error (${e.javaClass.simpleName})" }
+    }
+
+    // Ronda 2770: foco de audio durante la llamada (la música u otro audio de otra app se para y vuelve al colgar; antes
+    // seguía sonando encima de la llamada)
+    @Volatile private var focusReq: android.media.AudioFocusRequest? = null
+    @Volatile private var callFocusState = ""
+    private fun callFocus(am: android.media.AudioManager, on: Boolean) {
+        try {
+            if (on) {
+                if (focusReq != null) return
+                val attrs = android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build()
+                val req = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(attrs).setOnAudioFocusChangeListener { change -> remLog("INFO", "CALL", "Foco de audio: $change") }.build()
+                val r = am.requestAudioFocus(req)
+                focusReq = req
+                callFocusState = if (r == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED) "sí" else "no ($r)"
+            } else {
+                focusReq?.let { am.abandonAudioFocusRequest(it) }
+                focusReq = null
+                callFocusState = ""
+            }
+        } catch (e: Exception) { callFocusState = "error (${e.javaClass.simpleName})"; Log.w(TAG, "Foco de audio: ${e.message}") }
+    }
+
     private fun callScreen(on: Boolean, earpiece: Boolean) {
         val act = activity
         act?.runOnUiThread {

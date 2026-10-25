@@ -17,7 +17,12 @@
 //                    motivo (antes, negro y sin saber por qué) y un aviso; si falta imagen, el otro manda una completa;
 //                    si se va el Wi-Fi (el vídeo solo va por Wi-Fi), su foto y "Sin Wi-Fi: solo voz" y la llamada sigue.
 //  sin-micro         (2769) B sin micrófono (permiso quitado): antes no mandaba nada y A cortaba a los 12 s ("Se cortó")
-//                    sin saber por qué; debe seguir la llamada (B oye a A) y los dos ver el aviso.
+//                    sin saber por qué; debe seguir la llamada (B oye a A) y los dos ver el aviso. (2770) En llamada,
+//                    el nativo pone el servicio de micrófono (para la pantalla bloqueada) y pide el foco de audio, y
+//                    los quita al colgar.
+//  timbre            (2770) Llamada entrante con el teléfono en silencio, en "No molestar", en vibración, normal y con la
+//                    app oculta: antes la app pitaba siempre (como multimedia, también en silencio) y, oculta, se sumaba
+//                    al aviso del sistema; ahora sin tono en silencio, solo vibra en vibración, y oculta suena el aviso.
 //  wifi-uno          Llamada por Wi-Fi; a B se le va el Wi-Fi sin cierre limpio (siguen a alcance de Bluetooth): antes
 //                    la voz de A no le volvía a llegar y B cortaba a los 12 s; debe volver enseguida.
 // Uso: node calls2.js <dir_build> --case=<caso> [--io-delay=25]
@@ -53,6 +58,11 @@ async function boot(name, native, cfg = {}) {
         Object.defineProperty(win.document, 'hidden', { configurable: true, get: () => (cfg.vis[name] || 'visible') === 'hidden' });
       }
       win.NEXO_CALL_RING_MS = cfg.ringMs || 20000;
+      // (ronda 2770) el tono de llamada de la app: se cuentan los pitidos (WebAudio) y las vibraciones
+      if (cfg.toneSpy) {
+        win.AudioContext = class { constructor() { this.currentTime = 0; this.destination = {}; } createOscillator() { media.tones = (media.tones || 0) + 1; return { frequency: {}, connect() {}, start() {}, stop() {} }; } createGain() { return { gain: {}, connect() {} }; } close() { return Promise.resolve(); } };
+        Object.defineProperty(win.navigator, 'vibrate', { configurable: true, value: () => { media.vibs = (media.vibs || 0) + 1; return true; } });
+      }
       win.NEXO_callMediaFactory = (o) => {
         let t = null, n = 0;
         // (ronda 2769: opts a mano para provocar onState / onNeedKey; requestKey y remoteLive como call_media.js)
@@ -277,7 +287,7 @@ const CASES = {
     return r;
   },
   async 'sin-micro'() {
-    const { A, B } = await setup({ B: { noMic: true } });
+    const { nA, A, B } = await setup({ B: { noMic: true } });
     callBtn(A);
     await wait(() => st(B) === 'ringing', 20);
     accept(B);
@@ -296,8 +306,45 @@ const CASES = {
     r.B_oye_a_A = B.media.played.filter((x) => x.from === 'A').length;
     r.A_voz_recibida = A.win.bleInterface.calls.stats.got;
     r.A_sigo_aqui = A.win.bleInterface.calls.stats.gotKeep || 0;
+    // (2770) servicio de micrófono del nativo en llamada, en el diagnóstico, y fuera al colgar
+    r.A_servicio_en_llamada = nA.callFgs || null;
+    r.A_diag_segundo_plano = logs.some((l) => /\[A\] .*Sonido del teléfono: .*en segundo plano: micrófono; foco de audio: sí/.test(l));
+    r.A_foco_en_llamada = nA.audioFocus === true;
+    click(A.win, A.win.document.querySelector('#nexo-call-screen .call-hangup'));
+    await wait(() => !A.win.bleInterface.calls.call, 5);
+    await sleep(500);
+    r.A_servicio_tras_colgar = nA.callFgs || null;
+    r.A_foco_tras_colgar = nA.audioFocus === true;
     r.ok = r.en_llamada && /micrófono de .+ no funciona/.test(r.A_aviso || '') && /Sin micrófono \(sin permiso\): .+ no te oye/.test(r.B_aviso || '') && r.sigue &&
-      r.B_oye_a_A > 50 && r.A_voz_recibida === 0 && r.A_sigo_aqui >= 5 && r.A_inestable_s <= 2;
+      r.B_oye_a_A > 50 && r.A_voz_recibida === 0 && r.A_sigo_aqui >= 5 && r.A_inestable_s <= 2 &&
+      r.A_servicio_en_llamada === 'micrófono' && r.A_diag_segundo_plano && r.A_servicio_tras_colgar === 'normal' && r.A_foco_en_llamada && !r.A_foco_tras_colgar;
+    return r;
+  },
+  async 'timbre'() {
+    const { nB, A, B, hide } = await setup({ B: { toneSpy: true } });
+    const r = {};
+    const ring = async (label, mode, dnd, hidden) => {
+      nB.ringer = mode; nB.dnd = !!dnd;
+      if (hidden) hide(B, true);
+      await sleep(300);
+      const t0 = B.media.tones || 0, v0 = B.media.vibs || 0;
+      callBtn(A);
+      const rang = await wait(() => st(B) === 'ringing', 20);
+      await sleep(3500);
+      r[label] = { suena: rang, pitidos: (B.media.tones || 0) - t0, vibra: (B.media.vibs || 0) - v0, aviso_sistema: !!nB.callNotif };
+      click(A.win, A.win.document.querySelector('#nexo-call-screen .call-hangup'));
+      await wait(() => !A.win.bleInterface.calls.call && !B.win.bleInterface.calls.call, 10);
+      if (hidden) hide(B, false);
+      await sleep(1500);
+    };
+    await ring('silencio', 'silent');
+    await ring('no_molestar', 'normal', true);
+    await ring('vibracion', 'vibrate');
+    await ring('normal', 'normal');
+    await ring('oculta', 'normal', false, true);
+    r.ok = r.silencio.suena && r.silencio.pitidos === 0 && r.silencio.vibra === 0 && r.no_molestar.suena && r.no_molestar.pitidos === 0 &&
+      r.vibracion.suena && r.vibracion.pitidos === 0 && r.vibracion.vibra > 0 && r.normal.suena && r.normal.pitidos > 0 &&
+      r.oculta.suena && r.oculta.pitidos === 0 && r.oculta.aviso_sistema;
     return r;
   },
   async 'repetida'() {

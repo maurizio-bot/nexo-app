@@ -17,6 +17,8 @@ import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelUuid
@@ -33,6 +35,11 @@ class BleService : Service() {
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
         private const val NEXO_MAGIC_LOW: Byte = 0x58
+        // Ronda 2770: el servicio en marcha (para cambiar sus tipos al empezar y acabar una llamada) y si hay llamada
+        @Volatile var live: BleService? = null
+        @Volatile var inCall = false
+        // Cómo quedó el servicio la última vez (también si se reinició solo en plena llamada: al volver a la app se mira)
+        @Volatile var fgsState = ""
     }
 
     private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
@@ -54,7 +61,36 @@ class BleService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "onCreate")
+        live = this
         createNotificationChannel()
+    }
+
+    // Ronda 2770: Android 11+ solo deja usar el micrófono a una app en segundo plano si su servicio en primer plano es
+    // de tipo micrófono (si no, graba silencio): con la pantalla bloqueada o en otra app durante una llamada, el otro
+    // dejaba de oír. En llamada: "dispositivo conectado" + micrófono; fuera de ella, solo "dispositivo conectado" (el de
+    // micrófono no se puede pedir en segundo plano: si el servicio se reinicia solo, fallaría). En Android 8–10 basta
+    // con tener el servicio. Devuelve cómo quedó (para el diagnóstico de la llamada).
+    fun foreground(): String { val r = foregroundTyped(); fgsState = r; return r }
+    private fun foregroundTyped(): String {
+        val n = buildNotification()
+        if (Build.VERSION.SDK_INT < 29) { startForeground(NOTIFICATION_ID, n); return if (inCall) "micrófono (Android 8–9)" else "normal" }
+        val base = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        if (inCall && Build.VERSION.SDK_INT >= 30) {
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                startForeground(NOTIFICATION_ID, n, base); return "sin micrófono (sin permiso)"
+            }
+            try {
+                startForeground(NOTIFICATION_ID, n, base or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                return "micrófono"
+            } catch (e: Exception) {
+                // Con la app en segundo plano Android no lo deja (se reintenta al volver a la app)
+                Log.w(TAG, "Servicio con micrófono: ${e.message}")
+                startForeground(NOTIFICATION_ID, n, base)
+                return "sin micrófono (${e.javaClass.simpleName})"
+            }
+        }
+        startForeground(NOTIFICATION_ID, n, base)
+        return if (inCall) "micrófono (Android 10)" else "normal"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -73,7 +109,7 @@ class BleService : Service() {
             ridEpochS = intent.getLongExtra("rid_epoch_s", 900L).coerceAtLeast(1L)
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification())
+        foreground()
 
         if (currentNexoId.isNullOrEmpty()) {
             Log.w(TAG, "Sin nexoId, advertising postergado hasta recibir setAdvertisingData")
@@ -92,6 +128,7 @@ class BleService : Service() {
 
     override fun onDestroy() {
         Log.i(TAG, "onDestroy")
+        if (live === this) live = null
         handler.removeCallbacks(rotate)
         stopAdvertisingInternal()
         super.onDestroy()
