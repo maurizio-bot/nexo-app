@@ -36,7 +36,7 @@ import { schnorr } from '@noble/curves/secp256k1.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
-import { e2eIdentityDH } from '../vault/e2e_crypto.js';
+import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 
 var DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.mom'];
 var KIND = 1059;              // el de los mensajes privados envueltos de Nostr (los relés lo aceptan)
@@ -67,6 +67,15 @@ function _event(sk, kind, tags, content) {
   return { id: bytesToHex(id), pubkey: pubkey, created_at: created_at, kind: kind, tags: tags, content: content, sig: bytesToHex(schnorr.sign(id, sk)) };
 }
 
+// Alta por ID (ronda 2779): "buzón de solicitudes" de un NEXO ID. A diferencia de la etiqueta de pareja (que necesita el
+// secreto ECDH de las dos claves), este buzón se deriva SOLO del NEXO ID, así que cualquiera que conozca tu ID (te lo
+// pasas por WhatsApp) puede dejarte una solicitud de contacto; tú la aceptas o la eliminas (anti-spam). Clave secp256k1
+// de la etiqueta (p del evento) y clave AES para cifrar el contenido: el contenido solo lo lee quien conoce el ID
+// completo (no es secreto fuerte —el ID es corto— pero evita que un relé lo lea a ciegas). Rota por día (hoy y ayer).
+function _reqScalar(id, day) { return _scalar(sha256(_utf8('NEXO-REQ-v1|' + _nid(id) + '|' + day))); }
+function _reqTagPub(id, day) { return bytesToHex(schnorr.getPublicKey(_reqScalar(id, day))); }
+function _reqAesKey(id) { return sha256(_utf8('NEXO-REQ-ENC-v1|' + _nid(id))); }
+
 export class NetLink {
   constructor(ble) {
     this.ble = ble;
@@ -74,6 +83,7 @@ export class NetLink {
     this.peers = new Map();    // nx → { lastRx, wifi, up, helloAt }
     this.pairs = new Map();    // nx → { pub, kraw, aes }
     this.inTags = new Map();   // etiqueta (p) → nx (para mí, hoy y ayer)
+    this.reqTags = new Map();  // alta por ID: etiqueta (p) de MI buzón de solicitudes → sk (hoy y ayer)
     this.tagKeys = [];         // claves de mis etiquetas (AUTH, NIP-42)
     this.seen = new Map();     // id de evento → cuándo (no procesar dos veces lo que llega por varios relés)
     this.state = { lastSeen: 0 };
@@ -146,8 +156,15 @@ export class NetLink {
         [0, -1].forEach(function(o) { var t = this._tag(pair, me, _day(o)); inTags.set(t.pub, nx); keys.push(t.sk); }, this);
       } catch (e) {}
     }
-    this.inTags = inTags; this.tagKeys = keys;
-    var sig = Array.from(inTags.keys()).sort().join(',');
+    // Alta por ID (ronda 2779): mi propio buzón de solicitudes (hoy y ayer), para recibir solicitudes de contacto de
+    // quien conozca mi NEXO ID. Va en la misma suscripción y en las claves de identificación (NIP-42). Solo con la app
+    // abierta: en segundo plano no se escuchan solicitudes (quedan en el buzón del relé hasta que se abre la app).
+    var reqTags = new Map();
+    if (me && (typeof document === 'undefined' || document.visibilityState !== 'hidden') && this._wantReq !== false) {
+      [0, -1].forEach(function(o) { var sk = _reqScalar(me, _day(o)); reqTags.set(_reqTagPub(me, _day(o)), sk); keys.push(sk); });
+    }
+    this.inTags = inTags; this.reqTags = reqTags; this.tagKeys = keys;
+    var sig = Array.from(inTags.keys()).concat(Array.from(reqTags.keys())).sort().join(',');
     var changed = sig !== this._tagSig;
     this._tagSig = sig;
     return changed;
@@ -159,7 +176,7 @@ export class NetLink {
     try { var st = pl && typeof pl.lanStatus === 'function' ? await pl.lanStatus() : null; self.wifi = !!(st && st.wifi); } catch (e) {}
     var changed = await self._refreshTags();
     if (changed) self._bgConfig();
-    if (!self.inTags.size) { self._closeAll(); return; }
+    if (!self.inTags.size && !self.reqTags.size) { self._closeAll(); return; }
     var urls = self.relayUrls();
     urls.forEach(function(u) {
       var r = self.relays.get(u);
@@ -227,7 +244,7 @@ export class NetLink {
     if (r.sub) this._send(r, ['CLOSE', r.sub]);
     r.sub = 'nx' + bytesToHex(_rnd(6));
     var since = Math.max(0, Math.floor((this.state.lastSeen || (Date.now() - 2 * 86400000)) / 1000) - 600);
-    this._send(r, ['REQ', r.sub, { kinds: [KIND], '#p': Array.from(this.inTags.keys()), since: since }]);
+    this._send(r, ['REQ', r.sub, { kinds: [KIND], '#p': Array.from(this.inTags.keys()).concat(Array.from(this.reqTags.keys())), since: since }]);
   }
 
   _onRelayMsg(url, r, data) {
@@ -259,10 +276,15 @@ export class NetLink {
     if (!ev || typeof ev.id !== 'string' || this.seen.has(ev.id)) return;
     this.seen.set(ev.id, Date.now());
     if (this.seen.size > 3000) { var cut = Date.now() - 3600000; this.seen.forEach(function(t, k) { if (t < cut) this.seen.delete(k); }, this); }
+    var self = this;
     var p = (ev.tags || []).filter(function(t) { return t && t[0] === 'p'; }).map(function(t) { return t[1]; });
     var nx = null;
     for (var i = 0; i < p.length && !nx; i++) nx = this.inTags.get(p[i]) || null;
-    if (!nx) return;
+    if (!nx) {
+      // Alta por ID (ronda 2779): ¿va dirigido a mi buzón de solicitudes? (req = me quieren agregar; acc = aceptaron la mía)
+      if (p.some(function(x) { return self.reqTags.has(x); })) await this._onReq(ev.content);
+      return;
+    }
     var o = await this._open(nx, ev.content);
     if (!o) { console.warn('[NET] Evento ilegible para ' + nx + ': descartado'); return; }
     if (ev.created_at * 1000 > (this.state.lastSeen || 0)) { this.state.lastSeen = ev.created_at * 1000; this._saveState(); }
@@ -280,6 +302,27 @@ export class NetLink {
     } catch (e) { return null; }
   }
   _peer(nx) { var p = this.peers.get(nx); if (!p) { p = {}; this.peers.set(nx, p); } return p; }
+
+  // Alta por ID (ronda 2779): llegó algo a mi buzón de solicitudes. Lo descifro con la clave de MI ID (solo quien conoce
+  // mi ID completo pudo cifrarlo). Aviso a la app: req = me quieren agregar; acc = aceptaron mi solicitud. La clave que
+  // llega NO está verificada en persona: la app deja el contacto "sin verificar" hasta comparar el número de seguridad.
+  async _onReq(b64) {
+    if (typeof b64 !== 'string') return;
+    var o;
+    try {
+      var raw = _unb64(b64);
+      var key = await crypto.subtle.importKey('raw', _reqAesKey(this.me()), 'AES-GCM', false, ['decrypt']);
+      var pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12) }, key, raw.subarray(12));
+      o = JSON.parse(new TextDecoder().decode(new Uint8Array(pt)));
+    } catch (e) { return; }
+    if (!o || (o.t !== 'req' && o.t !== 'acc')) return;
+    var from = _nid(o.from);
+    if (!/^nx[0-9a-z]{8}$/.test(from) || from === this.me()) return;
+    if (typeof o.pk !== 'string' || !/^[A-Za-z0-9+/=]{80,100}$/.test(o.pk)) return;
+    if (this.ble && typeof this.ble._onNetRequest === 'function') {
+      this.ble._onNetRequest({ id: from, pk: o.pk, name: String(o.name || '').replace(/[<>]/g, '').slice(0, 40), kind: o.t });
+    }
+  }
 
   _deliver(nx, o) {
     var peer = this._peer(nx);
@@ -412,6 +455,25 @@ export class NetLink {
     return this._publish(ev);
   }
 
+  // Alta por ID (ronda 2779): deja una solicitud ('req') o una aceptación ('acc') en el buzón del ID `to`, cifrada con la
+  // clave de ese ID. Lleva mi NEXO ID, mi clave pública (para que el otro pueda encender el canal seguro) y mi nombre.
+  // Se conecta a los relés si hace falta. Resuelve cuando un relé la guardó.
+  async sendRequest(toId, type, name) {
+    var to = _nid(toId), me = this.me(), pk = e2eMyPublicKey();
+    if (!/^nx[0-9a-z]{8}$/.test(to)) throw new Error('ID no válido (debe ser NX y 8 más)');
+    if (to === me) throw new Error('Ese es tu propio ID');
+    if (!pk) throw new Error('Este teléfono aún no tiene clave de identidad');
+    if (!this.online()) { await this.tick(); }
+    if (!this.online()) throw Object.assign(new Error('Sin internet para mandar la solicitud'), { code: 'NET_DOWN' });
+    var payload = { v: 1, t: type === 'acc' ? 'acc' : 'req', from: me, pk: pk, name: String(name || '').replace(/[<>]/g, '').slice(0, 40), ts: Date.now() };
+    var key = await crypto.subtle.importKey('raw', _reqAesKey(to), 'AES-GCM', false, ['encrypt']);
+    var iv = _rnd(12);
+    var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, _utf8(JSON.stringify(payload))));
+    var b64 = _b64(_cat(iv, ct));
+    var ev = _event(schnorr.utils.randomSecretKey(), KIND, [['p', _reqTagPub(to, _day(0))], ['expiration', String(Math.floor(Date.now() / 1000) + TTL_MSG)]], b64);
+    return this._publish(ev);
+  }
+
   _publish(ev) {
     var self = this;
     return new Promise(function(resolve, reject) {
@@ -438,6 +500,11 @@ export class NetLink {
     p.helloAt = Date.now();
     this.send(nx, '', { hello: true }).catch(function() {});
   }
+  // Alta por ID (ronda 2779): tras agregar un contacto nuevo (al aceptar una solicitud o al llegar la aceptación de la
+  // mía), forzar el saludo para que los dos se vean en línea enseguida (el saludo normal del tick no saluda a un contacto
+  // que aún no está "en línea"). Refresca etiquetas/suscripción y saluda.
+  greet() { var self = this; return this.tick().then(function() { self._helloAll(true); }); }
+
   // Saludo a los contactos: al conectar (o al volver a la app) a todos; después, cada minuto a los que están en línea
   _helloAll(force) {
     var self = this, now = Date.now();

@@ -169,6 +169,17 @@ export const BLE_UI_METHODS = {
       '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>' +
       '<input id="ble-search-input" type="search" placeholder="Buscar por nombre o NEXO ID" autocomplete="off" spellcheck="false">' +
       '</div>' +
+      // Ronda 2779 (pedido del dueño): agregar a alguien que no está cerca con su NEXO ID (te lo pasa por WhatsApp)
+      '<div class="ble-section-label">Agregar por NEXO ID (está lejos)</div>' +
+      '<div id="ble-addid-row" style="display:flex;gap:8px;padding:0 12px 4px;">' +
+      '<input id="ble-addid-input" type="text" placeholder="NX……… (su NEXO ID)" autocomplete="off" spellcheck="false" maxlength="10" style="flex:1;min-width:0;padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;font-size:14px;text-transform:uppercase;">' +
+      '<button id="ble-addid-btn" style="flex-shrink:0;padding:9px 16px;border-radius:12px;border:none;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Agregar</button>' +
+      '</div>' +
+      '<div id="ble-addid-note" style="font-size:12px;opacity:.85;text-align:center;padding:0 12px 6px;min-height:1px;"></div>' +
+      '<div id="ble-requests" style="display:none;">' +
+      '<div class="ble-section-label">Solicitudes para ti</div>' +
+      '<div id="ble-requests-list" style="padding:0 12px 6px;"></div>' +
+      '</div>' +
       '<div id="ble-online-label" class="ble-section-label">En línea ahora</div>' +
       '<div id="ble-online-strip" class="ble-online-strip"></div>' +
       '<div class="ble-section-label">Tus contactos</div>' +
@@ -242,6 +253,30 @@ export const BLE_UI_METHODS = {
     this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
     this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
     this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
+    // Ronda 2779 (pedido del dueño): agregar por NEXO ID a alguien que está lejos (solicitud por internet) + bandeja
+    var addIdBtn = document.getElementById('ble-addid-btn'), addIdInput = document.getElementById('ble-addid-input'), addNote = document.getElementById('ble-addid-note');
+    var doAddId = function() {
+      if (!addIdInput) return;
+      var v = String(addIdInput.value || '').trim().toUpperCase();
+      if (!v) return;
+      var m = v.match(/NX[0-9A-Z]{8}/); // si pegó un mensaje entero ("Agrégame… ID: NX…"), saca el ID
+      if (m) v = m[0];
+      if (addNote) { addNote.style.color = ''; addNote.textContent = 'Enviando solicitud…'; }
+      if (typeof self.addByNexoId !== 'function') { if (addNote) addNote.textContent = 'Esta versión no lo permite.'; return; }
+      self.addByNexoId(v).then(function() {
+        addIdInput.value = '';
+        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = 'Solicitud enviada a ' + v + '. Aparecerás cuando la acepte.'; }
+      }).catch(function(e) { if (addNote) { addNote.style.color = '#fbbf24'; addNote.textContent = (e && e.message) || 'No se pudo enviar la solicitud.'; } });
+    };
+    if (addIdBtn) addIdBtn.addEventListener('click', doAddId);
+    if (addIdInput) addIdInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); doAddId(); } });
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('nexo:ble:reqIncoming', function() { self.renderRequests(); });
+      window.addEventListener('nexo:ble:reqAccepted', function(e) {
+        self.renderRequests(); self.renderContactsList();
+        if (addNote) { addNote.style.color = '#22c55e'; addNote.textContent = ((e.detail && (e.detail.name || e.detail.id)) || 'Tu contacto') + ' te aceptó. Ya estáis conectados.'; }
+      });
+    }
     // Ronda 2771 (revisión, parte 4): el buscador de "Agregar" filtra tus contactos y los teléfonos encontrados
     var searchInput = document.getElementById('ble-search-input');
     if (searchInput) searchInput.addEventListener('input', function() {
@@ -324,6 +359,7 @@ export const BLE_UI_METHODS = {
       this.renderOnlineStrip();
       this.renderPanelLists();
       this.renderNewDeviceBar();
+      this.renderRequests(); // ronda 2779: solicitudes de alta por ID pendientes
       var self = this;
       setTimeout(function() {
         if (!self.isDummyMode && self.nativePlugin && !self.isScanning) self._autoScanForKnownContacts();
@@ -422,6 +458,38 @@ export const BLE_UI_METHODS = {
       item.querySelector('.ble-online-name').textContent = contact.name || '';
       item.addEventListener('click', function() { self.openChat(uuid); });
       strip.appendChild(item);
+    });
+  },
+
+  // Ronda 2779: bandeja de solicitudes de contacto por ID (aceptar / eliminar). Se oculta si no hay ninguna.
+  renderRequests() {
+    var self = this;
+    var box = document.getElementById('ble-requests'), list = document.getElementById('ble-requests-list');
+    if (!box || !list || typeof self.pendingRequests !== 'function') return;
+    var reqs = self.pendingRequests() || [];
+    if (!reqs.length) { box.style.display = 'none'; list.innerHTML = ''; return; }
+    box.style.display = '';
+    list.innerHTML = '';
+    reqs.forEach(function(req) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);';
+      var info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:0;';
+      var nm = document.createElement('div'); nm.style.cssText = 'font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      nm.textContent = req.name || String(req.id || '').toUpperCase();
+      var sub = document.createElement('div'); sub.style.cssText = 'font-size:11px;opacity:.7;';
+      sub.textContent = String(req.id || '').toUpperCase() + ' · quiere agregarte';
+      info.appendChild(nm); info.appendChild(sub);
+      var ok = document.createElement('button'); ok.textContent = 'Aceptar';
+      ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:600;cursor:pointer;';
+      var no = document.createElement('button'); no.textContent = 'Eliminar';
+      no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#fff;cursor:pointer;';
+      ok.addEventListener('click', function() {
+        ok.disabled = no.disabled = true;
+        self.acceptRequest(req.id).then(function() { self.renderRequests(); self.renderContactsList(); }).catch(function() { ok.disabled = no.disabled = false; });
+      });
+      no.addEventListener('click', function() { self.rejectRequest(req.id); self.renderRequests(); });
+      row.appendChild(info); row.appendChild(ok); row.appendChild(no);
+      list.appendChild(row);
     });
   },
 

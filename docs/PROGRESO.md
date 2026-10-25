@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-25 (build 2778; llamadas —menos ruido, pantalla al entrar llamada, contestar deslizando—, ver "Ronda 2778". La 2777 fue C1: confirmaciones ✓✓ firmadas)
+Última actualización: 2026-10-25 (build 2779; alta por ID: agregar a alguien que está lejos con su NEXO ID + solicitudes aceptar/eliminar, ver "Ronda 2779". La 2778 fueron las llamadas; la 2777, C1)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -102,7 +102,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2773 | 36cf90b6 | La 2772 (ver "Ronda 2772": espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada) con Chromium instalado en las pruebas de GitHub. Batería 50/50 (también en GitHub, con la videollamada de verdad), Kotlin 71/71. APK publicada (nightly-2773, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
 | 2776 | 00317fe8 | Informe del dueño tras la 2775 (ver "Ronda 2776"): escaneo que no encontraba (REGRESIÓN de la 2774: el NEXO ID va en mayúsculas y la validación del anuncio solo aceptaba minúsculas), menú ⋮ de contactos que no hacía nada (regresión del estilo NEXO: quedaba fuera de pantalla), eco/ruido reforzados en el filtro propio (−18 dB + pistas del sistema al micrófono), avisos por internet con pantalla apagada (rxWake en NetBg), y elegir el tono de llamada/videollamada (selector del teléfono; por defecto el del dispositivo). Pruebas nuevas: `AdvertisedIdTest`. Batería 51/51, Kotlin 90/90, índice de robustez 41,8 (sin cambio: no añade escenarios a la batería). APK publicada (nightly-2776, 24,5 MB; firma verificada) |
 | 2777 | b1772d66 | Auditoría fase 2 — C1 arreglado (ver "Ronda 2777" y `docs/AUDITORIA.md`): las confirmaciones (✓✓/leído) ahora van firmadas con un MAC derivado del secreto de la pareja (`e2eAckTag`), también en **modo cerrado** (el ack lo firma la capa nativa con una clave por contacto que le da la app por `setAckKeys`, solo en memoria del proceso, no a disco). Una confirmación falsa se ignora, así que ya no para los reintentos ni hace perder un mensaje con ✓✓. Solo para contactos modernos (proto 2); los antiguos sin cambios. Prueba nueva: `tests/sim/ackforge.js`. Batería 52/52, Kotlin 90/90, índice de robustez 42,1. ⚠️ Falta confirmarlo en los dos teléfonos del dueño. APK publicada (nightly-2777, 24,55 MB, sha256 4ba6e872…; firma verificada) |
-| 2778 | _(pendiente)_ | Llamadas, informe del dueño (ver "Ronda 2778"): **menos ruido** (la puerta de ruido del micrófono pasa de −10 a −22 dB; cuando no detecta tu voz el micro queda al ~8 %, no a cero, y abre al instante al hablar: así el ruido de fondo casi no se transmite), **pantalla al entrar llamada** (MainActivity pide "mostrar sobre el bloqueo" y "encender pantalla" al nacer la actividad, solo si el intent es de llamada) y **contestar deslizando hacia arriba** (el toque sigue valiendo). Batería 52/52, Kotlin 90/90, índice 42,1. ⚠️ Pantalla y desliz: a confirmar en los dos teléfonos del dueño. APK publicada (nightly-2778, 24,55 MB, sha256 587f103c…; firma verificada) |
+| 2778 | 361fbcdf | Llamadas, informe del dueño (ver "Ronda 2778"): **menos ruido** (la puerta de ruido del micrófono pasa de −10 a −22 dB; cuando no detecta tu voz el micro queda al ~8 %, no a cero, y abre al instante al hablar: así el ruido de fondo casi no se transmite), **pantalla al entrar llamada** (MainActivity pide "mostrar sobre el bloqueo" y "encender pantalla" al nacer la actividad, solo si el intent es de llamada) y **contestar deslizando hacia arriba** (el toque sigue valiendo). Batería 52/52, Kotlin 90/90, índice 42,1. ⚠️ Pantalla y desliz: a confirmar en los dos teléfonos del dueño. APK publicada (nightly-2778, 24,55 MB, sha256 587f103c…; firma verificada) |
+| 2779 | _(pendiente)_ | Alta por ID, pedido del dueño (ver "Ronda 2779"): **agregar a alguien que está lejos** con su NEXO ID (te lo pasa por WhatsApp). No hay servidor donde "buscar" un ID (eso rompería la privacidad); se le deja una **solicitud** en un buzón de los relés derivado de su ID, y él la **acepta o la elimina** (anti-spam). Al aceptar, se intercambian las claves y el canal seguro se enciende solo; la clave entra "sin verificar" (número de seguridad aparte). Interfaz: Perfil → "Compartir mi ID"; Agregar → "Agregar por NEXO ID" + bandeja de solicitudes. Prueba nueva: `tests/sim/reqadd.js`. Batería 53/53, Kotlin 90/90, índice 42,1. APK _(pendiente de publicar)_ |
 | 2774 | fa52b3d1 | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería 51/51, Kotlin 87/87 (16 nuevas). Índice de robustez 41,8 (ver `docs/ROBUSTEZ.md` §4). **APK publicada: `nightly-2775` (24,5 MB, firma verificada).** La primera compilación (run 2774) falló por una carrera en `LanHub.stop()` dentro de la prueba de la avalancha (iterar la cola mientras los hilos de lectura la vaciaban); arreglada con `poll()` y comprobada 5 veces; la 2775 compila, pasa todo y publica |
 
 ## Base estable: build 2713
@@ -229,6 +230,34 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2779: alta por ID — agregar a alguien que está lejos (solicitudes por internet, aceptar/eliminar)
+Pedido del dueño: "si un amigo descarga la app pero no está cerca de mí, ¿cómo me puede agregar?". Hoy no se podía (solo
+en persona por Bluetooth, o por un amigo común). El dueño eligió un **buscador de ID con solicitudes**: él me pasa su
+NEXO ID (por WhatsApp), yo lo pego y le mando una solicitud; quien recibe una solicitud de un ID no agregado la **acepta
+o la elimina** (anti-spam).
+
+Cómo funciona (clave: NEXO no tiene directorio donde buscar un ID —eso es lo que lo hace privado—):
+- **Buzón de solicitudes por ID** (`net_link.js`): además de la etiqueta diaria de cada pareja (que necesita el secreto
+  ECDH de las dos claves), se deriva un buzón **solo del NEXO ID** (`_reqTag`/`_reqAesKey` = hash del ID, rota por día).
+  Cada teléfono escucha su propio buzón; cualquiera que conozca tu ID puede dejarte ahí una solicitud cifrada con la
+  clave de tu ID (contenido legible solo por quien tiene el ID completo).
+- **Solicitud / aceptación** (`sendRequest` con tipo `req`/`acc`): lleva el NEXO ID, la **clave pública** y el nombre del
+  que la manda. Al **aceptar**, cada lado agrega al otro con su clave (reusa `addSharedContacts`, con `nt`), se mandan la
+  aceptación y el canal seguro de pareja se enciende solo (un `greet()` nuevo fuerza el saludo para verse en línea ya).
+- **Seguridad**: la clave que llega así **no está verificada en persona** (riesgo H3 de la auditoría): el contacto entra
+  "sin verificar" y el banner del chat pide comparar el número de seguridad. Cualquiera que conozca tu ID puede mandarte
+  una solicitud, pero no puede agregarte ni leer nada sin tu "Aceptar" (por eso el aceptar/eliminar). Tope de solicitudes
+  guardadas (anti-spam). Solo con la app abierta se reciben; si estás cerrado, la solicitud espera en el buzón del relé.
+- **Interfaz**: Perfil → **"Compartir mi ID"** (usa el menú de compartir del teléfono o copia el ID); Agregar → campo
+  **"Agregar por NEXO ID"** (tolera pegar un mensaje entero, saca el NX…) + **bandeja de solicitudes** (Aceptar/Eliminar).
+
+Reproducción y prueba: `tests/sim/reqadd.js` (3 teléfonos sin conocerse: A agrega a B por su ID, B ve la solicitud y
+acepta → los dos quedan de contacto por internet con clave, "sin verificar", y se ven en línea; C manda una solicitud a
+A, queda pendiente y al eliminarla no agrega nada). Batería **53/53**, Kotlin **90/90**, índice **42,1** (la prueba nueva
+no cambia el índice: es una funcionalidad, no un modo de fallo del catálogo). Pendiente (build aparte): el aviso
+proactivo del permiso de "pantalla completa" de Android 14 (informe del dueño en 2778: la pantalla se enciende pero la
+llamada no aparece sola si falta ese permiso; hoy se activa en Perfil → avisos).
 
 ## Ronda 2778: llamadas (informe del dueño: ruido, pantalla al entrar llamada, contestar deslizando)
 Tres cosas que pidió el dueño tras probar la 2777:
