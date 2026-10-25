@@ -43,7 +43,8 @@ class NetBg(
             val c = Cipher.getInstance("AES/GCM/NoPadding")
             c.init(Cipher.DECRYPT_MODE, SecretKeySpec(kraw, "AES"), GCMParameterSpec(128, raw, 0, 12))
             c.updateAAD("NEXO-NET|$from|$me".toByteArray())
-            JSONObject(String(c.doFinal(raw, 12, raw.size - 12), Charsets.UTF_8))
+            val s = String(c.doFinal(raw, 12, raw.size - 12), Charsets.UTF_8)
+            if (SafeJson.reject(s)) null else JSONObject(s) // ni un contacto puede tumbar la app con un sobre muy anidado
         } catch (e: Exception) { null }
         // Cadena JSON como la escribe JSON.stringify (org.json escapa "/" y el id del evento no coincidiría)
         fun q(s: String): String {
@@ -163,6 +164,9 @@ class NetBg(
     }
 
     private fun onRelayText(r: Relay, text: String) {
+        // Auditoría (ronda 2774): un relé (o un intermediario) no puede tumbar la app con un evento JSON gigantesco o
+        // muy anidado; se descarta antes de analizarlo.
+        if (SafeJson.reject(text)) return
         val m = try { JSONArray(text) } catch (e: Exception) { return }
         when (m.optString(0)) {
             "AUTH" -> auth(r, m.optString(1))

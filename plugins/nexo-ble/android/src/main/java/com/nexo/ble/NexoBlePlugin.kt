@@ -119,6 +119,8 @@ class NexoBlePlugin : Plugin() {
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
         private const val NEXO_MAGIC_LOW: Byte = 0x58
+        // NEXO ID (nx + 8) o código rotativo (R + 9 en base32); lo anunciado por radio se valida contra esto
+        private val ADVERTISED_ID_RE = Regex("^(nx[0-9a-z]{8}|R[a-z2-7]{9})$")
         private const val SCAN_DEBOUNCE_MS = 1000L
         private const val MIN_RSSI = -95
         private const val NXID_MAC_MAP_FILE = "nexo_nxid_mac_map.json"
@@ -209,11 +211,15 @@ class NexoBlePlugin : Plugin() {
         try {
             val intent = given ?: activity.intent
             if (intent != null) {
+                // Auditoría (ronda 2774): la pantalla principal está exportada; solo hacemos caso a "contestar"/"abrir
+                // llamada" si el intent trae nuestro testigo (va dentro del PendingIntent del aviso, que otras apps no
+                // pueden leer). Sin esto, otra app del teléfono podía descolgar sola una llamada que estuviera sonando.
+                val callTokenOk = intent.getStringExtra(MsgNotifier.EXTRA_CALL_TOKEN) == MsgNotifier.callIntentToken
                 // Ronda 2765: abierta por una llamada (pantalla completa, tocar el aviso o Contestar): se ve encima de la
                 // pantalla de bloqueo y la enciende, hasta que acaba la llamada (callScreenDone)
-                if (intent.getStringExtra(MsgNotifier.EXTRA_ANSWER) != null || intent.getStringExtra(MsgNotifier.EXTRA_CALL_FROM) != null) showOverLock(true)
+                if (callTokenOk && (intent.getStringExtra(MsgNotifier.EXTRA_ANSWER) != null || intent.getStringExtra(MsgNotifier.EXTRA_CALL_FROM) != null)) showOverLock(true)
                 // Ronda 2763: "Contestar" en el aviso de llamada (ronda 2768: solo para esa oferta)
-                val answer = intent.getStringExtra(MsgNotifier.EXTRA_ANSWER)
+                val answer = if (callTokenOk) intent.getStringExtra(MsgNotifier.EXTRA_ANSWER) else null
                 if (answer != null) {
                     val offer = intent.getStringExtra(MsgNotifier.EXTRA_CALL_OFFER) ?: ""
                     MsgNotifier.pendingAnswer = CallTap(answer.lowercase(), System.currentTimeMillis(), offer)
@@ -1976,6 +1982,13 @@ class NexoBlePlugin : Plugin() {
                 val b1 = data[1].toInt() and 0xFF
                 if (b0 == 0x4E && b1 == 0x58) {
                     val nexoId = String(data, 2, data.size - 2, Charsets.UTF_8)
+                    // Auditoría (ronda 2774): el anuncio lo pone cualquiera por radio. Solo se acepta si tiene la forma de
+                    // un NEXO ID (nx + 8) o de un código rotativo (R + 9 en base32): así un anuncio con basura no llega a
+                    // la app como un "dispositivo" ni envenena el mapa NEXO ID→dirección.
+                    if (!ADVERTISED_ID_RE.matches(nexoId)) {
+                        remLog("WARN", "SCAN", "Anuncio NEXO con ID mal formado en 0x${key.toString(16)}: se ignora")
+                        return null
+                    }
                     remLog("INFO", "SCAN", "NEXO ID found in manufacturer ID 0x${key.toString(16)}: $nexoId")
                     return nexoId
                 }

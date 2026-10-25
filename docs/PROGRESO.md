@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-25 (build 2773)
+Última actualización: 2026-10-25 (build 2774, auditoría de seguridad y robustez)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -100,6 +100,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2771 | 2bb58c12 | Revisión completa, parte 4 (interfaz): "Agregar" con tus contactos y un buscador que filtra (antes decía "No hay contactos" aunque los hubiera y el buscador era un dibujo), avisos rotos ("Permiso de Microfono no encontrado denegado"), textos sin tilde o en inglés, aviso sin contactos, botón redondo con burbuja, Perfil con tus iniciales y cómo te ven, "Cambiar nombre" en el menú ⋮. Ver "Ronda 2771". Batería 47/47. APK publicada (nightly-2771, 24,5 MB) |
 | 2772 | d47415e4 | Informe del dueño del 25-10 (espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada por Wi-Fi) y plan de negocio: ver "Ronda 2772". **Sin APK**: en GitHub la prueba nueva de videollamada (`videoframe.js`) no arrancó porque allí no estaba Playwright (Chromium); las demás pasaron (49/49 y Kotlin 71/71). Se instala Chromium en el paso de pruebas del workflow: todo pasa a la 2773 |
 | 2773 | 36cf90b6 | La 2772 (ver "Ronda 2772": espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada) con Chromium instalado en las pruebas de GitHub. Batería 50/50 (también en GitHub, con la videollamada de verdad), Kotlin 71/71. APK publicada (nightly-2773, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
+| 2774 | _(pendiente)_ | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería _(pendiente)_, Kotlin 87/87 (16 nuevas). APK _(pendiente)_ |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -225,6 +226,42 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2774: auditoría de seguridad y robustez «al límite» (modelos de las auditorías más estrictas)
+Pedido del dueño (25-10): «investiga cuáles son las auditorías más serias, severas y estrictas, qué implican sus
+modelos de prueba, y haz eso con NEXO; pruebas enfocadas a llevar la app al límite en robustez y seguridad». Se
+investigaron MASVS 2.1/MASTG/MASA, CSPN (ANSSI), Common Criteria/NIAP y FIPS 140-3, y los criptoanálisis públicos de la
+competencia (Threema, Matrix, Bridgefy, Signal, bitchat, WhatsApp) y de Bluetooth (SweynTooth, BLESA, KNOB); el informe
+completo, el modelo de amenazas y el plan están en `docs/AUDITORIA.md`. Cada fallo se reprodujo antes de arreglarlo.
+
+Arreglado y comprobado (simulador/JVM):
+- **N1/N2 Wi-Fi, el hub TCP (`LanHub`)**: el saludo se leía reservando hasta 48 MB sin autenticar (con unas pocas
+  conexiones así, la app se quedaba sin memoria y Android la cerraba) y se abría un hilo por conexión sin tope. Ahora el
+  saludo tiene tope de 8 KB y las conexiones sin saludar están acotadas (64; se cierra la más vieja). Un contacto de
+  verdad entra igual.
+- **N3 Wi-Fi, archivos grandes (`BigFile.serve`)**: una conexión ajena con basura, o que se quedaba callada, abortaba
+  la recepción del archivo del contacto. Ahora cada conexión se atiende por separado y una ajena se descarta.
+- **N4 Wi-Fi, escaneo de la red (`LanBeacon`)**: una inundación de preguntas con marca distinta hacía crecer el mapa de
+  vistos sin fin y disparaba un aviso y una respuesta por paquete. Ahora el mapa está acotado (2048) y hay presupuesto
+  por ventana (256/10 s).
+- **N5 cierre a distancia con JSON muy anidado**: el analizador del sistema es recursivo; `[[[[…` provocaba un
+  `StackOverflowError` que se escapaba de los `try/catch` y mataba la app con un solo paquete. Cribado `SafeJson`
+  (tamaño y profundidad) antes de analizar cualquier JSON ajeno (Bluetooth, Wi-Fi, relés) + `catch(Throwable)`.
+- **N6 otra app descolgaba una llamada**: la pantalla principal está exportada; otra app podía abrirla con el extra
+  «contestar». Ahora solo se hace caso si el intent trae un testigo al azar que va dentro del PendingIntent del aviso.
+- **N7 anuncio Bluetooth con ID mal formado**: se valida contra la forma de un NEXO ID o código rotativo antes de usarlo
+  (no envenena el mapa NEXO ID→dirección).
+- **C2 grupos**: cualquier miembro podía reescribir la lista entera (echar a otros, meter desconocidos) y colar la clave
+  de un tercero. Ahora la lista se fija al crear el grupo (la única baja es salir) y las tarjetas solo valen para
+  miembros de la lista.
+- **R1 muerte del WebView**: Capacitor 5 cerraba la app si el proceso del WebView moría; `MainActivity` ahora lo rehace
+  (los chats se recargan del disco) y la app no se cierra.
+
+Pruebas nuevas: Kotlin `LanHubAttackTest`, `BigFileAttackTest`, `LanBeaconAttackTest`, `SafeJsonTest`, `ParserFuzzTest`
+(fuzzing con semilla de los analizadores: 90 000 entradas adversarias sin reventar); simulador `groupforge.js` (en la
+batería). Documentado para rondas propias (cambio de protocolo + prueba en los dos teléfonos): **C1** confirmaciones
+(✓✓) sin autenticar —la prioridad P0—, H3 tarjetas de contacto sin verificar, H4 Fénix sin autenticar, y varios leves
+(ver `docs/AUDITORIA.md`).
 
 ## Ronda 2772: informe del dueño del 25-10 (videollamada, micrófono, pantalla apagada) y plan de negocio
 Pedido del dueño (25-10): primero un plan de negocio (cómo gana dinero la competencia y un plan para NEXO con pagos sin

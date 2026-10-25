@@ -43,6 +43,13 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
 
     companion object {
         const val MAX_FRAME = 48 * 1024 * 1024
+        // Auditoría (ronda 2774): el saludo es un JSON diminuto ({"h":1,"nx":"nx········"}, unas decenas de bytes). Se
+        // lee con este tope, no con MAX_FRAME: así alguien de la misma red no puede decir que su saludo mide 48 MB para
+        // que el teléfono reserve esa memoria de golpe (con varias conexiones así, la app se quedaba sin memoria).
+        const val HELLO_MAX = 8192
+        // Tope de conexiones a medio saludar (aún sin comprobar quién es). Más de esto = avalancha: se cierra la más
+        // vieja sin saludar para dejar sitio (un contacto de verdad saluda en el acto y no se queda en esta cola).
+        const val MAX_PREAUTH = 64
         const val CONNECT_TIMEOUT_MS = 5000
         const val TOR_CONNECT_TIMEOUT_MS = 90000 // un circuito hasta un .onion puede tardar
         const val HELLO_TIMEOUT_MS = 8000
@@ -64,6 +71,7 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
 
     private var server: ServerSocket? = null
     private val conns = ConcurrentHashMap<String, Conn>() // NEXO ID → conexión en uso
+    private val preAuth = java.util.concurrent.ConcurrentLinkedQueue<Conn>() // a medio saludar (aún sin NEXO ID); se acota
     @Volatile private var running = false
 
     val port: Int get() = server?.localPort ?: 0
@@ -146,22 +154,36 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         running = false
         try { server?.close() } catch (e: Exception) {}
         server = null
+        preAuth.toList().forEach { it.close() }; preAuth.clear()
         conns.values.toList().forEach { drop(it) }
     }
 
     private fun handle(c: Conn) {
         c.lastRx = clock()
+        // Mientras no haya saludado va a esta cola acotada. Una avalancha de conexiones que no saludan cierra a las más
+        // viejas (antes había un hilo de lectura por conexión, sin tope: miles de conexiones = la app sin memoria).
+        preAuth.add(c)
+        var evicted = 0
+        while (preAuth.size > MAX_PREAUTH) {
+            val old = preAuth.poll() ?: break
+            if (old === c) { preAuth.add(c); break }
+            old.close(); evicted++
+        }
+        if (evicted > 0) listener.onLog("WARN", "Wi-Fi: $evicted conexión(es) sin saludar cerradas (tope $MAX_PREAUTH)")
         Thread({
             try {
                 c.socket.tcpNoDelay = true
                 c.socket.soTimeout = if (proxy != null || bindHost != null) HELLO_TIMEOUT_MS * 6 else HELLO_TIMEOUT_MS
                 c.write(JSONObject().put("h", 1).put("nx", myId()).toString())
                 val input = DataInputStream(BufferedInputStream(c.socket.getInputStream(), 65536))
-                val hello = JSONObject(readFrame(input))
+                val helloStr = readFrame(input, HELLO_MAX)
+                if (SafeJson.reject(helloStr)) throw Exception("saludo descomunal") // no dejar que un saludo muy anidado tumbe el analizador
+                val hello = JSONObject(helloStr)
                 val nx = hello.optString("nx").lowercase()
                 if (hello.optInt("h") != 1 || !Regex("^nx[0-9a-z]{8}$").matches(nx) || nx == myId().lowercase()) throw Exception("saludo no válido")
                 c.nx = nx
                 c.socket.soTimeout = 0
+                preAuth.remove(c)
                 if (!adopt(nx, c)) { c.close(); return@Thread }
                 listener.onUp(nx)
                 while (true) {
@@ -177,7 +199,12 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
                 }
             } catch (e: Exception) {
                 if (c.nx != null) listener.onLog("INFO", "conexión con ${c.nx} cerrada: ${e.message}")
+            } catch (t: Throwable) {
+                // Auditoría (ronda 2774): un fallo grave al leer (p. ej. StackOverflowError por un JSON muy anidado que se
+                // colara) cierra solo esta conexión; antes mataba toda la app (un Error se escapa de catch(Exception)).
+                listener.onLog("WARN", "conexión cerrada por un fallo grave: ${t.message}")
             } finally {
+                preAuth.remove(c)
                 drop(c)
             }
         }, "nexo-lan-read").apply { isDaemon = true }.start()
@@ -205,9 +232,9 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         if (removed) listener.onDown(nx)
     }
 
-    private fun readFrame(input: DataInputStream): String {
+    private fun readFrame(input: DataInputStream, max: Int = MAX_FRAME): String {
         val len = input.readInt()
-        if (len < 0 || len > MAX_FRAME) throw Exception("marco de $len bytes")
+        if (len < 0 || len > max) throw Exception("marco de $len bytes")
         val b = ByteArray(len)
         input.readFully(b)
         return String(b, Charsets.UTF_8)

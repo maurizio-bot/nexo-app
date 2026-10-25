@@ -135,13 +135,22 @@ object BigNet {
         return true
     }
 
-    // Servidor de una sola recepción: acepta hasta que llega la buena (otras conexiones con id/token distintos se cierran)
-    fun serve(server: ServerSocket, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null, beforeAck: (() -> Unit)? = null) {
+    // Servidor de una sola recepción: acepta hasta que llega la buena. Auditoría (ronda 2774): cada conexión se atiende
+    // por separado y, si da error (otra persona de la misma red manda basura, una cabecera ajena o no manda nada hasta
+    // que vence soTimeoutMs), se descarta y se sigue esperando la del contacto. Antes una sola conexión ajena lanzaba la
+    // excepción fuera de serve y la espera del archivo moría: el archivo legítimo nunca llegaba.
+    fun serve(server: ServerSocket, id: String, token: String, dest: File, maxLen: Long, progress: Progress? = null, soTimeoutMs: Int = 30000, beforeAck: (() -> Unit)? = null) {
         while (true) {
-            server.accept().use { s ->
-                s.soTimeout = 30000
-                if (receive(s, id, token, dest, maxLen, progress, beforeAck)) return
+            val s = server.accept()
+            val done = try {
+                s.soTimeout = soTimeoutMs
+                receive(s, id, token, dest, maxLen, progress, beforeAck)
+            } catch (e: Exception) {
+                false
+            } finally {
+                try { s.close() } catch (e: Exception) {}
             }
+            if (done) return
         }
     }
 }

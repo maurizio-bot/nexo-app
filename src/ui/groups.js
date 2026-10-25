@@ -172,13 +172,16 @@ export class Groups {
     } else {
       if (g.left) return null;
       if (g.members.indexOf(nx) < 0) return null; // quien no es miembro no cambia el grupo
+      // Auditoría (ronda 2774): un sobre NO reescribe la lista de un grupo ya conocido. Antes `g.members = members`
+      // dejaba que cualquier miembro cambiara la lista entera (echar a otros, meter desconocidos) y, con ella, colar
+      // claves de terceros por env.k. La lista se fija al crear el grupo (no hay forma en la app de añadir después);
+      // la única baja es que uno se vaya (gl). Renombrar sigue siendo de cualquier miembro (función del chat).
       if (leaving) g.members = g.members.filter(function(x) { return x !== nx; });
-      else {
-        if (members.indexOf(me) >= 0) g.members = members;
-        if (env.n) g.name = String(env.n).substring(0, 60);
-      }
+      else if (env.n) g.name = String(env.n).substring(0, 60);
     }
-    // Tarjetas de los miembros (solo de miembros y no la propia): se guardan como contactos para poder escribirles
+    // Tarjetas de los miembros (solo de miembros de la lista y no la propia): ayudan a tener su clave para escribirles.
+    // Al no poder ampliarse la lista de un grupo ya conocido desde un sobre (ver arriba), un atacante ya no puede colar
+    // la clave de un tercero que no sea miembro de verdad. (Riesgo residual en la creación: ver H3 en docs/AUDITORIA.md.)
     if (Array.isArray(env.k) && this.ble && typeof this.ble.addSharedContacts === 'function') {
       var cards = env.k.filter(function(c) { var id = _nid(c && c.nexoId); return id !== me && id !== nx && g.members.indexOf(id) >= 0; });
       if (cards.length) this.ble.addSharedContacts(cards, nx, { quiet: true });

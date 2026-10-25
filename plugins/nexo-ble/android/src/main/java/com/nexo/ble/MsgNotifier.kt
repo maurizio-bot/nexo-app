@@ -29,6 +29,12 @@ class MsgNotifier(private val ctx: Context) {
         const val EXTRA_ANSWER = "nexo_call_answer"
         const val EXTRA_CALL_FROM = "nexo_call_from"
         const val EXTRA_CALL_OFFER = "nexo_call_offer"
+        // Auditoría (ronda 2774): la pantalla principal está exportada (es el lanzador). Sin esto, otra app del teléfono
+        // podía abrirla con el extra "contestar" y descolgar sola una llamada que estuviera sonando (micrófono/cámara
+        // abiertos sin tocar nada). Este testigo va solo dentro de nuestros PendingIntent (otras apps no pueden leerlo);
+        // al abrir por el aviso se comprueba que coincide antes de hacer caso a "contestar"/"abrir llamada".
+        const val EXTRA_CALL_TOKEN = "nexo_call_token"
+        @JvmStatic val callIntentToken: String = java.util.UUID.randomUUID().toString()
         private const val CALL_NOTIF_ID = 3999
         // Lo que el dueño tocó en el aviso; la app lo recoge al abrirse (NexoBlePlugin.callAction). Ronda 2768: con la
         // oferta a la que se refiere (si no, valía para la siguiente llamada de ese contacto y se contestaba sola)
@@ -86,8 +92,8 @@ class MsgNotifier(private val ctx: Context) {
         val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: return
         val fl = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         val pf = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        val openPi = PendingIntent.getActivity(ctx, 3990, Intent(launch).putExtra(EXTRA_CALL_FROM, from).putExtra(EXTRA_CALL_OFFER, offerId).addFlags(fl), pf)
-        val answerPi = PendingIntent.getActivity(ctx, 3991, Intent(launch).putExtra(EXTRA_ANSWER, from).putExtra(EXTRA_CALL_OFFER, offerId).addFlags(fl), pf)
+        val openPi = PendingIntent.getActivity(ctx, 3990, Intent(launch).putExtra(EXTRA_CALL_FROM, from).putExtra(EXTRA_CALL_OFFER, offerId).putExtra(EXTRA_CALL_TOKEN, callIntentToken).addFlags(fl), pf)
+        val answerPi = PendingIntent.getActivity(ctx, 3991, Intent(launch).putExtra(EXTRA_ANSWER, from).putExtra(EXTRA_CALL_OFFER, offerId).putExtra(EXTRA_CALL_TOKEN, callIntentToken).addFlags(fl), pf)
         val declinePi = PendingIntent.getBroadcast(ctx, 3992, Intent(ctx, CallDeclineReceiver::class.java).putExtra(EXTRA_CALL_FROM, from).putExtra(EXTRA_CALL_OFFER, offerId), pf)
         val n = NotificationCompat.Builder(ctx, CALL_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_phone_call)

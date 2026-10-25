@@ -33,6 +33,29 @@ Lo que más falta ya no es código nuevo, sino confirmar en el mundo real lo que
 - **Semana 2 (2-11 → 8-11)**: lo que salga de las pruebas; Google Play (target 36, permisos); diseño del perfil de
   negocio y de "Cobros".
 
+## 0c. Auditoría de seguridad y robustez (ronda 2774): lo que queda
+Informe completo, modelo de amenazas y plan: `docs/AUDITORIA.md`. En la 2774 se arreglaron 8 cosas (Wi-Fi: saludo
+gigante, avalancha, archivo abortado, inundación de escaneo; JSON anidado que cerraba la app; intent de llamada
+exportado; anuncio con ID mal formado; grupos que reescribían la lista y colaban claves) y la recuperación del WebView.
+Queda, por prioridad (cada uno necesita un cambio de protocolo y probarse en los dos teléfonos del dueño):
+1. **C1 (grave, P0): autenticar las confirmaciones (✓✓).** El `msgId` viaja en claro; una confirmación falsa hace que el
+   emisor deje de reintentar y el mensaje puede perderse mostrando ✓✓. Arreglo: llevar las confirmaciones dentro del
+   canal cifrado o firmarlas con un MAC de la clave de la pareja. Dejar una prueba «confirmación falsa no marca
+   entregado» en `tests/sim`.
+2. **P0-1 ratchet: repetir (clave, IV)** al restaurar un estado viejo (copia, Fénix, pasar la cuenta sin apagar el
+   teléfono viejo). Probar que nunca se repite y que el teléfono viejo deja de servir.
+3. **H3 (media): tarjetas de contacto** fijan la clave de un contacto nuevo sin verificar. Marcarlas «de oídas»
+   (pendientes) hasta el flujo normal de aceptación.
+4. **H4 (media): Fénix** acepta la petición de recuperación sin autenticar. Exigir sesión E2E y mostrar solo la
+   identidad verificada.
+5. **Leves**: M5 (`ni`/`kx`/`nm` sin autenticar), M6 (`ss` sin autenticar), F6 (la radio renueva el wakelock/suena sin
+   autenticar), F7 (FileProvider con rutas amplias), F8 (reservas de 40/512 MB de una vez), F9 (`ws://` en claro),
+   e IDs con `Math.random` (derivarlos de `getRandomValues`).
+6. **Plan de pruebas «al límite»** (AUDITORIA.md §4): «VOPR de NEXO» (mundo determinista con fallos inyectados),
+   fuzzing de medios (imagen/vídeo/Opus/VP8), GATT/BLE (MTU, muchas conexiones), y un modelo formal del protocolo.
+   Ya hecho el primer tramo: fuzzing con semilla de los analizadores (Kotlin `ParserFuzzTest`) y pruebas de ataque de
+   red y de grupos.
+
 ## Reglas para elegir el camino de envío (decididas por el dueño, 23-10-2026; revisadas el 24-10-2026, build 2761)
 1. **Wi-Fi en el mismo router/módem: prioridad sobre todo** (seguro, rápido, no gasta datos) y **se mantiene, sin
    brincar**: no se deja por un pico ni por un corte breve (primero se intenta recuperar, 15 s); solo si está muy mal

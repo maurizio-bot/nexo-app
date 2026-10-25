@@ -45,6 +45,7 @@ const SCENARIOS = [
     llegada_a_B_tras_volver: (v) => Array.isArray(v) && v.every((x) => !/NO LLEGÓ/.test(x)),
     con_B_cerrada: (v) => !!v && v.estado_en_A.every((x) => /delivered|read/.test(x)) && v.notificaciones_B.length >= 1 && v.oculta_en_buzon_sin_aviso === true } },
   { name: 'chats de grupo (crear, escribir, texto largo, salir)', args: ['groups.js', '--io-delay=25'], tag: 'GROUPS', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'seguridad de grupos: un miembro no reescribe la lista ni cuela claves de terceros (auditoría C2)', args: ['groupforge.js'], tag: 'GROUPFORGE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'grupos: vídeo HD y archivo grande (24 MB, uno lo pide al llegar al Wi-Fi)', args: ['group_media.js'], tag: 'GROUP_MEDIA', checks: { resultado: (v) => v === 'OK' } },
   { name: 'envío al teléfono equivocado (informe del dueño: lo de la tablet para el S24 sonaba en el Vivo)', args: ['misroute.js'], tag: 'MISROUTE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'enlace parado 80 s: pings contestados, sin cortes (Bluetooth)', args: ['idle.js'], tag: 'IDLE', checks: { resultado: (v) => v === 'OK' } },

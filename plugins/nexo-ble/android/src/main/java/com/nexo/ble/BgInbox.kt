@@ -30,6 +30,9 @@ class BgInbox(private val file: File, private val maxBytes: Long = 3_000_000) {
         private val GID = Regex("^gr[0-9a-z]{8}$")
         // me: mi NEXO ID (para reconocer lo que llega por Jump); vacío = no se mira
         fun classify(json: String, me: String = ""): Info {
+            // Auditoría (ronda 2774): un JSON descomunal o muy anidado se descarta antes de analizarlo (el analizador del
+            // sistema es recursivo y un paquete así podría tumbar la app).
+            if (SafeJson.reject(json)) return Info(Kind.IGNORE, "", "", false, "")
             val o = try { JSONObject(json) } catch (e: Exception) { return Info(Kind.IGNORE, "", "", false, "") }
             val type = o.optString("type"); val t = o.optString("t")
             val from = (o.optString("from").ifEmpty { o.optString("fr") }).lowercase()

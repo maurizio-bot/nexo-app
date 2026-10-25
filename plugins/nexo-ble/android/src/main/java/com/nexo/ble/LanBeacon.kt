@@ -31,13 +31,25 @@ class LanBeacon(private val listener: Listener, private val udpPort: Int = PORT)
         const val PORT = 47824
         const val MAX_SWEEP_PREFIX = 22
         private val TOKEN_RE = Regex("^[0-9a-f]{16}$")
+        // Auditoría (ronda 2774): topes contra una inundación de preguntas desde la misma red (marcas distintas para
+        // saltarse el "no repetir"). Sin esto el mapa crecía sin fin (memoria) y cada paquete disparaba un aviso a la
+        // app y una respuesta UDP (tormenta de eventos y reflejo). Una red normal tiene unos pocos NEXO: estos topes
+        // sobran para lo normal y cortan el abuso.
+        const val MAX_SEEN = 2048          // direcciones recordadas como mucho (lo más viejo se olvida)
+        const val WINDOW_MS = 10000L       // ventana del presupuesto
+        const val MAX_PER_WINDOW = 256     // preguntas/respuestas atendidas por ventana
     }
 
     @Volatile private var token = ""
     @Volatile private var tcpPort = 0
     private var socket: DatagramSocket? = null
     @Volatile private var running = false
-    private val lastSeen = ConcurrentHashMap<String, Long>() // "marca|host|puerto" → cuándo se avisó (no repetir)
+    // "marca|host|puerto" → cuándo se avisó (no repetir). Acotado: al pasar de MAX_SEEN se olvida lo más viejo.
+    private val lastSeen = object : LinkedHashMap<String, Long>(512, 0.75f, false) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, Long>): Boolean = size > MAX_SEEN
+    }
+    private var winStart = 0L
+    private var winCount = 0
 
     val localPort: Int get() = socket?.localPort ?: 0
 
@@ -98,25 +110,34 @@ class LanBeacon(private val listener: Listener, private val udpPort: Int = PORT)
         targets.forEach { t -> try { s.send(DatagramPacket(msg, msg.size, t)) } catch (e: Exception) {} }
     }
 
-    internal fun handle(text: String, from: InetAddress, fromPort: Int) {
+    internal fun handle(text: String, from: InetAddress, fromPort: Int, now: Long = System.currentTimeMillis()) {
         val f = text.split('|')
         if (f.size != 3 || (f[0] != "NXQ1" && f[0] != "NXA1")) return
         val t = f[1]
         val port = f[2].toIntOrNull() ?: return
         if (!TOKEN_RE.matches(t) || t == token || port !in 1..65535) return
         val host = from.hostAddress ?: return
+        // Auditoría (ronda 2774): presupuesto por ventana. Una inundación de preguntas (marcas distintas) se corta aquí
+        // para no responder ni avisar a la app miles de veces (tormenta de eventos y reflejo UDP).
+        synchronized(lastSeen) {
+            if (now - winStart > WINDOW_MS) { winStart = now; winCount = 0 }
+            if (++winCount > MAX_PER_WINDOW) return
+        }
         // Contestar a una pregunta (aunque ya lo conozcamos: el otro puede haberse reiniciado)
         if (f[0] == "NXQ1" && token.isNotEmpty()) {
             val reply = "NXA1|$token|$tcpPort".toByteArray(Charsets.UTF_8)
             try { socket?.send(DatagramPacket(reply, reply.size, from, fromPort)) } catch (e: Exception) {}
         }
         val key = "$t|$host|$port"
-        val now = System.currentTimeMillis()
-        if (now - (lastSeen[key] ?: 0L) < 10000L) return
-        lastSeen[key] = now
-        if (lastSeen.size > 500) lastSeen.entries.removeIf { now - it.value > 60000L }
-        listener.onPeer(t, host, port)
+        val fresh = synchronized(lastSeen) {
+            if (now - (lastSeen[key] ?: 0L) < 10000L) return
+            lastSeen[key] = now // el mapa se olvida de lo más viejo al pasar de MAX_SEEN (removeEldestEntry)
+            true
+        }
+        if (fresh) listener.onPeer(t, host, port)
     }
+
+    internal fun seenSize(): Int = synchronized(lastSeen) { lastSeen.size }
 
     // Redes IPv4 locales (Wi-Fi): dirección, prefijo y difusión. Sin las de loopback ni las de datos móviles
     private fun localNets(): List<Triple<Inet4Address, Int, InetAddress?>> {
