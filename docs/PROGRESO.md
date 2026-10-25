@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-25 (build 2772)
+Última actualización: 2026-10-25 (build 2773)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -98,6 +98,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2769 | 6b5b5088 | Videollamada robusta (informe del dueño: en videollamadas Vivo ↔ S24 a veces el S24 salía sin cámara, el otro veía negro y no se le oía): cámara y micrófono por separado con reintentos y vigilante (ocupados, cortados por el sistema, sin imágenes, audio en pausa), codificadores y decodificadores de voz y vídeo que se rehacen (antes, sin voz o negro hasta colgar), foto y motivo en vez de negro, avisos de los dos, sin micrófono la llamada sigue (antes se cortaba a los 12 s), pantalla encendida en llamada y sensor de proximidad. Ver "Ronda 2769". Batería 45/45, Kotlin 68/68. APK publicada (nightly-2769, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
 | 2770 | 0a330484 | Llamadas con la pantalla bloqueada o en otra app: el micrófono sigue (servicio de tipo micrófono, Android 11+; antes el otro dejaba de oír), foco de audio (la música de otras apps se para y vuelve al colgar), todo se suelta si NEXO se cierra en plena llamada, tono de llamada según el modo del teléfono (silencio, vibración, "No molestar"; con la app oculta solo el aviso del sistema). Ver "Ronda 2770". Batería 46/46, Kotlin 68/68. APK publicada (nightly-2770, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
 | 2771 | 2bb58c12 | Revisión completa, parte 4 (interfaz): "Agregar" con tus contactos y un buscador que filtra (antes decía "No hay contactos" aunque los hubiera y el buscador era un dibujo), avisos rotos ("Permiso de Microfono no encontrado denegado"), textos sin tilde o en inglés, aviso sin contactos, botón redondo con burbuja, Perfil con tus iniciales y cómo te ven, "Cambiar nombre" en el menú ⋮. Ver "Ronda 2771". Batería 47/47. APK publicada (nightly-2771, 24,5 MB) |
+| 2772 | d47415e4 | Informe del dueño del 25-10 (espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada por Wi-Fi) y plan de negocio: ver "Ronda 2772". **Sin APK**: en GitHub la prueba nueva de videollamada (`videoframe.js`) no arrancó porque allí no estaba Playwright (Chromium); las demás pasaron (49/49 y Kotlin 71/71). Se instala Chromium en el paso de pruebas del workflow: todo pasa a la 2773 |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -276,6 +277,9 @@ competencia (código de Chrome, WebRTC, Signal, Telegram y Android) y "mejor que
   `callmedia.js` casos 21 (girar el teléfono) y 22 (eco); `alerts.js` (fila del fabricante). Llamadas de verdad en
   Chromium (`calls_browser.js`: voz Opus, vídeo y μ-law) con los filtros: bien. Batería 50/50 (antes 47), Kotlin 71/71
   (antes 68). Índice de robustez 44 (`ROBUSTEZ.md` §4).
+- En GitHub, la compilación 2772 paró en las pruebas: `videoframe.js` necesita Chromium (Playwright), que allí no
+  estaba (aquí sí). El workflow lo instala ahora antes de las pruebas (`npx playwright install --with-deps chromium`,
+  `tests/sim/package.json` con `playwright` 1.56.1, la misma versión que aquí). La APK sale como 2773.
 - No se puede comprobar aquí (en el teléfono): que el cancelador de eco del teléfono funcione mejor con la salida nueva;
   el consumo de batería; si el Vivo congela NEXO con la pantalla apagada aunque se mantenga despierto.
 

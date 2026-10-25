@@ -43,6 +43,12 @@ jobs:
         working-directory: ./tests/sim
         run: npm ci --no-audit --no-fund
 
+      # Ronda 2772: la videollamada de verdad (videoframe.js: espejo, forma y encuadre de la imagen) usa Chromium con
+      # Playwright (cámara falsa en vertical); sin esto la prueba no arrancaba en GitHub
+      - name: Chromium para las pruebas de videollamada
+        working-directory: ./tests/sim
+        run: npx playwright install --with-deps chromium
+
       - name: Compilar el bundle para el simulador
         run: bash tests/sim/build.sh wip
 

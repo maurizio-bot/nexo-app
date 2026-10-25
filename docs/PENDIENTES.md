@@ -21,10 +21,10 @@ el dueño de sus pruebas con la 2771.
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
-- **Qué APK probar (25-10)**: la 2772 (nightly-2772) para todo. Desde la 2763 no hay pruebas completas en teléfonos:
+- **Qué APK probar (25-10)**: la 2773 (nightly-2773; la 2772 no salió) para todo. Desde la 2763 no hay pruebas completas en teléfonos:
   todo lo de abajo desde la 2765 está sin confirmar (salvo los informes de videollamada con la 2768 y del 25-10 con la
-  2771, ver 2769 y 2772).
-- **2772** (informe del dueño del 25-10; actualizar los dos teléfonos): (1) **Pantalla apagada con Wi-Fi**: los dos en
+  2771, ver 2769 y la ronda 2772).
+- **2773** (ronda 2772: informe del dueño del 25-10; actualizar los dos teléfonos): (1) **Pantalla apagada con Wi-Fi**: los dos en
   el mismo Wi-Fi, uno con la pantalla apagada 2–3 min; mandarle un texto y una foto: debe sonar el aviso sin encender
   la pantalla y en el que manda salir ✓✓ enseguida. Si no, en el que tenía la pantalla apagada: Perfil → "Avisos con
   la pantalla apagada" → todo en ✅ y, en el Vivo, "Abrir" en su fila (activar «Inicio automático» y «Alto consumo en
