@@ -154,7 +154,9 @@ class LanHub(private val myId: () -> String, private val listener: Listener,
         running = false
         try { server?.close() } catch (e: Exception) {}
         server = null
-        preAuth.toList().forEach { it.close() }; preAuth.clear()
+        // Se vacía con poll() (no iterando): los hilos de lectura pueden quitar de la cola a la vez y un iterador
+        // sobre ella lanzaría NoSuchElementException (visto en CI).
+        while (true) { (preAuth.poll() ?: break).close() }
         conns.values.toList().forEach { drop(it) }
     }
 
