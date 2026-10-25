@@ -7,8 +7,31 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 `docs/ROBUSTEZ.md`: registro de la revisión 1 (24 y 25-10, builds 2766–2771: 63 fallos encontrados, 62 arreglados),
 índice de robustez (medición inicial **45,3 sobre 100**; lo que más baja: casi nada confirmado en los teléfonos desde la
 2765) y rutina diaria. Con la 2772: **44** (arreglos del informe del dueño sin confirmar y 4 puntos débiles nuevos; si
-confirma videollamadas, llamadas y avisos: 53,5). **Siguiente: revisión 2, día 1 (avisos, segundo plano y app cerrada)**, después de lo que traiga
-el dueño de sus pruebas con la 2771.
+confirma videollamadas, llamadas y avisos: 53,5). **Siguiente: revisión 2, día 1 (avisos, segundo plano y app cerrada)**,
+el 26-10, después de lo que traiga el dueño de sus pruebas con la 2773.
+
+## 0b. Hoja de ruta (opinión del 25-10, aceptada por el dueño)
+Lo que más falta ya no es código nuevo, sino confirmar en el mundo real lo que existe. En orden de importancia:
+1. **Confirmar en teléfonos** (3–4 distintos, uno barato o viejo) lo pendiente de §1, empezando por la 2773. Es lo que
+   más fiabilidad da (y el índice: de 44 a ~65).
+2. **Medir la batería**: 24 h con NEXO en segundo plano frente a WhatsApp, y recortar lo que sobre (el latido del Wi-Fi
+   despierta al otro teléfono cada 4 s; búsquedas Bluetooth). Hoy no se sabe cuánto gasta.
+3. **Muchos teléfonos a la vez**: todo se ha probado con 2–3; los núcleos son decenas. Simular 20 teléfonos virtuales
+   (conexiones, búsquedas, Jump) y luego probar con 5–6 reales.
+4. **Auditoría de seguridad externa** (plan del dueño, punto 19).
+5. **Google Play**: target 36 (§3), política de privacidad, declarar los permisos (servicio en primer plano, micrófono,
+   pantalla completa, batería), empresa y marca (`PLAN_NEGOCIO.md` §6–8).
+6. **Núcleos y cobros**: perfil de negocio, cola de impresión de la papelería y "Cobros" sin licencia
+   (`PLAN_NEGOCIO.md` §4–5, después de la consulta legal). Es lo que distingue a NEXO y lo que daría ingresos.
+7. **iPhone**, después de un piloto que funcione en un núcleo.
+8. **Frente a WhatsApp**: buscar en los chats, "Tu nombre" en Perfil (decisión, §6 punto 4), llamadas en grupo, estados.
+- Técnico ya anotado: revisión 2 (`ROBUSTEZ.md` §6), meter en la batería las 18 pruebas de fuera, voz por un Bluetooth
+  lento, AudioWorklet y DTX (§3), internet (relés y Tor) nunca probado en teléfonos.
+- Decisiones del dueño: §4 y `PLAN_NEGOCIO.md` §8.
+- **Semana 1 (26-10 → 1-11)**: lo del dueño primero (sus pruebas con la 2773); medir la batería; simulación de 20
+  teléfonos; revisión 2, días 1–3 (avisos, grupos, seguridad).
+- **Semana 2 (2-11 → 8-11)**: lo que salga de las pruebas; Google Play (target 36, permisos); diseño del perfil de
+  negocio y de "Cobros".
 
 ## Reglas para elegir el camino de envío (decididas por el dueño, 23-10-2026; revisadas el 24-10-2026, build 2761)
 1. **Wi-Fi en el mismo router/módem: prioridad sobre todo** (seguro, rápido, no gasta datos) y **se mantiene, sin
