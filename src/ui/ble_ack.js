@@ -1,4 +1,4 @@
-import { e2eAvailable, e2eAckTag } from '../vault/e2e_crypto.js';
+import { e2eAvailable } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 /**
@@ -125,14 +125,6 @@ function _chunkCheck(o) {
 }
 function _normId(id) {
   return (id || '').toString().toLowerCase().trim();
-}
-// Auditoría C1 (ronda 2777): firma de las confirmaciones. Un NEXO ID válido y comparación en tiempo constante del MAC.
-var _ackRe = /^nx[0-9a-z]{8}$/;
-function _ctEq(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-  var r = 0;
-  for (var i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return r === 0;
 }
 // Un NEXO ID válido o '' (ronda 2767: 'to' solo cuenta si es un NEXO ID, no una dirección)
 function _nxOf(id) {
@@ -1115,32 +1107,11 @@ export class BleAckSystem {
     }
   }
   processIncomingAck(content) {
-    var self = this;
-    var ack;
-    try { ack = JSON.parse(content); } catch (e) { return false; }
-    var ackMsgId = ack.msgId || ack.messageId || ack.id || null;
-    if (!ackMsgId) return false;
-    if (ack.type !== 'ack' && ack.type !== 'read_receipt') return false;
-    // Auditoría C1 (ronda 2777): con un contacto moderno (protocolo 2) se exige que la confirmación venga firmada con
-    // el secreto de la pareja; una confirmación sin firma válida (falsa) se ignora para no marcar "entregado"/"leído"
-    // algo que quizá no llegó (si no, un tercero que supiera el msgId paraba los reintentos y el mensaje se perdía con
-    // ✓✓). Con contactos de protocolo 1 o desconocidos se mantiene el comportamiento de antes (compatibilidad).
-    var acker = _normId(ack.from);
-    var c = this._contactOf(null, acker);
-    if (c && c.proto === 2 && c.publicKey && !c.pendingKey && _ackRe.test(acker)) {
-      var myNx = _normId(this.ble && this.ble.localNexoId);
-      var fields = ack.type + '|' + ackMsgId + '|' + acker + '|' + myNx;
-      e2eAckTag(c.publicKey, fields).then(function(exp) {
-        if (ack.a && exp && _ctEq(String(ack.a), exp)) self._applyAck(ack, ackMsgId);
-        else console.warn('[BleAckSystem] Confirmación sin firma válida de ' + acker + ' (' + ackMsgId + '): ignorada');
-      }).catch(function() {});
-      return true;
-    }
-    return this._applyAck(ack, ackMsgId);
-  }
-  // Aplica una confirmación ya aceptada (firmada, o de un contacto antiguo): dedup y marcar entregado/leído
-  _applyAck(ack, ackMsgId) {
     try {
+      var ack = JSON.parse(content);
+      var ackMsgId = ack.msgId || ack.messageId || ack.id || null;
+      if (!ackMsgId) return false;
+      if (ack.type !== 'ack' && ack.type !== 'read_receipt') return false;
       // FIX v3.2.13: dedup por tipo+id; antes el 'ack' de un mensaje hacía descartar su 'read_receipt'
       var ackKey = ack.type + ':' + ackMsgId;
       var entry = this.pendingAcks.get(ackMsgId);
@@ -1169,22 +1140,15 @@ export class BleAckSystem {
     } catch (e) { return false; }
   }
   // routeTo: origen de un mensaje que llegó por otro teléfono (Jump): el ack vuelve dirigido a él
-  sendAck(deviceId, msgId, routeTo) { this._sendReceipt('ack', deviceId, msgId, routeTo); }
-  sendReadReceipt(deviceId, msgId, routeTo) { this._sendReceipt('read_receipt', deviceId, msgId, routeTo); }
-  // Auditoría C1 (ronda 2777): la confirmación se firma con el secreto de la pareja (si el contacto es proto 2 y hay
-  // clave) para que el emisor pueda comprobar que es de verdad. `a` es un campo más: los contactos antiguos lo ignoran.
-  _sendReceipt(type, deviceId, msgId, routeTo) {
-    var self = this, myNx = (this.ble && this.ble.localNexoId) || 'unknown';
-    var obj = { v: 1, type: type, msgId: msgId, from: myNx, ts: Date.now() };
-    var target = _normId(routeTo) || _normId(this._resolveNexoId(deviceId));
-    var out = function() {
-      if (routeTo) { obj.to = String(routeTo).toLowerCase(); self._sendRouted(obj, deviceId); return; }
-      if (self.ble && self.ble._sendMessageNative) self.ble._sendMessageNative(deviceId, JSON.stringify(obj), null).catch(function() {});
-    };
-    var c = this._contactOf(deviceId, routeTo);
-    if (c && c.proto === 2 && c.publicKey && !c.pendingKey && _ackRe.test(target)) {
-      e2eAckTag(c.publicKey, type + '|' + msgId + '|' + _normId(myNx) + '|' + target).then(function(a) { if (a) obj.a = a; out(); }).catch(out);
-    } else out();
+  sendAck(deviceId, msgId, routeTo) {
+    var obj = { v: 1, type: 'ack', msgId: msgId, from: (this.ble && this.ble.localNexoId) || 'unknown', ts: Date.now() };
+    if (routeTo) { obj.to = String(routeTo).toLowerCase(); this._sendRouted(obj, deviceId); return; }
+    if (this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(deviceId, JSON.stringify(obj), null).catch(function(){});
+  }
+  sendReadReceipt(deviceId, msgId, routeTo) {
+    var obj = { v: 1, type: 'read_receipt', msgId: msgId, from: (this.ble && this.ble.localNexoId) || 'unknown', ts: Date.now() };
+    if (routeTo) { obj.to = String(routeTo).toLowerCase(); this._sendRouted(obj, deviceId); return; }
+    if (this.ble && this.ble._sendMessageNative) this.ble._sendMessageNative(deviceId, JSON.stringify(obj), null).catch(function(){});
   }
   _sendRouted(obj, fallbackDeviceId) {
     var relay = this.ble && this.ble.relay;
