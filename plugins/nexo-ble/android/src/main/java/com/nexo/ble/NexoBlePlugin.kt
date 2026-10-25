@@ -26,6 +26,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.media.RingtoneManager
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.net.wifi.p2p.WifiP2pConfig
@@ -58,9 +59,11 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import androidx.activity.result.ActivityResult
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -119,8 +122,6 @@ class NexoBlePlugin : Plugin() {
         private const val MANUFACTURER_ID = 0xFFFF
         private const val NEXO_MAGIC_HIGH: Byte = 0x4E
         private const val NEXO_MAGIC_LOW: Byte = 0x58
-        // NEXO ID (nx + 8) o código rotativo (R + 9 en base32); lo anunciado por radio se valida contra esto
-        private val ADVERTISED_ID_RE = Regex("^(nx[0-9a-z]{8}|R[a-z2-7]{9})$")
         private const val SCAN_DEBOUNCE_MS = 1000L
         private const val MIN_RSSI = -95
         private const val NXID_MAC_MAP_FILE = "nexo_nxid_mac_map.json"
@@ -1985,7 +1986,7 @@ class NexoBlePlugin : Plugin() {
                     // Auditoría (ronda 2774): el anuncio lo pone cualquiera por radio. Solo se acepta si tiene la forma de
                     // un NEXO ID (nx + 8) o de un código rotativo (R + 9 en base32): así un anuncio con basura no llega a
                     // la app como un "dispositivo" ni envenena el mapa NEXO ID→dirección.
-                    if (!ADVERTISED_ID_RE.matches(nexoId)) {
+                    if (!AdvertisedId.valid(nexoId)) {
                         remLog("WARN", "SCAN", "Anuncio NEXO con ID mal formado en 0x${key.toString(16)}: se ignora")
                         return null
                     }
@@ -2387,7 +2388,10 @@ class NexoBlePlugin : Plugin() {
     // ===== Internet en segundo plano (NetBg): escucha los relés mientras la app no está a la vista =====
     // Una por proceso: sigue aunque se cierre la actividad mientras el servicio de Bluetooth mantiene el proceso
     private fun netBg(): NetBg = netBgShared ?: synchronized(NexoBlePlugin::class.java) {
-        netBgShared ?: NetBg({ nx, name, msgId -> MsgNotifier.get(context).message(nx, name, msgId, "") }, { Log.i("NEXO_NET", it) }).also { netBgShared = it }
+        // Ronda 2774 (el dueño: con la pantalla apagada no llegan por Wi-Fi/internet): al recibir por internet en segundo
+        // plano se renueva el wakelock (rxWake), igual que por Bluetooth y Wi-Fi, para que dé tiempo a avisar antes de que
+        // el teléfono vuelva a dormir.
+        netBgShared ?: NetBg({ nx, name, msgId -> if (appInBackground) rxWake(); MsgNotifier.get(context).message(nx, name, msgId, "") }, { Log.i("NEXO_NET", it) }).also { netBgShared = it }
     }
 
     @PluginMethod
@@ -2439,6 +2443,43 @@ class NexoBlePlugin : Plugin() {
     // se ven los chats)
     @PluginMethod
     fun callScreenDone(call: PluginCall) { showOverLock(false); call.resolve() }
+
+    // Tono de llamada/videollamada (ronda 2774, pedido del dueño): el actual (nombre y uri). Por defecto es el tono de
+    // llamada del propio teléfono; vale para llamadas y videollamadas (mismo canal de avisos).
+    @PluginMethod
+    fun getCallRingtone(call: PluginCall) {
+        val ctx = context
+        call.resolve(JSObject().put("title", MsgNotifier.get(ctx).callRingtoneTitle(ctx)).put("uri", MsgNotifier.get(ctx).callRingtoneUri(ctx).toString()))
+    }
+
+    // Abre el selector de tonos del teléfono (los guardados en el dispositivo) con el actual marcado; "Predeterminado"
+    // vuelve al tono de llamada del teléfono. Lo elegido se aplica recreando el canal (ringtonePicked).
+    @PluginMethod
+    fun pickCallRingtone(call: PluginCall) {
+        val ctx = context
+        val current = MsgNotifier.get(ctx).callRingtoneUri(ctx)
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_RINGTONE)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Tono de llamada de NEXO")
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, current)
+        try { startActivityForResult(call, intent, "ringtonePicked") }
+        catch (e: Exception) { call.reject("No se pudo abrir el selector de tonos: ${e.message}") }
+    }
+
+    @ActivityCallback
+    @Suppress("DEPRECATION") // getParcelableExtra(name) está obsoleto en API 33+ pero sigue funcionando en todas
+    private fun ringtonePicked(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        if (result.resultCode != android.app.Activity.RESULT_OK) { call.resolve(JSObject().put("changed", false)); return }
+        val ctx = context
+        // EXTRA_RINGTONE_PICKED_URI: null = "Predeterminado" (el del teléfono) o silencio; se guarda "" para volver al del teléfono
+        val picked = result.data?.getParcelableExtra<android.net.Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        MsgNotifier.get(ctx).setCallRingtone(ctx, picked?.toString() ?: "")
+        call.resolve(JSObject().put("changed", true).put("title", MsgNotifier.get(ctx).callRingtoneTitle(ctx)).put("uri", MsgNotifier.get(ctx).callRingtoneUri(ctx).toString()))
+    }
 
     // Qué falta para que los avisos y las llamadas lleguen con la pantalla apagada (Perfil)
     @PluginMethod

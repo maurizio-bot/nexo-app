@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-25 (build 2774, auditoría de seguridad y robustez; APK nightly-2775)
+Última actualización: 2026-10-25 (build 2776, informe del dueño: escaneo, menú ⋮, eco, avisos, tono)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -100,6 +100,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2771 | 2bb58c12 | Revisión completa, parte 4 (interfaz): "Agregar" con tus contactos y un buscador que filtra (antes decía "No hay contactos" aunque los hubiera y el buscador era un dibujo), avisos rotos ("Permiso de Microfono no encontrado denegado"), textos sin tilde o en inglés, aviso sin contactos, botón redondo con burbuja, Perfil con tus iniciales y cómo te ven, "Cambiar nombre" en el menú ⋮. Ver "Ronda 2771". Batería 47/47. APK publicada (nightly-2771, 24,5 MB) |
 | 2772 | d47415e4 | Informe del dueño del 25-10 (espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada por Wi-Fi) y plan de negocio: ver "Ronda 2772". **Sin APK**: en GitHub la prueba nueva de videollamada (`videoframe.js`) no arrancó porque allí no estaba Playwright (Chromium); las demás pasaron (49/49 y Kotlin 71/71). Se instala Chromium en el paso de pruebas del workflow: todo pasa a la 2773 |
 | 2773 | 36cf90b6 | La 2772 (ver "Ronda 2772": espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada) con Chromium instalado en las pruebas de GitHub. Batería 50/50 (también en GitHub, con la videollamada de verdad), Kotlin 71/71. APK publicada (nightly-2773, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
+| 2776 | _(pendiente)_ | Informe del dueño tras la 2775 (ver "Ronda 2776"): escaneo que no encontraba (REGRESIÓN de la 2774: el NEXO ID va en mayúsculas y la validación del anuncio solo aceptaba minúsculas), menú ⋮ de contactos que no hacía nada (regresión del estilo NEXO: quedaba fuera de pantalla), eco/ruido reforzados en el filtro propio (−18 dB + pistas del sistema al micrófono), avisos por internet con pantalla apagada (rxWake en NetBg), y elegir el tono de llamada/videollamada (selector del teléfono; por defecto el del dispositivo). Pruebas nuevas: `AdvertisedIdTest`. Batería _(pendiente)_, Kotlin 90/90. APK _(pendiente)_ |
 | 2774 | fa52b3d1 | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería 51/51, Kotlin 87/87 (16 nuevas). Índice de robustez 41,8 (ver `docs/ROBUSTEZ.md` §4). **APK publicada: `nightly-2775` (24,5 MB, firma verificada).** La primera compilación (run 2774) falló por una carrera en `LanHub.stop()` dentro de la prueba de la avalancha (iterar la cola mientras los hilos de lectura la vaciaban); arreglada con `poll()` y comprobada 5 veces; la 2775 compila, pasa todo y publica |
 
 ## Base estable: build 2713
@@ -226,6 +227,32 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2776: informe del dueño (escaneo, menú ⋮, eco, avisos con pantalla apagada, tono de llamada)
+Cinco cosas que pidió el dueño tras probar la 2775, antes de seguir con la fase 2 de la auditoría:
+- **Escaneo que no encontraba (regresión de la 2774).** El NEXO ID se genera en MAYÚSCULAS (`_generateNexoId` → `NX…`),
+  pero la validación del anuncio que metí en la 2774 solo aceptaba `nx` en minúsculas → se rechazaba el anuncio real y
+  el escaneo no encontraba a nadie (o solo a quien anunciaba su código rotativo `R…`, que sí pasaba: de ahí lo de
+  «lento/a veces»). Arreglado: la validación ahora acepta mayúsculas/minúsculas, movida a `AdvertisedId` (Kotlin puro,
+  probado en `AdvertisedIdTest` para que no vuelva a pasar). El escaneo ya era agresivo (LOW_LATENCY + PHY largo).
+- **El menú ⋮ de cada contacto no hacía nada (regresión del estilo NEXO, 2763).** En `nexo_theme.css` se metió
+  `.ble-contact-menu` en la misma regla que las hojas que suben desde abajo, que le forzaba `position: relative` y lo
+  mandaba fuera de pantalla (al final del `body`). Ahora es un desplegable de verdad otra vez (conserva `position:
+  fixed` y su sitio junto al botón), con los colores NEXO.
+- **Eco y ruido en llamada/videollamada.** NEXO no usa WebRTC, así que el cancelador del navegador no «ve» lo que NEXO
+  reproduce y no puede quitar ese eco: lo tiene que quitar el filtro propio. Se reforzó: el micrófono baja más mientras
+  habla el otro (−12 → −18 dB, queda al ~12 %) y se alarga la cola del eco (200 → 300 ms); y se piden al micrófono las
+  pistas de cancelación/supresión del sistema (mono, `echoCancellationType: system`, `goog*`). Comprobado en
+  `voicefx.js` (eco baja 18 dB; la voz propia cuando hablan los dos sigue pasando). El eco real depende del teléfono:
+  puede necesitar un par de ajustes con el diagnóstico del dueño.
+- **Avisos con la pantalla apagada por Wi-Fi/internet.** La escucha de internet en segundo plano (`NetBg`) avisaba sin
+  renovar el wakelock `rxWake` (que sí tienen Bluetooth y Wi-Fi): ahora un mensaje por internet mantiene el teléfono
+  despierto lo justo para avisar. Recordatorio: para que lleguen sí o sí sin Google Push hace falta que NEXO esté
+  exenta del ahorro de batería y, en Vivo/Samsung, con autostart (Perfil → «Avisos con la pantalla apagada»).
+- **Tono de llamada y videollamada.** Se puede elegir el tono de entre los guardados del teléfono (Perfil → «Tono de
+  llamada y videollamada», selector del sistema) y por defecto usa el tono de llamada actual del teléfono. Vale igual
+  para llamadas y videollamadas (mismo canal de avisos). Nativo: `MsgNotifier` guarda el tono y recrea el canal;
+  `pickCallRingtone`/`getCallRingtone` en el plugin.
 
 ## Ronda 2774: auditoría de seguridad y robustez «al límite» (modelos de las auditorías más estrictas)
 Pedido del dueño (25-10): «investiga cuáles son las auditorías más serias, severas y estrictas, qué implican sus

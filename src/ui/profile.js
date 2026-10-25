@@ -42,6 +42,10 @@ function _openProfileSheet() {
     // Ronda 2772 (pedido del dueño): ver al otro como en un espejo (con su cámara de delante)
     card('🎥', 'Videollamadas', '<label style="display:flex;align-items:center;gap:10px;font-size:14px;"><input type="checkbox" id="nexo-call-mirror"> Ver al otro como en un espejo (su cámara de delante)</label>' +
       '<div class="nx-sub" style="margin-top:6px;">Sin espejo lo ves como te vería en persona: un papel con letras se lee bien.</div>') +
+    // Ronda 2774 (pedido del dueño): elegir el tono de las llamadas y videollamadas (de los guardados en el teléfono);
+    // por defecto, el tono de llamada actual del teléfono.
+    card('📞', 'Tono de llamada y videollamada', '<div class="nx-sub">Suena igual en llamadas y videollamadas. Por defecto usa el tono de llamada de tu teléfono.</div>' +
+      '<button id="nexo-ringtone-btn" class="nx-btn" style="margin-top:6px;">Elegir tono…</button>') +
     // v9.9.51: internet (relés públicos y Tor, src/net/net_link.js)
     card('🌐', 'Internet', '<div id="nexo-net-status" class="nx-sub"></div>' +
       '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:4px;"><input type="checkbox" id="nexo-net-tor"> Usar Tor con Wi-Fi (oculta tu IP; más lento)</label>') +
@@ -92,6 +96,18 @@ function _openProfileSheet() {
   _renderAlertSettings();
   var mirBox = sheet.querySelector('#nexo-call-mirror');
   if (mirBox) { mirBox.checked = mirrorPeerPref(); mirBox.onchange = function() { setMirrorPeerPref(mirBox.checked); }; }
+  // Tono de llamada/videollamada (ronda 2774): enseña el actual y abre el selector del teléfono al tocarlo
+  var ringBtn = sheet.querySelector('#nexo-ringtone-btn');
+  if (ringBtn) {
+    var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
+    var showTone = function(t) { ringBtn.textContent = '🔔 ' + (t || 'Tono del teléfono'); };
+    if (pl && typeof pl.getCallRingtone === 'function') pl.getCallRingtone().then(function(r) { showTone(r && r.title); }).catch(function() { showTone(''); });
+    else { ringBtn.style.display = 'none'; }
+    ringBtn.onclick = function() {
+      if (!pl || typeof pl.pickCallRingtone !== 'function') return;
+      pl.pickCallRingtone().then(function(r) { if (r && r.changed) showTone(r.title); }).catch(function() {});
+    };
+  }
   var torBox = sheet.querySelector('#nexo-net-tor');
   if (torBox) {
     torBox.checked = !!(bi.net && bi.net.torWanted());

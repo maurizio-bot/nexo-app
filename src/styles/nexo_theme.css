@@ -123,11 +123,18 @@ body::before {
 /* ---------- Hojas (menú de un mensaje, reenviar, compartir, grupo) ---------- */
 /* Menús que suben desde abajo (fondo oscuro translúcido + hoja de cristal) */
 #nexo-msg-menu, #nexo-group-menu { background: rgba(3, 4, 12, 0.55) !important; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-#nexo-msg-menu > div, #nexo-group-menu > div, .ble-contact-menu {
+#nexo-msg-menu > div, #nexo-group-menu > div {
   position: relative; background: var(--nx-sheet) !important; color: var(--nx-text) !important;
   border: 1px solid var(--nx-line) !important; border-bottom: none !important; border-radius: 26px 26px 0 0 !important;
   padding: 24px 10px calc(14px + env(safe-area-inset-bottom, 0px)) !important; box-shadow: 0 -16px 50px rgba(0, 0, 0, 0.55) !important;
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); animation: nxUp 0.22s ease-out;
+}
+/* El menú ⋮ de un contacto es un DESPLEGABLE junto al botón (no una hoja que sube desde abajo). Ronda 2774: antes
+   estaba en la regla de arriba y heredaba position:relative, bordes de hoja y la animación, lo que lo mandaba fuera de
+   la pantalla (al final del body) y parecía que «no hacía nada». Conserva el position:fixed y el top/right de critical.css. */
+.ble-contact-menu {
+  background: var(--nx-sheet) !important; color: var(--nx-text) !important;
+  border: 1px solid var(--nx-line) !important; border-radius: 14px !important;
 }
 #nexo-msg-menu > div::before, #nexo-group-menu > div::before {
   content: ''; position: absolute; top: 9px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: rgba(255, 255, 255, 0.25);

@@ -24,6 +24,7 @@ class MsgNotifier(private val ctx: Context) {
         // Ronda 2765: encender la pantalla con un mensaje nuevo (Perfil → Avisos con la pantalla apagada)
         const val PREFS = "nexo_prefs"
         const val PREF_WAKE = "wake_on_msg"
+        const val PREF_RINGTONE = "call_ringtone" // URI del tono de llamada/videollamada elegido ("" = el del teléfono)
         // Ronda 2763: llamada entrante como una llamada del teléfono (tono, pantalla completa, Contestar / Rechazar)
         const val CALL_CHANNEL_ID = "nexo_calls"
         const val EXTRA_ANSWER = "nexo_call_answer"
@@ -56,13 +57,40 @@ class MsgNotifier(private val ctx: Context) {
             ch.description = "Mensajes nuevos de tus contactos"
             ch.setShowBadge(true)
             ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
-            val cc = NotificationChannel(CALL_CHANNEL_ID, "Llamadas", NotificationManager.IMPORTANCE_HIGH)
-            cc.description = "Llamadas y videollamadas entrantes"
-            cc.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
-                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-            cc.enableVibration(true); cc.vibrationPattern = longArrayOf(0, 900, 700, 900)
-            cc.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(cc)
+            createCallChannel(ctx)
+        }
+    }
+
+    // Canal de llamadas y videollamadas (mismo canal para las dos: el tono vale para ambas). El tono es el que el dueño
+    // haya elegido (Perfil) o, por defecto, el tono de llamada actual del teléfono. Android fija el sonido al CREAR el
+    // canal y no deja cambiarlo luego, así que para cambiar el tono se borra y se vuelve a crear (setCallRingtone).
+    private fun createCallChannel(ctx: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val cc = NotificationChannel(CALL_CHANNEL_ID, "Llamadas", NotificationManager.IMPORTANCE_HIGH)
+        cc.description = "Llamadas y videollamadas entrantes"
+        cc.setSound(callRingtoneUri(ctx),
+            AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+        cc.enableVibration(true); cc.vibrationPattern = longArrayOf(0, 900, 700, 900)
+        cc.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        ctx.getSystemService(NotificationManager::class.java)?.createNotificationChannel(cc)
+    }
+
+    // Tono guardado (Perfil) o, si no hay, el de llamada actual del teléfono
+    fun callRingtoneUri(ctx: Context): android.net.Uri {
+        val saved = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(PREF_RINGTONE, null)
+        if (!saved.isNullOrEmpty()) { try { return android.net.Uri.parse(saved) } catch (e: Exception) {} }
+        return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+    }
+    // Nombre del tono actual (para enseñarlo en Perfil)
+    fun callRingtoneTitle(ctx: Context): String = try {
+        RingtoneManager.getRingtone(ctx, callRingtoneUri(ctx))?.getTitle(ctx) ?: "Tono del teléfono"
+    } catch (e: Exception) { "Tono del teléfono" }
+    // El dueño eligió un tono (uri null/"" = volver al del teléfono): se guarda y se recrea el canal para que valga ya
+    fun setCallRingtone(ctx: Context, uri: String?) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(PREF_RINGTONE, uri ?: "").apply()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try { ctx.getSystemService(NotificationManager::class.java)?.deleteNotificationChannel(CALL_CHANNEL_ID) } catch (e: Exception) {}
+            createCallChannel(ctx)
         }
     }
 

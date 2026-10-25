@@ -255,7 +255,15 @@ export function createCallMedia(opts) {
   function openMic(first) {
     if (micOpening || stopped) return Promise.resolve(false);
     micOpening = true;
-    return gum({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }, 'Micrófono ocupado').then(function(s) {
+    // Ronda 2774 (el dueño seguía oyendo eco/ruido): además de lo estándar, se piden las pistas antiguas de Chrome
+    // Android (goog*, se ignoran donde no existan) y mono; echoCancellationType 'system' prefiere el cancelador del
+    // teléfono (hardware) cuando lo hay. Lo que no cubra el navegador lo quita el filtro propio (call_voice_fx.js).
+    return gum({ audio: {
+      echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1,
+      echoCancellationType: 'system',
+      googEchoCancellation: true, googNoiseSuppression: true, googNoiseSuppression2: true,
+      googAutoGainControl: true, googHighpassFilter: true, googTypingNoiseDetection: true
+    } }, 'Micrófono ocupado').then(function(s) {
       micOpening = false;
       if (stopped) { _stopAll(s); return false; }
       var t = s.getAudioTracks()[0];

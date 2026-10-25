@@ -24,10 +24,12 @@
 var DEF = {
   rate: 48000,
   hpHz: 60,
-  duckDb: -12,          // mientras suena el otro
-  dtDb: -3,             // los dos hablan a la vez
+  duckDb: -18,          // mientras suena el otro (ronda 2774: de -12 a -18; el dueño seguía oyendo eco. El micrófono
+                        // queda al ~12 %: NEXO no usa WebRTC, así que el cancelador del navegador no "ve" lo que NEXO
+                        // reproduce y este supresor propio tiene que quitar casi todo el eco)
+  dtDb: -3,             // los dos hablan a la vez (no se toca: si no, se corta la voz propia)
   dtHoldMs: 200,        // hablando los dos: se mantiene al menos esto
-  farHoldMs: 200,       // el otro dejó de sonar: se sigue bajando esto (cola del eco)
+  farHoldMs: 300,       // el otro dejó de sonar: se sigue bajando esto (cola del eco; ronda 2774: 200→300)
   gateDb: -10,          // silencio
   farOn: 0.004,         // nivel del otro (RMS) desde el que cuenta como que suena
   maxDelay: 0.6,        // el eco llega como mucho 600 ms después de sonar (latencias de salida y entrada; cascos Bluetooth)
