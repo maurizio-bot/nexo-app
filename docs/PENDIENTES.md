@@ -6,9 +6,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 ## 0. Robustez: medición y tareas diarias (pedido del dueño 25-10)
 `docs/ROBUSTEZ.md`: registro de la revisión 1 (24 y 25-10, builds 2766–2771: 63 fallos encontrados, 62 arreglados),
 índice de robustez (medición inicial **45,3 sobre 100**; lo que más baja: casi nada confirmado en los teléfonos desde la
-2765) y rutina diaria. Con la 2772: **44** (arreglos del informe del dueño sin confirmar y 4 puntos débiles nuevos; si
-confirma videollamadas, llamadas y avisos: 53,5). **Siguiente: revisión 2, día 1 (avisos, segundo plano y app cerrada)**,
-el 26-10, después de lo que traiga el dueño de sus pruebas con la 2773.
+2765) y rutina diaria. Con la 2772: **44**. Con la 2774 (auditoría de seguridad): **41,8** — baja porque se añadió un área nueva y exigente
+«Seguridad frente a ataques» (peso 10) con 9 puntos débiles abiertos que sacó la auditoría; no es regresión (la
+seguridad mejoró: 8 arreglos + 16 pruebas, batería 51/51, Kotlin 87/87; ver `docs/AUDITORIA.md` y §0c). **Siguiente:
+revisión 2, día 1 (avisos, segundo plano y app cerrada)** el 26-10, tras lo que traiga el dueño; y en seguridad, C1
+(confirmaciones ✓✓ sin autenticar).
 
 ## 0b. Hoja de ruta (opinión del 25-10, aceptada por el dueño)
 Lo que más falta ya no es código nuevo, sino confirmar en el mundo real lo que existe. En orden de importancia:
