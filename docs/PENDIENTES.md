@@ -93,7 +93,9 @@ el dueño de sus pruebas con la 2771.
 - **Videollamadas**: hechas en la 2758 (mismo Wi-Fi). Falta: por Wi-Fi Direct (hoy su enlace es por transferencia,
   no continuo), probar en teléfonos. Cámara trasera: hecho (botón Girar, 2762).
 - **Pagos**: decidir modelo (saldo propio, tarjeta/banco, cripto); doble gasto sin conexión, conciliación,
-  regulación del país (posible licencia). Asesoría legal antes de programar.
+  regulación del país (posible licencia). Asesoría legal antes de programar. **Plan del 25-10 en
+  `docs/PLAN_NEGOCIO.md` §5**: fase 1 sin licencia = "Cobros" en el chat (NEXO nunca toca el dinero; la solicitud y el
+  comprobante viajan sin internet); fase 2 "tipo PayPal" con un socio con licencia; marca: no "NEXO Pay".
 - **Stream** (vídeos tipo TikTok + estados de contactos, gestos: tap arriba izq. vídeos, arriba der. estados, doble tap
   "me gusta", deslizar der→izq comentarios, izq→der volver): **SIN DECIDIR** (sí/no; solo cercanos o con servidor).
 - **Chats de grupo**: hechos en la 2758 (textos y adjuntos de hasta ~1 MB); HD de vídeo y archivos grandes (hasta
@@ -135,7 +137,8 @@ el dueño de sus pruebas con la 2771.
 1. Stream: ¿sí o no? ¿solo cercanos o con servidor?
 2. ~~Internet: punto de encuentro~~ — decidido el 23-10: relés públicos + Tor, sin servidor propio por ahora
    (ronda 2739). Queda abierto si más adelante se quiere un servidor propio.
-3. Pagos: modelo y país.
+3. Pagos: modelo y país. Propuesta en `docs/PLAN_NEGOCIO.md` (25-10), con las decisiones de su §8: país, ¿código
+   abierto?, empresa, nombre del módulo de pagos, precio de NEXO Plus.
 4. iPhone: ¿cuenta de Apple?
 5. ~~Identificador Bluetooth rotativo~~ — decidido el 24-10 ("empieza por el 4"): hecho en la ronda 2756 con la
    propuesta (ver §5 punto 4). La opción "Ayudar a la red" no hizo falta como interruptor: el código rotativo ya es
