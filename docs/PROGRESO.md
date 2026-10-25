@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-25 (build 2776; fase 2 de la auditoría: intento de C1 revertido, ver abajo)
+Última actualización: 2026-10-25 (build 2777; fase 2 de la auditoría: C1 arreglado —confirmaciones ✓✓ firmadas, también en modo cerrado—, ver "Ronda 2777")
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -100,7 +100,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2771 | 2bb58c12 | Revisión completa, parte 4 (interfaz): "Agregar" con tus contactos y un buscador que filtra (antes decía "No hay contactos" aunque los hubiera y el buscador era un dibujo), avisos rotos ("Permiso de Microfono no encontrado denegado"), textos sin tilde o en inglés, aviso sin contactos, botón redondo con burbuja, Perfil con tus iniciales y cómo te ven, "Cambiar nombre" en el menú ⋮. Ver "Ronda 2771". Batería 47/47. APK publicada (nightly-2771, 24,5 MB) |
 | 2772 | d47415e4 | Informe del dueño del 25-10 (espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada por Wi-Fi) y plan de negocio: ver "Ronda 2772". **Sin APK**: en GitHub la prueba nueva de videollamada (`videoframe.js`) no arrancó porque allí no estaba Playwright (Chromium); las demás pasaron (49/49 y Kotlin 71/71). Se instala Chromium en el paso de pruebas del workflow: todo pasa a la 2773 |
 | 2773 | 36cf90b6 | La 2772 (ver "Ronda 2772": espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada) con Chromium instalado en las pruebas de GitHub. Batería 50/50 (también en GitHub, con la videollamada de verdad), Kotlin 71/71. APK publicada (nightly-2773, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
-| 2776 | _(pendiente)_ | Informe del dueño tras la 2775 (ver "Ronda 2776"): escaneo que no encontraba (REGRESIÓN de la 2774: el NEXO ID va en mayúsculas y la validación del anuncio solo aceptaba minúsculas), menú ⋮ de contactos que no hacía nada (regresión del estilo NEXO: quedaba fuera de pantalla), eco/ruido reforzados en el filtro propio (−18 dB + pistas del sistema al micrófono), avisos por internet con pantalla apagada (rxWake en NetBg), y elegir el tono de llamada/videollamada (selector del teléfono; por defecto el del dispositivo). Pruebas nuevas: `AdvertisedIdTest`. Batería 51/51, Kotlin 90/90, índice de robustez 41,8 (sin cambio: no añade escenarios a la batería). APK _(pendiente de publicar)_ |
+| 2776 | 00317fe8 | Informe del dueño tras la 2775 (ver "Ronda 2776"): escaneo que no encontraba (REGRESIÓN de la 2774: el NEXO ID va en mayúsculas y la validación del anuncio solo aceptaba minúsculas), menú ⋮ de contactos que no hacía nada (regresión del estilo NEXO: quedaba fuera de pantalla), eco/ruido reforzados en el filtro propio (−18 dB + pistas del sistema al micrófono), avisos por internet con pantalla apagada (rxWake en NetBg), y elegir el tono de llamada/videollamada (selector del teléfono; por defecto el del dispositivo). Pruebas nuevas: `AdvertisedIdTest`. Batería 51/51, Kotlin 90/90, índice de robustez 41,8 (sin cambio: no añade escenarios a la batería). APK publicada (nightly-2776, 24,5 MB; firma verificada) |
+| 2777 | _(pendiente)_ | Auditoría fase 2 — C1 arreglado (ver "Ronda 2777" y `docs/AUDITORIA.md`): las confirmaciones (✓✓/leído) ahora van firmadas con un MAC derivado del secreto de la pareja (`e2eAckTag`), también en **modo cerrado** (el ack lo firma la capa nativa con una clave por contacto que le da la app por `setAckKeys`, solo en memoria del proceso, no a disco). Una confirmación falsa se ignora, así que ya no para los reintentos ni hace perder un mensaje con ✓✓. Solo para contactos modernos (proto 2); los antiguos sin cambios. Prueba nueva: `tests/sim/ackforge.js`. Batería 52/52, Kotlin 90/90, índice de robustez 42,1. ⚠️ Falta confirmarlo en los dos teléfonos del dueño. APK _(pendiente de publicar)_ |
 | 2774 | fa52b3d1 | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería 51/51, Kotlin 87/87 (16 nuevas). Índice de robustez 41,8 (ver `docs/ROBUSTEZ.md` §4). **APK publicada: `nightly-2775` (24,5 MB, firma verificada).** La primera compilación (run 2774) falló por una carrera en `LanHub.stop()` dentro de la prueba de la avalancha (iterar la cola mientras los hilos de lectura la vaciaban); arreglada con `poll()` y comprobada 5 veces; la 2775 compila, pasa todo y publica |
 
 ## Base estable: build 2713
@@ -228,18 +229,36 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
-## Auditoría fase 2 — C1 (confirmaciones ✓✓): intento revertido, sin build
+## Ronda 2777: auditoría fase 2 — C1 (confirmaciones ✓✓ autenticadas), también en modo cerrado
 Pedido del dueño: seguir con la fase 2 de la auditoría tras los arreglos de la 2776. El hallazgo P0 era **C1**: las
-confirmaciones de entrega/leído (✓✓) viajan sin firmar y el `msgId` va en claro, así que un tercero que lo conozca
-podría mandar una confirmación falsa de «entregado» y hacer que el mensaje se **pierda mostrando ✓✓**.
-- Se implementó el arreglo (exigir que el ack venga firmado con el secreto de la pareja, `e2eAckTag`) y se reprodujo el
-  ataque en `tests/sim/ackforge.js`. Pero la batería atrapó una **regresión**: rompe el ✓✓ cuando el receptor está
-  **cerrado**, porque ahí el ack lo manda la capa nativa, que no tiene las claves para firmarlo. **Se revirtió** (no se
-  sube ningún build por esto: la última APK buena sigue siendo la 2776).
-- El arreglo bueno necesita (y hay que probarlo en los dos teléfonos): (a) firmar también el ack nativo del modo
-  cerrado, o (b) diferir el ack a cuando la app se abre (el ✓✓ del modo cerrado llegaría más tarde). Es un equilibrio
-  seguridad/experiencia que decide el dueño. Detalle en `docs/AUDITORIA.md`. Lección: el método (reproducir antes de
-  subir) evitó enviar una regresión del ✓✓ en modo cerrado.
+confirmaciones de entrega/leído (✓✓) viajaban sin firmar y el `msgId` va en claro, así que un tercero que lo conozca
+(por radio, LAN o un relé) podía mandar una confirmación falsa de «entregado» → el emisor dejaba de reintentar y el
+mensaje se **perdía mostrando ✓✓**.
+
+Un primer intento (firmar solo desde la app con `e2eAckTag`) funcionaba con los dos teléfonos abiertos pero **rompía el
+✓✓ en modo cerrado**, porque ahí el ack lo manda la capa nativa, que no tiene las claves de identidad para firmarlo; lo
+atrapó la batería y se revirtió. El dueño eligió el arreglo bueno: **firmar también el ack nativo**. Hecho así:
+- La confirmación va firmada con un MAC derivado del secreto de la pareja: `e2eAckTag` = HMAC-SHA256 del ECDH de las dos
+  identidades con la etiqueta `NEXO-ACK-v1`, ligado a `tipo|msgId|los dos NEXO ID`, recortado a 12 bytes (base64). El que
+  la recibe la comprueba (comparación en tiempo constante); una falsa (sin firma o con firma que no cuadra) se **ignora**.
+- **Modo cerrado**: la app le pasa a la parte nativa, por contacto, la clave de firma (`setAckKeys`): se guarda solo en
+  memoria del proceso (sobrevive con la app cerrada, como la config de internet de `NetBg`), **nunca a disco**. El Kotlin
+  firma el ack del buzón igual que la app. La clave se envía al arrancar y antes de irse a segundo plano
+  (`visibilitychange`).
+- Solo se exige a los contactos modernos (protocolo 2 con clave pública); los antiguos siguen igual (compatibilidad). El
+  campo `a` es uno más del JSON del ack: un contacto viejo lo ignora.
+- Reproducción y defensa: `tests/sim/ackforge.js` (A↔B proto 2; la entrega real marca ✓✓ y una confirmación falsa no, y
+  el envío sigue pendiente). El `native_mock.js` firma el ack cerrado igual que el Kotlin, así que el escenario «recibir
+  con la app cerrada» cubre la firma nativa.
+
+Batería **52/52** (ackforge nuevo incluido), Kotlin **90/90** (compila `setAckKeys`/`ackTag`). Índice de robustez **42,1**
+(sube de 41,8: un punto débil grave menos y una prueba más en el área de auditoría; ver `docs/ROBUSTEZ.md`). ⚠️ **Falta la
+confirmación en los dos teléfonos del dueño** (con la app cerrada y abierta). Detalle en `docs/AUDITORIA.md`.
+
+Pruebas cortas para el dueño (dos teléfonos ya emparejados, contactos modernos):
+1. Mándate un texto de A→B con **B abierto**: debe salir ✓✓. 2. Con **B cerrado** (app deslizada fuera): A manda, debe
+llegar el aviso y marcarse ✓✓. 3. Lee en B: a A le debe salir el doble ✓ azul (leído). 4. Repite por Wi-Fi/internet.
+5. Si algo no marca ✓✓, Perfil → Copiar diagnóstico en los dos y mándamelo.
 
 ## Ronda 2776: informe del dueño (escaneo, menú ⋮, eco, avisos con pantalla apagada, tono de llamada)
 Cinco cosas que pidió el dueño tras probar la 2775, antes de seguir con la fase 2 de la auditoría:

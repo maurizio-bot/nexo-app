@@ -8,9 +8,10 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 índice de robustez (medición inicial **45,3 sobre 100**; lo que más baja: casi nada confirmado en los teléfonos desde la
 2765) y rutina diaria. Con la 2772: **44**. Con la 2774 (auditoría de seguridad): **41,8** — baja porque se añadió un área nueva y exigente
 «Seguridad frente a ataques» (peso 10) con 9 puntos débiles abiertos que sacó la auditoría; no es regresión (la
-seguridad mejoró: 8 arreglos + 16 pruebas, batería 51/51, Kotlin 87/87; ver `docs/AUDITORIA.md` y §0c). **Siguiente:
-revisión 2, día 1 (avisos, segundo plano y app cerrada)** el 26-10, tras lo que traiga el dueño; y en seguridad, C1
-(confirmaciones ✓✓ sin autenticar).
+seguridad mejoró: 8 arreglos + 16 pruebas, batería 51/51, Kotlin 87/87; ver `docs/AUDITORIA.md` y §0c). Con la 2777
+(fase 2, C1 arreglado): **42,1** — las confirmaciones (✓✓) ya van firmadas con la pareja (un punto débil grave menos,
+una prueba más), batería 52/52, Kotlin 90/90. **Siguiente: revisión 2, día 1 (avisos, segundo plano y app cerrada)** el
+26-10, tras lo que traiga el dueño; y en seguridad, los puntos débiles que siguen abiertos (H3, H4, M5, M6, F6–F9).
 
 ## 0b. Hoja de ruta (opinión del 25-10, aceptada por el dueño)
 Lo que más falta ya no es código nuevo, sino confirmar en el mundo real lo que existe. En orden de importancia:
@@ -40,11 +41,11 @@ Informe completo, modelo de amenazas y plan: `docs/AUDITORIA.md`. En la 2774 se 
 gigante, avalancha, archivo abortado, inundación de escaneo; JSON anidado que cerraba la app; intent de llamada
 exportado; anuncio con ID mal formado; grupos que reescribían la lista y colaban claves) y la recuperación del WebView.
 Queda, por prioridad (cada uno necesita un cambio de protocolo y probarse en los dos teléfonos del dueño):
-1. ⚠️ **C1 EN ESPERA (grave, P0): confirmaciones (✓✓) sin autenticar.** El arreglo (firmar los acks con el secreto de
-   la pareja) se probó en la 2777 y se revirtió: rompe el ✓✓ cuando el receptor está cerrado (el ack lo manda la capa
-   nativa, que no puede firmar). El arreglo bueno necesita firmar también el ack nativo (darle a la parte nativa un
-   secreto por contacto) o diferir el ack a cuando la app se abre (el ✓✓ del modo cerrado llegaría más tarde): decisión
-   del dueño. Ver docs/AUDITORIA.md.
+1. ✅ **C1 ARREGLADO (grave, P0) en la 2777: confirmaciones (✓✓) ahora autenticadas.** Van firmadas con un MAC derivado
+   del secreto de la pareja (`e2eAckTag`), también en modo cerrado: la app le pasa a la parte nativa una clave de firma
+   por contacto (`setAckKeys`, en memoria del proceso, no a disco) y el Kotlin firma el ack del buzón igual. Una falsa
+   (sin firma o con firma que no cuadra) se ignora, así que ya no para los reintentos ni hace perder un mensaje con ✓✓.
+   Lo vigila `tests/sim/ackforge.js` (batería 52/52). ⚠️ Falta confirmarlo en los dos teléfonos del dueño.
 2. **P0-1 ratchet: repetir (clave, IV)** al restaurar un estado viejo (copia, Fénix, pasar la cuenta sin apagar el
    teléfono viejo). Probar que nunca se repite y que el teléfono viejo deja de servir.
 3. **H3 (media): tarjetas de contacto** fijan la clave de un contacto nuevo sin verificar. Marcarlas «de oídas»

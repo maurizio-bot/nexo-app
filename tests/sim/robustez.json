@@ -775,13 +775,13 @@
     {
      "fallo": "C2 Grupos: un miembro reescribía la lista entera y colaba la clave de un tercero",
      "prueba": "seguridad de grupos"
+    },
+    {
+     "fallo": "C1 Confirmaciones (✓✓) sin autenticar: una falsa paraba los reintentos y el mensaje se perdía con ✓✓. Arreglado en la 2777: la confirmación va firmada con el secreto de la pareja (e2eAckTag), también en modo cerrado (el ack nativo lo firma con una clave por contacto que le da la app por setAckKeys; sobrevive en memoria con la app cerrada, no va a disco)",
+     "prueba": "confirmación (✓✓) falsa no marca entregado"
     }
    ],
    "debiles": [
-    {
-     "g": "grave",
-     "d": "C1: las confirmaciones (✓✓) no están autenticadas; una falsa puede hacer perder un mensaje (intento de arreglo en 2777 roto: rompe el ✓✓ en modo cerrado porque el ack nativo no se puede firmar; falta firmar el ack nativo o diferirlo)"
-    },
     {
      "g": "media",
      "d": "H3: las tarjetas de contacto fijan la clave de un contacto nuevo sin verificar (de oídas)"

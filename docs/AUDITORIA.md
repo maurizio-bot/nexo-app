@@ -84,8 +84,12 @@ Gravedad: **Crítica** ≥ 9, **Alta** < 9, **Media** < 7, **Baja** < 4. `AV:A` 
 
 ### Arreglados y comprobados en esta ronda
 
+(La fila **C1** se arregló en la **fase 2 (ronda 2777, 25-10-2026)**, no en la 2774; se deja aquí por ser un arreglo
+comprobado con su prueba. Falta la confirmación en los dos teléfonos del dueño.)
+
 | # | Gravedad | Hallazgo | Arreglo | Prueba que lo reproduce |
 |---|---|---|---|---|
+| **C1** | **Alta** | **Confirmaciones (✓✓) sin autenticar.** El `msgId` viaja en claro; quien lo conozca (radio, LAN o un relé) podía mandar una confirmación falsa de «entregado» → el emisor dejaba de reintentar y el mensaje se perdía mostrando ✓✓. | Con un contacto moderno (protocolo 2) la confirmación va **firmada** con un MAC derivado del secreto de la pareja (`e2eAckTag` = HMAC-SHA256 del ECDH de las dos identidades con la etiqueta `NEXO-ACK-v1`, ligado a tipo+msgId+los dos NEXO ID, 12 bytes); una falsa (sin firma o con firma que no cuadra) se ignora (comparación en tiempo constante). En **modo cerrado**, donde el ack lo manda la capa nativa (que no tiene claves de identidad), la app le pasa por contacto la clave de firma (`setAckKeys`, solo en memoria del proceso —sobrevive con la app cerrada, como la config de internet—, nunca a disco) y el Kotlin firma el ack igual. Contactos antiguos (protocolo 1): sin cambios (compatibilidad). | `tests/sim/ackforge.js` (A↔B proto 2: la entrega real marca ✓✓ y una confirmación falsa —sin firma o con firma mala— no marca entregado y el envío sigue pendiente). También pasa el escenario de modo cerrado (`recibir con la app cerrada`), que ahora firma el ack nativo. ⚠️ Falta confirmarlo en los dos teléfonos del dueño. |
 | N1 | **Alta** (AV:A) | **Wi-Fi: saludo gigante.** El hub TCP reservaba hasta 48 MB nada más leer el tamaño del saludo (sin autenticar); con unas pocas conexiones así, la app se quedaba sin memoria y Android la cerraba. | El saludo se lee con tope de 8 KB (`HELLO_MAX`); los mensajes grandes de verdad (ya autenticados) siguen permitidos. | `LanHubAttackTest.saludoGiganteSeRechazaSinReservarMemoria` (antes reservaba ~142 MB con 6 conexiones) |
 | N2 | **Alta** (AV:A) | **Wi-Fi: avalancha de conexiones.** Un hilo de lectura por conexión, sin tope: miles de conexiones que no saludan = memoria/hilos sin fin. | Cola de conexiones sin saludar acotada (`MAX_PREAUTH` 64); al pasarse se cierra la más vieja. Un contacto de verdad saluda al momento y entra igual. | `LanHubAttackTest.avalanchaNoDejaSinServicioNiCreaHilosSinFin` (antes 150 hilos a la vez) |
 | N3 | **Media** (AV:A) | **Wi-Fi: archivo grande abortado por un extraño.** `serve` moría si alguien de la red abría una conexión con basura o se quedaba callado: la transferencia legítima no llegaba. | Cada conexión se atiende por separado; una conexión ajena se descarta y se sigue esperando la del contacto. | `BigFileAttackTest.servidorSobreviveAConexionesAjenas` |
@@ -104,7 +108,6 @@ Robustez (no es un ataque, es que la app no se caiga):
 
 | # | Gravedad | Hallazgo | Arreglo propuesto |
 |---|---|---|---|
-| **C1** | **Alta** | **Confirmaciones (✓✓) sin autenticar.** El `msgId` viaja en claro; quien lo conoce (por radio, LAN o un relé) puede mandar una confirmación falsa de «entregado» → el emisor deja de reintentar y el mensaje puede **perderse mostrando ✓✓**. ⚠️ **Intento de arreglo (ronda 2777) revertido**: exigir que el ack venga firmado con el secreto de la pareja (`e2eAckTag`) funciona con los dos teléfonos abiertos, pero **rompe el ✓✓ cuando el receptor está cerrado**, porque ahí el ack lo manda la capa nativa, que no tiene las claves para firmarlo (lo atrapó `tests/sim/ackforge.js` + la batería). | El arreglo bueno necesita una de dos cosas, y probarse en los dos teléfonos (ronda propia): (a) **firmar también el ack nativo** del modo cerrado (darle a la parte nativa un secreto por contacto, como ya se hace con `kraw` para internet); o (b) **diferir el ack**: en modo cerrado no mandarlo, y que la app, al abrirse, mande uno firmado (coste: el ✓✓ del modo cerrado llega más tarde). Decisión del dueño por el equilibrio seguridad/experiencia. |
 | **H3** | **Media-Alta** | **Tarjetas de contacto fijan claves sin verificar.** Una tarjeta compartida establece la clave pública de un contacto nuevo sin que el usuario la verifique (de palabra). En la **creación** de un grupo, un miembro que llegue antes que el creador podría fijar la clave de un tercero. | Marcar las claves de tarjeta como «de oídas» (pendientes): se usan solo tras el flujo normal de aceptación / número de seguridad. Toca el estado de claves (delicado) → ronda propia. |
 | **H4** | **Media** | **Fénix: petición de recuperación sin autenticar.** La `fq` llega como control sin cifrar; el `from` y el nombre son del atacante y se le muestran al usuario. Cada confirmación engañada filtra **un** fragmento (hacen falta 6 para restaurar). | Exigir que la `fq` llegue por sesión E2E con el contacto; mostrar solo la identidad verificada y avisar «este teléfono no tiene historial de claves contigo»; limitar más las peticiones. |
 | **M5** | **Baja-Media** | **Control sin autenticar (`ni`/`kx`/`nm`).** Reasignan el enlace o ponen el nombre mostrado de un contacto aún sin nombre. El contenido sigue cifrado; se puede estorbar el enlace o reetiquetar. | Exigir una señal autenticada antes de reasignar un enlace vivo; no aceptar `nm` que no esté ligado a la clave del contacto. |
@@ -142,9 +145,11 @@ detalle y las herramientas comprobadas están en la investigación guardada; aqu
 **Por prioridad (lo que falta):**
 - **P0-1** Repetir/restaurar el estado del ratchet (copia, Fénix, pasar la cuenta sin apagar el viejo) → que nunca se
   repita una (clave, IV) y que el teléfono viejo deje de servir.
-- ⚠️ **P0 (C1) EN ESPERA (ronda 2777):** el arreglo (firmar las confirmaciones) se probó y se revirtió porque rompe el
-  ✓✓ del modo cerrado (el ack nativo no se puede firmar). Hace falta firmar también el ack nativo o diferir el ack; es
-  decisión del dueño por el equilibrio seguridad/experiencia. Reproducción lista para retomarlo (ver el historial).
+- ✅ **P0 (C1) RESUELTO (ronda 2777):** las confirmaciones (✓✓/leído) ahora van firmadas con un MAC derivado del secreto
+  de la pareja (`e2eAckTag`), también en **modo cerrado** (el ack lo firma la capa nativa con una clave por contacto que
+  le da la app por `setAckKeys`, en memoria del proceso). Una confirmación falsa se ignora, así que ya no para los
+  reintentos ni hace perder un mensaje con ✓✓. Lo vigila `tests/sim/ackforge.js` en la batería (52/52) y la firma del
+  modo cerrado la cubre el escenario «recibir con la app cerrada». ⚠️ Falta la confirmación en los dos teléfonos del dueño.
 - **P0-4** XSS en mensajes, nombres, archivos, grupos, QR, contactos y ubicaciones (hoy se usa `textContent`; dejar una
   prueba que lo vigile y revisar la CSP).
 - **P1** «VOPR de NEXO»: mundo determinista (reloj virtual + PRNG con semilla) con fallos inyectados (pérdida en
