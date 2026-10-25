@@ -10,8 +10,11 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 «Seguridad frente a ataques» (peso 10) con 9 puntos débiles abiertos que sacó la auditoría; no es regresión (la
 seguridad mejoró: 8 arreglos + 16 pruebas, batería 51/51, Kotlin 87/87; ver `docs/AUDITORIA.md` y §0c). Con la 2777
 (fase 2, C1 arreglado): **42,1** — las confirmaciones (✓✓) ya van firmadas con la pareja (un punto débil grave menos,
-una prueba más), batería 52/52, Kotlin 90/90. **Siguiente: revisión 2, día 1 (avisos, segundo plano y app cerrada)** el
-26-10, tras lo que traiga el dueño; y en seguridad, los puntos débiles que siguen abiertos (H3, H4, M5, M6, F6–F9).
+una prueba más), batería 52/52, Kotlin 90/90. Informe del dueño: 2778 (llamadas: menos ruido, pantalla al entrar llamada,
+contestar deslizando) y 2779 (alta por ID: agregar a alguien lejano con su NEXO ID + solicitudes aceptar/eliminar; batería
+53/53). Índice **42,1** en las dos (mejoras de experiencia/funcionalidad, no modos de fallo del catálogo). **Siguiente:
+revisión 2, día 1 (avisos, segundo plano y app cerrada)** el 26-10, tras lo que traiga el dueño; pendiente corto: aviso
+proactivo del permiso de pantalla completa (Android 14); y en seguridad, los puntos débiles abiertos (H3, H4, M5, M6, F6–F9).
 
 ## 0b. Hoja de ruta (opinión del 25-10, aceptada por el dueño)
 Lo que más falta ya no es código nuevo, sino confirmar en el mundo real lo que existe. En orden de importancia:

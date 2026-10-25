@@ -111,6 +111,71 @@ export const BLE_LINK_METHODS = {
     if (changed) _saveBLEContacts(contacts);
   },
 
+  // ---------- Alta por ID (ronda 2779): solicitudes de contacto por internet (sin estar cerca) ----------
+  // El amigo te pasa su NEXO ID (p. ej. por WhatsApp); lo pegas y le mandas una solicitud. Él la acepta o la elimina
+  // (anti-spam). La clave que llega así entra "sin verificar" (el banner del chat pide comparar el número de seguridad).
+  _reqStore(key) { try { return JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem(key)) || '[]') || []; } catch (e) { return []; } },
+  _reqSave(key, arr) { try { if (typeof localStorage !== 'undefined') localStorage.setItem(key, JSON.stringify((arr || []).slice(0, 60))); } catch (e) {} },
+
+  // Mandar una solicitud de contacto a un NEXO ID. Devuelve una promesa (error legible si falla).
+  addByNexoId(id) {
+    var self = this, nx = _normId(id);
+    if (!/^nx[0-9a-z]{8}$/.test(nx)) return Promise.reject(new Error('Ese no parece un NEXO ID (empieza por NX y 8 más)'));
+    if (nx === _normId(self.localNexoId)) return Promise.reject(new Error('Ese es tu propio ID'));
+    if (_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; })) return Promise.reject(new Error('Ya tienes a ese contacto'));
+    if (!self.net) return Promise.reject(new Error('Esta versión no tiene internet'));
+    return self.net.sendRequest(nx, 'req', self.localDeviceName || '').then(function() {
+      var out = self._reqStore('nexo_req_out').filter(function(x) { return x.id !== nx; });
+      out.unshift({ id: nx, at: Date.now() });
+      self._reqSave('nexo_req_out', out);
+      _safeDispatchEvent('nexo:ble:reqSent', { id: nx });
+      return true;
+    });
+  },
+
+  // Llega algo a mi buzón de solicitudes (lo descifró net_link). req = me quieren agregar; acc = aceptaron mi solicitud.
+  _onNetRequest(info) {
+    var self = this, nx = _normId(info && info.id), pk = info && info.pk, name = (info && info.name) || '';
+    if (!/^nx[0-9a-z]{8}$/.test(nx) || typeof pk !== 'string') return;
+    if (_getBLEContacts().some(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; })) return; // ya es contacto
+    var out = self._reqStore('nexo_req_out');
+    if (info.kind === 'acc' && out.some(function(x) { return x.id === nx; })) {
+      // Aceptaron MI solicitud: agrego su clave (sin verificar) y el canal seguro se enciende solo
+      self.addSharedContacts([{ nexoId: nx, name: name, publicKey: pk, nt: 1 }], null, { quiet: true });
+      self._reqSave('nexo_req_out', out.filter(function(x) { return x.id !== nx; }));
+      if (self.net) self.net.greet();
+      console.log('[BLEInterface] ' + nx + ' aceptó la solicitud: contacto agregado por internet (sin verificar)');
+      _safeDispatchEvent('nexo:ble:reqAccepted', { id: nx, name: name });
+      return;
+    }
+    // Solicitud entrante (o una aceptación que no esperaba): a la bandeja, para aceptar o eliminar
+    var inbox = self._reqStore('nexo_req_in').filter(function(x) { return x.id !== nx; });
+    inbox.unshift({ id: nx, pk: pk, name: name, at: Date.now() });
+    self._reqSave('nexo_req_in', inbox);
+    _safeDispatchEvent('nexo:ble:reqIncoming', { id: nx, name: name, count: inbox.length });
+  },
+
+  pendingRequests() { return this._reqStore('nexo_req_in'); },
+
+  // Aceptar una solicitud entrante: agrego su clave (sin verificar), le aviso (acc) y el canal se enciende
+  acceptRequest(id) {
+    var self = this, nx = _normId(id);
+    var inbox = self._reqStore('nexo_req_in'), req = inbox.find(function(x) { return x.id === nx; });
+    if (!req || !req.pk) return Promise.reject(new Error('Esa solicitud ya no está'));
+    self.addSharedContacts([{ nexoId: nx, name: req.name || '', publicKey: req.pk, nt: 1 }], null, { quiet: true });
+    self._reqSave('nexo_req_in', inbox.filter(function(x) { return x.id !== nx; }));
+    if (self.net) self.net.greet();
+    _safeDispatchEvent('nexo:ble:reqIncoming', { count: self._reqStore('nexo_req_in').length });
+    return (self.net ? self.net.sendRequest(nx, 'acc', self.localDeviceName || '') : Promise.resolve()).catch(function() {});
+  },
+
+  // Eliminar una solicitud entrante (no se agrega nada)
+  rejectRequest(id) {
+    var self = this, nx = _normId(id);
+    self._reqSave('nexo_req_in', self._reqStore('nexo_req_in').filter(function(x) { return x.id !== nx; }));
+    _safeDispatchEvent('nexo:ble:reqIncoming', { count: self._reqStore('nexo_req_in').length });
+  },
+
   _sendViaNetMailbox(nexoId, content, msgId, seq) {
     var nx = _normId(nexoId);
     if (!this.net || !this.net.mailboxOk(nx) || !this.ackSystem) return Promise.reject(Object.assign(new Error('Sin internet'), { code: 'PEER_ABSENT' }));

@@ -32,6 +32,7 @@ const SCENARIOS = [
   { name: 'internet (Tor)', args: ['net.js', '--tor'], tag: 'NET', checks: {
     texto_estado_A: (v) => v === 'delivered', 'eventos_a_los_relés_durante_el_envío': (v) => v === 0, impostor_cerrado: isTrue,
     errores: isEmpty, contenido_en_registros: (v) => v === 0 } },
+  { name: 'agregar por ID a alguien lejos: solicitud, aceptar/eliminar, se conectan (alta remota)', args: ['reqadd.js'], tag: 'REQADD', checks: { resultado: (v) => v === 'OK' } },
   { name: 'no leídos y notificaciones', args: ['unread.js', '--io-delay=25'], tag: 'UNREAD', checks: {
     contador_corto_largo_foto: (v) => v === 3, notificaciones_con_app_a_la_vista: (v) => v === 0, al_abrir_chat: (v) => v === 0, A_ve_leido: isTrue,
     segundo_plano_cuenta: (v) => v === 2, notificacion: (v) => !!v && v.numero === 2, A_no_ve_leido_en_segundo_plano: isTrue,

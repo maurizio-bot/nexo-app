@@ -27,7 +27,7 @@ function _openProfileSheet() {
     '<div style="font-size:26px;font-weight:800;">Perfil</div><button id="nexo-profile-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">Cerrar</button></div>' +
     '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" title="Cambiar foto" style="cursor:pointer;"></div><div style="flex:1;min-width:0;"><div class="nx-idtxt">Mi NEXO ID</div><b id="nexo-profile-id"></b>' +
     '<div id="nexo-profile-seen" class="nx-idtxt" style="margin-top:2px;"></div>' +
-    '<div><button id="nexo-av-pick" class="nx-link">Cambiar foto</button> <button id="nexo-av-clear" class="nx-link" style="display:none;">Quitar</button></div></div></div>' +
+    '<div><button id="nexo-av-pick" class="nx-link">Cambiar foto</button> <button id="nexo-av-clear" class="nx-link" style="display:none;">Quitar</button> <button id="nexo-id-share" class="nx-link">Compartir mi ID</button></div></div></div>' +
     card('🔥', 'Fénix', '<div id="nexo-fenix-status" class="nx-sub"></div>' +
       '<button id="nexo-fenix-recover" class="nx-btn">Recuperar mi cuenta (teléfono nuevo)</button>') +
     // Ronda 2759: pasar la cuenta de un teléfono a otro (move_account.js)
@@ -85,6 +85,17 @@ function _openProfileSheet() {
   };
   avEl.onclick = pick;
   sheet.querySelector('#nexo-av-pick').onclick = pick;
+  // Ronda 2779 (pedido del dueño): compartir mi NEXO ID para que un amigo lejano me agregue (por WhatsApp, etc.)
+  var shareBtn = sheet.querySelector('#nexo-id-share');
+  if (shareBtn) shareBtn.onclick = function() {
+    var id = String(bi.localNexoId || '').toUpperCase();
+    if (!id || id === '?') return;
+    var msg = 'Agrégame en NEXO con mi ID: ' + id;
+    try { if (navigator.share) { navigator.share({ text: msg }).catch(function() {}); return; } } catch (e) {}
+    var done = function() { shareBtn.textContent = 'ID copiado ✓'; setTimeout(function() { shareBtn.textContent = 'Compartir mi ID'; }, 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(id).then(done).catch(function() { if (_showInfoToast) _showInfoToast('Tu NEXO ID: ' + id, 5000); });
+    else if (_showInfoToast) _showInfoToast('Tu NEXO ID: ' + id, 5000);
+  };
   clr.onclick = function() { clearMyAvatar(); paintMine(); };
   var ta = sheet.querySelector('#nexo-diag-text');
   ta.value = _diagnosticText();
