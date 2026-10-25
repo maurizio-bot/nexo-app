@@ -13,6 +13,7 @@ import { _normId, _getCurrentContactId } from './chat_format.js';
 import { _renderMessage } from './render.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _getGradientForUUID, _getInitials } from './ble_helpers.js';
+import { _hideCameraPreviewOverlay } from './camera.js';
 import { vaultAppendMessage, vaultFindContactByNexoId } from '../vault/vault_manager.js';
 
 function _bi() { return window.bleInterface || (window.NEXO && window.NEXO.app && window.NEXO.app.bleInterface) || null; }
@@ -118,6 +119,11 @@ function _style() {
     '#nexo-call-screen.nc-video .nc-top{background:linear-gradient(rgba(0,0,0,.6),transparent)}',
     '#nexo-call-screen.nc-video .nc-bottom{background:linear-gradient(transparent,rgba(0,0,0,.5))}',
     '#nexo-call-screen.nc-video.nc-live .nc-center{opacity:0;pointer-events:none}',
+    // Ronda 2769: sin imagen del otro (su cámara apagada, sin cámara o aún sin imagen): su foto y el motivo, no negro
+    '#nexo-call-screen.nc-video.nc-live.nc-novideo .nc-center{opacity:1}',
+    '#nexo-call-screen.nc-novideo .call-remote-video{visibility:hidden}',
+    '#nexo-call-screen .nc-warnbar{display:none;margin-top:8px;font-size:13px;color:#fbbf24;text-shadow:0 1px 8px rgba(0,0,0,.7);text-align:center}',
+    '#nexo-call-screen.nc-video.nc-live .nc-warnbar:not(:empty){display:block}',
     '#nexo-call-screen .nc-mini{display:none;font-size:17px;font-weight:600;text-shadow:0 1px 8px rgba(0,0,0,.6)}',
     '#nexo-call-screen.nc-video.nc-live .nc-mini{display:block}',
     '#nexo-call-screen.nc-hide .nc-top,#nexo-call-screen.nc-hide .nc-bottom{opacity:0;pointer-events:none}',
@@ -133,7 +139,7 @@ function _screen() {
   el = document.createElement('div');
   el.id = 'nexo-call-screen';
   el.innerHTML = '<div class="nc-bg"></div>' +
-    '<div class="nc-top"><div class="nc-pill nc-lock">' + _svg('lock', 13) + '<span>Cifrada de extremo a extremo</span></div><div class="nc-mini"></div></div>' +
+    '<div class="nc-top"><div class="nc-pill nc-lock">' + _svg('lock', 13) + '<span>Cifrada de extremo a extremo</span></div><div class="nc-mini"></div><div class="nc-warnbar"></div></div>' +
     '<div class="nc-center"><div class="nc-av-wrap"><div class="nc-ring"></div><div class="nc-ring r2"></div><div class="nc-ring r3"></div><div class="nc-av"></div></div>' +
     '<div class="call-name"></div><div class="call-status"></div><div class="call-note"></div></div>' +
     '<div class="nc-bottom"><div class="call-buttons"></div></div>';
@@ -211,8 +217,38 @@ function _videoLayout(el, st) {
   if (big) { big.classList.remove('nc-pip'); big.classList.add('nc-full'); big.style.left = ''; big.style.top = ''; }
   if (small) { small.classList.remove('nc-full'); small.classList.add('nc-pip'); _placePip(el, small); _makeDraggable(el, small); }
   if (v.local) v.local.style.transform = (st.facing || 'user') === 'user' ? 'scaleX(-1)' : 'none'; // la de delante, como un espejo
-  if (v.local) v.local.style.visibility = st.cameraOff ? 'hidden' : '';
+  if (v.local) v.local.style.visibility = st.cameraOff || (st.camState && st.camState !== 'on') ? 'hidden' : '';
   el.classList.add('nc-live');
+  // Ronda 2769: sin imagen del otro, su foto y el motivo (antes la pantalla quedaba negra)
+  el.classList.toggle('nc-novideo', !!(st.peerCam && st.peerCam !== 'on') || !calls.remoteVideoLive());
+}
+
+// Ronda 2769: avisos de la llamada: mi micrófono, el del otro y mi cámara (en ese orden de importancia)
+// (el motivo en palabras, no el nombre del error del navegador)
+function _devErr(e) {
+  e = String(e || '');
+  if (!e || /^sin micr/i.test(e)) return '';
+  if (/NotAllowed|PermissionDenied|Security/.test(e)) return 'sin permiso';
+  if (/NotFound|DevicesNotFound/.test(e)) return 'no encontrado';
+  if (/NotReadable|Abort|TrackStart/.test(e)) return 'ocupado por otra app';
+  return e;
+}
+function _warnText(st, name) {
+  if (!st || st.state !== 'active') return '';
+  if (st.micState === 'retry') return 'Tu micrófono no responde: reintentando…';
+  var why = _devErr(st.micError);
+  if (st.micState === 'none' || st.micError) return 'Sin micrófono' + (why ? ' (' + why + ')' : '') + ': ' + name + ' no te oye';
+  if (st.peerMic === 'retry' || st.peerMic === 'none') return 'El micrófono de ' + name + ' no funciona: no se le oye';
+  if (st.video && st.camState === 'retry' && !st.cameraOff) return 'Tu cámara no está disponible: reintentando…';
+  if (st.video && st.camState === 'none') return 'Tu cámara no funciona: solo voz';
+  return '';
+}
+// Lo que se ve en lugar de la imagen del otro (el vídeo solo va por Wi-Fi: por Bluetooth, solo voz)
+function _peerVideoText(st, via) {
+  if (st.peerCam === 'off') return 'Cámara apagada';
+  if (st.peerCam === 'none') return 'Sin cámara: solo voz';
+  if (st.peerCam === 'retry') return 'Su cámara no está disponible';
+  return via === 'por Bluetooth' ? 'Sin Wi-Fi: solo voz (el vídeo vuelve con el Wi-Fi)' : 'Esperando imagen…';
 }
 
 function _linkText(nx) {
@@ -252,7 +288,9 @@ function _render(st) {
   var lock = el.querySelector('.nc-lock span'), via = _linkText(st.nx);
   lock.textContent = 'Cifrada de extremo a extremo' + (via ? ' · ' + via : '');
   bt.innerHTML = ''; bt.classList.remove('nc-incoming');
-  note.textContent = st.micError ? 'Sin micrófono: ' + st.micError : st.video && st.videoOk === false ? 'Sin cámara en este teléfono: solo voz' : '';
+  // Ronda 2769: con el estado de la cámara (si lo hay) en vez de "sin cámara" fijo al empezar (ahora se reintenta)
+  note.textContent = st.camState || st.micState ? _warnText(st, name) : st.micError ? 'Sin micrófono' + (_devErr(st.micError) ? ': ' + _devErr(st.micError) : '') : st.video && st.videoOk === false ? 'Sin cámara en este teléfono: solo voz' : '';
+  var warnbar = el.querySelector('.nc-warnbar');
   if (st.state === 'calling') {
     status.classList.remove('nc-warn');
     status.textContent = st.video ? 'Videollamada…' : 'Llamando…';
@@ -275,7 +313,13 @@ function _render(st) {
       mini.textContent = name + ' · ' + (weak ? 'Conexión inestable…' : t);
       var via2 = _linkText(st.nx);
       lock.textContent = 'Cifrada de extremo a extremo' + (via2 ? ' · ' + via2 : '');
-      if (st.video) _videoLayout(el, cur);
+      if (st.video) {
+        _videoLayout(el, cur);
+        // Ronda 2769: en videollamada los avisos van arriba; sin imagen del otro, debajo de su nombre el motivo
+        var w = _warnText(cur, name);
+        if (warnbar) warnbar.textContent = w;
+        note.textContent = el.classList.contains('nc-novideo') ? _peerVideoText(cur, via2) + (w ? ' · ' + w : '') : w;
+      } else note.textContent = _warnText(cur, name);
     };
     upd(); _tick = setInterval(upd, 1000);
     if (st.video) bt.appendChild(_btn('flip', 'Girar', 'call-flip', function() { calls.flipCamera(); }));
@@ -362,10 +406,18 @@ function _refreshButton() {
   ['nexo-call-btn', 'nexo-video-btn'].forEach(function(id) { var b = document.getElementById(id); if (b) b.style.display = show; });
 }
 
+// Ronda 2769: la cámara del chat (fotos y vídeos) abierta debajo de la llamada tenía ocupada la cámara y, grabando
+// vídeo, el micrófono: la llamada no podía abrirlos. Al empezar la llamada se cierra.
+function _releaseChatCamera() {
+  var ov = document.getElementById('camera-preview-overlay');
+  if (ov && !ov.classList.contains('hidden')) { console.log('[CALL] Se cierra la cámara del chat: la usa la llamada'); _hideCameraPreviewOverlay(); }
+}
+
 export function installCallsUi() {
   _installButton();
   window.addEventListener('nexo:call', function(e) {
     var st = e && e.detail;
+    if (st && (st.state === 'active' || st.state === 'calling')) _releaseChatCamera();
     if (st && st.state === 'ringing') { _notifyIncoming(st); _checkCallAction(); }
     else _clearCallNotif(); // contestada, colgada, perdida…: fuera el aviso que suena
     // Ronda 2765: acabó la llamada: si la app se abrió encima de la pantalla de bloqueo por ella, vuelve detrás

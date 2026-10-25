@@ -1,6 +1,7 @@
 # NEXO — Comparativa con la competencia y estado de avance
 
-Hecha el 24-10-2026 con la build 2763; actualizada el mismo día con la 2767 y la 2768 (revisión de las llamadas).
+Hecha el 24-10-2026 con la build 2763; actualizada el mismo día con la 2767 y la 2768 (revisión de las llamadas) y el
+25-10 con la 2769 (videollamada robusta).
 Actualizar cuando cambie algo importante. Los datos de NEXO salen del código y del simulador; los de la competencia,
 de sus páginas y noticias (enlaces al final). Lo que no se pudo confirmar va marcado con "?".
 
@@ -69,7 +70,7 @@ lento, medido (pendiente).
 | Cifrado de extremo a extremo | ✅ | ✅ | ✅ (suplantación cercana: arreglo 2768, sin confirmar) |
 | Grupos (con HD y archivos grandes) | ✅ | ✅ | ⏳ |
 | Llamadas de voz | ✅ | ✅ | ⚠️ un teléfono no oía (arreglo 2762); otros 12 fallos arreglados en la 2768 |
-| Videollamadas (mismo Wi-Fi) | ✅ | ✅ | ⚠️ (2762); sin cámara sigue con voz, cámara que se apaga al colgar (2768) |
+| Videollamadas (mismo Wi-Fi) | ✅ | ✅ | ⚠️ con la 2768 el S24 a veces sin cámara, negra y sin voz (informe del dueño); cámara y micrófono que se recuperan solos (2769, sin probar) |
 | Fénix | ✅ | ✅ | ⏳ |
 | Pasar la cuenta | ✅ | ✅ | ⏳ |
 | Foto de perfil | ✅ | ✅ | ⏳ (2766) |

@@ -3090,11 +3090,13 @@ class NexoBlePlugin : Plugin() {
                 }
                 @Suppress("DEPRECATION")
                 am.isSpeakerphoneOn = speaker
+                callScreen(true, !speaker)
             } else {
                 if (Build.VERSION.SDK_INT >= 31) try { am.clearCommunicationDevice() } catch (e: Exception) { }
                 am.mode = android.media.AudioManager.MODE_NORMAL
                 @Suppress("DEPRECATION")
                 am.isSpeakerphoneOn = false
+                callScreen(false, false)
             }
             val out = JSObject().put("mode", am.mode)
             @Suppress("DEPRECATION")
@@ -3108,6 +3110,36 @@ class NexoBlePlugin : Plugin() {
             out.put("volCall", "${am.getStreamVolume(vc)}/${am.getStreamMaxVolume(vc)}").put("volMedia", "${am.getStreamVolume(mu)}/${am.getStreamMaxVolume(mu)}")
             call.resolve(out)
         } catch (e: Exception) { call.reject("Audio de llamada: ${e.message}") }
+    }
+
+    // Ronda 2769 (informe del dueño: en videollamadas el S24 salía "sin cámara", el otro veía negro y no se le oía): en
+    // llamada la pantalla no se apaga sola; si se apagaba por el tiempo de pantalla, NEXO pasaba a segundo plano y Android
+    // le quitaba la cámara y silenciaba el micrófono. Con el auricular, el sensor de proximidad apaga la pantalla al
+    // acercarla a la oreja sin sacar a NEXO de primer plano (como el teléfono). Se quita al colgar.
+    @Volatile private var proximityLock: android.os.PowerManager.WakeLock? = null
+    private fun callScreen(on: Boolean, earpiece: Boolean) {
+        val act = activity
+        act?.runOnUiThread {
+            try {
+                val f = android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                if (on) act.window.addFlags(f) else act.window.clearFlags(f)
+            } catch (e: Exception) { Log.w(TAG, "Pantalla en llamada: ${e.message}") }
+        }
+        try {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (on && earpiece) {
+                if (proximityLock == null && pm.isWakeLockLevelSupported(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
+                    val wl = pm.newWakeLock(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "nexo:llamada")
+                    wl.setReferenceCounted(false)
+                    wl.acquire(4 * 60 * 60 * 1000L)
+                    proximityLock = wl
+                }
+            } else {
+                val wl = proximityLock
+                proximityLock = null
+                if (wl != null && wl.isHeld) wl.release(android.os.PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
+            }
+        } catch (e: Exception) { Log.w(TAG, "Sensor de proximidad: ${e.message}") }
     }
 
     // ===== Archivos grandes por Bluetooth L2CAP (ronda 2758, plan del dueño punto 13) =====

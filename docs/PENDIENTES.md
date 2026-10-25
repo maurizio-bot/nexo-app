@@ -14,8 +14,16 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
-- **Qué APK probar (24-10)**: la 2768 (nightly-2768) para todo. Desde la 2763 no hay pruebas en teléfonos: todo lo de
-  abajo desde la 2765 está sin confirmar.
+- **Qué APK probar (25-10)**: la 2769 (nightly-2769) para todo. Desde la 2763 no hay pruebas en teléfonos: todo lo de
+  abajo desde la 2765 está sin confirmar (salvo el informe de videollamada Vivo ↔ S24 con la 2768, ver 2769).
+- **2769** (videollamada robusta; informe del dueño: el S24 a veces salía sin cámara, negro en el Vivo y no se le oía):
+  (1) varias videollamadas Vivo ↔ S24 seguidas (colgar y volver a llamar enseguida; contestar con la app en segundo
+  plano y con la pantalla bloqueada): imagen y voz en los dos. Si falla, sin apagar ni encender nada, decir qué se ve
+  arriba (avisos amarillos) y pasar **Perfil → Copiar diagnóstico de los dos** (línea `[CALL] Micrófono: …`).
+  (2) Dejar una videollamada 2–3 min sin tocar: la pantalla no se apaga. (3) Llamada de voz en la oreja: la pantalla se
+  apaga al acercarla y vuelve al apartarla; el otro sigue oyendo. (4) Que el otro apague y encienda su cámara: sale su
+  foto con "Cámara apagada" y luego vuelve la imagen. (5) Abrir la cámara del chat y, sin cerrarla, recibir una
+  videollamada y contestar: imagen y voz.
 - **2768** (revisión, parte 3: llamadas): (1) con la app del otro cerrada (quitada de recientes), llamarle y que toque
   "Rechazar": su teléfono suena una sola vez (antes volvía a sonar cada pocos segundos). (2) Con su app en segundo
   plano, "Rechazar" en el aviso: en el que llama sale "Rechazada" al momento. (3) Llamarse los dos a la vez: quedan en
@@ -197,11 +205,15 @@ mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simu
      recuerda 60 s lo recibido) y sale otra notificación.
 3. **Llamadas y videollamadas** — hecha en la 2768 (ver PROGRESO, "Ronda 2768"): 14 fallos, arreglados 13, entre ellos
    el de seguridad (un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto en textos, archivos y
-   llamadas). Queda: el punto 2 (voz por Bluetooth con MTU pequeño: "carril de voz" nativo y aviso "Bluetooth lento");
-   los riesgos que solo se ven en el teléfono (micrófono con la pantalla apagada en Android 11+, sensor de proximidad,
-   tono con el teléfono en silencio, foco de audio); la decisión §4.7. Puntos débiles sin fallo visto todavía:
+   llamadas). **2769** (informe del dueño: videollamada Vivo ↔ S24 a veces sin cámara, negra y sin voz): cámara y
+   micrófono con reintentos y vigilante, codificadores y decodificadores que se rehacen, foto y motivo en vez de negro,
+   avisos de los dos, sin micrófono la llamada sigue, pantalla encendida en llamada y sensor de proximidad (ver
+   PROGRESO, "Ronda 2769"); falta el diagnóstico de una videollamada que falle para confirmar la causa.
+   Queda: el punto 2 (voz por Bluetooth con MTU pequeño: "carril de voz" nativo y aviso "Bluetooth lento");
+   los riesgos que solo se ven en el teléfono (micrófono con la pantalla apagada en Android 11+: servicio en primer
+   plano de tipo micrófono; tono con el teléfono en silencio; foco de audio; la pantalla encendida y el sensor de
+   proximidad de la 2769, sin probar); la decisión §4.7. Puntos débiles sin fallo visto todavía:
    - Con la app cerrada, si el que llama cuelga, el aviso sigue sonando hasta 45 s (lo arreglaría la opción (3) de §4.7).
-   - Sin micrófono (permiso denegado) la llamada se corta a los 12 s en el otro.
    - Con la app cerrada, el aviso dice siempre "Llamada" (también en videollamada) y el nombre sale "NEXO" si el nativo no
      lo conoce.
    - La identidad de una conexión aún se deduce de lo que dice el paquete (el arreglo de la 2768 cubre lo que llega sin

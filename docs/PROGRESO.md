@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-24 (build 2768)
+Última actualización: 2026-10-25 (build 2769)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -95,6 +95,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2766 | 3f309571 | Revisión completa, parte 1 (escaneo, agregar, conexión): los pings nunca se contestaban (el enlace se rehacía cada ~30 s), un archivo podía salir cifrado para el teléfono equivocado, el Wi-Fi se perdía al volver a la app, BUSCAR se quedaba colgado, reconexión sin esperas, caídas del Bluetooth sin avisar, Tor sin dirección .onion. Mejoras: foto de perfil, avisos y llamadas que encienden la pantalla y se ven sobre el bloqueo, Perfil → "Avisos con la pantalla apagada". Ver "Ronda 2766". APK publicada (nightly-2766, 24,5 MB) |
 | 2767 | ed848800 | Revisión completa, parte 2 (mensajes y archivos): textos largos pendientes que se perdían mostrando "entregado" (al reconectar tras reiniciarse la app), nota de voz pendiente que llegaba como "[adjunto]", transferencias de más de 10 min cortadas aunque avanzaran, Wi-Fi caído a mitad de una foto con un Bluetooth lento, orden en el chat (relojes desfasados; lo recibido con la app cerrada salía "ahora"), "!" durante un corte del Wi-Fi. Ver "Ronda 2767". Batería 32/32, Kotlin 65/65. APK publicada (nightly-2767, 24,5 MB) |
 | 2768 | 6e8d6a84 | Revisión completa, parte 3 (llamadas y videollamadas): un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto (textos, archivos y llamadas sin cifrar; oír la voz, colgar llamadas reales): ya no; con la app cerrada "Rechazar" volvía a sonar con cada reenvío de la oferta (ahora un aviso por llamada); la siguiente llamada de ese contacto se contestaba sola; una oferta vieja sonaba al reiniciar la app; relojes desfasados; los dos a la vez; Wi-Fi caído en uno; micrófono y cámara encendidos tras colgar; videollamada sin cámara; voz repetida. Ver "Ronda 2768". Batería 43/43, Kotlin 68/68. APK publicada (nightly-2768, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
+| 2769 | (este commit) | Videollamada robusta (informe del dueño: en videollamadas Vivo ↔ S24 a veces el S24 salía sin cámara, el otro veía negro y no se le oía): cámara y micrófono por separado con reintentos y vigilante (ocupados, cortados por el sistema, sin imágenes, audio en pausa), codificadores y decodificadores de voz y vídeo que se rehacen (antes, sin voz o negro hasta colgar), foto y motivo en vez de negro, avisos de los dos, sin micrófono la llamada sigue (antes se cortaba a los 12 s), pantalla encendida en llamada y sensor de proximidad. Ver "Ronda 2769". Batería 45/45, Kotlin 68/68 |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -220,6 +221,47 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2769: videollamada robusta (informe del dueño: Vivo ↔ S24)
+Informe con la 2768: en videollamadas entre el Vivo y el S24, a veces el S24 salía como sin cámara, el Vivo veía negro
+y no se le oía; tras apagar y encender la cámara (y el micrófono) volvía. Sin el diagnóstico de esa llamada no se sabe
+cuál de las causas fue; se reprodujeron en el simulador (`callmedia.js`, con el `call_media.js` real y un navegador
+falso que puede tener la cámara o el micrófono ocupados, cortarlos, dejar de dar imágenes o romper los codificadores)
+todas las que dan esos síntomas. Con la 2768 fallan 15 de sus 20 casos; ahora pasan los 20:
+1. **Cámara ocupada un momento al empezar** (la del chat, la de otra app o la que el sistema aún no soltó): con la 2768
+   no había vídeo en toda la llamada ("sin cámara"). Ahora se reintenta a los 0,4/1/2 s; si sigue ocupada, la llamada
+   sigue con voz y se reintenta cada 4 s (con 5 s ocupada, el vídeo entró solo).
+2. **Micrófono ocupado**: se pedían juntos micrófono y cámara, y un fallo de uno tumbaba los dos. Ahora van por separado,
+   cada uno con sus reintentos. **Sin micrófono** (permiso quitado): antes no salía nada y el otro cortaba a los 12 s
+   ("Se cortó") sin saber por qué; ahora sale un "sigo aquí" sin voz cada 2 s, la llamada sigue (se oye al otro) y
+   los dos ven el aviso: "El micrófono de B no funciona: no se le oye" / "Sin micrófono (sin permiso): A no te oye"
+   (`calls2.js sin-micro`: 25 s en llamada).
+3. **Cámara cortada por el sistema** (pista terminada): antes negro hasta colgar; ahora se reabre (vuelve en 0,5 s).
+4. **Cámara sin imágenes** (pista viva pero sin fotogramas, típico tras pasar a segundo plano): antes negro hasta
+   apagarla y encenderla, justo lo que hizo el dueño; ahora se reanuda y, si sigue igual, se reabre sola (~5 s).
+5. **Audio en pausa** (el sistema suspende el audio de la página): antes silencio; ahora se reanuda (~2 s).
+6. **Fallo de los codificadores** de vídeo o de voz (Opus): antes quedaban cerrados y no salía nada (sin imagen o sin
+   voz hasta colgar); ahora se rehacen (el de vídeo, en 0,4 s), como mucho uno por segundo si fallan siempre.
+   **Fallo del decodificador de voz** (lo que llega del otro): con la 2768, tras un solo fallo no se oía nada más hasta
+   colgar (0 de 5 paquetes sonaron); ahora se rehace con el siguiente paquete (5 de 5).
+7. **Fallo del decodificador del otro**: antes negro hasta colgar; ahora se rehace y pide una imagen completa (señal
+   `k`). **Decodificador parado** (llega vídeo y no sale imagen): antes negro hasta colgar; ahora a los 3–4 s pide una
+   imagen completa y, si sigue, a los 6 s pone un decodificador nuevo (se volvió a ver).
+8. **Pantalla**: en vez de negro, la foto del otro y el motivo ("Cámara apagada", "Sin cámara: solo voz", "Su cámara no
+   está disponible", "Esperando imagen…"; si la llamada pasa a Bluetooth, donde no va el vídeo, "Sin Wi-Fi: solo voz (el
+   vídeo vuelve con el Wi-Fi)"); arriba, los avisos de los dos (micrófono o cámara sin funcionar), con el motivo en
+   palabras ("sin permiso", "ocupado por otra app"). Cada lado manda el estado de su cámara y su micrófono (señal `c`,
+   cifrada, cada 5 s; `calls2.js video-estado`).
+9. **Pantalla encendida en llamada y sensor de proximidad** (Kotlin `callScreen`): si la pantalla se apaga sola a media
+   videollamada, Android corta la cámara y el micrófono; ahora no se apaga durante la llamada y, con el auricular, se
+   apaga al acercar la oreja y vuelve al apartarla. Solo se comprueba en el teléfono.
+10. **La cámara del chat** (si estaba abierta) se cierra al empezar la llamada: tenía la cámara y el micrófono.
+11. Diagnóstico: línea `[CALL] Micrófono: pista …; cámara …, pista …, imagen local …, codificador …, imágenes …; del otro:
+    decodificadas …, decodificador …, su cámara …` para ver en el teléfono qué falló; los "sigo aquí" van aparte (no
+    cuentan como voz enviada o recibida).
+- Pruebas: `callmedia.js` (20 casos, 15 fallan con la 2768) y `calls2.js` `video-estado` y `sin-micro` (fallan con la
+  2768). Batería 45/45, Kotlin 68/68.
+- Pendiente: el diagnóstico de ambos teléfonos tras una videollamada que falle, para confirmar cuál fue la causa.
 
 ## Ronda 2768: revisión completa, parte 3 (llamadas y videollamadas)
 Un agente revisó `calls.js`, `calls_ui.js`, `call_media.js`, el camino de las señales y el nativo con 20 escenarios

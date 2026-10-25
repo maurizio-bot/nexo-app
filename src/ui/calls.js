@@ -167,22 +167,46 @@ export class Calls {
     var media;
     try {
       media = self.mediaFactory({ onPacket: function(bytes) { self._sendPacket(bytes); }, codecs: c.peerCodecs || 'opus,ulaw',
-        video: !!c.video, onVideoPacket: function(bytes) { self._sendPacket(bytes, 'v'); } });
+        video: !!c.video, onVideoPacket: function(bytes) { self._sendPacket(bytes, 'v'); },
+        // Ronda 2769: la imagen del otro se paró: que mande una completa ('k'); estado de mi cámara y micrófono ('c')
+        onNeedKey: function() { if (self.call === c) self._sendPacket(new Uint8Array([1]), 'k'); },
+        onState: function(s) {
+          if (self.call !== c || !s) return;
+          c.camState = s.cam; c.micState = s.mic;
+          self._set({ camState: s.cam, micState: s.mic, micError: s.mic === 'none' ? (s.micErr || 'sin micrófono') : '' });
+          self._sendState(c);
+        } });
     } catch (e) { console.warn('[CALL] Sin audio: ' + (e && e.message)); }
     c.media = media || null;
     if (media && media.start) Promise.resolve(media.start()).then(function(info) {
       if (info && info.codec) {
-        console.log('[CALL] Audio: ' + info.codec + (c.video ? ', vídeo: ' + (info.video ? 'VP8' : 'no') : ''));
+        console.log('[CALL] Audio: ' + info.codec + (info.mic === false ? ' (sin micrófono por ahora: ' + info.micError + ')' : '') + (c.video ? ', vídeo: ' + (info.video ? 'VP8' : 'no por ahora') : ''));
         self._set(c.video ? { codec: info.codec, videoOk: !!info.video } : { codec: info.codec });
       }
     }).catch(function(e) { console.warn('[CALL] Micrófono: ' + (e && e.message)); self._set({ micError: (e && e.message) || 'sin micrófono' }); });
+    // Ronda 2769: al volver a la app (la cámara se pierde en segundo plano), cámara y audio otra vez ya
+    if (!self._wakeHook && typeof document !== 'undefined') {
+      self._wakeHook = true;
+      document.addEventListener('visibilitychange', function() { var cc = self.call; if (document.visibilityState === 'visible' && cc && cc.media && typeof cc.media.wake === 'function') cc.media.wake(); });
+    }
     self._silenceTimer = setInterval(function() {
       var cc = self.call;
       if (!cc || cc.id !== c.id) return;
       if (Date.now() - (cc.lastRx || 0) > SILENCE_MS) { self._signal(cc.nx, 'end'); self._finish('lost', false); return; }
       if (Date.now() - (cc.diagAt || cc.startedAt) >= DIAG_EVERY_MS) { cc.diagAt = Date.now(); self._diag(cc, ''); }
+      // Ronda 2769: el estado se repite cada 5 s (un aviso perdido no deja al otro con lo de antes)
+      if (cc.camState && Date.now() - (cc.stateAt || 0) >= DIAG_EVERY_MS) self._sendState(cc);
     }, 1000);
   }
+
+  // Ronda 2769: mi cámara y mi micrófono, para la pantalla del otro ('c', cifrado como la voz)
+  _sendState(c) {
+    c.stateAt = Date.now();
+    this._sendPacket(new TextEncoder().encode(JSON.stringify({ cam: c.camState || 'none', mic: c.micState || 'on' })), 'c');
+  }
+
+  // ¿Se ve la imagen del otro? (si no, la pantalla muestra su foto y el motivo en vez de negro)
+  remoteVideoLive() { var m = this.call && this.call.media; return !m || typeof m.remoteLive !== 'function' || m.remoteLive(); }
 
   // Ronda 2761 (informe del dueño: en una videollamada un teléfono no oía nada): al diagnóstico cada 5 s y al colgar,
   // para ver dónde se pierde la voz: enviada / recibida / reproducida, nivel del micrófono, camino y estado del audio
@@ -190,10 +214,19 @@ export class Calls {
     var m = c.media && typeof c.media.stats === 'function' ? c.media.stats() : null, st = this.stats;
     var link = this._link(c.nx), pct = function(x) { return Math.round((x || 0) * 1000) / 10 + ' %'; };
     console.log('[CALL] ' + (prefix || Math.round((Date.now() - c.startedAt) / 1000) + ' s') + ': voz enviada ' + st.sent + ', recibida ' + st.got +
-      (st.bad ? ' (' + st.bad + ' ilegibles)' : '') + (c.video ? ', vídeo enviado ' + (st.sentV || 0) + ' / recibido ' + (st.gotV || 0) : '') +
+      (st.bad ? ' (' + st.bad + ' ilegibles)' : '') + (st.sentKeep || st.gotKeep ? ', sin voz ("sigo aquí") enviados ' + (st.sentKeep || 0) + ' / recibidos ' + (st.gotKeep || 0) : '') + (c.video ? ', vídeo enviado ' + (st.sentV || 0) + ' / recibido ' + (st.gotV || 0) : '') +
       (m ? ', reproducido ' + Math.round(m.playedS) + ' s (nivel ' + pct(m.playedLevel) + '), micrófono ' + (m.mic ? 'activo' : 'NO') + ' nivel ' + pct(m.micLevel) +
         ' pico ' + pct(m.micPeak) + ', audio ' + m.ctx + ', ' + m.codec + (c.peerCodecs ? ' (el otro: ' + c.peerCodecs + ')' : '') : ', sin audio') +
       ', por ' + (link ? (link.indexOf('lan:') === 0 ? 'Wi-Fi' : 'Bluetooth') : 'ningún camino'));
+    // Ronda 2769: pistas y vídeo de los dos sentidos (para ver en el diagnóstico por qué no se ve o no se oye)
+    if (m && (m.micTrack || m.video)) {
+      var v = m.video;
+      console.log('[CALL] Micrófono: pista ' + m.micTrack + (m.micErr ? ' (' + m.micErr + ')' : '') + (m.micReopens ? ', reabierto ' + m.micReopens : '') +
+        (v ? '; cámara ' + v.cam + ', pista ' + v.track + (v.err ? ' (' + v.err + ')' : '') + ', imagen local ' + v.local + ', codificador ' + v.enc +
+          ', imágenes ' + v.frames + ' (completas ' + v.keys + ')' + (v.reopens ? ', reabierta ' + v.reopens : '') + (v.encErr ? ', fallos al codificar ' + v.encErr : '') +
+          '; del otro: decodificadas ' + v.decoded + ', decodificador ' + v.dec + (v.decErr ? ', fallos ' + v.decErr : '') + (v.keyReq ? ', pedidas completas ' + v.keyReq : '') +
+          (c.peerCam ? ', su cámara ' + c.peerCam : '') + (c.peerMic && c.peerMic !== 'on' ? ', su micrófono ' + c.peerMic : '') : ''));
+    }
   }
 
   _sendPacket(bytes, kind) {
@@ -207,14 +240,16 @@ export class Calls {
     }
     c.seeking = false;
     if (kind === 'v' && link.indexOf('lan:') !== 0) return; // vídeo solo por Wi-Fi
-    var seq = kind === 'v' ? c.vSeq++ : kind === 'e' ? 0 : c.sendSeq++;
+    // Ronda 2769: 'k' (pide imagen completa) y 'c' (estado de cámara y micrófono) con su propia numeración
+    var seq = kind === 'v' ? c.vSeq++ : kind === 'e' ? 0 : (kind === 'k' || kind === 'c') ? (c.cSeq = (c.cSeq || 0) + 1) : c.sendSeq++;
     var iv = crypto.getRandomValues(new Uint8Array(12));
-    var ad = new TextEncoder().encode(c.id + '|' + (c.dir === 'out' ? 'o' : 'i') + '|' + (kind === 'v' || kind === 'e' ? kind : '') + seq);
+    var ad = new TextEncoder().encode(c.id + '|' + (c.dir === 'out' ? 'o' : 'i') + '|' + (kind || '') + seq);
     crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: ad }, c.cryptoKey, bytes).then(function(ct) {
       var out = new Uint8Array(12 + ct.byteLength); out.set(iv, 0); out.set(new Uint8Array(ct), 12);
-      if (kind === 'v') self.stats.sentV = (self.stats.sentV || 0) + 1; else self.stats.sent++;
+      // (ronda 2769: los "sigo aquí" sin voz, de 2 bytes, aparte: si no, el diagnóstico los daba por voz)
+      if (kind === 'v') self.stats.sentV = (self.stats.sentV || 0) + 1; else if (!kind && bytes.length <= 2) self.stats.sentKeep = (self.stats.sentKeep || 0) + 1; else if (kind !== 'k' && kind !== 'c') self.stats.sent++;
       var pk = { type: 'vf', c: c.id, s: seq, d: _b64(out) };
-      if (kind === 'v' || kind === 'e') pk.k = kind;
+      if (kind) pk.k = kind;
       return self.ble._sendMessageNative(link, JSON.stringify(pk), null);
     }).catch(function() {});
   }
@@ -226,8 +261,10 @@ export class Calls {
     var raw;
     try { raw = _unb64(p.d); } catch (e) { return; }
     if (raw.length < 29) return;
-    var vid = p.k === 'v', fin = p.k === 'e';
-    var ad = new TextEncoder().encode(c.id + '|' + (c.dir === 'out' ? 'i' : 'o') + '|' + (vid || fin ? p.k : '') + p.s);
+    var k = p.k || '';
+    if (k && !/^[veck]$/.test(k)) return;
+    var vid = k === 'v', fin = k === 'e';
+    var ad = new TextEncoder().encode(c.id + '|' + (c.dir === 'out' ? 'i' : 'o') + '|' + k + p.s);
     crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12), additionalData: ad }, c.cryptoKey, raw.subarray(12)).then(function(pt) {
       var cc = self.call;
       if (!cc || cc.id !== c.id) return;
@@ -242,7 +279,17 @@ export class Calls {
       // aún parecía arriba y la voz seguía saliendo por él: el otro dejaba de oír y cortaba a los 12 s)
       if (via && !/^(lan|net)/i.test(String(via))) cc.rxBleAt = Date.now(); else if (via) cc.rxBleAt = 0;
       if (fin) { self._finish('ended', false); return; } // el otro colgó (aviso por el canal de la voz)
+      // Ronda 2769: el otro no tiene mi imagen (manda una completa) / estado de su cámara y su micrófono
+      if (k === 'k') { if (cc.media && typeof cc.media.requestKey === 'function') cc.media.requestKey(); return; }
+      if (k === 'c') {
+        var s2 = null;
+        try { s2 = JSON.parse(new TextDecoder().decode(new Uint8Array(pt))); } catch (e) {}
+        var okv = function(v) { return /^(on|off|retry|none)$/.test(String(v)) ? v : null; };
+        if (s2 && (okv(s2.cam) !== cc.peerCam || okv(s2.mic) !== cc.peerMic)) { cc.peerCam = okv(s2.cam); cc.peerMic = okv(s2.mic); _emit('nexo:call', self.state()); }
+        return;
+      }
       if (vid) { self.stats.gotV = (self.stats.gotV || 0) + 1; if (cc.media && cc.media.playVideo) cc.media.playVideo(new Uint8Array(pt)); return; }
+      if (pt.byteLength <= 2) { self.stats.gotKeep = (self.stats.gotKeep || 0) + 1; return; } // ronda 2769: "sigo aquí" del otro (sin voz que mandar)
       self.stats.got++;
       if (cc.media && cc.media.play) cc.media.play(new Uint8Array(pt), p.s);
     }).catch(function() { self.stats.bad++; });
