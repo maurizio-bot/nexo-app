@@ -64,7 +64,7 @@ export function _showPermissionOverlay() {
     if (document.getElementById('nexo-perm-overlay')) return;
     var overlay = document.createElement('div');
     overlay.id = 'nexo-perm-overlay';
-    overlay.innerHTML = '<div class="perm-overlay-content"> <h2>Permisos BLE Requeridos</h2> <p>NEXO necesita acceso a Bluetooth y Dispositivos Cercanos para comunicacion P2P.</p> <p class="perm-sub">Si ya los concediste en Ajustes, la app continuara automaticamente.</p> <button id="perm-btn-grant" class="perm-btn-primary">Conceder Permisos</button> <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">Continuar sin BLE</button> </div>';
+    overlay.innerHTML = '<div class="perm-overlay-content"> <h2>Permisos necesarios</h2> <p>NEXO necesita el Bluetooth y «Dispositivos cercanos» para hablar con otros teléfonos sin internet.</p> <p class="perm-sub">Si ya los diste en Ajustes, la app seguirá sola.</p> <button id="perm-btn-grant" class="perm-btn-primary">Dar permisos</button> <button id="perm-btn-settings" class="perm-btn-secondary">Abrir Ajustes</button> <button id="perm-btn-skip" class="perm-btn-ghost">Seguir sin Bluetooth</button> </div>';
     document.body.appendChild(overlay);
     var style = document.createElement('style');
     style.id = 'perm-overlay-styles';
@@ -94,7 +94,7 @@ export function _showPermissionOverlay() {
             window.location.href = 'app-settings:';
           }
         } catch (e) {
-          alert('Ve a Configuracion > Aplicaciones > NEXO > Permisos\nActiva "Dispositivos cercanos" y "Bluetooth"');
+          alert('Ve a Ajustes > Aplicaciones > NEXO > Permisos\nActiva «Dispositivos cercanos» y «Bluetooth»');
         }
       });
     }

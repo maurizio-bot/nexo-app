@@ -120,6 +120,9 @@ Consolidado: inline + main.css + ble_styles
    #main-contacts-empty-msg.visible {
    display: block;
    }
+   /* Ronda 2771: sin contactos, el aviso en medio de la pantalla (antes abajo, junto al botón) */
+   #main-contacts-list:empty { display: none; }
+   #main-contacts-empty-msg.visible { display: flex; flex: 1; align-items: center; justify-content: center; padding: 40px 32px 120px; font-size: 15px; line-height: 1.5; }
    /* ============================================
    CHAT VIEW CONTROL
    ============================================ */
@@ -509,6 +512,9 @@ Consolidado: inline + main.css + ble_styles
    }
    .ble-search-bar svg { width: 15px; height: 15px; fill: #555; flex-shrink: 0; }
    .ble-search-bar span { color: #555; font-size: 14px; }
+   /* Ronda 2771: el buscador de "Agregar" es un campo de verdad */
+   .ble-search-bar input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: #fff; font-size: 15px; padding: 0; -webkit-appearance: none; appearance: none; }
+   .ble-search-bar input::placeholder { color: #666; }
    /* Section label */
    .ble-section-label {
    color: #444;

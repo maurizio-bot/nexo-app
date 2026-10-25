@@ -98,9 +98,9 @@ export async function _handleVoiceToggle() {
     } catch (err) {
       console.log('[ATTACH:VOICE] Error:', err.name, err.message);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        _showPermissionError('Microfono');
+        _showPermissionError('micrófono');
       } else if (err.name === 'NotFoundError') {
-        _showPermissionError('Microfono no encontrado');
+        _showPermissionError('No se encontró el micrófono del teléfono');
       }
       _isRecording = false;
       _updateMicIcon(false);

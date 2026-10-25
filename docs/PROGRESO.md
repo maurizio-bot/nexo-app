@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-25 (build 2770)
+Última actualización: 2026-10-25 (build 2771)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -96,7 +96,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2767 | ed848800 | Revisión completa, parte 2 (mensajes y archivos): textos largos pendientes que se perdían mostrando "entregado" (al reconectar tras reiniciarse la app), nota de voz pendiente que llegaba como "[adjunto]", transferencias de más de 10 min cortadas aunque avanzaran, Wi-Fi caído a mitad de una foto con un Bluetooth lento, orden en el chat (relojes desfasados; lo recibido con la app cerrada salía "ahora"), "!" durante un corte del Wi-Fi. Ver "Ronda 2767". Batería 32/32, Kotlin 65/65. APK publicada (nightly-2767, 24,5 MB) |
 | 2768 | 6e8d6a84 | Revisión completa, parte 3 (llamadas y videollamadas): un teléfono cercano con un NEXO modificado podía hacerse pasar por un contacto (textos, archivos y llamadas sin cifrar; oír la voz, colgar llamadas reales): ya no; con la app cerrada "Rechazar" volvía a sonar con cada reenvío de la oferta (ahora un aviso por llamada); la siguiente llamada de ese contacto se contestaba sola; una oferta vieja sonaba al reiniciar la app; relojes desfasados; los dos a la vez; Wi-Fi caído en uno; micrófono y cámara encendidos tras colgar; videollamada sin cámara; voz repetida. Ver "Ronda 2768". Batería 43/43, Kotlin 68/68. APK publicada (nightly-2768, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
 | 2769 | 6b5b5088 | Videollamada robusta (informe del dueño: en videollamadas Vivo ↔ S24 a veces el S24 salía sin cámara, el otro veía negro y no se le oía): cámara y micrófono por separado con reintentos y vigilante (ocupados, cortados por el sistema, sin imágenes, audio en pausa), codificadores y decodificadores de voz y vídeo que se rehacen (antes, sin voz o negro hasta colgar), foto y motivo en vez de negro, avisos de los dos, sin micrófono la llamada sigue (antes se cortaba a los 12 s), pantalla encendida en llamada y sensor de proximidad. Ver "Ronda 2769". Batería 45/45, Kotlin 68/68. APK publicada (nightly-2769, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
-| 2770 | (este commit) | Llamadas con la pantalla bloqueada o en otra app: el micrófono sigue (servicio de tipo micrófono, Android 11+; antes el otro dejaba de oír), foco de audio (la música de otras apps se para y vuelve al colgar), todo se suelta si NEXO se cierra en plena llamada, tono de llamada según el modo del teléfono (silencio, vibración, "No molestar"; con la app oculta solo el aviso del sistema). Ver "Ronda 2770". Batería 46/46, Kotlin 68/68 |
+| 2770 | 0a330484 | Llamadas con la pantalla bloqueada o en otra app: el micrófono sigue (servicio de tipo micrófono, Android 11+; antes el otro dejaba de oír), foco de audio (la música de otras apps se para y vuelve al colgar), todo se suelta si NEXO se cierra en plena llamada, tono de llamada según el modo del teléfono (silencio, vibración, "No molestar"; con la app oculta solo el aviso del sistema). Ver "Ronda 2770". Batería 46/46, Kotlin 68/68. APK publicada (nightly-2770, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
+| 2771 | (este commit) | Revisión completa, parte 4 (interfaz): "Agregar" con tus contactos y un buscador que filtra (antes decía "No hay contactos" aunque los hubiera y el buscador era un dibujo), avisos rotos ("Permiso de Microfono no encontrado denegado"), textos sin tilde o en inglés, aviso sin contactos, botón redondo con burbuja, Perfil con tus iniciales y cómo te ven, "Cambiar nombre" en el menú ⋮. Ver "Ronda 2771". Batería 47/47 |
 
 ## Base estable: build 2713
 Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Direct incluido), fijada el
@@ -222,6 +223,37 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2771: revisión completa, parte 4 (interfaz)
+Revisión de las pantallas en capturas (Chromium, 393 y 360 px de ancho, como el Vivo) y de los textos de todo el código.
+Cada fallo se reprodujo con la 2770 en `ui4.js` (3 teléfonos: Vivo agrega al Galaxy; la Tablet cerca sin agregar), que
+falla en 15 de sus 18 comprobaciones con la 2770 y pasa ahora.
+1. **"Agregar contactos"**: las secciones "En línea ahora" y "Recientes" no se rellenaban nunca: decía "No hay contactos.
+   Presiona Buscar para encontrar dispositivos." aunque los hubiera. Ahora "Tus contactos" (los últimos agregados
+   primero, con su NEXO ID) y "En línea ahora"; tocar uno abre su chat.
+2. **El buscador era un dibujo**: ahora filtra tus contactos y los teléfonos encontrados por nombre o NEXO ID ("Nadie
+   coincide con …").
+3. **Avisos rotos**: una nota de voz en un teléfono sin micrófono decía "Permiso de Microfono no encontrado denegado.";
+   "Demasiado grande para un grupo…" salía como "Permiso de Demasiado grande… denegado.". Ahora el mensaje tal cual, y
+   "Permiso de micrófono denegado." con dónde darlo en otra línea.
+4. **Textos**: "En linea"/"Offline" → "En línea"/"Sin conexión"; "BLE ON | N conectados" → "Bluetooth activo · N
+   conectados" (teléfonos, no enlaces: con dos teléfonos decía 3); "Activalo"; la pantalla de permisos ("Permisos BLE
+   Requeridos", "comunicacion P2P", "continuara automaticamente", "Configuracion", "Continuar sin BLE"); Ubicación.
+5. **Sin contactos**: el aviso decía "Presiona el botón +" (el botón es una burbuja) y salía abajo junto al botón: ahora
+   en medio y "Toca el botón redondo de abajo…".
+6. **El botón redondo**, con teléfonos nuevos cerca, cambiaba su icono por un número suelto: ahora icono y número en una
+   burbuja.
+7. **Perfil**: el círculo mostraba la primera cifra del NEXO ID ("0"): ahora las iniciales del nombre del teléfono y
+   "Tus contactos te ven como «…»".
+8. **"Cambiar nombre"** en el menú ⋮ de un contacto: ya se podía tocando el nombre en el chat, pero nada lo decía. El
+   nombre puesto se queda aunque el otro vuelva a conectar (comprobado).
+9. Diagnóstico de llamada: la línea de estado pasa a `[CALL] Estado: micrófono con pista …` (con la 2769 era
+   `[CALL] Micrófono: pista …`, que se confundía con los avisos de error).
+- También: videollamada y llamada de voz de verdad en Chromium (`calls_browser.js`, cámara y micrófono de prueba) con
+  la 2769–2771: imagen en los dos sentidos (135 imágenes cada uno), 8–9 s de voz cada uno, Opus y μ-law, girar y
+  colgar; y capturas de la pantalla de videollamada.
+- Pruebas: `ui4.js` (nueva, en `ci.js`). Batería 47/47.
+- Pendiente (decisión del dueño): "Tu nombre" en Perfil (hoy tus contactos ven el nombre Bluetooth del teléfono).
 
 ## Ronda 2770: llamadas con la pantalla bloqueada o en otra app (micrófono), foco de audio y tono en silencio
 Android 11 y posteriores (NEXO apunta a Android 14) solo dejan usar el micrófono a una app que no está a la vista si su

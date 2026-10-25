@@ -44,6 +44,76 @@ export const BLE_UI_METHODS = {
     btn.style.display = panelActive ? 'flex' : 'none';
     if (this.isScanning) btn.classList.add('scanning');
     else btn.classList.remove('scanning');
+    if (panelActive) { this.renderPanelLists(); this.updateStatus(); } // (ronda 2771: el número de conectados, al día)
+  },
+
+  // Ronda 2771 (revisión, parte 4: interfaz): en "Agregar" no se rellenaban nunca "En línea ahora" ni la lista (decía "No
+  // hay contactos" aunque los hubiera): tus contactos cerca y todos (los últimos agregados primero), con el buscador
+  _panelMatch(name, id) {
+    var q = this._panelQuery || '';
+    return !q || (String(name || '') + ' ' + String(id || '')).toLowerCase().indexOf(q) >= 0;
+  },
+  renderPanelLists() {
+    var self = this, strip = this.elements.onlineStrip, list = this.elements.contactsList;
+    if (!strip || !list) return;
+    var seen = {}, contacts = [];
+    _getBLEContacts().forEach(function(c) {
+      var nid = _normId(c.nexoId || c.deviceUUID);
+      if (!nid || seen[nid]) return;
+      seen[nid] = true;
+      if (self._panelMatch(c.name, nid)) contacts.push(c);
+    });
+    var online = contacts.filter(function(c) { return c.online && (Date.now() - (c.lastSeen || 0)) < 60000; });
+    var label = document.getElementById('ble-online-label');
+    strip.innerHTML = '';
+    strip.style.display = online.length ? 'flex' : 'none';
+    if (label) label.style.display = online.length ? '' : 'none';
+    var open = function(uuid) {
+      self.elements.panel.classList.remove('active');
+      self.elements.overlay.classList.remove('active');
+      if (typeof self.setVisible === 'function') self.setVisible(false);
+      self.updateScanButton();
+      self.openChat(uuid);
+    };
+    online.forEach(function(c) {
+      var uuid = _normId(c.nexoId || c.deviceUUID);
+      var item = document.createElement('div');
+      item.className = 'ble-online-item';
+      item.innerHTML = '<div class="ble-online-avatar ' + _getGradientForUUID(uuid) + '"><span></span><div class="ble-online-dot"></div></div><span class="ble-online-name"></span>';
+      item.querySelector('.ble-online-avatar span').textContent = _getInitials(c.name);
+      paintAvatar(item.querySelector('.ble-online-avatar'), uuid, item.querySelector('.ble-online-avatar span'));
+      item.querySelector('.ble-online-name').textContent = c.name || '';
+      item.addEventListener('click', function() { open(uuid); });
+      strip.appendChild(item);
+    });
+    list.innerHTML = '';
+    contacts.sort(function(a, b) { return (b.addedAt || 0) - (a.addedAt || 0); });
+    if (!contacts.length) {
+      var empty = document.createElement('div');
+      empty.className = 'ble-empty';
+      empty.textContent = self._panelQuery ? 'Nadie coincide con "' + self._panelQuery + '".' :
+        self.isScanning ? 'Buscando teléfonos con NEXO cerca… Los que encuentre salen abajo.' : 'Aún no tienes contactos. Toca el botón de abajo para buscar teléfonos con NEXO cerca.';
+      list.appendChild(empty);
+      return;
+    }
+    contacts.forEach(function(c) {
+      var uuid = _normId(c.nexoId || c.deviceUUID);
+      var isOnline = c.online && (Date.now() - (c.lastSeen || 0)) < 60000;
+      var row = document.createElement('div');
+      row.className = 'ble-contact-row';
+      var avatar = document.createElement('div');
+      avatar.className = 'ble-contact-avatar ' + _getGradientForUUID(uuid);
+      avatar.textContent = _getInitials(c.name);
+      paintAvatar(avatar, uuid);
+      var info = document.createElement('div');
+      info.className = 'ble-contact-info';
+      var nameDiv = document.createElement('div'); nameDiv.className = 'ble-contact-name'; nameDiv.textContent = c.name || '';
+      var sub = document.createElement('div'); sub.className = 'ble-contact-msg'; sub.textContent = (isOnline ? 'En línea · ' : '') + uuid.toUpperCase();
+      info.appendChild(nameDiv); info.appendChild(sub);
+      row.appendChild(avatar); row.appendChild(info);
+      row.addEventListener('click', function() { open(uuid); });
+      list.appendChild(row);
+    });
   },
 
   toggleVisibility() {
@@ -97,13 +167,13 @@ export const BLE_UI_METHODS = {
       '</div>' +
       '<div class="ble-search-bar">' +
       '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>' +
-      '<span>Buscar contacto...</span>' +
+      '<input id="ble-search-input" type="search" placeholder="Buscar por nombre o NEXO ID" autocomplete="off" spellcheck="false">' +
       '</div>' +
-      '<div class="ble-section-label">En linea ahora</div>' +
+      '<div id="ble-online-label" class="ble-section-label">En línea ahora</div>' +
       '<div id="ble-online-strip" class="ble-online-strip"></div>' +
-      '<div class="ble-section-label">Recientes</div>' +
+      '<div class="ble-section-label">Tus contactos</div>' +
       '<div id="ble-contacts-list" class="ble-contacts-list">' +
-      '<div class="ble-empty">No hay contactos. Presiona Buscar para encontrar dispositivos.</div>' +
+      '<div class="ble-empty"></div>' +
       '</div>' +
       '<div class="ble-bottom-bar">' +
       '<div id="ble-new-device" class="ble-new-device" style="display:none">' +
@@ -172,6 +242,13 @@ export const BLE_UI_METHODS = {
     this.elements.overlay.addEventListener('click', function() { self.togglePanel(); });
     this.elements.scanBtn.addEventListener('click', function() { self.toggleScan(); });
     this.elements.addBtn.addEventListener('click', function() { self._addNewDevice(); });
+    // Ronda 2771 (revisión, parte 4): el buscador de "Agregar" filtra tus contactos y los teléfonos encontrados
+    var searchInput = document.getElementById('ble-search-input');
+    if (searchInput) searchInput.addEventListener('input', function() {
+      self._panelQuery = String(searchInput.value || '').trim().toLowerCase();
+      self.renderPanelLists();
+      self.renderNewDeviceBar();
+    });
     var backBtn = document.getElementById('ble-panel-back');
     if (backBtn) {
       backBtn.addEventListener('click', function() {
@@ -240,8 +317,13 @@ export const BLE_UI_METHODS = {
     if (this.elements.panel.classList.contains('active')) {
       this.newDevicesCount = 0;
       this.updateBadge();
+      this._panelQuery = '';
+      var si = document.getElementById('ble-search-input');
+      if (si) si.value = '';
       this.renderContactsList();
       this.renderOnlineStrip();
+      this.renderPanelLists();
+      this.renderNewDeviceBar();
       var self = this;
       setTimeout(function() {
         if (!self.isDummyMode && self.nativePlugin && !self.isScanning) self._autoScanForKnownContacts();
@@ -309,8 +391,8 @@ export const BLE_UI_METHODS = {
       return _safeNativeCall(self.nativePlugin, 'isBluetoothEnabled', {})
         .then(function(btState) {
           if (!btState || !btState.enabled) {
-            _showToast('Bluetooth apagado. Activalo.', 'warn');
-            self.updateStatusBar('BLE OFF');
+            _showToast('Bluetooth apagado: actívalo para buscar.', 'warn');
+            self.updateStatusBar('Bluetooth apagado');
             return Promise.resolve();
           }
           return self._doToggleScan();
@@ -411,7 +493,7 @@ export const BLE_UI_METHODS = {
       var isOnline = contact.online && (Date.now() - (contact.lastSeen || 0)) < 60000;
       var initials = _getInitials(contact.name);
       var gradClass = _getGradientForUUID(uuid);
-      var lastMsg = contact.isGroup ? (contact.lastMessage || 'Grupo') : contact.lastMessage || (contact.isNewShared ? 'Nuevo contacto · listo para escribir' : (isOnline ? 'En linea' : 'Offline'));
+      var lastMsg = contact.isGroup ? (contact.lastMessage || 'Grupo') : contact.lastMessage || (contact.isNewShared ? 'Nuevo contacto · listo para escribir' : (isOnline ? 'En línea' : 'Sin conexión'));
       var timeStr = _formatTime(contact.lastMessageAt);
       var unread = contact.unreadCount || 0;
       var row = document.createElement('div');
@@ -456,6 +538,7 @@ export const BLE_UI_METHODS = {
       }
     });
     this.renderOnlineStrip();
+    if (this.elements.panel && this.elements.panel.classList.contains('active')) this.renderPanelLists();
   },
 
   _toggleContactMenu(uuid, btn) {
@@ -465,7 +548,8 @@ export const BLE_UI_METHODS = {
     var menu = document.createElement('div');
     menu.className = 'ble-contact-menu';
     var isPinned = _isPinned(uuid);
-    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
+    // Ronda 2771: "Cambiar nombre" (el nombre del chat ya se podía tocar y cambiar, pero nada lo decía)
+    menu.innerHTML = '<div class="ble-menu-item" data-action="pin">' + (isPinned ? '&#x2606; Desfijar' : '&#x2605; Fijar') + '</div><div class="ble-menu-item" data-action="rename">&#x270F;&#xFE0F; Cambiar nombre</div><div class="ble-menu-item" data-action="profile">&#x1F464; Perfil</div><div class="ble-menu-item ble-menu-delete" data-action="delete">&#x1F5D1; Eliminar</div>';
     var rect = btn.getBoundingClientRect();
     menu.style.top = (rect.bottom + 4) + 'px';
     menu.style.right = (window.innerWidth - rect.right) + 'px';
@@ -475,6 +559,10 @@ export const BLE_UI_METHODS = {
       if (action === 'pin') { _togglePinnedContact(uuid); self.renderContactsList(); }
       else if (action === 'delete') { self.removeContact(uuid); }
       else if (action === 'profile') { _safeDispatchEvent('nexo:ble:goToProfile', { deviceUUID: uuid }); }
+      else if (action === 'rename') {
+        self.openChat(uuid);
+        setTimeout(function() { var ni = document.getElementById('chat-contact-name'); if (ni) { ni.focus(); try { ni.select(); } catch (er) {} } }, 300);
+      }
       menu.remove();
     });
     setTimeout(function() {
@@ -494,7 +582,7 @@ export const BLE_UI_METHODS = {
     var newDevices = [];
     this.foundDevices.forEach(function(device, deviceId) {
       var uuid = device.deviceUUID;
-      if (uuid && !_isBLEContact(uuid)) newDevices.push({ deviceId: deviceId, device: device });
+      if (uuid && !_isBLEContact(uuid) && self._panelMatch(_niceName(device.name, uuid), uuid)) newDevices.push({ deviceId: deviceId, device: device });
     });
     if (newDevices.length === 0) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
     bar.style.display = 'flex';
@@ -528,8 +616,9 @@ export const BLE_UI_METHODS = {
     if (!fabBtn) return;
     if (this._activeChatDeviceId) { fabBtn.style.display = 'none'; return; }
     fabBtn.style.display = 'flex';
-    if (this.newDevicesCount > 0) fabBtn.innerHTML = '<span style="color:#fff;font-size:14px;font-weight:700;">' + this.newDevicesCount + '</span>';
-    else fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
+    // Ronda 2771: teléfonos nuevos cerca: el icono se queda y el número va en una burbuja (antes, un número suelto)
+    fabBtn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>' +
+      (this.newDevicesCount > 0 ? '<span class="ble-fab-badge" style="position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:10px;background:#ff6b35;border:2px solid #0a0a15;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">' + Math.min(this.newDevicesCount, 99) + '</span>' : '');
   },
 
   updateStatusBar(text) {
@@ -544,10 +633,13 @@ export const BLE_UI_METHODS = {
       return _safeNativeCall(self.nativePlugin, 'isBluetoothEnabled', {})
         .then(function(state) {
           if (state && state.enabled) {
-            var connCount = self.connectedDevices ? self.connectedDevices.size : 0;
-            self.updateStatusBar('BLE ON | ' + connCount + ' conectados');
+            // (ronda 2771: teléfonos, no enlaces: con el mismo teléfono puede haber dos, uno en cada sentido)
+            var peers = {};
+            if (self.connectedDevices) self.connectedDevices.forEach(function(d, id) { peers[d && d.deviceUUID ? _normId(d.deviceUUID) : id] = true; });
+            var connCount = Object.keys(peers).length;
+            self.updateStatusBar('Bluetooth activo · ' + connCount + (connCount === 1 ? ' conectado' : ' conectados'));
           } else {
-            self.updateStatusBar('BLE OFF');
+            self.updateStatusBar('Bluetooth apagado');
           }
         })
         .catch(function() { self.updateStatusBar(''); });

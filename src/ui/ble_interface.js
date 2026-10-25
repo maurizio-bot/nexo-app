@@ -733,7 +733,7 @@ export class BLEInterface {
     return new Promise(function(resolve, reject) {
       try {
         var uuid = _normId(deviceUUID);
-        if (!uuid) { reject(new Error('ID invalido')); return; }
+        if (!uuid) { reject(new Error('ID no válido')); return; }
         // Ronda 2758: un grupo no es un teléfono (groups_ui.js)
         if (self.groups && self.groups.isGroup(uuid) && typeof window.NEXO_openGroupChat === 'function') { window.NEXO_openGroupChat(uuid); resolve(); return; }
         var contact = _getContactByUUID(uuid);

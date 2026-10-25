@@ -24,7 +24,8 @@ function _openProfileSheet() {
   sheet.innerHTML = '<div class="nx-profile-in">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 14px;">' +
     '<div style="font-size:26px;font-weight:800;">Perfil</div><button id="nexo-profile-close" class="nx-btn" style="width:auto;margin:0;padding:9px 16px;">Cerrar</button></div>' +
-    '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" title="Cambiar foto" style="cursor:pointer;"></div><div style="flex:1;"><div class="nx-idtxt">Mi NEXO ID</div><b id="nexo-profile-id"></b>' +
+    '<div class="nx-card nx-id-card"><div class="nx-av" id="nexo-profile-av" title="Cambiar foto" style="cursor:pointer;"></div><div style="flex:1;min-width:0;"><div class="nx-idtxt">Mi NEXO ID</div><b id="nexo-profile-id"></b>' +
+    '<div id="nexo-profile-seen" class="nx-idtxt" style="margin-top:2px;"></div>' +
     '<div><button id="nexo-av-pick" class="nx-link">Cambiar foto</button> <button id="nexo-av-clear" class="nx-link" style="display:none;">Quitar</button></div></div></div>' +
     card('🔥', 'Fénix', '<div id="nexo-fenix-status" class="nx-sub"></div>' +
       '<button id="nexo-fenix-recover" class="nx-btn">Recuperar mi cuenta (teléfono nuevo)</button>') +
@@ -46,10 +47,15 @@ function _openProfileSheet() {
     '</div>';
   document.body.appendChild(sheet);
   sheet.querySelector('#nexo-profile-id').textContent = bi.localNexoId || '?';
+  // Ronda 2771 (revisión, parte 4): cómo te ven tus contactos (el nombre del teléfono) y sus iniciales en el círculo
+  // (antes, la primera cifra del NEXO ID: "0")
+  var myName = String(bi.localDeviceName || '').trim();
+  sheet.querySelector('#nexo-profile-seen').textContent = myName ? 'Tus contactos te ven como «' + myName + '» (el nombre del teléfono)' : '';
+  var initials = function(n) { var w = n.split(/\s+/).filter(Boolean); return ((w[0] || '').charAt(0) + (w[1] || '').charAt(0)).toUpperCase(); };
   // Ronda 2765: foto de perfil (avatar.js): tocar el círculo o "Cambiar foto"
   var avEl = sheet.querySelector('#nexo-profile-av'), clr = sheet.querySelector('#nexo-av-clear');
   var paintMine = function() {
-    avEl.style.backgroundImage = ''; avEl.textContent = String(bi.localNexoId || '?').replace(/^NX/i, '').charAt(0).toUpperCase() || 'N';
+    avEl.style.backgroundImage = ''; avEl.textContent = (myName && initials(myName)) || String(bi.localNexoId || '?').replace(/^NX/i, '').charAt(0).toUpperCase() || 'N';
     paintAvatar(avEl, 'me'); clr.style.display = myAvatar() ? '' : 'none';
   };
   paintMine();

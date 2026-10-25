@@ -54,6 +54,7 @@ const SCENARIOS = [
   { name: 'orden en el chat (reloj del otro adelantado; recibido con la app cerrada)', args: ['order.js'], tag: 'ORDER', checks: { resultado: (v) => v === 'OK' } },
   { name: 'cortes del Wi-Fi: breve (llega al volver) y largo (por Bluetooth), sin "!" mientras se espera', args: ['wificut.js'], tag: 'WIFICUT', checks: { resultado: (v) => v === 'OK' } },
   { name: 'borrar y volver a agregar un contacto (sin "Unknown"; nombre al conectar)', args: ['readd.js'], tag: 'READD', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'interfaz: "Agregar" con tus contactos y buscador, textos, Perfil, cambiar nombre, avisos', args: ['ui4.js'], tag: 'UI4', logs: 'last_logs_ui4.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'avisos con la pantalla apagada (encender, ajustes, llamada sobre el bloqueo)', args: ['alerts.js'], tag: 'ALERTS', checks: { resultado: (v) => v === 'OK' } },
   { name: 'foto de perfil (elegir, llega a los contactos, al reiniciar, a uno nuevo, quitarla)', args: ['avatar.js'], tag: 'AVATAR', checks: { resultado: (v) => v === 'OK' } },
   { name: 'llamadas de voz (contestar, rechazar, sin respuesta, se corta)', args: ['calls.js', '--io-delay=25'], tag: 'CALLS', checks: { resultado: (v) => v === 'OK' } },

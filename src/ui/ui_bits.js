@@ -51,11 +51,13 @@ export function _showPermissionError(permName) {
   var toast = document.createElement('div');
   toast.id = 'perm-error-toast';
   toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(255,59,48,0.95);color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:10000;backdrop-filter:blur(4px);box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:90vw;text-align:center;';
-  // Si el mensaje ya es descriptivo (tamaño), no añadir el prefijo de permiso
-  if (permName && (permName.indexOf('Archivo') === 0 || permName.indexOf('Video') === 0 || permName.indexOf('demasiado') > -1)) {
-    toast.innerHTML = permName;
+  // Una palabra (micrófono, ubicación…): permiso denegado y dónde darlo; si no, el mensaje tal cual. Ronda 2771: antes
+  // solo se reconocían algunos mensajes y salía "Permiso de Demasiado grande… denegado" o "Permiso de (micrófono) no
+  // encontrado denegado"
+  if (permName && /[\s:]/.test(String(permName).trim())) {
+    toast.textContent = permName;
   } else {
-    toast.innerHTML = 'Permiso de ' + permName + ' denegado.<span style="font-size:11px;opacity:0.8;font-weight:400;">Ve a Ajustes > Aplicaciones > NEXO > Permisos</span>';
+    toast.innerHTML = 'Permiso de ' + permName + ' denegado.<span style="display:block;margin-top:4px;font-size:11px;opacity:0.8;font-weight:400;">Ve a Ajustes > Aplicaciones > NEXO > Permisos</span>';
   }
   document.body.appendChild(toast);
   setTimeout(function() {

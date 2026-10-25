@@ -221,7 +221,8 @@ export class Calls {
     // Ronda 2769: pistas y vídeo de los dos sentidos (para ver en el diagnóstico por qué no se ve o no se oye)
     if (m && (m.micTrack || m.video)) {
       var v = m.video;
-      console.log('[CALL] Micrófono: pista ' + m.micTrack + (m.micErr ? ' (' + m.micErr + ')' : '') + (m.micReopens ? ', reabierto ' + m.micReopens : '') +
+      // (ronda 2771: "Estado", para no confundirla con los avisos "[CALL] Micrófono: <error>")
+      console.log('[CALL] Estado: micrófono con pista ' + m.micTrack + (m.micErr ? ' (' + m.micErr + ')' : '') + (m.micReopens ? ', reabierto ' + m.micReopens : '') +
         (v ? '; cámara ' + v.cam + ', pista ' + v.track + (v.err ? ' (' + v.err + ')' : '') + ', imagen local ' + v.local + ', codificador ' + v.enc +
           ', imágenes ' + v.frames + ' (completas ' + v.keys + ')' + (v.reopens ? ', reabierta ' + v.reopens : '') + (v.encErr ? ', fallos al codificar ' + v.encErr : '') +
           '; del otro: decodificadas ' + v.decoded + ', decodificador ' + v.dec + (v.decErr ? ', fallos ' + v.decErr : '') + (v.keyReq ? ', pedidas completas ' + v.keyReq : '') +

@@ -57,7 +57,7 @@ export async function _handleLocation() {
       return;
     }
     console.warn('[ATTACH] Ubicación no disponible tras ' + Math.round((Date.now() - t0) / 100) / 10 + ' s: ' + why);
-    if (/permiso|denied|permission/i.test(why)) _showPermissionError('Ubicacion');
+    if (/permiso|denied|permission/i.test(why)) _showPermissionError('ubicación');
     else if (/not enabled|disabled|services/i.test(why)) _showInfoToast('Activa la ubicación (GPS) del teléfono y vuelve a intentarlo.', 5000);
     else _showInfoToast('No se pudo obtener tu ubicación (sin señal de GPS). Prueba cerca de una ventana o al aire libre.', 6000);
   } finally {

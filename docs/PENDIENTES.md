@@ -14,8 +14,13 @@ actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono
-- **Qué APK probar (25-10)**: la 2770 (nightly-2770) para todo. Desde la 2763 no hay pruebas en teléfonos: todo lo de
+- **Qué APK probar (25-10)**: la 2771 (nightly-2771) para todo. Desde la 2763 no hay pruebas en teléfonos: todo lo de
   abajo desde la 2765 está sin confirmar (salvo el informe de videollamada Vivo ↔ S24 con la 2768, ver 2769).
+- **2771** (revisión, parte 4: interfaz): (1) "Agregar" (botón redondo): salen tus contactos y los teléfonos cerca;
+  escribir en el buscador un nombre o parte del NEXO ID los filtra. (2) En la lista, ⋮ de un contacto → "Cambiar
+  nombre": se abre su chat con el nombre listo para escribir; el nombre nuevo se queda. (3) Perfil: tus iniciales y
+  "Tus contactos te ven como «…»". (4) Quitar el permiso del micrófono y grabar una nota de voz: el aviso dice "Permiso
+  de micrófono denegado" y dónde darlo. Decir cualquier texto raro, cortado o en inglés que se vea.
 - **2770** (llamadas con la pantalla bloqueada): (1) en una llamada de voz y en una videollamada, bloquear la pantalla
   con el botón 30 s y luego ir a otra app 30 s: el otro debe seguir oyendo todo el rato (diagnóstico: `en segundo plano:
   micrófono`); en la videollamada la imagen se para mientras (el otro ve tu foto) y vuelve al regresar a NEXO. (2) Con música o un vídeo sonando en otra app, hacer o recibir una llamada: se para y vuelve al colgar.
@@ -215,7 +220,10 @@ mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simu
    micrófono con reintentos y vigilante, codificadores y decodificadores que se rehacen, foto y motivo en vez de negro,
    avisos de los dos, sin micrófono la llamada sigue, pantalla encendida en llamada y sensor de proximidad (ver
    PROGRESO, "Ronda 2769"); falta el diagnóstico de una videollamada que falle para confirmar la causa.
-   Queda: el punto 2 (voz por Bluetooth con MTU pequeño: "carril de voz" nativo y aviso "Bluetooth lento");
+   Queda: el punto 2 (voz por Bluetooth con MTU pequeño: "carril de voz" nativo y aviso "Bluetooth lento"; para el
+   aviso no basta el MTU (con MTU 185 y sin Opus también hay 3,2 s de retraso): medir el retraso de la voz con la hora
+   de envío en cada paquete y el mínimo de la llamada como base (así no dependen de que los relojes coincidan); solo
+   afecta a teléfonos viejos: el Vivo y el S24, con Opus y MTU grande, ~66 ms);
    lo que solo se ve en el teléfono, sin probar aún: la pantalla encendida y el sensor de proximidad de la 2769; el
    micrófono con la pantalla bloqueada, el foco de audio y el tono según el modo del teléfono de la 2770; la decisión
    §4.7. Puntos débiles sin fallo visto todavía:
@@ -224,5 +232,7 @@ mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simu
      lo conoce.
    - La identidad de una conexión aún se deduce de lo que dice el paquete (el arreglo de la 2768 cubre lo que llega sin
      cifrar diciendo ser de un contacto; las confirmaciones y el `ni` siguen sin firmar, ver punto 1).
-4. **Interfaz** — por hacer. Visto ya: en "Agregar", "Buscar contacto…" es solo un dibujo (no busca).
+4. **Interfaz** — primera pasada en la 2771 (ver PROGRESO, "Ronda 2771"): "Agregar" con tus contactos y buscador,
+   avisos rotos, textos sin tilde o en inglés, Perfil, "Cambiar nombre". Queda (decisión del dueño): "Tu nombre" en
+   Perfil (hoy tus contactos ven el nombre Bluetooth del teléfono: "Galaxy S24", "vivo 1951"…).
 Mejoras pendientes: la foto del contacto en sus notificaciones (como icono grande).
