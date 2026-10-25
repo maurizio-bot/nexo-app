@@ -151,7 +151,14 @@ function _style() {
     '#nexo-call-screen .nc-mini{display:none;font-size:17px;font-weight:600;text-shadow:0 1px 8px rgba(0,0,0,.6)}',
     '#nexo-call-screen.nc-video.nc-live .nc-mini{display:block}',
     '#nexo-call-screen.nc-hide .nc-top,#nexo-call-screen.nc-hide .nc-bottom{opacity:0;pointer-events:none}',
-    '#nexo-call-screen.nc-hide .nc-bottom{transform:translateY(40%)}'
+    '#nexo-call-screen.nc-hide .nc-bottom{transform:translateY(40%)}',
+    // Ronda 2778 (pedido del dueño): contestar deslizando hacia arriba el botón verde. Una flecha sube sola de pista; el
+    // icono sigue al dedo (por eso aquí se le quita el rebote de nc-green, que usa el mismo transform). El toque sigue
+    // valiendo (alternativa).
+    '#nexo-call-screen .nc-swipe-up{position:relative;touch-action:none}',
+    '#nexo-call-screen .nc-swipe-up .nc-ic{animation:none}',
+    '#nexo-call-screen .nc-swipe-up::before{content:"";position:absolute;left:50%;top:-24px;width:15px;height:15px;margin-left:-8px;border-left:3px solid #22c55e;border-top:3px solid #22c55e;border-radius:2px;animation:ncUp 1.2s ease-in-out infinite;pointer-events:none}',
+    '@keyframes ncUp{0%,100%{transform:rotate(45deg) translateY(2px);opacity:.3}50%{transform:rotate(45deg) translateY(-6px);opacity:1}}'
   ].join('\n');
   document.head.appendChild(st);
 }
@@ -201,6 +208,35 @@ function _btn(icon, label, cls, fn, extra) {
   b.innerHTML = '<span class="nc-ic">' + _svg(icon, extra && extra.indexOf('nc-big') >= 0 ? 32 : 26) + '</span><span>' + label + '</span>';
   b.onclick = function(e) { e.stopPropagation(); fn(); var sc = document.getElementById('nexo-call-screen'); if (sc) _autoHide(sc); };
   return b;
+}
+
+// Ronda 2778 (pedido del dueño): contestar deslizando el botón hacia arriba. Se arrastra el icono; al soltar por encima
+// de ~55 px, contesta. El toque normal (onclick de _btn) sigue valiendo como alternativa; contestar es idempotente
+// (calls.accept() solo hace algo con la llamada sonando), así que desliz + clic no contesta dos veces.
+function _makeSwipeAccept(btn, onAccept) {
+  var ic = btn.querySelector('.nc-ic'); if (!ic) return;
+  var down = false, sy = 0, dy = 0, TH = 55, MAX = 96;
+  var reset = function(anim) { ic.style.transition = anim ? 'transform .18s ease-out' : 'none'; ic.style.transform = ''; };
+  btn.addEventListener('pointerdown', function(e) {
+    down = true; dy = 0; sy = e.clientY; ic.style.transition = 'none';
+    try { btn.setPointerCapture(e.pointerId); } catch (x) {}
+  });
+  btn.addEventListener('pointermove', function(e) {
+    if (!down) return;
+    dy = e.clientY - sy;
+    var up = Math.max(0, Math.min(MAX, -dy));
+    ic.style.transform = 'translateY(' + (-up) + 'px)';
+    btn.style.opacity = String(1 - up / (MAX * 2.2));
+  });
+  var end = function() {
+    if (!down) return;
+    down = false; btn.style.opacity = '';
+    var up = -dy;
+    reset(true);
+    if (up >= TH) onAccept();
+  };
+  btn.addEventListener('pointerup', end);
+  btn.addEventListener('pointercancel', end);
 }
 
 // Imagen pequeña (la propia o, si se cambió, la del otro): se arrastra y queda en la esquina más cercana
@@ -352,7 +388,10 @@ function _render(st) {
     status.textContent = st.video ? 'Videollamada entrante' : 'Llamada de voz entrante';
     bt.classList.add('nc-incoming');
     bt.appendChild(_btn('phone', 'Rechazar', 'call-reject', function() { calls.reject(); }, 'nc-red nc-big'));
-    bt.appendChild(_btn(st.video ? 'cam' : 'phone', 'Contestar', 'call-accept', function() { calls.accept(); }, 'nc-green nc-big'));
+    // Ronda 2778 (pedido del dueño): contestar deslizando hacia arriba; el toque también vale
+    var acc = _btn(st.video ? 'cam' : 'phone', 'Desliza o toca', 'call-accept', function() { calls.accept(); }, 'nc-green nc-big nc-swipe-up');
+    _makeSwipeAccept(acc, function() { calls.accept(); _autoHide(el); });
+    bt.appendChild(acc);
     if (!_ring) _startIncomingTone();
   } else if (st.state === 'active') {
     _stopTone();

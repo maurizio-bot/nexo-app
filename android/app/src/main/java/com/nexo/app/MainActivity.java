@@ -1,8 +1,11 @@
 package com.nexo.app;
 
+import android.content.Intent;
 import android.graphics.drawable.ColorDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.WindowManager;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
@@ -12,6 +15,22 @@ import com.nexo.ble.NexoBlePlugin;  // Import del plugin
 public class MainActivity extends BridgeActivity {
   @Override
   public void onCreate(Bundle savedInstanceState) {
+    // Ronda 2778 (pedido del dueño): con la pantalla apagada, una llamada entrante debe ENCENDER la pantalla y aparecer
+    // sobre el bloqueo. El aviso de llamada usa un full-screen intent que abre esta actividad con el extra de llamada; si
+    // es ese el caso, pedimos "mostrar sobre el bloqueo" y "encender la pantalla" ANTES de nada, para que se encienda al
+    // instante (si se hiciera siempre, la app se vería sobre el bloqueo al abrirla normal, lo que no queremos). Para una
+    // llamada ya sonando con la app viva, el plugin hace lo mismo al recibir el intent (showOverLock).
+    try {
+      Intent it = getIntent();
+      if (it != null && (it.hasExtra("nexo_call_from") || it.hasExtra("nexo_call_answer"))) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) { setShowWhenLocked(true); setTurnScreenOn(true); }
+        else {
+          getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+            | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+      }
+    } catch (Exception e) { Log.w("NEXO", "Pantalla de llamada sobre el bloqueo: " + e.getMessage()); }
+
     super.onCreate(savedInstanceState);
     // Con el teléfono girado Android deja libre la franja de la cámara frontal y la pinta con el fondo de la ventana
     // (gris en el tema del sistema): el mismo fondo oscuro que la app

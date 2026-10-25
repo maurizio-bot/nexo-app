@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-25 (build 2777; fase 2 de la auditoría: C1 arreglado —confirmaciones ✓✓ firmadas, también en modo cerrado—, ver "Ronda 2777")
+Última actualización: 2026-10-25 (build 2778; llamadas —menos ruido, pantalla al entrar llamada, contestar deslizando—, ver "Ronda 2778". La 2777 fue C1: confirmaciones ✓✓ firmadas)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -101,7 +101,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2772 | d47415e4 | Informe del dueño del 25-10 (espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada por Wi-Fi) y plan de negocio: ver "Ronda 2772". **Sin APK**: en GitHub la prueba nueva de videollamada (`videoframe.js`) no arrancó porque allí no estaba Playwright (Chromium); las demás pasaron (49/49 y Kotlin 71/71). Se instala Chromium en el paso de pruebas del workflow: todo pasa a la 2773 |
 | 2773 | 36cf90b6 | La 2772 (ver "Ronda 2772": espejo y encuadre de la videollamada, filtros del micrófono, mensajes y avisos con la pantalla apagada) con Chromium instalado en las pruebas de GitHub. Batería 50/50 (también en GitHub, con la videollamada de verdad), Kotlin 71/71. APK publicada (nightly-2773, 24,5 MB; GitHub compiló el Kotlin nuevo y verificó la firma) |
 | 2776 | 00317fe8 | Informe del dueño tras la 2775 (ver "Ronda 2776"): escaneo que no encontraba (REGRESIÓN de la 2774: el NEXO ID va en mayúsculas y la validación del anuncio solo aceptaba minúsculas), menú ⋮ de contactos que no hacía nada (regresión del estilo NEXO: quedaba fuera de pantalla), eco/ruido reforzados en el filtro propio (−18 dB + pistas del sistema al micrófono), avisos por internet con pantalla apagada (rxWake en NetBg), y elegir el tono de llamada/videollamada (selector del teléfono; por defecto el del dispositivo). Pruebas nuevas: `AdvertisedIdTest`. Batería 51/51, Kotlin 90/90, índice de robustez 41,8 (sin cambio: no añade escenarios a la batería). APK publicada (nightly-2776, 24,5 MB; firma verificada) |
-| 2777 | _(pendiente)_ | Auditoría fase 2 — C1 arreglado (ver "Ronda 2777" y `docs/AUDITORIA.md`): las confirmaciones (✓✓/leído) ahora van firmadas con un MAC derivado del secreto de la pareja (`e2eAckTag`), también en **modo cerrado** (el ack lo firma la capa nativa con una clave por contacto que le da la app por `setAckKeys`, solo en memoria del proceso, no a disco). Una confirmación falsa se ignora, así que ya no para los reintentos ni hace perder un mensaje con ✓✓. Solo para contactos modernos (proto 2); los antiguos sin cambios. Prueba nueva: `tests/sim/ackforge.js`. Batería 52/52, Kotlin 90/90, índice de robustez 42,1. ⚠️ Falta confirmarlo en los dos teléfonos del dueño. APK _(pendiente de publicar)_ |
+| 2777 | b1772d66 | Auditoría fase 2 — C1 arreglado (ver "Ronda 2777" y `docs/AUDITORIA.md`): las confirmaciones (✓✓/leído) ahora van firmadas con un MAC derivado del secreto de la pareja (`e2eAckTag`), también en **modo cerrado** (el ack lo firma la capa nativa con una clave por contacto que le da la app por `setAckKeys`, solo en memoria del proceso, no a disco). Una confirmación falsa se ignora, así que ya no para los reintentos ni hace perder un mensaje con ✓✓. Solo para contactos modernos (proto 2); los antiguos sin cambios. Prueba nueva: `tests/sim/ackforge.js`. Batería 52/52, Kotlin 90/90, índice de robustez 42,1. ⚠️ Falta confirmarlo en los dos teléfonos del dueño. APK publicada (nightly-2777, 24,55 MB, sha256 4ba6e872…; firma verificada) |
+| 2778 | _(pendiente)_ | Llamadas, informe del dueño (ver "Ronda 2778"): **menos ruido** (la puerta de ruido del micrófono pasa de −10 a −22 dB; cuando no detecta tu voz el micro queda al ~8 %, no a cero, y abre al instante al hablar: así el ruido de fondo casi no se transmite), **pantalla al entrar llamada** (MainActivity pide "mostrar sobre el bloqueo" y "encender pantalla" al nacer la actividad, solo si el intent es de llamada) y **contestar deslizando hacia arriba** (el toque sigue valiendo). Batería 52/52, Kotlin 90/90, índice 42,1. ⚠️ Pantalla y desliz: a confirmar en los dos teléfonos del dueño. APK _(pendiente de publicar)_ |
 | 2774 | fa52b3d1 | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería 51/51, Kotlin 87/87 (16 nuevas). Índice de robustez 41,8 (ver `docs/ROBUSTEZ.md` §4). **APK publicada: `nightly-2775` (24,5 MB, firma verificada).** La primera compilación (run 2774) falló por una carrera en `LanHub.stop()` dentro de la prueba de la avalancha (iterar la cola mientras los hilos de lectura la vaciaban); arreglada con `poll()` y comprobada 5 veces; la 2775 compila, pasa todo y publica |
 
 ## Base estable: build 2713
@@ -228,6 +229,29 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2778: llamadas (informe del dueño: ruido, pantalla al entrar llamada, contestar deslizando)
+Tres cosas que pidió el dueño tras probar la 2777:
+
+1. **Ruido en llamada.** El dueño oía mucho ruido de fondo y propuso: "el micrófono que oye la voz se activa y el que no se
+   silencia, no del todo". Es una **puerta por voz (VAD)**: en `call_voice_fx.js` la puerta de ruido pasa de −10 a **−22 dB**.
+   Cuando no detecta tu voz, el micrófono queda al ~8 % (no a cero, para que no suene cortado ni bombee); abre al instante al
+   hablar (ataque 2 ms) y se mantiene 220 ms tras la última sílaba. Así el ruido de fondo (ventilador, calle, electrónica)
+   casi no se transmite cuando callas. Prueba `voicefx`: ruido en silencio baja **22 dB**, principio de palabra al **100 %**
+   (no se come el arranque). El ruido mientras hablas lo quita la cancelación del sistema (ya pedida en getUserMedia).
+2. **Pantalla apagada + llamada entrante.** El aviso de llamada ya usa un full-screen intent y un wakelock de pantalla, pero
+   faltaba que la actividad encendiera la pantalla al nacer. `MainActivity.onCreate` ahora pone `setShowWhenLocked(true)` +
+   `setTurnScreenOn(true)` **solo cuando el intent es de llamada** (`nexo_call_from`/`nexo_call_answer`); si se hiciera siempre,
+   la app se vería sobre el bloqueo al abrirla normal. En Android 14 puede hacer falta conceder el permiso de "pantalla
+   completa" (ya está en el manifest y hay un acceso a sus ajustes). ⚠️ A confirmar en los teléfonos del dueño.
+3. **Contestar deslizando hacia arriba** (`calls_ui.js`): el botón verde se arrastra hacia arriba (una flecha de pista sube
+   sola); al soltar por encima de ~55 px, contesta. El **toque** sigue valiendo como alternativa (contestar es idempotente,
+   así que desliz + toque no contesta dos veces).
+
+Batería **52/52**, Kotlin **90/90** (no se tocó Kotlin), índice de robustez **42,1** (sin cambio: son mejoras de calidad, no
+nuevos modos de fallo con prueba). Pruebas para el dueño: hacer una llamada en sitio con ruido (¿se nota menos al callar?),
+recibir una llamada con la pantalla apagada (¿se enciende y aparece?), y contestar deslizando. Siguiente: alta remota por
+enlace/QR/código (aprobada por el dueño).
 
 ## Ronda 2777: auditoría fase 2 — C1 (confirmaciones ✓✓ autenticadas), también en modo cerrado
 Pedido del dueño: seguir con la fase 2 de la auditoría tras los arreglos de la 2776. El hallazgo P0 era **C1**: las
