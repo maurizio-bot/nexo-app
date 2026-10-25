@@ -30,7 +30,10 @@ var DEF = {
   dtDb: -3,             // los dos hablan a la vez (no se toca: si no, se corta la voz propia)
   dtHoldMs: 200,        // hablando los dos: se mantiene al menos esto
   farHoldMs: 300,       // el otro dejó de sonar: se sigue bajando esto (cola del eco; ronda 2774: 200→300)
-  gateDb: -10,          // silencio
+  gateDb: -22,          // silencio (ronda 2778, pedido del dueño: "el micro que no oye voz se silencia, no del todo"). De
+                        // -10 a -22 dB: en silencio el micrófono queda al ~8 %, así que el ruido de fondo (ventilador,
+                        // calle, electrónica) casi no se transmite. No a cero, para que no suene cortado ni bombee; abre
+                        // al instante al hablar (ataque corto abajo) y se mantiene un rato tras la última sílaba
   farOn: 0.004,         // nivel del otro (RMS) desde el que cuenta como que suena
   maxDelay: 0.6,        // el eco llega como mucho 600 ms después de sonar (latencias de salida y entrada; cascos Bluetooth)
   frame: 1024,          // trozo de análisis (~21 ms)
@@ -39,9 +42,10 @@ var DEF = {
   attackMs: 8,          // bajar
   releaseMs: 80,        // volver a subir cuando el otro deja de sonar (rampa de 50–100 ms)
   talkUpMs: 10,         // volver a subir porque uno empieza a hablar mientras suena el otro (no comerse sílabas)
-  gateOpenMs: 5,
+  gateOpenMs: 2,        // abrir la puerta (ronda 2778: de 5 a 2 ms; con la puerta más profunda, abrir más rápido para no
+                        // comerse el principio de la palabra)
   gateCloseMs: 200,
-  gateHoldMs: 200,
+  gateHoldMs: 220,      // tras la última sílaba la puerta se mantiene abierta esto (ronda 2778: 200→220, cola de la voz)
   limit: 0.9
 };
 
