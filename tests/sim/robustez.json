@@ -1,0 +1,219 @@
+{
+  "nota": "Catálogo para medir la robustez (docs/ROBUSTEZ.md). Cada área: los fallos conocidos (de las revisiones y de los informes del dueño) con la prueba de la batería (ci.js) que los vigila ('prueba': texto que aparece en el nombre del escenario; null si no hay prueba en la batería; 'fuera': prueba que existe pero no está en la batería), el estado en los teléfonos del dueño, los puntos débiles abiertos y los fallos que encontró la última revisión del área. Se actualiza al cerrar cada bloque de trabajo.",
+  "puntos": { "A": 35, "B": 35, "C": 20, "D": 10 },
+  "telefono": { "ok": 35, "antes": 15, "falla": 0, "nunca": 0 },
+  "debil": { "grave": 8, "media": 4, "leve": 2 },
+  "areas": [
+    {
+      "id": "escaneo", "nombre": "Escaneo y agregar contactos", "peso": 8,
+      "telefono": { "estado": "falla", "por": "2764: con la tablet no salía nadie en «Agregar» (arreglado en la 2765, sin probar en teléfonos)" },
+      "revision": { "n": 1, "fallos": 1 },
+      "modos": [
+        { "fallo": "BUSCAR se quedaba en PARAR (el nativo para solo a los 15 s)", "prueba": "BUSCAR se para solo" },
+        { "fallo": "Al borrar y volver a agregar: «Unknown» y el «+» no hacía nada", "prueba": "borrar y volver a agregar" },
+        { "fallo": "«Agregar» decía «No hay contactos» aunque los hubiera; el buscador no buscaba", "prueba": "interfaz: \"Agregar\"" },
+        { "fallo": "Teléfonos en el mismo Wi-Fi que no se encontraban (router sin mDNS)", "prueba": "Wi-Fi (escaneo de la red)" }
+      ],
+      "debiles": [
+        { "g": "media", "d": "Android 8–11: sin la ubicación activada no escanea y no se avisa" }
+      ]
+    },
+    {
+      "id": "conexion", "nombre": "Conexión Bluetooth y enlace", "peso": 10,
+      "telefono": { "estado": "falla", "por": "Diagnóstico de la 2760: el enlace se rehacía cada ~30 s (arreglado en la 2766, sin probar)" },
+      "revision": { "n": 1, "fallos": 5 },
+      "modos": [
+        { "fallo": "Los pings no se contestaban: el enlace se rehacía cada ~30 s", "prueba": "enlace parado 80 s: pings contestados, sin cortes (Bluetooth)" },
+        { "fallo": "Reconexión en ráfagas con el otro lejos (21 intentos en 40 s)", "prueba": "reconexión sin ráfagas" },
+        { "fallo": "Lo de un contacto llegaba a otro teléfono (conexión equivocada)", "prueba": "envío al teléfono equivocado" },
+        { "fallo": "Trozos perdidos o dañados por la radio", "prueba": "trozos binarios por Bluetooth" },
+        { "fallo": "Textos y archivo con el otro sin conexión", "prueba": "textos, archivo y sin conexión" },
+        { "fallo": "MTU pequeño (20 bytes por escritura): trozos y tiempos", "prueba": null },
+        { "fallo": "Caídas reales del Bluetooth que no se avisaban a la app (Kotlin)", "prueba": null },
+        { "fallo": "La app cerrada y reabierta: mensajes retenidos y reconexión", "prueba": null, "fuera": "lifecycle.js" }
+      ],
+      "debiles": [
+        { "g": "media", "d": "Varios enlaces con el mismo contacto a la vez; en algunos sitios la identidad aún se deduce de la dirección" },
+        { "g": "leve", "d": "disconnectDevice solo cierra los enlaces en los que este teléfono es el cliente" },
+        { "g": "leve", "d": "Algunos teléfonos se quedan en MTU 23 (falta renegociar)" }
+      ]
+    },
+    {
+      "id": "mensajes", "nombre": "Mensajes (cortos, largos, pendientes, orden)", "peso": 15,
+      "telefono": { "estado": "antes", "por": "Los textos funcionan a diario; lo arreglado en la 2766–2767 no está probado" },
+      "revision": { "n": 1, "fallos": 4 },
+      "modos": [
+        { "fallo": "Textos largos pendientes que se perdían mostrando «entregado»", "prueba": "lo pendiente al volver el contacto" },
+        { "fallo": "Nota de voz pendiente que llegaba como «[adjunto]»", "prueba": "lo pendiente al volver el contacto" },
+        { "fallo": "Orden en el chat con relojes desfasados y con la app cerrada", "prueba": "orden en el chat" },
+        { "fallo": "Mensajes que salían en claro o ilegibles", "prueba": "cifrado de extremo a extremo" },
+        { "fallo": "Textos y archivo con el otro sin conexión (pendiente y entrega al volver)", "prueba": "textos, archivo y sin conexión" },
+        { "fallo": "Responder, reenviar, eliminar y copiar", "prueba": null, "fuera": "chatactions.js" },
+        { "fallo": "Orden de la lista de contactos (por último mensaje)", "prueba": null, "fuera": "contacts.js" },
+        { "fallo": "Reenvíos inútiles de lo ya entregado al reconectar", "prueba": null, "fuera": "resend.js" },
+        { "fallo": "Actualización a medias (un teléfono con una build anterior)", "prueba": null, "fuera": "mixed.js" },
+        { "fallo": "Ubicación (GPS que no responde, sin permiso)", "prueba": null, "fuera": "location.js" }
+      ],
+      "debiles": [
+        { "g": "media", "d": "Con la app cerrada, el nativo confirma ✓✓ antes de que la app lo descifre (si la app falla al arrancar, se pierde con ✓✓)" },
+        { "g": "leve", "d": "Si el receptor perdió lo que llevaba, pide de nuevo todos los trozos sin límite de ritmo" }
+      ]
+    },
+    {
+      "id": "archivos", "nombre": "Fotos, vídeos y archivos", "peso": 10,
+      "telefono": { "estado": "falla", "por": "2755: los archivos no llegaban; 2764: llegaban al teléfono equivocado (arreglos sin probar)" },
+      "revision": { "n": 1, "fallos": 2 },
+      "modos": [
+        { "fallo": "Archivos grandes por Wi-Fi con corte y reintento", "prueba": "archivos grandes por Wi-Fi" },
+        { "fallo": "Archivos grandes por Bluetooth L2CAP con corte y reintento", "prueba": "archivos grandes por Bluetooth L2CAP" },
+        { "fallo": "Fotos paradas (20 % / ○) y «mensaje de código»", "prueba": null, "fuera": "photos.js" },
+        { "fallo": "Vídeo: previa y HD que la sustituye", "prueba": null, "fuera": "video.js" },
+        { "fallo": "Wi-Fi Direct: archivos y vídeo", "prueba": null, "fuera": "wifidirect.js" },
+        { "fallo": "Selector de archivos, PDF con miniatura, demasiado grande", "prueba": null, "fuera": "files.js" },
+        { "fallo": "Cámara: foto y vídeo, girar, revisar antes de enviar", "prueba": null, "fuera": "camera.js" },
+        { "fallo": "Transferencias de más de 10 min que se cortaban", "prueba": null },
+        { "fallo": "Wi-Fi caído a mitad de una foto con un Bluetooth lento", "prueba": null }
+      ],
+      "debiles": [
+        { "g": "media", "d": "Wi-Fi Direct sin medir en teléfonos; el HD puede ir por Bluetooth aunque llegó por Wi-Fi Direct" },
+        { "g": "leve", "d": "El registro de envíos guarda hasta 50 transferencias cifradas en un archivo por contacto (memoria)" },
+        { "g": "leve", "d": "Si se perdió la confirmación final, el archivo se manda entero otra vez" }
+      ]
+    },
+    {
+      "id": "caminos", "nombre": "Wi-Fi, internet, Jump y cambio de camino", "peso": 10,
+      "telefono": { "estado": "antes", "por": "El Wi-Fi funcionó en las pruebas (2728–2761, con arreglos); lo de la 2766–2767 no está probado; internet nunca se probó" },
+      "revision": { "n": 1, "fallos": 3 },
+      "modos": [
+        { "fallo": "Camino de envío según las reglas del dueño (sin brincar)", "prueba": "camino de envío" },
+        { "fallo": "Cortes del Wi-Fi breves y largos, sin «!» mientras se espera", "prueba": "cortes del Wi-Fi" },
+        { "fallo": "Enlace Wi-Fi sin tráfico que se cortaba", "prueba": "enlace parado 80 s: pings contestados, sin cortes (Wi-Fi)" },
+        { "fallo": "Volver a la app borraba el enlace Wi-Fi", "prueba": "volver a la app (Wi-Fi sigue)" },
+        { "fallo": "Jump por teléfonos intermedios", "prueba": "Jump" },
+        { "fallo": "Jump con el puente por internet (datos móviles)", "prueba": "Jump con internet" },
+        { "fallo": "Internet por relés públicos", "prueba": "internet (relés)" },
+        { "fallo": "Internet por Tor (dirección .onion)", "prueba": "internet (Tor)" },
+        { "fallo": "Wi-Fi normal y cambio automático de camino con un tercero", "prueba": null, "fuera": "lan.js" }
+      ],
+      "debiles": [
+        { "g": "media", "d": "Internet (relés y Tor) nunca comprobado en teléfonos" },
+        { "g": "leve", "d": "Un texto escrito en los 15 s de espera del Wi-Fi tarda ~15 s (decisión del dueño §4.8)" },
+        { "g": "leve", "d": "Jump con un puente en una build vieja: ~80 s" }
+      ]
+    },
+    {
+      "id": "llamadas", "nombre": "Llamadas de voz", "peso": 10,
+      "telefono": { "estado": "falla", "por": "2768: en videollamada a veces no se oía (arreglado en la 2769–2770, sin probar)" },
+      "revision": { "n": 1, "fallos": 20 },
+      "modos": [
+        { "fallo": "Contestar, rechazar, sin respuesta, se corta", "prueba": "llamadas de voz (contestar" },
+        { "fallo": "«Rechazar» con la app cerrada volvía a sonar", "prueba": "llamadas: rechazar-cerrada" },
+        { "fallo": "«Rechazar» con la app viva: el que llama no se enteraba", "prueba": "llamadas: rechazar-viva" },
+        { "fallo": "Se contestaba sola («Contestar» de una llamada ya colgada)", "prueba": "llamadas: contestar-viejo" },
+        { "fallo": "Los dos se llaman a la vez: «Ocupado» en los dos", "prueba": "llamadas: cruce" },
+        { "fallo": "Relojes desfasados: no sonaba", "prueba": "llamadas: reloj" },
+        { "fallo": "Oferta guardada que sonaba al reiniciar la app", "prueba": "llamadas: oferta-vieja" },
+        { "fallo": "Aviso que seguía sonando y NEXO encima del bloqueo", "prueba": "llamadas: bloqueo" },
+        { "fallo": "Wi-Fi caído en un teléfono: el otro dejaba de oír", "prueba": "llamadas: wifi-uno" },
+        { "fallo": "Sin micrófono: el otro cortaba a los 12 s", "prueba": "llamadas: sin-micro" },
+        { "fallo": "Micrófono abierto tras colgar, ráfagas, codificador y decodificador de voz que fallan, audio en pausa", "prueba": "llamadas: micrófono y cámara" },
+        { "fallo": "Tono en silencio y dos tonos a la vez", "prueba": "llamadas: timbre" },
+        { "fallo": "Llamada de verdad en Chromium (Opus, μ-law)", "prueba": null, "fuera": "calls_browser.js" },
+        { "fallo": "Micrófono con la pantalla bloqueada u otra app (Android 11+)", "prueba": null },
+        { "fallo": "Pantalla encendida y sensor de proximidad", "prueba": null }
+      ],
+      "debiles": [
+        { "g": "media", "d": "Voz por un Bluetooth lento (MTU 23: ~7 s de retraso; sin Opus: 3,2 s); solo teléfonos viejos" },
+        { "g": "leve", "d": "Con la app cerrada, si el que llama cuelga, sigue sonando hasta 45 s" },
+        { "g": "leve", "d": "«Rechazar» con la app cerrada: el que llama no se entera (decisión §4.7)" },
+        { "g": "leve", "d": "Con la app cerrada el aviso dice «Llamada» también en videollamada" }
+      ]
+    },
+    {
+      "id": "video", "nombre": "Videollamadas", "peso": 7,
+      "telefono": { "estado": "falla", "por": "2768 (Vivo ↔ S24): a veces sin cámara, negro y sin voz (arreglado en la 2769, sin probar)" },
+      "revision": { "n": 1, "fallos": 14 },
+      "modos": [
+        { "fallo": "Cámara ocupada, cortada o sin imágenes: negro", "prueba": "llamadas: micrófono y cámara" },
+        { "fallo": "Decodificador del otro roto o parado: negro hasta colgar", "prueba": "llamadas: micrófono y cámara" },
+        { "fallo": "Videollamada sin cámara: sin voz", "prueba": "llamadas: micrófono y cámara" },
+        { "fallo": "Girar y colgar: cámara encendida; dos toques en Girar", "prueba": "llamadas: micrófono y cámara" },
+        { "fallo": "Negro sin motivo; avisos de cámara y micrófono de los dos", "prueba": "llamadas: video-estado" },
+        { "fallo": "Sin Wi-Fi: imagen congelada", "prueba": "llamadas: video-estado" },
+        { "fallo": "La cámara del chat ocupaba la cámara", "prueba": "llamadas: video-estado" },
+        { "fallo": "Videollamada de verdad en Chromium (VP8, imagen en los dos sentidos)", "prueba": null, "fuera": "calls_browser.js --video" },
+        { "fallo": "La pantalla se apagaba a media videollamada", "prueba": null }
+      ],
+      "debiles": [
+        { "g": "media", "d": "Solo en el mismo Wi-Fi (no por Wi-Fi Direct ni Bluetooth)" },
+        { "g": "leve", "d": "Con NEXO en segundo plano se para la imagen (vuelve al regresar)" }
+      ]
+    },
+    {
+      "id": "avisos", "nombre": "Avisos, segundo plano y app cerrada", "peso": 10,
+      "telefono": { "estado": "nunca", "por": "Pedido probar desde la 2751 (notificaciones) y la 2761/2766 (congelada, cerrada, pantalla apagada); sin respuesta aún" },
+      "revision": { "n": 0, "fallos": 0 },
+      "modos": [
+        { "fallo": "No leídos y notificaciones", "prueba": "no leídos y notificaciones" },
+        { "fallo": "Recibir con la app cerrada (buzón, ✓✓ y aviso)", "prueba": "recibir con la app cerrada" },
+        { "fallo": "Avisos con la pantalla apagada y llamada sobre el bloqueo", "prueba": "avisos con la pantalla apagada" },
+        { "fallo": "Avisos por Bluetooth: segundo plano, app congelada y cerrada", "prueba": "avisos por Bluetooth" },
+        { "fallo": "Avisos por Jump: segundo plano, app congelada y cerrada", "prueba": "avisos por Jump" },
+        { "fallo": "Fabricantes que congelan la app (Vivo)", "prueba": null }
+      ],
+      "debiles": [
+        { "g": "media", "d": "Con la app congelada (Vivo) depende del permiso de batería" },
+        { "g": "media", "d": "Recibir con la app cerrada: sin comprobar que Android no cierre el proceso" }
+      ]
+    },
+    {
+      "id": "seguridad", "nombre": "Seguridad y cuenta", "peso": 10,
+      "telefono": { "estado": "antes", "por": "El cifrado se usa en todos los mensajes desde la 2702; Fénix, pasar la cuenta y el bloqueo nunca se probaron" },
+      "revision": { "n": 1, "fallos": 2 },
+      "modos": [
+        { "fallo": "Cifrado de extremo a extremo", "prueba": "cifrado de extremo a extremo" },
+        { "fallo": "Double Ratchet y poscuántico", "prueba": "Double Ratchet y poscuántico" },
+        { "fallo": "Teléfono cercano que se hace pasar por un contacto (sin cifrar)", "prueba": "suplantación" },
+        { "fallo": "Impostor con el mismo nombre", "prueba": "impostor" },
+        { "fallo": "NEXO ID visible en el aire", "prueba": "ID Bluetooth rotativo" },
+        { "fallo": "Voz grabada y repetida por un tercero", "prueba": "llamadas: repetida" },
+        { "fallo": "Pasar la cuenta a un teléfono nuevo", "prueba": "pasar la cuenta" },
+        { "fallo": "Fénix: respaldo y recuperación de la cuenta", "prueba": null, "fuera": "fenix.js" },
+        { "fallo": "Bloqueo con huella o PIN y capturas", "prueba": null, "fuera": "lock.js" },
+        { "fallo": "Número de seguridad por QR", "prueba": null, "fuera": "qr.js" }
+      ],
+      "debiles": [
+        { "g": "media", "d": "El «no soy yo» y las confirmaciones no van firmados (un teléfono cercano podría desviar o marcar ✓✓)" },
+        { "g": "media", "d": "Sin auditoría externa" },
+        { "g": "leve", "d": "El código rotativo se puede calcular con la clave pública" }
+      ]
+    },
+    {
+      "id": "grupos", "nombre": "Grupos", "peso": 5,
+      "telefono": { "estado": "nunca", "por": "Pedido probar desde la 2758/2765; sin respuesta aún" },
+      "revision": { "n": 0, "fallos": 0 },
+      "modos": [
+        { "fallo": "Crear, escribir, texto largo, salir", "prueba": "chats de grupo" },
+        { "fallo": "Vídeo HD y archivo grande en grupo", "prueba": "grupos: vídeo HD" },
+        { "fallo": "Compartir contactos", "prueba": null, "fuera": "share.js" }
+      ],
+      "debiles": [
+        { "g": "leve", "d": "Adjuntos de grupo por Bluetooth hasta ~1 MB" }
+      ]
+    },
+    {
+      "id": "interfaz", "nombre": "Interfaz", "peso": 5,
+      "telefono": { "estado": "antes", "por": "Se usa a diario; lo de la 2771 no está probado" },
+      "revision": { "n": 1, "fallos": 11 },
+      "modos": [
+        { "fallo": "«Agregar», buscador, textos, Perfil, cambiar nombre, avisos rotos", "prueba": "interfaz: \"Agregar\"" },
+        { "fallo": "Foto de perfil", "prueba": "foto de perfil" },
+        { "fallo": "Pantalla girada (barra gris)", "prueba": null }
+      ],
+      "debiles": [
+        { "g": "leve", "d": "Sin «Tu nombre»: los contactos ven el nombre Bluetooth del teléfono (decisión del dueño)" },
+        { "g": "leve", "d": "Sin la foto del contacto en sus notificaciones" }
+      ]
+    }
+  ]
+}

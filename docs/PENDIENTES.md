@@ -3,6 +3,12 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## 0. Robustez: medición y tareas diarias (pedido del dueño 25-10)
+`docs/ROBUSTEZ.md`: registro de la revisión 1 (24 y 25-10, builds 2766–2771: 63 fallos encontrados, 62 arreglados),
+índice de robustez (medición inicial **45,3 sobre 100**; lo que más baja: casi nada confirmado en los teléfonos desde la
+2765) y rutina diaria. **Siguiente: revisión 2, día 1 (avisos, segundo plano y app cerrada)**, después de lo que traiga
+el dueño de sus pruebas con la 2771.
+
 ## Reglas para elegir el camino de envío (decididas por el dueño, 23-10-2026; revisadas el 24-10-2026, build 2761)
 1. **Wi-Fi en el mismo router/módem: prioridad sobre todo** (seguro, rápido, no gasta datos) y **se mantiene, sin
    brincar**: no se deja por un pico ni por un corte breve (primero se intenta recuperar, 15 s); solo si está muy mal
@@ -186,6 +192,8 @@ De lo más simple a lo más complejo. Estado:
 
 
 ## 6. Revisión completa por partes (pedida por el dueño el 24-10)
+**Revisión 1 cerrada el 25-10 (builds 2766–2771)**: registro, cifras y medición en `docs/ROBUSTEZ.md`; la revisión 2
+sigue el calendario de ese documento (§6). Lo de abajo es el detalle de la revisión 1 y sus puntos débiles abiertos.
 Orden: escaneo → agregar → conexión → mensajes cortos y largos y archivos → llamadas y videollamadas → interfaz; con
 mejoras donde se vea la oportunidad. Método: cada fallo se reproduce en el simulador antes de corregirlo.
 1. **Escaneo, agregar y conexión** — hecha en la 2766 (ver PROGRESO, "Ronda 2766"). Quedan puntos débiles, sin fallo

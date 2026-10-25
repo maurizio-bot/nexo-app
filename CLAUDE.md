@@ -3,9 +3,16 @@
 App de mensajería P2P por Bluetooth LE (Capacitor 5 + plugin nativo Kotlin `plugins/nexo-ble`).
 El dueño habla español: responder en español.
 
-Antes de empezar, leer `docs/PROGRESO.md` (estado, historial de builds y pendientes) y
+Antes de empezar, leer `docs/PROGRESO.md` (estado, historial de builds y pendientes),
 `docs/PENDIENTES.md` (todo lo que falta, decisiones pendientes y las reglas del dueño para elegir el
-camino de envío), y actualizarlos al terminar cada bloque de trabajo.
+camino de envío) y `docs/ROBUSTEZ.md` (registro de revisiones, índice de robustez y rutina diaria), y
+actualizarlos al terminar cada bloque de trabajo.
+
+- Rutina diaria (pedida por el dueño, `docs/ROBUSTEZ.md` §5): lo del dueño primero (sus pruebas y
+  diagnósticos); luego el área del día del calendario de la revisión en curso; un punto débil abierto;
+  medir (batería + `node tests/sim/robustez.js <salida de ci.js>`) y anotar la medición en el historial;
+  al subir, dejar al dueño 3–5 pruebas cortas. Cada fallo nuevo entra en `tests/sim/robustez.json` con su
+  prueba; cada prueba del dueño que confirma un área cambia su estado allí.
 
 - Rama principal: `NEXOCHAT`; cada push genera una APK (`.github/workflows/build-apk.yml`).
   El dueño autorizó subir cambios directamente a `NEXOCHAT`.

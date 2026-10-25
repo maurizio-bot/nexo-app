@@ -76,7 +76,7 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   while (Date.now() - t0 < 45000) {
     await sleep(500);
     if (toastNow() && toastNow() !== toast) { toast = toastNow(); avisos.push(toast.substring(0, 80)); }
-    enA = Array.from(A.win.document.querySelectorAll('#messages-container .message.own')).some((m) => /Ubicacion/.test(m.textContent));
+    enA = Array.from(A.win.document.querySelectorAll('#messages-container .message.own')).some((m) => /Ubicaci[oó]n/.test(m.textContent));
     enB = (await B.win.vaultLoadMessages(idA)).find((m) => m.attachmentType === 'location' || /"attachmentType":"location"/.test(String(m.content)));
     if (enB || ((gpsMode === 'timeout' || gpsMode === 'off') && avisos.length > 1)) break;
   }
@@ -85,8 +85,8 @@ async function sendText(p, t) { const i = p.win.document.getElementById('message
   r.llega_a_B_s = enB ? Math.round((Date.now() - t0) / 100) / 10 : null;
   r.coordenadas_B = enB ? String(enB.content).indexOf('19.4326') >= 0 : null;
   await openChat(B); await sleep(800);
-  r.se_ve_en_B = Array.from(B.win.document.querySelectorAll('#messages-container .message')).some((m) => /Ubicacion/.test(m.textContent));
-  r.estado_A = (Array.from(A.win.document.querySelectorAll('#messages-container .message.own')).filter((m) => /Ubicacion/.test(m.textContent)).map((m) => (m.querySelector('.msg-status') || {}).className || '').pop() || '').replace('msg-status status-', '');
+  r.se_ve_en_B = Array.from(B.win.document.querySelectorAll('#messages-container .message')).some((m) => /Ubicaci[oó]n/.test(m.textContent));
+  r.estado_A = (Array.from(A.win.document.querySelectorAll('#messages-container .message.own')).filter((m) => /Ubicaci[oó]n/.test(m.textContent)).map((m) => (m.querySelector('.msg-status') || {}).className || '').pop() || '').replace('msg-status status-', '');
   r.avisos_A = avisos;
   r.en_claro = air.join('\n').indexOf('19.4326') >= 0;
   r.registros_A = logs.filter((l) => l.startsWith('[A]') && /LOCATION|Ubicaci|ATTACH|rejected|Error/i.test(l)).map((l) => l.substring(0, 160)).slice(0, 10);

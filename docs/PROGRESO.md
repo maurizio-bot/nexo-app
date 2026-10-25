@@ -224,6 +224,17 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
 
+## 25-10-2026: registro y medición de robustez (sin build; pedido del dueño)
+Al cerrar la revisión 1 (builds 2766–2771), el dueño pidió un registro, una medición del estado de robustez y tareas
+diarias: `docs/ROBUSTEZ.md` (cómo se mide, registro de la revisión 1, medición inicial, historial, rutina diaria y
+calendario de la revisión 2). La medición sale de `tests/sim/robustez.js` con el catálogo `tests/sim/robustez.json`
+(86 fallos conocidos por área con la prueba que los vigila, estado en los teléfonos, 26 puntos débiles abiertos y los
+fallos de la última revisión) y la salida de la batería. **Medición inicial: 45,3 sobre 100** (pruebas 23,9/35,
+teléfonos 6/35, puntos débiles 12,9/20, estabilidad 2,5/10). Se pasaron también las 17 pruebas del simulador que no
+están en la batería (`ROBUSTEZ.md` §7): todas se comportan como se espera con la 2771, sin fallos de la app; dos
+pruebas estaban desfasadas: `location.js` buscaba "Ubicacion" sin tilde (corregida) y `mixed.js` aún espera recibir
+mensajes sin cifrar de una build vieja, que desde la 2768 se descartan a propósito (se corrige al meterla en la batería).
+
 ## Ronda 2771: revisión completa, parte 4 (interfaz)
 Revisión de las pantallas en capturas (Chromium, 393 y 360 px de ancho, como el Vivo) y de los textos de todo el código.
 Cada fallo se reprodujo con la 2770 en `ui4.js` (3 teléfonos: Vivo agrega al Galaxy; la Tablet cerca sin agregar), que
