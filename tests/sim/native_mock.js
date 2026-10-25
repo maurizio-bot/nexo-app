@@ -563,7 +563,13 @@ class NativePhone {
     if (info.kind === 'MESSAGE') {
       this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
       const me = String(this.advertisingId || '').toLowerCase();
-      if (me) this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify({ v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() }));
+      if (me) {
+        const ack = { v: 1, type: 'ack', msgId: info.msgId, from: me, ts: Date.now() };
+        // C1 (2777): firmar la confirmación con la clave de la pareja (si la app nos la dio), igual que el Kotlin
+        const k = this.ackKeys && this.ackKeys.get(info.from);
+        if (k) ack.a = nodeCrypto.createHmac('sha256', k).update('nexo-ack|ack|' + info.msgId + '|' + me + '|' + info.from).digest().subarray(0, 12).toString('base64');
+        this._sendChunkedOrSingle(norm(fromAddress), JSON.stringify(ack));
+      }
       if (info.call) this._incomingCall(info.from, this._notifName(info.from), false, info.msgId, { closed: true });
       else if (!info.quiet) this._notifyMsg(info, { closed: true });
     } else if (info.kind === 'RECEIPT') this.bgInbox.push({ d: fromAddress, c: json, t: Date.now() });
@@ -1139,6 +1145,8 @@ class NativePhone {
       }),
       // Escucha nativa de internet en segundo plano (NetBg.kt; probada en tests/kotlin/NetBgTest): se guarda la configuración
       netBgConfig: wrap('netBgConfig', (c, a) => { self.netBg = a; self.netBgCalls = (self.netBgCalls || 0) + 1; c.resolve({ contacts: (a.contacts || []).length, running: false }); }),
+      // C1 (2777): la app nos da las claves de firma del ✓✓ del modo cerrado (como el Kotlin setAckKeys)
+      setAckKeys: wrap('setAckKeys', (c, a) => { self.ackKeys = new Map(); (a.keys || []).forEach((k) => { try { self.ackKeys.set(String(k.nx).toLowerCase(), Buffer.from(k.key, 'base64')); } catch (e) {} }); c.resolve({ keys: self.ackKeys.size }); }),
       ensureNotificationPermission: wrap('ensureNotificationPermission', (c) => { self.notifPermAsked = (self.notifPermAsked || 0) + 1; c.resolve({ granted: !self.opts.noNotifPerm }); }),
       clearChatNotification: wrap('clearChatNotification', (c, a) => { self.notifications.delete(String(a.chatId || '').toLowerCase()); c.resolve({}); }),
       syncUnread: wrap('syncUnread', (c, a) => {

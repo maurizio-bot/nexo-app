@@ -47,6 +47,7 @@ import androidx.fragment.app.FragmentActivity
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
+import javax.crypto.Mac
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -94,6 +95,17 @@ class NexoBlePlugin : Plugin() {
         // Ronda 2758 (punto 12): la instancia que siguió recibiendo con la app cerrada; la nueva la releva al abrir
         @Volatile private var orphan: NexoBlePlugin? = null
         @Volatile private var netBgShared: NetBg? = null
+        // Auditoría C1 (ronda 2777): clave por contacto (NEXO ID → clave de firma, derivada del secreto de la pareja por
+        // la app) para FIRMAR la confirmación (✓✓) que se manda con la app cerrada. Es estática: la pone la app
+        // (setAckKeys) y vive en el proceso (sobrevive con la app cerrada, como la config de internet); no va a disco.
+        private val ackKeys = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+        // Firma corta (base64 de 12 bytes) de una confirmación, igual que e2eAckTag en la app (HMAC-SHA256 de
+        // "nexo-ack|<campos>" con la clave de la pareja).
+        private fun ackTag(key: ByteArray, fields: String): String {
+            val mac = Mac.getInstance("HmacSHA256"); mac.init(SecretKeySpec(key, "HmacSHA256"))
+            val full = mac.doFinal(("nexo-ack|" + fields).toByteArray(Charsets.UTF_8))
+            return Base64.encodeToString(full.copyOf(12), Base64.NO_WRAP)
+        }
         // Ronda 2768: la instancia con la app viva (abierta o en segundo plano), para avisarle de "Rechazar"
         @Volatile private var live: NexoBlePlugin? = null
         // "Rechazar" en el aviso de llamada (CallDeclineReceiver): con la app viva, la app rechaza ya, cifrado (antes el
@@ -612,8 +624,12 @@ class NexoBlePlugin : Plugin() {
                 if (!inbox().add(deviceId, json)) { Log.w("NEXO_REM", "Buzón lleno: mensaje de ${info.from} sin guardar"); return }
                 val me = (nexoAdvertisingId ?: "").lowercase()
                 if (me.isNotEmpty()) {
-                    val ack = JSONObject().put("v", 1).put("type", "ack").put("msgId", info.msgId).put("from", me).put("ts", System.currentTimeMillis()).toString()
-                    sendChunkedOrSingle(normalizeMac(deviceId), deviceId, ack)
+                    val ackObj = JSONObject().put("v", 1).put("type", "ack").put("msgId", info.msgId).put("from", me).put("ts", System.currentTimeMillis())
+                    // Auditoría C1 (ronda 2777): firmar la confirmación con la clave de la pareja (si la app nos la dio),
+                    // para que el emisor sepa que es de verdad y no de un tercero que espió el msgId.
+                    val k = ackKeys[info.from]
+                    if (k != null) ackObj.put("a", ackTag(k, "ack|${info.msgId}|$me|${info.from}"))
+                    sendChunkedOrSingle(normalizeMac(deviceId), deviceId, ackObj.toString())
                 }
                 // Ronda 2763: una llamada suena como una llamada del teléfono (aviso con tono, Contestar / Rechazar)
                 if (info.call) MsgNotifier.get(ctx).incomingCall(info.from, netBgShared?.nameOf(info.from) ?: "NEXO", false, info.msgId)
@@ -2406,6 +2422,24 @@ class NexoBlePlugin : Plugin() {
         netBg().configure(me, relays, since, list)
         if (appInBackground && list.isNotEmpty()) netBg().start()
         call.resolve(JSObject().put("contacts", list.size).put("running", netBg().running))
+    }
+
+    // Auditoría C1 (ronda 2777): la app nos da, por contacto, la clave con la que firmar la confirmación (✓✓) del modo
+    // cerrado (ver closedReceive). La clave (base64) la deriva la app del secreto de la pareja; aquí solo se guarda en
+    // memoria del proceso. Se reemplaza el conjunto en cada llamada.
+    @PluginMethod
+    fun setAckKeys(call: PluginCall) {
+        try {
+            val arr = call.getArray("keys")
+            ackKeys.clear()
+            if (arr != null) for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val nx = o.getString("nx").lowercase()
+                val key = Base64.decode(o.getString("key"), Base64.NO_WRAP)
+                if (Regex("^nx[0-9a-z]{8}$").matches(nx) && key.isNotEmpty()) ackKeys[nx] = key
+            }
+            call.resolve(JSObject().put("keys", ackKeys.size))
+        } catch (e: Exception) { call.reject("claves de confirmación ilegibles") }
     }
 
     // ===== Ronda 2763: llamada entrante como una llamada del teléfono (calls_ui.js) =====

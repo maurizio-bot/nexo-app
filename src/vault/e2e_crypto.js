@@ -80,6 +80,33 @@ export async function e2eIdentityDH(peerPubB64) {
   return new Uint8Array(await subtle.deriveBits({ name: 'ECDH', public: peer }, _identity.priv, 256));
 }
 
+// Auditoría C1 (ronda 2777): clave para FIRMAR las confirmaciones (✓✓/leído) con un contacto. Se deriva del secreto de
+// la pareja (ECDH de las dos identidades, igual en los dos teléfonos) con una etiqueta propia, así que no se mezcla con
+// otras derivaciones y se le puede dar a la parte nativa (modo cerrado) sin exponer el ECDH crudo.
+async function _ackSubkey(peerPubB64) {
+  var subtle = _subtle();
+  var secret = await e2eIdentityDH(peerPubB64);
+  var k = await subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await subtle.sign('HMAC', k, new TextEncoder().encode('NEXO-ACK-v1')));
+}
+// La clave de firma del ack (base64) para dársela a la parte nativa (firma el ack del modo cerrado).
+export async function e2eAckKey(peerPubB64) {
+  if (!_subtle() || !peerPubB64) return '';
+  try { return _bytesToB64(await _ackSubkey(peerPubB64)); } catch (e) { return ''; }
+}
+// Firma corta (MAC, base64 de 12 bytes) de una confirmación, ligada al tipo+msgId+los dos NEXO ID para que no se pueda
+// reusar. El que recibe la confirmación la comprueba con esto; una falsa (sin firma o con firma que no cuadra) se ignora.
+export async function e2eAckTag(peerPubB64, fields) {
+  var subtle = _subtle();
+  if (!subtle || !peerPubB64) return '';
+  try {
+    var sub = await _ackSubkey(peerPubB64);
+    var k = await subtle.importKey('raw', sub, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    var mac = new Uint8Array(await subtle.sign('HMAC', k, new TextEncoder().encode('nexo-ack|' + fields)));
+    return _bytesToB64(mac.subarray(0, 12));
+  } catch (e) { return ''; }
+}
+
 // Huella legible de una clave pública (para comparar en persona): 5 grupos de 4 cifras hex
 export async function e2eFingerprint(pubB64) {
   var subtle = _subtle();

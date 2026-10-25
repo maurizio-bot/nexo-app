@@ -1,4 +1,4 @@
-import { initE2E, e2eMyPublicKey, e2eSealAnon, e2eOpenAnon } from '../vault/e2e_crypto.js';
+import { initE2E, e2eMyPublicKey, e2eSealAnon, e2eOpenAnon, e2eAckKey } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eOpenText, e2eAllowsE1 } from '../vault/e2e_proto.js';
 import { ratchetInit, ratchetMyBundle, ratchetNotePeerBundle, ratchetForget, ratchetResetPeer, ratchetMyPqId, ratchetPeerPqId } from '../vault/e2e_ratchet.js';
 import { createRelay } from './ble_relay.js';
@@ -199,6 +199,7 @@ export class BLEInterface {
     this._cleanupStaleStates();
     this._startConnectionSupervisor();
     this._setupAppStateListener();
+    setTimeout(function() { self._pushAckKeys(); }, 4000); // C1 (2777): dar pronto a la parte nativa las claves de firma del ✓✓
     this.elements.panel.classList.remove('active');
     this.elements.overlay.classList.remove('active');
     this.renderContactsList();
@@ -368,6 +369,23 @@ export class BLEInterface {
     });
   }
 
+  // C1 (2777): da a la parte nativa, por contacto, la clave con la que firmar la confirmación (✓✓) del modo cerrado.
+  // La clave se deriva del secreto de la pareja (misma que usa el emisor para comprobarla). Se queda en memoria del
+  // proceso nativo (sobrevive con la app cerrada, como la config de internet); no se guarda en disco.
+  _pushAckKeys() {
+    var self = this, pl = self.nativePlugin;
+    if (!pl || !_hasNativeMethod(pl, 'setAckKeys')) return Promise.resolve();
+    var cs = _getBLEContacts(), jobs = [], keys = [];
+    cs.forEach(function(c) {
+      var nx = _normId(c.nexoId || c.deviceUUID);
+      if (!/^nx[0-9a-z]{8}$/.test(nx) || !c.publicKey || c.pendingKey) return;
+      jobs.push(e2eAckKey(c.publicKey).then(function(k) { if (k) keys.push({ nx: nx, key: k }); }).catch(function() {}));
+    });
+    return Promise.all(jobs).then(function() {
+      if (keys.length) return _safeNativeCall(pl, 'setAckKeys', { keys: keys }).catch(function() {});
+    }).catch(function() {});
+  }
+
   _setupAppStateListener() {
     var self = this;
     // v6.1.7: @capacitor/app no está instalado: el bloque de abajo nunca se activaba y al volver a la app
@@ -381,6 +399,7 @@ export class BLEInterface {
     if (typeof document !== 'undefined' && document.addEventListener) {
       document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'visible') self._onAppResumed('visibilidad');
+        else self._pushAckKeys(); // C1 (2777): antes de irse a segundo plano, dar a la parte nativa las claves para firmar el ✓✓ del modo cerrado
       });
     }
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
