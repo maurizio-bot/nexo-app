@@ -90,6 +90,33 @@ Queda, por prioridad (cada uno necesita un cambio de protocolo y probarse en los
    «Reintentar» y, al volver el internet/Wi-Fi, se reenvía solo.
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
+## 0d. #87 — cómo lo hace la competencia (investigación 26-10; `docs/ENTREGA_CERRADA_INVESTIGACION.md`)
+Pedida por el dueño ("no hay que inventar nada, ya existe"). Conclusión con fuentes: **no hay un tercer truco mágico.**
+Para recibir con la app CERRADA solo hay dos caminos: **(A) un PUSH por servidor/puente** (FCM/APNs/UnifiedPush: alguien
+con un servidor encendido conoce tu token y te "despierta"; es lo de WhatsApp/Signal-Play/Telegram) o **(B) una CONEXIÓN
+VIVA** en el teléfono (servicio en primer plano + socket + exención de batería + WifiLock; es lo de Signal-sin-Google,
+Briar, Pokey y **el NetBg de NEXO**). **NEXO ya va por (B), el correcto para un P2P sin servidores.** El #87 no es que
+falte una pieza secreta: es que (B) todavía no sobrevive bien a Doze ni a los ahorradores de cada marca (Vivo/Xiaomi
+matan la app; el dueño ya vio que con batería "Sin restricciones" las llamadas SÍ entran → el cuello es la salud del
+servicio, no un push). **No hay un push de Nostr aprovechable** listo: los eventos de NEXO son a medida y doblemente
+cifrados, ningún push-server genérico sabe que son "para ti"; tener push exigiría que ALGUIEN corra un puente
+Nostr→FCM/UnifiedPush = un servidor (decisión del dueño; rompe en parte el "cero servidores"; iOS necesitaría APNs).
+Límite honesto: **"exactamente como WhatsApp" (que suene tras horas dormido) necesita push (A)**; sin push, NEXO queda
+como Briar/Signal-sin-Google (va con batería exenta y la app sin matar, pero es "lo mejor posible", no garantizado).
+Plan sin servidor (orden de impacto), a cerrar con el diagnóstico de los dos teléfonos en 2785:
+1. **Endurecer NetBg / modelo B** (ataca el #87): tipo de foreground service de Android 14, `START_STICKY` + reinicio en
+   `onTaskRemoved` + `BOOT_COMPLETED`, websocket con reconexión/keepalive/re-auth NIP-42; guía de batería por marca.
+2. **Llamada entrante con app cerrada SIN push**: si NetBg vive, el relé ya trae la oferta; marcar la oferta de llamada
+   en el sobre para que NetBg lance la pantalla completa (CallStyle/#1 y permiso/#81 ya están) y el emisor la mantenga
+   "caliente" ~30-60 s. (Si NetBg está muerto, no suena — igual que Jami/SimpleX.)
+3. **Red de seguridad WorkManager (~15 min)**: si NetBg no vive, despertar, reconectar, bajar el buzón y avisar (sirve
+   para mensajes en ≤15 min, no para llamadas).
+4. (Opcional, decisión del dueño) **Fase 4**: montar/confiar un puente de push Nostr→FCM/UnifiedPush = lo único que daría
+   "igual que WhatsApp" aun con el socket caído, pero es un servidor.
+Siguiente paso real: el dueño instala la 2785 en los DOS teléfonos de prueba (batería "Sin restricciones") y manda el
+diagnóstico con REGISTRO NATIVO; con eso se ve si el camino de internet (relé, modelo B, YA en 2785) entrega el texto
+cerrado — en cuyo caso el #87 de mensajes ya está, y solo queda la llamada cerrada (punto 2).
+
 ## 1. Pendiente de pruebas del dueño en el teléfono
 - **Qué APK probar (25-10)**: la 2773 (nightly-2773; la 2772 no salió) para todo. Desde la 2763 no hay pruebas completas en teléfonos:
   todo lo de abajo desde la 2765 está sin confirmar (salvo los informes de videollamada con la 2768 y del 25-10 con la
