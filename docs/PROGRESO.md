@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-26 (build 2781; notas de voz: pausar/reanudar, borrar antes de enviar y parar el audio al grabar o al entrar llamada, ver "Ronda 2781". La 2780 fueron fotos/archivos por internet; la 2779, alta por ID)
+Última actualización: 2026-10-26 (build 2782; editar un mensaje ya enviado con etiqueta "editado", ver "Ronda 2782". La 2781 fueron notas de voz; la 2780, fotos/archivos por internet)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -106,6 +106,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2779 | _(pendiente)_ | Alta por ID, pedido del dueño (ver "Ronda 2779"): **agregar a alguien que está lejos** con su NEXO ID (te lo pasa por WhatsApp). No hay servidor donde "buscar" un ID (eso rompería la privacidad); se le deja una **solicitud** en un buzón de los relés derivado de su ID, y él la **acepta o la elimina** (anti-spam). Al aceptar, se intercambian las claves y el canal seguro se enciende solo; la clave entra "sin verificar" (número de seguridad aparte). Interfaz: Perfil → "Compartir mi ID"; Agregar → "Agregar por NEXO ID" + bandeja de solicitudes. Prueba nueva: `tests/sim/reqadd.js`. Batería 53/53, Kotlin 90/90, índice 42,1. APK publicada (nightly-2779, 24,55 MB, sha256 ced36f24…; firma verificada) |
 | 2780 | 8757bc03 | Fotos/archivos por internet, informe del dueño (ver "Ronda 2780"): estando lejos, al contacto le llegaba el texto pero no la foto. Antes un adjunto solo salía por internet con los dos en Wi-Fi (`filesOk`); ahora, bajo ~6 MB, va por **Tor directo/Wi-Fi si está en línea** o **al buzón de los relés si no** (`mailboxOk`), igual que los textos (`_maxB64For` sube el tope a ~6 MB por internet, pero **no** si hay camino local de archivos grandes: ahí manda L2CAP/Wi-Fi Direct, regla del dueño). Si un envío propio no sale en ~30 s o falla, en la burbuja sale **«Reintentar»**; y al volver el internet se reenvía solo (`net_link`→`_netOnline`→`resumeOutgoingTransfers`/`_resendPendingMessages`). Pruebas: `net.js` ampliado (foto por datos móviles y por buzón llegan; sin internet sale el botón y la foto se reenvía sola al volver). Batería 53/53, Kotlin 90/90 (sin cambios nativos), índice **41,4** (baja de 42,1 porque se registró en el catálogo el punto débil grave que reportó el dueño — con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar, tarea #83/2781; no es regresión de la 2780). Archivos muy grandes por internet = fase 2 (Tor nativo). ⚠️ A confirmar en los teléfonos del dueño. APK publicada (nightly-2780, 24,55 MB, sha256 4b29da67…; firma verificada en CI) |
 | 2781 | 8009b5a8 | Notas de voz, informe del dueño (ver "Ronda 2781"): (1) al empezar a grabar, o al entrar/empezar una llamada o videollamada, se **para la nota de voz que esté sonando** (antes seguía sonando y se grababa el altavoz); una sola suena a la vez. (2) **Pausar/reanudar** la grabación. (3) **Borrar** la grabación antes de enviarla. Barra de grabación con 🗑 borrar · tiempo · ⏸/▶ pausar · ➤ enviar (`voice.js`); el parón del audio lo coordina `render.js` (`_stopVoicePlayback`, por `window.__nexoStopVoice` y por el evento `nexo:call`). Prueba nueva `tests/sim/voicenote.js`. Batería 54/54, Kotlin 90/90 (sin cambios nativos), índice 41,7 (sube de 41,4: un modo más cubierto por prueba). ⚠️ A confirmar en los teléfonos del dueño. APK publicada (nightly-2781, 24,55 MB, sha256 f30bc75a…; firma verificada en CI) |
+| 2782 | _(pendiente)_ | Editar un mensaje enviado, pedido del dueño (ver "Ronda 2782"): mantén pulsado tu mensaje de texto → **✏️ Editar** → cambias el texto → se actualiza en los dos con la etiqueta **"editado"**. Ventana 15 min, solo texto, cifrado, por el molde de "eliminar para todos" (`nexo_act` act:'edit'). `vaultEditMessage`; `_startEdit`/`_editForAll`/`_applyChatAction` en `chat_actions`; barra "Editando"; `_doSend` manda la edición si hay una en curso. Prueba: `chatactions.js` ampliado y **metido en la batería** (`ci.js`, tag CHATACT — también cubre responder/deslizar/copiar/reenviar/eliminar, que no estaban). Batería 55/55, Kotlin 90/90 (sin cambios nativos), índice 42,3 (sube de 41,7: la suite del chat entra en la batería). ⚠️ A confirmar en los teléfonos del dueño. APK: pendiente de publicar |
 | 2774 | fa52b3d1 | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería 51/51, Kotlin 87/87 (16 nuevas). Índice de robustez 41,8 (ver `docs/ROBUSTEZ.md` §4). **APK publicada: `nightly-2775` (24,5 MB, firma verificada).** La primera compilación (run 2774) falló por una carrera en `LanHub.stop()` dentro de la prueba de la avalancha (iterar la cola mientras los hilos de lectura la vaciaban); arreglada con `poll()` y comprobada 5 veces; la 2775 compila, pasa todo y publica |
 
 ## Base estable: build 2713
@@ -232,6 +233,23 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2782: editar un mensaje ya enviado
+Pedido del dueño: "una vez enviado un mensaje, que se pueda editar". Se añade por el mismo molde que "eliminar para
+todos" (un `nexo_act` cifrado por `msgId`, dentro de una ventana de tiempo):
+
+- Mantén pulsado tu mensaje de **texto** → **✏️ Editar** (solo aparece en mensajes propios, de texto, de menos de 15 min,
+  y si el otro tiene NEXO actualizado). La caja se rellena con el texto y sale una barra "Editando mensaje".
+- Al enviar, `app_setup._doSend` ve que hay una edición en curso (`_editing`) y manda la edición en vez de un mensaje
+  nuevo: `chat_actions._editForAll` → `nexo_act {act:'edit', id, t}` + `vaultEditMessage` (cambia el contenido y marca
+  `edited`) + re-dibuja la burbuja con la etiqueta **"editado"** (`render.js`).
+- El receptor lo aplica en `_applyChatAction` solo si el mensaje es de quien lo pide (como el borrado); re-dibuja con
+  "editado". No se puede editar un adjunto ni un mensaje borrado.
+
+Prueba: `tests/sim/chatactions.js` ampliado con el paso de edición (barra, caja con el texto, A ve "editado", B recibe la
+edición y la ve con "editado") y **metido en la batería** (`ci.js`, tag CHATACT): de paso, la batería diaria ahora cubre
+también responder, deslizar para responder, copiar, reenviar a otro y eliminar para mí/para todos, que antes solo se
+probaban a mano. Batería 55/55, índice 42,3.
 
 ## Ronda 2781: notas de voz — pausar/reanudar, borrar antes de enviar, y no pisar el audio
 Informe del dueño: "cuando escuchas un audio y empiezas a grabar, el que estaba sonando no se para; e imagino que

@@ -152,8 +152,11 @@
     },
     {
      "fallo": "Responder, reenviar, eliminar y copiar",
-     "prueba": null,
-     "fuera": "chatactions.js"
+     "prueba": "menú de la burbuja"
+    },
+    {
+     "fallo": "Editar un mensaje ya enviado, con etiqueta «editado» (2782)",
+     "prueba": "menú de la burbuja"
     },
     {
      "fallo": "Orden de la lista de contactos (por último mensaje)",
