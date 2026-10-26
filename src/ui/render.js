@@ -507,8 +507,12 @@ export function _renderMessage(msg, skipSave) {
       var statusIcon = '○';
       if (msg.status === 'queued') { statusClass = 'status-queued'; statusIcon = '°'; }
       else if (msg.status === 'sending') { statusClass = 'status-sending'; statusIcon = '○'; }
+      // Palomitas como WhatsApp e IGUALES en todas las redes (BT/Wi-Fi/internet): el símbolo depende solo del estado,
+      // no del transporte. Enviado una palomita; entregado y leído, dos (se distinguen por color en el CSS). Antes
+      // 'entregado' era una sola (igual que 'enviado'): por Bluetooth, que suele quedarse en 'entregado', parecía
+      // distinto que por internet (que llega a 'leído').
       else if (msg.status === 'sent') { statusClass = 'status-sent'; statusIcon = '✓'; }
-      else if (msg.status === 'delivered') { statusClass = 'status-delivered'; statusIcon = '✓'; }
+      else if (msg.status === 'delivered') { statusClass = 'status-delivered'; statusIcon = '✓✓'; }
       else if (msg.status === 'read') { statusClass = 'status-read'; statusIcon = '✓✓'; }
       else if (msg.status === 'failed') { statusClass = 'status-failed'; statusIcon = '!'; }
       var statusSpan = document.createElement('span');
@@ -632,7 +636,7 @@ export function _updateMessageStatus(messageId, status) {
     if (status === 'queued') statusEl.textContent = '°';
     else if (status === 'sending') statusEl.textContent = '○';
     else if (status === 'sent') statusEl.textContent = '✓';
-    else if (status === 'delivered') statusEl.textContent = '✓';
+    else if (status === 'delivered') statusEl.textContent = '✓✓';
     else if (status === 'read') statusEl.textContent = '✓✓';
     else if (status === 'failed') statusEl.textContent = '!';
     var msgDiv = statusEl.closest('.message');

@@ -67,6 +67,7 @@ const SCENARIOS = [
   { name: 'videollamada: imagen con su forma, sin estirar ni recortar, entera y en espejo con la cámara de delante (Chromium)', args: ['videoframe.js'], tag: 'VIDEOFRAME', logs: 'last_logs_videoframe.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'filtros del micrófono: eco, los dos a la vez, ruido, zumbido, saturación', args: ['voicefx.js'], tag: 'VOICEFX', checks: { resultado: (v) => v === 'OK' } },
   { name: 'nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada', args: ['voicenote.js'], tag: 'VOICENOTE', logs: 'last_logs_voicenote.txt', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'palomitas de estado iguales en todas las redes (enviado ✓, entregado y leído ✓✓)', args: ['palomitas.js'], tag: 'PALOM', checks: { resultado: (v) => v === 'OK' } },
   { name: 'menú de la burbuja: responder (y deslizar), copiar, reenviar, EDITAR, eliminar para mí/para todos (3 teléfonos)', args: ['chatactions.js'], tag: 'CHATACT', logs: 'last_logs_chatactions.txt', checks: {
     B_ve_cita: isTrue, deslizar_responde: isTrue, C_recibe_archivo_identico_s: (v) => typeof v === 'number',
     barra_editar: isTrue, A_ve_editado: isTrue, B_recibe_edicion_s: (v) => typeof v === 'number', B_ve_editado: isTrue,
