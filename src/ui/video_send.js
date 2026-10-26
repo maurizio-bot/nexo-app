@@ -54,7 +54,7 @@ export function _sendVideo(blob, meta) {
       _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null, wdOnly: true }), {
         onWdFail: function(msgId) { _videoViaBle(contactId, msgId, blob, meta, mime, makePreview, tStart); }
       });
-    }).catch(function(e) { _showOwnPreparing(false); console.warn('[VIDEO] Error preparando vídeo:', e && e.message); });
+    }).catch(function(e) { _showOwnPreparing(false); console.warn('[VIDEO] Error preparando vídeo:', e && e.message); _showPermissionError('No se pudo preparar el vídeo (' + ((e && e.message) || 'error') + '). Prueba con uno más corto, o envía una foto.'); });
   }
   return makePreview(blob, meta.duration).then(function(preview) {
     _showOwnPreparing(false);
@@ -64,7 +64,7 @@ export function _sendVideo(blob, meta) {
     }
     if (!preview) {
       // Sin previa: se envía el original (como antes), con miniatura si se puede
-      if (blob.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(blob.size)); return; }
+      if (blob.size > MAX_BLE_FILE_BYTES) { _showPermissionError(_tooBigMessage(blob.size, contactId)); return; }
       console.log('[VIDEO] Enviando el original sin previa (' + Math.round(blob.size / 1024) + ' KB)');
       return Promise.all([_blobToB64(blob), _makeVideoThumb(blob, 320)]).then(function(r) {
         _sendAttachment('video', r[0], Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), thumb: r[1] || null }));
@@ -96,6 +96,7 @@ export function _sendVideo(blob, meta) {
   }).catch(function(e) {
     _showOwnPreparing(false);
     console.warn('[VIDEO] Error preparando vídeo:', e && e.message);
+    _showPermissionError('No se pudo preparar el vídeo (' + ((e && e.message) || 'error') + '). Prueba con uno más corto, o envía una foto.');
   });
 }
 
@@ -110,7 +111,7 @@ export function _videoViaBle(cid, msgId, blob, meta, mime, makePreview, tStart) 
   makePreview(blob, meta.duration).then(function(preview) {
     if (preview && preview.tooLong) { fail('Vídeo demasiado largo para Bluetooth (' + Math.round(preview.duration) + ' s). Máximo ' + PREVIEW_MAX_SECONDS + ' s.'); return; }
     if (!preview) {
-      if (blob.size > MAX_BLE_FILE_BYTES) { fail(_tooBigMessage(blob.size)); return; }
+      if (blob.size > MAX_BLE_FILE_BYTES) { fail(_tooBigMessage(blob.size, cid)); return; }
       return _blobToB64(blob).then(function(b64) {
         var m0 = Object.assign({}, meta, { mime: mime, format: _videoFormat(mime), wdOnly: false });
         _sendFileFor(cid, msgId, 'video', b64, m0);
@@ -133,7 +134,7 @@ export function _videoViaBle(cid, msgId, blob, meta, mime, makePreview, tStart) 
     });
   }).catch(function(e) {
     console.warn('[VIDEO] Error preparando la previa:', e && e.message);
-    fail(null);
+    fail('No se pudo preparar el vídeo (' + ((e && e.message) || 'error') + '). Prueba con uno más corto, o envía una foto.');
   });
 }
 
