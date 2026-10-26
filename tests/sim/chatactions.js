@@ -98,6 +98,12 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   pe('pointerdown', 100); pe('pointermove', 150); pe('pointermove', 190); pe('pointerup', 190); await sleep(400);
   r.deslizar_responde = !!A.win.document.getElementById('reply-bar');
   click(A.win, A.win.document.querySelector('#reply-bar .reply-cancel')); await sleep(200);
+  // 2b) Responder deslizando a la IZQUIERDA (ronda 2783, lo que pidió el dueño; antes solo a la derecha)
+  const swl = bubbleWith(A, 'pregunta de B');
+  const pel = (type, x) => swl.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 }));
+  pel('pointerdown', 200); pel('pointermove', 150); pel('pointermove', 110); pel('pointerup', 110); await sleep(400);
+  r.deslizar_izq_responde = !!A.win.document.getElementById('reply-bar');
+  click(A.win, A.win.document.querySelector('#reply-bar .reply-cancel')); await sleep(200);
   // 3) Copiar
   ctx(A, bubbleWith(A, 'pregunta de B')); click(A.win, await menuItem(A, 'mm-copy')); await sleep(300);
   r.copiar_aviso = ((A.win.document.getElementById('perm-error-toast') || {}).textContent || '');
@@ -140,6 +146,19 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.B_recibe_edicion_s = await waitFor(async () => { const vb = await B.win.vaultLoadMessages(id('A')); return vb.some((m) => m.content === 'texto corregido' && m.edited) && !vb.some((m) => m.content === 'texto con herror'); }, 30000);
   const edB = bubbleWith(B, 'texto corregido');
   r.B_ve_editado = !!(edB && edB.querySelector('.msg-edited'));
+  // 4c) Reaccionar (ronda 2783): doble toque en una burbuja = ❤️; el otro lo ve. Menú "Reaccionar" para elegir otro.
+  const rbt = bubbleWith(A, 'pregunta de B');
+  const tap2 = (x, y) => { rbt.dispatchEvent(new A.win.MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y })); rbt.dispatchEvent(new A.win.MouseEvent('pointerup', { bubbles: true, clientX: x, clientY: y })); };
+  tap2(120, 300); await sleep(60); tap2(120, 300); await sleep(700);
+  const rbA = bubbleWith(A, 'pregunta de B');
+  r.doble_toque_reacciona = !!(rbA && rbA.querySelector('.msg-reactions') && /❤/.test(rbA.querySelector('.msg-reactions').textContent));
+  r.B_recibe_reaccion_s = await waitFor(async () => { const vb = await B.win.vaultLoadMessages(id('A')); return vb.some((m) => m.reactions && m.reactions[id('A')]); }, 30000);
+  ctx(A, bubbleWith(A, 'pregunta de B'));
+  const laugh = await (async () => { for (let i = 0; i < 20; i++) { const l = Array.from(A.win.document.querySelectorAll('#nexo-msg-menu .mm-react')).find((b) => b.textContent === '😂'); if (l) return l; await sleep(100); } return null; })();
+  r.menu_tiene_reacciones = A.win.document.querySelectorAll('#nexo-msg-menu .mm-react').length;
+  click(A.win, laugh); await sleep(700);
+  const rbA2 = bubbleWith(A, 'pregunta de B');
+  r.menu_reacciona = !!(rbA2 && /😂/.test(((rbA2.querySelector('.msg-reactions') || {}).textContent) || ''));
   // 5) Eliminar para mí
   ctx(A, bubbleWith(A, 'hola B')); click(A.win, await menuItem(A, 'mm-del-me')); await sleep(800);
   r.eliminar_para_mi = !bubbleWith(A, 'hola B') && !(await A.win.vaultLoadMessages(id('B'))).some((m) => m.content === 'hola B') && (await B.win.vaultLoadMessages(id('A'))).some((m) => m.content === 'hola B');
@@ -157,6 +176,27 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.accion_falsa_ignorada = !!bubbleWith(A, 'esta es mi respuesta') && !(await A.win.vaultLoadMessages(id('B'))).find((m) => (m.msgId || m.messageId) === aMsgId).deleted;
   // Nada de JSON a la vista ni en la lista de chats
   r.json_visible = shown(A).concat(shown(B)).filter((t) => /"type":"nexo_/.test(t)).length;
+  // 4d) Deslizar el chat hacia ABAJO = cerrarlo (ronda 2783). En jsdom mc.scrollTop es 0, así que el gesto cuenta.
+  const mcA = A.win.document.getElementById('messages-container');
+  const teA = (type, y) => { const ev = new A.win.Event(type, { bubbles: true, cancelable: true }); ev.touches = [{ clientX: 60, clientY: y }]; mcA.dispatchEvent(ev); };
+  r.chat_abierto = A.win.document.body.classList.contains('chat-view-active');
+  teA('touchstart', 80); teA('touchmove', 200); teA('touchmove', 340); teA('touchend', 340); await sleep(900);
+  r.deslizar_abajo_cierra = r.chat_abierto && !A.win.document.body.classList.contains('chat-view-active');
+  // 4e) Zoom de la foto en el visor: pellizco (dos dedos) para acercar/alejar y doble toque para alternar (ronda 2783)
+  if (typeof A.win.__nexoOpenMedia === 'function') {
+    A.win.__nexoOpenMedia('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'image');
+    await sleep(150);
+    const vimg = A.win.document.querySelector('#fullscreen-media-overlay img');
+    const tev = (type, pts) => { const ev = new A.win.Event(type, { bubbles: true, cancelable: true }); ev.touches = pts.map((p) => ({ clientX: p[0], clientY: p[1] })); vimg.dispatchEvent(ev); };
+    tev('touchstart', [[120, 300], [180, 300]]); tev('touchmove', [[40, 300], [340, 300]]); tev('touchend', []);  // abrir los dedos: acercar
+    r.foto_pellizco_zoom = /scale\((?:[2-9]|1\.[3-9])/.test(vimg.style.transform || '');
+    tev('touchstart', [[100, 300], [200, 300]]); tev('touchmove', [[145, 300], [155, 300]]); tev('touchend', []);  // juntar los dedos: alejar
+    r.foto_pellizco_aleja = (vimg.style.transform || '').indexOf('scale(1)') >= 0;
+    const dtap = () => { tev('touchstart', [[120, 300]]); tev('touchend', []); };
+    dtap(); await sleep(60); dtap(); await sleep(120);
+    r.foto_doble_toque_amplia = /scale\(2\.5\)/.test(vimg.style.transform || '');
+    const ov = A.win.document.getElementById('fullscreen-media-overlay'); if (ov) ov.remove();
+  }
   await closeChat(A); await closeChat(B); await sleep(500);
   r.lista_A = Array.from(A.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).map((x) => x.textContent.substring(0, 50));
   r.lista_B = Array.from(B.win.document.querySelectorAll('#main-contacts-list .ble-contact-row')).map((x) => x.textContent.substring(0, 50));

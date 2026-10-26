@@ -68,8 +68,10 @@ const SCENARIOS = [
   { name: 'filtros del micrófono: eco, los dos a la vez, ruido, zumbido, saturación', args: ['voicefx.js'], tag: 'VOICEFX', checks: { resultado: (v) => v === 'OK' } },
   { name: 'nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada', args: ['voicenote.js'], tag: 'VOICENOTE', logs: 'last_logs_voicenote.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'palomitas de estado iguales en todas las redes (enviado ✓, entregado y leído ✓✓)', args: ['palomitas.js'], tag: 'PALOM', checks: { resultado: (v) => v === 'OK' } },
-  { name: 'menú de la burbuja: responder (y deslizar), copiar, reenviar, EDITAR, eliminar para mí/para todos (3 teléfonos)', args: ['chatactions.js'], tag: 'CHATACT', logs: 'last_logs_chatactions.txt', checks: {
-    B_ve_cita: isTrue, deslizar_responde: isTrue, C_recibe_archivo_identico_s: (v) => typeof v === 'number',
+  { name: 'menú de la burbuja: responder (deslizar izq/der), REACCIONAR (doble toque ❤️ y menú), copiar, reenviar, EDITAR, eliminar para mí/para todos (3 teléfonos)', args: ['chatactions.js'], tag: 'CHATACT', logs: 'last_logs_chatactions.txt', checks: {
+    B_ve_cita: isTrue, deslizar_responde: isTrue, deslizar_izq_responde: isTrue, C_recibe_archivo_identico_s: (v) => typeof v === 'number',
+    doble_toque_reacciona: isTrue, B_recibe_reaccion_s: (v) => typeof v === 'number', menu_reacciona: isTrue, deslizar_abajo_cierra: isTrue,
+    foto_pellizco_zoom: isTrue, foto_pellizco_aleja: isTrue, foto_doble_toque_amplia: isTrue,
     barra_editar: isTrue, A_ve_editado: isTrue, B_recibe_edicion_s: (v) => typeof v === 'number', B_ve_editado: isTrue,
     B_ve_eliminado_s: (v) => typeof v === 'number', accion_falsa_ignorada: isTrue, json_visible: (v) => v === 0, errores: isEmpty } },
   ...['rechazar-cerrada', 'rechazar-viva', 'contestar-viejo', 'cruce', 'reloj', 'oferta-vieja', 'bloqueo', 'repetida', 'wifi-uno', 'video-estado', 'sin-micro', 'timbre'].map((c) => (
