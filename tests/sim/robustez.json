@@ -240,6 +240,10 @@
     {
      "fallo": "Wi-Fi caído a mitad de una foto con un Bluetooth lento",
      "prueba": null
+    },
+    {
+     "fallo": "Nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada (2781)",
+     "prueba": "nota de voz: pausar/reanudar"
     }
    ],
    "debiles": [

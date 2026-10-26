@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-26 (build 2780; fotos/archivos por internet siempre mandables + "Reintentar" y reenvío al volver, ver "Ronda 2780". La 2779 fue alta por ID; la 2778, llamadas; la 2777, C1)
+Última actualización: 2026-10-26 (build 2781; notas de voz: pausar/reanudar, borrar antes de enviar y parar el audio al grabar o al entrar llamada, ver "Ronda 2781". La 2780 fueron fotos/archivos por internet; la 2779, alta por ID)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -105,6 +105,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2778 | 361fbcdf | Llamadas, informe del dueño (ver "Ronda 2778"): **menos ruido** (la puerta de ruido del micrófono pasa de −10 a −22 dB; cuando no detecta tu voz el micro queda al ~8 %, no a cero, y abre al instante al hablar: así el ruido de fondo casi no se transmite), **pantalla al entrar llamada** (MainActivity pide "mostrar sobre el bloqueo" y "encender pantalla" al nacer la actividad, solo si el intent es de llamada) y **contestar deslizando hacia arriba** (el toque sigue valiendo). Batería 52/52, Kotlin 90/90, índice 42,1. ⚠️ Pantalla y desliz: a confirmar en los dos teléfonos del dueño. APK publicada (nightly-2778, 24,55 MB, sha256 587f103c…; firma verificada) |
 | 2779 | _(pendiente)_ | Alta por ID, pedido del dueño (ver "Ronda 2779"): **agregar a alguien que está lejos** con su NEXO ID (te lo pasa por WhatsApp). No hay servidor donde "buscar" un ID (eso rompería la privacidad); se le deja una **solicitud** en un buzón de los relés derivado de su ID, y él la **acepta o la elimina** (anti-spam). Al aceptar, se intercambian las claves y el canal seguro se enciende solo; la clave entra "sin verificar" (número de seguridad aparte). Interfaz: Perfil → "Compartir mi ID"; Agregar → "Agregar por NEXO ID" + bandeja de solicitudes. Prueba nueva: `tests/sim/reqadd.js`. Batería 53/53, Kotlin 90/90, índice 42,1. APK publicada (nightly-2779, 24,55 MB, sha256 ced36f24…; firma verificada) |
 | 2780 | 8757bc03 | Fotos/archivos por internet, informe del dueño (ver "Ronda 2780"): estando lejos, al contacto le llegaba el texto pero no la foto. Antes un adjunto solo salía por internet con los dos en Wi-Fi (`filesOk`); ahora, bajo ~6 MB, va por **Tor directo/Wi-Fi si está en línea** o **al buzón de los relés si no** (`mailboxOk`), igual que los textos (`_maxB64For` sube el tope a ~6 MB por internet, pero **no** si hay camino local de archivos grandes: ahí manda L2CAP/Wi-Fi Direct, regla del dueño). Si un envío propio no sale en ~30 s o falla, en la burbuja sale **«Reintentar»**; y al volver el internet se reenvía solo (`net_link`→`_netOnline`→`resumeOutgoingTransfers`/`_resendPendingMessages`). Pruebas: `net.js` ampliado (foto por datos móviles y por buzón llegan; sin internet sale el botón y la foto se reenvía sola al volver). Batería 53/53, Kotlin 90/90 (sin cambios nativos), índice **41,4** (baja de 42,1 porque se registró en el catálogo el punto débil grave que reportó el dueño — con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar, tarea #83/2781; no es regresión de la 2780). Archivos muy grandes por internet = fase 2 (Tor nativo). ⚠️ A confirmar en los teléfonos del dueño. APK publicada (nightly-2780, 24,55 MB, sha256 4b29da67…; firma verificada en CI) |
+| 2781 | _(pendiente)_ | Notas de voz, informe del dueño (ver "Ronda 2781"): (1) al empezar a grabar, o al entrar/empezar una llamada o videollamada, se **para la nota de voz que esté sonando** (antes seguía sonando y se grababa el altavoz); una sola suena a la vez. (2) **Pausar/reanudar** la grabación. (3) **Borrar** la grabación antes de enviarla. Barra de grabación con 🗑 borrar · tiempo · ⏸/▶ pausar · ➤ enviar (`voice.js`); el parón del audio lo coordina `render.js` (`_stopVoicePlayback`, por `window.__nexoStopVoice` y por el evento `nexo:call`). Prueba nueva `tests/sim/voicenote.js`. Batería 54/54, Kotlin 90/90 (sin cambios nativos), índice 41,7 (sube de 41,4: un modo más cubierto por prueba). ⚠️ A confirmar en los teléfonos del dueño. APK: pendiente de publicar |
 | 2774 | fa52b3d1 | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería 51/51, Kotlin 87/87 (16 nuevas). Índice de robustez 41,8 (ver `docs/ROBUSTEZ.md` §4). **APK publicada: `nightly-2775` (24,5 MB, firma verificada).** La primera compilación (run 2774) falló por una carrera en `LanHub.stop()` dentro de la prueba de la avalancha (iterar la cola mientras los hilos de lectura la vaciaban); arreglada con `poll()` y comprobada 5 veces; la 2775 compila, pasa todo y publica |
 
 ## Base estable: build 2713
@@ -231,6 +232,25 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2781: notas de voz — pausar/reanudar, borrar antes de enviar, y no pisar el audio
+Informe del dueño: "cuando escuchas un audio y empiezas a grabar, el que estaba sonando no se para; e imagino que
+tampoco al recibir una llamada o videollamada". Y además: "poder parar una grabación y reanudarla, y poder borrarla
+antes de enviarla". Tres cosas:
+
+1. **No pisar el audio**: cada nota de voz se reproducía con su propio `new Audio()` sin coordinación, así que varias
+   podían sonar a la vez y ninguna se paraba al grabar o al entrar una llamada (se grababa el altavoz). Ahora `render.js`
+   lleva un registro del reproductor que suena (`_curVoiceStop`) y `_stopVoicePlayback()` lo para. Se llama: al empezar a
+   grabar (voice.js, por `window.__nexoStopVoice`), al reproducir otra nota (solo una suena a la vez) y al entrar/empezar
+   una llamada o videollamada (un escucha del evento `nexo:call`, que `calls.js` emite en `calling`/`ringing`/`active`).
+2. **Pausar/reanudar la grabación** (`MediaRecorder.pause()`/`resume()`), con el contador de tiempo descontando la pausa.
+3. **Borrar la grabación antes de enviarla**: se para el micrófono y se descartan los trozos sin enviar.
+
+Interfaz: barra de grabación (`voice.js`) con **🗑 borrar · ● tiempo · ⏸/▶ pausar · ➤ enviar**. El micrófono (botón de
+enviar con el texto vacío) sigue empezando y, al tocarlo otra vez, envía.
+
+Prueba nueva `tests/sim/voicenote.js` (en `ci.js`): grabar→pausar→reanudar→enviar le llega una nota a B; grabar→borrar
+no envía nada; al grabar y al entrar una llamada se pide parar el audio (`window.__nexoVoiceStops`). Batería 54/54.
 
 ## Ronda 2780: fotos y archivos por internet — siempre mandables, con «Reintentar» y reenvío al volver
 Informe del dueño: "estoy escribiendo a un dispositivo con la app en otra ciudad y todo va bien, pero me di cuenta de que

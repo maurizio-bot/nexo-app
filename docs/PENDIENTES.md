@@ -14,10 +14,13 @@ una prueba más), batería 52/52, Kotlin 90/90. Informe del dueño: 2778 (llamad
 contestar deslizando) y 2779 (alta por ID: agregar a alguien lejano con su NEXO ID + solicitudes aceptar/eliminar; batería
 53/53). Con la 2780 (informe del dueño: las fotos/archivos a un contacto lejano no llegaban): fotos y archivos medianos
 (~6 MB) ahora SIEMPRE se pueden mandar por internet (buzón de los relés o Tor), botón «Reintentar» a los 30 s y reenvío
-solo al volver la conexión; batería 53/53, índice **41,4** (baja de 42,1 al apuntar el bug del Wi-Fi→internet del dueño como punto débil grave abierto; no es regresión). **Siguiente:
-revisión 2, día 1 (avisos, segundo plano y app cerrada)** el 26-10, tras lo que traiga el dueño; pendiente corto: **2781 —
-informe del dueño: con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar (hay que mantener el Wi-Fi si
-está conectado y bueno; sospecha: el tráfico de la propia videollamada marca el enlace «malo» y lo suelta; tarea #83)**;
+solo al volver la conexión; batería 53/53, índice **41,4** (baja de 42,1 al apuntar el bug del Wi-Fi→internet del dueño como punto débil grave abierto; no es regresión). Con la 2781 (informe del dueño: notas de voz): al grabar o al entrar una
+llamada se para el audio que suena; pausar/reanudar la grabación; borrarla antes de enviar (`tests/sim/voicenote.js`);
+batería 54/54, índice **41,7**. **Siguiente:
+revisión 2, día 1 (avisos, segundo plano y app cerrada)** el 26-10, tras lo que traiga el dueño; pendiente corto: **el bug
+del Wi-Fi→internet (con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar; hay que mantener el Wi-Fi si
+está conectado y bueno; sospecha: el tráfico de la propia videollamada marca el enlace «malo» y lo suelta; tarea #83, falta
+el diagnóstico de los dos teléfonos o reproducirlo en el simulador)**;
 aviso proactivo del permiso de pantalla completa (Android 14); y en seguridad, los puntos débiles abiertos (H3, H4, M5, M6, F6–F9).
 
 ## 0b. Hoja de ruta (opinión del 25-10, aceptada por el dueño)
