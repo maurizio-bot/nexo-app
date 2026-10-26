@@ -30,10 +30,12 @@ var DEF = {
   dtDb: -3,             // los dos hablan a la vez (no se toca: si no, se corta la voz propia)
   dtHoldMs: 200,        // hablando los dos: se mantiene al menos esto
   farHoldMs: 300,       // el otro dejó de sonar: se sigue bajando esto (cola del eco; ronda 2774: 200→300)
-  gateDb: -22,          // silencio (ronda 2778, pedido del dueño: "el micro que no oye voz se silencia, no del todo"). De
-                        // -10 a -22 dB: en silencio el micrófono queda al ~8 %, así que el ruido de fondo (ventilador,
-                        // calle, electrónica) casi no se transmite. No a cero, para que no suene cortado ni bombee; abre
-                        // al instante al hablar (ataque corto abajo) y se mantiene un rato tras la última sílaba
+  gateDb: -34,          // silencio (ronda 2778, pedido del dueño: "el micro que no oye voz se silencia, no del todo";
+                        // 26-10 lo volvió a pedir: más silencio cuando no hay voz). De -10 a -22 y ahora a -34 dB: en
+                        // silencio el micrófono queda al ~2 %, así que el ruido de fondo (ventilador, calle, electrónica)
+                        // casi no se transmite. No a cero, para que no suene cortado ni bombee; abre al instante al hablar
+                        // (ataque de 2 ms, independiente de la profundidad, así que no se come el principio de la palabra)
+                        // y se mantiene un rato tras la última sílaba
   farOn: 0.004,         // nivel del otro (RMS) desde el que cuenta como que suena
   maxDelay: 0.6,        // el eco llega como mucho 600 ms después de sonar (latencias de salida y entrada; cascos Bluetooth)
   frame: 1024,          // trozo de análisis (~21 ms)
