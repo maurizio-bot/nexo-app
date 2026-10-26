@@ -18,8 +18,8 @@ solo al volver la conexión; batería 53/53, índice **41,4** (baja de 42,1 al a
 llamada se para el audio que suena; pausar/reanudar la grabación; borrarla antes de enviar (`tests/sim/voicenote.js`);
 batería 54/54, índice **41,7**. Con la 2782 (pedido del dueño): **editar un mensaje ya enviado** con etiqueta "editado"
 (`chatactions.js` ampliada y metida en la batería, tag CHATACT); batería 55/55, índice **42,3**. **Siguiente:
-CONSOLIDAR — el dueño pidió parar a confirmar en teléfonos lo de estos días (2777–2782) antes de seguir con reaccionar
-(2783) y gestos (2784); y el bug
+CONSOLIDAR — el dueño va a probar en teléfonos lo de estos días (2777–2782) con una lista de pruebas que se le pasó;
+recomendado arreglar lo que salga antes de seguir con reaccionar (2783) y gestos (2784); y el bug
 del Wi-Fi→internet (con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar; hay que mantener el Wi-Fi si
 está conectado y bueno; sospecha: el tráfico de la propia videollamada marca el enlace «malo» y lo suelta; tarea #83, falta
 el diagnóstico de los dos teléfonos o reproducirlo en el simulador)**;
