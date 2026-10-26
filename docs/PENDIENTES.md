@@ -21,13 +21,14 @@ batería 54/54, índice **41,7**. Con la 2782 (pedido del dueño): **editar un m
 **gestos** (deslizar la burbuja izq/der para responder, deslizar el chat abajo para cerrar, pellizco/doble toque para
 ampliar la foto), **palomitas iguales** en todas las redes (enviado ✓, entregado y leído ✓✓) y **micrófono** más
 silencioso (gate −34 dB); `palomitas.js` + `chatactions.js` ampliada; batería 56/56, índice **42** (baja 0,3: se registró
-como punto débil GRAVE el bug de la app cerrada del dueño; no es regresión). **Siguiente (prioridad): el bug GRAVE de
+como punto débil GRAVE el bug de la app cerrada del dueño; no es regresión). Con la 2784 (informe del dueño, todo JS): **#81** llamadas/videollamadas a pantalla completa en Android 14 — se pide el permiso al arrancar (sin él la llamada entra solo como aviso, sin Contestar/Rechazar); zoom de foto limitado al borde; franja de conectados sin parpadeo (histéresis 60 s); «Copiar diagnóstico» de la última hora. Batería 56/56, índice 42. El dueño confirmó que con la batería «Sin restricciones» las llamadas ya entran (faltaba la pantalla completa, ya en #81) pero los mensajes aún NO llegan con la app cerrada. **Siguiente (prioridad): el bug GRAVE de
 APP CERRADA (#87)** — con la app deslizada + pantalla apagada no llegan mensajes ni avisos (ni Wi-Fi ni internet) hasta
 abrir; es nativo (la recepción vive en el proceso del WebView: al cerrar se apaga el LAN, y Doze duerme el proceso sin
 WifiLock ni exención de batería), no reproducible en el simulador → falta el **diagnóstico de los dos teléfonos**. Después:
-el aviso que solo sale como icono con la pantalla apagada (#89); confirmar en teléfonos lo de 2777–2783; el bug del
-Wi-Fi→internet (#83, con ambas apps abiertas NO se reproduce según la prueba del dueño del 26-10, se mantiene en Wi-Fi);
-aviso proactivo del permiso de pantalla completa (Android 14); y en seguridad, los puntos débiles abiertos (H3, H4, M5, M6, F6–F9).
+el aviso que solo sale como icono con la pantalla apagada (#89); el micrófono de calidad (loopback AEC de Chrome, investigado, #93),
+el botón de descarga de foto/vídeo (#92) y los medios de una sola vista (#94); empezar la pantalla infinita / Stream (#95); el bug
+del Wi-Fi→internet (#83, con ambas apps abiertas NO se reproduce, se mantiene en Wi-Fi); después el juego secreto (lluvia de
+núcleos); y terminar la auditoría (H3, H4, M5, M6, F6–F9). El permiso de pantalla completa (#81) ya quedó hecho en la 2784.
 
 ## 0b. Hoja de ruta (opinión del 25-10, aceptada por el dueño)
 Lo que más falta ya no es código nuevo, sino confirmar en el mundo real lo que existe. En orden de importancia:

@@ -591,6 +591,10 @@
     {
      "fallo": "Fabricantes que congelan la app (Vivo)",
      "prueba": null
+    },
+    {
+     "fallo": "Pedir proactivamente el permiso de pantalla completa de llamadas (Android 14); sin él la llamada entra solo como aviso, sin Contestar/Rechazar (2784, #81)",
+     "prueba": "avisos con la pantalla apagada"
     }
    ],
    "debiles": [
