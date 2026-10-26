@@ -17,12 +17,16 @@ contestar deslizando) y 2779 (alta por ID: agregar a alguien lejano con su NEXO 
 solo al volver la conexión; batería 53/53, índice **41,4** (baja de 42,1 al apuntar el bug del Wi-Fi→internet del dueño como punto débil grave abierto; no es regresión). Con la 2781 (informe del dueño: notas de voz): al grabar o al entrar una
 llamada se para el audio que suena; pausar/reanudar la grabación; borrarla antes de enviar (`tests/sim/voicenote.js`);
 batería 54/54, índice **41,7**. Con la 2782 (pedido del dueño): **editar un mensaje ya enviado** con etiqueta "editado"
-(`chatactions.js` ampliada y metida en la batería, tag CHATACT); batería 55/55, índice **42,3**. **Siguiente:
-CONSOLIDAR — el dueño va a probar en teléfonos lo de estos días (2777–2782) con una lista de pruebas que se le pasó;
-recomendado arreglar lo que salga antes de seguir con reaccionar (2783) y gestos (2784); y el bug
-del Wi-Fi→internet (con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar; hay que mantener el Wi-Fi si
-está conectado y bueno; sospecha: el tráfico de la propia videollamada marca el enlace «malo» y lo suelta; tarea #83, falta
-el diagnóstico de los dos teléfonos o reproducirlo en el simulador)**;
+(`chatactions.js` ampliada y metida en la batería, tag CHATACT); batería 55/55, índice **42,3**. Con la 2783 (pedido del dueño, todo en una APK): **reaccionar** (doble toque ❤️ + menú),
+**gestos** (deslizar la burbuja izq/der para responder, deslizar el chat abajo para cerrar, pellizco/doble toque para
+ampliar la foto), **palomitas iguales** en todas las redes (enviado ✓, entregado y leído ✓✓) y **micrófono** más
+silencioso (gate −34 dB); `palomitas.js` + `chatactions.js` ampliada; batería 56/56, índice **42** (baja 0,3: se registró
+como punto débil GRAVE el bug de la app cerrada del dueño; no es regresión). **Siguiente (prioridad): el bug GRAVE de
+APP CERRADA (#87)** — con la app deslizada + pantalla apagada no llegan mensajes ni avisos (ni Wi-Fi ni internet) hasta
+abrir; es nativo (la recepción vive en el proceso del WebView: al cerrar se apaga el LAN, y Doze duerme el proceso sin
+WifiLock ni exención de batería), no reproducible en el simulador → falta el **diagnóstico de los dos teléfonos**. Después:
+el aviso que solo sale como icono con la pantalla apagada (#89); confirmar en teléfonos lo de 2777–2783; el bug del
+Wi-Fi→internet (#83, con ambas apps abiertas NO se reproduce según la prueba del dueño del 26-10, se mantiene en Wi-Fi);
 aviso proactivo del permiso de pantalla completa (Android 14); y en seguridad, los puntos débiles abiertos (H3, H4, M5, M6, F6–F9).
 
 ## 0b. Hoja de ruta (opinión del 25-10, aceptada por el dueño)

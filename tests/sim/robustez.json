@@ -13,7 +13,7 @@
   "nunca": 0
  },
  "debil": {
-  "grave": 8,
+  "grave": 9,
   "media": 4,
   "leve": 2
  },
@@ -157,6 +157,14 @@
     {
      "fallo": "Editar un mensaje ya enviado, con etiqueta «editado» (2782)",
      "prueba": "menú de la burbuja"
+    },
+    {
+     "fallo": "Reaccionar a un mensaje con emoji (doble toque ❤️ / menú «Reaccionar»), que llegue al otro (2783)",
+     "prueba": "menú de la burbuja"
+    },
+    {
+     "fallo": "Palomitas de «entregado» que se veían distintas por Bluetooth que por otras redes (una vs dos); ahora iguales en todas (2783)",
+     "prueba": "palomitas de estado"
     },
     {
      "fallo": "Orden de la lista de contactos (por último mensaje)",
@@ -549,7 +557,7 @@
    "peso": 10,
    "telefono": {
     "estado": "falla",
-    "por": "25-10 (2771): con Wi-Fi y la pantalla apagada no llegaban mensajes ni avisos hasta encenderla (arreglado en la 2772, sin probar)"
+    "por": "26-10: con la app CERRADA + pantalla apagada no llegan mensajes ni avisos (ni Wi-Fi ni internet) hasta abrir la app (tarea #87, nativo, sin arreglar). La 2772 arregló el caso de pantalla apagada con la app viva"
    },
    "revision": {
     "n": 0,
@@ -591,8 +599,12 @@
      "d": "Vivo: si congela la app, solo lo evitan sus ajustes (inicio automático, alto consumo en segundo plano); NEXO los abre (Perfil) pero no puede comprobarlos"
     },
     {
+     "g": "grave",
+     "d": "App CERRADA (deslizada) + pantalla apagada: no llegan mensajes ni avisos por Wi-Fi ni por internet hasta abrir la app; el par en el mismo Wi-Fi se pasa a «Internet» (informe del dueño 26-10, tarea #87). La recepción (LanHub/NetBg/BgInbox) vive en el proceso del WebView y solo sobrevive si Android no mata el proceso; al cerrar se apaga el LAN a propósito, no se pide exención de batería ni hay WifiLock. No reproducible en el simulador (nativo); pendiente del diagnóstico de los dos teléfonos"
+    },
+    {
      "g": "media",
-     "d": "Recibir con la app cerrada: sin comprobar que Android no cierre el proceso"
+     "d": "Al recibir con la pantalla apagada se enciende la pantalla pero el aviso solo sale como icono en la barra, sin contenido ni heads-up (informe del dueño 26-10, tarea #89); probable importancia del canal de mensajes o que no se llegó a postear el aviso del mensaje"
     }
    ]
   },
@@ -722,6 +734,10 @@
     {
      "fallo": "Foto de perfil",
      "prueba": "foto de perfil"
+    },
+    {
+     "fallo": "Gestos: deslizar la burbuja (izq/der) para responder, deslizar el chat abajo para cerrar, ampliar foto con pellizco o doble toque (2783)",
+     "prueba": "menú de la burbuja"
     },
     {
      "fallo": "Pantalla girada (barra gris)",
