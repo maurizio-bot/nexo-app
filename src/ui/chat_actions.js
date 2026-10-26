@@ -7,7 +7,7 @@ import { applyAvatar } from './avatar.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
-import { vaultBlankMessage, vaultDeleteMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultSaveContacts } from '../vault/vault_manager.js';
+import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultSaveContacts } from '../vault/vault_manager.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _renderMessage, _sendAttachment, _sendTextTo;
@@ -24,6 +24,8 @@ export var _renderedMessageIds = new Set();
 export var _replyTo = null;               // { id, a: autor (NEXO ID), s: resumen, k: tipo }
 
 export var DELETE_ALL_MS = 24 * 3600000;  // "eliminar para todos" hasta 24 h después de enviarlo
+export var EDIT_MS = 15 * 60000;           // ronda 2782: editar un mensaje propio hasta 15 min después de enviarlo
+export var _editing = null;                // ronda 2782: { id, cid } del mensaje que se está editando (lo lee _doSend)
 
 // Burbuja de texto: eliminado, reenviado, respuesta citada (todo como texto: viene de otro teléfono)
 export function _fillTextBubble(contentDiv, msg, isOwn) {
@@ -151,6 +153,9 @@ export function _openMsgMenu(div) {
     if (!deleted) add('↩  Responder', 'mm-reply', function() { _startReply(id, msg); });
     if (!deleted) add('↪  Reenviar', 'mm-forward', function() { _openForwardSheet(msg); });
     if (!deleted && !msg.attachmentType) add('⧉  Copiar', 'mm-copy', function() { _copyText(_plainText(msg.content)); });
+    if (isOwn && !deleted && !msg.attachmentType && Date.now() - (msg.timestamp || 0) < EDIT_MS && _peerUnderstands(cid)) {
+      add('✏️  Editar', 'mm-edit', function() { _startEdit(id, msg); });
+    }
     add('🗑  Eliminar para mí', 'mm-del-me', function() { _deleteForMe(cid, id); }, true);
     if (isOwn && !deleted && Date.now() - (msg.timestamp || 0) < DELETE_ALL_MS && _peerUnderstands(cid)) {
       add('🗑  Eliminar para todos', 'mm-del-all', function() { _deleteForAll(cid, msg); }, true);
@@ -201,6 +206,45 @@ export function _renderReplyBar() {
   x.textContent = '✕';
   x.style.cssText = 'background:none;border:none;color:#fff;font-size:18px;padding:4px 8px;';
   x.onclick = _cancelReply;
+  bar.appendChild(txt); bar.appendChild(x);
+  area.parentNode.insertBefore(bar, area);
+}
+
+// Ronda 2782: editar un mensaje propio. Pone su texto en la caja y, al enviar, _doSend manda la edición (no uno nuevo).
+export function _startEdit(id, msg) {
+  var cid = _getCurrentContactId();
+  if (!id || !cid) return;
+  _cancelReply();
+  _editing = { id: id, cid: _normId(cid) };
+  var input = document.getElementById('message-input');
+  if (input) { input.value = _plainText(msg.content); try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} input.focus(); }
+  _renderEditBar();
+}
+
+export function _cancelEdit() {
+  _editing = null;
+  _renderEditBar();
+  var input = document.getElementById('message-input');
+  if (input) { input.value = ''; try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} }
+}
+
+export function _renderEditBar() {
+  var old = document.getElementById('edit-bar');
+  if (old) old.remove();
+  if (!_editing) return;
+  var area = document.getElementById('input-area');
+  if (!area || !area.parentNode) return;
+  var bar = document.createElement('div');
+  bar.id = 'edit-bar';
+  bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 10px 4px;padding:6px 10px;border-left:3px solid #ffc107;background:rgba(255,255,255,0.08);border-radius:8px;color:#fff;font-size:13px;';
+  var txt = document.createElement('div');
+  txt.style.cssText = 'flex:1;min-width:0;color:#ffc107;font-weight:600;';
+  txt.textContent = '✏️ Editando mensaje';
+  var x = document.createElement('button');
+  x.className = 'edit-cancel';
+  x.textContent = '✕';
+  x.style.cssText = 'background:none;border:none;color:#fff;font-size:18px;padding:4px 8px;';
+  x.onclick = _cancelEdit;
   bar.appendChild(txt); bar.appendChild(x);
   area.parentNode.insertBefore(bar, area);
 }
@@ -326,9 +370,37 @@ export function _rerenderBlank(id, msg) {
   _renderMessage(Object.assign({}, msg, { deleted: true, content: '', attachmentType: null, attachmentPayload: null, attachmentRef: null, attachmentMeta: null }), true);
 }
 
+// Ronda 2782: editar un mensaje propio ya enviado (manda la edición al otro y la aplica aquí)
+export function _editForAll(cid, id, newText) {
+  _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'edit', id: id, t: newText }), '', true);
+  vaultEditMessage(cid, id, newText).then(function() { _rerenderEdited(cid, id, newText); return _refreshChatPreview(cid); }).catch(function() {});
+  console.log('[CHAT] Mensaje editado');
+}
+
+export function _rerenderEdited(cid, id, newText) {
+  _findMessage(cid, id).then(function(m) {
+    if (!m) return;
+    var el = document.querySelector('.message[data-msg-id="' + id + '"]');
+    if (el) { el.remove(); _renderedMessageIds.delete(id); }
+    _renderMessage(Object.assign({}, m, { content: newText, edited: true }), true);
+  });
+}
+
 // Recibido: el contacto eliminó para todos uno de SUS mensajes
 export function _applyChatAction(senderId, act) {
   if (act && act.act === 'av') { applyAvatar(senderId, act); return; } // ronda 2765: foto de perfil (avatar.js)
+  // Ronda 2782: el contacto editó uno de SUS mensajes de texto
+  if (act && act.act === 'edit' && act.id && typeof act.t === 'string') {
+    var cide = _normId(senderId);
+    _findMessage(cide, act.id).then(function(m) {
+      if (!m || m._own || m.deleted || m.attachmentType) return; // solo texto suyo, no borrado
+      return vaultEditMessage(cide, act.id, act.t).then(function() {
+        if (_normId(_getCurrentContactId()) === cide) _rerenderEdited(cide, act.id, act.t);
+        return _refreshChatPreview(cide);
+      });
+    });
+    return;
+  }
   if (!act || act.act !== 'del' || !act.id) return;
   var cid = _normId(senderId);
   _findMessage(cid, act.id).then(function(m) {

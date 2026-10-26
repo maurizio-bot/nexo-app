@@ -4,7 +4,7 @@
  * pantalla de carga y modo de emergencia. initializeNexoApp lo da main.js con appSetupUse().
  */
 import { _bindCameraPreviewHandlers, _handleCamera } from './camera.js';
-import { _cancelReply, _replyTo } from './chat_actions.js';
+import { _cancelReply, _cancelEdit, _editForAll, _editing, _replyTo } from './chat_actions.js';
 import { _closeAttachMenu, _toggleAttachMenu } from './ui_bits.js';
 import { _getCurrentContactId, _peerUnderstands } from './chat_format.js';
 import { _handleFile, _handleGallery } from './pickers.js';
@@ -188,6 +188,8 @@ export function _setupMessageInput() {
       input.value = '';
       _updateBtnState();
       input.focus();
+      // Ronda 2782: si estamos editando un mensaje, mandar la edición en vez de crear uno nuevo
+      if (_editing && _editing.id) { _editForAll(_editing.cid, _editing.id, text); _cancelEdit(); return; }
       var msgId = 'msg' + Date.now() + '' + Math.random().toString(36).substr(2, 9);
       var seq = (window.bleInterface && typeof window.bleInterface.getNextSeq === 'function') ? window.bleInterface.getNextSeq() : 0;
       // FIX v9.9.26: sin contactNexoId el mensaje propio no se guardaba en el vault (desaparecía al

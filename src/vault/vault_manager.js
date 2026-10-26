@@ -710,6 +710,22 @@ export async function vaultBlankMessage(contactNexoId, msgId) {
   });
 }
 
+// Ronda 2782: editar un mensaje de texto ya enviado/recibido. Cambia el contenido y lo marca "editado".
+export async function vaultEditMessage(contactNexoId, msgId, newText) {
+  if (!contactNexoId || !msgId || typeof newText !== 'string') return false;
+  var cid = _normId(contactNexoId);
+  return _withMsgLock(cid, async function() {
+    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+    var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId) === msgId; });
+    if (idx < 0) return false;
+    var m = messages[idx];
+    if (m.deleted || m.attachmentType) return false; // solo texto; ni borrados ni adjuntos
+    messages[idx] = Object.assign({}, m, { content: newText, edited: true });
+    _persistMessages(cid, messages);
+    return true;
+  });
+}
+
 // v2.3.3: el vídeo HD sustituye al adjunto (previa) de un mensaje ya recibido
 export async function vaultReplaceAttachment(contactNexoId, msgId, payload, metaPatch) {
   if (!contactNexoId || !msgId || !payload) return false;

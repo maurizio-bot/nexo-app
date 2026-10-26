@@ -501,6 +501,7 @@ export function _renderMessage(msg, skipSave) {
     timeSpan.className = 'msg-time';
     timeSpan.textContent = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     metaDiv.appendChild(timeSpan);
+    if (msg.edited && !msg.deleted) { var edSpan = document.createElement('span'); edSpan.className = 'msg-edited'; edSpan.textContent = 'editado'; edSpan.style.cssText = 'opacity:0.6;font-size:11px;margin:0 5px;'; metaDiv.appendChild(edSpan); }
     if (isOwn) {
       var statusClass = 'status-pending';
       var statusIcon = '○';

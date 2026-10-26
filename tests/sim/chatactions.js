@@ -126,6 +126,20 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   await openChatWith(C, 'A'); await sleep(1000);
   r.C_ve_reenviado = !!bubbleWith(C, '↪ Reenviado');
   await closeChat(C);
+  // 4b) Editar un mensaje propio (ronda 2782)
+  await sendText(A, 'texto con herror'); await waitFor(async () => (await B.win.vaultLoadMessages(id('A'))).some((m) => m.content === 'texto con herror'), 30000);
+  ctx(A, bubbleWith(A, 'texto con herror')); click(A.win, await menuItem(A, 'mm-edit')); await sleep(300);
+  r.barra_editar = !!A.win.document.getElementById('edit-bar');
+  const einp = A.win.document.getElementById('message-input');
+  r.caja_tiene_el_texto = einp.value === 'texto con herror';
+  einp.value = 'texto corregido'; einp.dispatchEvent(new A.win.Event('input', { bubbles: true }));
+  click(A.win, A.win.document.getElementById('send-btn')); await sleep(500);
+  r.barra_editar_desaparece = !A.win.document.getElementById('edit-bar');
+  const edA = bubbleWith(A, 'texto corregido');
+  r.A_ve_editado = !!(edA && edA.querySelector('.msg-edited')) && !bubbleWith(A, 'texto con herror');
+  r.B_recibe_edicion_s = await waitFor(async () => { const vb = await B.win.vaultLoadMessages(id('A')); return vb.some((m) => m.content === 'texto corregido' && m.edited) && !vb.some((m) => m.content === 'texto con herror'); }, 30000);
+  const edB = bubbleWith(B, 'texto corregido');
+  r.B_ve_editado = !!(edB && edB.querySelector('.msg-edited'));
   // 5) Eliminar para mí
   ctx(A, bubbleWith(A, 'hola B')); click(A.win, await menuItem(A, 'mm-del-me')); await sleep(800);
   r.eliminar_para_mi = !bubbleWith(A, 'hola B') && !(await A.win.vaultLoadMessages(id('B'))).some((m) => m.content === 'hola B') && (await B.win.vaultLoadMessages(id('A'))).some((m) => m.content === 'hola B');
