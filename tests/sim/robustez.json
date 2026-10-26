@@ -604,7 +604,7 @@
     },
     {
      "g": "grave",
-     "d": "App CERRADA (deslizada) + pantalla apagada: no llegan mensajes ni avisos por Wi-Fi ni por internet hasta abrir la app; el par en el mismo Wi-Fi se pasa a «Internet» (informe del dueño 26-10, tarea #87). La recepción (LanHub/NetBg/BgInbox) vive en el proceso del WebView y solo sobrevive si Android no mata el proceso; al cerrar se apaga el LAN a propósito, no se pide exención de batería ni hay WifiLock. No reproducible en el simulador (nativo); pendiente del diagnóstico de los dos teléfonos"
+     "d": "App CERRADA (deslizada) + pantalla apagada: no llegan mensajes ni avisos por Wi-Fi ni por internet hasta abrir la app; el par en el mismo Wi-Fi se pasa a «Internet» (informe del dueño 26-10, tarea #87). La recepción (LanHub/NetBg/BgInbox) vive en el proceso del WebView y solo sobrevive si Android no mata el proceso. 2785: se añadió WifiLock (FULL_HIGH_PERF) mientras NetBg escucha en segundo plano/cerrada (Android duerme la radio Wi-Fi con la pantalla apagada y tira el socket del relé) + registro nativo persistente (NativeLog) que ahora sí muestra en el diagnóstico qué hizo el nativo con la app cerrada (antes remLog solo iba a logcat/puente, muerto con la app cerrada, por eso el diagnóstico salía vacío en el hueco). SIGUE ABIERTO: nativo, no reproducible en el simulador; pendiente de confirmar en los dos teléfonos con el nuevo diagnóstico (ver si NetBg escuchó y vio el sobre del relé)"
     },
     {
      "g": "media",

@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-26 (build 2784; llamadas a pantalla completa en Android 14 (#81), zoom de foto al borde, contactos sin parpadeo y diagnóstico de la última hora, ver "Ronda 2784". La 2783 fue reacciones/gestos/palomitas)
+Última actualización: 2026-10-26 (build 2785, NATIVO: llamada entrante a pantalla completa de verdad (CallStyle, #1 del dueño) y, para el #87 «no llegan mensajes con la app cerrada», WifiLock mientras la escucha por internet (NetBg) está activa + registro nativo persistente que ahora SÍ aparece en el diagnóstico, ver "Ronda 2785". La 2784 fue #81/zoom/contactos/diagnóstico 1 h)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -235,6 +235,51 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2785: llamada a pantalla completa de verdad (#1) y, para el #87, WifiLock + registro nativo persistente
+
+Informe del dueño (26-10, tras probar la 2784): «solo entran las llamadas y solo aparece la notificación, no aparece
+la pantalla completa con Contestar/Rechazar; también mandé mensaje y aparece enviado pero no recibido, de hecho no
+llega». Son sus dos prioridades. Todo lo de esta ronda es **nativo** (Kotlin): no se puede compilar ni probar aquí (no
+hay ANDROID_HOME); se verifica por el build de CI y la prueba del dueño. Lo que SÍ se pudo probar en JVM va con prueba.
+
+- **#1 Llamada entrante a pantalla completa de verdad (`MsgNotifier.incomingCall`).** Antes el aviso de llamada era un
+  aviso normal con dos botones (`addAction`) + `setFullScreenIntent`. En Android 14 y, sobre todo, en Samsung One UI,
+  el sistema no lo trataba como una llamada y lo bajaba a aviso pequeño. Ahora usa **`NotificationCompat.CallStyle.forIncomingCall`**
+  (androidx.core 1.12 ya lo trae): es la pantalla de llamada real, con Contestar/Rechazar grandes, y con la pantalla
+  bloqueada + el permiso de pantalla completa concedido (el que pide #81) sale a pantalla completa. Si en algún teléfono
+  CallStyle fallara, cae a un aviso de llamada normal (no se pierde la llamada ni se arriesga un cierre en segundo plano).
+  Sigue sonando con el tono (FLAG_INSISTENT) y encendiendo la pantalla (`wakeScreen`). **El permiso de pantalla completa
+  tiene que estar concedido** (Ajustes → Apps → NEXO → notificaciones a pantalla completa / «aparecer encima»): sin él,
+  Android lo deja en aviso aunque sea CallStyle.
+
+- **#87 (mensajes con la app CERRADA) — dos cambios, uno que arregla y uno que mide.** El diagnóstico del dueño mostró el
+  mensaje llegando 3 s DESPUÉS de reabrir la app, y NADA en el hueco cerrado. Pero eso no probaba que la escucha nativa
+  (NetBg) estuviera muerta: `remLog` solo escribía en logcat y, con la app abierta, cruzaba al WebView por el puente;
+  **con la app cerrada no hay WebView ni puente, así que el diagnóstico (que se arma en el WebView, diag.js) salía vacío
+  en el hueco** pasara lo que pasara por debajo. Por eso:
+  1. **Registro nativo persistente (`NativeLog.kt`, nuevo, con prueba JVM `NativeLogTest`).** La parte nativa (NetBg,
+     Bluetooth con la app cerrada, ciclo de vida, energía, WifiLock) deja constancia EN DISCO (anillo por tamaño, ~48 KB,
+     solo metadatos — nunca el texto de un mensaje). Al abrir la app, «Copiar diagnóstico» lo incluye en una sección
+     nueva («REGISTRO NATIVO»): el próximo diagnóstico del dueño **sí** mostrará si NetBg escuchó y si vio el sobre del
+     relé durante el periodo cerrado. Es lo que convierte el #87 de adivinar a medir (el método del dueño: no afirmar
+     nada sin comprobar). El archivo va en claro (append desde varios hilos, también con la app cerrada o bloqueada) y
+     por eso se excluye del cifrado en reposo (`AtRestStore.skip`); como son solo metadatos (los mismos NEXO ID/msgId que
+     ya salen en el diagnóstico que el dueño copia), el riesgo es mínimo.
+  2. **WifiLock (`wifiLockHold`, FULL_HIGH_PERF).** La causa más probable: con la pantalla apagada Android pone la radio
+     Wi-Fi en ahorro de energía y la conexión al relé (un socket que vive en el proceso, no un push de Google como
+     WhatsApp) deja de recibir paquetes; el aviso salía al encender la pantalla. El WifiLock apaga ese ahorro mientras
+     NetBg escucha (en segundo plano/cerrada) para que el paquete del relé llegue y despierte la CPU (y entonces el
+     `rxWake` de 15 s da tiempo a avisar). Se toma al arrancar NetBg y se suelta al volver la app al primer plano. Solo
+     aplica a Wi-Fi (en datos móviles no hay WifiLock; el dueño prueba por Wi-Fi). El diagnóstico de la tablet ya tenía la
+     batería «Sin restricciones» (Doze exento), así que el WifiLock es la siguiente palanca lógica; el registro nativo
+     dirá si basta.
+
+Batería **56/56** (el cambio en JS, `diag.js`, lee el nuevo registro nativo si el método existe; en el simulador no
+existe y se salta). Kotlin **95/95** (+5 de `NativeLogTest`). **#87 SIGUE ABIERTO** hasta confirmarlo en los dos
+teléfonos: el dueño debe probar con la 2785 (app cerrada + pantalla apagada, mandar un mensaje, esperar ~2 min, abrir) y
+mandar el diagnóstico de los dos; ahí se verá por fin qué hizo el nativo. #1 a confirmar en el teléfono con el permiso
+de pantalla completa concedido.
 
 ## Ronda 2784: pantalla completa de llamadas (#81), zoom al borde, contactos sin parpadeo, diagnóstico 1 h
 
