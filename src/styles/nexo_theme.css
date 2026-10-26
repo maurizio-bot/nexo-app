@@ -80,8 +80,8 @@ body::before {
 }
 .msg-time { color: rgba(255, 255, 255, 0.55) !important; }
 .message.other .msg-time { color: var(--nx-muted) !important; }
-.msg-status.status-delivered { color: #e0f7ff !important; }
-.msg-status.status-read { color: #fff !important; text-shadow: 0 0 6px rgba(255, 255, 255, 0.6); }
+.msg-status.status-delivered { color: #cdd9e5 !important; }
+.msg-status.status-read { color: #00d4ff !important; text-shadow: 0 0 6px rgba(0, 212, 255, 0.6); }
 .system-msg { background: var(--nx-surface) !important; border: 1px solid var(--nx-line); color: var(--nx-muted) !important; border-radius: 999px !important; }
 #e2e-banner {
   background: var(--nx-surface) !important; border: 1px solid var(--nx-line) !important; color: var(--nx-muted) !important;
