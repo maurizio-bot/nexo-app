@@ -95,6 +95,9 @@ class NexoBlePlugin : Plugin() {
         // Ronda 2758 (punto 12): la instancia que siguió recibiendo con la app cerrada; la nueva la releva al abrir
         @Volatile private var orphan: NexoBlePlugin? = null
         @Volatile private var netBgShared: NetBg? = null
+        // Ronda 2785 (#87): registro nativo persistente en disco (NativeLog.kt), compartido por el proceso (lo usan el
+        // plugin y NetBg, también con la app cerrada). Para que el diagnóstico muestre qué hizo el nativo sin WebView.
+        @Volatile private var nativeLogShared: NativeLog? = null
         // Auditoría C1 (ronda 2777): clave por contacto (NEXO ID → clave de firma, derivada del secreto de la pareja por
         // la app) para FIRMAR la confirmación (✓✓) que se manda con la app cerrada. Es estática: la pone la app
         // (setAckKeys) y vive en el proceso (sobrevive con la app cerrada, como la config de internet); no va a disco.
@@ -137,6 +140,10 @@ class NexoBlePlugin : Plugin() {
         private const val SCAN_DEBOUNCE_MS = 1000L
         private const val MIN_RSSI = -95
         private const val NXID_MAC_MAP_FILE = "nexo_nxid_mac_map.json"
+        // Ronda 2785 (#87): registro nativo persistente (NativeLog.kt). En claro y en append desde varios hilos (también
+        // con la app cerrada o bloqueada, cuando el cifrado en reposo puede no tener la clave); por eso se excluye del
+        // cifrado en reposo (skip). Solo metadatos (nunca el contenido de un mensaje).
+        private const val NATIVE_LOG_FILE = "nexo_native_log.txt"
     }
     private var bluetoothGattServer: BluetoothGattServer? = null
     private var serverTxCharacteristic: BluetoothGattCharacteristic? = null
@@ -203,8 +210,18 @@ class NexoBlePlugin : Plugin() {
         btErrLast[kind] = now
         remLog("WARN", "BT_ERR", message)
     }
+    // Ronda 2785 (#87): registro nativo persistente (NativeLog.kt). Compartido por el proceso: lo usan el plugin y la
+    // escucha de internet (NetBg), también con la app cerrada (cuando el WebView —y diag.js— ya no existe).
+    private fun nlog(): NativeLog? {
+        val ctx = appCtx ?: return null
+        return nativeLogShared ?: synchronized(NexoBlePlugin::class.java) {
+            nativeLogShared ?: NativeLog(File(ctx.filesDir, NATIVE_LOG_FILE)).also { nativeLogShared = it }
+        }
+    }
     private fun remLog(level: String, tag: String, message: String) {
         Log.i("NEXO_REM", "[$level][$tag] $message")
+        // A disco (persiste con la app cerrada); no el detalle por trozo (ese va solo a logcat, no pasa por remLog)
+        try { nlog()?.add(level, tag, message) } catch (e: Exception) { }
         if (tag !in remLogToJs) return
         try {
             notifyListeners("onRemLog", JSObject()
@@ -545,6 +562,29 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { Log.w(TAG, "Despertar al recibir: ${e.message}") }
     }
 
+    // ===== Ronda 2785 (#87, informe del dueño: con la app CERRADA y la pantalla apagada no llegan los mensajes por
+    // internet, pero WhatsApp sí): mantener la Wi-Fi despierta mientras la escucha nativa (NetBg) está en marcha.
+    // Con la pantalla apagada Android pone la radio Wi-Fi en ahorro de energía y la conexión al relé (un socket que vive
+    // en el proceso, no un push de Google como WhatsApp) deja de recibir paquetes al momento: el aviso salía al encender
+    // la pantalla. El WifiLock (FULL_HIGH_PERF) apaga ese ahorro para que el paquete del relé llegue y despierte la CPU
+    // (y entonces rxWake da 15 s para avisar). Solo mientras NetBg escucha (en segundo plano/cerrada); se suelta al
+    // volver a la app. No aplica a datos móviles (ahí no hay WifiLock); el dueño prueba por Wi-Fi.
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
+    @Synchronized private fun wifiLockHold(on: Boolean) {
+        try {
+            val ctx = appCtx ?: return
+            if (on) {
+                val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager ?: return
+                @Suppress("DEPRECATION")
+                val wl = wifiLock ?: wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "nexo:net")
+                    .also { it.setReferenceCounted(false); wifiLock = it }
+                if (!wl.isHeld) { wl.acquire(); nlog()?.add("INFO", "WIFI", "WifiLock tomado (Wi-Fi despierta para recibir por internet en segundo plano)") }
+            } else {
+                wifiLock?.let { if (it.isHeld) { it.release(); nlog()?.add("INFO", "WIFI", "WifiLock soltado (la app vuelve al primer plano)") } }
+            }
+        } catch (e: Exception) { Log.w(TAG, "WifiLock: ${e.message}") }
+    }
+
     // Ronda 2772: estado de energía para el diagnóstico (lo que puede impedir recibir con la pantalla apagada)
     private fun energyLog(why: String) {
         try {
@@ -619,6 +659,8 @@ class NexoBlePlugin : Plugin() {
     private fun closedReceive(deviceId: String, json: String) {
         val info = BgInbox.classify(json, nexoAdvertisingId ?: "")
         val ctx = appCtx ?: return
+        // Ronda 2785 (#87): dejar constancia en el registro nativo (persiste con la app cerrada; sin contenido)
+        nlog()?.add("INFO", "BT_CERRADA", "llega por Bluetooth: ${info.kind} de ${info.from.ifEmpty { "?" }}${if (info.msgId.isNotEmpty()) " (msgId ${info.msgId})" else ""}${if (info.call) " [llamada]" else ""}")
         when (info.kind) {
             BgInbox.Kind.MESSAGE -> {
                 if (!inbox().add(deviceId, json)) { Log.w("NEXO_REM", "Buzón lleno: mensaje de ${info.from} sin guardar"); return }
@@ -697,6 +739,7 @@ class NexoBlePlugin : Plugin() {
             remLog("INFO", "CALL", "Servicio en llamada al volver a la app: $callFgs")
         }
         try { netBgShared?.stop() } catch (e: Exception) { }
+        wifiLockHold(false) // la app vuelve al primer plano: suelta la Wi-Fi (la app vuelve a encargarse)
         checkNotificationIntent()
         remLog("INFO", "LIFECYCLE", "handleOnResume")
         energyLog("Al volver")
@@ -719,7 +762,7 @@ class NexoBlePlugin : Plugin() {
         energyLog("En segundo plano")
         // La app deja de estar a la vista: la escucha nativa de internet toma el relevo (la app la reconfigura al
         // ocultarse con lo último que vio)
-        mainHandler.postDelayed({ if (appInBackground) try { netBg().start() } catch (e: Exception) { } }, 3000)
+        mainHandler.postDelayed({ if (appInBackground) try { wifiLockHold(true); netBg().start() } catch (e: Exception) { } }, 3000)
         notifyListeners("onAppStateChange", JSObject().put("isActive", false))
     }
     override fun handleOnDestroy() {
@@ -2292,6 +2335,20 @@ class NexoBlePlugin : Plugin() {
         }
     }
 
+    // Ronda 2785 (#87): registro nativo persistente (NativeLog.kt) para el diagnóstico. Aparte de loadFromFile porque
+    // ese pasa por el cifrado en reposo (AtRestStore) y este se escribe en claro —append desde varios hilos, también con
+    // la app cerrada o bloqueada—. Solo metadatos (nunca el contenido de un mensaje). Al abrir la app, diag.js lo mete en
+    // Perfil → Copiar diagnóstico para ver qué hizo el nativo mientras la app estaba cerrada.
+    @PluginMethod
+    fun readNativeLog(call: PluginCall) {
+        try {
+            val log = nlog()
+            val content = log?.read() ?: ""
+            if (call.getData().optBoolean("clear", false)) log?.clear()
+            call.resolve(JSObject().put("content", content))
+        } catch (e: Exception) { call.resolve(JSObject().put("content", "")) }
+    }
+
     @PluginMethod
     fun deleteFile(call: PluginCall) {
         val filename = call.getString("filename") ?: run {
@@ -2318,7 +2375,7 @@ class NexoBlePlugin : Plugin() {
     private fun atRest(): AtRestStore {
         atRestStore?.let { return it }
         val st = AtRestStore(context.filesDir) { atRestDataKey() }
-        st.skip = setOf(NXID_MAC_MAP_FILE) // lo lee y escribe el propio Kotlin
+        st.skip = setOf(NXID_MAC_MAP_FILE, NATIVE_LOG_FILE) // los lee y escribe el propio Kotlin, en claro
         st.migrateOnly = { it.startsWith("nexo_") } // solo lo de NEXO (no los archivos de librerías de Android)
         atRestStore = st
         return st
@@ -2407,7 +2464,11 @@ class NexoBlePlugin : Plugin() {
         // Ronda 2774 (el dueño: con la pantalla apagada no llegan por Wi-Fi/internet): al recibir por internet en segundo
         // plano se renueva el wakelock (rxWake), igual que por Bluetooth y Wi-Fi, para que dé tiempo a avisar antes de que
         // el teléfono vuelva a dormir.
-        netBgShared ?: NetBg({ nx, name, msgId -> if (appInBackground) rxWake(); MsgNotifier.get(context).message(nx, name, msgId, "") }, { Log.i("NEXO_NET", it) }).also { netBgShared = it }
+        netBgShared ?: NetBg({ nx, name, msgId ->
+            if (appInBackground) rxWake()
+            nlog()?.add("INFO", "NET", "sobre de $nx (msgId $msgId): aviso de mensaje nuevo por internet")
+            MsgNotifier.get(context).message(nx, name, msgId, "")
+        }, { nlog()?.add("INFO", "NET", it); Log.i("NEXO_NET", it) }).also { netBgShared = it }
     }
 
     @PluginMethod
@@ -2420,7 +2481,7 @@ class NexoBlePlugin : Plugin() {
         } catch (e: Exception) { call.reject("configuración ilegible"); return }
         val since = (call.getData().optLong("since", 0L))
         netBg().configure(me, relays, since, list)
-        if (appInBackground && list.isNotEmpty()) netBg().start()
+        if (appInBackground && list.isNotEmpty()) { wifiLockHold(true); netBg().start() }
         call.resolve(JSObject().put("contacts", list.size).put("running", netBg().running))
     }
 

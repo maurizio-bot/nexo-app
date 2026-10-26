@@ -123,21 +123,44 @@ class MsgNotifier(private val ctx: Context) {
         val openPi = PendingIntent.getActivity(ctx, 3990, Intent(launch).putExtra(EXTRA_CALL_FROM, from).putExtra(EXTRA_CALL_OFFER, offerId).putExtra(EXTRA_CALL_TOKEN, callIntentToken).addFlags(fl), pf)
         val answerPi = PendingIntent.getActivity(ctx, 3991, Intent(launch).putExtra(EXTRA_ANSWER, from).putExtra(EXTRA_CALL_OFFER, offerId).putExtra(EXTRA_CALL_TOKEN, callIntentToken).addFlags(fl), pf)
         val declinePi = PendingIntent.getBroadcast(ctx, 3992, Intent(ctx, CallDeclineReceiver::class.java).putExtra(EXTRA_CALL_FROM, from).putExtra(EXTRA_CALL_OFFER, offerId), pf)
-        val n = NotificationCompat.Builder(ctx, CALL_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_phone_call)
-            .setContentTitle(name.ifBlank { "NEXO" })
-            .setContentText(if (video) "Videollamada entrante · NEXO" else "Llamada entrante · NEXO")
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(true)
-            .setAutoCancel(true)
-            .setTimeoutAfter(45000)
-            .setContentIntent(openPi)
-            .setFullScreenIntent(openPi, true)
-            .addAction(0, "Rechazar", declinePi)
-            .addAction(0, "Contestar", answerPi)
-            .build()
+        // Ronda 2785 (#1 del dueño: "solo aparece la notificación, no la pantalla completa con Contestar/Rechazar"):
+        // estilo de LLAMADA (CallStyle). Antes era un aviso normal con dos botones; el sistema (sobre todo Samsung One UI
+        // y Android 14) no lo trataba como llamada y lo bajaba a aviso pequeño. CallStyle.forIncomingCall lo pinta como la
+        // pantalla de llamada real (Contestar/Rechazar grandes) y, con la pantalla bloqueada y el permiso de pantalla
+        // completa concedido (Perfil → Avisos lo pide, #81), sale a pantalla completa. androidx.core 1.12 lo admite.
+        // Si por lo que sea CallStyle fallara en algún teléfono, se cae a un aviso de llamada normal con los dos botones
+        // (no se pierde la llamada ni se cierra el hilo de fondo).
+        val n: Notification = try {
+            val person = androidx.core.app.Person.Builder().setName(name.ifBlank { "NEXO" }).setImportant(true).build()
+            NotificationCompat.Builder(ctx, CALL_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+                .setContentText(if (video) "Videollamada entrante · NEXO" else "Llamada entrante · NEXO")
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setOngoing(true)
+                .setTimeoutAfter(45000)
+                .setContentIntent(openPi)
+                .setFullScreenIntent(openPi, true)
+                .setStyle(NotificationCompat.CallStyle.forIncomingCall(person, declinePi, answerPi))
+                .build()
+        } catch (e: Throwable) {
+            Log.w(TAG, "CallStyle no disponible, aviso de llamada normal: ${e.message}")
+            NotificationCompat.Builder(ctx, CALL_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+                .setContentTitle(name.ifBlank { "NEXO" })
+                .setContentText(if (video) "Videollamada entrante · NEXO" else "Llamada entrante · NEXO")
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setOngoing(true)
+                .setTimeoutAfter(45000)
+                .setContentIntent(openPi)
+                .setFullScreenIntent(openPi, true)
+                .addAction(0, "Rechazar", declinePi)
+                .addAction(0, "Contestar", answerPi)
+                .build()
+        }
         n.flags = n.flags or Notification.FLAG_INSISTENT // el tono se repite hasta que se atiende
         try { nm.notify(CALL_NOTIF_ID, n) } catch (e: SecurityException) { Log.w(TAG, "Sin permiso de notificaciones") }
         wakeScreen(20000) // por si el sistema no deja la pantalla completa (Android 14: permiso aparte)

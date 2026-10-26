@@ -8,6 +8,10 @@
 // v9.9.40 (seguridad): archivo nuevo; el anterior podía tener fragmentos de mensajes y se borra
 var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_OLD_FILE = 'nexo_diag_log.txt';
 var _diagLines = [], _diagKey = [], _diagTimes = [], _diagKeyTimes = [], _diagDirty = false, _diagPrev = '';
+// Ronda 2785 (#87): registro nativo persistente (NativeLog.kt). La parte nativa (NetBg por internet, Bluetooth con la
+// app cerrada, WifiLock, energía, ciclo de vida) lo escribe en disco; aquí lo recogemos al abrir la app para ver qué
+// hizo mientras estaba cerrada (el registro de consola de arriba no existe sin WebView).
+var _nativeLog = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
 var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|\[CALL\]|\[ADD\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
@@ -40,6 +44,8 @@ var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FI
     var pl = plugin();
     if (!pl || typeof pl.loadFromFile !== 'function') return;
     pl.loadFromFile({ filename: DIAG_FILE }).then(function(r) { if (r && r.exists && r.content) _diagPrev = r.content; }).catch(function() {});
+    // Ronda 2785 (#87): lo que hizo la parte nativa con la app cerrada (recién abierta, es lo más valioso para el #87)
+    if (typeof pl.readNativeLog === 'function') pl.readNativeLog().then(function(r) { if (r && r.content) _nativeLog = r.content; }).catch(function() {});
     // v9.9.48: avisos nativos de archivos (lentos, cifrado en reposo); solo estas etiquetas (sin contenido)
     if (typeof pl.addListener === 'function') pl.addListener('onRemLog', function(d) {
       if (d && (d.tag === 'FILE_IO' || d.tag === 'AT_REST')) console[d.level === 'WARN' ? 'warn' : 'log']('[NATIVO] ' + d.tag + ': ' + d.message);
@@ -51,6 +57,8 @@ var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FI
     if (!_diagDirty || !pl || typeof pl.saveToFile !== 'function') return;
     _diagDirty = false;
     pl.saveToFile({ filename: DIAG_FILE, content: _diagSessionText() }).catch(function() {});
+    // Refrescar el registro nativo (crece mientras la app está en segundo plano)
+    if (typeof pl.readNativeLog === 'function') pl.readNativeLog().then(function(r) { if (r && r.content) _nativeLog = r.content; }).catch(function() {});
   }, 20000);
 })();
 
@@ -69,6 +77,8 @@ export function _diagnosticText() {
   var bi = window.bleInterface || {};
   var head = 'NEXO diagnóstico ' + new Date().toISOString() + ' (última hora)\nNEXO ID: ' + (bi.localNexoId || '?') + '\nUA: ' + navigator.userAgent + '\n';
   // La sesión actual se recorta a la última hora; se mantiene la anterior (contexto de antes de cerrar la app)
-  return head + (_diagPrev ? '\n===== SESIÓN ANTERIOR =====\n' + _diagPrev + '\n' : '') +
+  // Ronda 2785 (#87): el registro nativo (últimas ~150 líneas) muestra qué hizo el nativo con la app cerrada
+  var nat = _nativeLog ? ('\n===== REGISTRO NATIVO (segundo plano / app cerrada) =====\n' + _nativeLog.split('\n').slice(-150).join('\n') + '\n') : '';
+  return head + nat + (_diagPrev ? '\n===== SESIÓN ANTERIOR =====\n' + _diagPrev + '\n' : '') +
     '\n===== SESIÓN ACTUAL (última hora) =====\n' + _diagSessionText(true);
 }
