@@ -443,7 +443,22 @@ export const BLE_UI_METHODS = {
     if (!strip) return;
     strip.innerHTML = '';
     var contacts = _getBLEContacts();
-    var onlineContacts = contacts.filter(function(c) { return c.online && (Date.now() - (c.lastSeen || 0)) < 60000; });
+    var now = Date.now();
+    var STRIP_MS = (typeof window !== 'undefined' && Number(window.NEXO_STRIP_MS)) || 60000;
+    // Ronda 2784 (pedido del dueño): la franja de conectados NO parpadea. Un contacto entra solo si lleva >=60s en
+    // línea y se quita solo si lleva >=60s sin conexión (histéresis): se ignora cualquier cambio de estado que dure
+    // menos de 60s, así que un corte breve (p. ej. tras 15s en línea) no lo hace desaparecer.
+    var deb = this._stripDeb || (this._stripDeb = {});
+    var onlineContacts = contacts.filter(function(c) {
+      var nx = _normId(c.nexoId || c.deviceUUID);
+      var live = !!c.online && (now - (c.lastSeen || 0)) < 60000;
+      var s = deb[nx] || (deb[nx] = { on: false, liveSince: live ? now : 0, deadSince: live ? 0 : now });
+      if (live) { if (!s.liveSince) s.liveSince = now; s.deadSince = 0; if (!s.on && now - s.liveSince >= STRIP_MS) s.on = true; }
+      else { if (!s.deadSince) s.deadSince = now; s.liveSince = 0; if (s.on && now - s.deadSince >= STRIP_MS) s.on = false; }
+      return s.on;
+    });
+    // Re-evaluar cada 10s para que las transiciones (aparecer/quitarse al cruzar el minuto) se cumplan sin un evento nuevo
+    if (!this._stripTimer && typeof setInterval === 'function') this._stripTimer = setInterval(function() { try { self.renderOnlineStrip(); } catch (e) {} }, 10000);
     if (onlineContacts.length === 0) { strip.style.display = 'none'; return; }
     strip.style.display = 'flex';
     onlineContacts.forEach(function(contact) {

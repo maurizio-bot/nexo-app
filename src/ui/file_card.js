@@ -41,6 +41,12 @@ export function _openFullscreenMedia(src, type) {
     // solo no hace nada (para cerrar: fuera de la foto o la X).
     var zScale = 1, ztx = 0, zty = 0, pinch0 = 0, pinchScale0 = 1, panX0 = 0, panY0 = 0, lastTapV = 0, zMoved = false;
     var zApply = function(anim) {
+      // Ronda 2784 (pedido del dueño): el arrastre no pasa del borde de la foto (su borde se pega al de la pantalla;
+      // nunca se ve negro más allá). El máximo de desplazamiento es la mitad de lo que sobresale la imagen ampliada.
+      var maxX = Math.max(0, (img.offsetWidth * zScale - window.innerWidth) / 2);
+      var maxY = Math.max(0, (img.offsetHeight * zScale - window.innerHeight) / 2);
+      ztx = Math.max(-maxX, Math.min(maxX, ztx));
+      zty = Math.max(-maxY, Math.min(maxY, zty));
       img.style.transition = anim ? 'transform 0.15s ease' : 'none';
       img.style.transform = 'translate(' + ztx + 'px,' + zty + 'px) scale(' + zScale + ')';
       img.style.cursor = zScale > 1 ? 'zoom-out' : 'zoom-in';

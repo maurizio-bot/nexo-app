@@ -196,14 +196,27 @@ function _refreshLinkSubtitle() {
 // Ronda 2765: una vez, pedir que el ahorro de batería no congele NEXO (el Vivo del dueño la congelaba y los avisos
 // llegaban tarde); el resto de ajustes, en Perfil → Avisos con la pantalla apagada
 function _askBackgroundOnce() {
-  var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE, asked = false;
-  try { asked = localStorage.getItem('nexo_bg_asked') === '1'; } catch (e) {}
-  if (asked || !pl || typeof pl.alertSettings !== 'function') return;
+  var pl = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE;
+  if (!pl || typeof pl.alertSettings !== 'function') return;
   pl.alertSettings().then(function(r) {
-    if (!r || r.battery !== false || r.notifications === false) return;
-    try { localStorage.setItem('nexo_bg_asked', '1'); } catch (e) {}
-    console.log('[NOTIF] Se pide que el ahorro de batería no congele NEXO');
-    pl.openAlertSetting({ what: 'battery' }).catch(function() {});
+    if (!r || r.notifications === false) return;
+    // Lo fundamental para recibir en segundo plano: que el ahorro de batería no congele NEXO. Una vez, si no está exento.
+    var bgAsked = false; try { bgAsked = localStorage.getItem('nexo_bg_asked') === '1'; } catch (e) {}
+    if (r.battery === false && !bgAsked) {
+      try { localStorage.setItem('nexo_bg_asked', '1'); } catch (e) {}
+      console.log('[NOTIF] Se pide que el ahorro de batería no congele NEXO');
+      pl.openAlertSetting({ what: 'battery' }).catch(function() {});
+      return; // una sola pantalla de ajustes por arranque; lo que falte se pide en el siguiente
+    }
+    // Ronda 2784 (#81): pantalla completa de llamadas/videollamadas en Android 14 — se pide una vez si no está concedida
+    // (sin ella la llamada entra solo como aviso, no con los botones Contestar/Rechazar a pantalla completa). Como la
+    // batería ya suele estar concedida (como en el teléfono del dueño), aquí es donde entra este aviso.
+    var fsAsked = false; try { fsAsked = localStorage.getItem('nexo_fs_asked') === '1'; } catch (e) {}
+    if (r.fullScreen === false && !fsAsked) {
+      try { localStorage.setItem('nexo_fs_asked', '1'); } catch (e) {}
+      console.log('[NOTIF] Se pide el permiso de pantalla completa para llamadas');
+      pl.openAlertSetting({ what: 'fullScreen' }).catch(function() {});
+    }
   }).catch(function() {});
 }
 window.NEXO_openGroupChat = openGroupChat;

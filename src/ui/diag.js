@@ -7,7 +7,7 @@
 // copiarlas: lo que pasa en el teléfono real sin necesidad de un PC.
 // v9.9.40 (seguridad): archivo nuevo; el anterior podía tener fragmentos de mensajes y se borra
 var DIAG_MAX = 800, DIAG_KEY_MAX = 700, DIAG_FILE = 'nexo_diag_log2.txt', DIAG_OLD_FILE = 'nexo_diag_log.txt';
-var _diagLines = [], _diagKey = [], _diagDirty = false, _diagPrev = '';
+var _diagLines = [], _diagKey = [], _diagTimes = [], _diagKeyTimes = [], _diagDirty = false, _diagPrev = '';
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
 var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|\[CALL\]|\[ADD\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
@@ -25,9 +25,9 @@ var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FI
         var d = new Date();
         var ts = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2) + '.' + ('00' + d.getMilliseconds()).slice(-3);
         var line = ts + (level === 'warn' ? ' W ' : level === 'error' ? ' E ' : ' ') + parts.join(' ').substring(0, 300);
-        _diagLines.push(line);
-        if (_diagLines.length > DIAG_MAX) _diagLines.splice(0, _diagLines.length - DIAG_MAX);
-        if (DIAG_KEY_RE.test(line)) { _diagKey.push(line); if (_diagKey.length > DIAG_KEY_MAX) _diagKey.splice(0, _diagKey.length - DIAG_KEY_MAX); }
+        _diagLines.push(line); _diagTimes.push(d.getTime());
+        if (_diagLines.length > DIAG_MAX) { var ex = _diagLines.length - DIAG_MAX; _diagLines.splice(0, ex); _diagTimes.splice(0, ex); }
+        if (DIAG_KEY_RE.test(line)) { _diagKey.push(line); _diagKeyTimes.push(d.getTime()); if (_diagKey.length > DIAG_KEY_MAX) { var ek = _diagKey.length - DIAG_KEY_MAX; _diagKey.splice(0, ek); _diagKeyTimes.splice(0, ek); } }
         _diagDirty = true;
       } catch (e) {}
       return orig.apply(null, arguments);
@@ -54,13 +54,21 @@ var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FI
   }, 20000);
 })();
 
-function _diagSessionText() {
-  return '--- eventos clave ---\n' + _diagKey.join('\n') + '\n--- últimas líneas ---\n' + _diagLines.slice(-400).join('\n');
+function _diagSessionText(hourOnly) {
+  var key = _diagKey, lines = _diagLines;
+  if (hourOnly) {
+    // Ronda 2784 (pedido del dueño): solo la última hora, para que el diagnóstico quepa al pegarlo
+    var cut = Date.now() - 3600000;
+    key = _diagKey.filter(function(l, i) { return _diagKeyTimes[i] >= cut; });
+    lines = _diagLines.filter(function(l, i) { return _diagTimes[i] >= cut; });
+  }
+  return '--- eventos clave ---\n' + key.join('\n') + '\n--- últimas líneas ---\n' + lines.slice(-400).join('\n');
 }
 
 export function _diagnosticText() {
   var bi = window.bleInterface || {};
-  var head = 'NEXO diagnóstico ' + new Date().toISOString() + '\nNEXO ID: ' + (bi.localNexoId || '?') + '\nUA: ' + navigator.userAgent + '\n';
+  var head = 'NEXO diagnóstico ' + new Date().toISOString() + ' (última hora)\nNEXO ID: ' + (bi.localNexoId || '?') + '\nUA: ' + navigator.userAgent + '\n';
+  // La sesión actual se recorta a la última hora; se mantiene la anterior (contexto de antes de cerrar la app)
   return head + (_diagPrev ? '\n===== SESIÓN ANTERIOR =====\n' + _diagPrev + '\n' : '') +
-    '\n===== SESIÓN ACTUAL =====\n' + _diagSessionText();
+    '\n===== SESIÓN ACTUAL (última hora) =====\n' + _diagSessionText(true);
 }
