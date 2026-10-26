@@ -53,12 +53,18 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   const radio = new Radio();
   const nA = new NativePhone('A', 'AA:AA:AA:AA:AA:01', opts), nB = new NativePhone('B', 'BB:BB:BB:BB:BB:02', Object.assign({}, opts, { alerts: { battery: false, fullScreen: false }, vendor: 'vivo' }));
   [nA, nB].forEach((n) => { radio.add(n); n.load(); });
-  const [A, B] = await Promise.all([boot('A', nA), boot('B', nB)]);
+  // C (ronda 2784, #81): batería ya concedida pero pantalla completa NO → debe pedir proactivamente la pantalla completa.
+  // Fuera del radio (no estorba el descubrimiento A↔B); solo arranca para ver qué pide al inicio.
+  const nC = new NativePhone('C', 'CC:CC:CC:CC:CC:03', Object.assign({}, opts, { alerts: { battery: true, fullScreen: false } }));
+  radio.add(nC); nC.load();
+  radio.block(nA, nC); radio.block(nC, nA); radio.block(nB, nC); radio.block(nC, nB); // C aislado: solo arranca para ver qué pide
+  const [A, B] = await Promise.all([boot('A', nA), boot('B', nB), boot('C', nC)]);
   const idA = A.win.bleInterface.localNexoId.toLowerCase(), idB = B.win.bleInterface.localNexoId.toLowerCase();
   const r = { build: path.basename(buildDir) };
   // 1. Pedido una vez al arrancar
   r.pide_segundo_plano = await wait(() => (nB.alertOpened || []).indexOf('battery') >= 0, 20);
   r.A_no_pide = !(nA.alertOpened || []).length; // A ya lo tiene
+  r.pide_pantalla_completa = await wait(() => (nC.alertOpened || []).indexOf('fullScreen') >= 0, 20); // #81: con batería ya ok, pide la pantalla completa
   // Contactos
   A.win.bleInterface.togglePanel(); let add = null;
   for (let i = 0; i < 400 && !add; i++) { await sleep(100); add = A.win.document.querySelector('#ble-new-device > div button'); if (!add && !A.win.bleInterface.isScanning) click(A.win, A.win.document.getElementById('ble-scan-btn')); }
@@ -104,7 +110,7 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   if (A.win.bleInterface.calls.call) A.win.bleInterface.calls.hangup();
   r.vuelve_tras_el_bloqueo = await wait(() => nB.calls.filter((c) => c.name === 'callScreenDone').length > d0, 30);
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented/.test(l)).slice(0, 5);
-  const ok = r.pide_segundo_plano && r.A_no_pide && r.contactos && r.perfil_antes.length === 4 && r.perfil_antes.filter((t) => /^⚠️/.test(t)).length === 1 && r.boton_arreglar &&
+  const ok = r.pide_segundo_plano && r.A_no_pide && r.pide_pantalla_completa && r.contactos && r.perfil_antes.length === 4 && r.perfil_antes.filter((t) => /^⚠️/.test(t)).length === 1 && r.boton_arreglar &&
     r.fabricante.fila && r.fabricante.boton === 'Abrir' && r.fabricante.abre &&
     r.abre_ajuste && r.perfil_despues.filter((t) => !/^📱/.test(t)).every((t) => /^✅/.test(t)) && r.encender_por_defecto && r.mensaje_enciende && r.sin_opcion_no_enciende && r.llamada_suena && r.llamada_enciende &&
     r.vuelve_tras_el_bloqueo && !r.errores.length;
