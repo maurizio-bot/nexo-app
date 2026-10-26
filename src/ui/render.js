@@ -20,6 +20,24 @@ import { vaultAppendMessage, vaultHydrateAttachments, vaultLoadMessages, vaultUp
 
 export var _renderedMessageCount = 0;
 
+// Ronda 2781 (informe del dueño): una sola nota de voz suena a la vez, y el audio que está sonando se PARA al empezar a
+// grabar otra o al entrar/empezar una llamada o videollamada. _curVoiceStop guarda la función de pausa del reproductor
+// que suena ahora; _stopVoicePlayback la llama. voice.js la usa por window.__nexoStopVoice; las llamadas, por el evento
+// 'nexo:call' (calls.js lo emite en 'calling'/'ringing'/'active').
+var _curVoiceStop = null;
+export function _stopVoicePlayback() {
+  try { if (typeof window !== 'undefined') window.__nexoVoiceStops = (window.__nexoVoiceStops || 0) + 1; } catch (e) {} // observable para pruebas
+  var f = _curVoiceStop; _curVoiceStop = null;
+  if (typeof f === 'function') { try { f(); } catch (e) {} }
+}
+if (typeof window !== 'undefined') {
+  window.__nexoStopVoice = _stopVoicePlayback;
+  window.addEventListener('nexo:call', function (e) {
+    var st = e && e.detail;
+    if (st && (st.state === 'calling' || st.state === 'ringing' || st.state === 'active')) _stopVoicePlayback();
+  });
+}
+
 export function _getContactStorageKey() {
   var contactId = 'default';
   try {
@@ -429,6 +447,7 @@ export function _renderMessage(msg, skipSave) {
                 bars[b].style.height = (4 + Math.random() * 8) + 'px';
               }
             }
+            if (_curVoiceStop === _pausePlayback) _curVoiceStop = null;
           }
           function _stopPlayback() {
             _pausePlayback();
@@ -446,9 +465,11 @@ export function _renderMessage(msg, skipSave) {
           btn.onclick = function(e) {
             e.stopPropagation();
             if (!playing) {
+              _stopVoicePlayback(); // para cualquier otra nota de voz que esté sonando
               audioEl.play().then(function() {
                 btn.innerHTML = '⏸';
                 playing = true;
+                _curVoiceStop = _pausePlayback;
                 progressInterval = setInterval(_updateTime, 500);
                 animInterval = setInterval(_animateWave, 200);
               }).catch(function(err) {
