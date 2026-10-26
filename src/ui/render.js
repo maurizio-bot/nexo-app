@@ -7,7 +7,7 @@ import { _b64ToBlob } from './video_tools.js';
 import { _buildFileCard, _ensureVideoThumb, _openFullscreenMedia } from './file_card.js';
 import { _canUpgradeStatus, _getCurrentContactId, _getDomMessageStatus, _normId } from './chat_format.js';
 import { _clearMessageContainer } from './chat_nav.js';
-import { _fillTextBubble, _renderedMessageIds } from './chat_actions.js';
+import { _fillTextBubble, _renderReactions, _renderedMessageIds } from './chat_actions.js';
 import { _fmtTime } from './file_tools.js';
 import { _msgContactMap } from './chat_state.js';
 import { _objectURLRegistry } from './media_limits.js';
@@ -522,6 +522,7 @@ export function _renderMessage(msg, skipSave) {
       metaDiv.appendChild(statusSpan);
     }
     div.appendChild(metaDiv);
+    if (msg.reactions) _renderReactions(div, msg.reactions, isOwn);   // ronda 2783: reacciones (emoji) bajo la burbuja
     // v9.9.34: se busca la posición desde el final (un mensaje nuevo casi siempre va al final). Antes
     // se recorrían TODAS las burbujas por cada mensaje: abrir un chat de 400 mensajes = ~100.000
     // lecturas del DOM. Mismo orden: delante del primer mensaje posterior (los marcadores sin fecha se

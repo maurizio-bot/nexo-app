@@ -34,6 +34,7 @@ export function _setupBackButton() {
       _doChatBack();
     });
     _setupSwipeBack();
+    _setupPullToClose();
   } catch (e) {
     console.warn('[MAIN] _setupBackButton error:', e);
   }
@@ -156,6 +157,48 @@ export function _setupSwipeBack() {
     document.addEventListener('touchcancel', onTouchCancel, { passive: true });
   } catch (e) {
     console.warn('[MAIN] _setupSwipeBack error:', e);
+  }
+}
+
+// Ronda 2783 (pedido del dueño): deslizar el chat hacia ABAJO = cerrarlo (volver a la lista). Aparte del "volver"
+// lateral para no estorbarlo. No pelea con el scroll: solo cuenta si el gesto empieza con los mensajes arriba del
+// todo (scrollTop<=2) y es claramente vertical hacia abajo; si no, es scroll normal del historial.
+export function _setupPullToClose() {
+  try {
+    var mc = document.getElementById('messages-container');
+    var app = document.getElementById('app');
+    if (!mc || !app) return;
+    var sY = 0, cY = 0, active = false;
+    mc.addEventListener('touchstart', function(e) {
+      if (!document.body.classList.contains('chat-view-active') || !e.touches || !e.touches[0]) { active = false; return; }
+      sY = e.touches[0].clientY; cY = sY; active = (mc.scrollTop <= 2);
+    }, { passive: true });
+    mc.addEventListener('touchmove', function(e) {
+      if (!active || !e.touches || !e.touches[0]) return;
+      cY = e.touches[0].clientY;
+      var dy = cY - sY;
+      if (dy <= 0 || mc.scrollTop > 2) { active = false; app.style.transform = ''; app.style.opacity = ''; return; }
+      var ty = Math.min(dy, window.innerHeight * 0.5);
+      app.style.transform = 'translateY(' + ty + 'px)';
+      app.style.opacity = String(Math.max(0.4, 1 - (ty / window.innerHeight)));
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+    var endPull = function() {
+      if (!active) return;
+      active = false;
+      var dy = cY - sY;
+      if (dy > Math.max(100, window.innerHeight * 0.18)) {
+        _doChatBack();           // _doChatBack pone su propia animación de salida y limpia los estilos
+      } else {
+        app.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+        app.style.transform = ''; app.style.opacity = '';
+        setTimeout(function() { app.style.transition = ''; }, 250);
+      }
+    };
+    mc.addEventListener('touchend', endPull, { passive: true });
+    mc.addEventListener('touchcancel', endPull, { passive: true });
+  } catch (e) {
+    console.warn('[MAIN] _setupPullToClose error:', e);
   }
 }
 

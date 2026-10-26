@@ -7,7 +7,7 @@ import { applyAvatar } from './avatar.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
-import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultSaveContacts } from '../vault/vault_manager.js';
+import { vaultBlankMessage, vaultDeleteMessage, vaultEditMessage, vaultLoadContacts, vaultLoadFile, vaultLoadMessages, vaultReactMessage, vaultSaveContacts } from '../vault/vault_manager.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _renderMessage, _sendAttachment, _sendTextTo;
@@ -26,6 +26,8 @@ export var _replyTo = null;               // { id, a: autor (NEXO ID), s: resume
 export var DELETE_ALL_MS = 24 * 3600000;  // "eliminar para todos" hasta 24 h después de enviarlo
 export var EDIT_MS = 15 * 60000;           // ronda 2782: editar un mensaje propio hasta 15 min después de enviarlo
 export var _editing = null;                // ronda 2782: { id, cid } del mensaje que se está editando (lo lee _doSend)
+export var QUICK_REACTION = '❤️';           // ronda 2783: doble toque en un mensaje = reaccionar con este emoji
+export var REACTION_SET = ['👍', '❤️', '😂', '😮', '😢', '🙏']; // emojis del menú "Reaccionar"
 
 // Burbuja de texto: eliminado, reenviado, respuesta citada (todo como texto: viene de otro teléfono)
 export function _fillTextBubble(contentDiv, msg, isOwn) {
@@ -81,7 +83,7 @@ export function _setupMessageActions() {
   if (!mc || mc._nexoActions) return;
   mc._nexoActions = true;
   mc.style.touchAction = 'pan-y';
-  var timer = null, startX = 0, startY = 0, target = null, swiping = false, fired = false;
+  var timer = null, startX = 0, startY = 0, target = null, swiping = false, fired = false, lastTapId = null, lastTapAt = 0;
   var bubbleOf = function(e) {
     var m = e.target && e.target.closest ? e.target.closest('.message') : null;
     return (m && m.dataset.msgId && !m.classList.contains('progress-placeholder')) ? m : null;
@@ -97,23 +99,34 @@ export function _setupMessageActions() {
     if (!target) return;
     var dx = e.clientX - startX, dy = e.clientY - startY;
     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(timer);
-    // Deslizar a la derecha = responder (lejos del borde izquierdo, que es "volver")
-    if (startX > 40 && dx > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    // Deslizar la burbuja = responder. A la derecha (lejos del borde izquierdo, que es "volver") o a la izquierda
+    // (lo que pidió el dueño): en ambos sentidos.
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5 && (dx > 0 ? startX > 40 : true)) {
       swiping = true;
-      target.style.transform = 'translateX(' + Math.min(dx, 80) + 'px)';
+      var tx = dx > 0 ? Math.min(dx, 80) : Math.max(dx, -80);
+      target.style.transform = 'translateX(' + tx + 'px)';
     }
   });
   var end = function(e) {
     clearTimeout(timer);
     if (!target) return;
-    var t = target, dx = (typeof e.clientX === 'number' ? e.clientX : startX) - startX;
+    var t = target;
+    var dx = (typeof e.clientX === 'number' ? e.clientX : startX) - startX;
+    var dy = (typeof e.clientY === 'number' ? e.clientY : startY) - startY;
     target = null;
     if (swiping) {
       swiping = false;
       t.style.transition = 'transform 0.15s';
       t.style.transform = '';
       setTimeout(function() { t.style.transition = ''; }, 200);
-      if (dx > 60) _startReply(t.dataset.msgId);
+      if (Math.abs(dx) > 60) _startReply(t.dataset.msgId);   // responder deslizando (izquierda o derecha)
+      return;
+    }
+    // Doble toque en la burbuja = reaccionar con ❤️ (en fotos/vídeos no: ahí el doble toque amplía en el visor)
+    if (!fired && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+      var now = Date.now(), id = t.dataset.msgId;
+      if (lastTapId === id && now - lastTapAt < 320) { lastTapId = null; lastTapAt = 0; _doubleTapBubble(t); }
+      else { lastTapId = id; lastTapAt = now; }
     }
   };
   mc.addEventListener('pointerup', end);
@@ -126,6 +139,17 @@ export function _setupMessageActions() {
   });
   // Tras abrir el menú con una pulsación larga no se abre además la foto o el vídeo
   mc.addEventListener('click', function(e) { if (fired) { fired = false; e.stopPropagation(); e.preventDefault(); } }, true);
+}
+
+// Ronda 2783: doble toque en una burbuja de texto = reaccionar con ❤️. En fotos/vídeos no (ahí el doble toque amplía
+// en el visor a pantalla completa, file_card.js).
+function _doubleTapBubble(div) {
+  var id = div && div.dataset.msgId, cid = _getCurrentContactId();
+  if (!id || !cid) return;
+  _findMessage(cid, id).then(function(m) {
+    if (!m || m.deleted || m.attachmentType) return;
+    _reactTo(cid, id, QUICK_REACTION);
+  });
 }
 
 export function _openMsgMenu(div) {
@@ -150,6 +174,20 @@ export function _openMsgMenu(div) {
       b.onclick = function(e) { e.stopPropagation(); close(); fn(); };
       sheet.appendChild(b);
     };
+    if (!deleted) {
+      // Ronda 2783: barra de reacciones arriba del menú (como WhatsApp)
+      var rbar = document.createElement('div');
+      rbar.style.cssText = 'display:flex;justify-content:space-around;align-items:center;padding:10px 12px 12px;border-bottom:1px solid rgba(255,255,255,0.08);';
+      REACTION_SET.forEach(function(e) {
+        var rb = document.createElement('button');
+        rb.className = 'mm-react';
+        rb.textContent = e;
+        rb.style.cssText = 'background:none;border:none;font-size:27px;line-height:1;padding:4px 6px;cursor:pointer;';
+        rb.onclick = function(ev) { ev.stopPropagation(); close(); _reactTo(cid, id, e); };
+        rbar.appendChild(rb);
+      });
+      sheet.appendChild(rbar);
+    }
     if (!deleted) add('↩  Responder', 'mm-reply', function() { _startReply(id, msg); });
     if (!deleted) add('↪  Reenviar', 'mm-forward', function() { _openForwardSheet(msg); });
     if (!deleted && !msg.attachmentType) add('⧉  Copiar', 'mm-copy', function() { _copyText(_plainText(msg.content)); });
@@ -386,6 +424,55 @@ export function _rerenderEdited(cid, id, newText) {
   });
 }
 
+// ===================== Ronda 2783: reaccionar con un emoji =====================
+// Doble toque en un mensaje = ❤️ (QUICK_REACTION). El menú "Reaccionar" permite elegir otro. Se guarda en el vault
+// (reactions: { NEXO ID de quien reacciona: emoji }) y, si el contacto lo entiende, se le manda la acción oculta
+// {type:'nexo_act',act:'react',id,e}. Volver a tocar el mismo emoji lo quita (e:''). Igual por Bluetooth/Wi-Fi/internet.
+export function _reactTo(cid, msgId, emoji) {
+  cid = _normId(cid);
+  if (!cid || !msgId) return;
+  _findMessage(cid, msgId).then(function(m) {
+    if (!m || m.deleted) return;
+    var me = _myNexoId();
+    var cur = (m.reactions && m.reactions[me]) || '';
+    var next = (cur === emoji) ? '' : emoji;            // el mismo otra vez = quitar
+    if (_peerUnderstands(cid)) _sendTextTo(cid, JSON.stringify({ type: 'nexo_act', act: 'react', id: msgId, e: next }), '', true);
+    vaultReactMessage(cid, msgId, me, next).then(function() { _rerenderReactions(cid, msgId); });
+  });
+}
+
+export function _rerenderReactions(cid, msgId) {
+  _findMessage(_normId(cid), msgId).then(function(m) {
+    var el = document.querySelector('.message[data-msg-id="' + msgId + '"]');
+    if (el && m) _renderReactions(el, m.reactions, !!m._own);
+  });
+}
+
+// Dibuja (o actualiza) la fila de reacciones de una burbuja. Agrupa por emoji con su cuenta y resalta el mío.
+export function _renderReactions(msgEl, reactions, isOwn) {
+  if (!msgEl) return;
+  var old = msgEl.querySelector('.msg-reactions');
+  if (old) old.remove();
+  var keys = reactions ? Object.keys(reactions) : [];
+  if (!keys.length) return;
+  var counts = {};
+  keys.forEach(function(k) { var e = reactions[k]; if (e) counts[e] = (counts[e] || 0) + 1; });
+  var emojis = Object.keys(counts);
+  if (!emojis.length) return;
+  var mine = (reactions[_myNexoId()]) || '';
+  var row = document.createElement('div');
+  row.className = 'msg-reactions';
+  row.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;' + (isOwn ? 'justify-content:flex-end;' : '');
+  emojis.forEach(function(e) {
+    var pill = document.createElement('span');
+    pill.className = 'reaction-pill' + (e === mine ? ' mine' : '');
+    pill.style.cssText = 'background:' + (e === mine ? 'rgba(0,200,255,0.28)' : 'rgba(255,255,255,0.12)') + ';border-radius:12px;padding:1px 7px;font-size:13px;line-height:1.5;';
+    pill.textContent = counts[e] > 1 ? (e + ' ' + counts[e]) : e;
+    row.appendChild(pill);
+  });
+  msgEl.appendChild(row);
+}
+
 // Recibido: el contacto eliminó para todos uno de SUS mensajes
 export function _applyChatAction(senderId, act) {
   if (act && act.act === 'av') { applyAvatar(senderId, act); return; } // ronda 2765: foto de perfil (avatar.js)
@@ -398,6 +485,14 @@ export function _applyChatAction(senderId, act) {
         if (_normId(_getCurrentContactId()) === cide) _rerenderEdited(cide, act.id, act.t);
         return _refreshChatPreview(cide);
       });
+    });
+    return;
+  }
+  // Ronda 2783: el contacto reaccionó a un mensaje con un emoji
+  if (act && act.act === 'react' && act.id && typeof act.e === 'string') {
+    var cidr = _normId(senderId);
+    vaultReactMessage(cidr, act.id, cidr, act.e).then(function(ok) {
+      if (ok && _normId(_getCurrentContactId()) === cidr) _rerenderReactions(cidr, act.id);
     });
     return;
   }

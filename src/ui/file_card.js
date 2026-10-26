@@ -35,7 +35,48 @@ export function _openFullscreenMedia(src, type) {
   if (type === 'image') {
     var img = document.createElement('img');
     img.src = src;
-    img.style.cssText = 'max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px;';
+    img.style.cssText = 'max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px;transition:transform 0.15s ease;cursor:zoom-in;transform-origin:center center;touch-action:none;';
+    // Ronda 2783 (pedido del dueño): ampliar la foto con DOS DEDOS (pellizco: se abren = acercar, se juntan = alejar) o
+    // con DOBLE TOQUE (alterna normal / 2,5x). Con la foto ampliada, un dedo la arrastra para ver el resto. Un toque
+    // solo no hace nada (para cerrar: fuera de la foto o la X).
+    var zScale = 1, ztx = 0, zty = 0, pinch0 = 0, pinchScale0 = 1, panX0 = 0, panY0 = 0, lastTapV = 0, zMoved = false;
+    var zApply = function(anim) {
+      img.style.transition = anim ? 'transform 0.15s ease' : 'none';
+      img.style.transform = 'translate(' + ztx + 'px,' + zty + 'px) scale(' + zScale + ')';
+      img.style.cursor = zScale > 1 ? 'zoom-out' : 'zoom-in';
+    };
+    var zDist = function(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx * dx + dy * dy); };
+    var zClamp = function(v, a, b) { return Math.max(a, Math.min(b, v)); };
+    img.addEventListener('touchstart', function(e) {
+      var t = e.touches || [];
+      zMoved = false;
+      if (t.length >= 2) { pinch0 = zDist(t) || 1; pinchScale0 = zScale; }
+      else if (t.length === 1) { panX0 = t[0].clientX - ztx; panY0 = t[0].clientY - zty; }
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+    img.addEventListener('touchmove', function(e) {
+      var t = e.touches || [];
+      if (t.length >= 2) {
+        zMoved = true;
+        zScale = zClamp(pinchScale0 * (zDist(t) / pinch0), 1, 5);
+        zApply(false);
+        if (e.cancelable) e.preventDefault();
+      } else if (t.length === 1 && zScale > 1) {
+        zMoved = true;
+        ztx = t[0].clientX - panX0; zty = t[0].clientY - panY0;
+        zApply(false);
+        if (e.cancelable) e.preventDefault();
+      }
+    }, { passive: false });
+    img.addEventListener('touchend', function(e) {
+      if ((e.touches && e.touches.length) || 0) return;   // aún queda un dedo en la pantalla
+      if (zScale <= 1.02) { zScale = 1; ztx = 0; zty = 0; zApply(true); }
+      if (!zMoved) {                                       // doble toque (sin pellizco ni arrastre): alternar
+        var now = Date.now();
+        if (now - lastTapV < 320) { lastTapV = 0; if (zScale > 1) { zScale = 1; ztx = 0; zty = 0; } else { zScale = 2.5; } zApply(true); }
+        else lastTapV = now;
+      }
+    }, { passive: false });
     overlay.appendChild(img);
   } else if (type === 'video') {
     var video = document.createElement('video');
@@ -52,6 +93,8 @@ export function _openFullscreenMedia(src, type) {
   });
   document.body.appendChild(overlay);
 }
+// Para la prueba del simulador (zoom de la foto): abrir el visor sin tener que mandar una imagen por la radio
+if (typeof window !== 'undefined') window.__nexoOpenMedia = _openFullscreenMedia;
 
 export var _thumbsInProgress = {};
 

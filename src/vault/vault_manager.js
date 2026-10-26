@@ -726,6 +726,26 @@ export async function vaultEditMessage(contactNexoId, msgId, newText) {
   });
 }
 
+// Ronda 2783: reaccionar a un mensaje con un emoji. reactions = { NEXO ID de quien reacciona: emoji }; emoji '' lo quita.
+export async function vaultReactMessage(contactNexoId, msgId, reactorNexoId, emoji) {
+  if (!contactNexoId || !msgId || !reactorNexoId) return false;
+  var cid = _normId(contactNexoId);
+  var who = _normId(reactorNexoId);
+  var e = (typeof emoji === 'string') ? emoji.slice(0, 8) : '';
+  return _withMsgLock(cid, async function() {
+    var messages = _msgCache.has(cid) ? _msgCache.get(cid).slice() : (await vaultLoadMessages(cid));
+    var idx = messages.findIndex(function(m) { return (m.msgId || m.messageId) === msgId; });
+    if (idx < 0) return false;
+    var m = messages[idx];
+    if (m.deleted) return false;
+    var reactions = Object.assign({}, m.reactions || {});
+    if (e) reactions[who] = e; else delete reactions[who];
+    messages[idx] = Object.assign({}, m, { reactions: reactions });
+    _persistMessages(cid, messages);
+    return true;
+  });
+}
+
 // v2.3.3: el vídeo HD sustituye al adjunto (previa) de un mensaje ya recibido
 export async function vaultReplaceAttachment(contactNexoId, msgId, payload, metaPatch) {
   if (!contactNexoId || !msgId || !payload) return false;
