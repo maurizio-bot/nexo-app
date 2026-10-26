@@ -21,6 +21,15 @@ export function _netReach(contactId) {
   try { return bi.net._netContacts().some(function(c) { return (c.nexoId || c.deviceUUID || '').toLowerCase() === nx; }); } catch (e) { return false; }
 }
 
+// Ronda 2780: ¿hay un camino LOCAL para archivos grandes con el contacto (misma red Wi-Fi, Wi-Fi Direct o Bluetooth
+// L2CAP)? Si lo hay, el archivo grande va por ahí (rápido, gratis y lo primero según la regla del dueño) con big_file.js;
+// no se sube el tope del sobre para que no salga por internet en su lugar ni se quede en trozos lentos por Bluetooth.
+export function _bigLocalRoute(contactId) {
+  var bi = window.bleInterface;
+  if (!bi || !contactId || !bi.bigFiles || typeof bi.bigFiles.route !== 'function') return false;
+  try { return !!bi.bigFiles.route(contactId); } catch (e) { return false; }
+}
+
 export function _getAttachmentPlugins() {
   var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
   return {

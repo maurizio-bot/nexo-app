@@ -2,7 +2,7 @@
  * NEXO — Límites de tamaño y URLs de vídeos/imágenes en pantalla (sacado de main.js en la ronda 2752, sin cambios):
  * máximo por Bluetooth y por Wi-Fi Direct, aviso de "demasiado grande" y liberar las URL al salir del chat.
  */
-import { _wdReach, _netReach } from './ui_bits.js';
+import { _wdReach, _netReach, _bigLocalRoute } from './ui_bits.js';
 
 
 export var _objectURLRegistry = [];
@@ -24,7 +24,9 @@ export var NET_MAX_B64_BYTES = 8000000;
 
 export function _maxB64For(contactId) {
   if (_wdReach(contactId)) return WD_MAX_B64_BYTES;   // Wi-Fi local / Wi-Fi Direct: ~22 MB
-  if (_netReach(contactId)) return NET_MAX_B64_BYTES; // internet (Tor/relés): fotos y archivos medianos
+  // internet (Tor/relés) para fotos y archivos medianos SOLO si no hay camino local de archivos grandes (L2CAP): lo local
+  // va antes (regla del dueño) y un archivo grande cerca debe salir por L2CAP, no en trozos por el sobre
+  if (_netReach(contactId) && !_bigLocalRoute(contactId)) return NET_MAX_B64_BYTES;
   return MAX_BLE_B64_BYTES;                            // solo Bluetooth: ~2,2 MB
 }
 
