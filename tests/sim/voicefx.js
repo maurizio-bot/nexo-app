@@ -6,7 +6,7 @@
 //  hablan_los_dos: con el eco de antes, uno habla a la vez (más fuerte que el eco): su voz debe pasar (como mucho −6 dB);
 //  con_cascos: con cascos no hay eco del altavoz: lo del micrófono no se baja aunque suene el otro (como mucho −1 dB);
 //  solo_yo: sin el otro, la voz pasa entera (como mucho −1,5 dB);
-//  ruido_en_silencio: ruido de fondo bajo sin hablar: baja al menos 8 dB;
+//  ruido_en_silencio: ruido de fondo bajo sin hablar: baja al menos 20 dB (26-10: gate a -34 dB, el micro al ~2 %);
 //  principio_de_palabra: tras un silencio, los primeros 20 ms de una palabra salen al menos al 70 %;
 //  retumbo_30Hz: baja al menos 10 dB; voz_grave_120Hz y tono_1kHz: como mucho −1 y −0,5 dB; saturacion: el pico no
 //    pasa de 1;
@@ -124,7 +124,7 @@ for (const [k, g] of [['eco_fuerte', 0.7], ['eco_debil', 0.1]]) {
   r.cpu_ms_por_s = Math.round(Number(process.hrtime.bigint() - t0) / 1e6 / 60 * 100) / 100;
 }
 const ok = r.eco_fuerte.baja_dB >= 10 && r.eco_debil.baja_dB >= 10 && r.hablan_los_dos.voz_propia_dB >= -6 && r.con_cascos.baja_dB <= 1 && r.solo_yo.baja_dB <= 1.5 &&
-  r.ruido_en_silencio.baja_dB >= 8 && r.principio_de_palabra.primeros_20ms >= 0.7 && r.retumbo_30Hz.baja_dB >= 10 && r.voz_grave_120Hz.baja_dB <= 1 && r.tono_1kHz.baja_dB <= 0.5 &&
+  r.ruido_en_silencio.baja_dB >= 20 && r.principio_de_palabra.primeros_20ms >= 0.7 && r.retumbo_30Hz.baja_dB >= 10 && r.voz_grave_120Hz.baja_dB <= 1 && r.tono_1kHz.baja_dB <= 0.5 &&
   r.saturacion.pico <= 1;
 r.resultado = ok ? 'OK' : 'FALLO';
 console.log('VOICEFX ' + JSON.stringify(r));
