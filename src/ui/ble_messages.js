@@ -6,6 +6,7 @@
 import { e2eOpenAnon } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOpenText, e2eOuterAd } from '../vault/e2e_proto.js';
 import { groupAttachment, parseGroupEnvelope } from './groups.js';
+import { NET_MAX_B64_BYTES } from './media_limits.js';
 import { parseCallSignal } from './calls.js';
 import { BLE_STATES, SUPERVISOR_STATES, _addBLEContact, _chatKind, _isGenericName, _failStatus, _getBLEContacts, _getContactByDeviceId, _getContactByUUID, _hasNativeMethod, _hydrateAttachments, _isBLEContact, _isControlPacket, _isProtocolShaped, _isResendable, _lanNx, _messagePreview, _netNx, _normId, _normMac, _safeDispatchEvent, _safeNativeCall, _saveBLEContacts, _saveSeqCounter, _vaultAppendMessage, _vaultGetOrCreateContact, _vaultLoadMessages, _vaultUpdateMessageStatus } from './ble_helpers.js';
 
@@ -847,8 +848,12 @@ export const BLE_MESSAGE_METHODS = {
           var nudged = false;
           (function check() {
             var dev = self._resolveDeviceIdForNexoId(uuid) || (self._macOfOther(deviceId, uuid) ? null : deviceId);
-            // v6.13.0: por internet, archivos solo si los dos están en Wi-Fi (con datos móviles esperan)
-            var netNo = !!_netNx(dev) && !(self.net && self.net.filesOk(uuid));
+            // Ronda 2780 (pedido del dueño): fotos y archivos medianos SIEMPRE se pueden mandar por internet. Si el otro
+            // está en línea van por Tor directo/Wi-Fi (filesOk); si no, al buzón de los relés (mailboxOk) y llegan cuando
+            // abre, igual que los textos. Bajo un tope (~6 MB de archivo): los más grandes son la fase 2 (Tor). Antes solo
+            // salían con los dos en Wi-Fi; por eso una foto a un contacto lejano/desconectado no llegaba.
+            var netMediaOk = self.net && (self.net.filesOk(uuid) || (self.net.mailboxOk(uuid) && base64Data.length <= NET_MAX_B64_BYTES));
+            var netNo = !!_netNx(dev) && !netMediaOk;
             if (netNo) dev = self._bleReadyFor(uuid) || dev;
             var st = self._getDeviceState(dev);
             if ((!netNo || !_netNx(dev)) && (st.state === BLE_STATES.READY_TO_CHAT || st.state === BLE_STATES.NOTIFICATIONS_READY)) {

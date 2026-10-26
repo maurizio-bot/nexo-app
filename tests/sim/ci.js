@@ -27,7 +27,8 @@ const SCENARIOS = [
     encontrado_por: (v) => typeof v === 'string' && v.length > 0, escrituras_bluetooth: (v) => v === 0 } },
   { name: 'internet (relés)', args: ['net.js'], tag: 'NET', checks: {
     texto_estado_A: (v) => v === 'delivered', 'relés_ven_algo': isEmpty, escrituras_bluetooth: (v) => v === 0,
-    datos_moviles_foto_espera: isTrue, errores: isEmpty, contenido_en_registros: (v) => v === 0,
+    datos_moviles_foto_llega_s: (v) => typeof v === 'number', buzon_foto_llega_s: (v) => typeof v === 'number', errores: isEmpty, contenido_en_registros: (v) => v === 0,
+    sin_internet_al_mandar: isTrue, boton_reintentar: isTrue, reintento_auto_foto_llega_s: (v) => typeof v === 'number',
     mensajes_con_aviso: (v) => typeof v === 'string' && /^(\d+)\/\1$/.test(v) && v !== '0/0', avisos_en_saludos_o_confirmaciones: (v) => v === 0 } },
   { name: 'internet (Tor)', args: ['net.js', '--tor'], tag: 'NET', checks: {
     texto_estado_A: (v) => v === 'delivered', 'eventos_a_los_relés_durante_el_envío': (v) => v === 0, impostor_cerrado: isTrue,

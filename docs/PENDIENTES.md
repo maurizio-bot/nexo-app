@@ -12,9 +12,13 @@ seguridad mejoró: 8 arreglos + 16 pruebas, batería 51/51, Kotlin 87/87; ver `d
 (fase 2, C1 arreglado): **42,1** — las confirmaciones (✓✓) ya van firmadas con la pareja (un punto débil grave menos,
 una prueba más), batería 52/52, Kotlin 90/90. Informe del dueño: 2778 (llamadas: menos ruido, pantalla al entrar llamada,
 contestar deslizando) y 2779 (alta por ID: agregar a alguien lejano con su NEXO ID + solicitudes aceptar/eliminar; batería
-53/53). Índice **42,1** en las dos (mejoras de experiencia/funcionalidad, no modos de fallo del catálogo). **Siguiente:
-revisión 2, día 1 (avisos, segundo plano y app cerrada)** el 26-10, tras lo que traiga el dueño; pendiente corto: aviso
-proactivo del permiso de pantalla completa (Android 14); y en seguridad, los puntos débiles abiertos (H3, H4, M5, M6, F6–F9).
+53/53). Con la 2780 (informe del dueño: las fotos/archivos a un contacto lejano no llegaban): fotos y archivos medianos
+(~6 MB) ahora SIEMPRE se pueden mandar por internet (buzón de los relés o Tor), botón «Reintentar» a los 30 s y reenvío
+solo al volver la conexión; batería 53/53, índice **41,4** (baja de 42,1 al apuntar el bug del Wi-Fi→internet del dueño como punto débil grave abierto; no es regresión). **Siguiente:
+revisión 2, día 1 (avisos, segundo plano y app cerrada)** el 26-10, tras lo que traiga el dueño; pendiente corto: **2781 —
+informe del dueño: con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar (hay que mantener el Wi-Fi si
+está conectado y bueno; sospecha: el tráfico de la propia videollamada marca el enlace «malo» y lo suelta; tarea #83)**;
+aviso proactivo del permiso de pantalla completa (Android 14); y en seguridad, los puntos débiles abiertos (H3, H4, M5, M6, F6–F9).
 
 ## 0b. Hoja de ruta (opinión del 25-10, aceptada por el dueño)
 Lo que más falta ya no es código nuevo, sino confirmar en el mundo real lo que existe. En orden de importancia:
@@ -69,8 +73,11 @@ Queda, por prioridad (cada uno necesita un cambio de protocolo y probarse en los
    un rato (~12 s seguidos). Se vuelve a él cuando lleva ~30 s bien. Una foto a medias no cambia de camino por un pico.
 2. **Wi-Fi muy malo o caído → internet** (los dos en Wi-Fi). **Sin internet → Bluetooth** (y Jump si no hay alcance).
 3. **Wi-Fi Direct**: para fotos, vídeos y archivos grandes cuando no hay Wi-Fi común ni internet, antes que Bluetooth.
-4. **Con datos móviles**: los archivos no van por datos (esperan al Wi-Fi o van por Bluetooth); los textos van por
-   Bluetooth si está conectado y si no por internet.
+4. **Con datos móviles / contacto lejano**: los textos y, desde la 2780 (nueva decisión del dueño: «las fotos/archivos
+   siempre se pueden mandar»), **también las fotos y archivos medianos (~6 MB)** van por internet (Tor directo o al buzón
+   de los relés). Antes los archivos esperaban al Wi-Fi; ya no. Los muy grandes (decenas de MB) siguen esperando al Wi-Fi,
+   Wi-Fi Direct o Bluetooth cerca (eso es la fase 2, por Tor nativo). Si algo no sale en 30 s o falla, en la burbuja sale
+   «Reintentar» y, al volver el internet/Wi-Fi, se reenvía solo.
 5. **Ningún camino**: pendiente, intentando Bluetooth cada poco; sale por internet o Wi-Fi, lo que llegue primero.
 
 ## 1. Pendiente de pruebas del dueño en el teléfono

@@ -303,6 +303,10 @@
      "prueba": "internet (Tor)"
     },
     {
+     "fallo": "Fotos/archivos por internet (buzón/Tor) siempre mandables + Reintentar y reenvío al volver (2780)",
+     "prueba": "internet (relés)"
+    },
+    {
      "fallo": "Wi-Fi normal y cambio automático de camino con un tercero",
      "prueba": null,
      "fuera": "lan.js"
@@ -329,6 +333,10 @@
     {
      "g": "leve",
      "d": "Jump con un puente en una build vieja: ~80 s"
+    },
+    {
+     "g": "grave",
+     "d": "Informe del dueño (2780): con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar; debe mantener el Wi-Fi si está conectado y bueno (sospecha: el tráfico de la propia videollamada marca el enlace «malo»). Tarea #83, para 2781"
     }
    ]
   },

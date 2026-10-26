@@ -5,7 +5,7 @@
  */
 import { _b64ToBlob } from './video_tools.js';
 import { _buildFileCard, _ensureVideoThumb, _openFullscreenMedia } from './file_card.js';
-import { _canUpgradeStatus, _getCurrentContactId, _normId } from './chat_format.js';
+import { _canUpgradeStatus, _getCurrentContactId, _getDomMessageStatus, _normId } from './chat_format.js';
 import { _clearMessageContainer } from './chat_nav.js';
 import { _fillTextBubble, _renderedMessageIds } from './chat_actions.js';
 import { _fmtTime } from './file_tools.js';
@@ -523,6 +523,7 @@ export function _renderMessage(msg, skipSave) {
     }
     if (before) container.insertBefore(div, before);
     else container.appendChild(div);
+    if (isOwn) _armRetry(div, _getCurrentContactId(), msgId, msg.status || 'pending');
     if (!_suppressAutoScroll) _scheduleScrollToBottom();
     if (!skipSave) _saveMessageToStorage(msg);
     _renderedMessageCount++;
@@ -616,8 +617,62 @@ export function _updateMessageStatus(messageId, status) {
     if (msgDiv) {
       msgDiv.classList.remove('status-pending', 'status-queued', 'status-sending', 'status-sent', 'status-delivered', 'status-read', 'status-failed');
       msgDiv.classList.add('status-' + status);
+      if (msgDiv.classList.contains('own')) _armRetry(msgDiv, _getCurrentContactId(), messageId, status);
     }
   } catch (e) {
     console.warn('[MAIN] _updateMessageStatus error:', e);
   }
+}
+
+// Ronda 2780 (pedido del dueño): una foto/archivo/texto propio SIEMPRE se puede mandar. Si en ~30 s no salió (o falló),
+// aparece "Reintentar" bajo la burbuja para volver a intentarlo cuando se quiera; y al volver el internet/Wi-Fi se
+// reactiva solo (net_link avisa a _netOnline → ble_ack.resumeOutgoingTransfers + _resendPendingMessages). El margen se
+// puede acortar en pruebas con window.NEXO_RETRY_MS.
+function _retryMs() { var v = (typeof window !== 'undefined' && window.NEXO_RETRY_MS) | 0; return v > 0 ? v : 30000; }
+function _retryStuck(status) { return status === 'pending' || status === 'queued' || status === 'sending'; }
+
+function _hideRetry(div) {
+  if (!div) return;
+  if (div._retryTimer) { clearTimeout(div._retryTimer); div._retryTimer = null; }
+  var b = div.querySelector('.msg-retry');
+  if (b && b.parentNode) b.parentNode.removeChild(b);
+}
+
+function _showRetry(div, cid, msgId) {
+  if (!div || !cid || !msgId) return;
+  var meta = div.querySelector('.msg-meta');
+  if (!meta || meta.querySelector('.msg-retry')) return;
+  var b = document.createElement('button');
+  b.className = 'msg-retry';
+  b.textContent = '↻ Reintentar';
+  b.style.cssText = 'margin-left:8px;padding:1px 8px;font-size:12px;line-height:1.5;color:#00c8ff;background:rgba(0,200,255,0.12);border:1px solid rgba(0,200,255,0.4);border-radius:10px;cursor:pointer;';
+  b.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+  b.onclick = function(e) { e.stopPropagation(); e.preventDefault(); _retrySend(cid, msgId, div); };
+  meta.appendChild(b);
+}
+
+export function _armRetry(div, cid, msgId, status) {
+  if (!div || !cid || !msgId) return;
+  if (isGroupId(cid)) return; // "siempre mandable" es para los chats 1 a 1
+  if (div._retryTimer) { clearTimeout(div._retryTimer); div._retryTimer = null; }
+  if (status === 'failed') { _showRetry(div, cid, msgId); return; }
+  if (status === 'sent' || status === 'delivered' || status === 'read') { _hideRetry(div); return; }
+  if (_retryStuck(status)) {
+    div._retryTimer = setTimeout(function() {
+      div._retryTimer = null;
+      var now = _getDomMessageStatus(msgId);
+      if (now === 'failed' || _retryStuck(now)) _showRetry(div, cid, msgId);
+    }, _retryMs());
+  }
+}
+
+function _retrySend(cid, msgId, div) {
+  _hideRetry(div);
+  _updateMessageStatus(msgId, 'sending');
+  var bi = window.bleInterface;
+  try { if (bi && typeof bi._resendPendingMessages === 'function') bi._resendPendingMessages(cid); } catch (e) {}
+  try { if (bi && bi.ackSystem && typeof bi.ackSystem.resumeOutgoingTransfers === 'function') bi.ackSystem.resumeOutgoingTransfers(); } catch (e) {}
+  // Si en otros ~30 s sigue sin salir, vuelve a ofrecer el botón
+  var d = document.querySelector('.message[data-msg-id="' + msgId + '"]') || div;
+  _armRetry(d, cid, msgId, 'sending');
 }

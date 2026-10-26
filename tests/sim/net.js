@@ -146,11 +146,15 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
   r.A_ve_que_B_no_esta = viaA();
   sendText(A, 'SECRETO-buzon');
   r.buzon_estado_A_s = await waitFor(() => status(A, 'SECRETO-buzon') === 'sent', 20000);
+  // Ronda 2780 (informe del dueño): una FOTO a un contacto desconectado también va al buzón y llega al volver (antes no)
+  const fotoBuzon = await sendFile(A, 'foto_buzon.jpg', 150000);
   await sleep(5000);
   nB.load(); B = await boot('B', nB);
   r.buzon_llega_al_volver_s = await waitFor(() => has(B, idA, (m) => m.content === 'SECRETO-buzon'), 60000);
+  r.buzon_foto_llega_s = await waitFor(() => has(B, idA, (m) => m.attachmentType && !m._own && (m.attachmentPayload || nB.files.get(m.attachmentRef)) === fotoBuzon.toString('base64')), 90000);
   r.buzon_doble_check_s = await waitFor(() => ['delivered', 'read'].includes(status(A, 'SECRETO-buzon')), 60000);
-  // 4) B con datos móviles (sin Wi-Fi): textos sí, la foto espera al Wi-Fi
+  // 4) B con datos móviles (sin Wi-Fi): textos y FOTOS se mandan igual por internet (ronda 2780, pedido del dueño:
+  //    "las fotos/archivos siempre se pueden mandar"). Antes la foto esperaba al Wi-Fi; ahora va por el buzón/Tor.
   r.de_vuelta_en_linea_s = await waitFor(() => viaA() === 'internet', 60000);
   nB.setWifi(null);
   await sleep(17000); // el próximo saludo de B ya dice "datos móviles"
@@ -159,12 +163,23 @@ const tokenOf = (nx, day) => crypto.createHash('sha256').update('nexo-lan|' + nx
   sendText(A, 'texto con datos moviles');
   r.datos_moviles_texto_s = await waitFor(() => has(B, idA, (m) => m.content === 'texto con datos moviles'), 30000);
   const foto2 = await sendFile(A, 'foto2.jpg', 200000);
-  await sleep(15000);
   const llegó2 = () => has(B, idA, (m) => m.attachmentType && !m._own && (m.attachmentPayload || nB.files.get(m.attachmentRef)) === foto2.toString('base64'));
-  r.datos_moviles_foto_espera = !(await llegó2());
-  nB.setWifi('oficina');
-  await sleep(1000); await B.win.bleInterface.net.tick(); B.win.bleInterface.net._helloAll(true);
-  r.con_wifi_la_foto_llega_s = await waitFor(llegó2, 120000);
+  r.datos_moviles_foto_llega_s = await waitFor(llegó2, 90000);
+  // 5) A se queda sin internet al mandar una foto: debe salir el botón "Reintentar" (pedido del dueño, ronda 2780) y,
+  //    cuando el internet vuelve, reenviarse sola (net_link → _netOnline → resumeOutgoingTransfers / _resendPendingMessages).
+  A.win.NEXO_RETRY_MS = 1500; // en la app son 30 s; en la prueba, 1,5 s
+  const netA = A.win.bleInterface.net;
+  netA.relays.forEach((rl) => { try { if (rl.ws) rl.ws.close(); } catch (e) {} });
+  await sleep(400);
+  netA.relays.forEach((rl) => { rl.open = false; rl.ws = null; rl.retryAt = Date.now() + 9e6; });
+  r.sin_internet_al_mandar = await waitFor(() => !netA.online(), 10000) !== null;
+  const fotoSinNet = await sendFile(A, 'foto_sin_net.jpg', 130000);
+  r.boton_reintentar = await waitFor(() => !!A.win.document.querySelector('#messages-container .message.own .msg-retry'), 15000) !== null;
+  netA.relays.forEach((rl) => { rl.retryAt = 0; rl.backoff = 2000; }); // vuelve el internet
+  await netA.tick();
+  await waitFor(() => netA.online(), 20000);
+  const llegoSinNet = () => has(B, idA, (m) => m.attachmentType && !m._own && (m.attachmentPayload || nB.files.get(m.attachmentRef)) === fotoSinNet.toString('base64'));
+  r.reintento_auto_foto_llega_s = await waitFor(llegoSinNet, 60000);
   r.errores = logs.filter((l) => /ilegible|Error procesando|No se pudo descifrar/.test(l)).slice(0, 3);
   r.contenido_en_registros = logs.filter((l) => /SECRETO/.test(l)).length;
   console.log('NET ' + JSON.stringify(r));

@@ -225,6 +225,8 @@ export class NetLink {
       if (self._openCount() === 1) {
         console.log('[NET] Conectado a internet por relés públicos');
         setTimeout(function() { self._helloAll(!self._greeted); }, 300); // avisar a los contactos de que estoy
+        // Ronda 2780 (pedido del dueño): volvió el internet → reenviar fotos/archivos/textos que quedaron en espera
+        if (self.ble && typeof self.ble._netOnline === 'function') setTimeout(function() { self.ble._netOnline(); }, 800);
       }
     };
     ws.onmessage = function(ev) { self._onRelayMsg(url, r, ev.data); };

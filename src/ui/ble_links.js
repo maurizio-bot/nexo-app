@@ -87,6 +87,20 @@ export const BLE_LINK_METHODS = {
     _safeDispatchEvent('nexo:ble:linkChange', { nexoId: nx, via: self.linkOf(nx) });
   },
 
+  // Ronda 2780 (pedido del dueño): al VOLVER el internet (los relés se reconectan), reactivar las fotos/archivos y
+  // textos propios que quedaron pendientes o fallidos — aunque el otro no esté en línea, van al buzón de los relés.
+  // net_link lo llama cuando se abre la primera conexión a un relé. Complementa a _netUp (que ya reactiva cuando el
+  // contacto pasa a Wi-Fi) para el caso de que sea MI internet el que faltaba al mandar.
+  _netOnline() {
+    var self = this;
+    try { if (self.ackSystem && typeof self.ackSystem.resumeOutgoingTransfers === 'function') self.ackSystem.resumeOutgoingTransfers(); } catch (e) {}
+    var cs = (self.net && typeof self.net._netContacts === 'function') ? self.net._netContacts() : [];
+    cs.forEach(function(c) {
+      var nx = _normId(c.nexoId || c.deviceUUID);
+      if (nx && typeof self._resendPendingMessages === 'function') { try { self._resendPendingMessages(nx); } catch (e) {} }
+    });
+  },
+
   _onNetPayload(nexoId, content) {
     var self = this;
     var data = { deviceId: _netId(nexoId), content: content, data: content, source: 'net', timestamp: Date.now(), reassembled: true };

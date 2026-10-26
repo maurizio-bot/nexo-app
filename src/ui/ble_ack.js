@@ -1,6 +1,7 @@
 import { e2eAvailable, e2eAckTag } from '../vault/e2e_crypto.js';
 import { e2eAnyEncrypted, e2eOuterAd, e2eSealText, e2eSealB64, e2eOpenText, e2eOpenToB64 } from '../vault/e2e_proto.js';
 import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
+import { NET_MAX_B64_BYTES } from './media_limits.js';
 /**
 * v3.14.0: el mismo mensaje troceado distinto por otro camino (puente cortado y reenvío directo) ya no se queda sin completar
 * v3.13.0: trozos de archivo en binario por Bluetooth (BinFrame.kt; sin el 33 % del base64) con quien lo anuncia
@@ -413,9 +414,11 @@ export class BleAckSystem {
     var self = this, wd = self.ble && self.ble.wifiDirect;
     // v3.10.0: misma red Wi-Fi: por ahí directamente (rápido, sin montar grupo; también el vídeo original)
     if (_isNetDevice(deviceId)) {
-      // Por internet, archivos solo con los dos en Wi-Fi (con datos móviles cuestan dinero): si no, queda pendiente
-      var net = self.ble && self.ble.net;
-      if (!net || !net.filesOk(self._resolveNexoId(deviceId))) {
+      // Ronda 2780 (pedido del dueño): fotos y archivos medianos SIEMPRE por internet: por Tor directo/Wi-Fi si está en
+      // línea (filesOk), o al buzón de los relés si no (mailboxOk), bajo el tope. Si ni eso, queda pendiente y se reintenta.
+      var net = self.ble && self.ble.net, cid = self._resolveNexoId(deviceId);
+      var netOk = net && (net.filesOk(cid) || (net.mailboxOk(cid) && data && data.length <= NET_MAX_B64_BYTES));
+      if (!netOk) {
         var en = new Error('Contacto no disponible: queda pendiente'); en.code = 'PEER_ABSENT';
         return Promise.reject(en);
       }
@@ -1251,9 +1254,10 @@ export class BleAckSystem {
           var best = (self.ble && typeof self.ble._resolveDeviceIdForNexoId === 'function') ? self.ble._resolveDeviceIdForNexoId(cid) : null;
           var devId = best || tx.deviceId || contact.deviceId;
           if (_isLanDevice(devId) && !(self.ble && self.ble.lan && self.ble.lan.canReach(cid))) devId = contact.deviceId;
-          // Por internet: solo en línea, y archivos solo con los dos en Wi-Fi
+          // Por internet: texto/medios en línea; archivos por Tor/Wi-Fi (filesOk) o al buzón de los relés (mailboxOk),
+          // ronda 2780, para que un adjunto pendiente a un contacto lejano se reenvíe solo cuando haya internet
           var net = self.ble && self.ble.net;
-          if (_isNetDevice(devId) && !(net && (tx.type === 'file' ? net.filesOk(cid) : net.canReach(cid)))) devId = contact.deviceId;
+          if (_isNetDevice(devId) && !(net && (tx.type === 'file' ? (net.filesOk(cid) || net.mailboxOk(cid)) : net.canReach(cid)))) devId = contact.deviceId;
           if (!devId) return;
           // FIX: respetar tx.type. Antes SIEMPRE se llamaba a sendChunkedMessage (tipo 'chat'),
           // así que una foto/video interrumpido se reenviaba como texto (t:'c') y el receptor

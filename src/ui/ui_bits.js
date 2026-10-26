@@ -11,6 +11,25 @@ export function _wdReach(contactId) {
   return !!((bi.lan && bi.lan.canReach(contactId)) || (bi.wifiDirect && bi.wifiDirect.canReach(contactId)));
 }
 
+// Ronda 2780 (pedido del dueño): el contacto puede ir por internet (anunció nt y tiene clave aceptada). Vale aunque no
+// esté en línea ahora: por internet las fotos y archivos medianos pueden ir por Tor directo o al buzón de los relés (y
+// llegan cuando el otro abre). No depende de que los relés estén conectados en este instante.
+export function _netReach(contactId) {
+  var bi = window.bleInterface;
+  if (!bi || !contactId || !bi.net || typeof bi.net._netContacts !== 'function') return false;
+  var nx = (contactId || '').toString().toLowerCase();
+  try { return bi.net._netContacts().some(function(c) { return (c.nexoId || c.deviceUUID || '').toLowerCase() === nx; }); } catch (e) { return false; }
+}
+
+// Ronda 2780: ¿hay un camino LOCAL para archivos grandes con el contacto (misma red Wi-Fi, Wi-Fi Direct o Bluetooth
+// L2CAP)? Si lo hay, el archivo grande va por ahí (rápido, gratis y lo primero según la regla del dueño) con big_file.js;
+// no se sube el tope del sobre para que no salga por internet en su lugar ni se quede en trozos lentos por Bluetooth.
+export function _bigLocalRoute(contactId) {
+  var bi = window.bleInterface;
+  if (!bi || !contactId || !bi.bigFiles || typeof bi.bigFiles.route !== 'function') return false;
+  try { return !!bi.bigFiles.route(contactId); } catch (e) { return false; }
+}
+
 export function _getAttachmentPlugins() {
   var Plugins = window.Capacitor ? window.Capacitor.Plugins : null;
   return {
