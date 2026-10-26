@@ -220,6 +220,15 @@
      "prueba": "archivos grandes por Bluetooth L2CAP"
     },
     {
+     "fallo": "Archivos grandes por internet (informe del dueño 2786: «no manda nada ni avisa si es por dimensiones»): por los relés van los medianos (~6 MB); por Tor DIRECTO los grandes (~22 MB) también salen por internet; si no caben, aviso claro con la opción de Tor / mismo Wi-Fi / cerca (nunca se queda sin mandar y sin avisar)",
+     "prueba": "archivos grandes por internet"
+    },
+    {
+     "fallo": "Vídeo que no se podía preparar (códec/recodificación que fallaba): antes fallaba sin aviso; ahora avisa siempre (2786)",
+     "prueba": null,
+     "fuera": "video.js"
+    },
+    {
      "fallo": "Fotos paradas (20 % / ○) y «mensaje de código»",
      "prueba": null,
      "fuera": "photos.js"

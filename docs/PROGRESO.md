@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-26 (build 2785, NATIVO: llamada entrante a pantalla completa de verdad (CallStyle, #1 del dueño) y, para el #87 «no llegan mensajes con la app cerrada», WifiLock mientras la escucha por internet (NetBg) está activa + registro nativo persistente que ahora SÍ aparece en el diagnóstico, ver "Ronda 2785". La 2784 fue #81/zoom/contactos/diagnóstico 1 h)
+Última actualización: 2026-10-26 (build 2786, informe del dueño: «que permita el envío de archivos grandes cuando hay internet; otra vez no mandó nada ni avisó si es por dimensiones»): archivos grandes por internet **por Tor directo** (~22 MB, socket .onion P2P; por los relés se quedan los medianos ~6 MB) y, sobre todo, **nunca más «no manda nada ni avisa»** — aviso claro y accionable siempre, vídeo incluido. Ver "Ronda 2786". La 2785 fue NATIVO: llamada a pantalla completa (CallStyle, #1) + WifiLock/registro nativo para el #87)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -109,6 +109,8 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2782 | 6ffa223c | Editar un mensaje enviado, pedido del dueño (ver "Ronda 2782"): mantén pulsado tu mensaje de texto → **✏️ Editar** → cambias el texto → se actualiza en los dos con la etiqueta **"editado"**. Ventana 15 min, solo texto, cifrado, por el molde de "eliminar para todos" (`nexo_act` act:'edit'). `vaultEditMessage`; `_startEdit`/`_editForAll`/`_applyChatAction` en `chat_actions`; barra "Editando"; `_doSend` manda la edición si hay una en curso. Prueba: `chatactions.js` ampliado y **metido en la batería** (`ci.js`, tag CHATACT — también cubre responder/deslizar/copiar/reenviar/eliminar, que no estaban). Batería 55/55, Kotlin 90/90 (sin cambios nativos), índice 42,3 (sube de 41,7: la suite del chat entra en la batería). ⚠️ A confirmar en los teléfonos del dueño. APK publicada (nightly-2782, 24,55 MB, sha256 36241808…; firma verificada en CI) |
 | 2783 | b68d57a6 | Reacciones, gestos, palomitas y micrófono, pedidos del dueño (ver "Ronda 2783"): (1) **reaccionar** a un mensaje — doble toque = ❤️, menú «Reaccionar» (👍❤️😂😮😢🙏), el otro la ve (`nexo_act` act:'react', cifrado). (2) **palomitas iguales** en todas las redes — antes «entregado» era UNA palomita (como «enviado») y solo «leído» dos, así que por Bluetooth (que se queda en entregado) se veía distinto que por internet (que llega a leído); ahora enviado ✓, entregado y leído ✓✓ (se distinguen por color). (3) **gestos** — deslizar la burbuja izq/der = responder, deslizar el chat abajo (arriba del todo) = cerrar, pellizco/arrastre/doble toque = ampliar la foto en el visor. (4) **micrófono**: silencio más profundo cuando no hay voz (gate −22→−34 dB, el micro al ~2 %; medido 34 dB). `vaultReactMessage`; `chat_actions` (reacciones + doble toque + deslizar en ambos sentidos); `render.js` dibuja reacciones; `file_card.js` pellizco; `chat_nav._setupPullToClose`; `call_voice_fx.js` gate. Pruebas: `palomitas.js` (tag PALOM) y `chatactions.js` ampliado (deslizar izq, reaccionar, deslizar abajo, zoom con pellizco/doble toque); `voicefx.js` umbral a ≥20 dB. Batería 56/56, Kotlin 90/90 (sin cambios nativos), índice **42** (baja 0,3 de 42,3: se registró como punto débil GRAVE el bug de la app cerrada que reportó el dueño — no es regresión). ⚠️ A confirmar en los teléfonos. El bug de **app cerrada** (#87) va en la siguiente (nativo, con diagnóstico). APK publicada (nightly-2783, 24,56 MB, sha256 72342d40…; firma verificada en CI) |
 | 2784 | 795fb295 | Llamadas a pantalla completa, zoom, contactos y diagnóstico, informe del dueño (ver "Ronda 2784"), todo JS: (1) **#81** con la app cerrada la llamada entraba solo como aviso, sin Contestar/Rechazar a pantalla completa — en Android 14 el permiso `USE_FULL_SCREEN_INTENT` hay que pedirlo (no basta declararlo); ahora `main._askBackgroundOnce` lo pide proactivamente al arrancar (primero la exención de batería si falta, luego la pantalla completa), usando `alertSettings`/`openAlertSetting` que ya existían. (2) **Zoom de foto**: el arrastre se limita al borde (no se ve negro más allá). (3) **Franja de conectados sin parpadeo**: histéresis de 60 s (un cambio de conexión < 60 s no cuenta). (4) **«Copiar diagnóstico»** recorta la sesión a la última hora para que quepa. Prueba `alerts.js` ampliada (teléfono con batería ya concedida → pide la pantalla completa). Batería 56/56, Kotlin 90/90 (sin cambios nativos), índice **42**. ⚠️ A confirmar en los teléfonos. Pendiente, y prioridad, el núcleo del **#87** (que los mensajes lleguen con la app cerrada): nativo, necesita el diagnóstico de los dos teléfonos. APK publicada (nightly-2784, ~24,5 MB; firma verificada en CI) |
+| 2785 | d035ae7b | Las dos prioridades del dueño, NATIVO (ver "Ronda 2785"): **#1** la llamada entrante usa `NotificationCompat.CallStyle` de verdad (pantalla de llamada real con Contestar/Rechazar grandes; antes Samsung/Android 14 la bajaban a aviso pequeño), con repliegue a aviso normal si fallara. **#87** (mensajes con la app cerrada): WifiLock (FULL_HIGH_PERF) mientras NetBg escucha en segundo plano/cerrada (Android duerme la radio Wi-Fi con la pantalla apagada y tira el socket del relé) + **registro nativo persistente** (`NativeLog`) que ahora SÍ aparece en «Copiar diagnóstico» (antes se armaba en el WebView, muerto con la app cerrada, y el hueco salía vacío). Batería 56/56, Kotlin 95/95 (+5 `NativeLogTest`), índice 42. #87 sigue ABIERTO hasta confirmarlo en los dos teléfonos con el nuevo diagnóstico. APK publicada (nightly-2785, 24,56 MB, sha256 b2c9fb16…; firma verificada en CI) |
+| 2786 | a46f0673 | Archivos grandes por internet, informe del dueño (ver "Ronda 2786"): «que permita el envío de archivos grandes cuando hay internet; otra vez no mandó nada ni avisó si es por dimensiones». El transporte ya troceaba cualquier tamaño (16 KB/evento); el bloqueo estaba solo en el tope de la interfaz. Ahora el tope por internet es **según el camino** (`_torDirect` en `media_limits.js`, mira `net.via()==='tor'`): por **Tor directo** (socket .onion P2P, sin el tope de 64 KB por evento) los grandes **salen por internet** hasta ~22 MB (`NET_TOR_MAX_B64_BYTES`, como Wi-Fi Direct); por los **relés** se quedan los medianos ~6 MB (cientos de eventos pequeños saturan los relés públicos). Sigue yendo antes el camino LOCAL de archivos grandes (regla del dueño). Clave: **nunca más «no manda nada ni avisa»** — si un archivo no cabe por el camino de ahora, aviso claro y accionable (tope + activar Tor en Perfil / mismo Wi-Fi / Wi-Fi Direct / cerca, hasta 1 GB); además el **vídeo** que no se podía preparar antes fallaba en silencio y ahora avisa. Pruebas nuevas `tests/sim/bignet.js` (relés y Tor) en la batería (tag BIGNET). Batería 58/58, Kotlin 95/95 (sin cambios nativos), índice **42,1**. ⚠️ A confirmar en los teléfonos del dueño. APK nightly-2786 (en construcción al cerrar este bloque; firma verificada en CI) |
 | 2774 | fa52b3d1 | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería 51/51, Kotlin 87/87 (16 nuevas). Índice de robustez 41,8 (ver `docs/ROBUSTEZ.md` §4). **APK publicada: `nightly-2775` (24,5 MB, firma verificada).** La primera compilación (run 2774) falló por una carrera en `LanHub.stop()` dentro de la prueba de la avalancha (iterar la cola mientras los hilos de lectura la vaciaban); arreglada con `poll()` y comprobada 5 veces; la 2775 compila, pasa todo y publica |
 
 ## Base estable: build 2713
@@ -235,6 +237,40 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2786: archivos grandes por internet (por Tor directo) y nunca «sin mandar y sin avisar»
+Informe del dueño: «REVISA TAMBIÉN QUE PERMITA EL ENVÍO DE ARCHIVOS GRANDES CUANDO HAY INTERNET, HICE LA PRUEBA Y OTRA VEZ
+NO MANDÓ NADA NI AVISÓ SI ES POR DIMENSIONES».
+
+**Qué pasaba (reproducido en el simulador, `tests/sim/bignet.js`):** con solo internet, un archivo de 2–5 MB SÍ se manda
+por los relés (5 MB en ~23 s en el sim); pero uno de 10–20 MB se quedaba en el tope de ~6 MB de internet. En el build
+nuevo ya salía un aviso claro (por eso el dueño, que probaba en un build viejo, no lo veía: sus teléfonos de prueba no
+tenían la 2785). Faltaban dos cosas: (1) **permitir** de verdad los archivos grandes por internet y (2) que **nunca** se
+quede sin mandar y sin avisar (había un hueco en el vídeo).
+
+**El porqué del tope.** El transporte de archivos trocea en pedazos de 16 KB y cada pedazo cabe en un evento de relé
+(~64 KB); el límite real no es el transporte sino cuántos eventos aguantan los **relés públicos**: un archivo de 20 MB
+serían >1200 eventos pequeños, que los relés saturan/rechazan. En cambio **Tor directo** es una conexión .onion entre los
+dos teléfonos (sin relés, sin el tope de 64 KB por evento): por ahí un archivo grande va como por Wi-Fi Direct.
+
+**Cambios (todo JS):**
+- `media_limits.js`: el tope por internet (`_maxB64For`) es ahora **según el camino**. Nuevo `_torDirect(contactId)`
+  (mira `net.via(contactId) === 'tor'`): si hay conexión **Tor directa**, el tope sube a **~22 MB** (`NET_TOR_MAX_B64_BYTES`
+  = el de Wi-Fi Direct, mismo gasto de memoria ya probado); por los **relés** se queda en **~6 MB** (`NET_MAX_B64_BYTES`).
+  Sigue respetándose la regla del dueño: si hay camino LOCAL de archivos grandes (L2CAP/Wi-Fi/Wi-Fi Direct) va por ahí,
+  no por internet.
+- `media_limits.js` `_tooBigMessage`: el aviso es **accionable** — por los relés dice el tope (~6 MB) y «para archivos
+  grandes por internet activa Tor en Perfil»; con Tor directo dice el tope por Tor (~22 MB). (El selector `pickers.js` ya
+  añade «hasta 1 GB con el contacto en el mismo Wi-Fi / Wi-Fi Direct / cerca».)
+- `video_send.js`: el vídeo que **no se podía preparar** (códec/recodificación que fallaba) antes caía en un `catch` que
+  solo escribía en el registro — el usuario no veía nada. Ahora **siempre** sale un aviso («No se pudo preparar el vídeo…
+  prueba con uno más corto, o envía una foto»), y el aviso de «demasiado grande» del vídeo ya usa el contacto (dice bien
+  si es por internet o por Bluetooth).
+
+**Pruebas:** `tests/sim/bignet.js` (dos escenarios, metidos en la batería, tag BIGNET): (1) **relés** — un mediano (5 MB)
+llega; un grande (12 MB) NO se manda y sale el aviso claro (nombra relés, Tor y Wi-Fi). (2) **Tor directo** — un grande
+(12 MB) SÍ sale por internet y llega, sin aviso de tamaño. (En el sim la latencia de Tor se baja para no esperar minutos:
+se prueba la lógica de la app, no la velocidad real de Tor.)
 
 ## Ronda 2785: llamada a pantalla completa de verdad (#1) y, para el #87, WifiLock + registro nativo persistente
 
