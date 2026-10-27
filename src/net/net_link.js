@@ -39,6 +39,17 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import { e2eIdentityDH, e2eMyPublicKey } from '../vault/e2e_crypto.js';
 
 var DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.mom'];
+
+// F9 (auditoría ronda 2774): solo relés CIFRADOS (wss://). Por un relé en claro (ws://) un espía de la red vería las
+// ETIQUETAS de tu suscripción (las 'p' de tu buzón) y podría ligarte a tus contactos. Se permite ws:// únicamente a
+// localhost/loopback (pruebas y relé propio en el mismo equipo), nunca a un host remoto.
+function _relaySafe(u) {
+  u = String(u || '');
+  if (/^wss:\/\//i.test(u)) return true;
+  if (/^ws:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(u)) return true;
+  if (/^ws:\/\//i.test(u)) { try { console.warn('[NET] Relé en claro ignorado (usa wss://): ' + u); } catch (e) {} }
+  return false;
+}
 var KIND = 1059;              // el de los mensajes privados envueltos de Nostr (los relés lo aceptan)
 var UP_MS = 150000;           // visto hace menos: en línea
 var HELLO_MS = 60000;         // saludo a los contactos en línea mientras la app está abierta
@@ -93,7 +104,11 @@ export class NetLink {
     this._timer = null;
   }
 
-  relayUrls() { return (typeof window !== 'undefined' && window.NEXO_NET_RELAYS) || DEFAULT_RELAYS; }
+  relayUrls() {
+    var urls = (typeof window !== 'undefined' && window.NEXO_NET_RELAYS) || DEFAULT_RELAYS;
+    var safe = (urls || []).filter(_relaySafe);
+    return safe.length ? safe : DEFAULT_RELAYS; // si todos eran en claro, caer a los wss:// por defecto (nunca sin internet por esto)
+  }
   me() { return _nid(this.ble && this.ble.localNexoId); }
 
   async init() {
