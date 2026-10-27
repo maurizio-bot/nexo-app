@@ -8,6 +8,7 @@ import { _diagnosticText } from './diag.js';
 import { startReceiveAccount, startSendAccount } from './move_account.js';
 import { clearMyAvatar, makeAvatar, myAvatar, paintAvatar, setMyAvatar } from './avatar.js';
 import { mirrorPeerPref, setMirrorPeerPref } from './calls_ui.js';
+import { attachNexoUnlockGesture } from './nexo_game.js';
 
 // [pegamento] Lo que usa del resto de la app (main.js lo da al arrancar)
 var _showInfoToast;
@@ -54,6 +55,9 @@ function _openProfileSheet() {
       '<textarea id="nexo-diag-text" readonly style="min-height:220px;width:100%;box-sizing:border-box;color:#9fe;font-size:10px;font-family:monospace;padding:8px;"></textarea>') +
     '</div>';
   document.body.appendChild(sheet);
+  // Juego secreto (pedido del dueño): dibujar la «N» de NEXO en esta pantalla de Ajustes abre el mini-arcade oculto.
+  // Pasivo: no estorba al scroll ni a los botones.
+  attachNexoUnlockGesture(sheet);
   sheet.querySelector('#nexo-profile-id').textContent = bi.localNexoId || '?';
   // Ronda 2771 (revisión, parte 4): cómo te ven tus contactos (el nombre del teléfono) y sus iniciales en el círculo
   // (antes, la primera cifra del NEXO ID: "0")
