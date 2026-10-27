@@ -827,6 +827,14 @@
     {
      "fallo": "F9 Relés en claro (ws://) permitidos: un espía de la red veía las etiquetas de la suscripción (tu buzón). Arreglado en la 2788: solo wss://; ws:// solo a loopback (pruebas/relé propio). Si todos fueran en claro, cae a los wss:// por defecto (nunca sin internet por esto)",
      "prueba": "relés solo cifrados"
+    },
+    {
+     "fallo": "Foto «de una vez» ya abierta REVIVÍA al retransmitirse el mismo msgId: el merge no borraba content (que lleva el payload por relé/internet) y render lo repintaba (2800)",
+     "prueba": "foto de una vez"
+    },
+    {
+     "fallo": "Estado (Stream) con ts en el futuro (reloj malo/malicioso) no caducaba: _active lo daba por vivo para siempre; se acota el ts a «ahora» (2800)",
+     "prueba": "estados"
     }
    ],
    "debiles": [

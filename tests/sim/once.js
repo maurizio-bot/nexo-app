@@ -89,9 +89,23 @@ async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 <
   r.sigue_consumida = reMsg.onceSeen === true && !reMsg.attachmentPayload && !reMsg.content;
   r.reabre_sin_medio = !!bBubble() && /Abierta/.test(bBubble().textContent) && !bBubble().querySelector('img');
 
+  // Auditoría 2800 (regresión HIGH): una RETRANSMISIÓN del mismo msgId tras consumir, con el payload DENTRO de
+  // content (como viaja por relé/internet) y meta SIN `once`, NO debe resucitar la foto. Es el reenvío real del
+  // emisor al reconectar (su registro saliente no se borra, #12). Antes el merge conservaba content y al reabrir
+  // el chat `render.js` lo reconstruía y repintaba la foto.
+  const reviveContent = JSON.stringify({ type: 'attachment', attachmentType: 'image', payload: b64, meta: { format: 'jpeg', width: 120, height: 90 } });
+  await B.win.vaultAppendMessage(idA, { msgId: mid, messageId: mid, _own: false, type: 'text', content: reviveContent });
+  await sleep(300);
+  const revVault = (await B.win.vaultLoadMessages(idA)).find((x) => (x.msgId || x.messageId) === mid) || {};
+  r.retransmision_no_revive_vault = revVault.onceSeen === true && !revVault.content && !revVault.attachmentPayload;
+  B.win.dispatchEvent(new B.win.CustomEvent('nexo:ble:closeChat', { detail: {} })); await sleep(300);
+  await openChat(B); await sleep(700);
+  r.retransmision_no_revive_ui = !!bBubble() && /Abierta/.test(bBubble().textContent) && !bBubble().querySelector('img');
+
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.llega_a_B && r.meta_once_en_B === true && r.B_burbuja_una_vez && r.A_burbuja_enviada && r.visor_abierto &&
-    r.consumido && r.B_burbuja_abierta && r.sigue_consumida && r.reabre_sin_medio && r.errores.length === 0;
+    r.consumido && r.B_burbuja_abierta && r.sigue_consumida && r.reabre_sin_medio &&
+    r.retransmision_no_revive_vault && r.retransmision_no_revive_ui && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('ONCE ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_once.txt'), logs.join('\n'));

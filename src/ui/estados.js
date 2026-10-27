@@ -105,7 +105,11 @@ export function applyStatus(senderNx, act) {
   var nx = _normId(senderNx);
   if (!NX_RE.test(nx) || !act) return;
   var t = typeof act.t === 'string' ? act.t.substring(0, MAX_LEN) : '';
-  var ts = (typeof act.ts === 'number' && act.ts > 0) ? act.ts : Date.now();
+  // Robustez (auditoría 2800): el ts lo pone el OTRO teléfono; un ts en el futuro (reloj malo o malicioso)
+  // haría que su estado nunca caducara (Date.now()-ts < TTL siempre). Se acota a «ahora» para que las 24 h
+  // sean honestas pase lo que pase. Un ts negativo/no numérico también cae a ahora.
+  var now = Date.now();
+  var ts = (typeof act.ts === 'number' && act.ts > 0) ? Math.min(act.ts, now) : now;
   // marcar el contacto como "tiene estado" (ste) para recargarlo al reiniciar
   try {
     var contacts = _getBLEContacts(), i = contacts.findIndex(function(c) { return _normId(c.nexoId || c.deviceUUID) === nx; });
