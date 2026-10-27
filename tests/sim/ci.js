@@ -73,6 +73,7 @@ const SCENARIOS = [
   { name: 'nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada', args: ['voicenote.js'], tag: 'VOICENOTE', logs: 'last_logs_voicenote.txt', checks: { resultado: (v) => v === 'OK' } },
   { name: 'palomitas de estado iguales en todas las redes (enviado ✓, entregado y leído ✓✓)', args: ['palomitas.js'], tag: 'PALOM', checks: { resultado: (v) => v === 'OK' } },
   { name: 'buscar dentro del chat (lupa en la cabecera, barra debajo: filtra burbujas propias y recibidas y cuenta coincidencias)', args: ['search.js'], tag: 'SEARCH', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'foto de una vez (ver una vez): llega con el flag, se consume al abrirla (borra payload/content/blob) y no se reabre', args: ['once.js'], tag: 'ONCE', checks: { resultado: (v) => v === 'OK' } },
   { name: 'menú de la burbuja: responder (deslizar izq/der), REACCIONAR (doble toque ❤️ y menú), copiar, reenviar, EDITAR, eliminar para mí/para todos (3 teléfonos)', args: ['chatactions.js'], tag: 'CHATACT', logs: 'last_logs_chatactions.txt', checks: {
     B_ve_cita: isTrue, deslizar_responde: isTrue, deslizar_izq_responde: isTrue, C_recibe_archivo_identico_s: (v) => typeof v === 'number',
     doble_toque_reacciona: isTrue, B_recibe_reaccion_s: (v) => typeof v === 'number', menu_reacciona: isTrue, deslizar_abajo_cierra: isTrue,

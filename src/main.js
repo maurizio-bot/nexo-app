@@ -807,4 +807,5 @@ window.addEventListener('nexo:e2e:held', function(e) {
 
 window.NEXO_updateMessageStatus = _updateMessageStatus;
 window.NEXO_sendVideo = _sendVideo; // pruebas (tests/sim/video.js)
+window.NEXO_sendAttachment = _sendAttachment; // pruebas (tests/sim/once.js: foto de una vez)
 if (typeof module !== 'undefined' && module && module.hot) module.hot.accept();

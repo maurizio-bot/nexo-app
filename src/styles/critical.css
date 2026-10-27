@@ -999,6 +999,16 @@ CAMERA PREVIEW OVERLAY (v9.9.46: tipo WhatsApp)
   width: 60px; height: 60px; border-radius: 50%; border: none; background: linear-gradient(135deg,#00c8ff,#a855f7);
   display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(0,200,255,0.4);
 }
+/* #94 «ver una vez»: toggle 👁 con un «1»; activo = relleno y marco claros */
+.cam-review-once {
+  position: relative; width: 48px; height: 48px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.12); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cam-review-once.active { background: rgba(0,200,255,0.35); border-color: #00c8ff; box-shadow: 0 0 10px rgba(0,200,255,0.5); }
+.cam-review-once-badge {
+  position: absolute; right: 6px; bottom: 6px; font-size: 10px; font-weight: 800; color: #fff;
+  background: rgba(0,0,0,0.6); border-radius: 8px; padding: 0 4px; line-height: 14px;
+}
 /* ============================================
 FULLSCREEN MEDIA OVERLAY
 ============================================ */
