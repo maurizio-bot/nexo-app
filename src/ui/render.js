@@ -54,7 +54,7 @@ function _renderOnceBubble(contentDiv, msg, attachment, isOwn) {
     try { vaultConsumeOnceMessage(cid, mid); } catch (err) {}
     if (msg) { msg.onceSeen = true; msg.attachmentPayload = null; }
     contentDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;opacity:0.6;">' + _onceEye() + '<span style="font-style:italic;">Abierta</span></div>';
-    _openFullscreenMedia(src, 'image');
+    _openFullscreenMedia(src, 'image', true);   // noSave: una foto «de una vez» se consume, no se guarda en galería
   });
   contentDiv.appendChild(wrap);
 }

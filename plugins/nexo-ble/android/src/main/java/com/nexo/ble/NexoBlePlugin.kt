@@ -38,6 +38,10 @@ import android.os.ParcelFileDescriptor
 import android.os.ParcelUuid
 import android.provider.Settings
 import android.util.Base64
+import android.content.ContentValues
+import android.media.MediaScannerConnection
+import android.os.Environment
+import android.provider.MediaStore
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.view.WindowManager
@@ -3106,6 +3110,71 @@ class NexoBlePlugin : Plugin() {
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         activity.startActivity(intent)
         remLog("INFO", "FILE", "Abriendo archivo ($mime, ${file.length()} bytes)")
+    }
+
+    // Ronda 2801 (pedido del dueño #92): guardar una foto/vídeo del chat en la GALERÍA del teléfono.
+    // API 29+ (lo normal): MediaStore con RELATIVE_PATH e IS_PENDING, sin pedir permiso (almacenamiento acotado).
+    // API 26-28: carpeta pública clásica + MediaScanner (usa WRITE_EXTERNAL_STORAGE, declarado hasta API 29).
+    // Devuelve { saved:true } o { saved:false, reason } (nunca lanza; la interfaz muestra un aviso claro).
+    @PluginMethod
+    fun saveToGallery(call: PluginCall) {
+        val b64 = call.getString("base64") ?: run { call.reject("base64 requerido"); return }
+        val reqName = safeFileName(call.getString("name"))
+        var mime = call.getString("mime") ?: ""
+        if (!mime.contains('/')) {
+            mime = android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(reqName.substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
+        }
+        val isVideo = mime.startsWith("video")
+        val isImage = mime.startsWith("image")
+        val name = if (reqName.contains('.')) reqName
+            else reqName + "." + (android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime) ?: if (isVideo) "mp4" else "jpg")
+        try {
+            val bytes = Base64.decode(b64, Base64.DEFAULT)
+            val resolver = context.contentResolver
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val collection = when {
+                    isVideo -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    isImage -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    else -> MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                }
+                val relDir = (when {
+                    isVideo -> Environment.DIRECTORY_MOVIES
+                    isImage -> Environment.DIRECTORY_PICTURES
+                    else -> Environment.DIRECTORY_DOWNLOADS
+                }) + "/NEXO"
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, relDir)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(collection, values)
+                    ?: run { call.resolve(JSObject().put("saved", false).put("reason", "no_uri")); return }
+                resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: throw java.io.IOException("sin stream")
+                val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+                resolver.update(uri, done, null, null)
+                remLog("INFO", "FILE", "Guardado en galería ($mime, ${bytes.size} bytes)")
+                call.resolve(JSObject().put("saved", true))
+            } else {
+                val baseDir = Environment.getExternalStoragePublicDirectory(when {
+                    isVideo -> Environment.DIRECTORY_MOVIES
+                    isImage -> Environment.DIRECTORY_PICTURES
+                    else -> Environment.DIRECTORY_DOWNLOADS
+                })
+                val dir = File(baseDir, "NEXO").also { it.mkdirs() }
+                val outFile = File(dir, name)
+                FileOutputStream(outFile).use { it.write(bytes) }
+                MediaScannerConnection.scanFile(context, arrayOf(outFile.absolutePath), arrayOf(mime), null)
+                remLog("INFO", "FILE", "Guardado en galería (legacy, ${bytes.size} bytes)")
+                call.resolve(JSObject().put("saved", true))
+            }
+        } catch (e: SecurityException) {
+            call.resolve(JSObject().put("saved", false).put("reason", "permiso"))
+        } catch (e: Exception) {
+            remLog("WARN", "FILE", "No se pudo guardar en galería: ${e.message}")
+            call.resolve(JSObject().put("saved", false).put("reason", "error"))
+        }
     }
 
     // ===== Archivos grandes (ronda 2756, BigFile.kt): nunca enteros en la memoria de la app =====

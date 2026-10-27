@@ -77,6 +77,7 @@ const SCENARIOS = [
   { name: 'contacto: tocar la foto la abre grande (visor), tocar el nombre entra al chat; sin foto el avatar abre el chat', args: ['photo_tap.js'], tag: 'PHOTOTAP', checks: { resultado: (v) => v === 'OK' } },
   { name: 'aviso de mala señal: Bluetooth con MTU bajo (muy lento) marca «⚠ señal débil» en el subtítulo; MTU normal no', args: ['malasenal.js'], tag: 'MALASENAL', checks: { resultado: (v) => v === 'OK' } },
   { name: 'estados (Stream fase 1, «cercanos»): publicar texto 24h cifrado, llega y se guarda entre contactos, tira/ver, caducidad 25h, quitar', args: ['estados.js'], tag: 'ESTADOS', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'guardar en galería (#92): el visor muestra el botón y llama al nativo saveToGallery con el base64/nombre/mime; «ver una vez» no lo muestra', args: ['savegallery.js'], tag: 'SAVEGAL', checks: { resultado: (v) => v === 'OK' } },
   { name: 'menú de la burbuja: responder (deslizar izq/der), REACCIONAR (doble toque ❤️ y menú), copiar, reenviar, EDITAR, eliminar para mí/para todos (3 teléfonos)', args: ['chatactions.js'], tag: 'CHATACT', logs: 'last_logs_chatactions.txt', checks: {
     B_ve_cita: isTrue, deslizar_responde: isTrue, deslizar_izq_responde: isTrue, C_recibe_archivo_identico_s: (v) => typeof v === 'number',
     doble_toque_reacciona: isTrue, B_recibe_reaccion_s: (v) => typeof v === 'number', menu_reacciona: isTrue, deslizar_abajo_cierra: isTrue,
