@@ -35,6 +35,7 @@ const SCENARIOS = [
     errores: isEmpty, contenido_en_registros: (v) => v === 0 } },
   { name: 'archivos grandes por internet (relés: mediano llega, grande avisa claro con Tor/Wi-Fi)', args: ['bignet.js'], tag: 'BIGNET', checks: { resultado: (v) => v === 'OK' } },
   { name: 'archivos grandes por internet (Tor directo: un archivo grande llega sin aviso de tamaño)', args: ['bignet.js', '--tor'], tag: 'BIGNET', logs: 'last_logs_bignet_tor.txt', checks: { resultado: (v) => v === 'OK' } },
+  { name: 'cobros (pagos Fase 1): mensaje de cobro con importe/concepto/método, tarjeta en los dos, sin inyección', args: ['cobro.js', '--io-delay=25'], tag: 'COBRO', checks: { resultado: (v) => v === 'OK' } },
   { name: 'agregar por ID a alguien lejos: solicitud, aceptar/eliminar, se conectan (alta remota)', args: ['reqadd.js'], tag: 'REQADD', checks: { resultado: (v) => v === 'OK' } },
   { name: 'no leídos y notificaciones', args: ['unread.js', '--io-delay=25'], tag: 'UNREAD', checks: {
     contador_corto_largo_foto: (v) => v === 3, notificaciones_con_app_a_la_vista: (v) => v === 0, al_abrir_chat: (v) => v === 0, A_ve_leido: isTrue,
