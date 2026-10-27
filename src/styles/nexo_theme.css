@@ -80,7 +80,10 @@ body::before {
 }
 .msg-time { color: rgba(255, 255, 255, 0.55) !important; }
 .message.other .msg-time { color: var(--nx-muted) !important; }
-.msg-status.status-delivered { color: #cdd9e5 !important; }
+/* Ronda 2789 (informe del dueño): entregado (llegó, sin leer) y leído se veían casi igual porque los dos son ✓✓ y el
+   color de "entregado" era casi blanco. Ahora: enviado ✓ gris oscuro, entregado ✓✓ GRIS claro (apagado, "aún sin
+   leer"), leído ✓✓ AZUL con brillo. Como WhatsApp: gris hasta que lo leen, y ahí se pone de color. */
+.msg-status.status-delivered { color: #8696a0 !important; text-shadow: none !important; }
 .msg-status.status-read { color: #00d4ff !important; text-shadow: 0 0 6px rgba(0, 212, 255, 0.6); }
 .system-msg { background: var(--nx-surface) !important; border: 1px solid var(--nx-line); color: var(--nx-muted) !important; border-radius: 999px !important; }
 #e2e-banner {
