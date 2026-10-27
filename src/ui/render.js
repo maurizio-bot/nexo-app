@@ -12,6 +12,7 @@ import { _fmtTime } from './file_tools.js';
 import { _msgContactMap } from './chat_state.js';
 import { _objectURLRegistry } from './media_limits.js';
 import { _renderContactCard } from './share_contacts.js';
+import { _renderCobroCard } from './cobro.js';
 import { _renderE2EBanner } from './e2e_banner.js';
 import { _setHdBadge } from './video_send.js';
 import { isGroupId } from './groups.js';
@@ -384,6 +385,8 @@ export function _renderMessage(msg, skipSave) {
         contentDiv.innerHTML = locHtml;
       } else if (attachment.type === 'contact') {
         _renderContactCard(contentDiv, attachment.meta || {}, msg);
+      } else if (attachment.type === 'cobro') {
+        _renderCobroCard(contentDiv, attachment.meta || {}, msg);
       } else if (attachment.type === 'audio') {
         var dur = (attachment.meta && attachment.meta.duration) ? attachment.meta.duration : 0;
         var durStr = _fmtTime(dur);

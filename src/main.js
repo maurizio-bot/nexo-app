@@ -122,6 +122,8 @@ import { shareContactsUse, _contactsStyles, _handleShareContacts, _renderContact
 shareContactsUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
 import { locationUse, _lastLocationSent, _LOCATION_DEBOUNCE_MS, _isGettingLocation, _handleLocation, _sendLocation, _browserPosition } from './ui/location.js';
 locationUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
+import { cobroUse, _handleCobro, _sendCobro } from './ui/cobro.js';
+cobroUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });
 import { voiceUse, _mediaRecorder, _audioChunks, _isRecording, _voiceStartTime, _voiceTimerInterval, _handleVoiceToggle, _updateMicIcon } from './ui/voice.js';
 import { chatActionsUse, _renderedMessageIds, _replyTo, DELETE_ALL_MS, _fillTextBubble, _scrollToMessage, _setupMessageActions, _openMsgMenu, _startReply, _cancelReply, _renderReplyBar, _copyText, _openForwardSheet, _forwardTo, _refreshChatPreview, _deleteForMe, _deleteForAll, _rerenderBlank, _applyChatAction } from './ui/chat_actions.js';
 import { _objectURLRegistry, MAX_BLE_B64_BYTES, MAX_BLE_FILE_BYTES, WD_MAX_B64_BYTES, _maxB64For, _tooBigMessage, _cleanupObjectURLs } from './ui/media_limits.js';

@@ -9,6 +9,7 @@ import { _closeAttachMenu, _toggleAttachMenu } from './ui_bits.js';
 import { _getCurrentContactId, _peerUnderstands } from './chat_format.js';
 import { _handleFile, _handleGallery } from './pickers.js';
 import { _handleLocation } from './location.js';
+import { _handleCobro } from './cobro.js';
 import { _handleShareContacts } from './share_contacts.js';
 import { _handleVoiceToggle } from './voice.js';
 import { _msgContactMap } from './chat_state.js';
@@ -44,6 +45,7 @@ export function _bindAttachmentHandlers() {
       else if (type === 'gallery') _handleGallery();
       else if (type === 'file') _handleFile();
       else if (type === 'location') _handleLocation();
+      else if (type === 'cobro') _handleCobro();
       else if (type === 'contact') _handleShareContacts();
     });
   });
