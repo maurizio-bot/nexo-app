@@ -59,6 +59,9 @@ export function _hideCameraPreviewOverlay() {
   }
 }
 
+// Ronda 2801/#101: el «atrás» de Android (MainActivity) cierra la cámara con su limpieza (para la cámara, reanuda BLE).
+if (typeof window !== 'undefined') window.__nexoHideCamera = _hideCameraPreviewOverlay;
+
 // ===================== v9.9.46: cámara tipo WhatsApp =====================
 // Pestañas VÍDEO / FOTO, disparador grande (rojo en vídeo; cuadrado mientras graba), contador, linterna,
 // girar, acceso a la galería y revisión antes de enviar (Repetir / Enviar). Cámara frontal en espejo, como
