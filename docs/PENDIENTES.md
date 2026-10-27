@@ -26,7 +26,7 @@ APP CERRADA (#87)** — con la app deslizada + pantalla apagada no llegan mensaj
 abrir; es nativo (la recepción vive en el proceso del WebView: al cerrar se apaga el LAN, y Doze duerme el proceso sin
 WifiLock ni exención de batería), no reproducible en el simulador → falta el **diagnóstico de los dos teléfonos**. Después:
 el aviso que solo sale como icono con la pantalla apagada (#89); el micrófono de calidad (loopback AEC de Chrome, investigado, #93),
-el botón de descarga de foto/vídeo (#92) y los medios de una sola vista (#94); empezar la pantalla infinita / Stream (#95); el bug
+el botón de descarga de foto/vídeo (#92); los medios de una sola vista (#94) — ✅ **fotos hechas en la 2795** («ver una vez», se borra al abrir; falta el vídeo de una vez); empezar la pantalla infinita / Stream (#95); el bug
 del Wi-Fi→internet (#83, con ambas apps abiertas NO se reproduce, se mantiene en Wi-Fi); después el juego secreto (lluvia de
 núcleos); y terminar la auditoría (H3, H4, M5, M6, F6–F9). El permiso de pantalla completa (#81) ya quedó hecho en la 2784.
 
