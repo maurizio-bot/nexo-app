@@ -770,15 +770,15 @@
   },
   {
    "id": "auditoria",
-   "nombre": "Seguridad frente a ataques (auditoría MASVS/CSPN, ronda 2774)",
+   "nombre": "Seguridad frente a ataques (auditoría MASVS/CSPN, rondas 2774 y 2804)",
    "peso": 10,
    "telefono": {
     "estado": "antes",
-    "por": "Arreglos comprobados en simulador/JVM (red Wi-Fi, grupos, JSON anidado, intent de llamada); falta confirmarlos en los teléfonos del dueño (sobre todo la recuperación del WebView)"
+    "por": "Arreglos comprobados en simulador/JVM (red Wi-Fi, grupos, JSON anidado, intent de llamada, DoS por trozo); falta confirmarlos en los teléfonos del dueño (sobre todo la recuperación del WebView)"
    },
    "revision": {
-    "n": 1,
-    "fallos": 8
+    "n": 2,
+    "fallos": 1
    },
    "modos": [
     {
@@ -835,6 +835,10 @@
     {
      "fallo": "Estado (Stream) con ts en el futuro (reloj malo/malicioso) no caducaba: _active lo daba por vivo para siempre; se acota el ts a «ahora» (2800)",
      "prueba": "estados"
+    },
+    {
+     "fallo": "DoS 2804: un trozo BLE (chat/archivo) con «n» (total de trozos) disparatado pasaba la validación (solo total>0/idx<total) y disparaba bucles de miles de millones en el hilo principal (_sendBlockAck / array de huecos) → congelación/ANR; sin cifrar, a alcance Bluetooth. Arreglado: tope MAX_CHUNKS (300000) en _handleIncomingChunk",
+     "prueba": "DoS por trozo"
     }
    ],
    "debiles": [
