@@ -15,7 +15,14 @@ El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de form
 - **Auditoría** para verificar robustez y fallas. (#106)
 - Buenas noches: el dueño se fue a dormir (~1:40 am), trabajo mientras tanto.
 
-Orden que sigo (robusto, de a uno, con batería verde + APK): 2794 buscar ✓, 2795 ver una vez ✓, 2796 limpieza pagos ✓, 2797 foto/nombre (#100) ✓, 2798 mala señal (#102) ✓, **2799 Stream Estados fase 1 (#104) ✓** → **siguiente: auditoría (#106)** (verificable en el simulador: batería de ataque/caos + revisión). **Native + decisión, los dejo documentados y marcados** (no se prueban en el simulador, método obligatorio): **gestos deslizar-atrás (#101)** — falta cablear el botón/gesto del sistema Android (`@capacitor/app` **no instalado**; el swipe-back propio ya existe en `chat_nav._setupSwipeBack`); **Face ID (#103)** — ver análisis arriba, necesita decisión del dueño (bajar o no la seguridad del bloqueo). Lo que necesita socio/proveedor o servidor (pagos con saldo real, recargas, llamadas por internet #99) lo dejo con UX lista y marcado; lo que necesita diagnóstico del dueño (#87, ○+Reintentar) espera.
+Orden que sigo (robusto, de a uno, con batería verde + APK): 2794 buscar ✓, 2795 ver una vez ✓, 2796 limpieza pagos ✓, 2797 foto/nombre (#100) ✓, 2798 mala señal (#102) ✓, **2799 Stream Estados fase 1 (#104) ✓**, **2800 auditoría (#106) ✓** (2 fallas reales arregladas), **2801 guardar en galería (#92) ✓**.
+
+**Decisiones del dueño al despertar (27-10 mañana), respondiendo mis preguntas:** «1 dejalo opcional que el user decida, osea agregá Face ID. 4 ta. 5 si» →
+- **#92 descargar a galería: SÍ** → ✅ **hecho en la 2801** (nativo `saveToGallery` + botón en el visor; no en «ver una vez»). **Validó mi flujo de builds NATIVOS** (sin SDK local: Kotlin se compila en CI; lo real se prueba en el teléfono).
+- **#101 gestos deslizar-atrás: SÍ** («ta») → **EN CURSO**. Plan robusto sin dependencia nueva: `onBackPressed` en el `MainActivity.java` nativo (`android/app/src/main/java/com/nexo/app/`) → si hay chat/overlay abierto, cerrarlo (evento JS) en vez de salir de la app; `@capacitor/app` NO hace falta. Nativo → a confirmar en el teléfono.
+- **#103 Face ID: SÍ, OPCIONAL (el usuario decide)** → el bloqueo por defecto sigue fuerte; se añade un ajuste «desbloqueo rápido por rostro (menos seguro)» que el usuario activa a propósito. Nativo (`AuthPlugin.kt` + `app_lock.js`) → a confirmar en el teléfono.
+
+Siguen dependiendo del dueño: pagos con saldo real/recargas (socio/proveedor #105), llamadas por internet (#99, quizá servidor TURN), y los bugs que no reproduzco en el simulador (#87 app cerrada, ○+Reintentar) que esperan su diagnóstico.
 
 ## 0. Robustez: medición y tareas diarias (pedido del dueño 25-10)
 `docs/ROBUSTEZ.md`: registro de la revisión 1 (24 y 25-10, builds 2766–2771: 63 fallos encontrados, 62 arreglados),
