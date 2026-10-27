@@ -4,6 +4,9 @@
   "description": "NEXO BLE GATT Plugin for Capacitor",
   "main": "src/index.js",
   "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
     "android": {
       "src": "android"
     }

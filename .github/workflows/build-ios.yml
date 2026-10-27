@@ -1,0 +1,63 @@
+name: NEXO iOS (compilación)
+
+# Fase 0 de iOS (27-10): verifica que el proyecto iOS + el plugin Swift COMPILAN, en una Mac de la nube de GitHub.
+# Compila para el SIMULADOR y SIN FIRMA (CODE_SIGNING_ALLOWED=NO) → no necesita cuenta Apple ni certificados.
+# Para instalar en un iPhone real (TestFlight) hará falta la cuenta Apple Developer + firma (fase posterior).
+# Solo corre en la rama de trabajo (no en NEXOCHAT), así no toca la línea de Android.
+
+on:
+  push:
+    branches: [claude/repo-file-access-9bwl60]
+    paths:
+      - 'src/**'
+      - 'ios/**'
+      - 'plugins/**/ios/**'
+      - 'plugins/**/package.json'
+      - 'package.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/build-ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: nexo-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Web Only
+        run: npm run build:web
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Pod install
+        working-directory: ios/App
+        run: pod install --repo-update
+
+      - name: Compilar iOS (simulador, sin firma)
+        working-directory: ios/App
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build | tail -80
