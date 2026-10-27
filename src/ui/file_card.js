@@ -150,7 +150,7 @@ export function _saveMediaToGallery(src, type, btn) {
 }
 
 // Para la prueba del simulador (zoom de la foto): abrir el visor sin tener que mandar una imagen por la radio
-if (typeof window !== 'undefined') { window.__nexoOpenMedia = _openFullscreenMedia; window.NEXO_saveMedia = _saveMediaToGallery; }
+if (typeof window !== 'undefined') { window.__nexoOpenMedia = _openFullscreenMedia; window.__nexoCloseMedia = _closeFullscreenMedia; window.NEXO_saveMedia = _saveMediaToGallery; }
 
 export var _thumbsInProgress = {};
 

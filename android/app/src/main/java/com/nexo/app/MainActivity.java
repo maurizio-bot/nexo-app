@@ -56,4 +56,29 @@ public class MainActivity extends BridgeActivity {
       Log.w("NEXO", "No se pudo registrar la recuperación del WebView: " + e.getMessage());
     }
   }
+
+  // Ronda 2801 (pedido del dueño #101): el «atrás» de Android (botón o gesto de borde) primero cierra lo que esté
+  // abierto DENTRO de la app (visor de foto/vídeo, estado, cámara, chat) en vez de salir de golpe. Le preguntamos al
+  // WebView por window.__nexoHandleBack(): si lo manejó (1) no hacemos nada; si no (0), el comportamiento normal de
+  // Capacitor (volver en el historial o mandar la app a segundo plano). evaluateJavascript es asíncrono, así que para
+  // el caso "no manejado" re-entramos con una bandera y llamamos a super.
+  private boolean nexoBackDefault = false;
+
+  @Override
+  public void onBackPressed() {
+    if (nexoBackDefault) { nexoBackDefault = false; super.onBackPressed(); return; }
+    try {
+      WebView wv = (this.getBridge() != null) ? this.getBridge().getWebView() : null;
+      if (wv == null) { super.onBackPressed(); return; }
+      wv.evaluateJavascript(
+        "(function(){try{return (window.__nexoHandleBack&&window.__nexoHandleBack())?1:0}catch(e){return 0}})()",
+        value -> {
+          if (!"1".equals(value)) {
+            runOnUiThread(() -> { nexoBackDefault = true; onBackPressed(); });
+          }
+        });
+    } catch (Exception e) {
+      super.onBackPressed();
+    }
+  }
 }

@@ -35,6 +35,22 @@ export function _setupBackButton() {
     });
     _setupSwipeBack();
     _setupPullToClose();
+    // Ronda 2801 (pedido del dueño #101): el «atrás» del sistema Android (botón o gesto de borde) lo maneja el
+    // MainActivity nativo llamando a esta función. Cierra lo que esté arriba (en orden) y devuelve true si manejó
+    // el «atrás»; si devuelve false, el nativo hace lo de siempre (mandar la app a segundo plano). Así deslizar-atrás
+    // o el botón cierran primero el visor/estado/cámara y luego el chat, en vez de salir de la app de golpe.
+    window.__nexoHandleBack = function() {
+      try {
+        var fs = document.getElementById('fullscreen-media-overlay');
+        if (fs) { if (typeof window.__nexoCloseMedia === 'function') window.__nexoCloseMedia(); else fs.remove(); return true; }
+        var eo = document.getElementById('estado-overlay');
+        if (eo) { eo.remove(); return true; }
+        var cam = document.getElementById('camera-preview-overlay');
+        if (cam && !cam.classList.contains('hidden')) { if (typeof window.__nexoHideCamera === 'function') window.__nexoHideCamera(); return true; }
+        if (document.body.classList.contains('chat-view-active')) { _doChatBack(); return true; }
+        return false;
+      } catch (e) { return false; }
+    };
   } catch (e) {
     console.warn('[MAIN] _setupBackButton error:', e);
   }
