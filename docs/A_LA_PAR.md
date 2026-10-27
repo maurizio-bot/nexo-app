@@ -10,12 +10,14 @@ poscuántico, sin número de teléfono, ID que rota, copia de seguridad Fénix (
 llamadas de voz y videollamada en local, grupos con medios, foto de perfil, responder/reenviar/reaccionar/editar/eliminar,
 notas de voz, ubicación, compartir contacto, «Cobros»**. En lo de «funciona sin señal + privacidad» NEXO va **por delante**.
 
-## 1. Chicos / rápidos (se hacen en 1–2 builds)
-- **Autocorrecto y sugerencias del teclado** — hoy están **apagados** a propósito en el campo de mensaje
-  (`spellcheck="false"`). Activarlos es «jalarlos»: `spellcheck="true"` + autocapitalización. Es de Android/Gboard, sí.
-- **Moneda del «Cobro» automática por país** — hoy la lista arranca fija en **ARS**; detectar el país por el idioma/región
-  del teléfono y poner la moneda por defecto (MXN en México, etc.).
-- **Buscar dentro de un chat** (lupa) — WhatsApp/Telegram/Signal lo tienen; NEXO **no**. Buscar texto en el chat abierto.
+## 1. Chicos / rápidos (se hacen en 1–2 builds) — ✅ COMPLETOS (2793–2794)
+- ✅ **Autocorrecto y sugerencias del teclado** (build **2793**) — estaban apagados (`spellcheck="false"`);
+  ahora `spellcheck="true"` + `autocorrect="on"` + `autocapitalize="sentences"`.
+- ✅ **Moneda del «Cobro» automática por país** (build **2793**) — `_defaultMoneda()` la detecta por el idioma/región
+  del teléfono (es-MX→MXN…); antes era fija en ARS.
+- ✅ **Buscar dentro de un chat** (lupa) (build **2794**) — lupa 🔍 en la cabecera → barra debajo que filtra las burbujas
+  (propias y recibidas), resalta las que coinciden y cuenta; también en grupos. `src/ui/search_ui.js`, prueba `search.js`.
+- **Mensajes que se borran solos** (temporales) — opción por chat; la competencia lo tiene. (Pendiente, siguiente rápido si se retoma esta lista.)
 - **Mensajes que se borran solos** (temporales) — opción por chat; la competencia lo tiene.
 - Detalles sueltos que ya están en `PENDIENTES.md`: botón de descarga de foto/vídeo (#92), aviso con solo icono (#89),
   «ver una vez» (#94).
@@ -56,13 +58,10 @@ Caminos para lo que pides (billetera con saldo):
 - **Fase 3 — licencia propia (ITF):** control total, pero caro y lento (trámite CNBV), solo si el volumen lo justifica.
 - Mejora rápida mientras tanto: la moneda automática por país (arriba) y dejar el «Cobro» bien pulido.
 
-## 5. Mi sugerencia de orden (para discutir)
-1. **Rápidos** que más se notan y dan imagen de «app seria»: **autocorrecto**, **moneda automática**, **buscar en el chat**.
-2. **Internet de verdad** (#2 archivos grandes, luego #3 videollamada): es lo que te falló con el contacto lejano.
+## 5. Orden acordado con el dueño (seguimiento)
+1. ✅ **Rápidos** (los 3): **autocorrecto** (2793), **moneda automática** (2793), **buscar en el chat** (2794) — **completos**.
+2. ← **AQUÍ: Internet de verdad** (#2 archivos grandes por Tor, luego #3 videollamada por internet): es lo que te falló con
+   el contacto lejano. **Siguiente bloque.**
 3. **Decidir Estados/Stream** (sí/no) — define una parte grande de la hoja de ruta.
 4. **Distribución**: Play Store primero (más barato), iOS después (lo más caro) — cuando el núcleo esté sólido.
-5. **Pagos con saldo**: solo si decides ir por un **socio** (Fase 2); si no, dejamos «Cobros» pulido.
-
-> Para avanzar necesito que elijas: ¿atacamos primero **los rápidos** (autocorrecto, moneda, buscar), o prefieres que
-> siga con **internet de verdad** (#2/#3) como habíamos quedado? Y para pagos: ¿quieres que explore un **socio con
-> licencia** (Mercado Pago/CoDi) o por ahora dejamos los «Cobros» sin saldo?
+5. **Pagos con saldo**: solo si decides ir por un **socio** (Fase 2); si no, dejamos «Cobros» pulido. (En paralelo: explorar socio.)
