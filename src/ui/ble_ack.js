@@ -88,6 +88,11 @@ const NET_TEXT_ONE = 20000;     // un texto (ya cifrado) hasta este tamaño va e
 function _isLanDevice(deviceId) { var d = (deviceId || '').toString().toLowerCase(); return d.indexOf('lan:') === 0 || /^lannx[0-9a-z]{8}$/.test(d); }
 const BLE_FILE_MAX_CHARS = 3100000; // tope por Bluetooth (main.js MAX_BLE_B64_BYTES + cabecera de cifrado)
 const BLE_HD_MAX_CHARS = 9500000;   // HD de vídeo (main.js MAX_HD_B64_BYTES + relleno y cabecera de cifrado)
+// Robustez (auditoría 2804): tope de trozos por mensaje. El mayor mensaje real (BLE_HD_MAX_CHARS) troceado al mínimo
+// (~40-60 por trozo con MTU chico) son ~158.000 trozos. Un trozo que dice tener más (el 'n') es un ataque: sin este
+// tope, _sendBlockAck / _findMissing / el array de huecos recorrían hasta miles de millones de índices en el hilo
+// principal (congelación → ANR). 300.000 deja el doble de margen sobre cualquier envío legítimo.
+const MAX_CHUNKS = 300000;
 const ASSEMBLY_TIMEOUT_MS = 120000;
 const COMPLETED_TTL_MS = 60000;
 const GLOBAL_TIMEOUT_MS = 180000;
@@ -519,6 +524,10 @@ export class BleAckSystem {
     var seq = (typeof msg.seq === 'number') ? msg.seq : 0;
     if (!msgId || typeof idx !== 'number' || typeof total !== 'number') return;
     if (total <= 0 || idx < 0 || idx >= total) return;
+    // Robustez (auditoría 2804): un 'n' (total) desproporcionado haría que el block-ack / NACK recorrieran miles de
+    // millones de índices en el hilo principal (congelación de la interfaz → ANR). Por encima de MAX_CHUNKS es un
+    // ataque: se ignora. Esto también acota idx (idx<total), así que corta el array de huecos de más abajo.
+    if (total > MAX_CHUNKS) return;
     // Trozo dañado por el camino: se ignora (queda como hueco y se vuelve a pedir)
     if (msg.k !== undefined && msg.k !== _chunkCheck(msg)) {
       self.stats = self.stats || {}; self.stats.badChunks = (self.stats.badChunks || 0) + 1;
