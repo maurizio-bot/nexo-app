@@ -3,7 +3,7 @@
  * sin cambios): panel, botones de visibilidad y búsqueda, lista de chats, franja de en línea, menú de cada contacto,
  * barra de teléfonos nuevos, insignia y estado.
  */
-import { paintAvatar } from './avatar.js';
+import { avatarOf, paintAvatar } from './avatar.js';
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isBLEContact, _isPinned, _normId, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
 
@@ -589,6 +589,13 @@ export const BLE_UI_METHODS = {
       avatar.className = 'ble-contact-avatar ' + gradClass;
       avatar.textContent = initials;
       if (!contact.isGroup) paintAvatar(avatar, uuid); // ronda 2765: foto de perfil
+      // Ronda 2797 (pedido del dueño): tocar la FOTO del contacto la abre a tamaño grande (solo si tiene foto);
+      // tocar el resto de la fila (nombre) entra al chat. Sin foto, el toque en el círculo cae a la fila (abre el chat).
+      avatar.addEventListener('click', function(e) {
+        if (contact.isGroup) return;
+        var ph = avatarOf(uuid);
+        if (ph && typeof window.__nexoOpenMedia === 'function') { e.stopPropagation(); window.__nexoOpenMedia(ph, 'image'); }
+      });
       row.appendChild(avatar);
       var info = document.createElement('div');
       info.className = 'ble-contact-info';
