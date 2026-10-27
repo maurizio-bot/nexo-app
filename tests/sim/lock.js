@@ -58,8 +58,9 @@ async function addFound(p, name) {
 async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return Math.round((Date.now() - t0) / 100) / 10; await sleep(250); } return null; }
 const prefs = (nat) => { try { return JSON.parse(nat.files.get('nexo_security.json') || 'null'); } catch (e) { return 'ilegible'; } };
 const locked = (p) => !!p.win.document.getElementById('nexo-lock');
-const openProfile = async (p) => { p.win.dispatchEvent(new p.win.CustomEvent('nexo:ui:profile')); await sleep(300); };
-const closeProfile = async (p) => { click(p.win, p.win.document.getElementById('nexo-profile-close')); await sleep(200); };
+// ronda 2807: Seguridad vive ahora en Ajustes (se abre desde Perfil con ⚙️)
+const openProfile = async (p) => { p.win.dispatchEvent(new p.win.CustomEvent('nexo:ui:profile')); await sleep(300); const s = p.win.document.getElementById('nexo-open-settings'); if (s) click(p.win, s); await sleep(300); };
+const closeProfile = async (p) => { const c = p.win.document.getElementById('nexo-settings-close') || p.win.document.getElementById('nexo-profile-close'); if (c) click(p.win, c); await sleep(200); };
 const setCheck = async (p, id, on) => { const el = p.win.document.getElementById(id); el.checked = on; el.dispatchEvent(new p.win.Event('change')); await sleep(600); };
 const secMsg = (p) => (p.win.document.getElementById('nexo-sec-msg') || {}).textContent || '';
 const bio = (nat) => nat.stats.bioAsked || 0;

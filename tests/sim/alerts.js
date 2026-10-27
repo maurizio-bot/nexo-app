@@ -74,6 +74,9 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   r.contactos = await wait(async () => (await B.win.vaultLoadMessages(idA)).some((m) => m.content === 'hola'), 30);
   // 2. Perfil
   B.win.dispatchEvent(new B.win.CustomEvent('nexo:ui:profile'));
+  await sleep(200);
+  // ronda 2807: los avisos viven ahora en Ajustes (se abre desde Perfil con ⚙️)
+  { const s = B.win.document.getElementById('nexo-open-settings'); if (s) click(B.win, s); }
   await wait(() => rows(B).length === 4, 10);
   r.perfil_antes = rows(B);
   // (2772) los ajustes del Vivo, con su botón
@@ -89,7 +92,7 @@ const rows = (p) => Array.from(p.win.document.querySelectorAll('#nexo-alert-rows
   r.abre_ajuste = (nB.alertOpened || []).indexOf('fullScreen') >= 0;
   const wakeBox = B.win.document.getElementById('nexo-wake-msg');
   r.encender_por_defecto = !!(wakeBox && wakeBox.checked);
-  { const c = B.win.document.getElementById('nexo-profile-close'); if (c) click(B.win, c); }
+  { const c = B.win.document.getElementById('nexo-settings-close'); if (c) click(B.win, c); }
   // 3. Pantalla apagada
   setVisible(B, false); nB.screenOn = false; await sleep(500);
   const w0 = nB.screenWakes || 0;

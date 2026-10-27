@@ -153,6 +153,9 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.N_id_antes = N.win.bleInterface.localNexoId;
   N.win.dispatchEvent(new N.win.CustomEvent('nexo:ui:profile'));
   await sleep(500);
+  // ronda 2807: Fénix vive ahora en Ajustes (se abre desde Perfil con ⚙️)
+  { const s = N.win.document.getElementById('nexo-open-settings'); if (s) click(N.win, s); }
+  await sleep(300);
   click(N.win, N.win.document.getElementById('nexo-fenix-recover'));
   // Cada contacto ve el aviso y confirma que es A (hasta t confirmaciones)
   const confirmed = [];
