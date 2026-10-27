@@ -123,6 +123,38 @@ o seguir usando el teléfono viejo tras pasar la cuenta). Hay que probarlo (P0-1
 
 ---
 
+## 3bis. Revisión nocturna 27-10-2026 (builds 2794–2800) — «verificar robustez y fallas» (pedido del dueño)
+
+Repaso de la **superficie nueva de la madrugada** (buscar en el chat 2794, ver-una-vez 2795, limpieza de pagos 2796,
+foto/nombre 2797, mala señal 2798, Estados/Stream 2799) con el modelo de amenazas de §2. Método: una revisión propia +
+una revisión adversarial independiente (agente), solo hallazgos **alcanzables** con una ruta real, y arreglo
+proporcionado y **reproducido en `tests/sim`** antes de subir.
+
+**Batería de ataque/caos: VERDE en la 2799 (65/65).** Vigilan la seguridad, entre otras: `spoof.js` (anti-suplantación),
+`ackforge.js` (acuses ✓✓ falsos), `groupforge.js` (un miembro reescribe el grupo), `misroute.js` (enrutado BLE/Jump sin
+fugas), `relaytls.js` (relés en claro vetados), `forge`/`forgetext`. Todo pasa.
+
+### Arreglados y comprobados en esta revisión (build 2800)
+
+| # | Gravedad | Hallazgo | Arreglo (reproducido en `tests/sim`) |
+|---|---|---|---|
+| **NEXO-02-ONCE1** | **Alta** | **Una foto «de una vez» ya abierta REVIVÍA al retransmitirse.** Tras consumirla, el borrado (`vaultConsumeOnceMessage`) limpiaba `content`, pero el *merge* de una retransmisión del mismo `msgId` en `_appendMessageNow` solo anulaba `attachmentPayload`/`ref`/`hd`, **no `content`**. Como por relé/internet el payload viaja DENTRO de `content` como JSON, el reenvío automático del emisor al reconectar (su registro saliente no se borra, #12) devolvía ese `content`; al reabrir el chat `render.js` lo reconstruía y **volvía a mostrar la foto** (y la reescribía a disco) — rompía la promesa de privacidad del #94. Ruta real sin malicia (reconexión) y agravable con malicia (meta sin `once`). | `vault_manager.js` (guarda `onceSeen`): se iguala al borrado de consumir — `content`/`text` a `''`, payload/ref/hd a `null`, `attachmentMeta.once` forzado → la burbuja queda «Abierta». Prueba: `tests/sim/once.js` (`retransmision_no_revive_vault`/`_ui`); confirmado que SIN el arreglo la prueba falla. |
+| **NEXO-02-EST1** | **Media** | **Un Estado con fecha futura no caducaba.** `estados.applyStatus` aceptaba el `ts` del otro teléfono con solo `>0`; un `ts` en el futuro (reloj malo o malicioso) dejaba `(ahora−ts)<24 h` verdadero para siempre → el Estado de un contacto no caducaba y `_ago` mostraba tiempo negativo. | `estados.js`: el `ts` recibido se acota a «ahora» (`Math.min(ts, now)`); las 24 h quedan honestas pase lo que pase. Prueba: `tests/sim/estados.js` (`futuro_acotado`). |
+
+**Superficie nueva sin hallazgos alcanzables:** `search_ui.js` (filtra por `textContent`, no mete texto del otro como HTML);
+el toque del avatar en `ble_ui.js` (cierre por fila correcto, `stopPropagation` solo con foto); el parse de `o1` en
+`ble_ack.js` (`=== 1` estricto, tolera basura sin romper); `_refreshLinkSubtitle` de mala señal en `main.js` (guardas de
+tipo, `mtu>0 && mtu<60` falso para `undefined`/`NaN`, subtítulo por `textContent`, sin texto del otro). `estados.js` ya
+acota el texto a 280 car. al enviar **y al recibir**, valida NEXO IDs y escapa el texto al mostrar.
+
+**Estado del índice (42,5, sin cambio):** lo que lo frena no es la cobertura de pruebas (A alta: 65/65 + ataque verde) sino
+**B** (el dueño no ha reconfirmado las builds recientes en los teléfonos reales) y **C** (puntos débiles abiertos: 9 graves
++ 4 medios + 2 leves, sobre todo los duros — entrega con la app cerrada #87, llamadas por internet #99, Bluetooth con MTU 23
+inestable — que necesitan su diagnóstico o trabajo nativo/servidor, no un arreglo rápido). Los dos hallazgos de hoy ya
+estaban cubiertos por el catálogo como «ver una vez» y «Estados», así que no mueven el índice; sí refuerzan la robustez real.
+
+---
+
 ## 4. Plan de pruebas «al límite» (robustez y seguridad)
 
 Adaptado de los modelos más duros: simulación determinista (FoundationDB, TigerBeetle VOPR), Jepsen/caos, fuzzing
