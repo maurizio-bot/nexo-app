@@ -3,6 +3,20 @@
 Lista pedida por el dueño el 23-10-2026 para no olvidar nada. Leer al empezar cada sesión (CLAUDE.md lo indica) y
 actualizar al terminar cada bloque. Estado al día de cada build: `docs/PROGRESO.md`.
 
+## Decisiones del dueño 27-10 (madrugada) y nuevos pedidos
+El dueño pidió trabajar autónomo por los pendientes, «cerrar algunos de forma robusta», orden a mi criterio. Decisiones:
+- **Stream**: empezar por **Estados entre contactos, solo cercanos** (sin servidor), «luego vemos». Cifrados, caducidad 24 h (molde del cobro). Ver `STREAM_PROPUESTA.md`. (#104)
+- **Pagos**: «lo implementamos y después vemos lo del socio». OJO: saldo/custodia real exige licencia o socio (Mercado Pago/CoDi) = Fase 2. Autónomo-seguro ahora: ampliar UX, maquetar; **recargas celulares** necesitan proveedor/API. (#105)
+- **Archivos grandes + llamadas + videollamadas «siempre»** (incluido por internet). Archivos grandes por internet ya van (Tor ~22 MB). Llamada/videollamada por internet (#3) NO está y es dura (media en tiempo real sobre Tor/relés, quizá requiere TURN=servidor) — investigar y ser honesto. (#99)
+- **Avisos de mala señal** (calidad de enlace). (#102)
+- **Contacto**: tocar la FOTO → verla grande; tocar el NOMBRE → entrar al chat. (#100)
+- **Gestos de deslizar-atrás** funcionales y ajustados. (#101)
+- **Face ID** (desbloqueo por rostro) además de huella, más rápido. (#103)
+- **Auditoría** para verificar robustez y fallas. (#106)
+- Buenas noches: el dueño se fue a dormir (~1:40 am), trabajo mientras tanto.
+
+Orden que sigo (robusto, de a uno, con batería verde + APK): 2794 buscar ✓, 2795 ver una vez ✓, 2796 limpieza pagos ✓ → foto/nombre (#100) → mala señal (#102) → gestos atrás (#101) → Face ID (#103) → Stream Estados (#104) → auditoría (#106). Lo que necesita socio/proveedor o servidor (pagos con saldo real, recargas, llamadas por internet) lo dejo con UX lista y marcado; lo que necesita diagnóstico del dueño (#87, ○+Reintentar) espera.
+
 ## 0. Robustez: medición y tareas diarias (pedido del dueño 25-10)
 `docs/ROBUSTEZ.md`: registro de la revisión 1 (24 y 25-10, builds 2766–2771: 63 fallos encontrados, 62 arreglados),
 índice de robustez (medición inicial **45,3 sobre 100**; lo que más baja: casi nada confirmado en los teléfonos desde la
