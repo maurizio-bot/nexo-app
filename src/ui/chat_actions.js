@@ -4,6 +4,7 @@
  * reenvío y aplicar el "eliminar para todos" que llega. Lo que usa del resto de la app se lo da main.js.
  */
 import { applyAvatar } from './avatar.js';
+import { applyStatus } from './estados.js';
 import { _PREVIEW_BY_TYPE, _chatKind, _contactName, _cut, _findMessage, _getCurrentContactId, _msgSummary, _myNexoId, _normId, _peerUnderstands, _plainText } from './chat_format.js';
 import { _showInfoToast } from './ui_bits.js';
 import { _videoFormat } from './video_tools.js';
@@ -476,6 +477,7 @@ export function _renderReactions(msgEl, reactions, isOwn) {
 // Recibido: el contacto eliminó para todos uno de SUS mensajes
 export function _applyChatAction(senderId, act) {
   if (act && act.act === 'av') { applyAvatar(senderId, act); return; } // ronda 2765: foto de perfil (avatar.js)
+  if (act && act.act === 'st') { applyStatus(senderId, act); return; } // ronda 2799: Estado (Stream fase 1, estados.js)
   // Ronda 2782: el contacto editó uno de SUS mensajes de texto
   if (act && act.act === 'edit' && act.id && typeof act.t === 'string') {
     var cide = _normId(senderId);
