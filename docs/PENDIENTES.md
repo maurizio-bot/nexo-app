@@ -220,6 +220,9 @@ cerrado — en cuyo caso el #87 de mensajes ya está, y solo queda la llamada ce
   Fase 2.
 - **Stream** (vídeos tipo TikTok + estados de contactos, gestos: tap arriba izq. vídeos, arriba der. estados, doble tap
   "me gusta", deslizar der→izq comentarios, izq→der volver): **SIN DECIDIR** (sí/no; solo cercanos o con servidor).
+  **Propuesta en `docs/STREAM_PROPUESTA.md`** (27-10): los 3 caminos (A solo-cercanos / B buzón de relés / C servidor);
+  recomendación = empezar por **"Estados" entre contactos, E2E, 24 h** (sin servidor, un tipo de mensaje con caducidad,
+  como el cobro); el feed público global necesitaría servidor (C). Falta que el dueño decida arquitectura y alcance.
 - **Chats de grupo**: hechos en la 2758 (textos y adjuntos de hasta ~1 MB); HD de vídeo y archivos grandes (hasta
   1 GB) en grupos: hechos en la 2764. Nombre del grupo en el aviso con la app cerrada o congelada: hecho (2763).
 - **Internet** (contactos lejos, Wi-Fi de módems distintos): hecho en la ronda 2739 con relés públicos Nostr y Tor
