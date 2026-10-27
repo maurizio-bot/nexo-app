@@ -285,8 +285,8 @@ Consolidado: inline + main.css + ble_styles
    .msg-status { font-size: 10px; font-weight: 700; }
    .msg-status.status-pending { color: rgba(255,255,255,0.3); }
    .msg-status.status-sent { color: #6b7280; }
-   .msg-status.status-delivered { color: #00c8ff; }
-   .msg-status.status-read { color: #a855f7; }
+   .msg-status.status-delivered { color: #8696a0; }
+   .msg-status.status-read { color: #00d4ff; }
    /* FIX v10.2: Imagenes en mensajes */
    .msg-content img {
    max-width: 220px;

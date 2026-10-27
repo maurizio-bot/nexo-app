@@ -170,7 +170,11 @@ class MsgNotifier(private val ctx: Context) {
 
     // Ronda 2765 (pedido del dueño: con la pantalla apagada, que llegue y se encienda): Android no enciende la pantalla
     // por un aviso; se enciende unos segundos (un mensaje: si no se quitó en Perfil; una llamada: siempre)
-    fun wakeOnMsg(): Boolean = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(PREF_WAKE, true)
+    // Ronda 2789 (informe del dueño: "al llegar un mensaje se prende toda la pantalla; solo debería aparecer la
+    // notificación"). Por defecto AHORA es NO encender la pantalla con un mensaje: solo se postea la notificación y la
+    // muestra el sistema (pantalla ambiente/bloqueo) sin forzar el brillo. Quien quiera que se encienda, lo activa en
+    // Perfil (setWakeOnMessage). Las LLAMADAS siguen encendiendo la pantalla siempre (es otro camino, incomingCall).
+    fun wakeOnMsg(): Boolean = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(PREF_WAKE, false)
     fun setWakeOnMsg(on: Boolean) { ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(PREF_WAKE, on).apply() }
     fun wakeScreen(ms: Long) {
         try {
