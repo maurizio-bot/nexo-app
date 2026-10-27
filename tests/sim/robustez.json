@@ -823,6 +823,10 @@
     {
      "fallo": "C1 Confirmaciones (✓✓) sin autenticar: una falsa paraba los reintentos y el mensaje se perdía con ✓✓. Arreglado en la 2777: la confirmación va firmada con el secreto de la pareja (e2eAckTag), también en modo cerrado (el ack nativo lo firma con una clave por contacto que le da la app por setAckKeys; sobrevive en memoria con la app cerrada, no va a disco)",
      "prueba": "confirmación (✓✓) falsa no marca entregado"
+    },
+    {
+     "fallo": "F9 Relés en claro (ws://) permitidos: un espía de la red veía las etiquetas de la suscripción (tu buzón). Arreglado en la 2788: solo wss://; ws:// solo a loopback (pruebas/relé propio). Si todos fueran en claro, cae a los wss:// por defecto (nunca sin internet por esto)",
+     "prueba": "relés solo cifrados"
     }
    ],
    "debiles": [
@@ -853,10 +857,6 @@
     {
      "g": "leve",
      "d": "F8: reservas de memoria de una sola vez grandes (Wi-Fi Direct 40 MB, pasar la cuenta 512 MB)"
-    },
-    {
-     "g": "leve",
-     "d": "F9: WebSocket en claro (ws://) permitido; filtra las etiquetas de la suscripción"
     }
    ]
   }
