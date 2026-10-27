@@ -2432,13 +2432,18 @@ class NexoBlePlugin : Plugin() {
         call.resolve(JSObject().put("active", atRestDataKey() != null).put("migration", atRestMigration))
     }
 
-    private fun biometricAuthenticators(): Int =
-        if (Build.VERSION.SDK_INT >= 30) BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        else BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    // Ronda 2803 (pedido del dueño #103): «Face ID opcional». Por defecto exige biometría FUERTE (Clase 3) en API 30+,
+    // que en muchos teléfonos deja fuera el ROSTRO (es Clase 2/débil, se engaña con una foto) y solo ofrece la huella.
+    // Si el usuario activa el «desbloqueo rápido por rostro (menos seguro)», se permite BIOMETRIC_WEAK y entonces el
+    // rostro Clase 2 también desbloquea. Es solo una puerta de presencia (no cifra nada), así que el cambio es seguro;
+    // el aviso de «menos seguro» es honesto. En API <30 ya se usaba WEAK (STRONG+credential daba problemas ahí).
+    private fun biometricAuthenticators(allowWeak: Boolean): Int =
+        if (allowWeak || Build.VERSION.SDK_INT < 30) BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        else BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
     @PluginMethod
     fun biometricStatus(call: PluginCall) {
-        val r = BiometricManager.from(context).canAuthenticate(biometricAuthenticators())
+        val r = BiometricManager.from(context).canAuthenticate(biometricAuthenticators(call.getBoolean("allowWeak", false) == true))
         call.resolve(JSObject().put("available", r == BiometricManager.BIOMETRIC_SUCCESS).put("code", r))
     }
 
@@ -2448,13 +2453,14 @@ class NexoBlePlugin : Plugin() {
         val act = activity as? FragmentActivity ?: run { call.resolve(JSObject().put("ok", false).put("reason", "sin actividad")); return }
         val title = call.getString("title") ?: "Desbloquear NEXO"
         val subtitle = call.getString("subtitle") ?: ""
+        val allowWeak = call.getBoolean("allowWeak", false) == true   // #103: desbloqueo rápido por rostro (opcional)
         act.runOnUiThread {
             try {
                 val prompt = BiometricPrompt(act, ContextCompat.getMainExecutor(context), object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { call.resolve(JSObject().put("ok", true)) }
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) { call.resolve(JSObject().put("ok", false).put("reason", errString.toString()).put("code", errorCode)) }
                 })
-                val info = BiometricPrompt.PromptInfo.Builder().setTitle(title).setSubtitle(subtitle).setAllowedAuthenticators(biometricAuthenticators()).build()
+                val info = BiometricPrompt.PromptInfo.Builder().setTitle(title).setSubtitle(subtitle).setAllowedAuthenticators(biometricAuthenticators(allowWeak)).build()
                 prompt.authenticate(info)
             } catch (e: Exception) {
                 call.resolve(JSObject().put("ok", false).put("reason", e.message ?: "error"))

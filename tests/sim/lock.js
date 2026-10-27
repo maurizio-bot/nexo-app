@@ -185,6 +185,23 @@ const bio = (nat) => nat.stats.bioAsked || 0;
   nA.bioDuring = null;
   r.quitar_con_pin_sin_bucle = bio(nA) - b2 === 1 && !locked(A) && prefs(nA).lock === false;
 
+  // 12) #103 Desbloqueo rápido por rostro (opcional): el ajuste viaja como allowWeak al nativo (biometricStatus/Auth)
+  var lastAllow = { status: null, auth: null };
+  A.win.Capacitor.Plugins.NexoBLE.biometricStatus = function (o) { lastAllow.status = !!(o && o.allowWeak); return Promise.resolve({ available: true }); };
+  A.win.Capacitor.Plugins.NexoBLE.biometricAuth = function (o) { lastAllow.auth = !!(o && o.allowWeak); return Promise.resolve({ ok: true }); };
+  await openProfile(A);
+  await setCheck(A, 'nexo-sec-lock', true);                 // activar el bloqueo (rostro rápido aún OFF)
+  var ffRow = A.win.document.getElementById('nexo-sec-facefast-row');
+  r.facefast_fila_visible = !!ffRow && ffRow.style.display !== 'none';
+  r.allowweak_off = lastAllow.status === false && lastAllow.auth === false;   // por defecto, biometría fuerte
+  await setCheck(A, 'nexo-sec-facefast', true);             // el usuario activa el rostro rápido
+  r.facefast_guardado = !!(prefs(nA) && prefs(nA).faceFast === true);
+  await setCheck(A, 'nexo-sec-lock', false);                // una comprobación ahora lleva allowWeak:true
+  r.allowweak_on = lastAllow.status === true;
+  await setCheck(A, 'nexo-sec-facefast', false);
+  r.facefast_se_quita = !!(prefs(nA) && prefs(nA).faceFast === false);
+  await closeProfile(A);
+
   // Que los avisos no saquen nada privado al registro
   r.registro_sin_mensaje = !logs.some((l) => /llega con NEXO bloqueado/.test(l));
 
