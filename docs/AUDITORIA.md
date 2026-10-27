@@ -228,8 +228,14 @@ detalle y las herramientas comprobadas están en la investigación guardada; aqu
   le da la app por `setAckKeys`, en memoria del proceso). Una confirmación falsa se ignora, así que ya no para los
   reintentos ni hace perder un mensaje con ✓✓. Lo vigila `tests/sim/ackforge.js` en la batería (52/52) y la firma del
   modo cerrado la cubre el escenario «recibir con la app cerrada». ⚠️ Falta la confirmación en los dos teléfonos del dueño.
-- **P0-4** XSS en mensajes, nombres, archivos, grupos, QR, contactos y ubicaciones (hoy se usa `textContent`; dejar una
-  prueba que lo vigile y revisar la CSP).
+- ✅ **P0-4 (XSS) RESUELTO (ronda 2809):** revisado todo el camino de pintado — la app ya usa `textContent` en TODAS las
+  superficies con datos del remitente (cuerpo del mensaje `_fillTextBubble`→`t.textContent`, nombre del remitente,
+  nombres de contacto, cita de respuesta; la tarjeta de ubicación solo mete números), ninguna usa `innerHTML` con datos
+  del otro teléfono. Se deja el vigilante `tests/sim/xss.js` (tag XSS, en la batería): 5 cargas típicas (`<img onerror>`,
+  `<script>`, `<svg onload>`, `<iframe javascript:>`, `on*`) → cero elementos inyectados, cero handlers ejecutados, texto
+  literal; si alguien volviera a usar `innerHTML` con datos del remitente, FALLA. CSP (`index.html`) endurecida con
+  `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` (el `script-src` mantiene `'unsafe-inline'`/`'unsafe-eval'`
+  por el WebView de Capacitor y los handlers inline; el XSS se corta en origen con `textContent`). Batería 71/71.
 - **P1** «VOPR de NEXO»: mundo determinista (reloj virtual + PRNG con semilla) con fallos inyectados (pérdida en
   ráfagas, duplicados, reordenación, cortes, reinicios, relojes desfasados, disco lleno, muerte entre guardar y
   confirmar) sobre 3–6 teléfonos, comprobando I1–I13. Nocturno, miles de semillas.
