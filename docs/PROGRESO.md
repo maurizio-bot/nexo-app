@@ -1,6 +1,6 @@
 # NEXO — Estado del proyecto
 
-Última actualización: 2026-10-26 (build 2786, informe del dueño: «que permita el envío de archivos grandes cuando hay internet; otra vez no mandó nada ni avisó si es por dimensiones»): archivos grandes por internet **por Tor directo** (~22 MB, socket .onion P2P; por los relés se quedan los medianos ~6 MB) y, sobre todo, **nunca más «no manda nada ni avisa»** — aviso claro y accionable siempre, vídeo incluido. Ver "Ronda 2786". La 2785 fue NATIVO: llamada a pantalla completa (CallStyle, #1) + WifiLock/registro nativo para el #87)
+Última actualización: 2026-10-27 (build 2787, el dueño pidió avanzar los pendientes «todos, uno a la vez, del más rápido al más complejo»): **Pagos Fase 1** — adjunto **«Cobro»** (💵) en el chat (importe, moneda, concepto y «cómo te pagan»: alias/CBU, enlace/QR de Mercado Pago/PayPal o efectivo); NEXO nunca toca el dinero (mensajería de cobros, sin licencia ni servidor); tarjeta con «Copiar datos»/«Abrir enlace», cifrada, por cualquier red. Ver "Ronda 2787". La 2786 fue archivos grandes por internet por Tor directo + nunca más «no manda nada ni avisa». Siguiente del plan: 2) auditoría, 3) Stream; el #87 se intercala con los diagnósticos del dueño)
 
 ## Construcción y firma
 - Push a `NEXOCHAT` → `.github/workflows/build-apk.yml` publica la pre-release `nightly-<run>` (APK debug).
@@ -111,6 +111,7 @@ Archivos clave: `src/main.js`, `src/ui/ble_interface.js`, `src/ui/ble_ack.js` (p
 | 2784 | 795fb295 | Llamadas a pantalla completa, zoom, contactos y diagnóstico, informe del dueño (ver "Ronda 2784"), todo JS: (1) **#81** con la app cerrada la llamada entraba solo como aviso, sin Contestar/Rechazar a pantalla completa — en Android 14 el permiso `USE_FULL_SCREEN_INTENT` hay que pedirlo (no basta declararlo); ahora `main._askBackgroundOnce` lo pide proactivamente al arrancar (primero la exención de batería si falta, luego la pantalla completa), usando `alertSettings`/`openAlertSetting` que ya existían. (2) **Zoom de foto**: el arrastre se limita al borde (no se ve negro más allá). (3) **Franja de conectados sin parpadeo**: histéresis de 60 s (un cambio de conexión < 60 s no cuenta). (4) **«Copiar diagnóstico»** recorta la sesión a la última hora para que quepa. Prueba `alerts.js` ampliada (teléfono con batería ya concedida → pide la pantalla completa). Batería 56/56, Kotlin 90/90 (sin cambios nativos), índice **42**. ⚠️ A confirmar en los teléfonos. Pendiente, y prioridad, el núcleo del **#87** (que los mensajes lleguen con la app cerrada): nativo, necesita el diagnóstico de los dos teléfonos. APK publicada (nightly-2784, ~24,5 MB; firma verificada en CI) |
 | 2785 | d035ae7b | Las dos prioridades del dueño, NATIVO (ver "Ronda 2785"): **#1** la llamada entrante usa `NotificationCompat.CallStyle` de verdad (pantalla de llamada real con Contestar/Rechazar grandes; antes Samsung/Android 14 la bajaban a aviso pequeño), con repliegue a aviso normal si fallara. **#87** (mensajes con la app cerrada): WifiLock (FULL_HIGH_PERF) mientras NetBg escucha en segundo plano/cerrada (Android duerme la radio Wi-Fi con la pantalla apagada y tira el socket del relé) + **registro nativo persistente** (`NativeLog`) que ahora SÍ aparece en «Copiar diagnóstico» (antes se armaba en el WebView, muerto con la app cerrada, y el hueco salía vacío). Batería 56/56, Kotlin 95/95 (+5 `NativeLogTest`), índice 42. #87 sigue ABIERTO hasta confirmarlo en los dos teléfonos con el nuevo diagnóstico. APK publicada (nightly-2785, 24,56 MB, sha256 b2c9fb16…; firma verificada en CI) |
 | 2786 | a46f0673 | Archivos grandes por internet, informe del dueño (ver "Ronda 2786"): «que permita el envío de archivos grandes cuando hay internet; otra vez no mandó nada ni avisó si es por dimensiones». El transporte ya troceaba cualquier tamaño (16 KB/evento); el bloqueo estaba solo en el tope de la interfaz. Ahora el tope por internet es **según el camino** (`_torDirect` en `media_limits.js`, mira `net.via()==='tor'`): por **Tor directo** (socket .onion P2P, sin el tope de 64 KB por evento) los grandes **salen por internet** hasta ~22 MB (`NET_TOR_MAX_B64_BYTES`, como Wi-Fi Direct); por los **relés** se quedan los medianos ~6 MB (cientos de eventos pequeños saturan los relés públicos). Sigue yendo antes el camino LOCAL de archivos grandes (regla del dueño). Clave: **nunca más «no manda nada ni avisa»** — si un archivo no cabe por el camino de ahora, aviso claro y accionable (tope + activar Tor en Perfil / mismo Wi-Fi / Wi-Fi Direct / cerca, hasta 1 GB); además el **vídeo** que no se podía preparar antes fallaba en silencio y ahora avisa. Pruebas nuevas `tests/sim/bignet.js` (relés y Tor) en la batería (tag BIGNET). Batería 58/58, Kotlin 95/95 (sin cambios nativos), índice **42,1**. ⚠️ A confirmar en los teléfonos del dueño. APK publicada (nightly-2786, 24,56 MB, sha256 5dbd6f6e…; firma verificada en CI) |
+| 2787 | 69262951 | Pagos Fase 1 — «Cobros» en el chat (ver "Ronda 2787"). El dueño pidió avanzar los pendientes «todos, uno a la vez, del más rápido al más complejo»: el primero, pagos. Regla legal (`docs/PAGOS_PROPUESTA.md`): lo que exige licencia es **custodiar** el dinero; si NEXO nunca toca fondos, es **«mensajería de cobros»** (como una factura), sin licencia ni servidor. Nuevo botón **💵 Cobro** en el menú de adjuntar → hoja con importe, moneda, concepto y «cómo te pagan» (alias/CBU, `PayPal.me`, Mercado Pago, efectivo; se recuerdan). Viaja **cifrado** como cualquier mensaje (Bluetooth/Wi-Fi/Jump/internet); tarjeta en el chat con **«Copiar datos»** y **«Abrir enlace»**. Es un tipo de mensaje más (como la ubicación): `src/ui/cobro.js` (`_handleCobro`/`_sendCobro`/`_renderCobroCard`), `index.html` (item), `app_setup.js` (cablea), `main.js` (pegamento `cobroUse`), `render.js` (rama `'cobro'`). Escapa concepto/método (vienen del otro teléfono). Prueba `tests/sim/cobro.js` en la batería (tag COBRO): llega con importe/concepto/método, tarjeta en los dos, sin inyección de HTML. Batería **59/59**, Kotlin 95/95 (sin cambios nativos), índice **42,1** (funcionalidad nueva, no un modo de fallo del catálogo). Pendiente antes de la tienda: borrar el prototipo MUERTO de `payment`/`transfer` en `src/app/nexo_app.js` (sin UI que lo dispare). ⚠️ A confirmar en los teléfonos del dueño. APK nightly-2787 (en construcción al cerrar este bloque; firma verificada en CI) |
 | 2774 | fa52b3d1 | Auditoría de seguridad y robustez «al límite» (ver "Ronda 2774" y `docs/AUDITORIA.md`): endurecido el Wi-Fi (saludo gigante, avalancha de conexiones, archivo abortado por un extraño, inundación de escaneo), cierre a distancia con JSON muy anidado, intent de llamada exportado, anuncio con ID mal formado, grupos (un miembro reescribía la lista y colaba claves) y recuperación del WebView. Pruebas nuevas: 4 de ataque en Kotlin + fuzzing con semilla + `groupforge.js`. Batería 51/51, Kotlin 87/87 (16 nuevas). Índice de robustez 41,8 (ver `docs/ROBUSTEZ.md` §4). **APK publicada: `nightly-2775` (24,5 MB, firma verificada).** La primera compilación (run 2774) falló por una carrera en `LanHub.stop()` dentro de la prueba de la avalancha (iterar la cola mientras los hilos de lectura la vaciaban); arreglada con `poll()` y comprobada 5 veces; la 2775 compila, pasa todo y publica |
 
 ## Base estable: build 2713
@@ -237,6 +238,36 @@ Probada por el dueño en teléfonos reales ("funciona como esperado", Wi-Fi Dire
   Reproducir lo que muestre en `tests/sim/browser.js` (Chromium real) o en el simulador antes de corregir.
 - Pendientes ya hablados: transporte binario (sin base64/JSON, ~1,6x) para todos los archivos; recibir
   con la app cerrada (servidor GATT en el `BleService`).
+
+## Ronda 2787: Pagos Fase 1 — "Cobros" en el chat (sin custodia, sin servidor, sin licencia)
+El dueño pidió avanzar los pendientes «todos, uno a la vez, del más rápido al más complejo». El primero: **pagos**.
+
+**Regla legal (de `docs/PAGOS_PROPUESTA.md`):** lo que exige licencia financiera es **custodiar el dinero** (guardar
+saldo, recibir y reenviar fondos). Si NEXO **nunca toca los fondos**, es **"mensajería de cobros"** (como una factura o
+un "Request to Pay"): no necesita licencia. Fase 1 implementa exactamente eso.
+
+**Qué es (un tipo de mensaje más, como la ubicación):** en el menú de adjuntar hay un botón nuevo **💵 Cobro**. Abre una
+hoja con **importe**, **moneda** (ARS/MXN/USD/EUR/… recordada por teléfono), **concepto** y **«cómo te pagan»** (alias/CBU,
+`PayPal.me/vos`, Mercado Pago, o «efectivo» — también recordado). Al enviar, viaja **cifrado** como cualquier mensaje
+(Bluetooth/Wi-Fi/Jump/internet) y en el chat aparece una **tarjeta** (importe grande + concepto + cómo pagar) con botones
+**«Copiar datos»** y, si el dato es un enlace, **«Abrir enlace»**. NEXO no cobra ni guarda nada: solo lleva el pedido.
+
+**Archivos (todo JS, aditivo, riesgo de regresión ~cero):**
+- `src/ui/cobro.js` (nuevo): `_handleCobro` abre la hoja; `_sendCobro` manda `_sendAttachment('cobro', json, meta)` (el
+  payload va NO vacío porque `render.js` solo arma el adjunto si hay `attachmentPayload`); `_renderCobroCard` dibuja la
+  tarjeta (emisor «Cobro enviado», receptor «Te piden un cobro»), con escape del concepto/método (vienen del otro
+  teléfono: nunca como HTML) y «Copiar» con reserva por `execCommand` si no hay portapapeles.
+- `index.html`: item `data-type="cobro"` en el menú. `app_setup.js`: lo cablea a `_handleCobro`. `main.js`: pegamento
+  `cobroUse`. `render.js`: rama `attachment.type === 'cobro'`.
+
+**Prueba:** `tests/sim/cobro.js` (en la batería, tag COBRO): A manda un cobro a B; llega como adjunto 'cobro' con
+importe/moneda/concepto/método; la tarjeta se dibuja en los dos; un concepto con `<img onerror>` **no se inyecta**; hay
+botón «Copiar».
+
+**Pendiente de limpieza (antes de la tienda):** hay un prototipo viejo y **muerto** de `payment`/`transfer` con una firma
+inventada en `src/app/nexo_app.js` (sin UI que lo dispare; no choca con 'cobro'). Se borra en un pase dedicado para no
+arriesgar regresión en un archivo vivo. Fase 2 (un toque con proveedor licenciado) y asesoría legal: ver
+`PAGOS_PROPUESTA.md`.
 
 ## Ronda 2786: archivos grandes por internet (por Tor directo) y nunca «sin mandar y sin avisar»
 Informe del dueño: «REVISA TAMBIÉN QUE PERMITA EL ENVÍO DE ARCHIVOS GRANDES CUANDO HAY INTERNET, HICE LA PRUEBA Y OTRA VEZ
