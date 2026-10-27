@@ -107,21 +107,26 @@ body::before {
 .attach-menu {
   background: var(--nx-sheet) !important; border: 1px solid var(--nx-line) !important; border-radius: 22px !important;
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5) !important;
-  padding: 16px 12px 12px !important; gap: 6px !important;
+  padding: 14px 10px 10px !important; gap: 4px !important;
+  /* Ronda 2791 (informe del dueño): con 6 iconos (se añadió «Cobro» 💵) la barra se salía de la pantalla y el último
+     quedaba cortado. Ahora el menú NO puede pasar del ancho de la pantalla y, si no caben, saltan de línea. */
+  flex-wrap: wrap !important; justify-content: center; max-width: calc(100vw - 24px);
 }
-.attach-menu-item { flex-direction: column; gap: 6px; background: none !important; width: 64px !important; height: auto !important; }
-.attach-menu-item svg { width: 50px !important; height: 50px !important; padding: 13px; box-sizing: border-box; border-radius: 50%; fill: #fff !important; }
+.attach-menu-item { flex-direction: column; gap: 5px; background: none !important; width: 50px !important; height: auto !important; }
+.attach-menu-item svg { width: 40px !important; height: 40px !important; padding: 10px; box-sizing: border-box; border-radius: 50%; fill: #fff !important; }
 .attach-menu-item[data-type="camera"] svg { background: linear-gradient(135deg, #ff5f6d, #ff3b30); }
 .attach-menu-item[data-type="gallery"] svg { background: linear-gradient(135deg, #00c8ff, #3b82f6); }
 .attach-menu-item[data-type="file"] svg { background: linear-gradient(135deg, #7c3aed, #a855f7); }
 .attach-menu-item[data-type="location"] svg { background: linear-gradient(135deg, #22c55e, #10b981); }
 .attach-menu-item[data-type="contact"] svg { background: linear-gradient(135deg, #f59e0b, #ff6b35); }
+.attach-menu-item[data-type="cobro"] svg { background: linear-gradient(135deg, #14b8a6, #0d9488); }
 .attach-menu-item::after { font-size: 11px; color: var(--nx-muted); }
 .attach-menu-item[data-type="camera"]::after { content: 'Cámara'; }
 .attach-menu-item[data-type="gallery"]::after { content: 'Galería'; }
 .attach-menu-item[data-type="file"]::after { content: 'Archivo'; }
 .attach-menu-item[data-type="location"]::after { content: 'Ubicación'; }
 .attach-menu-item[data-type="contact"]::after { content: 'Contacto'; }
+.attach-menu-item[data-type="cobro"]::after { content: 'Cobro'; }
 
 /* ---------- Hojas (menú de un mensaje, reenviar, compartir, grupo) ---------- */
 /* Menús que suben desde abajo (fondo oscuro translúcido + hoja de cristal) */
