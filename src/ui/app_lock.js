@@ -22,7 +22,7 @@ var AFTER_OPTIONS = [
 // Tras pedir la huella con el PIN del teléfono (otra pantalla de Android) la app "vuelve": no volver a bloquear
 var AUTH_SETTLE_MS = 2500;
 
-var _prefs = { lock: false, lockAfterMs: 0, secure: false };
+var _prefs = { lock: false, lockAfterMs: 0, secure: false, faceFast: false };
 var _locked = false;
 var _authing = false;
 var _lastAuthEnd = 0;
@@ -41,7 +41,7 @@ function _hinted() { try { return localStorage.getItem(HINT_KEY) === '1'; } catc
 
 function _save() {
   _hint(_prefs.lock);
-  return _call('saveToFile', { filename: PREFS_FILE, content: JSON.stringify({ v: 1, lock: _prefs.lock, lockAfterMs: _prefs.lockAfterMs, secure: _prefs.secure }) });
+  return _call('saveToFile', { filename: PREFS_FILE, content: JSON.stringify({ v: 1, lock: _prefs.lock, lockAfterMs: _prefs.lockAfterMs, secure: _prefs.secure, faceFast: _prefs.faceFast }) });
 }
 
 // ---------- Pantalla de bloqueo ----------
@@ -69,7 +69,7 @@ function _lockMsg(t) { var m = document.getElementById('nexo-lock-msg'); if (m) 
 async function _auth(title, subtitle) {
   _authing = true;
   try {
-    var r = await _call('biometricAuth', { title: title, subtitle: subtitle || '' });
+    var r = await _call('biometricAuth', { title: title, subtitle: subtitle || '', allowWeak: _prefs.faceFast });
     return !!(r && r.ok);
   } finally {
     _authing = false;
@@ -79,7 +79,7 @@ async function _auth(title, subtitle) {
 
 async function _unlock() {
   if (_authing) return;
-  var st = await _call('biometricStatus');
+  var st = await _call('biometricStatus', { allowWeak: _prefs.faceFast });
   if (!st) { _hideLock(); return; } // sin plugin nativo (navegador): no hay con qué comprobar
   if (!st.available) {
     // El teléfono ya no tiene huella ni PIN: no dejar al usuario fuera de su cuenta para siempre
@@ -126,6 +126,7 @@ export function initAppLock(opts) {
           _prefs.lock = !!p.lock;
           _prefs.lockAfterMs = AFTER_OPTIONS.some(function(o) { return o.ms === p.lockAfterMs; }) ? p.lockAfterMs : 0;
           _prefs.secure = !!p.secure;
+          _prefs.faceFast = !!p.faceFast;
         } catch (e) { console.warn('[LOCK] Preferencias ilegibles'); }
       }
     }).catch(function(e) {
@@ -163,6 +164,7 @@ export function securitySectionHtml() {
     '<div id="nexo-sec-atrest" style="font-size:12px;opacity:0.8;margin-bottom:8px;"></div>' +
     '<label style="' + row + '"><span>Bloquear NEXO con huella o PIN</span><input type="checkbox" id="nexo-sec-lock" style="width:22px;height:22px;"></label>' +
     '<label id="nexo-sec-after-row" style="' + row + '"><span>Pedirla</span><select id="nexo-sec-after" style="background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:7px;">' + opts + '</select></label>' +
+    '<label id="nexo-sec-facefast-row" style="' + row + '"><span>Desbloqueo rápido por rostro <span style="opacity:0.6;font-size:11px;">(menos seguro)</span></span><input type="checkbox" id="nexo-sec-facefast" style="width:22px;height:22px;"></label>' +
     '<label style="' + row + '"><span>Bloquear capturas de pantalla</span><input type="checkbox" id="nexo-sec-secure" style="width:22px;height:22px;"></label>' +
     '<div id="nexo-sec-msg" style="font-size:13px;color:#7fdcff;min-height:0;margin-bottom:4px;"></div>' +
     '<div style="font-size:11px;opacity:0.6;margin-bottom:2px;">Con las capturas bloqueadas NEXO tampoco se ve en "recientes" ni en grabaciones. Con el bloqueo los mensajes siguen llegando.</div>';
@@ -184,15 +186,19 @@ export function renderSecuritySection() {
   var after = document.getElementById('nexo-sec-after');
   var afterRow = document.getElementById('nexo-sec-after-row');
   var secure = document.getElementById('nexo-sec-secure');
+  var facefast = document.getElementById('nexo-sec-facefast');
+  var facefastRow = document.getElementById('nexo-sec-facefast-row');
   lock.checked = _prefs.lock;
   after.value = String(_prefs.lockAfterMs);
   afterRow.style.display = _prefs.lock ? 'flex' : 'none';
+  if (facefastRow) facefastRow.style.display = _prefs.lock ? 'flex' : 'none';
+  if (facefast) facefast.checked = _prefs.faceFast;
   secure.checked = _prefs.secure;
   lock.onchange = async function() {
     var want = lock.checked;
     lock.disabled = true;
     try {
-      var st = await _call('biometricStatus');
+      var st = await _call('biometricStatus', { allowWeak: _prefs.faceFast });
       if (want && !(st && st.available)) {
         _say('Primero pon una huella o un PIN en los ajustes del teléfono', 3500);
       } else if (!st || !st.available || await _auth(want ? 'Activar el bloqueo de NEXO' : 'Quitar el bloqueo de NEXO', '')) {
@@ -209,6 +215,13 @@ export function renderSecuritySection() {
   after.onchange = function() {
     _prefs.lockAfterMs = Number(after.value) || 0;
     _save();
+  };
+  if (facefast) facefast.onchange = async function() {
+    // #103: el usuario decide activar el rostro rápido (menos seguro: Clase 2 se puede engañar con una foto).
+    _prefs.faceFast = facefast.checked;
+    await _save();
+    _say(_prefs.faceFast ? '🙂 Desbloqueo por rostro activado (menos seguro que la huella)' : 'Solo biometría fuerte (huella/rostro seguro)', 3000);
+    console.log('[LOCK] Rostro rápido ' + (_prefs.faceFast ? 'activado' : 'desactivado'));
   };
   secure.onchange = async function() {
     _prefs.secure = secure.checked;
