@@ -76,13 +76,19 @@ const chips = (p) => Array.from(p.win.document.querySelectorAll('#main-estados-s
   B.win.NEXO_applyStatus(idA, { t: 'fresco', ts: Date.now() });
   r.fresco_se_ve = (B.win.NEXO_statusOf(idA) || {}).t === 'fresco';
 
+  // 4b. Robustez (auditoría 2800): un ts en el FUTURO (reloj malo/malicioso del otro) se acota a «ahora»,
+  // así no puede burlar la caducidad de 24 h quedándose para siempre.
+  B.win.NEXO_applyStatus(idA, { t: 'futuro', ts: Date.now() + 100 * 24 * 3600 * 1000 });
+  var sFut = B.win.NEXO_statusOf(idA);
+  r.futuro_acotado = !!(sFut && sFut.t === 'futuro' && typeof sFut.ts === 'number' && sFut.ts <= Date.now() + 2000);
+
   // 5. A quita su estado → B deja de verlo
   A.win.NEXO_setMyStatus('');
   r.quitar_borra_en_B = await wait(() => B.win.NEXO_statusOf(idA) === null, 30);
 
   r.errores = logs.filter((l) => /TypeError|undefined is not|No se pudo descifrar/.test(l)).slice(0, 4);
   const ok = r.emparejados && r.llega_a_B && r.B_no_mensaje_visible && r.tira_muestra_a_A && r.ver_muestra_texto &&
-    r.compose_abre && r.B_a_A_por_ui && r.caducado_no_se_ve && r.fresco_se_ve && r.quitar_borra_en_B && r.errores.length === 0;
+    r.compose_abre && r.B_a_A_por_ui && r.caducado_no_se_ve && r.fresco_se_ve && r.futuro_acotado && r.quitar_borra_en_B && r.errores.length === 0;
   r.resultado = ok ? 'OK' : 'FAIL';
   console.log('ESTADOS ' + JSON.stringify(r));
   fs.writeFileSync(path.join(__dirname, 'last_logs_estados.txt'), logs.join('\n'));

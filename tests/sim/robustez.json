@@ -13,7 +13,7 @@
   "nunca": 0
  },
  "debil": {
-  "grave": 8,
+  "grave": 9,
   "media": 4,
   "leve": 2
  },
@@ -152,8 +152,19 @@
     },
     {
      "fallo": "Responder, reenviar, eliminar y copiar",
-     "prueba": null,
-     "fuera": "chatactions.js"
+     "prueba": "menú de la burbuja"
+    },
+    {
+     "fallo": "Editar un mensaje ya enviado, con etiqueta «editado» (2782)",
+     "prueba": "menú de la burbuja"
+    },
+    {
+     "fallo": "Reaccionar a un mensaje con emoji (doble toque ❤️ / menú «Reaccionar»), que llegue al otro (2783)",
+     "prueba": "menú de la burbuja"
+    },
+    {
+     "fallo": "Palomitas de «entregado» que se veían distintas por Bluetooth que por otras redes (una vs dos); ahora iguales en todas (2783)",
+     "prueba": "palomitas de estado"
     },
     {
      "fallo": "Orden de la lista de contactos (por último mensaje)",
@@ -209,6 +220,15 @@
      "prueba": "archivos grandes por Bluetooth L2CAP"
     },
     {
+     "fallo": "Archivos grandes por internet (informe del dueño 2786: «no manda nada ni avisa si es por dimensiones»): por los relés van los medianos (~6 MB); por Tor DIRECTO los grandes (~22 MB) también salen por internet; si no caben, aviso claro con la opción de Tor / mismo Wi-Fi / cerca (nunca se queda sin mandar y sin avisar)",
+     "prueba": "archivos grandes por internet"
+    },
+    {
+     "fallo": "Vídeo que no se podía preparar (códec/recodificación que fallaba): antes fallaba sin aviso; ahora avisa siempre (2786)",
+     "prueba": null,
+     "fuera": "video.js"
+    },
+    {
      "fallo": "Fotos paradas (20 % / ○) y «mensaje de código»",
      "prueba": null,
      "fuera": "photos.js"
@@ -240,6 +260,10 @@
     {
      "fallo": "Wi-Fi caído a mitad de una foto con un Bluetooth lento",
      "prueba": null
+    },
+    {
+     "fallo": "Nota de voz: pausar/reanudar, borrar antes de enviar, y parar el audio al grabar o al entrar llamada (2781)",
+     "prueba": "nota de voz: pausar/reanudar"
     }
    ],
    "debiles": [
@@ -303,6 +327,10 @@
      "prueba": "internet (Tor)"
     },
     {
+     "fallo": "Fotos/archivos por internet (buzón/Tor) siempre mandables + Reintentar y reenvío al volver (2780)",
+     "prueba": "internet (relés)"
+    },
+    {
      "fallo": "Wi-Fi normal y cambio automático de camino con un tercero",
      "prueba": null,
      "fuera": "lan.js"
@@ -329,6 +357,10 @@
     {
      "g": "leve",
      "d": "Jump con un puente en una build vieja: ~80 s"
+    },
+    {
+     "g": "grave",
+     "d": "Informe del dueño (2780): con Wi-Fi bueno la app se pasa a «Internet» y no deja llamar/videollamar; debe mantener el Wi-Fi si está conectado y bueno (sospecha: el tráfico de la propia videollamada marca el enlace «malo»). Tarea #83, para 2781"
     }
    ]
   },
@@ -534,7 +566,7 @@
    "peso": 10,
    "telefono": {
     "estado": "falla",
-    "por": "25-10 (2771): con Wi-Fi y la pantalla apagada no llegaban mensajes ni avisos hasta encenderla (arreglado en la 2772, sin probar)"
+    "por": "26-10: con la app CERRADA + pantalla apagada no llegan mensajes ni avisos (ni Wi-Fi ni internet) hasta abrir la app (tarea #87, nativo, sin arreglar). La 2772 arregló el caso de pantalla apagada con la app viva"
    },
    "revision": {
     "n": 0,
@@ -568,6 +600,10 @@
     {
      "fallo": "Fabricantes que congelan la app (Vivo)",
      "prueba": null
+    },
+    {
+     "fallo": "Pedir proactivamente el permiso de pantalla completa de llamadas (Android 14); sin él la llamada entra solo como aviso, sin Contestar/Rechazar (2784, #81)",
+     "prueba": "avisos con la pantalla apagada"
     }
    ],
    "debiles": [
@@ -576,8 +612,12 @@
      "d": "Vivo: si congela la app, solo lo evitan sus ajustes (inicio automático, alto consumo en segundo plano); NEXO los abre (Perfil) pero no puede comprobarlos"
     },
     {
+     "g": "grave",
+     "d": "App CERRADA (deslizada) + pantalla apagada: no llegan mensajes ni avisos por Wi-Fi ni por internet hasta abrir la app; el par en el mismo Wi-Fi se pasa a «Internet» (informe del dueño 26-10, tarea #87). La recepción (LanHub/NetBg/BgInbox) vive en el proceso del WebView y solo sobrevive si Android no mata el proceso. 2785: se añadió WifiLock (FULL_HIGH_PERF) mientras NetBg escucha en segundo plano/cerrada (Android duerme la radio Wi-Fi con la pantalla apagada y tira el socket del relé) + registro nativo persistente (NativeLog) que ahora sí muestra en el diagnóstico qué hizo el nativo con la app cerrada (antes remLog solo iba a logcat/puente, muerto con la app cerrada, por eso el diagnóstico salía vacío en el hueco). SIGUE ABIERTO: nativo, no reproducible en el simulador; pendiente de confirmar en los dos teléfonos con el nuevo diagnóstico (ver si NetBg escuchó y vio el sobre del relé)"
+    },
+    {
      "g": "media",
-     "d": "Recibir con la app cerrada: sin comprobar que Android no cierre el proceso"
+     "d": "Al recibir con la pantalla apagada se enciende la pantalla pero el aviso solo sale como icono en la barra, sin contenido ni heads-up (informe del dueño 26-10, tarea #89); probable importancia del canal de mensajes o que no se llegó a postear el aviso del mensaje"
     }
    ]
   },
@@ -709,6 +749,10 @@
      "prueba": "foto de perfil"
     },
     {
+     "fallo": "Gestos: deslizar la burbuja (izq/der) para responder, deslizar el chat abajo para cerrar, ampliar foto con pellizco o doble toque (2783)",
+     "prueba": "menú de la burbuja"
+    },
+    {
      "fallo": "Pantalla girada (barra gris)",
      "prueba": null
     }
@@ -779,6 +823,18 @@
     {
      "fallo": "C1 Confirmaciones (✓✓) sin autenticar: una falsa paraba los reintentos y el mensaje se perdía con ✓✓. Arreglado en la 2777: la confirmación va firmada con el secreto de la pareja (e2eAckTag), también en modo cerrado (el ack nativo lo firma con una clave por contacto que le da la app por setAckKeys; sobrevive en memoria con la app cerrada, no va a disco)",
      "prueba": "confirmación (✓✓) falsa no marca entregado"
+    },
+    {
+     "fallo": "F9 Relés en claro (ws://) permitidos: un espía de la red veía las etiquetas de la suscripción (tu buzón). Arreglado en la 2788: solo wss://; ws:// solo a loopback (pruebas/relé propio). Si todos fueran en claro, cae a los wss:// por defecto (nunca sin internet por esto)",
+     "prueba": "relés solo cifrados"
+    },
+    {
+     "fallo": "Foto «de una vez» ya abierta REVIVÍA al retransmitirse el mismo msgId: el merge no borraba content (que lleva el payload por relé/internet) y render lo repintaba (2800)",
+     "prueba": "foto de una vez"
+    },
+    {
+     "fallo": "Estado (Stream) con ts en el futuro (reloj malo/malicioso) no caducaba: _active lo daba por vivo para siempre; se acota el ts a «ahora» (2800)",
+     "prueba": "estados"
     }
    ],
    "debiles": [
@@ -809,10 +865,6 @@
     {
      "g": "leve",
      "d": "F8: reservas de memoria de una sola vez grandes (Wi-Fi Direct 40 MB, pasar la cuenta 512 MB)"
-    },
-    {
-     "g": "leve",
-     "d": "F9: WebSocket en claro (ws://) permitido; filtra las etiquetas de la suscripción"
     }
    ]
   }

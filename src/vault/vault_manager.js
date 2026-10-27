@@ -617,8 +617,18 @@ async function _appendMessageNow(cid, message) {
       if (normalized[k] == null && existing[k] != null) merged[k] = existing[k];
     });
     if (!normalized.content && existing.content) { merged.content = existing.content; merged.text = existing.text; }
-    // #94 «ver una vez»: si ya se abrió, nunca revive el medio (una retransmisión no debe restaurar el payload)
-    if (existing.onceSeen) { merged.onceSeen = true; merged.attachmentPayload = null; merged.attachmentRef = null; merged.hdRef = null; }
+    // #94 «ver una vez»: si ya se abrió, nunca revive el medio (una retransmisión no debe restaurar el payload).
+    // Auditoría 2800: faltaba borrar content/text aquí (sí se borran al consumir, l.730). Como por internet/relé
+    // el payload viaja DENTRO de content como JSON, una retransmisión del mismo msgId tras abrirlo (p. ej. el
+    // reenvío automático del emisor al reconectar: su registro saliente no se borra, #12) devolvía ese content y
+    // al reabrir el chat `render.js` lo reconstruía y VOLVÍA A MOSTRAR la foto. Se iguala al borrado de consumir:
+    // content/text y payload/ref/hd a cero, y attachmentMeta.once forzado para que la burbuja quede en «Abierta».
+    if (existing.onceSeen) {
+      merged.onceSeen = true;
+      merged.content = ''; merged.text = '';
+      merged.attachmentPayload = null; merged.attachmentRef = null; merged.hdRef = null; merged.hdStatus = null;
+      merged.attachmentMeta = Object.assign({}, existing.attachmentMeta || merged.attachmentMeta || {}, { once: true, onceSeen: true });
+    }
     messages[existingIdx] = merged;
   }
   else { messages.push(normalized); }
