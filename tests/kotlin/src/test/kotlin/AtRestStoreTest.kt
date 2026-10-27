@@ -111,9 +111,12 @@ class AtRestStoreTest {
     }
 
     // Migrar un archivo grande no debe hacer esperar a los guardados de otros archivos
-    // (build 2762: medir solo la espera máxima con 100 ms falló en GitHub por una pausa de la máquina de 394 ms. Ahora la
-    // migración del primer archivo se alarga a propósito 1,5 s con su candado puesto: los guardados de otro archivo tienen
-    // que acabar todos mientras tanto. Con un candado común esperarían esos 1,5 s.)
+    // (build 2762: medir solo la espera máxima con 100 ms falló en GitHub por una pausa de la máquina de 394 ms. Por eso
+    // la migración del primer archivo se alarga a propósito con su candado puesto: los guardados de otro archivo tienen
+    // que acabar todos mientras tanto. Con un candado común esperarían toda la pausa.
+    // build 2796: la pausa era 1,5 s y en un runner lento los 40 guardados cifrados no cabían (flake, falló el CI de la
+    // 2795); se amplía a 4 s de margen. La propiedad sigue igual de firme: si hubiera un candado común, un guardado
+    // esperaría ~4 s y lo cazaría `esperaMax < 1000`.)
     @Test fun migrarArchivoGrandeNoBloqueaOtros() {
         val d = tmp(); val k = key(); val s = AtRestStore(d) { k }
         repeat(6) { File(d, "nexo_att_$it.b64").writeText("V".repeat(20_000_000)) }
@@ -121,14 +124,14 @@ class AtRestStoreTest {
         val dormido = java.util.concurrent.CountDownLatch(1)
         val finDormir = java.util.concurrent.atomic.AtomicLong()
         val mig = thread(start = false) { s.migrateAll() }
-        s.onRead = { if (Thread.currentThread() === mig && dormido.count > 0L) { dormido.countDown(); Thread.sleep(1500); finDormir.set(System.nanoTime()) } }
+        s.onRead = { if (Thread.currentThread() === mig && dormido.count > 0L) { dormido.countDown(); Thread.sleep(4000); finDormir.set(System.nanoTime()) } }
         mig.start()
         assertTrue(dormido.await(10, java.util.concurrent.TimeUnit.SECONDS), "la migración empieza")
         var esperaMax = 0L
         repeat(40) { val a = System.nanoTime(); s.write("nexo_ratchet.json", clave); esperaMax = maxOf(esperaMax, (System.nanoTime() - a) / 1_000_000); Thread.sleep(5) }
         val finGuardados = System.nanoTime()
         mig.join()
-        println("Migrando 6 x 20 MB (el primero tarda 1,5 s más): guardado pequeño, espera máx. ${esperaMax} ms")
+        println("Migrando 6 x 20 MB (el primero tarda ~4 s más): guardado pequeño, espera máx. ${esperaMax} ms")
         assertTrue(finDormir.get() == 0L || finGuardados < finDormir.get(), "los 40 guardados acaban mientras otro archivo se migra")
         assertTrue(esperaMax < 1000, "un guardado pequeño no espera a la migración de otro archivo (${esperaMax} ms)")
         assertEquals(clave, s.read("nexo_ratchet.json"))
