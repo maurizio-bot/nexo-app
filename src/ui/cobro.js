@@ -95,7 +95,10 @@ export function _renderCobroCard(container, cob, msg) {
   var metodo = String((cob && cob.metodo) || '');
   var own = !!(msg && msg._own);
   var esURL = /^https?:\/\//i.test(metodo.trim());
-  var html = '<div style="border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#0f2a19,#0c1f14);border:1px solid rgba(34,197,94,0.35);max-width:260px;">';
+  // Ronda 2791 (informe del dueño): la tarjeta tenía un borde verde grueso y se veía «enmarcada»; ahora igual que la de
+  // Ubicación (mismo radio 12px, fondo sutil rgba(0,0,0,0.3), SIN borde, max 260px). El verde queda solo en el 💵, el
+  // texto y los botones.
+  var html = '<div style="border-radius:12px;overflow:hidden;background:rgba(0,0,0,0.3);max-width:260px;">';
   html += '<div style="display:flex;align-items:center;gap:6px;padding:9px 12px 4px;font-size:12px;color:#8fe0ab;">💵 ' + (own ? 'Cobro enviado' : 'Te piden un cobro') + '</div>';
   html += '<div style="padding:0 12px;font-size:24px;font-weight:800;color:#fff;line-height:1.15;">' + importe + ' <span style="font-size:13px;font-weight:600;opacity:0.8;">' + moneda + '</span></div>';
   if (concepto) html += '<div style="padding:2px 12px 0;font-size:13px;color:#cfd8d2;">' + _esc(concepto) + '</div>';
