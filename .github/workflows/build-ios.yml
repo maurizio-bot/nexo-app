@@ -58,9 +58,12 @@ jobs:
       - name: Compilar iOS (simulador, sin firma)
         working-directory: ios/App
         # xcodebuild es muy verboso; si se filtra con `tail` se pierde la línea `error:`. Se guarda el log COMPLETO
-        # y, si falla, se imprimen las líneas de error y el final del log (para ver la causa real del exit 65).
+        # y, si falla, se imprimen las líneas de error y el final del log (para ver la causa real del fallo).
+        # OJO (arreglado): NO usar «| grep … || true» y luego ${PIPESTATUS[0]} — el «|| true» ejecuta otro comando y
+        # PISA PIPESTATUS, así que el código real de xcodebuild se perdía (daba 0) y el job salía VERDE con BUILD
+        # FAILED. En su lugar: `set +e` evita que -e aborte y se lee PIPESTATUS[0] (= xcodebuild) justo tras la tubería.
         run: |
-          set -o pipefail
+          set +e
           xcodebuild \
             -workspace App.xcworkspace \
             -scheme App \
@@ -68,7 +71,7 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
-            clean build 2>&1 | tee /tmp/xcodebuild.log | grep -E --line-buffered 'error:|warning: .*(NexoBle|App)|BUILD SUCCEEDED|BUILD FAILED|Compiling' || true
+            clean build 2>&1 | tee /tmp/xcodebuild.log | grep -E --line-buffered 'error:|warning: .*(NexoBle|App)|BUILD SUCCEEDED|BUILD FAILED|Compiling'
           code=${PIPESTATUS[0]}
           echo "xcodebuild exit = $code"
           if [ "$code" != "0" ]; then

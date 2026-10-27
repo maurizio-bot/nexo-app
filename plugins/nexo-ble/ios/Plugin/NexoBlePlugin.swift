@@ -84,7 +84,11 @@ public class NexoBlePlugin: CAPPlugin {
         let mime = call.getString("mime") ?? ""
         let isVideo = mime.hasPrefix("video")
         PHPhotoLibrary.requestAuthorization { status in
-            guard status == .authorized || status == .limited else {
+            // «.limited» (acceso parcial a Fotos) es de iOS 14+; el objetivo de compilación es iOS 13, así que solo se
+            // comprueba con #available. Para GUARDAR en la galería, «autorizado» o «limitado» sirven.
+            var allowed = status == .authorized
+            if #available(iOS 14, *) { allowed = allowed || status == .limited }
+            guard allowed else {
                 call.resolve(["saved": false, "reason": "permiso"]); return
             }
             PHPhotoLibrary.shared().performChanges({
