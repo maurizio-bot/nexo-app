@@ -19,8 +19,10 @@ Orden que sigo (robusto, de a uno, con batería verde + APK): 2794 buscar ✓, 2
 
 **Decisiones del dueño al despertar (27-10 mañana), respondiendo mis preguntas:** «1 dejalo opcional que el user decida, osea agregá Face ID. 4 ta. 5 si» →
 - **#92 descargar a galería: SÍ** → ✅ **hecho en la 2801** (nativo `saveToGallery` + botón en el visor; no en «ver una vez»). **Validó mi flujo de builds NATIVOS** (sin SDK local: Kotlin se compila en CI; lo real se prueba en el teléfono).
-- **#101 gestos deslizar-atrás: SÍ** («ta») → **EN CURSO**. Plan robusto sin dependencia nueva: `onBackPressed` en el `MainActivity.java` nativo (`android/app/src/main/java/com/nexo/app/`) → si hay chat/overlay abierto, cerrarlo (evento JS) en vez de salir de la app; `@capacitor/app` NO hace falta. Nativo → a confirmar en el teléfono.
-- **#103 Face ID: SÍ, OPCIONAL (el usuario decide)** → el bloqueo por defecto sigue fuerte; se añade un ajuste «desbloqueo rápido por rostro (menos seguro)» que el usuario activa a propósito. Nativo (`AuthPlugin.kt` + `app_lock.js`) → a confirmar en el teléfono.
+- **#101 gestos deslizar-atrás: SÍ** («ta») → ✅ **hecho en la 2802**. `onBackPressed` en `MainActivity.java` → `window.__nexoHandleBack` (chat_nav): cierra en orden visor/estado/cámara/chat; sin dependencia nueva (`@capacitor/app` no hizo falta). Prueba `backbtn.js`. Nativo → a confirmar en el teléfono.
+- **#103 Face ID: SÍ, OPCIONAL (el usuario decide)** → ✅ **hecho en la 2803**. El bloqueo real es `biometricAuth`/`biometricStatus` en **NexoBlePlugin** (el `AuthPlugin`/nexo-auth que miré primero está muerto, no se registra): es una puerta de PRESENCIA, no cifra. Ajuste «desbloqueo rápido por rostro (menos seguro)» en Perfil → Seguridad permite `BIOMETRIC_WEAK`; default fuerte, sin Keystore. Prueba `lock.js` (paso 12). Nativo → a confirmar en el teléfono.
+
+**Los 3 nativos de la mañana subidos (2801/2802/2803), a confirmar en el teléfono.** Quedan, dependientes del dueño: pagos con saldo real/recargas (socio/proveedor #105), llamadas por internet (#99, quizá servidor TURN), y los bugs que no reproduzco en el simulador (#87 app cerrada, ○+Reintentar) que esperan su diagnóstico.
 
 Siguen dependiendo del dueño: pagos con saldo real/recargas (socio/proveedor #105), llamadas por internet (#99, quizá servidor TURN), y los bugs que no reproduzco en el simulador (#87 app cerrada, ○+Reintentar) que esperan su diagnóstico.
 
