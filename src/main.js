@@ -189,7 +189,15 @@ function _refreshLinkSubtitle() {
   if (sub && bi && bi.groups && bi.groups.isGroup(cid)) { sub.textContent = groupSubtitle(bi.groups.get(cid)); return; } // ronda 2758
   if (!sub || !bi || typeof bi.linkOf !== 'function' || !cid) return;
   var via = bi.linkOf(cid);
-  sub.textContent = via === 'wifi' ? 'En línea · Wi-Fi' : via === 'internet' ? 'En línea · Internet' : via === 'bluetooth' ? 'En línea · Bluetooth' : via === 'jump' ? 'Por Jump' : '';
+  var base = via === 'wifi' ? 'En línea · Wi-Fi' : via === 'internet' ? 'En línea · Internet' : via === 'bluetooth' ? 'En línea · Bluetooth' : via === 'jump' ? 'Por Jump' : '';
+  // Ronda 2798 (pedido del dueño): avisar de MALA SEÑAL. Por Bluetooth, un MTU que se quedó pequeño (p. ej. 23, sin
+  // negociar) hace el enlace MUY lento — el dueño lo vio en su diagnóstico ("Bluetooth muy lento"). Se marca en el
+  // subtítulo para que entienda por qué va lento (no es un fallo: es la radio de ese par de teléfonos).
+  if (via === 'bluetooth' && typeof bi.getMtu === 'function' && bi._activeChatDeviceId) {
+    var mtu = bi.getMtu(bi._activeChatDeviceId);
+    if (mtu > 0 && mtu < 60) base += ' · ⚠ señal débil';
+  }
+  sub.textContent = base;
 }
 ['nexo:ble:linkChange', 'nexo:ble:deviceDisconnected', 'nexo:ble:openChat'].forEach(function(ev) {
   window.addEventListener(ev, function() { setTimeout(_refreshLinkSubtitle, 50); });
