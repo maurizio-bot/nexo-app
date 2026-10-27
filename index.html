@@ -10,7 +10,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:">
+<!-- Ronda 2809 (auditoría P0-4): endurecida con object-src 'none' (sin plugins), base-uri 'self' (sin secuestro de <base>) y form-action 'self' (sin exfiltración por formularios). script-src mantiene 'unsafe-inline'/'unsafe-eval' porque el WebView de Capacitor y los handlers inline (p.ej. onerror de la miniatura de ubicación) los necesitan; el XSS se corta en origen pintando todo el contenido del remitente con textContent (lo vigila tests/sim/xss.js). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https: blob: data: gap: ws: wss:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>NEXO v9.0</title>
 <link rel="stylesheet" href="./styles.css">
 </head>
